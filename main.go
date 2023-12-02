@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"os"
 	"fmt"
-//	"github.com/silvasur/buzhash"
 //	"io/ioutil"
 	"path/filepath"
 	"github.com/dchest/siphash"
@@ -92,7 +91,7 @@ func (a *PXARArchive) Flush() {
 	count, _ := a.buffer.Read(b)
 	a.writeCB(b[:count])
 	a.pos = a.pos + uint64(count)
-	fmt.Printf("Flush %d bytes\n", count)
+	//fmt.Printf("Flush %d bytes\n", count)
 }
 
 func (a *PXARArchive) Create() {
@@ -101,7 +100,7 @@ func (a *PXARArchive) Create() {
 }
 
 func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool){
-	fmt.Printf("Write dir %s at %d\n", path, a.pos)
+	//fmt.Printf("Write dir %s at %d\n", path, a.pos)
 	files, err := os.ReadDir(path)
 	if err != nil {
 		return
@@ -182,7 +181,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool){
 
 //Prima deve essere scritta una directory!!
 func (a *PXARArchive) WriteFile(path string, basename string) {
-	fmt.Printf("Write file %s at %d\n", path, a.pos)
+	//fmt.Printf("Write file %s at %d\n", path, a.pos)
 	fileInfo, err := os.Stat(path)
 	if err != nil {
 		fmt.Printf("Failed to stat %s\n", path)
@@ -254,12 +253,45 @@ func (a *PXARArchive) WriteFile(path string, basename string) {
 }
 
 func main() {
+	client := &PBSClient{
+		baseurl: os.Args[1],
+		certfingerprint: os.Args[2],//"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
+		authid: os.Args[3],
+		secret: os.Args[4],
+		datastore: os.Args[5],
+	}
+
+	client.Connect()
+	client.CreateDynamicIndex("backup.pxar.didx")
+	client.CloseDynamicIndex()
+	client.Finish()
+	return
+
     A := &PXARArchive{}
+	C := &Chunker{}
+	C.New(1024*1024*4)
 	f, _ := os.Create("test.pxar")
 	defer f.Close()
+
+
+	current_chunk := make([]byte,0)
+
 	A.writeCB = func(b []byte) {
+		chunkpos := C.Scan(b)
+		
+
+		if ( chunkpos > 0 ) {
+			current_chunk = append(current_chunk, b[:chunkpos]...)
+			fmt.Printf("New chunk %d bytes\n",len(current_chunk))
+
+
+
+			current_chunk = b[chunkpos:]
+		}else{
+			current_chunk = append(current_chunk, b...)
+		}
 		f.Write(b)
 	}
-	A.WriteDir("./test","",true)
+	A.WriteDir("/home/tiziano/TA","",true)
 
 }
