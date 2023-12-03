@@ -53,6 +53,8 @@ func main() {
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory")
 
+	
+
 	// Parse command-line flags
 	flag.Parse()
 
@@ -73,6 +75,10 @@ func main() {
 		secret: *secretFlag,
 		datastore: *datastoreFlag,
 	}
+
+	backupdir := *backupSourceDirFlag
+
+	backupdir = createVSSSnapshot(backupdir)
 
 	client.Connect(false)
 	
@@ -199,7 +205,7 @@ func main() {
 			PCAT1_CHK.current_chunk = append(PCAT1_CHK.current_chunk, b...)
 		}
 	}
-	A.WriteDir(*backupSourceDirFlag,"",true)
+	A.WriteDir(backupdir,"",true)
 
 	if len(PXAR_CHK.current_chunk) > 0 {
 		h := sha256.New()
@@ -252,4 +258,6 @@ func main() {
 	client.Finish()
 
 	fmt.Printf("New %d , Reused %d\n", newchunk, reusechunk)
+
+	VSSCleanup()
 }
