@@ -3,10 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"os"
 	"fmt"
-//	"io/ioutil"
+	"math/bits"
+	"os"
+	"sort"
+
+	//	"io/ioutil"
 	"path/filepath"
+
 	"github.com/dchest/siphash"
 )
 
@@ -77,6 +81,67 @@ type GoodByeItem struct {
 	len uint64
 }
 
+type GoodByeBST struct {
+
+	self *GoodByeItem
+	left *GoodByeBST
+	right *GoodByeBST
+}
+
+func (B *GoodByeBST) AddNode(i *GoodByeItem) {
+	if i.hash < B.self.hash {
+		if B.left == nil {
+			B.left = &GoodByeBST{
+				self: i,
+			}
+		} else {
+			B.left.AddNode(i)
+		}
+	}
+	if i.hash > B.self.hash {
+		if B.right == nil {
+			B.right = &GoodByeBST{
+				self: i,
+			}
+		} else {
+			B.right.AddNode(i)
+		}
+	}
+}
+
+func pow_of_2(e uint64) uint64 {
+	return 1 << e
+}
+
+func log_of_2(k uint64) uint64 {
+	return 8*8 - uint64(bits.LeadingZeros64(k)) - 1
+}
+
+func make_bst_inner(input []GoodByeItem, n uint64, e uint64, output *[]GoodByeItem, i uint64 ){
+	if n == 0 {
+		return 
+	}
+	p := pow_of_2(e-1)
+	q := pow_of_2(e)
+	var k uint64
+	if n >= p -1 + p /2 {
+		k = (q - 2)/2
+	}else{
+		v := p - 1 + p / 2 - n;
+   		k = (q - 2) / 2 - v;
+	}
+
+	(*output)[i] = input[k]
+
+	make_bst_inner(input,k,e-1,output,i*2+1)
+	make_bst_inner(input[k+1:],n-k-1,e-1,output,i*2+2)
+}
+
+func ca_make_bst(input []GoodByeItem, output *[]GoodByeItem) {
+	n := uint64(len(input))
+	make_bst_inner(input, n, log_of_2(n)+1, output,0)
+}
+
 type PXAROutCB func([]byte)
 
 type PXARArchive struct {
@@ -94,10 +159,16 @@ type PXARArchive struct {
 }
 
 func (a *PXARArchive) Flush() {
+	
 	b := make([]byte, 64*1024);
-	count, _ := a.buffer.Read(b)
-	a.writeCB(b[:count])
-	a.pos = a.pos + uint64(count)
+	for {
+		count, _ := a.buffer.Read(b)
+		if count <= 0 {
+			break
+		}
+		a.writeCB(b[:count])
+		a.pos = a.pos + uint64(count)
+	}
 	//fmt.Printf("Flush %d bytes\n", count)
 }
 
@@ -240,6 +311,16 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 	a.catalog_pos += uint64(len(catalog_outdata))
 
 	a.Flush()
+
+	sort.Slice(goodbyteitems, func(i, j int) bool {
+		return goodbyteitems[i].hash < goodbyteitems[j].hash
+	})
+
+	goodbyteitemsnew := make([]GoodByeItem, len(goodbyteitems))
+
+	ca_make_bst(goodbyteitems, &goodbyteitemsnew)
+
+	goodbyteitems = goodbyteitemsnew
 	
 
 	binary.Write(&a.buffer, binary.LittleEndian, PXAR_GOODBYE)

@@ -52,7 +52,7 @@ func main() {
 	secretFlag := flag.String("secret", "", "Secret for authentication")
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory")
-
+	pxarOut := flag.String("pxarout", "", "Output PXAR archive (optional)")
 	// Parse command-line flags
 	flag.Parse()
 
@@ -110,9 +110,12 @@ func main() {
 	}
 
 	fmt.Printf("Known chunks: %d!\n", len(known_chunks_digest))
-
-	/*f, _ := os.Create("test.pxar")
-	defer f.Close()*/
+	f := &os.File{}
+	if *pxarOut != "" {
+		f, _ = os.Create(*pxarOut)
+		defer f.Close()
+	}
+	/**/
 
 	PXAR_CHK := ChunkState{}
 	PXAR_CHK.Init()
@@ -148,7 +151,7 @@ func main() {
 				binary.Write(PXAR_CHK.chunkdigests, binary.LittleEndian, (PXAR_CHK.pos + uint64(len(PXAR_CHK.current_chunk))))
 				PXAR_CHK.chunkdigests.Write(h.Sum(nil))
 
-				PXAR_CHK.assignments_offset = append(PXAR_CHK.assignments_offset, PXAR_CHK.pos)
+				PXAR_CHK.assignments_offset = append(PXAR_CHK.assignments_offset, PXAR_CHK.pos )
 				PXAR_CHK.assignments = append(PXAR_CHK.assignments, shahash)
 				PXAR_CHK.pos += uint64(len(PXAR_CHK.current_chunk))
 				PXAR_CHK.chunkcount += 1
@@ -159,8 +162,10 @@ func main() {
 		} else {
 			PXAR_CHK.current_chunk = append(PXAR_CHK.current_chunk, b...)
 		}
-
-		//f.Write(b)
+		if *pxarOut != "" {
+			f.Write(b)
+		}
+		//
 	}
 
 	A.catalogWriteCB = func(b []byte) {
@@ -225,7 +230,7 @@ func main() {
 		PCAT1_CHK.chunkdigests.Write(h.Sum(nil))
 
 		fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(PCAT1_CHK.current_chunk))
-		PCAT1_CHK.assignments_offset = append(PCAT1_CHK.assignments_offset, PCAT1_CHK.pos)
+		PCAT1_CHK.assignments_offset = append(PCAT1_CHK.assignments_offset, PCAT1_CHK.pos )
 		PCAT1_CHK.assignments = append(PCAT1_CHK.assignments, shahash)
 		PCAT1_CHK.pos += uint64(len(PCAT1_CHK.current_chunk))
 		PCAT1_CHK.chunkcount += 1
