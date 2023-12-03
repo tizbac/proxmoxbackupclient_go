@@ -111,8 +111,8 @@ func main() {
 
 	fmt.Printf("Known chunks: %d!\n", len(known_chunks_digest))
 
-	f, _ := os.Create("test.pxar")
-	defer f.Close()
+	/*f, _ := os.Create("test.pxar")
+	defer f.Close()*/
 
 	PXAR_CHK := ChunkState{}
 	PXAR_CHK.Init()
@@ -160,7 +160,7 @@ func main() {
 			PXAR_CHK.current_chunk = append(PXAR_CHK.current_chunk, b...)
 		}
 
-		f.Write(b)
+		//f.Write(b)
 	}
 
 	A.catalogWriteCB = func(b []byte) {
