@@ -1,255 +1,34 @@
 package main
 
 import (
-	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
-	"os"
+	"encoding/hex"
 	"fmt"
-//	"io/ioutil"
-	"path/filepath"
-	"github.com/dchest/siphash"
+	"hash"
+	"os"
 )
 
-
-
-const (
-	PXAR_ENTRY                 uint64 = 0xd5956474e588acef
-	PXAR_ENTRY_V1              uint64 = 0x11da850a1c1cceff
-	PXAR_FILENAME              uint64 = 0x16701121063917b3
-	PXAR_SYMLINK               uint64 = 0x27f971e7dbf5dc5f
-	PXAR_DEVICE                uint64 = 0x9fc9e906586d5ce9
-	PXAR_XATTR                 uint64 = 0x0dab0229b57dcd03
-	PXAR_ACL_USER              uint64 = 0x2ce8540a457d55b8
-	PXAR_ACL_GROUP             uint64 = 0x136e3eceb04c03ab
-	PXAR_ACL_GROUP_OBJ         uint64 = 0x10868031e9582876
-	PXAR_ACL_DEFAULT           uint64 = 0xbbbb13415a6896f5
-	PXAR_ACL_DEFAULT_USER      uint64 = 0xc89357b40532cd1f
-	PXAR_ACL_DEFAULT_GROUP     uint64 = 0xf90a8a5816038ffe
-	PXAR_FCAPS                 uint64 = 0x2da9dd9db5f7fb67
-	PXAR_QUOTA_PROJID          uint64 = 0xe07540e82f7d1cbb
-	PXAR_HARDLINK              uint64 = 0x51269c8422bd7275
-	PXAR_PAYLOAD               uint64 = 0x28147a1b0b7c1a25
-	PXAR_GOODBYE               uint64 = 0x2fec4fa642d5731d
-	PXAR_GOODBYE_TAIL_MARKER   uint64 = 0xef5eed5b753e1555
-)
-
-const (
-    IFMT  uint64 = 0o0170000
-    IFSOCK uint64 = 0o0140000
-    IFLNK  uint64 = 0o0120000
-    IFREG  uint64 = 0o0100000
-    IFBLK  uint64 = 0o0060000
-    IFDIR  uint64 = 0o0040000
-    IFCHR  uint64 = 0o0020000
-    IFIFO  uint64 = 0o0010000
-
-    ISUID  uint64 = 0o0004000
-    ISGID  uint64 = 0o0002000
-    ISVTX  uint64 = 0o0001000
-)
-type MTime struct {
-	secs uint64
-	nanos uint32 
-	padding uint32
-	
-}
-type PXARFileEntry struct {
-	hdr uint64
-	len uint64
-	mode uint64
-	flags uint64 
-	uid uint32 
-	gid uint32 
-	mtime MTime
-}
-
-type PXARFilenameEntry struct {
-	hdr uint64
-	len uint64
-
-}
-
-type GoodByeItem struct {
-	hash uint64 
-	offset uint64 
-	len uint64
-}
-
-type PXAROutCB func([]byte)
-
-type PXARArchive struct {
-	//Create(filename string, writeCB PXAROutCB)
-	//AddFile(filename string)
-	//AddDirectory(dirname string)
-	writeCB PXAROutCB
-	buffer bytes.Buffer
+type ChunkState struct {
+	assignments []string 
+	assignments_offset []uint64 
 	pos uint64
+	wrid uint64
+	chunkcount uint64
+	chunkdigests hash.Hash
+	current_chunk []byte 
+	C Chunker
 }
 
-func (a *PXARArchive) Flush() {
-	b := make([]byte, 64*1024);
-	count, _ := a.buffer.Read(b)
-	a.writeCB(b[:count])
-	a.pos = a.pos + uint64(count)
-	//fmt.Printf("Flush %d bytes\n", count)
-}
-
-func (a *PXARArchive) Create() {
-	a.pos = 0
-	
-}
-
-func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool){
-	//fmt.Printf("Write dir %s at %d\n", path, a.pos)
-	files, err := os.ReadDir(path)
-	if err != nil {
-		return
-	}
-
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		fmt.Printf("Failed to stat %s\n", path)
-		return
-	}
-
-	if (!toplevel) {
-		fname_entry := &PXARFilenameEntry{
-			hdr: PXAR_FILENAME,
-			len: uint64(16)+uint64(len(dirname))+1,
-		}
-	
-		binary.Write(&a.buffer, binary.LittleEndian, fname_entry)
-	
-		a.buffer.WriteString(dirname)
-		a.buffer.WriteByte(0x00)
-	}
-
-	entry := &PXARFileEntry{
-		hdr: PXAR_ENTRY,
-		len: 56,
-		mode: IFDIR | 0o777,
-		flags: 0,
-		uid: 1000,
-		gid: 1000,
-		mtime: MTime{
-			secs: uint64(fileInfo.ModTime().Unix()),
-			nanos: 0,
-			padding: 0,
-		},
-	}
-	binary.Write(&a.buffer, binary.LittleEndian, entry)
-
-	posmap := make(map[string]uint64)
-	lenmap := make(map[string]uint64)
-	for _ , file := range files {
-		if file.IsDir() {
-			posmap[file.Name()] = a.pos
-			a.WriteDir(filepath.Join(path, file.Name()), file.Name(), false)
-			lenmap[file.Name()] = a.pos-posmap[file.Name()]
-		}else{
-			posmap[file.Name()] = a.pos
-			a.WriteFile(filepath.Join(path, file.Name()), file.Name())
-			lenmap[file.Name()] = a.pos-posmap[file.Name()]
-		}
-	}
-
-	binary.Write(&a.buffer, binary.LittleEndian, PXAR_GOODBYE)
-	goodbyelen := uint64(16 + 24*(len(posmap)+1))
-	binary.Write(&a.buffer, binary.LittleEndian, goodbyelen)
-
-	for filename, pos := range posmap {
-		gi := &GoodByeItem{
-			offset: a.pos-pos,
-			len: lenmap[filename],
-			hash: siphash.Hash(0x83ac3f1cfbb450db, 0xaa4f1b6879369fbd, []byte(filename)),
-		}
-		binary.Write(&a.buffer, binary.LittleEndian, gi)
-	}
-
-	gi := &GoodByeItem{
-		offset: a.pos,
-		len: goodbyelen,
-		hash: 0xef5eed5b753e1555,
-	}
-
-	binary.Write(&a.buffer, binary.LittleEndian, gi)
-
-	a.Flush()
-
-}
-
-
-//Prima deve essere scritta una directory!!
-func (a *PXARArchive) WriteFile(path string, basename string) {
-	//fmt.Printf("Write file %s at %d\n", path, a.pos)
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		fmt.Printf("Failed to stat %s\n", path)
-		return
-	}
-
-	file, err := os.Open(path)
-
-	if err != nil {
-		fmt.Printf("Failed to open %s\n", path)
-		return
-	}
-
-	defer file.Close()
-
-
-	fname_entry := &PXARFilenameEntry{
-		hdr: PXAR_FILENAME,
-		len: uint64(16)+uint64(len(basename))+1,
-	}
-
-	binary.Write(&a.buffer, binary.LittleEndian, fname_entry)
-
-	a.buffer.WriteString(basename)
-	a.buffer.WriteByte(0x00)
-
-	entry := &PXARFileEntry{
-		hdr: PXAR_ENTRY,
-		len: 56,
-		mode: IFREG | 0o777,
-		flags: 0,
-		uid: 1000,
-		gid: 1000,
-		mtime: MTime{
-			secs: uint64(fileInfo.ModTime().Unix()),
-			nanos: 0,
-			padding: 0,
-		},
-	}
-	binary.Write(&a.buffer, binary.LittleEndian, entry)
-
-	binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD)
-	filesize := uint64(fileInfo.Size())+16 //Dimensione del file + Header
-
-	binary.Write(&a.buffer, binary.LittleEndian, filesize)
-
-	a.Flush()
-
-
-	readbuffer := make([]byte, 1024*64)
-	
-	for {
-		nread, err := file.Read(readbuffer)
-		if nread <= 0 {
-			break
-		}
-		if err != nil {
-			panic(err.Error())
-		}
-		a.buffer.Write(readbuffer[:nread])
-		a.Flush()
-	}
-	
-
-
-
-
-	a.Flush()
+func (c *ChunkState) Init() {
+	c.assignments = make([]string, 0)
+	c.assignments_offset = make([]uint64, 0)
+	c.pos = 0
+	c.chunkcount = 0
+	c.chunkdigests = sha256.New()
+	c.current_chunk = make([]byte,0)
+	c.C = Chunker{}
+	c.C.New(1024*1024*4)
 }
 
 func main() {
@@ -262,36 +41,130 @@ func main() {
 	}
 
 	client.Connect()
-	client.CreateDynamicIndex("backup.pxar.didx")
-	client.CloseDynamicIndex()
-	client.Finish()
-	return
+	
+
 
     A := &PXARArchive{}
-	C := &Chunker{}
-	C.New(1024*1024*4)
-	f, _ := os.Create("test.pxar")
-	defer f.Close()
+	
+	//f, _ := os.Create("test.pcat1")
+	//defer f.Close()
 
+	PXAR_CHK := ChunkState{}
+	PXAR_CHK.Init()
 
-	current_chunk := make([]byte,0)
+	PCAT1_CHK := ChunkState{}
+	PCAT1_CHK.Init()
+	
+	PXAR_CHK.wrid = client.CreateDynamicIndex("backup.pxar.didx")
+	PCAT1_CHK.wrid = client.CreateDynamicIndex("catalog.pcat1.didx")
 
 	A.writeCB = func(b []byte) {
-		chunkpos := C.Scan(b)
+		chunkpos := PXAR_CHK.C.Scan(b)
 		
 
 		if ( chunkpos > 0 ) {
-			current_chunk = append(current_chunk, b[:chunkpos]...)
-			fmt.Printf("New chunk %d bytes\n",len(current_chunk))
 
+			PXAR_CHK.current_chunk = append(PXAR_CHK.current_chunk, b[:chunkpos]...)
 
+			h := sha256.New()
+			h.Write(PXAR_CHK.current_chunk)
+			shahash := hex.EncodeToString(h.Sum(nil))
+			
 
-			current_chunk = b[chunkpos:]
+			fmt.Printf("New chunk[%s] %d bytes\n",shahash, len(PXAR_CHK.current_chunk))
+			
+			client.UploadCompressedChunk(PXAR_CHK.wrid, shahash, PXAR_CHK.current_chunk)
+			binary.Write(PXAR_CHK.chunkdigests, binary.LittleEndian, (PXAR_CHK.pos+uint64(len(PXAR_CHK.current_chunk))))
+			PXAR_CHK.chunkdigests.Write(h.Sum(nil))
+
+			PXAR_CHK.assignments_offset = append(PXAR_CHK.assignments_offset, PXAR_CHK.pos)
+			PXAR_CHK.assignments = append(PXAR_CHK.assignments, shahash)
+			PXAR_CHK.pos += uint64(len(PXAR_CHK.current_chunk))
+			PXAR_CHK.chunkcount += 1
+			
+			
+			PXAR_CHK.current_chunk = b[chunkpos:]
 		}else{
-			current_chunk = append(current_chunk, b...)
+			PXAR_CHK.current_chunk = append(PXAR_CHK.current_chunk, b...)
 		}
-		f.Write(b)
+
+		
+		//f.Write(b)
 	}
-	A.WriteDir("/home/tiziano/TA","",true)
+
+	A.catalogWriteCB = func(b []byte) {
+		chunkpos := PCAT1_CHK.C.Scan(b)
+		
+
+		if ( chunkpos > 0 ) {
+
+			PCAT1_CHK.current_chunk = append(PCAT1_CHK.current_chunk, b[:chunkpos]...)
+
+			h := sha256.New()
+			h.Write(PCAT1_CHK.current_chunk)
+			shahash := hex.EncodeToString(h.Sum(nil))
+			
+
+			fmt.Printf("Catalog: New chunk[%s] %d bytes\n",shahash, len(PCAT1_CHK.current_chunk))
+			
+			client.UploadCompressedChunk(PCAT1_CHK.wrid, shahash, PCAT1_CHK.current_chunk)
+			binary.Write(PCAT1_CHK.chunkdigests, binary.LittleEndian, (PCAT1_CHK.pos+uint64(len(PCAT1_CHK.current_chunk))))
+			PCAT1_CHK.chunkdigests.Write(h.Sum(nil))
+
+			PCAT1_CHK.assignments_offset = append(PCAT1_CHK.assignments_offset, PCAT1_CHK.pos)
+			PCAT1_CHK.assignments = append(PCAT1_CHK.assignments, shahash)
+			PCAT1_CHK.pos += uint64(len(PCAT1_CHK.current_chunk))
+			PCAT1_CHK.chunkcount += 1
+			
+			
+			PCAT1_CHK.current_chunk = b[chunkpos:]
+		}else{
+			PCAT1_CHK.current_chunk = append(PCAT1_CHK.current_chunk, b...)
+		}
+	}
+	A.WriteDir(os.Args[6],"",true)
+
+	if len(PXAR_CHK.current_chunk) > 0 {
+		h := sha256.New()
+		h.Write(PXAR_CHK.current_chunk)
+		shahash := hex.EncodeToString(h.Sum(nil))
+		binary.Write(PXAR_CHK.chunkdigests, binary.LittleEndian, (PXAR_CHK.pos+uint64(len(PXAR_CHK.current_chunk))))
+		PXAR_CHK.chunkdigests.Write(h.Sum(nil))
+
+		fmt.Printf("New chunk[%s] %d bytes\n",shahash, len(PXAR_CHK.current_chunk))
+		PXAR_CHK.assignments_offset = append(PXAR_CHK.assignments_offset, PXAR_CHK.pos)
+		PXAR_CHK.assignments = append(PXAR_CHK.assignments, shahash)
+		PXAR_CHK.pos += uint64(len(PXAR_CHK.current_chunk))
+		PXAR_CHK.chunkcount += 1
+		client.UploadCompressedChunk(PXAR_CHK.wrid, shahash, PXAR_CHK.current_chunk)
+	}
+
+	if len(PCAT1_CHK.current_chunk) > 0 {
+		h := sha256.New()
+		h.Write(PCAT1_CHK.current_chunk)
+		shahash := hex.EncodeToString(h.Sum(nil))
+		binary.Write(PCAT1_CHK.chunkdigests, binary.LittleEndian, (PCAT1_CHK.pos+uint64(len(PCAT1_CHK.current_chunk))))
+		PCAT1_CHK.chunkdigests.Write(h.Sum(nil))
+
+		fmt.Printf("New chunk[%s] %d bytes\n",shahash, len(PCAT1_CHK.current_chunk))
+		PCAT1_CHK.assignments_offset = append(PCAT1_CHK.assignments_offset, PCAT1_CHK.pos)
+		PCAT1_CHK.assignments = append(PCAT1_CHK.assignments, shahash)
+		PCAT1_CHK.pos += uint64(len(PCAT1_CHK.current_chunk))
+		PCAT1_CHK.chunkcount += 1
+		client.UploadCompressedChunk(PCAT1_CHK.wrid, shahash, PCAT1_CHK.current_chunk)
+	}
+
+	client.AssignChunks(PXAR_CHK.wrid, PXAR_CHK.assignments, PXAR_CHK.assignments_offset)
+
+	client.CloseDynamicIndex(PXAR_CHK.wrid, hex.EncodeToString(PXAR_CHK.chunkdigests.Sum(nil)), PXAR_CHK.pos, PXAR_CHK.chunkcount)
+
+	
+
+	client.AssignChunks(PCAT1_CHK.wrid, PCAT1_CHK.assignments, PCAT1_CHK.assignments_offset)
+
+	client.CloseDynamicIndex(PCAT1_CHK.wrid, hex.EncodeToString(PCAT1_CHK.chunkdigests.Sum(nil)), PCAT1_CHK.pos, PCAT1_CHK.chunkcount)
+
+	client.UploadManifest()
+	client.Finish()
 
 }
