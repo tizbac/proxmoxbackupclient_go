@@ -61,8 +61,8 @@ func main() {
 	A.writeCB = func(b []byte) {
 		chunkpos := PXAR_CHK.C.Scan(b)
 		
-
 		if ( chunkpos > 0 ) {
+		for ( chunkpos > 0 ) {
 
 			PXAR_CHK.current_chunk = append(PXAR_CHK.current_chunk, b[:chunkpos]...)
 
@@ -84,7 +84,8 @@ func main() {
 			
 			
 			PXAR_CHK.current_chunk = b[chunkpos:]
-		}else{
+			chunkpos = PXAR_CHK.C.Scan(b[chunkpos:])
+		}}else{
 			PXAR_CHK.current_chunk = append(PXAR_CHK.current_chunk, b...)
 		}
 
@@ -97,6 +98,8 @@ func main() {
 		
 
 		if ( chunkpos > 0 ) {
+			for ( chunkpos > 0 ) {
+	
 
 			PCAT1_CHK.current_chunk = append(PCAT1_CHK.current_chunk, b[:chunkpos]...)
 
@@ -118,7 +121,8 @@ func main() {
 			
 			
 			PCAT1_CHK.current_chunk = b[chunkpos:]
-		}else{
+			chunkpos = PCAT1_CHK.C.Scan(b[chunkpos:])
+		}}else{
 			PCAT1_CHK.current_chunk = append(PCAT1_CHK.current_chunk, b...)
 		}
 	}

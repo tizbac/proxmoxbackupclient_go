@@ -203,7 +203,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 		tabledata = append(tabledata, 'd')
 		tabledata = append_u64_7bit(tabledata, uint64(len(d.Name)))
 		tabledata = append(tabledata, []byte(d.Name)...)
-		tabledata = append_u64_7bit(tabledata, d.Pos)
+		tabledata = append_u64_7bit(tabledata, oldpos-d.Pos)
 	}
 
 	for _, f := range catalog_files {
