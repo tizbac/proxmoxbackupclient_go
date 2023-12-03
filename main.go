@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash"
 	"os"
+	"flag"
 )
 
 var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
@@ -44,12 +45,33 @@ func main() {
 	reusechunk := 0
 	known_chunks_digest := make(map[string]bool)
 
+	// Define command-line flags
+	baseURLFlag := flag.String("baseurl", "", "Base URL for the PBS client")
+	certFingerprintFlag := flag.String("certfingerprint", "", "Certificate fingerprint for authentication")
+	authIDFlag := flag.String("authid", "", "Authentication ID (PBS Api token)")
+	secretFlag := flag.String("secret", "", "Secret for authentication")
+	datastoreFlag := flag.String("datastore", "", "Datastore name")
+	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory")
+
+	// Parse command-line flags
+	flag.Parse()
+
+	// Validate required flags
+	if *baseURLFlag == "" || *certFingerprintFlag == "" || *authIDFlag == "" || *secretFlag == "" || *datastoreFlag == "" || *backupSourceDirFlag == "" {
+		fmt.Println("All options are mandatory")
+
+		flag.PrintDefaults()
+		
+
+		os.Exit(1)
+	}
+
 	client := &PBSClient{
-		baseurl: os.Args[1],
-		certfingerprint: os.Args[2],//"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
-		authid: os.Args[3],
-		secret: os.Args[4],
-		datastore: os.Args[5],
+		baseurl: *baseURLFlag,
+		certfingerprint: *certFingerprintFlag,//"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
+		authid: *authIDFlag,
+		secret: *secretFlag,
+		datastore: *datastoreFlag,
 	}
 
 	client.Connect(false)
@@ -177,7 +199,7 @@ func main() {
 			PCAT1_CHK.current_chunk = append(PCAT1_CHK.current_chunk, b...)
 		}
 	}
-	A.WriteDir(os.Args[6],"",true)
+	A.WriteDir(*backupSourceDirFlag,"",true)
 
 	if len(PXAR_CHK.current_chunk) > 0 {
 		h := sha256.New()
