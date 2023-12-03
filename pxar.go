@@ -87,6 +87,7 @@ type PXARArchive struct {
 	catalogWriteCB PXAROutCB
 	buffer bytes.Buffer
 	pos uint64
+	archivename string
 
 	catalog_pos uint64
 
@@ -143,6 +144,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 		return CatalogDir{}
 	}
 
+
 	if (!toplevel) {
 		fname_entry := &PXARFilenameEntry{
 			hdr: PXAR_FILENAME,
@@ -160,6 +162,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 		}
 	}
 
+
 	entry := &PXARFileEntry{
 		hdr: PXAR_ENTRY,
 		len: 56,
@@ -175,23 +178,34 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 	}
 	binary.Write(&a.buffer, binary.LittleEndian, entry)
 
-	posmap := make(map[string]uint64)
-	lenmap := make(map[string]uint64)
+	a.Flush()
+
+	goodbyteitems := make([]GoodByeItem,0)
 
 	catalog_files := make([]CatalogFile,0)
 	catalog_dirs := make([]CatalogDir,0 )
 
 	for _ , file := range files {
+		startpos := a.pos
 		if file.IsDir() {
-			posmap[file.Name()] = a.pos
+			
 			D := a.WriteDir(filepath.Join(path, file.Name()), file.Name(), false)
 			catalog_dirs = append(catalog_dirs, D)
-			lenmap[file.Name()] = a.pos-posmap[file.Name()]
+			goodbyteitems = append(goodbyteitems, GoodByeItem{
+				offset: startpos,
+				hash: siphash.Hash(0x83ac3f1cfbb450db, 0xaa4f1b6879369fbd, []byte(file.Name())),
+				len: a.pos-startpos,
+			})
 		}else{
-			posmap[file.Name()] = a.pos
 			F := a.WriteFile(filepath.Join(path, file.Name()), file.Name())
 			catalog_files = append(catalog_files, F)
-			lenmap[file.Name()] = a.pos-posmap[file.Name()]
+
+
+			goodbyteitems = append(goodbyteitems, GoodByeItem{
+				offset: startpos,
+				hash: siphash.Hash(0x83ac3f1cfbb450db, 0xaa4f1b6879369fbd, []byte(file.Name())),
+				len: a.pos-startpos,
+			})
 		}
 	}
 
@@ -225,17 +239,15 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 
 	a.catalog_pos += uint64(len(catalog_outdata))
 
+	a.Flush()
+	
 
 	binary.Write(&a.buffer, binary.LittleEndian, PXAR_GOODBYE)
-	goodbyelen := uint64(16 + 24*(len(posmap)+1))
+	goodbyelen := uint64(16 + 24*(len(goodbyteitems)+1))
 	binary.Write(&a.buffer, binary.LittleEndian, goodbyelen)
 
-	for filename, pos := range posmap {
-		gi := &GoodByeItem{
-			offset: a.pos-pos,
-			len: lenmap[filename],
-			hash: siphash.Hash(0x83ac3f1cfbb450db, 0xaa4f1b6879369fbd, []byte(filename)),
-		}
+	for _,gi := range goodbyteitems {
+		gi.offset = a.pos-gi.offset;
 		binary.Write(&a.buffer, binary.LittleEndian, gi)
 	}
 
@@ -251,9 +263,21 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 
 	if ( toplevel ) {
 		//We write special pointer to root dir here 
+
+
+		tabledata := make([]byte, 0)
+		tabledata = append_u64_7bit(tabledata, uint64(1))
+		tabledata = append(tabledata, 'd')
+		tabledata = append_u64_7bit(tabledata, uint64(len(a.archivename)))
+		tabledata = append(tabledata, []byte(a.archivename)...)
+		tabledata = append_u64_7bit(tabledata, a.catalog_pos-oldpos)
+		catalog_outdata := make([]byte, 0)
+		catalog_outdata = append_u64_7bit(catalog_outdata, uint64(len(tabledata)))
+		catalog_outdata = append(catalog_outdata, tabledata...)
 		ptr := make([]byte,0)
-		ptr = binary.LittleEndian.AppendUint64(ptr, oldpos)
+		ptr = binary.LittleEndian.AppendUint64(ptr, a.catalog_pos)
 		if a.catalogWriteCB != nil {
+			a.catalogWriteCB(catalog_outdata)
 			a.catalogWriteCB(ptr)
 		}
 	}

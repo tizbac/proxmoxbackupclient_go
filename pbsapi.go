@@ -281,7 +281,7 @@ func (pbs* PBSClient) Finish() {
 	defer resp2.Body.Close()
 }
 
-func (pbs* PBSClient) Connect() {
+func (pbs* PBSClient) Connect(reader bool) {
 	pbs.writersManifest = make(map[uint64]int)
 	pbs.tlsConfig = tls.Config{
 		InsecureSkipVerify: true, // Set to true if you want to skip certificate verification entirely (not recommended for production)
@@ -332,8 +332,12 @@ func (pbs* PBSClient) Connect() {
 			q.Add("debug", "1")
 			conn.Write([]byte("GET /api2/json/backup?"+q.Encode()+" HTTP/1.1\r\n"))
 			conn.Write([]byte("Authorization: "+fmt.Sprintf("PBSAPIToken=%s:%s",pbs.authid, pbs.secret)+"\r\n"))
-			conn.Write([]byte("Upgrade: proxmox-backup-protocol-v1\r\n"))
-			conn.Write([]byte("Connection: proxmox-backup-protocol-v1\r\n\r\n"))
+			if !reader {
+				conn.Write([]byte("Upgrade: proxmox-backup-protocol-v1\r\n"))
+			}else{
+				conn.Write([]byte("Upgrade: proxmox-backup-reader-protocol-v1\r\n"))
+			}
+			conn.Write([]byte("Connection: Upgrade\r\n\r\n"))
 			fmt.Println("Reading response to upgrade...\n")
 			buf := make([]byte,0)
 			for !strings.HasSuffix(string(buf),"\r\n\r\n") && !strings.HasSuffix(string(buf),"\n\n"){
@@ -370,4 +374,37 @@ func (pbs* PBSClient) Connect() {
 
 	
 	fmt.Println("Successfully upgraded to HTTP/2.")
+}
+
+
+func (pbs* PBSClient) DownloadPreviousToBytes(archivename string) []byte { //In the future also download to tmp if index is extremely big...
+
+	q := &url.Values{}
+
+	q.Add("archive-name", archivename)
+
+	req, err := http.NewRequest("GET", pbs.baseurl+"/previous?"+q.Encode(), nil)
+	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s",pbs.authid, pbs.secret))
+	if err != nil {
+		panic(err)
+	}
+	resp2, err := pbs.client.Do(req)
+	if err != nil {
+		fmt.Println("Error making request:", err)
+		if err != nil {
+			panic(err)
+		}
+		return make([]byte, 0)
+	}
+	defer resp2.Body.Close()
+
+	ret, err := io.ReadAll(resp2.Body)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return ret
+	
+	
 }
