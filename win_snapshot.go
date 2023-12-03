@@ -1,4 +1,4 @@
-
+//go:build windows
 // +build windows
 
 package main
@@ -13,10 +13,11 @@ import (
 )
 
 func SymlinkSnapshot(symlinkPath string, id string, deviceObjectPath string) (string, error) {
+
 	snapshotSymLinkFolder := symlinkPath + "\\" + id + "\\"
 
 	snapshotSymLinkFolder = filepath.Clean(snapshotSymLinkFolder)
-
+	os.RemoveAll(snapshotSymLinkFolder)
 	if err := os.MkdirAll(snapshotSymLinkFolder, 0700); err != nil {
 		return "", fmt.Errorf("failed to create snapshot symlink folder for snapshot: %s, err: %s", id, err)
 	}
@@ -53,17 +54,17 @@ func getAppDataFolder() (string, error) {
 
 func createVSSSnapshot(path string) string {
 
-
+	path, _ = filepath.Abs(path)
 	volName := filepath.VolumeName(path)
 	volName += "\\"
-	subPath := volName[3:] //Strp C:\, 3 chars or whatever it is
+	subPath := path[len(volName):] //Strp C:\, 3 chars or whatever it is
 
 	appDataFolder, err := getAppDataFolder()
 	if err != nil {
 		fmt.Println("Error:", err)
 		return path
 	}
-		
+
 	sn := vss.Snapshotter{}
 	snapid, err := os.ReadFile(filepath.Join(appDataFolder, "temp_snapshot_id.txt"))
 	if err == nil {
@@ -76,7 +77,6 @@ func createVSSSnapshot(path string) string {
 		os.Remove(filepath.Join(appDataFolder, "temp_snapshot_id.txt"))
 	}
 
-
 	fmt.Printf("Creating VSS Snapshot...")
 	snapshot, err := sn.CreateSnapshot(volName, 180, true)
 	if err != nil {
@@ -85,7 +85,7 @@ func createVSSSnapshot(path string) string {
 	fmt.Printf("Snapshot created: %s\n", snapshot.Id)
 
 	f, err := os.Create(filepath.Join(appDataFolder, "temp_snapshot_id.txt"))
-	if ( err != nil ) {
+	if err != nil {
 		sn.DeleteSnapshot(snapshot.Id)
 		panic(err)
 	}
@@ -95,19 +95,22 @@ func createVSSSnapshot(path string) string {
 
 	_, err = SymlinkSnapshot(filepath.Join(appDataFolder, "VSS"), snapshot.Id, snapshot.DeviceObjectPath)
 
-	if ( err != nil ) {
+	if err != nil {
 		sn.DeleteSnapshot(snapshot.Id)
 		os.Remove(filepath.Join(appDataFolder, "temp_snapshot_id.txt"))
 		panic(err)
 	}
 
-	return filepath.Join(appDataFolder, "VSS", subPath)
+	return filepath.Join(appDataFolder, "VSS", snapshot.Id, subPath)
 
 }
 
-
-func VSSCleanup()
-{
+func VSSCleanup() {
+	appDataFolder, err := getAppDataFolder()
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
 	sn := vss.Snapshotter{}
 	snapid, err := os.ReadFile(filepath.Join(appDataFolder, "temp_snapshot_id.txt"))
 	if err == nil {
