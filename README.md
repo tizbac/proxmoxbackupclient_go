@@ -1,4 +1,5 @@
 This software implements a proxmox backup client software for windows, backup only as of now
+Works on linux too especially for development
 
 The software is still alpha quality and i take no responsability for any kind of damage or data loss even of source files.
 
