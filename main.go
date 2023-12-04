@@ -9,6 +9,11 @@ import (
 	"fmt"
 	"hash"
 	"os"
+	"runtime"
+
+	"github.com/gen2brain/beeep"
+	"github.com/getlantern/systray"
+	"github.com/tawesoft/golib/v2/dialog"
 )
 
 var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
@@ -53,16 +58,37 @@ func main() {
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory")
 	pxarOut := flag.String("pxarout", "", "Output PXAR archive (optional)")
+
 	// Parse command-line flags
 	flag.Parse()
 
 	// Validate required flags
 	if *baseURLFlag == "" || *certFingerprintFlag == "" || *authIDFlag == "" || *secretFlag == "" || *datastoreFlag == "" || *backupSourceDirFlag == "" {
-		fmt.Println("All options are mandatory")
 
-		flag.PrintDefaults()
+		if runtime.GOOS == "windows" {
+			usage := "All options are mandatory:\n"
+			flag.VisitAll(func(f *flag.Flag) {
+				usage += "-" + f.Name + " " + f.Usage + "\n"
+			})
+			dialog.Error(usage)
+		} else {
+			fmt.Println("All options are mandatory")
 
+			flag.PrintDefaults()
+		}
 		os.Exit(1)
+	}
+
+	if runtime.GOOS == "windows" {
+
+		go systray.Run(func() {
+			systray.SetIcon(ICON)
+			systray.SetTooltip("PBSGO Backup running")
+			beeep.Notify("Proxmox Backup Go", fmt.Sprintf("Backup started"), "")
+		},
+			func() {
+
+			})
 	}
 
 	client := &PBSClient{
@@ -151,7 +177,7 @@ func main() {
 				binary.Write(PXAR_CHK.chunkdigests, binary.LittleEndian, (PXAR_CHK.pos + uint64(len(PXAR_CHK.current_chunk))))
 				PXAR_CHK.chunkdigests.Write(h.Sum(nil))
 
-				PXAR_CHK.assignments_offset = append(PXAR_CHK.assignments_offset, PXAR_CHK.pos )
+				PXAR_CHK.assignments_offset = append(PXAR_CHK.assignments_offset, PXAR_CHK.pos)
 				PXAR_CHK.assignments = append(PXAR_CHK.assignments, shahash)
 				PXAR_CHK.pos += uint64(len(PXAR_CHK.current_chunk))
 				PXAR_CHK.chunkcount += 1
@@ -230,18 +256,31 @@ func main() {
 		PCAT1_CHK.chunkdigests.Write(h.Sum(nil))
 
 		fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(PCAT1_CHK.current_chunk))
-		PCAT1_CHK.assignments_offset = append(PCAT1_CHK.assignments_offset, PCAT1_CHK.pos )
+		PCAT1_CHK.assignments_offset = append(PCAT1_CHK.assignments_offset, PCAT1_CHK.pos)
 		PCAT1_CHK.assignments = append(PCAT1_CHK.assignments, shahash)
 		PCAT1_CHK.pos += uint64(len(PCAT1_CHK.current_chunk))
 		PCAT1_CHK.chunkcount += 1
 		client.UploadCompressedChunk(PCAT1_CHK.wrid, shahash, PCAT1_CHK.current_chunk)
 	}
 
-	client.AssignChunks(PXAR_CHK.wrid, PXAR_CHK.assignments, PXAR_CHK.assignments_offset)
+	//Avoid incurring in request entity too large
+	for k := 0; k < len(PXAR_CHK.assignments)+128; k += 128 {
+		k2 := k + 128
+		if k2 > len(PXAR_CHK.assignments) {
+			k2 = len(PXAR_CHK.assignments)
+		}
+		client.AssignChunks(PXAR_CHK.wrid, PXAR_CHK.assignments[k:k2], PXAR_CHK.assignments_offset[k:k2])
+	}
 
 	client.CloseDynamicIndex(PXAR_CHK.wrid, hex.EncodeToString(PXAR_CHK.chunkdigests.Sum(nil)), PXAR_CHK.pos, PXAR_CHK.chunkcount)
 
-	client.AssignChunks(PCAT1_CHK.wrid, PCAT1_CHK.assignments, PCAT1_CHK.assignments_offset)
+	for k := 0; k < len(PCAT1_CHK.assignments)+128; k += 128 {
+		k2 := k + 128
+		if k2 > len(PCAT1_CHK.assignments) {
+			k2 = len(PCAT1_CHK.assignments)
+		}
+		client.AssignChunks(PCAT1_CHK.wrid, PCAT1_CHK.assignments[k:k2], PCAT1_CHK.assignments_offset[k:k2])
+	}
 
 	client.CloseDynamicIndex(PCAT1_CHK.wrid, hex.EncodeToString(PCAT1_CHK.chunkdigests.Sum(nil)), PCAT1_CHK.pos, PCAT1_CHK.chunkcount)
 
@@ -251,4 +290,9 @@ func main() {
 	fmt.Printf("New %d , Reused %d\n", newchunk, reusechunk)
 
 	VSSCleanup()
+	if runtime.GOOS == "windows" {
+		systray.Quit()
+		beeep.Notify("Proxmox Backup Go", fmt.Sprintf("Backup complete\nChunks New %d , Reused %d\n", newchunk, reusechunk), "")
+	}
+
 }
