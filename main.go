@@ -264,7 +264,7 @@ func main() {
 	}
 
 	//Avoid incurring in request entity too large
-	for k := 0; k < len(PXAR_CHK.assignments)+128; k += 128 {
+	for k := 0; k < len(PXAR_CHK.assignments); k += 128 {
 		k2 := k + 128
 		if k2 > len(PXAR_CHK.assignments) {
 			k2 = len(PXAR_CHK.assignments)
@@ -274,7 +274,7 @@ func main() {
 
 	client.CloseDynamicIndex(PXAR_CHK.wrid, hex.EncodeToString(PXAR_CHK.chunkdigests.Sum(nil)), PXAR_CHK.pos, PXAR_CHK.chunkcount)
 
-	for k := 0; k < len(PCAT1_CHK.assignments)+128; k += 128 {
+	for k := 0; k < len(PCAT1_CHK.assignments); k += 128 {
 		k2 := k + 128
 		if k2 > len(PCAT1_CHK.assignments) {
 			k2 = len(PCAT1_CHK.assignments)
