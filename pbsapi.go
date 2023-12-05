@@ -346,6 +346,11 @@ func (pbs *PBSClient) Connect(reader bool) {
 		Transport: &http2.Transport{
 
 			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+
+				//This is one of the trickiest parts, GO http2 library does not support starting with http1 and upgrading to 2 after
+				//So to achieve that the function to create SSL socket has been hijacked here
+				//Here an http 1.1 request to authenticate, start the backup and require upgrade to HTTP2 is done then the socket is passed to
+				// http2.Transport handler
 				conn, err := tls.Dial(network, addr, &pbs.tlsConfig)
 				if err != nil {
 					return nil, err
@@ -372,7 +377,7 @@ func (pbs *PBSClient) Connect(reader bool) {
 					b2 := make([]byte, 1)
 					nbytes, err := conn.Read(b2)
 					if err != nil || nbytes == 0 {
-						fmt.Println("Connessione chiusa inasp.")
+						fmt.Println("Connection unexpectedly closed")
 						return nil, err
 					}
 					buf = append(buf, b2[:nbytes]...)
@@ -380,22 +385,12 @@ func (pbs *PBSClient) Connect(reader bool) {
 					//fmt.Println(string(b2))
 				}
 				fmt.Printf("Upgraderesp: %s\n", string(buf))
+				fmt.Println("Successfully upgraded to HTTP/2.")
 				return conn, nil
 			},
 		},
 	}
 
-	/*req, err = http.NewRequest("POST", pbs.baseurl+"/api2/json/finish", nil)
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s",pbs.authid, pbs.secret))
-
-	resp2, err := pbs.client.Do(req)
-	if err != nil {
-		fmt.Println("Error making request:", err)
-		return
-	}
-	defer resp2.Body.Close()*/
-
-	fmt.Println("Successfully upgraded to HTTP/2.")
 }
 
 func (pbs *PBSClient) DownloadPreviousToBytes(archivename string) []byte { //In the future also download to tmp if index is extremely big...
