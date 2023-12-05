@@ -12,3 +12,32 @@ Contributions are welcome especially
 5. Proxmox side patch to add another kind of entry to pxar format with Windows security descriptors in it
 6. Support for windows symlinks
 7. Anything interesting you can come up with :)
+
+Usage
+=====
+
+```
+proxmoxbackupgo.exe   -authid string
+        Authentication ID (PBS Api token)
+  -backupdir string
+        Backup source directory, must not be symlink
+  -baseurl string
+        Base URL for the proxmox backup server, example: https://192.168.1.10:8007
+  -certfingerprint string
+        Certificate fingerprint for SSL connection, example: ea:7d:06:f9...
+  -datastore string
+        Datastore name
+  -pxarout string
+        Output PXAR archive for debug purposes (optional)
+  -secret string
+        Secret for authentication
+```
+
+Known Issues
+============
+
+Windows defender antimalware being active will slow backup down up to 25% of attainable speed 
+
+There's as of now no mechanism to prevent two instances being launched at same time which will screw up VSS and backup
+If you using windows planning utility it should theoretically prevent two instances starting at same time when originating from same job
+
