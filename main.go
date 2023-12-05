@@ -51,13 +51,13 @@ func main() {
 	known_chunks_digest := make(map[string]bool)
 
 	// Define command-line flags
-	baseURLFlag := flag.String("baseurl", "", "Base URL for the PBS client")
-	certFingerprintFlag := flag.String("certfingerprint", "", "Certificate fingerprint for authentication")
+	baseURLFlag := flag.String("baseurl", "", "Base URL for the proxmox backup server, example: https://192.168.1.10:8007")
+	certFingerprintFlag := flag.String("certfingerprint", "", "Certificate fingerprint for SSL connection, example: ea:7d:06:f9...")
 	authIDFlag := flag.String("authid", "", "Authentication ID (PBS Api token)")
 	secretFlag := flag.String("secret", "", "Secret for authentication")
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
-	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory")
-	pxarOut := flag.String("pxarout", "", "Output PXAR archive (optional)")
+	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory, must not be symlink")
+	pxarOut := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
 
 	// Parse command-line flags
 	flag.Parse()
