@@ -67,6 +67,13 @@ type BackupManifest struct {
 	Unprotected Unprotected `json:"unprotected"`
 }
 
+type AuthErr struct {
+}
+
+func (e *AuthErr) Error() string {
+	return "Authentication error"
+}
+
 type PBSClient struct {
 	baseurl         string
 	certfingerprint string
@@ -384,6 +391,16 @@ func (pbs *PBSClient) Connect(reader bool) {
 
 					//fmt.Println(string(b2))
 				}
+				lines := strings.Split(string(buf), "\n")
+
+				if len(lines) > 0 {
+					toks := strings.Split(lines[0], " ")
+					if len(toks) > 1 && toks[1] != "101" {
+						fmt.Println("Unexpected response code: " + strings.Join(toks[1:], " "))
+						return nil, &AuthErr{}
+					}
+				}
+
 				fmt.Printf("Upgraderesp: %s\n", string(buf))
 				fmt.Println("Successfully upgraded to HTTP/2.")
 				return conn, nil

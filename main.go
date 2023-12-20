@@ -119,11 +119,17 @@ func main() {
 
 	f2.Write(previous_didx)*/
 
+	/*
+		Here we download the previous dynamic index to figure out which chunks are the same of what
+		we are going to upload to avoid unnecessary traffic and compression cpu usage
+	*/
+
 	if !bytes.HasPrefix(previous_didx, didxMagic) {
 		fmt.Printf("Previous index has wrong magic (%s)!\n", previous_didx[:8])
 
 	} else {
-
+		//Header as per proxmox documentation is fixed size of 4096 bytes,
+		//then offset of type uint64 and sha256 digests follow , so 40 byte each record until EOF
 		previous_didx = previous_didx[4096:]
 		for i := 0; i*40 < len(previous_didx); i += 1 {
 			e := DidxEntry{}
@@ -155,7 +161,7 @@ func main() {
 	A.writeCB = func(b []byte) {
 		chunkpos := PXAR_CHK.C.Scan(b)
 
-		if chunkpos > 0 {
+		if chunkpos > 0 { //We test if cyclic polynomial hash returned the expected value for chunk boundary
 			for chunkpos > 0 {
 
 				PXAR_CHK.current_chunk = append(PXAR_CHK.current_chunk, b[:chunkpos]...)
@@ -224,7 +230,13 @@ func main() {
 			PCAT1_CHK.current_chunk = append(PCAT1_CHK.current_chunk, b...)
 		}
 	}
+
+	//This is the entry point of backup job which will start streaming with the PCAT and PXAR write callback
+	//Data to be hashed and eventuall uploaded
+
 	A.WriteDir(backupdir, "", true)
+
+	//Here we write the remainder of data for which cyclic hash did not trigger
 
 	if len(PXAR_CHK.current_chunk) > 0 {
 		h := sha256.New()
@@ -263,7 +275,7 @@ func main() {
 		client.UploadCompressedChunk(PCAT1_CHK.wrid, shahash, PCAT1_CHK.current_chunk)
 	}
 
-	//Avoid incurring in request entity too large
+	//Avoid incurring in request entity too large by chunking assignment PUT requests in blocks of at most 128 chunks
 	for k := 0; k < len(PXAR_CHK.assignments); k += 128 {
 		k2 := k + 128
 		if k2 > len(PXAR_CHK.assignments) {
@@ -289,6 +301,7 @@ func main() {
 
 	fmt.Printf("New %d , Reused %d\n", newchunk, reusechunk)
 
+	//Remove VSS snapshot on windows, on linux for now NOP
 	VSSCleanup()
 	if runtime.GOOS == "windows" {
 		systray.Quit()
