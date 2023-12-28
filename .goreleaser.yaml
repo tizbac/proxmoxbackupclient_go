@@ -28,8 +28,8 @@ builds:
       - windows
     goarch:
       - amd64
-    ldflags:
-      - -H=windowsgui
+#      ldflags:
+#      - -H=windowsgui
     env:
       - CGO_ENABLED=1
       - >-
