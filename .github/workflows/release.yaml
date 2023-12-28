@@ -1,35 +1,107 @@
-name: goreleaser
+# Copy from: https://github.com/safedep/vet/blob/main/.github/workflows/goreleaser.yml
+name: Release Automation
 
 on:
   push:
-    # run only against tags
     tags:
-      - "*"
+      - "*" # triggers only if push new tag version, like `0.8.4` or else
+
+concurrency: ci-release-automation
 
 permissions:
-  contents: write
-  # packages: writeyay
-  # issues: write
+  contents: read
+
+env:
+  OSX_CROSS_TOOLCHAIN_REPOSITORY: https://github.com/abhisek/osxcross
+  OSX_CROSS_MACOS_SDK_VERSION: "12.3"
 
 jobs:
   goreleaser:
+    timeout-minutes: 60
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+    permissions:
+      contents: write  # for goreleaser/goreleaser-action to create a GitHub release
+      packages: write # for goreleaser/goreleaser-action to publish docker images
     runs-on: ubuntu-latest
+    env:
+      # Required for buildx on docker 19.x
+      DOCKER_CLI_EXPERIMENTAL: enabled
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
         with:
           fetch-depth: 0
-      - run: git fetch --force --tags
-      - uses: actions/setup-go@v4
+      - uses: docker/setup-qemu-action@e81a89b1732b9c48d79cd809d8d81d79c4647a18 # v2
+      - uses: docker/setup-buildx-action@8c0edbc76e98fa90f69d9a2c020dcb50019dc325 # v2
+      - name: Set up Go
+        uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568 # v3.5.0
         with:
-          go-version: stable
-      - name: Install windows cross compile gcc
-        run: |
-            sudo apt-get install -y -qq gcc-mingw-w64 libayatana-appindicator3-dev
+          go-version: 1.21
+          check-latest: true
+      - name: ghcr-login
+        uses: docker/login-action@dd4fa0671be5250ee6f50aedf4cb05514abda2c7 # v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: goreleaser/goreleaser-action@v5
+      - name: Install OSX Cross Compiler Build Tools
+        run: sudo apt-get install -y -qq clang gcc g++ zlib1g-dev libmpc-dev libmpfr-dev libgmp-dev cmake libxml2-dev libssl-dev xz-utils
+
+      - name: Install windows cross compile gcc
+        run: sudo apt-get install -y -qq gcc-mingw-w64 libayatana-appindicator3-dev
+
+      - name: Setup OSX Cross Compiler Tool Chain Environment
+        run: |
+          echo "OSXCROSS_DIR=$(dirname $GITHUB_WORKSPACE)/osxcross" >> $GITHUB_ENV
+
+      - name: Clone OSX Cross Compiler Tool Chain
+        run: git clone $OSX_CROSS_TOOLCHAIN_REPOSITORY $OSXCROSS_DIR
+
+      - name: Setup Cache for OSX Cross Compiler Tool Chain
+        id: osxcross-cache
+        uses: actions/cache@v3
         with:
-          distribution: goreleaser
+          key: ${{ runner.os }}-osxcross-${{ env.OSX_CROSS_MACOS_SDK_VERSION }}
+          path: |
+            ${{ env.OSXCROSS_DIR }}/target/bin
+
+      - name: Build OSX Cross Compiler Tool Chain
+        if: steps.osxcross-cache.outputs.cache-hit != 'true'
+        run: |
+          cd $OSXCROSS_DIR
+          SDK_VERSION=$OSX_CROSS_MACOS_SDK_VERSION UNATTENDED=yes ./build.sh
+
+      - name: Add OSX Cross Compiler Tool Chain to Path
+        run: |
+          echo "$OSXCROSS_DIR/target/bin" >> $GITHUB_PATH
+
+      - name: Run GoReleaser
+        id: run-goreleaser
+        uses: goreleaser/goreleaser-action@8f67e590f2d095516493f017008adc464e63adb1 # v4.1.0
+        with:
           version: latest
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GORELEASER_GITHUB_TOKEN }}
+
+      - name: Generate subject
+        id: hash
+        env:
+          ARTIFACTS: "${{ steps.run-goreleaser.outputs.artifacts }}"
+        run: |
+          set -euo pipefail
+          checksum_file=$(echo "$ARTIFACTS" | jq -r '.[] | select (.type=="Checksum") | .path')
+          echo "hashes=$(cat $checksum_file | base64 -w0)" >> "$GITHUB_OUTPUT"
+  provenance:
+    needs: [goreleaser]
+    permissions:
+      actions: read # To read the workflow path.
+      id-token: write # To sign the provenance.
+      contents: write # To add assets to a release.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.4.0
+    with:
+      base64-subjects: "${{ needs.goreleaser.outputs.hashes }}"
+      upload-assets: true
+      private-repository: true
