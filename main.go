@@ -10,7 +10,9 @@ import (
 	"hash"
 	"os"
 	"runtime"
+	"sync/atomic"
 
+	"github.com/cornelk/hashmap"
 	"github.com/gen2brain/beeep"
 	"github.com/getlantern/systray"
 	"github.com/tawesoft/golib/v2/dialog"
@@ -46,9 +48,9 @@ func (c *ChunkState) Init() {
 }
 
 func main() {
-	newchunk := 0
-	reusechunk := 0
-	known_chunks_digest := make(map[string]bool)
+	var newchunk atomic.Uint64
+	var reusechunk atomic.Uint64
+	knownChunks := hashmap.New[string, bool]()
 
 	// Define command-line flags
 	baseURLFlag := flag.String("baseurl", "", "Base URL for the proxmox backup server, example: https://192.168.1.10:8007")
@@ -101,9 +103,11 @@ func main() {
 
 	backupdir := *backupSourceDirFlag
 
-	backupdir = createVSSSnapshot(backupdir)
-
 	fmt.Printf("Starting backup of %s\n", backupdir)
+
+	backupdir = createVSSSnapshot(backupdir)
+	//Remove VSS snapshot on windows, on linux for now NOP
+	defer VSSCleanup()
 
 	client.Connect(false)
 
@@ -137,11 +141,11 @@ func main() {
 			e.digest = previous_didx[i*40+8 : i*40+40]
 			shahash := hex.EncodeToString(e.digest)
 			fmt.Printf("Previous: %s\n", shahash)
-			known_chunks_digest[shahash] = true
+			knownChunks.Set(shahash, true)
 		}
 	}
 
-	fmt.Printf("Known chunks: %d!\n", len(known_chunks_digest))
+	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
 	f := &os.File{}
 	if *pxarOut != "" {
 		f, _ = os.Create(*pxarOut)
@@ -171,13 +175,14 @@ func main() {
 				bindigest := h.Sum(nil)
 				shahash := hex.EncodeToString(bindigest)
 
-				if !known_chunks_digest[shahash] {
+				if _, ok := knownChunks.GetOrInsert(shahash, true); ok {
 					fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(PXAR_CHK.current_chunk))
-					newchunk++
+					newchunk.Add(1)
+
 					client.UploadCompressedChunk(PXAR_CHK.wrid, shahash, PXAR_CHK.current_chunk)
 				} else {
 					fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(PXAR_CHK.current_chunk))
-					reusechunk++
+					reusechunk.Add(1)
 				}
 
 				binary.Write(PXAR_CHK.chunkdigests, binary.LittleEndian, (PXAR_CHK.pos + uint64(len(PXAR_CHK.current_chunk))))
@@ -212,7 +217,7 @@ func main() {
 				h.Write(PCAT1_CHK.current_chunk)
 				shahash := hex.EncodeToString(h.Sum(nil))
 
-				fmt.Printf("Catalog: New chunk[%s] %d bytes\n", shahash, len(PCAT1_CHK.current_chunk))
+				fmt.Printf("Catalog: New chunk[%s] %d bytes, pos %d\n", shahash, len(PCAT1_CHK.current_chunk), chunkpos)
 
 				client.UploadCompressedChunk(PCAT1_CHK.wrid, shahash, PCAT1_CHK.current_chunk)
 				binary.Write(PCAT1_CHK.chunkdigests, binary.LittleEndian, (PCAT1_CHK.pos + uint64(len(PCAT1_CHK.current_chunk))))
@@ -245,13 +250,13 @@ func main() {
 		binary.Write(PXAR_CHK.chunkdigests, binary.LittleEndian, (PXAR_CHK.pos + uint64(len(PXAR_CHK.current_chunk))))
 		PXAR_CHK.chunkdigests.Write(h.Sum(nil))
 
-		if !known_chunks_digest[shahash] {
+		if _, ok := knownChunks.GetOrInsert(shahash, true); ok {
 			fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(PXAR_CHK.current_chunk))
 			client.UploadCompressedChunk(PXAR_CHK.wrid, shahash, PXAR_CHK.current_chunk)
-			newchunk++
+			newchunk.Add(1)
 		} else {
 			fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(PXAR_CHK.current_chunk))
-			reusechunk++
+			reusechunk.Add(1)
 		}
 		PXAR_CHK.assignments_offset = append(PXAR_CHK.assignments_offset, PXAR_CHK.pos)
 		PXAR_CHK.assignments = append(PXAR_CHK.assignments, shahash)
@@ -267,7 +272,7 @@ func main() {
 		binary.Write(PCAT1_CHK.chunkdigests, binary.LittleEndian, (PCAT1_CHK.pos + uint64(len(PCAT1_CHK.current_chunk))))
 		PCAT1_CHK.chunkdigests.Write(h.Sum(nil))
 
-		fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(PCAT1_CHK.current_chunk))
+		fmt.Printf("Catalog: New chunk[%s] %d bytes\n", shahash, len(PCAT1_CHK.current_chunk))
 		PCAT1_CHK.assignments_offset = append(PCAT1_CHK.assignments_offset, PCAT1_CHK.pos)
 		PCAT1_CHK.assignments = append(PCAT1_CHK.assignments, shahash)
 		PCAT1_CHK.pos += uint64(len(PCAT1_CHK.current_chunk))
@@ -299,13 +304,10 @@ func main() {
 	client.UploadManifest()
 	client.Finish()
 
-	fmt.Printf("New %d , Reused %d\n", newchunk, reusechunk)
-
-	//Remove VSS snapshot on windows, on linux for now NOP
-	VSSCleanup()
+	fmt.Printf("New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
 	if runtime.GOOS == "windows" {
 		systray.Quit()
-		beeep.Notify("Proxmox Backup Go", fmt.Sprintf("Backup complete\nChunks New %d , Reused %d\n", newchunk, reusechunk), "")
+		beeep.Notify("Proxmox Backup Go", fmt.Sprintf("Backup complete\nChunks New %d , Reused %d\n", newchunk.Load(), reusechunk.Load()), "")
 	}
 
 }
