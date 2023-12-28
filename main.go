@@ -212,6 +212,7 @@ func main() {
 			pcat1Chunk.current_chunk = append(pcat1Chunk.current_chunk, b...)
 		}
 
+		var lastChunkPos uint64
 		for chunkpos > 0 {
 			pcat1Chunk.current_chunk = append(pcat1Chunk.current_chunk, b[:chunkpos]...)
 
@@ -231,7 +232,14 @@ func main() {
 			pcat1Chunk.chunkcount += 1
 
 			pcat1Chunk.current_chunk = b[chunkpos:]
+
+			//lastChunkPos is here so we know when pcat1Chunk.C.Scan loops from beginnning.
+			lastChunkPos = chunkpos
 			chunkpos = pcat1Chunk.C.Scan(b[chunkpos:])
+
+			if chunkpos < lastChunkPos {
+				break
+			}
 		}
 	}
 
