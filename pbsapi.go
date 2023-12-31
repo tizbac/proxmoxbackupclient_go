@@ -377,7 +377,7 @@ func (pbs *PBSClient) Connect(reader bool) {
 					conn.Write([]byte("Upgrade: proxmox-backup-reader-protocol-v1\r\n"))
 				}
 				conn.Write([]byte("Connection: Upgrade\r\n\r\n"))
-				fmt.Println("Reading response to upgrade...\n")
+				fmt.Printf("Reading response to upgrade...\n")
 				buf := make([]byte, 0)
 				for !strings.HasSuffix(string(buf), "\r\n\r\n") && !strings.HasSuffix(string(buf), "\n\n") {
 					//fmt.Println(buf)

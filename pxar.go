@@ -284,7 +284,6 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 	a.Flush()
 
 	goodbyteitems := make([]GoodByeItem, 0)
-
 	catalog_files := make([]CatalogFile, 0)
 	catalog_dirs := make([]CatalogDir, 0)
 
@@ -301,8 +300,8 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 			})
 		} else {
 			F := a.WriteFile(filepath.Join(path, file.Name()), file.Name())
-			catalog_files = append(catalog_files, F)
 
+			catalog_files = append(catalog_files, F)
 			goodbyteitems = append(goodbyteitems, GoodByeItem{
 				offset: startpos,
 				hash:   siphash.Hash(0x83ac3f1cfbb450db, 0xaa4f1b6879369fbd, []byte(file.Name())),

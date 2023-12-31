@@ -3,6 +3,7 @@ module proxmoxbackupgo
 go 1.19
 
 require (
+	github.com/cornelk/hashmap v1.0.8
 	github.com/dchest/siphash v1.2.3
 	github.com/gen2brain/beeep v0.0.0-20230907135156-1a38885a97fc
 	github.com/getlantern/systray v1.2.2
