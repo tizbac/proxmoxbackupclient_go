@@ -15,28 +15,58 @@ before:
     # you may remove this if you don't need go generate
     - go generate ./...
 
+env:
+  - CGO_ENABLED=1
+
 builds:
-  - id: linux
-    env:
-      - CGO_ENABLED=1
-    goos:
-      - linux
-    goarch:
-      - amd64
   - id: windows
     goos:
       - windows
     goarch:
       - amd64
-#      ldflags:
-#      - -H=windowsgui
     env:
-      - CGO_ENABLED=1
-      - >-
-        {{- if eq .Arch "amd64" }}CC=x86_64-w64-mingw32-gcc{{- end }}
+      - CC=x86_64-w64-mingw32-gcc
+      - CXX=x86_64-w64-mingw32-g++
+
+  - id: linux
+    binary: vet
+    goos:
+      - linux
+    goarch:
+      - amd64
+    env:
+      - CC=x86_64-linux-gnu-gcc
+      - CXX=x86_64-linux-gnu-g++
+
+  - id: darwin-amd64
+    binary: vet
+    goos:
+      - darwin
+    goarch:
+      - amd64
+    env:
+      - CC=o64-clang
+      - CXX=o64-clang++
+
+  - id: darwin-arm64
+    binary: vet
+    goos:
+      - darwin
+    goarch:
+      - arm64
+    env:
+      - CC=o64-clang
+      - CXX=o64-clang++
+
+release:
+  # for prerelease it doesn't build and distribute
+  prerelease: auto
+
+universal_binaries:
+  - replace: true
+
 archives:
   - format: tar.gz
-    # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
@@ -44,14 +74,21 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
     format_overrides:
-      - goos: windows
-        format: zip
-
+    - goos: windows
+      format: zip
+checksum:
+  name_template: checksums.txt
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
 changelog:
   sort: asc
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
+      - '^docs:'
+      - '^test:'
+
+# The lines beneath this are called `modelines`. See `:help modeline`
+# Feel free to remove those if you don't want/use them.
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
