@@ -58,6 +58,7 @@ func main() {
 	authIDFlag := flag.String("authid", "", "Authentication ID (PBS Api token)")
 	secretFlag := flag.String("secret", "", "Secret for authentication")
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
+	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory, must not be symlink")
 	pxarOut := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
 
@@ -99,6 +100,7 @@ func main() {
 		authid:          *authIDFlag,
 		secret:          *secretFlag,
 		datastore:       *datastoreFlag,
+		namespace:       *namespaceFlag,
 	}
 
 	backupdir := *backupSourceDirFlag

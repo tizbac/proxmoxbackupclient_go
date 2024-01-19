@@ -27,6 +27,8 @@ proxmoxbackupgo.exe   -authid string
         Certificate fingerprint for SSL connection, example: ea:7d:06:f9...
   -datastore string
         Datastore name
+  -namespace string
+        Namespace (optional)
   -pxarout string
         Output PXAR archive for debug purposes (optional)
   -secret string
