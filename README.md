@@ -17,7 +17,7 @@ Usage
 =====
 
 A typical command would look like:
-```ssh
+```shell
 proxmoxbackupgo.exe -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -backupdir "C:\path\to\backup" -datastore "datastorename"
 
 ```
