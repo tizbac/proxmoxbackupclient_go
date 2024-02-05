@@ -82,6 +82,7 @@ type PBSClient struct {
 	authid          string
 
 	datastore string
+	namespace string
 	manifest  BackupManifest
 
 	client    http.Client
@@ -366,6 +367,9 @@ func (pbs *PBSClient) Connect(reader bool) {
 				q.Add("backup-time", fmt.Sprintf("%d", pbs.manifest.BackupTime))
 				q.Add("backup-type", pbs.manifest.BackupType)
 				q.Add("store", pbs.datastore)
+				if pbs.namespace != "" {
+					q.Add("ns", pbs.namespace)
+				}
 
 				q.Add("backup-id", pbs.manifest.BackupID)
 				q.Add("debug", "1")
