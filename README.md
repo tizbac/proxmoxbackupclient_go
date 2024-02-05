@@ -16,9 +16,19 @@ Contributions are welcome especially
 Usage
 =====
 
+A typical command would look like:
+```shell
+proxmoxbackupgo.exe -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -backupdir "C:\path\to\backup" -datastore "datastorename"
+
 ```
-proxmoxbackupgo.exe   -authid string
+
+
+```
+proxmoxbackupgo.exe
+  -authid string
         Authentication ID (PBS Api token)
+  -secret string
+        Secret for authentication
   -backupdir string
         Backup source directory, must not be symlink
   -baseurl string
@@ -27,10 +37,8 @@ proxmoxbackupgo.exe   -authid string
         Certificate fingerprint for SSL connection, example: ea:7d:06:f9...
   -datastore string
         Datastore name
-  -pxarout string
-        Output PXAR archive for debug purposes (optional)
-  -secret string
-        Secret for authentication
+  -pxarout string (optional)
+        Output PXAR archive for debug purposes
 ```
 
 Known Issues
