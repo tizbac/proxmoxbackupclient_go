@@ -179,7 +179,7 @@ func main() {
 			bindigest := h.Sum(nil)
 			shahash := hex.EncodeToString(bindigest)
 
-			if _, ok := knownChunks.GetOrInsert(shahash, true); ok {
+			if _, ok := knownChunks.GetOrInsert(shahash, true); !ok {
 				fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(pxarChunk.current_chunk))
 				newchunk.Add(1)
 
@@ -259,7 +259,7 @@ func main() {
 		binary.Write(pxarChunk.chunkdigests, binary.LittleEndian, (pxarChunk.pos + uint64(len(pxarChunk.current_chunk))))
 		pxarChunk.chunkdigests.Write(h.Sum(nil))
 
-		if _, ok := knownChunks.GetOrInsert(shahash, true); ok {
+		if _, ok := knownChunks.GetOrInsert(shahash, true); !ok {
 			fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(pxarChunk.current_chunk))
 			client.UploadCompressedChunk(pxarChunk.wrid, shahash, pxarChunk.current_chunk)
 			newchunk.Add(1)
