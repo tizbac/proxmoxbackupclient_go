@@ -61,6 +61,7 @@ func main() {
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory, must not be symlink")
 	pxarOut := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
+	archiveNameFlag := flag.String("archivename", "", "Archive name (optional)")
 
 	// Parse command-line flags
 	flag.Parse()
@@ -114,7 +115,14 @@ func main() {
 	client.Connect(false)
 
 	archive := &PXARArchive{}
-	archive.archivename = "backup.pxar.didx"
+
+	//if backup name empty fallback to backup
+
+	if *archiveNameFlag != "" {
+		archive.archivename = *archiveNameFlag + ".pxar.didx"
+	} else {
+		archive.archivename = "backup.pxar.didx"
+	}
 
 	previousDidx := client.DownloadPreviousToBytes(archive.archivename)
 

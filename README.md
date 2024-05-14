@@ -43,6 +43,8 @@ proxmoxbackupgo.exe
         Output PXAR archive for debug purposes (optional)
   -secret string
         Secret for authentication
+  -archivename string
+        Name for archive file, defaults to backup (optional)
 
 
 ```
