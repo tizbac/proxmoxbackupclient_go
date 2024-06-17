@@ -41,8 +41,6 @@ proxmoxbackupgo.exe
         Namespace (optional)
   -pxarout string
         Output PXAR archive for debug purposes (optional)
-  -secret string
-        Secret for authentication
 
 
 ```
