@@ -59,6 +59,7 @@ func main() {
 	secretFlag := flag.String("secret", "", "Secret for authentication")
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
+	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
 	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory, must not be symlink")
 	pxarOut := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
 
@@ -101,6 +102,9 @@ func main() {
 		secret:          *secretFlag,
 		datastore:       *datastoreFlag,
 		namespace:       *namespaceFlag,
+		manifest: BackupManifest{
+			BackupID: *backupIDFlag,
+		},
 	}
 
 	backupdir := *backupSourceDirFlag

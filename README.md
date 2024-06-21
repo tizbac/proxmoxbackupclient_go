@@ -39,6 +39,8 @@ proxmoxbackupgo.exe
         Datastore name
   -namespace string
         Namespace (optional)
+  -backup-id string
+        Backup ID (optional - if not specified, the hostname is used as the default for host-type backups)
   -pxarout string
         Output PXAR archive for debug purposes (optional)
   -secret string
