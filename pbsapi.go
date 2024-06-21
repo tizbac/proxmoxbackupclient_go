@@ -352,7 +352,6 @@ func (pbs *PBSClient) Connect(reader bool) {
 	if pbs.manifest.BackupID == "" {
 		pbs.manifest.BackupID = hostname
 	}
-	pbs.backupid
 	pbs.client = http.Client{
 		Transport: &http2.Transport{
 
