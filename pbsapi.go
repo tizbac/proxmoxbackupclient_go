@@ -348,8 +348,10 @@ func (pbs *PBSClient) Connect(reader bool) {
 
 	pbs.manifest.BackupTime = time.Now().Unix()
 	pbs.manifest.BackupType = "host"
-	hostname, _ := os.Hostname()
-	pbs.manifest.BackupID = hostname
+	if pbs.manifest.BackupID == "" {
+		hostname, _ := os.Hostname()
+		pbs.manifest.BackupID = hostname
+	}
 	pbs.client = http.Client{
 		Transport: &http2.Transport{
 
