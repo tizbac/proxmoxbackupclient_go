@@ -47,27 +47,13 @@ func (c *ChunkState) Init() {
 	c.C.New(1024 * 1024 * 4)
 }
 
-func main2() {
+func main() {
 	var newchunk *atomic.Uint64
 	var reusechunk *atomic.Uint64
 
-	// Define command-line flags
-	baseURLFlag := flag.String("baseurl", "", "Base URL for the proxmox backup server, example: https://192.168.1.10:8007")
-	certFingerprintFlag := flag.String("certfingerprint", "", "Certificate fingerprint for SSL connection, example: ea:7d:06:f9...")
-	authIDFlag := flag.String("authid", "", "Authentication ID (PBS Api token)")
-	secretFlag := flag.String("secret", "", "Secret for authentication")
-	datastoreFlag := flag.String("datastore", "", "Datastore name")
-	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
-	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
-	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory, must not be symlink")
-	pxarOut := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
+	cfg := loadConfig()
 
-	// Parse command-line flags
-	flag.Parse()
-
-	// Validate required flags
-	if *baseURLFlag == "" || *certFingerprintFlag == "" || *authIDFlag == "" || *secretFlag == "" || *datastoreFlag == "" || *backupSourceDirFlag == "" {
-
+	if ok := cfg.valid(); !ok {
 		if runtime.GOOS == "windows" {
 			usage := "All options are mandatory:\n"
 			flag.VisitAll(func(f *flag.Flag) {
@@ -95,18 +81,18 @@ func main2() {
 	}
 
 	client := &PBSClient{
-		baseurl:         *baseURLFlag,
-		certfingerprint: *certFingerprintFlag, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
-		authid:          *authIDFlag,
-		secret:          *secretFlag,
-		datastore:       *datastoreFlag,
-		namespace:       *namespaceFlag,
+		baseurl:         cfg.BaseURL,
+		certfingerprint: cfg.CertFingerprint, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
+		authid:          cfg.AuthID,
+		secret:          cfg.Secret,
+		datastore:       cfg.Datastore,
+		namespace:       cfg.Namespace,
 		manifest: BackupManifest{
-			BackupID: *backupIDFlag,
+			BackupID: cfg.BackupID,
 		},
 	}
 
-	backup(client, newchunk, reusechunk, pxarOut, *backupSourceDirFlag)
+	backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
 
 	fmt.Printf("New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
 	if runtime.GOOS == "windows" {
@@ -116,7 +102,7 @@ func main2() {
 
 }
 
-func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut *string, backupdir string) {
+func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) {
 	knownChunks := hashmap.New[string, bool]()
 
 	fmt.Printf("Starting backup of %s\n", backupdir)
@@ -163,8 +149,8 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut *str
 
 	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
 	f := &os.File{}
-	if *pxarOut != "" {
-		f, _ = os.Create(*pxarOut)
+	if pxarOut != "" {
+		f, _ = os.Create(pxarOut)
 		defer f.Close()
 	}
 	/**/
@@ -215,7 +201,7 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut *str
 			chunkpos = pxarChunk.C.Scan(b[chunkpos:])
 		}
 
-		if *pxarOut != "" {
+		if pxarOut != "" {
 			f.Write(b)
 		}
 		//

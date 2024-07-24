@@ -1,3 +1,4 @@
 dist/
 proxmoxbackupgo_cli.exe
 proxmoxbackupgo.exe
+config.json

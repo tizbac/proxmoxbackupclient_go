@@ -1,0 +1,11 @@
+{
+    "baseurl": "https://your.pbs.installation.net:8007",
+    "certfingerprint": "XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX",
+    "authid": "MY-SECRET-AUTH-ID",
+    "secret": "secret-uuid",
+    "datastore": "myDatastore",
+    "backupdir": "C:",
+    "namespace": "",
+    "backup-id": "",
+    "pxarout": ""
+}
