@@ -47,10 +47,9 @@ func (c *ChunkState) Init() {
 	c.C.New(1024 * 1024 * 4)
 }
 
-func main() {
-	var newchunk atomic.Uint64
-	var reusechunk atomic.Uint64
-	knownChunks := hashmap.New[string, bool]()
+func main2() {
+	var newchunk *atomic.Uint64
+	var reusechunk *atomic.Uint64
 
 	// Define command-line flags
 	baseURLFlag := flag.String("baseurl", "", "Base URL for the proxmox backup server, example: https://192.168.1.10:8007")
@@ -107,7 +106,18 @@ func main() {
 		},
 	}
 
-	backupdir := *backupSourceDirFlag
+	backup(client, newchunk, reusechunk, pxarOut, *backupSourceDirFlag)
+
+	fmt.Printf("New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
+	if runtime.GOOS == "windows" {
+		systray.Quit()
+		beeep.Notify("Proxmox Backup Go", fmt.Sprintf("Backup complete\nChunks New %d , Reused %d\n", newchunk.Load(), reusechunk.Load()), "")
+	}
+
+}
+
+func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut *string, backupdir string) {
+	knownChunks := hashmap.New[string, bool]()
 
 	fmt.Printf("Starting backup of %s\n", backupdir)
 
@@ -316,11 +326,4 @@ func main() {
 
 	client.UploadManifest()
 	client.Finish()
-
-	fmt.Printf("New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
-	if runtime.GOOS == "windows" {
-		systray.Quit()
-		beeep.Notify("Proxmox Backup Go", fmt.Sprintf("Backup complete\nChunks New %d , Reused %d\n", newchunk.Load(), reusechunk.Load()), "")
-	}
-
 }
