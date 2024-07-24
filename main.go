@@ -92,17 +92,23 @@ func main() {
 		},
 	}
 
-	backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
+	err := backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
 
 	fmt.Printf("New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
+	var msg string
+	if err == nil {
+		msg = fmt.Sprintf("Backup complete\nChunks New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
+	} else {
+		msg = fmt.Sprintf("Error occurred while working, backup may be not completed.\nLast error is: %s\n", err.Error())
+	}
 	if runtime.GOOS == "windows" {
 		systray.Quit()
-		beeep.Notify("Proxmox Backup Go", fmt.Sprintf("Backup complete\nChunks New %d , Reused %d\n", newchunk.Load(), reusechunk.Load()), "")
+		beeep.Notify("Proxmox Backup Go", msg, "")
 	}
 
 }
 
-func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) {
+func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) error {
 	knownChunks := hashmap.New[string, bool]()
 
 	fmt.Printf("Starting backup of %s\n", backupdir)
@@ -116,7 +122,10 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 	archive := &PXARArchive{}
 	archive.archivename = "backup.pxar.didx"
 
-	previousDidx := client.DownloadPreviousToBytes(archive.archivename)
+	previousDidx, err := client.DownloadPreviousToBytes(archive.archivename)
+	if err != nil {
+		return err
+	}
 
 	fmt.Printf("Downloaded previous DIDX: %d bytes\n", len(previousDidx))
 
@@ -150,7 +159,10 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
 	f := &os.File{}
 	if pxarOut != "" {
-		f, _ = os.Create(pxarOut)
+		f, err = os.Create(pxarOut)
+		if err != nil {
+			return err
+		}
 		defer f.Close()
 	}
 	/**/
@@ -161,8 +173,14 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 	pcat1Chunk := ChunkState{}
 	pcat1Chunk.Init()
 
-	pxarChunk.wrid = client.CreateDynamicIndex(archive.archivename)
-	pcat1Chunk.wrid = client.CreateDynamicIndex("catalog.pcat1.didx")
+	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.archivename)
+	if err != nil {
+		return err
+	}
+	pcat1Chunk.wrid, err = client.CreateDynamicIndex("catalog.pcat1.didx")
+	if err != nil {
+		return err
+	}
 
 	archive.writeCB = func(b []byte) {
 		chunkpos := pxarChunk.C.Scan(b)
@@ -175,6 +193,7 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 			pxarChunk.current_chunk = append(pxarChunk.current_chunk, b[:chunkpos]...)
 
 			h := sha256.New()
+			// TODO: error handling inside callback
 			h.Write(pxarChunk.current_chunk)
 			bindigest := h.Sum(nil)
 			shahash := hex.EncodeToString(bindigest)
@@ -189,7 +208,9 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 				reusechunk.Add(1)
 			}
 
+			// TODO: error handling inside callback
 			binary.Write(pxarChunk.chunkdigests, binary.LittleEndian, (pxarChunk.pos + uint64(len(pxarChunk.current_chunk))))
+			// TODO: error handling inside callback
 			pxarChunk.chunkdigests.Write(h.Sum(nil))
 
 			pxarChunk.assignments_offset = append(pxarChunk.assignments_offset, pxarChunk.pos)
@@ -202,6 +223,7 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 		}
 
 		if pxarOut != "" {
+			// TODO: error handling inside callback
 			f.Write(b)
 		}
 		//
@@ -254,7 +276,11 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 
 	if len(pxarChunk.current_chunk) > 0 {
 		h := sha256.New()
-		h.Write(pxarChunk.current_chunk)
+		_, err = h.Write(pxarChunk.current_chunk)
+		if err != nil {
+			return err
+		}
+
 		shahash := hex.EncodeToString(h.Sum(nil))
 		binary.Write(pxarChunk.chunkdigests, binary.LittleEndian, (pxarChunk.pos + uint64(len(pxarChunk.current_chunk))))
 		pxarChunk.chunkdigests.Write(h.Sum(nil))
@@ -276,7 +302,11 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 
 	if len(pcat1Chunk.current_chunk) > 0 {
 		h := sha256.New()
-		h.Write(pcat1Chunk.current_chunk)
+		_, err = h.Write(pcat1Chunk.current_chunk)
+		if err != nil {
+			return err
+		}
+
 		shahash := hex.EncodeToString(h.Sum(nil))
 		binary.Write(pcat1Chunk.chunkdigests, binary.LittleEndian, (pcat1Chunk.pos + uint64(len(pcat1Chunk.current_chunk))))
 		pcat1Chunk.chunkdigests.Write(h.Sum(nil))
@@ -310,6 +340,10 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 
 	client.CloseDynamicIndex(pcat1Chunk.wrid, hex.EncodeToString(pcat1Chunk.chunkdigests.Sum(nil)), pcat1Chunk.pos, pcat1Chunk.chunkcount)
 
-	client.UploadManifest()
-	client.Finish()
+	err = client.UploadManifest()
+	if err != nil {
+		return err
+	}
+
+	return client.Finish()
 }
