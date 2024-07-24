@@ -73,7 +73,7 @@ func main() {
 		go systray.Run(func() {
 			systray.SetIcon(ICON)
 			systray.SetTooltip("PBSGO Backup running")
-			beeep.Notify("Proxmox Backup Go", fmt.Sprintf("Backup started"), "")
+			beeep.Notify("Proxmox Backup Go", "Backup started", "")
 		},
 			func() {
 
@@ -104,6 +104,27 @@ func main() {
 	if runtime.GOOS == "windows" {
 		systray.Quit()
 		beeep.Notify("Proxmox Backup Go", msg, "")
+	}
+	if cfg.SMTP != nil {
+		var subject string
+		if err == nil {
+			subject = "Backup complete"
+		} else {
+			subject = "Backup error"
+		}
+		client, err := setupClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
+		if err != nil {
+			fmt.Println("Cannot connect to mail server: " + err.Error())
+			os.Exit(1)
+		}
+		defer client.Quit()
+		for _, ccc := range cfg.SMTP.Mails {
+			err = sendMail(ccc.From, ccc.To, subject, msg, client)
+			if err != nil {
+				fmt.Println("Cannot send email: " + err.Error())
+				os.Exit(1)
+			}
+		}
 	}
 
 }

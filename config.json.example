@@ -7,5 +7,19 @@
     "backupdir": "C:",
     "namespace": "",
     "backup-id": "",
-    "pxarout": ""
+    "pxarout": "",
+    "smtp": {
+        "host": "smtp.example.com",
+        "port": "465",
+        "username": "my-user@example.com",
+        "password": "my-password",
+        "mails": [{
+            "from": "sender1@example.com",
+            "to": "receiver1@example.com
+        }, {
+            "from": "sender2@example.com",
+            "to": "receiver2@example.com
+        }]
+
+    }
 }

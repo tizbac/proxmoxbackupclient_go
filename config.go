@@ -7,20 +7,51 @@ import (
 	"os"
 )
 
+type MailSendConfig struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+type SMTPConfig struct {
+	Host     string           `json:"host"`
+	Port     string           `json:"port"`
+	Username string           `json:"username"`
+	Password string           `json:"password"`
+	Insecure bool             `json:"insecure"`
+	Mails    []MailSendConfig `json:"mails"`
+}
+
 type Config struct {
-	BaseURL         string `json:"baseurl"`
-	CertFingerprint string `json:"certfingerprint"`
-	AuthID          string `json:"authid"`
-	Secret          string `json:"secret"`
-	Datastore       string `json:"datastore"`
-	Namespace       string `json:"namespace"`
-	BackupID        string `json:"backup-id"`
-	BackupSourceDir string `json:"backupdir"`
-	PxarOut         string `json:"pxarout"`
+	BaseURL         string      `json:"baseurl"`
+	CertFingerprint string      `json:"certfingerprint"`
+	AuthID          string      `json:"authid"`
+	Secret          string      `json:"secret"`
+	Datastore       string      `json:"datastore"`
+	Namespace       string      `json:"namespace"`
+	BackupID        string      `json:"backup-id"`
+	BackupSourceDir string      `json:"backupdir"`
+	PxarOut         string      `json:"pxarout"`
+	SMTP            *SMTPConfig `json:"smtp"`
 }
 
 func (c *Config) valid() bool {
-	return c.BaseURL != "" && c.CertFingerprint != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && c.BackupSourceDir != ""
+	baseValid := c.BaseURL != "" && c.CertFingerprint != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && c.BackupSourceDir != ""
+	if !baseValid {
+		return baseValid
+	}
+
+	if c.SMTP != nil {
+		mailCfgValid := c.SMTP.Host != "" && c.SMTP.Port != "" && c.SMTP.Username != "" && c.SMTP.Password != ""
+		if len(c.SMTP.Mails) == 0 {
+			return false
+		}
+		for i := range c.SMTP.Mails {
+			mailCfgValid = mailCfgValid && (c.SMTP.Mails[i].From != "" && c.SMTP.Mails[i].To != "")
+		}
+		return mailCfgValid
+	}
+
+	return true
 }
 
 func loadConfig() *Config {
@@ -34,12 +65,20 @@ func loadConfig() *Config {
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
 	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory, must not be symlink")
 	pxarOutFlag := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
-	configFile := flag.String("config", "", "Path to JSON config file")
+
+	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
+	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")
+	mailUsernameFlag := flag.String("mail-username", "", "mail notification system: mail server username(optional)")
+	mailPasswordFlag := flag.String("mail-password", "", "mail notification system: mail server password(optional)")
+	mailInsecureFlag := flag.Bool("mail-insecure", false, "mail notification system: allow insecure communications(optional)")
+	mailFromFlag := flag.String("mail-from", "", "mail notification system: sender mail(optional)")
+	mailToFlag := flag.String("mail-to", "", "mail notification system: receiver mail(optional)")
+
+	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others are ignored")
 
 	// Parse command line flags
 	flag.Parse()
 
-	// Create a config struct and try to load values from the JSON file if specified
 	config := &Config{}
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
@@ -52,35 +91,59 @@ func loadConfig() *Config {
 			fmt.Printf("Error parsing config file: %v\n", err)
 			os.Exit(1)
 		}
+
+		return config
 	}
 
-	// Override JSON config with command line flags if provided
-	if *baseURLFlag != "" {
-		config.BaseURL = *baseURLFlag
+	config.BaseURL = *baseURLFlag
+	config.CertFingerprint = *certFingerprintFlag
+	config.AuthID = *authIDFlag
+	config.Secret = *secretFlag
+	config.Datastore = *datastoreFlag
+	config.Namespace = *namespaceFlag
+	config.BackupID = *backupIDFlag
+	config.BackupSourceDir = *backupSourceDirFlag
+	config.PxarOut = *pxarOutFlag
+
+	initSmtpConfigIfNeeded := func() {
+		if config.SMTP == nil {
+			config.SMTP = &SMTPConfig{}
+		}
 	}
-	if *certFingerprintFlag != "" {
-		config.CertFingerprint = *certFingerprintFlag
+	initMailConfsIfNeeded := func() {
+		initSmtpConfigIfNeeded()
+		if len(config.SMTP.Mails) == 0 {
+			config.SMTP.Mails = append(config.SMTP.Mails, MailSendConfig{})
+		}
 	}
-	if *authIDFlag != "" {
-		config.AuthID = *authIDFlag
+
+	if *mailHostFlag != "" {
+		initSmtpConfigIfNeeded()
+		config.SMTP.Host = *mailHostFlag
 	}
-	if *secretFlag != "" {
-		config.Secret = *secretFlag
+	if *mailPortFlag != "" {
+		initSmtpConfigIfNeeded()
+		config.SMTP.Port = *mailPortFlag
 	}
-	if *datastoreFlag != "" {
-		config.Datastore = *datastoreFlag
+	if *mailUsernameFlag != "" {
+		initSmtpConfigIfNeeded()
+		config.SMTP.Username = *mailUsernameFlag
 	}
-	if *namespaceFlag != "" {
-		config.Namespace = *namespaceFlag
+	if *mailPasswordFlag != "" {
+		initSmtpConfigIfNeeded()
+		config.SMTP.Password = *mailPasswordFlag
 	}
-	if *backupIDFlag != "" {
-		config.BackupID = *backupIDFlag
+	if *mailInsecureFlag {
+		initSmtpConfigIfNeeded()
+		config.SMTP.Insecure = *mailInsecureFlag
 	}
-	if *backupSourceDirFlag != "" {
-		config.BackupSourceDir = *backupSourceDirFlag
+	if *mailFromFlag != "" {
+		initMailConfsIfNeeded()
+		config.SMTP.Mails[0].From = *mailFromFlag
 	}
-	if *pxarOutFlag != "" {
-		config.PxarOut = *pxarOutFlag
+	if *mailToFlag != "" {
+		initMailConfsIfNeeded()
+		config.SMTP.Mails[0].To = *mailToFlag
 	}
 
 	return config
