@@ -94,11 +94,11 @@ type PBSClient struct {
 var blobCompressedMagic = []byte{49, 185, 88, 66, 111, 182, 163, 127}
 var blobUncompressedMagic = []byte{66, 171, 56, 7, 190, 131, 112, 161}
 
-func (pbs *PBSClient) CreateDynamicIndex(name string) uint64 {
+func (pbs *PBSClient) CreateDynamicIndex(name string) (uint64, error) {
 
 	req, err := http.NewRequest("POST", pbs.baseurl+"/dynamic_index", bytes.NewBuffer([]byte(fmt.Sprintf("{\"archive-name\": \"%s\"}", name))))
 	if err != nil {
-		panic(err)
+		return 0, err
 	}
 
 	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.authid, pbs.secret))
@@ -107,15 +107,13 @@ func (pbs *PBSClient) CreateDynamicIndex(name string) uint64 {
 	resp2, err := pbs.client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
-		panic(err)
-		return 0
+		return 0, err
 	}
 
 	if resp2.StatusCode != http.StatusOK {
 		resp1, err := io.ReadAll(resp2.Body)
 		fmt.Println("Error making request:", string(resp1), string(resp2.Proto))
-		panic(err)
-		return 0
+		return 0, err
 	}
 
 	resp1, err := io.ReadAll(resp2.Body)
@@ -123,7 +121,7 @@ func (pbs *PBSClient) CreateDynamicIndex(name string) uint64 {
 	err = json.Unmarshal(resp1, &R)
 	if err != nil {
 		fmt.Println("Error parsing JSON:", err)
-		return 0
+		return 0, err
 	}
 	fmt.Println("Writer id: ", R.WriterID)
 	defer resp2.Body.Close()
@@ -135,9 +133,10 @@ func (pbs *PBSClient) CreateDynamicIndex(name string) uint64 {
 	}
 	pbs.manifest.Files = append(pbs.manifest.Files, f)
 	pbs.writersManifest[uint64(R.WriterID)] = len(pbs.manifest.Files) - 1
-	return uint64(R.WriterID)
+	return uint64(R.WriterID), nil
 }
-func (pbs *PBSClient) UploadUncompressedChunk(writerid uint64, digest string, chunkdata []byte) {
+
+func (pbs *PBSClient) UploadUncompressedChunk(writerid uint64, digest string, chunkdata []byte) error {
 	outBuffer := make([]byte, 0)
 	outBuffer = append(outBuffer, blobUncompressedMagic...)
 	checksum := crc32.Checksum(chunkdata, crc32.IEEETable)
@@ -151,22 +150,25 @@ func (pbs *PBSClient) UploadUncompressedChunk(writerid uint64, digest string, ch
 	q.Add("wid", fmt.Sprintf("%d", writerid))
 
 	req, err := http.NewRequest("POST", pbs.baseurl+"/dynamic_chunk?"+q.Encode(), bytes.NewBuffer(outBuffer))
+	if err != nil {
+		return err
+	}
 
 	resp2, err := pbs.client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
-		panic(err)
-		return
+		return err
 	}
 
 	if resp2.StatusCode != http.StatusOK {
 		resp1, err := io.ReadAll(resp2.Body)
 		fmt.Println("Error making request:", string(resp1), string(resp2.Proto))
-		panic(err)
-		return
+		return err
 	}
+	return nil
 }
-func (pbs *PBSClient) UploadCompressedChunk(writerid uint64, digest string, chunkdata []byte) {
+
+func (pbs *PBSClient) UploadCompressedChunk(writerid uint64, digest string, chunkdata []byte) error {
 	outBuffer := make([]byte, 0)
 	outBuffer = append(outBuffer, blobCompressedMagic...)
 	compressedData := make([]byte, 0)
@@ -184,7 +186,7 @@ func (pbs *PBSClient) UploadCompressedChunk(writerid uint64, digest string, chun
 
 	if len(compressedData) > len(chunkdata) {
 		pbs.UploadUncompressedChunk(writerid, digest, chunkdata)
-		return
+		return nil
 	}
 	//fmt.Printf("Compressed: %d , Orig: %d\n", len(compressedData), len(chunkdata))
 
@@ -199,52 +201,58 @@ func (pbs *PBSClient) UploadCompressedChunk(writerid uint64, digest string, chun
 	resp2, err := pbs.client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
-		panic(err)
-		return
+		return err
 	}
 
 	if resp2.StatusCode != http.StatusOK {
 		resp1, err := io.ReadAll(resp2.Body)
 		fmt.Println("Error making request:", string(resp1), string(resp2.Proto))
-		panic(err)
-		return
+		return err
 	}
+
+	return nil
 }
 
-func (pbs *PBSClient) AssignChunks(writerid uint64, digests []string, offsets []uint64) {
+func (pbs *PBSClient) AssignChunks(writerid uint64, digests []string, offsets []uint64) error {
 	indexput := &IndexPutReq{
 		WriterID:   writerid,
 		DigestList: digests,
 		OffsetList: offsets,
 	}
 
-	jsondata, _ := json.Marshal(indexput)
+	jsondata, err := json.Marshal(indexput)
+	if err != nil {
+		return err
+	}
 
 	req, err := http.NewRequest("PUT", pbs.baseurl+"/dynamic_index", bytes.NewBuffer(jsondata))
 	if err != nil {
-		panic(err)
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
 	resp2, err := pbs.client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
-		panic(err)
-		return
+		return err
 	}
 	defer resp2.Body.Close()
+	return nil
 }
 
-func (pbs *PBSClient) CloseDynamicIndex(writerid uint64, checksum string, totalsize uint64, chunkcount uint64) {
+func (pbs *PBSClient) CloseDynamicIndex(writerid uint64, checksum string, totalsize uint64, chunkcount uint64) error {
 	finishreq := &DynamicCloseReq{
 		WriterID:   writerid,
 		CheckSum:   checksum,
 		Size:       totalsize,
 		ChunkCount: chunkcount,
 	}
-	jsonpayload, _ := json.Marshal(finishreq)
+	jsonpayload, err := json.Marshal(finishreq)
+	if err != nil {
+		return err
+	}
 	req, err := http.NewRequest("POST", pbs.baseurl+"/dynamic_close", bytes.NewBuffer(jsonpayload))
 	if err != nil {
-		panic(err)
+		return err
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.authid, pbs.secret))
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
@@ -252,8 +260,7 @@ func (pbs *PBSClient) CloseDynamicIndex(writerid uint64, checksum string, totals
 	resp2, err := pbs.client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
-		panic(err)
-		return
+		return err
 	}
 
 	f := &pbs.manifest.Files[pbs.writersManifest[writerid]]
@@ -262,9 +269,10 @@ func (pbs *PBSClient) CloseDynamicIndex(writerid uint64, checksum string, totals
 	f.Size = int64(totalsize)
 
 	defer resp2.Body.Close()
+	return nil
 }
 
-func (pbs *PBSClient) UploadBlob(name string, data []byte) {
+func (pbs *PBSClient) UploadBlob(name string, data []byte) error {
 	out := make([]byte, 0)
 	out = append(out, blobUncompressedMagic...)
 
@@ -281,39 +289,41 @@ func (pbs *PBSClient) UploadBlob(name string, data []byte) {
 	resp2, err := pbs.client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
-		panic(err)
-		return
+		return err
 	}
 
 	if resp2.StatusCode != http.StatusOK {
 		resp1, err := io.ReadAll(resp2.Body)
 		fmt.Println("Error making request:", string(resp1), string(resp2.Proto))
-		panic(err)
-		return
+		return err
 	}
 
+	return nil
 }
 
-func (pbs *PBSClient) UploadManifest() {
-	manifestBin, _ := json.Marshal(pbs.manifest)
-	pbs.UploadBlob("index.json.blob", manifestBin)
+func (pbs *PBSClient) UploadManifest() error {
+	manifestBin, err := json.Marshal(pbs.manifest)
+	if err != nil {
+		return err
+	}
+	return pbs.UploadBlob("index.json.blob", manifestBin)
 }
 
-func (pbs *PBSClient) Finish() {
+func (pbs *PBSClient) Finish() error {
 	req, err := http.NewRequest("POST", pbs.baseurl+"/finish", nil)
 	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.authid, pbs.secret))
 	if err != nil {
-		panic(err)
+		return err
 	}
 	resp2, err := pbs.client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
 		if err != nil {
-			panic(err)
+			return err
 		}
-		return
 	}
 	defer resp2.Body.Close()
+	return nil
 }
 
 func (pbs *PBSClient) Connect(reader bool) {
@@ -416,8 +426,7 @@ func (pbs *PBSClient) Connect(reader bool) {
 
 }
 
-func (pbs *PBSClient) DownloadPreviousToBytes(archivename string) []byte { //In the future also download to tmp if index is extremely big...
-
+func (pbs *PBSClient) DownloadPreviousToBytes(archivename string) ([]byte, error) { //In the future also download to tmp if index is extremely big...
 	q := &url.Values{}
 
 	q.Add("archive-name", archivename)
@@ -425,24 +434,21 @@ func (pbs *PBSClient) DownloadPreviousToBytes(archivename string) []byte { //In 
 	req, err := http.NewRequest("GET", pbs.baseurl+"/previous?"+q.Encode(), nil)
 	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.authid, pbs.secret))
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	resp2, err := pbs.client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
-		if err != nil {
-			panic(err)
-		}
-		return make([]byte, 0)
+		return nil, err
 	}
 	defer resp2.Body.Close()
 
 	ret, err := io.ReadAll(resp2.Body)
 
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return ret
+	return ret, nil
 
 }

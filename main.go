@@ -48,27 +48,12 @@ func (c *ChunkState) Init() {
 }
 
 func main() {
-	var newchunk atomic.Uint64
-	var reusechunk atomic.Uint64
-	knownChunks := hashmap.New[string, bool]()
+	var newchunk *atomic.Uint64
+	var reusechunk *atomic.Uint64
 
-	// Define command-line flags
-	baseURLFlag := flag.String("baseurl", "", "Base URL for the proxmox backup server, example: https://192.168.1.10:8007")
-	certFingerprintFlag := flag.String("certfingerprint", "", "Certificate fingerprint for SSL connection, example: ea:7d:06:f9...")
-	authIDFlag := flag.String("authid", "", "Authentication ID (PBS Api token)")
-	secretFlag := flag.String("secret", "", "Secret for authentication")
-	datastoreFlag := flag.String("datastore", "", "Datastore name")
-	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
-	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
-	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory, must not be symlink")
-	pxarOut := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
+	cfg := loadConfig()
 
-	// Parse command-line flags
-	flag.Parse()
-
-	// Validate required flags
-	if *baseURLFlag == "" || *certFingerprintFlag == "" || *authIDFlag == "" || *secretFlag == "" || *datastoreFlag == "" || *backupSourceDirFlag == "" {
-
+	if ok := cfg.valid(); !ok {
 		if runtime.GOOS == "windows" {
 			usage := "All options are mandatory:\n"
 			flag.VisitAll(func(f *flag.Flag) {
@@ -88,7 +73,7 @@ func main() {
 		go systray.Run(func() {
 			systray.SetIcon(ICON)
 			systray.SetTooltip("PBSGO Backup running")
-			beeep.Notify("Proxmox Backup Go", fmt.Sprintf("Backup started"), "")
+			beeep.Notify("Proxmox Backup Go", "Backup started", "")
 		},
 			func() {
 
@@ -96,18 +81,56 @@ func main() {
 	}
 
 	client := &PBSClient{
-		baseurl:         *baseURLFlag,
-		certfingerprint: *certFingerprintFlag, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
-		authid:          *authIDFlag,
-		secret:          *secretFlag,
-		datastore:       *datastoreFlag,
-		namespace:       *namespaceFlag,
+		baseurl:         cfg.BaseURL,
+		certfingerprint: cfg.CertFingerprint, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
+		authid:          cfg.AuthID,
+		secret:          cfg.Secret,
+		datastore:       cfg.Datastore,
+		namespace:       cfg.Namespace,
 		manifest: BackupManifest{
-			BackupID: *backupIDFlag,
+			BackupID: cfg.BackupID,
 		},
 	}
 
-	backupdir := *backupSourceDirFlag
+	err := backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
+
+	fmt.Printf("New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
+	var msg string
+	if err == nil {
+		msg = fmt.Sprintf("Backup complete\nChunks New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
+	} else {
+		msg = fmt.Sprintf("Error occurred while working, backup may be not completed.\nLast error is: %s\n", err.Error())
+	}
+	if runtime.GOOS == "windows" {
+		systray.Quit()
+		beeep.Notify("Proxmox Backup Go", msg, "")
+	}
+	if cfg.SMTP != nil {
+		var subject string
+		if err == nil {
+			subject = "Backup complete"
+		} else {
+			subject = "Backup error"
+		}
+		client, err := setupClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
+		if err != nil {
+			fmt.Println("Cannot connect to mail server: " + err.Error())
+			os.Exit(1)
+		}
+		defer client.Quit()
+		for _, ccc := range cfg.SMTP.Mails {
+			err = sendMail(ccc.From, ccc.To, subject, msg, client)
+			if err != nil {
+				fmt.Println("Cannot send email: " + err.Error())
+				os.Exit(1)
+			}
+		}
+	}
+
+}
+
+func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) error {
+	knownChunks := hashmap.New[string, bool]()
 
 	fmt.Printf("Starting backup of %s\n", backupdir)
 
@@ -120,7 +143,10 @@ func main() {
 	archive := &PXARArchive{}
 	archive.archivename = "backup.pxar.didx"
 
-	previousDidx := client.DownloadPreviousToBytes(archive.archivename)
+	previousDidx, err := client.DownloadPreviousToBytes(archive.archivename)
+	if err != nil {
+		return err
+	}
 
 	fmt.Printf("Downloaded previous DIDX: %d bytes\n", len(previousDidx))
 
@@ -153,8 +179,11 @@ func main() {
 
 	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
 	f := &os.File{}
-	if *pxarOut != "" {
-		f, _ = os.Create(*pxarOut)
+	if pxarOut != "" {
+		f, err = os.Create(pxarOut)
+		if err != nil {
+			return err
+		}
 		defer f.Close()
 	}
 	/**/
@@ -165,8 +194,14 @@ func main() {
 	pcat1Chunk := ChunkState{}
 	pcat1Chunk.Init()
 
-	pxarChunk.wrid = client.CreateDynamicIndex(archive.archivename)
-	pcat1Chunk.wrid = client.CreateDynamicIndex("catalog.pcat1.didx")
+	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.archivename)
+	if err != nil {
+		return err
+	}
+	pcat1Chunk.wrid, err = client.CreateDynamicIndex("catalog.pcat1.didx")
+	if err != nil {
+		return err
+	}
 
 	archive.writeCB = func(b []byte) {
 		chunkpos := pxarChunk.C.Scan(b)
@@ -179,6 +214,7 @@ func main() {
 			pxarChunk.current_chunk = append(pxarChunk.current_chunk, b[:chunkpos]...)
 
 			h := sha256.New()
+			// TODO: error handling inside callback
 			h.Write(pxarChunk.current_chunk)
 			bindigest := h.Sum(nil)
 			shahash := hex.EncodeToString(bindigest)
@@ -193,7 +229,9 @@ func main() {
 				reusechunk.Add(1)
 			}
 
+			// TODO: error handling inside callback
 			binary.Write(pxarChunk.chunkdigests, binary.LittleEndian, (pxarChunk.pos + uint64(len(pxarChunk.current_chunk))))
+			// TODO: error handling inside callback
 			pxarChunk.chunkdigests.Write(h.Sum(nil))
 
 			pxarChunk.assignments_offset = append(pxarChunk.assignments_offset, pxarChunk.pos)
@@ -205,7 +243,8 @@ func main() {
 			chunkpos = pxarChunk.C.Scan(b[chunkpos:])
 		}
 
-		if *pxarOut != "" {
+		if pxarOut != "" {
+			// TODO: error handling inside callback
 			f.Write(b)
 		}
 		//
@@ -258,7 +297,11 @@ func main() {
 
 	if len(pxarChunk.current_chunk) > 0 {
 		h := sha256.New()
-		h.Write(pxarChunk.current_chunk)
+		_, err = h.Write(pxarChunk.current_chunk)
+		if err != nil {
+			return err
+		}
+
 		shahash := hex.EncodeToString(h.Sum(nil))
 		binary.Write(pxarChunk.chunkdigests, binary.LittleEndian, (pxarChunk.pos + uint64(len(pxarChunk.current_chunk))))
 		pxarChunk.chunkdigests.Write(h.Sum(nil))
@@ -280,7 +323,11 @@ func main() {
 
 	if len(pcat1Chunk.current_chunk) > 0 {
 		h := sha256.New()
-		h.Write(pcat1Chunk.current_chunk)
+		_, err = h.Write(pcat1Chunk.current_chunk)
+		if err != nil {
+			return err
+		}
+
 		shahash := hex.EncodeToString(h.Sum(nil))
 		binary.Write(pcat1Chunk.chunkdigests, binary.LittleEndian, (pcat1Chunk.pos + uint64(len(pcat1Chunk.current_chunk))))
 		pcat1Chunk.chunkdigests.Write(h.Sum(nil))
@@ -314,13 +361,10 @@ func main() {
 
 	client.CloseDynamicIndex(pcat1Chunk.wrid, hex.EncodeToString(pcat1Chunk.chunkdigests.Sum(nil)), pcat1Chunk.pos, pcat1Chunk.chunkcount)
 
-	client.UploadManifest()
-	client.Finish()
-
-	fmt.Printf("New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
-	if runtime.GOOS == "windows" {
-		systray.Quit()
-		beeep.Notify("Proxmox Backup Go", fmt.Sprintf("Backup complete\nChunks New %d , Reused %d\n", newchunk.Load(), reusechunk.Load()), "")
+	err = client.UploadManifest()
+	if err != nil {
+		return err
 	}
 
+	return client.Finish()
 }

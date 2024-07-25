@@ -1,0 +1,25 @@
+{
+    "baseurl": "https://your.pbs.installation.net:8007",
+    "certfingerprint": "XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX",
+    "authid": "MY-SECRET-AUTH-ID",
+    "secret": "secret-uuid",
+    "datastore": "myDatastore",
+    "backupdir": "C:",
+    "namespace": "",
+    "backup-id": "",
+    "pxarout": "",
+    "smtp": {
+        "host": "smtp.example.com",
+        "port": "465",
+        "username": "my-user@example.com",
+        "password": "my-password",
+        "mails": [{
+            "from": "sender1@example.com",
+            "to": "receiver1@example.com
+        }, {
+            "from": "sender2@example.com",
+            "to": "receiver2@example.com
+        }]
+
+    }
+}
