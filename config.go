@@ -35,7 +35,7 @@ type Config struct {
 }
 
 func (c *Config) valid() bool {
-	baseValid := c.BaseURL != "" && c.CertFingerprint != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && c.BackupSourceDir != ""
+	baseValid := c.BaseURL != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && c.BackupSourceDir != ""
 	if !baseValid {
 		return baseValid
 	}

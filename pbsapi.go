@@ -85,6 +85,8 @@ type PBSClient struct {
 	namespace string
 	manifest  BackupManifest
 
+	insecure bool
+
 	client    http.Client
 	tlsConfig tls.Config
 
@@ -329,8 +331,10 @@ func (pbs *PBSClient) Finish() error {
 func (pbs *PBSClient) Connect(reader bool) {
 	pbs.writersManifest = make(map[uint64]int)
 	pbs.tlsConfig = tls.Config{
-		InsecureSkipVerify: true, // Set to true if you want to skip certificate verification entirely (not recommended for production)
-		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		InsecureSkipVerify: pbs.insecure,
+	}
+	if pbs.insecure {
+		pbs.tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 			// Extract the peer certificate
 			if len(rawCerts) == 0 {
 				return fmt.Errorf("no certificates presented by the peer")
@@ -351,9 +355,7 @@ func (pbs *PBSClient) Connect(reader bool) {
 
 			// If the fingerprint matches, the certificate is considered valid
 			return nil
-		},
-		//ServerName: "127.0.0.1",
-
+		}
 	}
 
 	pbs.manifest.BackupTime = time.Now().Unix()
