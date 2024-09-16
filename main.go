@@ -48,8 +48,8 @@ func (c *ChunkState) Init() {
 }
 
 func main() {
-	var newchunk *atomic.Uint64
-	var reusechunk *atomic.Uint64
+	var newchunk atomic.Uint64
+	var reusechunk atomic.Uint64
 
 	cfg := loadConfig()
 
@@ -92,7 +92,7 @@ func main() {
 		},
 	}
 
-	err := backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
+	err := backup(client, &newchunk, &reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
 
 	fmt.Printf("New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
 	var msg string
