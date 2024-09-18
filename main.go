@@ -48,8 +48,8 @@ func (c *ChunkState) Init() {
 }
 
 func main() {
-	var newchunk *atomic.Uint64
-	var reusechunk *atomic.Uint64
+	var newchunk *atomic.Uint64 = new(atomic.Uint64)
+	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
 
 	cfg := loadConfig()
 
