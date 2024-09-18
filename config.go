@@ -91,19 +91,35 @@ func loadConfig() *Config {
 			fmt.Printf("Error parsing config file: %v\n", err)
 			os.Exit(1)
 		}
-
-		return config
 	}
 
-	config.BaseURL = *baseURLFlag
-	config.CertFingerprint = *certFingerprintFlag
-	config.AuthID = *authIDFlag
-	config.Secret = *secretFlag
-	config.Datastore = *datastoreFlag
-	config.Namespace = *namespaceFlag
-	config.BackupID = *backupIDFlag
-	config.BackupSourceDir = *backupSourceDirFlag
-	config.PxarOut = *pxarOutFlag
+	if *baseURLFlag != "" {
+		config.BaseURL = *baseURLFlag
+	}
+	if *certFingerprintFlag != "" {
+		config.CertFingerprint = *certFingerprintFlag
+	}
+	if *authIDFlag != "" {
+		config.AuthID = *authIDFlag
+	}
+	if *secretFlag != "" {
+		config.Secret = *secretFlag
+	}
+	if *datastoreFlag != "" {
+		config.Datastore = *datastoreFlag
+	}
+	if *namespaceFlag != "" {
+		config.Namespace = *namespaceFlag
+	}
+	if *backupIDFlag != "" {
+		config.BackupID = *backupIDFlag
+	}
+	if *backupSourceDirFlag != "" {
+		config.BackupSourceDir = *backupSourceDirFlag
+	}
+	if *pxarOutFlag != "" {
+		config.PxarOut = *pxarOutFlag
+	}
 
 	initSmtpConfigIfNeeded := func() {
 		if config.SMTP == nil {
