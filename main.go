@@ -11,12 +11,18 @@ import (
 	"os"
 	"runtime"
 	"sync/atomic"
+	"time"
 
 	"github.com/cornelk/hashmap"
 	"github.com/gen2brain/beeep"
 	"github.com/getlantern/systray"
 	"github.com/tawesoft/golib/v2/dialog"
 )
+
+var defaultMailSubjectTemplate = "Backup {{.Status}}"
+var defaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}})
+Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while working, backup may be not completed.
+Last error is: {{.ErrorStr}}{{end}}`
 
 var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
 
@@ -94,15 +100,41 @@ func main() {
 			BackupID: cfg.BackupID,
 		},
 	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Println("Failed to retrieve hostname:", err)
+		hostname = "unknown"
+	}
 
-	err := backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
+	begin := time.Now()
+	err = backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
+	end := time.Now()
 
-	fmt.Printf("New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
+	mailCtx := mailCtx{
+		NewChunks:    newchunk.Load(),
+		ReusedChunks: reusechunk.Load(),
+		Error:        err,
+		Hostname:     hostname,
+		Datastore:    cfg.Datastore,
+		StartTime:    begin,
+		EndTime:      end,
+	}
+
+	mailBodyTemplate := defaultMailBodyTemplate
+	if cfg.SMTP != nil && cfg.SMTP.Template != nil && cfg.SMTP.Template.Body != "" {
+		mailBodyTemplate = cfg.SMTP.Template.Body
+	}
+
+	fmt.Printf("New %d, Reused %d, backup took %s.\n", newchunk.Load(), reusechunk.Load(), end.Sub(begin))
 	var msg string
-	if err == nil {
-		msg = fmt.Sprintf("Backup complete\nChunks New %d , Reused %d\n", newchunk.Load(), reusechunk.Load())
-	} else {
-		msg = fmt.Sprintf("Error occurred while working, backup may be not completed.\nLast error is: %s\n", err.Error())
+	msg, err = mailCtx.buildStr(mailBodyTemplate)
+	if err != nil {
+		fmt.Println("Cannot use custom mail body: " + err.Error())
+		msg, err = mailCtx.buildStr(defaultMailBodyTemplate)
+		if err != nil {
+			// this should never happen
+			panic(err)
+		}
 	}
 	if runtime.GOOS == "windows" {
 		systray.Quit()
@@ -110,10 +142,20 @@ func main() {
 	}
 	if cfg.SMTP != nil {
 		var subject string
-		if err == nil {
-			subject = "Backup complete"
-		} else {
-			subject = "Backup error"
+
+		mailSubjectTemplate := defaultMailSubjectTemplate
+		if cfg.SMTP.Template != nil && cfg.SMTP.Template.Subject != "" {
+			mailSubjectTemplate = cfg.SMTP.Template.Subject
+		}
+
+		subject, err = mailCtx.buildStr(mailSubjectTemplate)
+		if err != nil {
+			fmt.Println("Cannot use custom mail subject: " + err.Error())
+			msg, err = mailCtx.buildStr(defaultMailSubjectTemplate)
+			if err != nil {
+				// this should never happen
+				panic(err)
+			}
 		}
 		client, err := setupClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
 		if err != nil {

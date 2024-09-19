@@ -13,6 +13,11 @@
         "port": "465",
         "username": "my-user@example.com",
         "password": "my-password",
+        "insecure": false,
+        "template": {
+            "subject": "{{if not .Success}}[FAILED]{{else}}[SUCCESS]{{end}} Backup report for {{.Datastore}}",
+            "body": "Backup {{if .Success}}completed{{else}}ended with errors{{end}} on host {{.Hostname}} (took {{.FromattedDuration}})\n{{if .Success}}Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while working, backup may be not completed.\nLast error is: {{.ErrorStr}}{{end}}"
+        },
         "mails": [{
             "from": "sender1@example.com",
             "to": "receiver1@example.com
