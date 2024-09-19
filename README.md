@@ -44,8 +44,48 @@ proxmoxbackupgo.exe
   -pxarout string
         Output PXAR archive for debug purposes (optional)
 
+  -mail-host string
+        mail notification system: mail server host(optional)
+  -mail-port string
+        mail notification system: mail server port(optional)
+  -mail-username string
+        mail notification system: mail server username(optional)
+  -mail-password string
+        mail notification system: mail server password(optional)
+  -mail-insecure bool
+        mail notification system: allow insecure communications(optional)
+  -mail-from string
+        mail notification system: sender mail(optional)
+  -mail-to string
+        mail notification system: receiver mail(optional)
+
+  -mail-subject-template string
+        mail notification system: mail subject template(optional)
+  -mail-body-template string
+        mail notification system: mail body template(optional)
+
+  -config string
+        Path to JSON config file. If this flag is provided all the others will override the loaded config file
 
 ```
+
+For JSON configuration a JSON example is provided, fill in only the needed fields.
+
+
+Note on mail templating:
+[Go's templating engine](https://pkg.go.dev/text/template) is used for mail subjects and bodies, please refer to the documentation for the syntax.
+The following variables are available for templating:
+- `.NewChunks`: number of new chunks created
+- `.ReusedChunks`: number of chunks reused
+- `.Datastore`: datastore name
+- `.Error`: error message if any
+- `.Hostname`: hostname of the machine
+- `.StartTime`: time the backup started
+- `.EndTime`: time the backup ended
+- `.Duration`: duration of the backup
+- `.FromattedDuration`: formatted duration of the backup
+- `.Success`: a boolean telling whether the backup was successful 
+- `.Status`: string representation of the backup status [SUCCESS, FAILURE]
 
 Known Issues
 ============
