@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"hash"
 	"os"
+	"os/exec"
 	"runtime"
 	"sync/atomic"
 
@@ -130,6 +131,9 @@ func main() {
 		}
 	}
 
+	if cfg.Shutdown {
+		shutDownPc()
+	}
 }
 
 func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) error {
@@ -370,4 +374,16 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 	}
 
 	return client.Finish()
+}
+
+func shutDownPc() {
+	if runtime.GOOS == "windows" {
+		if err := exec.Command("cmd", "/C", "shutdown", "/s", "/t", "0").Run(); err != nil {
+			fmt.Println("Failed to initiate shutdown:", err)
+		}
+	} else {
+		if err := exec.Command("shutdown", "now").Run(); err != nil {
+			fmt.Println("Failed to initiate shutdown:", err)
+		}
+	}
 }

@@ -32,6 +32,7 @@ type Config struct {
 	BackupSourceDir string      `json:"backupdir"`
 	PxarOut         string      `json:"pxarout"`
 	SMTP            *SMTPConfig `json:"smtp"`
+	Shutdown        bool        `json:"shutdown"`
 }
 
 func (c *Config) valid() bool {
@@ -76,6 +77,8 @@ func loadConfig() *Config {
 
 	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others are ignored")
 
+	shutdownFlag := flag.Bool("shutdown", false, "Shutdown the system after backup")
+
 	// Parse command line flags
 	flag.Parse()
 
@@ -104,6 +107,7 @@ func loadConfig() *Config {
 	config.BackupID = *backupIDFlag
 	config.BackupSourceDir = *backupSourceDirFlag
 	config.PxarOut = *pxarOutFlag
+	config.Shutdown = *shutdownFlag
 
 	initSmtpConfigIfNeeded := func() {
 		if config.SMTP == nil {
