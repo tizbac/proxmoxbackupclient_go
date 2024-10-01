@@ -4,7 +4,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"html/template"
 	"net/smtp"
+	"strings"
+	"time"
 )
 
 type unencryptedAuth struct {
@@ -76,7 +79,12 @@ func sendMail(from, to, subject, body string, c *smtp.Client) error {
 	// Setup headers
 	headers := make(map[string]string)
 	headers["From"] = from
-	headers["To"] = to
+	recipients := strings.Split(to, ",")
+	recipientsStr := make([]string, 0)
+	for i := range recipients {
+		recipientsStr = append(recipientsStr, fmt.Sprintf("<%s>", recipients[i]))
+	}
+	headers["To"] = strings.Join(recipientsStr, ",")
 	headers["Subject"] = subject
 
 	// Setup message
@@ -91,7 +99,7 @@ func sendMail(from, to, subject, body string, c *smtp.Client) error {
 		return err
 	}
 
-	if err := c.Rcpt(to); err != nil {
+	if err := c.Rcpt(strings.Join(recipientsStr, ",")); err != nil {
 		return err
 	}
 
@@ -112,4 +120,50 @@ func sendMail(from, to, subject, body string, c *smtp.Client) error {
 	}
 
 	return nil
+}
+
+type mailCtx struct {
+	NewChunks    uint64
+	ReusedChunks uint64
+	Datastore    string
+	Error        error
+	Hostname     string
+	StartTime    time.Time
+	EndTime      time.Time
+}
+
+func (m *mailCtx) Duration() time.Duration {
+	return m.EndTime.Sub(m.StartTime)
+}
+
+func (m *mailCtx) FromattedDuration() string {
+	return m.Duration().String()
+}
+
+func (m *mailCtx) ErrorStr() string {
+	if m.Error != nil {
+		return m.Error.Error()
+	}
+	return ""
+}
+
+func (m *mailCtx) Success() bool {
+	return m.Error == nil
+}
+
+func (m *mailCtx) Status() string {
+	if m.Success() {
+		return "Success"
+	}
+	return "Failed"
+}
+
+func (m *mailCtx) buildStr(txt string) (string, error) {
+	tmpl, err := template.New("mail").Parse(txt)
+	if err != nil {
+		return "", err
+	}
+	strBuff := &strings.Builder{}
+	err = tmpl.Execute(strBuff, m)
+	return strBuff.String(), err
 }

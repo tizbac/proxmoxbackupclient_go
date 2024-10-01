@@ -12,6 +12,11 @@ type MailSendConfig struct {
 	To   string `json:"to"`
 }
 
+type MailTemplate struct {
+	Subject string `json:"subject"`
+	Body    string `json:"body"`
+}
+
 type SMTPConfig struct {
 	Host     string           `json:"host"`
 	Port     string           `json:"port"`
@@ -19,6 +24,7 @@ type SMTPConfig struct {
 	Password string           `json:"password"`
 	Insecure bool             `json:"insecure"`
 	Mails    []MailSendConfig `json:"mails"`
+	Template *MailTemplate    `json:"template"`
 }
 
 type Config struct {
@@ -73,8 +79,10 @@ func loadConfig() *Config {
 	mailInsecureFlag := flag.Bool("mail-insecure", false, "mail notification system: allow insecure communications(optional)")
 	mailFromFlag := flag.String("mail-from", "", "mail notification system: sender mail(optional)")
 	mailToFlag := flag.String("mail-to", "", "mail notification system: receiver mail(optional)")
+	mailSubjectTemplateFlag := flag.String("mail-subject-template", "", "mail notification system: mail subject template(optional)")
+	mailBodyTemplateFlag := flag.String("mail-body-template", "", "mail notification system: mail body template(optional)")
 
-	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others are ignored")
+	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
 
 	// Parse command line flags
 	flag.Parse()
@@ -160,6 +168,14 @@ func loadConfig() *Config {
 	if *mailToFlag != "" {
 		initMailConfsIfNeeded()
 		config.SMTP.Mails[0].To = *mailToFlag
+	}
+	if *mailSubjectTemplateFlag != "" {
+		initSmtpConfigIfNeeded()
+		config.SMTP.Template.Subject = *mailSubjectTemplateFlag
+	}
+	if *mailBodyTemplateFlag != "" {
+		initSmtpConfigIfNeeded()
+		config.SMTP.Template.Body = *mailBodyTemplateFlag
 	}
 
 	return config
