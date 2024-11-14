@@ -11,13 +11,17 @@ import (
 	"os"
 	"runtime"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/cornelk/hashmap"
 	"github.com/gen2brain/beeep"
 	"github.com/getlantern/systray"
 	"github.com/tawesoft/golib/v2/dialog"
+	"github.com/rodolfoag/gow32"
 )
+
+const MutexName = "proxmoxbackupclient_go"
 
 var defaultMailSubjectTemplate = "Backup {{.Status}}"
 var defaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}})
@@ -75,6 +79,16 @@ func main() {
 	}
 
 	if runtime.GOOS == "windows" {
+		mutexid, err := gow32.CreateMutex(MutexName)
+		if (err != nil) {
+			if exitcode := int(err.(syscall.Errno)); exitcode == gow32.ERROR_ALREADY_EXISTS {
+				dialog.Error("Backup jobs need to run exclusively, please wait until the previous job has finished")
+				os.Exit(2)
+			}
+			// this should never happen
+			panic(err)
+		}
+		defer gow32.ReleaseMutex(mutexid)
 
 		go systray.Run(func() {
 			systray.SetIcon(ICON)
