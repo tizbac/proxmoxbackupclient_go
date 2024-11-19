@@ -43,7 +43,8 @@ proxmoxbackupgo.exe
         Backup ID (optional - if not specified, the hostname is used as the default for host-type backups)
   -pxarout string
         Output PXAR archive for debug purposes (optional)
-
+  -backupstream string  ***NEW***
+    	Filename for stream backup
   -mail-host string
         mail notification system: mail server host(optional)
   -mail-port string
@@ -86,6 +87,16 @@ The following variables are available for templating:
 - `.FromattedDuration`: formatted duration of the backup
 - `.Success`: a boolean telling whether the backup was successful 
 - `.Status`: string representation of the backup status [SUCCESS, FAILURE]
+
+Stream Backup
+=============
+This allows backing up a stream instead of a PXAR, allows endless possibilities for example you can invoke 
+
+```
+mysqldump yourdatabase | ./proxmoxbackupgo -backupstream yourdatabase.sql [other options]
+```
+
+This allows leveraging buzhash for dedup even when using tar for example, or the sql dump itself, and if someone wants to attempt it should be possible with some hack to pipe DISM command to generate WIM image to this and have full host backup
 
 Known Issues
 ============
