@@ -8,8 +8,10 @@ import (
 	"flag"
 	"fmt"
 	"hash"
+	"io"
 	"os"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -118,7 +120,21 @@ func main() {
 	}
 
 	begin := time.Now()
-	err = backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
+	if cfg.BackupSourceDir != "" {
+		err = backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
+	} else if cfg.BackupStreamName != "" {
+		sn := cfg.BackupStreamName
+		if ! strings.HasSuffix(sn, ".didx" ) {
+			sn += ".didx"
+		}
+		fmt.Printf("Backing up from STDIN to %s", sn)
+		err = backup_stream(client, newchunk, reusechunk, sn, os.Stdin )
+
+	}else{
+		panic("No backup dir or stream name specified, exiting")
+	}
+
+	
 	end := time.Now()
 
 	mailCtx := mailCtx{
@@ -183,6 +199,137 @@ func main() {
 		}
 	}
 
+}
+
+func backup_stream(client *PBSClient, newchunk, reusechunk *atomic.Uint64, filename string, stream io.Reader ) error {
+	knownChunks := hashmap.New[string, bool]()
+	client.Connect(false)
+	previousDidx, err := client.DownloadPreviousToBytes(filename)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Downloaded previous DIDX: %d bytes\n", len(previousDidx))
+
+	if !bytes.HasPrefix(previousDidx, didxMagic) {
+		fmt.Printf("Previous index has wrong magic (%s)!\n", previousDidx[:8])
+
+	} else {
+		//Header as per proxmox documentation is fixed size of 4096 bytes,
+		//then offset of type uint64 and sha256 digests follow , so 40 byte each record until EOF
+		previousDidx = previousDidx[4096:]
+		for i := 0; i*40 < len(previousDidx); i += 1 {
+			e := DidxEntry{}
+			e.offset = binary.LittleEndian.Uint64(previousDidx[i*40 : i*40+8])
+			e.digest = previousDidx[i*40+8 : i*40+40]
+			shahash := hex.EncodeToString(e.digest)
+			fmt.Printf("Previous: %s\n", shahash)
+			knownChunks.Set(shahash, true)
+		}
+	}
+
+	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
+
+	streamChunk := ChunkState{}
+	streamChunk.Init()
+
+	streamChunk.wrid, err = client.CreateDynamicIndex(filename)
+	if err != nil {
+		return err
+	}
+	B := make([]byte, 65536)
+	for {
+		
+		n, err := stream.Read(B)
+		
+		b := B[:n]
+		chunkpos := streamChunk.C.Scan(b)
+
+		if chunkpos == 0 {
+			streamChunk.current_chunk = append(streamChunk.current_chunk, b...)
+		}
+
+		for chunkpos > 0 {
+			streamChunk.current_chunk = append(streamChunk.current_chunk, b[:chunkpos]...)
+
+			h := sha256.New()
+			// TODO: error handling inside callback
+			h.Write(streamChunk.current_chunk)
+			bindigest := h.Sum(nil)
+			shahash := hex.EncodeToString(bindigest)
+
+			if _, ok := knownChunks.GetOrInsert(shahash, true); !ok {
+				fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(streamChunk.current_chunk))
+				newchunk.Add(1)
+
+				client.UploadCompressedChunk(streamChunk.wrid, shahash, streamChunk.current_chunk)
+			} else {
+				fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(streamChunk.current_chunk))
+				reusechunk.Add(1)
+			}
+
+			// TODO: error handling inside callback
+			binary.Write(streamChunk.chunkdigests, binary.LittleEndian, (streamChunk.pos + uint64(len(streamChunk.current_chunk))))
+			// TODO: error handling inside callback
+			streamChunk.chunkdigests.Write(h.Sum(nil))
+
+			streamChunk.assignments_offset = append(streamChunk.assignments_offset, streamChunk.pos)
+			streamChunk.assignments = append(streamChunk.assignments, shahash)
+			streamChunk.pos += uint64(len(streamChunk.current_chunk))
+			streamChunk.chunkcount += 1
+
+			streamChunk.current_chunk = b[chunkpos:]
+			chunkpos = streamChunk.C.Scan(b[chunkpos:])
+		}
+		if err == io.EOF {
+			break
+		}
+	}
+
+
+	if len(streamChunk.current_chunk) > 0 {
+		h := sha256.New()
+		_, err = h.Write(streamChunk.current_chunk)
+		if err != nil {
+			return err
+		}
+
+		shahash := hex.EncodeToString(h.Sum(nil))
+		binary.Write(streamChunk.chunkdigests, binary.LittleEndian, (streamChunk.pos + uint64(len(streamChunk.current_chunk))))
+		streamChunk.chunkdigests.Write(h.Sum(nil))
+
+		if _, ok := knownChunks.GetOrInsert(shahash, true); !ok {
+			fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(streamChunk.current_chunk))
+			client.UploadCompressedChunk(streamChunk.wrid, shahash, streamChunk.current_chunk)
+			newchunk.Add(1)
+		} else {
+			fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(streamChunk.current_chunk))
+			reusechunk.Add(1)
+		}
+		streamChunk.assignments_offset = append(streamChunk.assignments_offset, streamChunk.pos)
+		streamChunk.assignments = append(streamChunk.assignments, shahash)
+		streamChunk.pos += uint64(len(streamChunk.current_chunk))
+		streamChunk.chunkcount += 1
+
+	}
+
+	//Avoid incurring in request entity too large by chunking assignment PUT requests in blocks of at most 128 chunks
+	for k := 0; k < len(streamChunk.assignments); k += 128 {
+		k2 := k + 128
+		if k2 > len(streamChunk.assignments) {
+			k2 = len(streamChunk.assignments)
+		}
+		client.AssignChunks(streamChunk.wrid, streamChunk.assignments[k:k2], streamChunk.assignments_offset[k:k2])
+	}
+
+	client.CloseDynamicIndex(streamChunk.wrid, hex.EncodeToString(streamChunk.chunkdigests.Sum(nil)), streamChunk.pos, streamChunk.chunkcount)
+
+	err = client.UploadManifest()
+	if err != nil {
+		return err
+	}
+
+	return client.Finish()
 }
 
 func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) error {

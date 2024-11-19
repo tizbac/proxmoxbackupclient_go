@@ -28,20 +28,21 @@ type SMTPConfig struct {
 }
 
 type Config struct {
-	BaseURL         string      `json:"baseurl"`
-	CertFingerprint string      `json:"certfingerprint"`
-	AuthID          string      `json:"authid"`
-	Secret          string      `json:"secret"`
-	Datastore       string      `json:"datastore"`
-	Namespace       string      `json:"namespace"`
-	BackupID        string      `json:"backup-id"`
-	BackupSourceDir string      `json:"backupdir"`
-	PxarOut         string      `json:"pxarout"`
-	SMTP            *SMTPConfig `json:"smtp"`
+	BaseURL          string      `json:"baseurl"`
+	CertFingerprint  string      `json:"certfingerprint"`
+	AuthID           string      `json:"authid"`
+	Secret           string      `json:"secret"`
+	Datastore        string      `json:"datastore"`
+	Namespace        string      `json:"namespace"`
+	BackupID         string      `json:"backup-id"`
+	BackupSourceDir  string      `json:"backupdir"`
+	BackupStreamName string 	 `json:"backupstreamname"`
+	PxarOut          string      `json:"pxarout"`
+	SMTP             *SMTPConfig `json:"smtp"`
 }
 
 func (c *Config) valid() bool {
-	baseValid := c.BaseURL != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && c.BackupSourceDir != ""
+	baseValid := c.BaseURL != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && ( c.BackupSourceDir != "" || c.BackupStreamName != "" )
 	if !baseValid {
 		return baseValid
 	}
@@ -70,6 +71,7 @@ func loadConfig() *Config {
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
 	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory, must not be symlink")
+	backupStreamNameFlag := flag.String("backupstream", "", "Filename for stream backup")
 	pxarOutFlag := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
 
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
@@ -124,6 +126,10 @@ func loadConfig() *Config {
 	}
 	if *backupSourceDirFlag != "" {
 		config.BackupSourceDir = *backupSourceDirFlag
+	}
+
+	if *backupStreamNameFlag != "" {
+		config.BackupStreamName = *backupStreamNameFlag
 	}
 	if *pxarOutFlag != "" {
 		config.PxarOut = *pxarOutFlag
