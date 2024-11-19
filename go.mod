@@ -9,6 +9,7 @@ require (
 	github.com/getlantern/systray v1.2.2
 	github.com/jeromehadorn/vss v0.1.0
 	github.com/klauspost/compress v1.17.4
+	github.com/rodolfoag/gow32 v0.0.0-20230512144032-1e896a3c51aa
 	github.com/tawesoft/golib/v2 v2.10.0
 	golang.org/x/net v0.19.0
 )
@@ -27,7 +28,6 @@ require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d // indirect
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
-	github.com/rodolfoag/gow32 v0.0.0-20230512144032-1e896a3c51aa // indirect
 	github.com/tadvi/systray v0.0.0-20190226123456-11a2b8fa57af // indirect
 	golang.org/x/exp v0.0.0-20221208152030-732eee02a75a // indirect
 	golang.org/x/sys v0.15.0 // indirect

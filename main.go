@@ -11,17 +11,15 @@ import (
 	"os"
 	"runtime"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/cornelk/hashmap"
 	"github.com/gen2brain/beeep"
 	"github.com/getlantern/systray"
 	"github.com/tawesoft/golib/v2/dialog"
-	"github.com/rodolfoag/gow32"
 )
 
-const MutexName = "proxmoxbackupclient_go"
+
 
 var defaultMailSubjectTemplate = "Backup {{.Status}}"
 var defaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}})
@@ -78,27 +76,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	if runtime.GOOS == "windows" {
-		mutexid, err := gow32.CreateMutex(MutexName)
-		if (err != nil) {
-			if exitcode := int(err.(syscall.Errno)); exitcode == gow32.ERROR_ALREADY_EXISTS {
-				dialog.Error("Backup jobs need to run exclusively, please wait until the previous job has finished")
-				os.Exit(2)
-			}
-			// this should never happen
-			panic(err)
-		}
-		defer gow32.ReleaseMutex(mutexid)
+	L := Locking{}
 
-		go systray.Run(func() {
-			systray.SetIcon(ICON)
-			systray.SetTooltip("PBSGO Backup running")
-			beeep.Notify("Proxmox Backup Go", "Backup started", "")
-		},
-			func() {
-
-			})
+	
+	lock_ok := L.AcquireProcessLock()
+	if !lock_ok {
+		
+		dialog.Error("Backup jobs need to run exclusively, please wait until the previous job has finished")
+		os.Exit(2)
 	}
+	defer L.ReleaseProcessLock()
+
+	go systray.Run(func() {
+		systray.SetIcon(ICON)
+		systray.SetTooltip("PBSGO Backup running")
+		beeep.Notify("Proxmox Backup Go", "Backup started", "")
+	},
+		func() {
+
+		})
+	
 
 	insecure := cfg.CertFingerprint != ""
 
