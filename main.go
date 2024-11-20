@@ -88,15 +88,16 @@ func main() {
 		os.Exit(2)
 	}
 	defer L.ReleaseProcessLock()
+	if runtime.GOOS == "windows" {
+		go systray.Run(func() {
+			systray.SetIcon(ICON)
+			systray.SetTooltip("PBSGO Backup running")
+			beeep.Notify("Proxmox Backup Go", "Backup started", "")
+		},
+			func() {
 
-	go systray.Run(func() {
-		systray.SetIcon(ICON)
-		systray.SetTooltip("PBSGO Backup running")
-		beeep.Notify("Proxmox Backup Go", "Backup started", "")
-	},
-		func() {
-
-		})
+			})
+	}
 	
 
 	insecure := cfg.CertFingerprint != ""
