@@ -1,6 +1,8 @@
 package main
+
 import (
 	"fmt"
+	"math/bits"
 )
 var buzhash_table []uint32 = []uint32{
 	0x458be752, 0xc10748cc, 0xfbbcdbb8, 0x6ded5b68, 0xb10a82b5, 0x20d75648, 0xdfc5665f, 0xa8428801,
@@ -88,7 +90,7 @@ func (self* Chunker) Scan(data []byte) uint64 {
 		for _i := uint64(0); _i < copy_len; _i++ {
 			B := data[pos]
 			self.window[self.window_size] = B
-			self.h = (self.h<<1 | self.h>>31) ^ buzhash_table[B]
+			self.h = bits.RotateLeft32(self.h,1) ^ buzhash_table[B]
 			pos += 1
 			self.window_size += 1
 		}
@@ -105,7 +107,7 @@ func (self* Chunker) Scan(data []byte) uint64 {
 	for pos < data_len {
 		enter := data[pos]
 		leave := self.window[idx]
-		self.h = (self.h<<1 | self.h>>31) ^ buzhash_table[leave] ^ buzhash_table[enter]
+		self.h = bits.RotateLeft32(self.h,1) ^ buzhash_table[leave] ^ buzhash_table[enter]
 		self.chunk_size += 1
 		pos += 1
 		self.window[idx] = enter
