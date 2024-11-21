@@ -266,6 +266,10 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 		}
 	}
 
+	a.Flush()
+
+	dir_start_pos := a.pos
+
 	entry := &PXARFileEntry{
 		hdr:   PXAR_ENTRY,
 		len:   56,
@@ -357,6 +361,9 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 
 	goodbyteitems = goodbyteitemsnew
 
+	a.Flush()
+	goodbye_start := a.pos
+
 	binary.Write(&a.buffer, binary.LittleEndian, PXAR_GOODBYE)
 	goodbyelen := uint64(16 + 24*(len(goodbyteitems)+1))
 	binary.Write(&a.buffer, binary.LittleEndian, goodbyelen)
@@ -367,7 +374,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 	}
 
 	gi := &GoodByeItem{
-		offset: a.pos,
+		offset: goodbye_start - dir_start_pos,
 		len:    goodbyelen,
 		hash:   0xef5eed5b753e1555,
 	}
