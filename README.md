@@ -103,6 +103,3 @@ Known Issues
 
 Windows defender antimalware being active will slow backup down up to 25% of attainable speed 
 
-There's as of now no mechanism to prevent two instances being launched at same time which will screw up VSS and backup
-If you using windows planning utility it should theoretically prevent two instances starting at same time when originating from same job
-
