@@ -1,4 +1,4 @@
-package main
+package pbscommon
 
 import (
 	"bytes"
@@ -141,14 +141,14 @@ func ca_make_bst(input []GoodByeItem, output *[]GoodByeItem) {
 type PXAROutCB func([]byte)
 
 type PXARArchive struct {
-	//Create(filename string, writeCB PXAROutCB)
+	//Create(filename string, WriteCB PXAROutCB)
 	//AddFile(filename string)
 	//AddDirectory(dirname string)
-	writeCB        PXAROutCB
-	catalogWriteCB PXAROutCB
+	WriteCB        PXAROutCB
+	CatalogWriteCB PXAROutCB
 	buffer         bytes.Buffer
 	pos            uint64
-	archivename    string
+	ArchiveName    string
 
 	catalog_pos uint64
 }
@@ -165,7 +165,7 @@ func (a *PXARArchive) Flush() {
 		if count <= 0 {
 			break
 		}
-		a.writeCB(b[:count])
+		a.WriteCB(b[:count])
 		a.pos = a.pos + uint64(count)
 	}
 	//fmt.Printf("Flush %d bytes\n", count)
@@ -260,8 +260,8 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 		a.buffer.WriteString(dirname)
 		a.buffer.WriteByte(0x00)
 	} else {
-		if a.catalogWriteCB != nil {
-			a.catalogWriteCB(catalog_magic)
+		if a.CatalogWriteCB != nil {
+			a.CatalogWriteCB(catalog_magic)
 			a.catalog_pos = 8
 		}
 	}
@@ -338,8 +338,8 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 	catalog_outdata = append_u64_7bit(catalog_outdata, uint64(len(tabledata)))
 	catalog_outdata = append(catalog_outdata, tabledata...)
 
-	if a.catalogWriteCB != nil {
-		a.catalogWriteCB(catalog_outdata)
+	if a.CatalogWriteCB != nil {
+		a.CatalogWriteCB(catalog_outdata)
 
 	}
 
@@ -389,17 +389,17 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 		tabledata := make([]byte, 0)
 		tabledata = append_u64_7bit(tabledata, uint64(1))
 		tabledata = append(tabledata, 'd')
-		tabledata = append_u64_7bit(tabledata, uint64(len(a.archivename)))
-		tabledata = append(tabledata, []byte(a.archivename)...)
+		tabledata = append_u64_7bit(tabledata, uint64(len(a.ArchiveName)))
+		tabledata = append(tabledata, []byte(a.ArchiveName)...)
 		tabledata = append_u64_7bit(tabledata, a.catalog_pos-oldpos)
 		catalog_outdata := make([]byte, 0)
 		catalog_outdata = append_u64_7bit(catalog_outdata, uint64(len(tabledata)))
 		catalog_outdata = append(catalog_outdata, tabledata...)
 		ptr := make([]byte, 0)
 		ptr = binary.LittleEndian.AppendUint64(ptr, a.catalog_pos)
-		if a.catalogWriteCB != nil {
-			a.catalogWriteCB(catalog_outdata)
-			a.catalogWriteCB(ptr)
+		if a.CatalogWriteCB != nil {
+			a.CatalogWriteCB(catalog_outdata)
+			a.CatalogWriteCB(ptr)
 		}
 	}
 

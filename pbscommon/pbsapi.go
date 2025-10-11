@@ -1,4 +1,4 @@
-package main
+package pbscommon
 
 import (
 	"bytes"
@@ -75,22 +75,22 @@ func (e *AuthErr) Error() string {
 }
 
 type PBSClient struct {
-	baseurl         string
-	certfingerprint string
-	apitoken        string
-	secret          string
-	authid          string
+	BaseURL         string
+	CertFingerPrint string
+	APIToken        string
+	Secret          string
+	AuthID          string
 
-	datastore string
-	namespace string
-	manifest  BackupManifest
+	Datastore string
+	Namespace string
+	Manifest  BackupManifest
 
-	insecure bool
+	Insecure bool
 
-	client    http.Client
-	tlsConfig tls.Config
+	Client    http.Client
+	TLSConfig tls.Config
 
-	writersManifest map[uint64]int
+	WritersManifest map[uint64]int
 }
 
 var blobCompressedMagic = []byte{49, 185, 88, 66, 111, 182, 163, 127}
@@ -98,15 +98,15 @@ var blobUncompressedMagic = []byte{66, 171, 56, 7, 190, 131, 112, 161}
 
 func (pbs *PBSClient) CreateDynamicIndex(name string) (uint64, error) {
 
-	req, err := http.NewRequest("POST", pbs.baseurl+"/dynamic_index", bytes.NewBuffer([]byte(fmt.Sprintf("{\"archive-name\": \"%s\"}", name))))
+	req, err := http.NewRequest("POST", pbs.BaseURL+"/dynamic_index", bytes.NewBuffer([]byte(fmt.Sprintf("{\"archive-name\": \"%s\"}", name))))
 	if err != nil {
 		return 0, err
 	}
 
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.authid, pbs.secret))
+	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
 
-	resp2, err := pbs.client.Do(req)
+	resp2, err := pbs.Client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
 		return 0, err
@@ -133,8 +133,8 @@ func (pbs *PBSClient) CreateDynamicIndex(name string) (uint64, error) {
 		Filename:  name,
 		Size:      0,
 	}
-	pbs.manifest.Files = append(pbs.manifest.Files, f)
-	pbs.writersManifest[uint64(R.WriterID)] = len(pbs.manifest.Files) - 1
+	pbs.Manifest.Files = append(pbs.Manifest.Files, f)
+	pbs.WritersManifest[uint64(R.WriterID)] = len(pbs.Manifest.Files) - 1
 	return uint64(R.WriterID), nil
 }
 
@@ -151,12 +151,12 @@ func (pbs *PBSClient) UploadUncompressedChunk(writerid uint64, digest string, ch
 	q.Add("size", fmt.Sprintf("%d", len(chunkdata)))
 	q.Add("wid", fmt.Sprintf("%d", writerid))
 
-	req, err := http.NewRequest("POST", pbs.baseurl+"/dynamic_chunk?"+q.Encode(), bytes.NewBuffer(outBuffer))
+	req, err := http.NewRequest("POST", pbs.BaseURL+"/dynamic_chunk?"+q.Encode(), bytes.NewBuffer(outBuffer))
 	if err != nil {
 		return err
 	}
 
-	resp2, err := pbs.client.Do(req)
+	resp2, err := pbs.Client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
 		return err
@@ -198,9 +198,9 @@ func (pbs *PBSClient) UploadCompressedChunk(writerid uint64, digest string, chun
 	q.Add("size", fmt.Sprintf("%d", len(chunkdata)))
 	q.Add("wid", fmt.Sprintf("%d", writerid))
 
-	req, err := http.NewRequest("POST", pbs.baseurl+"/dynamic_chunk?"+q.Encode(), bytes.NewBuffer(outBuffer))
+	req, err := http.NewRequest("POST", pbs.BaseURL+"/dynamic_chunk?"+q.Encode(), bytes.NewBuffer(outBuffer))
 
-	resp2, err := pbs.client.Do(req)
+	resp2, err := pbs.Client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
 		return err
@@ -227,12 +227,12 @@ func (pbs *PBSClient) AssignChunks(writerid uint64, digests []string, offsets []
 		return err
 	}
 
-	req, err := http.NewRequest("PUT", pbs.baseurl+"/dynamic_index", bytes.NewBuffer(jsondata))
+	req, err := http.NewRequest("PUT", pbs.BaseURL+"/dynamic_index", bytes.NewBuffer(jsondata))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
-	resp2, err := pbs.client.Do(req)
+	resp2, err := pbs.Client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
 		return err
@@ -252,20 +252,20 @@ func (pbs *PBSClient) CloseDynamicIndex(writerid uint64, checksum string, totals
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest("POST", pbs.baseurl+"/dynamic_close", bytes.NewBuffer(jsonpayload))
+	req, err := http.NewRequest("POST", pbs.BaseURL+"/dynamic_close", bytes.NewBuffer(jsonpayload))
 	if err != nil {
 		return err
 	}
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.authid, pbs.secret))
+	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
 
-	resp2, err := pbs.client.Do(req)
+	resp2, err := pbs.Client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
 		return err
 	}
 
-	f := &pbs.manifest.Files[pbs.writersManifest[writerid]]
+	f := &pbs.Manifest.Files[pbs.WritersManifest[writerid]]
 
 	f.Csum = checksum
 	f.Size = int64(totalsize)
@@ -286,9 +286,9 @@ func (pbs *PBSClient) UploadBlob(name string, data []byte) error {
 	q.Add("encoded-size", fmt.Sprintf("%d", len(out)))
 	q.Add("file-name", name)
 
-	req, _ := http.NewRequest("POST", pbs.baseurl+"/blob?"+q.Encode(), bytes.NewBuffer(out))
+	req, _ := http.NewRequest("POST", pbs.BaseURL+"/blob?"+q.Encode(), bytes.NewBuffer(out))
 
-	resp2, err := pbs.client.Do(req)
+	resp2, err := pbs.Client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
 		return err
@@ -304,7 +304,7 @@ func (pbs *PBSClient) UploadBlob(name string, data []byte) error {
 }
 
 func (pbs *PBSClient) UploadManifest() error {
-	manifestBin, err := json.Marshal(pbs.manifest)
+	manifestBin, err := json.Marshal(pbs.Manifest)
 	if err != nil {
 		return err
 	}
@@ -312,12 +312,12 @@ func (pbs *PBSClient) UploadManifest() error {
 }
 
 func (pbs *PBSClient) Finish() error {
-	req, err := http.NewRequest("POST", pbs.baseurl+"/finish", nil)
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.authid, pbs.secret))
+	req, err := http.NewRequest("POST", pbs.BaseURL+"/finish", nil)
+	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
 	if err != nil {
 		return err
 	}
-	resp2, err := pbs.client.Do(req)
+	resp2, err := pbs.Client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
 		if err != nil {
@@ -329,12 +329,12 @@ func (pbs *PBSClient) Finish() error {
 }
 
 func (pbs *PBSClient) Connect(reader bool) {
-	pbs.writersManifest = make(map[uint64]int)
-	pbs.tlsConfig = tls.Config{
-		InsecureSkipVerify: pbs.insecure,
+	pbs.WritersManifest = make(map[uint64]int)
+	pbs.TLSConfig = tls.Config{
+		InsecureSkipVerify: pbs.Insecure,
 	}
-	if pbs.insecure {
-		pbs.tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+	if pbs.Insecure {
+		pbs.TLSConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 			// Extract the peer certificate
 			if len(rawCerts) == 0 {
 				return fmt.Errorf("no certificates presented by the peer")
@@ -345,7 +345,7 @@ func (pbs *PBSClient) Connect(reader bool) {
 			}
 
 			// Calculate the SHA-256 fingerprint of the certificate
-			expectedFingerprint := strings.ReplaceAll(pbs.certfingerprint, ":", "")
+			expectedFingerprint := strings.ReplaceAll(pbs.CertFingerPrint, ":", "")
 			calculatedFingerprint := sha256.Sum256(peerCert.Raw)
 
 			// Compare the calculated fingerprint with the expected one
@@ -358,13 +358,13 @@ func (pbs *PBSClient) Connect(reader bool) {
 		}
 	}
 
-	pbs.manifest.BackupTime = time.Now().Unix()
-	pbs.manifest.BackupType = "host"
-	if pbs.manifest.BackupID == "" {
+	pbs.Manifest.BackupTime = time.Now().Unix()
+	pbs.Manifest.BackupType = "host"
+	if pbs.Manifest.BackupID == "" {
 		hostname, _ := os.Hostname()
-		pbs.manifest.BackupID = hostname
+		pbs.Manifest.BackupID = hostname
 	}
-	pbs.client = http.Client{
+	pbs.Client = http.Client{
 		Transport: &http2.Transport{
 
 			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
@@ -373,22 +373,22 @@ func (pbs *PBSClient) Connect(reader bool) {
 				//So to achieve that the function to create SSL socket has been hijacked here
 				//Here an http 1.1 request to authenticate, start the backup and require upgrade to HTTP2 is done then the socket is passed to
 				// http2.Transport handler
-				conn, err := tls.Dial(network, addr, &pbs.tlsConfig)
+				conn, err := tls.Dial(network, addr, &pbs.TLSConfig)
 				if err != nil {
 					return nil, err
 				}
 				q := &url.Values{}
-				q.Add("backup-time", fmt.Sprintf("%d", pbs.manifest.BackupTime))
-				q.Add("backup-type", pbs.manifest.BackupType)
-				q.Add("store", pbs.datastore)
-				if pbs.namespace != "" {
-					q.Add("ns", pbs.namespace)
+				q.Add("backup-time", fmt.Sprintf("%d", pbs.Manifest.BackupTime))
+				q.Add("backup-type", pbs.Manifest.BackupType)
+				q.Add("store", pbs.Datastore)
+				if pbs.Namespace != "" {
+					q.Add("ns", pbs.Namespace)
 				}
 
-				q.Add("backup-id", pbs.manifest.BackupID)
+				q.Add("backup-id", pbs.Manifest.BackupID)
 				q.Add("debug", "1")
 				conn.Write([]byte("GET /api2/json/backup?" + q.Encode() + " HTTP/1.1\r\n"))
-				conn.Write([]byte("Authorization: " + fmt.Sprintf("PBSAPIToken=%s:%s", pbs.authid, pbs.secret) + "\r\n"))
+				conn.Write([]byte("Authorization: " + fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret) + "\r\n"))
 				if !reader {
 					conn.Write([]byte("Upgrade: proxmox-backup-protocol-v1\r\n"))
 				} else {
@@ -433,12 +433,12 @@ func (pbs *PBSClient) DownloadPreviousToBytes(archivename string) ([]byte, error
 
 	q.Add("archive-name", archivename)
 
-	req, err := http.NewRequest("GET", pbs.baseurl+"/previous?"+q.Encode(), nil)
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.authid, pbs.secret))
+	req, err := http.NewRequest("GET", pbs.BaseURL+"/previous?"+q.Encode(), nil)
+	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
 	if err != nil {
 		return nil, err
 	}
-	resp2, err := pbs.client.Do(req)
+	resp2, err := pbs.Client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
 		return nil, err

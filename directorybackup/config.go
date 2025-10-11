@@ -36,13 +36,13 @@ type Config struct {
 	Namespace        string      `json:"namespace"`
 	BackupID         string      `json:"backup-id"`
 	BackupSourceDir  string      `json:"backupdir"`
-	BackupStreamName string 	 `json:"backupstreamname"`
+	BackupStreamName string      `json:"backupstreamname"`
 	PxarOut          string      `json:"pxarout"`
 	SMTP             *SMTPConfig `json:"smtp"`
 }
 
 func (c *Config) valid() bool {
-	baseValid := c.BaseURL != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && ( c.BackupSourceDir != "" || c.BackupStreamName != "" )
+	baseValid := c.BaseURL != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && (c.BackupSourceDir != "" || c.BackupStreamName != "")
 	if !baseValid {
 		return baseValid
 	}

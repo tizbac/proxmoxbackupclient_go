@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"clientcommon"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -10,7 +11,9 @@ import (
 	"hash"
 	"io"
 	"os"
+	"pbscommon"
 	"runtime"
+	"snapshot"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -20,8 +23,6 @@ import (
 	"github.com/getlantern/systray"
 	"github.com/tawesoft/golib/v2/dialog"
 )
-
-
 
 var defaultMailSubjectTemplate = "Backup {{.Status}}"
 var defaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}})
@@ -38,10 +39,10 @@ type ChunkState struct {
 	chunkcount         uint64
 	chunkdigests       hash.Hash
 	current_chunk      []byte
-	C                  Chunker
-	newchunk *atomic.Uint64 
-	reusechunk *atomic.Uint64
-	knownChunks *hashmap.Map[string, bool]
+	C                  pbscommon.Chunker
+	newchunk           *atomic.Uint64
+	reusechunk         *atomic.Uint64
+	knownChunks        *hashmap.Map[string, bool]
 }
 
 type DidxEntry struct {
@@ -49,25 +50,25 @@ type DidxEntry struct {
 	digest []byte
 }
 
-func (c *ChunkState) Init(newchunk *atomic.Uint64 , reusechunk *atomic.Uint64, knownChunks *hashmap.Map[string, bool] ) {
+func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *hashmap.Map[string, bool]) {
 	c.assignments = make([]string, 0)
 	c.assignments_offset = make([]uint64, 0)
 	c.pos = 0
 	c.chunkcount = 0
 	c.chunkdigests = sha256.New()
 	c.current_chunk = make([]byte, 0)
-	c.C = Chunker{}
+	c.C = pbscommon.Chunker{}
 	c.C.New(1024 * 1024 * 4)
 	c.reusechunk = reusechunk
 	c.newchunk = newchunk
 	c.knownChunks = knownChunks
 }
 
-func (c *ChunkState) HandleData(b []byte, client *PBSClient){
+func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) {
 	chunkpos := c.C.Scan(b)
 
 	if chunkpos == 0 {
-		//No break happened, just append data 
+		//No break happened, just append data
 		c.current_chunk = append(c.current_chunk, b...)
 	} else {
 
@@ -102,9 +103,9 @@ func (c *ChunkState) HandleData(b []byte, client *PBSClient){
 			c.chunkcount += 1
 
 			c.current_chunk = make([]byte, 0)
-			b = b[chunkpos:] //Take remainder of data 
+			b = b[chunkpos:] //Take remainder of data
 			chunkpos = c.C.Scan(b)
-			
+
 		}
 
 		//No further break happened, append remaining data
@@ -112,9 +113,9 @@ func (c *ChunkState) HandleData(b []byte, client *PBSClient){
 	}
 }
 
-func (c *ChunkState) Eof(client *PBSClient) {
+func (c *ChunkState) Eof(client *pbscommon.PBSClient) {
 	//Here we write the remainder of data for which cyclic hash did not trigger
-	
+
 	if len(c.current_chunk) > 0 {
 		h := sha256.New()
 		_, err := h.Write(c.current_chunk)
@@ -152,8 +153,6 @@ func (c *ChunkState) Eof(client *PBSClient) {
 	client.CloseDynamicIndex(c.wrid, hex.EncodeToString(c.chunkdigests.Sum(nil)), c.pos, c.chunkcount)
 }
 
-
-
 func main() {
 	var newchunk *atomic.Uint64 = new(atomic.Uint64)
 	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
@@ -175,19 +174,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	L := Locking{}
+	L := clientcommon.Locking{}
 
-	
 	lock_ok := L.AcquireProcessLock()
 	if !lock_ok {
-		
+
 		dialog.Error("Backup jobs need to run exclusively, please wait until the previous job has finished")
 		os.Exit(2)
 	}
 	defer L.ReleaseProcessLock()
 	if runtime.GOOS == "windows" {
 		go systray.Run(func() {
-			systray.SetIcon(ICON)
+			systray.SetIcon(clientcommon.ICON)
 			systray.SetTooltip("PBSGO Backup running")
 			beeep.Notify("Proxmox Backup Go", "Backup started", "")
 		},
@@ -195,19 +193,18 @@ func main() {
 
 			})
 	}
-	
 
 	insecure := cfg.CertFingerprint != ""
 
-	client := &PBSClient{
-		baseurl:         cfg.BaseURL,
-		certfingerprint: cfg.CertFingerprint, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
-		authid:          cfg.AuthID,
-		secret:          cfg.Secret,
-		datastore:       cfg.Datastore,
-		namespace:       cfg.Namespace,
-		insecure:        insecure,
-		manifest: BackupManifest{
+	client := &pbscommon.PBSClient{
+		BaseURL:         cfg.BaseURL,
+		CertFingerPrint: cfg.CertFingerprint, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
+		AuthID:          cfg.AuthID,
+		Secret:          cfg.Secret,
+		Datastore:       cfg.Datastore,
+		Namespace:       cfg.Namespace,
+		Insecure:        insecure,
+		Manifest: pbscommon.BackupManifest{
 			BackupID: cfg.BackupID,
 		},
 	}
@@ -222,20 +219,19 @@ func main() {
 		err = backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
 	} else if cfg.BackupStreamName != "" {
 		sn := cfg.BackupStreamName
-		if ! strings.HasSuffix(sn, ".didx" ) {
+		if !strings.HasSuffix(sn, ".didx") {
 			sn += ".didx"
 		}
 		fmt.Printf("Backing up from STDIN to %s", sn)
-		err = backup_stream(client, newchunk, reusechunk, sn, os.Stdin )
+		err = backup_stream(client, newchunk, reusechunk, sn, os.Stdin)
 
-	}else{
+	} else {
 		panic("No backup dir or stream name specified, exiting")
 	}
 
-	
 	end := time.Now()
 
-	mailCtx := mailCtx{
+	mailCtx := clientcommon.MailCtx{
 		NewChunks:    newchunk.Load(),
 		ReusedChunks: reusechunk.Load(),
 		Error:        err,
@@ -252,10 +248,10 @@ func main() {
 
 	fmt.Printf("New %d, Reused %d, backup took %s.\n", newchunk.Load(), reusechunk.Load(), end.Sub(begin))
 	var msg string
-	msg, err = mailCtx.buildStr(mailBodyTemplate)
+	msg, err = mailCtx.BuildStr(mailBodyTemplate)
 	if err != nil {
 		fmt.Println("Cannot use custom mail body: " + err.Error())
-		msg, err = mailCtx.buildStr(defaultMailBodyTemplate)
+		msg, err = mailCtx.BuildStr(defaultMailBodyTemplate)
 		if err != nil {
 			// this should never happen
 			panic(err)
@@ -273,23 +269,23 @@ func main() {
 			mailSubjectTemplate = cfg.SMTP.Template.Subject
 		}
 
-		subject, err = mailCtx.buildStr(mailSubjectTemplate)
+		subject, err = mailCtx.BuildStr(mailSubjectTemplate)
 		if err != nil {
 			fmt.Println("Cannot use custom mail subject: " + err.Error())
-			msg, err = mailCtx.buildStr(defaultMailSubjectTemplate)
+			msg, err = mailCtx.BuildStr(defaultMailSubjectTemplate)
 			if err != nil {
 				// this should never happen
 				panic(err)
 			}
 		}
-		client, err := setupClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
+		client, err := clientcommon.SetupMailClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
 		if err != nil {
 			fmt.Println("Cannot connect to mail server: " + err.Error())
 			os.Exit(1)
 		}
 		defer client.Quit()
 		for _, ccc := range cfg.SMTP.Mails {
-			err = sendMail(ccc.From, ccc.To, subject, msg, client)
+			err = clientcommon.SendMail(ccc.From, ccc.To, subject, msg, client)
 			if err != nil {
 				fmt.Println("Cannot send email: " + err.Error())
 				os.Exit(1)
@@ -299,7 +295,7 @@ func main() {
 
 }
 
-func backup_stream(client *PBSClient, newchunk, reusechunk *atomic.Uint64, filename string, stream io.Reader ) error {
+func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, filename string, stream io.Reader) error {
 	knownChunks := hashmap.New[string, bool]()
 	client.Connect(false)
 	previousDidx, err := client.DownloadPreviousToBytes(filename)
@@ -337,11 +333,11 @@ func backup_stream(client *PBSClient, newchunk, reusechunk *atomic.Uint64, filen
 	}
 	B := make([]byte, 65536)
 	for {
-		
+
 		n, err := stream.Read(B)
-		
+
 		b := B[:n]
-		
+
 		streamChunk.HandleData(b, client)
 
 		if err == io.EOF {
@@ -361,21 +357,22 @@ func backup_stream(client *PBSClient, newchunk, reusechunk *atomic.Uint64, filen
 	return client.Finish()
 }
 
-func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) error {
+func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) error {
 	knownChunks := hashmap.New[string, bool]()
 
 	fmt.Printf("Starting backup of %s\n", backupdir)
 
-	backupdir = createVSSSnapshot(backupdir)
+	SNAP := snapshot.CreateVSSSnapshot(backupdir)
+	backupdir = SNAP.FullPath
 	//Remove VSS snapshot on windows, on linux for now NOP
-	defer VSSCleanup()
+	defer snapshot.VSSCleanup()
 
 	client.Connect(false)
 
-	archive := &PXARArchive{}
-	archive.archivename = "backup.pxar.didx"
+	archive := &pbscommon.PXARArchive{}
+	archive.ArchiveName = "backup.pxar.didx"
 
-	previousDidx, err := client.DownloadPreviousToBytes(archive.archivename)
+	previousDidx, err := client.DownloadPreviousToBytes(archive.ArchiveName)
 	if err != nil {
 		return err
 	}
@@ -426,7 +423,7 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 	pcat1Chunk := ChunkState{}
 	pcat1Chunk.Init(newchunk, reusechunk, knownChunks)
 
-	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.archivename)
+	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
 	if err != nil {
 		return err
 	}
@@ -435,8 +432,7 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 		return err
 	}
 
-	archive.writeCB = func(b []byte) {
-		
+	archive.WriteCB = func(b []byte) {
 
 		if pxarOut != "" {
 			// TODO: error handling inside callback
@@ -448,7 +444,7 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 		//
 	}
 
-	archive.catalogWriteCB = func(b []byte) {
+	archive.CatalogWriteCB = func(b []byte) {
 		pcat1Chunk.HandleData(b, client)
 	}
 
@@ -457,11 +453,8 @@ func backup(client *PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut stri
 
 	archive.WriteDir(backupdir, "", true)
 
-	
 	pxarChunk.Eof(client)
 	pcat1Chunk.Eof(client)
-
-	
 
 	err = client.UploadManifest()
 	if err != nil {

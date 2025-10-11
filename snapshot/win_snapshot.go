@@ -1,7 +1,7 @@
 //go:build windows
 // +build windows
 
-package main
+package snapshot
 
 import (
 	"fmt"
@@ -52,7 +52,7 @@ func getAppDataFolder() (string, error) {
 	return appDataFolder, nil
 }
 
-func createVSSSnapshot(path string) string {
+func CreateVSSSnapshot(path string) SnapShot {
 
 	path, _ = filepath.Abs(path)
 	volName := filepath.VolumeName(path)
@@ -62,7 +62,7 @@ func createVSSSnapshot(path string) string {
 	appDataFolder, err := getAppDataFolder()
 	if err != nil {
 		fmt.Println("Error:", err)
-		return path
+		return SnapShot{FullPath: path, Valid: false}
 	}
 
 	sn := vss.Snapshotter{}
@@ -101,7 +101,7 @@ func createVSSSnapshot(path string) string {
 		panic(err)
 	}
 
-	return filepath.Join(appDataFolder, "VSS", snapshot.Id, subPath)
+	return SnapShot{FullPath: filepath.Join(appDataFolder, "VSS", snapshot.Id, subPath), Id: snapshot.Id, ObjectPath: snapshot.DeviceObjectPath, Valid: true}
 
 }
 

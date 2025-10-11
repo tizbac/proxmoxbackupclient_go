@@ -1,10 +1,10 @@
 //go:build linux || darwin || freebsd || openbsd
 // +build linux darwin freebsd openbsd
 
-package main
+package snapshot
 
-func createVSSSnapshot(path string) string {
-	return path
+func CreateVSSSnapshot(path string) SnapShot {
+	return SnapShot{FullPath: path, Valid: false}
 }
 
 func VSSCleanup() {

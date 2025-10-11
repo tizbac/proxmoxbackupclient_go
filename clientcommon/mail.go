@@ -1,4 +1,4 @@
-package main
+package clientcommon
 
 import (
 	"crypto/tls"
@@ -20,7 +20,7 @@ func (a unencryptedAuth) Start(server *smtp.ServerInfo) (string, []byte, error) 
 	return a.Auth.Start(&s)
 }
 
-func setupClient(host, port, username, password string, allowInsecure bool) (*smtp.Client, error) {
+func SetupMailClient(host, port, username, password string, allowInsecure bool) (*smtp.Client, error) {
 	var auth smtp.Auth
 	auth = smtp.PlainAuth("", username, password, host)
 	if port == "25" {
@@ -75,7 +75,7 @@ func setupClient(host, port, username, password string, allowInsecure bool) (*sm
 	return c, nil
 }
 
-func sendMail(from, to, subject, body string, c *smtp.Client) error {
+func SendMail(from, to, subject, body string, c *smtp.Client) error {
 	// Setup headers
 	headers := make(map[string]string)
 	headers["From"] = from
@@ -122,7 +122,7 @@ func sendMail(from, to, subject, body string, c *smtp.Client) error {
 	return nil
 }
 
-type mailCtx struct {
+type MailCtx struct {
 	NewChunks    uint64
 	ReusedChunks uint64
 	Datastore    string
@@ -132,33 +132,33 @@ type mailCtx struct {
 	EndTime      time.Time
 }
 
-func (m *mailCtx) Duration() time.Duration {
+func (m *MailCtx) Duration() time.Duration {
 	return m.EndTime.Sub(m.StartTime)
 }
 
-func (m *mailCtx) FromattedDuration() string {
+func (m *MailCtx) FromattedDuration() string {
 	return m.Duration().String()
 }
 
-func (m *mailCtx) ErrorStr() string {
+func (m *MailCtx) ErrorStr() string {
 	if m.Error != nil {
 		return m.Error.Error()
 	}
 	return ""
 }
 
-func (m *mailCtx) Success() bool {
+func (m *MailCtx) Success() bool {
 	return m.Error == nil
 }
 
-func (m *mailCtx) Status() string {
+func (m *MailCtx) Status() string {
 	if m.Success() {
 		return "Success"
 	}
 	return "Failed"
 }
 
-func (m *mailCtx) buildStr(txt string) (string, error) {
+func (m *MailCtx) BuildStr(txt string) (string, error) {
 	tmpl, err := template.New("mail").Parse(txt)
 	if err != nil {
 		return "", err

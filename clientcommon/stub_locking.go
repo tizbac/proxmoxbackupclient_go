@@ -1,7 +1,7 @@
 //go:build linux || darwin || freebsd || openbsd
 // +build linux darwin freebsd openbsd
 
-package main
+package clientcommon
 
 type Locking struct {
 	mutexid uintptr
