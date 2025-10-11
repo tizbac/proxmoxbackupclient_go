@@ -1,6 +1,6 @@
 module snapshot
 
-go 1.25.2
+go 1.24.4
 
 require github.com/jeromehadorn/vss v0.1.0
 

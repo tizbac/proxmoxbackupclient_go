@@ -35,14 +35,13 @@ type Config struct {
 	Datastore        string      `json:"datastore"`
 	Namespace        string      `json:"namespace"`
 	BackupID         string      `json:"backup-id"`
-	BackupSourceDir  string      `json:"backupdir"`
-	BackupStreamName string      `json:"backupstreamname"`
+	BackupDevice	 string		 `json:"backupdev"`
 	PxarOut          string      `json:"pxarout"`
 	SMTP             *SMTPConfig `json:"smtp"`
 }
 
 func (c *Config) valid() bool {
-	baseValid := c.BaseURL != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && (c.BackupSourceDir != "" || c.BackupStreamName != "")
+	baseValid := c.BaseURL != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && c.BackupDevice != ""
 	if !baseValid {
 		return baseValid
 	}
@@ -70,9 +69,8 @@ func loadConfig() *Config {
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
-	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory, must not be symlink")
-	backupStreamNameFlag := flag.String("backupstream", "", "Filename for stream backup")
-	pxarOutFlag := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
+	backupDEVFlag := flag.String("backupdev", "", "Backup device file")
+	
 
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
 	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")
@@ -124,16 +122,10 @@ func loadConfig() *Config {
 	if *backupIDFlag != "" {
 		config.BackupID = *backupIDFlag
 	}
-	if *backupSourceDirFlag != "" {
-		config.BackupSourceDir = *backupSourceDirFlag
+	if *backupDEVFlag != "" {
+		config.BackupDevice = *backupDEVFlag
 	}
 
-	if *backupStreamNameFlag != "" {
-		config.BackupStreamName = *backupStreamNameFlag
-	}
-	if *pxarOutFlag != "" {
-		config.PxarOut = *pxarOutFlag
-	}
 
 	initSmtpConfigIfNeeded := func() {
 		if config.SMTP == nil {

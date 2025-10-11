@@ -33,7 +33,7 @@ type IndexPutReq struct {
 	WriterID   uint64   `json:"wid"`
 }
 
-type DynamicCloseReq struct {
+type IndexCloseReq struct {
 	ChunkCount uint64 `json:"chunk-count"`
 	CheckSum   string `json:"csum"`
 	Size       uint64 `json:"size"`
@@ -52,6 +52,11 @@ type ChunkUploadStats struct {
 	Count          int   `json:"count"`
 	Duplicates     int   `json:"duplicates"`
 	Size           int64 `json:"size"`
+}
+
+type FixedIndexCreateReq struct {
+	ArchiveName string `json:"archive-name"`
+	Size int64	`json:"size"`
 }
 
 type Unprotected struct {
@@ -95,9 +100,115 @@ type PBSClient struct {
 
 var blobCompressedMagic = []byte{49, 185, 88, 66, 111, 182, 163, 127}
 var blobUncompressedMagic = []byte{66, 171, 56, 7, 190, 131, 112, 161}
+func (pbs *PBSClient) CreateFixedIndex(fic FixedIndexCreateReq) (uint64, error) {
+	jd,err := json.Marshal(fic)
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequest("POST", pbs.BaseURL+"/fixed_index", bytes.NewBuffer(jd))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
+
+	resp2, err := pbs.Client.Do(req)
+	if err != nil {
+		fmt.Println("Error making request:", err)
+		return 0, err
+	}
+
+	if resp2.StatusCode != http.StatusOK {
+		resp1, err := io.ReadAll(resp2.Body)
+		fmt.Println("Error making request:", string(resp1), string(resp2.Proto))
+		return 0, err
+	}
+
+	resp1, err := io.ReadAll(resp2.Body)
+	if err != nil {
+		return 0, err
+	}
+	var R IndexCreateResp
+	err = json.Unmarshal(resp1, &R)
+	if err != nil {
+		fmt.Println("Error parsing JSON:", err)
+		return 0, err
+	}
+	fmt.Println("Writer id: ", R.WriterID)
+	defer resp2.Body.Close()
+	f := File{
+		CryptMode: "none",
+		Csum:      "",
+		Filename:  fic.ArchiveName,
+		Size:      0,
+	}
+	pbs.Manifest.Files = append(pbs.Manifest.Files, f)
+	pbs.WritersManifest[uint64(R.WriterID)] = len(pbs.Manifest.Files) - 1
+	return uint64(R.WriterID), nil
+
+}
+
+func (pbs *PBSClient) AssignFixedChunks(writerid uint64, digests []string, offsets []uint64) error {
+	indexput := &IndexPutReq{
+		WriterID:   writerid,
+		DigestList: digests,
+		OffsetList: offsets,
+	}
+
+	jsondata, err := json.Marshal(indexput)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("PUT", pbs.BaseURL+"/fixed_index", bytes.NewBuffer(jsondata))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
+	resp2, err := pbs.Client.Do(req)
+	if err != nil {
+		fmt.Println("Error making request:", err)
+		return err
+	}
+	defer resp2.Body.Close()
+	return nil
+}
+
+func (pbs *PBSClient) CloseFixedIndex(writerid uint64, checksum string, totalsize uint64, chunkcount uint64) error {
+	finishreq := &IndexCloseReq{
+		WriterID:   writerid,
+		CheckSum:   checksum,
+		Size:       totalsize,
+		ChunkCount: chunkcount,
+	}
+	jsonpayload, err := json.Marshal(finishreq)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("POST", pbs.BaseURL+"/fixed_close", bytes.NewBuffer(jsonpayload))
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
+
+	resp2, err := pbs.Client.Do(req)
+	if err != nil {
+		fmt.Println("Error making request:", err)
+		return err
+	}
+
+	f := &pbs.Manifest.Files[pbs.WritersManifest[writerid]]
+
+	f.Csum = checksum
+	f.Size = int64(totalsize)
+
+	defer resp2.Body.Close()
+	return nil
+}
 
 func (pbs *PBSClient) CreateDynamicIndex(name string) (uint64, error) {
-
+	
 	req, err := http.NewRequest("POST", pbs.BaseURL+"/dynamic_index", bytes.NewBuffer([]byte(fmt.Sprintf("{\"archive-name\": \"%s\"}", name))))
 	if err != nil {
 		return 0, err
@@ -119,6 +230,9 @@ func (pbs *PBSClient) CreateDynamicIndex(name string) (uint64, error) {
 	}
 
 	resp1, err := io.ReadAll(resp2.Body)
+	if err != nil {
+		return 0, err
+	}
 	var R IndexCreateResp
 	err = json.Unmarshal(resp1, &R)
 	if err != nil {
@@ -138,58 +252,46 @@ func (pbs *PBSClient) CreateDynamicIndex(name string) (uint64, error) {
 	return uint64(R.WriterID), nil
 }
 
-func (pbs *PBSClient) UploadUncompressedChunk(writerid uint64, digest string, chunkdata []byte) error {
-	outBuffer := make([]byte, 0)
-	outBuffer = append(outBuffer, blobUncompressedMagic...)
-	checksum := crc32.Checksum(chunkdata, crc32.IEEETable)
-	outBuffer = binary.LittleEndian.AppendUint32(outBuffer, checksum)
-	outBuffer = append(outBuffer, chunkdata...)
-
-	q := &url.Values{}
-	q.Add("digest", digest)
-	q.Add("encoded-size", fmt.Sprintf("%d", len(outBuffer)))
-	q.Add("size", fmt.Sprintf("%d", len(chunkdata)))
-	q.Add("wid", fmt.Sprintf("%d", writerid))
-
-	req, err := http.NewRequest("POST", pbs.BaseURL+"/dynamic_chunk?"+q.Encode(), bytes.NewBuffer(outBuffer))
-	if err != nil {
-		return err
-	}
-
-	resp2, err := pbs.Client.Do(req)
-	if err != nil {
-		fmt.Println("Error making request:", err)
-		return err
-	}
-
-	if resp2.StatusCode != http.StatusOK {
-		resp1, err := io.ReadAll(resp2.Body)
-		fmt.Println("Error making request:", string(resp1), string(resp2.Proto))
-		return err
-	}
-	return nil
+func (pbs *PBSClient) UploadDynamicUncompressedChunk(writerid uint64, digest string, chunkdata []byte) error {
+	return pbs.UploadChunk(writerid, digest, chunkdata, true, false)
+}
+func (pbs *PBSClient) UploadFixedUncompressedChunk(writerid uint64, digest string, chunkdata []byte) error {
+	return pbs.UploadChunk(writerid, digest, chunkdata, false, false)
+}
+func (pbs *PBSClient) UploadDynamicCompressedChunk(writerid uint64, digest string, chunkdata []byte) error {
+	return pbs.UploadChunk(writerid, digest, chunkdata, true, true)
+}
+func (pbs *PBSClient) UploadFixedCompressedChunk(writerid uint64, digest string, chunkdata []byte) error {
+	return pbs.UploadChunk(writerid, digest, chunkdata, false, true)
 }
 
-func (pbs *PBSClient) UploadCompressedChunk(writerid uint64, digest string, chunkdata []byte) error {
+func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []byte, dynamic bool, compressed bool) error {
 	outBuffer := make([]byte, 0)
-	outBuffer = append(outBuffer, blobCompressedMagic...)
-	compressedData := make([]byte, 0)
+	if compressed {
+		outBuffer = append(outBuffer, blobCompressedMagic...)
+		compressedData := make([]byte, 0)
 
-	//opt := zstd.WithEncoderLevel(zstd.SpeedFastest)
-	w, _ := zstd.NewWriter(nil)
-	compressedData = w.EncodeAll(chunkdata, compressedData)
-	checksum := crc32.Checksum(compressedData, crc32.IEEETable)
-	//binary.Write(outBuffer, binary.LittleEndian, checksum)
-	outBuffer = binary.LittleEndian.AppendUint32(outBuffer, checksum)
+		//opt := zstd.WithEncoderLevel(zstd.SpeedFastest)
+		w, _ := zstd.NewWriter(nil)
+		compressedData = w.EncodeAll(chunkdata, compressedData)
+		checksum := crc32.Checksum(compressedData, crc32.IEEETable)
+		//binary.Write(outBuffer, binary.LittleEndian, checksum)
+		outBuffer = binary.LittleEndian.AppendUint32(outBuffer, checksum)
 
-	//fmt.Printf("Appended checksum %08x , len: %d\n", checksum, len(outBuffer))
+		//fmt.Printf("Appended checksum %08x , len: %d\n", checksum, len(outBuffer))
 
-	outBuffer = append(outBuffer, compressedData...)
+		outBuffer = append(outBuffer, compressedData...)
 
-	if len(compressedData) > len(chunkdata) {
-		pbs.UploadUncompressedChunk(writerid, digest, chunkdata)
-		return nil
+		if len(compressedData) > len(chunkdata) {
+			return pbs.UploadChunk(writerid, digest, chunkdata, dynamic, false)
+		}
+	}else{
+		outBuffer = append(outBuffer, blobUncompressedMagic...)
+		checksum := crc32.Checksum(chunkdata, crc32.IEEETable)
+		outBuffer = binary.LittleEndian.AppendUint32(outBuffer, checksum)
+		outBuffer = append(outBuffer, chunkdata...)
 	}
+	
 	//fmt.Printf("Compressed: %d , Orig: %d\n", len(compressedData), len(chunkdata))
 
 	q := &url.Values{}
@@ -197,9 +299,15 @@ func (pbs *PBSClient) UploadCompressedChunk(writerid uint64, digest string, chun
 	q.Add("encoded-size", fmt.Sprintf("%d", len(outBuffer)))
 	q.Add("size", fmt.Sprintf("%d", len(chunkdata)))
 	q.Add("wid", fmt.Sprintf("%d", writerid))
-
-	req, err := http.NewRequest("POST", pbs.BaseURL+"/dynamic_chunk?"+q.Encode(), bytes.NewBuffer(outBuffer))
-
+	suburl := "/dynamic_chunk?"
+	if !dynamic {
+		suburl = "/fixed_chunk?"
+	}
+	req, err := http.NewRequest("POST", pbs.BaseURL+suburl+q.Encode(), bytes.NewBuffer(outBuffer))
+	if err != nil {
+		fmt.Println("Error making request:", err)
+		return err
+	}
 	resp2, err := pbs.Client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
@@ -215,7 +323,7 @@ func (pbs *PBSClient) UploadCompressedChunk(writerid uint64, digest string, chun
 	return nil
 }
 
-func (pbs *PBSClient) AssignChunks(writerid uint64, digests []string, offsets []uint64) error {
+func (pbs *PBSClient) AssignDynamicChunks(writerid uint64, digests []string, offsets []uint64) error {
 	indexput := &IndexPutReq{
 		WriterID:   writerid,
 		DigestList: digests,
@@ -242,7 +350,7 @@ func (pbs *PBSClient) AssignChunks(writerid uint64, digests []string, offsets []
 }
 
 func (pbs *PBSClient) CloseDynamicIndex(writerid uint64, checksum string, totalsize uint64, chunkcount uint64) error {
-	finishreq := &DynamicCloseReq{
+	finishreq := &IndexCloseReq{
 		WriterID:   writerid,
 		CheckSum:   checksum,
 		Size:       totalsize,

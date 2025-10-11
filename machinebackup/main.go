@@ -2,17 +2,24 @@ package main
 
 import (
 	"crypto/sha256"
-	"fmt"
+	"encoding/hex"
+	"path/filepath"
+
 	"hash"
-	"log"
+
+	"clientcommon"
+	"flag"
+	"fmt"
+	"io"
 	"os"
 	"pbscommon"
-	"snapshot"
-	"strings"
+	"runtime"
 	"sync/atomic"
 
 	"github.com/cornelk/hashmap"
-	"github.com/shirou/gopsutil/disk"
+	"github.com/gen2brain/beeep"
+	"github.com/getlantern/systray"
+	"github.com/tawesoft/golib/v2/dialog"
 )
 
 var defaultMailSubjectTemplate = "Backup {{.Status}}"
@@ -51,10 +58,13 @@ func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, kn
 }
 
 func main() {
-	/*	var newchunk *atomic.Uint64 = new(atomic.Uint64)
-		var reusechunk *atomic.Uint64 = new(atomic.Uint64)*/
+	var newchunk *atomic.Uint64 = new(atomic.Uint64)
+	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
+	knownChunks := hashmap.New[string, bool]()
+	CS := ChunkState{}
+	CS.Init(newchunk, reusechunk, knownChunks)
 
-	/*cfg := loadConfig()
+	cfg := loadConfig()
 
 	if ok := cfg.valid(); !ok {
 		if runtime.GOOS == "windows" {
@@ -91,9 +101,9 @@ func main() {
 			})
 	}
 
-	//insecure := cfg.CertFingerprint != ""
+	insecure := cfg.CertFingerprint != ""
 
-	/*client := &pbscommon.PBSClient{
+	client := &pbscommon.PBSClient{
 		BaseURL:         cfg.BaseURL,
 		CertFingerPrint: cfg.CertFingerprint, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
 		AuthID:          cfg.AuthID,
@@ -105,15 +115,98 @@ func main() {
 			BackupID: cfg.BackupID,
 		},
 	}
-	hostname, err := os.Hostname()
+	/*hostname, err := os.Hostname()
 	if err != nil {
 		fmt.Println("Failed to retrieve hostname:", err)
 		hostname = "unknown"
+	}*/
+	
+	
+	//begin := time.Now()
+	F, err := os.Open(cfg.BackupDevice)
+	if err != nil {
+		panic(err)
+	}
+	pos, err := F.Seek(0, io.SeekEnd)
+	if err != nil {
+		panic(err)
+	}
+	total := pos
+	_, err = F.Seek(0, io.SeekStart)
+	if err != nil {
+		panic(err)
+	}
+	client.Connect(false)
+	wrid , err := client.CreateFixedIndex(pbscommon.FixedIndexCreateReq{
+		ArchiveName: filepath.Base(cfg.BackupDevice)+".fidx",
+		Size: total,
+	})
+	if err != nil {
+		panic(err)
 	}
 
-	begin := time.Now()*/
 
-	partitions, err := disk.Partitions(false) // false means don't include virtual partitions
+	//Blocks are 4MB as per proxmox docs 
+	block := make([]byte, 4*1024*1024)
+	for ; CS.pos < uint64(total); {
+		nread, err := F.Read(block)
+		if err != nil {
+			panic(err)
+		}
+		if nread <= 0 {
+			panic("Short read")
+		}
+		h := sha256.New()
+		_, err = h.Write(block[:nread])
+		if err != nil {
+			panic(err)
+		}
+
+		shahash := hex.EncodeToString(h.Sum(nil))
+		//binary.Write(CS.chunkdigests, binary.LittleEndian, (CS.pos + uint64(nread)))
+		CS.chunkdigests.Write(h.Sum(nil))
+
+		_, exists := knownChunks.GetOrInsert(shahash, true)
+
+		if exists {
+			reusechunk.Add(1)
+		}else{
+			err = client.UploadFixedCompressedChunk(wrid, shahash, block[:nread])
+			if err != nil {
+				panic(err)
+			}
+		}
+		CS.assignments = append(CS.assignments, shahash)
+		CS.assignments_offset = append(CS.assignments_offset, CS.pos)
+		CS.pos += uint64(nread)
+		CS.chunkcount++
+		fmt.Printf("Chunk %d\n", CS.chunkcount)
+	}
+
+	//Avoid incurring in request entity too large by chunking assignment PUT requests in blocks of at most 128 chunks
+	for k := 0; k < len(CS.assignments); k += 128 {
+		k2 := k + 128
+		if k2 > len(CS.assignments) {
+			k2 = len(CS.assignments)
+		}
+		err = client.AssignFixedChunks(wrid, CS.assignments[k:k2], CS.assignments_offset[k:k2])
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	err = client.CloseFixedIndex(wrid, hex.EncodeToString(CS.chunkdigests.Sum(nil)), CS.pos, CS.chunkcount)
+	if err != nil {
+		panic(err)
+	}
+	err = client.UploadManifest()
+	if err != nil {
+		panic(err)
+	}
+	client.Finish()
+	
+
+	/*partitions, err := disk.Partitions(false) // false means don't include virtual partitions
 	if err != nil {
 		log.Fatalf("Error fetching partitions: %v", err)
 	}
@@ -150,5 +243,16 @@ func main() {
 		panic(err)
 	} else {
 		fmt.Print(n)
-	}
+	}*/
+
+	//Windows backup logic will be as follows 
+
+	//1. Enumerate fixed non-usb disks ( SATA + NVME )
+	//2. Enumerate partitions with offset and length
+	//3. Start reading using PhysicalDriveX special file 
+	//4. If we go into a region that contains a mounted partition, if filesystem is NTFS or ReFS , take VSS snapshot and switch to the associated shadow volume file 
+	//4. If the partition is not mounted just keep reading, if the partition is mounted and not NTFS or ReFS for now throw a warning and write zeros
+	//5. For each disk create a fixed index ( Do it in parallel maybe)
+
+
 }

@@ -86,7 +86,7 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) {
 				fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
 				c.newchunk.Add(1)
 
-				client.UploadCompressedChunk(c.wrid, shahash, c.current_chunk)
+				client.UploadDynamicCompressedChunk(c.wrid, shahash, c.current_chunk)
 			} else {
 				fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
 				c.reusechunk.Add(1)
@@ -129,7 +129,7 @@ func (c *ChunkState) Eof(client *pbscommon.PBSClient) {
 
 		if _, ok := c.knownChunks.GetOrInsert(shahash, true); !ok {
 			fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
-			client.UploadCompressedChunk(c.wrid, shahash, c.current_chunk)
+			client.UploadDynamicCompressedChunk(c.wrid, shahash, c.current_chunk)
 			c.newchunk.Add(1)
 		} else {
 			fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
@@ -147,7 +147,7 @@ func (c *ChunkState) Eof(client *pbscommon.PBSClient) {
 		if k2 > len(c.assignments) {
 			k2 = len(c.assignments)
 		}
-		client.AssignChunks(c.wrid, c.assignments[k:k2], c.assignments_offset[k:k2])
+		client.AssignDynamicChunks(c.wrid, c.assignments[k:k2], c.assignments_offset[k:k2])
 	}
 
 	client.CloseDynamicIndex(c.wrid, hex.EncodeToString(c.chunkdigests.Sum(nil)), c.pos, c.chunkcount)
