@@ -4,3 +4,4 @@ use ./clientcommon
 use ./pbscommon
 use ./directorybackup
 use ./snapshot
+use ./machinebackup
