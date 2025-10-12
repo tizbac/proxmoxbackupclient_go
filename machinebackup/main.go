@@ -4,11 +4,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"path/filepath"
+	"strings"
+	"syscall"
+	"unsafe"
 
 	"hash"
 
 	"clientcommon"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -20,6 +22,7 @@ import (
 	"github.com/gen2brain/beeep"
 	"github.com/getlantern/systray"
 	"github.com/tawesoft/golib/v2/dialog"
+	"golang.org/x/sys/windows"
 )
 
 var defaultMailSubjectTemplate = "Backup {{.Status}}"
@@ -43,6 +46,13 @@ type ChunkState struct {
 	knownChunks        *hashmap.Map[string, bool]
 }
 
+type Partition struct {
+	StartByte   uint64
+	EndByte     uint64
+	RequiresVSS bool
+	Skip        bool
+}
+
 func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *hashmap.Map[string, bool]) {
 	c.assignments = make([]string, 0)
 	c.assignments_offset = make([]uint64, 0)
@@ -57,6 +67,83 @@ func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, kn
 	c.knownChunks = knownChunks
 }
 
+type DISK_EXTENT struct {
+	DiskNumber     uint32
+	StartingOffset int64 // LARGE_INTEGER in C/C++
+	ExtentLength   int64 // LARGE_INTEGER in C/C++
+}
+
+type VOLUME_DISK_EXTENTS struct {
+	NumberOfDiskExtents uint32
+	Extents             [16]DISK_EXTENT // This is a placeholder; actual size depends on NumberOfDiskExtents
+}
+
+type PARTITION_STYLE uint32
+
+const (
+	PartitionStyleMBR PARTITION_STYLE = 0
+	PartitionStyleGPT PARTITION_STYLE = 1
+)
+
+type DRIVE_LAYOUT_INFORMATION_MBR struct {
+	Signature uint32
+}
+
+type DRIVE_LAYOUT_INFORMATION_GPT struct {
+	DiskId windows.GUID
+}
+
+type PARTITION_INFORMATION_MBR struct {
+	PartitionType byte
+	BootIndicator byte
+	BootPartition byte
+}
+
+type PARTITION_INFORMATION_GPT struct {
+	Guid          windows.GUID
+	PartitionName [36]uint16
+}
+
+type PARTITION_INFORMATION_EX struct {
+	PartitionStyle     PARTITION_STYLE
+	StartingOffset     uint64
+	PartitionLength    uint64
+	PartitionNumber    uint32
+	RewritePartition   bool
+	IsServicePartition bool
+	DUMMYUNIONNAME     struct {
+		Mbr PARTITION_INFORMATION_MBR
+		Gpt PARTITION_INFORMATION_GPT
+	}
+}
+
+type DRIVE_LAYOUT_INFORMATION_EX struct {
+	PartitionStyle uint32
+	PartitionCount uint32
+	DUMMYUNIONNAME struct {
+		Mbr DRIVE_LAYOUT_INFORMATION_MBR
+		Gpt DRIVE_LAYOUT_INFORMATION_GPT
+	}
+	PartitionEntry [128]PARTITION_INFORMATION_EX
+}
+
+const IOCTL_DISK_GET_DRIVE_LAYOUT_EX = 0x00070050
+
+func BytesToString(b int64) string {
+	if b < 1024 {
+		return fmt.Sprintf("%dB", b)
+	}
+	if b < 1024*1024 {
+		return fmt.Sprintf("%dKB", b/1024)
+	}
+	if b < 1024*1024*1024 {
+		return fmt.Sprintf("%dMB", b/(1024*1024))
+	}
+
+	return fmt.Sprintf("%dGB", b/(1024*1024*1024))
+
+}
+
 func main() {
 	var newchunk *atomic.Uint64 = new(atomic.Uint64)
 	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
@@ -66,7 +153,7 @@ func main() {
 
 	cfg := loadConfig()
 
-	if ok := cfg.valid(); !ok {
+	/*if ok := cfg.valid(); !ok {
 		if runtime.GOOS == "windows" {
 			usage := "All options are mandatory:\n"
 			flag.VisitAll(func(f *flag.Flag) {
@@ -79,7 +166,60 @@ func main() {
 			flag.PrintDefaults()
 		}
 		os.Exit(1)
+	}*/
+
+	//Physycal drive paths will be like  "\\\\.\\PhysicalDrive0"
+	parts := make([]Partition, 0)
+	if strings.HasPrefix(cfg.BackupDevice, "\\\\.\\PhysicalDrive") {
+		volumeHandle, err := syscall.CreateFile(
+			syscall.StringToUTF16Ptr(`\\.\C:`), // Example volume C:
+			syscall.GENERIC_READ|syscall.GENERIC_WRITE,
+			syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE,
+			nil,
+			syscall.OPEN_EXISTING,
+			0,
+			0,
+		)
+		if err != nil {
+			dialog.Error(err.Error())
+			panic(err)
+		}
+		defer syscall.CloseHandle(volumeHandle)
+		var volumeDiskExtents DRIVE_LAYOUT_INFORMATION_EX
+		var bytesReturned uint32
+
+		// First call to get the required size (if needed)
+		// ...
+
+		// Second call with a properly sized buffer
+		err = syscall.DeviceIoControl(
+			volumeHandle,
+			IOCTL_DISK_GET_DRIVE_LAYOUT_EX, // Define this constant
+			nil,
+			0,
+			(*byte)(unsafe.Pointer(&volumeDiskExtents)), // Output buffer
+			uint32(unsafe.Sizeof(volumeDiskExtents)),    // Size of output buffer
+			&bytesReturned,
+			nil,
+		)
+
+		if err != nil {
+			dialog.Error(err.Error())
+			panic(err)
+		}
+		for i := 0; i < int(volumeDiskExtents.PartitionCount); i++ {
+			E := volumeDiskExtents.PartitionEntry[i]
+			fmt.Printf("Part: %d %s %s\n", E.PartitionNumber, BytesToString(int64(E.StartingOffset)), BytesToString(int64(E.PartitionLength)))
+			parts = append(parts, Partition{
+				StartByte:   uint64(E.StartingOffset),
+				EndByte:     uint64(E.StartingOffset + E.PartitionLength),
+				RequiresVSS: true,
+				Skip:        false,
+			})
+		}
 	}
+
+	return
 
 	L := clientcommon.Locking{}
 
@@ -120,8 +260,7 @@ func main() {
 		fmt.Println("Failed to retrieve hostname:", err)
 		hostname = "unknown"
 	}*/
-	
-	
+
 	//begin := time.Now()
 	F, err := os.Open(cfg.BackupDevice)
 	if err != nil {
@@ -137,18 +276,17 @@ func main() {
 		panic(err)
 	}
 	client.Connect(false)
-	wrid , err := client.CreateFixedIndex(pbscommon.FixedIndexCreateReq{
-		ArchiveName: filepath.Base(cfg.BackupDevice)+".fidx",
-		Size: total,
+	wrid, err := client.CreateFixedIndex(pbscommon.FixedIndexCreateReq{
+		ArchiveName: filepath.Base(cfg.BackupDevice) + ".fidx",
+		Size:        total,
 	})
 	if err != nil {
 		panic(err)
 	}
 
-
-	//Blocks are 4MB as per proxmox docs 
+	//Blocks are 4MB as per proxmox docs
 	block := make([]byte, 4*1024*1024)
-	for ; CS.pos < uint64(total); {
+	for CS.pos < uint64(total) {
 		nread, err := F.Read(block)
 		if err != nil {
 			panic(err)
@@ -170,7 +308,7 @@ func main() {
 
 		if exists {
 			reusechunk.Add(1)
-		}else{
+		} else {
 			err = client.UploadFixedCompressedChunk(wrid, shahash, block[:nread])
 			if err != nil {
 				panic(err)
@@ -204,7 +342,6 @@ func main() {
 		panic(err)
 	}
 	client.Finish()
-	
 
 	/*partitions, err := disk.Partitions(false) // false means don't include virtual partitions
 	if err != nil {
@@ -245,14 +382,13 @@ func main() {
 		fmt.Print(n)
 	}*/
 
-	//Windows backup logic will be as follows 
+	//Windows backup logic will be as follows
 
 	//1. Enumerate fixed non-usb disks ( SATA + NVME )
 	//2. Enumerate partitions with offset and length
-	//3. Start reading using PhysicalDriveX special file 
-	//4. If we go into a region that contains a mounted partition, if filesystem is NTFS or ReFS , take VSS snapshot and switch to the associated shadow volume file 
+	//3. Start reading using PhysicalDriveX special file
+	//4. If we go into a region that contains a mounted partition, if filesystem is NTFS or ReFS , take VSS snapshot and switch to the associated shadow volume file
 	//4. If the partition is not mounted just keep reading, if the partition is mounted and not NTFS or ReFS for now throw a warning and write zeros
 	//5. For each disk create a fixed index ( Do it in parallel maybe)
-
 
 }
