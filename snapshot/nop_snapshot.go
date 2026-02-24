@@ -3,8 +3,8 @@
 
 package snapshot
 
-func CreateVSSSnapshot(path string) SnapShot {
-	return SnapShot{FullPath: path, Valid: false}
+func CreateVSSSnapshot(paths []string, backup_callback func(sn map[string]SnapShot) error) error {
+	return backup_callback(make(map[string]SnapShot))
 }
 
 func VSSCleanup() {

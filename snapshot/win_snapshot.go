@@ -9,7 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 
-	vss "github.com/jeromehadorn/vss"
+	"github.com/st-matskevich/go-vss"
 )
 
 func SymlinkSnapshot(symlinkPath string, id string, deviceObjectPath string) (string, error) {
@@ -52,74 +52,46 @@ func getAppDataFolder() (string, error) {
 	return appDataFolder, nil
 }
 
-func CreateVSSSnapshot(path string) SnapShot {
-
-	path, _ = filepath.Abs(path)
-	volName := filepath.VolumeName(path)
-	volName += "\\"
-	subPath := path[len(volName):] //Strp C:\, 3 chars or whatever it is
-
-	appDataFolder, err := getAppDataFolder()
-	if err != nil {
-		fmt.Println("Error:", err)
-		return SnapShot{FullPath: path, Valid: false}
-	}
+func CreateVSSSnapshot(paths []string, backup_callback func(sn map[string]SnapShot) error) error {
 
 	sn := vss.Snapshotter{}
-	snapid, err := os.ReadFile(filepath.Join(appDataFolder, "temp_snapshot_id.txt"))
-	if err == nil {
-		snapid_str := string(snapid)
+	snapshots := make(map[string]SnapShot)
 
-		fmt.Printf("Found leftover snapshot, deleting it...\n")
+	for _, path := range paths {
+		path, _ = filepath.Abs(path)
+		volName := filepath.VolumeName(path)
+		volName += "\\"
+		subPath := path[len(volName):] //Strp C:\, 3 chars or whatever it is
 
-		sn.DeleteSnapshot(snapid_str)
+		appDataFolder, err := getAppDataFolder()
+		if err != nil {
+			fmt.Println("Error:", err)
+			return err
+		}
 
-		os.Remove(filepath.Join(appDataFolder, "temp_snapshot_id.txt"))
+		defer sn.Release()
+
+		fmt.Printf("Creating VSS Snapshot...")
+		snapshot, err := sn.CreateSnapshot(volName, false, 180)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Snapshot created: %s\n", snapshot.Id)
+
+		_, err = SymlinkSnapshot(filepath.Join(appDataFolder, "VSS"), snapshot.Id, snapshot.DeviceObjectPath)
+
+		if err != nil {
+			return err
+		}
+
+		snapshots[path] = SnapShot{FullPath: filepath.Join(appDataFolder, "VSS", snapshot.Id, subPath), Id: snapshot.Id, ObjectPath: snapshot.DeviceObjectPath, Valid: true}
+
 	}
 
-	fmt.Printf("Creating VSS Snapshot...")
-	snapshot, err := sn.CreateSnapshot(volName, 180, true)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("Snapshot created: %s\n", snapshot.Id)
-
-	f, err := os.Create(filepath.Join(appDataFolder, "temp_snapshot_id.txt"))
-	if err != nil {
-		sn.DeleteSnapshot(snapshot.Id)
-		panic(err)
-	}
-
-	f.WriteString(snapshot.Id)
-	f.Close()
-
-	_, err = SymlinkSnapshot(filepath.Join(appDataFolder, "VSS"), snapshot.Id, snapshot.DeviceObjectPath)
-
-	if err != nil {
-		sn.DeleteSnapshot(snapshot.Id)
-		os.Remove(filepath.Join(appDataFolder, "temp_snapshot_id.txt"))
-		panic(err)
-	}
-
-	return SnapShot{FullPath: filepath.Join(appDataFolder, "VSS", snapshot.Id, subPath), Id: snapshot.Id, ObjectPath: snapshot.DeviceObjectPath, Valid: true}
+	return backup_callback(snapshots)
 
 }
 
 func VSSCleanup() {
-	appDataFolder, err := getAppDataFolder()
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-	sn := vss.Snapshotter{}
-	snapid, err := os.ReadFile(filepath.Join(appDataFolder, "temp_snapshot_id.txt"))
-	if err == nil {
-		snapid_str := string(snapid)
 
-		fmt.Printf("Found leftover snapshot, deleting it...\n")
-
-		sn.DeleteSnapshot(snapid_str)
-
-		os.Remove(filepath.Join(appDataFolder, "temp_snapshot_id.txt"))
-	}
 }

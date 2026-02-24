@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"maps"
 	"os"
 	"pbscommon"
 	"runtime"
+	"slices"
 	"snapshot"
 	"strings"
 	"sync/atomic"
@@ -362,101 +364,109 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 
 	fmt.Printf("Starting backup of %s\n", backupdir)
 
-	SNAP := snapshot.CreateVSSSnapshot(backupdir)
-	backupdir = SNAP.FullPath
-	//Remove VSS snapshot on windows, on linux for now NOP
-	defer snapshot.VSSCleanup()
+	err := snapshot.CreateVSSSnapshot(([]string{backupdir}), func(snaps map[string]snapshot.SnapShot) error {
+		k := maps.Keys(snaps)
+		k2 := slices.Collect(k)
+		SNAP := snaps[k2[0]]
+		backupdir = SNAP.FullPath
+		//Remove VSS snapshot on windows, on linux for now NOP
 
-	client.Connect(false)
+		client.Connect(false)
 
-	archive := &pbscommon.PXARArchive{}
-	archive.ArchiveName = "backup.pxar.didx"
+		archive := &pbscommon.PXARArchive{}
+		archive.ArchiveName = "backup.pxar.didx"
 
-	previousDidx, err := client.DownloadPreviousToBytes(archive.ArchiveName)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Downloaded previous DIDX: %d bytes\n", len(previousDidx))
-
-	/*f2, _ := os.Create("test.didx")
-	defer f2.Close()
-
-	f2.Write(previous_didx)*/
-
-	/*
-		Here we download the previous dynamic index to figure out which chunks are the same of what
-		we are going to upload to avoid unnecessary traffic and compression cpu usage
-	*/
-
-	if !bytes.HasPrefix(previousDidx, didxMagic) {
-		fmt.Printf("Previous index has wrong magic (%s)!\n", previousDidx[:8])
-
-	} else {
-		//Header as per proxmox documentation is fixed size of 4096 bytes,
-		//then offset of type uint64 and sha256 digests follow , so 40 byte each record until EOF
-		previousDidx = previousDidx[4096:]
-		for i := 0; i*40 < len(previousDidx); i += 1 {
-			e := DidxEntry{}
-			e.offset = binary.LittleEndian.Uint64(previousDidx[i*40 : i*40+8])
-			e.digest = previousDidx[i*40+8 : i*40+40]
-			shahash := hex.EncodeToString(e.digest)
-			fmt.Printf("Previous: %s\n", shahash)
-			knownChunks.Set(shahash, true)
-		}
-	}
-
-	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
-	f := &os.File{}
-	if pxarOut != "" {
-		f, err = os.Create(pxarOut)
+		previousDidx, err := client.DownloadPreviousToBytes(archive.ArchiveName)
 		if err != nil {
 			return err
 		}
-		defer f.Close()
-	}
-	/**/
 
-	pxarChunk := ChunkState{}
-	pxarChunk.Init(newchunk, reusechunk, knownChunks)
+		fmt.Printf("Downloaded previous DIDX: %d bytes\n", len(previousDidx))
 
-	pcat1Chunk := ChunkState{}
-	pcat1Chunk.Init(newchunk, reusechunk, knownChunks)
+		/*f2, _ := os.Create("test.didx")
+		defer f2.Close()
 
-	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
-	if err != nil {
-		return err
-	}
-	pcat1Chunk.wrid, err = client.CreateDynamicIndex("catalog.pcat1.didx")
-	if err != nil {
-		return err
-	}
+		f2.Write(previous_didx)*/
 
-	archive.WriteCB = func(b []byte) {
+		/*
+			Here we download the previous dynamic index to figure out which chunks are the same of what
+			we are going to upload to avoid unnecessary traffic and compression cpu usage
+		*/
 
-		if pxarOut != "" {
-			// TODO: error handling inside callback
-			f.Write(b)
+		if !bytes.HasPrefix(previousDidx, didxMagic) {
+			fmt.Printf("Previous index has wrong magic (%s)!\n", previousDidx[:8])
+
+		} else {
+			//Header as per proxmox documentation is fixed size of 4096 bytes,
+			//then offset of type uint64 and sha256 digests follow , so 40 byte each record until EOF
+			previousDidx = previousDidx[4096:]
+			for i := 0; i*40 < len(previousDidx); i += 1 {
+				e := DidxEntry{}
+				e.offset = binary.LittleEndian.Uint64(previousDidx[i*40 : i*40+8])
+				e.digest = previousDidx[i*40+8 : i*40+40]
+				shahash := hex.EncodeToString(e.digest)
+				fmt.Printf("Previous: %s\n", shahash)
+				knownChunks.Set(shahash, true)
+			}
 		}
 
-		pxarChunk.HandleData(b, client)
+		fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
+		f := &os.File{}
+		if pxarOut != "" {
+			f, err = os.Create(pxarOut)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+		}
+		/**/
 
-		//
-	}
+		pxarChunk := ChunkState{}
+		pxarChunk.Init(newchunk, reusechunk, knownChunks)
 
-	archive.CatalogWriteCB = func(b []byte) {
-		pcat1Chunk.HandleData(b, client)
-	}
+		pcat1Chunk := ChunkState{}
+		pcat1Chunk.Init(newchunk, reusechunk, knownChunks)
 
-	//This is the entry point of backup job which will start streaming with the PCAT and PXAR write callback
-	//Data to be hashed and eventuall uploaded
+		pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
+		if err != nil {
+			return err
+		}
+		pcat1Chunk.wrid, err = client.CreateDynamicIndex("catalog.pcat1.didx")
+		if err != nil {
+			return err
+		}
 
-	archive.WriteDir(backupdir, "", true)
+		archive.WriteCB = func(b []byte) {
 
-	pxarChunk.Eof(client)
-	pcat1Chunk.Eof(client)
+			if pxarOut != "" {
+				// TODO: error handling inside callback
+				f.Write(b)
+			}
 
-	err = client.UploadManifest()
+			pxarChunk.HandleData(b, client)
+
+			//
+		}
+
+		archive.CatalogWriteCB = func(b []byte) {
+			pcat1Chunk.HandleData(b, client)
+		}
+
+		//This is the entry point of backup job which will start streaming with the PCAT and PXAR write callback
+		//Data to be hashed and eventuall uploaded
+
+		archive.WriteDir(backupdir, "", true)
+
+		pxarChunk.Eof(client)
+		pcat1Chunk.Eof(client)
+
+		err = client.UploadManifest()
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
 	if err != nil {
 		return err
 	}

@@ -16,9 +16,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/cornelk/hashmap"
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/net/http2"
 )
@@ -56,7 +58,7 @@ type ChunkUploadStats struct {
 
 type FixedIndexCreateReq struct {
 	ArchiveName string `json:"archive-name"`
-	Size int64	`json:"size"`
+	Size        int64  `json:"size"`
 }
 
 type Unprotected struct {
@@ -100,8 +102,9 @@ type PBSClient struct {
 
 var blobCompressedMagic = []byte{49, 185, 88, 66, 111, 182, 163, 127}
 var blobUncompressedMagic = []byte{66, 171, 56, 7, 190, 131, 112, 161}
+
 func (pbs *PBSClient) CreateFixedIndex(fic FixedIndexCreateReq) (uint64, error) {
-	jd,err := json.Marshal(fic)
+	jd, err := json.Marshal(fic)
 	if err != nil {
 		return 0, err
 	}
@@ -119,9 +122,9 @@ func (pbs *PBSClient) CreateFixedIndex(fic FixedIndexCreateReq) (uint64, error) 
 	}
 
 	if resp2.StatusCode != http.StatusOK {
-		resp1, err := io.ReadAll(resp2.Body)
+		resp1, _ := io.ReadAll(resp2.Body)
 		fmt.Println("Error making request:", string(resp1), string(resp2.Proto))
-		return 0, err
+		return 0, fmt.Errorf("Error making request:", string(resp1), string(resp2.Proto))
 	}
 
 	resp1, err := io.ReadAll(resp2.Body)
@@ -208,7 +211,7 @@ func (pbs *PBSClient) CloseFixedIndex(writerid uint64, checksum string, totalsiz
 }
 
 func (pbs *PBSClient) CreateDynamicIndex(name string) (uint64, error) {
-	
+
 	req, err := http.NewRequest("POST", pbs.BaseURL+"/dynamic_index", bytes.NewBuffer([]byte(fmt.Sprintf("{\"archive-name\": \"%s\"}", name))))
 	if err != nil {
 		return 0, err
@@ -285,13 +288,13 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 		if len(compressedData) > len(chunkdata) {
 			return pbs.UploadChunk(writerid, digest, chunkdata, dynamic, false)
 		}
-	}else{
+	} else {
 		outBuffer = append(outBuffer, blobUncompressedMagic...)
 		checksum := crc32.Checksum(chunkdata, crc32.IEEETable)
 		outBuffer = binary.LittleEndian.AppendUint32(outBuffer, checksum)
 		outBuffer = append(outBuffer, chunkdata...)
 	}
-	
+
 	//fmt.Printf("Compressed: %d , Orig: %d\n", len(compressedData), len(chunkdata))
 
 	q := &url.Values{}
@@ -536,6 +539,16 @@ func (pbs *PBSClient) Connect(reader bool) {
 
 }
 
+type FIDXHeader struct {
+	Magic        [8]byte
+	UUID         [16]byte
+	CreationTime uint64
+	IndexCsum    [32]byte
+	Size         uint64
+	ChunkSize    uint64
+	Padding      [4016]byte
+}
+
 func (pbs *PBSClient) DownloadPreviousToBytes(archivename string) ([]byte, error) { //In the future also download to tmp if index is extremely big...
 	q := &url.Values{}
 
@@ -559,6 +572,37 @@ func (pbs *PBSClient) DownloadPreviousToBytes(archivename string) ([]byte, error
 		return nil, err
 	}
 
+	return ret, nil
+
+}
+
+func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*hashmap.Map[string, bool], error) {
+	data, err := pbs.DownloadPreviousToBytes(archivename)
+	if err != nil {
+		return nil, err
+	}
+	rdr := bytes.NewReader(data)
+	var hdr FIDXHeader
+	err = binary.Read(rdr, binary.LittleEndian, &hdr)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.Equal(hdr.Magic[:], []byte{47, 127, 65, 237, 145, 253, 15, 205}) {
+		return nil, fmt.Errorf("FIDX: Invalid magic %+v", hdr.Magic)
+	}
+	fmt.Printf("%+v\n", hdr)
+	ret := hashmap.New[string, bool]()
+	for i := uint64(0); i < hdr.Size/hdr.ChunkSize; i++ {
+		H := make([]byte, 32)
+		nbytes, err := rdr.Read(H)
+		if err != nil {
+			return nil, err
+		}
+		if nbytes != len(H) {
+			return nil, fmt.Errorf("FIDX: Short read")
+		}
+		ret.Insert(hex.EncodeToString(H), true)
+	}
 	return ret, nil
 
 }
