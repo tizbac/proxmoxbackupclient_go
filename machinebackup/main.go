@@ -113,11 +113,6 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 	errch := make(chan error)
 	digests := make(map[int64][]byte)
 
-	type UploadSeg struct {
-		WRID    uint64
-		Shahash string
-		Block   []byte
-	}
 	type PosSeg struct {
 		Pos  uint64
 		Data []byte
@@ -129,6 +124,11 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 		for seg := range ch2 {
 			h := sha256.New()
 			_, err = h.Write(seg.Data)
+
+			if len(seg.Data) != 4*1024*1024 {
+				errch <- fmt.Errorf("Got chunk with unexpected size %d", len(seg.Data))
+				break
+			}
 
 			shahash := hex.EncodeToString(h.Sum(nil))
 			//binary.Write(CS.chunkdigests, binary.LittleEndian, (CS.pos + uint64(nread)))
@@ -238,27 +238,30 @@ func backupFileDevice(client *pbscommon.PBSClient, filename string) error {
 		return err
 	}
 
-	block := make([]byte, 4*1024*1024) //PBS block size is fixed 4MB
+	
 	size, err := f.Seek(0 , io.SeekEnd)
 	if err != nil {
 		return err
 	}
 	ch := make(chan []byte)
-	f.Seek(0, io.SeekStart)
-	for {
-		nread , err := f.Read(block)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
+	go func() {
+		f.Seek(0, io.SeekStart)
+		for {
+			block := make([]byte, 4*1024*1024) //PBS block size is fixed 4MB
+			nread , err := f.Read(block)
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				panic(err)
+			}
+			
+			if nread < 4*1024*1024 {
+				block = append(block, make([]byte, 4*1024*1024-nread)...)
+			}
+			ch <- block
 		}
-		
-		if nread < 4*1024*1024 {
-			block = append(block, make([]byte, 4*1024*1024-nread)...)
-		}
-		ch <- block
-	}
-	close(ch)
+		close(ch)
+	}()
 
 	return uploadWorker(client, slug+".fidx", uint64(size), ch)
 }

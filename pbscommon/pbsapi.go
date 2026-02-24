@@ -318,9 +318,9 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 	}
 
 	if resp2.StatusCode != http.StatusOK {
-		resp1, err := io.ReadAll(resp2.Body)
+		resp1, _ := io.ReadAll(resp2.Body)
 		fmt.Println("Error making request:", string(resp1), string(resp2.Proto))
-		return err
+		return fmt.Errorf("Error making request: %s %s", string(resp1), string(resp2.Proto))
 	}
 
 	return nil
