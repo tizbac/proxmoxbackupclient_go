@@ -20,6 +20,8 @@ env:
 
 builds:
   - id: windows
+    main: ./directorybackup
+    binary: pbsdirectorybackup
     goos:
       - windows
     goarch:
@@ -27,9 +29,29 @@ builds:
     env:
       - CC=x86_64-w64-mingw32-gcc
       - CXX=x86_64-w64-mingw32-g++
-
+  - id: windows_machine
+    main: ./machinebackup
+    binary: pbsmachinebackup
+    goos:
+      - windows
+    goarch:
+      - amd64
+    env:
+      - CC=x86_64-w64-mingw32-gcc
+      - CXX=x86_64-w64-mingw32-g++
+  - id: linux_machine
+    main: ./machinebackup
+    binary: pbsmachinebackup
+    goos:
+      - linux
+    goarch:
+      - amd64
+    env:
+      - CC=x86_64-linux-gnu-gcc
+      - CXX=x86_64-linux-gnu-g++
   - id: linux
-    binary: vet
+    main: ./directorybackup
+    binary: directorybackup
     goos:
       - linux
     goarch:
@@ -39,7 +61,8 @@ builds:
       - CXX=x86_64-linux-gnu-g++
 
   - id: darwin-amd64
-    binary: vet
+    main: ./directorybackup
+    binary: directorybackup
     goos:
       - darwin
     goarch:
@@ -49,7 +72,8 @@ builds:
       - CXX=o64-clang++
 
   - id: darwin-arm64
-    binary: vet
+    main: ./directorybackup
+    binary: directorybackup
     goos:
       - darwin
     goarch:
