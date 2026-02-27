@@ -1,8 +1,13 @@
-go 1.24.4
+go 1.25.7
 
 use ./clientcommon
+
 use ./pbscommon
+
 use ./directorybackup
+
 use ./snapshot
+
 use ./machinebackup
+
 use ./nbd

@@ -63,6 +63,7 @@ universal_binaries:
 
 archives:
   - format: tar.gz
+    allow_different_binary_count: true
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
@@ -73,6 +74,7 @@ archives:
     format_overrides:
     - goos: windows
       format: zip
+    
 checksum:
   name_template: checksums.txt
 snapshot:
