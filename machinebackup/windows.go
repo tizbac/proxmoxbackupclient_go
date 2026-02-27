@@ -1,22 +1,21 @@
-
 //go:build windows
 // +build windows
+
 package main
 
-
 import (
-	"snapshot"
-	"strings"
-	"syscall"
-	"unsafe"
 	"fmt"
 	"io"
 	"os"
 	"pbscommon"
+	"snapshot"
+	"strings"
+	"syscall"
+	"unsafe"
+
 	"github.com/tawesoft/golib/v2/dialog"
 	"golang.org/x/sys/windows"
 )
-
 
 type DISK_EXTENT struct {
 	DiskNumber     uint32
@@ -435,15 +434,20 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 						panic(err)
 					}
 					defer snapshot_file.Close()
+					pos := P.StartByte
 					block := make([]byte, 4*1024*1024)
 					for {
 						nbytes, err := snapshot_file.Read(block)
 						if err == io.EOF {
 							break
 						}
+						if pos >= P.EndByte {
+							panic(fmt.Errorf("Fatal: Went outside partition space while reading VSS snapshot"))
+						}
 						if err != nil {
 							panic(err)
 						}
+						pos += uint64(nbytes)
 						buffer = append(buffer, block[:nbytes]...)
 						if len(buffer) >= 4*1024*1024 {
 							ch <- buffer[:4*1024*1024]
