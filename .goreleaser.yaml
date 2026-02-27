@@ -23,18 +23,26 @@ builds:
       - windows
     goarch:
       - amd64
-  - id: linux_machine
+  - id: machine
     main: ./machinebackup
     binary: pbsmachinebackup
     goos:
       - linux
+      - freebsd
+      - netbsd
+      - openbsd
+      - solaris
     goarch:
       - amd64
-  - id: linux
+  - id: directory
     main: ./directorybackup
     binary: directorybackup
     goos:
       - linux
+      - freebsd
+      - netbsd
+      - openbsd
+      - solaris
     goarch:
       - amd64
 
@@ -53,6 +61,7 @@ builds:
       - darwin
     goarch:
       - arm64
+  
 
 release:
   # for prerelease it doesn't build and distribute
