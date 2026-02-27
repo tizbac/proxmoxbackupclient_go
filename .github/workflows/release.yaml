@@ -30,7 +30,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: machinebackup/go.mod #We have two go.mod but either one gonna be sort of ok
           check-latest: true
 
       - name: Log in to GHCR
