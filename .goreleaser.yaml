@@ -8,16 +8,6 @@
 
 version: 1
 
-before:
-  hooks:
-    # You may remove this if you don't use go modules.
-    - go mod tidy
-    # you may remove this if you don't need go generate
-    - go generate ./...
-
-env:
-  - CGO_ENABLED=1
-
 builds:
   - id: windows
     main: ./directorybackup
@@ -26,9 +16,6 @@ builds:
       - windows
     goarch:
       - amd64
-    env:
-      - CC=x86_64-w64-mingw32-gcc
-      - CXX=x86_64-w64-mingw32-g++
   - id: windows_machine
     main: ./machinebackup
     binary: pbsmachinebackup
@@ -36,9 +23,6 @@ builds:
       - windows
     goarch:
       - amd64
-    env:
-      - CC=x86_64-w64-mingw32-gcc
-      - CXX=x86_64-w64-mingw32-g++
   - id: linux_machine
     main: ./machinebackup
     binary: pbsmachinebackup
@@ -46,9 +30,6 @@ builds:
       - linux
     goarch:
       - amd64
-    env:
-      - CC=x86_64-linux-gnu-gcc
-      - CXX=x86_64-linux-gnu-g++
   - id: linux
     main: ./directorybackup
     binary: directorybackup
@@ -56,9 +37,6 @@ builds:
       - linux
     goarch:
       - amd64
-    env:
-      - CC=x86_64-linux-gnu-gcc
-      - CXX=x86_64-linux-gnu-g++
 
   - id: darwin-amd64
     main: ./directorybackup
@@ -67,9 +45,6 @@ builds:
       - darwin
     goarch:
       - amd64
-    env:
-      - CC=o64-clang
-      - CXX=o64-clang++
 
   - id: darwin-arm64
     main: ./directorybackup
@@ -78,9 +53,6 @@ builds:
       - darwin
     goarch:
       - arm64
-    env:
-      - CC=o64-clang
-      - CXX=o64-clang++
 
 release:
   # for prerelease it doesn't build and distribute

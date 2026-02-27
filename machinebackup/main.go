@@ -20,8 +20,6 @@ import (
 	"sync/atomic"
 
 	"github.com/cornelk/hashmap"
-	"github.com/gen2brain/beeep"
-	"github.com/getlantern/systray"
 	"github.com/tawesoft/golib/v2/dialog"
 )
 
@@ -281,15 +279,9 @@ func main() {
 		os.Exit(2)
 	}
 	defer L.ReleaseProcessLock()
-	if runtime.GOOS == "windows" {
-		go systray.Run(func() {
-			systray.SetIcon(clientcommon.ICON)
-			systray.SetTooltip("PBSGO Backup running")
-			beeep.Notify("Proxmox Backup Go", "Backup started", "")
-		},
-			func() {
 
-			})
+	if cfg.SysTray {
+		sysTraySetup()
 	}
 
 	insecure := cfg.CertFingerprint != ""

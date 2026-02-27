@@ -28,16 +28,16 @@ type SMTPConfig struct {
 }
 
 type Config struct {
-	BaseURL          string      `json:"baseurl"`
-	CertFingerprint  string      `json:"certfingerprint"`
-	AuthID           string      `json:"authid"`
-	Secret           string      `json:"secret"`
-	Datastore        string      `json:"datastore"`
-	Namespace        string      `json:"namespace"`
-	BackupID         string      `json:"backup-id"`
-	BackupDevice	 string		 `json:"backupdev"`
-	PxarOut          string      `json:"pxarout"`
-	SMTP             *SMTPConfig `json:"smtp"`
+	BaseURL         string      `json:"baseurl"`
+	CertFingerprint string      `json:"certfingerprint"`
+	AuthID          string      `json:"authid"`
+	Secret          string      `json:"secret"`
+	Datastore       string      `json:"datastore"`
+	Namespace       string      `json:"namespace"`
+	BackupID        string      `json:"backup-id"`
+	BackupDevice    string      `json:"backupdev"`
+	SMTP            *SMTPConfig `json:"smtp"`
+	SysTray         bool        `json:"systray"`
 }
 
 func (c *Config) valid() bool {
@@ -70,8 +70,7 @@ func loadConfig() *Config {
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
 	backupDEVFlag := flag.String("backupdev", "", "Backup device file ( On windows it can be \\\\.\\PhysicalDiskN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever but not consistent for now unless it being an LVM snapshot or ZFS")
-	
-
+	sysTrayFlag := flag.Bool("systray", false, "Enable systray( Note it can cause issues when running with no user logged in )")
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
 	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")
 	mailUsernameFlag := flag.String("mail-username", "", "mail notification system: mail server username(optional)")
@@ -125,7 +124,9 @@ func loadConfig() *Config {
 	if *backupDEVFlag != "" {
 		config.BackupDevice = *backupDEVFlag
 	}
-
+	if *sysTrayFlag {
+		config.SysTray = true
+	}
 
 	initSmtpConfigIfNeeded := func() {
 		if config.SMTP == nil {
