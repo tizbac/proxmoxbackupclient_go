@@ -39,6 +39,7 @@ type Config struct {
 	BackupStreamName string      `json:"backupstreamname"`
 	PxarOut          string      `json:"pxarout"`
 	SMTP             *SMTPConfig `json:"smtp"`
+	UseVSS 			 bool        `json:"usevss"`
 }
 
 func (c *Config) valid() bool {
@@ -73,6 +74,7 @@ func loadConfig() *Config {
 	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory, must not be symlink")
 	backupStreamNameFlag := flag.String("backupstream", "", "Filename for stream backup")
 	pxarOutFlag := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
+	noVSSFlag := flag.Bool("novss", false, "Disable VSS ( For filesystems that don't support it, for example veracrypt )")
 
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
 	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")
@@ -89,7 +91,9 @@ func loadConfig() *Config {
 	// Parse command line flags
 	flag.Parse()
 
-	config := &Config{}
+	config := &Config{
+		UseVSS: true,
+	}
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {
@@ -133,6 +137,9 @@ func loadConfig() *Config {
 	}
 	if *pxarOutFlag != "" {
 		config.PxarOut = *pxarOutFlag
+	}
+	if *noVSSFlag {
+		config.UseVSS = false
 	}
 
 	initSmtpConfigIfNeeded := func() {

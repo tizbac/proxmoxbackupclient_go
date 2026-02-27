@@ -5,3 +5,4 @@ use ./pbscommon
 use ./directorybackup
 use ./snapshot
 use ./machinebackup
+use ./nbd

@@ -218,7 +218,7 @@ func main() {
 
 	begin := time.Now()
 	if cfg.BackupSourceDir != "" {
-		err = backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir)
+		err = backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir, cfg.UseVSS)
 	} else if cfg.BackupStreamName != "" {
 		sn := cfg.BackupStreamName
 		if !strings.HasSuffix(sn, ".didx") {
@@ -359,113 +359,122 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 	return client.Finish()
 }
 
-func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) error {
+func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) error {
+	client.Connect(false)
 	knownChunks := hashmap.New[string, bool]()
 
-	fmt.Printf("Starting backup of %s\n", backupdir)
+	archive := &pbscommon.PXARArchive{}
+	archive.ArchiveName = "backup.pxar.didx"
 
-	err := snapshot.CreateVSSSnapshot(([]string{backupdir}), func(snaps map[string]snapshot.SnapShot) error {
-		k := maps.Keys(snaps)
-		k2 := slices.Collect(k)
-		SNAP := snaps[k2[0]]
-		backupdir = SNAP.FullPath
-		//Remove VSS snapshot on windows, on linux for now NOP
+	previousDidx, err := client.DownloadPreviousToBytes(archive.ArchiveName)
+	if err != nil {
+		return err
+	}
 
-		client.Connect(false)
+	fmt.Printf("Downloaded previous DIDX: %d bytes\n", len(previousDidx))
 
-		archive := &pbscommon.PXARArchive{}
-		archive.ArchiveName = "backup.pxar.didx"
+	/*f2, _ := os.Create("test.didx")
+	defer f2.Close()
 
-		previousDidx, err := client.DownloadPreviousToBytes(archive.ArchiveName)
+	f2.Write(previous_didx)*/
+
+	/*
+		Here we download the previous dynamic index to figure out which chunks are the same of what
+		we are going to upload to avoid unnecessary traffic and compression cpu usage
+	*/
+
+	if !bytes.HasPrefix(previousDidx, didxMagic) {
+		fmt.Printf("Previous index has wrong magic (%s)!\n", previousDidx[:8])
+
+	} else {
+		//Header as per proxmox documentation is fixed size of 4096 bytes,
+		//then offset of type uint64 and sha256 digests follow , so 40 byte each record until EOF
+		previousDidx = previousDidx[4096:]
+		for i := 0; i*40 < len(previousDidx); i += 1 {
+			e := DidxEntry{}
+			e.offset = binary.LittleEndian.Uint64(previousDidx[i*40 : i*40+8])
+			e.digest = previousDidx[i*40+8 : i*40+40]
+			shahash := hex.EncodeToString(e.digest)
+			fmt.Printf("Previous: %s\n", shahash)
+			knownChunks.Set(shahash, true)
+		}
+	}
+
+	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
+	f := &os.File{}
+	if pxarOut != "" {
+		f, err = os.Create(pxarOut)
 		if err != nil {
 			return err
 		}
+		defer f.Close()
+	}
+	/**/
 
-		fmt.Printf("Downloaded previous DIDX: %d bytes\n", len(previousDidx))
+	pxarChunk := ChunkState{}
+	pxarChunk.Init(newchunk, reusechunk, knownChunks)
 
-		/*f2, _ := os.Create("test.didx")
-		defer f2.Close()
+	pcat1Chunk := ChunkState{}
+	pcat1Chunk.Init(newchunk, reusechunk, knownChunks)
 
-		f2.Write(previous_didx)*/
+	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
+	if err != nil {
+		return err
+	}
+	pcat1Chunk.wrid, err = client.CreateDynamicIndex("catalog.pcat1.didx")
+	if err != nil {
+		return err
+	}
 
-		/*
-			Here we download the previous dynamic index to figure out which chunks are the same of what
-			we are going to upload to avoid unnecessary traffic and compression cpu usage
-		*/
+	archive.WriteCB = func(b []byte) {
 
-		if !bytes.HasPrefix(previousDidx, didxMagic) {
-			fmt.Printf("Previous index has wrong magic (%s)!\n", previousDidx[:8])
-
-		} else {
-			//Header as per proxmox documentation is fixed size of 4096 bytes,
-			//then offset of type uint64 and sha256 digests follow , so 40 byte each record until EOF
-			previousDidx = previousDidx[4096:]
-			for i := 0; i*40 < len(previousDidx); i += 1 {
-				e := DidxEntry{}
-				e.offset = binary.LittleEndian.Uint64(previousDidx[i*40 : i*40+8])
-				e.digest = previousDidx[i*40+8 : i*40+40]
-				shahash := hex.EncodeToString(e.digest)
-				fmt.Printf("Previous: %s\n", shahash)
-				knownChunks.Set(shahash, true)
-			}
-		}
-
-		fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
-		f := &os.File{}
 		if pxarOut != "" {
-			f, err = os.Create(pxarOut)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-		}
-		/**/
-
-		pxarChunk := ChunkState{}
-		pxarChunk.Init(newchunk, reusechunk, knownChunks)
-
-		pcat1Chunk := ChunkState{}
-		pcat1Chunk.Init(newchunk, reusechunk, knownChunks)
-
-		pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
-		if err != nil {
-			return err
-		}
-		pcat1Chunk.wrid, err = client.CreateDynamicIndex("catalog.pcat1.didx")
-		if err != nil {
-			return err
+			// TODO: error handling inside callback
+			f.Write(b)
 		}
 
-		archive.WriteCB = func(b []byte) {
+		pxarChunk.HandleData(b, client)
 
-			if pxarOut != "" {
-				// TODO: error handling inside callback
-				f.Write(b)
-			}
+		//
+	}
 
-			pxarChunk.HandleData(b, client)
+	archive.CatalogWriteCB = func(b []byte) {
+		pcat1Chunk.HandleData(b, client)
+	}
 
-			//
-		}
+	//This is the entry point of backup job which will start streaming with the PCAT and PXAR write callback
+	//Data to be hashed and eventuall uploaded
 
-		archive.CatalogWriteCB = func(b []byte) {
-			pcat1Chunk.HandleData(b, client)
-		}
+	archive.WriteDir(backupdir, "", true)
 
-		//This is the entry point of backup job which will start streaming with the PCAT and PXAR write callback
-		//Data to be hashed and eventuall uploaded
+	pxarChunk.Eof(client)
+	pcat1Chunk.Eof(client)
 
-		archive.WriteDir(backupdir, "", true)
+	err = client.UploadManifest()
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
-		pxarChunk.Eof(client)
-		pcat1Chunk.Eof(client)
+func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, usevss bool) error {
+	
 
-		err = client.UploadManifest()
-		if err != nil {
-			return err
-		}
-		return nil
-	})
+	fmt.Printf("Starting backup of %s\n", backupdir)
+	var err error
+	if usevss {
+		err = snapshot.CreateVSSSnapshot(([]string{backupdir}), func(snaps map[string]snapshot.SnapShot) error {
+			k := maps.Keys(snaps)
+			k2 := slices.Collect(k)
+			SNAP := snaps[k2[0]]
+			backupdir = SNAP.FullPath
+			//Remove VSS snapshot on windows, on linux for now NOP
+			return backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
+			
+		})
+	}else{
+		err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
+	}
 
 	if err != nil {
 		return err

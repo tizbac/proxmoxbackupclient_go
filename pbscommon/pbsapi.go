@@ -103,6 +103,52 @@ type PBSClient struct {
 var blobCompressedMagic = []byte{49, 185, 88, 66, 111, 182, 163, 127}
 var blobUncompressedMagic = []byte{66, 171, 56, 7, 190, 131, 112, 161}
 
+type SnapshotsResp struct {
+	Data []BackupManifest `json:"data"`
+}
+
+func (pbs *PBSClient) ListSnapshots() ([]BackupManifest, error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	if pbs.Insecure {
+		tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+		
+	}
+	client.Transport = tr
+	}
+	
+	ret := make([]BackupManifest, 0)
+	var r SnapshotsResp
+	params := url.Values{}
+	params.Add("ns", pbs.Namespace)
+	fullURL := fmt.Sprintf("%s/api2/json/admin/datastore/%s/snapshots?%s", pbs.BaseURL, pbs.Datastore, params.Encode())
+	
+	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+	if err != nil {
+		return ret, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	resp, err := client.Do(req)
+	if err != nil {
+		return ret, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return ret, fmt.Errorf("HTTP error: %d - %s", resp.StatusCode, string(body))
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return ret, err
+	}
+	return r.Data, nil
+
+}
+
 func (pbs *PBSClient) CreateFixedIndex(fic FixedIndexCreateReq) (uint64, error) {
 	jd, err := json.Marshal(fic)
 	if err != nil {
@@ -460,7 +506,7 @@ func (pbs *PBSClient) Connect(reader bool) {
 			calculatedFingerprint := sha256.Sum256(peerCert.Raw)
 
 			// Compare the calculated fingerprint with the expected one
-			if hex.EncodeToString(calculatedFingerprint[:]) != expectedFingerprint {
+			if hex.EncodeToString(calculatedFingerprint[:]) != expectedFingerprint && !pbs.Insecure {
 				return fmt.Errorf("certificate fingerprint does not match (%s,%s)", expectedFingerprint, hex.EncodeToString(calculatedFingerprint[:]))
 			}
 
@@ -555,6 +601,33 @@ func (pbs *PBSClient) DownloadPreviousToBytes(archivename string) ([]byte, error
 	q.Add("archive-name", archivename)
 
 	req, err := http.NewRequest("GET", pbs.BaseURL+"/previous?"+q.Encode(), nil)
+	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	if err != nil {
+		return nil, err
+	}
+	resp2, err := pbs.Client.Do(req)
+	if err != nil {
+		fmt.Println("Error making request:", err)
+		return nil, err
+	}
+	defer resp2.Body.Close()
+
+	ret, err := io.ReadAll(resp2.Body)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+
+}
+
+func (pbs *PBSClient) DownloadToBytes(archivename string) ([]byte, error) { //In the future also download to tmp if index is extremely big...
+	q := &url.Values{}
+
+	q.Add("file-name", archivename)
+
+	req, err := http.NewRequest("GET", pbs.BaseURL+"/download?"+q.Encode(), nil)
 	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
 	if err != nil {
 		return nil, err
