@@ -457,9 +457,6 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 				}
 			}
 			if len(buffer) > 0 {
-				if len(buffer) < 4*1024*1024 {
-					buffer = append(buffer, make([]byte, 4*1024*1024-len(buffer))...) //Pad to make
-				}
 				ch <- buffer
 			}
 

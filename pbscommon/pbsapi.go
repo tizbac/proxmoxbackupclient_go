@@ -113,20 +113,19 @@ func (pbs *PBSClient) ListSnapshots() ([]BackupManifest, error) {
 	}
 	if pbs.Insecure {
 		tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-		
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+		client.Transport = tr
 	}
-	client.Transport = tr
-	}
-	
+
 	ret := make([]BackupManifest, 0)
 	var r SnapshotsResp
 	params := url.Values{}
 	params.Add("ns", pbs.Namespace)
 	fullURL := fmt.Sprintf("%s/api2/json/admin/datastore/%s/snapshots?%s", pbs.BaseURL, pbs.Datastore, params.Encode())
-	
+
 	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
 	if err != nil {
 		return ret, err

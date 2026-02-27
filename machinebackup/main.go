@@ -68,7 +68,6 @@ func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, kn
 	c.knownChunks = knownChunks
 }
 
-
 func BytesToString(b int64) string {
 	if b < 1024 {
 		return fmt.Sprintf("%dB", b)
@@ -83,8 +82,6 @@ func BytesToString(b int64) string {
 	return fmt.Sprintf("%dGB", b/(1024*1024*1024))
 
 }
-
-
 
 func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint64, ch chan []byte) error {
 	var newchunk *atomic.Uint64 = new(atomic.Uint64)
@@ -124,11 +121,6 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 		for seg := range ch2 {
 			h := sha256.New()
 			_, err = h.Write(seg.Data)
-
-			if len(seg.Data) != 4*1024*1024 {
-				errch <- fmt.Errorf("Got chunk with unexpected size %d", len(seg.Data))
-				break
-			}
 
 			shahash := hex.EncodeToString(h.Sum(nil))
 			//binary.Write(CS.chunkdigests, binary.LittleEndian, (CS.pos + uint64(nread)))
@@ -232,14 +224,13 @@ func Slugify(input string) string {
 func backupFileDevice(client *pbscommon.PBSClient, filename string) error {
 	slug := Slugify(filename)
 
-	f , err := os.Open(filename)
+	f, err := os.Open(filename)
 
 	if err != nil {
 		return err
 	}
 
-	
-	size, err := f.Seek(0 , io.SeekEnd)
+	size, err := f.Seek(0, io.SeekEnd)
 	if err != nil {
 		return err
 	}
@@ -248,17 +239,14 @@ func backupFileDevice(client *pbscommon.PBSClient, filename string) error {
 		f.Seek(0, io.SeekStart)
 		for {
 			block := make([]byte, 4*1024*1024) //PBS block size is fixed 4MB
-			nread , err := f.Read(block)
+			nread, err := f.Read(block)
 			if err == io.EOF {
 				break
 			} else if err != nil {
 				panic(err)
 			}
-			
-			if nread < 4*1024*1024 {
-				block = append(block, make([]byte, 4*1024*1024-nread)...)
-			}
-			ch <- block
+
+			ch <- block[:nread]
 		}
 		close(ch)
 	}()
@@ -330,7 +318,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-	}else{
+	} else {
 		err := backupFileDevice(client, cfg.BackupDevice)
 		if err != nil {
 			panic(err)
