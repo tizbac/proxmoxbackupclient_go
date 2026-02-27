@@ -4,7 +4,6 @@
 package main
 
 import (
-	"clientcommon"
 	"fmt"
 	"io"
 	"os"
@@ -14,8 +13,6 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/gen2brain/beeep"
-	"github.com/getlantern/systray"
 	"github.com/tawesoft/golib/v2/dialog"
 	"golang.org/x/sys/windows"
 )
@@ -472,12 +469,5 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 }
 
 func sysTraySetup() {
-	go systray.Run(func() {
-		systray.SetIcon(clientcommon.ICON)
-		systray.SetTooltip("PBSGO Backup running")
-		beeep.Notify("Proxmox Backup Go", "Backup started", "")
-	},
-		func() {
-
-		})
+	//TODO
 }

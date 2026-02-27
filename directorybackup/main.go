@@ -21,8 +21,6 @@ import (
 	"time"
 
 	"github.com/cornelk/hashmap"
-	"github.com/gen2brain/beeep"
-	"github.com/getlantern/systray"
 	"github.com/tawesoft/golib/v2/dialog"
 )
 
@@ -185,16 +183,6 @@ func main() {
 		os.Exit(2)
 	}
 	defer L.ReleaseProcessLock()
-	if runtime.GOOS == "windows" {
-		go systray.Run(func() {
-			systray.SetIcon(clientcommon.ICON)
-			systray.SetTooltip("PBSGO Backup running")
-			beeep.Notify("Proxmox Backup Go", "Backup started", "")
-		},
-			func() {
-
-			})
-	}
 
 	insecure := cfg.CertFingerprint != ""
 
@@ -259,10 +247,7 @@ func main() {
 			panic(err)
 		}
 	}
-	if runtime.GOOS == "windows" {
-		systray.Quit()
-		beeep.Notify("Proxmox Backup Go", msg, "")
-	}
+
 	if cfg.SMTP != nil {
 		var subject string
 
@@ -458,7 +443,6 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 }
 
 func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, usevss bool) error {
-	
 
 	fmt.Printf("Starting backup of %s\n", backupdir)
 	var err error
@@ -470,9 +454,9 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 			backupdir = SNAP.FullPath
 			//Remove VSS snapshot on windows, on linux for now NOP
 			return backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
-			
+
 		})
-	}else{
+	} else {
 		err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
 	}
 
