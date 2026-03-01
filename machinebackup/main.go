@@ -6,6 +6,7 @@ import (
 	"flag"
 	"io"
 	"maps"
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -29,6 +30,8 @@ Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while
 Last error is: {{.ErrorStr}}{{end}}`
 
 var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
+
+const PBS_FIXED_CHUNK_SIZE = 4 * 1024 * 1024
 
 type ChunkState struct {
 	assignments        []string
@@ -125,7 +128,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 
 			assignment_mutex.Lock()
 			CS.index_hash_data[seg.Pos] = h.Sum(nil)
-			digests[int64(CS.pos)] = h.Sum(nil)
+			digests[int64(seg.Pos)] = h.Sum(nil)
 
 			_, exists := knownChunks.GetOrInsert(shahash, true)
 			assignment_mutex.Unlock()
@@ -145,7 +148,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 			CS.assignments_offset = append(CS.assignments_offset, seg.Pos)
 			CS.pos += uint64(len(seg.Data))
 			CS.chunkcount++
-			fmt.Printf("Chunk %d/%d/%d\n", CS.chunkcount, total_size/(4*1024*1024), reusechunk.Load())
+			fmt.Printf("Chunk %d/%d/%d\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(PBS_FIXED_CHUNK_SIZE))), reusechunk.Load())
 			assignment_mutex.Unlock()
 
 		}
@@ -155,6 +158,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 	posfn := func() {
 		pos := uint64(0)
 		for block := range ch {
+
 			ch2 <- PosSeg{
 				Pos:  pos,
 				Data: block,
@@ -236,7 +240,7 @@ func backupFileDevice(client *pbscommon.PBSClient, filename string) error {
 	go func() {
 		f.Seek(0, io.SeekStart)
 		for {
-			block := make([]byte, 4*1024*1024) //PBS block size is fixed 4MB
+			block := make([]byte, PBS_FIXED_CHUNK_SIZE) //PBS block size is fixed 4MB
 			nread, err := f.Read(block)
 			if err == io.EOF {
 				break

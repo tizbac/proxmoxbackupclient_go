@@ -69,7 +69,7 @@ func loadConfig() *Config {
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
-	backupDEVFlag := flag.String("backupdev", "", "Backup device file ( On windows it can be \\\\.\\PhysicalDiskN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever but not consistent for now unless it being an LVM snapshot or ZFS")
+	backupDEVFlag := flag.String("backupdev", "", "Backup device file ( On windows it can be \\\\.\\PhysicalDriveN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever but not consistent for now unless it being an LVM snapshot or ZFS")
 	sysTrayFlag := flag.Bool("systray", false, "Enable systray( Note it can cause issues when running with no user logged in )")
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
 	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")

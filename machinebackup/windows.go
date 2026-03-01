@@ -311,6 +311,9 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 
 	for i := 0; i < int(volumeDiskExtents.PartitionCount); i++ {
 		E := volumeDiskExtents.PartitionEntry[i]
+		if E.PartitionNumber == 0 {
+			continue //Windows API sometimes wrongly returns a partition that is effectively null, probably in case of MBR it is fixed 4 partitions anyway
+		}
 		fmt.Printf("Part: %d %s %s\n", E.PartitionNumber, BytesToString(int64(E.StartingOffset)), BytesToString(int64(E.PartitionLength)))
 		var letter string = ""
 		/*for x := 0; x < int(exts.NumberOfDiskExtents); x++ {
@@ -409,7 +412,7 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 				fmt.Printf("Partition: %d\n", idx)
 				if !P.RequiresVSS {
 					F.Seek(int64(P.StartByte), io.SeekStart)
-					block := make([]byte, 4*1024*1024)
+					block := make([]byte, PBS_FIXED_CHUNK_SIZE)
 					pos := P.StartByte
 					for pos < P.EndByte {
 						nbytes, err := F.Read(block[:min(uint64(len(block)), P.EndByte-pos)])
@@ -418,9 +421,9 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 						}
 						buffer = append(buffer, block[:nbytes]...)
 
-						if len(buffer) >= 4*1024*1024 {
-							ch <- buffer[:4*1024*1024]
-							buffer = buffer[4*1024*1024:]
+						if len(buffer) >= PBS_FIXED_CHUNK_SIZE {
+							ch <- buffer[:PBS_FIXED_CHUNK_SIZE]
+							buffer = buffer[PBS_FIXED_CHUNK_SIZE:]
 						}
 						pos += uint64(nbytes)
 					}
@@ -435,7 +438,7 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 					}
 					defer snapshot_file.Close()
 					pos := P.StartByte
-					block := make([]byte, 4*1024*1024)
+					block := make([]byte, PBS_FIXED_CHUNK_SIZE)
 					for {
 						nbytes, err := snapshot_file.Read(block)
 						if err == io.EOF {
@@ -449,9 +452,9 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 						}
 						pos += uint64(nbytes)
 						buffer = append(buffer, block[:nbytes]...)
-						if len(buffer) >= 4*1024*1024 {
-							ch <- buffer[:4*1024*1024]
-							buffer = buffer[4*1024*1024:]
+						if len(buffer) >= PBS_FIXED_CHUNK_SIZE {
+							ch <- buffer[:PBS_FIXED_CHUNK_SIZE]
+							buffer = buffer[PBS_FIXED_CHUNK_SIZE:]
 						}
 					}
 				}
