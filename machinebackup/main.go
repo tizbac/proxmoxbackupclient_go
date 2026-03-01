@@ -37,7 +37,7 @@ type ChunkState struct {
 	assignments        []string
 	index_hash_data    map[uint64][]byte
 	assignments_offset []uint64
-	pos                uint64
+	processed_size     uint64
 	wrid               uint64
 	chunkcount         uint64
 	current_chunk      []byte
@@ -58,7 +58,7 @@ type Partition struct {
 func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *hashmap.Map[string, bool]) {
 	c.assignments = make([]string, 0)
 	c.assignments_offset = make([]uint64, 0)
-	c.pos = 0
+	c.processed_size = 0
 	c.chunkcount = 0
 	c.index_hash_data = make(map[uint64][]byte)
 	c.current_chunk = make([]byte, 0)
@@ -146,8 +146,12 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 			assignment_mutex.Lock()
 			CS.assignments = append(CS.assignments, shahash)
 			CS.assignments_offset = append(CS.assignments_offset, seg.Pos)
-			CS.pos += uint64(len(seg.Data))
+			CS.processed_size += uint64(len(seg.Data))
 			CS.chunkcount++
+			if CS.processed_size > total_size {
+				errch <- fmt.Errorf("Fatal: tried to backup more data than specified size!")
+				break
+			}
 			fmt.Printf("Chunk %d/%d/%d\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(PBS_FIXED_CHUNK_SIZE))), reusechunk.Load())
 			assignment_mutex.Unlock()
 
@@ -199,7 +203,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 		chunkdigests.Write(CS.index_hash_data[P])
 	}
 
-	err = client.CloseFixedIndex(wrid, hex.EncodeToString(chunkdigests.Sum(nil)), CS.pos, CS.chunkcount)
+	err = client.CloseFixedIndex(wrid, hex.EncodeToString(chunkdigests.Sum(nil)), CS.processed_size, CS.chunkcount)
 	if err != nil {
 		return err
 	}
