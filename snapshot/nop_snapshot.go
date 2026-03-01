@@ -1,5 +1,5 @@
-//go:build linux || darwin || freebsd || openbsd
-// +build linux darwin freebsd openbsd
+//go:build linux || darwin || freebsd || openbsd || netbsd || solaris
+// +build linux darwin freebsd openbsd netbsd solaris
 
 package snapshot
 
@@ -11,7 +11,7 @@ func CreateVSSSnapshot(paths []string, backup_callback func(sn map[string]SnapSh
 	for _, x := range paths {
 		ret[x] = SnapShot{
 			FullPath: x,
-			Valid: true,
+			Valid:    true,
 		}
 	}
 	return backup_callback(ret)
