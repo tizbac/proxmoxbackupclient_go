@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"flag"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 
 	"clientcommon"
 	"fmt"
@@ -21,6 +23,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cornelk/hashmap"
+	"github.com/google/uuid"
 	"github.com/tawesoft/golib/v2/dialog"
 )
 
@@ -260,6 +263,11 @@ func backupFileDevice(client *pbscommon.PBSClient, filename string) error {
 	return uploadWorker(client, slug+".fidx", uint64(size), ch)
 }
 
+type BackupDisk struct {
+	Index int
+	Size  int64
+}
+
 func main() {
 
 	cfg := loadConfig()
@@ -307,22 +315,84 @@ func main() {
 		},
 	}
 
-	//Physycal drive paths will be like  "\\\\.\\PhysicalDrive0"
-	client.Connect(false)
-	if strings.HasPrefix(cfg.BackupDevice, "\\\\.\\PhysicalDrive") {
+	//Physical drive paths will be like  "\\\\.\\PhysicalDrive0"
+	client.Connect(false, cfg.BackupType)
+	disks := make([]BackupDisk, 0)
 
-		re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
-		matches := re.FindStringSubmatch(cfg.BackupDevice)
-		idx, _ := strconv.ParseInt(matches[1], 10, 32)
-		err := backupWindowsDisk(client, int(idx))
+	for _, dev := range cfg.BackupDevices {
+		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
+
+			re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
+			matches := re.FindStringSubmatch(dev)
+			idx, _ := strconv.ParseInt(matches[1], 10, 32)
+			size, err := backupWindowsDisk(client, int(idx))
+			if err != nil {
+				panic(err)
+			}
+			disks = append(disks, BackupDisk{
+				Index: int(idx),
+				Size:  size,
+			})
+		} else {
+			err := backupFileDevice(client, dev)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+
+	if cfg.BackupType == "vm" {
+		type ConfigTemplate struct {
+			VMGenId string
+			VMID    int64
+			VMName  string
+			Disks   []BackupDisk
+			OS      string
+			SMBIOS  string
+		}
+
+		tmpl, err := template.New("qemuconfig").Parse(`boot: order=sata0
+cores: 4
+machine: q35
+memory: 2048
+name: {{.VMName}}
+numa: 0
+onboot: 0
+ostype: {{.OS}}
+scsihw: virtio-scsi-single
+smbios1: uuid={{.SMBIOS}}
+sockets: 1
+{{range .Disks}}
+sata{{.Index}}: local:{{.VMID}}/vm-{{.VMID}}-disk-{{.Index}}.raw,cache=writeback,discard=on,iothread=1,size={{.Size}}
+{{end}}
+vmgenid: {{.VMGenId}}
+		`)
 		if err != nil {
 			panic(err)
 		}
-	} else {
-		err := backupFileDevice(client, cfg.BackupDevice)
+		vmid, err := strconv.ParseInt(cfg.BackupID, 10, 32)
 		if err != nil {
 			panic(err)
 		}
+		hostname, err := os.Hostname()
+		if err != nil {
+			panic(err)
+		}
+		wr := bytes.Buffer{}
+		cfgt := ConfigTemplate{
+			VMGenId: uuid.New().String(),
+			VMID:    vmid,
+			Disks:   disks,
+			VMName:  hostname,
+			SMBIOS:  uuid.New().String(), //TODO extract from real machine
+		}
+		if runtime.GOOS == "windows" { // TODO Improve
+			cfgt.OS = "win11"
+		} else {
+			cfgt.OS = "l26"
+		}
+		tmpl.Execute(&wr, cfgt)
+		client.UploadBlob("qemu-server.conf.blob", wr.Bytes())
 	}
 
 	err := client.UploadManifest()

@@ -284,7 +284,7 @@ func main() {
 
 func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, filename string, stream io.Reader) error {
 	knownChunks := hashmap.New[string, bool]()
-	client.Connect(false)
+	client.Connect(false, "host")
 	previousDidx, err := client.DownloadPreviousToBytes(filename)
 	if err != nil {
 		return err
@@ -345,7 +345,7 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 }
 
 func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) error {
-	client.Connect(false)
+	client.Connect(false, "host")
 	knownChunks := hashmap.New[string, bool]()
 
 	archive := &pbscommon.PXARArchive{}

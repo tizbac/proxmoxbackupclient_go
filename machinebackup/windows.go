@@ -247,7 +247,7 @@ func GetDiskLength(path string) (int64, error) {
 	return lengthInfo.Length, nil
 }
 
-func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
+func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 	parts := make([]Partition, 0)
 	ch := make(chan []byte)
 	diskdev := fmt.Sprintf("\\\\.\\PhysicalDrive%d", index)
@@ -352,10 +352,10 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 
 	total, err := GetDiskLength(diskdev)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return snapshot.CreateVSSSnapshot(snapshot_paths, func(snapshots map[string]snapshot.SnapShot) error {
+	return total, snapshot.CreateVSSSnapshot(snapshot_paths, func(snapshots map[string]snapshot.SnapShot) error {
 
 		/*hostname, err := os.Hostname()
 		if err != nil {
@@ -509,7 +509,7 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 			close(ch)
 		}()
 
-		return uploadWorker(client, fmt.Sprintf("windisk%d.fidx", index), uint64(total), ch)
+		return uploadWorker(client, fmt.Sprintf("drive-sata%d.img.fidx", index), uint64(total), ch)
 
 	})
 }

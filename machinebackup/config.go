@@ -35,13 +35,14 @@ type Config struct {
 	Datastore       string      `json:"datastore"`
 	Namespace       string      `json:"namespace"`
 	BackupID        string      `json:"backup-id"`
-	BackupDevice    string      `json:"backupdev"`
+	BackupDevices   []string    `json:"backupdev"`
 	SMTP            *SMTPConfig `json:"smtp"`
 	SysTray         bool        `json:"systray"`
+	BackupType      string      `json:"backuptype"`
 }
 
 func (c *Config) valid() bool {
-	baseValid := c.BaseURL != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && c.BackupDevice != ""
+	baseValid := c.BaseURL != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && len(c.BackupDevices) > 0
 	if !baseValid {
 		return baseValid
 	}
@@ -60,8 +61,22 @@ func (c *Config) valid() bool {
 	return true
 }
 
+type arrayFlags []string
+
+func (i *arrayFlags) String() string {
+	return fmt.Sprintf("%v", *i)
+}
+
+// Set is an implementation of the flag.Value interface
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
 func loadConfig() *Config {
 	// Define flags
+
+	var backupdevs arrayFlags
+
 	baseURLFlag := flag.String("baseurl", "", "Base URL for the proxmox backup server, example: https://192.168.1.10:8007")
 	certFingerprintFlag := flag.String("certfingerprint", "", "Certificate fingerprint for SSL connection, example: ea:7d:06:f9...")
 	authIDFlag := flag.String("authid", "", "Authentication ID (PBS Api token)")
@@ -69,7 +84,8 @@ func loadConfig() *Config {
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
-	backupDEVFlag := flag.String("backupdev", "", "Backup device file ( On windows it can be \\\\.\\PhysicalDriveN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever but not consistent for now unless it being an LVM snapshot or ZFS")
+	backupTypeFlag := flag.String("type", "", "host|vm , vm will allow to restore as VM inside proxmox VE (Physical to Virtual), also it enables to use file restore feature, use numeric backupid")
+	flag.Var(&backupdevs, "backupdev", "Can be specified multiple times,Backup device file ( On windows it can be \\\\.\\PhysicalDriveN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever but not consistent for now unless it being an LVM snapshot or ZFS")
 	sysTrayFlag := flag.Bool("systray", false, "Enable systray( Note it can cause issues when running with no user logged in )")
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
 	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")
@@ -86,7 +102,9 @@ func loadConfig() *Config {
 	// Parse command line flags
 	flag.Parse()
 
-	config := &Config{}
+	config := &Config{
+		BackupType: "host",
+	}
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {
@@ -121,11 +139,13 @@ func loadConfig() *Config {
 	if *backupIDFlag != "" {
 		config.BackupID = *backupIDFlag
 	}
-	if *backupDEVFlag != "" {
-		config.BackupDevice = *backupDEVFlag
-	}
+	config.BackupDevices = backupdevs
 	if *sysTrayFlag {
 		config.SysTray = true
+	}
+
+	if *backupTypeFlag != "" {
+		config.BackupType = *backupTypeFlag
 	}
 
 	initSmtpConfigIfNeeded := func() {

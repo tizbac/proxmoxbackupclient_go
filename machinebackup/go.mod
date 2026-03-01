@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/lxn/win v0.0.0-20210218163916-a377121e959e // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect

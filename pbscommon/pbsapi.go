@@ -456,6 +456,13 @@ func (pbs *PBSClient) UploadBlob(name string, data []byte) error {
 		return err
 	}
 
+	pbs.Manifest.Files = append(pbs.Manifest.Files, File{
+		CryptMode: "none",
+		Csum:      "",
+		Filename:  name,
+		Size:      int64(len(data)),
+	})
+
 	return nil
 }
 
@@ -484,7 +491,7 @@ func (pbs *PBSClient) Finish() error {
 	return nil
 }
 
-func (pbs *PBSClient) Connect(reader bool) {
+func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 	pbs.WritersManifest = make(map[uint64]int)
 	pbs.TLSConfig = tls.Config{
 		InsecureSkipVerify: pbs.Insecure,
@@ -513,9 +520,10 @@ func (pbs *PBSClient) Connect(reader bool) {
 			return nil
 		}
 	}
-
-	pbs.Manifest.BackupTime = time.Now().Unix()
-	pbs.Manifest.BackupType = "host"
+	if !reader {
+		pbs.Manifest.BackupTime = time.Now().Unix()
+	}
+	pbs.Manifest.BackupType = backuptype
 	if pbs.Manifest.BackupID == "" {
 		hostname, _ := os.Hostname()
 		pbs.Manifest.BackupID = hostname
@@ -542,8 +550,14 @@ func (pbs *PBSClient) Connect(reader bool) {
 				}
 
 				q.Add("backup-id", pbs.Manifest.BackupID)
-				q.Add("debug", "1")
-				conn.Write([]byte("GET /api2/json/backup?" + q.Encode() + " HTTP/1.1\r\n"))
+				fmt.Println(q.Encode())
+				//q.Add("debug", "1")
+				if !reader {
+					conn.Write([]byte("GET /api2/json/backup?" + q.Encode() + " HTTP/1.1\r\n"))
+				} else {
+					conn.Write([]byte("GET /api2/json/reader?" + q.Encode() + " HTTP/1.1\r\n"))
+				}
+
 				conn.Write([]byte("Authorization: " + fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret) + "\r\n"))
 				if !reader {
 					conn.Write([]byte("Upgrade: proxmox-backup-protocol-v1\r\n"))
@@ -571,6 +585,7 @@ func (pbs *PBSClient) Connect(reader bool) {
 					toks := strings.Split(lines[0], " ")
 					if len(toks) > 1 && toks[1] != "101" {
 						fmt.Println("Unexpected response code: " + strings.Join(toks[1:], " "))
+						fmt.Println(string(buf))
 						return nil, &AuthErr{}
 					}
 				}

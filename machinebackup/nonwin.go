@@ -8,8 +8,8 @@ import (
 	"pbscommon"
 )
 
-func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
-	return fmt.Errorf("Not supported on this platform")
+func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
+	return 0, fmt.Errorf("Not supported on this platform")
 }
 
 func sysTraySetup() {
