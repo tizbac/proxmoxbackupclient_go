@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"pbscommon"
 	"snapshot"
@@ -427,6 +428,9 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 						}
 						pos += uint64(nbytes)
 					}
+					if pos != P.EndByte {
+						panic(fmt.Errorf("Failed to read partition entirely %d/%d", pos, P.EndByte))
+					}
 				} else {
 					snap, ok := snapshots[P.Letter+":\\"]
 					if !ok {
@@ -438,11 +442,27 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 					}
 					defer snapshot_file.Close()
 					pos := P.StartByte
+
+					l, err := GetDiskLength(strings.TrimRight(snap.ObjectPath, "\\"))
+					if err != nil {
+						panic(err)
+					}
+
+					if uint64(P.EndByte) != uint64(P.StartByte)+uint64(l) {
+						log.Printf("Harmless warning: VSS snapshot is smaller than partition ( probably FS is too ), will pad with zeros")
+					}
+
+					npad := P.EndByte - (uint64(P.StartByte) + uint64(l))
+
 					block := make([]byte, PBS_FIXED_CHUNK_SIZE)
 					for {
 						nbytes, err := snapshot_file.Read(block)
 						if err == io.EOF {
-							break
+							if pos != P.EndByte {
+								log.Printf("Harmless warning: VSS snapshot is smaller than partition ( probably FS is too ), will pad with zeros")
+								npad = P.EndByte - pos
+								break
+							}
 						}
 						if pos >= P.EndByte {
 							panic(fmt.Errorf("Fatal: Went outside partition space while reading VSS snapshot"))
@@ -457,10 +477,33 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) error {
 							buffer = buffer[PBS_FIXED_CHUNK_SIZE:]
 						}
 					}
+					block = make([]byte, PBS_FIXED_CHUNK_SIZE)
+					for npad > 0 {
+						log.Printf("Padding %d", npad)
+						sl := block[:min(PBS_FIXED_CHUNK_SIZE, npad)]
+						buffer = append(buffer, sl...)
+						pos += uint64(len(sl))
+						if len(buffer) >= PBS_FIXED_CHUNK_SIZE {
+							ch <- buffer[:PBS_FIXED_CHUNK_SIZE]
+							buffer = buffer[PBS_FIXED_CHUNK_SIZE:]
+						}
+						npad -= uint64(len(sl))
+					}
+					if pos != P.EndByte {
+						panic(fmt.Errorf("Failed to read partition entirely %d/%d", pos, P.EndByte))
+					}
 				}
+
 			}
-			if len(buffer) > 0 {
-				ch <- buffer
+
+			for len(buffer) > 0 {
+				if len(buffer) > PBS_FIXED_CHUNK_SIZE {
+					ch <- buffer[:PBS_FIXED_CHUNK_SIZE]
+					buffer = buffer[PBS_FIXED_CHUNK_SIZE:]
+				} else {
+					ch <- buffer
+					buffer = buffer[:0]
+				}
 			}
 
 			close(ch)
