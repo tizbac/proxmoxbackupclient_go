@@ -34,7 +34,7 @@ Last error is: {{.ErrorStr}}{{end}}`
 
 var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
 
-const PBS_FIXED_CHUNK_SIZE = 4 * 1024 * 1024
+
 
 type ChunkState struct {
 	assignments        []string
@@ -155,7 +155,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 				errch <- fmt.Errorf("Fatal: tried to backup more data than specified size!")
 				break
 			}
-			fmt.Printf("Chunk %d/%d/%d\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(PBS_FIXED_CHUNK_SIZE))), reusechunk.Load())
+			fmt.Printf("Chunk %d/%d/%d\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load())
 			assignment_mutex.Unlock()
 
 		}
@@ -247,7 +247,7 @@ func backupFileDevice(client *pbscommon.PBSClient, filename string) error {
 	go func() {
 		f.Seek(0, io.SeekStart)
 		for {
-			block := make([]byte, PBS_FIXED_CHUNK_SIZE) //PBS block size is fixed 4MB
+			block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE) //PBS block size is fixed 4MB
 			nread, err := f.Read(block)
 			if err == io.EOF {
 				break

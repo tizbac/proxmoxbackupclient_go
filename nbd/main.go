@@ -3,13 +3,122 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
+	"os"
+	"os/signal"
 	"pbscommon"
 	"strings"
+	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/pojntfx/go-nbd/pkg/client"
+	"github.com/pojntfx/go-nbd/pkg/server"
 	"github.com/rivo/tview"
 )
+
+func setReadOnly(dev *os.File, readonly bool) error {
+    // BLKROSET constant from <linux/fs.h>
+    const BLKROSET = 4701  // ioctl command to set read-only flag
+    
+    // Convert bool to int (1 for true, 0 for false)
+    value := 0
+    if readonly {
+        value = 1
+    }
+    
+    // Call ioctl with a pointer to the integer value
+    _, _, errno := syscall.Syscall(
+        syscall.SYS_IOCTL,
+        dev.Fd(),
+        BLKROSET,
+        uintptr(unsafe.Pointer(&value)),
+    )
+    
+    if errno != 0 {
+        return fmt.Errorf("ioctl BLKROSET failed: %v", errno)
+    }
+    return nil
+}
+
+func nbdStart(pbsclient *pbscommon.PBSClient, fidxdata []byte, nbd_index int) {
+	os.Remove("/tmp/pbsnbd")
+	l, err := net.Listen("unix", "/tmp/pbsnbd")
+	if err != nil {
+		panic(err)
+	}
+	backend, err := NewFIDXServer(fidxdata, pbsclient)
+	if err != nil {
+		panic(err)
+	}
+
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				continue
+			}
+
+			go func() {
+				if err := server.Handle(
+					conn,
+					[]*server.Export{
+						{
+							Name:        "FIDX",
+							Description: "FIDX",
+							Backend:     backend,
+						},
+					},
+					&server.Options{
+						ReadOnly:           true,
+						MinimumBlockSize:   1,
+						PreferredBlockSize: 512,
+						MaximumBlockSize:   pbscommon.PBS_FIXED_CHUNK_SIZE,
+					}); err != nil {
+					fmt.Println(err.Error())
+				}
+			}()
+		}
+	}()
+	time.Sleep(100*time.Millisecond)
+	conn, err := net.Dial("unix", "/tmp/pbsnbd")
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+	nbddev := fmt.Sprintf("/dev/nbd%d", nbd_index)
+	f, err := os.Open(nbddev)
+	if err != nil {
+		fmt.Println("Please do modprobe nbd")
+		panic(err)
+	}
+	defer f.Close()
+
+	client.Disconnect(f)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+
+	go func() {
+		for range sigCh {
+			if err := client.Disconnect(f); err != nil {
+				panic(err)
+			}
+
+			os.Exit(0)
+		}
+	}()
+
+	setReadOnly(f, true)
+    fmt.Printf("Starting NBD on %s...\n", nbddev)
+	if err := client.Connect(conn, f, &client.Options{
+		ExportName: "FIDX",
+		BlockSize:  512,
+	}); err != nil {
+		panic(err)
+	}
+}
 
 func main() {
 	client := &pbscommon.PBSClient{}
@@ -20,6 +129,7 @@ func main() {
 	secretFlag := flag.String("secret", "", "Secret for authentication")
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
+	nbdFlag := flag.Int("nbd", 0, "NBD number")
 	backupPath := flag.String("path", "", "Path to backup, eg. vm/100/2026-03-01T00:07:00Z/drive-scsi0.img.fidx")
 	helpFlag := flag.Bool("help", false, "Show help")
 	flag.Parse()
@@ -50,6 +160,7 @@ func main() {
 		client.Connect(true, parts[0])
 		data, err := client.DownloadToBytes(parts[3])
 		fmt.Println(len(data))
+		nbdStart(client, data, *nbdFlag)
 		return
 	}
 
@@ -104,14 +215,14 @@ func main() {
 							node2.SetSelectedFunc(func() {
 								client.Manifest = sn
 								app.SetRoot(loading_modal, false)
-								client.Connect(true, "host")
+								client.Connect(true, sn.BackupType)
 								data, err := client.DownloadToBytes(x.Filename)
 								if err != nil {
 									error_modal.SetText(err.Error() + fmt.Sprintf("%+v \n%+v", x, sn))
 									app.SetRoot(error_modal, true)
 								} else {
 									app.Stop()
-									fmt.Println(len(data))
+									nbdStart(client, data, *nbdFlag)
 								}
 							})
 

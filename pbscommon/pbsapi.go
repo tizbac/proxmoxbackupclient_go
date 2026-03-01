@@ -99,7 +99,7 @@ type PBSClient struct {
 
 	WritersManifest map[uint64]int
 }
-
+const PBS_FIXED_CHUNK_SIZE = 4 * 1024 * 1024
 var blobCompressedMagic = []byte{49, 185, 88, 66, 111, 182, 163, 127}
 var blobUncompressedMagic = []byte{66, 171, 56, 7, 190, 131, 112, 161}
 
@@ -677,7 +677,6 @@ func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*hashmap.Map[s
 	if !slices.Equal(hdr.Magic[:], []byte{47, 127, 65, 237, 145, 253, 15, 205}) {
 		return nil, fmt.Errorf("FIDX: Invalid magic %+v", hdr.Magic)
 	}
-	fmt.Printf("%+v\n", hdr)
 	ret := hashmap.New[string, bool]()
 	for i := uint64(0); i < hdr.Size/hdr.ChunkSize; i++ {
 		H := make([]byte, 32)
@@ -693,3 +692,47 @@ func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*hashmap.Map[s
 	return ret, nil
 
 }
+
+func (pbs *PBSClient) GetChunkData(digest string) ([]byte, error ) {
+	q := &url.Values{}
+
+	q.Add("digest", digest)
+
+	req, err := http.NewRequest("GET", pbs.BaseURL+"/chunk?"+q.Encode(), nil)
+	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	if err != nil {
+		return nil, err
+	}
+	resp2, err := pbs.Client.Do(req)
+	if err != nil {
+		fmt.Println("Error making request:", err)
+		return nil, err
+	}
+	defer resp2.Body.Close()
+
+	ret, err := io.ReadAll(resp2.Body)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if slices.Equal(ret[:8], blobUncompressedMagic) {
+		return ret[12:], nil 
+	} else if slices.Equal(ret[:8], blobCompressedMagic) {
+		rd1 := bytes.NewReader(ret[12:])
+		dec, err := zstd.NewReader(rd1)
+		if err != nil {
+			return nil, err
+		}
+		ret2 := make([]byte, 0)
+		ret2, err = dec.DecodeAll(ret[12:], ret2)
+		if err != nil {
+			return nil, err
+		}
+		return ret2, nil
+	} else{
+		return nil, fmt.Errorf("Encrypted chunks not supported!")
+	}
+
+
+} 

@@ -413,7 +413,7 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 				fmt.Printf("Partition: %d\n", idx)
 				if !P.RequiresVSS {
 					F.Seek(int64(P.StartByte), io.SeekStart)
-					block := make([]byte, PBS_FIXED_CHUNK_SIZE)
+					block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
 					pos := P.StartByte
 					for pos < P.EndByte {
 						nbytes, err := F.Read(block[:min(uint64(len(block)), P.EndByte-pos)])
@@ -422,9 +422,9 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 						}
 						buffer = append(buffer, block[:nbytes]...)
 
-						if len(buffer) >= PBS_FIXED_CHUNK_SIZE {
-							ch <- buffer[:PBS_FIXED_CHUNK_SIZE]
-							buffer = buffer[PBS_FIXED_CHUNK_SIZE:]
+						if len(buffer) >= pbscommon.PBS_FIXED_CHUNK_SIZE {
+							ch <- buffer[:pbscommon.PBS_FIXED_CHUNK_SIZE]
+							buffer = buffer[pbscommon.PBS_FIXED_CHUNK_SIZE:]
 						}
 						pos += uint64(nbytes)
 					}
@@ -454,7 +454,7 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 
 					npad := P.EndByte - (uint64(P.StartByte) + uint64(l))
 
-					block := make([]byte, PBS_FIXED_CHUNK_SIZE)
+					block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
 					for {
 						nbytes, err := snapshot_file.Read(block)
 						if err == io.EOF {
@@ -472,20 +472,20 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 						}
 						pos += uint64(nbytes)
 						buffer = append(buffer, block[:nbytes]...)
-						if len(buffer) >= PBS_FIXED_CHUNK_SIZE {
-							ch <- buffer[:PBS_FIXED_CHUNK_SIZE]
-							buffer = buffer[PBS_FIXED_CHUNK_SIZE:]
+						if len(buffer) >= pbscommon.PBS_FIXED_CHUNK_SIZE {
+							ch <- buffer[:pbscommon.PBS_FIXED_CHUNK_SIZE]
+							buffer = buffer[pbscommon.PBS_FIXED_CHUNK_SIZE:]
 						}
 					}
-					block = make([]byte, PBS_FIXED_CHUNK_SIZE)
+					block = make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
 					for npad > 0 {
 						log.Printf("Padding %d", npad)
-						sl := block[:min(PBS_FIXED_CHUNK_SIZE, npad)]
+						sl := block[:min(pbscommon.PBS_FIXED_CHUNK_SIZE, npad)]
 						buffer = append(buffer, sl...)
 						pos += uint64(len(sl))
-						if len(buffer) >= PBS_FIXED_CHUNK_SIZE {
-							ch <- buffer[:PBS_FIXED_CHUNK_SIZE]
-							buffer = buffer[PBS_FIXED_CHUNK_SIZE:]
+						if len(buffer) >= pbscommon.PBS_FIXED_CHUNK_SIZE {
+							ch <- buffer[:pbscommon.PBS_FIXED_CHUNK_SIZE]
+							buffer = buffer[pbscommon.PBS_FIXED_CHUNK_SIZE:]
 						}
 						npad -= uint64(len(sl))
 					}
@@ -497,9 +497,9 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 			}
 
 			for len(buffer) > 0 {
-				if len(buffer) > PBS_FIXED_CHUNK_SIZE {
-					ch <- buffer[:PBS_FIXED_CHUNK_SIZE]
-					buffer = buffer[PBS_FIXED_CHUNK_SIZE:]
+				if len(buffer) > pbscommon.PBS_FIXED_CHUNK_SIZE {
+					ch <- buffer[:pbscommon.PBS_FIXED_CHUNK_SIZE]
+					buffer = buffer[pbscommon.PBS_FIXED_CHUNK_SIZE:]
 				} else {
 					ch <- buffer
 					buffer = buffer[:0]
