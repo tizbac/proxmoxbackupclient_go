@@ -99,7 +99,9 @@ type PBSClient struct {
 
 	WritersManifest map[uint64]int
 }
+
 const PBS_FIXED_CHUNK_SIZE = 4 * 1024 * 1024
+
 var blobCompressedMagic = []byte{49, 185, 88, 66, 111, 182, 163, 127}
 var blobUncompressedMagic = []byte{66, 171, 56, 7, 190, 131, 112, 161}
 
@@ -693,7 +695,7 @@ func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*hashmap.Map[s
 
 }
 
-func (pbs *PBSClient) GetChunkData(digest string) ([]byte, error ) {
+func (pbs *PBSClient) GetChunkData(digest string) ([]byte, error) {
 	q := &url.Values{}
 
 	q.Add("digest", digest)
@@ -717,22 +719,23 @@ func (pbs *PBSClient) GetChunkData(digest string) ([]byte, error ) {
 	}
 
 	if slices.Equal(ret[:8], blobUncompressedMagic) {
-		return ret[12:], nil 
+		return ret[12:], nil
 	} else if slices.Equal(ret[:8], blobCompressedMagic) {
 		rd1 := bytes.NewReader(ret[12:])
 		dec, err := zstd.NewReader(rd1)
+
 		if err != nil {
 			return nil, err
 		}
+		defer dec.Close()
 		ret2 := make([]byte, 0)
 		ret2, err = dec.DecodeAll(ret[12:], ret2)
 		if err != nil {
 			return nil, err
 		}
 		return ret2, nil
-	} else{
+	} else {
 		return nil, fmt.Errorf("Encrypted chunks not supported!")
 	}
 
-
-} 
+}
