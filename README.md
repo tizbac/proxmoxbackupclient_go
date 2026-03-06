@@ -120,19 +120,35 @@ The above command will look at Disk 0 , detect all mounted partition, take VSS s
 
 Next backup will be incremental, hashing has been paralleled so speeds of 1 gbyte/sec can be easily reached.
 
-### File restore
+### File restore - NEW!
 
-File restore at the moment is not possible but will be soon by marking the backup as vm backup instead of host.
+File restore is possible by using nbd tool
 
-### Restore to physical machine - Current
+In order to use nbd please first do `modprobe nbd max_part=0`.
 
-Restoring to physical machine for now involves downloading from PBS gui the fidx file ( actually the whole image will be downloaded ), and using dd to restore it.
+For unknown reasons, using `max_part != 0` causes infinite partition probe loop.
 
-### Restore to physical machine - Future
+NBD tool will connect any fixed disk backup, regardless of it being VM or host ( that being said it works also for PVE backups).
+
+To use it use a command line similiar to this
+`./pbsnbd -authid 'apikey' -baseurl https://yourpbs:8007 -secret 'yoursecret' -certfingerprint 'aa:...:xx' -datastore test -namespace test1 -pat  
+h "vm/107/2025-08-02T23:13:01Z/drive-virtio0.img.fidx"`
+If you omit `-path` , a terminal Ui will show up allowing to select fidx file
+
+Beware to not use this on a machine running important stuff ( corrupt filesystem can crash the OS potentially, that why Proxmox VE uses a QEMU instance for this ).
+
+Also be very sure to have umounted anything on the nbd disk before stopping pbsnbd, if not you likely will end with busy unmountable partition, if someone has indiciation of how to recover from that please tell me.
+
+If you get a `Device or resource busy` error, you have to force disconnect by running `nbd-client -d /dev/nbd0` or simply reboot.
+
+### Restore to physical machine
 
 A live cd / PXE boot system will be released that will allow logging in to a PBS server, selecting the backup, and launching clonezilla.
-Two options will be offered, one with physical interaction, and another one spawning a web gui allowing an IT technician to do the restore fully remotely once the machine is network booted.
-The restore process will involve using Proxmox's  patched qemu with pbs driver exposing the backup directly to clonezilla and thus allowing efficient disk2disk restore.
+For now best way is spinning up a clonezilla live and copying to it nbd server executable, before proceeding with clonezilla, on another tty, you launch `pbsnbd`.
+
+I suggest also copying over command line parameters such as authid, baseurl, fingerprint etc, they are a pain in the... to hand type!.
+
+Once pbsnbd is up and running, you can use clonezilla disk to local disk option. 
 
 # Tech Support in Italy
 
@@ -140,6 +156,3 @@ Being said that the project and **ALL** it's contribution will remain forever pu
 
 There will never be a "community" & "enterprise" different edition, solely tech support will be an independent service.
 Any customization that you are going to ask, even if development may be paid it will be released as GPLv3 like whole project is.
-
-
-
