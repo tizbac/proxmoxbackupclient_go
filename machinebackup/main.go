@@ -22,7 +22,7 @@ import (
 	"runtime"
 	"sync/atomic"
 
-	"github.com/cornelk/hashmap"
+	"github.com/alphadose/haxmap"
 	"github.com/google/uuid"
 	"github.com/tawesoft/golib/v2/dialog"
 )
@@ -33,8 +33,6 @@ Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while
 Last error is: {{.ErrorStr}}{{end}}`
 
 var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
-
-
 
 type ChunkState struct {
 	assignments        []string
@@ -47,7 +45,7 @@ type ChunkState struct {
 	C                  pbscommon.Chunker
 	newchunk           *atomic.Uint64
 	reusechunk         *atomic.Uint64
-	knownChunks        *hashmap.Map[string, bool]
+	knownChunks        *haxmap.Map[string, bool]
 }
 
 type Partition struct {
@@ -58,7 +56,7 @@ type Partition struct {
 	Letter      string
 }
 
-func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *hashmap.Map[string, bool]) {
+func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool]) {
 	c.assignments = make([]string, 0)
 	c.assignments_offset = make([]uint64, 0)
 	c.processed_size = 0
@@ -90,7 +88,7 @@ func BytesToString(b int64) string {
 func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint64, ch chan []byte) error {
 	var newchunk *atomic.Uint64 = new(atomic.Uint64)
 	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
-	knownChunks := hashmap.New[string, bool]()
+	knownChunks := haxmap.New[string, bool]()
 
 	knownChunks2, err := client.GetKnownSha265FromFIDX(filename)
 	if err == nil {
@@ -133,7 +131,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 			CS.index_hash_data[seg.Pos] = h.Sum(nil)
 			digests[int64(seg.Pos)] = h.Sum(nil)
 
-			_, exists := knownChunks.GetOrInsert(shahash, true)
+			_, exists := knownChunks.GetOrSet(shahash, true)
 			assignment_mutex.Unlock()
 
 			if exists {
@@ -153,6 +151,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 			CS.chunkcount++
 			if CS.processed_size > total_size {
 				errch <- fmt.Errorf("Fatal: tried to backup more data than specified size!")
+				assignment_mutex.Unlock()
 				break
 			}
 			fmt.Printf("Chunk %d/%d/%d\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load())

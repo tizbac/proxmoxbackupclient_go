@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -20,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cornelk/hashmap"
+	"github.com/alphadose/haxmap"
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/net/http2"
 )
@@ -665,32 +666,42 @@ func (pbs *PBSClient) DownloadToBytes(archivename string) ([]byte, error) { //In
 
 }
 
-func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*hashmap.Map[string, bool], error) {
+func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*haxmap.Map[string, bool], error) {
 	data, err := pbs.DownloadPreviousToBytes(archivename)
 	if err != nil {
+		fmt.Println("Download of previous failed.")
 		return nil, err
 	}
 	rdr := bytes.NewReader(data)
 	var hdr FIDXHeader
 	err = binary.Read(rdr, binary.LittleEndian, &hdr)
 	if err != nil {
+		fmt.Println("Failed to read FIDX Header")
 		return nil, err
 	}
 	if !slices.Equal(hdr.Magic[:], []byte{47, 127, 65, 237, 145, 253, 15, 205}) {
 		return nil, fmt.Errorf("FIDX: Invalid magic %+v", hdr.Magic)
 	}
-	ret := hashmap.New[string, bool]()
+	ret := haxmap.New[string, bool]()
+	log.Printf("Reading %d entries...", hdr.Size/hdr.ChunkSize)
+	H := make([]byte, 32)
 	for i := uint64(0); i < hdr.Size/hdr.ChunkSize; i++ {
-		H := make([]byte, 32)
+
 		nbytes, err := rdr.Read(H)
 		if err != nil {
+			log.Printf("EOF at %d/%d", i, hdr.Size/hdr.ChunkSize)
 			return nil, err
 		}
 		if nbytes != len(H) {
 			return nil, fmt.Errorf("FIDX: Short read")
 		}
-		ret.Insert(hex.EncodeToString(H), true)
+		if i%4096 == 0 {
+			log.Printf("%d/%d", i, hdr.Size/hdr.ChunkSize)
+		}
+
+		ret.Set(hex.EncodeToString(H), true)
 	}
+	log.Printf("Loaded %d known chunks from previous", ret.Len())
 	return ret, nil
 
 }
