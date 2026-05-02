@@ -97,6 +97,7 @@ type PBSClient struct {
 
 	Client    http.Client
 	TLSConfig tls.Config
+	ZSTDDec   *zstd.Decoder
 
 	WritersManifest map[uint64]int
 }
@@ -495,6 +496,15 @@ func (pbs *PBSClient) Finish() error {
 }
 
 func (pbs *PBSClient) Connect(reader bool, backuptype string) {
+
+	dec, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
+
+	if err != nil {
+		panic(err)
+	}
+
+	pbs.ZSTDDec = dec
+
 	pbs.WritersManifest = make(map[uint64]int)
 	pbs.TLSConfig = tls.Config{
 		InsecureSkipVerify: pbs.Insecure,
@@ -732,15 +742,8 @@ func (pbs *PBSClient) GetChunkData(digest string) ([]byte, error) {
 	if slices.Equal(ret[:8], blobUncompressedMagic) {
 		return ret[12:], nil
 	} else if slices.Equal(ret[:8], blobCompressedMagic) {
-		rd1 := bytes.NewReader(ret[12:])
-		dec, err := zstd.NewReader(rd1)
-
-		if err != nil {
-			return nil, err
-		}
-		defer dec.Close()
 		ret2 := make([]byte, 0)
-		ret2, err = dec.DecodeAll(ret[12:], ret2)
+		ret2, err = pbs.ZSTDDec.DecodeAll(ret[12:], ret2)
 		if err != nil {
 			return nil, err
 		}
