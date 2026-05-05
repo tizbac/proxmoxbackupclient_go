@@ -114,7 +114,7 @@ The command syntax is mostly the same , except `-backupdir string`
 In the case of machine backup executable there's in place of backupdir, `-backupdev`
 For example an invocation could be
 
-`machinebackup.exe -authid 'yourapikey' -backupdev \\\\.\PhysicalDisk0 -baseurl https://yourpbs:8007 -certfingerprint "xx:xx:xx..." -datastore zfs -secret 'L4m3r' -backup-id "testfull1"`
+`machinebackup.exe -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
 
 The above command will look at Disk 0 , detect all mounted partition, take VSS snapshot of these, and then create a bootable backup image of whole disk as FIDX.
 

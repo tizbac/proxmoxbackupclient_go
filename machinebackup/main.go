@@ -120,16 +120,21 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 	ch2 := make(chan PosSeg)
 
 	workerfn := func() {
+		zeroBlock := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
+		zeroSha256 := sha256.Sum256(zeroBlock)
 		for seg := range ch2 {
-			h := sha256.New()
-			_, err = h.Write(seg.Data)
+			segment_digest := zeroSha256[:]
+			if !bytes.Equal(seg.Data, zeroBlock) { //Comparing the 4MB block to zero is around 30x times faster than sha256, so for this to be slightly slower one would have to have 95% or more disk full, really edge case
+				dig := sha256.Sum256(seg.Data)
+				segment_digest = dig[:]
+			}
 
-			shahash := hex.EncodeToString(h.Sum(nil))
+			shahash := hex.EncodeToString(segment_digest[:])
 			//binary.Write(CS.chunkdigests, binary.LittleEndian, (CS.pos + uint64(nread)))
 
 			assignment_mutex.Lock()
-			CS.index_hash_data[seg.Pos] = h.Sum(nil)
-			digests[int64(seg.Pos)] = h.Sum(nil)
+			CS.index_hash_data[seg.Pos] = segment_digest[:]
+			digests[int64(seg.Pos)] = segment_digest[:]
 
 			_, exists := knownChunks.GetOrSet(shahash, true)
 			assignment_mutex.Unlock()

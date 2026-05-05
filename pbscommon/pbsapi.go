@@ -749,7 +749,7 @@ func (pbs *PBSClient) GetChunkData(digest string) ([]byte, error) {
 		}
 		return ret2, nil
 	} else {
-		return nil, fmt.Errorf("Encrypted chunks not supported!")
+		return nil, fmt.Errorf("Invalid chunk magic , or encrypted chunk!")
 	}
 
 }
