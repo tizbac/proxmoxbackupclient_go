@@ -151,3 +151,6 @@ NimbusBackupClient est développé et maintenu par [RDEM Systems](https://www.rd
 ---
 
 **© 2024-2026 RDEM Systems. Tous droits réservés.**
+
+--- 
+[Trésor pour une chasse partenaire](https://dynamite-games-pontoise.fr/tresor/DGP-ETE-2026-GFDSCS55)
