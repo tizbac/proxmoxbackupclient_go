@@ -15,7 +15,7 @@ go get fyne.io/fyne/v2@latest
 
 # Build for current platform
 echo "🏗️  Building GUI binary..."
-go build -o ../proxmox-backup-gui .
+go build -tags "desktop,production" -o ../proxmox-backup-gui .
 
 cd ..
 

@@ -3,10 +3,10 @@ module github.com/tizbac/proxmoxbackupclient_go/gui
 go 1.25
 
 require (
-	github.com/cornelk/hashmap v1.0.8
-	github.com/wailsapp/wails/v2 v2.8.0
-	github.com/tizbac/proxmoxbackupclient_go/gui/api v0.0.0
 	clientcommon v0.0.0
+	github.com/cornelk/hashmap v1.0.8
+	github.com/tizbac/proxmoxbackupclient_go/gui/api v0.0.0
+	github.com/wailsapp/wails/v2 v2.8.0
 	pbscommon v0.0.0
 	retry v0.0.0
 	security v0.0.0
@@ -14,6 +14,7 @@ require (
 )
 
 require (
+	fyne.io/fyne/v2 v2.7.4 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
@@ -36,17 +37,17 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.10 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
-	golang.org/x/crypto v0.11.0 // indirect
+	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
-	golang.org/x/net v0.12.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
-	golang.org/x/text v0.11.0 // indirect
+	golang.org/x/net v0.35.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 )
 
 // Local package replacements to use sibling directories
 replace (
-	github.com/tizbac/proxmoxbackupclient_go/gui/api => ./api
 	clientcommon => ../clientcommon
+	github.com/tizbac/proxmoxbackupclient_go/gui/api => ./api
 	pbscommon => ../pbscommon
 	retry => ../pkg/retry
 	security => ../pkg/security
