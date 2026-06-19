@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"clientcommon"
 	"crypto/sha256"
 	"encoding/binary"
@@ -10,11 +9,9 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"maps"
 	"os"
 	"pbscommon"
 	"runtime"
-	"slices"
 	"snapshot"
 	"strings"
 	"sync/atomic"
@@ -26,10 +23,10 @@ import (
 
 var defaultMailSubjectTemplate = "Backup {{.Status}}"
 var defaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}})
+Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else if .Partial}}Backup completed WITH ERRORS ({{.FromattedDuration}})
+{{.ReadErrorCount}} file(s) could not be read and were skipped; the snapshot is incomplete.
 Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while working, backup may be not completed.
 Last error is: {{.ErrorStr}}{{end}}`
-
-var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
 
 type ChunkState struct {
 	assignments        []string
@@ -45,10 +42,6 @@ type ChunkState struct {
 	knownChunks        *hashmap.Map[string, bool]
 }
 
-type DidxEntry struct {
-	offset uint64
-	digest []byte
-}
 
 func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *hashmap.Map[string, bool]) {
 	c.assignments = make([]string, 0)
@@ -64,7 +57,7 @@ func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, kn
 	c.knownChunks = knownChunks
 }
 
-func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) {
+func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 	chunkpos := c.C.Scan(b)
 
 	if chunkpos == 0 {
@@ -77,8 +70,9 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) {
 			c.current_chunk = append(c.current_chunk, b[:chunkpos]...)
 
 			h := sha256.New()
-			// TODO: error handling inside callback
-			h.Write(c.current_chunk)
+			if _, err := h.Write(c.current_chunk); err != nil {
+				return fmt.Errorf("failed to hash chunk: %w", err)
+			}
 			bindigest := h.Sum(nil)
 			shahash := hex.EncodeToString(bindigest)
 
@@ -86,16 +80,20 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) {
 				fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
 				c.newchunk.Add(1)
 
-				client.UploadDynamicCompressedChunk(c.wrid, shahash, c.current_chunk)
+				if err := client.UploadDynamicCompressedChunk(c.wrid, shahash, c.current_chunk); err != nil {
+					return fmt.Errorf("failed to upload chunk %s: %w", shahash, err)
+				}
 			} else {
 				fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
 				c.reusechunk.Add(1)
 			}
 
-			// TODO: error handling inside callback
-			binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.current_chunk))))
-			// TODO: error handling inside callback
-			c.chunkdigests.Write(h.Sum(nil))
+			if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.current_chunk)))); err != nil {
+				return fmt.Errorf("failed to write chunk offset: %w", err)
+			}
+			if _, err := c.chunkdigests.Write(h.Sum(nil)); err != nil {
+				return fmt.Errorf("failed to write chunk digest: %w", err)
+			}
 
 			c.assignments_offset = append(c.assignments_offset, c.pos)
 			c.assignments = append(c.assignments, shahash)
@@ -111,25 +109,31 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) {
 		//No further break happened, append remaining data
 		c.current_chunk = append(c.current_chunk, b...)
 	}
+	return nil
 }
 
-func (c *ChunkState) Eof(client *pbscommon.PBSClient) {
+func (c *ChunkState) Eof(client *pbscommon.PBSClient) error {
 	//Here we write the remainder of data for which cyclic hash did not trigger
 
 	if len(c.current_chunk) > 0 {
 		h := sha256.New()
-		_, err := h.Write(c.current_chunk)
-		if err != nil {
-			panic(err)
+		if _, err := h.Write(c.current_chunk); err != nil {
+			return fmt.Errorf("failed to hash final chunk: %w", err)
 		}
 
 		shahash := hex.EncodeToString(h.Sum(nil))
-		binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.current_chunk))))
-		c.chunkdigests.Write(h.Sum(nil))
+		if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.current_chunk)))); err != nil {
+			return fmt.Errorf("failed to write final chunk offset: %w", err)
+		}
+		if _, err := c.chunkdigests.Write(h.Sum(nil)); err != nil {
+			return fmt.Errorf("failed to write final chunk digest: %w", err)
+		}
 
 		if _, ok := c.knownChunks.GetOrInsert(shahash, true); !ok {
 			fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
-			client.UploadDynamicCompressedChunk(c.wrid, shahash, c.current_chunk)
+			if err := client.UploadDynamicCompressedChunk(c.wrid, shahash, c.current_chunk); err != nil {
+				return fmt.Errorf("failed to upload final chunk %s: %w", shahash, err)
+			}
 			c.newchunk.Add(1)
 		} else {
 			fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
@@ -147,10 +151,15 @@ func (c *ChunkState) Eof(client *pbscommon.PBSClient) {
 		if k2 > len(c.assignments) {
 			k2 = len(c.assignments)
 		}
-		client.AssignDynamicChunks(c.wrid, c.assignments[k:k2], c.assignments_offset[k:k2])
+		if err := client.AssignDynamicChunks(c.wrid, c.assignments[k:k2], c.assignments_offset[k:k2]); err != nil {
+			return fmt.Errorf("failed to assign chunks (batch %d-%d): %w", k, k2, err)
+		}
 	}
 
-	client.CloseDynamicIndex(c.wrid, hex.EncodeToString(c.chunkdigests.Sum(nil)), c.pos, c.chunkcount)
+	if err := client.CloseDynamicIndex(c.wrid, hex.EncodeToString(c.chunkdigests.Sum(nil)), c.pos, c.chunkcount); err != nil {
+		return fmt.Errorf("failed to close dynamic index: %w", err)
+	}
+	return nil
 }
 
 func main() {
@@ -205,8 +214,9 @@ func main() {
 	}
 
 	begin := time.Now()
+	var readErrors []string
 	if cfg.BackupSourceDir != "" {
-		err = backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir, cfg.UseVSS)
+		readErrors, err = backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir, cfg.UseVSS)
 	} else if cfg.BackupStreamName != "" {
 		sn := cfg.BackupStreamName
 		if !strings.HasSuffix(sn, ".didx") {
@@ -225,6 +235,7 @@ func main() {
 		NewChunks:    newchunk.Load(),
 		ReusedChunks: reusechunk.Load(),
 		Error:        err,
+		ReadErrors:   readErrors,
 		Hostname:     hostname,
 		Datastore:    cfg.Datastore,
 		StartTime:    begin,
@@ -259,7 +270,7 @@ func main() {
 		subject, err = mailCtx.BuildStr(mailSubjectTemplate)
 		if err != nil {
 			fmt.Println("Cannot use custom mail subject: " + err.Error())
-			msg, err = mailCtx.BuildStr(defaultMailSubjectTemplate)
+			subject, err = mailCtx.BuildStr(defaultMailSubjectTemplate)
 			if err != nil {
 				// this should never happen
 				panic(err)
@@ -280,6 +291,18 @@ func main() {
 		}
 	}
 
+	// Exit non-zero so schedulers never read a failed or incomplete backup as
+	// success. mailCtx.Error is the fatal error; ReadErrors means the snapshot
+	// committed but is missing unreadable files.
+	if mailCtx.Error != nil {
+		fmt.Fprintln(os.Stderr, "backup failed:", mailCtx.Error)
+		os.Exit(1)
+	}
+	if len(readErrors) > 0 {
+		fmt.Fprintf(os.Stderr, "backup completed with %d read error(s); snapshot is incomplete\n", len(readErrors))
+		os.Exit(3)
+	}
+
 }
 
 func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, filename string, stream io.Reader) error {
@@ -292,21 +315,14 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 
 	fmt.Printf("Downloaded previous DIDX: %d bytes\n", len(previousDidx))
 
-	if !bytes.HasPrefix(previousDidx, didxMagic) {
-		fmt.Printf("Previous index has wrong magic (%s)!\n", previousDidx[:8])
-
-	} else {
-		//Header as per proxmox documentation is fixed size of 4096 bytes,
-		//then offset of type uint64 and sha256 digests follow , so 40 byte each record until EOF
-		previousDidx = previousDidx[4096:]
-		for i := 0; i*40 < len(previousDidx); i += 1 {
-			e := DidxEntry{}
-			e.offset = binary.LittleEndian.Uint64(previousDidx[i*40 : i*40+8])
-			e.digest = previousDidx[i*40+8 : i*40+40]
-			shahash := hex.EncodeToString(e.digest)
-			fmt.Printf("Previous: %s\n", shahash)
-			knownChunks.Set(shahash, true)
-		}
+	// Defensive parse: a truncated/short/odd-length previous index (or a sub-8-byte
+	// error body) must not panic — fall back to no dedup (re-upload everything).
+	prevDigests := pbscommon.ParsePreviousDIDXChunkDigests(previousDidx)
+	if len(prevDigests) == 0 {
+		fmt.Printf("Previous index unusable or empty (%d bytes), uploading all chunks\n", len(previousDidx))
+	}
+	for _, shahash := range prevDigests {
+		knownChunks.Set(shahash, true)
 	}
 
 	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
@@ -320,21 +336,27 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 	}
 	B := make([]byte, 65536)
 	for {
-
-		n, err := stream.Read(B)
+		n, rerr := stream.Read(B)
 
 		b := B[:n]
 
-		streamChunk.HandleData(b, client)
+		if err := streamChunk.HandleData(b, client); err != nil {
+			return fmt.Errorf("failed to handle stream data: %w", err)
+		}
 
-		if err == io.EOF {
-			break
+		if rerr != nil {
+			if rerr == io.EOF {
+				break
+			}
+			return fmt.Errorf("failed to read stream: %w", rerr)
 		}
 	}
 
-	streamChunk.Eof(client)
-
-	client.CloseDynamicIndex(streamChunk.wrid, hex.EncodeToString(streamChunk.chunkdigests.Sum(nil)), streamChunk.pos, streamChunk.chunkcount)
+	// Eof() already closes the dynamic index; closing it again fails the request
+	// and aborts the snapshot before UploadManifest/Finish.
+	if err := streamChunk.Eof(client); err != nil {
+		return fmt.Errorf("failed to finalize stream: %w", err)
+	}
 
 	err = client.UploadManifest()
 	if err != nil {
@@ -344,7 +366,7 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 	return client.Finish()
 }
 
-func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) error {
+func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) ([]string, error) {
 	client.Connect(false, "host")
 	knownChunks := hashmap.New[string, bool]()
 
@@ -353,7 +375,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 
 	previousDidx, err := client.DownloadPreviousToBytes(archive.ArchiveName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	fmt.Printf("Downloaded previous DIDX: %d bytes\n", len(previousDidx))
@@ -368,21 +390,14 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		we are going to upload to avoid unnecessary traffic and compression cpu usage
 	*/
 
-	if !bytes.HasPrefix(previousDidx, didxMagic) {
-		fmt.Printf("Previous index has wrong magic (%s)!\n", previousDidx[:8])
-
-	} else {
-		//Header as per proxmox documentation is fixed size of 4096 bytes,
-		//then offset of type uint64 and sha256 digests follow , so 40 byte each record until EOF
-		previousDidx = previousDidx[4096:]
-		for i := 0; i*40 < len(previousDidx); i += 1 {
-			e := DidxEntry{}
-			e.offset = binary.LittleEndian.Uint64(previousDidx[i*40 : i*40+8])
-			e.digest = previousDidx[i*40+8 : i*40+40]
-			shahash := hex.EncodeToString(e.digest)
-			fmt.Printf("Previous: %s\n", shahash)
-			knownChunks.Set(shahash, true)
-		}
+	// Defensive parse: a truncated/short/odd-length previous index (or a sub-8-byte
+	// error body) must not panic — fall back to no dedup (re-upload everything).
+	prevDigests := pbscommon.ParsePreviousDIDXChunkDigests(previousDidx)
+	if len(prevDigests) == 0 {
+		fmt.Printf("Previous index unusable or empty (%d bytes), uploading all chunks\n", len(previousDidx))
+	}
+	for _, shahash := range prevDigests {
+		knownChunks.Set(shahash, true)
 	}
 
 	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
@@ -390,7 +405,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	if pxarOut != "" {
 		f, err = os.Create(pxarOut)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		defer f.Close()
 	}
@@ -404,65 +419,82 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 
 	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	pcat1Chunk.wrid, err = client.CreateDynamicIndex("catalog.pcat1.didx")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	archive.WriteCB = func(b []byte) {
+	archive.WriteCB = func(b []byte) error {
 
 		if pxarOut != "" {
-			// TODO: error handling inside callback
-			f.Write(b)
+			if _, err := f.Write(b); err != nil {
+				return fmt.Errorf("failed to write to pxar output file: %w", err)
+			}
 		}
 
-		pxarChunk.HandleData(b, client)
+		if err := pxarChunk.HandleData(b, client); err != nil {
+			return err
+		}
 
-		//
+		return nil
 	}
 
-	archive.CatalogWriteCB = func(b []byte) {
-		pcat1Chunk.HandleData(b, client)
+	archive.CatalogWriteCB = func(b []byte) error {
+		return pcat1Chunk.HandleData(b, client)
 	}
 
 	//This is the entry point of backup job which will start streaming with the PCAT and PXAR write callback
 	//Data to be hashed and eventuall uploaded
 
-	archive.WriteDir(backupdir, "", true)
+	if _, err = archive.WriteDir(backupdir, "", true); err != nil {
+		return nil, fmt.Errorf("failed to write directory archive: %w", err)
+	}
 
-	pxarChunk.Eof(client)
-	pcat1Chunk.Eof(client)
+	if err = pxarChunk.Eof(client); err != nil {
+		return nil, err
+	}
+	if err = pcat1Chunk.Eof(client); err != nil {
+		return nil, err
+	}
 
 	err = client.UploadManifest()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	// archive.ReadErrors lists files that could not be read and were skipped:
+	// the snapshot committed but is incomplete. Surfaced as a partial result.
+	return archive.ReadErrors, nil
 }
 
-func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, usevss bool) error {
+func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, usevss bool) ([]string, error) {
 
 	fmt.Printf("Starting backup of %s\n", backupdir)
 	var err error
+	var readErrors []string
 	if usevss {
 		err = snapshot.CreateVSSSnapshot(([]string{backupdir}), func(snaps map[string]snapshot.SnapShot) error {
-			k := maps.Keys(snaps)
-			k2 := slices.Collect(k)
-			SNAP := snaps[k2[0]]
-			backupdir = SNAP.FullPath
+			// Get first snapshot from map (Go 1.22 compatible)
+			for _, snap := range snaps {
+				backupdir = snap.FullPath
+				break
+			}
 			//Remove VSS snapshot on windows, on linux for now NOP
-			return backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
+			var e error
+			readErrors, e = backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
+			return e
 
 		})
 	} else {
-		err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
+		readErrors, err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
 	}
 
 	if err != nil {
-		return err
+		return readErrors, err
 	}
 
-	return client.Finish()
+	// Commit the snapshot even on a partial (read-error) run so the data that
+	// was readable is retained; the partial status is reported via readErrors.
+	return readErrors, client.Finish()
 }

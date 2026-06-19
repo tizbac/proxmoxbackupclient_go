@@ -1,0 +1,227 @@
+# GitLab CI/CD Pipeline for Proxmox Backup Guardian GUI
+# Multi-platform Go builds with Docker-in-Docker
+
+stages:
+  - test
+  - build
+  - package
+  - publish
+
+variables:
+  GO_VERSION: "1.25"
+  PROJECT_NAME: "NimbusBackup"
+  # Disable go.work (GUI is independent module)
+  GOWORK: "off"
+  # Docker-in-Docker configuration
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+
+# ==================== TEMPLATES ====================
+
+.go_template: &go_template
+  image: golang:${GO_VERSION}
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}-go
+    paths:
+      - .go/pkg/mod/
+  before_script:
+    - apt-get update && apt-get install -y gcc libgl1-mesa-dev xorg-dev pkg-config
+    - mkdir -p .go
+    - export GOPATH="$CI_PROJECT_DIR/.go"
+    - export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+    - cd gui
+
+.build_template: &build_template
+  <<: *go_template
+  stage: build
+  artifacts:
+    paths:
+      - ${PROJECT_NAME}-*
+    expire_in: 7 days
+  only:
+    - main
+    - master
+    - develop
+    - github-release
+    - tags
+
+# ==================== TEST STAGE ====================
+
+test:code:
+  <<: *go_template
+  stage: test
+  script:
+    - go mod tidy
+    - go fmt $(go list ./... | grep -v /vendor/)
+    - go vet $(go list ./... | grep -v /vendor/)
+    - go test -v ./...
+  only:
+    - branches
+    - merge_requests
+    - tags
+
+lint:
+  image: golangci/golangci-lint:v1.64
+  stage: test
+  before_script:
+    - apt-get update && apt-get install -y gcc libgl1-mesa-dev xorg-dev pkg-config
+    - cd gui
+    - go mod tidy
+  script:
+    - golangci-lint run -v --timeout=5m --verbose --print-issued-lines=true
+  allow_failure: false
+  only:
+    - branches
+    - merge_requests
+    - tags
+
+# ==================== BUILD STAGE ====================
+
+build:linux-amd64:
+  <<: *build_template
+  before_script:
+    - apt-get update && apt-get install -y gcc libgl1-mesa-dev xorg-dev
+    - mkdir -p .go
+    - export GOPATH="$CI_PROJECT_DIR/.go"
+    - cd gui
+  script:
+    - go mod tidy
+    - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../${PROJECT_NAME}-linux-amd64 .
+    - chmod +x ../${PROJECT_NAME}-linux-amd64
+    - ls -lh ../${PROJECT_NAME}-linux-amd64
+
+build:linux-arm64:
+  <<: *build_template
+  before_script:
+    # Enable ARM64 architecture for multiarch
+    - dpkg --add-architecture arm64
+    - apt-get update
+    # Install cross-compiler and ARM64 libraries
+    - apt-get install -y gcc-aarch64-linux-gnu
+    - apt-get install -y libgl1-mesa-dev:arm64 libx11-dev:arm64 libxrandr-dev:arm64 libxxf86vm-dev:arm64 libxi-dev:arm64 libxcursor-dev:arm64 libxinerama-dev:arm64
+    # Configure pkg-config for ARM64 cross-compile
+    - export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
+    - mkdir -p .go
+    - export GOPATH="$CI_PROJECT_DIR/.go"
+    - cd gui
+  script:
+    - go mod tidy
+    - CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc go build -ldflags="-s -w" -o ../${PROJECT_NAME}-linux-arm64 .
+    - ls -lh ../${PROJECT_NAME}-linux-arm64
+
+build:windows-amd64:
+  <<: *build_template
+  before_script:
+    # Install MinGW cross-compiler for Windows with OpenGL support
+    - apt-get update && apt-get install -y gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
+    - mkdir -p .go
+    - export GOPATH="$CI_PROJECT_DIR/.go"
+    - export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+    - cd gui
+  script:
+    - go mod tidy
+    # Cross-compile for Windows with CGO and proper GUI/OpenGL flags
+    - CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ go build -ldflags="-s -w -H windowsgui" -o ../${PROJECT_NAME}-windows-amd64.exe .
+    - ls -lh ../${PROJECT_NAME}-windows-amd64.exe
+
+build:darwin-amd64:
+  <<: *build_template
+  script:
+    - go mod tidy
+    - echo "macOS builds require osxcross - skipping for now"
+    - touch ../${PROJECT_NAME}-darwin-amd64
+  allow_failure: true
+
+# ==================== PACKAGE STAGE ====================
+
+package:linux:
+  stage: package
+  image: ubuntu:22.04
+  dependencies:
+    - build:linux-amd64
+    - build:linux-arm64
+  before_script:
+    - apt-get update && apt-get install -y tar gzip zip
+  script:
+    - mkdir -p dist
+    # Package amd64
+    - cp ${PROJECT_NAME}-linux-amd64 dist/
+    - cp GUI_README.md dist/README.md || touch dist/README.md
+    - cp CONFIG_FORMAT_SPEC.md dist/ || true
+    - cd dist
+    - tar -czf ../${PROJECT_NAME}-linux-amd64.tar.gz *
+    - zip -r ../${PROJECT_NAME}-linux-amd64.zip *
+    - cd ..
+    - rm -rf dist/*
+    # Package arm64
+    - cp ${PROJECT_NAME}-linux-arm64 dist/
+    - cp GUI_README.md dist/README.md || touch dist/README.md
+    - cd dist
+    - tar -czf ../${PROJECT_NAME}-linux-arm64.tar.gz *
+    - cd ..
+  artifacts:
+    paths:
+      - ${PROJECT_NAME}-linux-*.tar.gz
+      - ${PROJECT_NAME}-linux-*.zip
+    expire_in: 30 days
+  only:
+    - main
+    - master
+    - github-release
+    - tags
+
+package:windows:
+  stage: package
+  image: ubuntu:22.04
+  dependencies:
+    - build:windows-amd64
+  before_script:
+    - apt-get update && apt-get install -y zip
+  script:
+    - mkdir -p dist
+    - cp ${PROJECT_NAME}-windows-amd64.exe dist/
+    - cp GUI_README.md dist/README.md || touch dist/README.md
+    - cp CONFIG_FORMAT_SPEC.md dist/ || true
+    - cd dist
+    - zip -r ../${PROJECT_NAME}-windows-amd64.zip *
+  artifacts:
+    paths:
+      - ${PROJECT_NAME}-windows-amd64.zip
+    expire_in: 30 days
+  only:
+    - main
+    - master
+    - github-release
+    - tags
+
+# ==================== PUBLISH STAGE ====================
+
+publish:registry:
+  stage: publish
+  image: curlimages/curl:latest
+  dependencies:
+    - package:linux
+    - package:windows
+  script:
+    - |
+      # Determine version (use tag if exists, otherwise use commit sha)
+      VERSION="${CI_COMMIT_TAG:-${CI_COMMIT_SHORT_SHA}}"
+
+      echo "Publishing version: $VERSION"
+
+      # Upload each package to GitLab Generic Package Registry
+      for file in ${PROJECT_NAME}-*.tar.gz ${PROJECT_NAME}-*.zip; do
+        if [ -f "$file" ]; then
+          echo "Uploading $file..."
+          curl --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+               --upload-file "$file" \
+               "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/${PROJECT_NAME}/${VERSION}/${file}"
+        fi
+      done
+
+      echo "Packages published to: ${CI_PROJECT_URL}/-/packages"
+  only:
+    - main
+    - master
+    - github-release
+    - tags

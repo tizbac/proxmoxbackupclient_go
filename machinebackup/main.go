@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"flag"
 	"io"
-	"maps"
 	"math"
 	"regexp"
 	"slices"
@@ -22,7 +21,7 @@ import (
 	"runtime"
 	"sync/atomic"
 
-	"github.com/alphadose/haxmap"
+	"github.com/cornelk/hashmap"
 	"github.com/google/uuid"
 	"github.com/tawesoft/golib/v2/dialog"
 )
@@ -33,6 +32,8 @@ Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while
 Last error is: {{.ErrorStr}}{{end}}`
 
 var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
+
+
 
 type ChunkState struct {
 	assignments        []string
@@ -45,7 +46,7 @@ type ChunkState struct {
 	C                  pbscommon.Chunker
 	newchunk           *atomic.Uint64
 	reusechunk         *atomic.Uint64
-	knownChunks        *haxmap.Map[string, bool]
+	knownChunks        *hashmap.Map[string, bool]
 }
 
 type Partition struct {
@@ -56,7 +57,7 @@ type Partition struct {
 	Letter      string
 }
 
-func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool]) {
+func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *hashmap.Map[string, bool]) {
 	c.assignments = make([]string, 0)
 	c.assignments_offset = make([]uint64, 0)
 	c.processed_size = 0
@@ -88,7 +89,7 @@ func BytesToString(b int64) string {
 func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint64, ch chan []byte) error {
 	var newchunk *atomic.Uint64 = new(atomic.Uint64)
 	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
-	knownChunks := haxmap.New[string, bool]()
+	knownChunks := hashmap.New[string, bool]()
 
 	knownChunks2, err := client.GetKnownSha265FromFIDX(filename)
 	if err == nil {
@@ -120,23 +121,21 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 	ch2 := make(chan PosSeg)
 
 	workerfn := func() {
-		zeroBlock := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
-		zeroSha256 := sha256.Sum256(zeroBlock)
 		for seg := range ch2 {
-			segment_digest := zeroSha256[:]
-			if !bytes.Equal(seg.Data, zeroBlock) { //Comparing the 4MB block to zero is around 30x times faster than sha256, so for this to be slightly slower one would have to have 95% or more disk full, really edge case
-				dig := sha256.Sum256(seg.Data)
-				segment_digest = dig[:]
+			h := sha256.New()
+			if _, err := h.Write(seg.Data); err != nil {
+				errch <- fmt.Errorf("failed to hash chunk at position %d: %w", seg.Pos, err)
+				break
 			}
 
-			shahash := hex.EncodeToString(segment_digest[:])
+			shahash := hex.EncodeToString(h.Sum(nil))
 			//binary.Write(CS.chunkdigests, binary.LittleEndian, (CS.pos + uint64(nread)))
 
 			assignment_mutex.Lock()
-			CS.index_hash_data[seg.Pos] = segment_digest[:]
-			digests[int64(seg.Pos)] = segment_digest[:]
+			CS.index_hash_data[seg.Pos] = h.Sum(nil)
+			digests[int64(seg.Pos)] = h.Sum(nil)
 
-			_, exists := knownChunks.GetOrSet(shahash, true)
+			_, exists := knownChunks.GetOrInsert(shahash, true)
 			assignment_mutex.Unlock()
 
 			if exists {
@@ -144,7 +143,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 			} else {
 				err = client.UploadFixedCompressedChunk(wrid, shahash, seg.Data)
 				if err != nil {
-					errch <- err
+					errch <- fmt.Errorf("failed to upload chunk %s: %w", shahash, err)
 					break
 				}
 
@@ -156,7 +155,6 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 			CS.chunkcount++
 			if CS.processed_size > total_size {
 				errch <- fmt.Errorf("Fatal: tried to backup more data than specified size!")
-				assignment_mutex.Unlock()
 				break
 			}
 			fmt.Printf("Chunk %d/%d/%d\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load())
@@ -204,10 +202,16 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 	}
 
 	chunkdigests := sha256.New()
-	positions := slices.Collect(maps.Keys(CS.index_hash_data))
+	// Collect map keys (Go 1.22 compatible)
+	positions := make([]uint64, 0, len(CS.index_hash_data))
+	for pos := range CS.index_hash_data {
+		positions = append(positions, pos)
+	}
 	slices.Sort(positions)
 	for _, P := range positions {
-		chunkdigests.Write(CS.index_hash_data[P])
+		if _, err := chunkdigests.Write(CS.index_hash_data[P]); err != nil {
+			return fmt.Errorf("failed to write chunk digest for position %d: %w", P, err)
+		}
 	}
 
 	err = client.CloseFixedIndex(wrid, hex.EncodeToString(chunkdigests.Sum(nil)), CS.processed_size, CS.chunkcount)
@@ -248,28 +252,44 @@ func backupFileDevice(client *pbscommon.PBSClient, filename string) error {
 		return err
 	}
 	ch := make(chan []byte)
+	errCh := make(chan error, 1)
 	go func() {
-		f.Seek(0, io.SeekStart)
+		defer close(ch)
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			errCh <- fmt.Errorf("failed to seek to start: %w", err)
+			return
+		}
 		for {
 			block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE) //PBS block size is fixed 4MB
 			nread, err := f.Read(block)
 			if err == io.EOF {
 				break
 			} else if err != nil {
-				panic(err)
+				errCh <- fmt.Errorf("failed to read block: %w", err)
+				return
 			}
 
 			ch <- block[:nread]
 		}
-		close(ch)
+		errCh <- nil
 	}()
 
-	return uploadWorker(client, slug+".fidx", uint64(size), ch)
+	uploadErr := uploadWorker(client, slug+".fidx", uint64(size), ch)
+	readErr := <-errCh
+	if readErr != nil {
+		return readErr
+	}
+	return uploadErr
 }
 
 type BackupDisk struct {
 	Index int
 	Size  int64
+}
+
+func fatalError(msg string, err error) {
+	fmt.Fprintf(os.Stderr, "Fatal error: %s: %v\n", msg, err)
+	os.Exit(1)
 }
 
 func main() {
@@ -331,7 +351,7 @@ func main() {
 			idx, _ := strconv.ParseInt(matches[1], 10, 32)
 			size, err := backupWindowsDisk(client, int(idx))
 			if err != nil {
-				panic(err)
+				fatalError(fmt.Sprintf("backup disk %s", dev), err)
 			}
 			disks = append(disks, BackupDisk{
 				Index: int(idx),
@@ -340,7 +360,7 @@ func main() {
 		} else {
 			err := backupFileDevice(client, dev)
 			if err != nil {
-				panic(err)
+				fatalError(fmt.Sprintf("backup device %s", dev), err)
 			}
 		}
 	}
@@ -372,15 +392,15 @@ sata{{.Index}}: local:{{.VMID}}/vm-{{.VMID}}-disk-{{.Index}}.raw,cache=writeback
 vmgenid: {{.VMGenId}}
 		`)
 		if err != nil {
-			panic(err)
+			fatalError("parse VM config template", err)
 		}
 		vmid, err := strconv.ParseInt(cfg.BackupID, 10, 32)
 		if err != nil {
-			panic(err)
+			fatalError("parse VM ID", err)
 		}
 		hostname, err := os.Hostname()
 		if err != nil {
-			panic(err)
+			fatalError("get hostname", err)
 		}
 		wr := bytes.Buffer{}
 		cfgt := ConfigTemplate{
@@ -395,15 +415,20 @@ vmgenid: {{.VMGenId}}
 		} else {
 			cfgt.OS = "l26"
 		}
-		tmpl.Execute(&wr, cfgt)
-		client.UploadBlob("qemu-server.conf.blob", wr.Bytes())
+		if err := tmpl.Execute(&wr, cfgt); err != nil {
+			fatalError("execute VM config template", err)
+		}
+		if err := client.UploadBlob("qemu-server.conf.blob", wr.Bytes()); err != nil {
+			fatalError("upload VM config blob", err)
+		}
 	}
 
-	err := client.UploadManifest()
-	if err != nil {
-		panic(err)
+	if err := client.UploadManifest(); err != nil {
+		fatalError("upload manifest", err)
 	}
-	client.Finish()
+	if err := client.Finish(); err != nil {
+		fatalError("finish backup", err)
+	}
 
 	/*partitions, err := disk.Partitions(false) // false means don't include virtual partitions
 	if err != nil {

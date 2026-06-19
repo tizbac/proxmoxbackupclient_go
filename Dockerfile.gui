@@ -1,0 +1,46 @@
+# Dockerfile for building GUI in Docker
+# Useful for consistent builds
+
+FROM golang:1.21 AS builder
+
+# Install dependencies for Fyne
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libgl1-mesa-dev \
+    xorg-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy go mod files
+COPY gui/go.mod gui/go.sum ./
+RUN go mod download
+
+# Copy source
+COPY gui/ .
+
+# Build
+ARG VERSION=dev
+ARG COMMIT=unknown
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
+    -o proxmox-backup-gui .
+
+# Runtime image (for testing GUI in container with X11)
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y \
+    libgl1 \
+    libxcursor1 \
+    libxrandr2 \
+    libxinerama1 \
+    libxi6 \
+    libxxf86vm1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/proxmox-backup-gui /usr/local/bin/
+
+# Note: GUI requires X11 display
+# Run with: docker run -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix proxmox-backup-gui
+
+ENTRYPOINT ["/usr/local/bin/proxmox-backup-gui"]

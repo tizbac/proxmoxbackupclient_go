@@ -1,0 +1,127 @@
+name: Update Dependencies (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: 'Update scope'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - patch-only
+          - specific
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  update-deps:
+    name: Update Go Dependencies
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install dependencies
+        working-directory: gui
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
+
+      - name: Update all modules dependencies
+        if: inputs.scope == 'all'
+        env:
+          GOWORK: off
+        run: |
+          echo "🔄 Updating all dependencies to latest compatible versions..."
+
+          # Update gui
+          cd gui
+          go get -u golang.org/x/crypto golang.org/x/net golang.org/x/sys golang.org/x/text golang.org/x/exp
+          go get -u github.com/wailsapp/wails/v2 github.com/google/uuid github.com/labstack/echo/v4
+          go get -u github.com/cornelk/hashmap github.com/go-ole/go-ole
+          go mod tidy
+
+          # Update snapshot
+          cd ../snapshot
+          go get -u github.com/go-ole/go-ole golang.org/x/sys
+          go mod tidy
+
+          # Update machinebackup
+          cd ../machinebackup
+          go get -u github.com/go-ole/go-ole github.com/google/uuid golang.org/x/sys
+          go mod tidy
+
+          # Update service
+          cd ../service
+          go get -u github.com/kardianos/service golang.org/x/sys
+          go mod tidy
+
+          # Update pbscommon
+          cd ../pbscommon
+          go get -u github.com/klauspost/compress golang.org/x/net golang.org/x/text
+          go mod tidy
+
+          # Update directorybackup
+          cd ../directorybackup
+          go get -u github.com/cornelk/hashmap golang.org/x/exp golang.org/x/text golang.org/x/sys
+          go mod tidy
+
+          # Update nbd
+          cd ../nbd
+          go get -u github.com/pojntfx/go-nbd github.com/rivo/tview golang.org/x/sys golang.org/x/term golang.org/x/text
+          go mod tidy
+
+      - name: Update patch versions only
+        if: inputs.scope == 'patch-only'
+        env:
+          GOWORK: off
+        run: |
+          echo "🔄 Updating patch versions only (security fixes)..."
+          cd gui && go get -u=patch ./... && go mod tidy
+
+      - name: Show changes
+        run: |
+          echo "📊 Changes made to go.mod files:"
+          git diff --stat
+          echo ""
+          echo "📝 Detailed changes:"
+          git diff
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          if [[ -n $(git status -s) ]]; then
+            git add "**/go.mod" "**/go.sum"
+            git commit -m "chore(deps): update Go dependencies (${{ inputs.scope }})
+
+            - Updated via manual workflow trigger
+            - Scope: ${{ inputs.scope }}
+            - All go.mod and go.sum files updated"
+
+            git push
+            echo "✅ Dependencies updated and pushed!"
+          else
+            echo "ℹ️ No changes detected - dependencies already up to date"
+          fi
+
+      - name: Summary
+        run: |
+          echo "## 🎉 Dependency Update Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Scope:** ${{ inputs.scope }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Changed files:" >> $GITHUB_STEP_SUMMARY
+          git diff --name-only HEAD~1 HEAD | grep "go\.\(mod\|sum\)" >> $GITHUB_STEP_SUMMARY || echo "No changes" >> $GITHUB_STEP_SUMMARY

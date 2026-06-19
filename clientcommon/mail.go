@@ -4,9 +4,9 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"html/template"
 	"net/smtp"
 	"strings"
+	"text/template"
 	"time"
 )
 
@@ -62,13 +62,14 @@ func SetupMailClient(host, port, username, password string, allowInsecure bool) 
 			return nil, err
 		}
 		if port == "587" {
-			c.StartTLS(tlsconfig)
+			if err := c.StartTLS(tlsconfig); err != nil {
+				return nil, fmt.Errorf("starttls failed: %w", err)
+			}
 		}
 	}
 
 	// Auth
 	if err = c.Auth(auth); err != nil {
-		fmt.Println("here", err)
 		return nil, err
 	}
 
@@ -99,8 +100,16 @@ func SendMail(from, to, subject, body string, c *smtp.Client) error {
 		return err
 	}
 
-	if err := c.Rcpt(strings.Join(recipientsStr, ",")); err != nil {
-		return err
+	// SMTP requires one RCPT TO per recipient; a single comma-joined RCPT is
+	// rejected by compliant servers, breaking multi-recipient notifications.
+	for _, r := range recipients {
+		r = strings.TrimSpace(r)
+		if r == "" {
+			continue
+		}
+		if err := c.Rcpt(r); err != nil {
+			return err
+		}
 	}
 
 	// Data
@@ -127,9 +136,13 @@ type MailCtx struct {
 	ReusedChunks uint64
 	Datastore    string
 	Error        error
-	Hostname     string
-	StartTime    time.Time
-	EndTime      time.Time
+	// ReadErrors holds files/directories that could not be read and were
+	// skipped. A run with read errors committed a snapshot but its contents
+	// are incomplete, so it is reported as "Partial", never "Success".
+	ReadErrors []string
+	Hostname   string
+	StartTime  time.Time
+	EndTime    time.Time
 }
 
 func (m *MailCtx) Duration() time.Duration {
@@ -147,15 +160,27 @@ func (m *MailCtx) ErrorStr() string {
 	return ""
 }
 
+func (m *MailCtx) ReadErrorCount() int {
+	return len(m.ReadErrors)
+}
+
+// Partial reports a run that committed a snapshot but skipped unreadable files.
+func (m *MailCtx) Partial() bool {
+	return m.Error == nil && len(m.ReadErrors) > 0
+}
+
 func (m *MailCtx) Success() bool {
-	return m.Error == nil
+	return m.Error == nil && len(m.ReadErrors) == 0
 }
 
 func (m *MailCtx) Status() string {
-	if m.Success() {
-		return "Success"
+	if m.Error != nil {
+		return "Failed"
 	}
-	return "Failed"
+	if len(m.ReadErrors) > 0 {
+		return "Partial"
+	}
+	return "Success"
 }
 
 func (m *MailCtx) BuildStr(txt string) (string, error) {

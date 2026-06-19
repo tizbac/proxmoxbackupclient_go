@@ -1,0 +1,551 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main, develop, github-release ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+
+env:
+  GO_VERSION: '1.25'
+  NODE_VERSION: '20'
+
+jobs:
+  # Check for outdated dependencies (informational only)
+  check-deps:
+    name: Check Dependency Updates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Check for available updates
+        working-directory: gui
+        env:
+          GOWORK: off
+        run: |
+          echo "📦 Current dependencies and available updates:"
+          echo "================================================"
+          go list -u -m all | grep '\[' || echo "✅ All dependencies are up to date!"
+          echo ""
+          echo "Legend: module current-version [latest-version]"
+          echo "No brackets = already at latest version"
+
+  # Security and quality checks
+  security:
+    name: Security Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install dependencies
+        working-directory: gui
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
+
+      - name: Tidy dependencies
+        working-directory: gui
+        env:
+          GOWORK: off
+        run: go mod tidy
+
+      - name: Run gosec
+        env:
+          GOWORK: off
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          cd gui && gosec -severity high -confidence high ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2
+          working-directory: gui
+          args: --timeout=5m
+        env:
+          GOWORK: off
+
+  # Unit tests
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install dependencies
+        working-directory: gui
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
+
+      - name: Tidy dependencies
+        working-directory: gui
+        env:
+          GOWORK: off
+        run: go mod tidy
+
+      - name: Run tests
+        working-directory: gui
+        env:
+          GOWORK: off
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Generate coverage
+        working-directory: gui
+        run: go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./gui/coverage.out
+
+  # Run the unit tests that live OUTSIDE the gui module (pbscommon, pkg/*, snapshot).
+  # The "test" job above only covers gui/; these modules previously had zero CI
+  # coverage despite shipping the chunker, catalog/didx readers, retry logic and
+  # VSS helpers. Matrixed so Windows-only code (snapshot) is exercised too. [audit Q-9]
+  test-modules:
+    name: Test non-GUI modules (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # Informational for now: this job surfaced that some library modules aren't
+    # self-contained under GOWORK=off. It must NOT block builds/release until the
+    # underlying module test is green, so it is not in any job's `needs` and is
+    # allowed to fail. Re-enable gating once it passes. [Q-9]
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Test cross-platform modules
+        shell: bash
+        env:
+          GOWORK: off
+        run: |
+          rc=0
+          for m in pbscommon pkg/retry pkg/security; do
+            echo "::group::go test $m"
+            # go mod tidy first: these library modules are normally built via the
+            # workspace / replace directives, so their own go.mod/go.sum can lack
+            # imports (e.g. pbscommon -> cornelk/hashmap) that a GOWORK=off build
+            # needs. Mirrors the gui "test" job.
+            if ( cd "$m" && go mod tidy && go test ./... ); then
+              echo "RESULT $m: PASS"
+            else
+              echo "RESULT $m: FAIL (see above)"
+              rc=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $rc
+
+      - name: Test Windows-only modules
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          GOWORK: off
+        run: |
+          set -e
+          echo "::group::go test snapshot"
+          ( cd snapshot && go mod tidy && go test ./... )
+          echo "::endgroup::"
+
+  # Build CLI for all platforms
+  build-cli:
+    name: Build CLI
+    needs: [security, test]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build CLI
+        env:
+          GOWORK: off
+        run: make cli
+
+      - name: Upload CLI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ runner.os }}
+          path: dist/proxmoxbackup-*
+
+  # Build GUI (Windows only for now)
+  build-gui:
+    name: Build GUI
+    needs: [security, test]
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Wails
+        # Pinned to v2.12.0 — the exact version @latest resolved to in the
+        # green v0.2.106 build, so we ship identical bytes while keeping a
+        # DETERMINISTIC build toolchain (the CLI orchestrates frontend bundling
+        # + asset embedding before `go build`, so a floating CLI would make
+        # even the .exe non-reproducible). Do NOT pin to the library version in
+        # gui/go.mod (v2.8.0): that CLI tag fails to build under Go 1.25.
+        # Bumping the library to match is a separate, tested task.
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Install Frontend Dependencies
+        working-directory: gui/frontend
+        run: npm install
+
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          # When the build is triggered by a tag push (v*), the tag is
+          # the source of truth. For branch pushes / PRs we fall back to
+          # wails.json + short SHA so dev builds get a sensible,
+          # non-overlapping version string.
+          #
+          # VERSION feeds main.appVersion via ldflags (displayed in the
+          # GUI, logged in each run banner). VERSION_MSI feeds the WiX
+          # ProductVersion, which must be a strict x.y.z numeric tuple
+          # — so on branch builds we strip the -dev-<sha> suffix for
+          # the MSI but keep it on the binary.
+          $base = (Get-Content gui/wails.json | ConvertFrom-Json).info.productVersion
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $version = "${{ github.ref_name }}" -replace "^v", ""
+            $version_msi = $version
+          } else {
+            $shortSha = "${{ github.sha }}".Substring(0, 7)
+            $version = "$base-dev-$shortSha"
+            $version_msi = $base
+          }
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "VERSION_MSI=$version_msi" >> $env:GITHUB_OUTPUT
+          echo "Building version: $version (MSI: $version_msi)"
+
+      - name: Build GUI
+        working-directory: gui
+        env:
+          GOWORK: off
+        run: wails build -clean -platform windows/amd64 -ldflags "-X main.appVersion=${{ steps.version.outputs.VERSION }}"
+
+      # The service is a plain `go build` from gui/ and would otherwise ship
+      # with no Windows version info — a strong heuristic/ML false-positive
+      # signal (Codex review). Generate a .syso with proper CompanyName /
+      # ProductName / version so NimbusBackupSVC.exe looks like normal signed-
+      # vendor software. Must run AFTER the Wails GUI build (same package dir):
+      # we strip any leftover .syso first so the GUI's resource can't leak into
+      # the service link and cause a duplicate-resource error.
+      - name: Generate service version resource
+        working-directory: gui
+        shell: pwsh
+        run: |
+          Remove-Item *.syso -ErrorAction SilentlyContinue
+          go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.0
+          $ver = "${{ steps.version.outputs.VERSION }}"
+          $p = "${{ steps.version.outputs.VERSION_MSI }}" -split '\.'
+          $json = @"
+          {
+            "FixedFileInfo": {
+              "FileVersion":    { "Major": $($p[0]), "Minor": $($p[1]), "Patch": $($p[2]), "Build": 0 },
+              "ProductVersion": { "Major": $($p[0]), "Minor": $($p[1]), "Patch": $($p[2]), "Build": 0 }
+            },
+            "StringFileInfo": {
+              "CompanyName": "RDEM Systems",
+              "FileDescription": "Nimbus Backup Service",
+              "FileVersion": "$ver",
+              "InternalName": "NimbusBackupSVC",
+              "LegalCopyright": "Copyright (c) 2024-2026 RDEM Systems",
+              "OriginalFilename": "NimbusBackupSVC.exe",
+              "ProductName": "Nimbus Backup",
+              "ProductVersion": "$ver"
+            },
+            "VarFileInfo": { "Translation": { "LangID": "0409", "CharsetID": "04B0" } }
+          }
+          "@
+          $json | Out-File -Encoding utf8 versioninfo.json
+          $gobin = (go env GOPATH) + "\bin\goversioninfo.exe"
+          & $gobin -64 -o servicewinres.syso versioninfo.json
+
+      - name: Build Service
+        working-directory: gui
+        env:
+          GOWORK: off
+        run: |
+          go build -tags service -trimpath -buildmode=pie -ldflags "-s -w -X main.appVersion=${{ steps.version.outputs.VERSION }}" -o build/bin/NimbusBackupSVC.exe
+        shell: pwsh
+
+      - name: Copy binaries to dist
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item gui/build/bin/NimbusBackup.exe dist/
+          Copy-Item gui/build/bin/NimbusBackupSVC.exe dist/
+        shell: pwsh
+
+      - name: Install WiX Toolset
+        run: |
+          choco install wixtoolset -y
+          $env:PATH += ";C:\Program Files (x86)\WiX Toolset v3.14\bin"
+          echo "C:\Program Files (x86)\WiX Toolset v3.14\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        shell: pwsh
+
+      - name: Build MSI Installer
+        working-directory: installer/wix
+        run: |
+          # Pass the resolved version to the WiX preprocessor so MSI
+          # metadata matches the tag / ldflags version.
+          candle.exe "-dProductVersion=${{ steps.version.outputs.VERSION_MSI }}" Product.wxs -ext WixUIExtension -ext WixUtilExtension
+          light.exe Product.wixobj -ext WixUIExtension -ext WixUtilExtension -out NimbusBackup.msi
+          Copy-Item NimbusBackup.msi ../../dist/
+        shell: pwsh
+
+      - name: Upload GUI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: NimbusBackup-Windows
+          path: |
+            dist/NimbusBackup.exe
+            dist/NimbusBackup.msi
+
+  # Create release on tag
+  release:
+    name: Create Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-cli, build-gui]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write      # mint the Sigstore OIDC token for attestation
+      attestations: write  # store the build-provenance attestation
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history + tags so `git describe`/`git log PREV_TAG..HEAD` in
+          # the release-notes step can compute the previous tag and list the
+          # commits since it. A shallow (depth-1) checkout has no prior tags,
+          # which left the "What's in this release" section empty.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create release archives
+        run: |
+          mkdir -p release
+
+          # CLI Windows
+          cd artifacts/cli-Windows && zip ../../release/nimbus-backup-cli-${{ steps.version.outputs.VERSION }}-windows.zip *
+          cd ../..
+
+          # CLI Linux
+          cd artifacts/cli-Linux && tar -czf ../../release/nimbus-backup-cli-${{ steps.version.outputs.VERSION }}-linux.tar.gz *
+          cd ../..
+
+          # CLI macOS
+          cd artifacts/cli-macOS && tar -czf ../../release/nimbus-backup-cli-${{ steps.version.outputs.VERSION }}-macos.tar.gz *
+          cd ../..
+
+          # GUI Windows - Add .exe, .msi (with and without version) and .zip
+          cd artifacts/NimbusBackup-Windows
+          cp NimbusBackup.exe ../../release/NimbusBackup-${{ steps.version.outputs.VERSION }}.exe
+          cp NimbusBackup.exe ../../release/NimbusBackup.exe
+          cp NimbusBackup.msi ../../release/NimbusBackup-${{ steps.version.outputs.VERSION }}.msi
+          cp NimbusBackup.msi ../../release/NimbusBackup.msi
+          zip ../../release/NimbusBackup-${{ steps.version.outputs.VERSION }}-windows.zip *
+          cd ../..
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      # Free, OSS-friendly cryptographic provenance: attests that these exact
+      # binaries were produced by THIS workflow, from THIS commit. Verifiable
+      # with `gh attestation verify <file> --repo rdemsystems/NimbusBackupClient`.
+      # A strong trust signal for a sysadmin audience while signing is pending.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            release/NimbusBackup*.exe
+            release/NimbusBackup*.msi
+            release/*.zip
+            release/*.tar.gz
+
+      # Best-effort: submit the Windows binaries to VirusTotal so the release
+      # page can link a live multi-engine report (transparency while the
+      # Authenticode certificate is pending). Skips cleanly if the secret is
+      # absent and never fails the release. The GUI report URL is just the
+      # file's SHA-256. We GATE the link on a clean result: a fresh hash can
+      # show transient heuristic hits, and we must not publish a link to a
+      # "2/70 detected" report as if it were proof of safety — so we poll the
+      # analysis and only emit the link when malicious+suspicious == 0.
+      - name: Submit to VirusTotal (best-effort, gated on 0 detections)
+        continue-on-error: true
+        env:
+          VT_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: |
+          if [ -z "$VT_KEY" ]; then
+            echo "VIRUSTOTAL_API_KEY not set — skipping VirusTotal submission."
+            exit 0
+          fi
+          : > vt-section.md
+          emitted=0
+          VER="${{ steps.version.outputs.VERSION }}"
+          # Use the version-stamped copies so the published label reads
+          # "NimbusBackup-v0.2.106.msi" (identical bytes → same VT report).
+          for f in "release/NimbusBackup-${VER}.exe" "release/NimbusBackup-${VER}.msi"; do
+            [ -f "$f" ] || continue
+            name=$(basename "$f")
+            sha=$(sha256sum "$f" | awk '{print $1}')
+            # Free public API: files must be <32MB (ours are); 4 req/min limit.
+            resp=$(curl -sS --max-time 180 -X POST https://www.virustotal.com/api/v3/files \
+              -H "x-apikey: $VT_KEY" --form file=@"$f" || true)
+            aid=$(jq -r '.data.id // empty' <<<"$resp" 2>/dev/null || true)
+            if [ -z "$aid" ]; then
+              echo "WARN: VirusTotal submission failed for $name — omitting link."
+              sleep 20; continue
+            fi
+            status=""; mal=0; susp=0
+            for _ in $(seq 1 10); do
+              sleep 20
+              ar=$(curl -sS --max-time 60 -H "x-apikey: $VT_KEY" "https://www.virustotal.com/api/v3/analyses/$aid" || true)
+              status=$(jq -r '.data.attributes.status // empty' <<<"$ar" 2>/dev/null || true)
+              if [ "$status" = "completed" ]; then
+                mal=$(jq  -r '(.data.attributes.stats.malicious  // 0) | tonumber? // 0' <<<"$ar" 2>/dev/null || echo 0)
+                susp=$(jq -r '(.data.attributes.stats.suspicious // 0) | tonumber? // 0' <<<"$ar" 2>/dev/null || echo 0)
+                break
+              fi
+            done
+            if [ "$status" != "completed" ]; then
+              echo "WARN: VirusTotal analysis not completed in time for $name — omitting link."
+              continue
+            fi
+            if [ "$((mal + susp))" -gt 0 ]; then
+              echo "WARN: VirusTotal reports $mal malicious / $susp suspicious for $name ($sha) — omitting link to avoid publishing a non-clean report."
+              continue
+            fi
+            if [ "$emitted" -eq 0 ]; then
+              { echo ""; echo "### 🛡️ VirusTotal reports — 0 detections"; echo ""; } >> vt-section.md
+              emitted=1
+            fi
+            echo "- [\`$name\`](https://www.virustotal.com/gui/file/$sha) — clean" >> vt-section.md
+          done
+          if [ -s vt-section.md ]; then cat vt-section.md; else echo "No clean VirusTotal links to publish."; fi
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+
+          # Create release notes from RELEASE_NOTES.md + recent commits
+          cat > RELEASE_BODY.md << 'EOFNOTES'
+          # 🚀 Nimbus Backup ${{ steps.version.outputs.VERSION }}
+
+          > ⚠️ **Windows flagged the download as a virus?** This is a known false positive (unsigned Go/Wails binary) — *not* a virus. See [why this happens and how to verify the download](https://nimbus.rdem-systems.com/en/antivirus-false-positive/) · [🇫🇷 FR](https://nimbus.rdem-systems.com/faux-positif-antivirus/). A code-signing certificate (SignPath Foundation) is on the way.
+
+          ## 📝 What's in this release
+
+          EOFNOTES
+
+          # Get commits since last tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            echo "### Changes since ${PREV_TAG}" >> RELEASE_BODY.md
+            echo "" >> RELEASE_BODY.md
+            git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --no-merges >> RELEASE_BODY.md
+            echo "" >> RELEASE_BODY.md
+          fi
+
+          # Publish the SHA-256 checksums on the release page itself so users
+          # can verify integrity without downloading SHA256SUMS.txt first.
+          echo "" >> RELEASE_BODY.md
+          echo "### 🔐 SHA-256 checksums" >> RELEASE_BODY.md
+          echo "" >> RELEASE_BODY.md
+          echo "Verify with \`Get-FileHash <file> -Algorithm SHA256\` (PowerShell) or \`sha256sum -c SHA256SUMS.txt\`." >> RELEASE_BODY.md
+          echo "" >> RELEASE_BODY.md
+          echo '```' >> RELEASE_BODY.md
+          cat release/SHA256SUMS.txt >> RELEASE_BODY.md
+          echo '```' >> RELEASE_BODY.md
+
+          # VirusTotal links (produced by the best-effort step above, if any)
+          if [ -f vt-section.md ]; then
+            cat vt-section.md >> RELEASE_BODY.md
+          fi
+
+          # Add full status from RELEASE_NOTES.md
+          echo "" >> RELEASE_BODY.md
+          echo "---" >> RELEASE_BODY.md
+          echo "" >> RELEASE_BODY.md
+          cat RELEASE_NOTES.md >> RELEASE_BODY.md
+
+          # Add tested with section
+          echo "" >> RELEASE_BODY.md
+          echo "---" >> RELEASE_BODY.md
+          echo "" >> RELEASE_BODY.md
+          echo "### Tested with NimbusBackup" >> RELEASE_BODY.md
+          echo "" >> RELEASE_BODY.md
+          echo "This release has been tested against NimbusBackup managed PBS — [🇬🇧 EN](https://nimbus.rdem-systems.com/en/blog/backup-windows-proxmox-backup-server/?utm_source=github) · [🇫🇷 FR](https://nimbus.rdem-systems.com/blog/sauvegarder-windows-proxmox-backup-server/?utm_source=github)." >> RELEASE_BODY.md
+
+          # Add links at the end (FR bare URL + EN /en/ variant)
+          echo "" >> RELEASE_BODY.md
+          echo "---" >> RELEASE_BODY.md
+          echo "" >> RELEASE_BODY.md
+          echo "**RDEM Systems** — [🇬🇧 EN](https://www.rdem-systems.com/en/) · [🇫🇷 FR](https://www.rdem-systems.com/)" >> RELEASE_BODY.md
+          echo "" >> RELEASE_BODY.md
+          echo "**Nimbus Backup — Fully managed Proxmox Backup Server datastores** — [🇬🇧 EN](https://nimbus.rdem-systems.com/en/?utm_source=github) · [🇫🇷 FR](https://nimbus.rdem-systems.com/?utm_source=github)" >> RELEASE_BODY.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: RELEASE_BODY.md
+          files: release/*
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update latest release badge
+        if: ${{ !contains(steps.version.outputs.VERSION, '-') }}
+        run: |
+          echo "Latest stable release: ${{ steps.version.outputs.VERSION }}"

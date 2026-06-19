@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math/bits"
 	"os"
+	"path"
 	"sort"
+	"strings"
 
 	//	"io/ioutil"
 	"path/filepath"
@@ -36,6 +39,124 @@ const (
 )
 
 var catalog_magic = []byte{145, 253, 96, 249, 196, 103, 88, 213}
+
+// Windows system folders to exclude automatically from backups
+// These folders contain VSS snapshots, recycle bin, and other system data
+// that should not be included in file-mode backups
+var excludedSystemFolders = []string{
+	"System Volume Information", // VSS snapshots storage
+	"$RECYCLE.BIN",               // Windows recycle bin
+	"Recovery",                   // Windows recovery partition data
+}
+
+// Windows system files to exclude automatically from backups
+// These are large paging/hibernation files that should not be backed up
+var excludedSystemFiles = []string{
+	"pagefile.sys",  // Windows page file
+	"hiberfil.sys",  // Hibernation file
+	"swapfile.sys",  // Windows swap file
+	"DumpStack.log.tmp", // Crash dump temporary file
+}
+
+// shouldSkipSystemFolder checks if a folder should be automatically excluded
+// Uses case-insensitive comparison for Windows compatibility
+func shouldSkipSystemFolder(name string) bool {
+	for _, excluded := range excludedSystemFolders {
+		if strings.EqualFold(name, excluded) {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldSkipSystemFile checks if a file should be automatically excluded
+// Uses case-insensitive comparison for Windows compatibility
+func shouldSkipSystemFile(name string) bool {
+	for _, excluded := range excludedSystemFiles {
+		if strings.EqualFold(name, excluded) {
+			return true
+		}
+	}
+	return false
+}
+
+// normExcludePath lowercases, converts backslashes to forward slashes and trims a
+// trailing slash so Windows/Unix paths and patterns compare uniformly.
+func normExcludePath(s string) string {
+	s = strings.ReplaceAll(s, "\\", "/")
+	s = strings.TrimSuffix(s, "/")
+	return strings.ToLower(s)
+}
+
+// relExcludePath returns full relative to root (both normalized). If full is not
+// under root it returns the normalized full path unchanged. Used both to make a
+// walked entry relative to the walked root and to make an absolute exclusion
+// pattern relative to the original (logical) backup root.
+func relExcludePath(root, full string) string {
+	r := normExcludePath(root)
+	f := normExcludePath(full)
+	if r != "" && strings.HasPrefix(f, r+"/") {
+		return f[len(r)+1:]
+	}
+	if f == r {
+		return ""
+	}
+	return f
+}
+
+// isExcluded reports whether an entry matches any user exclusion pattern.
+//   - A glob without a separator matches the entry basename anywhere in the tree
+//     ("*.tmp", "node_modules") — basename match ANYWHERE in the tree.
+//   - A pattern containing a separator is ANCHORED to the backup root (absolute
+//     patterns via excludeRoot, e.g. "C:\\Users\\Alice\\Temp" -> "temp" when the
+//     root is "C:\\Users\\Alice") and matched against the entry's relative path as
+//     a path glob via path.Match ("logs/*.tmp"), or as an exact match / subtree
+//     prefix. It is never a basename-anywhere match, so an anchored pattern that
+//     reduces to a single component (e.g. "temp") does not match a nested "x/temp".
+//
+// path.Match (always '/') is used rather than filepath.Match because paths are
+// pre-normalized to forward slashes, so matching must not depend on the host OS.
+func isExcluded(rel, name, excludeRoot string, patterns []string) bool {
+	relN := normExcludePath(rel)
+	nameN := strings.ToLower(name)
+	for _, pat := range patterns {
+		if strings.TrimSpace(pat) == "" {
+			continue
+		}
+		hasGlob := strings.ContainsAny(pat, "*?[")
+		hasSep := strings.ContainsAny(pat, "/\\")
+
+		if !hasSep {
+			// Separatorless pattern: match the basename anywhere in the tree.
+			bn := normExcludePath(pat)
+			if hasGlob {
+				if ok, _ := path.Match(bn, nameN); ok {
+					return true
+				}
+			} else if nameN == bn {
+				return true
+			}
+			continue
+		}
+
+		// Pattern has a separator: anchor it to the backup root and match the
+		// entry's relative path. Never a basename-anywhere match.
+		p := relExcludePath(excludeRoot, pat)
+		if p == "" {
+			continue
+		}
+		if hasGlob {
+			if ok, _ := path.Match(p, relN); ok {
+				return true
+			}
+			continue
+		}
+		if relN == p || strings.HasPrefix(relN, p+"/") {
+			return true
+		}
+	}
+	return false
+}
 
 const (
 	IFMT   uint64 = 0o0170000
@@ -138,7 +259,20 @@ func ca_make_bst(input []GoodByeItem, output *[]GoodByeItem) {
 	make_bst_inner(input, n, log_of_2(n)+1, output, 0)
 }
 
-type PXAROutCB func([]byte)
+type PXAROutCB func([]byte) error
+
+// MetaCollector is an optional hook invoked during the PXAR walk for every
+// directory and regular file that is actually being backed up (after skip
+// checks). Implementations capture per-entry metadata that PXAR itself cannot
+// represent — the primary use case is NTFS ACLs/owner/attributes on Windows.
+//
+// The walk is single-threaded, so implementations do not need to be
+// concurrency-safe with respect to the walk itself. Collect errors are logged
+// but never abort the backup: metadata capture is best-effort and must never
+// cause an otherwise-successful backup to fail.
+type MetaCollector interface {
+	Collect(absPath string, info os.FileInfo, isDir bool) error
+}
 
 type PXARArchive struct {
 	//Create(filename string, WriteCB PXAROutCB)
@@ -150,14 +284,46 @@ type PXARArchive struct {
 	pos            uint64
 	ArchiveName    string
 
-	catalog_pos uint64
+	catalog_pos  uint64
+	SkippedFiles []string // ALL skips (read errors, junctions, system auto-excludes) — for logging/sidecar display
+	// ReadErrors is the OUTCOME-affecting subset of SkippedFiles: genuine read
+	// failures (cannot stat/read/open) and content instability (file shrank or grew
+	// during read). Expected skips (system auto-excludes, junctions) are NOT here,
+	// so they don't downgrade a backup from verified_success (v2-H-02).
+	ReadErrors []string
+
+	// ExcludeList holds user-configured exclusion patterns (H-04). Patterns are
+	// matched against each child entry; matches are pruned from the archive and
+	// recorded in ExcludedFiles. Set by the caller before WriteDir.
+	ExcludeList []string
+	// ExcludedFiles records the full paths excluded by ExcludeList (policy, not an
+	// error) so they can be surfaced distinctly from SkippedFiles in the status.
+	ExcludedFiles []string
+	// ExcludeRoot is the ORIGINAL logical backup root (e.g. "C:\\Users\\Alice"),
+	// set by the caller. Absolute exclusion patterns are relativized against it so
+	// "C:\\Users\\Alice\\Temp" matches when backing up "C:\\Users\\Alice". Under VSS
+	// the walked path differs from this, which is why pattern and entry are both
+	// reduced to paths relative to their respective roots before comparison.
+	ExcludeRoot string
+	// root is the toplevel WALKED path, captured on the first WriteDir call, used to
+	// compute each entry's path relative to the (possibly VSS shadow-copy) root.
+	root string
+
+	// VirtualFiles are injected at the root of the archive before real files.
+	// Key = filename (e.g. ".nimbus_backup_meta.json"), Value = content bytes.
+	VirtualFiles map[string][]byte
+
+	// MetaCollector, if set, is called for every directory and file that is
+	// actually backed up. Used to capture NTFS ACLs and other per-file metadata
+	// that PXAR cannot represent. Best-effort: errors are logged and ignored.
+	MetaCollector MetaCollector
 }
 
 //This function will flush the internal buffer and update position
 //WriteCB for pxar stream will be called.
 //It is useful when we building a data structure and we need to keep a specific offset and output it only at the end
 
-func (a *PXARArchive) Flush() {
+func (a *PXARArchive) Flush() error {
 
 	b := make([]byte, 64*1024)
 	for {
@@ -165,10 +331,13 @@ func (a *PXARArchive) Flush() {
 		if count <= 0 {
 			break
 		}
-		a.WriteCB(b[:count])
+		if err := a.WriteCB(b[:count]); err != nil {
+			return fmt.Errorf("failed to write PXAR data: %w", err)
+		}
 		a.pos = a.pos + uint64(count)
 	}
 	//fmt.Printf("Flush %d bytes\n", count)
+	return nil
 }
 
 func (a *PXARArchive) Create() {
@@ -235,17 +404,53 @@ func append_u64_7bit(a []byte, v uint64) []byte {
 
 */
 
-func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) CatalogDir {
+// addReadError records a genuine read failure or content instability: it is added
+// to both SkippedFiles (display) and ReadErrors (which downgrades the backup
+// outcome below verified_success). Expected skips append to SkippedFiles directly.
+func (a *PXARArchive) addReadError(msg string) {
+	a.SkippedFiles = append(a.SkippedFiles, msg)
+	a.ReadErrors = append(a.ReadErrors, msg)
+}
+
+func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (CatalogDir, error) {
 	//fmt.Printf("Write dir %s at %d\n", path, a.pos)
-	files, err := os.ReadDir(path)
-	if err != nil {
-		return CatalogDir{}
+
+	// Capture the backup root so exclusion patterns can be matched against the
+	// path relative to it (VSS-safe — see relExcludePath/isExcluded).
+	if toplevel {
+		a.root = path
 	}
 
-	fileInfo, err := os.Stat(path)
+	// Check if directory is a junction point/symlink before reading it
+	fileInfo, err := os.Lstat(path)
 	if err != nil {
-		fmt.Printf("Failed to stat %s\n", path)
-		return CatalogDir{}
+		if toplevel {
+			// Toplevel directory MUST be accessible — this is a fatal error
+			return CatalogDir{}, fmt.Errorf("cannot stat backup root directory: %s: %w", path, err)
+		}
+		// Sub-directories: skip and continue backup
+		skipMsg := fmt.Sprintf("Cannot stat directory: %s (Error: %v)", path, err)
+		a.addReadError(skipMsg)
+		return CatalogDir{}, nil
+	}
+
+	// Skip directory junction points to avoid infinite loops and access errors
+	if !toplevel && fileInfo.Mode()&os.ModeSymlink != 0 {
+		skipMsg := fmt.Sprintf("Junction point (skipped): %s", path)
+		a.SkippedFiles = append(a.SkippedFiles, skipMsg)
+		return CatalogDir{}, nil // Return nil error to continue backup
+	}
+
+	files, err := os.ReadDir(path)
+	if err != nil {
+		if toplevel {
+			// Toplevel directory MUST be readable — this is a fatal error
+			return CatalogDir{}, fmt.Errorf("cannot read backup root directory: %s: %w", path, err)
+		}
+		// Sub-directories: skip and continue backup
+		skipMsg := fmt.Sprintf("Cannot read directory: %s (Error: %v)", path, err)
+		a.addReadError(skipMsg)
+		return CatalogDir{}, nil
 	}
 
 	//Avoid writing filename entry on root
@@ -261,12 +466,16 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 		a.buffer.WriteByte(0x00)
 	} else {
 		if a.CatalogWriteCB != nil {
-			a.CatalogWriteCB(catalog_magic)
+			if err := a.CatalogWriteCB(catalog_magic); err != nil {
+				return CatalogDir{}, fmt.Errorf("failed to write catalog magic: %w", err)
+			}
 			a.catalog_pos = 8
 		}
 	}
 
-	a.Flush()
+	if err := a.Flush(); err != nil {
+		return CatalogDir{}, err
+	}
 
 	dir_start_pos := a.pos
 
@@ -285,17 +494,77 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 	}
 	binary.Write(&a.buffer, binary.LittleEndian, entry)
 
-	a.Flush()
+	if err := a.Flush(); err != nil {
+		return CatalogDir{}, err
+	}
+
+	// Capture per-directory metadata (NTFS ACLs on Windows). Best-effort.
+	if a.MetaCollector != nil {
+		if err := a.MetaCollector.Collect(path, fileInfo, true); err != nil {
+			a.SkippedFiles = append(a.SkippedFiles,
+				fmt.Sprintf("Metadata collect failed for dir %s: %v", path, err))
+		}
+	}
 
 	goodbyteitems := make([]GoodByeItem, 0)
 	catalog_files := make([]CatalogFile, 0)
 	catalog_dirs := make([]CatalogDir, 0)
 
+	// Inject virtual files (metadata) at the root of the archive
+	if toplevel && len(a.VirtualFiles) > 0 {
+		// Sort keys for deterministic output
+		vfNames := make([]string, 0, len(a.VirtualFiles))
+		for name := range a.VirtualFiles {
+			vfNames = append(vfNames, name)
+		}
+		sort.Strings(vfNames)
+
+		now := uint64(entry.mtime.secs)
+		for _, name := range vfNames {
+			startpos := a.pos
+			F, err := a.WriteVirtualFile(name, a.VirtualFiles[name], now)
+			if err != nil {
+				return CatalogDir{}, fmt.Errorf("failed to write virtual file %s: %w", name, err)
+			}
+			catalog_files = append(catalog_files, F)
+			goodbyteitems = append(goodbyteitems, GoodByeItem{
+				offset: startpos,
+				hash:   siphash.Hash(0x83ac3f1cfbb450db, 0xaa4f1b6879369fbd, []byte(name)),
+				len:    a.pos - startpos,
+			})
+		}
+	}
+
 	for _, file := range files {
 		startpos := a.pos
-		if file.IsDir() {
 
-			D := a.WriteDir(filepath.Join(path, file.Name()), file.Name(), false)
+		// User-configured exclusions (H-04): prune the entry (and its subtree for
+		// directories) before it enters the archive, recorded as policy not error.
+		if len(a.ExcludeList) > 0 {
+			childPath := filepath.Join(path, file.Name())
+			if isExcluded(relExcludePath(a.root, childPath), file.Name(), a.ExcludeRoot, a.ExcludeList) {
+				a.ExcludedFiles = append(a.ExcludedFiles, childPath)
+				continue
+			}
+		}
+
+		if file.IsDir() {
+			// Skip Windows system folders (VSS snapshots, recycle bin, etc.)
+			if shouldSkipSystemFolder(file.Name()) {
+				skipMsg := fmt.Sprintf("System folder (auto-excluded): %s", filepath.Join(path, file.Name()))
+				a.SkippedFiles = append(a.SkippedFiles, skipMsg)
+				continue
+			}
+
+			D, err := a.WriteDir(filepath.Join(path, file.Name()), file.Name(), false)
+			if err != nil {
+				return CatalogDir{}, err
+			}
+			if a.pos == startpos {
+				// WriteDir skipped this subdirectory (junction/unreadable): nothing
+				// written, so don't add a phantom zero-value catalog/goodbye entry (M-06).
+				continue
+			}
 			catalog_dirs = append(catalog_dirs, D)
 			goodbyteitems = append(goodbyteitems, GoodByeItem{
 				offset: startpos,
@@ -303,7 +572,22 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 				len:    a.pos - startpos,
 			})
 		} else {
-			F := a.WriteFile(filepath.Join(path, file.Name()), file.Name())
+			// Skip Windows system files (pagefile, hiberfil, etc.)
+			if shouldSkipSystemFile(file.Name()) {
+				skipMsg := fmt.Sprintf("System file (auto-excluded): %s", filepath.Join(path, file.Name()))
+				a.SkippedFiles = append(a.SkippedFiles, skipMsg)
+				continue
+			}
+
+			F, err := a.WriteFile(filepath.Join(path, file.Name()), file.Name())
+			if err != nil {
+				return CatalogDir{}, err
+			}
+			if a.pos == startpos {
+				// WriteFile skipped this entry (unreadable/junction): nothing was
+				// written, so don't add a phantom zero-value catalog/goodbye entry (M-06).
+				continue
+			}
 
 			catalog_files = append(catalog_files, F)
 			goodbyteitems = append(goodbyteitems, GoodByeItem{
@@ -339,13 +623,17 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 	catalog_outdata = append(catalog_outdata, tabledata...)
 
 	if a.CatalogWriteCB != nil {
-		a.CatalogWriteCB(catalog_outdata)
+		if err := a.CatalogWriteCB(catalog_outdata); err != nil {
+			return CatalogDir{}, fmt.Errorf("failed to write catalog data: %w", err)
+		}
 
 	}
 
 	a.catalog_pos += uint64(len(catalog_outdata))
 
-	a.Flush()
+	if err := a.Flush(); err != nil {
+		return CatalogDir{}, err
+	}
 
 	//Sort goodbyeitems by sip hash to build later kinda of heap
 
@@ -361,7 +649,9 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 
 	goodbyteitems = goodbyteitemsnew
 
-	a.Flush()
+	if err := a.Flush(); err != nil {
+		return CatalogDir{}, err
+	}
 	goodbye_start := a.pos
 
 	binary.Write(&a.buffer, binary.LittleEndian, PXAR_GOODBYE)
@@ -381,7 +671,9 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 
 	binary.Write(&a.buffer, binary.LittleEndian, gi)
 
-	a.Flush()
+	if err := a.Flush(); err != nil {
+		return CatalogDir{}, err
+	}
 
 	if toplevel {
 		//We write special pointer to root dir here
@@ -398,35 +690,60 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) Catal
 		ptr := make([]byte, 0)
 		ptr = binary.LittleEndian.AppendUint64(ptr, a.catalog_pos)
 		if a.CatalogWriteCB != nil {
-			a.CatalogWriteCB(catalog_outdata)
-			a.CatalogWriteCB(ptr)
+			if err := a.CatalogWriteCB(catalog_outdata); err != nil {
+				return CatalogDir{}, fmt.Errorf("failed to write catalog toplevel data: %w", err)
+			}
+			if err := a.CatalogWriteCB(ptr); err != nil {
+				return CatalogDir{}, fmt.Errorf("failed to write catalog pointer: %w", err)
+			}
 		}
 	}
 
 	return CatalogDir{
 		Name: dirname,
 		Pos:  oldpos,
-	}
+	}, nil
 }
 
 // On pxar first item and consquently entry point must always be WriteDir , because toplevel is always a directory
 // So backing up single file is not possible
-func (a *PXARArchive) WriteFile(path string, basename string) CatalogFile {
+func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, error) {
 	//fmt.Printf("Write file %s at %d\n", path, a.pos)
-	fileInfo, err := os.Stat(path)
+
+	// Use Lstat to detect symlinks/junction points without following them
+	fileInfo, err := os.Lstat(path)
 	if err != nil {
-		fmt.Printf("Failed to stat %s\n", path)
-		return CatalogFile{}
+		// Log stat errors but continue backup - don't fail on inaccessible files
+		skipMsg := fmt.Sprintf("Cannot stat file: %s (Error: %v)", path, err)
+		a.addReadError(skipMsg)
+		return CatalogFile{}, nil
+	}
+
+	// Skip junction points and symlinks (common on Windows: "Application Data", etc.)
+	if fileInfo.Mode()&os.ModeSymlink != 0 {
+		skipMsg := fmt.Sprintf("Junction point (skipped): %s", path)
+		a.SkippedFiles = append(a.SkippedFiles, skipMsg)
+		return CatalogFile{}, nil // Return nil error to continue backup
 	}
 
 	file, err := os.Open(path)
 
 	if err != nil {
-		fmt.Printf("Failed to open %s\n", path)
-		return CatalogFile{}
+		// Log file open errors but continue backup - don't fail on locked/system files
+		skipMsg := fmt.Sprintf("Cannot open file: %s (Error: %v)", path, err)
+		a.addReadError(skipMsg)
+		return CatalogFile{}, nil
 	}
 
 	defer file.Close()
+
+	// Capture per-file metadata (NTFS ACLs on Windows). Best-effort.
+	if a.MetaCollector != nil {
+		if err := a.MetaCollector.Collect(path, fileInfo, false); err != nil {
+			a.SkippedFiles = append(a.SkippedFiles,
+				fmt.Sprintf("Metadata collect failed for file %s: %v", path, err))
+		}
+	}
 
 	fname_entry := &PXARFilenameEntry{
 		hdr: PXAR_FILENAME,
@@ -453,31 +770,127 @@ func (a *PXARArchive) WriteFile(path string, basename string) CatalogFile {
 	}
 	binary.Write(&a.buffer, binary.LittleEndian, entry)
 
+	// The PXAR stream is a flat byte sequence: the next entry's header begins
+	// immediately after exactly declaredSize payload bytes. We commit declaredSize
+	// in the header here, so we MUST emit exactly that many bytes regardless of how
+	// many the file actually yields. A file changing size between the Lstat above
+	// and the read below (common for files in use WITHOUT VSS: logs, .pst, SQL .mdf)
+	// would otherwise desynchronise the whole archive and corrupt every entry that
+	// follows. So we cap reads at declaredSize and zero-pad any shortfall.
 	binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD)
-	filesize := uint64(fileInfo.Size()) + 16 //File size + header size
+	declaredSize := uint64(fileInfo.Size())
+	filesize := declaredSize + 16 //Payload size + header size
 	binary.Write(&a.buffer, binary.LittleEndian, filesize)
 
-	a.Flush()
+	if err := a.Flush(); err != nil {
+		return CatalogFile{}, err
+	}
 
 	readbuffer := make([]byte, 1024*64)
+	var written uint64
 
-	for {
-		nread, err := file.Read(readbuffer)
-		if nread <= 0 {
+	for written < declaredSize {
+		toRead := uint64(len(readbuffer))
+		if remaining := declaredSize - written; remaining < toRead {
+			toRead = remaining
+		}
+		nread, err := file.Read(readbuffer[:toRead])
+		if nread > 0 {
+			a.buffer.Write(readbuffer[:nread])
+			written += uint64(nread)
+			if ferr := a.Flush(); ferr != nil {
+				return CatalogFile{}, ferr
+			}
+		}
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			panic(err.Error())
+			return CatalogFile{}, fmt.Errorf("failed to read from %s: %w", path, err)
 		}
-		a.buffer.Write(readbuffer[:nread])
-		a.Flush()
 	}
 
-	a.Flush()
+	// File shrank since Lstat (or read short): pad with zeros so the emitted
+	// payload matches the declared length and the stream stays aligned. Flag it as
+	// a content-instability read error so the backup is not reported as fully
+	// verified (v2-H-02) rather than silently passing.
+	if written < declaredSize {
+		a.addReadError(
+			fmt.Sprintf("File shrank during backup, zero-padded to declared size (content inconsistent): %s", path))
+		pad := make([]byte, 1024*64)
+		for written < declaredSize {
+			n := uint64(len(pad))
+			if remaining := declaredSize - written; remaining < n {
+				n = remaining
+			}
+			a.buffer.Write(pad[:n])
+			written += n
+			if ferr := a.Flush(); ferr != nil {
+				return CatalogFile{}, ferr
+			}
+		}
+	} else {
+		// File grew after Lstat: we emitted only declaredSize bytes, so the appended
+		// tail is NOT in the snapshot. The read loop stopped exactly at declaredSize
+		// (capped), so probe one more byte to detect the growth and flag it — this
+		// silent truncation otherwise passed as success (v2-H-02).
+		var probe [1]byte
+		if n, _ := file.Read(probe[:]); n > 0 {
+			a.addReadError(
+				fmt.Sprintf("File grew during backup, tail past %d bytes not captured (content incomplete): %s", declaredSize, path))
+		}
+	}
+
+	if err := a.Flush(); err != nil {
+		return CatalogFile{}, err
+	}
 
 	return CatalogFile{
 		Name:  basename,
 		MTime: uint64(fileInfo.ModTime().Unix()),
 		Size:  uint64(fileInfo.Size()),
+	}, nil
+}
+
+// WriteVirtualFile writes an in-memory file into the PXAR archive.
+// Used for injecting metadata files (e.g. .nimbus_backup_meta.json) without a real file on disk.
+func (a *PXARArchive) WriteVirtualFile(filename string, data []byte, mtime uint64) (CatalogFile, error) {
+	fname_entry := &PXARFilenameEntry{
+		hdr: PXAR_FILENAME,
+		len: uint64(16) + uint64(len(filename)) + 1,
 	}
+	binary.Write(&a.buffer, binary.LittleEndian, fname_entry)
+	a.buffer.WriteString(filename)
+	a.buffer.WriteByte(0x00)
+
+	entry := &PXARFileEntry{
+		hdr:   PXAR_ENTRY,
+		len:   56,
+		mode:  IFREG | 0o444,
+		flags: 0,
+		uid:   1000,
+		gid:   1000,
+		mtime: MTime{
+			secs:    mtime,
+			nanos:   0,
+			padding: 0,
+		},
+	}
+	binary.Write(&a.buffer, binary.LittleEndian, entry)
+
+	binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD)
+	filesize := uint64(len(data)) + 16
+	binary.Write(&a.buffer, binary.LittleEndian, filesize)
+
+	a.buffer.Write(data)
+
+	if err := a.Flush(); err != nil {
+		return CatalogFile{}, err
+	}
+
+	return CatalogFile{
+		Name:  filename,
+		MTime: mtime,
+		Size:  uint64(len(data)),
+	}, nil
 }

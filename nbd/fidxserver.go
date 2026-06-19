@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"maps"
 	"pbscommon"
 	"slices"
 	"sync"
@@ -116,10 +115,10 @@ func (f * FIDXServer) ReadAt(p []byte, off int64) (n int, err error) {
 		pos += (idx.SliceEnd-idx.SliceStart)
 	}
 
-	
 
-	k := slices.Collect(maps.Keys(f.cached))
-	for _, key := range k {
+
+	// Clean up expired cache entries (Go 1.22 compatible)
+	for key := range f.cached {
 		if f.cached[key].Life <= 0 {
 			delete(f.cached, key)
 			fmt.Printf("Remove from cache %s\n", f.chunks[key])

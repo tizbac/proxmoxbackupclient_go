@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <?define ProductName = "Nimbus Backup" ?>
+  <!-- ProductVersion can be overridden from the CI via
+       `candle.exe -dProductVersion=x.y.z`. Falls back to the hardcoded
+       value below for local dev builds. Keep this in sync with
+       gui/wails.json on every release. -->
+  <?ifndef ProductVersion ?>
+    <?define ProductVersion = "0.2.72" ?>
+  <?endif ?>
+  <?define Manufacturer = "RDEM Systems" ?>
+  <?define UpgradeCode = "12345678-1234-1234-1234-123456789012" ?>
+
+  <Product Id="*"
+           Name="$(var.ProductName)"
+           Language="1033"
+           Version="$(var.ProductVersion)"
+           Manufacturer="$(var.Manufacturer)"
+           UpgradeCode="$(var.UpgradeCode)">
+
+    <Package InstallerVersion="200"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Platform="x64"
+             Description="$(var.ProductName) - Proxmox Backup Server Client"
+             Comments="Backup client with automatic scheduling and VSS support" />
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+      Schedule="afterInstallInitialize"
+      AllowSameVersionUpgrades="yes" />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Installation directory -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="NimbusBackup" />
+      </Directory>
+
+      <!-- Start Menu shortcut -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="Nimbus Backup"/>
+      </Directory>
+    </Directory>
+
+    <!-- Main application files -->
+    <DirectoryRef Id="INSTALLFOLDER">
+      <!-- GUI Executable -->
+      <Component Id="GUIExecutable" Guid="*" Win64="yes">
+        <File Id="NimbusBackupEXE"
+              Source="../../gui/build/bin/NimbusBackup.exe"
+              KeyPath="yes" />
+      </Component>
+
+      <!-- Service Executable -->
+      <Component Id="ServiceExecutable" Guid="*" Win64="yes">
+        <File Id="NimbusBackupSVCEXE"
+              Source="../../gui/build/bin/NimbusBackupSVC.exe"
+              KeyPath="yes" />
+
+        <!-- Service installation -->
+        <ServiceInstall
+          Id="NimbusBackupService"
+          Type="ownProcess"
+          Name="NimbusBackup"
+          DisplayName="Nimbus Backup SVC"
+          Description="Executes scheduled backups to Proxmox Backup Server with VSS support"
+          Start="auto"
+          Account="LocalSystem"
+          ErrorControl="normal"
+          Interactive="no">
+          <ServiceDependency Id="RPCSS"/>
+        </ServiceInstall>
+
+        <ServiceControl
+          Id="ControlNimbusBackupService"
+          Name="NimbusBackup"
+          Start="install"
+          Stop="both"
+          Wait="yes"
+          Remove="uninstall" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- Start Menu shortcut -->
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="ApplicationShortcut" Guid="*">
+        <Shortcut Id="ApplicationStartMenuShortcut"
+                  Name="Nimbus Backup"
+                  Description="Backup client for Proxmox Backup Server"
+                  Target="[INSTALLFOLDER]NimbusBackup.exe"
+                  WorkingDirectory="INSTALLFOLDER"/>
+        <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
+        <RegistryValue Root="HKCU"
+                       Key="Software\RDEMSystems\NimbusBackup"
+                       Name="installed"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes"/>
+      </Component>
+
+      <!-- Auto-start registry entry (conditional) -->
+      <Component Id="AutoStartRegistry" Guid="*">
+        <Condition>AUTOSTART = "1"</Condition>
+        <RegistryValue Root="HKCU"
+                       Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                       Name="NimbusBackup"
+                       Type="string"
+                       Value="&quot;[INSTALLFOLDER]NimbusBackup.exe&quot; --minimized"
+                       KeyPath="yes"/>
+      </Component>
+    </DirectoryRef>
+
+    <!-- Features -->
+    <Feature Id="ProductFeature"
+             Title="Nimbus Backup"
+             Level="1"
+             Description="Complete backup solution with automatic scheduling">
+      <ComponentRef Id="GUIExecutable" />
+      <ComponentRef Id="ServiceExecutable" />
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="AutoStartRegistry" />
+    </Feature>
+
+    <!-- Add/Remove Programs metadata: publisher trust signals shown in
+         "Programs and Features". Purely informational, no behavioral or
+         upgrade impact. NOTE: do NOT set ARPNOMODIFY here — WixUI_InstallDir
+         already defines it, and a second definition is a duplicate-symbol
+         build error (LGHT0091). -->
+    <Property Id="ARPURLINFOABOUT" Value="https://nimbus.rdem-systems.com/" />
+    <Property Id="ARPHELPLINK" Value="https://nimbus.rdem-systems.com/" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/rdemsystems/NimbusBackupClient/releases" />
+    <Property Id="ARPCONTACT" Value="contact@rdem-systems.com" />
+
+    <!-- UI -->
+    <UIRef Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <!-- License -->
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <!-- ==================== AUTO-START CONFIGURATION ==================== -->
+
+    <!-- Property to control auto-start (default = enabled for now, TODO: add UI checkbox) -->
+    <Property Id="AUTOSTART" Value="1" />
+
+    <!-- ==================== UNINSTALL CONFIGURATION CLEANUP ==================== -->
+
+    <!-- Property to control config deletion (default = keep config) -->
+    <Property Id="KEEP_CONFIG" Value="1" />
+
+    <!-- Set property based on user choice in uninstall dialog -->
+    <CustomAction Id="SetKeepConfigNo" Property="KEEP_CONFIG" Value="0" />
+    <CustomAction Id="SetKeepConfigYes" Property="KEEP_CONFIG" Value="1" />
+
+    <!-- Custom action to kill all GUI processes before upgrade -->
+    <CustomAction Id="KillGUIProcesses"
+                  Directory="TARGETDIR"
+                  ExeCommand='cmd.exe /c "taskkill /F /IM NimbusBackup.exe /T 2&gt;nul || exit 0"'
+                  Execute="immediate"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Custom action to delete config directory -->
+    <CustomAction Id="DeleteConfigFolder"
+                  Directory="TARGETDIR"
+                  ExeCommand='cmd.exe /c "if exist "%ProgramData%\NimbusBackup" rmdir /s /q "%ProgramData%\NimbusBackup""'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Schedule custom actions -->
+    <InstallExecuteSequence>
+      <!-- Kill GUI processes during upgrades before stopping service -->
+      <Custom Action="KillGUIProcesses" Before="StopServices">
+        UPGRADINGPRODUCTCODE
+      </Custom>
+
+      <!-- Only delete config if KEEP_CONFIG=0 AND we're uninstalling (not upgrading) -->
+      <Custom Action="DeleteConfigFolder" Before="RemoveFiles">
+        (REMOVE="ALL") AND NOT UPGRADINGPRODUCTCODE AND (KEEP_CONFIG="0")
+      </Custom>
+    </InstallExecuteSequence>
+
+    <!-- Custom dialogs (WiX UI extension) -->
+    <UI>
+      <!-- Custom dialog for uninstall -->
+      <Dialog Id="NimbusUninstallDlg" Width="370" Height="270" Title="[ProductName] - Désinstallation">
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes">
+          <Text>{\WixUI_Font_Title}Désinstallation de [ProductName]</Text>
+        </Control>
+
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="320" Height="30" Transparent="yes" NoPrefix="yes">
+          <Text>Souhaitez-vous conserver votre configuration et vos logs ?</Text>
+        </Control>
+
+        <Control Id="ConfigInfo" Type="Text" X="25" Y="60" Width="320" Height="60" Transparent="yes" NoPrefix="yes">
+          <Text>La configuration est stockée dans :\nC:\ProgramData\NimbusBackup\
+
+Cela inclut :
+• config.json (serveurs PBS, identifiants)
+• jobs.json (tâches planifiées)
+• debug-gui.log et debug-service.log
+          </Text>
+        </Control>
+
+        <Control Id="KeepConfigRadio" Type="RadioButtonGroup" X="25" Y="130" Width="320" Height="50" Property="KEEP_CONFIG">
+          <RadioButtonGroup Property="KEEP_CONFIG">
+            <RadioButton Text="Conserver la configuration" Value="1" X="0" Y="0" Width="300" Height="15" />
+            <RadioButton Text="Supprimer la configuration" Value="0" X="0" Y="20" Width="300" Height="15" />
+          </RadioButtonGroup>
+        </Control>
+
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&amp;Retour">
+          <Publish Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+        </Control>
+
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Désinstaller">
+          <Publish Event="EndDialog" Value="Return">1</Publish>
+        </Control>
+
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Annuler">
+          <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+        </Control>
+      </Dialog>
+
+      <!-- Insert custom dialog into uninstall sequence -->
+      <InstallUISequence>
+        <Show Dialog="NimbusUninstallDlg" Before="ProgressDlg">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Show>
+      </InstallUISequence>
+    </UI>
+
+  </Product>
+</Wix>

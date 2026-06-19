@@ -1,6 +1,6 @@
 module snapshot
 
-go 1.24.4
+go 1.25
 
 require (
 	github.com/go-ole/go-ole v1.2.6 // indirect

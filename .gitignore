@@ -1,4 +1,54 @@
+# Build artifacts
 dist/
+!gui/frontend/dist/
+build/
+
+# Binaries
 proxmoxbackupgo_cli.exe
 proxmoxbackupgo.exe
+proxmox-backup-gui
+proxmox-backup-gui.exe
+proxmox-backup-gui-*
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Config (keep examples)
 config.json
+!config.json.example
+*.ini
+!*.example.ini
+
+# Test coverage
+*.out
+coverage.txt
+
+# Go workspace
+.go/
+vendor/
+
+# Generated Windows version resource (created in CI by goversioninfo)
+*.syso
+gui/versioninfo.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Packages
+*.tar.gz
+*.zip
+*.AppImage
+
+# Logs
+*.log
+# Idées/notes locales (pas dans git)
+GEMINI_IDEAS.md

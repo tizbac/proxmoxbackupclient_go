@@ -1,0 +1,506 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #333;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.header {
+    background: #2d3748;
+    color: white;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.header h1 {
+    font-size: 28px;
+    margin-bottom: 5px;
+}
+
+.header p {
+    opacity: 0.8;
+    font-size: 14px;
+}
+
+.container {
+    flex: 1;
+    padding: 30px;
+    overflow-y: auto;
+    background: white;
+    margin: 20px;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    max-width: 1200px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.tabs {
+    display: flex;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 30px;
+}
+
+.tab {
+    padding: 15px 30px;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s;
+    font-weight: 500;
+}
+
+.tab:hover {
+    background: #f7fafc;
+}
+
+.tab.active {
+    border-bottom-color: #667eea;
+    color: #667eea;
+}
+
+.tab-content {
+    display: none;
+    animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #2d3748;
+}
+
+.form-group input[type="text"],
+.form-group input[type="password"],
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.3s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.form-group input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.btn {
+    padding: 12px 24px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s;
+    margin-right: 10px;
+}
+
+.btn:hover {
+    background: #5a67d8;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn:disabled {
+    background: #cbd5e0;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-secondary {
+    background: #718096;
+}
+
+.btn-secondary:hover {
+    background: #4a5568;
+}
+
+.status {
+    padding: 15px;
+    background: #f7fafc;
+    border-left: 4px solid #667eea;
+    border-radius: 4px;
+    margin-top: 20px;
+    display: none;
+}
+
+.status.success {
+    border-left-color: #48bb78;
+    background: #f0fff4;
+}
+
+.status.error {
+    border-left-color: #f56565;
+    background: #fff5f5;
+}
+
+.status.visible {
+    display: block;
+}
+
+.info-box {
+    background: #edf2f7;
+    padding: 15px;
+    border-radius: 6px;
+    margin-top: 20px;
+}
+
+.progress {
+    width: 100%;
+    height: 24px;
+    background: #e2e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 20px 0;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    width: 0%;
+    transition: width 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.card {
+    background: #f7fafc;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.card h3 {
+    margin-bottom: 10px;
+}
+
+.logo {
+    max-width: 200px;
+    margin: 20px auto;
+    display: block;
+}
+
+/* ==================== RESPONSIVE DESIGN ==================== */
+
+/* Tablets and small screens */
+@media (max-width: 1024px) {
+    .container {
+        margin: 15px;
+        padding: 20px;
+        max-width: 100%;
+    }
+
+    .header h1 {
+        font-size: 24px;
+    }
+
+    .tab {
+        padding: 12px 20px;
+        font-size: 14px;
+    }
+
+    /* Make tables horizontally scrollable */
+    table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+    .card {
+        padding: 15px;
+    }
+}
+
+/* Mobile screens */
+@media (max-width: 768px) {
+    body {
+        min-height: 100vh;
+        min-height: -webkit-fill-available; /* iOS Safari fix */
+    }
+
+    .header {
+        padding: 15px 10px;
+    }
+
+    .header h1 {
+        font-size: 20px;
+    }
+
+    .header p {
+        font-size: 12px;
+    }
+
+    .container {
+        margin: 10px;
+        padding: 15px;
+        border-radius: 8px;
+    }
+
+    /* Horizontal scrollable tabs */
+    .tabs {
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+        margin-bottom: 20px;
+    }
+
+    .tab {
+        padding: 10px 15px;
+        font-size: 13px;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .tab-content {
+        animation: none; /* Disable animation on mobile for performance */
+    }
+
+    /* Forms */
+    .form-group {
+        margin-bottom: 15px;
+    }
+
+    .form-group label {
+        font-size: 13px;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="password"],
+    .form-group input[type="time"],
+    .form-group select,
+    .form-group textarea {
+        padding: 10px;
+        font-size: 14px;
+    }
+
+    /* Buttons */
+    .btn {
+        padding: 10px 16px;
+        font-size: 13px;
+        margin-right: 8px;
+        margin-bottom: 8px; /* Stack buttons on small screens */
+    }
+
+    button {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+
+    /* Tables */
+    table {
+        font-size: 12px;
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    table th,
+    table td {
+        padding: 8px !important;
+        min-width: 80px;
+    }
+
+    /* Cards */
+    .card {
+        padding: 12px;
+        margin-bottom: 15px;
+    }
+
+    .card h3 {
+        font-size: 16px;
+    }
+
+    /* Info boxes */
+    .info-box {
+        padding: 12px;
+        font-size: 13px;
+        margin-top: 15px;
+    }
+
+    /* Status messages */
+    .status {
+        padding: 12px;
+        font-size: 13px;
+    }
+
+    /* Progress bar */
+    .progress {
+        height: 20px;
+        margin: 15px 0;
+    }
+
+    .progress-bar {
+        font-size: 10px;
+    }
+
+    /* Grid layout */
+    .grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+}
+
+/* Very small mobile screens */
+@media (max-width: 480px) {
+    .header h1 {
+        font-size: 18px;
+    }
+
+    .header p {
+        font-size: 11px;
+    }
+
+    .container {
+        margin: 5px;
+        padding: 10px;
+    }
+
+    .tab {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="password"],
+    .form-group select,
+    .form-group textarea {
+        padding: 8px;
+        font-size: 13px;
+    }
+
+    .btn {
+        width: 100%; /* Full width buttons on very small screens */
+        margin-right: 0;
+        margin-bottom: 10px;
+    }
+
+    button {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+
+    table {
+        font-size: 11px;
+    }
+
+    table th,
+    table td {
+        padding: 6px !important;
+        min-width: 70px;
+    }
+
+    .card {
+        padding: 10px;
+    }
+
+    .card h3 {
+        font-size: 14px;
+    }
+}
+
+/* Landscape mode on small screens */
+@media (max-height: 600px) and (orientation: landscape) {
+    .header {
+        padding: 10px;
+    }
+
+    .header h1 {
+        font-size: 16px;
+    }
+
+    .header p {
+        display: none; /* Hide subtitle in landscape */
+    }
+
+    .container {
+        margin: 5px;
+        padding: 10px;
+    }
+
+    .tab {
+        padding: 6px 12px;
+    }
+}
+
+/* Ensure close button (window controls) are always accessible */
+@media (max-width: 768px) {
+    /* Prevent content from covering window controls */
+    body {
+        -webkit-app-region: no-drag;
+    }
+
+    .header {
+        -webkit-app-region: drag;
+    }
+
+    /* Ensure buttons and interactive elements are draggable */
+    button, a, input, select, textarea {
+        -webkit-app-region: no-drag;
+    }
+}
+
+/* Ultra small screens - compact mode */
+@media (max-width: 480px) {
+    /* Hide long text, show only icons/short text */
+    .compact-text-long {
+        display: none;
+    }
+    
+    .compact-text-short {
+        display: inline;
+    }
+}
+
+/* Default: show long text */
+.compact-text-short {
+    display: none;
+}
+
+.compact-text-long {
+    display: inline;
+}

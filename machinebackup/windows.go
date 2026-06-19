@@ -172,19 +172,34 @@ func enumVolumeDiskOffset() ([]VolumeLetterAssign, error) {
 						uintptr(unsafe.Pointer(&returnLength)),
 					)
 
-					if r1 == 0 {
-						return ret, nil
-					}
-
-					i := 0
-					for i < len(buffer) && buffer[i] != 0 {
-						start := i
-						for buffer[i] != 0 {
-							i++
+					if r1 != 0 {
+						// GetVolumePathNamesForVolumeNameW fills buffer2 (UTF-16)
+						// with a REG_MULTI_SZ: consecutive null-terminated wide
+						// strings ending in an empty string. returnLength is the
+						// count of wide chars written. The previous loop scanned
+						// the raw IOCTL byte buffer with byte indices, which only
+						// ever recovered the first character of the first path.
+						end := int(returnLength)
+						if end > len(buffer2) {
+							end = len(buffer2)
 						}
-						path := windows.UTF16ToString(buffer2[start:i])
-						v.Letters = append(v.Letters, path)
-						i++
+						j := 0
+						for j < end && buffer2[j] != 0 {
+							start := j
+							for j < end && buffer2[j] != 0 {
+								j++
+							}
+							if p := windows.UTF16ToString(buffer2[start:j]); p != "" {
+								v.Letters = append(v.Letters, p)
+							}
+							j++ // skip the null terminator
+						}
+					} else {
+						// Could not map this volume to a path: leave it without a
+						// letter and keep enumerating the rest (this previously
+						// aborted the whole enumeration, silently dropping VSS for
+						// every later volume).
+						fmt.Printf("%s : GetVolumePathNamesForVolumeNameW failed\n", volName)
 					}
 
 					ret = append(ret, v)
@@ -326,10 +341,17 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 
 		for _, V := range vols {
 			if V.DiskNumber == int32(index) && V.Offset == E.StartingOffset {
-				if len(V.Letters) > 0 {
-					letter = V.Letters[0]
+				// Only an exact drive-letter mount ("X:\") gives a usable VSS
+				// letter. Folder mount points ("C:\Mount\Data\") have no own
+				// letter; backing them up raw by partition offset yields the
+				// correct data (if not crash-consistent), whereas taking the host
+				// volume's letter as theirs would snapshot the wrong volume.
+				for _, mountPath := range V.Letters {
+					if len(mountPath) == 3 && mountPath[1] == ':' && mountPath[2] == '\\' {
+						letter = string(mountPath[0])
+						break
+					}
 				}
-
 			}
 		}
 
@@ -448,39 +470,43 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 						panic(err)
 					}
 
-					if uint64(P.EndByte) != uint64(P.StartByte)+uint64(l) {
-						log.Printf("Harmless warning: VSS snapshot is smaller than partition ( probably FS is too ), will pad with zeros")
+					if uint64(P.StartByte)+uint64(l) > P.EndByte {
+						log.Print("Harmless warning: VSS snapshot is larger than partition, will read only up to the partition end")
 					}
 
-					npad := P.EndByte - (uint64(P.StartByte) + uint64(l))
-
+					// Read the shadow up to the partition end. Clamping each read
+					// to P.EndByte-pos means pos never overshoots, so a shadow that
+					// is exactly the partition size ends cleanly on EOF (no panic),
+					// a smaller shadow leaves a positive pad, and a larger one is
+					// simply truncated at the partition boundary.
 					block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
-					for {
-						nbytes, err := snapshot_file.Read(block)
-						if err == io.EOF {
-							if pos != P.EndByte {
-								log.Printf("Harmless warning: VSS snapshot is smaller than partition ( probably FS is too ), will pad with zeros")
-								npad = P.EndByte - pos
-								break
+					for pos < P.EndByte {
+						nbytes, rerr := snapshot_file.Read(block[:min(uint64(len(block)), P.EndByte-pos)])
+						if nbytes > 0 {
+							pos += uint64(nbytes)
+							buffer = append(buffer, block[:nbytes]...)
+							for len(buffer) >= pbscommon.PBS_FIXED_CHUNK_SIZE {
+								ch <- buffer[:pbscommon.PBS_FIXED_CHUNK_SIZE]
+								buffer = buffer[pbscommon.PBS_FIXED_CHUNK_SIZE:]
 							}
 						}
-						if pos >= P.EndByte {
-							panic(fmt.Errorf("Fatal: Went outside partition space while reading VSS snapshot"))
+						if rerr == io.EOF {
+							break
 						}
-						if err != nil {
-							panic(err)
-						}
-						pos += uint64(nbytes)
-						buffer = append(buffer, block[:nbytes]...)
-						if len(buffer) >= pbscommon.PBS_FIXED_CHUNK_SIZE {
-							ch <- buffer[:pbscommon.PBS_FIXED_CHUNK_SIZE]
-							buffer = buffer[pbscommon.PBS_FIXED_CHUNK_SIZE:]
+						if rerr != nil {
+							panic(rerr)
 						}
 					}
+
+					// Pad with zeros for the bytes the shadow didn't cover (FS
+					// smaller than the partition). npad is computed from how much
+					// was actually read, avoiding the unsigned underflow the old
+					// pre-computed npad hit when the shadow was >= the partition.
+					npad := P.EndByte - pos
 					block = make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
 					for npad > 0 {
 						log.Printf("Padding %d", npad)
-						sl := block[:min(pbscommon.PBS_FIXED_CHUNK_SIZE, npad)]
+						sl := block[:min(uint64(pbscommon.PBS_FIXED_CHUNK_SIZE), npad)]
 						buffer = append(buffer, sl...)
 						pos += uint64(len(sl))
 						if len(buffer) >= pbscommon.PBS_FIXED_CHUNK_SIZE {
@@ -490,7 +516,7 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 						npad -= uint64(len(sl))
 					}
 					if pos != P.EndByte {
-						panic(fmt.Errorf("Failed to read partition entirely %d/%d", pos, P.EndByte))
+						panic(fmt.Errorf("failed to read partition entirely %d/%d", pos, P.EndByte))
 					}
 				}
 

@@ -1,0 +1,25 @@
+{
+  "pbs_url": "https://pbs.example.com:8007",
+  "auth_id": "backup-user@pbs",
+  "secret": "your-api-token-secret-here",
+  "datastore": "backup",
+  "namespace": "clients",
+  "backup_id": "",
+  "backup_dirs": [
+    "C:\\Users",
+    "C:\\ProgramData\\ImportantData"
+  ],
+  "exclusions": [
+    "*.tmp",
+    "*.log",
+    "Temp\\*",
+    "Cache\\*"
+  ],
+  "schedule": {
+    "enabled": true,
+    "time": "02:00",
+    "days": ["monday", "wednesday", "friday"]
+  },
+  "vss_enabled": true,
+  "cert_fingerprint": ""
+}

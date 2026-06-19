@@ -6,7 +6,7 @@ package snapshot
 import "log"
 
 func CreateVSSSnapshot(paths []string, backup_callback func(sn map[string]SnapShot) error) error {
-	log.Printf("\033[31;1mWarning, on linux snapshots are not supported builtin, proceeding without!\033[0m")
+	log.Print("\033[31;1mWarning, on linux snapshots are not supported builtin, proceeding without!\033[0m")
 	ret := make(map[string]SnapShot)
 	for _, x := range paths {
 		ret[x] = SnapShot{
@@ -17,5 +17,6 @@ func CreateVSSSnapshot(paths []string, backup_callback func(sn map[string]SnapSh
 	return backup_callback(ret)
 }
 
-func VSSCleanup() {
+func VSSCleanup() error {
+	return nil
 }

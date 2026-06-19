@@ -159,6 +159,12 @@ func loadConfig() *Config {
 			config.SMTP.Mails = append(config.SMTP.Mails, MailSendConfig{})
 		}
 	}
+	initTemplateIfNeeded := func() {
+		initSmtpConfigIfNeeded()
+		if config.SMTP.Template == nil {
+			config.SMTP.Template = &MailTemplate{}
+		}
+	}
 
 	if *mailHostFlag != "" {
 		initSmtpConfigIfNeeded()
@@ -189,11 +195,11 @@ func loadConfig() *Config {
 		config.SMTP.Mails[0].To = *mailToFlag
 	}
 	if *mailSubjectTemplateFlag != "" {
-		initSmtpConfigIfNeeded()
+		initTemplateIfNeeded()
 		config.SMTP.Template.Subject = *mailSubjectTemplateFlag
 	}
 	if *mailBodyTemplateFlag != "" {
-		initSmtpConfigIfNeeded()
+		initTemplateIfNeeded()
 		config.SMTP.Template.Body = *mailBodyTemplateFlag
 	}
 

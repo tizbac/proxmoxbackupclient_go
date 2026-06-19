@@ -1,8 +1,13 @@
 module directorybackup
 
-go 1.24.4
+go 1.25
 
-require github.com/cornelk/hashmap v1.0.8
+require (
+	github.com/cornelk/hashmap v1.0.8
+	clientcommon v0.0.0
+	pbscommon v0.0.0
+	snapshot v0.0.0
+)
 
 require (
 	github.com/alessio/shellescape v1.4.2 // indirect
@@ -29,4 +34,11 @@ require (
 	github.com/sergeymakinen/go-ico v1.0.0-beta.0 // indirect
 	github.com/tawesoft/golib/v2 v2.16.0
 	golang.org/x/sys v0.30.0 // indirect
+)
+
+// Local package replacements
+replace (
+	clientcommon => ../clientcommon
+	pbscommon => ../pbscommon
+	snapshot => ../snapshot
 )

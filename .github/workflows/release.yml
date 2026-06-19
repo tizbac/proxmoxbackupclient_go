@@ -1,0 +1,149 @@
+name: Release Nimbus Backup
+
+on:
+  # Disabled tag trigger to avoid duplicate with build-and-release.yml
+  # Use build-and-release.yml for full CI/CD (CLI + GUI + tests)
+  # push:
+  #   tags:
+  #     - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows GUI (Wails)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: gui/go.sum
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        shell: pwsh
+
+      - name: Verify Installation
+        run: |
+          wails version
+          go version
+          node --version
+          npm --version
+        shell: pwsh
+
+      - name: Install Frontend Dependencies
+        working-directory: gui/frontend
+        run: npm install
+        shell: pwsh
+
+      - name: Build Frontend (Verification)
+        working-directory: gui/frontend
+        run: |
+          npm run build
+          Write-Host "✅ Frontend build complete"
+          if (!(Test-Path "dist/index.html")) {
+            Write-Error "❌ Frontend dist/index.html not found!"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Build Application with Wails
+        working-directory: gui
+        env:
+          GOWORK: off
+        run: |
+          Write-Host "Building with Wails (console enabled for debugging)..."
+          wails build -platform windows/amd64 -ldflags "-s -w"
+
+          # Verify output
+          if (Test-Path "build/bin/NimbusBackup.exe") {
+            Write-Host "✅ Build successful!"
+            Get-Item "build/bin/NimbusBackup.exe" | Format-List
+          } else {
+            Write-Error "❌ Build failed - NimbusBackup.exe not found"
+            Get-ChildItem build -Recurse -ErrorAction SilentlyContinue
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Copy Binary to Root
+        working-directory: gui
+        run: |
+          Copy-Item "build/bin/NimbusBackup.exe" "../NimbusBackup.exe"
+          Write-Host "Binary copied to root directory"
+        shell: pwsh
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nimbus-backup-windows-wails
+          path: NimbusBackup.exe
+          retention-days: 30
+
+      - name: Create Release Package
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          # Create dist directory
+          if (Test-Path dist) { Remove-Item -Recurse -Force dist }
+          New-Item -ItemType Directory -Path dist | Out-Null
+
+          # Copy files
+          Copy-Item NimbusBackup.exe dist/
+          Copy-Item GUI_README.md dist/README.md -ErrorAction SilentlyContinue
+          Copy-Item CONFIG_FORMAT_SPEC.md dist/README.txt -ErrorAction SilentlyContinue
+
+          # Create ZIP
+          Compress-Archive -Path dist/* -DestinationPath NimbusBackup-Windows.zip -Force
+          Write-Host "✅ Release package created"
+        shell: pwsh
+
+      - name: Generate Release Notes
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION="${{ github.ref_name }}"
+
+          # Extract changelog for this version
+          sed -n "/## \[${VERSION#v}\]/,/## \[/p" CHANGELOG.md | sed '$d' > RELEASE_NOTES.md
+
+          # Add header
+          sed -i '1i ## Nimbus Backup - Release '"$VERSION"'\n\nClient de sauvegarde pour Proxmox Backup Server\n\n### 📦 Installation\n\nTéléchargez `NimbusBackup.exe` et lancez-le avec les droits administrateur.\n' RELEASE_NOTES.md
+
+          # Add footer
+          echo "" >> RELEASE_NOTES.md
+          echo "### 🔧 Prérequis" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "- Windows 10/11 (64-bit)" >> RELEASE_NOTES.md
+          echo "- Droits administrateur pour VSS" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "### 📝 Configuration" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "La configuration se fait via l'interface graphique au premier lancement." >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "---" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "**RDEM Systems** | [nimbus.rdem-systems.com](https://nimbus.rdem-systems.com)" >> RELEASE_NOTES.md
+        shell: bash
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            NimbusBackup-Windows.zip
+            NimbusBackup.exe
+          draft: false
+          prerelease: false
+          body_path: RELEASE_NOTES.md
