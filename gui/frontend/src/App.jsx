@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from './i18n/i18nContext'
 import LanguageSwitcher from './components/LanguageSwitcher'
-
+import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch
 let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs
@@ -1339,6 +1339,7 @@ function App() {
                   <>
                     <br/>
                     <strong>📦 {t('noPBSYet')}</strong><br/>
+                    { t('chooseBackupUrl') !== "chooseBackupUrl" && (
                     <a
                       href={`${t('chooseBackupUrl')}?utm_source=NimbusGui&utm_medium=tooling&utm_campaign=version-${appVersion}&utm_content=first-setup`}
                       target="_blank"
@@ -1347,6 +1348,17 @@ function App() {
                     >
                       {t('orderStorage')} →
                     </a>
+                    )}
+                    { t('chooseBackupUrl') === "chooseBackupUrl" && (
+                      <a
+                      href="https://www.proxmox.com/en/downloads/proxmox-backup-server"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{color: '#667eea', fontWeight: 'bold', textDecoration: 'underline'}}
+                      >
+                      {t('downloadPBS')} →
+                      </a>
+                    )}
                   </>
                 )}
               </div>
@@ -2609,20 +2621,21 @@ function App() {
           <h2 style={{textAlign: 'center'}}>{t('aboutTitle')}</h2>
 
           <img
-            src="https://nimbus.rdem-systems.com/logo.webp"
-            alt="Nimbus Backup"
+            src={logo}
+            alt="Proxmox Backup Client GO"
             className="logo"
             onError={(e) => e.target.style.display = 'none'}
           />
 
           <div style={{textAlign: 'center', marginTop: '30px'}}>
-            <h3>Nimbus Backup</h3>
+            <h3>Proxmox Backup Client GO</h3>
             <p style={{color: '#718096', margin: '10px 0'}}>{t('version')} {appVersion}</p>
 
             {/* Upsell CTA */}
+            { t('chooseBackupUrl') !== "chooseBackupUrl" && (
             <div style={{margin: '20px 0'}}>
               <a
-                href={`${t('chooseBackupUrl')}?utm_source=NimbusGui&utm_medium=tooling&utm_campaign=version-${appVersion}&utm_content=version-${appVersion}`}
+                href={`${t('chooseBackupUrl')}?utm_source=GuiAPP&utm_medium=tooling&utm_campaign=version-${appVersion}&utm_content=version-${appVersion}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
@@ -2641,6 +2654,7 @@ function App() {
                 📦 {t('orderStorageCTA')}
               </a>
             </div>
+            )}
 
             <div className="grid" style={{marginTop: '30px', textAlign: 'left'}}>
               <div className="card">
@@ -2669,7 +2683,7 @@ function App() {
 
             <p style={{marginTop: '30px'}}>
               <strong>{t('copyright')}</strong><br/>
-              <a href="https://nimbus.rdem-systems.com" style={{color: '#667eea'}}>nimbus.rdem-systems.com</a>
+              <a href="https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1" style={{color: '#667eea'}} target="_blank">proxmoxbackupclient_go contributors</a>
             </p>
 
             <p style={{marginTop: '20px', color: '#718096', fontSize: '12px'}}>

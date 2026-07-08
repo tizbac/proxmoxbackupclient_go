@@ -5,8 +5,24 @@ const I18nContext = createContext()
 
 export function I18nProvider({ children }) {
   const [language, setLanguage] = useState(() => {
-    // Load from localStorage or default to French
-    return localStorage.getItem('language') || 'fr'
+    // Check if language is already stored in localStorage
+    const savedLanguage = localStorage.getItem('language')
+
+    if (savedLanguage) {
+      return savedLanguage
+    }
+
+    // Detect OS language
+    const browserLanguage = navigator.language || navigator.userLanguage
+    const langCode = browserLanguage.split('-')[0] // Get just the language code
+
+    // Check if we have a translation for this language
+    if (translations[langCode]) {
+      return langCode
+    }
+
+    // Default to English if no translation found
+    return 'en'
   })
 
   useEffect(() => {
@@ -30,7 +46,7 @@ export function I18nProvider({ children }) {
 
   return (
     <I18nContext.Provider value={{ language, setLanguage, t }}>
-      {children}
+    {children}
     </I18nContext.Provider>
   )
 }

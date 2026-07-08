@@ -1,47 +1,89 @@
 import { useTranslation } from '../i18n/i18nContext'
+import { useState } from 'react'
 
 function LanguageSwitcher() {
   const { language, setLanguage } = useTranslation()
+  const [isOpen, setIsOpen] = useState(false)
+
+  const languages = [
+    { code: 'en', name: 'English', flag: '🇬🇧' },
+    { code: 'it', name: 'Italiano', flag: '🇮🇹' },
+    { code: 'fr', name: 'Français', flag: '🇫🇷' },
+    { code: 'pl', name: 'Polski', flag: '🇵🇱' },
+    { code: 'de', name: 'Deutsch', flag: '🇩🇪' }
+  ]
+
+  const currentLanguage = languages.find(lang => lang.code === language) || languages[0]
+
+  const handleSelect = (code) => {
+    setLanguage(code)
+    setIsOpen(false)
+  }
 
   return (
     <div style={{
-      display: 'flex',
-      gap: '5px',
-      alignItems: 'center',
-      backgroundColor: '#f8f9fa',
-      borderRadius: '8px',
-      padding: '5px'
+      position: 'relative',
+      display: 'inline-block'
     }}>
-      <button
-        onClick={() => setLanguage('fr')}
+    <button
+    onClick={() => setIsOpen(!isOpen)}
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      padding: '8px 16px',
+      border: '1px solid #ddd',
+      borderRadius: '8px',
+      backgroundColor: '#f8f9fa',
+      cursor: 'pointer',
+      fontWeight: '500',
+      color: '#4a5568',
+      transition: 'all 0.2s'
+    }}
+    >
+    <span>{currentLanguage.flag}</span>
+    <span>{currentLanguage.name}</span>
+    <span>{isOpen ? '▲' : '▼'}</span>
+    </button>
+
+    {isOpen && (
+      <div style={{
+        position: 'absolute',
+        top: '100%',
+        left: 0,
+        width: '100%',
+        backgroundColor: 'white',
+        border: '1px solid #ddd',
+        borderRadius: '8px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+                zIndex: 100,
+                marginTop: '4px'
+      }}>
+      {languages.map((lang) => (
+        <button
+        key={lang.code}
+        onClick={() => handleSelect(lang.code)}
         style={{
-          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          width: '100%',
+          padding: '10px 16px',
           border: 'none',
-          borderRadius: '6px',
+          backgroundColor: 'transparent',
           cursor: 'pointer',
-          fontWeight: language === 'fr' ? 'bold' : 'normal',
-          backgroundColor: language === 'fr' ? '#667eea' : 'transparent',
-          color: language === 'fr' ? 'white' : '#4a5568',
+          textAlign: 'left',
+          color: language === lang.code ? '#667eea' : '#4a5568',
+          fontWeight: language === lang.code ? 'bold' : 'normal',
           transition: 'all 0.2s'
         }}
-      >
-        🇫🇷 FR
-      </button>
-      <button
-        onClick={() => setLanguage('en')}
-        style={{
-          padding: '6px 12px',
-          border: 'none',
-          borderRadius: '6px',
-          cursor: 'pointer',
-          fontWeight: language === 'en' ? 'bold' : 'normal',
-          backgroundColor: language === 'en' ? '#667eea' : 'transparent',
-          color: language === 'en' ? 'white' : '#4a5568',
-          transition: 'all 0.2s'
-        }}
-      >
-        🇬🇧 EN
-      </button>
+        >
+        <span>{lang.flag}</span>
+        <span>{lang.name}</span>
+        </button>
+      ))}
+      </div>
+    )}
     </div>
   )
 }

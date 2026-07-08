@@ -9,6 +9,11 @@ echo "🔨 Building Proxmox Backup Guardian GUI..."
 
 cd gui
 
+cd frontend
+npm install
+npm run build
+cd ..
+
 # Install Fyne dependencies
 echo "📦 Installing Fyne..."
 go get fyne.io/fyne/v2@latest
