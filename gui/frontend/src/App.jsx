@@ -1412,7 +1412,6 @@ function App() {
                   ))}
                 </tbody>
               </table>
-            )}
           </div>
 
           {/* Add/Edit Server Form */}
