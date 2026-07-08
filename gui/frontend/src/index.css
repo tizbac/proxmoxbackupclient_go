@@ -1,12 +1,12 @@
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+margin: 0;
+padding: 0;
+box-sizing: border-box;
 }
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #000000 0%, #555555 100%);
     color: #333;
     min-height: 100vh;
     display: flex;
@@ -14,8 +14,8 @@ body {
 }
 
 .header {
-    background: #2d3748;
-    color: white;
+    background: #000000;
+    color: #e87003;
     padding: 20px;
     text-align: center;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
@@ -35,7 +35,7 @@ body {
     flex: 1;
     padding: 30px;
     overflow-y: auto;
-    background: white;
+    background: #ffffff;
     margin: 20px;
     border-radius: 10px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.1);
@@ -47,7 +47,7 @@ body {
 
 .tabs {
     display: flex;
-    border-bottom: 2px solid #e2e8f0;
+    border-bottom: 2px solid #e87003;
     margin-bottom: 30px;
 }
 
@@ -57,6 +57,7 @@ body {
     border-bottom: 3px solid transparent;
     transition: all 0.3s;
     font-weight: 500;
+    color: #000000;
 }
 
 .tab:hover {
@@ -64,8 +65,8 @@ body {
 }
 
 .tab.active {
-    border-bottom-color: #667eea;
-    color: #667eea;
+    border-bottom-color: #e87003;
+    color: #e87003;
 }
 
 .tab-content {
@@ -90,7 +91,7 @@ body {
     display: block;
     margin-bottom: 8px;
     font-weight: 500;
-    color: #2d3748;
+    color: #000000;
 }
 
 .form-group input[type="text"],
@@ -99,7 +100,7 @@ body {
 .form-group textarea {
     width: 100%;
     padding: 12px;
-    border: 2px solid #e2e8f0;
+    border: 2px solid #e87003;
     border-radius: 6px;
     font-size: 14px;
     transition: border-color 0.3s;
@@ -109,7 +110,7 @@ body {
 .form-group select:focus,
 .form-group textarea:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #e87003;
 }
 
 .form-group input[type="checkbox"] {
@@ -118,8 +119,8 @@ body {
 
 .btn {
     padding: 12px 24px;
-    background: #667eea;
-    color: white;
+    background: #e87003;
+    color: #ffffff;
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -130,9 +131,9 @@ body {
 }
 
 .btn:hover {
-    background: #5a67d8;
+    background: #d46100;
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 4px 12px rgba(232, 112, 3, 0.4);
 }
 
 .btn:disabled {
@@ -152,7 +153,7 @@ body {
 .status {
     padding: 15px;
     background: #f7fafc;
-    border-left: 4px solid #667eea;
+    border-left: 4px solid #e87003;
     border-radius: 4px;
     margin-top: 20px;
     display: none;
@@ -177,6 +178,7 @@ body {
     padding: 15px;
     border-radius: 6px;
     margin-top: 20px;
+    border: 1px solid #e87003;
 }
 
 .progress {
@@ -190,7 +192,7 @@ body {
 
 .progress-bar {
     height: 100%;
-    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(90deg, #e87003 0%, #d46100 100%);
     width: 0%;
     transition: width 0.3s;
     display: flex;
@@ -211,7 +213,7 @@ body {
     background: #f7fafc;
     padding: 20px;
     border-radius: 8px;
-    border-left: 4px solid #667eea;
+    border-left: 4px solid #e87003;
 }
 
 .card h3 {
@@ -490,7 +492,7 @@ body {
     .compact-text-long {
         display: none;
     }
-    
+
     .compact-text-short {
         display: inline;
     }
