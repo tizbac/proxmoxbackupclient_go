@@ -132,6 +132,7 @@ func main() {
 	nbdFlag := flag.Int("nbd", 0, "NBD number")
 	backupPath := flag.String("path", "", "Path to backup, eg. vm/100/2026-03-01T00:07:00Z/drive-scsi0.img.fidx")
 	helpFlag := flag.Bool("help", false, "Show help")
+	pbscommon.ApplyPBSEnvVars(baseURLFlag, authIDFlag, secretFlag, datastoreFlag, certFingerprintFlag)
 	flag.Parse()
 	if *helpFlag {
 		flag.PrintDefaults()
