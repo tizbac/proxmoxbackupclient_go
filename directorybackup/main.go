@@ -447,7 +447,7 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 	fmt.Printf("Starting backup of %s\n", backupdir)
 	var err error
 	if usevss {
-		err = snapshot.CreateVSSSnapshot(([]string{backupdir}), func(snaps map[string]snapshot.SnapShot) error {
+		err = snapshot.CreateVSSSnapshot(([]string{backupdir}), true, func(snaps map[string]snapshot.SnapShot) error {
 			k := maps.Keys(snaps)
 			k2 := slices.Collect(k)
 			SNAP := snaps[k2[0]]

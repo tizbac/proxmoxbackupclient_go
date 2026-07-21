@@ -52,7 +52,7 @@ func getAppDataFolder() (string, error) {
 	return appDataFolder, nil
 }
 
-func CreateVSSSnapshot(paths []string, backup_callback func(sn map[string]SnapShot) error) error {
+func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) error {
 
 	sn := vss.Snapshotter{}
 	snapshots := make(map[string]SnapShot)
