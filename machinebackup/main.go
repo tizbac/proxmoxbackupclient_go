@@ -323,7 +323,7 @@ func main() {
 	client.Connect(false, cfg.BackupType)
 	disks := make([]BackupDisk, 0)
 
-	for _, dev := range cfg.BackupDevices {
+	for i, dev := range cfg.BackupDevices {
 		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
 
 			re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
@@ -338,8 +338,20 @@ func main() {
 				Size:  size,
 			})
 		} else {
-			err := backupFileDevice(client, dev)
+			// On Linux a whole block device (e.g. /dev/sda) is backed up as a
+			// consistent, stitched full-disk image (partition table + every
+			// partition, mounted ones snapshotted). Anything else falls back
+			// to a plain raw read of the device/file.
+			handled, size, err := backupWholeDisk(client, dev, i)
 			if err != nil {
+				panic(err)
+			}
+			if handled {
+				disks = append(disks, BackupDisk{
+					Index: i,
+					Size:  size,
+				})
+			} else if err := backupFileDevice(client, dev); err != nil {
 				panic(err)
 			}
 		}

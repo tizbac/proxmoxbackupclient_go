@@ -1,5 +1,4 @@
-This software implements a proxmox backup client software for windows, backup only as of now
-Works on linux too especially for development
+This software implements a proxmox backup client software.
 
 The software is still alpha quality and i take no responsability for any kind of damage or data loss even of source files.
 
@@ -105,9 +104,13 @@ Windows defender antimalware being active will slow backup down up to 25% of att
 ~~There's as of now no mechanism to prevent two instances being launched at same time which will screw up VSS and backup~~
 If you using windows planning utility it should theoretically prevent two instances starting at same time when originating from same job
 
-# NEW! - Full machine live backup
+# NEW! - Full machine live backup, now on Linux too!
 
 New funcionality has been added that now allows backing up a complete Windows 10/11 system and their respective server versions without any downtime.
+
+This new version also works on **Linux**, providing the same live, consistent full-machine backup. Where Windows uses VSS shadow copies, on Linux the equivalent point-in-time snapshot is provided by the [elastio-snap](https://github.com/Axcient/elastio-snap) kernel module (the only actively maintained fork of dattobd I've found). This gives a consistent snapshot on *any* filesystem (ext4, xfs, ...) sitting on a plain block device, without requiring LVM/dm-snapshot.
+
+You need the module installed and loaded, and the backup must run as root. If the module is not available the backup degrades to a plain, crash-consistent pass-through with a warning instead of failing.
 
 The command syntax is mostly the same , except `-backupdir string`
 
@@ -116,7 +119,11 @@ For example an invocation could be
 
 `machinebackup.exe -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
 
-The above command will look at Disk 0 , detect all mounted partition, take VSS snapshot of these, and then create a bootable backup image of whole disk as FIDX.
+On Linux the same invocation points `-backupdev` at the block device, for example:
+
+`machinebackup -authid yourapikey -backupdev /dev/sda -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4rp3r -backup-id testfull1`
+
+The above command will look at the disk, detect all mounted partitions, take a VSS (Windows) or elastio-snap (Linux) snapshot of these, and then create a bootable backup image of whole disk as FIDX.
 
 Next backup will be incremental, hashing has been paralleled so speeds of 1 gbyte/sec can be easily reached.
 

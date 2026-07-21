@@ -355,7 +355,7 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 		return 0, err
 	}
 
-	return total, snapshot.CreateVSSSnapshot(snapshot_paths, func(snapshots map[string]snapshot.SnapShot) error {
+	return total, snapshot.CreateVSSSnapshot(snapshot_paths, false, func(snapshots map[string]snapshot.SnapShot) error {
 
 		/*hostname, err := os.Hostname()
 		if err != nil {
@@ -516,4 +516,10 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 
 func sysTraySetup() {
 	//TODO
+}
+
+// backupWholeDisk is Linux-only (see linux.go). On Windows whole disks are
+// handled through the \\.\PhysicalDriveN path, so this reports "not handled".
+func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int) (bool, int64, error) {
+	return false, 0, nil
 }
