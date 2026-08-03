@@ -54,8 +54,13 @@ func getAppDataFolder() (string, error) {
 
 func CreateVSSSnapshot(paths []string, backup_callback func(sn map[string]SnapShot) error) error {
 
-	sn := vss.Snapshotter{}
 	snapshots := make(map[string]SnapShot)
+	snapshotters := make([]*vss.Snapshotter, 0)
+	defer func() {
+		for _, sn := range snapshotters {
+			sn.Release()
+		}
+	}()
 
 	for _, path := range paths {
 		path, _ = filepath.Abs(path)
@@ -69,9 +74,9 @@ func CreateVSSSnapshot(paths []string, backup_callback func(sn map[string]SnapSh
 			return err
 		}
 
-		defer sn.Release()
-
 		fmt.Printf("Creating VSS Snapshot...")
+		sn := &vss.Snapshotter{}
+		snapshotters = append(snapshotters, sn)
 		snapshot, err := sn.CreateSnapshot(volName, false, 180)
 		if err != nil {
 			return err
