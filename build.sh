@@ -1,7 +1,8 @@
 #!/bin/bash
 
-CGO_ENABLED=1
-GOOS=windows
-CC=x86_64-w64-mingw32-gcc
+export CGO_ENABLED=0
+export GOOS=windows
+export GOARCH=amd64
 
-go build -o proxmoxbackupgo_cli.exe
+go build -o pbsdirectorybackup.exe -ldflags="-s -w" -trimpath ./directorybackup
+go build -o pbsmachinebackup.exe -ldflags="-s -w" -trimpath ./machinebackup
