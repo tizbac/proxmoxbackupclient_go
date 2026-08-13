@@ -121,4 +121,5 @@ replace (
 	retry => ../pkg/retry
 	security => ../pkg/security
 	snapshot => ../snapshot
+	machinebackuplib => ../machinebackuplib
 )

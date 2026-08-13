@@ -29,4 +29,5 @@ replace (
 	clientcommon => ../clientcommon
 	pbscommon => ../pbscommon
 	snapshot => ../snapshot
+	machinebackuplib => ../machinebackuplib
 )

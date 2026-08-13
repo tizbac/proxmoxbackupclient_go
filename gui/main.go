@@ -863,7 +863,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		Datastore:       pbsCfg.Datastore,
 		Namespace:       pbsCfg.Namespace,
 		CertFingerprint: pbsCfg.CertFingerprint,
-		BackupDirs:      targetDirs,
+		BackupObjects:      targetDirs,
 		BackupID:        backupID,
 		BackupType:      "host", // "host" for directory, would be "vm" for machine
 		UseVSS:          useVSS,
@@ -1067,8 +1067,9 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		Datastore:       pbsCfg.Datastore,
 		Namespace:       pbsCfg.Namespace,
 		CertFingerprint: pbsCfg.CertFingerprint,
-		BackupDirs:      backupDevices,
+		BackupObjects:      backupDevices,
 		BackupID:        backupID,
+		Kind: "machine"      ,
 		BackupType:      "vm", // "vm" for machine backup
 		UseVSS:          useVSS,
 		Compression:     compression,

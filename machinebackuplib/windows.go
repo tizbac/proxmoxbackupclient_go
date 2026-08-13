@@ -1,7 +1,7 @@
 //go:build windows
 // +build windows
 
-package main
+package machinebackuplib
 
 import (
 	"fmt"
@@ -262,7 +262,7 @@ func GetDiskLength(path string) (int64, error) {
 	return lengthInfo.Length, nil
 }
 
-func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
+func BackupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 	parts := make([]Partition, 0)
 	ch := make(chan []byte)
 	diskdev := fmt.Sprintf("\\\\.\\PhysicalDrive%d", index)
@@ -540,6 +540,6 @@ func backupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 	})
 }
 
-func sysTraySetup() {
+func SysTraySetup() {
 	//TODO
 }
