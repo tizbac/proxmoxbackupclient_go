@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	clientcommon v0.0.0
-	github.com/cornelk/hashmap v1.0.8
+	github.com/alphadose/haxmap v1.4.1
 	github.com/tizbac/proxmoxbackupclient_go/gui/api v0.0.0
 	github.com/wailsapp/wails/v2 v2.13.0
 	pbscommon v0.0.0

@@ -22,7 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cornelk/hashmap"
+	"github.com/alphadose/haxmap"
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/net/http2"
 )
@@ -1054,7 +1054,7 @@ func (pbs *PBSClient) DownloadToBytes(archivename string) ([]byte, error) { //In
 
 }
 
-func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*hashmap.Map[string, bool], error) {
+func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*haxmap.Map[string, bool], error) {
 	data, err := pbs.DownloadPreviousToBytes(archivename)
 	if err != nil {
 		return nil, err
@@ -1068,7 +1068,7 @@ func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*hashmap.Map[s
 	if !slices.Equal(hdr.Magic[:], []byte{47, 127, 65, 237, 145, 253, 15, 205}) {
 		return nil, fmt.Errorf("FIDX: Invalid magic %+v", hdr.Magic)
 	}
-	ret := hashmap.New[string, bool]()
+	ret := haxmap.New[string, bool]()
 	for i := uint64(0); i < hdr.Size/hdr.ChunkSize; i++ {
 		H := make([]byte, 32)
 		nbytes, err := rdr.Read(H)
@@ -1078,7 +1078,7 @@ func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*hashmap.Map[s
 		if nbytes != len(H) {
 			return nil, fmt.Errorf("FIDX: Short read")
 		}
-		ret.Insert(hex.EncodeToString(H), true)
+		ret.Set(hex.EncodeToString(H), true)
 	}
 	return ret, nil
 

@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	clientcommon v0.0.0
-	github.com/cornelk/hashmap v1.0.8
+	github.com/alphadose/haxmap v1.4.1
 	pbscommon v0.0.0
 	snapshot v0.0.0
 )

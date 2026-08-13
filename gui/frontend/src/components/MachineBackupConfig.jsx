@@ -25,6 +25,7 @@ function MachineBackupConfig({ config, setConfig, backupType, setBackupType, phy
     setSelectedDrives([])
   }
 
+  // Ensure this component is only rendered when backupType is 'machine'
   if (backupType !== 'machine') return null
 
   return (

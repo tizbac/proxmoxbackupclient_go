@@ -18,7 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cornelk/hashmap"
+	"github.com/alphadose/haxmap"
 	"pbscommon"
 	"retry"
 	"security"
@@ -164,7 +164,7 @@ type ChunkState struct {
 	newchunk            *atomic.Uint64
 	reusechunk          *atomic.Uint64
 	failedchunk         *atomic.Uint64     // Track failed chunk uploads
-	knownChunks         *hashmap.Map[string, bool]
+	knownChunks         *haxmap.Map[string, bool]
 	onProgress          func(float64, string)
 	onStats             func(*BackupProgressStats) // Structured live stats for the GUI (nil for the catalog stream)
 	currentDir          string                     // Directory currently being archived, for the stats payload
@@ -175,7 +175,7 @@ type ChunkState struct {
 	errorsMutex         sync.Mutex         // Protect uploadErrors slice
 }
 
-func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, failedchunk *atomic.Uint64, knownChunks *hashmap.Map[string, bool], onProgress func(float64, string), totalSize *atomic.Uint64, onStats func(*BackupProgressStats), currentDir string) {
+func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, failedchunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool], onProgress func(float64, string), totalSize *atomic.Uint64, onStats func(*BackupProgressStats), currentDir string) {
 	c.assignments = make([]string, 0)
 	c.assignmentsOffset = make([]uint64, 0)
 	c.pos = 0
@@ -988,7 +988,7 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 	}()
 
 	client.Connect(false, "host")
-	knownChunks := hashmap.New[string, bool]()
+	knownChunks := haxmap.New[string, bool]()
 
 	// Start background scan to calculate total size (drives the progress %). This
 	// is non-blocking — the backup streams in parallel — but bound it with the same

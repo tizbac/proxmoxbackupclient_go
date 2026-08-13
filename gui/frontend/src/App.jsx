@@ -4,7 +4,7 @@ import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
-let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch
+let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch
 let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
@@ -16,6 +16,7 @@ if (window.go) {
   SaveConfig = window.go.main.App.SaveConfig
   TestConnection = window.go.main.App.TestConnection
   StartBackup = window.go.main.App.StartBackup
+  StartMachineBackup = window.go.main.App.StartMachineBackup
   ListSnapshots = window.go.main.App.ListSnapshots
   ListSnapshotContents = window.go.main.App.ListSnapshotContents
   GetSnapshotMeta = window.go.main.App.GetSnapshotMeta
@@ -192,6 +193,22 @@ function App() {
       }).catch(err => {
         showStatus(`❌ Erreur lors de la détection des disques: ${err}`, 'error')
       })
+    }
+  }, [backupType])
+
+  // Reset backup directories when switching from directory to machine mode
+  useEffect(() => {
+    if (backupType === 'machine' && backupDirs) {
+      setBackupDirs('') // Clear directories when switching to machine mode
+    }
+  }, [backupType])
+
+  // Reset backup directories when switching from machine to directory mode
+  useEffect(() => {
+    if (backupType === 'directory' && physicalDisks.length > 0) {
+      setPhysicalDisks([])
+      setSelectedDrives([])
+      setBackupDirs('') // Also clear the backup directories when switching to directory mode
     }
   }, [backupType])
 
@@ -870,16 +887,19 @@ function App() {
         return
       }
 
+      // For machine backups, we need to use a different approach for scheduled jobs
+      // We'll pass drive letters in a separate field or structure based on backup type
       const jobData = {
         id: editingJobId || Date.now().toString(),
         name: `Backup ${config['backup-id'] || hostname}`,
         scheduleTime: scheduleTime,
         runAtStartup: runAtStartup,
-        backupDirs: dirList,
+        backupDirs: backupType === 'directory' ? dirList : [],
         backupId: config['backup-id'],
         useVSS: config.usevss,
         backupType: backupType,
-        excludeList: excludeList.split('\n').filter(l => l.trim())
+        excludeList: backupType === 'directory' ? excludeList.split('\n').filter(l => l.trim()) : [],
+        driveLetters: backupType === 'machine' ? selectedDrives : []
       }
 
       // Save or update to backend
@@ -911,15 +931,32 @@ function App() {
     setProgress(5)
 
     try {
-      await StartBackup(
-        backupType,
-        dirList,
-        selectedDrives,
-        excludeList.split('\n').filter(l => l.trim()),
-        config['backup-id'],
-        config.usevss,
-        ''
-      )
+      // Only pass excludeList for directory backups, not for machine backups
+      const excludeListToSend = backupType === 'directory' ? 
+        excludeList.split('\n').filter(l => l.trim()) : 
+        []
+      
+      if (backupType === 'directory') {
+        await StartBackup(
+          backupType,
+          dirList,
+          [],
+          excludeListToSend,
+          config['backup-id'],
+          config.usevss,
+          ''
+        )
+      } else {
+        // Filter out any empty drives to prevent empty string issues
+        const validDrives = selectedDrives.filter(drive => drive && drive.trim() !== '')
+        await StartMachineBackup(
+          backupType,
+          validDrives,
+          config['backup-id'],
+          config.usevss,
+          ''
+        )
+      }
       // Backup started in background - progress will be shown via events
       showStatus(`⏳ ${t('statusBackupRunning')}`, 'info')
     } catch (err) {
@@ -1804,7 +1841,7 @@ function App() {
             </div>
           )}
 
-          {backupType === 'directory' ? (
+          {backupType === 'directory' && (
             <div className="form-group">
               <label>{t('directoriesToBackup')}</label>
               <textarea
@@ -1819,7 +1856,8 @@ function App() {
                 placeholder="C:\Data&#10;C:\Users&#10;D:\Documents"
               />
             </div>
-          ) : (
+          )}
+          {backupType === 'machine' && (
             <MachineBackupConfig 
               config={config}
               setConfig={setConfig}
@@ -1832,17 +1870,17 @@ function App() {
           )}
               </div>
 
-              <div className="form-group">
-                <label>{t('filesToExclude')}</label>
-                <textarea
-                  value={excludeList}
-                  onChange={(e) => setExcludeList(e.target.value)}
-                  rows="4"
-                  placeholder="*.tmp&#10;*.log&#10;C:\Windows\Temp"
-                />
-              </div>
-              
-          )}
+              {backupType === 'directory' && (
+                <div className="form-group">
+                  <label>{t('filesToExclude')}</label>
+                  <textarea
+                    value={excludeList}
+                    onChange={(e) => setExcludeList(e.target.value)}
+                    rows="4"
+                    placeholder="*.tmp&#10;*.log&#10;C:\Windows\Temp"
+                  />
+                </div>
+              )}
 
           <div className="form-group">
             <label>{t('backupID')}</label>

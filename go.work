@@ -1,15 +1,7 @@
-go 1.25.0
+go 1.25
 
-use ./clientcommon
-
-use ./pbscommon
-
-use ./directorybackup
-
-use ./snapshot
-
+use ./machinebackuplib
 use ./machinebackup
-
-use ./nbd
-
-use ./gui
+use ./pbscommon
+use ./clientcommon
+use ./snapshot

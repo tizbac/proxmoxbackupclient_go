@@ -10,7 +10,7 @@ require (
 )
 
 require (
-	github.com/cornelk/hashmap v1.0.8 // indirect
+	github.com/alphadose/haxmap v1.4.1 // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect

@@ -1033,8 +1033,8 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 
 	// Sanitize backup ID for logging
 	sanitizedID := security.SanitizeForLog(backupID)
-	writeDebugLog(fmt.Sprintf("[Standalone Mode] StartMachineBackup: type=%s, id=%s, vss=%v, compression=%s, device_count=%d",
-		backupType, sanitizedID, useVSS, compression, len(backupDevices)))
+	writeDebugLog(fmt.Sprintf("[Standalone Mode] StartMachineBackup: type=%s, id=%s, vss=%v, compression=%s, device_count=%d, devs=%v",
+		backupType, sanitizedID, useVSS, compression, len(backupDevices), backupDevices))
 
 	// Validate BackupID (now guaranteed to be non-empty)
 	if err := security.ValidateBackupID(backupID); err != nil {
@@ -1044,7 +1044,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	// Validate backup devices
 	for _, device := range backupDevices {
 		if device == "" {
-			return fmt.Errorf("disque physique vide")
+			return fmt.Errorf("One or more devices are empty")
 		}
 	}
 
