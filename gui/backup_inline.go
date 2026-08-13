@@ -980,11 +980,12 @@ func runMachineBackupInline(opts BackupOptions) error {
 	}
 	
 	// Progress callback wrapper
-	progress := func(pct float64, msg string) {
+	progress := func(pct float64, msg string) bool {
 		writeBackupLog(fmt.Sprintf("Backup progress: %.1f%% - %s", pct*100, msg))
 		if opts.OnProgress != nil {
 			opts.OnProgress(pct, msg)
 		}
+		return false
 	}
 	
 	// Perform machine backup

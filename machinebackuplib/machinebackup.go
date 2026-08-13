@@ -24,7 +24,8 @@ import (
 )
 
 // ProgressCallback function type for reporting progress
-type ProgressCallback func(percentage float64, message string)
+// Return true to cancel the backup operation
+type ProgressCallback func(percentage float64, message string) bool
 
 
 
@@ -159,7 +160,9 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 				errch <- fmt.Errorf("Fatal: tried to backup more data than specified size!")
 				break
 			}
-			fmt.Printf("Chunk %d/%d/%d\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load())
+			percentage := float64(CS.processed_size) / float64(total_size) * 100
+fmt.Printf("Chunk %d/%d/%d - Progress: %.2f%%\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load(), percentage)
+			
 			assignment_mutex.Unlock()
 
 		}
@@ -240,7 +243,7 @@ func Slugify(input string) string {
 
 //TODO: Perhaps on linux we could use that https://github.com/datto/dattobd for block devices
 
-func BackupFileDevice(client *pbscommon.PBSClient, filename string) error {
+func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCallback ProgressCallback) error {
 	slug := Slugify(filename)
 
 	f, err := os.Open(filename)
@@ -250,6 +253,8 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string) error {
 	}
 
 	size, err := f.Seek(0, io.SeekEnd)
+	var b int64 = 0
+	var totread int64 = 0
 	if err != nil {
 		return err
 	}
@@ -272,6 +277,9 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string) error {
 			}
 
 			ch <- block[:nread]
+			totread = totread + int64(nread)
+			progressCallback((float64(totread)/float64(size)), fmt.Sprintf("%s: Block %d", filename, b))
+			b++
 		}
 		errCh <- nil
 	}()
@@ -318,24 +326,76 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 	client.Connect(false, cfg.BackupType)
 	disks := make([]BackupDisk, 0)
 
+	// Calculate total size of all disks
+	var totalSize uint64 = 0
 	for _, dev := range cfg.BackupDevices {
 		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
-
+			// For physical drives, get the disk size
 			re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
 			matches := re.FindStringSubmatch(dev)
 			idx, _ := strconv.ParseInt(matches[1], 10, 32)
-			size, err := BackupWindowsDisk(client, int(idx))
+			
+			// Get disk size using platform-specific function
+			size, err := GetDiskSize(fmt.Sprintf("\\\\.\\PhysicalDrive%d", idx))
+			if err != nil {
+				return nil, fmt.Errorf("failed to get disk size for %s: %v", dev, err)
+			}
+			totalSize += uint64(size)
+		} else {
+			// For file devices, get file size
+			info, err := os.Stat(dev)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get file size for %s: %v", dev, err)
+			}
+			totalSize += uint64(info.Size())
+		}
+	}
+
+	// Track progress for each device
+	currentProcessedSize := uint64(0)
+	
+	for _, dev := range cfg.BackupDevices {
+		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
+			re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
+			matches := re.FindStringSubmatch(dev)
+			idx, _ := strconv.ParseInt(matches[1], 10, 32)
+			
+			size, err := BackupWindowsDisk(client, int(idx), progressCallback)
 			if err != nil {
 				return nil, fmt.Errorf("backup disk %s %v", dev, err)
 			}
+			
 			disks = append(disks, BackupDisk{
 				Index: int(idx),
 				Size:  size,
 			})
+			
+			// Update progress for this disk
+			currentProcessedSize += uint64(size)
+			if progressCallback != nil && totalSize > 0 {
+				percentage := float64(currentProcessedSize) / float64(totalSize) * 100
+				if progressCallback(percentage, fmt.Sprintf("Backup complete for disk %s", dev)) {
+					return nil, fmt.Errorf("backup cancelled by user")
+				}
+			}
 		} else {
-			err := BackupFileDevice(client, dev)
+			err := BackupFileDevice(client, dev, progressCallback)
 			if err != nil {
 				return nil, fmt.Errorf("backup device %s %v", dev, err)
+			}
+			
+			// For file devices, get the file size to update progress
+			info, err := os.Stat(dev)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get file size for %s: %v", dev, err)
+			}
+			
+			currentProcessedSize += uint64(info.Size())
+			if progressCallback != nil && totalSize > 0 {
+				percentage := float64(currentProcessedSize) / float64(totalSize) * 100
+				if progressCallback(percentage, fmt.Sprintf("Backup complete for file %s", dev)) {
+					return nil, fmt.Errorf("backup cancelled by user")
+				}
 			}
 		}
 	}

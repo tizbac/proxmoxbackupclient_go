@@ -262,7 +262,12 @@ func GetDiskLength(path string) (int64, error) {
 	return lengthInfo.Length, nil
 }
 
-func BackupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
+// GetDiskSize returns the size of a disk device
+func GetDiskSize(path string) (int64, error) {
+	return GetDiskLength(path)
+}
+
+func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback ProgressCallback) (int64, error) {
 	parts := make([]Partition, 0)
 	ch := make(chan []byte)
 	diskdev := fmt.Sprintf("\\\\.\\PhysicalDrive%d", index)
@@ -427,6 +432,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 		if err != nil {
 			panic(err)
 		}
+		var b int64 = 0
 
 		//Blocks are 4MB as per proxmox docs
 		go func() {
@@ -449,6 +455,9 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 							buffer = buffer[pbscommon.PBS_FIXED_CHUNK_SIZE:]
 						}
 						pos += uint64(nbytes)
+
+						progressCallback((float64(pos)/float64(total)), fmt.Sprintf("%s: Block %d", diskdev, b))
+						b++
 					}
 					if pos != P.EndByte {
 						panic(fmt.Errorf("Failed to read partition entirely %d/%d", pos, P.EndByte))
@@ -482,6 +491,8 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int) (int64, error) {
 					block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
 					for pos < P.EndByte {
 						nbytes, rerr := snapshot_file.Read(block[:min(uint64(len(block)), P.EndByte-pos)])
+						progressCallback((float64(pos)/float64(total)), fmt.Sprintf("%s: Block %d", diskdev, b))
+						b++
 						if nbytes > 0 {
 							pos += uint64(nbytes)
 							buffer = append(buffer, block[:nbytes]...)

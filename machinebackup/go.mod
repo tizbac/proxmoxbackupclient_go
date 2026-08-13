@@ -10,6 +10,7 @@ require (
 	golang.org/x/sys v0.20.0
 	pbscommon v0.0.0
 	snapshot v0.0.0
+	machinebackuplib v0.0.0
 )
 
 require (

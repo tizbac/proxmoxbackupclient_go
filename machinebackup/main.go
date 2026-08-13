@@ -200,8 +200,8 @@ func main() {
 		machinebackuplib.SysTraySetup()
 	}
 
-	machinebackuplib.Backup(cfg, func(percentage float64, message string) {
-
+	machinebackuplib.Backup(cfg, func(percentage float64, message string) bool {
+		return false
 	})
 
 	
