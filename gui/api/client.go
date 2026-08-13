@@ -106,6 +106,44 @@ func (c *Client) StartBackup(req *BackupRequest) (*BackupResponse, error) {
 	return &backupResp, nil
 }
 
+// StartMachineBackup sends a machine backup request to the service
+func (c *Client) StartMachineBackup(req *BackupRequest) (*BackupResponse, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode request: %w", err)
+	}
+
+	resp, err := c.httpClient.Post(
+		c.baseURL+"/backup/machine",
+		"application/json",
+		bytes.NewBuffer(body),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send machine backup request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp ErrorResponse
+		if err := json.Unmarshal(respBody, &errResp); err == nil {
+			return nil, fmt.Errorf("machine backup failed: %s", errResp.Error)
+		}
+		return nil, fmt.Errorf("machine backup failed with status %d", resp.StatusCode)
+	}
+
+	var backupResp BackupResponse
+	if err := json.Unmarshal(respBody, &backupResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &backupResp, nil
+}
+
 // GetBackupStatus retrieves the current status of a backup job
 func (c *Client) GetBackupStatus(jobID string) (*BackupProgress, error) {
 	resp, err := c.httpClient.Get(c.baseURL + "/backup/status/" + jobID)

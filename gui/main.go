@@ -305,19 +305,31 @@ func (a *App) GetVersion() string {
 	return appVersion
 }
 
-// ListPhysicalDisks returns a list of available physical disks (DISABLED - feature postponed)
-/*
+// PhysicalDiskInfo represents information about a physical disk
+type PhysicalDiskInfo struct {
+	DiskNumber     int64  `json:"disk_number"`
+	Size           int64  `json:"size"`
+	Model          string `json:"model"`
+	IsBootDisk     bool   `json:"is_boot_disk"`
+	IsSystemDisk   bool   `json:"is_system_disk"`
+	DeviceID       string `json:"device_id"`
+	DevicePath     string `json:"device_path"`
+}
+
+// ListPhysicalDisks returns a list of available physical disks
 func (a *App) ListPhysicalDisks() ([]PhysicalDiskInfo, error) {
 	writeDebugLog("ListPhysicalDisks() called from frontend")
-	disks, err := ListPhysicalDisks()
+	
+	// Call platform-specific disk listing function
+	disks, err := listPhysicalDisks()
 	if err != nil {
-		writeDebugLog(fmt.Sprintf("ListPhysicalDisks() error: %v", err))
+		writeDebugLog(fmt.Sprintf("Error listing physical disks: %v", err))
 		return nil, err
 	}
+	
 	writeDebugLog(fmt.Sprintf("Found %d physical disks", len(disks)))
 	return disks, nil
 }
-*/
 
 // GetConfigWithHostname returns config with hostname pre-filled
 func (a *App) GetConfigWithHostname() map[string]interface{} {
@@ -349,6 +361,8 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 
 	return result
 }
+
+
 
 // DiagnoseConfig returns config validation status for debugging
 func (a *App) DiagnoseConfig() map[string]interface{} {
@@ -647,6 +661,41 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 	}
 }
 
+// StartMachineBackup starts a machine backup operation
+func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error {
+	writeDebugLog(fmt.Sprintf("StartMachineBackup() called - mode: %s, VSS: %v, compression: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, a.isServiceProcess))
+
+	// Default to "fastest" if compression is empty
+	if compression == "" {
+		compression = "fastest"
+		writeDebugLog("[Compression] Using default: fastest")
+	}
+
+	// Re-detect mode if currently Standalone (service may have started after GUI)
+	// IMPORTANT: Never re-detect if we ARE the service process (prevents infinite loop)
+	if !a.isServiceProcess && a.mode == api.ModeStandalone {
+		if a.apiClient.IsServiceAvailable() {
+			writeDebugLog("[Mode Detection] Service now available, switching to Service mode")
+			a.mode = api.ModeService
+		}
+	}
+
+	// Route based on execution mode
+	switch a.mode {
+	case api.ModeService:
+		// Use HTTP API to communicate with service (service has admin rights as LocalSystem)
+		return a.startMachineBackupViaService(backupType, backupDevices, backupID, useVSS, compression)
+	case api.ModeStandalone:
+		// Direct execution - check admin if VSS requested
+		if useVSS && !isAdmin() {
+			return fmt.Errorf("VSS (Shadow Copy) nécessite les privilèges administrateur - veuillez redémarrer l'application en tant qu'administrateur ou désactiver VSS")
+		}
+		return a.startMachineBackupDirect(backupType, backupDevices, backupID, useVSS, compression)
+	default:
+		return fmt.Errorf("unknown execution mode: %v", a.mode)
+	}
+}
+
 // startBackupViaService sends backup request to the service via HTTP API
 func (a *App) startBackupViaService(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string) error {
 	writeDebugLog("[Service Mode] Sending backup request to service")
@@ -668,6 +717,32 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 	}
 
 	writeDebugLog(fmt.Sprintf("[Service Mode] Backup started: %s (JobID: %s)", resp.Message, resp.JobID))
+
+	// Start polling for progress updates
+	go a.pollBackupProgress(resp.JobID)
+
+	return nil
+}
+
+// startMachineBackupViaService sends machine backup request to the service via HTTP API
+func (a *App) startMachineBackupViaService(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error {
+	writeDebugLog("[Service Mode] Sending machine backup request to service")
+
+	req := &api.BackupRequest{
+		BackupType:   backupType,
+		BackupID:     backupID,
+		DriveLetters: backupDevices, // Using DriveLetters field for machine backup devices
+		UseVSS:       useVSS,
+		Compression:  compression,
+	}
+
+	resp, err := a.apiClient.StartMachineBackup(req)
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("[Service Mode] Machine backup request failed: %v", err))
+		return fmt.Errorf("échec de la communication avec le service: %w", err)
+	}
+
+	writeDebugLog(fmt.Sprintf("[Service Mode] Machine backup started: %s (JobID: %s)", resp.Message, resp.JobID))
 
 	// Start polling for progress updates
 	go a.pollBackupProgress(resp.JobID)
@@ -931,14 +1006,203 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 
 	// Run backup inline (in background goroutine to not block UI)
 	go func() {
-		// Machine backup disabled for now - Windows Defender flags it
-		// if backupType == "machine" {
-		// 	err = RunMachineBackup(opts)
-		// } else {
-		err := RunBackupInline(opts)
-		// }
+		var err error
+		if backupType == "machine" {
+			// For machine backups, we need to set the backup type to "vm" for the inline backup function
+			opts.BackupType = "vm"
+			err = RunBackupInline(opts)
+		} else {
+			opts.BackupType = "host"
+			err = RunBackupInline(opts)
+		}
 		if err != nil {
 			writeDebugLog(fmt.Sprintf("Backup error: %v", err))
+		}
+	}()
+
+	return nil
+}
+
+// startMachineBackupDirect performs machine backup directly (standalone mode)
+func (a *App) startMachineBackupDirect(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error {
+	// Use hostname as fallback if backupID is empty
+	if backupID == "" {
+		backupID = a.GetHostname()
+		writeDebugLog(fmt.Sprintf("[Backup ID] Empty backup-id, using hostname: %s", backupID))
+	}
+
+	// Sanitize backup ID for logging
+	sanitizedID := security.SanitizeForLog(backupID)
+	writeDebugLog(fmt.Sprintf("[Standalone Mode] StartMachineBackup: type=%s, id=%s, vss=%v, compression=%s, device_count=%d",
+		backupType, sanitizedID, useVSS, compression, len(backupDevices)))
+
+	// Validate BackupID (now guaranteed to be non-empty)
+	if err := security.ValidateBackupID(backupID); err != nil {
+		return fmt.Errorf("backup ID invalide: %w", err)
+	}
+
+	// Validate backup devices
+	for _, device := range backupDevices {
+		if device == "" {
+			return fmt.Errorf("disque physique vide")
+		}
+	}
+
+	// Note: Admin check for VSS is done in StartMachineBackup() routing layer
+	// If we're here via service, we're already running as LocalSystem
+
+	// Resolve PBS fields from multi-PBS default when legacy fields are empty
+	pbsCfg := a.config.EffectivePBS()
+
+	// Validate PBS config
+	if err := pbsCfg.Validate(); err != nil {
+		return err
+	}
+
+	// Prepare backup options
+	opts := BackupOptions{
+		BaseURL:         pbsCfg.BaseURL,
+		AuthID:          pbsCfg.AuthID,
+		Secret:          pbsCfg.Secret,
+		Datastore:       pbsCfg.Datastore,
+		Namespace:       pbsCfg.Namespace,
+		CertFingerprint: pbsCfg.CertFingerprint,
+		BackupDirs:      backupDevices,
+		BackupID:        backupID,
+		BackupType:      "vm", // "vm" for machine backup
+		UseVSS:          useVSS,
+		Compression:     compression,
+		ExcludeList:     []string{}, // No exclude list for machine backups
+		DisableSplit:    a.config.DisableSplit,
+		SplitSizeBytes:  a.config.SplitSizeBytes(),
+		OnProgress: func(percent float64, message string) {
+			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
+
+			// Check if there's a registered callback for any job (service mode)
+			a.callbacksMutex.RLock()
+			hasCallbacks := len(a.callbacksMap) > 0
+			if hasCallbacks {
+				// Call all registered callbacks (typically just one per backup)
+				for jobID, callbacks := range a.callbacksMap {
+					if callbacks.onProgress != nil {
+						writeDebugLog(fmt.Sprintf("[OnProgress] Calling custom callback for jobID: %s", jobID))
+						callbacks.onProgress(jobID, percent*100, message)
+					}
+				}
+			}
+			a.callbacksMutex.RUnlock()
+
+			// If no custom callbacks and we have Wails context, emit events (GUI standalone mode)
+			// NEVER emit events if we're the service process (no Wails runtime)
+			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
+				writeDebugLog("[OnProgress] Emitting Wails event (GUI mode)")
+				runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
+					"percent": percent * 100,
+					"message": message,
+				})
+			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
+				writeDebugLog("[OnProgress] No callbacks/context (service or headless mode)")
+			}
+		},
+		OnComplete: func(success bool, message string) {
+			writeDebugLog(fmt.Sprintf("Machine backup complete: success=%v, %s", success, message))
+
+			// Check if there's a registered callback for any job (service mode)
+			a.callbacksMutex.RLock()
+			hasCallbacks := len(a.callbacksMap) > 0
+			var jobIDsToCleanup []string
+			if hasCallbacks {
+				// Call all registered callbacks and collect jobIDs for cleanup
+				for jobID, callbacks := range a.callbacksMap {
+					if callbacks.onComplete != nil {
+						writeDebugLog(fmt.Sprintf("[OnComplete] Calling custom callback for jobID: %s", jobID))
+						callbacks.onComplete(jobID, success, message)
+					}
+					jobIDsToCleanup = append(jobIDsToCleanup, jobID)
+				}
+			}
+			a.callbacksMutex.RUnlock()
+
+			// Clean up completed callbacks
+			if len(jobIDsToCleanup) > 0 {
+				a.callbacksMutex.Lock()
+				for _, jobID := range jobIDsToCleanup {
+					delete(a.callbacksMap, jobID)
+					writeDebugLog(fmt.Sprintf("[OnComplete] Cleaned up callbacks for jobID: %s", jobID))
+				}
+				a.callbacksMutex.Unlock()
+			}
+
+			// If no custom callbacks and we have Wails context, emit events (GUI standalone mode)
+			// NEVER emit events if we're the service process (no Wails runtime)
+			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
+				writeDebugLog("[OnComplete] Emitting Wails event (GUI mode)")
+				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
+					"success": success,
+					"message": message,
+				})
+			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
+				writeDebugLog("[OnComplete] No callbacks/context (service or headless mode)")
+			}
+
+			// Add manual backup to history
+			historyEntry := JobHistory{
+				ID:         fmt.Sprintf("%d", time.Now().Unix()),
+				Name:       fmt.Sprintf("Backup machine - %s", backupID),
+				Timestamp:  time.Now().Format(time.RFC3339),
+				Status:     "success",
+				Message:    message,
+				BackupDirs: backupDevices,
+				BackupID:   backupID,
+				UseVSS:     useVSS,
+			}
+			if !success {
+				historyEntry.Status = "failed"
+			}
+			if err := a.AddJobHistory(historyEntry); err != nil {
+				writeDebugLog(fmt.Sprintf("Warning: Failed to add manual backup to history: %v", err))
+			}
+		},
+	}
+
+	// Structured live stats + final structured result for the GUI (standalone mode).
+	// In the service process there is no Wails runtime, and the service-mode stats
+	// bridge is a separate backlog item (service-mode progress), so we only emit here.
+	opts.OnStats = func(stats *BackupProgressStats) {
+		if a.isServiceProcess || a.ctx == nil {
+			return
+		}
+		runtime.EventsEmit(a.ctx, "backup:stats", map[string]interface{}{
+			"percent":      stats.Percent * 100,
+			"bytesDone":    stats.BytesDone,
+			"bytesTotal":   stats.BytesTotal,
+			"newChunks":    stats.NewChunks,
+			"reusedChunks": stats.ReusedChunks,
+			"failedChunks": stats.FailedChunks,
+			"currentDir":   stats.CurrentDir,
+			"message":      stats.Message,
+		})
+	}
+	opts.OnResult = func(status *BackupStatus) {
+		if a.isServiceProcess || a.ctx == nil {
+			return
+		}
+		runtime.EventsEmit(a.ctx, "backup:result", map[string]interface{}{
+			"outcome":      string(status.Outcome),
+			"newChunks":    status.NewChunks,
+			"reusedChunks": status.ReusedChunks,
+			"failedChunks": status.FailedChunks,
+			"totalBytes":   status.TotalBytes,
+			"durationSec":  status.DurationSec,
+			"skippedCount": len(status.SkippedReadError),
+		})
+	}
+
+	// Run backup inline (in background goroutine to not block UI)
+	go func() {
+		err := RunBackupInline(opts)
+		if err != nil {
+			writeDebugLog(fmt.Sprintf("Machine backup error: %v", err))
 		}
 	}()
 

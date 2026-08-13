@@ -37,6 +37,7 @@ type BackupHandler interface {
 	UpdateScheduledJobFromMap(job map[string]interface{}) error
 	DeleteScheduledJobFromMap(jobID string) error
 	PinServerFingerprint(id, fingerprint string) error
+	StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error
 }
 
 // NewServer creates a new API server. token is the shared local-auth secret that

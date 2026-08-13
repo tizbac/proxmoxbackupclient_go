@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from './i18n/i18nContext'
 import LanguageSwitcher from './components/LanguageSwitcher'
+import MachineBackupConfig from './components/MachineBackupConfig'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch
@@ -179,8 +180,7 @@ function App() {
     }
   }, [defaultPBSID])
 
-  // Load physical disks when switching to machine mode (DISABLED FOR NOW)
-  /*
+  // Load physical disks when switching to machine mode
   useEffect(() => {
     if (backupType === 'machine' && ListPhysicalDisks && physicalDisks.length === 0) {
       ListPhysicalDisks().then(disks => {
@@ -194,7 +194,6 @@ function App() {
       })
     }
   }, [backupType])
-  */
 
   // Listen to backup events
   useEffect(() => {
@@ -1722,7 +1721,7 @@ function App() {
             <label>{t('backupType')}</label>
             <select value={backupType} onChange={(e) => setBackupType(e.target.value)}>
               <option value="directory">📁 {t('backupTypeDirectory')}</option>
-              {/* <option value="machine">💾 {t('backupTypeMachine')}</option> */}
+              <option value="machine">💾 {t('backupTypeMachine')}</option>
             </select>
           </div>
 
@@ -1821,33 +1820,16 @@ function App() {
               />
             </div>
           ) : (
-            <>
-              <div className="form-group">
-                <label>{t('physicalDisksToBackup')}</label>
-                {physicalDisks.length === 0 ? (
-                  <div style={{padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '4px'}}>
-                    🔍 {t('loadingDisks')}
-                  </div>
-                ) : (
-                  <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
-                    {physicalDisks.map(disk => (
-                      <label key={disk.path} style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                        <input
-                          type="checkbox"
-                          checked={selectedDrives.includes(disk.path)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedDrives([...selectedDrives, disk.path])
-                            } else {
-                              setSelectedDrives(selectedDrives.filter(d => d !== disk.path))
-                            }
-                          }}
-                        />
-                        {disk.label}
-                      </label>
-                    ))}
-                  </div>
-                )}
+            <MachineBackupConfig 
+              config={config}
+              setConfig={setConfig}
+              backupType={backupType}
+              setBackupType={setBackupType}
+              physicalDisks={physicalDisks}
+              setSelectedDrives={setSelectedDrives}
+              selectedDrives={selectedDrives}
+            />
+          )}
               </div>
 
               <div className="form-group">
@@ -1859,7 +1841,7 @@ function App() {
                   placeholder="*.tmp&#10;*.log&#10;C:\Windows\Temp"
                 />
               </div>
-            </>
+              
           )}
 
           <div className="form-group">
@@ -2691,7 +2673,7 @@ function App() {
             </p>
           </div>
         </div>
-      </div>
+
     </>
   )
 }
