@@ -29,6 +29,10 @@ const translations = {
     testing: "Test...",
     untested: "Non testé",
     default: "Défaut",
+    testServer: "Test",
+    editServer: "Modifier",
+    setDefault: "Défaut",
+    deleteServer: "Supprimer",
       optional: "optionnel",
 
       // PBS Configuration
@@ -297,6 +301,10 @@ const translations = {
     testing: "Testing...",
     untested: "Not tested",
     default: "Default",
+    testServer: "Test",
+    editServer: "Edit",
+    setDefault: "Default",
+    deleteServer: "Delete",
       optional: "optional",
 
       // PBS Configuration
@@ -565,6 +573,10 @@ const translations = {
     testing: "Test...",
     untested: "Non testato",
     default: "Predefinito",
+    testServer: "Test",
+    editServer: "Modifica",
+    setDefault: "Predefinito",
+    deleteServer: "Elimina",
       optional: "opzionale",
 
       // PBS Configuration
@@ -833,6 +845,10 @@ const translations = {
     testing: "Testen...",
     untested: "Nicht getestet",
     default: "Standard",
+    testServer: "Test",
+    editServer: "Bearbeiten",
+    setDefault: "Standard",
+    deleteServer: "Löschen",
       optional: "optional",
 
       // PBS Configuration
@@ -1088,19 +1104,23 @@ const translations = {
     delete: "Usuń",
     edit: "Edytuj",
     add: "Dodaj",
-    test: "Testuj",
-    start: "Uruchom",
-    stop: "Zatrzymaj",
-    update: "Zaktualizuj",
-    actions: "Działania",
+    test: "Test",
+    start: "Start",
+    stop: "Stop",
+    update: "Aktualizuj",
+    actions: "Akcje",
     name: "Nazwa",
     url: "URL",
     status: "Status",
     online: "Online",
     offline: "Offline",
     testing: "Testowanie...",
-    untested: "Nie przetestowano",
+    untested: "Nie przetestowany",
     default: "Domyślny",
+    testServer: "Test",
+    editServer: "Edytuj",
+    setDefault: "Domyślny",
+    deleteServer: "Usuń",
       optional: "opcjonalne",
 
       // PBS Configuration

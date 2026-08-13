@@ -117,6 +117,23 @@ body {
     margin-right: 8px;
 }
 
+/* Disk selection styling */
+.drive-item {
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.label-text {
+    margin-left: 8px;
+}
+
 .btn {
     padding: 12px 24px;
     background: #e87003;

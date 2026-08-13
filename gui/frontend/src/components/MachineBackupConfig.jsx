@@ -42,14 +42,16 @@ function MachineBackupConfig({ config, setConfig, backupType, setBackupType, phy
           <div className="drives-list">
             {physicalDisks.map((drive) => (
               <div key={drive.device_path} className="drive-item">
-                <input
-                  type="checkbox"
-                  id={drive.device_path}
-                  checked={selectedDrives.includes(drive.device_path)}
-                  onChange={() => handleDriveSelect(drive.device_path)}
-                />
-                <label htmlFor={drive.device_path}>
-                  {drive.device_path} ({(drive.size / (1024 * 1024 * 1024)).toFixed(2)} GB) - {drive.model}
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    id={drive.device_path}
+                    checked={selectedDrives.includes(drive.device_path)}
+                    onChange={() => handleDriveSelect(drive.device_path)}
+                  />
+                  <span className="label-text">
+                    {drive.device_path} ({(drive.size / (1024 * 1024 * 1024)).toFixed(2)} GB) - {drive.model}
+                  </span>
                 </label>
               </div>
             ))}

@@ -1430,18 +1430,18 @@ function App() {
                       </td>
                       <td>
                         <button onClick={() => handleTestPBSConnection(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                          🔍 {t('test')}
+                          🔍 {t('testServer')}
                         </button>
                         <button onClick={() => handleEditServer(server)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                          ✏️ {t('edit')}
+                          ✏️ {t('editServer')}
                         </button>
                         {server.id !== defaultPBSID && (
                           <button onClick={() => handleSetDefaultPBS(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#fbbf24'}}>
-                            ⭐ {t('setAsDefault')}
+                            ⭐ {t('setDefault')}
                           </button>
                         )}
                         <button onClick={() => handleDeletePBSServer(server.id)} style={{padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#ef4444', color: 'white'}}>
-                          🗑️ {t('delete')}
+                          🗑️ {t('deleteServer')}
                         </button>
                       </td>
                     </tr>
@@ -1609,18 +1609,18 @@ function App() {
                         </td>
                         <td>
                           <button onClick={() => handleTestPBSConnection(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                            🔍 Tester
+                            🔍 {t('testServer')}
                           </button>
                           <button onClick={() => handleEditServer(server)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                            ✏️ Modifier
+                            ✏️ {t('editServer')}
                           </button>
                           {server.id !== defaultPBSID && (
                             <button onClick={() => handleSetDefaultPBS(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#fbbf24'}}>
-                              ⭐ Par défaut
+                              ⭐ {t('setDefault')}
                             </button>
                           )}
                           <button onClick={() => handleDeletePBSServer(server.id)} style={{padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#ef4444', color: 'white'}}>
-                            🗑️ Supprimer
+                            🗑️ {t('deleteServer')}
                           </button>
                         </td>
                       </tr>
