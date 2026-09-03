@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	writeDebugLog("NimbusBackupSVC starting...")
+	writeDebugLog("ProxmoxBackupClientSVC starting...")
 
 	// Command-line flags for service control
 	svcFlag := flag.String("service", "", "Control the system service: install, uninstall, start, stop, restart")
@@ -20,13 +20,13 @@ func main() {
 
 	// Service configuration
 	svcConfig := &service.Config{
-		Name:        "NimbusBackup",
-		DisplayName: "Nimbus Backup SVC",
+		Name:        "ProxmoxBackupClient",
+		DisplayName: "Proxmox Backup Client SVC",
 		Description: "Executes scheduled backups to Proxmox Backup Server with VSS support",
 	}
 
-	nimbusSvc := &NimbusService{}
-	s, err := service.New(nimbusSvc, svcConfig)
+	backupSvc := &BackupService{}
+	s, err := service.New(backupSvc, svcConfig)
 	if err != nil {
 		log.Fatal(err)
 	}

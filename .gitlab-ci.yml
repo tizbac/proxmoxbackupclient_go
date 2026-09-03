@@ -9,7 +9,7 @@ stages:
 
 variables:
   GO_VERSION: "1.25"
-  PROJECT_NAME: "NimbusBackup"
+  PROJECT_NAME: "ProxmoxBackupClient"
   # Disable go.work (GUI is independent module)
   GOWORK: "off"
   # Docker-in-Docker configuration

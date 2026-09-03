@@ -29,7 +29,7 @@ export function I18nProvider({ children }) {
     localStorage.setItem('language', language)
   }, [language])
 
-  const t = (key) => {
+  const t = (key, params) => {
     const keys = key.split('.')
     let value = translations[language]
 
@@ -38,6 +38,12 @@ export function I18nProvider({ children }) {
         value = value[k]
       } else {
         return key // Return key if translation not found
+      }
+    }
+
+    if (typeof value === 'string' && params) {
+      for (const [p, v] of Object.entries(params)) {
+        value = value.split(`{${p}}`).join(String(v))
       }
     }
 

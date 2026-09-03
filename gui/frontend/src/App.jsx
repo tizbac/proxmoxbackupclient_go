@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from './i18n/i18nContext'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
-let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch
+let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup
 let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
@@ -24,6 +24,7 @@ if (window.go) {
   OpenRestoreDestDialog = window.go.main.App.OpenRestoreDestDialog
   SearchFiles = window.go.main.App.SearchFiles
   CancelSearch = window.go.main.App.CancelSearch
+  CancelBackup = window.go.main.App.CancelBackup
   ListPhysicalDisks = window.go.main.App.ListPhysicalDisks
   GetVersion = window.go.main.App.GetVersion
   SaveScheduledJob = window.go.main.App.SaveScheduledJob
@@ -113,19 +114,22 @@ function App() {
     // Structured live stats (from the backup:stats event)
     bytesDone: 0,
     bytesTotal: 0,
+    lastBytes: 0,
     newChunks: 0,
     reusedChunks: 0,
     failedChunks: 0,
     currentDir: ''
   })
   const [status, setStatus] = useState({ message: '', type: '', visible: false })
+  const [backupRunning, setBackupRunning] = useState(false)
+  const statusTimeoutRef = useRef(null)
 
   const [snapshots, setSnapshots] = useState([])
   const [restoreBackupId, setRestoreBackupId] = useState('')
   const [showSnapshots, setShowSnapshots] = useState(false)
   const [restorePBSID, setRestorePBSID] = useState('')
   const [selectedSnapshot, setSelectedSnapshot] = useState(null) // { id, unix, time }
-  const [snapshotMeta, setSnapshotMeta] = useState(null)         // .nimbus_backup_meta.json sidecar (null if legacy)
+  const [snapshotMeta, setSnapshotMeta] = useState(null)         // .proxmox_backup_client_meta.json sidecar (null if legacy)
   const [snapshotEntries, setSnapshotEntries] = useState([])     // flat list from backend
   const [expandedDirs, setExpandedDirs] = useState(new Set())     // expanded paths in tree
   const [selectedPaths, setSelectedPaths] = useState(new Set())   // selected entry paths
@@ -191,7 +195,7 @@ function App() {
           setSelectedDrives([disks[0].path])
         }
       }).catch(err => {
-        showStatus(`❌ Erreur lors de la détection des disques: ${err}`, 'error')
+        showStatus(`❌ ${t('statusDiskError')} ${err}`, 'error')
       })
     }
   }, [backupType])
@@ -217,58 +221,72 @@ function App() {
     if (!EventsOn) return
 
     const unsubProgress = EventsOn('backup:progress', (data) => {
-      const now = Date.now()
       const percent = Math.round(data.percent)
       setProgress(percent)
-      showStatus(`🔄 ${data.message}`, 'info')
+      showStatus(`🔄 ${data.message}`, 'info', true)
 
-      // Calculate speed and ETA
+      // Track whether a backup is running (drives the Start/Stop button state).
+      setBackupRunning(true)
+
+      // Speed and ETA are computed from bytes in the backup:stats handler,
+      // which is far more reliable than percent: percent is rounded to an
+      // integer and can stall or jump when chunks are reused/deduplicated,
+      // which made the time-remaining estimate completely wrong.
+      setBackupStats(prev => ({
+        ...prev,
+        startTime: prev.startTime || Date.now(),
+        lastUpdate: Date.now(),
+        lastPercent: percent
+      }))
+    })
+
+    // Structured live statistics (bytes + chunk counts) emitted alongside progress.
+    const unsubStats = EventsOn('backup:stats', (data) => {
+      const now = Date.now()
       setBackupStats(prev => {
+        const bytesDone = data.bytesDone || 0
+        const bytesTotal = data.bytesTotal || 0
         const startTime = prev.startTime || now
         const lastUpdate = prev.lastUpdate || now
         const timeDiff = (now - lastUpdate) / 1000 // seconds
-        const percentDiff = percent - prev.lastPercent
+        const bytesDiff = bytesDone - prev.lastBytes
 
-        // Calculate speed (percent per second)
+        // Byte throughput (bytes/sec) — far more accurate for ETA than percent.
         let speed = prev.speed
-        if (timeDiff > 0 && percentDiff > 0) {
-          speed = percentDiff / timeDiff
+        if (timeDiff > 0 && bytesDiff > 0) {
+          speed = bytesDiff / timeDiff
         }
 
-        // Calculate ETA (seconds remaining)
-        let eta = null
-        if (speed > 0 && percent < 100) {
-          const remainingPercent = 100 - percent
-          eta = Math.round(remainingPercent / speed)
+        // ETA (seconds remaining) from byte throughput. Falls back to keeping
+        // the previous ETA when we can't compute a fresh one (e.g. chunk
+        // reuse windows where bytesDone stalls momentarily).
+        let eta = prev.eta
+        if (speed > 0 && bytesTotal > bytesDone && bytesTotal > 0) {
+          const remainingBytes = bytesTotal - bytesDone
+          eta = Math.round(remainingBytes / speed)
         }
 
         return {
-          ...prev, // preserve structured stats (bytes/chunks) set by backup:stats
+          ...prev,
           startTime,
           lastUpdate: now,
-          lastPercent: percent,
+          bytesDone,
+          bytesTotal,
+          lastBytes: bytesDone,
+          newChunks: data.newChunks || 0,
+          reusedChunks: data.reusedChunks || 0,
+          failedChunks: data.failedChunks || 0,
+          currentDir: data.currentDir || '',
           speed,
           eta
         }
       })
     })
 
-    // Structured live statistics (bytes + chunk counts) emitted alongside progress.
-    const unsubStats = EventsOn('backup:stats', (data) => {
-      setBackupStats(prev => ({
-        ...prev,
-        bytesDone: data.bytesDone || 0,
-        bytesTotal: data.bytesTotal || 0,
-        newChunks: data.newChunks || 0,
-        reusedChunks: data.reusedChunks || 0,
-        failedChunks: data.failedChunks || 0,
-        currentDir: data.currentDir || ''
-      }))
-    })
-
     const unsubComplete = EventsOn('backup:complete', (data) => {
       setProgress(data.success ? 100 : 0)
-      setBackupStats({ startTime: null, lastUpdate: null, lastPercent: 0, speed: 0, eta: null, bytesDone: 0, bytesTotal: 0, newChunks: 0, reusedChunks: 0, failedChunks: 0, currentDir: '' })
+      setBackupRunning(false)
+      setBackupStats({ startTime: null, lastUpdate: null, lastPercent: 0, speed: 0, eta: null, bytesDone: 0, bytesTotal: 0, lastBytes: 0, newChunks: 0, reusedChunks: 0, failedChunks: 0, currentDir: '' })
       showStatus(data.success ? '✅ ' + data.message : '❌ ' + data.message, data.success ? 'success' : 'error')
 
       // Add to job history
@@ -297,7 +315,7 @@ function App() {
     if (!EventsOn) return
     const unsubP = EventsOn('restore:progress', (data) => {
       setRestoreProgress(Math.round((data.percent || 0) * 100))
-      showStatus(`🔄 ${data.message || ''}`, 'info')
+      showStatus(`🔄 ${data.message || ''}`, 'info', true)
     })
     const unsubC = EventsOn('restore:complete', (data) => {
       setRestoreLoading(false)
@@ -446,11 +464,18 @@ function App() {
     loadPBSServers()
   }, [])
 
-  const showStatus = (message, type) => {
+  const showStatus = (message, type, persist = false) => {
+    if (statusTimeoutRef.current) {
+      clearTimeout(statusTimeoutRef.current)
+      statusTimeoutRef.current = null
+    }
     setStatus({ message, type, visible: true })
-    setTimeout(() => {
-      setStatus(s => ({ ...s, visible: false }))
-    }, 5000)
+    if (!persist) {
+      statusTimeoutRef.current = setTimeout(() => {
+        setStatus(s => ({ ...s, visible: false }))
+        statusTimeoutRef.current = null
+      }, 5000)
+    }
   }
 
   // ==================== MULTI-PBS HANDLERS ====================
@@ -473,7 +498,7 @@ function App() {
 
   const handleAddPBSServer = async () => {
     if (!AddPBSServer) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
 
@@ -507,7 +532,7 @@ function App() {
 
   const handleUpdatePBSServer = async () => {
     if (!UpdatePBSServer) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
 
@@ -536,7 +561,7 @@ function App() {
 
   const handleDeletePBSServer = async (id) => {
     if (!DeletePBSServer) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
 
@@ -555,7 +580,7 @@ function App() {
 
   const handleSetDefaultPBS = async (id) => {
     if (!SetDefaultPBSServer) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
 
@@ -575,7 +600,7 @@ function App() {
 
   const handleTestPBSConnection = async (id) => {
     if (!TestPBSConnection) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
 
@@ -634,7 +659,7 @@ function App() {
 
   const handleSaveConfig = async () => {
     if (!SaveConfig) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
 
@@ -661,7 +686,7 @@ function App() {
 
   const handleTestConnection = async () => {
     if (!TestConnection) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
 
@@ -805,11 +830,10 @@ function App() {
           // event will arrive, so cancel the wait and offer a retry.
           completion.cancel()
           const retry = window.confirm(
-            `Le backup ${job.index}/${job.total_jobs} n'a pas pu démarrer:\n${err}\n\n` +
-            `Réessayer cette partie ?`
+            t('splitStartFailed', { n: job.index, total: job.total_jobs, msg: err })
           )
           if (retry) { i--; continue }
-          failures.push(`Partie ${job.index}: démarrage impossible (${err})`)
+          failures.push(t('partStartFail', { n: job.index, msg: err }))
           continue
         }
 
@@ -817,42 +841,40 @@ function App() {
         const result = await completion.promise
         if (result.success) {
           succeeded++
-          showStatus(`✅ Backup ${job.index}/${job.total_jobs} terminé`, 'success')
+          showStatus(`✅ ${t('backupPartDone', { n: job.index, total: job.total_jobs })}`, 'success')
         } else {
           showStatus(
-            `❌ Backup ${job.index}/${job.total_jobs} échoué: ${result.message || ''}`,
+            `❌ ${t('backupPartFailed', { n: job.index, total: job.total_jobs, msg: result.message || '' })}`,
             'error'
           )
           const retry = window.confirm(
-            `Le backup ${job.index}/${job.total_jobs} a échoué:\n${result.message || ''}\n\n` +
-            `Réessayer cette partie avant de continuer ?`
+            t('splitRetryPrompt', { n: job.index, total: job.total_jobs, msg: result.message || '' })
           )
           if (retry) { i--; continue }
-          failures.push(`Partie ${job.index}: ${result.message || 'échec'}`)
+          failures.push(t('partDone', { n: job.index, msg: result.message || t('partFailed') }))
         }
       }
 
       // Honest aggregate: only claim success when EVERY part actually succeeded.
       if (failures.length === 0) {
         showStatus(
-          `🎉 Tous les backups partiels terminés avec succès (${succeeded}/${splitPlan.length})`,
+          `🎉 ${t('allPartsDone', { n: succeeded, total: splitPlan.length })}`,
           'success'
         )
       } else {
         showStatus(
-          `⚠️ Backup partiel: ${succeeded}/${splitPlan.length} OK, ${failures.length} échec(s) :\n` +
-          failures.join('\n'),
+          `⚠️ ${t('partialBackup', { ok: succeeded, total: splitPlan.length, fail: failures.length, fails: failures.join('\n') })}`,
           'error'
         )
       }
     } catch (err) {
-      showStatus(`❌ Erreur split backup: ${err}`, 'error')
+      showStatus(`❌ ${t('splitBackupError', { err })}`, 'error')
     }
   }
 
   const handleStartBackup = async () => {
     if (!StartBackup) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
 
@@ -865,7 +887,7 @@ function App() {
     }
 
     if (backupType === 'machine' && selectedDrives.length === 0) {
-      showStatus('❌ Au moins un disque requis', 'error')
+      showStatus(t('atLeastOneDisk'), 'error')
       return
     }
 
@@ -929,6 +951,7 @@ function App() {
     // One-shot mode - execute immediately
     showStatus(`🚀 ${t('statusBackupStarting')}`, 'info')
     setProgress(5)
+    setBackupRunning(true)
 
     try {
       // Only pass excludeList for directory backups, not for machine backups
@@ -961,13 +984,27 @@ function App() {
       showStatus(`⏳ ${t('statusBackupRunning')}`, 'info')
     } catch (err) {
       setProgress(0)
+      setBackupRunning(false)
+      showStatus(`❌ ${err}`, 'error')
+    }
+  }
+
+  const handleStopBackup = async () => {
+    if (!CancelBackup) {
+      showStatus(`❌ ${t('stopBackupUnavailable')}`, 'error')
+      return
+    }
+    try {
+      await CancelBackup()
+      showStatus(`⏹️ ${t('stopBackupInProgress')}`, 'info')
+    } catch (err) {
       showStatus(`❌ ${err}`, 'error')
     }
   }
 
   const handleListSnapshots = async () => {
     if (!ListSnapshots) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
     if (!restoreBackupId) {
@@ -993,7 +1030,7 @@ function App() {
 
   const handleSelectSnapshot = async (snap, forceRefresh = false) => {
     if (!ListSnapshotContents) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
     setSelectedSnapshot(snap)
@@ -1032,7 +1069,7 @@ function App() {
 
   const handleBrowseRestoreDest = async () => {
     if (!OpenRestoreDestDialog) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
     try {
@@ -1059,7 +1096,7 @@ function App() {
 
   const handleSearch = async () => {
     if (!SearchFiles) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
     if (!searchQuery.trim()) {
@@ -1140,7 +1177,7 @@ function App() {
 
   const handleRestoreSnapshot = async () => {
     if (!RestoreSnapshot) {
-      showStatus('❌ Wails runtime non disponible', 'error')
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
     if (!selectedSnapshot) {
@@ -1961,7 +1998,7 @@ function App() {
                 )}
                 {backupStats.speed > 0 && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    ⚡ <strong>{t('speed')}</strong> {backupStats.speed.toFixed(1)}%/s
+                    ⚡ <strong>{t('speed')}</strong> {(backupStats.speed / 1048576).toFixed(1)} MB/s
                   </div>
                 )}
                 {backupStats.startTime && (
@@ -1971,21 +2008,21 @@ function App() {
                 )}
                 {backupStats.bytesDone > 0 && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    📦 <strong>Données :</strong> {Math.round(backupStats.bytesDone / 1048576)}
+                    📦 <strong>{t('dataSizeLabel')}</strong> {Math.round(backupStats.bytesDone / 1048576)}
                     {backupStats.bytesTotal > 0 ? ` / ${Math.round(backupStats.bytesTotal / 1048576)}` : ''} MB
                   </div>
                 )}
                 {(backupStats.newChunks > 0 || backupStats.reusedChunks > 0) && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    🧩 <strong>Chunks :</strong> {backupStats.newChunks} new · {backupStats.reusedChunks} reused
+                    🧩 <strong>{t('chunksLabel')}</strong> {backupStats.newChunks} {t('newChunksLabel')} · {backupStats.reusedChunks} {t('reusedChunksLabel')}
                     {backupStats.failedChunks > 0 ? (
-                      <span style={{color: '#c0392b', fontWeight: 'bold'}}> · {backupStats.failedChunks} échoués</span>
+                      <span style={{color: '#c0392b', fontWeight: 'bold'}}> · {backupStats.failedChunks} {t('failedChunksLabel')}</span>
                     ) : ''}
                   </div>
                 )}
                 {backupStats.currentDir && (
                   <div style={{fontSize: '13px', color: '#495057', gridColumn: '1 / -1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                    📁 <strong>Dossier :</strong> {backupStats.currentDir}
+                    📁 <strong>{t('currentDirLabel')}</strong> {backupStats.currentDir}
                   </div>
                 )}
               </div>
@@ -1998,14 +2035,14 @@ function App() {
             </div>
           )}
 
-          <button className="btn" onClick={handleStartBackup} disabled={progress > 0 && progress < 100}>
+          <button className="btn" onClick={handleStartBackup} disabled={backupRunning || (progress > 0 && progress < 100)}>
             {backupMode === 'oneshot'
-              ? (progress > 0 && progress < 100 ? `⏳ ${t('backupInProgress')}` : `🚀 ${t('startBackup')}`)
+              ? (backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `🚀 ${t('startBackup')}`)
               : (editingJobId ? `✏️ ${t('updateSchedule')}` : `💾 ${t('saveSchedule')}`)
             }
           </button>
           {backupMode === 'oneshot' && (
-            <button className="btn btn-secondary" onClick={() => setProgress(0)} disabled={progress === 0}>{t('stopBackup')}</button>
+            <button className="btn btn-secondary" onClick={handleStopBackup} disabled={!backupRunning}>{t('stopBackup')}</button>
           )}
           {backupMode === 'scheduled' && editingJobId && (
             <button className="btn btn-secondary" onClick={() => {

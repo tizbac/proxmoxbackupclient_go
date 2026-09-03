@@ -1,9 +1,9 @@
-# Nimbus Backup - État des Features (2026-03-23)
+# Proxmox Backup Client - État des Features (2026-03-23)
 
 ## 📊 Vue d'ensemble
 
 **Version actuelle:** v0.1.93
-**Dernière release publique:** [GitHub Releases](https://github.com/rdem-systems/proxmoxbackupclient_go/releases)
+**Dernière release publique:** [GitHub Releases](https://github.com/tizbac/proxmoxbackupclient_go/releases)
 **Statut général:** 🟢 Production-ready (GUI) | 🟢 Service Windows stable
 **Dernière mise à jour:** 2026-03-23
 
@@ -19,7 +19,7 @@
 | Test de connexion PBS | ✅ STABLE | v0.1.0 | Auth réelle avant backup |
 | Détection automatique hostname | ✅ STABLE | v0.1.0 | Pour backup-id |
 | Onglet "À propos" avec version | ✅ STABLE | v0.1.23+ | Version dynamique |
-| Liens upsell Nimbus Backup | ✅ STABLE | v0.1.31 | Tracking UTM |
+| Liens upsell Proxmox Backup Client | ✅ STABLE | v0.1.31 | Tracking UTM |
 
 ### 💾 Backup - Directories
 | Feature | Statut | Version | Notes |
@@ -44,11 +44,11 @@
 ### 📦 Restauration
 | Feature | Statut | Version | Notes |
 |---------|--------|---------|-------|
-| Liste des snapshots | ❌ RETIRÉ | N/A | **Offload vers members.rdem-systems.com** |
-| Restauration fichiers/dossiers | ❌ RETIRÉ | N/A | **Offload vers members.rdem-systems.com** |
-| Parcourir catalog PBS | ❌ RETIRÉ | N/A | **Offload vers members.rdem-systems.com** |
+| Liste des snapshots | ❌ RETIRÉ | N/A | **Non inclus (portail web PBS)** |
+| Restauration fichiers/dossiers | ❌ RETIRÉ | N/A | **Non inclus (portail web PBS)** |
+| Parcourir catalog PBS | ❌ RETIRÉ | N/A | **Non inclus (portail web PBS)** |
 
-**Note:** La restauration n'est **pas implémentée** dans le client desktop. Les clients Nimbus Backup utilisent le portail web [members.rdem-systems.com](https://members.rdem-systems.com) pour restaurer leurs données via l'interface PBS hébergée.
+**Note:** La restauration n'est **pas implémentée** dans le client desktop. Les clients se restaurent via l'interface PBS hébergée.
 
 ### 🔐 Sécurité & Qualité
 | Feature | Statut | Version | Notes |
@@ -64,7 +64,7 @@
 ### 📝 Logging & Debug
 | Feature | Statut | Version | Notes |
 |---------|--------|---------|-------|
-| Debug log `debug-gui.log` | ✅ STABLE | v0.1.0 | `C:\ProgramData\NimbusBackup\` |
+| Debug log `debug-gui.log` | ✅ STABLE | v0.1.0 | `C:\ProgramData\ProxmoxBackupClient\` |
 | Debug log `debug-service.log` | ✅ STABLE | v0.1.78+ | Séparé du GUI |
 | Crash reports | ✅ STABLE | v0.1.0 | `crash_report.txt` |
 | Progression stable sans clignotement | ✅ STABLE | v0.1.29 | Printf retiré de pxar.go |
@@ -73,7 +73,7 @@
 ### 🪟 Windows Service
 | Feature | Statut | Version | Notes |
 |---------|--------|---------|-------|
-| Service Windows fonctionnel | ✅ STABLE | v0.1.78+ | `NimbusBackupService` |
+| Service Windows fonctionnel | ✅ STABLE | v0.1.78+ | `ProxmoxBackupClientService` |
 | API HTTP locale (localhost:18765) | ✅ STABLE | v0.1.78+ | Communication GUI ↔ Service |
 | Exécution backups via Service | ✅ STABLE | v0.1.78+ | VSS sans UAC prompt |
 | ReloadConfig avant backup | ✅ STABLE | v0.1.81 | Config fraîche à chaque backup |
@@ -84,7 +84,7 @@
 | Feature | Statut | Version | Notes |
 |---------|--------|---------|-------|
 | Création jobs planifiés | ✅ STABLE | v0.1.85+ | Cron + interface GUI |
-| Stockage jobs (`jobs.json`) | ✅ STABLE | v0.1.85+ | `C:\ProgramData\NimbusBackup\` |
+| Stockage jobs (`jobs.json`) | ✅ STABLE | v0.1.85+ | `C:\ProgramData\ProxmoxBackupClient\` |
 | Service exécute jobs | ✅ STABLE | v0.1.85+ | Check toutes les minutes |
 | Historique jobs | ✅ STABLE | v0.1.85+ | Succès/échecs trackés |
 | Édition/suppression jobs | ✅ STABLE | v0.1.85+ | CRUD complet |
@@ -97,7 +97,7 @@
 | MSI fonctionnel | ✅ STABLE | v0.1.70+ | WiX Toolset |
 | Installation Service Windows | ✅ STABLE | v0.1.70+ | Auto-start enabled |
 | Upgrade propre | ✅ STABLE | v0.1.92 | Stop service avant upgrade |
-| ProgramData créé | ✅ STABLE | v0.1.70+ | `C:\ProgramData\NimbusBackup\` |
+| ProgramData créé | ✅ STABLE | v0.1.70+ | `C:\ProgramData\ProxmoxBackupClient\` |
 | **Dialog désinstallation** | ✅ IMPLÉMENTÉ | **v0.2.0** | **Garder/supprimer config** |
 | Code signing | ❌ MANQUANT | N/A | Certificat non acquis |
 
@@ -202,7 +202,7 @@
 **Objectif:** Déploiement GPO/Intune avec config pré-configurée
 
 ```powershell
-msiexec /i NimbusBackup.msi /qn CONFIGFILE="\\ad-server\deploy\config.json"
+msiexec /i ProxmoxBackupClient.msi /qn CONFIGFILE="\\ad-server\deploy\config.json"
 ```
 
 **Bloqueurs:** Besoin CustomAction WiX + validation JSON
@@ -255,7 +255,7 @@ msiexec /i NimbusBackup.msi /qn CONFIGFILE="\\ad-server\deploy\config.json"
 ## 🗑️ DROPPED (Ne seront pas implémentées)
 
 - ❌ UUID machine (hostname suffit)
-- ❌ Heartbeat vers API RDEM (overkill, pas de SaaS backend)
+- ❌ Heartbeat vers API distante (overkill, pas de SaaS backend)
 - ❌ go-msi (WiX fonctionne parfaitement)
 - ❌ Mount FUSE/WinFSP (restauration web PBS suffit)
 
@@ -332,12 +332,12 @@ msiexec /i NimbusBackup.msi /qn CONFIGFILE="\\ad-server\deploy\config.json"
 3. **English translation** (marché international)
 
 ### Hors scope (délégué au portail web)
-- ❌ **Restauration locale** → Utiliser [members.rdem-systems.com](https://members.rdem-systems.com)
+- ❌ **Restauration locale** → Restauration via le portail web PBS
 - ❌ **Browse snapshots GUI** → Portail web PBS suffit
 - ❌ **Selective file restore** → Portail web PBS suffit
 
 ---
 
 **Dernière mise à jour:** 2026-03-23
-**Mainteneur:** RDEM Systems
-**Contact:** contact@rdem-systems.com
+**Mainteneur:** Proxmox Backup Client GO contributors
+**Contact:** https://github.com/tizbac/proxmoxbackupclient_go

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Nimbus Backup (GUI) will be documented in this file.
+All notable changes to Proxmox Backup Client (GUI) will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -113,7 +113,7 @@ Reliability and result-honesty hardening from a full code audit. No behaviour ch
 ### Changed
 - **Toolchain de build déterministe** — la CLI Wails est épinglée sur `v2.12.0` (la version exacte que `@latest` résolvait lors du build 0.2.106, donc octets identiques), au lieu du tag flottant `@latest`. La CLI orchestrant le bundling frontend et l'embed des assets avant le `go build`, une CLI flottante rendait même l'exe non strictement reproductible. *(L'alignement de la librairie `go.mod` sur une v2.x récente reste une tâche dédiée à tester.)*
 - **Notes de release** (`RELEASE_NOTES.md`) réécrites en page de statut pérenne : suppression du changelog par version gelé à v0.2.12 (redondant avec ce fichier et la section « Changes since » auto-générée) et du pied de version périmé ; correction de faits obsolètes (interface désormais **FR + EN**, support **multi-PBS**).
-- **Liens VirusTotal** : le binaire soumis porte le nom de fichier versionné (`NimbusBackup-vX.Y.Z.msi`), affiché tel quel sur le rapport VirusTotal.
+- **Liens VirusTotal** : le binaire soumis porte le nom de fichier versionné (`ProxmoxBackupClient-vX.Y.Z.msi`), affiché tel quel sur le rapport VirusTotal.
 
 ## [0.2.106] - 2026-05-27
 
@@ -121,13 +121,13 @@ Reliability and result-honesty hardening from a full code audit. No behaviour ch
 
 ### Added
 - **Empreintes SHA-256 publiées avec chaque release** — un fichier `SHA256SUMS.txt` est joint aux artefacts et le tableau des empreintes est affiché directement dans les notes de release, pour vérifier l'intégrité d'un téléchargement (`Get-FileHash <fichier> -Algorithm SHA256` ou `sha256sum -c SHA256SUMS.txt`).
-- **Soumission VirusTotal automatique (best-effort)** — le pipeline de release soumet `NimbusBackup.exe` et `NimbusBackup.msi` à VirusTotal et insère les liens des rapports multi-moteurs dans les notes, par transparence en attendant le certificat de signature de code. Le lien n'est publié **que si le rapport est propre (0 détection)** : l'analyse est attendue puis vérifiée, pour ne jamais pointer vers un rapport à charge. Étape non bloquante, activée par le secret `VIRUSTOTAL_API_KEY` (ignorée s'il est absent).
+- **Soumission VirusTotal automatique (best-effort)** — le pipeline de release soumet `ProxmoxBackupClient.exe` et `ProxmoxBackupClient.msi` à VirusTotal et insère les liens des rapports multi-moteurs dans les notes, par transparence en attendant le certificat de signature de code. Le lien n'est publié **que si le rapport est propre (0 détection)** : l'analyse est attendue puis vérifiée, pour ne jamais pointer vers un rapport à charge. Étape non bloquante, activée par le secret `VIRUSTOTAL_API_KEY` (ignorée s'il est absent).
 - **Attestation de provenance de build** (`actions/attest-build-provenance`) — chaque artefact est accompagné d'une attestation cryptographique « ce binaire vient de ce workflow, de ce commit », vérifiable avec `gh attestation verify`. Signal de confiance gratuit et auditable pour un public sysadmin, en attendant la signature de code.
 
 ### Changed
-- **Métadonnées d'éditeur Windows ajoutées au binaire de service** — `NimbusBackupSVC.exe` était compilé sans aucune information de version, un signal fort de faux positif antivirus (heuristique/ML). Il embarque désormais éditeur (RDEM Systems), nom de produit, description et version, générés via `goversioninfo` entre le build de la GUI et celui du service.
+- **Métadonnées d'éditeur Windows ajoutées au binaire de service** — `ProxmoxBackupClientSVC.exe` était compilé sans aucune information de version, un signal fort de faux positif antivirus (heuristique/ML). Il embarque désormais éditeur (Proxmox Backup Client GO contributors), nom de produit, description et version, générés via `goversioninfo` entre le build de la GUI et celui du service.
 - **Versions d'outils de build** — `goversioninfo` épinglé (`v1.4.0`). La CLI Wails n'a pas pu être épinglée sur la version de la librairie (`v2.8.0` de `go.mod` ne compile pas sous Go 1.25) : elle a suivi `@latest` (résolu en `v2.12.0`) pour ce hotfix. *(Toolchain redevenu déterministe ensuite — voir [Unreleased].)*
-- **Documentation des faux positifs antivirus** — lien depuis le README et les notes de release vers une page d'explication dédiée bilingue (« détecté comme virus ? » [FR](https://nimbus.rdem-systems.com/faux-positif-antivirus/) / [EN](https://nimbus.rdem-systems.com/en/antivirus-false-positive/)), en plus de la mention de la signature SignPath Foundation.
+- **Documentation des faux positifs antivirus** — lien depuis le README et les notes de release vers une page d'explication dédiée bilingue (« détecté comme virus ? »), en plus de la mention de la signature SignPath Foundation.
 
 ## [0.2.105] - 2026-05-26
 
@@ -183,7 +183,7 @@ Couverture backup honnête + preuve de restore (audit Codex v2 — 6 correctifs,
 - **Chunk/index fail-closed (C3 / v2-H-04 — critique)** — un échec d'upload de chunk indexait quand même le digest et fermait l'index → snapshot référençant un chunk absent (non restaurable), tout en s'auto-signalant échec *après coup*. Désormais : un chunk n'est marqué connu et indexé qu'**après upload confirmé**, et tout échec d'upload **abandonne le writer avant** `CloseDynamicIndex`/`Finish` — aucun snapshot corrompu n'est committé, et seeder le dedup depuis l'index précédent (toujours vérifié) redevient sûr.
 - **Auto-split n'oublie plus les fichiers racine (v2-H-01 — perte silencieuse)** — quand un dossier sélectionné dépassait le seuil via ses sous-dossiers, les fichiers posés **directement à la racine** n'entraient dans aucun snapshot, run « réussi ». Un job « reste racine » sauvegarde désormais la racine en excluant les sous-dossiers déjà couverts ; `AnalyzeBackupDirs` honore les exclusions (pas de re-split/double-couverture).
 - **Agrégation auto-split + continuité (v2-H-03)** — le chemin auto-split émettait des callbacks de complétion intermédiaires et s'arrêtait au 1er split en échec. Il agrège désormais un résultat unique (helpers partagés avec le multi-dossiers), **continue les splits indépendants**, et n'émet la complétion qu'après le dernier.
-- **VSS : plus de `delete shadows /all` au démarrage (v2-H-05)** — détruisait **toutes** les shadow copies de l'hôte (autres outils, DC, SQL/Exchange). Le nettoyage ne cible plus que les shadows créées par Nimbus (via le dossier symlink VSS), en best-effort par ID ; le `/all` ne subsiste que dans la reprise d'urgence mid-backup. *(À vérifier sous Windows : la forme exacte `vssadmin /shadow=` ; pire cas si rejetée = l'orphelin reste, aucun dégât collatéral.)*
+- **VSS : plus de `delete shadows /all` au démarrage (v2-H-05)** — détruisait **toutes** les shadow copies de l'hôte (autres outils, DC, SQL/Exchange). Le nettoyage ne cible plus que les shadows créées par Proxmox Backup Client (via le dossier symlink VSS), en best-effort par ID ; le `/all` ne subsiste que dans la reprise d'urgence mid-backup. *(À vérifier sous Windows : la forme exacte `vssadmin /shadow=` ; pire cas si rejetée = l'orphelin reste, aucun dégât collatéral.)*
 - **Restore unitaire prouvé (v2-H-09)** — une restauration sélective qui ne matchait aucun chemin demandé renvoyait « terminé » avec 0 fichier. Elle échoue désormais si aucun chemin demandé (exact ou descendant) n'a été matché dans le snapshot (les dossiers ancêtres auto-créés ne comptent pas).
 
 ### Changed
@@ -437,7 +437,7 @@ Issues de l'audit complet des flux VSS, des interactions inter-process (GUI ↔ 
 ### Fixed
 - **MSI build error** - Incorrect service exe path in Product.wxs
   - Changed path from `../../cmd/service/` to `../../gui/build/bin/`
-  - Workflow builds service to gui/build/bin/NimbusBackupSVC.exe
+  - Workflow builds service to gui/build/bin/ProxmoxBackupClientSVC.exe
   - Fixes "LGHT0103: The system cannot find the file"
 
 ## [0.2.9] - 2026-03-23
@@ -543,9 +543,9 @@ Current version uses minimal stubs to unblock service build.
 
 ### Fixed
 - **CI/CD build error** - Service executable not built before MSI creation
-  - Added build step for `NimbusBackupSVC.exe` in GitHub Actions workflow
+  - Added build step for `ProxmoxBackupClientSVC.exe` in GitHub Actions workflow
   - Service now built from `cmd/service` before WiX packaging
-  - Fixed LGHT0103 error: "The system cannot find the file NimbusBackupSVC.exe"
+  - Fixed LGHT0103 error: "The system cannot find the file ProxmoxBackupClientSVC.exe"
   - Both binaries (GUI + Service) now copied to dist/ folder
 
 ### Technical
@@ -619,8 +619,8 @@ Voulez-vous le découper en 9 backups ?
 ### Changed
 - **BREAKING: Binary separation architecture**
   - GUI and Service now separate executables
-  - `NimbusBackup.exe` - GUI application (Wails v2)
-  - `NimbusBackupSVC.exe` - Windows Service (kardianos/service)
+  - `ProxmoxBackupClient.exe` - GUI application (Wails v2)
+  - `ProxmoxBackupClientSVC.exe` - Windows Service (kardianos/service)
   - Communication via HTTP API on localhost:18765
   - Replaces previous single binary with `--service` flag
 
@@ -679,7 +679,7 @@ Voulez-vous le découper en 9 backups ?
   ```makefile
   all: cli gui service
   service:
-      cd cmd/service && go build -o ../../gui/build/bin/NimbusBackupSVC.exe
+      cd cmd/service && go build -o ../../gui/build/bin/ProxmoxBackupClientSVC.exe
   ```
 
 ### Migration Notes
@@ -687,7 +687,7 @@ Voulez-vous le découper en 9 backups ?
   - MSI installer handles upgrade automatically
   - Old single binary replaced with two executables
   - Service automatically stopped, upgraded, restarted
-  - Configuration preserved in `%ProgramData%\NimbusBackup\`
+  - Configuration preserved in `%ProgramData%\ProxmoxBackupClient\`
   - No user action required
 
 ### Root Cause Analysis - Keep-alive Fix
@@ -716,7 +716,7 @@ Voulez-vous le découper en 9 backups ?
 ## [0.1.31] - 2026-03-19
 
 ### Added
-- **Liens upsell Nimbus Backup** - Génération de leads directement depuis l'app
+- **Liens upsell Proxmox Backup Client** - Génération de leads directement depuis l'app
   - Bouton CTA dans onglet "À propos"
   - Message conditionnel dans Config si PBS non configuré
   - Tracking UTM complet (source, medium, campaign, content)
@@ -1269,7 +1269,7 @@ Bug #2 - HTTP/2 Connection State:
 - Snapshot listing and restore functionality
 - PBS connection test with real authentication
 - Automatic hostname detection for backup-id
-- Debug logging to %APPDATA%\NimbusBackup\debug.log
+- Debug logging to %APPDATA%\ProxmoxBackupClient\debug.log
 - Crash reporting system
 - RDEM Systems branding with custom icon
 
@@ -1297,5 +1297,4 @@ Bug #2 - HTTP/2 Connection State:
 ## Links
 
 - [Original CLI Project](https://github.com/tizbac/proxmoxbackupclient_go)
-- [RDEM Systems](https://rdem-systems.com)
-- [Backup Portal](https://nimbus.rdem-systems.com)
+- [Project Repository](https://github.com/tizbac/proxmoxbackupclient_go)

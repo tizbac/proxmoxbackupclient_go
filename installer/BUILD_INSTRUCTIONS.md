@@ -15,13 +15,13 @@ cd gui
 wails build -clean -platform windows/amd64
 ```
 
-L'exécutable sera dans `gui/build/bin/NimbusBackup.exe`
+L'exécutable sera dans `gui/build/bin/ProxmoxBackupClient.exe`
 
 ## 3. Builder le MSI
 
 ### Prérequis
 - WiX Toolset installé : https://wixtoolset.org/
-- NimbusBackup.exe compilé (étape 2)
+- ProxmoxBackupClient.exe compilé (étape 2)
 
 ### Build
 ```bash
@@ -29,58 +29,58 @@ cd installer/wix
 build.bat
 ```
 
-Le MSI sera créé : `installer/wix/NimbusBackup.msi`
+Le MSI sera créé : `installer/wix/ProxmoxBackupClient.msi`
 
 ## 4. Tester le MSI
 
 ### Installation
-1. Double-clic sur `NimbusBackup.msi`
+1. Double-clic sur `ProxmoxBackupClient.msi`
 2. Suivre l'assistant d'installation
 3. Vérifier que le service est créé :
    ```powershell
-   Get-Service NimbusBackup
+   Get-Service ProxmoxBackupClient
    ```
 
 ### Vérification du service
 ```powershell
 # Status du service
-Get-Service NimbusBackup | Select-Object Name, Status, StartType
+Get-Service ProxmoxBackupClient | Select-Object Name, Status, StartType
 
 # Démarrer manuellement (si nécessaire)
-Start-Service NimbusBackup
+Start-Service ProxmoxBackupClient
 
 # Voir les logs
-Get-EventLog -LogName Application -Source NimbusBackup -Newest 10
+Get-EventLog -LogName Application -Source ProxmoxBackupClient -Newest 10
 ```
 
 ### Désinstallation
 - Via Panneau de configuration → Programmes
-- Ou : `msiexec /x NimbusBackup.msi`
+- Ou : `msiexec /x ProxmoxBackupClient.msi`
 
 ## 5. Distribution
 
 Le MSI peut être distribué via :
 - GitHub Releases
-- Site web RDEM Systems
+- Site web du projet
 - Téléchargement direct
 
 ## Structure finale
 
 ```
-NimbusBackup-0.1.44/
-├── NimbusBackup.exe     (Standalone - backups manuels)
-└── NimbusBackup.msi     (Installateur - service Windows)
+ProxmoxBackupClient-0.1.44/
+├── ProxmoxBackupClient.exe     (Standalone - backups manuels)
+└── ProxmoxBackupClient.msi     (Installateur - service Windows)
 ```
 
 ## Différences exe vs MSI
 
-### NimbusBackup.exe
+### ProxmoxBackupClient.exe
 - ✅ Backups manuels
 - ✅ Backups planifiés (quand lancé)
 - ❌ Persistance au reboot
 - 💡 Usage: Tests, backups ponctuels
 
-### NimbusBackup.msi
+### ProxmoxBackupClient.msi
 - ✅ Service Windows automatique
 - ✅ Démarre au boot système
 - ✅ Toujours en admin (VSS garanti)
@@ -102,13 +102,13 @@ Le workflow doit être modifié pour builder le MSI :
   working-directory: installer/wix
   run: |
     candle.exe Product.wxs -ext WixUIExtension -ext WixUtilExtension
-    light.exe Product.wixobj -ext WixUIExtension -ext WixUtilExtension -out NimbusBackup.msi
+    light.exe Product.wixobj -ext WixUIExtension -ext WixUtilExtension -out ProxmoxBackupClient.msi
 
 - name: Upload MSI
   uses: actions/upload-artifact@v4
   with:
-    name: NimbusBackup-MSI
-    path: installer/wix/NimbusBackup.msi
+    name: ProxmoxBackupClient-MSI
+    path: installer/wix/ProxmoxBackupClient.msi
 ```
 
 ## Troubleshooting
@@ -116,7 +116,7 @@ Le workflow doit être modifié pour builder le MSI :
 ### Le service ne démarre pas
 1. Vérifier Event Viewer → Application
 2. Vérifier que l'exe supporte `--service` flag
-3. Tester manuellement : `NimbusBackup.exe --service`
+3. Tester manuellement : `ProxmoxBackupClient.exe --service`
 
 ### Erreur "Service already exists"
 Désinstaller l'ancienne version d'abord.

@@ -35,10 +35,10 @@ const (
 // descendants. Paths use forward slashes (archive style); backslashes are
 // accepted and normalized.
 //
-// RestoreACLs / RestoreADS / RestoreTimestamps are reserved for the upcoming
-// NTFS sidecar work — accepted today so the API surface is stable, but only
-// RestoreTimestamps has any effect (always-on: mtime is restored). The other
-// two are no-ops until the per-file .nimbus_meta sidecar lands.
+	// RestoreACLs / RestoreADS / RestoreTimestamps are reserved for the upcoming
+	// NTFS sidecar work — accepted today so the API surface is stable, but only
+	// RestoreTimestamps has any effect (always-on: mtime is restored). The other
+	// two are no-ops until the per-file .proxmox_meta sidecar lands.
 type RestoreOptions struct {
 	BaseURL         string
 	AuthID          string
@@ -352,7 +352,7 @@ func buildSnapshotCacheKey(opts RestoreOptions) snapshotCacheKey {
 // once written, so the cache never goes stale, only ages out. Set forceRefresh
 // to bypass the cache (e.g. for a manual "Reload" button).
 //
-// As a side effect, the snapshot's `.nimbus_backup_meta.json` sidecar is parsed
+// As a side effect, the snapshot's `.proxmox_backup_client_meta.json` sidecar is parsed
 // and cached too, so a subsequent ReadSnapshotMetaInline call is free.
 //
 // archiveName defaults to "backup.pxar.didx" when empty.
@@ -387,7 +387,7 @@ func ListSnapshotContentsInline(opts RestoreOptions, archiveName string, forceRe
 	return result, nil
 }
 
-// tryReadBackupMeta extracts the .nimbus_backup_meta.json sidecar from an
+// tryReadBackupMeta extracts the .proxmox_backup_client_meta.json sidecar from an
 // already-parsed archive. Returns nil on any failure (legacy snapshots,
 // corrupted JSON, missing file) — meta is informational, never fatal.
 func tryReadBackupMeta(reader *pbscommon.PXARReader) *BackupMeta {
@@ -406,7 +406,7 @@ func tryReadBackupMeta(reader *pbscommon.PXARReader) *BackupMeta {
 	return &meta
 }
 
-// ReadSnapshotMetaInline returns the .nimbus_backup_meta.json sidecar stored
+// ReadSnapshotMetaInline returns the .proxmox_backup_client_meta.json sidecar stored
 // at the root of a snapshot, or nil with a non-nil error when no sidecar is
 // present (legacy snapshots created before the sidecar shipped).
 //
@@ -475,21 +475,21 @@ func buildPathRewriter(opts RestoreOptions, meta *BackupMeta) (pbscommon.PathRew
 	switch mode {
 	case RestoreModeOriginal:
 		if meta == nil {
-			return nil, fmt.Errorf("restauration in-place impossible : ce snapshot n'a pas de métadonnées (.nimbus_backup_meta.json absent), choisissez « autre emplacement »")
+			return nil, fmt.Errorf("in-place restore not possible: this snapshot has no metadata (.proxmox_backup_client_meta.json missing), choose \"alternate location\" instead")
 		}
 		if meta.OriginalPath == "" {
-			return nil, fmt.Errorf("restauration in-place impossible : le chemin d'origine n'est pas renseigné dans les métadonnées")
+			return nil, fmt.Errorf("in-place restore not possible: the original path is not set in the metadata")
 		}
 		if meta.OS != "" && meta.OS != runtime.GOOS {
-			return nil, fmt.Errorf("restauration in-place impossible : sauvegarde faite sur %s, machine actuelle %s", meta.OS, runtime.GOOS)
+			return nil, fmt.Errorf("in-place restore not possible: backup was made on %s, current machine is %s", meta.OS, runtime.GOOS)
 		}
 		if !opts.AllowCrossHost {
 			localHost, err := os.Hostname()
 			if err != nil {
-				return nil, fmt.Errorf("impossible de lire le hostname local : %w", err)
+				return nil, fmt.Errorf("could not read local hostname: %w", err)
 			}
 			if meta.Hostname != "" && !equalHostnames(meta.Hostname, localHost) {
-				return nil, fmt.Errorf("restauration in-place bloquée : sauvegarde de %q, machine actuelle %q — cochez « forcer cross-host » si l'intention est délibérée", meta.Hostname, localHost)
+				return nil, fmt.Errorf("in-place restore blocked: backup from %q, current machine %q — tick \"force cross-host\" if intentional", meta.Hostname, localHost)
 			}
 		}
 		// Materialize the original root once, with native separators.

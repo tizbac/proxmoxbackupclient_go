@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	BackupMetaFilename  = ".nimbus_backup_meta.json"
+	BackupMetaFilename  = ".proxmox_backup_client_meta.json"
 	// BackupAclsFilename is the PBS blob name. It must match the PBS
 	// file-name regex: bare basename, no leading dot, and end in ".blob".
 	// The payload is still gzipped JSON — the ".blob" suffix is the PBS
 	// container extension, the ".json.gz" inside describes the content.
-	BackupAclsFilename  = "nimbus-acls.json.gz.blob"
+	BackupAclsFilename  = "proxmox-client-acls.json.gz.blob"
 	FileMetaFormatVers  = 1
 )
 

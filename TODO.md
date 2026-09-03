@@ -1,4 +1,4 @@
-# Nimbus Backup - TODO
+# Proxmox Backup Client - TODO
 
 ## ✅ RÉCEMMENT COMPLÉTÉES (v0.1.78-v0.1.92)
 
@@ -210,7 +210,7 @@ Backend implémenté :
 ## 🟠 P1 - IMPORTANT (Architecture Entreprise)
 
 ### 🆕 Secrets en Clair dans config.json 🔒
-**Problème:** API tokens PBS stockés en plaintext dans `C:\ProgramData\NimbusBackup\config.json`
+**Problème:** API tokens PBS stockés en plaintext dans `C:\ProgramData\ProxmoxBackupClient\config.json`
 **Risque:** Tout admin local ou malware peut lire les credentials PBS.
 **Note:** Risque modéré - admin local pourrait avoir accès datastore de toute façon, mais DPAPI ajoute une couche de défense en profondeur.
 **Référence audit:** Score 4/10 Security (Secrets)
@@ -322,7 +322,7 @@ Au lieu de gérer des checkpoints de chunks uploadés, on découpe le travail en
   - [ ] Test: config.json trouvé dans ProgramData
 
 - [ ] **Logs accessibles**
-  - [ ] Service log dans `C:\ProgramData\Nimbus\logs\service.log`
+  - [ ] Service log dans `C:\ProgramData\ProxmoxBackupClient\logs\service.log`
   - [ ] GUI: bouton "Voir logs du service" (lecture seule)
   - [ ] Rotation: max 10 MB par fichier
 
@@ -338,11 +338,11 @@ Au lieu de gérer des checkpoints de chunks uploadés, on découpe le travail en
   - [ ] **Approche: Config JSON pré-configuré** (propre pour AD/GPO)
     ```powershell
     # Déploiement avec config centralisée
-    msiexec /i NimbusBackup.msi /qn CONFIGFILE="\\ad-server\deploy\nimbus\config.json"
+    msiexec /i ProxmoxBackupClient.msi /qn CONFIGFILE="\\ad-server\deploy\proxmoxbackupclient\config.json"
     ```
   - [ ] Property WiX: `CONFIGFILE` (chemin vers config.json)
   - [ ] CustomAction WiX:
-    - Si `CONFIGFILE` fourni → copier vers `C:\ProgramData\Nimbus\config.json`
+    - Si `CONFIGFILE` fourni → copier vers `C:\ProgramData\ProxmoxBackupClient\config.json`
     - Valider JSON avant copie (éviter corruption)
     - Log erreur si fichier inaccessible
   - [ ] Template config.json à fournir:
@@ -374,7 +374,7 @@ Au lieu de gérer des checkpoints de chunks uploadés, on découpe le travail en
 
 - [ ] **Désinstallation propre**
   - [ ] Script CustomAction: stop service avant uninstall
-  - [ ] Nettoyer `C:\ProgramData\Nimbus` (option: garder config)
+  - [ ] Nettoyer `C:\ProgramData\ProxmoxBackupClient` (option: garder config)
 
 ### 🆕 Fréquences de Backup Multiples ⏰
 **Problème actuel :** Scheduler supporte uniquement backup quotidien à heure fixe (HH:MM)
@@ -583,7 +583,7 @@ jobs:
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
           azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
           endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: NimbusBackup
+          trusted-signing-account-name: ProxmoxBackupClient
           certificate-profile-name: Production
           files-folder: build/bin
           files-folder-filter: exe
@@ -603,7 +603,7 @@ jobs:
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
           azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
           endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: NimbusBackup
+          trusted-signing-account-name: ProxmoxBackupClient
           certificate-profile-name: Production
           files-folder: build/installer
           files-folder-filter: msi
@@ -613,14 +613,14 @@ jobs:
 
       - name: Verify Signatures
         run: |
-          signtool verify /pa /v build/bin/NimbusBackup.exe
-          signtool verify /pa /v build/installer/NimbusBackup.msi
+          signtool verify /pa /v build/bin/ProxmoxBackupClient.exe
+          signtool verify /pa /v build/installer/ProxmoxBackupClient.msi
 
       - name: Submit to Microsoft Security Intelligence
         run: |
           # Soumettre binaire signé à MS pour analyse (éviter faux positifs Defender)
           curl -X POST "https://www.microsoft.com/en-us/wdsi/filesubmission" \
-            -F "file=@build/bin/NimbusBackup.exe" \
+            -F "file=@build/bin/ProxmoxBackupClient.exe" \
             -F "type=FalsePositive" \
             -F "comment=Proxmox Backup Client - Signed software, accesses raw disk via VSS for backup imaging"
         continue-on-error: true  # Ne pas bloquer release si API MS down
@@ -629,15 +629,15 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            build/bin/NimbusBackup.exe
-            build/installer/NimbusBackup.msi
+            build/bin/ProxmoxBackupClient.exe
+            build/installer/ProxmoxBackupClient.msi
           body: |
             ## 🔐 Code Signed
             This release is signed with **Azure Trusted Signing**.
 
             Verify signature:
             ```powershell
-            Get-AuthenticodeSignature NimbusBackup.exe | Format-List
+            Get-AuthenticodeSignature ProxmoxBackupClient.exe | Format-List
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -707,7 +707,7 @@ Total:                         Inestimable en temps perdu
   - [ ] Erreur propre: "Fichier X verrouillé, activer VSS?"
 
 ### API Remote - Provisioning Distant (Phase 2)
-**Use case:** MSP gère 100+ clients Nimbus depuis interface centrale
+**Use case:** MSP gère 100+ clients Proxmox Backup Client depuis interface centrale
 
 - [ ] **API Remote activable**
   ```json
@@ -823,7 +823,7 @@ type BlockSplitJob struct {
 - ❌ Pas de GUI de navigation dans les snapshots
 - ❌ Pas de restore sélectif (fichiers/dossiers)
 - ❌ Pas de restore ACLs/ADS (dépend NTFS Fidelity)
-- ❌ Pas de CLI `nimbus-restore`
+- ❌ Pas de CLI `proxmoxbackupclient-restore`
 
 **Décision:** Feature majeure à développer après stabilisation du backup (NTFS Fidelity + Splitting)
 
@@ -887,11 +887,11 @@ type BlockSplitJob struct {
 
 ---
 
-#### Phase 2: CLI `nimbus-restore` (bare-metal)
+#### Phase 2: CLI `proxmoxbackupclient-restore` (bare-metal)
 
 **Use case:** Restauration depuis Linux live (SystemRescue) après crash disque
 
-- [ ] **Créer package CLI séparé** `cmd/nimbus-restore/`
+- [ ] **Créer package CLI séparé** `cmd/proxmoxbackupclient-restore/`
   ```go
   package main
 
@@ -999,7 +999,7 @@ Sprint 1 (en cours): NTFS Fidelity ← BLOCKER pour restore ACLs
   ↓
 Sprint Restore-1 (1 semaine): GUI restore granulaire
   ↓
-Sprint Restore-2 (3-4 jours): CLI nimbus-restore
+Sprint Restore-2 (3-4 jours): CLI proxmoxbackupclient-restore
   ↓
 Sprint Restore-3 (2 jours): Documentation complète
 ```
@@ -1017,7 +1017,7 @@ Sprint Restore-3 (2 jours): Documentation complète
 ## 🗑️ DROP (Ignoré pour l'instant)
 
 - ❌ UUID machine (hostname suffit)
-- ❌ Heartbeat vers API RDEM (overkill)
+- ❌ Heartbeat vers API distante (overkill)
 - ❌ go-msi (WiX fonctionne)
 - ❌ Mount FUSE/WinFSP (restauration web suffit)
 
@@ -1100,5 +1100,5 @@ Sprint Restore-3 (2 jours): Documentation complète
 ---
 
 **Dernière mise à jour:** 2026-03-25 (Audit Technique intégré)
-**Mainteneur:** RDEM Systems
-**Référence:** Audit `🔬 Nimbus Backup Client - Audit Technique pour Développeurs`
+**Mainteneur:** Proxmox Backup Client GO contributors
+**Référence:** Audit `🔬 Proxmox Backup Client - Audit Technique pour Développeurs`

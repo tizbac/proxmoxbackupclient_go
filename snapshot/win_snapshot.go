@@ -189,8 +189,8 @@ func CreateVSSSnapshot(paths []string, backup_callback func(sn map[string]SnapSh
 
 }
 
-// VSSCleanup removes orphaned VSS snapshots left by a previously crashed Nimbus
-// run. It deletes ONLY shadow copies Nimbus created — recorded as the subfolder
+// VSSCleanup removes orphaned VSS snapshots left by a previously crashed Proxmox Backup Client
+// run. It deletes ONLY shadow copies Proxmox Backup Client created — recorded as the subfolder
 // names of the <appData>/VSS symlink directory — never `vssadmin delete shadows
 // /all`, which destroyed EVERY shadow copy on the host (other backup tools, DCs,
 // SQL/Exchange) on each service start (audit v2-H-05).
@@ -211,7 +211,7 @@ func VSSCleanup() error {
 	vssDir := filepath.Join(appData, "VSS")
 	entries, err := os.ReadDir(vssDir)
 	if err != nil {
-		// No VSS symlink directory ⇒ no Nimbus-created shadows to clean.
+		// No VSS symlink directory ⇒ no Proxmox Backup Client-created shadows to clean.
 		return nil
 	}
 
@@ -231,14 +231,14 @@ func VSSCleanup() error {
 		}
 
 		// Live symlink ⇒ the shadow still exists ⇒ a genuine orphan from a crash.
-		fmt.Printf("VSS Cleanup: removing orphaned Nimbus shadow %s...\n", id)
+		fmt.Printf("VSS Cleanup: removing orphaned Proxmox Backup Client shadow %s...\n", id)
 		deleteCmd := exec.Command("vssadmin", "delete", "shadows", "/shadow={"+id+"}", "/quiet")
 		if out, derr := deleteCmd.CombinedOutput(); derr != nil {
 			// Keep the marker so a later run retries; never fall back to /all.
 			fmt.Printf("VSS Cleanup: could not delete shadow %s (best-effort, will retry): %v - %s\n", id, derr, string(out))
 			continue
 		}
-		fmt.Printf("VSS Cleanup: removed Nimbus shadow %s\n", id)
+		fmt.Printf("VSS Cleanup: removed Proxmox Backup Client shadow %s\n", id)
 		_ = os.Remove(marker)
 	}
 
@@ -290,7 +290,7 @@ func vssForceReset() error {
 }
 
 // restartVSSService bounces the Windows Volume Shadow Copy service. Safe at
-// service startup and during error recovery because Nimbus is the only VSS
+// service startup and during error recovery because Proxmox Backup Client is the only VSS
 // consumer on backup-dedicated hosts, and stopping VSS just discards any
 // in-flight shadow context (which is exactly what we want when it's stuck).
 func restartVSSService() error {

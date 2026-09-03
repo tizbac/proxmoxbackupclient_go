@@ -14,7 +14,7 @@ import (
 // blocks browser-originated requests: a web page cannot set it on a cross-origin
 // request without a CORS preflight, which this server never approves (audit H-01
 // / v2-H-06). The token authenticates the GUI to the privileged local service.
-const tokenHeader = "X-Nimbus-Token"
+const tokenHeader = "X-Proxmox-Client-Token"
 
 // maxRequestBody bounds request bodies to avoid unbounded memory from a local
 // caller (audit: "borner les tailles de body").

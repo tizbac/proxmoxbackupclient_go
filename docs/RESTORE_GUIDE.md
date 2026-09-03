@@ -1,8 +1,8 @@
-# 🔧 Nimbus Backup - Guide de Restauration
+# 🔧 Proxmox Backup Client - Guide de Restauration
 
 > **⚠️ STATUT : À IMPLÉMENTER**
 > Ce guide décrit les features de restauration **à développer**.
-> Aucune restauration n'est actuellement fonctionnelle dans Nimbus v0.2.x
+> Aucune restauration n'est actuellement fonctionnelle dans Proxmox Backup Client v0.2.x
 
 ---
 
@@ -23,10 +23,10 @@
 
 > **Cas d'usage:** Fichier supprimé, document corrompu, retour arrière
 
-### Via GUI Nimbus (À DÉVELOPPER)
+### Via GUI Proxmox Backup Client (À DÉVELOPPER)
 
 ```
-1. Ouvrir Nimbus Backup
+1. Ouvrir Proxmox Backup Client
 2. Onglet "Restauration"
 3. Sélectionner le snapshot (date/heure)
 4. Naviguer dans l'arborescence
@@ -112,8 +112,8 @@ mount /dev/sda2 /mnt/windows -t ntfs-3g    # UEFI
 # ou
 mount /dev/sda1 /mnt/windows -t ntfs-3g    # Legacy BIOS
 
-# Lancer la restauration Nimbus (CLI À DÉVELOPPER)
-nimbus-restore \
+# Lancer la restauration Proxmox Backup Client (CLI À DÉVELOPPER)
+proxmoxbackupclient-restore \
   --server https://pbs.votreserveur.com:8007 \
   --fingerprint "AA:BB:CC:..." \
   --auth "backup@pbs!token-name" \
@@ -148,7 +148,7 @@ umount /mnt/windows
 ✅ Vérifier les données
 ✅ Vérifier les permissions (clic droit → Propriétés → Sécurité)
 ✅ Reconnecter au réseau
-✅ Relancer Nimbus Backup pour reprendre les sauvegardes
+✅ Relancer Proxmox Backup Client pour reprendre les sauvegardes
 ```
 
 ---
@@ -164,20 +164,20 @@ Windows n'aime pas les changements de hardware (chipset, contrôleur disque). Un
 - Écran bleu au démarrage
 - Drivers manquants
 
-**Ce n'est pas une limite de Nimbus, c'est un comportement Windows.**
+**Ce n'est pas une limite de Proxmox Backup Client, c'est un comportement Windows.**
 
 ### Méthode recommandée (fiable)
 
 ```
 1. Installer Windows fresh sur le nouveau serveur/VM
 2. Configurer Windows (nom machine, domaine, etc.)
-3. Installer Nimbus Backup
+3. Installer Proxmox Backup Client
 4. Restaurer les DONNÉES:
    - D:\, E:\ (disques de données)
    - C:\Users (profils utilisateurs)
    - Dossiers applicatifs spécifiques
 5. Réinstaller les applications
-6. Les données + permissions sont restaurées par Nimbus
+6. Les données + permissions sont restaurées par Proxmox Backup Client
 ```
 
 **Temps:** ~1-2h selon volume de données
@@ -185,7 +185,7 @@ Windows n'aime pas les changements de hardware (chipset, contrôleur disque). Un
 ### Méthode alternative (peut fonctionner)
 
 ```
-1. Restore complet Nimbus sur nouveau hardware
+1. Restore complet Proxmox Backup Client sur nouveau hardware
 2. Booter Windows en Mode Sans Échec (F8 / Shift+F8)
 3. Laisser Windows détecter le nouveau hardware
 4. Installer les drivers (VMware Tools, Hyper-V IC, etc.)
@@ -209,7 +209,7 @@ Disque HS, même machine?
 
 ---
 
-## 🛠️ Commandes nimbus-restore (À DÉVELOPPER)
+## 🛠️ Commandes proxmoxbackupclient-restore (À DÉVELOPPER)
 
 ### Options principales
 
@@ -232,19 +232,19 @@ Disque HS, même machine?
 
 ```bash
 # Restore complet
-nimbus-restore --server https://pbs:8007 --snapshot "SRV01/latest" \
+proxmoxbackupclient-restore --server https://pbs:8007 --snapshot "SRV01/latest" \
   --dest /mnt/windows --restore-acls --restore-ads
 
 # Restore seulement les Users
-nimbus-restore --server https://pbs:8007 --snapshot "SRV01/2026-03-20" \
+proxmoxbackupclient-restore --server https://pbs:8007 --snapshot "SRV01/2026-03-20" \
   --dest /mnt/windows --include "Users/**" --restore-acls
 
 # Restore un dossier spécifique
-nimbus-restore --server https://pbs:8007 --snapshot "SRV01/latest" \
+proxmoxbackupclient-restore --server https://pbs:8007 --snapshot "SRV01/latest" \
   --dest /mnt/restore --include "Data/Compta/**"
 
 # Dry-run pour vérifier
-nimbus-restore --server https://pbs:8007 --snapshot "SRV01/latest" \
+proxmoxbackupclient-restore --server https://pbs:8007 --snapshot "SRV01/latest" \
   --dest /mnt/windows --dry-run
 ```
 
@@ -279,8 +279,8 @@ Oui pour les fichiers, mais les ACLs NTFS ne seront pas appliquées sur un parta
 
 ## 📞 Support
 
-- **Documentation:** https://nimbus.rdem-systems.com/docs
-- **Email:** support@rdem-systems.com
+- **Documentation:** https://github.com/tizbac/proxmoxbackupclient_go
+- **Support:** https://github.com/tizbac/proxmoxbackupclient_go
 - **Urgence disaster recovery:** Contacter le support avec priorité haute
 
 ---
@@ -292,13 +292,13 @@ Oui pour les fichiers, mais les ACLs NTFS ne seront pas appliquées sur un parta
 **Roadmap:**
 1. Sprint 1 (2 semaines) : NTFS Fidelity ← Blocker
 2. Sprint Restore-1 (1 semaine) : GUI restore granulaire
-3. Sprint Restore-2 (3-4 jours) : CLI nimbus-restore
+3. Sprint Restore-2 (3-4 jours) : CLI proxmoxbackupclient-restore
 4. Sprint Restore-3 (2 jours) : Documentation complète
 
 **Total:** 2-3 semaines (après NTFS Fidelity)
 
 ---
 
-*Nimbus Backup - RDEM Systems*
+*Proxmox Backup Client*
 *Version 1.0 - Mars 2026*
 *Document de spécification - Features à implémenter*

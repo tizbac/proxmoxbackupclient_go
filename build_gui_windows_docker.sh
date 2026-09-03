@@ -59,9 +59,9 @@ docker run --rm \
             -ldflags "-X main.appVersion=${VERSION:-dev}"
         cd /build
 
-        if [ -f /build/gui/build/bin/NimbusBackup.exe ]; then
+        if [ -f /build/gui/build/bin/ProxmoxBackupClient.exe ]; then
             echo "✅ Build successful!"
-            cp /build/gui/build/bin/NimbusBackup.exe /build/ProxmoxBackupClientGO.exe
+            cp /build/gui/build/bin/ProxmoxBackupClient.exe /build/ProxmoxBackupClientGO.exe
         else
             echo "❌ Build failed - binary not found"
             ls -la /build/gui/build/bin/ 2>/dev/null || echo "No output bin directory found"

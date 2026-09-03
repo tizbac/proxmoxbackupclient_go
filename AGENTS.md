@@ -8,7 +8,7 @@ This is a Go-based backup client for Proxmox Backup Server with multiple binarie
 - `proxmoxbackup-directory` - Directory backup CLI tool
 - `proxmoxbackup-machine` - Machine backup CLI tool (Windows)
 - `proxmoxbackup-nbd` - NBD server CLI tool (Linux-only)
-- `NimbusBackup` - GUI application (Wails-based)
+- `ProxmoxBackupClient` - GUI application (Wails-based)
 
 ## Build System
 

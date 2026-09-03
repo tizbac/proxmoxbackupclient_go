@@ -1,16 +1,16 @@
-# Nimbus Backup — Status & notes
+# Proxmox Backup Client — Status & notes
 
 > Per-version changes are listed in the “Changes since…” section of each release (above) and in [CHANGELOG.md](CHANGELOG.md). This page describes the **stable** state of the product.
 
 ## 📦 Available builds
 
-### NimbusBackup.msi (installer — recommended for production)
+### ProxmoxBackupClient.msi (installer — recommended for production)
 - ✅ **Windows service**: starts automatically at system boot
 - ✅ **Persistent admin privileges**: the service runs as LocalSystem (VSS guaranteed)
 - ✅ **Scheduled backups**: run automatically, even after a reboot
 - ✅ **Clean uninstall**: full cleanup via Control Panel
 
-### NimbusBackup.exe (standalone)
+### ProxmoxBackupClient.exe (standalone)
 - ✅ **Manual and scheduled backups**: work as long as the app is running
 - ❌ **No persistence across reboots**: no service → prefer the MSI in production
 - 💡 **Use case**: one-off backups or testing

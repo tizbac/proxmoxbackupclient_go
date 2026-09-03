@@ -31,7 +31,7 @@ La fonctionnalité **Multi-PBS** permet de configurer plusieurs serveurs Proxmox
 
 ### Étape 1 : Accéder à la gestion des serveurs
 
-1. Ouvrez Nimbus Backup
+1. Ouvrez Proxmox Backup Client
 2. Cliquez sur l'onglet **"Serveurs PBS"** (2ème onglet)
 
 ![Onglet Serveurs PBS](docs/tab-servers.png)
@@ -51,7 +51,7 @@ La fonctionnalité **Multi-PBS** permet de configurer plusieurs serveurs Proxmox
 | **Nom du serveur** | `SSD Rapide` | ✅ | Nom affiché dans l'interface |
 | **ID du serveur** | `pbs-ssd` | ⚠️ | Laissez vide pour auto-génération |
 | **URL du serveur PBS** | `https://pbs-ssd.local:8007` | ✅ | Adresse HTTPS du PBS |
-| **Authentication ID** | `backup@pbs!nimbus` | ✅ | API Token (user@realm!token) |
+| **Authentication ID** | `backup@pbs!pbc` | ✅ | API Token (user@realm!token) |
 | **Secret (API Token)** | `xxxxxxxx-xxxx-xxxx...` | ✅ | Secret du token |
 | **Datastore** | `ssd-fast` | ✅ | Nom du datastore PBS |
 | **Namespace** | `clients` | ❌ | Optionnel, pour organiser |
@@ -261,6 +261,6 @@ Si le problème persiste, définissez un autre serveur par défaut temporairemen
 ---
 
 **Version :** 0.2.0
-**Mainteneur :** RDEM Systems
-**Support :** contact@rdem-systems.com
+**Mainteneur :** Proxmox Backup Client GO contributors
+**Support :** https://github.com/tizbac/proxmoxbackupclient_go
 **Date :** 2026-03-23

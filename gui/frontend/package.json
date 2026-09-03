@@ -1,5 +1,5 @@
 {
-  "name": "nimbus-backup-frontend",
+  "name": "proxmox-backup-client-frontend",
   "private": true,
   "type": "module",
   "scripts": {

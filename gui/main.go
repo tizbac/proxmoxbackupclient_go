@@ -32,7 +32,7 @@ import (
 var assets embed.FS
 
 const (
-	appName = "Nimbus Backup"
+	appName = "Proxmox Backup Client"
 )
 
 
@@ -112,12 +112,12 @@ func main() {
 	// Create application options
 	appOptions := &options.App{
 		Title:     fmt.Sprintf("%s v%s", appName, appVersion),
-		Width:     1000,
-		Height:    700,
-		MaxWidth:  1400, // Prevent window from being too large
-		MaxHeight: 900,  // Prevent title bar from going off-screen
-		MinWidth:  400,  // Allow very small windows for low-res screens
-		MinHeight: 300,  // Allow very small windows for low-res screens
+		Width:     1200,
+		Height:    840,
+		MaxWidth:  1680, // Prevent window from being too large
+		MaxHeight: 1008, // Prevent title bar from going off-screen
+		MinWidth:  480,  // Allow very small windows for low-res screens
+		MinHeight: 360,  // Allow very small windows for low-res screens
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -134,7 +134,7 @@ func main() {
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
 			DisableWindowIcon:    false,
-			WebviewUserDataPath:  filepath.Join(os.Getenv("APPDATA"), "NimbusBackup"),
+			WebviewUserDataPath:  filepath.Join(os.Getenv("APPDATA"), "ProxmoxBackupClient"),
 		},
 	}
 
@@ -165,7 +165,7 @@ func main() {
 func writeCrashReport(message string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
-	crashContent := fmt.Sprintf(`=== NIMBUS BACKUP CRASH REPORT ===
+	crashContent := fmt.Sprintf(`=== PROXMOX BACKUP CLIENT CRASH REPORT ===
 Time: %s
 Version: %s
 
@@ -175,8 +175,8 @@ Version: %s
 Service Log: %s
 Backup Log: %s
 
-Please report this issue to RDEM Systems:
-- Website: https://nimbus.rdem-systems.com
+Please report this issue to the Proxmox Backup Client project:
+- Register the issue at https://github.com/tizbac/proxmoxbackupclient_go/issues
 - Include this crash_report.txt file
 `, timestamp, appVersion, message, GetServiceLogPath(), GetBackupLogPath())
 
@@ -218,7 +218,7 @@ func (a *App) startup(ctx context.Context) {
 		a.CleanupAbandonedJobs()
 
 		// Clear any orphaned VSS shadow copies and reset the VSS service
-		// state from a previously crashed Nimbus process. Without this, the
+		// state from a previously crashed backup process. Without this, the
 		// next backup can fail with "shadow copy creation is already in
 		// progress". No-op on non-Windows platforms.
 		if err := snapshot.VSSCleanup(); err != nil {
@@ -1297,7 +1297,7 @@ func (a *App) ListSnapshotContents(pbsID, backupID string, snapshotUnix int64, f
 	return ListSnapshotContentsInline(opts, "", forceRefresh)
 }
 
-// GetSnapshotMeta returns the `.nimbus_backup_meta.json` sidecar from a
+// GetSnapshotMeta returns the `.proxmox_backup_client_meta.json` sidecar from a
 // snapshot. Returns nil (not an error) when the snapshot predates the sidecar
 // — the frontend should fall back to a generic banner in that case.
 //
@@ -1331,7 +1331,7 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 // RestoreSnapshot extracts a snapshot (or selected files) according to mode.
 //
 //   - mode "original": restore in-place to the path captured in the snapshot's
-//     .nimbus_backup_meta.json sidecar. destPath is ignored. Cross-host
+//     .proxmox_backup_client_meta.json sidecar. destPath is ignored. Cross-host
 //     attempts are refused unless allowCrossHost is true.
 //   - mode "alternate_abs" (or empty): write to destPath, preserving the full
 //     archive directory layout below it.

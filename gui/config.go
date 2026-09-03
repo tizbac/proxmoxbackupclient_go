@@ -107,7 +107,7 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 func getAPITokenPath() string {
 	dir, err := getConfigDir()
 	if err != nil || dir == "" {
-		return "nimbus-api-token"
+		return "proxmox-client-api-token"
 	}
 	return filepath.Join(dir, "api-token")
 }
@@ -120,12 +120,12 @@ func getConfigDir() (string, error) {
 	var configDir string
 
 	if programData := os.Getenv("ProgramData"); programData != "" {
-		// Windows: C:\ProgramData\NimbusBackup (accessible by both user and LocalSystem)
-		configDir = filepath.Join(programData, "NimbusBackup")
+		// Windows: C:\ProgramData\ProxmoxBackupClient (accessible by both user and LocalSystem)
+		configDir = filepath.Join(programData, "ProxmoxBackupClient")
 	} else if systemDrive := os.Getenv("SystemDrive"); systemDrive != "" {
 		// Windows fallback: if ProgramData not set, use C:\ProgramData hardcoded
 		// This ensures service config is accessible even if env var is missing
-		configDir = filepath.Join(systemDrive, "ProgramData", "NimbusBackup")
+		configDir = filepath.Join(systemDrive, "ProgramData", "ProxmoxBackupClient")
 	} else {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {

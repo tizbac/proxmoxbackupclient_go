@@ -1,12 +1,12 @@
-# Nimbus Backup - Installateur MSI
+# Proxmox Backup Client - Installateur MSI
 
-Ce dossier contient les fichiers nécessaires pour créer l'installateur MSI de Nimbus Backup avec support du service Windows.
+Ce dossier contient les fichiers nécessaires pour créer l'installateur MSI de Proxmox Backup Client avec support du service Windows.
 
 ## Prérequis
 
 - **WiX Toolset 3.x ou 4.x** : https://wixtoolset.org/
 - **Visual Studio Build Tools** (optionnel mais recommandé)
-- **NimbusBackup.exe compilé** dans `gui/build/bin/`
+- **ProxmoxBackupClient.exe compilé** dans `gui/build/bin/`
 
 ## Installation WiX Toolset
 
@@ -23,8 +23,8 @@ winget install --id WiXToolset.WiX
 ## Structure du MSI
 
 ```
-NimbusBackup.msi
-├── Service Windows "NimbusBackup"
+ProxmoxBackupClient.msi
+├── Service Windows "ProxmoxBackupClient"
 │   ├── Démarre automatiquement au boot
 │   ├── Tourne avec privilèges LocalSystem (admin)
 │   ├── Exécute les backups planifiés
@@ -49,20 +49,20 @@ cd installer/wix
 candle.exe Product.wxs -ext WixUIExtension -ext WixUtilExtension
 
 # Création du MSI
-light.exe Product.wixobj -ext WixUIExtension -ext WixUtilExtension -out NimbusBackup.msi
+light.exe Product.wixobj -ext WixUIExtension -ext WixUtilExtension -out ProxmoxBackupClient.msi
 ```
 
 ## Fichiers générés
 
-- `NimbusBackup.msi` : Installateur final (à distribuer)
+- `ProxmoxBackupClient.msi` : Installateur final (à distribuer)
 - `*.wixobj` : Fichiers objets intermédiaires (à ignorer)
 - `*.wixpdb` : Symboles de debug (à ignorer)
 
 ## Configuration du service
 
 Le service Windows créé par le MSI :
-- **Nom** : NimbusBackup
-- **Nom d'affichage** : Nimbus Backup Service
+- **Nom** : ProxmoxBackupClient
+- **Nom d'affichage** : Proxmox Backup Client Service
 - **Compte** : LocalSystem (privilèges admin)
 - **Démarrage** : Automatique
 - **Argument** : `--service` (mode service)
@@ -113,10 +113,10 @@ func main() {
 ## Test du MSI
 
 1. **Build** : `build.bat`
-2. **Installation** : Double-clic sur `NimbusBackup.msi` (nécessite admin)
+2. **Installation** : Double-clic sur `ProxmoxBackupClient.msi` (nécessite admin)
 3. **Vérification service** :
    ```powershell
-   Get-Service NimbusBackup
+   Get-Service ProxmoxBackupClient
    ```
 4. **Logs** : Vérifier dans Event Viewer → Application
 5. **Désinstallation** : Panneau de configuration → Programmes
@@ -134,8 +134,8 @@ Le workflow GitHub doit être modifié pour inclure le MSI :
 - name: Upload MSI
   uses: actions/upload-artifact@v4
   with:
-    name: NimbusBackup-MSI
-    path: installer/wix/NimbusBackup.msi
+    name: ProxmoxBackupClient-MSI
+    path: installer/wix/ProxmoxBackupClient.msi
 ```
 
 ## Troubleshooting

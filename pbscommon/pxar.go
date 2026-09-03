@@ -310,7 +310,7 @@ type PXARArchive struct {
 	root string
 
 	// VirtualFiles are injected at the root of the archive before real files.
-	// Key = filename (e.g. ".nimbus_backup_meta.json"), Value = content bytes.
+	// Key = filename (e.g. ".proxmox_backup_client_meta.json"), Value = content bytes.
 	VirtualFiles map[string][]byte
 
 	// MetaCollector, if set, is called for every directory and file that is
@@ -853,7 +853,7 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 }
 
 // WriteVirtualFile writes an in-memory file into the PXAR archive.
-// Used for injecting metadata files (e.g. .nimbus_backup_meta.json) without a real file on disk.
+// Used for injecting metadata files (e.g. .proxmox_backup_client_meta.json) without a real file on disk.
 func (a *PXARArchive) WriteVirtualFile(filename string, data []byte, mtime uint64) (CatalogFile, error) {
 	fname_entry := &PXARFilenameEntry{
 		hdr: PXAR_FILENAME,

@@ -14,7 +14,7 @@ import "strings"
 // BackupStatusFilename is the PBS blob name for the per-snapshot status sidecar.
 // PBS requires a bare basename (no leading dot) ending in ".blob"; the payload is
 // plain JSON. Listed in the manifest so the GUI can read it without a full restore.
-const BackupStatusFilename = "nimbus-status.json.blob"
+const BackupStatusFilename = "proxmox-client-status.json.blob"
 
 // BackupSidecar is the per-snapshot status persisted as a manifest blob: the files
 // excluded by policy and the files skipped on read errors for THIS directory's

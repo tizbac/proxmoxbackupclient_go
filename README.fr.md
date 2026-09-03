@@ -1,31 +1,31 @@
-# Nimbus Backup — Client Windows pour Proxmox Backup Server
+# Proxmox Backup Client — Client Windows pour Proxmox Backup Server
 
 [🇬🇧 English](README.md) | 🇫🇷 Français
 
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/rdemsystems/NimbusBackupClient)](https://github.com/rdemsystems/NimbusBackupClient/releases)
-[![Documentation](https://img.shields.io/badge/docs-nimbus.rdem--systems.com-orange)](https://nimbus.rdem-systems.com/?utm_source=github)
+[![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
+[![Documentation](https://img.shields.io/badge/docs-github-orange)](https://github.com/tizbac/proxmoxbackupclient_go)
 
-**Nimbus Backup est un client de sauvegarde Windows open-source (GPL-3.0) pour Proxmox Backup Server (PBS).**
-Une interface graphique moderne pour sauvegarder serveurs et postes Windows vers PBS — snapshots cohérents via VSS, tâches planifiées, modes fichier et disque, navigation/restauration de snapshots, support multi-PBS et mode service Windows. Besoin d'un stockage PBS **déporté et immuable** sans auto-héberger ? Voir le [service infogéré](#️-pbs-infogéré-déporté--immuable) ci-dessous.
+**Proxmox Backup Client est un client de sauvegarde Windows open-source (GPL-3.0) pour Proxmox Backup Server (PBS).**
+Une interface graphique moderne pour sauvegarder serveurs et postes Windows vers PBS — snapshots cohérents via VSS, tâches planifiées, modes fichier et disque, navigation/restauration de snapshots, support multi-PBS et mode service Windows.
 
 > Mots-clés : client proxmox backup windows · client PBS · sauvegarde Windows VSS · sauvegarde déportée immuable · interface Proxmox Backup Server.
 
 ## 📦 Téléchargement
 
-👉 **[Télécharger la dernière version](https://github.com/rdemsystems/NimbusBackupClient/releases)**
+👉 **[Télécharger la dernière version](https://github.com/tizbac/proxmoxbackupclient_go/releases)**
 
 > ⚠️ **Windows affiche « virus détecté » (ex. `Trojan:Win32/Sabsik.FL.A!ml`) ou un avertissement SmartScreen ?**
 > C'est un **faux positif** connu pour les applications Go/Wails — ce n'est *pas* un virus. Le suffixe `!ml` indique une détection par un modèle de machine learning qui signale les exécutables *non signés et peu répandus*.
-> Lisez [pourquoi cela arrive et comment vérifier le téléchargement](https://nimbus.rdem-systems.com/faux-positif-antivirus/?utm_source=github).
+> Lisez [pourquoi cela arrive et comment vérifier le téléchargement](https://github.com/tizbac/proxmoxbackupclient_go).
 
 ### 🔎 Vérifier n'importe quel téléchargement
 
 Chaque release fournit des empreintes SHA-256 et une **attestation de provenance signée** (preuve cryptographique que le binaire a été produit par la CI de ce dépôt, à partir d'un commit précis) :
 
 ```powershell
-Get-FileHash .\NimbusBackup.exe -Algorithm SHA256   # comparer avec SHA256SUMS.txt
-gh attestation verify .\NimbusBackup.exe --repo rdemsystems/NimbusBackupClient
+Get-FileHash .\ProxmoxBackupClient.exe -Algorithm SHA256   # comparer avec SHA256SUMS.txt
+gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclient_go
 ```
 
 **VirusTotal — 0 détection.** Rapports multi-moteurs indépendants des installeurs MSI récents :
@@ -35,21 +35,11 @@ gh attestation verify .\NimbusBackup.exe --repo rdemsystems/NimbusBackupClient
 
 > ℹ️ **Signature de code :** les binaires Windows ne sont **pas encore signés Authenticode** (un certificat OSS via [SignPath Foundation](https://signpath.org) est en attente). En attendant, la provenance est établie via l'attestation et les empreintes ci-dessus.
 
-## ☁️ PBS infogéré (déporté & immuable)
-
-Vous ne voulez pas auto-héberger Proxmox Backup Server ? Utilisez nos datastores PBS entièrement infogérés, **déportés et immuables** :
-👉 **[Configurez votre sauvegarde & voir les tarifs](https://nimbus.rdem-systems.com/choisir-mon-backup/?utm_source=github)**
-
-- ✅ À partir de 12 €/To/mois
-- ✅ 1 To d'essai gratuit
-- ✅ Une [cible de sauvegarde externalisée pour votre PBS](https://nimbus.rdem-systems.com/sauvegarde-proxmox-externalisee/?utm_source=github) — datastores immuables et isolés
-- ✅ [NimbusBackup — hébergement PBS infogéré en France](https://nimbus.rdem-systems.com/?utm_source=github)
-
 ## 📚 Documentation
 
-- **Guide complet de sauvegarde Proxmox** — bonnes pratiques de déploiement PBS ([🇫🇷 FR](https://nimbus.rdem-systems.com/blog/guide-complet-backup-proxmox/?utm_source=github))
-- **Sauvegarder Windows avec Proxmox Backup Server** — guide de déploiement spécifique Windows ([🇫🇷 FR](https://nimbus.rdem-systems.com/blog/sauvegarder-windows-proxmox-backup-server/?utm_source=github))
-- **PBS vs Veeam** — comparatif backup Proxmox ([🇫🇷 FR](https://nimbus.rdem-systems.com/blog/pbs-vs-veeam-comparatif-backup-proxmox/?utm_source=github))
+- **Guide complet de sauvegarde Proxmox** — bonnes pratiques de déploiement PBS
+- **Sauvegarder Windows avec Proxmox Backup Server** — guide de déploiement spécifique Windows
+- **PBS vs Veeam** — comparatif backup Proxmox
 
 ## ✨ Fonctionnalités
 
@@ -76,7 +66,7 @@ Vous ne voulez pas auto-héberger Proxmox Backup Server ? Utilisez nos datastore
 *Progression de sauvegarde en temps réel avec ETA et débit*
 
 ### Exclusions système intelligentes (mode fichier)
-Lors de la sauvegarde d'un disque entier (ex. `D:\`), Nimbus Backup exclut automatiquement :
+Lors de la sauvegarde d'un disque entier (ex. `D:\`), Proxmox Backup Client exclut automatiquement :
 
 **Dossiers système :** `System Volume Information` (stockage VSS, peut atteindre 100+ Go), `$RECYCLE.BIN`, `Recovery`.
 **Fichiers système :** `pagefile.sys`, `hiberfil.sys`, `swapfile.sys`.
@@ -93,7 +83,7 @@ Lors de la sauvegarde d'un disque entier (ex. `D:\`), Nimbus Backup exclut autom
 
 ## 🚀 Démarrage rapide
 
-1. Téléchargez `NimbusBackup.exe` (ou le `.msi`) depuis les releases
+1. Téléchargez `ProxmoxBackupClient.exe` (ou le `.msi`) depuis les releases
 2. Lancez-le avec les droits administrateur (requis pour VSS)
 3. Configurez votre connexion PBS et testez-la
 4. Sélectionnez les dossiers à sauvegarder
@@ -125,7 +115,7 @@ Ce projet est un fork de [tizbac/proxmoxbackupclient_go](https://github.com/tizb
 
 **Original :** Proxmox Backup Client en Go · **Auteur :** Tiziano Bacocco (tizbac) · **Licence :** GPLv3
 
-| Fonctionnalité            | tizbac/proxmoxbackupclient_go | NimbusBackupClient (ce fork) |
+| Fonctionnalité            | tizbac/proxmoxbackupclient_go | ProxmoxBackupClient (ce fork) |
 |---------------------------|:-----------------------------:|:----------------------------:|
 | Mode CLI                  | ✅                             | ✅                            |
 | GUI Wails                 | ❌                             | ✅                            |
@@ -144,13 +134,13 @@ Ce logiciel est fourni « tel quel ». Bien que nous visions la fiabilité, nous
 
 GPLv3 — voir le fichier [LICENSE](LICENSE).
 
-## À propos de RDEM Systems
+## À propos de Proxmox Backup Client GO contributors
 
-NimbusBackupClient est développé et maintenu par [RDEM Systems](https://www.rdem-systems.com/), un fournisseur d'infrastructure français spécialisé dans l'infogérance Proxmox VE/PBS et l'infrastructure NTP/NTS. Nous exploitons [11 serveurs NTS publics](https://github.com/jauderho/nts-servers) listés dans la référence communautaire, et proposons un [hébergement PBS entièrement infogéré](https://nimbus.rdem-systems.com/?utm_source=github) pour ceux qui ne veulent pas auto-héberger.
+Proxmox Backup Client GO contributors développe et maintient ce projet. Le logiciel s'appuie sur l'infrastructure NTP/NTS et les [11 serveurs NTS publics](https://github.com/jauderho/nts-servers) listés dans la référence communautaire.
 
 ---
 
-**© 2024-2026 RDEM Systems. Tous droits réservés.**
+**© 2024-2026 RDEM Systems and Proxmox Backup Client GO Contributors. Tous droits réservés.**
 
 --- 
 [Trésor pour une chasse partenaire](https://dynamite-games-pontoise.fr/tresor/DGP-ETE-2026-GFDSCS55)

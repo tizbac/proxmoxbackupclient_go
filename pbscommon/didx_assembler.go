@@ -135,7 +135,7 @@ func (pbs *PBSClient) AssembleDIDXToFile(archiveName string, maxParallel int, pr
 	}
 	chunkCount := len(idx.digests)
 
-	tmp, err := os.CreateTemp("", "nimbus-restore-*.pxar")
+	tmp, err := os.CreateTemp("", "proxmox-restore-*.pxar")
 	if err != nil {
 		return "", 0, fmt.Errorf("create temp file for archive assembly: %w", err)
 	}

@@ -191,13 +191,13 @@ Optionnellement, afficher une badge dans l'UI:
 ### Test Mode Service
 ```powershell
 # 1. Installer le MSI (lance le service)
-msiexec /i NimbusBackup.msi /qn
+msiexec /i ProxmoxBackupClient.msi /qn
 
 # 2. Vérifier service
-Get-Service NimbusService
+Get-Service ProxmoxBackupClientService
 
 # 3. Lancer GUI
-NimbusBackup.exe
+ProxmoxBackupClient.exe
 
 # 4. Check logs
 # Devrait voir: "Running in: Service Mode"
@@ -206,10 +206,10 @@ NimbusBackup.exe
 ### Test Mode Standalone
 ```powershell
 # 1. Stop service
-Stop-Service NimbusService
+Stop-Service ProxmoxBackupClientService
 
 # 2. Lancer GUI
-NimbusBackup.exe
+ProxmoxBackupClient.exe
 
 # 3. Check logs
 # Devrait voir: "Running in: Standalone Mode"
@@ -228,8 +228,8 @@ NimbusBackup.exe
    - Backups longs → retourner immédiatement avec JobID
 
 3. **Logs**: Service et GUI loguent séparément
-   - Service: `C:\ProgramData\Nimbus\logs\service.log`
-   - GUI: `C:\ProgramData\Nimbus\logs\gui.log`
+   - Service: `C:\ProgramData\ProxmoxBackupClient\logs\service.log`
+   - GUI: `C:\ProgramData\ProxmoxBackupClient\logs\gui.log`
 
 4. **Firewall**: Localhost:18765 ne devrait pas être bloqué
    - Bind 127.0.0.1 uniquement (pas 0.0.0.0)

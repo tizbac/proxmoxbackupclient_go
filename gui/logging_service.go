@@ -30,9 +30,9 @@ func init() {
 		if programData == "" {
 			programData = "C:\\ProgramData"
 		}
-		logDir = filepath.Join(programData, "NimbusBackup")
+		logDir = filepath.Join(programData, "ProxmoxBackupClient")
 	} else {
-		logDir = "/var/log/nimbusbackup"
+		logDir = "/var/log/proxmoxbackupclient"
 	}
 	// #nosec G703 -- ProgramData is a trusted Windows system environment variable
 	_ = os.MkdirAll(logDir, 0700)

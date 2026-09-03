@@ -1,22 +1,22 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "NimbusBackup",
-  "outputfilename": "NimbusBackup",
+  "name": "ProxmoxBackupClient",
+  "outputfilename": "ProxmoxBackupClient",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev": "npm run dev",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "RDEM Systems",
-    "email": "contact@rdem-systems.com"
+    "name": "Proxmox Backup Client contributors",
+    "email": ""
   },
   "info": {
-    "companyName": "RDEM Systems",
-    "productName": "Nimbus Backup",
+    "companyName": "Proxmox Backup Client",
+    "productName": "Proxmox Backup Client",
     "productVersion": "0.2.119",
-    "copyright": "© 2024-2026 RDEM Systems. All rights reserved.",
-    "comments": "Client de sauvegarde pour Proxmox Backup Server"
+    "copyright": "© 2024-2026 RDEM Systems and Proxmox Backup Client GO Contributors.",
+    "comments": "Backup client for Proxmox Backup Server"
   },
   "webview2": {
     "installmethod": "download"

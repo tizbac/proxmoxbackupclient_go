@@ -1,8 +1,8 @@
-# Nimbus Backup - Silent Installation Guide (Enterprise)
+# Proxmox Backup Client - Silent Installation Guide (Enterprise)
 
 ## 📋 Vue d'ensemble
 
-Ce guide explique comment déployer Nimbus Backup en masse via GPO, Intune, ou scripts de déploiement.
+Ce guide explique comment déployer Proxmox Backup Client en masse via GPO, Intune, ou scripts de déploiement.
 
 ## 🔧 Préparation
 
@@ -37,9 +37,9 @@ Copiez `config.example.json` et personnalisez-le pour votre environnement:
 
 ```powershell
 # Sur un partage réseau accessible
-\\ad-server\NETLOGON\nimbus\config.json
+\\ad-server\NETLOGON\proxmoxbackupclient\config.json
 # OU
-\\fileserver\Deployments\Nimbus\config.json
+\\fileserver\Deployments\ProxmoxBackupClient\config.json
 ```
 
 **Permissions requises:** Lecture pour "Domain Computers"
@@ -52,7 +52,7 @@ Copiez `config.example.json` et personnalisez-le pour votre environnement:
 
 2. **Ajouter le package MSI** avec options avancées:
    ```
-   Package: \\server\share\NimbusBackup.msi
+   Package: \\server\share\ProxmoxBackupClient.msi
    Deployment method: Assigned
    ```
 
@@ -60,7 +60,7 @@ Copiez `config.example.json` et personnalisez-le pour votre environnement:
    - Dans "Modifications", ajouter une transformation (.mst) OU
    - Utiliser la ligne de commande avancée:
      ```
-     CONFIGFILE="\\ad-server\NETLOGON\nimbus\config.json"
+     CONFIGFILE="\\ad-server\NETLOGON\proxmoxbackupclient\config.json"
      ```
 
 4. **Appliquer la GPO** au bon OU (ex: `Computers/Workstations`)
@@ -68,39 +68,39 @@ Copiez `config.example.json` et personnalisez-le pour votre environnement:
 ### Option B - Intune (Microsoft Endpoint Manager)
 
 1. **Créer une application Win32**
-   - Fichier source: `NimbusBackup.msi`
+   - Fichier source: `ProxmoxBackupClient.msi`
    - Format: Win32 app (.intunewin)
 
 2. **Commande d'installation**:
    ```powershell
-   msiexec /i NimbusBackup.msi /qn CONFIGFILE="C:\Windows\Temp\nimbus-config.json"
+   msiexec /i ProxmoxBackupClient.msi /qn CONFIGFILE="C:\Windows\Temp\proxmoxbackupclient-config.json"
    ```
 
 3. **Script de pré-requis**:
    ```powershell
    # Télécharger config depuis Azure Storage ou créer localement
-   $config = Invoke-RestMethod "https://yourblob.blob.core.windows.net/configs/nimbus.json"
-   $config | Out-File "C:\Windows\Temp\nimbus-config.json"
+   $config = Invoke-RestMethod "https://yourblob.blob.core.windows.net/configs/proxmoxbackupclient.json"
+   $config | Out-File "C:\Windows\Temp\proxmoxbackupclient-config.json"
    ```
 
 4. **Détection**:
-   - Fichier: `C:\Program Files\RDEM Systems\NimbusBackup\bin\nimbus-service.exe`
-   - Service: `NimbusService` (Running)
+   - Fichier: `C:\Program Files\Proxmox Backup Client\bin\proxmoxbackupclient-service.exe`
+   - Service: `ProxmoxBackupClientService` (Running)
 
 ### Option C - Script PowerShell
 
 ```powershell
-# deploy-nimbus.ps1
-$msiPath = "\\server\deploy\NimbusBackup.msi"
-$configPath = "\\server\deploy\nimbus-config.json"
+# deploy-proxmoxbackupclient.ps1
+$msiPath = "\\server\deploy\ProxmoxBackupClient.msi"
+$configPath = "\\server\deploy\proxmoxbackupclient-config.json"
 
 # Installation silencieuse avec config
 Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /qn CONFIGFILE=`"$configPath`"" -Wait
 
 # Vérifier le service
-if (Get-Service -Name "NimbusService" -ErrorAction SilentlyContinue) {
-    Write-Host "✅ Nimbus Backup installed successfully"
-    Start-Service -Name "NimbusService"
+if (Get-Service -Name "ProxmoxBackupClientService" -ErrorAction SilentlyContinue) {
+    Write-Host "✅ Proxmox Backup Client installed successfully"
+    Start-Service -Name "ProxmoxBackupClientService"
 } else {
     Write-Error "❌ Installation failed"
     exit 1
@@ -113,20 +113,20 @@ if (Get-Service -Name "NimbusService" -ErrorAction SilentlyContinue) {
 
 ```powershell
 # Service installé et démarré
-Get-Service NimbusService
+Get-Service ProxmoxBackupClientService
 
 # Config présente
-Test-Path "C:\ProgramData\Nimbus\config.json"
+Test-Path "C:\ProgramData\ProxmoxBackupClient\config.json"
 
 # Premier backup dans les logs
-Get-Content "C:\ProgramData\Nimbus\logs\service.log" -Tail 50
+Get-Content "C:\ProgramData\ProxmoxBackupClient\logs\service.log" -Tail 50
 ```
 
 ### Logs d'installation MSI
 
 En cas d'échec, générer un log détaillé:
 ```powershell
-msiexec /i NimbusBackup.msi /qn CONFIGFILE="config.json" /l*v install.log
+msiexec /i ProxmoxBackupClient.msi /qn CONFIGFILE="config.json" /l*v install.log
 ```
 
 Chercher les erreurs:
@@ -157,12 +157,12 @@ Le fichier `config.json` contient le secret PBS. **Bonnes pratiques:**
 
 ### Dashboard centralisé
 
-Utilisez l'API RDEM pour monitorer l'état des backups:
+Utilisez l'API du service pour monitorer l'état des backups:
 ```powershell
 # Script de monitoring (à planifier quotidiennement)
 $machines = Get-ADComputer -Filter * -SearchBase "OU=Workstations,DC=domain,DC=com"
 foreach ($machine in $machines) {
-    # Check last backup via API RDEM
+    # Check last backup via l'API du service
     # Send alert if > 24h
 }
 ```
@@ -173,28 +173,27 @@ foreach ($machine in $machines) {
 
 1. Vérifier les Event Logs:
    ```powershell
-   Get-EventLog -LogName Application -Source "NimbusService" -Newest 10
+   Get-EventLog -LogName Application -Source "ProxmoxBackupClientService" -Newest 10
    ```
 
 2. Tester manuellement:
    ```powershell
-   cd "C:\Program Files\RDEM Systems\NimbusBackup\bin"
-   .\nimbus-service.exe --service
+   cd "C:\Program Files\Proxmox Backup Client\bin"
+   .\proxmoxbackupclient-service.exe --service
    ```
 
 ### Config non prise en compte
 
 ```powershell
 # Vérifier le contenu
-Get-Content "C:\ProgramData\Nimbus\config.json" | ConvertFrom-Json | Format-List
+Get-Content "C:\ProgramData\ProxmoxBackupClient\config.json" | ConvertFrom-Json | Format-List
 ```
 
 ## 📞 Support
 
-**RDEM Systems**
-- Web: https://nimbus.rdem-systems.com
-- Email: support@rdem-systems.com
-- Doc: https://nimbus.rdem-systems.com/docs
+**Proxmox Backup Client GO contributors**
+- Web: https://github.com/tizbac/proxmoxbackupclient_go
+- Doc: https://github.com/tizbac/proxmoxbackupclient_go
 
 ---
 

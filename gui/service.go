@@ -15,24 +15,24 @@ import (
 	"snapshot"
 )
 
-// NimbusService wraps the application for Windows Service execution
-type NimbusService struct {
+// BackupService wraps the application for Windows Service execution
+type BackupService struct {
 	app       *App
 	apiServer *api.Server
 	stopChan  chan struct{}
 }
 
 // Start is called when the service starts
-func (s *NimbusService) Start(svc service.Service) error {
-	writeDebugLog("NimbusBackup service starting...")
+func (s *BackupService) Start(svc service.Service) error {
+	writeDebugLog("Proxmox Backup Client service starting...")
 	s.stopChan = make(chan struct{})
 	go s.run()
 	return nil
 }
 
 // run contains the main service loop
-func (s *NimbusService) run() {
-	writeDebugLog("NimbusBackup service running")
+func (s *BackupService) run() {
+	writeDebugLog("Proxmox Backup Client service running")
 
 	// Initialize app with background context (service has no Wails runtime)
 	// IMPORTANT: Service App must be in Standalone mode to execute backups directly
@@ -60,7 +60,7 @@ func (s *NimbusService) run() {
 	s.app.CleanupAbandonedJobs()
 
 	// Clear any orphaned VSS shadow copies and reset the VSS service state
-	// from a previously crashed Nimbus process. Without this, the next backup
+	// from a previously crashed backup process. Without this, the next backup
 	// can fail with "VSS_START - shadow copy creation is already in progress".
 	if err := snapshot.VSSCleanup(); err != nil {
 		writeDebugLog(fmt.Sprintf("VSS cleanup at startup reported error: %v", err))
@@ -95,8 +95,8 @@ func (s *NimbusService) run() {
 }
 
 // Stop is called when the service stops
-func (s *NimbusService) Stop(svc service.Service) error {
-	writeDebugLog("NimbusBackup service stopping...")
+func (s *BackupService) Stop(svc service.Service) error {
+	writeDebugLog("Proxmox Backup Client service stopping...")
 
 	// Close any live PBS backup session before we return, so the server
 	// releases the writer / snapshot lock instead of waiting for TCP
@@ -116,7 +116,7 @@ func (s *NimbusService) Stop(svc service.Service) error {
 	// Give it a moment to finish current operations
 	time.Sleep(2 * time.Second)
 
-	writeDebugLog("NimbusBackup service stopped")
+	writeDebugLog("Proxmox Backup Client service stopped")
 	return nil
 }
 
@@ -125,13 +125,13 @@ func RunAsService() {
 	writeDebugLog("Attempting to run as Windows Service")
 
 	svcConfig := &service.Config{
-		Name:        "NimbusBackup",
-		DisplayName: "Nimbus Backup Service",
+		Name:        "ProxmoxBackupClient",
+		DisplayName: "Proxmox Backup Client Service",
 		Description: "Executes scheduled backups to Proxmox Backup Server with VSS support",
 	}
 
-	nimbusSvc := &NimbusService{}
-	s, err := service.New(nimbusSvc, svcConfig)
+	backupSvc := &BackupService{}
+	s, err := service.New(backupSvc, svcConfig)
 	if err != nil {
 		log.Fatal(err)
 	}

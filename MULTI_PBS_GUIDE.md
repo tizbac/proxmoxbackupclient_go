@@ -2,7 +2,7 @@
 
 ## 🎯 Vue d'ensemble
 
-Nimbus Backup supporte maintenant **plusieurs serveurs PBS** pour un même client. Cela permet des cas d'usage comme :
+Proxmox Backup Client supporte maintenant **plusieurs serveurs PBS** pour un même client. Cela permet des cas d'usage comme :
 - Backup `C:\` vers PBS big-data (gros volumes, lent)
 - Backup `C:\Users` vers PBS SSD (petit volume, rapide)
 - Backup vers PBS production + PBS DR (disaster recovery)
@@ -344,5 +344,5 @@ Pour finaliser Multi-PBS, il faut créer l'UI :
 
 **Status:** ✅ Backend complet | ⏳ Frontend à développer
 **Version:** 0.2.0+
-**Mainteneur:** RDEM Systems
+**Mainteneur:** Proxmox Backup Client GO contributors
 **Date:** 2026-03-23

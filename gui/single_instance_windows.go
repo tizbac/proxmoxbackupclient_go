@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	mutexName  = "Global\\NimbusBackupGUIMutex"
-	windowName = "Nimbus Backup"
+	mutexName  = "Global\\ProxmoxBackupClientGUIMutex"
+	windowName = "Proxmox Backup Client"
 )
 
 var (
@@ -70,7 +70,7 @@ func CheckSingleInstance() bool {
 	return true
 }
 
-// activateExistingWindow finds the existing Nimbus Backup window and brings it to foreground
+// activateExistingWindow finds the existing Proxmox Backup Client window and brings it to foreground
 func activateExistingWindow() bool {
 	windowNamePtr, err := syscall.UTF16PtrFromString(windowName)
 	if err != nil {
@@ -85,7 +85,7 @@ func activateExistingWindow() bool {
 
 	if hwnd == 0 {
 		// Try with the current version suffix (Wails titles the window
-		// "Nimbus Backup v<appVersion>"). Derived from appVersion so it never
+		// "Proxmox Backup Client v<appVersion>"). Derived from appVersion so it never
 		// goes stale across releases.
 		for _, suffix := range []string{" v" + appVersion} {
 			titleWithVersion := windowName + suffix

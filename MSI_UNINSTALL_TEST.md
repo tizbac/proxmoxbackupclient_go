@@ -2,14 +2,14 @@
 
 ## 🎯 Fonctionnalité
 
-Lors de la désinstallation de Nimbus Backup, l'utilisateur peut choisir :
-- ✅ **Conserver la configuration** (par défaut) - garde `C:\ProgramData\NimbusBackup`
+Lors de la désinstallation de Proxmox Backup Client, l'utilisateur peut choisir :
+- ✅ **Conserver la configuration** (par défaut) - garde `C:\ProgramData\ProxmoxBackupClient`
 - ❌ **Supprimer la configuration** - efface complètement le dossier
 
 ## 📁 Fichiers concernés
 
 ```
-C:\ProgramData\NimbusBackup\
+C:\ProgramData\ProxmoxBackupClient\
 ├── config.json              # Configuration PBS, identifiants
 ├── jobs.json                # Tâches planifiées
 ├── debug-gui.log            # Logs interface
@@ -52,7 +52,7 @@ C:\ProgramData\NimbusBackup\
 
 ### Test 1 : Désinstallation avec conservation (défaut)
 
-1. Installer Nimbus Backup v0.1.92
+1. Installer Proxmox Backup Client v0.1.92
 2. Configurer un serveur PBS
 3. Créer 1-2 jobs planifiés
 4. Lancer une désinstallation depuis "Programmes et fonctionnalités"
@@ -60,15 +60,15 @@ C:\ProgramData\NimbusBackup\
 6. **Sélectionner** : ⭕ Conserver la configuration (par défaut)
 7. Cliquer "Désinstaller"
 8. **Vérifier après désinstallation** :
-   - ✅ `C:\Program Files\NimbusBackup` supprimé
-   - ✅ `C:\ProgramData\NimbusBackup` **EXISTE ENCORE**
+   - ✅ `C:\Program Files\Proxmox Backup Client` supprimé
+   - ✅ `C:\ProgramData\ProxmoxBackupClient` **EXISTE ENCORE**
    - ✅ `config.json` et `jobs.json` présents
    - ✅ Service Windows désinstallé
    - ✅ Menu démarrer supprimé
 
 ### Test 2 : Désinstallation avec suppression
 
-1. Installer Nimbus Backup v0.1.92
+1. Installer Proxmox Backup Client v0.1.92
 2. Configurer un serveur PBS
 3. Créer 1-2 jobs planifiés
 4. Lancer une désinstallation depuis "Programmes et fonctionnalités"
@@ -76,26 +76,26 @@ C:\ProgramData\NimbusBackup\
 6. **Sélectionner** : ⭕ Supprimer la configuration
 7. Cliquer "Désinstaller"
 8. **Vérifier après désinstallation** :
-   - ✅ `C:\Program Files\NimbusBackup` supprimé
-   - ✅ `C:\ProgramData\NimbusBackup` **SUPPRIMÉ COMPLÈTEMENT**
+   - ✅ `C:\Program Files\Proxmox Backup Client` supprimé
+   - ✅ `C:\ProgramData\ProxmoxBackupClient` **SUPPRIMÉ COMPLÈTEMENT**
    - ✅ Aucun fichier config.json ou jobs.json
    - ✅ Service Windows désinstallé
    - ✅ Menu démarrer supprimé
 
 ### Test 3 : Upgrade (pas de dialog)
 
-1. Installer Nimbus Backup v0.1.92
+1. Installer Proxmox Backup Client v0.1.92
 2. Configurer un serveur PBS
-3. Installer Nimbus Backup v0.1.93 (upgrade)
+3. Installer Proxmox Backup Client v0.1.93 (upgrade)
 4. **Vérifier** : Pas de dialog de désinstallation
 5. **Vérifier après upgrade** :
-   - ✅ `C:\ProgramData\NimbusBackup` **PRÉSERVÉ**
+   - ✅ `C:\ProgramData\ProxmoxBackupClient` **PRÉSERVÉ**
    - ✅ config.json et jobs.json **INTACTS**
    - ✅ Application mise à jour
 
 ### Test 4 : Annulation
 
-1. Installer Nimbus Backup v0.1.92
+1. Installer Proxmox Backup Client v0.1.92
 2. Lancer une désinstallation
 3. Dialog s'affiche
 4. Cliquer "Annuler"
@@ -122,7 +122,7 @@ cd installer/wix
 
 # Build avec WiX Toolset
 candle.exe Product.wxs
-light.exe -ext WixUIExtension Product.wixobj -out NimbusBackup.msi
+light.exe -ext WixUIExtension Product.wixobj -out ProxmoxBackupClient.msi
 
 # Ou via script automatisé (si existant)
 ./build-msi.bat
@@ -135,7 +135,7 @@ light.exe -ext WixUIExtension Product.wixobj -out NimbusBackup.msi
 - **Solution** : Vérifier qu'on désinstalle (pas un upgrade)
 - **Log** : Activer logging MSI :
   ```cmd
-  msiexec /x NimbusBackup.msi /L*V uninstall.log
+  msiexec /x ProxmoxBackupClient.msi /L*V uninstall.log
   ```
 
 ### Config pas supprimée malgré KEEP_CONFIG=0
@@ -161,7 +161,7 @@ Après déploiement :
 
 2. **Export config avant suppression**
    - Bouton "Exporter config.json avant suppression"
-   - Sauvegarde dans `C:\Users\%USERNAME%\Downloads\nimbus-backup-config.json`
+   - Sauvegarde dans `C:\Users\%USERNAME%\Downloads\proxmoxbackupclient-config.json`
 
 3. **Statistiques télémétrie** (opt-in)
    - Tracker % utilisateurs qui gardent vs suppriment
@@ -171,5 +171,5 @@ Après déploiement :
 
 **Status:** ✅ Implémenté | ⏳ Tests à faire
 **Version:** 0.2.0+
-**Mainteneur:** RDEM Systems
+**Mainteneur:** Proxmox Backup Client GO contributors
 **Date:** 2026-03-23

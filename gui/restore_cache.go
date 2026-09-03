@@ -33,7 +33,7 @@ type snapshotCacheKey struct {
 // so a stray hash collision (or a copied cache dir) doesn't return the wrong
 // tree silently.
 //
-// Meta is the `.nimbus_backup_meta.json` sidecar parsed at listing time. nil
+// Meta is the `.proxmox_backup_client_meta.json` sidecar parsed at listing time. nil
 // means "snapshot has no sidecar" (legacy backup), not "we haven't looked".
 type cachedSnapshotTree struct {
 	Schema      int              `json:"schema"`

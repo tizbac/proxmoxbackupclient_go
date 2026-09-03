@@ -28,6 +28,7 @@ import (
 
 // BackupOptions contains all parameters for a backup operation
 type BackupOptions struct {
+	Ctx             context.Context // Cancel to request a graceful stop between backup steps
 	BaseURL         string
 	AuthID          string
 	Secret          string
@@ -74,6 +75,50 @@ var (
 	backupLocks      = make(map[string]*sync.Mutex)
 	backupLocksMutex sync.Mutex
 )
+
+// Current in-flight backup cancellation. The GUI's Stop button calls
+// CancelBackup() which cancels this context at a safe point (between
+// directories / between retries), so the running backup aborts gracefully
+// without committing a partial snapshot.
+var (
+	currentBackupCancelMutex sync.Mutex
+	currentBackupCancel      context.CancelFunc
+)
+
+// CancelBackup requests a graceful stop of the currently running backup.
+// It is exported to the GUI and returns false if no backup is running.
+func (a *App) CancelBackup() error {
+	currentBackupCancelMutex.Lock()
+	defer currentBackupCancelMutex.Unlock()
+	if currentBackupCancel != nil {
+		currentBackupCancel()
+		writeDebugLog("CancelBackup: cancellation requested for running backup")
+	}
+	writeDebugLog("CancelBackup: no backup running (or already cancelled)")
+	return nil
+}
+
+// newBackupContext returns a fresh cancellable context and registers its
+// cancel function as the current in-flight backup. Callers should not defer
+// Cancel() (that would also cancel the shared token); instead call
+// doneBackupContext() when the run finishes.
+func newBackupContext() (context.Context, context.CancelFunc) {
+	currentBackupCancelMutex.Lock()
+	defer currentBackupCancelMutex.Unlock()
+	if currentBackupCancel != nil {
+		currentBackupCancel() // cancel any previous run before replacing
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	currentBackupCancel = cancel
+	return ctx, cancel
+}
+
+// doneBackupContext clears the shared cancellation token when a run finishes.
+func doneBackupContext() {
+	currentBackupCancelMutex.Lock()
+	defer currentBackupCancelMutex.Unlock()
+	currentBackupCancel = nil
+}
 
 // getBackupLock returns a mutex for the given backup destination
 func getBackupLock(baseURL, datastore string) *sync.Mutex {
@@ -461,6 +506,15 @@ func RunBackupInline(opts BackupOptions) (returnErr error) {
 	runLogger := StartBackupRunLog(runLogID)
 	defer EndBackupRunLog(runLogger)
 
+	// Wire a shared, user-cancellable context for this run (Stop button).
+	ctx, cancel := newBackupContext()
+	defer doneBackupContext()
+	// Callers may supply their own context; otherwise use the shared one.
+	if opts.Ctx == nil {
+		opts.Ctx = ctx
+	}
+	_ = cancel
+
 	// CRITICAL: Panic recovery to prevent silent goroutine death (scheduler launches backups in goroutines)
 	defer func() {
 		if r := recover(); r != nil {
@@ -554,6 +608,10 @@ func RunBackupInline(opts BackupOptions) (returnErr error) {
 	}
 
 	for _, dir := range opts.BackupObjects {
+		if opts.Ctx != nil && opts.Ctx.Err() != nil {
+			writeBackupLog("Cancellation requested — skipping remaining folders")
+			break
+		}
 		dirOpts := opts
 		dirOpts.BackupObjects = []string{dir}
 		dirOpts.BackupID = GenerateBackupID(baseID, dir)
@@ -747,6 +805,13 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	const sessionLostRetryWait = 25 * time.Minute
 
 	for idx, dir := range opts.BackupObjects {
+		if opts.Ctx != nil && opts.Ctx.Err() != nil {
+			writeBackupLog(fmt.Sprintf("Cancellation requested — stopping before backup of %s", dir))
+			if opts.OnComplete != nil {
+				opts.OnComplete(false, "Backup annulé par l'utilisateur")
+			}
+			return fmt.Errorf("backup cancelled by user")
+		}
 		writeBackupLog(fmt.Sprintf("Starting backup of directory %d/%d: %s", idx+1, len(opts.BackupObjects), dir))
 
 		// Each directory becomes its own PBS session (Connect → upload → Finish).
@@ -776,6 +841,13 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 
 				waitUntil := time.Now().Add(sessionLostRetryWait)
 				for {
+					if opts.Ctx != nil && opts.Ctx.Err() != nil {
+						writeBackupLog("Cancellation requested during session-lost wait — aborting")
+						if opts.OnComplete != nil {
+							opts.OnComplete(false, "Backup annulé par l'utilisateur")
+						}
+						return fmt.Errorf("backup cancelled by user")
+					}
 					remaining := time.Until(waitUntil)
 					if remaining <= 0 {
 						break

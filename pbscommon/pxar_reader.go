@@ -257,7 +257,7 @@ func joinArchivePath(parent, child string) string {
 }
 
 // ReadVirtualFile returns the payload of a file located at the archive root,
-// matched by its exact name (e.g. ".nimbus_backup_meta.json"). Returns
+// matched by its exact name (e.g. ".proxmox_backup_client_meta.json"). Returns
 // os.ErrNotExist if no such root-level file is present.
 //
 // Only root-level entries are considered — nested files of the same name are
@@ -410,12 +410,12 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		// Windows (MOVEFILE_REPLACE_EXISTING).
 		//
 		// Use a RANDOM, exclusive temp name via os.CreateTemp (which opens with
-		// O_EXCL) instead of the predictable "<file>.nimbus-part" opened with
+		// O_EXCL) instead of the predictable "<file>.proxmox-part" opened with
 		// O_TRUNC: a local attacker could otherwise pre-create/guess that path
 		// (v2-H-08). NOTE: a symlink/reparse point in the destination's PARENT chain
 		// can still redirect the write — confining the parent chain (no-follow /
 		// Windows reparse handling) is a separate hardening.
-		out, err := os.CreateTemp(filepath.Dir(fullPath), filepath.Base(fullPath)+".nimbus-*.part")
+		out, err := os.CreateTemp(filepath.Dir(fullPath), filepath.Base(fullPath)+".proxmox-*.part")
 		if err != nil {
 			extracted = append(extracted, PXARExtractedFile{
 				Path: fullPath, Size: e.Size,
