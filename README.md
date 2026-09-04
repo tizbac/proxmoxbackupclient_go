@@ -1,20 +1,140 @@
-This software implements a proxmox backup client software for windows, backup only as of now
-Works on linux too especially for development
+# Proxmox Backup Client — Windows client for Proxmox Backup Server
 
-The software is still alpha quality and i take no responsability for any kind of damage or data loss even of source files.
+[🇬🇧 English](README.md) | [🇫🇷 Français](README.fr.md) | [🇮🇹 Italiano](README.it.md)
 
-Contributions are welcome especially 
+[![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
+[![Documentation](https://img.shields.io/badge/docs-github-orange)](https://github.com/tizbac/proxmoxbackupclient_go)
 
-1. GUI with tray icon to show backup progress and backup taking place
-2. Encryption support
-3. A GUI way of configuring it and maybe create a json job file similiar freefilesync does
-4. Async upload / compress and multicore upload + compression of chunks
-5. Proxmox side patch to add another kind of entry to pxar format with Windows security descriptors in it
-6. Support for windows symlinks
-7. Anything interesting you can come up with :)
+**Proxmox Backup Client is an open-source (GPL-3.0) backup client for Proxmox Backup Server (PBS), working on Windows and Linux.**
 
-Usage - Directory Backup
-=====
+A modern GUI (**Proxmox Backup Client GUI**, based on the Nimbus Backup GUI from RDEM Systems) for backing up Windows servers and workstations to PBS — consistent VSS snapshots, scheduled jobs, file and disk modes, snapshot browsing/restoration, multi-PBS support and a Windows service mode — plus a full-featured CLI suite for directory, stream and full machine backups.
+
+> Keywords: proxmox backup client windows · PBS client · Windows VSS backup · immutable offsite backups · Proxmox Backup Server interface.
+
+## 📦 Download
+
+👉 **[Download the latest release](https://github.com/tizbac/proxmoxbackupclient_go/releases)**
+
+> ⚠️ **Windows shows "virus detected" (e.g. `Trojan:Win32/Sabsik.FL.A!ml`) or a SmartScreen warning?**
+> This is a **known false positive** for Go/Wails applications — it is *not* a virus. The `!ml` suffix indicates a machine-learning model detection that flags *unsigned and uncommon* executables.
+> See [why this happens and how to verify the download](https://github.com/tizbac/proxmoxbackupclient_go).
+
+### 🔎 Verifying any download
+
+Every release provides SHA-256 checksums and a **signed provenance attestation** (cryptographic proof that the binary was produced by this repository's CI, from a precise commit):
+
+```powershell
+Get-FileHash .\ProxmoxBackupClient.exe -Algorithm SHA256   # compare with SHA256SUMS.txt
+gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclient_go
+```
+
+**VirusTotal — 0 detections.** Independent multi-engine reports of recent MSI installers:
+[0.2.108](https://www.virustotal.com/gui/file/6e8fb7ce9af740d470e947addb8daba4331c0b88e8bfdec9e0697ea8f7f29e9e/detection) ·
+[0.2.107](https://www.virustotal.com/gui/file/6fd6c6fa77e0305c129ef882a3745100aa6033187a6d52a4af94149ab6b666d2/detection) ·
+[0.2.106](https://www.virustotal.com/gui/file/ad6e56700ed9df8e088906e38cee2e2882fc7045f4e39269de0e379a01784ad7/detection)
+
+> ℹ️ **Code signing:** Windows binaries are **not yet Authenticode-signed** (an OSS certificate via [SignPath Foundation](https://signpath.org) is pending). In the meantime, provenance is established through the attestation and checksums above.
+
+## ✨ Features
+
+### GUI — Proxmox Backup Client GUI (recommended)
+- **🌍 Multilingual** — French, English, Italian, German and Polish interfaces
+- User-friendly configuration with connection test
+- Real-time backup progress with throughput and time remaining
+- VSS (Volume Shadow Copy) support for consistent backups
+- Multi-folder backups, file and disk modes
+- Snapshot browsing, file search (wildcards) and restoration
+- Multi-PBS server support with certificate fingerprint pinning (TOFU)
+- Windows service mode + scheduled backups
+- Backup cancel, history (last 6) and rerun
+- Debug logging for diagnostics
+
+### CLI tools
+- `proxmoxbackup-directory` — directory (PXAR) backups with deduplication
+- `proxmoxbackup-machine` — full live Windows machine backups (FIDX, VSS, incremental)
+- `proxmoxbackup-nbd` — NBD server for restoring disk backups (Linux)
+
+### 📸 Screenshots
+
+![Server configuration](docs/screenshots/nimbus-gui-liste-servers.png)
+*Multi-PBS server management with status indicators*
+
+![Add server form](docs/screenshots/nimbus-gui-add-server-form.png)
+*Simple server configuration with connection test*
+
+![One-shot backup](docs/screenshots/nimbus-gui-one-shot-backup.png)
+*Real-time backup progress with ETA and throughput*
+
+### Smart system exclusions (file mode)
+When backing up an entire drive (e.g. `D:\`), the GUI automatically excludes:
+
+**System folders:** `System Volume Information` (VSS storage, can reach 100+ GB), `$RECYCLE.BIN`, `Recovery`.
+**System files:** `pagefile.sys`, `hiberfil.sys`, `swapfile.sys`.
+
+**Why this matters:** a drive may show 1.03 TB used while real files are ~141 GB. Without exclusions the backup would include VSS snapshots (wasted space and time); with them, the size matches the real data.
+
+**Recommendation:** use **file mode** (default) with auto-exclusions for file-level backups; use **disk mode** in a separate job for bare-metal restoration (includes everything).
+
+### Security & quality
+- Input validation and credential sanitization
+- Path traversal prevention
+- Retry logic with exponential backoff
+- Comprehensive error handling and tests, 100% lint compliance
+
+## 🚀 Quick start (GUI)
+
+1. Download `ProxmoxBackupClient.exe` (or the `.msi`) from the releases
+2. Launch it with administrator rights (required for VSS)
+3. Configure your PBS connection and test it
+4. Select the folders to back up
+5. Start the backup
+
+## NEW! — Full machine live backup
+
+New functionality has been added that now allows backing up a complete Windows 10/11 system and their respective server versions without any downtime.
+
+The command syntax is mostly the same, except `-backupdir string`.
+
+In the case of machine backup executable there's in place of backupdir, `-backupdev`.
+For example an invocation could be:
+
+`machinebackup.exe -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
+
+The above command will look at Disk 0, detect all mounted partitions, take a VSS snapshot of these, and then create a bootable backup image of the whole disk as FIDX.
+
+The next backup will be incremental, hashing has been parallelized so speeds of 1 GB/sec can be easily reached.
+
+### File restore — NEW!
+
+File restore is possible by using the nbd tool.
+
+In order to use nbd please first do `modprobe nbd max_part=0`.
+
+For unknown reasons, using `max_part != 0` causes an infinite partition probe loop.
+
+The NBD tool will connect any fixed disk backup, regardless of it being a VM or host backup (that being said, it also works for PVE backups).
+
+To use it use a command line similar to this:
+`./pbsnbd -authid 'apikey' -baseurl https://yourpbs:8007 -secret 'yoursecret' -certfingerprint 'aa:...:xx' -datastore test -namespace test1 -path "vm/107/2025-08-02T23:13:01Z/drive-virtio0.img.fidx"`
+
+If you omit `-path`, a terminal UI will show up allowing you to select the fidx file.
+
+> Beware to not use this on a machine running important stuff (a corrupt filesystem can crash the OS potentially, that's why Proxmox VE uses a QEMU instance for this).
+
+Also be very sure to have unmounted anything on the nbd disk before stopping pbsnbd, if not you will likely end up with a busy unmountable partition. If someone has an indication of how to recover from that, please tell me.
+
+If you get a `Device or resource busy` error, you have to force disconnect by running `nbd-client -d /dev/nbd0` or simply reboot.
+
+### Restore to physical machine
+
+A live CD / PXE boot system will be released that will allow logging in to a PBS server, selecting the backup, and launching clonezilla. For now the best way is spinning up a clonezilla live and copying to it the nbd server executable; before proceeding with clonezilla, on another tty, you launch `pbsnbd`.
+
+I suggest also copying over command line parameters such as authid, baseurl, fingerprint etc, they are a pain in the... to hand type!
+
+Once pbsnbd is up and running, you can use the clonezilla disk-to-local-disk option.
+
+## Usage — Directory Backup
 
 A typical command would look like:
 
@@ -83,76 +203,94 @@ The following variables are available for templating:
 - `.EndTime`: time the backup ended
 - `.Duration`: duration of the backup
 - `.FromattedDuration`: formatted duration of the backup
-- `.Success`: a boolean telling whether the backup was successful 
+- `.Success`: a boolean telling whether the backup was successful
 - `.Status`: string representation of the backup status [SUCCESS, FAILURE]
 
-Stream Backup
-=============
+## Stream Backup
 
-This allows backing up a stream instead of a PXAR, allows endless possibilities for example you can invoke 
+This allows backing up a stream instead of a PXAR, allowing endless possibilities. For example you can invoke:
 
 ```
 mysqldump yourdatabase | ./proxmoxbackupgo -backupstream yourdatabase.sql [other options]
 ```
 
-This allows leveraging buzhash for dedup even when using tar for example, or the sql dump itself, and if someone wants to attempt it should be possible with some hack to pipe DISM command to generate WIM image to this and have full host backup
+This allows leveraging buzhash for dedup even when using tar for example, or the sql dump itself. And if someone wants to attempt it, it should be possible with some hack to pipe the DISM command to generate a WIM image to this and have a full host backup.
 
-Known Issues
-============
+## Known Issues
 
-Windows defender antimalware being active will slow backup down up to 25% of attainable speed 
+Windows Defender antimalware being active will slow the backup down up to 25% of attainable speed.
 
-~~There's as of now no mechanism to prevent two instances being launched at same time which will screw up VSS and backup~~
-If you using windows planning utility it should theoretically prevent two instances starting at same time when originating from same job
+~~There's as of now no mechanism to prevent two instances being launched at the same time which will screw up VSS and backup~~
+If you use the Windows planning utility it should theoretically prevent two instances starting at the same time when originating from the same job.
 
-# NEW! - Full machine live backup
+## 📋 Prerequisites
 
-New funcionality has been added that now allows backing up a complete Windows 10/11 system and their respective server versions without any downtime.
+- Windows 10/11 (64-bit)
+- Administrator rights (for VSS snapshots)
+- Network access to a Proxmox Backup Server
+- Linux works too, especially for development
 
-The command syntax is mostly the same , except `-backupdir string`
+## 🔨 Building from source
 
-In the case of machine backup executable there's in place of backupdir, `-backupdev`
-For example an invocation could be
+### Prerequisites
+- Go 1.22 or later
+- Node.js 20 or later
+- Wails CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 
-`machinebackup.exe -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
+### GUI
+```bash
+cd gui
+npm install --prefix frontend
+wails build      # or: wails dev  (hot reload)
+```
 
-The above command will look at Disk 0 , detect all mounted partition, take VSS snapshot of these, and then create a bootable backup image of whole disk as FIDX.
+### Full project (Makefile)
+```bash
+make install-deps   # install Wails CLI + frontend dependencies
+make                # build everything (CLI + GUI + Service)
+```
 
-Next backup will be incremental, hashing has been paralleled so speeds of 1 gbyte/sec can be easily reached.
+Artifacts are placed in the `dist/` directory. See `make help` for all targets (`cli`, `gui`, `service`, `test`, `lint`, `security-check`, `release`...).
 
-### File restore - NEW!
+## 🌐 Tech Support in Italy
 
-File restore is possible by using nbd tool
-
-In order to use nbd please first do `modprobe nbd max_part=0`.
-
-For unknown reasons, using `max_part != 0` causes infinite partition probe loop.
-
-NBD tool will connect any fixed disk backup, regardless of it being VM or host ( that being said it works also for PVE backups).
-
-To use it use a command line similiar to this
-`./pbsnbd -authid 'apikey' -baseurl https://yourpbs:8007 -secret 'yoursecret' -certfingerprint 'aa:...:xx' -datastore test -namespace test1 -pat  
-h "vm/107/2025-08-02T23:13:01Z/drive-virtio0.img.fidx"`
-If you omit `-path` , a terminal Ui will show up allowing to select fidx file
-
-Beware to not use this on a machine running important stuff ( corrupt filesystem can crash the OS potentially, that why Proxmox VE uses a QEMU instance for this ).
-
-Also be very sure to have umounted anything on the nbd disk before stopping pbsnbd, if not you likely will end with busy unmountable partition, if someone has indiciation of how to recover from that please tell me.
-
-If you get a `Device or resource busy` error, you have to force disconnect by running `nbd-client -d /dev/nbd0` or simply reboot.
-
-### Restore to physical machine
-
-A live cd / PXE boot system will be released that will allow logging in to a PBS server, selecting the backup, and launching clonezilla.
-For now best way is spinning up a clonezilla live and copying to it nbd server executable, before proceeding with clonezilla, on another tty, you launch `pbsnbd`.
-
-I suggest also copying over command line parameters such as authid, baseurl, fingerprint etc, they are a pain in the... to hand type!.
-
-Once pbsnbd is up and running, you can use clonezilla disk to local disk option. 
-
-# Tech Support in Italy
-
-Being said that the project and **ALL** it's contribution will remain forever public and licensed under GPLv3 license, main sponsor of this project and also latest machine backup features, E.T.I. Srl ( https://etitech.net ) can provide to who needs it support for Proxmox deployments in general and specifically Windows backup tools.
+Being said that the project and **ALL** its contributions will remain forever public and licensed under GPLv3 license, main sponsor of this project and also of the latest machine backup features, E.T.I. Srl ( https://etitech.net ) can provide, to who needs it, support for Proxmox deployments in general and specifically Windows backup tools.
 
 There will never be a "community" & "enterprise" different edition, solely tech support will be an independent service.
-Any customization that you are going to ask, even if development may be paid it will be released as GPLv3 like whole project is.
+Any customization that you are going to ask, even if development may be paid, will be released as GPLv3 like the whole project is.
+
+## 🖥️ GUI attribution
+
+The **Proxmox Backup Client GUI** is based on the **[Nimbus Backup GUI](https://nimbus.rdem-systems.com)**, developed and maintained by **[RDEM Systems](https://www.rdem-systems.com/)**.
+
+The GUI (originally a fork of this project) has been merged back into this repository: the entire codebase, including the GUI and all its features, remains open-source under the GPLv3 license. RDEM Systems sponsors the GUI development and provides commercial support for it.
+
+## ⚠️ Warning
+
+This software is provided "as is". Although we aim for reliability, we decline any responsibility for loss of or damage to data. Always test your backups and verify restoration before relying on them in production.
+
+The software is still alpha quality and we take no responsibility for any kind of damage or data loss, even of source files.
+
+## 📄 License
+
+GPLv3 — see the [LICENSE](LICENSE) file.
+
+## 🤝 Contribute
+
+Contributions are welcome, especially:
+
+1. GUI tray icon to show backup progress and backup taking place
+2. Encryption support
+3. A GUI way of configuring it and maybe creating a JSON job file similar to what freefilesync does
+4. Async upload / compress and multicore upload + compression of chunks
+5. Proxmox side patch to add another kind of entry to pxar format with Windows security descriptors in it
+6. Support for Windows symlinks
+7. Anything interesting you can come up with :)
+
+## About Proxmox Backup Client GO contributors
+
+Proxmox Backup Client GO contributors develop and maintain this project. The software relies on the NTP/NTS infrastructure and the [11 public NTS servers](https://github.com/jauderho/nts-servers) listed in the community reference.
+
+---
+
+**© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems.**

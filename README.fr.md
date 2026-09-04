@@ -1,13 +1,13 @@
 # Proxmox Backup Client — Client Windows pour Proxmox Backup Server
 
-[🇬🇧 English](README.md) | 🇫🇷 Français
+[🇬🇧 English](README.md) | 🇫🇷 Français | [🇮🇹 Italiano](README.it.md)
 
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-github-orange)](https://github.com/tizbac/proxmoxbackupclient_go)
 
 **Proxmox Backup Client est un client de sauvegarde Windows open-source (GPL-3.0) pour Proxmox Backup Server (PBS).**
-Une interface graphique moderne pour sauvegarder serveurs et postes Windows vers PBS — snapshots cohérents via VSS, tâches planifiées, modes fichier et disque, navigation/restauration de snapshots, support multi-PBS et mode service Windows.
+Une interface graphique moderne (**Proxmox Backup Client GUI**, basée sur la GUI Nimbus Backup de RDEM Systems) pour sauvegarder serveurs et postes Windows vers PBS — snapshots cohérents via VSS, tâches planifiées, modes fichier et disque, navigation/restauration de snapshots, support multi-PBS et mode service Windows.
 
 > Mots-clés : client proxmox backup windows · client PBS · sauvegarde Windows VSS · sauvegarde déportée immuable · interface Proxmox Backup Server.
 
@@ -43,7 +43,7 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 
 ## ✨ Fonctionnalités
 
-### Interface graphique (recommandée)
+### Proxmox Backup Client GUI (recommandée)
 - **🌍 Multilingue** — interface en français et en anglais
 - Configuration conviviale avec test de connexion
 - Progression de sauvegarde en temps réel avec débit et temps restant
@@ -109,22 +109,13 @@ npm install --prefix frontend
 wails build      # ou : wails dev  (rechargement à chaud)
 ```
 
-## 📝 Projet d'origine
+## 🖥️ Attribution de l'interface graphique
 
-Ce projet est un fork de [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), enrichi d'une interface graphique moderne et de fonctionnalités supplémentaires pour les utilisateurs Windows.
+L'interface graphique **Proxmox Backup Client GUI** est basée sur la **[GUI Nimbus Backup](https://nimbus.rdem-systems.com)**, développée et maintenue par **[RDEM Systems](https://www.rdem-systems.com/)**.
 
-**Original :** Proxmox Backup Client en Go · **Auteur :** Tiziano Bacocco (tizbac) · **Licence :** GPLv3
+La GUI (à l'origine un fork de ce projet) a été fusionnée dans ce dépôt : l'intégralité du code, y compris la GUI et toutes ses fonctionnalités, reste open-source sous licence GPLv3. RDEM Systems sponsorise le développement de la GUI et en assure le support commercial.
 
-| Fonctionnalité            | tizbac/proxmoxbackupclient_go | ProxmoxBackupClient (ce fork) |
-|---------------------------|:-----------------------------:|:----------------------------:|
-| Mode CLI                  | ✅                             | ✅                            |
-| GUI Wails                 | ❌                             | ✅                            |
-| Multilingue (FR/EN)       | ❌                             | ✅                            |
-| Progression en temps réel | ❌                             | ✅                            |
-| Exclusions système        | ❌                             | ✅                            |
-| Support multi-PBS         | ❌                             | ✅                            |
-| Pipelines CI/CD           | ❌                             | ✅                            |
-| Tests complets            | ❌                             | ✅                            |
+**Auteur du CLI d'origine :** Tiziano Bacocco (tizbac) · **Licence :** GPLv3
 
 ## ⚠️ Avertissement
 
@@ -140,7 +131,7 @@ Proxmox Backup Client GO contributors développe et maintient ce projet. Le logi
 
 ---
 
-**© 2024-2026 RDEM Systems and Proxmox Backup Client GO Contributors. Tous droits réservés.**
+**© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems.**
 
 --- 
 [Trésor pour une chasse partenaire](https://dynamite-games-pontoise.fr/tresor/DGP-ETE-2026-GFDSCS55)
