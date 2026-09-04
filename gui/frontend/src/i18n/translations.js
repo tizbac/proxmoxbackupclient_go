@@ -258,7 +258,7 @@ const translations = {
         logs: "Logs de debug intégrés",
         nogpu: "Pas de dépendance GPU"
       },
-      copyright: "© 2024-2026 RDEM Systems and Proxmox Backup Client GO Contributors — voir https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
+      copyright: "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems — voir https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
       basedOn: "",
       techStack: "Interface Wails + React + Vite",
 
@@ -551,7 +551,7 @@ const translations = {
         logs: "Integrated debug logs",
         nogpu: "No GPU dependency"
       },
-      copyright: "© 2024-2026 RDEM Systems and Proxmox Backup Client GO Contributors — see https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
+      copyright: "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems — see https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
       basedOn: "",
       techStack: "Wails + React + Vite interface",
 
@@ -844,7 +844,7 @@ const translations = {
         logs: "Log di debug integrati",
         nogpu: "Nessuna dipendenza GPU"
       },
-      copyright: "© 2024-2026 RDEM Systems and Proxmox Backup Client GO Contributors — vedi https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
+      copyright: "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems — vedi https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
       basedOn: "",
       techStack: "Interfaccia Wails + React + Vite",
 
@@ -1137,7 +1137,7 @@ const translations = {
         logs: "Integrierte Debug-Logs",
         nogpu: "Keine GPU-Abhängigkeit"
       },
-      copyright: "© 2024-2026 RDEM Systems and Proxmox Backup Client GO Contributors — siehe https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
+      copyright: "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems — siehe https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
       basedOn: "",
       techStack: "Wails + React + Vite-Oberfläche",
 
@@ -1430,7 +1430,7 @@ const translations = {
         logs: "Zintegrowane logi debugowania",
         nogpu: "Brak zależności GPU"
       },
-      copyright: "© 2024-2026 RDEM Systems and Proxmox Backup Client GO Contributors — zobacz https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
+      copyright: "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems — zobacz https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
       basedOn: "",
       techStack: "Interfejs Wails + React + Vite",
 

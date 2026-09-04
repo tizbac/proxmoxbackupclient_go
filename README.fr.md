@@ -109,6 +109,58 @@ npm install --prefix frontend
 wails build      # ou : wails dev  (rechargement à chaud)
 ```
 
+## 🔧 Utilisation avancée et guides
+
+### Multi-PBS (plusieurs serveurs PBS)
+
+Configurez plusieurs serveurs PBS et choisissez la cible pour chaque sauvegarde (ex. `C:\Users` → PBS SSD rapide, quotidien ; `C:\` → PBS big-data, hebdomadaire ; plus un serveur DR).
+
+- **[Guide utilisateur](MULTI_PBS_USER_GUIDE.md)** — ajout/test des serveurs, serveur par défaut, FAQ et dépannage.
+- **[Guide d'implémentation](MULTI_PBS_GUIDE.md)** — modèle de données, migration automatique depuis une config mono-PBS, méthodes API backend.
+
+La configuration mono-PBS existante est automatiquement migrée vers un serveur `default` au premier chargement.
+
+### ISO Clonezilla (restauration bare-metal)
+
+Le workflow de secours est construit en patchant une ISO Clonezilla Live avec les binaires `pbsnbd` / `machinebackup` et une entrée **pbs-nbd** dans le menu principal de Clonezilla (démarrage CD, USB via `dd`, et UEFI) :
+
+```bash
+./patch-clonezilla.sh \
+  -o clonezilla-live-patched.iso \
+  clonezilla-live-3.3.3-15-amd64.iso \
+  ./build/pbsnbd ./build/machinebackup \
+  ./clonezilla-patch/ocs-pbs-nbd
+```
+
+Détails complets (pourquoi une reconstruction complète plutôt qu'un remplacement, prérequis, flux du menu, vérification) dans **[PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md)**.
+
+### Compilation de la GUI Windows
+
+**Docker (recommandé, surtout lorsqu'on compile sous Linux).** Le script en une commande produit un `ProxmoxBackupClientGO.exe` avec le support WebView2 adéquat, via un conteneur `golang` jetable (installation de mingw + Wails, build du frontend, exécution de `wails build`) :
+
+```bash
+./build_gui_windows_docker.sh
+```
+
+**Windows natif (Chocolatey).** Voir **[BUILD.md](BUILD.md)** pour la configuration complète de la toolchain Windows :
+
+```powershell
+choco install go
+choco install mingw
+# puis, dans un shell non élevé :
+build.bat          # GUI
+build_cli.bat      # CLI
+```
+
+### Statut des fonctionnalités, changelog et docs internes
+
+- **[FEATURES_STATUS.md](FEATURES_STATUS.md)** — matrice de statut par fonctionnalité (implémenté / testé / roadmap).
+- **[CHANGELOG.md](CHANGELOG.md)** — historique des changements par version.
+- **[TODO.md](TODO.md)** — roadmap et idées ouvertes.
+- **[RELEASE_NOTES.md](RELEASE_NOTES.md)** — état stable du produit et builds disponibles.
+- **[MSI_UNINSTALL_TEST.md](MSI_UNINSTALL_TEST.md)** — dialogue de désinstallation MSI (conserver/supprimer la config) et son plan de test.
+- **[FIXES_SUMMARY.md](FIXES_SUMMARY.md)** — notes de correctifs GUI (bascule mode répertoire vs machine).
+
 ## 🖥️ Attribution de l'interface graphique
 
 L'interface graphique **Proxmox Backup Client GUI** est basée sur la **[GUI Nimbus Backup](https://nimbus.rdem-systems.com)**, développée et maintenue par **[RDEM Systems](https://www.rdem-systems.com/)**.

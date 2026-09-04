@@ -252,6 +252,58 @@ make                # compila tutto (CLI + GUI + Service)
 
 Gli artefatti vengono collocati nella directory `dist/`. Vedi `make help` per tutti i target (`cli`, `gui`, `service`, `test`, `lint`, `security-check`, `release`...).
 
+## 🔧 Utilizzo avanzato e guide
+
+### Multi-PBS (più server PBS)
+
+Configura più server PBS e scegli la destinazione per ogni backup (es. `C:\Users` → PBS SSD veloce, quotidiano; `C:\` → PBS big-data, settimanale; più un server DR).
+
+- **[Guida utente](MULTI_PBS_USER_GUIDE.md)** — aggiunta/test dei server, server predefinito, FAQ e risoluzione dei problemi.
+- **[Guida all'implementazione](MULTI_PBS_GUIDE.md)** — modello dei dati, migrazione automatica dalla config mono-PBS, metodi API backend.
+
+La configurazione mono-PBS esistente viene migrata automaticamente verso un server `default` al primo caricamento.
+
+### ISO Clonezilla (ripristino bare-metal)
+
+Il flusso di soccorso viene costruito patchando un'ISO Clonezilla Live con i binari `pbsnbd` / `machinebackup` e una voce **pbs-nbd** nel menu principale di Clonezilla (avvio da CD, USB via `dd` e UEFI):
+
+```bash
+./patch-clonezilla.sh \
+  -o clonezilla-live-patched.iso \
+  clonezilla-live-3.3.3-15-amd64.iso \
+  ./build/pbsnbd ./build/machinebackup \
+  ./clonezilla-patch/ocs-pbs-nbd
+```
+
+Dettagli completi (perché una ricostruzione completa invece di una sostituzione in-place, prerequisiti, flusso del menu, verifica) in **[PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md)**.
+
+### Compilazione della GUI Windows
+
+**Docker (consigliato, soprattutto quando si compila su Linux).** Lo script in un comando produce un `ProxmoxBackupClientGO.exe` con il corretto supporto WebView2, tramite un contenitore `golang` usa e getta (installazione di mingw + Wails, build del frontend, esecuzione di `wails build`) :
+
+```bash
+./build_gui_windows_docker.sh
+```
+
+**Windows nativo (Chocolatey).** Vedi **[BUILD.md](BUILD.md)** per la configurazione completa della toolchain Windows:
+
+```powershell
+choco install go
+choco install mingw
+# poi, in una shell non elevata:
+build.bat          # GUI
+build_cli.bat      # CLI
+```
+
+### Stato delle funzionalità, changelog e documenti interni
+
+- **[FEATURES_STATUS.md](FEATURES_STATUS.md)** — matrice dello stato per funzionalità (implementato / testato / roadmap).
+- **[CHANGELOG.md](CHANGELOG.md)** — cronologia delle modifiche per versione.
+- **[TODO.md](TODO.md)** — roadmap e idee aperte.
+- **[RELEASE_NOTES.md](RELEASE_NOTES.md)** — stato stabile del prodotto e build disponibili.
+- **[MSI_UNINSTALL_TEST.md](MSI_UNINSTALL_TEST.md)** — dialogo di disinstallazione MSI (conserva/elimina configurazione) e relativo piano di test.
+- **[FIXES_SUMMARY.md](FIXES_SUMMARY.md)** — note di fix della GUI (passaggio da modalità directory a macchina).
+
 ## 🌐 Supporto tecnico in Italia
 
 Premesso che il progetto e **TUTTI** i suoi contributi resteranno per sempre pubblici e licenziati sotto licenza GPLv3, lo sponsor principale di questo progetto e anche delle più recenti funzionalità di machine backup, E.T.I. Srl ( https://etitech.net ), può fornire a chi ne ha bisogno supporto per le implementazioni Proxmox in generale e specificamente per gli strumenti di backup Windows.

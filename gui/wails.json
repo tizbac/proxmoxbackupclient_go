@@ -15,7 +15,7 @@
     "companyName": "Proxmox Backup Client",
     "productName": "Proxmox Backup Client",
     "productVersion": "0.2.119",
-    "copyright": "© 2024-2026 RDEM Systems and Proxmox Backup Client GO Contributors.",
+    "copyright": "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems.",
     "comments": "Backup client for Proxmox Backup Server"
   },
   "webview2": {

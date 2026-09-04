@@ -252,6 +252,58 @@ make                # build everything (CLI + GUI + Service)
 
 Artifacts are placed in the `dist/` directory. See `make help` for all targets (`cli`, `gui`, `service`, `test`, `lint`, `security-check`, `release`...).
 
+## 🔧 Advanced use & guides
+
+### Multi-PBS (multiple PBS servers)
+
+Configure several PBS servers and pick the target per backup (e.g. `C:\Users` → fast SSD PBS daily, `C:\` → big-data PBS weekly, plus a DR server).
+
+- **[User guide](MULTI_PBS_USER_GUIDE.md)** — adding/testing servers, default server, FAQ and troubleshooting.
+- **[Implementation guide](MULTI_PBS_GUIDE.md)** — data model, automatic migration from single-PBS config, backend API methods.
+
+Legacy single-PBS configuration is automatically migrated to a `default` server on first load.
+
+### Clonezilla live ISO (bare-metal restore)
+
+The rescue workflow is built by patching a stock Clonezilla Live ISO with the `pbsnbd` / `machinebackup` binaries plus a **pbs-nbd** entry in the Clonezilla main menu (boots from CD, USB via `dd`, and UEFI):
+
+```bash
+./patch-clonezilla.sh \
+  -o clonezilla-live-patched.iso \
+  clonezilla-live-3.3.3-15-amd64.iso \
+  ./build/pbsnbd ./build/machinebackup \
+  ./clonezilla-patch/ocs-pbs-nbd
+```
+
+Full details (why a full ISO rebuild instead of an in-place swap, prerequisites, menu flow, verification) in **[PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md)**.
+
+### Building the Windows GUI
+
+**Docker (recommended, especially when building on Linux).** The one-command script builds a `ProxmoxBackupClientGO.exe` with proper WebView2 support, using a disposable `golang` container (installs mingw + Wails, builds the frontend, runs `wails build`):
+
+```bash
+./build_gui_windows_docker.sh
+```
+
+**Native Windows (Chocolatey).** See **[BUILD.md](BUILD.md)** for the complete Windows toolchain setup:
+
+```powershell
+choco install go
+choco install mingw
+# then, in a non-elevated shell:
+build.bat          # GUI
+build_cli.bat      # CLI
+```
+
+### Feature status, changelog & internal docs
+
+- **[FEATURES_STATUS.md](FEATURES_STATUS.md)** — per-feature status matrix (implemented / tested / roadmap).
+- **[CHANGELOG.md](CHANGELOG.md)** — per-version change history.
+- **[TODO.md](TODO.md)** — open roadmap and ideas.
+- **[RELEASE_NOTES.md](RELEASE_NOTES.md)** — stable product state and available builds.
+- **[MSI_UNINSTALL_TEST.md](MSI_UNINSTALL_TEST.md)** — MSI uninstall dialog (keep/delete configuration) and its test plan.
+- **[FIXES_SUMMARY.md](FIXES_SUMMARY.md)** — GUI fix notes (directory vs machine-backup mode switching).
+
 ## 🌐 Tech Support in Italy
 
 Being said that the project and **ALL** its contributions will remain forever public and licensed under GPLv3 license, main sponsor of this project and also of the latest machine backup features, E.T.I. Srl ( https://etitech.net ) can provide, to who needs it, support for Proxmox deployments in general and specifically Windows backup tools.
