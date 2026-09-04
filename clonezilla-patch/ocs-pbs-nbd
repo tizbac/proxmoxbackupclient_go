@@ -1,0 +1,383 @@
+#!/bin/bash
+# ocs-pbs-nbd - attach a Proxmox Backup Server (PBS) backup via NBD,
+#               run from inside Clonezilla live (also usable standalone).
+#               The workflow is TUI-driven ($DIA) like the sshfs/samba
+#               remote-repository wizards in ocs-prep-repo.
+#
+# Flow:
+#   1. bring up the network exactly like a remote share does
+#      (network_config_if_necessary -> possibly the ocs-live-netcfg wizard)
+#   2. if a previous pbsnbd instance is still running, warn the user with a
+#      dialog and stop it (SIGINT first -> clean NBD disconnect, SIGKILL only
+#      if it does not go away); created instances survive the return to the
+#      main menu (setsid, own session)
+#   3. modprobe nbd max_part=0  (max_part=0: do NOT let the kernel probe
+#      partitions on the remote .fidx image)
+#   4. ask PBS server URL (the "https://" prefix / last used value is
+#      pre-filled), username (realm must be present, e.g. user@pam or user@pbs)
+#      and password, datastore; server/username/password/datastore of the last
+#      successful connection are kept in /tmp/pbsnbd-credentials and pre-fill
+#      the boxes on the next run. A namespace may be appended after a slash,
+#      e.g. "zfs/pippo" means datastore="zfs" and namespace="pippo". Everything
+#      after the first "/" is passed to pbsnbd's -namespace.
+#   5. /usr/local/sbin/pbsnbd -list prints the available backups, one
+#      'type/id/time/file[#comment]' line per .fidx file (sorted by date); the
+#      user selects one with a three-level menu: first the <kind>/<backupid>
+#      (e.g. vm/100, ct/50; the snapshot comment, if any, is shown too), then
+#      the specific backup by date, then the .fidx file to attach. The chosen
+#      pbsnbd -list line (including a trailing '#comment') is passed verbatim
+#      to -path.
+#   6. pbsnbd is forked in the background, so the Clonezilla main menu
+#      (or shell) stays usable while the NBD device attaches.
+#
+# Usage: ocs-pbs-nbd [NBD_NUMBER]    (default: 0 -> /dev/nbd0)
+
+DRBL_SCRIPT_PATH="${DRBL_SCRIPT_PATH:-/usr/share/drbl}"
+. $DRBL_SCRIPT_PATH/sbin/drbl-conf-functions
+. /etc/drbl/drbl-ocs.conf
+. $DRBL_SCRIPT_PATH/sbin/ocs-functions
+
+# Load the config in ocs-live.conf. This is specially for Clonezilla live. It will overwrite some settings of /etc/drbl/drbl-ocs.conf, such as $DIA...
+[ -e "/etc/ocs/ocs-live.conf" ] && . /etc/ocs/ocs-live.conf
+
+check_if_root
+check_if_in_clonezilla_live
+ask_and_load_lang_set
+
+# Create log dir
+mkdir -p $ocs_log_dir
+
+# check DIA
+check_DIA_set_ESC $DIA
+
+PBSNBD="/usr/local/sbin/pbsnbd"
+NBDNUM="${1:-0}"
+NBDDEV="/dev/nbd${NBDNUM}"
+DIA_TMP="$(mktemp /tmp/pbsnbd-dia.XXXXXX)"
+LIST_TMP="$(mktemp /tmp/pbsnbd-list.XXXXXX)"
+LIST_ERR="$(mktemp /tmp/pbsnbd-err.XXXXXX)"
+ATTACH_LOG="/tmp/pbsnbd-attach-$$.log"
+trap "rm -f \"$DIA_TMP\" \"$LIST_TMP\" \"$LIST_ERR\"" HUP INT QUIT TERM EXIT
+
+# From a pbsnbd -list line ("type/id/time/file[#comment]"): print the path
+# itself (for display, and -path) and the comment (if any).
+path_without_comment() { printf '%s' "${1%%\#*}"; }
+comment_of_line() {
+  case "$1" in
+    *#*) printf '%s' "${1##*\#}" ;;
+    *)   printf '' ;;
+  esac
+}
+
+# Remember the last connection on this live session, so the next run can
+# pre-fill the fields (Clonezilla live: /tmp is a ramdisk, lost on reboot).
+CRED_FILE="/tmp/pbsnbd-credentials"
+save_credentials() {
+  {
+    echo "server|$PBS_SERVER"
+    echo "username|$PBS_USER"
+    echo "password|$PBS_PASS"
+    echo "datastore|$PBS_DS_NS"
+  } > "$CRED_FILE"
+  chmod 600 "$CRED_FILE"
+}
+load_credentials() {
+  SAVED_SERVER=""; SAVED_USER=""; SAVED_PASS=""; SAVED_DSNS=""
+  [ -f "$CRED_FILE" ] || return 0
+  while IFS='|' read -r key value; do
+    [ -n "$key" ] || continue
+    case "$key" in
+      server)   SAVED_SERVER="$value" ;;
+      username) SAVED_USER="$value" ;;
+      password) SAVED_PASS="$value" ;;
+      datastore) SAVED_DSNS="$value" ;;
+    esac
+  done < "$CRED_FILE"
+  return 0
+}
+
+echo "=== Proxmox Backup Server NBD attachment ==="
+
+load_credentials
+
+# 1. start up the network, like connecting to a remote share (sshfs/nfs/smb)
+network_config_if_necessary
+
+# 2. stop a previous pbsnbd instance, so a rerun starts from a clean slate.
+#    SIGINT makes pbsnbd cleanly disconnect the NBD device (see nbd/main.go).
+PIDS=""
+pgrep -x pbsnbd >/dev/null 2>&1 && PIDS="$(pgrep -x pbsnbd | tr '\n' ' ')"
+if [ -n "$PIDS" ]; then
+  echo $msg_delimiter_star_line
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+  --msgbox "pbsnbd is already running (PID: ${PIDS}).\nIt will be stopped before attaching a new backup." 0 0 $DIA_ESC
+  echo "Stopping previous pbsnbd instance(s) (PID: ${PIDS})..."
+  pkill -INT -x pbsnbd 2>/dev/null || true
+  i=0
+  while pgrep -x pbsnbd >/dev/null 2>&1 && [ $i -lt 8 ]; do sleep 1; i=$((i+1)); done
+  if pgrep -x pbsnbd >/dev/null 2>&1; then
+    echo "Warning: pbsnbd did not disconnect on SIGINT, sending SIGKILL"
+    pkill -KILL -x pbsnbd 2>/dev/null || true
+    sleep 1
+  fi
+  pgrep -x pbsnbd >/dev/null 2>&1 && echo "Warning: pbsnbd is still running" >&2
+fi
+
+# 3. load the NBD kernel module
+if ! modprobe nbd max_part=0; then
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+  --msgbox "Unable to 'modprobe nbd max_part=0'!\n\n$msg_program_stop" 0 0 $DIA_ESC
+  exit 1
+fi
+sleep 1
+
+# 4a. PBS server URL (the https:// prefix is pre-filled for the user)
+ask_="true"
+while [ "$ask_" = "true" ]; do
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+  --inputbox "PBS server URL (https:// is pre-filled):" \
+  0 0 "${SAVED_SERVER:-https://}" $DIA_ESC \
+  2> "$DIA_TMP"
+  PBS_SERVER="$(cat "$DIA_TMP")"
+  case "$PBS_SERVER" in
+    https://*) [ "$PBS_SERVER" != "https://" ] && ask_="false" ;;
+    *) ;;
+  esac
+  if [ "$ask_" = "true" ]; then
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$msg_nchc_clonezilla" \
+    --yesno "The server URL must be complete and start with https://\n(e.g. https://pbs.example.com:8007)\n\n$msg_do_u_want_to_do_it_again" 0 0
+    case "$?" in
+      0) ask_="true" ;;
+      1) echo "$msg_program_stop!"; exit 1 ;;
+    esac
+  fi
+done
+echo "PBS server URL  : $PBS_SERVER"
+
+# 4b. PBS username (@pam / @pbs realm) and password
+ask_="true"
+while [ "$ask_" = "true" ]; do
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+  --inputbox "PBS username (must include the realm, e.g. root@pam or user@pbs):" \
+  0 0 "${SAVED_USER:-root@pam}" $DIA_ESC \
+  2> "$DIA_TMP"
+  PBS_USER="$(cat "$DIA_TMP")"
+  case "$PBS_USER" in
+    *@*) ask_="false" ;;
+    *) ;;
+  esac
+  if [ "$ask_" = "true" ]; then
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$msg_nchc_clonezilla" \
+    --yesno "The username must include a realm, e.g. 'user@pam' or 'user@pbs'.\n\n$msg_do_u_want_to_do_it_again" 0 0
+    case "$?" in
+      0) ask_="true" ;;
+      1) echo "$msg_program_stop!"; exit 1 ;;
+    esac
+  fi
+done
+echo "PBS username    : $PBS_USER"
+
+ask_="true"
+while [ "$ask_" = "true" ]; do
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+  --passwordbox "Enter the password for user '${PBS_USER}':" 8 60 "${SAVED_PASS}" \
+  2> "$DIA_TMP"
+  PBS_PASS="$(cat "$DIA_TMP")"
+  if [ -n "$PBS_PASS" ]; then
+    ask_="false"
+  else
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$msg_nchc_clonezilla" \
+    --yesno "The password must not be empty.\n\n$msg_do_u_want_to_do_it_again" 0 0
+    case "$?" in
+      0) ask_="true" ;;
+      1) echo "$msg_program_stop!"; exit 1 ;;
+    esac
+  fi
+done
+echo "PBS password    : (entered)"
+
+# 4c. datastore (optionally with a namespace after the first "/")
+ask_="true"
+while [ "$ask_" = "true" ]; do
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+  --inputbox "PBS datastore (namespace may be appended after a '/', e.g. zfs or zfs/pippo):" \
+  0 0 "${SAVED_DSNS}" $DIA_ESC \
+  2> "$DIA_TMP"
+  PBS_DS_NS="$(cat "$DIA_TMP")"
+  case "$PBS_DS_NS" in
+    '')      ;;
+    /*)      ;;
+    *)       ask_="false" ;;
+  esac
+  if [ "$ask_" = "true" ]; then
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$msg_nchc_clonezilla" \
+    --yesno "The datastore must not be empty and must not start with '/'.\nExample: zfs  or  zfs/pippo\n\n$msg_do_u_want_to_do_it_again" 0 0
+    case "$?" in
+      0) ask_="true" ;;
+      1) echo "$msg_program_stop!"; exit 1 ;;
+    esac
+  fi
+done
+PBS_DS="${PBS_DS_NS%%/*}"                 # first component  -> datastore
+if [ "$PBS_DS_NS" != "${PBS_DS_NS#*/}" ]; then
+  PBS_NS="${PBS_DS_NS#*/}"                # everything after the first "/" -> namespace
+else
+  PBS_NS=""
+fi
+NS_OPT=""
+[ -n "$PBS_NS" ] && NS_OPT="-namespace $PBS_NS"
+echo "PBS datastore   : ${PBS_DS}"
+echo "PBS namespace   : ${PBS_NS:-<none>}"
+
+# remember this connection for the next run of the flow
+save_credentials
+echo "Connection settings saved to ${CRED_FILE} (for pre-filling the next run)."
+
+# 5. list the backups
+echo $msg_delimiter_star_line
+echo "> Listing backups on ${PBS_SERVER} (datastore=${PBS_DS}${PBS_NS:+, namespace=${PBS_NS}})..."
+if ! "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
+     -datastore "$PBS_DS" $NS_OPT -list > "$LIST_TMP" 2> "$LIST_ERR"; then
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+  --msgbox "Could not list the backups:\n$(cat "$LIST_ERR")\n\n$msg_program_stop" 0 0 $DIA_ESC
+  exit 1
+fi
+if [ ! -s "$LIST_TMP" ]; then
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+  --msgbox "No backups found in datastore '${PBS_DS}'${PBS_NS:+ (namespace '${PBS_NS}')}.\n\n$msg_program_stop" 0 0 $DIA_ESC
+  exit 1
+fi
+
+# 6. three-level selection: (a) <kind>/<backupid>, (b) the backup by date,
+#    (c) the .fidx file to attach. The matching -list line is handed to
+#    -path verbatim, so nothing is reformatted during the selection.
+declare -A KDT
+declare -a KDT_ORDER
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  r2="${line#*/}"; r3="${r2#*/}"
+  kdt="${line%%/*}/${r2%%/*}|${r3%%/*}"
+  if [ -z "${KDT[$kdt]+x}" ]; then
+    KDT[$kdt]=1
+    KDT_ORDER+=("$kdt")
+  else
+    KDT[$kdt]=$((KDT[$kdt]+1))
+  fi
+done < "$LIST_TMP"
+
+# (a) pick the VM / container / host (skip the menu if there is only one)
+declare -a KEYS
+declare -A KEY_N
+n=0
+for kdt in "${KDT_ORDER[@]}"; do
+  key="${kdt%%|*}"
+  if [ -z "${KEY_N[$key]+x}" ]; then
+    KEY_N[$key]=$((n+1))
+    KEYS+=("$key")
+    n=$((n+1))
+  fi
+done
+if [ "$n" -gt 1 ]; then
+  declare -a MENU1
+  i=1
+  for key in "${KEYS[@]}"; do
+    comment=""
+    while IFS= read -r line; do
+      r2="${line#*/}"
+      [ "${line%%/*}/${r2%%/*}" = "$key" ] || continue
+      comment="$(comment_of_line "$line")"
+      break
+    done < "$LIST_TMP"
+    label="$key"
+    [ -n "$comment" ] && label="$key  ($comment)"
+    MENU1+=("$i" "$label")
+    i=$((i+1))
+  done
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+  --menu "Select the VM / container / host to attach to ${NBDDEV}:" 0 0 15 \
+  "${MENU1[@]}" $DIA_ESC \
+  2> "$DIA_TMP"
+  CHOICE1="$(cat "$DIA_TMP")"
+  if [ -z "$CHOICE1" ]; then
+    echo "$msg_program_stop!"
+    exit 1
+  fi
+  KEY="${KEYS[$((CHOICE1-1))]}"
+else
+  KEY="${KEYS[0]}"
+fi
+echo "Selected backup ID : $KEY"
+
+# (b) pick the backup by date (skip the menu if there is only one)
+declare -a MENU2
+declare -a DATES2
+i=1
+for kdt in "${KDT_ORDER[@]}"; do
+  [ "${kdt%%|*}" = "$KEY" ] || continue
+  dt="${kdt#*|}"
+  MENU2+=("$i" "$dt  (${KDT[$kdt]} file(s))")
+  DATES2+=("$dt")
+  i=$((i+1))
+done
+num2=$((i-1))
+if [ "$num2" -gt 1 ]; then
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+  --menu "Backups of ${KEY} on ${PBS_SERVER} (select by date):" 0 0 15 \
+  "${MENU2[@]}" $DIA_ESC \
+  2> "$DIA_TMP"
+  CHOICE2="$(cat "$DIA_TMP")"
+  if [ -z "$CHOICE2" ]; then
+    echo "$msg_program_stop!"
+    exit 1
+  fi
+  DT="${DATES2[$((CHOICE2-1))]}"
+else
+  DT="${DATES2[0]}"
+fi
+echo "Selected backup    : $KEY/$DT"
+
+# (c) pick the .fidx file (skip the menu if there is only one)
+declare -a MENU3
+declare -a LINES3
+i=1
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  r2="${line#*/}"; f2="${r2%%/*}"; r3="${r2#*/}"; dt="${r3%%/*}"
+  [ "${line%%/*}/${f2}" = "$KEY" ] || continue
+  [ "$dt" = "$DT" ] || continue
+  file="$(path_without_comment "${r3#*/}")"
+  MENU3+=("$i" "$file")
+  LINES3+=("$line")
+  i=$((i+1))
+done < "$LIST_TMP"
+num3=$((i-1))
+if [ "$num3" -gt 1 ]; then
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+  --menu "Select the file of ${KEY} (${DT}) to attach:" 0 0 15 \
+  "${MENU3[@]}" $DIA_ESC \
+  2> "$DIA_TMP"
+  CHOICE3="$(cat "$DIA_TMP")"
+  if [ -z "$CHOICE3" ]; then
+    echo "$msg_program_stop!"
+    exit 1
+  fi
+  SELECTED="${LINES3[$((CHOICE3-1))]}"
+else
+  SELECTED="${LINES3[0]}"
+fi
+echo "Selected file      : $SELECTED"
+
+# 7. attach in the background (fork), so the menu / shell does not block
+NS_DISP=""
+[ -n "$PBS_NS" ] && NS_DISP=", namespace=${PBS_NS}"
+echo "> Attaching '${SELECTED}' to ${NBDDEV} in the background (datastore=${PBS_DS}${NS_DISP})..."
+# setsid + </dev/null: run in its own session without a controlling terminal,
+# so returning to the Clonezilla main menu does not take the NBD server down.
+setsid "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
+     -datastore "$PBS_DS" $NS_OPT -nbd "$NBDNUM" -path "$SELECTED" < /dev/null > "$ATTACH_LOG" 2>&1 &
+PBSNBD_PID=$!
+
+$DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
+--msgbox "pbsnbd forked in background (PID ${PBSNBD_PID}).\n\n${NBDDEV} will appear once the NBD connection is established.\nCheck with:  lsblk\nDetach later with:  nbd-client -d ${NBDDEV}\n\nLog: ${ATTACH_LOG}" 0 0 $DIA_ESC
+
+exit 0

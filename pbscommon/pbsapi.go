@@ -102,6 +102,7 @@ type BackupManifest struct {
 	BackupID    string      `json:"backup-id"`
 	BackupTime  int64       `json:"backup-time"`
 	BackupType  string      `json:"backup-type"`
+	Comment     string      `json:"comment"`
 	Files       []File      `json:"files"`
 	Signature   interface{} `json:"signature"`
 	Unprotected Unprotected `json:"unprotected"`
@@ -122,6 +123,15 @@ type PBSClient struct {
 	APIToken        string
 	Secret          string
 	AuthID          string
+
+	// Ticket login (username+password → POST /access/ticket). When Ticket is
+	// non-empty, requests authenticate with "Cookie: PBSAuthCookie=<ticket>"
+	// (+ CSRFPreventionToken) instead of the PBSAPIToken Authorization header.
+	// This mirrors how PBS's own web UI / client authenticate.
+	Username  string
+	Password  string
+	Ticket    string
+	CSRFToken string
 
 	Datastore string
 	Namespace string
@@ -265,6 +275,119 @@ func FetchServerFingerprint(baseURL string) (string, error) {
 	return strings.Join(pairs, ":"), nil
 }
 
+// percentEncodeCookie percent-encodes a value for use in the PBSAuthCookie
+// cookie value, matching PBS's own Rust client (percent-encoding crate,
+// DEFAULT_ENCODE_SET): only RFC 3986 unreserved chars (A-Za-z0-9 - . _ ~)
+// are left as-is; everything else (":" "@" "/" "+" "=" ...) is %XX-encoded.
+func percentEncodeCookie(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9',
+			c == '-', c == '.', c == '_', c == '~':
+			b.WriteByte(c)
+		default:
+			fmt.Fprintf(&b, "%%%02X", c)
+		}
+	}
+	return b.String()
+}
+
+// setAuth applies the active PBS credentials to req. When a ticket is present
+// it sends "Cookie: PBSAuthCookie=<ticket>" (+ CSRFPreventionToken when set);
+// otherwise it falls back to the classic "Authorization: PBSAPIToken=..." header.
+func (pbs *PBSClient) setAuth(req *http.Request) {
+	if pbs.Ticket != "" {
+		req.Header.Set("Cookie", "PBSAuthCookie="+percentEncodeCookie(pbs.Ticket))
+		if pbs.CSRFToken != "" {
+			req.Header.Set("CSRFPreventionToken", pbs.CSRFToken)
+		}
+		return
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+}
+
+// authHeaderLines returns the raw "Key: Value" credential header lines for the
+// manual (pre-hijacked) HTTP/1.1 upgrade request built in Connect.
+func (pbs *PBSClient) authHeaderLines() []string {
+	if pbs.Ticket != "" {
+		lines := []string{"Cookie: PBSAuthCookie=" + percentEncodeCookie(pbs.Ticket)}
+		if pbs.CSRFToken != "" {
+			lines = append(lines, "CSRFPreventionToken: "+pbs.CSRFToken)
+		}
+		return lines
+	}
+	return []string{fmt.Sprintf("Authorization: PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret)}
+}
+
+// redactRequest masks the credential from a fully-built raw request string so
+// it can be logged without leaking the ticket / CSRF token / API secret.
+func (pbs *PBSClient) redactRequest(s string) string {
+	if pbs.Ticket != "" {
+		s = strings.ReplaceAll(s, "PBSAuthCookie="+percentEncodeCookie(pbs.Ticket), "PBSAuthCookie=<redacted>")
+		if pbs.CSRFToken != "" {
+			s = strings.ReplaceAll(s, "CSRFPreventionToken: "+pbs.CSRFToken, "CSRFPreventionToken: <redacted>")
+		}
+		return s
+	}
+	return strings.Replace(s,
+		fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret),
+		fmt.Sprintf("PBSAPIToken=%s:<redacted>", pbs.AuthID), 1)
+}
+
+// ticketResp mirrors the JSON returned by POST /api2/json/access/ticket.
+type ticketResp struct {
+	Data struct {
+		Ticket              string `json:"ticket"`
+		CSRFPreventionToken string `json:"CSRFPreventionToken"`
+		Username            string `json:"username"`
+	} `json:"data"`
+}
+
+// ObtainTicket exchanges pbs.Username + pbs.Password for a PBS ticket via
+// POST /api2/json/access/ticket and stores it (plus the CSRF token) so that
+// subsequent requests authenticate with the PBSAuthCookie cookie. Call this
+// once after construction when using username/password instead of an API token.
+func (pbs *PBSClient) ObtainTicket() error {
+	if pbs.Username == "" || pbs.Password == "" {
+		return fmt.Errorf("username and password are required to obtain a ticket")
+	}
+	client := &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: pbs.buildTLSConfig()},
+	}
+	form := url.Values{}
+	form.Set("username", pbs.Username)
+	form.Set("password", pbs.Password)
+	req, err := http.NewRequest("POST", pbs.BaseURL+"/api2/json/access/ticket", strings.NewReader(form.Encode()))
+	if err != nil {
+		return fmt.Errorf("failed to create ticket request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("ticket request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ticket login failed: HTTP %d - %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var tr ticketResp
+	if err := json.Unmarshal(body, &tr); err != nil {
+		return fmt.Errorf("failed to parse ticket response: %w", err)
+	}
+	if tr.Data.Ticket == "" {
+		return fmt.Errorf("ticket login returned no ticket: %s", strings.TrimSpace(string(body)))
+	}
+	pbs.Ticket = tr.Data.Ticket
+	pbs.CSRFToken = tr.Data.CSRFPreventionToken
+	return nil
+}
+
 func (pbs *PBSClient) ListSnapshots() ([]BackupManifest, error) {
 	client := &http.Client{
 		Timeout:   10 * time.Second,
@@ -282,7 +405,7 @@ func (pbs *PBSClient) ListSnapshots() ([]BackupManifest, error) {
 		return ret, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	pbs.setAuth(req)
 	resp, err := client.Do(req)
 	if err != nil {
 		return ret, err
@@ -295,6 +418,29 @@ func (pbs *PBSClient) ListSnapshots() ([]BackupManifest, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return ret, err
 	}
+	// sort snapshots by date, newest first (then backup id/type) so -list is
+	// deterministic
+	slices.SortFunc(r.Data, func(a, b BackupManifest) int {
+		if a.BackupTime != b.BackupTime {
+			if a.BackupTime > b.BackupTime {
+				return -1
+			}
+			return 1
+		}
+		if a.BackupID != b.BackupID {
+			if a.BackupID < b.BackupID {
+				return -1
+			}
+			return 1
+		}
+		if a.BackupType != b.BackupType {
+			if a.BackupType < b.BackupType {
+				return -1
+			}
+			return 1
+		}
+		return 0
+	})
 	return r.Data, nil
 
 }
@@ -308,7 +454,7 @@ func (pbs *PBSClient) CreateFixedIndex(fic FixedIndexCreateReq) (uint64, error) 
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	pbs.setAuth(req)
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
 
 	resp2, err := pbs.Client.Do(req)
@@ -394,7 +540,7 @@ func (pbs *PBSClient) CloseFixedIndex(writerid uint64, checksum string, totalsiz
 	if err != nil {
 		return err
 	}
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	pbs.setAuth(req)
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
 
 	resp2, err := pbs.Client.Do(req)
@@ -416,16 +562,22 @@ func (pbs *PBSClient) CloseFixedIndex(writerid uint64, checksum string, totalsiz
 	return nil
 }
 
-// redactedHeaders returns a copy of h with the Authorization value masked, so
-// request headers can be logged without leaking the PBS API token (audit L-01).
+// redactedHeaders returns a copy of h with credential values masked, so
+// request headers can be logged without leaking the PBS API token, ticket
+// cookie, or CSRF token (audit L-01).
 func redactedHeaders(h http.Header) http.Header {
 	out := make(http.Header, len(h))
 	for k, v := range h {
-		if k == "Authorization" {
+		switch k {
+		case "Authorization":
 			out[k] = []string{"PBSAPIToken=<redacted>"}
-			continue
+		case "Cookie":
+			out[k] = []string{"PBSAuthCookie=<redacted>"}
+		case "CSRFPreventionToken":
+			out[k] = []string{"<redacted>"}
+		default:
+			out[k] = v
 		}
-		out[k] = v
 	}
 	return out
 }
@@ -449,7 +601,7 @@ func (pbs *PBSClient) CreateDynamicIndex(name string) (uint64, error) {
 		return 0, err
 	}
 
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	pbs.setAuth(req)
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
 
 	fmt.Printf("Sending POST request to: %s\n", req.URL.String())
@@ -627,7 +779,7 @@ func (pbs *PBSClient) CloseDynamicIndex(writerid uint64, checksum string, totals
 	if err != nil {
 		return err
 	}
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	pbs.setAuth(req)
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
 
 	resp2, err := pbs.Client.Do(req)
@@ -717,7 +869,7 @@ func (pbs *PBSClient) Finish() error {
 	if err != nil {
 		return fmt.Errorf("failed to create finish request: %w", err)
 	}
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	pbs.setAuth(req)
 
 	resp2, err := pbs.Client.Do(req)
 	if err != nil {
@@ -762,8 +914,8 @@ func (pbs *PBSClient) TestConnection() error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Add PBS authentication header
-	req.Header.Set("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	// Add PBS authentication (ticket cookie or API token, see setAuth)
+	pbs.setAuth(req)
 
 	// Execute request
 	resp, err := client.Do(req)
@@ -880,7 +1032,7 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 					requestLines = append(requestLines, "GET /api2/json/reader?"+q.Encode()+" HTTP/1.1")
 				}
 				requestLines = append(requestLines, "Host: "+addr)
-				requestLines = append(requestLines, "Authorization: "+fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+				requestLines = append(requestLines, pbs.authHeaderLines()...)
 				if !reader {
 					requestLines = append(requestLines, "Upgrade: proxmox-backup-protocol-v1")
 				} else {
@@ -889,11 +1041,9 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 				requestLines = append(requestLines, "Connection: Upgrade")
 
 				fullRequest := strings.Join(requestLines, "\r\n") + "\r\n\r\n"
-				// Redact the API token secret before logging the raw request —
-				// fullRequest carries "Authorization: PBSAPIToken=<id>:<secret>".
-				redactedRequest := strings.Replace(fullRequest,
-					fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret),
-					fmt.Sprintf("PBSAPIToken=%s:<redacted>", pbs.AuthID), 1)
+				// Redact the credential before logging the raw request —
+				// fullRequest carries the API token or the PBSAuthCookie ticket.
+				redactedRequest := pbs.redactRequest(fullRequest)
 				fmt.Printf("=== SENDING HTTP REQUEST TO PBS ===\n%s=== END REQUEST ===\n", redactedRequest)
 
 				// Send the request
@@ -1006,7 +1156,7 @@ func (pbs *PBSClient) DownloadPreviousToBytes(archivename string) ([]byte, error
 	q.Add("archive-name", archivename)
 
 	req, err := http.NewRequest("GET", pbs.BaseURL+"/previous?"+q.Encode(), nil)
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	pbs.setAuth(req)
 	if err != nil {
 		return nil, err
 	}
@@ -1033,7 +1183,7 @@ func (pbs *PBSClient) DownloadToBytes(archivename string) ([]byte, error) { //In
 	q.Add("file-name", archivename)
 
 	req, err := http.NewRequest("GET", pbs.BaseURL+"/download?"+q.Encode(), nil)
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	pbs.setAuth(req)
 	if err != nil {
 		return nil, err
 	}
@@ -1090,7 +1240,7 @@ func (pbs *PBSClient) GetChunkData(digest string) ([]byte, error) {
 	q.Add("digest", digest)
 
 	req, err := http.NewRequest("GET", pbs.BaseURL+"/chunk?"+q.Encode(), nil)
-	req.Header.Add("Authorization", fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret))
+	pbs.setAuth(req)
 	if err != nil {
 		return nil, err
 	}

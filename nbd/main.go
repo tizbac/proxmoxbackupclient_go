@@ -127,10 +127,13 @@ func main() {
 	certFingerprintFlag := flag.String("certfingerprint", "", "Certificate fingerprint for SSL connection, example: ea:7d:06:f9...")
 	authIDFlag := flag.String("authid", "", "Authentication ID (PBS Api token)")
 	secretFlag := flag.String("secret", "", "Secret for authentication")
+	usernameFlag := flag.String("username", "", "Username for ticket login (used with -password; overrides -authid/-secret)")
+	passwordFlag := flag.String("password", "", "Password for ticket login (with -username)")
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	nbdFlag := flag.Int("nbd", 0, "NBD number")
 	backupPath := flag.String("path", "", "Path to backup, eg. vm/100/2026-03-01T00:07:00Z/drive-scsi0.img.fidx")
+	listFlag := flag.Bool("list", false, "List available fidx images as 'type/id/time/file' lines and exit (no TUI)")
 	helpFlag := flag.Bool("help", false, "Show help")
 	flag.Parse()
 	if *helpFlag {
@@ -138,16 +141,66 @@ func main() {
 		return
 	}
 
+	if *listFlag { // Non-interactive: print available fidx images and exit
+		client = &pbscommon.PBSClient{
+			BaseURL:         *baseURLFlag,
+			CertFingerPrint: *certFingerprintFlag,
+			AuthID:          *authIDFlag,
+			Secret:          *secretFlag,
+			Username:        *usernameFlag,
+			Password:        *passwordFlag,
+			Datastore:       *datastoreFlag,
+			Namespace:       *namespaceFlag,
+			Insecure:        true,
+		}
+		if *usernameFlag != "" {
+			if err := client.ObtainTicket(); err != nil {
+				fmt.Fprintln(os.Stderr, "ticket login failed:", err)
+				os.Exit(1)
+			}
+		}
+		snaps, err := client.ListSnapshots()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "list:", err)
+			os.Exit(1)
+		}
+		for _, sn := range snaps {
+			for _, f := range sn.Files {
+				if strings.HasSuffix(f.Filename, ".fidx") {
+					t := time.Unix(sn.BackupTime, 0).Format(time.RFC3339)
+					if sn.Comment != "" {
+						fmt.Printf("%s/%s/%s/%s#%s\n", sn.BackupType, sn.BackupID, t, f.Filename, sn.Comment)
+					} else {
+						fmt.Printf("%s/%s/%s/%s\n", sn.BackupType, sn.BackupID, t, f.Filename)
+					}
+				}
+			}
+		}
+		return
+	}
+
 	if *backupPath != "" { //User specified a backup path, no GUI
-		parts := strings.Split(*backupPath, "/")
+		cleanPath := *backupPath
+		if i := strings.Index(cleanPath, "#"); i >= 0 { // allow a trailing #comment from a -list line
+			cleanPath = cleanPath[:i]
+		}
+		parts := strings.Split(cleanPath, "/")
 		client = &pbscommon.PBSClient{
 			BaseURL:         *baseURLFlag,
 			CertFingerPrint: *certFingerprintFlag, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
 			AuthID:          *authIDFlag,
 			Secret:          *secretFlag,
+			Username:        *usernameFlag,
+			Password:        *passwordFlag,
 			Datastore:       *datastoreFlag,
 			Namespace:       *namespaceFlag,
 			Insecure:        true,
+		}
+		if *usernameFlag != "" {
+			if err := client.ObtainTicket(); err != nil {
+				fmt.Fprintln(os.Stderr, "ticket login failed:", err)
+				os.Exit(1)
+			}
 		}
 		client.Manifest.BackupID = parts[1]
 		client.Manifest.BackupType = parts[0]
@@ -168,11 +221,15 @@ func main() {
 	loading_modal := tview.NewModal().SetText("Connecting to server...")
 	error_modal := tview.NewModal()
 	txt_pbs_server := tview.NewInputField().SetLabel("PBS Server").SetPlaceholder("https://1.2.3.4:8007").SetFieldWidth(30)
+	txt_username := tview.NewInputField().SetLabel("Username (ticket)").SetPlaceholder("root@pbs").SetFieldWidth(30)
+	txt_password := tview.NewInputField().SetLabel("Password (ticket)").SetPlaceholder("secret").SetFieldWidth(30)
 	txt_api_token := tview.NewInputField().SetLabel("API Token").SetPlaceholder("root@pam!yourtoken").SetFieldWidth(30)
 	txt_secret := tview.NewInputField().SetLabel("PBS Secret").SetPlaceholder("a-b-c-d").SetFieldWidth(30)
 	dataset_namespace := tview.NewInputField().SetLabel("Dataset / Namespace").SetPlaceholder("dataset/namespace1/namespace2").SetFieldWidth(30)
 
 	txt_pbs_server.SetText(*baseURLFlag)
+	txt_username.SetText(*usernameFlag)
+	txt_password.SetText(*passwordFlag)
 	txt_api_token.SetText(*authIDFlag)
 	txt_secret.SetText(*secretFlag)
 	dataset_namespace.SetText((*datastoreFlag) + "/" + (*namespaceFlag))
@@ -180,20 +237,39 @@ func main() {
 	snaproot := tview.NewTreeNode("/").SetColor(tcell.ColorDarkRed)
 	snaplist := tview.NewTreeView().SetRoot(snaproot)
 	form := tview.NewForm().AddFormItem(txt_pbs_server).
+		AddFormItem(txt_username).
+		AddFormItem(txt_password).
 		AddFormItem(txt_api_token).
 		AddFormItem(txt_secret).
 		AddFormItem(dataset_namespace).
 		AddButton("Next", func() {
 			app.SetRoot(loading_modal, false)
 			ns := strings.Split(dataset_namespace.GetText(), "/")
-			client = &pbscommon.PBSClient{
-				BaseURL:         txt_pbs_server.GetText(),
-				CertFingerPrint: *certFingerprintFlag, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
-				AuthID:          txt_api_token.GetText(),
-				Secret:          txt_secret.GetText(),
-				Datastore:       ns[0],
-				Namespace:       strings.Join(ns[1:], "/"),
-				Insecure:        true,
+			if uname := txt_username.GetText(); uname != "" {
+				client = &pbscommon.PBSClient{
+					BaseURL:         txt_pbs_server.GetText(),
+					CertFingerPrint: *certFingerprintFlag,
+					Username:        uname,
+					Password:        txt_password.GetText(),
+					Datastore:       ns[0],
+					Namespace:       strings.Join(ns[1:], "/"),
+					Insecure:        true,
+				}
+				if err := client.ObtainTicket(); err != nil {
+					error_modal.SetText("ticket login failed: " + err.Error())
+					app.SetRoot(error_modal, true)
+					return
+				}
+			} else {
+				client = &pbscommon.PBSClient{
+					BaseURL:         txt_pbs_server.GetText(),
+					CertFingerPrint: *certFingerprintFlag,
+					AuthID:          txt_api_token.GetText(),
+					Secret:          txt_secret.GetText(),
+					Datastore:       ns[0],
+					Namespace:       strings.Join(ns[1:], "/"),
+					Insecure:        true,
+				}
 			}
 
 			snap, err := client.ListSnapshots()

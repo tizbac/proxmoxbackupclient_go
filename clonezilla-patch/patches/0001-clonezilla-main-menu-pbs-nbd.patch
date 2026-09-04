@@ -1,0 +1,26 @@
+--- a/usr/sbin/clonezilla
++++ b/usr/sbin/clonezilla
+@@ -60,6 +60,7 @@
+     "remote-dest"          "$msg_remote_clone_destination" \
+     $lite_server_msg_1      $lite_server_msg_2 \
+     $lite_client_msg_1      $lite_client_msg_2 \
++    "pbs-nbd"               "Attach a Proxmox Backup Server backup via NBD" \
+     2> $TMP
+     ocs_live_type="$(cat $TMP)"
+     [ -f "$TMP" ] && rm -f $TMP
+@@ -76,7 +77,7 @@
+     fi
+   fi
+   case "$ocs_live_type" in
+-    device-image|device-device|remote-source|remote-dest|lite-server|lite-client) true;;
++    device-image|device-device|remote-source|remote-dest|lite-server|lite-client|pbs-nbd) true;;
+     *) 
+        echo "\"$ocs_live_type\" is an unknown or unsupported type! You have to specify a correct ocs_live_type (device-image or device-device)!"
+        echo "$msg_program_stop!"
+@@ -91,6 +92,7 @@
+     remote-dest)   ocs-onthefly -l $lang $postaction_opt -s ask_user -d ask_user;;
+     lite-server)   ocs-live-feed-img;;
+     lite-client)   ocs-live-get-img;;
++    pbs-nbd)       /usr/local/sbin/ocs-pbs-nbd ;;
+   esac
+ } # end of ocs_interactive
