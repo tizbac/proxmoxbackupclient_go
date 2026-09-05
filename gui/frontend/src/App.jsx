@@ -1905,7 +1905,6 @@ function App() {
               selectedDrives={selectedDrives}
             />
           )}
-              </div>
 
               {backupType === 'directory' && (
                 <div className="form-group">
@@ -2748,6 +2747,7 @@ function App() {
             </p>
           </div>
         </div>
+      </div>
 
     </>
   )
