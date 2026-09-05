@@ -1,6 +1,6 @@
 # Proxmox Backup Client — Client Windows per Proxmox Backup Server
 
-[🇬🇧 English](README.md) | [🇫🇷 Français](README.fr.md) | [🇮🇹 Italiano](README.it.md)
+[🇬🇧 English](README.md) · [🇫🇷 Français](README.fr.md) · [🇮🇹 Italiano](README.it.md) · [🇩🇪 Deutsch](README.de.md) · [🇪🇸 Español](README.es.md) · [🇷🇺 Русский](README.ru.md) · [🇨🇳 中文](README.zh.md) · [🇯🇵 日本語](README.ja.md) · [🇬🇷 Ελληνικά](README.el.md) · [🇷🇴 Română](README.ro.md) · [🇸🇪 Svenska](README.sv.md) · [🇸🇦 العربية](README.ar.md) · [🇮🇷 فارسی](README.fa.md)
 
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
@@ -8,9 +8,16 @@
 
 **Proxmox Backup Client è un client di backup open-source (GPL-3.0) per Proxmox Backup Server (PBS), funzionante su Windows e Linux.**
 
-Una GUI moderna (**Proxmox Backup Client GUI**, basata sulla GUI Nimbus Backup di RDEM Systems) per eseguire il backup di server e workstation Windows verso PBS — snapshot coerenti via VSS, job pianificati, modalità file e disco, navigazione/ripristino degli snapshot, supporto multi-PBS e modalità servizio Windows — oltre a una suite CLI completa per backup di directory, stream e macchina intera.
+È una **suite di strumenti** per eseguire il backup verso PBS:
+
+- **Proxmox Backup Client GUI** (basata sulla GUI Nimbus Backup di RDEM Systems) — interfaccia grafica moderna per eseguire il backup di server e workstation Windows verso PBS: snapshot coerenti via VSS, job pianificati, modalità file e disco, navigazione/ripristino degli snapshot, supporto multi-PBS e modalità servizio Windows.
+- **`proxmoxbackup-directory`** — strumento a riga di comando per backup di directory (PXAR) con deduplicazione.
+- **`proxmoxbackup-machine`** — strumento a riga di comando per backup live completi del sistema Windows (FIDX, VSS, incrementale).
+- **`proxmoxbackup-nbd`** — server NBD per ripristinare backup disco (Linux).
 
 > Parole chiave: client proxmox backup windows · client PBS · backup Windows VSS · backup remoto immutabile · interfaccia Proxmox Backup Server.
+
+> ⚠️ **Disclaimer:** Questo progetto **non è affiliato in alcun modo** con **Proxmox Server Solutions GmbH**. "Proxmox", il logo Proxmox e i relativi nomi sono di proprietà dei rispettivi titolari; qui vengono usati **solo** per dichiarare la compatibilità. Vedi [proxmox.com](https://www.proxmox.com/) per i loro prodotti.
 
 ## 📦 Download
 
@@ -327,17 +334,36 @@ Il software è ancora di qualità alpha e non ci assumiamo alcuna responsabilit�
 
 GPLv3 — vedi il file [LICENSE](LICENSE).
 
+## 🏷️ Branding
+
+Ogni contributore che abbia contribuito con **almeno 5 commit** che aggiungono funzionalità o correzioni, ha il diritto di far aggiungere i propri dati di branding per uso commerciale.
+
+Le uniche condizioni sono che l'azienda verso cui il branding punta **non** stia conducendo alcuna delle seguenti attività:
+
+- Campagne di malware
+- Aziende che promuovono la guerra (questo si applica a qualsiasi paese, inclusi quelli occidentali)
+- Truffe
+- Furto di dati
+- Traffico di esseri umani/minori
+- Violenza
+- Discriminazione
+- Droghe
+- Qualsiasi attività generalmente riconosciuta come illegale
+
+Se dovesse emergere qualche reclamo nei confronti di uno dei contributori, cercheremo di metterci in contatto; se non viene fornita una spiegazione valida, **termineremo immediatamente** quel beneficio.
+
+La **licenza GPLv3 rimane attiva**, e sarai comunque libero di creare un fork del progetto e compilare i tuoi eseguibili.
+
 ## 🤝 Contribuisci
 
-I contributi sono benvenuti, in particolare:
+La GUI è ora completamente implementata, ma i contributi sono ancora benvenuti, in particolare:
 
-1. Icona nella tray per mostrare l'avanzamento del backup e il backup in corso
-2. Supporto alla crittografia
-3. Un modo per configurare tramite GUI e magari creare un file di job JSON simile a freefilesync
-4. Upload/compressione asincroni e upload/compressione dei chunk multicore
-5. Patch lato Proxmox per aggiungere un altro tipo di voce al formato pxar con i descrittori di sicurezza Windows
-6. Supporto per i symlink Windows
-7. Qualsiasi cosa interessante ti venga in mente :)
+1. Supporto alla crittografia (ancora mancante)
+2. Migrazione fisico-virtuale (P2V), ripristino di un backup bare-metal in una macchina virtuale (ancora incompleta)
+3. Upload asincrono / upload multicore dei chunk (la compressione multicore è già implementata per il machine backup)
+4. Patch lato Proxmox per aggiungere un altro tipo di voce al formato pxar con i descrittori di sicurezza Windows
+5. Supporto per i symlink Windows
+6. Qualsiasi cosa interessante ti venga in mente :)
 
 ## Informazioni sui contributori di Proxmox Backup Client GO
 
