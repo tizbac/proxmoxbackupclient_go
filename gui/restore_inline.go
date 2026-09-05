@@ -43,6 +43,8 @@ type RestoreOptions struct {
 	BaseURL         string
 	AuthID          string
 	Secret          string
+	Ticket          string // PBS session ticket (u/p login); preferred over AuthID/Secret when set
+	CSRFToken       string
 	Datastore       string
 	Namespace       string
 	CertFingerprint string
@@ -88,7 +90,7 @@ type SnapshotEntry struct {
 // ListSnapshotsInline lists available snapshots from PBS.
 // SECURITY: Only lists snapshots from the specified PBS server/datastore/namespace
 // to prevent cross-server snapshot access.
-func ListSnapshotsInline(baseURL, authID, secret, datastore, namespace, certFingerprint, backupID string) ([]SnapshotInfo, error) {
+func ListSnapshotsInline(baseURL, authID, secret, ticket, csrf, datastore, namespace, certFingerprint, backupID string) ([]SnapshotInfo, error) {
 	writeBackupLog(fmt.Sprintf("Listing snapshots for backup ID: %s on %s/%s/%s", backupID, baseURL, datastore, namespace))
 
 	client := &pbscommon.PBSClient{
@@ -96,6 +98,8 @@ func ListSnapshotsInline(baseURL, authID, secret, datastore, namespace, certFing
 		CertFingerPrint:  certFingerprint,
 		AuthID:           authID,
 		Secret:           secret,
+		Ticket:           ticket,
+		CSRFToken:        csrf,
 		Datastore:        datastore,
 		Namespace:        namespace,
 		Insecure:         certFingerprint != "",
@@ -146,7 +150,7 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, progres
 	if archiveName == "" {
 		archiveName = "backup.pxar.didx"
 	}
-	if opts.BaseURL == "" || opts.AuthID == "" || opts.Secret == "" {
+	if opts.BaseURL == "" || !((opts.AuthID != "" && opts.Secret != "") || opts.Ticket != "") {
 		return fmt.Errorf("PBS connection parameters required")
 	}
 	if opts.BackupID == "" {
@@ -628,7 +632,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		}
 	}
 
-	if opts.BaseURL == "" || opts.AuthID == "" || opts.Secret == "" {
+	if opts.BaseURL == "" || !((opts.AuthID != "" && opts.Secret != "") || opts.Ticket != "") {
 		return fmt.Errorf("PBS connection parameters required")
 	}
 	if opts.BackupID == "" {

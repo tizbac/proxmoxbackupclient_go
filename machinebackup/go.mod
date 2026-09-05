@@ -7,10 +7,10 @@ require (
 	github.com/alphadose/haxmap v1.4.1
 	github.com/google/uuid v1.6.0
 	github.com/tawesoft/golib/v2 v2.16.0
-	golang.org/x/sys v0.20.0
+	golang.org/x/sys v0.23.0
+	machinebackuplib v0.0.0
 	pbscommon v0.0.0
 	snapshot v0.0.0
-	machinebackuplib v0.0.0
 )
 
 require (
@@ -28,7 +28,7 @@ require (
 // Local package replacements
 replace (
 	clientcommon => ../clientcommon
+	machinebackuplib => ../machinebackuplib
 	pbscommon => ../pbscommon
 	snapshot => ../snapshot
-	machinebackuplib => ../machinebackuplib
 )

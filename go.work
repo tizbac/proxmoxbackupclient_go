@@ -10,4 +10,7 @@ use ./clientcommon
 
 use ./snapshot
 
-use ./gui
+use (
+	./gui
+	./nbd
+)

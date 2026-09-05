@@ -53,6 +53,8 @@ type SearchOptions struct {
 	BaseURL         string
 	AuthID          string
 	Secret          string
+	Ticket          string
+	CSRFToken       string
 	Datastore       string
 	Namespace       string
 	CertFingerprint string
@@ -191,7 +193,7 @@ func joinOriginPath(meta *BackupMeta, archivePath string) string {
 // listings are searched for free; uncached snapshots are assembled only when
 // AssembleMissing is set. Results are newest-snapshot-first.
 func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
-	if opts.BaseURL == "" || opts.AuthID == "" || opts.Secret == "" {
+	if opts.BaseURL == "" || !((opts.AuthID != "" && opts.Secret != "") || opts.Ticket != "") {
 		return nil, fmt.Errorf("paramètres de connexion PBS requis")
 	}
 	if opts.Datastore == "" {
@@ -207,7 +209,7 @@ func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
 
 	searchCancelled.Store(false)
 
-	snaps, err := ListSnapshotsInline(opts.BaseURL, opts.AuthID, opts.Secret,
+	snaps, err := ListSnapshotsInline(opts.BaseURL, opts.AuthID, opts.Secret, opts.Ticket, opts.CSRFToken,
 		opts.Datastore, opts.Namespace, opts.CertFingerprint, opts.HostPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("liste des snapshots: %v", err)
@@ -254,6 +256,8 @@ func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
 			BaseURL:         opts.BaseURL,
 			AuthID:          opts.AuthID,
 			Secret:          opts.Secret,
+			Ticket:          opts.Ticket,
+			CSRFToken:       opts.CSRFToken,
 			Datastore:       opts.Datastore,
 			Namespace:       opts.Namespace,
 			CertFingerprint: opts.CertFingerprint,

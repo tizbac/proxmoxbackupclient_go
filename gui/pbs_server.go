@@ -13,6 +13,12 @@ type PBSServer struct {
 	CertFingerprint string `json:"certfingerprint"`
 	AuthID          string `json:"authid"`
 	Secret          string `json:"secret"`
+	// Username/password ticket login (alternative to the API token). Username is
+	// persisted for pre-fill only; Password is session-only and never written to
+	// disk. A server is authenticated with EITHER (AuthID+Secret) OR a ticket
+	// obtained from (Username+Password) — see App.Login.
+	Username string `json:"username,omitempty"`
+	Password string `json:"-"`
 	Datastore       string `json:"datastore"`
 	Namespace       string `json:"namespace"`
 	Description     string `json:"description,omitempty"` // Optional description
@@ -26,6 +32,7 @@ func (pbs *PBSServer) sanitized() *PBSServer {
 	c := *pbs
 	c.SecretSet = pbs.Secret != ""
 	c.Secret = ""
+	c.Password = "" // never hand the password to the frontend
 	return &c
 }
 
@@ -49,17 +56,20 @@ func (pbs *PBSServer) Validate() error {
 		return fmt.Errorf("URL invalide: %w", err)
 	}
 
-	// Validate AuthID
-	if pbs.AuthID == "" {
-		return fmt.Errorf("authentication ID requis")
-	}
-	if err := security.ValidateAuthID(pbs.AuthID); err != nil {
-		return fmt.Errorf("authentication ID invalide: %w", err)
-	}
-
-	// Validate Secret (non-empty check)
-	if pbs.Secret == "" {
-		return fmt.Errorf("secret requis")
+	// Auth: a server is configured with EITHER an API token (AuthID+Secret)
+	// OR a username (password is supplied at login, not stored). At least one
+	// must be present; if a token is present its secret must be too.
+	hasToken := pbs.AuthID != ""
+	hasUser := pbs.Username != ""
+	if hasToken {
+		if err := security.ValidateAuthID(pbs.AuthID); err != nil {
+			return fmt.Errorf("authentication ID invalide: %w", err)
+		}
+		if pbs.Secret == "" {
+			return fmt.Errorf("secret requis")
+		}
+	} else if !hasUser {
+		return fmt.Errorf("API token (authid/secret) ou identifiant/mot de passe requis")
 	}
 
 	// Validate Datastore

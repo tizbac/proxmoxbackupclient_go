@@ -17,6 +17,7 @@ require (
 )
 
 require (
+	fyne.io/fyne/v2 v2.8.1 // indirect
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
 	github.com/alessio/shellescape v1.4.2 // indirect
 	github.com/bep/debounce v1.2.1 // indirect

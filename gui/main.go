@@ -447,12 +447,17 @@ func (a *App) TestConnection(config *Config) error {
 		return err
 	}
 
+	// Overlay the stored session ticket (u/p login) for this server, if any.
+	testConfig = a.withTicket(testConfig)
+
 	// Create PBS client
 	client := &pbscommon.PBSClient{
 		BaseURL:          testConfig.BaseURL,
 		CertFingerPrint:  testConfig.CertFingerprint,
 		AuthID:           testConfig.AuthID,
 		Secret:           testConfig.Secret,
+		Ticket:           testConfig.Ticket,
+		CSRFToken:        testConfig.CSRFToken,
 		Datastore:        testConfig.Datastore,
 		Namespace:        testConfig.Namespace,
 		Insecure:         testConfig.CertFingerprint != "",
@@ -832,7 +837,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	// If we're here via service, we're already running as LocalSystem
 
 	// Resolve PBS fields from multi-PBS default when legacy fields are empty
-	pbsCfg := a.config.EffectivePBS()
+	pbsCfg := a.withTicket(a.config.EffectivePBS())
 
 	// Validate PBS config
 	if err := pbsCfg.Validate(); err != nil {
@@ -860,6 +865,8 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		BaseURL:         pbsCfg.BaseURL,
 		AuthID:          pbsCfg.AuthID,
 		Secret:          pbsCfg.Secret,
+		Ticket:          pbsCfg.Ticket,
+		CSRFToken:       pbsCfg.CSRFToken,
 		Datastore:       pbsCfg.Datastore,
 		Namespace:       pbsCfg.Namespace,
 		CertFingerprint: pbsCfg.CertFingerprint,
@@ -1052,7 +1059,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	// If we're here via service, we're already running as LocalSystem
 
 	// Resolve PBS fields from multi-PBS default when legacy fields are empty
-	pbsCfg := a.config.EffectivePBS()
+	pbsCfg := a.withTicket(a.config.EffectivePBS())
 
 	// Validate PBS config
 	if err := pbsCfg.Validate(); err != nil {
@@ -1064,6 +1071,8 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		BaseURL:         pbsCfg.BaseURL,
 		AuthID:          pbsCfg.AuthID,
 		Secret:          pbsCfg.Secret,
+		Ticket:          pbsCfg.Ticket,
+		CSRFToken:       pbsCfg.CSRFToken,
 		Datastore:       pbsCfg.Datastore,
 		Namespace:       pbsCfg.Namespace,
 		CertFingerprint: pbsCfg.CertFingerprint,
@@ -1221,13 +1230,13 @@ func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		return pbs.ToConfig(), nil
+		return a.withTicket(pbs.ToConfig()), nil
 	}
 	cfg := a.config.EffectivePBS()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return cfg, nil
+	return a.withTicket(cfg), nil
 }
 
 // ListSnapshots lists available snapshots on a PBS server, optionally filtered
@@ -1243,7 +1252,7 @@ func (a *App) ListSnapshots(pbsID, backupID string) ([]map[string]interface{}, e
 		return nil, err
 	}
 
-	snaps, err := ListSnapshotsInline(cfg.BaseURL, cfg.AuthID, cfg.Secret,
+	snaps, err := ListSnapshotsInline(cfg.BaseURL, cfg.AuthID, cfg.Secret, cfg.Ticket, cfg.CSRFToken,
 		cfg.Datastore, cfg.Namespace, cfg.CertFingerprint, backupID)
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("ListSnapshotsInline failed: %v", err))
@@ -1288,6 +1297,8 @@ func (a *App) ListSnapshotContents(pbsID, backupID string, snapshotUnix int64, f
 		BaseURL:         cfg.BaseURL,
 		AuthID:          cfg.AuthID,
 		Secret:          cfg.Secret,
+		Ticket:          cfg.Ticket,
+		CSRFToken:       cfg.CSRFToken,
 		Datastore:       cfg.Datastore,
 		Namespace:       cfg.Namespace,
 		CertFingerprint: cfg.CertFingerprint,
@@ -1319,6 +1330,8 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 		BaseURL:         cfg.BaseURL,
 		AuthID:          cfg.AuthID,
 		Secret:          cfg.Secret,
+		Ticket:          cfg.Ticket,
+		CSRFToken:       cfg.CSRFToken,
 		Datastore:       cfg.Datastore,
 		Namespace:       cfg.Namespace,
 		CertFingerprint: cfg.CertFingerprint,
@@ -1397,6 +1410,8 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		BaseURL:           cfg.BaseURL,
 		AuthID:            cfg.AuthID,
 		Secret:            cfg.Secret,
+		Ticket:            cfg.Ticket,
+		CSRFToken:         cfg.CSRFToken,
 		Datastore:         cfg.Datastore,
 		Namespace:         cfg.Namespace,
 		CertFingerprint:   cfg.CertFingerprint,
@@ -1527,6 +1542,8 @@ func (a *App) SearchFiles(pbsID, hostPrefix, query, mode string, fromUnix, toUni
 		BaseURL:         cfg.BaseURL,
 		AuthID:          cfg.AuthID,
 		Secret:          cfg.Secret,
+		Ticket:          cfg.Ticket,
+		CSRFToken:       cfg.CSRFToken,
 		Datastore:       cfg.Datastore,
 		Namespace:       cfg.Namespace,
 		CertFingerprint: cfg.CertFingerprint,

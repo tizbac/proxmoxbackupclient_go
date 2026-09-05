@@ -32,6 +32,8 @@ type BackupOptions struct {
 	BaseURL         string
 	AuthID          string
 	Secret          string
+	Ticket          string // PBS session ticket (u/p login); preferred over AuthID/Secret when set
+	CSRFToken       string
 	Datastore       string
 	Namespace       string
 	CertFingerprint string
@@ -541,16 +543,15 @@ func RunBackupInline(opts BackupOptions) (returnErr error) {
 	// empty multi-PBS resolution failed here silently.
 	writeBackupLog(fmt.Sprintf("[DEBUG] Validating backup options: target=%q datastore=%q ns=%q authid=%q secret=%v dirs=%d backupID=%q",
 		opts.BaseURL, opts.Datastore, opts.Namespace, opts.AuthID, opts.Secret != "", len(opts.BackupObjects), opts.BackupID))
-	if opts.BaseURL == "" || opts.AuthID == "" || opts.Secret == "" {
+	hasToken := opts.AuthID != "" && opts.Secret != ""
+	hasTicket := opts.Ticket != ""
+	if opts.BaseURL == "" || (!hasToken && !hasTicket) {
 		var missing []string
 		if opts.BaseURL == "" {
 			missing = append(missing, "BaseURL")
 		}
-		if opts.AuthID == "" {
-			missing = append(missing, "AuthID")
-		}
-		if opts.Secret == "" {
-			missing = append(missing, "Secret")
+		if !hasToken && !hasTicket {
+			missing = append(missing, "API token (AuthID+Secret) or session ticket")
 		}
 		errMsg := fmt.Sprintf("PBS connection parameters required (missing: %s) — check the selected/default PBS server in the config",
 			strings.Join(missing, ", "))
@@ -771,6 +772,8 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		CertFingerPrint:  opts.CertFingerprint,
 		AuthID:           opts.AuthID,
 		Secret:           opts.Secret,
+		Ticket:           opts.Ticket,
+		CSRFToken:        opts.CSRFToken,
 		Datastore:        opts.Datastore,
 		Namespace:        opts.Namespace,
 		Insecure:         opts.CertFingerprint != "",

@@ -80,13 +80,15 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 	// BaseURL/AuthID/Secret/Datastore fields empty, so building options from those
 	// directly yielded "PBS connection parameters required" in service mode (the GUI
 	// standalone path already used EffectivePBS — audit M-01/M-04, reported in prod).
-	pbsCfg := a.config.EffectivePBS()
+	pbsCfg := a.withTicket(a.config.EffectivePBS())
 
 	// Prepare backup options
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
 		AuthID:          pbsCfg.AuthID,
 		Secret:          pbsCfg.Secret,
+		Ticket:          pbsCfg.Ticket,
+		CSRFToken:       pbsCfg.CSRFToken,
 		Datastore:       pbsCfg.Datastore,
 		Namespace:       pbsCfg.Namespace,
 		CertFingerprint: pbsCfg.CertFingerprint,

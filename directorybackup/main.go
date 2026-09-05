@@ -200,12 +200,20 @@ func main() {
 		CertFingerPrint: cfg.CertFingerprint, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
 		AuthID:          cfg.AuthID,
 		Secret:          cfg.Secret,
+		Username:        cfg.PBSUsername,
+		Password:        cfg.PBSPassword,
 		Datastore:       cfg.Datastore,
 		Namespace:       cfg.Namespace,
 		Insecure:        insecure,
 		Manifest: pbscommon.BackupManifest{
 			BackupID: cfg.BackupID,
 		},
+	}
+	if client.Username != "" {
+		if err := client.ObtainTicket(); err != nil {
+			fmt.Printf("Error: ticket login failed: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	hostname, err := os.Hostname()
 	if err != nil {

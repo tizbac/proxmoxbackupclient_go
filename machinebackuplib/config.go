@@ -26,6 +26,8 @@ type Config struct {
 	CertFingerprint string      `json:"certfingerprint"`
 	AuthID          string      `json:"authid"`
 	Secret          string      `json:"secret"`
+	PBSUsername     string      `json:"pbs-username"`
+	PBSPassword     string      `json:"pbs-password"`
 	Datastore       string      `json:"datastore"`
 	Namespace       string      `json:"namespace"`
 	BackupID        string      `json:"backup-id"`
@@ -36,7 +38,10 @@ type Config struct {
 }
 
 func (c *Config) Valid() bool {
-	baseValid := c.BaseURL != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && len(c.BackupDevices) > 0
+	// Authentication is either an API token (authid+secret) or a PBS
+	// username+password (ticket login). Exactly one of the two must be set.
+	authOK := (c.AuthID != "" && c.Secret != "") || (c.PBSUsername != "" && c.PBSPassword != "")
+	baseValid := c.BaseURL != "" && authOK && c.Datastore != "" && len(c.BackupDevices) > 0
 	if !baseValid {
 		return baseValid
 	}

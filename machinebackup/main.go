@@ -36,6 +36,8 @@ func loadConfig() *machinebackuplib.Config {
 	certFingerprintFlag := flag.String("certfingerprint", "", "Certificate fingerprint for SSL connection, example: ea:7d:06:f9...")
 	authIDFlag := flag.String("authid", "", "Authentication ID (PBS Api token)")
 	secretFlag := flag.String("secret", "", "Secret for authentication")
+	pbsUsernameFlag := flag.String("pbsusername", "", "PBS username for ticket login (with -pbspassword; overrides -authid/-secret)")
+	pbsPasswordFlag := flag.String("pbspassword", "", "PBS password for ticket login (with -pbsusername)")
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
@@ -84,6 +86,12 @@ func loadConfig() *machinebackuplib.Config {
 	}
 	if *secretFlag != "" {
 		config.Secret = *secretFlag
+	}
+	if *pbsUsernameFlag != "" {
+		config.PBSUsername = *pbsUsernameFlag
+	}
+	if *pbsPasswordFlag != "" {
+		config.PBSPassword = *pbsPasswordFlag
 	}
 	if *datastoreFlag != "" {
 		config.Datastore = *datastoreFlag

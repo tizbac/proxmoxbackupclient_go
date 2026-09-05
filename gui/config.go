@@ -23,6 +23,11 @@ type Config struct {
 	CertFingerprint string `json:"certfingerprint,omitempty"`
 	AuthID          string `json:"authid,omitempty"`
 	Secret          string `json:"secret,omitempty"`
+	// Runtime-only PBS session ticket (username/password login). Never
+	// persisted; set by App.withTicket on the resolved copy just before a
+	// PBSClient is built, so it authenticates via the PBSAuthCookie.
+	Ticket    string `json:"-"`
+	CSRFToken string `json:"-"`
 	Datastore       string `json:"datastore,omitempty"`
 	Namespace       string `json:"namespace,omitempty"`
 
@@ -53,6 +58,8 @@ func (c *Config) sanitized() *Config {
 	cp := *c
 	cp.Secret = ""
 	cp.SMTPPassword = ""
+	cp.Ticket = "" // runtime credential, never to the frontend
+	cp.CSRFToken = ""
 	if c.PBSServers != nil {
 		cp.PBSServers = make(map[string]*PBSServer, len(c.PBSServers))
 		for k, v := range c.PBSServers {
@@ -231,17 +238,17 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("URL invalide: %w", err)
 	}
 
-	// Validate AuthID
-	if c.AuthID == "" {
-		return fmt.Errorf("authentication ID requis")
-	}
-	if err := security.ValidateAuthID(c.AuthID); err != nil {
-		return fmt.Errorf("authentication ID invalide: %w", err)
-	}
-
-	// Validate Secret (non-empty check)
-	if c.Secret == "" {
-		return fmt.Errorf("secret requis")
+	// Auth: an API token (AuthID+Secret) or an active session ticket (set at
+	// runtime by App.withTicket for username/password logins).
+	if c.AuthID != "" {
+		if err := security.ValidateAuthID(c.AuthID); err != nil {
+			return fmt.Errorf("authentication ID invalide: %w", err)
+		}
+		if c.Secret == "" {
+			return fmt.Errorf("secret requis")
+		}
+	} else if c.Ticket == "" {
+		return fmt.Errorf("authentification requise (API token ou connexion utilisateur/mot de passe)")
 	}
 
 	// Validate Datastore

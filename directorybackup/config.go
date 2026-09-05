@@ -32,6 +32,8 @@ type Config struct {
 	CertFingerprint  string      `json:"certfingerprint"`
 	AuthID           string      `json:"authid"`
 	Secret           string      `json:"secret"`
+	PBSUsername      string      `json:"pbs-username"`
+	PBSPassword      string      `json:"pbs-password"`
 	Datastore        string      `json:"datastore"`
 	Namespace        string      `json:"namespace"`
 	BackupID         string      `json:"backup-id"`
@@ -43,7 +45,10 @@ type Config struct {
 }
 
 func (c *Config) valid() bool {
-	baseValid := c.BaseURL != "" && c.AuthID != "" && c.Secret != "" && c.Datastore != "" && (c.BackupSourceDir != "" || c.BackupStreamName != "")
+	// Authentication is either an API token (authid+secret) or a PBS
+	// username+password (ticket login). Exactly one of the two must be set.
+	authOK := (c.AuthID != "" && c.Secret != "") || (c.PBSUsername != "" && c.PBSPassword != "")
+	baseValid := c.BaseURL != "" && authOK && c.Datastore != "" && (c.BackupSourceDir != "" || c.BackupStreamName != "")
 	if !baseValid {
 		return baseValid
 	}
@@ -68,6 +73,8 @@ func loadConfig() *Config {
 	certFingerprintFlag := flag.String("certfingerprint", "", "Certificate fingerprint for SSL connection, example: ea:7d:06:f9...")
 	authIDFlag := flag.String("authid", "", "Authentication ID (PBS Api token)")
 	secretFlag := flag.String("secret", "", "Secret for authentication")
+	pbsUsernameFlag := flag.String("pbsusername", "", "PBS username for ticket login (with -pbspassword; overrides -authid/-secret)")
+	pbsPasswordFlag := flag.String("pbspassword", "", "PBS password for ticket login (with -pbsusername)")
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
@@ -118,6 +125,12 @@ func loadConfig() *Config {
 	}
 	if *secretFlag != "" {
 		config.Secret = *secretFlag
+	}
+	if *pbsUsernameFlag != "" {
+		config.PBSUsername = *pbsUsernameFlag
+	}
+	if *pbsPasswordFlag != "" {
+		config.PBSPassword = *pbsPasswordFlag
 	}
 	if *datastoreFlag != "" {
 		config.Datastore = *datastoreFlag
