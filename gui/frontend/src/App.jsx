@@ -4,7 +4,7 @@ import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
-let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup
+let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, GetBrand, OpenBrowser
 let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
@@ -27,6 +27,7 @@ if (window.go) {
   CancelBackup = window.go.main.App.CancelBackup
   ListPhysicalDisks = window.go.main.App.ListPhysicalDisks
   GetVersion = window.go.main.App.GetVersion
+  GetBrand = window.go.main.App.GetBrand
   SaveScheduledJob = window.go.main.App.SaveScheduledJob
   UpdateScheduledJob = window.go.main.App.UpdateScheduledJob
   GetScheduledJobs = window.go.main.App.GetScheduledJobs
@@ -47,9 +48,10 @@ if (window.go) {
   PinPBSServerFingerprint = window.go.main.App.PinPBSServerFingerprint
 }
 
-// Wails events
+// Wails events + runtime (open external URLs in the system browser)
 if (window.runtime) {
   EventsOn = window.runtime.EventsOn
+  OpenBrowser = window.runtime.BrowserOpenURL
 }
 
 function App() {
@@ -57,6 +59,12 @@ function App() {
   const [activeTab, setActiveTab] = useState('servers')
   const [hostname, setHostname] = useState('')
   const [appVersion, setAppVersion] = useState('dev')
+  const [brand, setBrand] = useState({ name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', logo: '', accent: '#e87003', accent_hover: '#d46100', buy_storage_url: '', buy_storage_text: '', is_default: true })
+  // Buy-storage CTA: brand-specific when provided, otherwise the PBS download page.
+  const buyStorage = {
+    url: brand.buy_storage_url || 'https://www.proxmox.com/en/downloads.php#download-proxmox-backup-server',
+    text: brand.buy_storage_text || t('orderStorageCTA')
+  }
   const [systemInfo, setSystemInfo] = useState({ mode: 'Standalone', is_admin: false, service_available: false, os: '' })
   const [config, setConfig] = useState({
     baseurl: '',
@@ -82,11 +90,14 @@ function App() {
     certfingerprint: '',
     authid: '',
     secret: '',
+    username: '',
+    password: '',
     datastore: '',
     namespace: '',
     description: ''
   })
   const [serverStatus, setServerStatus] = useState({}) // Map of server ID -> connection status
+  const [serverTab, setServerTab] = useState('server') // active category tab in the server form
 
   const [backupType, setBackupType] = useState('directory')
   const [backupDirs, setBackupDirs] = useState('')
@@ -159,6 +170,28 @@ function App() {
   const [searchProgress, setSearchProgress] = useState({ percent: 0, message: '' })
   const [searchResult, setSearchResult] = useState(null)     // { hits, snapshots_*, truncated, cancelled }
 
+  // Intercept external links and open them in the system browser. <a
+  // target="_blank"> does nothing inside the Wails webview, so we catch the
+  // click and hand the URL to the runtime's BrowserOpenURL.
+  useEffect(() => {
+    const onClick = (e) => {
+      const anchor = (e.target && e.target.closest) ? e.target.closest('a[href]') : null
+      if (!anchor) return
+      const url = anchor.href
+      if (!url || url.startsWith('javascript:')) return
+      const isExternal = anchor.target === '_blank' || anchor.hasAttribute('data-external')
+      let isCrossOrigin = false
+      try {
+        isCrossOrigin = new URL(url, window.location.href).origin !== window.location.origin
+      } catch { /* ignore */ }
+      if (!isExternal && !isCrossOrigin) return
+      e.preventDefault()
+      if (OpenBrowser) OpenBrowser(url)
+    }
+    document.addEventListener('click', onClick)
+    return () => document.removeEventListener('click', onClick)
+  }, [])
+
   // Update restoreBackupId when config or hostname changes
   useEffect(() => {
     if (!restoreBackupId && (config['backup-id'] || hostname)) {
@@ -192,7 +225,7 @@ function App() {
         setPhysicalDisks(disks)
         // Select first disk by default
         if (disks.length > 0 && selectedDrives.length === 0) {
-          setSelectedDrives([disks[0].path])
+          setSelectedDrives([disks[0].device_path])
         }
       }).catch(err => {
         showStatus(`❌ ${t('statusDiskError')} ${err}`, 'error')
@@ -355,9 +388,23 @@ function App() {
     const loadData = async () => {
       try {
         // Load version
+        let version = ''
         if (GetVersion) {
-          const version = await GetVersion()
-          setAppVersion(version || 'dev')
+          version = (await GetVersion()) || 'dev'
+          setAppVersion(version)
+        }
+
+        // Load the active brand (resolved from the executable name) and apply it:
+        // accent color (CSS vars), document title, and the brand logo/title state.
+        if (GetBrand) {
+          const b = await GetBrand()
+          if (b) {
+            setBrand(b)
+            const root = document.documentElement.style
+            if (b.accent) root.setProperty('--accent', b.accent)
+            if (b.accent_hover) root.setProperty('--accent-hover', b.accent_hover)
+            if (b.title) document.title = version ? `${b.title} v${version}` : b.title
+          }
         }
 
         // Load system info (mode, admin status, service availability)
@@ -502,13 +549,21 @@ function App() {
       return
     }
 
+    const isUserPass = !!(serverFormData.username || '').trim()
     try {
       // Generate ID from name if not provided
-      if (!serverFormData.id) {
-        serverFormData.id = serverFormData.name.toLowerCase().replace(/[^a-z0-9]/g, '-')
-      }
+      const id = serverFormData.id ||
+        serverFormData.name.toLowerCase().replace(/[^a-z0-9]/g, '-')
 
-      await AddPBSServer(serverFormData)
+      // Only one auth method is persisted: user/pass drops the token, token drops username.
+      const payload = {
+        ...serverFormData,
+        id,
+        authid: isUserPass ? '' : serverFormData.authid,
+        secret: isUserPass ? '' : serverFormData.secret,
+        username: isUserPass ? serverFormData.username : ''
+      }
+      await AddPBSServer(payload)
       showStatus(`✅ ${t('statusServerAdded')}`, 'success')
 
       // Reset form and reload
@@ -519,11 +574,14 @@ function App() {
         certfingerprint: '',
         authid: '',
         secret: '',
+        username: '',
+        password: '',
         datastore: '',
         namespace: '',
         description: ''
       })
       setEditingServer(null)
+      setServerTab('server')
       await loadPBSServers()
     } catch (err) {
       showStatus(`❌ Erreur: ${err}`, 'error')
@@ -536,8 +594,15 @@ function App() {
       return
     }
 
+    const isUserPass = !!(serverFormData.username || '').trim()
     try {
-      await UpdatePBSServer(serverFormData)
+      const payload = {
+        ...serverFormData,
+        authid: isUserPass ? '' : serverFormData.authid,
+        secret: isUserPass ? '' : serverFormData.secret,
+        username: isUserPass ? serverFormData.username : ''
+      }
+      await UpdatePBSServer(payload)
       showStatus(`✅ ${t('statusServerUpdated')}`, 'success')
 
       // Reset form and reload
@@ -548,11 +613,14 @@ function App() {
         certfingerprint: '',
         authid: '',
         secret: '',
+        username: '',
+        password: '',
         datastore: '',
         namespace: '',
         description: ''
       })
       setEditingServer(null)
+      setServerTab('server')
       await loadPBSServers()
     } catch (err) {
       showStatus(`❌ Erreur: ${err}`, 'error')
@@ -636,7 +704,12 @@ function App() {
   }
 
   const handleEditServer = (server) => {
-    setServerFormData(server)
+    setServerFormData({
+      ...server,
+      username: server.username || '',
+      password: ''
+    })
+    setServerTab(server.username ? 'userpass' : (server.authid ? 'token' : 'server'))
     setEditingServer(server.id)
   }
 
@@ -648,11 +721,141 @@ function App() {
       certfingerprint: '',
       authid: '',
       secret: '',
+      username: '',
+      password: '',
       datastore: '',
       namespace: '',
       description: ''
     })
+    setServerTab('server')
     setEditingServer(null)
+  }
+
+  const switchServerTab = (key) => {
+    setServerTab(key)
+    // Choosing an auth method clears the other so the two never mix on save.
+    if (key === 'userpass') {
+      setServerFormData(f => ({ ...f, authid: '', secret: '' }))
+    } else if (key === 'token') {
+      setServerFormData(f => ({ ...f, username: '', password: '' }))
+    }
+  }
+
+  const renderServerForm = () => {
+    // A PAM-realm user (e.g. root@pam) is a full host account: a compromised
+    // backup machine could then reach the PBS host and destroy/compromise backups.
+    const uname = (serverFormData.username || '').trim().toLowerCase()
+    const isPamUser = uname.endsWith('@pam')
+    const tabs = [
+      ['server', `🌐 ${t('srvTabServer')}`],
+      ['userpass', `👤 ${t('srvTabUserpass')}`],
+      ['token', `🔑 ${t('srvTabToken')}`]
+    ]
+    return (
+      <div className="card">
+        <h3>{editingServer ? `✏️ ${t('editServer')}` : `➕ ${t('addServer')}`}</h3>
+
+        <div style={{display: 'flex', gap: '8px', marginBottom: '15px'}}>
+          {tabs.map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => switchServerTab(key)}
+              style={{
+                flex: 1,
+                padding: '8px',
+                backgroundColor: serverTab === key ? 'var(--accent)' : '#e2e8f0',
+                color: serverTab === key ? 'white' : '#4a5568',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {serverTab === 'server' && (
+          <>
+            <div className="form-group">
+              <label>{t('serverName')}</label>
+              <input type="text" value={serverFormData.name} onChange={(e) => setServerFormData({...serverFormData, name: e.target.value})} placeholder={t('phServerName')} />
+            </div>
+            {!editingServer && (
+              <div className="form-group">
+                <label>{t('serverID')}</label>
+                <input type="text" value={serverFormData.id} onChange={(e) => setServerFormData({...serverFormData, id: e.target.value})} placeholder={t('serverIDPlaceholder')} />
+              </div>
+            )}
+            <div className="form-group">
+              <label>{t('serverURL')}</label>
+              <input type="text" value={serverFormData.baseurl} onChange={(e) => setServerFormData({...serverFormData, baseurl: e.target.value})} placeholder={t('phServerURL')} />
+            </div>
+            <div className="form-group">
+              <label>{t('datastore')}</label>
+              <input type="text" value={serverFormData.datastore} onChange={(e) => setServerFormData({...serverFormData, datastore: e.target.value})} placeholder={t('phDatastore')} />
+            </div>
+            <div className="form-group">
+              <label>{t('namespace')}</label>
+              <input type="text" value={serverFormData.namespace} onChange={(e) => setServerFormData({...serverFormData, namespace: e.target.value})} placeholder={t('phNamespace')} />
+            </div>
+            <div className="form-group">
+              <label>{t('certFingerprint')}</label>
+              <input type="text" value={serverFormData.certfingerprint} onChange={(e) => setServerFormData({...serverFormData, certfingerprint: e.target.value})} placeholder={t('phCert')} />
+            </div>
+            <div className="form-group">
+              <label>{t('description')}</label>
+              <textarea value={serverFormData.description} onChange={(e) => setServerFormData({...serverFormData, description: e.target.value})} placeholder={t('descriptionPlaceholder')} rows="2" />
+            </div>
+          </>
+        )}
+
+        {serverTab === 'userpass' && (
+          <>
+            <div className="form-group">
+              <label>{t('username')}</label>
+              <input type="text" value={serverFormData.username} onChange={(e) => setServerFormData({...serverFormData, username: e.target.value})} placeholder={t('phUsername')} />
+            </div>
+            {isPamUser && (
+              <div className="info-box" style={{borderColor: '#ef4444', background: '#fef2f2', color: '#991b1b', fontWeight: '600'}}>
+                ⚠️ {t('pamUserWarning')}
+              </div>
+            )}
+            <div className="form-group">
+              <label>{t('password')}</label>
+              <input type="password" value={serverFormData.password} onChange={(e) => setServerFormData({...serverFormData, password: e.target.value})} placeholder={serverFormData.password_set ? t('passwordKeepCurrent') : t('phPassword')} />
+            </div>
+            <div className="info-box">💡 {t('userpassHint')}</div>
+          </>
+        )}
+
+        {serverTab === 'token' && (
+          <>
+            <div className="form-group">
+              <label>{t('authID')}</label>
+              <input type="text" value={serverFormData.authid} onChange={(e) => setServerFormData({...serverFormData, authid: e.target.value})} placeholder={t('phAuthID')} />
+            </div>
+            <div className="form-group">
+              <label>{t('secret')}</label>
+              <input type="password" value={serverFormData.secret} onChange={(e) => setServerFormData({...serverFormData, secret: e.target.value})} placeholder={serverFormData.secret_set ? t('secretKeepCurrent') : t('phSecret')} />
+            </div>
+            <div className="info-box">💡 <strong>{t('tipTitle')}</strong> {t('tipAPIToken')}<br/>{t('tipAPITokenPath')}</div>
+          </>
+        )}
+
+        <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
+          {editingServer ? (
+            <>
+              <button onClick={handleUpdatePBSServer} style={{flex: 1}}>💾 {t('update')}</button>
+              <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>❌ {t('cancel')}</button>
+            </>
+          ) : (
+            <button onClick={handleAddPBSServer} style={{flex: 1}}>➕ {t('addServer')}</button>
+          )}
+        </div>
+      </div>
+    )
   }
 
   // ==================== END MULTI-PBS HANDLERS ====================
@@ -1376,8 +1579,8 @@ function App() {
       <div className="header">
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
           <div>
-            <h1>🛡️ {t('appTitle')}</h1>
-            <p>{t('appSubtitle')}</p>
+            <h1>🛡️ {brand.is_default ? t('appTitle') : brand.title}</h1>
+            <p>{brand.is_default ? t('appSubtitle') : brand.title}</p>
           </div>
           <LanguageSwitcher />
         </div>
@@ -1406,28 +1609,29 @@ function App() {
           {/* Show form first if no servers configured */}
           {pbsServers.length === 0 ? (
             <>
-              <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#eef2ff', borderLeft: '4px solid #667eea'}}>
+              <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#eef2ff', borderLeft: '4px solid var(--accent)'}}>
                 👋 <strong>{t('welcomeMessage')}</strong> {t('welcomeText')}<br/>
                 {!config.baseurl && (
                   <>
                     <br/>
                     <strong>📦 {t('noPBSYet')}</strong><br/>
-                    { t('chooseBackupUrl') !== "chooseBackupUrl" && (
+                    {brand.buy_storage_url ? (
                     <a
-                      href={`${t('chooseBackupUrl')}?utm_source=NimbusGui&utm_medium=tooling&utm_campaign=version-${appVersion}&utm_content=first-setup`}
+                      href={brand.buy_storage_url}
                       target="_blank"
+                      data-external="true"
                       rel="noopener noreferrer"
-                      style={{color: '#667eea', fontWeight: 'bold', textDecoration: 'underline'}}
+                      style={{color: 'var(--accent)', fontWeight: 'bold', textDecoration: 'underline'}}
                     >
                       {t('orderStorage')} →
                     </a>
-                    )}
-                    { t('chooseBackupUrl') === "chooseBackupUrl" && (
+                    ) : (
                       <a
                       href="https://www.proxmox.com/en/downloads/proxmox-backup-server"
                       target="_blank"
+                      data-external="true"
                       rel="noopener noreferrer"
-                      style={{color: '#667eea', fontWeight: 'bold', textDecoration: 'underline'}}
+                      style={{color: 'var(--accent)', fontWeight: 'bold', textDecoration: 'underline'}}
                       >
                       {t('downloadPBS')} →
                       </a>
@@ -1436,175 +1640,8 @@ function App() {
                 )}
               </div>
 
-              {/* Add Server Form - Prominent when no servers */}
-              <div className="card">
-                <h3>➕ {t('addYourServer')}</h3>
-              <table style={{width: '100%', marginTop: '15px'}}>
-                <thead>
-                  <tr>
-                    <th>{t('name')}</th>
-                    <th>{t('url')}</th>
-                    <th>{t('datastore')}</th>
-                    <th>{t('status')}</th>
-                    <th>{t('actions')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pbsServers.map(server => (
-                    <tr key={server.id}>
-                      <td>
-                        <strong>{server.name}</strong>
-                        {server.id === defaultPBSID && <span style={{marginLeft: '5px', color: '#fbbf24'}}>⭐ {t('default')}</span>}
-                        {server.description && <div style={{fontSize: '0.85em', color: '#999'}}>{server.description}</div>}
-                      </td>
-                      <td>{server.baseurl}</td>
-                      <td>{server.datastore}/{server.namespace || '-'}</td>
-                      <td>
-                        {serverStatus[server.id] === 'testing' && <span style={{color: '#3b82f6'}}>🔄 {t('testing')}</span>}
-                        {serverStatus[server.id] === 'online' && <span style={{color: '#10b981'}}>🟢 {t('online')}</span>}
-                        {serverStatus[server.id] === 'offline' && <span style={{color: '#ef4444'}}>🔴 {t('offline')}</span>}
-                        {!serverStatus[server.id] && <span style={{color: '#999'}}>⚪ {t('untested')}</span>}
-                      </td>
-                      <td>
-                        <button onClick={() => handleTestPBSConnection(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                          🔍 {t('testServer')}
-                        </button>
-                        <button onClick={() => handleEditServer(server)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                          ✏️ {t('editServer')}
-                        </button>
-                        {server.id !== defaultPBSID && (
-                          <button onClick={() => handleSetDefaultPBS(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#fbbf24'}}>
-                            ⭐ {t('setDefault')}
-                          </button>
-                        )}
-                        <button onClick={() => handleDeletePBSServer(server.id)} style={{padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#ef4444', color: 'white'}}>
-                          🗑️ {t('deleteServer')}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-          </div>
-
           {/* Add/Edit Server Form */}
-          <div className="card">
-            <h3>{editingServer ? `✏️ ${t('editServer')}` : `➕ ${t('addYourServer')}`}</h3>
-
-            <div className="form-group">
-              <label>{t('serverName')}</label>
-              <input
-                type="text"
-                value={serverFormData.name}
-                onChange={(e) => setServerFormData({...serverFormData, name: e.target.value})}
-                placeholder="SSD Rapide"
-              />
-            </div>
-
-            {!editingServer && (
-              <div className="form-group">
-                <label>{t('serverID')}</label>
-                <input
-                  type="text"
-                  value={serverFormData.id}
-                  onChange={(e) => setServerFormData({...serverFormData, id: e.target.value})}
-                  placeholder="pbs-ssd (laissez vide pour auto-génération)"
-                />
-              </div>
-            )}
-
-            <div className="form-group">
-              <label>{t('serverURL')}</label>
-              <input
-                type="text"
-                value={serverFormData.baseurl}
-                onChange={(e) => setServerFormData({...serverFormData, baseurl: e.target.value})}
-                placeholder="https://pbs-ssd.example.com:8007"
-              />
-            </div>
-
-            <div className="form-group">
-              <label>{t('authID')}</label>
-              <input
-                type="text"
-                value={serverFormData.authid}
-                onChange={(e) => setServerFormData({...serverFormData, authid: e.target.value})}
-                placeholder="backup@pbs!token-name"
-              />
-            </div>
-
-            <div className="form-group">
-              <label>{t('secret')}</label>
-              <input
-                type="password"
-                value={serverFormData.secret}
-                onChange={(e) => setServerFormData({...serverFormData, secret: e.target.value})}
-                placeholder={serverFormData.secret_set ? '•••••••• (laisser vide pour conserver le token actuel)' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>{t('datastore')}</label>
-              <input
-                type="text"
-                value={serverFormData.datastore}
-                onChange={(e) => setServerFormData({...serverFormData, datastore: e.target.value})}
-                placeholder="ssd-fast"
-              />
-            </div>
-
-            <div className="form-group">
-              <label>{t('namespace')}</label>
-              <input
-                type="text"
-                value={serverFormData.namespace}
-                onChange={(e) => setServerFormData({...serverFormData, namespace: e.target.value})}
-                placeholder="clients"
-              />
-            </div>
-
-            <div className="form-group">
-              <label>{t('certFingerprint')}</label>
-              <input
-                type="text"
-                value={serverFormData.certfingerprint}
-                onChange={(e) => setServerFormData({...serverFormData, certfingerprint: e.target.value})}
-                placeholder="AA:BB:CC:DD:..."
-              />
-            </div>
-
-            <div className="form-group">
-              <label>{t('description')}</label>
-              <textarea
-                value={serverFormData.description}
-                onChange={(e) => setServerFormData({...serverFormData, description: e.target.value})}
-                placeholder="Stockage SSD pour backups critiques"
-                rows="2"
-              />
-            </div>
-
-            <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
-              {editingServer ? (
-                <>
-                  <button onClick={handleUpdatePBSServer} style={{flex: 1}}>
-                    💾 {t('update')}
-                  </button>
-                  <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>
-                    ❌ {t('cancel')}
-                  </button>
-                </>
-              ) : (
-                <button onClick={handleAddPBSServer} style={{flex: 1}}>
-                  ➕ {t('addFirstServer')}
-                </button>
-              )}
-            </div>
-
-            <div className="info-box" style={{marginTop: '20px'}}>
-              💡 <strong>{t('tipTitle')}</strong> {t('tipAPIToken')}<br/>
-              {t('tipAPITokenPath')}
-            </div>
-          </div>
+          {renderServerForm()}
             </>
           ) : (
             <>
@@ -1621,11 +1658,11 @@ function App() {
                 <table style={{width: '100%', marginTop: '15px'}}>
                   <thead>
                     <tr>
-                      <th>Nom</th>
-                      <th>URL</th>
-                      <th>Datastore</th>
-                      <th>Statut</th>
-                      <th>Actions</th>
+                      <th>{t('name')}</th>
+                      <th>{t('url')}</th>
+                      <th>{t('datastore')}</th>
+                      <th>{t('status')}</th>
+                      <th>{t('actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1639,19 +1676,19 @@ function App() {
                         <td>{server.baseurl}</td>
                         <td>{server.datastore}/{server.namespace || '-'}</td>
                         <td>
-                          {serverStatus[server.id] === 'testing' && <span style={{color: '#3b82f6'}}>🔄 Test...</span>}
-                          {serverStatus[server.id] === 'online' && <span style={{color: '#10b981'}}>🟢 Online</span>}
-                          {serverStatus[server.id] === 'offline' && <span style={{color: '#ef4444'}}>🔴 Offline</span>}
-                          {!serverStatus[server.id] && <span style={{color: '#999'}}>⚪ Non testé</span>}
+                          {serverStatus[server.id] === 'testing' && <span style={{color: '#3b82f6'}}>🔄 {t('testing')}</span>}
+                          {serverStatus[server.id] === 'online' && <span style={{color: '#10b981'}}>🟢 {t('online')}</span>}
+                          {serverStatus[server.id] === 'offline' && <span style={{color: '#ef4444'}}>🔴 {t('offline')}</span>}
+                          {!serverStatus[server.id] && <span style={{color: '#999'}}>⚪ {t('untested')}</span>}
                         </td>
                         <td>
                           <button onClick={() => handleTestPBSConnection(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
                             🔍 {t('testServer')}
                           </button>
-                          <button onClick={() => handleEditServer(server)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                            ✏️ {t('editServer')}
-                          </button>
-                          {server.id !== defaultPBSID && (
+                           <button onClick={() => handleEditServer(server)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
+                             ✏️ {t('editServer')}
+                           </button>
+                           {server.id !== defaultPBSID && (
                             <button onClick={() => handleSetDefaultPBS(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#fbbf24'}}>
                               ⭐ {t('setDefault')}
                             </button>
@@ -1667,118 +1704,7 @@ function App() {
               </div>
 
               {/* Add/Edit Server Form */}
-              <div className="card">
-                <h3>{editingServer ? `✏️ ${t('editServer')}` : `➕ ${t('addAnotherServer')}`}</h3>
-
-                <div className="form-group">
-                  <label>{t('serverName')}</label>
-                  <input
-                    type="text"
-                    value={serverFormData.name}
-                    onChange={(e) => setServerFormData({...serverFormData, name: e.target.value})}
-                    placeholder="SSD Rapide"
-                  />
-                </div>
-
-                {!editingServer && (
-                  <div className="form-group">
-                    <label>{t('serverID')}</label>
-                    <input
-                      type="text"
-                      value={serverFormData.id}
-                      onChange={(e) => setServerFormData({...serverFormData, id: e.target.value})}
-                      placeholder="pbs-ssd (laissez vide pour auto-génération)"
-                    />
-                  </div>
-                )}
-
-                <div className="form-group">
-                  <label>{t('serverURL')}</label>
-                  <input
-                    type="text"
-                    value={serverFormData.baseurl}
-                    onChange={(e) => setServerFormData({...serverFormData, baseurl: e.target.value})}
-                    placeholder="https://pbs-ssd.example.com:8007"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>{t('authID')}</label>
-                  <input
-                    type="text"
-                    value={serverFormData.authid}
-                    onChange={(e) => setServerFormData({...serverFormData, authid: e.target.value})}
-                    placeholder="backup@pbs!token-name"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>{t('secret')}</label>
-                  <input
-                    type="password"
-                    value={serverFormData.secret}
-                    onChange={(e) => setServerFormData({...serverFormData, secret: e.target.value})}
-                    placeholder={serverFormData.secret_set ? '•••••••• (laisser vide pour conserver le token actuel)' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>{t('datastore')}</label>
-                  <input
-                    type="text"
-                    value={serverFormData.datastore}
-                    onChange={(e) => setServerFormData({...serverFormData, datastore: e.target.value})}
-                    placeholder="ssd-fast"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>{t('namespace')}</label>
-                  <input
-                    type="text"
-                    value={serverFormData.namespace}
-                    onChange={(e) => setServerFormData({...serverFormData, namespace: e.target.value})}
-                    placeholder="clients"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>{t('certFingerprint')}</label>
-                  <input
-                    type="text"
-                    value={serverFormData.certfingerprint}
-                    onChange={(e) => setServerFormData({...serverFormData, certfingerprint: e.target.value})}
-                    placeholder="AA:BB:CC:DD:..."
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>{t('description')}</label>
-                  <textarea
-                    value={serverFormData.description}
-                    onChange={(e) => setServerFormData({...serverFormData, description: e.target.value})}
-                    placeholder="Stockage SSD pour backups critiques"
-                    rows="2"
-                  />
-                </div>
-
-                <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
-                  {editingServer ? (
-                    <>
-                      <button onClick={handleUpdatePBSServer} style={{flex: 1}}>
-                        💾 Mettre à jour
-                      </button>
-                      <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>
-                        ❌ Annuler
-                      </button>
-                    </>
-                  ) : (
-                    <button onClick={handleAddPBSServer} style={{flex: 1}}>
-                      ➕ {t('addServer')}
-                    </button>
-                  )}
-                </div>
-              </div>
+              {renderServerForm()}
             </>
           )}
 
@@ -1808,7 +1734,7 @@ function App() {
                 style={{
                   flex: 1,
                   padding: '10px',
-                  backgroundColor: backupMode === 'oneshot' ? '#667eea' : '#e2e8f0',
+                  backgroundColor: backupMode === 'oneshot' ? 'var(--accent)' : '#e2e8f0',
                   color: backupMode === 'oneshot' ? 'white' : '#4a5568',
                   border: 'none',
                   borderRadius: '8px',
@@ -1824,7 +1750,7 @@ function App() {
                 style={{
                   flex: 1,
                   padding: '10px',
-                  backgroundColor: backupMode === 'scheduled' ? '#667eea' : '#e2e8f0',
+                  backgroundColor: backupMode === 'scheduled' ? 'var(--accent)' : '#e2e8f0',
                   color: backupMode === 'scheduled' ? 'white' : '#4a5568',
                   border: 'none',
                   borderRadius: '8px',
@@ -2235,7 +2161,7 @@ function App() {
                 type="text"
                 value={restoreBackupId || hostname}
                 onChange={(e) => setRestoreBackupId(e.target.value)}
-                placeholder={hostname || "hostname ou ID personnalisé"}
+                placeholder={hostname || t('phBackupId')}
               />
             </div>
           </div>
@@ -2676,40 +2602,28 @@ function App() {
           <h2 style={{textAlign: 'center'}}>{t('aboutTitle')}</h2>
 
           <img
-            src={logo}
-            alt="Proxmox Backup Client GO"
+            src={brand.logo || logo}
+            alt={brand.title}
             className="logo"
             onError={(e) => e.target.style.display = 'none'}
           />
 
           <div style={{textAlign: 'center', marginTop: '30px'}}>
-            <h3>Proxmox Backup Client GO</h3>
+            <h3>{brand.title}</h3>
             <p style={{color: '#718096', margin: '10px 0'}}>{t('version')} {appVersion}</p>
 
-            {/* Upsell CTA */}
-            { t('chooseBackupUrl') !== "chooseBackupUrl" && (
+            {/* Upsell / buy-storage CTA (brand-specific when configured) */}
             <div style={{margin: '20px 0'}}>
               <a
-                href={`${t('chooseBackupUrl')}?utm_source=GuiAPP&utm_medium=tooling&utm_campaign=version-${appVersion}&utm_content=version-${appVersion}`}
+                className="cta-btn"
+                href={buyStorage.url}
                 target="_blank"
+                data-external="true"
                 rel="noopener noreferrer"
-                style={{
-                  display: 'inline-block',
-                  padding: '12px 24px',
-                  backgroundColor: '#667eea',
-                  color: 'white',
-                  textDecoration: 'none',
-                  borderRadius: '8px',
-                  fontWeight: 'bold',
-                  transition: 'background-color 0.3s'
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#5568d3'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = '#667eea'}
               >
-                📦 {t('orderStorageCTA')}
+                📦 {buyStorage.text}
               </a>
             </div>
-            )}
 
             <div className="grid" style={{marginTop: '30px', textAlign: 'left'}}>
               <div className="card">
@@ -2721,6 +2635,25 @@ function App() {
                   <li>{t('featuresList.vss')}</li>
                   <li>{t('featuresList.dedup')}</li>
                   <li>{t('featuresList.modern')}</li>
+                </ul>
+              </div>
+
+              <div className="card">
+                <h3>🌐 Links</h3>
+                <ul style={{lineHeight: 2, marginLeft: '20px'}}>
+                  {[
+                    ['about', 'About'],
+                    ['help', 'Help / Forum'],
+                    ['updates', 'Releases'],
+                    ['contact', 'Contact / Repo']
+                  ].map(([k, label]) => {
+                    const u = (brand.urls && brand.urls[k]) || brand.brand_url || 'https://www.proxmox.com/'
+                    return (
+                      <li key={k}>
+                        <a href={u} target="_blank" data-external="true" rel="noopener noreferrer">{label}</a>
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
 
@@ -2738,7 +2671,7 @@ function App() {
 
             <p style={{marginTop: '30px'}}>
               <strong>{t('copyright')}</strong><br/>
-              <a href="https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1" style={{color: '#667eea'}} target="_blank">proxmoxbackupclient_go contributors</a>
+              <a href="https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1" style={{color: 'var(--accent)'}} target="_blank">proxmoxbackupclient_go contributors</a>
             </p>
 
             <p style={{marginTop: '20px', color: '#718096', fontSize: '12px'}}>

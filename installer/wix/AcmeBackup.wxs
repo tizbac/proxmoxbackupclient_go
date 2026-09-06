@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ===================================================================== -->
+<!-- EXAMPLE brand installer entry: "Acme Backup".                          -->
+<!-- Copy of the Product.wxs pattern with a different brand identity.         -->
+<!-- To activate: drop AcmeBackup.ico into installer/icons/, build the          -->
+<!-- AcmeBackup.exe + AcmeBackupSVC.exe under those names, then light this     -->
+<!-- file to AcmeBackup.msi. The GUI auto-brands as "acmebackup" at runtime    -->
+<!-- (gui/brand.go). Replace the URLs/icon below with real ones.               -->
+<!-- ===================================================================== -->
+<?define ProductName = "Acme Backup" ?>
+<?define ExeName = "AcmeBackup" ?>
+<?define ServiceExeName = "AcmeBackupSVC" ?>
+<?define VendorKey = "Acme" ?>
+<?define Manufacturer = "Acme" ?>
+<!-- Each brand MUST have its own UpgradeCode (distinct from the others). -->
+<?define UpgradeCode = "7c2e4b6d-1a8f-4d3e-b9c0-5e6f7a8b9c0d" ?>
+<?define ArpUrlAbout = "https://acme.example/" ?>
+<?define ArpHelpLink = "https://acme.example/help" ?>
+<?define ArpUrlUpdateInfo = "https://acme.example/releases" ?>
+<?define ArpContact = "https://acme.example/contact" ?>
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <?ifndef ProductVersion ?>
+    <?define ProductVersion = "0.2.72" ?>
+  <?endif ?>
+
+  <?include ProductBody.wxi ?>
+</Wix>

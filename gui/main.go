@@ -35,7 +35,6 @@ const (
 	appName = "Proxmox Backup Client"
 )
 
-
 var (
 	crashReportPath string
 )
@@ -111,7 +110,7 @@ func main() {
 
 	// Create application options
 	appOptions := &options.App{
-		Title:     fmt.Sprintf("%s v%s", appName, appVersion),
+		Title:     fmt.Sprintf("%s v%s", BrandFromExecutable().Title, appVersion),
 		Width:     1200,
 		Height:    840,
 		MaxWidth:  1680, // Prevent window from being too large
@@ -161,7 +160,6 @@ func main() {
 	writeDebugLog("Application shutdown normally")
 }
 
-
 func writeCrashReport(message string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
@@ -188,7 +186,6 @@ Please report this issue to the Proxmox Backup Client project:
 		fmt.Fprintf(os.Stderr, "Crash report written to: %s\n", crashReportPath)
 	}
 }
-
 
 // SetProgressCallbacks sets custom progress callbacks for API mode
 func (a *App) SetProgressCallbacks(jobID string, onProgress func(string, float64, string), onComplete func(string, bool, string)) {
@@ -307,26 +304,26 @@ func (a *App) GetVersion() string {
 
 // PhysicalDiskInfo represents information about a physical disk
 type PhysicalDiskInfo struct {
-	DiskNumber     int64  `json:"disk_number"`
-	Size           int64  `json:"size"`
-	Model          string `json:"model"`
-	IsBootDisk     bool   `json:"is_boot_disk"`
-	IsSystemDisk   bool   `json:"is_system_disk"`
-	DeviceID       string `json:"device_id"`
-	DevicePath     string `json:"device_path"`
+	DiskNumber   int64  `json:"disk_number"`
+	Size         int64  `json:"size"`
+	Model        string `json:"model"`
+	IsBootDisk   bool   `json:"is_boot_disk"`
+	IsSystemDisk bool   `json:"is_system_disk"`
+	DeviceID     string `json:"device_id"`
+	DevicePath   string `json:"device_path"`
 }
 
 // ListPhysicalDisks returns a list of available physical disks
 func (a *App) ListPhysicalDisks() ([]PhysicalDiskInfo, error) {
 	writeDebugLog("ListPhysicalDisks() called from frontend")
-	
+
 	// Call platform-specific disk listing function
 	disks, err := listPhysicalDisks()
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("Error listing physical disks: %v", err))
 		return nil, err
 	}
-	
+
 	writeDebugLog(fmt.Sprintf("Found %d physical disks", len(disks)))
 	return disks, nil
 }
@@ -344,14 +341,14 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		// M-04: never hand the PBS token to the webview/frontend. Expose only
 		// whether one is stored; SaveConfig keeps the existing secret when the
 		// frontend submits an empty value, and TestConnection falls back to it.
-		"secret":          "",
-		"secret_set":      cfg.Secret != "",
-		"datastore":       cfg.Datastore,
-		"namespace":       cfg.Namespace,
-		"backupdir":       cfg.BackupDir,
-		"backup-id":       cfg.BackupID,
-		"usevss":          cfg.UseVSS,
-		"hostname":        hostname,
+		"secret":     "",
+		"secret_set": cfg.Secret != "",
+		"datastore":  cfg.Datastore,
+		"namespace":  cfg.Namespace,
+		"backupdir":  cfg.BackupDir,
+		"backup-id":  cfg.BackupID,
+		"usevss":     cfg.UseVSS,
+		"hostname":   hostname,
 	}
 
 	// Pre-fill backup-id with hostname if empty
@@ -361,8 +358,6 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 
 	return result
 }
-
-
 
 // DiagnoseConfig returns config validation status for debugging
 func (a *App) DiagnoseConfig() map[string]interface{} {
@@ -376,14 +371,14 @@ func (a *App) DiagnoseConfig() map[string]interface{} {
 	configPath, _ := getConfigPath()
 
 	return map[string]interface{}{
-		"config_path":       configPath,
-		"baseurl_set":       cfg.BaseURL != "",
-		"baseurl_value":     security.SanitizeURL(cfg.BaseURL),
-		"authid_set":        cfg.AuthID != "",
-		"datastore_set":     cfg.Datastore != "",
-		"validation_ok":     validationError == "",
-		"validation_error":  validationError,
-		"mode":              a.mode.String(),
+		"config_path":      configPath,
+		"baseurl_set":      cfg.BaseURL != "",
+		"baseurl_value":    security.SanitizeURL(cfg.BaseURL),
+		"authid_set":       cfg.AuthID != "",
+		"datastore_set":    cfg.Datastore != "",
+		"validation_ok":    validationError == "",
+		"validation_error": validationError,
+		"mode":             a.mode.String(),
 	}
 }
 
@@ -447,8 +442,11 @@ func (a *App) TestConnection(config *Config) error {
 		return err
 	}
 
-	// Overlay the stored session ticket (u/p login) for this server, if any.
-	testConfig = a.withTicket(testConfig)
+	// Mint a fresh PBS session ticket for this operation (username/password).
+	testConfig, err := a.withAuth(testConfig)
+	if err != nil {
+		return err
+	}
 
 	// Create PBS client
 	client := &pbscommon.PBSClient{
@@ -836,8 +834,11 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	// Note: Admin check for VSS is done in StartBackup() routing layer
 	// If we're here via service, we're already running as LocalSystem
 
-	// Resolve PBS fields from multi-PBS default when legacy fields are empty
-	pbsCfg := a.withTicket(a.config.EffectivePBS())
+	// Resolve PBS fields from multi-PBS default, minting a fresh ticket (u/p).
+	pbsCfg, err := a.withAuth(a.config.EffectivePBS())
+	if err != nil {
+		return err
+	}
 
 	// Validate PBS config
 	if err := pbsCfg.Validate(); err != nil {
@@ -870,7 +871,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		Datastore:       pbsCfg.Datastore,
 		Namespace:       pbsCfg.Namespace,
 		CertFingerprint: pbsCfg.CertFingerprint,
-		BackupObjects:      targetDirs,
+		BackupObjects:   targetDirs,
 		BackupID:        backupID,
 		BackupType:      "host", // "host" for directory, would be "vm" for machine
 		UseVSS:          useVSS,
@@ -1058,8 +1059,11 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	// Note: Admin check for VSS is done in StartMachineBackup() routing layer
 	// If we're here via service, we're already running as LocalSystem
 
-	// Resolve PBS fields from multi-PBS default when legacy fields are empty
-	pbsCfg := a.withTicket(a.config.EffectivePBS())
+	// Resolve PBS fields from multi-PBS default, minting a fresh ticket (u/p).
+	pbsCfg, err := a.withAuth(a.config.EffectivePBS())
+	if err != nil {
+		return err
+	}
 
 	// Validate PBS config
 	if err := pbsCfg.Validate(); err != nil {
@@ -1076,9 +1080,9 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		Datastore:       pbsCfg.Datastore,
 		Namespace:       pbsCfg.Namespace,
 		CertFingerprint: pbsCfg.CertFingerprint,
-		BackupObjects:      backupDevices,
+		BackupObjects:   backupDevices,
 		BackupID:        backupID,
-		Kind: "machine"      ,
+		Kind:            "machine",
 		BackupType:      "vm", // "vm" for machine backup
 		UseVSS:          useVSS,
 		Compression:     compression,
@@ -1230,13 +1234,13 @@ func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		return a.withTicket(pbs.ToConfig()), nil
+		return a.withAuth(pbs.ToConfig())
 	}
 	cfg := a.config.EffectivePBS()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return a.withTicket(cfg), nil
+	return a.withAuth(cfg)
 }
 
 // ListSnapshots lists available snapshots on a PBS server, optionally filtered

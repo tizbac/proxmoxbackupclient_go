@@ -17,10 +17,6 @@ type App struct {
 	callbacksMap     map[string]*progressCallbacks
 	callbacksMutex   sync.RWMutex
 	isServiceProcess bool // True if running as Windows Service (never re-detect mode)
-	// Active PBS session tickets (username/password login), keyed by server
-	// BaseURL. Session-only: dropped on app exit and never written to disk.
-	tickets   map[string]*pbsticket
-	ticketsMu sync.RWMutex
 }
 
 // progressCallbacks stores the callback functions for a backup operation
@@ -36,7 +32,6 @@ func NewApp() *App {
 		stopScheduler: make(chan struct{}),
 		apiClient:     api.NewClient(getAPITokenPath()),
 		callbacksMap:  make(map[string]*progressCallbacks),
-		tickets:       make(map[string]*pbsticket),
 	}
 }
 
@@ -50,6 +45,5 @@ func NewAppForService(ctx context.Context) *App {
 		mode:             api.ModeStandalone, // Service executes directly
 		callbacksMap:     make(map[string]*progressCallbacks),
 		isServiceProcess: true, // Prevent mode re-detection
-		tickets:          make(map[string]*pbsticket),
 	}
 }

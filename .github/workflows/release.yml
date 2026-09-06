@@ -1,4 +1,4 @@
-name: Release Nimbus Backup
+name: Release Proxmox Backup Client
 
 on:
   # Disabled tag trigger to avoid duplicate with build-and-release.yml
@@ -69,11 +69,11 @@ jobs:
           wails build -platform windows/amd64 -ldflags "-s -w"
 
           # Verify output
-          if (Test-Path "build/bin/NimbusBackup.exe") {
+          if (Test-Path "build/bin/ProxmoxBackupClient.exe") {
             Write-Host "✅ Build successful!"
-            Get-Item "build/bin/NimbusBackup.exe" | Format-List
+            Get-Item "build/bin/ProxmoxBackupClient.exe" | Format-List
           } else {
-            Write-Error "❌ Build failed - NimbusBackup.exe not found"
+            Write-Error "❌ Build failed - ProxmoxBackupClient.exe not found"
             Get-ChildItem build -Recurse -ErrorAction SilentlyContinue
             exit 1
           }
@@ -82,15 +82,15 @@ jobs:
       - name: Copy Binary to Root
         working-directory: gui
         run: |
-          Copy-Item "build/bin/NimbusBackup.exe" "../NimbusBackup.exe"
+          Copy-Item "build/bin/ProxmoxBackupClient.exe" "../ProxmoxBackupClient.exe"
           Write-Host "Binary copied to root directory"
         shell: pwsh
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nimbus-backup-windows-wails
-          path: NimbusBackup.exe
+          name: proxmoxbackupclient-windows-wails
+          path: ProxmoxBackupClient.exe
           retention-days: 30
 
       - name: Create Release Package
@@ -101,12 +101,12 @@ jobs:
           New-Item -ItemType Directory -Path dist | Out-Null
 
           # Copy files
-          Copy-Item NimbusBackup.exe dist/
+          Copy-Item ProxmoxBackupClient.exe dist/
           Copy-Item GUI_README.md dist/README.md -ErrorAction SilentlyContinue
           Copy-Item CONFIG_FORMAT_SPEC.md dist/README.txt -ErrorAction SilentlyContinue
 
           # Create ZIP
-          Compress-Archive -Path dist/* -DestinationPath NimbusBackup-Windows.zip -Force
+          Compress-Archive -Path dist/* -DestinationPath ProxmoxBackupClient-Windows.zip -Force
           Write-Host "✅ Release package created"
         shell: pwsh
 
@@ -119,7 +119,7 @@ jobs:
           sed -n "/## \[${VERSION#v}\]/,/## \[/p" CHANGELOG.md | sed '$d' > RELEASE_NOTES.md
 
           # Add header
-          sed -i '1i ## Nimbus Backup - Release '"$VERSION"'\n\nClient de sauvegarde pour Proxmox Backup Server\n\n### 📦 Installation\n\nTéléchargez `NimbusBackup.exe` et lancez-le avec les droits administrateur.\n' RELEASE_NOTES.md
+          sed -i '1i ## Proxmox Backup Client - Release '"$VERSION"'\n\nClient de sauvegarde pour Proxmox Backup Server\n\n### 📦 Installation\n\nTéléchargez `ProxmoxBackupClient.exe` et lancez-le avec les droits administrateur.\n' RELEASE_NOTES.md
 
           # Add footer
           echo "" >> RELEASE_NOTES.md
@@ -134,7 +134,7 @@ jobs:
           echo "" >> RELEASE_NOTES.md
           echo "---" >> RELEASE_NOTES.md
           echo "" >> RELEASE_NOTES.md
-          echo "**RDEM Systems** | [nimbus.rdem-systems.com](https://nimbus.rdem-systems.com)" >> RELEASE_NOTES.md
+          echo "**Proxmox Backup Client** | [GitHub](https://github.com/tizbac/proxmoxbackupclient_go)" >> RELEASE_NOTES.md
         shell: bash
 
       - name: Create GitHub Release
@@ -142,8 +142,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            NimbusBackup-Windows.zip
-            NimbusBackup.exe
+            ProxmoxBackupClient-Windows.zip
+            ProxmoxBackupClient.exe
           draft: false
           prerelease: false
           body_path: RELEASE_NOTES.md

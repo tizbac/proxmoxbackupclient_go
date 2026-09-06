@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ===================================================================== -->
+<!-- EXAMPLE brand installer entry: "Nimbus Backup".                        -->
+<!-- Copy of the Product.wxs pattern with a different brand identity.        -->
+<!-- To activate: drop NimbusBackup.ico into installer/icons/, build the      -->
+<!-- NimbusBackup.exe + NimbusBackupSVC.exe under those names, then light     -->
+<!-- THIS file to NimbusBackup.msi. The GUI auto-brands as "nimbusbackup"     -->
+<!-- at runtime (gui/brand.go). Replace the URLs/icon below with real ones.   -->
+<!-- ===================================================================== -->
+<?define ProductName = "Nimbus Backup" ?>
+<?define ExeName = "NimbusBackup" ?>
+<?define ServiceExeName = "NimbusBackupSVC" ?>
+<?define VendorKey = "Nimbus" ?>
+<?define Manufacturer = "Nimbus" ?>
+<!-- Each brand MUST have its own UpgradeCode (distinct from Product.wxs). -->
+<?define UpgradeCode = "3f7c9a1e-6b2d-4e8f-9a5c-1b0d2f3e4a5b" ?>
+<?define ArpUrlAbout = "https://nimbus.example/" ?>
+<?define ArpHelpLink = "https://nimbus.example/help" ?>
+<?define ArpUrlUpdateInfo = "https://nimbus.example/releases" ?>
+<?define ArpContact = "https://nimbus.example/contact" ?>
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <?ifndef ProductVersion ?>
+    <?define ProductVersion = "0.2.72" ?>
+  <?endif ?>
+
+  <?include ProductBody.wxi ?>
+</Wix>

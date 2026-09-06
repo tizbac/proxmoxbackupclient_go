@@ -13,26 +13,29 @@ type PBSServer struct {
 	CertFingerprint string `json:"certfingerprint"`
 	AuthID          string `json:"authid"`
 	Secret          string `json:"secret"`
-	// Username/password ticket login (alternative to the API token). Username is
-	// persisted for pre-fill only; Password is session-only and never written to
-	// disk. A server is authenticated with EITHER (AuthID+Secret) OR a ticket
-	// obtained from (Username+Password) — see App.Login.
+	// Username/password authentication (alternative to the API token). Both are
+	// persisted so the GUI can mint a FRESH, short-lived PBS ticket at the start
+	// of every operation — PBS tickets expire, so we store the credentials and
+	// never a ticket. A server uses EITHER (AuthID+Secret) OR (Username+Password).
 	Username string `json:"username,omitempty"`
-	Password string `json:"-"`
+	Password string `json:"password,omitempty"`
 	Datastore       string `json:"datastore"`
 	Namespace       string `json:"namespace"`
 	Description     string `json:"description,omitempty"` // Optional description
 	IsOnline        bool   `json:"is_online,omitempty"`   // Connection status (updated by GUI)
 	SecretSet       bool   `json:"secret_set,omitempty"`  // M-04: set on sanitized copies so the UI knows a token exists without receiving it
+	PasswordSet     bool   `json:"password_set,omitempty"`
 }
 
-// sanitized returns a copy with the secret stripped and SecretSet set, for
-// handing PBS server records to the frontend without leaking the token (M-04).
+// sanitized returns a copy with the secret and password stripped (SecretSet /
+// PasswordSet set), for handing PBS server records to the frontend without
+// leaking credentials (M-04).
 func (pbs *PBSServer) sanitized() *PBSServer {
 	c := *pbs
 	c.SecretSet = pbs.Secret != ""
+	c.PasswordSet = pbs.Password != ""
 	c.Secret = ""
-	c.Password = "" // never hand the password to the frontend
+	c.Password = "" // never hand the credentials to the frontend
 	return &c
 }
 
@@ -57,8 +60,10 @@ func (pbs *PBSServer) Validate() error {
 	}
 
 	// Auth: a server is configured with EITHER an API token (AuthID+Secret)
-	// OR a username (password is supplied at login, not stored). At least one
-	// must be present; if a token is present its secret must be too.
+	// OR a username (the password is stored too). At least one must be present;
+	// if a token is present its secret must be too. The password itself is
+	// checked where the server is added/updated (it may be blank on update to
+	// mean "keep the stored password").
 	hasToken := pbs.AuthID != ""
 	hasUser := pbs.Username != ""
 	if hasToken {
@@ -97,6 +102,8 @@ func (pbs *PBSServer) ToConfig() *Config {
 		CertFingerprint: pbs.CertFingerprint,
 		AuthID:          pbs.AuthID,
 		Secret:          pbs.Secret,
+		Username:        pbs.Username,
+		Password:        pbs.Password,
 		Datastore:       pbs.Datastore,
 		Namespace:       pbs.Namespace,
 	}

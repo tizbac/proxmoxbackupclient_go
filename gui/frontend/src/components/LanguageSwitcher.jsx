@@ -73,7 +73,7 @@ function LanguageSwitcher() {
           backgroundColor: 'transparent',
           cursor: 'pointer',
           textAlign: 'left',
-          color: language === lang.code ? '#667eea' : '#4a5568',
+          color: language === lang.code ? 'var(--accent)' : '#4a5568',
           fontWeight: language === lang.code ? 'bold' : 'normal',
           transition: 'all 0.2s'
         }}

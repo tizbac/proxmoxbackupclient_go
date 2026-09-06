@@ -263,7 +263,7 @@ jobs:
       # The service is a plain `go build` from gui/ and would otherwise ship
       # with no Windows version info — a strong heuristic/ML false-positive
       # signal (Codex review). Generate a .syso with proper CompanyName /
-      # ProductName / version so NimbusBackupSVC.exe looks like normal signed-
+      # ProductName / version so ProxmoxBackupClientSVC.exe looks like normal signed-
       # vendor software. Must run AFTER the Wails GUI build (same package dir):
       # we strip any leftover .syso first so the GUI's resource can't leak into
       # the service link and cause a duplicate-resource error.
@@ -282,13 +282,13 @@ jobs:
               "ProductVersion": { "Major": $($p[0]), "Minor": $($p[1]), "Patch": $($p[2]), "Build": 0 }
             },
             "StringFileInfo": {
-              "CompanyName": "RDEM Systems",
-              "FileDescription": "Nimbus Backup Service",
+              "CompanyName": "Proxmox Backup Client",
+              "FileDescription": "Proxmox Backup Client Service",
               "FileVersion": "$ver",
-              "InternalName": "NimbusBackupSVC",
+              "InternalName": "ProxmoxBackupClientSVC",
               "LegalCopyright": "Copyright (c) 2024-2026 RDEM Systems",
-              "OriginalFilename": "NimbusBackupSVC.exe",
-              "ProductName": "Nimbus Backup",
+              "OriginalFilename": "ProxmoxBackupClientSVC.exe",
+              "ProductName": "Proxmox Backup Client",
               "ProductVersion": "$ver"
             },
             "VarFileInfo": { "Translation": { "LangID": "0409", "CharsetID": "04B0" } }
@@ -303,14 +303,14 @@ jobs:
         env:
           GOWORK: off
         run: |
-          go build -tags service -trimpath -buildmode=pie -ldflags "-s -w -X main.appVersion=${{ steps.version.outputs.VERSION }}" -o build/bin/NimbusBackupSVC.exe
+          go build -tags service -trimpath -buildmode=pie -ldflags "-s -w -X main.appVersion=${{ steps.version.outputs.VERSION }}" -o build/bin/ProxmoxBackupClientSVC.exe
         shell: pwsh
 
       - name: Copy binaries to dist
         run: |
           New-Item -ItemType Directory -Force -Path dist
-          Copy-Item gui/build/bin/NimbusBackup.exe dist/
-          Copy-Item gui/build/bin/NimbusBackupSVC.exe dist/
+           Copy-Item gui/build/bin/ProxmoxBackupClient.exe dist/
+           Copy-Item gui/build/bin/ProxmoxBackupClientSVC.exe dist/
         shell: pwsh
 
       - name: Install WiX Toolset
@@ -326,17 +326,17 @@ jobs:
           # Pass the resolved version to the WiX preprocessor so MSI
           # metadata matches the tag / ldflags version.
           candle.exe "-dProductVersion=${{ steps.version.outputs.VERSION_MSI }}" Product.wxs -ext WixUIExtension -ext WixUtilExtension
-          light.exe Product.wixobj -ext WixUIExtension -ext WixUtilExtension -out NimbusBackup.msi
-          Copy-Item NimbusBackup.msi ../../dist/
+           light.exe Product.wixobj -ext WixUIExtension -ext WixUtilExtension -out ProxmoxBackupClient.msi
+           Copy-Item ProxmoxBackupClient.msi ../../dist/
         shell: pwsh
 
       - name: Upload GUI artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: NimbusBackup-Windows
-          path: |
-            dist/NimbusBackup.exe
-            dist/NimbusBackup.msi
+           name: ProxmoxBackupClient-Windows
+           path: |
+             dist/ProxmoxBackupClient.exe
+             dist/ProxmoxBackupClient.msi
 
   # Create release on tag
   release:
@@ -373,24 +373,24 @@ jobs:
           mkdir -p release
 
           # CLI Windows
-          cd artifacts/cli-Windows && zip ../../release/nimbus-backup-cli-${{ steps.version.outputs.VERSION }}-windows.zip *
+          cd artifacts/cli-Windows && zip ../../release/proxmoxbackup-cli-${{ steps.version.outputs.VERSION }}-windows.zip *
           cd ../..
 
           # CLI Linux
-          cd artifacts/cli-Linux && tar -czf ../../release/nimbus-backup-cli-${{ steps.version.outputs.VERSION }}-linux.tar.gz *
+          cd artifacts/cli-Linux && tar -czf ../../release/proxmoxbackup-cli-${{ steps.version.outputs.VERSION }}-linux.tar.gz *
           cd ../..
 
           # CLI macOS
-          cd artifacts/cli-macOS && tar -czf ../../release/nimbus-backup-cli-${{ steps.version.outputs.VERSION }}-macos.tar.gz *
+          cd artifacts/cli-macOS && tar -czf ../../release/proxmoxbackup-cli-${{ steps.version.outputs.VERSION }}-macos.tar.gz *
           cd ../..
 
-          # GUI Windows - Add .exe, .msi (with and without version) and .zip
-          cd artifacts/NimbusBackup-Windows
-          cp NimbusBackup.exe ../../release/NimbusBackup-${{ steps.version.outputs.VERSION }}.exe
-          cp NimbusBackup.exe ../../release/NimbusBackup.exe
-          cp NimbusBackup.msi ../../release/NimbusBackup-${{ steps.version.outputs.VERSION }}.msi
-          cp NimbusBackup.msi ../../release/NimbusBackup.msi
-          zip ../../release/NimbusBackup-${{ steps.version.outputs.VERSION }}-windows.zip *
+           # GUI Windows - Add .exe, .msi (with and without version) and .zip
+           cd artifacts/ProxmoxBackupClient-Windows
+           cp ProxmoxBackupClient.exe ../../release/ProxmoxBackupClient-${{ steps.version.outputs.VERSION }}.exe
+           cp ProxmoxBackupClient.exe ../../release/ProxmoxBackupClient.exe
+           cp ProxmoxBackupClient.msi ../../release/ProxmoxBackupClient-${{ steps.version.outputs.VERSION }}.msi
+           cp ProxmoxBackupClient.msi ../../release/ProxmoxBackupClient.msi
+           zip ../../release/ProxmoxBackupClient-${{ steps.version.outputs.VERSION }}-windows.zip *
           cd ../..
 
       - name: Generate SHA256 checksums
@@ -401,14 +401,14 @@ jobs:
 
       # Free, OSS-friendly cryptographic provenance: attests that these exact
       # binaries were produced by THIS workflow, from THIS commit. Verifiable
-      # with `gh attestation verify <file> --repo rdemsystems/NimbusBackupClient`.
+      # with `gh attestation verify <file> --repo tizbac/proxmoxbackupclient_go`.
       # A strong trust signal for a sysadmin audience while signing is pending.
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
-            release/NimbusBackup*.exe
-            release/NimbusBackup*.msi
+            release/ProxmoxBackupClient*.exe
+            release/ProxmoxBackupClient*.msi
             release/*.zip
             release/*.tar.gz
 
@@ -433,8 +433,8 @@ jobs:
           emitted=0
           VER="${{ steps.version.outputs.VERSION }}"
           # Use the version-stamped copies so the published label reads
-          # "NimbusBackup-v0.2.106.msi" (identical bytes → same VT report).
-          for f in "release/NimbusBackup-${VER}.exe" "release/NimbusBackup-${VER}.msi"; do
+          # "ProxmoxBackupClient-v0.2.106.msi" (identical bytes → same VT report).
+           for f in "release/ProxmoxBackupClient-${VER}.exe" "release/ProxmoxBackupClient-${VER}.msi"; do
             [ -f "$f" ] || continue
             name=$(basename "$f")
             sha=$(sha256sum "$f" | awk '{print $1}')
@@ -480,9 +480,9 @@ jobs:
 
           # Create release notes from RELEASE_NOTES.md + recent commits
           cat > RELEASE_BODY.md << 'EOFNOTES'
-          # 🚀 Nimbus Backup ${{ steps.version.outputs.VERSION }}
+           # 🚀 Proxmox Backup Client ${{ steps.version.outputs.VERSION }}
 
-          > ⚠️ **Windows flagged the download as a virus?** This is a known false positive (unsigned Go/Wails binary) — *not* a virus. See [why this happens and how to verify the download](https://nimbus.rdem-systems.com/en/antivirus-false-positive/) · [🇫🇷 FR](https://nimbus.rdem-systems.com/faux-positif-antivirus/). A code-signing certificate (SignPath Foundation) is on the way.
+           > ⚠️ **Windows flagged the download as a virus?** This is a known false positive (unsigned Go/Wails binary) — *not* a virus. See the [project repository](https://github.com/tizbac/proxmoxbackupclient_go) for how to verify the download. A code-signing certificate (SignPath Foundation) is on the way.
 
           ## 📝 What's in this release
 
@@ -523,17 +523,17 @@ jobs:
           echo "" >> RELEASE_BODY.md
           echo "---" >> RELEASE_BODY.md
           echo "" >> RELEASE_BODY.md
-          echo "### Tested with NimbusBackup" >> RELEASE_BODY.md
-          echo "" >> RELEASE_BODY.md
-          echo "This release has been tested against NimbusBackup managed PBS — [🇬🇧 EN](https://nimbus.rdem-systems.com/en/blog/backup-windows-proxmox-backup-server/?utm_source=github) · [🇫🇷 FR](https://nimbus.rdem-systems.com/blog/sauvegarder-windows-proxmox-backup-server/?utm_source=github)." >> RELEASE_BODY.md
+           echo "### Tested with Proxmox Backup Server" >> RELEASE_BODY.md
+           echo "" >> RELEASE_BODY.md
+           echo "This release has been tested against Proxmox Backup Server — see the [project repository](https://github.com/tizbac/proxmoxbackupclient_go)." >> RELEASE_BODY.md
 
           # Add links at the end (FR bare URL + EN /en/ variant)
           echo "" >> RELEASE_BODY.md
           echo "---" >> RELEASE_BODY.md
           echo "" >> RELEASE_BODY.md
-          echo "**RDEM Systems** — [🇬🇧 EN](https://www.rdem-systems.com/en/) · [🇫🇷 FR](https://www.rdem-systems.com/)" >> RELEASE_BODY.md
-          echo "" >> RELEASE_BODY.md
-          echo "**Nimbus Backup — Fully managed Proxmox Backup Server datastores** — [🇬🇧 EN](https://nimbus.rdem-systems.com/en/?utm_source=github) · [🇫🇷 FR](https://nimbus.rdem-systems.com/?utm_source=github)" >> RELEASE_BODY.md
+           echo "**Proxmox Backup Client** — [GitHub](https://github.com/tizbac/proxmoxbackupclient_go) · [Forum](https://forum.proxmox.com/)" >> RELEASE_BODY.md
+           echo "" >> RELEASE_BODY.md
+           echo "**Proxmox Backup Client** — [Releases](https://github.com/tizbac/proxmoxbackupclient_go/releases)" >> RELEASE_BODY.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

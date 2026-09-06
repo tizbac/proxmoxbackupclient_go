@@ -1,14 +1,4 @@
-import { useState, useEffect } from 'react'
-
-function MachineBackupConfig({ config, setConfig, backupType, setBackupType, physicalDisks, setSelectedDrives, selectedDrives }) {
-  const [isWindows, setIsWindows] = useState(false)
-
-  useEffect(() => {
-    // Check if we're on Windows (can be done via system info or by checking for Windows-specific APIs)
-    // This is a placeholder - actual implementation would check system info
-    setIsWindows(true) // For now, assuming Windows for this implementation
-  }, [])
-
+function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, selectedDrives }) {
   const handleDriveSelect = (drivePath) => {
     if (selectedDrives.includes(drivePath)) {
       setSelectedDrives(selectedDrives.filter(d => d !== drivePath))
@@ -18,7 +8,7 @@ function MachineBackupConfig({ config, setConfig, backupType, setBackupType, phy
   }
 
   const handleSelectAll = () => {
-    setSelectedDrives(physicalDisks.map(d => d.path))
+    setSelectedDrives(physicalDisks.map(d => d.device_path))
   }
 
   const handleDeselectAll = () => {
@@ -31,29 +21,31 @@ function MachineBackupConfig({ config, setConfig, backupType, setBackupType, phy
   return (
     <div className="machine-backup-config">
       <h3>Machine Backup Configuration</h3>
-      
+
       <div className="form-group">
         <label>Select Disks to Backup:</label>
         <div className="drive-selection">
           <div className="drive-actions">
-            <button onClick={handleSelectAll}>Select All</button>
-            <button onClick={handleDeselectAll}>Deselect All</button>
+            <button className="btn" onClick={handleSelectAll}>Select All</button>
+            <button className="btn btn-secondary" onClick={handleDeselectAll}>Deselect All</button>
           </div>
           <div className="drives-list">
+            {physicalDisks.length === 0 && (
+              <div style={{ padding: '12px', color: '#718096' }}>No physical disks found.</div>
+            )}
             {physicalDisks.map((drive) => (
-              <div key={drive.device_path} className="drive-item">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    id={drive.device_path}
-                    checked={selectedDrives.includes(drive.device_path)}
-                    onChange={() => handleDriveSelect(drive.device_path)}
-                  />
-                  <span className="label-text">
-                    {drive.device_path} ({(drive.size / (1024 * 1024 * 1024)).toFixed(2)} GB) - {drive.model}
-                  </span>
-                </label>
-              </div>
+              <label className="drive-item" key={drive.device_path}>
+                <input
+                  type="checkbox"
+                  checked={selectedDrives.includes(drive.device_path)}
+                  onChange={() => handleDriveSelect(drive.device_path)}
+                />
+                <span className="drive-device">{drive.device_path}</span>
+                <span className="drive-size">{(drive.size / (1024 * 1024 * 1024)).toFixed(2)} GB</span>
+                <span className="drive-model">{drive.model}</span>
+                {drive.is_boot_disk && <span className="drive-badge">BOOT</span>}
+                {drive.is_system_disk && <span className="drive-badge drive-badge-system">SYSTEM</span>}
+              </label>
             ))}
           </div>
         </div>

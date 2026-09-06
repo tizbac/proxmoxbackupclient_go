@@ -21,11 +21,12 @@ type ScheduledJob struct {
 	ScheduleTime string   `json:"scheduleTime"` // HH:MM format
 	RunAtStartup bool     `json:"runAtStartup"`
 	BackupDirs   []string `json:"backupDirs"`
+	DriveLetters []string `json:"driveLetters"` // physical disks for machine backups
 	BackupID     string   `json:"backupId"`
 	UseVSS       bool     `json:"useVSS"`
 	BackupType   string   `json:"backupType"`
 	ExcludeList  []string `json:"excludeList"`
-	Compression  string   `json:"compression"` // "fastest", "default", "better", "best"
+	Compression  string   `json:"compression"`       // "fastest", "default", "better", "best"
 	LastRun      string   `json:"lastRun,omitempty"` // ISO timestamp
 	NextRun      string   `json:"nextRun,omitempty"` // ISO timestamp
 	Enabled      bool     `json:"enabled"`
@@ -600,10 +601,18 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 		compression = "fastest"
 	}
 
+	// driveLetters carries the physical disks for machine backups (empty for
+	// directory backups); it is persisted on the job so a scheduled run restores
+	// the exact same selection.
+	driveLetters := job.DriveLetters
+	if len(driveLetters) == 0 {
+		driveLetters = []string{}
+	}
+
 	err := a.StartBackup(
 		job.BackupType,
 		job.BackupDirs,
-		[]string{}, // driveLetters - empty for directory backups
+		driveLetters,
 		job.ExcludeList,
 		job.BackupID,
 		job.UseVSS,
@@ -676,4 +685,3 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 		writeDebugLog(fmt.Sprintf("Warning: Failed to save updated jobs: %v", err))
 	}
 }
-
