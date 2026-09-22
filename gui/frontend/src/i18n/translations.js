@@ -126,6 +126,9 @@ const translations = {
       dayMon: "Lun", dayTue: "Mar", dayWed: "Mer", dayThu: "Jeu", dayFri: "Ven", daySat: "Sam", daySun: "Dim",
       schedulingInfoInterval: "Le backup sera exécuté toutes les {n} minutes",
       schedulingInfoDays: "Jours actifs :",
+      atStartupLabel: "Au démarrage",
+      everyNMinutes: "toutes les {n} min",
+      everyDay: "Tous les jours",
 
       // Backup Form
       directoriesToBackup: "Répertoires à sauvegarder (un par ligne)",
@@ -156,6 +159,9 @@ const translations = {
       failedChunksLabel: "échoués",
       currentDirLabel: "Dossier :",
       atLeastOneDisk: "Au moins un disque requis",
+      atLeastOneDirectory: "Au moins un répertoire requis",
+      splitBackupUnavailable: "Sauvegarde fractionnée non disponible",
+      schedulingUnavailable: "Fonction de planification non disponible",
       wailsRuntimeUnavailable: "Wails runtime non disponible",
       splitStartFailed: "Le backup {n}/{total} n'a pas pu démarrer:\n{msg}\n\nRéessayer cette partie ?",
       splitRetryPrompt: "Le backup {n}/{total} a échoué:\n{msg}\n\nRéessayer cette partie avant de continuer ?",
@@ -464,6 +470,9 @@ const translations = {
       dayMon: "Mon", dayTue: "Tue", dayWed: "Wed", dayThu: "Thu", dayFri: "Fri", daySat: "Sat", daySun: "Sun",
       schedulingInfoInterval: "Backup will run every {n} minutes",
       schedulingInfoDays: "Active days:",
+      atStartupLabel: "At startup",
+      everyNMinutes: "every {n} min",
+      everyDay: "Every day",
 
       // Backup Form
       directoriesToBackup: "Directories to backup (one per line)",
@@ -494,6 +503,9 @@ const translations = {
       failedChunksLabel: "failed",
       currentDirLabel: "Folder:",
       atLeastOneDisk: "At least one disk is required",
+      atLeastOneDirectory: "At least one directory is required",
+      splitBackupUnavailable: "Split backup not available",
+      schedulingUnavailable: "Scheduling function not available",
       wailsRuntimeUnavailable: "Wails runtime not available",
       splitStartFailed: "Backup {n}/{total} could not start:\n{msg}\n\nRetry this part?",
       splitRetryPrompt: "Backup {n}/{total} failed:\n{msg}\n\nRetry this part before continuing?",
@@ -802,6 +814,9 @@ const translations = {
       dayMon: "Lun", dayTue: "Mar", dayWed: "Mer", dayThu: "Gio", dayFri: "Ven", daySat: "Sab", daySun: "Dom",
       schedulingInfoInterval: "Il backup verrà eseguito ogni {n} minuti",
       schedulingInfoDays: "Giorni attivi:",
+      atStartupLabel: "All'avvio",
+      everyNMinutes: "ogni {n} min",
+      everyDay: "Tutti i giorni",
 
       // Backup Form
       directoriesToBackup: "Directory da backup (una per riga)",
@@ -832,6 +847,9 @@ const translations = {
       failedChunksLabel: "falliti",
       currentDirLabel: "Cartella:",
       atLeastOneDisk: "È richiesto almeno un disco",
+      atLeastOneDirectory: "È richiesta almeno una cartella",
+      splitBackupUnavailable: "Backup suddiviso non disponibile",
+      schedulingUnavailable: "Funzione di pianificazione non disponibile",
       wailsRuntimeUnavailable: "Runtime Wails non disponibile",
       splitStartFailed: "Il backup {n}/{total} non è potuto partire:\n{msg}\n\nRiprovare questa parte?",
       splitRetryPrompt: "Il backup {n}/{total} non è riuscito:\n{msg}\n\nRiprovare questa parte prima di continuare?",
@@ -1140,6 +1158,9 @@ const translations = {
       dayMon: "Mo", dayTue: "Di", dayWed: "Mi", dayThu: "Do", dayFri: "Fr", daySat: "Sa", daySun: "So",
       schedulingInfoInterval: "Sicherung wird alle {n} Minuten ausgeführt",
       schedulingInfoDays: "Aktive Tage:",
+      atStartupLabel: "Beim Start",
+      everyNMinutes: "alle {n} Min.",
+      everyDay: "Jeden Tag",
 
       // Backup Form
       directoriesToBackup: "Zu sichernde Verzeichnisse (eins pro Zeile)",
@@ -1170,6 +1191,9 @@ const translations = {
       failedChunksLabel: "fehlgeschlagen",
       currentDirLabel: "Ordner:",
       atLeastOneDisk: "Mindestens eine Festplatte ist erforderlich",
+      atLeastOneDirectory: "Mindestens ein Verzeichnis ist erforderlich",
+      splitBackupUnavailable: "Geteilte Sicherung nicht verfügbar",
+      schedulingUnavailable: "Planungsfunktion nicht verfügbar",
       wailsRuntimeUnavailable: "Wails-Laufzeit nicht verfügbar",
       splitStartFailed: "Backup {n}/{total} konnte nicht gestartet werden:\n{msg}\n\nDiesen Teil erneut versuchen?",
       splitRetryPrompt: "Backup {n}/{total} ist fehlgeschlagen:\n{msg}\n\nDiesen Teil vor dem Fortfahren erneut versuchen?",
@@ -1478,6 +1502,9 @@ const translations = {
       dayMon: "Pon", dayTue: "Wt", dayWed: "Śr", dayThu: "Czw", dayFri: "Pt", daySat: "Sob", daySun: "Niedz",
       schedulingInfoInterval: "Kopia zapasowa będzie wykonywana co {n} minut",
       schedulingInfoDays: "Aktywne dni:",
+      atStartupLabel: "Przy uruchomieniu",
+      everyNMinutes: "co {n} min",
+      everyDay: "Codziennie",
 
       // Backup Form
       directoriesToBackup: "Katalogi do kopii zapasowej (jeden na linię)",
@@ -1508,6 +1535,9 @@ const translations = {
       failedChunksLabel: "nieudane",
       currentDirLabel: "Folder:",
       atLeastOneDisk: "Wymagany jest co najmniej jeden dysk",
+      atLeastOneDirectory: "Wymagany jest co najmniej jeden katalog",
+      splitBackupUnavailable: "Kopia dzielona niedostępna",
+      schedulingUnavailable: "Funkcja planowania niedostępna",
       wailsRuntimeUnavailable: "Środowisko Wails niedostępne",
       splitStartFailed: "Kopia {n}/{total} nie mogła się rozpocząć:\n{msg}\n\nPonowić tę część?",
       splitRetryPrompt: "Kopia {n}/{total} nie powiodła się:\n{msg}\n\nPonowić tę część przed kontynuowaniem?",

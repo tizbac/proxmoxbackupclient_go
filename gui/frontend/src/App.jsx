@@ -1036,7 +1036,7 @@ function App() {
   // returns one job per part; we then run a backup per part.
   const executeSplitBackup = async (dirList) => {
     if (!window.go || !window.go.main.App.CreateBackupSplitPlan) {
-      showStatus('❌ Split backup not available', 'error')
+      showStatus(`❌ ${t('splitBackupUnavailable')}`, 'error')
       return
     }
 
@@ -1166,7 +1166,7 @@ function App() {
     const dirList = backupDirs.split('\n').map(d => d.trim()).filter(d => d)
 
     if (backupType === 'directory' && dirList.length === 0) {
-      showStatus('❌ Au moins un répertoire requis', 'error')
+      showStatus(`❌ ${t('atLeastOneDirectory')}`, 'error')
       return
     }
 
@@ -1189,7 +1189,7 @@ function App() {
     // Scheduled mode - save or update job instead of executing immediately
     if (backupMode === 'scheduled') {
       if (!SaveScheduledJob || !UpdateScheduledJob) {
-        showStatus('❌ Fonction de planification non disponible', 'error')
+        showStatus(`❌ ${t('schedulingUnavailable')}`, 'error')
         return
       }
 
@@ -1992,9 +1992,9 @@ function App() {
                   ? <>{t('schedulingInfo')} <strong>{scheduleTime}</strong></>
                   : <>{t('schedulingInfoInterval').replace('{n}', intervalMinutes)}
                       {!windowAllDay && ` ${t('windowBetween')} ${windowStart} ${t('windowAnd')} ${windowEnd}`}</>}
-                {daysOfWeek.length > 0 && daysOfWeek.length < 7 && (
-                  <><br/>{t('schedulingInfoDays')} {daysOfWeek.map(d => t(`day${d}`)).join(', ')}</>
-                )}
+                <br/>{t('schedulingInfoDays')} {daysOfWeek.length === 0 || daysOfWeek.length === 7
+                  ? t('everyDay')
+                  : daysOfWeek.map(d => t(`day${d}`)).join(', ')}
                 {runAtStartup && <><br/>{t('andAtStartup')}</>}
               </div>
             </div>
@@ -2221,7 +2221,15 @@ function App() {
                     <div>
                       <strong>{job.name}</strong>
                       <div style={{fontSize: '14px', color: '#6c757d', marginTop: '5px'}}>
-                        ⏰ {job.scheduleTime} {job.runAtStartup && '• 🚀 Au démarrage'}
+                        {job.triggerMode === 'interval'
+                          ? <>🔁 {t('triggerModeInterval')} — {t('everyNMinutes').replace('{n}', job.intervalMinutes)}
+                              {!job.windowAllDay && ` (${job.windowStart}–${job.windowEnd})`}</>
+                          : <>📆 {t('triggerModeDaily')} — ⏰ {job.scheduleTime}</>}
+                        {' • '}
+                        {!job.daysOfWeek || job.daysOfWeek.length === 0 || job.daysOfWeek.length === 7
+                          ? t('everyDay')
+                          : job.daysOfWeek.map(d => t(`day${d}`)).join(', ')}
+                        {job.runAtStartup && ` • 🚀 ${t('atStartupLabel')}`}
                       </div>
                       <div style={{fontSize: '13px', color: '#6c757d', marginTop: '3px'}}>
                         📁 {job.backupDirs.join(', ')}
