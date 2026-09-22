@@ -2,6 +2,7 @@ package pbscommon
 
 import (
 	"container/list"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -9,7 +10,15 @@ import (
 	"io"
 	"sort"
 	"sync"
+	"time"
 )
+
+// chunkFetchTimeout bounds a SINGLE chunk fetch (see GetChunkData's doc
+// comment for why this exists — a stuck HTTP/2 stream on an otherwise-healthy
+// connection can hang forever with no other protection). Chunks are at most
+// ~16MB (the chunker's own max size), so even a slow link should comfortably
+// finish well inside this.
+const chunkFetchTimeout = 60 * time.Second
 
 // ErrReadCancelled is returned by a DIDXReaderAt read once its cancel predicate
 // reports true, so a long lazy walk (e.g. a cross-snapshot search) can be
@@ -37,6 +46,14 @@ type DIDXReaderAt struct {
 	progress func(fetched, total int)
 	cancel   func() bool // optional; when it returns true, reads abort with ErrReadCancelled
 
+	// ctx is the parent for each chunk fetch's own chunkFetchTimeout deadline
+	// (see that const's doc comment). Cancelling ctx (e.g. a user-triggered
+	// restore cancel) aborts an in-flight fetch immediately, same as the
+	// timeout firing on its own if nothing cancels it first. Defaults to
+	// context.Background() when the caller has none to offer (e.g. plain
+	// browsing calls that don't go through a cancellable restore).
+	ctx context.Context
+
 	mu      sync.Mutex // serializes fetch bookkeeping (fetched counter)
 	fetched int
 }
@@ -46,6 +63,17 @@ type DIDXReaderAt struct {
 // disable. Set it immediately after construction and before the first read —
 // it is read without locking and is not safe to change concurrently with reads.
 func (r *DIDXReaderAt) SetCancelCheck(fn func() bool) { r.cancel = fn }
+
+// SetContext installs the parent context each chunk fetch's own
+// chunkFetchTimeout deadline derives from (see the ctx field's doc comment).
+// Pass nil to reset to context.Background(). Set immediately after
+// construction and before the first read, same rule as SetCancelCheck.
+func (r *DIDXReaderAt) SetContext(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	r.ctx = ctx
+}
 
 // NewDIDXReaderAt downloads and parses the .didx index for archiveName and
 // returns a lazy reader over the reconstructed stream plus its total size. The
@@ -66,6 +94,7 @@ func (pbs *PBSClient) NewDIDXReaderAt(archiveName string, cacheChunks int, progr
 		idx:      idx,
 		cache:    newChunkCache(cacheChunks),
 		progress: progress,
+		ctx:      context.Background(),
 	}, int64(idx.total), nil
 }
 
@@ -88,7 +117,13 @@ func (r *DIDXReaderAt) chunkAt(ci int) ([]byte, error) {
 		return data, nil
 	}
 	digest := r.idx.digests[ci]
-	chunk, err := r.pbs.GetChunkData(digest)
+	ctx := r.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	fetchCtx, cancelFetch := context.WithTimeout(ctx, chunkFetchTimeout)
+	chunk, err := r.pbs.GetChunkData(fetchCtx, digest)
+	cancelFetch()
 	if err != nil {
 		return nil, fmt.Errorf("fetch chunk %s (index %d/%d): %w", digest, ci, len(r.idx.digests), err)
 	}

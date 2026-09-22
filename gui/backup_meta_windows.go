@@ -124,6 +124,22 @@ func (c *NTFSMetaCollector) Finalize() ([]byte, error) {
 	return SerializeFileMeta(c.meta)
 }
 
+// FinalizeRaw finalizes the counters (same as Finalize) but returns the raw,
+// ungzipped *BackupFileMeta instead of a serialized blob. Used by the
+// multi-archive backup path, which aggregates every directory's metadata into
+// ONE combined blob per snapshot rather than uploading one blob per directory
+// (see CombinedBackupFileMeta). Returns nil if nothing was collected.
+func (c *NTFSMetaCollector) FinalizeRaw() (*BackupFileMeta, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.meta.Collected = len(c.meta.Entries)
+	c.meta.Errors = c.errors
+	if len(c.meta.Entries) == 0 {
+		return nil, nil
+	}
+	return c.meta, nil
+}
+
 // Stats returns entry count, unique SDDL count, and error count.
 func (c *NTFSMetaCollector) Stats() (entries, uniqueSDDLs, errors int) {
 	c.mu.Lock()

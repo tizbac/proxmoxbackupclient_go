@@ -94,18 +94,37 @@ func ParseCatalog(data []byte) ([]CatalogEntry, error) {
 		return nil, fmt.Errorf("catalog root pointer %d out of range (len %d)", rootPtr, len(data))
 	}
 
-	// The trailing table holds exactly one 'd' entry pointing at the root dir.
+	// The trailing table holds one 'd' entry per archive in the snapshot — one
+	// entry for a standalone (single-archive) catalog, matching the block
+	// PXARArchive.WriteDir itself writes on a toplevel call, or several for a
+	// shared multi-archive catalog written by WriteSharedCatalogRoot (see that
+	// function's doc comment: "same encoding, N entries instead of 1"). A
+	// hard `len(dirs) != 1` check here used to reject every real multi-archive
+	// snapshot outright (falling back to a walk of a hardcoded archive name
+	// that doesn't exist for a multi-folder job) — fixed to accept any count
+	// >= 1.
 	dirs, files, err := parseCatalogTable(data, rootPtr)
 	if err != nil {
 		return nil, fmt.Errorf("trailer table: %w", err)
 	}
-	if len(files) != 0 || len(dirs) != 1 {
-		return nil, fmt.Errorf("catalog trailer malformed: %d dirs, %d files (expected 1 dir)", len(dirs), len(files))
+	if len(files) != 0 || len(dirs) < 1 {
+		return nil, fmt.Errorf("catalog trailer malformed: %d dirs, %d files (expected at least 1 dir)", len(dirs), len(files))
 	}
 
+	// Each trailer dir's own name IS its archive's name (see WriteDir's
+	// toplevel doc comment: it returns a.ArchiveName for exactly this
+	// purpose). Emit it as its own top-level directory entry — rather than
+	// silently discarding it as the old single-dir path did — so every
+	// archive in the snapshot gets a real, selectable wrapper node instead of
+	// dumping its contents unlabelled at the tree root. Callers that want a
+	// human-readable name instead of the raw archive filename remap these
+	// paths afterward (see resolveArchiveDisplayNames in gui/restore_inline.go).
 	entries := make([]CatalogEntry, 0, 256)
-	if err := walkCatalog(data, dirs[0].start, "", 0, &entries); err != nil {
-		return nil, err
+	for _, d := range dirs {
+		entries = append(entries, CatalogEntry{Path: d.name, IsDir: true})
+		if err := walkCatalog(data, d.start, d.name, 0, &entries); err != nil {
+			return nil, err
+		}
 	}
 	return entries, nil
 }

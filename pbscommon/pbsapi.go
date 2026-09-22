@@ -106,6 +106,15 @@ type BackupManifest struct {
 	Files       []File      `json:"files"`
 	Signature   interface{} `json:"signature"`
 	Unprotected Unprotected `json:"unprotected"`
+	// Size/Owner/Protected are only ever populated when this struct is used to
+	// decode a snapshot LISTING response (ListSnapshots) — PBS's real API
+	// returns them there, but they are not part of the manifest THIS client
+	// builds and uploads during a backup (client.Manifest reuses this same
+	// struct for that outgoing side). omitempty keeps them out of the uploaded
+	// index.json in that case, where they're always zero-valued anyway.
+	Size      int64  `json:"size,omitempty"`
+	Owner     string `json:"owner,omitempty"`
+	Protected bool   `json:"protected,omitempty"`
 }
 
 type AuthErr struct {
@@ -1234,20 +1243,29 @@ func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*haxmap.Map[st
 
 }
 
-func (pbs *PBSClient) GetChunkData(digest string) ([]byte, error) {
+// GetChunkData fetches one chunk by digest, bounded by ctx. Found 2026-09-22
+// (a real live restore hung forever at chunk 18/91, both the client's TCP
+// connection and the server's own task list still showing "active" — a single
+// stuck HTTP/2 stream, not a dead connection, which the transport's
+// ReadIdleTimeout/PingTimeout never catches because those only detect a fully
+// dead connection): this request previously had NO deadline of its own at
+// all, so if the server accepted it but never answered, this blocked forever
+// with no error and no way to recover short of killing the whole process.
+// Callers should pass a context with a reasonable timeout (and/or one tied to
+// a cancel button) — see DIDXReaderAt.chunkAt.
+func (pbs *PBSClient) GetChunkData(ctx context.Context, digest string) ([]byte, error) {
 	q := &url.Values{}
 
 	q.Add("digest", digest)
 
-	req, err := http.NewRequest("GET", pbs.BaseURL+"/chunk?"+q.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", pbs.BaseURL+"/chunk?"+q.Encode(), nil)
 	pbs.setAuth(req)
 	if err != nil {
 		return nil, err
 	}
 	resp2, err := pbs.Client.Do(req)
 	if err != nil {
-		fmt.Println("Error making request:", err)
-		return nil, err
+		return nil, fmt.Errorf("chunk fetch failed (digest %s): %w", digest, err)
 	}
 	defer resp2.Body.Close()
 

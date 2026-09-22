@@ -18,4 +18,6 @@ func (c *NTFSMetaCollector) Collect(absPath string, info os.FileInfo, isDir bool
 
 func (c *NTFSMetaCollector) Finalize() ([]byte, error) { return nil, nil }
 
+func (c *NTFSMetaCollector) FinalizeRaw() (*BackupFileMeta, error) { return nil, nil }
+
 func (c *NTFSMetaCollector) Stats() (entries, uniqueSDDLs, errors int) { return 0, 0, 0 }

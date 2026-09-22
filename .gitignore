@@ -28,6 +28,9 @@ coverage.txt
 .go/
 vendor/
 
+# Frontend dependencies
+gui/frontend/node_modules/
+
 # Generated Windows version resource (created in CI by goversioninfo)
 *.syso
 gui/versioninfo.json

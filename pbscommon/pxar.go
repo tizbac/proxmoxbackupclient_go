@@ -317,6 +317,47 @@ type PXARArchive struct {
 	// actually backed up. Used to capture NTFS ACLs and other per-file metadata
 	// that PXAR cannot represent. Best-effort: errors are logged and ignored.
 	MetaCollector MetaCollector
+
+	// --- Shared multi-archive catalog support ---
+	// PBS's own web-UI "browse this snapshot" feature is hardcoded server-side
+	// to read a catalog dynamic index literally named "catalog.pcat1.didx" — it
+	// is NOT per-archive-aware. A snapshot with N archives therefore needs ONE
+	// combined catalog covering all N, not N separately-named catalogs (found
+	// 2026-09-21: the per-directory-catalog design briefly used here made every
+	// multi-folder snapshot, and in fact every snapshot at all since the
+	// catalog name became archive-derived, unbrowsable in the PBS web UI).
+	//
+	// These three fields let backup_inline.go drive several PXARArchive
+	// instances (one per selected folder) through WriteDir(toplevel=true) so
+	// their catalog data lands back-to-back in ONE shared catalog stream,
+	// instead of each writing its own standalone catalog:
+	//   - SkipCatalogMagic: true for every archive AFTER the first (the magic
+	//     header is written once, by the first archive only).
+	//   - InitialCatalogPos: when SkipCatalogMagic is true, seeds catalog_pos
+	//     with the running position handed back by the previous archive
+	//     (CatalogPos(), read after that archive's WriteDir call) instead of
+	//     resetting it to 8.
+	//   - DeferCatalogRoot: true for EVERY archive taking part in a shared
+	//     catalog (including the first). Suppresses the normal single-entry
+	//     root-pointer table a standalone WriteDir(toplevel=true) writes at the
+	//     end; the caller writes ONE combined table instead, once, after every
+	//     archive is done, via WriteSharedCatalogRoot.
+	// All three default to their zero value (false / 0), which is exactly
+	// today's single-archive, standalone-catalog behavior — nothing changes
+	// for a one-folder job unless the caller explicitly opts into the shared
+	// mode.
+	SkipCatalogMagic  bool
+	InitialCatalogPos uint64
+	DeferCatalogRoot  bool
+}
+
+// CatalogPos returns the archive's current catalog stream position. Used by
+// callers driving a shared multi-archive catalog to thread the running
+// position from one archive's WriteDir call to the next one's
+// InitialCatalogPos (see the field docs above), and to the final
+// WriteSharedCatalogRoot call.
+func (a *PXARArchive) CatalogPos() uint64 {
+	return a.catalog_pos
 }
 
 //This function will flush the internal buffer and update position
@@ -465,7 +506,13 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		a.buffer.WriteString(dirname)
 		a.buffer.WriteByte(0x00)
 	} else {
-		if a.CatalogWriteCB != nil {
+		if a.SkipCatalogMagic {
+			// A later archive in a shared multi-archive catalog: the magic
+			// header was already written by the first archive. Pick up the
+			// running position it (or the previous archive) left off at,
+			// instead of resetting to a fresh 8-byte catalog.
+			a.catalog_pos = a.InitialCatalogPos
+		} else if a.CatalogWriteCB != nil {
 			if err := a.CatalogWriteCB(catalog_magic); err != nil {
 				return CatalogDir{}, fmt.Errorf("failed to write catalog magic: %w", err)
 			}
@@ -675,7 +722,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		return CatalogDir{}, err
 	}
 
-	if toplevel {
+	if toplevel && !a.DeferCatalogRoot {
 		//We write special pointer to root dir here
 
 		tabledata := make([]byte, 0)
@@ -699,10 +746,54 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		}
 	}
 
+	// For a toplevel call, the caller (single-archive: nothing further needed;
+	// shared multi-archive: backup_inline.go's orchestration) identifies this
+	// archive by its ArchiveName, not the empty dirname a toplevel call is
+	// invoked with — return that instead of the unused empty string so a
+	// shared-catalog caller can build WriteSharedCatalogRoot's entry list
+	// straight from this return value.
+	name := dirname
+	if toplevel {
+		name = a.ArchiveName
+	}
 	return CatalogDir{
-		Name: dirname,
+		Name: name,
 		Pos:  oldpos,
 	}, nil
+}
+
+// WriteSharedCatalogRoot writes the combined catalog root-pointer table for a
+// multi-archive snapshot: one entry per archive (each from the CatalogDir a
+// WriteDir(toplevel=true, DeferCatalogRoot=true) call returned), followed by
+// the trailing 8-byte absolute pointer PBS's catalog reader seeks to first.
+// This is the generalization of the single-entry block WriteDir itself writes
+// for a standalone (single-archive) catalog — same encoding, N entries
+// instead of 1. Call it ONCE, after every archive taking part in the shared
+// catalog has been written (see the PXARArchive field docs above).
+func WriteSharedCatalogRoot(catalogWriteCB PXAROutCB, catalogPos uint64, entries []CatalogDir) error {
+	tabledata := make([]byte, 0)
+	tabledata = append_u64_7bit(tabledata, uint64(len(entries)))
+	for _, e := range entries {
+		tabledata = append(tabledata, 'd')
+		tabledata = append_u64_7bit(tabledata, uint64(len(e.Name)))
+		tabledata = append(tabledata, []byte(e.Name)...)
+		tabledata = append_u64_7bit(tabledata, catalogPos-e.Pos)
+	}
+	catalog_outdata := make([]byte, 0)
+	catalog_outdata = append_u64_7bit(catalog_outdata, uint64(len(tabledata)))
+	catalog_outdata = append(catalog_outdata, tabledata...)
+	ptr := make([]byte, 0)
+	ptr = binary.LittleEndian.AppendUint64(ptr, catalogPos)
+	if catalogWriteCB == nil {
+		return nil
+	}
+	if err := catalogWriteCB(catalog_outdata); err != nil {
+		return fmt.Errorf("failed to write shared catalog root table: %w", err)
+	}
+	if err := catalogWriteCB(ptr); err != nil {
+		return fmt.Errorf("failed to write shared catalog root pointer: %w", err)
+	}
+	return nil
 }
 
 // On pxar first item and consquently entry point must always be WriteDir , because toplevel is always a directory

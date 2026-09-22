@@ -2,6 +2,7 @@ package pbscommon
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -175,7 +176,7 @@ func (pbs *PBSClient) AssembleDIDXToFile(archiveName string, maxParallel int, pr
 			if firstErr.Load() != nil {
 				return
 			}
-			chunk, gerr := pbs.GetChunkData(idx.digests[idxNum])
+			chunk, gerr := pbs.GetChunkData(context.Background(), idx.digests[idxNum])
 			if gerr != nil {
 				firstErr.CompareAndSwap(nil, fmt.Errorf("chunk %s (index %d/%d): %w",
 					idx.digests[idxNum], idxNum, chunkCount, gerr))

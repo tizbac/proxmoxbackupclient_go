@@ -1279,6 +1279,9 @@ func (a *App) ListSnapshots(pbsID, backupID string) ([]map[string]interface{}, e
 			"time":        s.BackupTime.Format("2006-01-02 15:04:05"),
 			"unix":        s.BackupTime.Unix(),
 			"files":       s.Files,
+			"size":        s.Size,
+			"owner":       s.Owner,
+			"protected":   s.Protected,
 		})
 	}
 	writeDebugLog(fmt.Sprintf("Returning %d snapshots", len(result)))
@@ -1437,6 +1440,19 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		RestoreADS:        restoreADS,
 		RestoreTimestamps: restoreTimestamps,
 		OnProgress:        emit,
+	}
+
+	// Structured live stats for the GUI's restore transfer-rate display,
+	// mirroring the backup side's OnStats/"backup:stats" pair above.
+	opts.OnStats = func(stats *RestoreProgressStats) {
+		if a.ctx == nil {
+			return
+		}
+		runtime.EventsEmit(a.ctx, "restore:stats", map[string]interface{}{
+			"bytesDone":      stats.BytesDone,
+			"bytesTotal":     stats.BytesTotal,
+			"currentArchive": stats.CurrentArchive,
+		})
 	}
 
 	go func() {

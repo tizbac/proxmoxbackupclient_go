@@ -16,14 +16,15 @@ import "strings"
 // plain JSON. Listed in the manifest so the GUI can read it without a full restore.
 const BackupStatusFilename = "proxmox-client-status.json.blob"
 
-// BackupSidecar is the per-snapshot status persisted as a manifest blob: the files
-// excluded by policy and the files skipped on read errors for THIS directory's
-// snapshot. It lets the GUI show "in this backup, files X/Y were excluded/skipped"
-// without restoring the archive.
+// BackupSidecar is the per-snapshot status persisted as a manifest blob: the
+// files excluded by policy and the files skipped on read errors for THIS
+// snapshot (one job → one snapshot, so ONE sidecar covers every directory
+// archived into it — see Directories). It lets the GUI show "in this backup,
+// files X/Y were excluded/skipped" without restoring the archive.
 type BackupSidecar struct {
 	FormatVersion    int         `json:"format_version"`
 	BackupID         string      `json:"backup_id"`
-	Directory        string      `json:"directory"`
+	Directories      []string    `json:"directories"`
 	GeneratedAt      int64       `json:"generated_at"`
 	ExcludedByPolicy []FileIssue `json:"excluded_by_policy,omitempty"`
 	SkippedReadError []FileIssue `json:"skipped_read_error,omitempty"`

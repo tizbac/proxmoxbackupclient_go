@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from './i18n/i18nContext'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
+import DirectoryTree from './components/DirectoryTree'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
-let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, GetBrand, OpenBrowser
+let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
 let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
@@ -25,7 +26,9 @@ if (window.go) {
   SearchFiles = window.go.main.App.SearchFiles
   CancelSearch = window.go.main.App.CancelSearch
   CancelBackup = window.go.main.App.CancelBackup
+  CancelRestore = window.go.main.App.CancelRestore
   ListPhysicalDisks = window.go.main.App.ListPhysicalDisks
+  ListDirectory = window.go.main.App.ListDirectory
   GetVersion = window.go.main.App.GetVersion
   GetBrand = window.go.main.App.GetBrand
   SaveScheduledJob = window.go.main.App.SaveScheduledJob
@@ -52,6 +55,24 @@ if (window.go) {
 if (window.runtime) {
   EventsOn = window.runtime.EventsOn
   OpenBrowser = window.runtime.BrowserOpenURL
+}
+
+// Auto-scaling transfer-rate formatter: shows the conventional decimal unit
+// (KB/MB/GB, ÷1000) with the binary IEC unit (KiB/MiB/GiB, ÷1024) alongside,
+// since a hardcoded "always ÷1048576, always MB/s" badly misrepresents both
+// small rates (reads as a tiny fraction) and large ones (a burst of reused
+// chunks landing in one event previously showed 1874.7 MB/s).
+function formatSpeed(bytesPerSec) {
+  if (!bytesPerSec || bytesPerSec <= 0) return '0 KB/s'
+  const scale = (value, base, units) => {
+    let v = value
+    let u = 0
+    while (v >= base && u < units.length - 1) { v /= base; u++ }
+    return `${v.toFixed(u === 0 ? 0 : 1)} ${units[u]}/s`
+  }
+  const dec = scale(bytesPerSec, 1000, ['B', 'KB', 'MB', 'GB'])
+  const bin = scale(bytesPerSec, 1024, ['B', 'KiB', 'MiB', 'GiB'])
+  return dec === bin ? dec : `${dec} (${bin})`
 }
 
 function App() {
@@ -104,6 +125,21 @@ function App() {
   const [selectedDrives, setSelectedDrives] = useState([])
   const [physicalDisks, setPhysicalDisks] = useState([])
   const [excludeList, setExcludeList] = useState('')
+  // Root-relative excludes the folder tree picker generates (unchecking a
+  // specific subfolder/file under an included root) — kept SEPARATE from the
+  // user's own wildcard-pattern excludeList textarea above so the two stay
+  // visually distinct (mirroring BFW's two-screen split: tree for specific
+  // items, pattern box for broad rules), even though both end up merged into
+  // the one flat exclude list the backend already accepts — see
+  // getEffectiveExcludeList. No new backend field was needed: an absolute-path
+  // exclude is already anchored to its own directory's root by the existing
+  // isExcluded/relExcludePath matching (pbscommon/pxar.go), so it can never
+  // leak into a different selected folder.
+  const [treeExcludes, setTreeExcludes] = useState([])
+  const getEffectiveExcludeList = () => [
+    ...excludeList.split('\n').map(l => l.trim()).filter(Boolean),
+    ...treeExcludes,
+  ]
   const [progress, setProgress] = useState(0)
   // Opt-in: split this backup into parts (for the first backup of a large volume).
   // Off by default → no size analysis, the backup starts immediately.
@@ -125,7 +161,6 @@ function App() {
     // Structured live stats (from the backup:stats event)
     bytesDone: 0,
     bytesTotal: 0,
-    lastBytes: 0,
     newChunks: 0,
     reusedChunks: 0,
     failedChunks: 0,
@@ -138,6 +173,20 @@ function App() {
   const [snapshots, setSnapshots] = useState([])
   const [restoreBackupId, setRestoreBackupId] = useState('')
   const [showSnapshots, setShowSnapshots] = useState(false)
+  // Persisted per-machine (not per-artifact-viewer — this is a real desktop app,
+  // one user, so localStorage is a plain, safe preference store here) so the
+  // choice sticks across restarts instead of resetting to tiles every time.
+  const [snapshotViewMode, setSnapshotViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('snapshotViewMode') === 'list' ? 'list' : 'tile'
+    } catch {
+      return 'tile'
+    }
+  })
+  const setSnapshotViewModePersisted = (mode) => {
+    setSnapshotViewMode(mode)
+    try { localStorage.setItem('snapshotViewMode', mode) } catch { /* ignore */ }
+  }
   const [restorePBSID, setRestorePBSID] = useState('')
   const [selectedSnapshot, setSelectedSnapshot] = useState(null) // { id, unix, time }
   const [snapshotMeta, setSnapshotMeta] = useState(null)         // .proxmox_backup_client_meta.json sidecar (null if legacy)
@@ -149,7 +198,7 @@ function App() {
   const [restoreMode, setRestoreMode] = useState('alternate_abs')
   const [restoreAllowCrossHost, setRestoreAllowCrossHost] = useState(false)
   // alternate sub-mode toggle: true = abs (keep tree), false = flat. Default flat per spec.
-  const [restoreKeepTree, setRestoreKeepTree] = useState(false)
+  const [restoreKeepTree, setRestoreKeepTree] = useState(true)
   const [restoreOptions, setRestoreOptions] = useState({
     overwrite: false,
     timestamps: true,
@@ -158,6 +207,7 @@ function App() {
   })
   const [restoreLoading, setRestoreLoading] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
+  const [restoreStats, setRestoreStats] = useState({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
 
   // ===== file search across snapshots =====
   const [showSearch, setShowSearch] = useState(false)
@@ -280,19 +330,21 @@ function App() {
         const bytesDone = data.bytesDone || 0
         const bytesTotal = data.bytesTotal || 0
         const startTime = prev.startTime || now
-        const lastUpdate = prev.lastUpdate || now
-        const timeDiff = (now - lastUpdate) / 1000 // seconds
-        const bytesDiff = bytesDone - prev.lastBytes
 
-        // Byte throughput (bytes/sec) — far more accurate for ETA than percent.
-        let speed = prev.speed
-        if (timeDiff > 0 && bytesDiff > 0) {
-          speed = bytesDiff / timeDiff
-        }
+        // Average throughput since the backup started, not a delta since the
+        // last event. A delta-based rate divides by the wall-clock gap
+        // between two consecutive events, which can be tiny (a burst of
+        // small/reused chunks landing back-to-back, or plain event-loop
+        // jitter) — dividing by a near-zero gap produced implausible
+        // "instantaneous" rates in practice (1874.7 MB/s seen live). The
+        // cumulative average is far less prone to single-sample spikes and
+        // is what a progress UI actually wants (not a live graph).
+        const elapsed = (now - startTime) / 1000
+        const speed = elapsed > 0 ? bytesDone / elapsed : prev.speed
 
         // ETA (seconds remaining) from byte throughput. Falls back to keeping
-        // the previous ETA when we can't compute a fresh one (e.g. chunk
-        // reuse windows where bytesDone stalls momentarily).
+        // the previous ETA when we can't compute a fresh one (e.g. speed is
+        // still 0 right at the start).
         let eta = prev.eta
         if (speed > 0 && bytesTotal > bytesDone && bytesTotal > 0) {
           const remainingBytes = bytesTotal - bytesDone
@@ -305,7 +357,6 @@ function App() {
           lastUpdate: now,
           bytesDone,
           bytesTotal,
-          lastBytes: bytesDone,
           newChunks: data.newChunks || 0,
           reusedChunks: data.reusedChunks || 0,
           failedChunks: data.failedChunks || 0,
@@ -319,7 +370,7 @@ function App() {
     const unsubComplete = EventsOn('backup:complete', (data) => {
       setProgress(data.success ? 100 : 0)
       setBackupRunning(false)
-      setBackupStats({ startTime: null, lastUpdate: null, lastPercent: 0, speed: 0, eta: null, bytesDone: 0, bytesTotal: 0, lastBytes: 0, newChunks: 0, reusedChunks: 0, failedChunks: 0, currentDir: '' })
+      setBackupStats({ startTime: null, lastUpdate: null, lastPercent: 0, speed: 0, eta: null, bytesDone: 0, bytesTotal: 0, newChunks: 0, reusedChunks: 0, failedChunks: 0, currentDir: '' })
       showStatus(data.success ? '✅ ' + data.message : '❌ ' + data.message, data.success ? 'success' : 'error')
 
       // Add to job history
@@ -350,13 +401,29 @@ function App() {
       setRestoreProgress(Math.round((data.percent || 0) * 100))
       showStatus(`🔄 ${data.message || ''}`, 'info', true)
     })
+    // Structured live stats (bytes transferred), mirroring backup:stats.
+    // Same cumulative-average speed calc as the backup side (item 5's fix) —
+    // not the delta-since-last-event approach that produced inflated rates.
+    const unsubS = EventsOn('restore:stats', (data) => {
+      const now = Date.now()
+      setRestoreStats(prev => {
+        const bytesDone = data.bytesDone || 0
+        const bytesTotal = data.bytesTotal || 0
+        const startTime = prev.startTime || now
+        const elapsed = (now - startTime) / 1000
+        const speed = elapsed > 0 ? bytesDone / elapsed : prev.speed
+        return { startTime, bytesDone, bytesTotal, speed }
+      })
+    })
     const unsubC = EventsOn('restore:complete', (data) => {
       setRestoreLoading(false)
       setRestoreProgress(data.success ? 100 : 0)
+      setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
       showStatus(data.success ? `✅ ${data.message}` : `❌ ${data.message}`, data.success ? 'success' : 'error')
     })
     return () => {
       if (unsubP) unsubP()
+      if (unsubS) unsubS()
       if (unsubC) unsubC()
     }
   }, [])
@@ -964,7 +1031,7 @@ function App() {
       const splitPlan = await window.go.main.App.CreateBackupSplitPlan(
         dirList,
         config['backup-id'] || hostname,
-        excludeList.split('\n').filter(l => l.trim())
+        getEffectiveExcludeList()
       )
 
       // If the analysis didn't yield a real split (volume below threshold, scan
@@ -979,7 +1046,7 @@ function App() {
           backupType,
           dirList,
           selectedDrives,
-          excludeList.split('\n').filter(l => l.trim()),
+          getEffectiveExcludeList(),
           config['backup-id'],
           config.usevss,
           ''
@@ -1023,7 +1090,7 @@ function App() {
             selectedDrives,
             // Merge user exclusions with this job's own (a root-remainder job
             // excludes the subfolders already covered by other jobs — v2-H-01).
-            [...excludeList.split('\n').filter(l => l.trim()), ...(job.exclude_list || [])],
+            [...getEffectiveExcludeList(), ...(job.exclude_list || [])],
             job.backup_id,
             config.usevss,
             ''
@@ -1123,7 +1190,7 @@ function App() {
         backupId: config['backup-id'],
         useVSS: config.usevss,
         backupType: backupType,
-        excludeList: backupType === 'directory' ? excludeList.split('\n').filter(l => l.trim()) : [],
+        excludeList: backupType === 'directory' ? getEffectiveExcludeList() : [],
         driveLetters: backupType === 'machine' ? selectedDrives : []
       }
 
@@ -1158,8 +1225,8 @@ function App() {
 
     try {
       // Only pass excludeList for directory backups, not for machine backups
-      const excludeListToSend = backupType === 'directory' ? 
-        excludeList.split('\n').filter(l => l.trim()) : 
+      const excludeListToSend = backupType === 'directory' ?
+        getEffectiveExcludeList() :
         []
       
       if (backupType === 'directory') {
@@ -1205,15 +1272,30 @@ function App() {
     }
   }
 
+  const handleStopRestore = async () => {
+    if (!CancelRestore) {
+      showStatus(`❌ ${t('stopRestoreUnavailable')}`, 'error')
+      return
+    }
+    try {
+      await CancelRestore()
+      showStatus(`⏹️ ${t('stopRestoreInProgress')}`, 'info')
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
+    }
+  }
+
   const handleListSnapshots = async () => {
     if (!ListSnapshots) {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
-    if (!restoreBackupId) {
-      showStatus('❌ Backup ID requis', 'error')
-      return
-    }
+    // Backup ID is deliberately optional — the backend already supports an
+    // empty filter (returns every snapshot in the datastore, not just one
+    // host's). Needed for disaster recovery: restoring onto a REPLACEMENT
+    // host that never had this backup-id, you don't necessarily know the
+    // failed host's exact backup-id string, so browsing everything and
+    // picking it out by eye is the actual workflow, not typing a name.
 
     showStatus('🔍 Recherche des snapshots...', 'info')
     setSelectedSnapshot(null)
@@ -1248,6 +1330,12 @@ function App() {
       // backups list their real contents, not the partial search term.
       const entries = await ListSnapshotContents(restorePBSID || '', effectiveBackupId, snap.unix, forceRefresh)
       setSnapshotEntries(entries || [])
+      // Default to "restore everything," represented EXPLICITLY (every
+      // top-level entry pre-checked) rather than via an empty selection —
+      // selecting a directory already implies every descendant, so this is
+      // still functionally "everything" by default, just no longer relying
+      // on emptiness to mean that.
+      setSelectedPaths(new Set((entries || []).filter(e => !e.path.includes('/')).map(e => e.path)))
       showStatus(`✅ ${(entries || []).length} ${t('entriesLoaded')}`, 'success')
     } catch (err) {
       showStatus(`❌ ${err}`, 'error')
@@ -1412,11 +1500,19 @@ function App() {
       }
     }
 
-    // Empty selection = restore everything in the snapshot
+    // Empty selection now means "restore nothing" (inverted from the old
+    // implicit "empty = everything" behavior, which Mick flagged as
+    // unintuitive) — block it here rather than silently restoring the whole
+    // snapshot.
+    if (selectedPaths.size === 0) {
+      showStatus(`❌ ${t('noFilesSelectedError')}`, 'error')
+      return
+    }
     const includes = Array.from(selectedPaths)
 
     setRestoreLoading(true)
     setRestoreProgress(0)
+    setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
     showStatus(`🔄 ${t('statusRestoring').replace('{time}', selectedSnapshot.time)}`, 'info')
 
     try {
@@ -1488,6 +1584,14 @@ function App() {
     })
   }
 
+  const handleSelectAllEntries = () => {
+    setSelectedPaths(new Set(snapshotEntries.filter(e => !e.path.includes('/')).map(e => e.path)))
+  }
+
+  const handleSelectNoneEntries = () => {
+    setSelectedPaths(new Set())
+  }
+
   const formatBytes = (bytes) => {
     if (!bytes || bytes < 1024) return `${bytes || 0} B`
     const units = ['KB', 'MB', 'GB', 'TB']
@@ -1513,13 +1617,10 @@ function App() {
 
   // Total bytes the current selection will restore. Selecting a directory pulls
   // in all its descendants, so we sum every file that is itself selected or
-  // lives under a selected path. An empty selection means "restore everything",
-  // so we sum the whole snapshot. Memoized — snapshots can hold 100k+ entries.
+  // lives under a selected path. An empty selection means "restore nothing",
+  // so it sums to 0. Memoized — snapshots can hold 100k+ entries.
   const selectionBytes = useMemo(() => {
-    if (!snapshotEntries.length) return 0
-    if (selectedPaths.size === 0) {
-      return snapshotEntries.reduce((sum, e) => e.is_dir ? sum : sum + (e.size || 0), 0)
-    }
+    if (!snapshotEntries.length || selectedPaths.size === 0) return 0
     const sel = Array.from(selectedPaths)
     let sum = 0
     for (const e of snapshotEntries) {
@@ -1807,17 +1908,35 @@ function App() {
           {backupType === 'directory' && (
             <div className="form-group">
               <label>{t('directoriesToBackup')}</label>
-              <textarea
-                value={backupDirs}
-                onChange={(e) => {
-                  setBackupDirs(e.target.value)
-                  // Update config.backupdir with first directory for compatibility
-                  const dirs = e.target.value.split('\n').map(d => d.trim()).filter(d => d)
-                  setConfig({...config, backupdir: dirs[0] || ''})
+              <DirectoryTree
+                roots={backupDirs.split('\n').map(d => d.trim()).filter(Boolean)}
+                excludes={treeExcludes}
+                onChange={({ roots, excludes }) => {
+                  setBackupDirs(roots.join('\n'))
+                  setTreeExcludes(excludes)
+                  setConfig({...config, backupdir: roots[0] || ''})
                 }}
-                rows="4"
-                placeholder="C:\Data&#10;C:\Users&#10;D:\Documents"
               />
+              <details style={{marginTop: '8px'}}>
+                <summary style={{cursor: 'pointer', color: '#666', fontSize: '0.9em'}}>
+                  {t('advancedEditAsText')}
+                </summary>
+                {/* Raw path entry, unchanged from before the tree picker — kept for
+                    UNC paths (\\server\share) and anything else ListDirectory can't
+                    browse (it only enumerates local drive letters), and for
+                    copy-pasting a long list. The tree and this box share the same
+                    backupDirs state, so either one stays in sync with the other. */}
+                <textarea
+                  value={backupDirs}
+                  onChange={(e) => {
+                    setBackupDirs(e.target.value)
+                    const dirs = e.target.value.split('\n').map(d => d.trim()).filter(d => d)
+                    setConfig({...config, backupdir: dirs[0] || ''})
+                  }}
+                  rows="3"
+                  placeholder="C:\Data&#10;C:\Users&#10;D:\Documents&#10;\\server\share"
+                />
+              </details>
             </div>
           )}
           {backupType === 'machine' && (
@@ -1923,7 +2042,7 @@ function App() {
                 )}
                 {backupStats.speed > 0 && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    ⚡ <strong>{t('speed')}</strong> {(backupStats.speed / 1048576).toFixed(1)} MB/s
+                    ⚡ <strong>{t('speed')}</strong> {formatSpeed(backupStats.speed)}
                   </div>
                 )}
                 {backupStats.startTime && (
@@ -1976,6 +2095,7 @@ function App() {
               setRunAtStartup(false)
               setBackupDirs('')
               setExcludeList('')
+              setTreeExcludes([])
               setBackupType('directory')
               setActiveTab('scheduled')
               showStatus(`✖️ ${t('statusEditCancelled')}`, 'info')
@@ -2019,7 +2139,15 @@ function App() {
                           setBackupDirs(job.backupDirs.join('\n'))
                           setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                           setBackupType(job.backupType)
+                          // A saved job's exclude_list is already the flat merge of
+                          // wildcard-box + tree-derived entries (see
+                          // getEffectiveExcludeList) — there's no way to tell them
+                          // apart back out, so re-editing loads everything into the
+                          // wildcard box and the tree starts fresh with no per-item
+                          // excludes of its own. Known, acceptable round-trip
+                          // limitation, not a bug.
                           setExcludeList(job.excludeList.join('\n'))
+                          setTreeExcludes([])
                           // Switch to backup tab to show the form
                           setActiveTab('backup')
                           showStatus(`✏️ ${t('editModeInfo')}`, 'info')
@@ -2159,9 +2287,9 @@ function App() {
               <label>{t('backupIDToRestore')}</label>
               <input
                 type="text"
-                value={restoreBackupId || hostname}
+                value={restoreBackupId}
                 onChange={(e) => setRestoreBackupId(e.target.value)}
-                placeholder={hostname || t('phBackupId')}
+                placeholder={t('phBackupId')}
               />
             </div>
           </div>
@@ -2316,12 +2444,83 @@ function App() {
 
           {showSnapshots && (
             <div style={{marginTop: '20px'}}>
-              <h3>{t('availableSnapshots')}</h3>
-              <div className="grid">
-                {snapshots.length === 0 ? (
-                  <p style={{color: '#718096'}}>{t('noSnapshotFound')}</p>
-                ) : (
-                  snapshots.map((snap, idx) => {
+              <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'}}>
+                <h3 style={{margin: 0}}>{t('availableSnapshots')}</h3>
+                {snapshots.length > 0 && (
+                  <div style={{display: 'flex', border: '1px solid #d0d0d0', borderRadius: '6px', overflow: 'hidden'}}>
+                    <button
+                      type="button"
+                      onClick={() => setSnapshotViewModePersisted('tile')}
+                      title={t('tileView')}
+                      style={{
+                        padding: '6px 12px', border: 'none', cursor: 'pointer',
+                        backgroundColor: snapshotViewMode === 'tile' ? 'var(--accent)' : '#f7fafc',
+                        color: snapshotViewMode === 'tile' ? '#fff' : '#333',
+                      }}
+                    >
+                      ▦ {t('tileView')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSnapshotViewModePersisted('list')}
+                      title={t('listView')}
+                      style={{
+                        padding: '6px 12px', border: 'none', cursor: 'pointer',
+                        backgroundColor: snapshotViewMode === 'list' ? 'var(--accent)' : '#f7fafc',
+                        color: snapshotViewMode === 'list' ? '#fff' : '#333',
+                      }}
+                    >
+                      ☰ {t('listView')}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {snapshots.length === 0 ? (
+                <p style={{color: '#718096'}}>{t('noSnapshotFound')}</p>
+              ) : snapshotViewMode === 'list' ? (
+                <div style={{marginTop: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden'}}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '16px',
+                    padding: '8px 14px', fontSize: '12px', fontWeight: 'bold',
+                    color: '#718096', backgroundColor: '#f7fafc', borderBottom: '1px solid #e2e8f0',
+                    textTransform: 'uppercase', letterSpacing: '0.03em',
+                  }}>
+                    <span style={{flex: '0 0 220px'}}>{t('snapshotDate')}</span>
+                    <span style={{flex: '1 1 auto'}}>{t('backupID')}</span>
+                    <span style={{flex: '0 0 80px', textAlign: 'center'}}>{t('typeLabel')}</span>
+                    <span style={{flex: '0 0 90px', textAlign: 'center'}}>{t('sizeLabel')}</span>
+                    <span style={{flex: '0 0 160px'}}></span>
+                  </div>
+                  {snapshots.map((snap, idx) => {
+                    const isActive = selectedSnapshot && selectedSnapshot.id === snap.id && selectedSnapshot.backup_id === snap.backup_id
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => handleSelectSnapshot(snap)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '16px',
+                          padding: '10px 14px', cursor: 'pointer',
+                          borderTop: idx === 0 ? 'none' : '1px solid #e2e8f0',
+                          backgroundColor: isActive ? '#eff6ff' : '#fff',
+                        }}
+                      >
+                        <span style={{flex: '0 0 220px'}}>📸 {snap.time}</span>
+                        <span style={{flex: '1 1 auto', color: '#718096', fontSize: '14px'}}>
+                          {snap.backup_id}{snap.protected ? ' 🔒' : ''}
+                        </span>
+                        <span style={{flex: '0 0 80px', color: '#718096', fontSize: '14px', textAlign: 'center'}}>{snap.backup_type || 'N/A'}</span>
+                        <span style={{flex: '0 0 90px', color: '#718096', fontSize: '14px', textAlign: 'center'}}>{formatBytes(snap.size)}</span>
+                        <button className="btn" style={{flex: '0 0 160px', padding: '4px 12px'}}>
+                          {isActive ? `✓ ${t('snapshotSelected')}` : t('selectSnapshot')}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="grid" style={{marginTop: '12px'}}>
+                  {snapshots.map((snap, idx) => {
                     const isActive = selectedSnapshot && selectedSnapshot.id === snap.id && selectedSnapshot.backup_id === snap.backup_id
                     return (
                       <div
@@ -2336,17 +2535,17 @@ function App() {
                       >
                         <h3>📸 {snap.time}</h3>
                         <p style={{color: '#718096', fontSize: '14px', marginTop: '5px'}}>
-                          {snap.backup_id}<br/>
-                          {t('typeLabel')}: {snap.backup_type || 'N/A'}
+                          {snap.backup_id}{snap.protected ? ' 🔒' : ''}<br/>
+                          {t('typeLabel')}: {snap.backup_type || 'N/A'} · {formatBytes(snap.size)}
                         </p>
                         <button className="btn" style={{marginTop: '10px', width: '100%'}}>
                           {isActive ? `✓ ${t('snapshotSelected')}` : t('selectSnapshot')}
                         </button>
                       </div>
                     )
-                  })
-                )}
-              </div>
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -2388,6 +2587,22 @@ function App() {
                 >
                   🔄 {t('reloadTree') || 'Recharger'}
                 </button>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  onClick={handleSelectAllEntries}
+                  style={{padding: '4px 10px', fontSize: '13px'}}
+                >
+                  ☑️ {t('selectAllEntries')}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  onClick={handleSelectNoneEntries}
+                  style={{padding: '4px 10px', fontSize: '13px'}}
+                >
+                  ☐ {t('selectNoneEntries')}
+                </button>
               </div>
               <p style={{fontSize: '13px', color: '#64748b', marginBottom: '8px', marginTop: '6px'}}>
                 {t('treeHint')}
@@ -2411,7 +2626,7 @@ function App() {
               </div>
               <p style={{marginTop: '6px', fontSize: '12px', color: '#64748b'}}>
                 {selectedPaths.size === 0
-                  ? t('selectionEmptyAllSize').replace('{size}', formatBytes(selectionBytes))
+                  ? t('selectionEmptyNone')
                   : t('selectionCountSize')
                       .replace('{n}', selectedPaths.size)
                       .replace('{size}', formatBytes(selectionBytes))}
@@ -2567,6 +2782,7 @@ function App() {
                 >
                   {restoreLoading ? `⏳ ${t('restoring')}` : `▶️ ${t('restore')}`}
                 </button>
+                <button className="btn btn-secondary" onClick={handleStopRestore} disabled={!restoreLoading}>{t('stopRestore')}</button>
 
                 {restoreLoading && (
                   <div style={{marginTop: '12px'}}>
@@ -2580,6 +2796,7 @@ function App() {
                     </div>
                     <p style={{textAlign: 'center', fontSize: '13px', color: '#64748b', marginTop: '4px'}}>
                       {restoreProgress}%
+                      {restoreStats.speed > 0 ? ` · ⚡ ${formatSpeed(restoreStats.speed)}` : ''}
                     </p>
                   </div>
                 )}

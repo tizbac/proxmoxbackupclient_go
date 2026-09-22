@@ -90,11 +90,74 @@ func TestParseCatalogRoundTrip(t *testing.T) {
 		got[e.Path] = e
 	}
 
+	// The trailer's single dir ("backup.pxar") is now emitted as its own
+	// top-level entry, with everything else nested under it — the whole
+	// point of this fix: the archive's own name used to be silently
+	// discarded here (see ParseCatalog's doc comment), which is why a
+	// restored folder never showed its own name anywhere, single-archive or
+	// not. See TestParseCatalogMultiArchive for the actual bug this session
+	// was fixing (a multi-archive trailer used to be rejected outright).
 	want := []CatalogEntry{
-		{Path: "A.txt", IsDir: false, Size: 10, ModTime: 111},
-		{Path: "S", IsDir: true},
-		{Path: "S/B.txt", IsDir: false, Size: 20, ModTime: 222},
-		{Path: "empty", IsDir: true},
+		{Path: "backup.pxar", IsDir: true},
+		{Path: "backup.pxar/A.txt", IsDir: false, Size: 10, ModTime: 111},
+		{Path: "backup.pxar/S", IsDir: true},
+		{Path: "backup.pxar/S/B.txt", IsDir: false, Size: 20, ModTime: 222},
+		{Path: "backup.pxar/empty", IsDir: true},
+	}
+	if len(entries) != len(want) {
+		t.Fatalf("got %d entries, want %d: %+v", len(entries), len(want), entries)
+	}
+	for _, w := range want {
+		g, ok := got[w.Path]
+		if !ok {
+			t.Errorf("missing entry %q", w.Path)
+			continue
+		}
+		if g.IsDir != w.IsDir || g.Size != w.Size || g.ModTime != w.ModTime {
+			t.Errorf("entry %q = %+v, want %+v", w.Path, g, w)
+		}
+	}
+}
+
+// TestParseCatalogMultiArchive is the actual regression test for tonight's
+// bug: WriteSharedCatalogRoot writes one trailer dir PER ARCHIVE for a
+// multi-folder job, but ParseCatalog used to hard-require exactly one and
+// error out on anything else — meaning a real multi-folder backup's snapshot
+// could never be browsed via the catalog fast path at all.
+func TestParseCatalogMultiArchive(t *testing.T) {
+	buf := append([]byte{}, catalog_magic...)
+
+	aStart := uint64(len(buf))
+	buf = append(buf, buildCatalogTable(nil, []fileEnc{{"hello.txt", 5, 100}}, aStart)...)
+
+	bStart := uint64(len(buf))
+	buf = append(buf, buildCatalogTable(nil, []fileEnc{{"world.txt", 7, 200}}, bStart)...)
+
+	trailerStart := uint64(len(buf))
+	buf = append(buf, buildCatalogTable(
+		[]dirEnc{{"folderA.pxar", aStart}, {"folderB.pxar", bStart}},
+		nil,
+		trailerStart,
+	)...)
+
+	ptr := make([]byte, 8)
+	binary.LittleEndian.PutUint64(ptr, trailerStart)
+	buf = append(buf, ptr...)
+
+	entries, err := ParseCatalog(buf)
+	if err != nil {
+		t.Fatalf("ParseCatalog rejected a valid 2-archive trailer: %v", err)
+	}
+
+	got := make(map[string]CatalogEntry, len(entries))
+	for _, e := range entries {
+		got[e.Path] = e
+	}
+	want := []CatalogEntry{
+		{Path: "folderA.pxar", IsDir: true},
+		{Path: "folderA.pxar/hello.txt", IsDir: false, Size: 5, ModTime: 100},
+		{Path: "folderB.pxar", IsDir: true},
+		{Path: "folderB.pxar/world.txt", IsDir: false, Size: 7, ModTime: 200},
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("got %d entries, want %d: %+v", len(entries), len(want), entries)

@@ -49,10 +49,41 @@ func SerializeFileMeta(meta *BackupFileMeta) ([]byte, error) {
 	if meta == nil {
 		return nil, nil
 	}
+	return gzipJSON(meta)
+}
+
+// CombinedBackupFileMeta aggregates one BackupFileMeta per archive into a
+// SINGLE blob for a multi-archive snapshot (one job → one snapshot, per
+// directory/folder selected). Each archive's entries keep their own Root, so
+// two archives that happen to contain a same-named relative path never
+// collide — this is the fix for the per-archive-blob-name-collision problem
+// found 2026-09-21 (see project_windows_pbs_client_fork.md): uploading
+// BackupAclsFilename once per directory into a shared multi-archive session
+// would just overwrite the same blob N times, silently losing every
+// directory's ACL data but the last. One combined blob per snapshot instead.
+type CombinedBackupFileMeta struct {
+	Version  int                        `json:"version"`
+	Captured string                     `json:"captured"` // RFC3339 timestamp
+	Host     string                     `json:"host"`
+	Archives map[string]*BackupFileMeta `json:"archives"` // keyed by archive base name
+}
+
+// Serialize gzips the combined metadata the same way a single-archive
+// BackupFileMeta is serialized (see SerializeFileMeta).
+func (m *CombinedBackupFileMeta) Serialize() ([]byte, error) {
+	if m == nil {
+		return nil, nil
+	}
+	return gzipJSON(m)
+}
+
+// gzipJSON is the shared gzip+JSON encoder behind SerializeFileMeta and
+// CombinedBackupFileMeta.Serialize.
+func gzipJSON(v interface{}) ([]byte, error) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	enc := json.NewEncoder(gz)
-	if err := enc.Encode(meta); err != nil {
+	if err := enc.Encode(v); err != nil {
 		_ = gz.Close()
 		return nil, err
 	}
