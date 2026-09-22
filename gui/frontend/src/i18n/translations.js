@@ -105,9 +105,7 @@ const translations = {
       backupTypeMachine: "Machine (disque complet)",
       executionMode: "Mode d'exécution",
       oneshotMode: "One-shot (maintenant)",
-      oneshotModeShort: "Now",
       scheduledMode: "Planifié",
-      scheduledModeShort: "Schedule",
 
       // Scheduling
       schedulingConfig: "Configuration de la planification",
@@ -117,6 +115,17 @@ const translations = {
       runAtStartup: "Exécuter aussi au démarrage de la machine",
       schedulingInfo: "Le backup sera exécuté automatiquement chaque jour à",
       andAtStartup: "Et également à chaque démarrage du système.",
+      triggerMode: "Type de planification",
+      triggerModeDaily: "Quotidien",
+      triggerModeInterval: "Répété",
+      intervalMinutesLabel: "Répéter toutes les (minutes)",
+      windowAllDay: "Toute la journée",
+      windowBetween: "Entre",
+      windowAnd: "et",
+      daysOfWeekLabel: "Jours actifs",
+      dayMon: "Lun", dayTue: "Mar", dayWed: "Mer", dayThu: "Jeu", dayFri: "Ven", daySat: "Sam", daySun: "Dim",
+      schedulingInfoInterval: "Le backup sera exécuté toutes les {n} minutes",
+      schedulingInfoDays: "Jours actifs :",
 
       // Backup Form
       directoriesToBackup: "Répertoires à sauvegarder (un par ligne)",
@@ -434,9 +443,7 @@ const translations = {
       backupTypeMachine: "Machine (full disk)",
       executionMode: "Execution mode",
       oneshotMode: "One-shot (now)",
-      oneshotModeShort: "Now",
       scheduledMode: "Scheduled",
-      scheduledModeShort: "Schedule",
 
       // Scheduling
       schedulingConfig: "Scheduling configuration",
@@ -446,6 +453,17 @@ const translations = {
       runAtStartup: "Also run at machine startup",
       schedulingInfo: "Backup will run automatically every day at",
       andAtStartup: "And also at every system startup.",
+      triggerMode: "Schedule type",
+      triggerModeDaily: "Daily",
+      triggerModeInterval: "Repeat",
+      intervalMinutesLabel: "Repeat every (minutes)",
+      windowAllDay: "All day",
+      windowBetween: "Between",
+      windowAnd: "and",
+      daysOfWeekLabel: "Active days",
+      dayMon: "Mon", dayTue: "Tue", dayWed: "Wed", dayThu: "Thu", dayFri: "Fri", daySat: "Sat", daySun: "Sun",
+      schedulingInfoInterval: "Backup will run every {n} minutes",
+      schedulingInfoDays: "Active days:",
 
       // Backup Form
       directoriesToBackup: "Directories to backup (one per line)",
@@ -763,9 +781,7 @@ const translations = {
       backupTypeMachine: "Macchina (disco completo)",
       executionMode: "Modalità di esecuzione",
       oneshotMode: "One-shot (ora)",
-      oneshotModeShort: "Ora",
       scheduledMode: "Pianificato",
-      scheduledModeShort: "Pianifica",
 
       // Scheduling
       schedulingConfig: "Configurazione pianificazione",
@@ -775,6 +791,17 @@ const translations = {
       runAtStartup: "Esegui anche all'avvio del computer",
       schedulingInfo: "Il backup verrà eseguito automaticamente ogni giorno alle",
       andAtStartup: "E anche all'avvio del sistema.",
+      triggerMode: "Tipo di pianificazione",
+      triggerModeDaily: "Giornaliero",
+      triggerModeInterval: "Ripeti",
+      intervalMinutesLabel: "Ripeti ogni (minuti)",
+      windowAllDay: "Tutto il giorno",
+      windowBetween: "Tra",
+      windowAnd: "e",
+      daysOfWeekLabel: "Giorni attivi",
+      dayMon: "Lun", dayTue: "Mar", dayWed: "Mer", dayThu: "Gio", dayFri: "Ven", daySat: "Sab", daySun: "Dom",
+      schedulingInfoInterval: "Il backup verrà eseguito ogni {n} minuti",
+      schedulingInfoDays: "Giorni attivi:",
 
       // Backup Form
       directoriesToBackup: "Directory da backup (una per riga)",
@@ -1092,9 +1119,7 @@ const translations = {
       backupTypeMachine: "Maschine (vollständiger Datenträger)",
       executionMode: "Ausführungsmodus",
       oneshotMode: "Einzelstart (jetzt)",
-      oneshotModeShort: "Jetzt",
       scheduledMode: "Geplant",
-      scheduledModeShort: "Planen",
 
       // Scheduling
       schedulingConfig: "Zeitplan-Konfiguration",
@@ -1104,6 +1129,17 @@ const translations = {
       runAtStartup: "Auch beim Maschinenstart ausführen",
       schedulingInfo: "Sicherung wird automatisch jeden Tag um",
       andAtStartup: "Und auch bei jedem Systemstart.",
+      triggerMode: "Planungstyp",
+      triggerModeDaily: "Täglich",
+      triggerModeInterval: "Wiederholen",
+      intervalMinutesLabel: "Wiederholen alle (Minuten)",
+      windowAllDay: "Ganztägig",
+      windowBetween: "Zwischen",
+      windowAnd: "und",
+      daysOfWeekLabel: "Aktive Tage",
+      dayMon: "Mo", dayTue: "Di", dayWed: "Mi", dayThu: "Do", dayFri: "Fr", daySat: "Sa", daySun: "So",
+      schedulingInfoInterval: "Sicherung wird alle {n} Minuten ausgeführt",
+      schedulingInfoDays: "Aktive Tage:",
 
       // Backup Form
       directoriesToBackup: "Zu sichernde Verzeichnisse (eins pro Zeile)",
@@ -1421,9 +1457,7 @@ const translations = {
       backupTypeMachine: "Maszyna (pełny dysk)",
       executionMode: "Tryb wykonania",
       oneshotMode: "Jednorazowy (teraz)",
-      oneshotModeShort: "Teraz",
       scheduledMode: "Zaplanowany",
-      scheduledModeShort: "Plan",
 
       // Scheduling
       schedulingConfig: "Konfiguracja harmonogramu",
@@ -1433,6 +1467,17 @@ const translations = {
       runAtStartup: "Uruchamiaj również przy starcie komputera",
       schedulingInfo: "Kopia zapasowa zostanie automatycznie uruchomiona każdego dnia o",
       andAtStartup: "I również przy każdym uruchomieniu systemu.",
+      triggerMode: "Typ harmonogramu",
+      triggerModeDaily: "Codziennie",
+      triggerModeInterval: "Powtarzaj",
+      intervalMinutesLabel: "Powtarzaj co (minuty)",
+      windowAllDay: "Cały dzień",
+      windowBetween: "Między",
+      windowAnd: "a",
+      daysOfWeekLabel: "Aktywne dni",
+      dayMon: "Pon", dayTue: "Wt", dayWed: "Śr", dayThu: "Czw", dayFri: "Pt", daySat: "Sob", daySun: "Niedz",
+      schedulingInfoInterval: "Kopia zapasowa będzie wykonywana co {n} minut",
+      schedulingInfoDays: "Aktywne dni:",
 
       // Backup Form
       directoriesToBackup: "Katalogi do kopii zapasowej (jeden na linię)",

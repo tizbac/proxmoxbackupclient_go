@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { TabList, Tab } from '@fluentui/react-components'
 import { useTranslation } from './i18n/i18nContext'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
@@ -149,6 +150,19 @@ function App() {
   const [backupMode, setBackupMode] = useState('oneshot') // 'oneshot' or 'scheduled'
   const [scheduleTime, setScheduleTime] = useState('02:00')
   const [runAtStartup, setRunAtStartup] = useState(false)
+  // BFW-style scheduling depth (matches ScheduledJob's TriggerMode/interval
+  // fields in scheduler.go): 'daily' = once a day at scheduleTime (the
+  // original, only mode). 'interval' = repeat every intervalMinutes,
+  // optionally restricted to a daily time window.
+  const [triggerMode, setTriggerMode] = useState('daily')
+  const [intervalMinutes, setIntervalMinutes] = useState(120)
+  const [windowAllDay, setWindowAllDay] = useState(true)
+  const [windowStart, setWindowStart] = useState('09:00')
+  const [windowEnd, setWindowEnd] = useState('17:00')
+  // All 7 selected by default = "every day", matching the backend's own
+  // "empty/nil DaysOfWeek means every day" convention (sending the full list
+  // is equivalent and simpler than special-casing "all checked -> empty").
+  const [daysOfWeek, setDaysOfWeek] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
   const [scheduledJobs, setScheduledJobs] = useState([])
   const [jobHistory, setJobHistory] = useState([])
   const [editingJobId, setEditingJobId] = useState(null) // Track which job is being edited
@@ -1186,6 +1200,12 @@ function App() {
         name: `Backup ${config['backup-id'] || hostname}`,
         scheduleTime: scheduleTime,
         runAtStartup: runAtStartup,
+        triggerMode: triggerMode,
+        intervalMinutes: triggerMode === 'interval' ? intervalMinutes : undefined,
+        windowAllDay: triggerMode === 'interval' ? windowAllDay : undefined,
+        windowStart: triggerMode === 'interval' && !windowAllDay ? windowStart : undefined,
+        windowEnd: triggerMode === 'interval' && !windowAllDay ? windowEnd : undefined,
+        daysOfWeek: daysOfWeek,
         backupDirs: backupType === 'directory' ? dirList : [],
         backupId: config['backup-id'],
         useVSS: config.usevss,
@@ -1211,6 +1231,12 @@ function App() {
         // Reset form after save
         setScheduleTime('02:00')
         setRunAtStartup(false)
+        setTriggerMode('daily')
+        setIntervalMinutes(120)
+        setWindowAllDay(true)
+        setWindowStart('09:00')
+        setWindowEnd('17:00')
+        setDaysOfWeek(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
         setBackupDirs('')
       } catch (err) {
         showStatus(`❌ Erreur: ${err}`, 'error')
@@ -1826,43 +1852,17 @@ function App() {
             </select>
           </div>
 
-          {/* Backup Mode Toggle */}
+          {/* Backup Mode Tabs */}
           <div className="form-group">
             <label>{t('executionMode')}</label>
-            <div style={{display: 'flex', gap: '10px', marginTop: '10px'}}>
-              <button
-                onClick={() => setBackupMode('oneshot')}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: backupMode === 'oneshot' ? 'var(--accent)' : '#e2e8f0',
-                  color: backupMode === 'oneshot' ? 'white' : '#4a5568',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
-                }}
-              >
-                <span className="compact-text-long">⚡ {t('oneshotMode')}</span>
-                <span className="compact-text-short">⚡ {t('oneshotModeShort')}</span>
-              </button>
-              <button
-                onClick={() => setBackupMode('scheduled')}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: backupMode === 'scheduled' ? 'var(--accent)' : '#e2e8f0',
-                  color: backupMode === 'scheduled' ? 'white' : '#4a5568',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
-                }}
-              >
-                <span className="compact-text-long">📅 {t('scheduledMode')}</span>
-                <span className="compact-text-short">📅 {t('scheduledModeShort')}</span>
-              </button>
-            </div>
+            <TabList
+              selectedValue={backupMode}
+              onTabSelect={(_e, data) => setBackupMode(data.value)}
+              style={{marginTop: '10px'}}
+            >
+              <Tab value="oneshot">⚡ {t('oneshotMode')}</Tab>
+              <Tab value="scheduled">📅 {t('scheduledMode')}</Tab>
+            </TabList>
           </div>
 
           {/* Scheduling Options */}
@@ -1877,16 +1877,6 @@ function App() {
               )}
 
               <div className="form-group">
-                <label>{t('dailyExecutionTime')}</label>
-                <input
-                  type="time"
-                  value={scheduleTime}
-                  onChange={(e) => setScheduleTime(e.target.value)}
-                  style={{width: '200px', padding: '10px', fontSize: '16px'}}
-                />
-              </div>
-
-              <div className="form-group">
                 <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer'}}>
                   <input
                     type="checkbox"
@@ -1898,8 +1888,113 @@ function App() {
                 </label>
               </div>
 
+              <div className="form-group">
+                <label>{t('triggerMode')}</label>
+                <TabList
+                  selectedValue={triggerMode}
+                  onTabSelect={(_e, data) => setTriggerMode(data.value)}
+                  size="small"
+                  style={{marginTop: '10px'}}
+                >
+                  <Tab value="daily">📆 {t('triggerModeDaily')}</Tab>
+                  <Tab value="interval">🔁 {t('triggerModeInterval')}</Tab>
+                </TabList>
+              </div>
+
+              {triggerMode === 'daily' && (
+                <div className="form-group">
+                  <label>{t('dailyExecutionTime')}</label>
+                  <input
+                    type="time"
+                    value={scheduleTime}
+                    onChange={(e) => setScheduleTime(e.target.value)}
+                    style={{width: '200px', padding: '10px', fontSize: '16px'}}
+                  />
+                </div>
+              )}
+
+              {triggerMode === 'interval' && (
+                <>
+                  <div className="form-group">
+                    <label>{t('intervalMinutesLabel')}</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={intervalMinutes}
+                      onChange={(e) => setIntervalMinutes(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      style={{width: '120px', padding: '10px', fontSize: '16px'}}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer'}}>
+                      <input
+                        type="checkbox"
+                        checked={windowAllDay}
+                        onChange={(e) => setWindowAllDay(e.target.checked)}
+                        style={{width: '20px', height: '20px', cursor: 'pointer'}}
+                      />
+                      <span>{t('windowAllDay')}</span>
+                    </label>
+                  </div>
+
+                  {!windowAllDay && (
+                    <div className="form-group" style={{display: 'flex', gap: '15px', alignItems: 'center'}}>
+                      <span>{t('windowBetween')}</span>
+                      <input
+                        type="time"
+                        value={windowStart}
+                        onChange={(e) => setWindowStart(e.target.value)}
+                        style={{padding: '8px', fontSize: '14px'}}
+                      />
+                      <span>{t('windowAnd')}</span>
+                      <input
+                        type="time"
+                        value={windowEnd}
+                        onChange={(e) => setWindowEnd(e.target.value)}
+                        style={{padding: '8px', fontSize: '14px'}}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="form-group">
+                <label>{t('daysOfWeekLabel')}</label>
+                <div style={{display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap'}}>
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
+                    const selected = daysOfWeek.includes(day)
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setDaysOfWeek(selected ? daysOfWeek.filter(d => d !== day) : [...daysOfWeek, day])}
+                        style={{
+                          padding: '6px 10px',
+                          backgroundColor: selected ? 'var(--accent)' : '#e2e8f0',
+                          color: selected ? 'white' : '#4a5568',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          fontWeight: selected ? 'bold' : 'normal'
+                        }}
+                      >
+                        {t(`day${day}`)}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
               <div className="info-box" style={{backgroundColor: '#eef2ff'}}>
-                💡 {t('schedulingInfo')} <strong>{scheduleTime}</strong>
+                💡 {triggerMode === 'daily'
+                  ? <>{t('schedulingInfo')} <strong>{scheduleTime}</strong></>
+                  : <>{t('schedulingInfoInterval').replace('{n}', intervalMinutes)}
+                      {!windowAllDay && ` ${t('windowBetween')} ${windowStart} ${t('windowAnd')} ${windowEnd}`}</>}
+                {daysOfWeek.length > 0 && daysOfWeek.length < 7 && (
+                  <><br/>{t('schedulingInfoDays')} {daysOfWeek.map(d => t(`day${d}`)).join(', ')}</>
+                )}
                 {runAtStartup && <><br/>{t('andAtStartup')}</>}
               </div>
             </div>
@@ -2093,6 +2188,12 @@ function App() {
               setEditingJobId(null)
               setScheduleTime('02:00')
               setRunAtStartup(false)
+              setTriggerMode('daily')
+              setIntervalMinutes(120)
+              setWindowAllDay(true)
+              setWindowStart('09:00')
+              setWindowEnd('17:00')
+              setDaysOfWeek(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
               setBackupDirs('')
               setExcludeList('')
               setTreeExcludes([])
@@ -2136,6 +2237,16 @@ function App() {
                           setBackupMode('scheduled')
                           setScheduleTime(job.scheduleTime)
                           setRunAtStartup(job.runAtStartup)
+                          // A job saved before these fields existed has none
+                          // of them — fall back to the same defaults the
+                          // backend treats an absent value as (daily, every
+                          // day), so an old job round-trips unchanged.
+                          setTriggerMode(job.triggerMode || 'daily')
+                          setIntervalMinutes(job.intervalMinutes || 120)
+                          setWindowAllDay(job.windowAllDay !== false)
+                          setWindowStart(job.windowStart || '09:00')
+                          setWindowEnd(job.windowEnd || '17:00')
+                          setDaysOfWeek(job.daysOfWeek && job.daysOfWeek.length > 0 ? job.daysOfWeek : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
                           setBackupDirs(job.backupDirs.join('\n'))
                           setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                           setBackupType(job.backupType)

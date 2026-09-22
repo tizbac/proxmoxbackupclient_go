@@ -18,7 +18,7 @@ var runningJobsMutex sync.Mutex
 type ScheduledJob struct {
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
-	ScheduleTime string   `json:"scheduleTime"` // HH:MM format
+	ScheduleTime string   `json:"scheduleTime"` // HH:MM format, used when TriggerMode == "daily"
 	RunAtStartup bool     `json:"runAtStartup"`
 	BackupDirs   []string `json:"backupDirs"`
 	DriveLetters []string `json:"driveLetters"` // physical disks for machine backups
@@ -30,6 +30,28 @@ type ScheduledJob struct {
 	LastRun      string   `json:"lastRun,omitempty"` // ISO timestamp
 	NextRun      string   `json:"nextRun,omitempty"` // ISO timestamp
 	Enabled      bool     `json:"enabled"`
+
+	// TriggerMode selects how ScheduleTime/the interval fields below are
+	// interpreted. "" (the zero value, matching every job saved before this
+	// field existed) and "daily" both mean the original single
+	// once-a-day-at-ScheduleTime behavior — deliberately kept as the default
+	// so existing saved jobs keep running exactly as before with no
+	// migration step. "interval" means "repeat every IntervalMinutes,
+	// optionally only within a daily time window" (mirrors BFW's own
+	// "Repeatedly backup every N minutes" scheduler mode).
+	TriggerMode string `json:"triggerMode,omitempty"` // "daily" | "interval"
+
+	// Interval-mode fields. Only meaningful when TriggerMode == "interval".
+	IntervalMinutes int    `json:"intervalMinutes,omitempty"`
+	WindowAllDay    bool   `json:"windowAllDay,omitempty"` // true = no time-of-day restriction on the interval
+	WindowStart     string `json:"windowStart,omitempty"`  // HH:MM, used when !WindowAllDay
+	WindowEnd       string `json:"windowEnd,omitempty"`    // HH:MM, used when !WindowAllDay
+
+	// DaysOfWeek restricts BOTH trigger modes to specific days
+	// ("Mon".."Sun", English 3-letter, matching the frontend checkboxes).
+	// Empty/nil means every day — the behavior every job had before this
+	// field existed, so this is also a safe no-migration default.
+	DaysOfWeek []string `json:"daysOfWeek,omitempty"`
 }
 
 // JobHistory represents a completed backup job
@@ -114,7 +136,7 @@ func (a *App) SaveScheduledJob(job ScheduledJob) error {
 	job.Enabled = true
 
 	// Calculate next run
-	job.NextRun = calculateNextRun(job.ScheduleTime)
+	job.NextRun = calculateNextRun(job)
 
 	// Add new job
 	jobs = append(jobs, job)
@@ -210,7 +232,7 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 			// Preserve enabled state
 			job.Enabled = j.Enabled
 			// Recalculate next run with new schedule time
-			job.NextRun = calculateNextRun(job.ScheduleTime)
+			job.NextRun = calculateNextRun(job)
 			jobs[i] = job
 			found = true
 			break
@@ -325,14 +347,62 @@ func (a *App) AddJobHistory(entry JobHistory) error {
 	return atomicWriteFile(historyPath, data, 0600)
 }
 
-// calculateNextRun calculates the next run time based on schedule time (HH:MM)
-func calculateNextRun(scheduleTime string) string {
+// weekdayAbbrev maps time.Weekday (Sunday=0) to the 3-letter form
+// ScheduledJob.DaysOfWeek and the frontend's day checkboxes use.
+var weekdayAbbrev = [...]string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+
+// dayAllowed reports whether t's weekday is in days. An empty/nil days list
+// means every day is allowed — the behavior every job had before DaysOfWeek
+// existed, kept as the default so old jobs are unaffected.
+func dayAllowed(t time.Time, days []string) bool {
+	if len(days) == 0 {
+		return true
+	}
+	abbr := weekdayAbbrev[t.Weekday()]
+	for _, d := range days {
+		if strings.EqualFold(d, abbr) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseHHMM parses an "HH:MM" string into its hour/minute components.
+func parseHHMM(s string) (hour, min int, err error) {
+	if _, err = fmt.Sscanf(s, "%d:%d", &hour, &min); err != nil {
+		return 0, 0, err
+	}
+	return hour, min, nil
+}
+
+// calculateNextRun calculates a job's next run time, dispatching on
+// TriggerMode. An empty TriggerMode (every job saved before this field
+// existed) is treated as "daily" — the only mode that used to exist — so no
+// migration step is needed for already-saved jobs.
+func calculateNextRun(job ScheduledJob) string {
+	return calculateNextRunAt(job, time.Now())
+}
+
+// calculateNextRunAt is calculateNextRun with an explicit reference time —
+// split out purely so the scheduling math is deterministically unit-testable
+// (scheduler_test.go) without depending on wall-clock time.Now().
+func calculateNextRunAt(job ScheduledJob, now time.Time) string {
+	if job.TriggerMode == "interval" {
+		return calculateNextIntervalRunAt(job, now)
+	}
+	return calculateNextDailyRunAt(job.ScheduleTime, job.DaysOfWeek, now)
+}
+
+// calculateNextDailyRunAt is the original once-a-day-at-HH:MM logic, extended
+// to walk forward a day at a time (bounded to a week, so a DaysOfWeek value
+// that somehow excludes every day can't loop forever) until it lands on an
+// allowed day.
+func calculateNextDailyRunAt(scheduleTime string, days []string, now time.Time) string {
 	parts := strings.Split(scheduleTime, ":")
 	if len(parts) != 2 {
 		return ""
 	}
 
-	now := time.Now()
 	var hour, min int
 	if _, err := fmt.Sscanf(scheduleTime, "%d:%d", &hour, &min); err != nil {
 		writeDebugLog(fmt.Sprintf("Error parsing schedule time %s: %v", scheduleTime, err))
@@ -350,7 +420,60 @@ func calculateNextRun(scheduleTime string) string {
 		nextRun = nextRun.AddDate(0, 0, 1)
 	}
 
+	for i := 0; i < 7 && !dayAllowed(nextRun, days); i++ {
+		nextRun = nextRun.AddDate(0, 0, 1)
+	}
+
 	return nextRun.Format(time.RFC3339)
+}
+
+// calculateNextIntervalRunAt computes the next fire time for a "repeat every
+// IntervalMinutes" job (BFW's own "Repeatedly backup every N minutes"),
+// honoring an optional daily time window ("Between START and END") and a
+// day-of-week restriction. now+interval is the naive next tick; when that
+// falls outside today's allowed window or on a disallowed day, it jumps
+// forward to the START of the next allowed window instead of firing early,
+// drifting, or silently skipping a day.
+func calculateNextIntervalRunAt(job ScheduledJob, now time.Time) string {
+	if job.IntervalMinutes <= 0 {
+		return ""
+	}
+	candidate := now.Add(time.Duration(job.IntervalMinutes) * time.Minute)
+
+	if job.WindowAllDay {
+		for i := 0; i < 7 && !dayAllowed(candidate, job.DaysOfWeek); i++ {
+			candidate = candidate.AddDate(0, 0, 1)
+		}
+		return candidate.Format(time.RFC3339)
+	}
+
+	startHour, startMin, serr := parseHHMM(job.WindowStart)
+	endHour, endMin, eerr := parseHHMM(job.WindowEnd)
+	if serr != nil || eerr != nil {
+		writeDebugLog(fmt.Sprintf("Error parsing interval window %q-%q: start=%v end=%v", job.WindowStart, job.WindowEnd, serr, eerr))
+		return ""
+	}
+
+	// Walk forward a day at a time (bounded) until candidate lands inside
+	// [windowStart, windowEnd] on an allowed day.
+	for i := 0; i < 8; i++ {
+		windowStart := time.Date(candidate.Year(), candidate.Month(), candidate.Day(), startHour, startMin, 0, 0, candidate.Location())
+		windowEnd := time.Date(candidate.Year(), candidate.Month(), candidate.Day(), endHour, endMin, 0, 0, candidate.Location())
+
+		if dayAllowed(candidate, job.DaysOfWeek) {
+			if candidate.Before(windowStart) {
+				return windowStart.Format(time.RFC3339)
+			}
+			if !candidate.After(windowEnd) {
+				return candidate.Format(time.RFC3339)
+			}
+			// Past today's window — fall through to tomorrow's window start.
+		}
+
+		tomorrow := candidate.AddDate(0, 0, 1)
+		candidate = time.Date(tomorrow.Year(), tomorrow.Month(), tomorrow.Day(), startHour, startMin, 0, 0, tomorrow.Location())
+	}
+	return ""
 }
 
 // RecalculateNextRuns repairs jobs whose nextRun is MISSING or unparseable by
@@ -382,7 +505,7 @@ func (a *App) RecalculateNextRuns() {
 			}
 		}
 
-		newNextRun := calculateNextRun(job.ScheduleTime)
+		newNextRun := calculateNextRun(job)
 		writeDebugLog(fmt.Sprintf("[RecalculateNextRuns] Job %s: nextRun was missing/invalid (%q), set to %s",
 			job.Name, job.NextRun, newNextRun))
 		jobs[i].NextRun = newNextRun
@@ -660,7 +783,7 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 	for i, j := range jobs {
 		if j.ID == job.ID {
 			jobs[i].LastRun = time.Now().Format(time.RFC3339)
-			jobs[i].NextRun = calculateNextRun(j.ScheduleTime)
+			jobs[i].NextRun = calculateNextRun(j)
 			found = true
 			break
 		}
