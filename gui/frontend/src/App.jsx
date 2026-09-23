@@ -1040,7 +1040,7 @@ function App() {
             <span>{title}</span>
             <span style={{cursor: 'pointer', color: '#888'}} onClick={handleCancelEdit}>✕</span>
           </div>
-          <div style={{padding: '20px 22px', overflowY: 'auto', flex: '1 1 auto'}}>
+          <div style={{padding: '20px 22px', overflowY: 'auto', flex: '1 1 auto', minHeight: '420px'}}>
             {body}
           </div>
           <div style={{display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 22px', borderTop: '1px solid #ddd', background: '#fff'}}>

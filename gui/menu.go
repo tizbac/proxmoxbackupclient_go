@@ -22,6 +22,10 @@ func buildAppMenu(a *App) *menu.Menu {
 		runtime.EventsEmit(a.ctx, "nav:goto", "backup")
 	})
 	fileMenu.AddSeparator()
+	fileMenu.AddText("Minimize to Tray", nil, func(_ *menu.CallbackData) {
+		a.MinimizeToTray()
+	})
+	fileMenu.AddSeparator()
 	fileMenu.AddText("Exit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 		// RequestQuit (not a bare runtime.Quit) — closing the window normally
 		// minimizes to tray by design; Exit here means a real, unconditional

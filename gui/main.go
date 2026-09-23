@@ -1068,8 +1068,19 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 
 		var err error
 		if backupType == "machine" {
-			// For machine backups, we need to set the backup type to "vm" for the inline backup function
-			opts.BackupType = "vm"
+			// "host" (not "vm") — found 2026-09-24: "vm" tells machinebackuplib
+			// to also generate a Proxmox VE VM config, which requires the
+			// backup-id to be a NUMERIC VMID (strconv.ParseInt). Every machine
+			// backup here defaults to a hostname-style backup-id, same as
+			// every other backup type, so it always failed at that exact last
+			// step — after successfully transferring the entire disk. "host"
+			// has no such requirement and is the right choice for a plain
+			// bare-metal backup (the Clonezilla/NBD restore path reads the
+			// raw disk chunks directly, not this VM config, so nothing about
+			// that workflow needs "vm" type). "vm" would only make sense for
+			// an explicit, not-yet-built Physical-to-Virtual-into-Proxmox-VE
+			// feature with its own numeric-VMID input.
+			opts.BackupType = "host"
 			err = RunBackupInline(opts)
 		} else {
 			opts.BackupType = "host"
@@ -1122,6 +1133,29 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		return err
 	}
 
+	// Total size of the selected device(s), for the "X of Y" / speed / ETA
+	// display — added 2026-09-24. Machine backups only ever reported a bare
+	// percentage ("Block N"), unlike directory backups which already have
+	// this via BackupProgressStats/backup:stats. bytesDone below is derived
+	// from percent × this total, which is approximate (block progress isn't
+	// perfectly linear with bytes actually transferred to PBS — dedup can
+	// skip work), but reuses the SAME backup:stats event the frontend
+	// already knows how to turn into speed/ETA for directory backups, so no
+	// frontend change is needed to show it for machine backups too.
+	var machineTotalBytes uint64
+	if disks, dErr := listPhysicalDisks(); dErr == nil {
+		for _, dev := range backupDevices {
+			for _, d := range disks {
+				if d.DevicePath == dev {
+					machineTotalBytes += uint64(d.Size)
+					break
+				}
+			}
+		}
+	} else {
+		writeDebugLog(fmt.Sprintf("[Machine Backup] Could not list physical disks for size lookup: %v", dErr))
+	}
+
 	// Prepare backup options
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
@@ -1135,12 +1169,16 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		BackupObjects:   backupDevices,
 		BackupID:        backupID,
 		Kind:            "machine",
-		BackupType:      "vm", // "vm" for machine backup
-		UseVSS:          useVSS,
-		Compression:     compression,
-		ExcludeList:     []string{}, // No exclude list for machine backups
-		DisableSplit:    a.config.DisableSplit,
-		SplitSizeBytes:  a.config.SplitSizeBytes(),
+		// "host", not "vm" — see the matching comment in startBackupDirect's
+		// machine branch for why: "vm" requires a numeric VMID backup-id,
+		// which every machine backup here defaults to a hostname instead of,
+		// so it always failed after transferring the entire disk.
+		BackupType:     "host",
+		UseVSS:         useVSS,
+		Compression:    compression,
+		ExcludeList:    []string{}, // No exclude list for machine backups
+		DisableSplit:   a.config.DisableSplit,
+		SplitSizeBytes: a.config.SplitSizeBytes(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
@@ -1166,6 +1204,14 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 					"percent": percent * 100,
 					"message": message,
 				})
+				if machineTotalBytes > 0 {
+					runtime.EventsEmit(a.ctx, "backup:stats", map[string]interface{}{
+						"percent":    percent * 100,
+						"bytesDone":  uint64(percent * float64(machineTotalBytes)),
+						"bytesTotal": machineTotalBytes,
+						"message":    message,
+					})
+				}
 			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
 				writeDebugLog("[OnProgress] No callbacks/context (service or headless mode)")
 			}

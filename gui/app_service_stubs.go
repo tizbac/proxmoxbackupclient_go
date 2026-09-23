@@ -92,12 +92,15 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 	// through the service silently fell through to the directory path;
 	// found and fixed 2026-09-23 alongside the service build's other
 	// pre-existing compile errors).
+	// BackupType is "host" even for machine backups — see the matching
+	// comment in main.go's startBackupDirect for why "vm" is wrong here
+	// (found 2026-09-24: it requires a numeric VMID backup-id, which every
+	// machine backup here defaults to a hostname instead of).
 	kind := "directory"
-	pbsBackupType := "host"
 	if backupType == "machine" {
 		kind = "machine"
-		pbsBackupType = "vm"
 	}
+	pbsBackupType := "host"
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
 		AuthID:          pbsCfg.AuthID,
@@ -184,12 +187,15 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		BackupObjects:   backupDevices,
 		BackupID:        backupID,
 		Kind:            "machine",
-		BackupType:      "vm",
-		UseVSS:          useVSS,
-		Compression:     compression,
-		ExcludeList:     []string{},
-		DisableSplit:    pbsCfg.DisableSplit,
-		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
+		// "host", not "vm" — see startBackupDirect's machine branch in
+		// main.go for why: "vm" requires a numeric VMID backup-id, which
+		// every machine backup here defaults to a hostname instead of.
+		BackupType:     "host",
+		UseVSS:         useVSS,
+		Compression:    compression,
+		ExcludeList:    []string{},
+		DisableSplit:   pbsCfg.DisableSplit,
+		SplitSizeBytes: pbsCfg.SplitSizeBytes(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent, message))
 		},
