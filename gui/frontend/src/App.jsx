@@ -2613,23 +2613,31 @@ function App() {
             </div>
           )}
 
-          {/* BETA Warning */}
+          {/* BETA warning — a fixed-amber "main" bar (deliberately not theme-colored,
+              so it reads as a warning regardless of the active accent color), with a
+              second, theme-colored banner below it listing what's actually supported. */}
           <div style={{
             backgroundColor: '#FEF3C7',
             border: '2px solid #F59E0B',
             borderRadius: '8px',
-            padding: '12px',
-            marginBottom: '20px',
-            color: '#92400E'
+            padding: '10px 14px',
+            marginBottom: '8px',
+            color: '#92400E',
+            fontWeight: 'bold',
+            fontSize: '14px'
           }}>
-            <strong>⚠️ {t('restoreBetaTitle')}</strong>
-            <p style={{margin: '8px 0 0 0', fontSize: '14px'}}>
-              {t('restoreBetaIntro')}
-              <br/>✅ {t('restoreBetaFilesDirs')}
-              <br/>✅ {t('restoreBetaSelective')}
-              <br/>✅ {t('restoreBetaTimestamps')}
-              <br/>❌ {t('restoreBetaACLs')}
-            </p>
+            ⚠️ {t('restoreBetaTitle')} — {t('restoreBetaIntro')}
+          </div>
+          <div className="info-box" style={{marginTop: 0, marginBottom: '20px'}}>
+            <div style={{display: 'flex', flexWrap: 'wrap', gap: '6px 20px', fontSize: '13px'}}>
+              <span>✅ {t('restoreBetaFilesDirs')}</span>
+              <span>✅ {t('restoreBetaSelective')}</span>
+              <span>✅ {t('restoreBetaTimestamps')}</span>
+              <span>✅ {t('restoreBetaMultiServer')}</span>
+            </div>
+            <div style={{fontSize: '13px', marginTop: '6px'}}>
+              ❌ {t('restoreBetaACLs')}
+            </div>
           </div>
 
           {/* PBS server selector + Backup ID */}

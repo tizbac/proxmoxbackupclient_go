@@ -355,6 +355,7 @@ const translations = {
       restoreBetaFilesDirs: "Fichiers et dossiers (arborescence complète)",
       restoreBetaSelective: "Restauration sélective (fichier par fichier)",
       restoreBetaTimestamps: "Restauration des dates de modification",
+      restoreBetaMultiServer: "Sélection parmi plusieurs serveurs PBS",
       restoreBetaACLs: "Permissions NTFS, ADS, attributs étendus (sprint NTFS sidecar à venir)",
 
       // About
@@ -764,10 +765,11 @@ const translations = {
       selectSnapshotFirst: "Select a snapshot first",
       destinationRequired: "Destination folder required",
       restoreBetaTitle: "BETA FEATURE",
-      restoreBetaIntro: "Restore is in BETA. Currently supports:",
+      restoreBetaIntro: "Restore is in BETA. Currently it supports:",
       restoreBetaFilesDirs: "Files and directories (full tree)",
       restoreBetaSelective: "Selective restore (file by file)",
       restoreBetaTimestamps: "Modification time restore",
+      restoreBetaMultiServer: "Select from multiple PBS Servers",
       restoreBetaACLs: "NTFS permissions, ADS, extended attributes (NTFS sidecar sprint pending)",
 
       // About
@@ -1181,6 +1183,7 @@ const translations = {
       restoreBetaFilesDirs: "File e cartelle (albero completo)",
       restoreBetaSelective: "Ripristino selettivo (file per file)",
       restoreBetaTimestamps: "Ripristino orari di modifica",
+      restoreBetaMultiServer: "Selezione tra più server PBS",
       restoreBetaACLs: "Permessi NTFS, ADS, attributi estesi (sprint sidecar NTFS in attesa)",
 
       // About
@@ -1594,6 +1597,7 @@ const translations = {
       restoreBetaFilesDirs: "Dateien und Ordner (vollständiger Baum)",
       restoreBetaSelective: "Selektive Wiederherstellung (Datei für Datei)",
       restoreBetaTimestamps: "Änderungszeiten wiederherstellen",
+      restoreBetaMultiServer: "Auswahl aus mehreren PBS-Servern",
       restoreBetaACLs: "NTFS-Berechtigungen, ADS, erweiterte Attribute (NTFS-Sidecar-Sprint anstehend)",
 
       // About
@@ -2007,6 +2011,7 @@ const translations = {
       restoreBetaFilesDirs: "Pliki i foldery (pełne drzewo)",
       restoreBetaSelective: "Wybiórcze przywracanie (plik po pliku)",
       restoreBetaTimestamps: "Przywracanie czasów modyfikacji",
+      restoreBetaMultiServer: "Wybór spośród wielu serwerów PBS",
       restoreBetaACLs: "Uprawnienia NTFS, ADS, rozszerzone atrybuty (NTFS sidecar sprint w toku)",
 
       // About
@@ -2420,6 +2425,7 @@ const translations = {
       restoreBetaFilesDirs: "Archivos y directorios (árbol completo)",
       restoreBetaSelective: "Restauración selectiva (archivo por archivo)",
       restoreBetaTimestamps: "Restauración de la hora de modificación",
+      restoreBetaMultiServer: "Selección entre varios servidores PBS",
       restoreBetaACLs: "Permisos NTFS, ADS, atributos extendidos (sprint del sidecar NTFS pendiente)",
 
       // About

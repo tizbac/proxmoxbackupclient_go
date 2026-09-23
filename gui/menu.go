@@ -27,12 +27,6 @@ func buildAppMenu(a *App) *menu.Menu {
 	})
 
 	viewMenu := appMenu.AddSubmenu("View")
-	viewMenu.AddText("Backup", nil, func(_ *menu.CallbackData) {
-		runtime.EventsEmit(a.ctx, "nav:goto", "backup")
-	})
-	viewMenu.AddText("Restore", nil, func(_ *menu.CallbackData) {
-		runtime.EventsEmit(a.ctx, "nav:goto", "restore")
-	})
 	viewMenu.AddText("Reports", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "nav:goto", "reports")
 	})
@@ -40,9 +34,18 @@ func buildAppMenu(a *App) *menu.Menu {
 		runtime.EventsEmit(a.ctx, "nav:goto", "messagelog")
 	})
 
+	// Backup/Restore live here rather than View — the Backup tab IS the
+	// backup-sets manager now, which reads more like a tool you open than a
+	// view you switch to. This also retires the old disabled "Manage Backup
+	// Sets…" placeholder that predated the real Backup Sets UI.
 	toolsMenu := appMenu.AddSubmenu("Tools")
-	backupSetsItem := toolsMenu.AddText("Manage Backup Sets…", nil, nil)
-	backupSetsItem.Disabled = true // wizard lands in a later phase of the UI overhaul
+	toolsMenu.AddText("Backup", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "backup")
+	})
+	toolsMenu.AddText("Restore", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "restore")
+	})
+	toolsMenu.AddSeparator()
 	toolsMenu.AddText("Preferences…", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "nav:preferences")
 	})
