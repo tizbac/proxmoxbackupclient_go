@@ -9,11 +9,20 @@ const PRESETS = {
   amber: { accent: '#e87003', accentHover: '#d46100', heroStart: '#5c3a1e', heroEnd: '#fbe9d7' },
   blue: { accent: '#3d5aa8', accentHover: '#2f4680', heroStart: '#1e2a4a', heroEnd: '#e9edf7' },
   green: { accent: '#2e8c47', accentHover: '#256f38', heroStart: '#1e3a24', heroEnd: '#e6f5ea' },
+  red: { accent: '#b3261e', accentHover: '#8f1e18', heroStart: '#3a0d0a', heroEnd: '#fce4e1' },
   dark: { accent: '#2b2b2b', accentHover: '#1a1a1a', heroStart: '#0d0d0d', heroEnd: '#4a4a4a' },
 }
 
 const STORAGE_KEY = 'pbsTheme'
 const HEX_RE = /^#[0-9a-fA-F]{6}$/
+
+// Accepts "#b3261e", "b3261e", or either with stray whitespace — typing the
+// hex digits alone (no leading #) shouldn't silently do nothing.
+function normalizeHex(value) {
+  const trimmed = value.trim()
+  const withHash = trimmed.startsWith('#') ? trimmed : `#${trimmed}`
+  return HEX_RE.test(withHash) ? withHash : null
+}
 
 function gradientFor(colors) {
   return `linear-gradient(90deg, ${colors.heroStart} 0%, ${colors.accent} 60%, ${colors.heroEnd} 100%)`
@@ -80,11 +89,14 @@ export default function ThemePicker() {
   const editCustomField = (field, value) => {
     const next = { ...custom, [field]: value }
     setCustom(next)
-    // Only apply/persist well-formed hex — a half-typed value stays in the
+    // Only apply/persist a well-formed hex — a half-typed value stays in the
     // input but doesn't flash broken colors across the app while typing.
-    if (HEX_RE.test(value)) {
-      applyTheme(next)
-      save('custom', next)
+    // The leading "#" is optional here: typing just the 6 digits still works.
+    const normalized = normalizeHex(value)
+    if (normalized) {
+      const applied = { ...next, [field]: normalized }
+      applyTheme(applied)
+      save('custom', applied)
     }
   }
 
@@ -116,9 +128,7 @@ export default function ThemePicker() {
                 height: '32px',
                 borderRadius: '5px',
                 marginBottom: '8px',
-                background: name === 'custom'
-                  ? 'linear-gradient(90deg, #888, #bbb 50%, #ddd)'
-                  : gradientFor(PRESETS[name]),
+                background: name === 'custom' ? gradientFor(custom) : gradientFor(PRESETS[name]),
                 border: name === 'custom' ? '1px dashed #999' : 'none',
               }}
             />

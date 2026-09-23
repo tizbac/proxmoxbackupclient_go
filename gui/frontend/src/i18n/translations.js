@@ -55,6 +55,7 @@ const translations = {
     themeAmber: "Ambre",
     themeBlue: "Bleu classique",
     themeGreen: "Vert",
+    themeRed: "Rouge",
     themeDark: "Sombre",
     themeCustom: "Personnalisé…",
     themeFieldAccent: "Couleur d'accent",
@@ -234,8 +235,11 @@ const translations = {
       editModeInfo: "Mode édition - modifiez et sauvegardez",
 
       // Backup History
-      backupHistory: "Historique des sauvegardes (dernières 6)",
+      backupHistory: "Historique des sauvegardes",
       rerun: "Relancer",
+      reportsEmpty: "Aucune sauvegarde n'a encore été exécutée.",
+      reportsSelectPrompt: "Sélectionnez une exécution dans la liste pour voir ses détails.",
+      reportsFolders: "Dossiers",
       configLoaded: "Configuration chargée, lancez le backup",
 
       // Restore
@@ -440,6 +444,7 @@ const translations = {
     themeAmber: "Amber",
     themeBlue: "Classic Blue",
     themeGreen: "Green",
+    themeRed: "Red",
     themeDark: "Dark",
     themeCustom: "Custom…",
     themeFieldAccent: "Accent color",
@@ -619,8 +624,11 @@ const translations = {
       editModeInfo: "Edit mode - modify and save",
 
       // Backup History
-      backupHistory: "Backup history (last 6)",
+      backupHistory: "Backup history",
       rerun: "Rerun",
+      reportsEmpty: "No backups have run yet.",
+      reportsSelectPrompt: "Select a run from the list to see its details.",
+      reportsFolders: "Folders",
       configLoaded: "Configuration loaded, start backup",
 
       // Restore
@@ -825,6 +833,7 @@ const translations = {
     themeAmber: "Ambra",
     themeBlue: "Blu classico",
     themeGreen: "Verde",
+    themeRed: "Rosso",
     themeDark: "Scuro",
     themeCustom: "Personalizzato…",
     themeFieldAccent: "Colore accento",
@@ -1004,8 +1013,11 @@ const translations = {
       editModeInfo: "Modalità modifica - modifica e salva",
 
       // Backup History
-      backupHistory: "Cronologia backup (ultimi 6)",
+      backupHistory: "Cronologia backup",
       rerun: "Ripeti",
+      reportsEmpty: "Nessun backup è ancora stato eseguito.",
+      reportsSelectPrompt: "Seleziona un'esecuzione dall'elenco per vederne i dettagli.",
+      reportsFolders: "Cartelle",
       configLoaded: "Configurazione caricata, avvia backup",
 
       // Restore
@@ -1210,6 +1222,7 @@ const translations = {
     themeAmber: "Amber",
     themeBlue: "Klassisches Blau",
     themeGreen: "Grün",
+    themeRed: "Rot",
     themeDark: "Dunkel",
     themeCustom: "Benutzerdefiniert…",
     themeFieldAccent: "Akzentfarbe",
@@ -1389,8 +1402,11 @@ const translations = {
       editModeInfo: "Bearbeitungsmodus - ändern und speichern",
 
       // Backup History
-      backupHistory: "Sicherungshistorie (letzte 6)",
+      backupHistory: "Sicherungshistorie",
       rerun: "Erneut ausführen",
+      reportsEmpty: "Es wurde noch keine Sicherung ausgeführt.",
+      reportsSelectPrompt: "Wählen Sie einen Lauf aus der Liste, um Details zu sehen.",
+      reportsFolders: "Ordner",
       configLoaded: "Konfiguration geladen, Sicherung starten",
 
       // Restore
@@ -1595,6 +1611,7 @@ const translations = {
     themeAmber: "Bursztynowy",
     themeBlue: "Klasyczny niebieski",
     themeGreen: "Zielony",
+    themeRed: "Czerwony",
     themeDark: "Ciemny",
     themeCustom: "Niestandardowy…",
     themeFieldAccent: "Kolor akcentu",
@@ -1774,8 +1791,11 @@ const translations = {
       editModeInfo: "Tryb edycji - modyfikuj i zapisz",
 
       // Backup History
-      backupHistory: "Historia kopii zapasowych (ostatnie 6)",
+      backupHistory: "Historia kopii zapasowych",
       rerun: "Uruchom ponownie",
+      reportsEmpty: "Żadna kopia zapasowa nie została jeszcze wykonana.",
+      reportsSelectPrompt: "Wybierz uruchomienie z listy, aby zobaczyć szczegóły.",
+      reportsFolders: "Foldery",
       configLoaded: "Konfiguracja załadowana, uruchom kopię zapasową",
 
       // Restore

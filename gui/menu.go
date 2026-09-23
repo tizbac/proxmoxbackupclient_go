@@ -33,8 +33,9 @@ func buildAppMenu(a *App) *menu.Menu {
 	viewMenu.AddText("Restore", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "nav:goto", "restore")
 	})
-	reportsItem := viewMenu.AddText("Reports", nil, nil)
-	reportsItem.Disabled = true
+	viewMenu.AddText("Reports", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "reports")
+	})
 	viewMenu.AddText("Message Log", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "nav:goto", "messagelog")
 	})

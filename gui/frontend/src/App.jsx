@@ -172,6 +172,7 @@ function App() {
   const [daysOfWeek, setDaysOfWeek] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
   const [scheduledJobs, setScheduledJobs] = useState([])
   const [jobHistory, setJobHistory] = useState([])
+  const [selectedHistoryId, setSelectedHistoryId] = useState(null) // Reports page: which run's detail is shown
   const [messageLog, setMessageLog] = useState([])
   const [editingJobId, setEditingJobId] = useState(null) // Track which job is being edited
   const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
@@ -1779,7 +1780,7 @@ function App() {
         <button className={`nav-btn ${activeTab === 'restore' ? 'active' : ''}`} onClick={() => setActiveTab('restore')}>
           {t('tabRestore')}
         </button>
-        <button className="nav-btn nav-btn-disabled" disabled title={t('comingSoon')}>
+        <button className={`nav-btn ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>
           {t('navReports')}
         </button>
         <button className={`nav-btn ${activeTab === 'messagelog' ? 'active' : ''}`} onClick={() => setActiveTab('messagelog')}>
@@ -2477,58 +2478,6 @@ function App() {
             </div>
           )}
 
-          {/* Job History */}
-          {jobHistory.length > 0 && (
-            <div className="card" style={{marginTop: '30px'}}>
-              <h3 style={{marginTop: 0}}>📜 {t('backupHistory')}</h3>
-              <div style={{maxHeight: '400px', overflowY: 'auto'}}>
-                {jobHistory.slice(0, 6).map(job => (
-                  <div key={job.id} style={{
-                    padding: '15px',
-                    marginBottom: '10px',
-                    backgroundColor: job.status === 'success' ? '#d4edda' : job.status === 'failed' ? '#f8d7da' : '#fff3cd',
-                    borderRadius: '8px',
-                    border: `1px solid ${job.status === 'success' ? '#c3e6cb' : job.status === 'failed' ? '#f5c6cb' : '#ffeaa7'}`
-                  }}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                      <div style={{flex: 1}}>
-                        <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                          <span style={{fontSize: '20px'}}>
-                            {job.status === 'success' ? '✅' : job.status === 'failed' ? '❌' : '⏳'}
-                          </span>
-                          <strong>{job.name}</strong>
-                        </div>
-                        <div style={{fontSize: '13px', color: '#6c757d', marginTop: '5px', marginLeft: '30px'}}>
-                          🕐 {new Date(job.timestamp).toLocaleString('fr-FR')}
-                        </div>
-                        {job.message && (
-                          <div style={{fontSize: '13px', color: '#495057', marginTop: '5px', marginLeft: '30px'}}>
-                            💬 {job.message}
-                          </div>
-                        )}
-                      </div>
-                      {job.status === 'failed' && (
-                        <button
-                          className="btn"
-                          style={{padding: '8px 15px', fontSize: '14px'}}
-                          onClick={() => {
-                            // Re-run failed job
-                            setBackupDirs(job.backupDirs.join('\n'))
-                            setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
-                            showStatus(t('configLoaded'), 'success')
-                            window.scrollTo({top: 0, behavior: 'smooth'})
-                          }}
-                        >
-                          🔄 {t('rerun')}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {status.visible && activeTab === 'backup' && (
             <div className={`status ${status.type} visible`}>{status.message}</div>
           )}
@@ -3202,6 +3151,95 @@ function App() {
               {t('techStack')}
             </p>
           </div>
+        </div>
+
+        {/* Reports Tab — essentially the backup history, given its own page */}
+        <div className={`tab-content ${activeTab === 'reports' ? 'active' : ''}`}>
+          <h2>{t('navReports')}</h2>
+
+          {jobHistory.length === 0 ? (
+            <p style={{color: '#718096'}}>{t('reportsEmpty')}</p>
+          ) : (
+            <div style={{display: 'flex', gap: '20px', alignItems: 'flex-start'}}>
+              <div style={{flex: '0 0 320px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden'}}>
+                <div style={{maxHeight: '560px', overflowY: 'auto'}}>
+                  {jobHistory.map((job, idx) => {
+                    const isSelected = (selectedHistoryId ?? jobHistory[0].id) === job.id
+                    return (
+                      <div
+                        key={job.id}
+                        onClick={() => setSelectedHistoryId(job.id)}
+                        style={{
+                          padding: '12px 14px', cursor: 'pointer',
+                          borderTop: idx === 0 ? 'none' : '1px solid #e2e8f0',
+                          backgroundColor: isSelected ? '#eff6ff' : '#fff',
+                        }}
+                      >
+                        <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                          <span>{job.status === 'success' ? '✅' : job.status === 'failed' ? '❌' : '⏳'}</span>
+                          <strong style={{fontSize: '14px'}}>{job.name}</strong>
+                        </div>
+                        <div style={{fontSize: '12px', color: '#718096', marginTop: '4px'}}>
+                          {new Date(job.timestamp).toLocaleString()}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div style={{flex: '1 1 auto'}}>
+                {(() => {
+                  const selected = jobHistory.find(j => j.id === selectedHistoryId) || jobHistory[0]
+                  if (!selected) return <p style={{color: '#718096'}}>{t('reportsSelectPrompt')}</p>
+                  return (
+                    <div className="card">
+                      <h3 style={{marginTop: 0}}>{selected.name}</h3>
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '14px', rowGap: '8px',
+                        fontSize: '14px',
+                      }}>
+                        <strong>{t('status')}</strong>
+                        <span>{selected.status === 'success' ? '✅' : selected.status === 'failed' ? '❌' : '⏳'} {selected.status}</span>
+                        <strong>{t('msgColDateTime')}</strong>
+                        <span>{new Date(selected.timestamp).toLocaleString()}</span>
+                        {selected.message && (
+                          <>
+                            <strong>{t('msgColMessage')}</strong>
+                            <span style={{whiteSpace: 'pre-wrap'}}>{selected.message}</span>
+                          </>
+                        )}
+                        <strong>{t('backupID')}</strong>
+                        <span>{selected.backupId}</span>
+                        <strong>VSS</strong>
+                        <span>{selected.useVSS ? '✅' : '—'}</span>
+                        {selected.backupDirs && selected.backupDirs.length > 0 && (
+                          <>
+                            <strong>{t('reportsFolders')}</strong>
+                            <span>{selected.backupDirs.join(', ')}</span>
+                          </>
+                        )}
+                      </div>
+                      {selected.status === 'failed' && (
+                        <button
+                          className="btn"
+                          style={{marginTop: '16px'}}
+                          onClick={() => {
+                            setBackupDirs(selected.backupDirs.join('\n'))
+                            setConfig({...config, 'backup-id': selected.backupId, usevss: selected.useVSS})
+                            setActiveTab('backup')
+                            showStatus(t('configLoaded'), 'success')
+                          }}
+                        >
+                          {t('rerun')}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Message Log Tab */}
