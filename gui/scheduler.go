@@ -38,8 +38,10 @@ type ScheduledJob struct {
 	// so existing saved jobs keep running exactly as before with no
 	// migration step. "interval" means "repeat every IntervalMinutes,
 	// optionally only within a daily time window" (mirrors BFW's own
-	// "Repeatedly backup every N minutes" scheduler mode).
-	TriggerMode string `json:"triggerMode,omitempty"` // "daily" | "interval"
+	// "Repeatedly backup every N minutes" scheduler mode). "manual" means
+	// the job (a "Backup Set" in the UI) never fires on its own — NextRun is
+	// always "" and the only way it runs is RunScheduledJobNow.
+	TriggerMode string `json:"triggerMode,omitempty"` // "daily" | "interval" | "manual"
 
 	// Interval-mode fields. Only meaningful when TriggerMode == "interval".
 	IntervalMinutes int    `json:"intervalMinutes,omitempty"`
@@ -293,6 +295,40 @@ func (a *App) DeleteScheduledJob(jobID string) error {
 	return atomicWriteFile(jobsPath, data, 0600)
 }
 
+// RunScheduledJobNow immediately runs the given backup set regardless of its
+// TriggerMode or NextRun — the "Run Now" action every backup set has, and the
+// ONLY way a "manual" trigger-mode set ever runs. It goes through the exact
+// same executeScheduledJob path a real scheduled fire takes, so history and
+// LastRun/NextRun bookkeeping behave identically to an automatic run.
+func (a *App) RunScheduledJobNow(jobID string) error {
+	jobs, err := a.GetScheduledJobs()
+	if err != nil {
+		return fmt.Errorf("failed to load jobs: %w", err)
+	}
+
+	var target *ScheduledJob
+	for i := range jobs {
+		if jobs[i].ID == jobID {
+			target = &jobs[i]
+			break
+		}
+	}
+	if target == nil {
+		return fmt.Errorf("backup set with ID %s not found", jobID)
+	}
+
+	runningJobsMutex.Lock()
+	alreadyRunning := runningJobs[target.ID]
+	runningJobsMutex.Unlock()
+	if alreadyRunning {
+		return fmt.Errorf("backup set %q is already running", target.Name)
+	}
+
+	writeDebugLog(fmt.Sprintf("RunScheduledJobNow: manually triggering %s", target.Name))
+	go a.executeScheduledJob(*target)
+	return nil
+}
+
 // GetJobHistory returns job history
 func (a *App) GetJobHistory() ([]JobHistory, error) {
 	historyPath, err := getJobHistoryPath()
@@ -387,10 +423,14 @@ func calculateNextRun(job ScheduledJob) string {
 // split out purely so the scheduling math is deterministically unit-testable
 // (scheduler_test.go) without depending on wall-clock time.Now().
 func calculateNextRunAt(job ScheduledJob, now time.Time) string {
-	if job.TriggerMode == "interval" {
+	switch job.TriggerMode {
+	case "interval":
 		return calculateNextIntervalRunAt(job, now)
+	case "manual":
+		return "" // never fires on its own — Run Now (RunScheduledJobNow) is the only trigger
+	default:
+		return calculateNextDailyRunAt(job.ScheduleTime, job.DaysOfWeek, now)
 	}
-	return calculateNextDailyRunAt(job.ScheduleTime, job.DaysOfWeek, now)
 }
 
 // calculateNextDailyRunAt is the original once-a-day-at-HH:MM logic, extended

@@ -154,3 +154,13 @@ func TestCalculateNextRunAt_DispatchesOnTriggerMode(t *testing.T) {
 		t.Errorf("interval dispatch diverged: got %s, want %s", got, want)
 	}
 }
+
+func TestCalculateNextRunAt_ManualNeverSchedules(t *testing.T) {
+	// A "manual" backup set must never get a NextRun — the scheduler ticker
+	// (checkAndRunScheduledJobs) skips any job whose NextRun is "", which is
+	// exactly how a manual set stays dormant until RunScheduledJobNow fires it.
+	manual := ScheduledJob{TriggerMode: "manual", ScheduleTime: "14:00"}
+	if got := calculateNextRunAt(manual, testNow); got != "" {
+		t.Errorf("manual TriggerMode must return empty NextRun, got %q", got)
+	}
+}
