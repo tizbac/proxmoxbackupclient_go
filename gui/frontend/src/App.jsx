@@ -2246,6 +2246,7 @@ function App() {
           {backupMode === 'scheduled' && scheduledJobs.length > 0 && (
             <div className="card" style={{marginTop: '30px'}}>
               <h3 style={{marginTop: 0}}>📅 {t('scheduledJobs')}</h3>
+              <div style={{maxHeight: '480px', overflowY: 'auto'}}>
               {scheduledJobs.map(job => (
                 <div key={job.id} style={{
                   padding: '15px',
@@ -2359,6 +2360,7 @@ function App() {
                   </div>
                 </div>
               ))}
+              </div>
             </div>
           )}
 
@@ -2672,6 +2674,7 @@ function App() {
                     <span style={{flex: '0 0 90px', textAlign: 'center'}}>{t('sizeLabel')}</span>
                     <span style={{flex: '0 0 160px'}}></span>
                   </div>
+                  <div style={{maxHeight: '480px', overflowY: 'auto'}}>
                   {snapshots.map((snap, idx) => {
                     const isActive = selectedSnapshot && selectedSnapshot.id === snap.id && selectedSnapshot.backup_id === snap.backup_id
                     return (
@@ -2697,9 +2700,10 @@ function App() {
                       </div>
                     )
                   })}
+                  </div>
                 </div>
               ) : (
-                <div className="grid" style={{marginTop: '12px'}}>
+                <div className="grid" style={{marginTop: '12px', maxHeight: '600px', overflowY: 'auto'}}>
                   {snapshots.map((snap, idx) => {
                     const isActive = selectedSnapshot && selectedSnapshot.id === snap.id && selectedSnapshot.backup_id === snap.backup_id
                     return (
