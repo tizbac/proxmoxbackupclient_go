@@ -175,6 +175,8 @@ function App() {
   const [selectedHistoryId, setSelectedHistoryId] = useState(null) // Reports page: which run's detail is shown
   const [messageLog, setMessageLog] = useState([])
   const [editingJobId, setEditingJobId] = useState(null) // Track which job is being edited
+  const [showBackupForm, setShowBackupForm] = useState(false) // Backup tab: form open vs. Backup Sets landing view
+  const [jobName, setJobName] = useState('') // User-facing name for the backup set being created/edited
   const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
   const [backupStats, setBackupStats] = useState({
     startTime: null,
@@ -717,7 +719,7 @@ function App() {
       setServerTab('server')
       await loadPBSServers()
     } catch (err) {
-      showStatus(`❌ Erreur: ${err}`, 'error')
+      showStatus(`❌ ${t('statusError')} ${err}`, 'error')
     }
   }
 
@@ -756,7 +758,7 @@ function App() {
       setServerTab('server')
       await loadPBSServers()
     } catch (err) {
-      showStatus(`❌ Erreur: ${err}`, 'error')
+      showStatus(`❌ ${t('statusError')} ${err}`, 'error')
     }
   }
 
@@ -775,7 +777,7 @@ function App() {
       showStatus(`✅ ${t('statusServerDeleted')}`, 'success')
       await loadPBSServers()
     } catch (err) {
-      showStatus(`❌ Erreur: ${err}`, 'error')
+      showStatus(`❌ ${t('statusError')} ${err}`, 'error')
     }
   }
 
@@ -790,7 +792,7 @@ function App() {
       setDefaultPBSID(id)
       showStatus(`✅ ${t('statusServerSetDefault').replace('{id}', id)}`, 'success')
     } catch (err) {
-      showStatus(`❌ Erreur: ${err}`, 'error')
+      showStatus(`❌ ${t('statusError')} ${err}`, 'error')
     }
   }
 
@@ -1016,7 +1018,7 @@ function App() {
       setConfig(trimmedConfig)
       showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
     } catch (err) {
-      showStatus(`❌ Erreur : ${err}`, 'error')
+      showStatus(`❌ ${t('statusError')} ${err}`, 'error')
     }
   }
 
@@ -1121,7 +1123,7 @@ function App() {
         return
       }
 
-      showStatus(`Lancement de ${splitPlan.length} backups partiels...`, 'info')
+      showStatus(t('splitLaunching').replace('{n}', splitPlan.length), 'info')
 
       // Arm a one-shot listener for the next backup:complete BEFORE starting a
       // part, so a fast completion can't be missed. The backend emits this event
@@ -1132,7 +1134,7 @@ function App() {
         const promise = new Promise((resolve) => {
           unsub = EventsOn('backup:complete', (data) => {
             if (typeof unsub === 'function') unsub()
-            resolve(data || { success: false, message: 'completion sans données' })
+            resolve(data || { success: false, message: 'completion with no data' })
           })
         })
         return { promise, cancel: () => { if (typeof unsub === 'function') unsub() } }
@@ -1259,7 +1261,7 @@ function App() {
       // We'll pass drive letters in a separate field or structure based on backup type
       const jobData = {
         id: editingJobId || Date.now().toString(),
-        name: `Backup ${config['backup-id'] || hostname}`,
+        name: jobName.trim() || `Backup ${config['backup-id'] || hostname}`,
         scheduleTime: scheduleTime,
         runAtStartup: triggerMode === 'manual' ? false : runAtStartup,
         triggerMode: triggerMode,
@@ -1282,15 +1284,16 @@ function App() {
           // Update existing job
           await UpdateScheduledJob(jobData)
           setScheduledJobs(scheduledJobs.map(j => j.id === editingJobId ? jobData : j))
-          showStatus(`✅ Backup modifié pour ${scheduleTime}`, 'success')
+          showStatus(`✅ ${t('statusJobUpdated')}`, 'success')
           setEditingJobId(null)
         } else {
           // Create new job
           await SaveScheduledJob(jobData)
           setScheduledJobs([...scheduledJobs, jobData])
-          showStatus(`✅ Backup planifié pour ${scheduleTime}`, 'success')
+          showStatus(`✅ ${t('statusJobScheduled')}`, 'success')
         }
         // Reset form after save
+        setJobName('')
         setScheduleTime('02:00')
         setRunAtStartup(false)
         setTriggerMode('daily')
@@ -1300,8 +1303,9 @@ function App() {
         setWindowEnd('17:00')
         setDaysOfWeek(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
         setBackupDirs('')
+        setShowBackupForm(false)
       } catch (err) {
-        showStatus(`❌ Erreur: ${err}`, 'error')
+        showStatus(`❌ ${t('statusError')} ${err}`, 'error')
       }
       return
     }
@@ -1338,8 +1342,11 @@ function App() {
           ''
         )
       }
-      // Backup started in background - progress will be shown via events
+      // Backup started in background - progress will be shown via events.
+      // Close the form and return to the Backup Sets landing view, where the
+      // progress card (now always visible there, not nested in this form) picks up.
       showStatus(`⏳ ${t('statusBackupRunning')}`, 'info')
+      setShowBackupForm(false)
     } catch (err) {
       setProgress(0)
       setBackupRunning(false)
@@ -1393,7 +1400,7 @@ function App() {
     // failed host's exact backup-id string, so browsing everything and
     // picking it out by eye is the actual workflow, not typing a name.
 
-    showStatus('Recherche des snapshots...', 'info')
+    showStatus(t('listingSnapshots'), 'info')
     setSelectedSnapshot(null)
     setSnapshotEntries([])
     setSelectedPaths(new Set())
@@ -1403,7 +1410,7 @@ function App() {
       const snaps = await ListSnapshots(restorePBSID || '', restoreBackupId)
       setSnapshots(snaps || [])
       setShowSnapshots(true)
-      showStatus(`✅ ${snaps.length} snapshot(s) trouvé(s)`, 'success')
+      showStatus(`✅ ${t('snapshotsFound').replace('{n}', snaps.length)}`, 'success')
     } catch (err) {
       showStatus(`❌ ${err}`, 'error')
     }
@@ -2462,7 +2469,7 @@ function App() {
                               setEditingJobId(null)
                             }
                           } catch (err) {
-                            showStatus(`❌ Erreur: ${err}`, 'error')
+                            showStatus(`❌ ${t('statusError')} ${err}`, 'error')
                           }
                         }}
                       >

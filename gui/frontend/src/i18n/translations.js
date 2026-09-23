@@ -188,6 +188,9 @@ const translations = {
       splitFirstBackup: "Découper ce backup en plusieurs parties",
       splitFirstBackupHint: "Recommandé pour le 1er backup d'un gros volume (C:\\, D:\\…) : découpe le seed initial en backups plus petits et résumables. Laissez décoché pour les backups suivants (full). L'analyse de la taille peut prendre quelques minutes sur un gros volume.",
       splitAnalyzing: "Analyse de la taille…",
+      splitLaunching: "Lancement de {n} sauvegardes partielles...",
+      listingSnapshots: "Recherche des instantanés...",
+      snapshotsFound: "{n} instantané(s) trouvé(s).",
 
       // Backup Progress
       backupProgress: "Progression du backup",
@@ -230,6 +233,19 @@ const translations = {
 
       // Scheduled Jobs
       scheduledJobs: "Jobs planifiés",
+      manageBackupSets: "Gérer les ensembles de sauvegarde…",
+      manageBackupSetsHint: "Créez, modifiez ou supprimez les ensembles de sauvegarde ci-dessous.",
+      oneOffBackup: "Sauvegarde ponctuelle…",
+      yourBackupSets: "Vos ensembles de sauvegarde",
+      noBackupSetsYet: "Aucun ensemble de sauvegarde pour l'instant — créez-en un, ou lancez simplement une sauvegarde ponctuelle.",
+      backupSetName: "Nom de l'ensemble de sauvegarde",
+      backupSetNamePlaceholder: "p. ex. Documents, Tous les disques locaux",
+      lastRun: "Dernière exécution :",
+      neverRun: "Jamais exécuté",
+      newBackupSet: "Nouvel ensemble de sauvegarde",
+      editBackupSet: "Modifier l'ensemble de sauvegarde",
+      statusJobUpdated: "Ensemble de sauvegarde mis à jour",
+      statusJobScheduled: "Ensemble de sauvegarde enregistré",
       editJob: "Éditer",
       deleteJob: "Supprimer",
       editModeInfo: "Mode édition - modifiez et sauvegardez",
@@ -577,6 +593,9 @@ const translations = {
       splitFirstBackup: "Split this backup into multiple parts",
       splitFirstBackupHint: "Recommended for the first backup of a large volume (C:\\, D:\\…): it splits the initial seed into smaller, resumable backups. Leave unchecked for subsequent backups (full). The size analysis can take a few minutes on a large volume.",
       splitAnalyzing: "Analyzing size…",
+      splitLaunching: "Starting {n} partial backups...",
+      listingSnapshots: "Listing snapshots...",
+      snapshotsFound: "{n} snapshot(s) found.",
 
       // Backup Progress
       backupProgress: "Backup progress",
@@ -619,6 +638,19 @@ const translations = {
 
       // Scheduled Jobs
       scheduledJobs: "Scheduled jobs",
+      manageBackupSets: "Manage Backup Sets…",
+      manageBackupSetsHint: "Create, modify or delete the backup sets below.",
+      oneOffBackup: "One-off Backup…",
+      yourBackupSets: "Your backup sets",
+      noBackupSetsYet: "No backup sets yet — create one, or just run a one-off backup.",
+      backupSetName: "Backup set name",
+      backupSetNamePlaceholder: "e.g. Documents, All Local Drives",
+      lastRun: "Last run:",
+      neverRun: "Never run yet",
+      newBackupSet: "New Backup Set",
+      editBackupSet: "Edit Backup Set",
+      statusJobUpdated: "Backup set updated",
+      statusJobScheduled: "Backup set saved",
       editJob: "Edit",
       deleteJob: "Delete",
       editModeInfo: "Edit mode - modify and save",
@@ -966,6 +998,9 @@ const translations = {
       splitFirstBackup: "Dividi questo backup in più parti",
       splitFirstBackupHint: "Consigliato per il primo backup di un volume grande (C:\\, D:\\…): divide il seed iniziale in backup più piccoli e riprendibili. Lasciare deselezionato per i backup successivi (full). L'analisi della dimensione può richiedere alcuni minuti su un volume grande.",
       splitAnalyzing: "Analisi dimensione…",
+      splitLaunching: "Avvio di {n} backup parziali...",
+      listingSnapshots: "Ricerca degli snapshot...",
+      snapshotsFound: "{n} snapshot trovati.",
 
       // Backup Progress
       backupProgress: "Progresso backup",
@@ -1008,6 +1043,19 @@ const translations = {
 
       // Scheduled Jobs
       scheduledJobs: "Job pianificati",
+      manageBackupSets: "Gestisci set di backup…",
+      manageBackupSetsHint: "Crea, modifica o elimina i set di backup qui sotto.",
+      oneOffBackup: "Backup una tantum…",
+      yourBackupSets: "I tuoi set di backup",
+      noBackupSetsYet: "Nessun set di backup ancora — creane uno, oppure esegui semplicemente un backup una tantum.",
+      backupSetName: "Nome del set di backup",
+      backupSetNamePlaceholder: "es. Documenti, Tutti i dischi locali",
+      lastRun: "Ultima esecuzione:",
+      neverRun: "Mai eseguito",
+      newBackupSet: "Nuovo set di backup",
+      editBackupSet: "Modifica set di backup",
+      statusJobUpdated: "Set di backup aggiornato",
+      statusJobScheduled: "Set di backup salvato",
       editJob: "Modifica",
       deleteJob: "Elimina",
       editModeInfo: "Modalità modifica - modifica e salva",
@@ -1355,6 +1403,9 @@ const translations = {
       splitFirstBackup: "Diese Sicherung in mehrere Teile aufteilen",
       splitFirstBackupHint: "Empfohlen für die erste Sicherung eines großen Datenträgers (C:\\, D:\\…): teilt das ursprüngliche Seed in kleinere, fortsetzbare Sicherungen auf. Für nachfolgende Sicherungen (vollständig) nicht aktivieren. Die Größenanalyse kann einige Minuten dauern bei einem großen Datenträger.",
       splitAnalyzing: "Größe wird analysiert…",
+      splitLaunching: "{n} Teilsicherungen werden gestartet...",
+      listingSnapshots: "Snapshots werden aufgelistet...",
+      snapshotsFound: "{n} Snapshot(s) gefunden.",
 
       // Backup Progress
       backupProgress: "Sicherungsfortschritt",
@@ -1397,6 +1448,19 @@ const translations = {
 
       // Scheduled Jobs
       scheduledJobs: "Geplante Aufträge",
+      manageBackupSets: "Sicherungssätze verwalten…",
+      manageBackupSetsHint: "Erstellen, ändern oder löschen Sie die unten aufgeführten Sicherungssätze.",
+      oneOffBackup: "Einmalige Sicherung…",
+      yourBackupSets: "Ihre Sicherungssätze",
+      noBackupSetsYet: "Noch keine Sicherungssätze — erstellen Sie einen oder führen Sie einfach eine einmalige Sicherung aus.",
+      backupSetName: "Name des Sicherungssatzes",
+      backupSetNamePlaceholder: "z. B. Dokumente, Alle lokalen Laufwerke",
+      lastRun: "Letzte Ausführung:",
+      neverRun: "Noch nie ausgeführt",
+      newBackupSet: "Neuer Sicherungssatz",
+      editBackupSet: "Sicherungssatz bearbeiten",
+      statusJobUpdated: "Sicherungssatz aktualisiert",
+      statusJobScheduled: "Sicherungssatz gespeichert",
       editJob: "Bearbeiten",
       deleteJob: "Löschen",
       editModeInfo: "Bearbeitungsmodus - ändern und speichern",
@@ -1744,6 +1808,9 @@ const translations = {
       splitFirstBackup: "Podziel tę kopię zapasową na wiele części",
       splitFirstBackupHint: "Zalecane dla pierwszej kopii zapasowej dużego woluminu (C:\\, D:\\…): dzieli początkowy seed na mniejsze, możliwe do wznowienia kopie zapasowe. Zostaw niezaznaczone dla kolejnych kopii zapasowych (pełne). Analiza rozmiaru może zająć kilka minut na dużym woluminie.",
       splitAnalyzing: "Analiza rozmiaru…",
+      splitLaunching: "Uruchamianie {n} częściowych kopii zapasowych...",
+      listingSnapshots: "Wyszukiwanie snapshotów...",
+      snapshotsFound: "Znaleziono {n} snapshotów.",
 
       // Backup Progress
       backupProgress: "Postęp kopii zapasowej",
@@ -1786,6 +1853,19 @@ const translations = {
 
       // Scheduled Jobs
       scheduledJobs: "Zaplanowane zadania",
+      manageBackupSets: "Zarządzaj zestawami kopii zapasowych…",
+      manageBackupSetsHint: "Twórz, modyfikuj lub usuwaj poniższe zestawy kopii zapasowych.",
+      oneOffBackup: "Jednorazowa kopia zapasowa…",
+      yourBackupSets: "Twoje zestawy kopii zapasowych",
+      noBackupSetsYet: "Brak zestawów kopii zapasowych — utwórz jeden lub po prostu uruchom jednorazową kopię zapasową.",
+      backupSetName: "Nazwa zestawu kopii zapasowej",
+      backupSetNamePlaceholder: "np. Dokumenty, Wszystkie dyski lokalne",
+      lastRun: "Ostatnie uruchomienie:",
+      neverRun: "Nigdy nie uruchomiono",
+      newBackupSet: "Nowy zestaw kopii zapasowej",
+      editBackupSet: "Edytuj zestaw kopii zapasowej",
+      statusJobUpdated: "Zestaw kopii zapasowej zaktualizowany",
+      statusJobScheduled: "Zestaw kopii zapasowej zapisany",
       editJob: "Edytuj",
       deleteJob: "Usuń",
       editModeInfo: "Tryb edycji - modyfikuj i zapisz",
@@ -2133,6 +2213,9 @@ const translations = {
       splitFirstBackup: "Dividir esta copia de seguridad en varias partes",
       splitFirstBackupHint: "Recomendado para la primera copia de seguridad de un volumen grande (C:\\, D:\\…): divide la siembra inicial en copias de seguridad más pequeñas y reanudables. Déjelo desmarcado para copias de seguridad posteriores (completas). El análisis de tamaño puede tardar unos minutos en un volumen grande.",
       splitAnalyzing: "Analizando tamaño…",
+      splitLaunching: "Iniciando {n} copias de seguridad parciales...",
+      listingSnapshots: "Buscando instantáneas...",
+      snapshotsFound: "{n} instantánea(s) encontrada(s).",
 
       // Backup Progress
       backupProgress: "Progreso de la copia de seguridad",
@@ -2175,6 +2258,19 @@ const translations = {
 
       // Scheduled Jobs
       scheduledJobs: "Trabajos programados",
+      manageBackupSets: "Gestionar conjuntos de copia de seguridad…",
+      manageBackupSetsHint: "Cree, modifique o elimine los conjuntos de copia de seguridad de abajo.",
+      oneOffBackup: "Copia de seguridad puntual…",
+      yourBackupSets: "Sus conjuntos de copia de seguridad",
+      noBackupSetsYet: "Todavía no hay conjuntos de copia de seguridad — cree uno, o simplemente ejecute una copia de seguridad puntual.",
+      backupSetName: "Nombre del conjunto de copia de seguridad",
+      backupSetNamePlaceholder: "p. ej. Documentos, Todos los discos locales",
+      lastRun: "Última ejecución:",
+      neverRun: "Nunca ejecutado",
+      newBackupSet: "Nuevo conjunto de copia de seguridad",
+      editBackupSet: "Editar conjunto de copia de seguridad",
+      statusJobUpdated: "Conjunto de copia de seguridad actualizado",
+      statusJobScheduled: "Conjunto de copia de seguridad guardado",
       editJob: "Editar",
       deleteJob: "Eliminar",
       editModeInfo: "Modo de edición - modifique y guarde",
