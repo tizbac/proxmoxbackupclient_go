@@ -147,7 +147,7 @@ func buildMatcher(mode SearchMatchMode, query string) (entryMatcher, error) {
 		if hasGlob(query) {
 			re, err := compileGlob(query)
 			if err != nil {
-				return nil, fmt.Errorf("motif de recherche invalide: %v", err)
+				return nil, fmt.Errorf("invalid search pattern: %v", err)
 			}
 			return func(path string) bool { return re.MatchString(path) }, nil
 		}
@@ -158,7 +158,7 @@ func buildMatcher(mode SearchMatchMode, query string) (entryMatcher, error) {
 		if hasGlob(query) {
 			re, err := compileGlob(query)
 			if err != nil {
-				return nil, fmt.Errorf("motif de recherche invalide: %v", err)
+				return nil, fmt.Errorf("invalid search pattern: %v", err)
 			}
 			return func(path string) bool { return re.MatchString(baseName(path)) }, nil
 		}
@@ -166,7 +166,7 @@ func buildMatcher(mode SearchMatchMode, query string) (entryMatcher, error) {
 		return func(path string) bool { return strings.Contains(strings.ToLower(baseName(path)), q) }, nil
 
 	default:
-		return nil, fmt.Errorf("mode de recherche inconnu: %q", string(mode))
+		return nil, fmt.Errorf("unknown search mode: %q", string(mode))
 	}
 }
 
@@ -197,10 +197,10 @@ func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
 		return nil, fmt.Errorf("PBS connection parameters required")
 	}
 	if opts.Datastore == "" {
-		return nil, fmt.Errorf("datastore requis")
+		return nil, fmt.Errorf("datastore required")
 	}
 	if strings.TrimSpace(opts.Query) == "" {
-		return nil, fmt.Errorf("terme de recherche requis")
+		return nil, fmt.Errorf("search term required")
 	}
 	matcher, err := buildMatcher(opts.Mode, opts.Query)
 	if err != nil {

@@ -730,7 +730,7 @@ func buildPathRewriter(opts RestoreOptions, meta *BackupMeta) (pbscommon.PathRew
 
 	case RestoreModeAlternateAbs:
 		if opts.DestPath == "" {
-			return nil, fmt.Errorf("dossier de destination requis")
+			return nil, fmt.Errorf("destination folder required")
 		}
 		dest := opts.DestPath
 		return func(archivePath string) string {
@@ -739,7 +739,7 @@ func buildPathRewriter(opts RestoreOptions, meta *BackupMeta) (pbscommon.PathRew
 
 	case RestoreModeAlternateFlat:
 		if opts.DestPath == "" {
-			return nil, fmt.Errorf("dossier de destination requis")
+			return nil, fmt.Errorf("destination folder required")
 		}
 		// Empty selection means "restore everything" — flat is meaningless,
 		// fall back to abs so the user gets a sensible result instead of
@@ -776,7 +776,7 @@ func buildPathRewriter(opts RestoreOptions, meta *BackupMeta) (pbscommon.PathRew
 		}, nil
 
 	default:
-		return nil, fmt.Errorf("mode de restauration inconnu : %q", string(mode))
+		return nil, fmt.Errorf("unknown restore mode: %q", string(mode))
 	}
 }
 

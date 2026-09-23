@@ -601,7 +601,7 @@ func (a *App) GetServerFingerprint(baseURL string) (string, error) {
 func (a *App) PinPBSServerFingerprint(id, fingerprint string) error {
 	writeDebugLog(fmt.Sprintf("PinPBSServerFingerprint(%s) called", id))
 	if err := security.ValidateFingerprint(fingerprint); err != nil {
-		return fmt.Errorf("empreinte certificat invalide: %w", err)
+		return fmt.Errorf("invalid certificate fingerprint: %w", err)
 	}
 	// config.json lives under ProgramData and is owned by whichever process wrote it
 	// first. When the privileged service is running it owns the file, so the
@@ -832,13 +832,13 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 
 	// Validate BackupID (now guaranteed to be non-empty)
 	if err := security.ValidateBackupID(backupID); err != nil {
-		return fmt.Errorf("backup ID invalide: %w", err)
+		return fmt.Errorf("invalid backup ID: %w", err)
 	}
 
 	// Validate backup directories
 	for _, dir := range backupDirs {
 		if err := security.ValidatePath(dir); err != nil {
-			return fmt.Errorf("chemin invalide '%s': %w", dir, err)
+			return fmt.Errorf("invalid path '%s': %w", dir, err)
 		}
 	}
 
@@ -866,7 +866,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	}
 	if backupType == "machine" {
 		if len(driveLetters) == 0 {
-			return fmt.Errorf("au moins un disque physique requis")
+			return fmt.Errorf("at least one physical disk required")
 		}
 		// Physical drive paths are used directly (e.g., \\.\PhysicalDrive0)
 		targetDirs = driveLetters
@@ -1057,7 +1057,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 
 	// Validate BackupID (now guaranteed to be non-empty)
 	if err := security.ValidateBackupID(backupID); err != nil {
-		return fmt.Errorf("backup ID invalide: %w", err)
+		return fmt.Errorf("invalid backup ID: %w", err)
 	}
 
 	// Validate backup devices
@@ -1308,7 +1308,7 @@ func (a *App) ListSnapshotContents(pbsID, backupID string, snapshotUnix int64, f
 		return nil, err
 	}
 	if backupID == "" {
-		return nil, fmt.Errorf("backup ID requis")
+		return nil, fmt.Errorf("backup ID required")
 	}
 
 	opts := RestoreOptions{
@@ -1341,7 +1341,7 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 		return nil, err
 	}
 	if backupID == "" {
-		return nil, fmt.Errorf("backup ID requis")
+		return nil, fmt.Errorf("backup ID required")
 	}
 
 	opts := RestoreOptions{
@@ -1387,10 +1387,10 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		return err
 	}
 	if backupID == "" {
-		return fmt.Errorf("backup ID requis")
+		return fmt.Errorf("backup ID required")
 	}
 	if snapshotID == "" {
-		return fmt.Errorf("ID du snapshot requis")
+		return fmt.Errorf("snapshot ID required")
 	}
 
 	restoreMode := RestoreMode(mode)
@@ -1402,16 +1402,16 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	// derives the target from the backup metadata sidecar.
 	if restoreMode != RestoreModeOriginal {
 		if destPath == "" {
-			return fmt.Errorf("chemin de destination requis")
+			return fmt.Errorf("destination path required")
 		}
 		if err := security.ValidatePath(destPath); err != nil {
-			return fmt.Errorf("chemin de destination invalide: %w", err)
+			return fmt.Errorf("invalid destination path: %w", err)
 		}
 	}
 
 	timestamp, err := time.Parse("2006-01-02T15:04:05Z", snapshotID)
 	if err != nil {
-		return fmt.Errorf("ID de snapshot invalide: %v", err)
+		return fmt.Errorf("invalid snapshot ID: %v", err)
 	}
 
 	emit := func(percent float64, message string) {
@@ -1532,7 +1532,7 @@ func (a *App) OpenRestoreDestDialog() (dir string, err error) {
 
 	writeDebugLog(fmt.Sprintf("OpenRestoreDestDialog: opening folder picker (default=%s)", defaultDir))
 	dir, err = runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:            "Choisir le dossier de destination",
+		Title:            "Choose the destination folder",
 		DefaultDirectory: defaultDir,
 	})
 	writeDebugLog(fmt.Sprintf("OpenRestoreDestDialog: returned dir=%q err=%v", dir, err))

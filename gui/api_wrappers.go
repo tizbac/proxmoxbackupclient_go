@@ -55,7 +55,7 @@ func (a *App) DeleteScheduledJobFromMap(jobID string) error {
 // persist and the connection test would keep reporting the server offline.
 func (a *App) pinFingerprintLocal(id, fingerprint string) error {
 	if err := security.ValidateFingerprint(fingerprint); err != nil {
-		return fmt.Errorf("empreinte certificat invalide: %w", err)
+		return fmt.Errorf("invalid certificate fingerprint: %w", err)
 	}
 	pbs, err := a.config.GetPBSServer(id)
 	if err != nil {

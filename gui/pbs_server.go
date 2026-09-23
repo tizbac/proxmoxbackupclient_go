@@ -43,20 +43,20 @@ func (pbs *PBSServer) sanitized() *PBSServer {
 func (pbs *PBSServer) Validate() error {
 	// Validate ID
 	if pbs.ID == "" {
-		return fmt.Errorf("PBS server ID requis")
+		return fmt.Errorf("PBS server ID required")
 	}
 
 	// Validate Name
 	if pbs.Name == "" {
-		return fmt.Errorf("PBS server name requis")
+		return fmt.Errorf("PBS server name required")
 	}
 
 	// Validate BaseURL
 	if pbs.BaseURL == "" {
-		return fmt.Errorf("URL du serveur PBS requis")
+		return fmt.Errorf("PBS server URL required")
 	}
 	if err := security.ValidateURL(pbs.BaseURL); err != nil {
-		return fmt.Errorf("URL invalide: %w", err)
+		return fmt.Errorf("invalid URL: %w", err)
 	}
 
 	// Auth: a server is configured with EITHER an API token (AuthID+Secret)
@@ -68,27 +68,27 @@ func (pbs *PBSServer) Validate() error {
 	hasUser := pbs.Username != ""
 	if hasToken {
 		if err := security.ValidateAuthID(pbs.AuthID); err != nil {
-			return fmt.Errorf("authentication ID invalide: %w", err)
+			return fmt.Errorf("invalid authentication ID: %w", err)
 		}
 		if pbs.Secret == "" {
-			return fmt.Errorf("secret requis")
+			return fmt.Errorf("secret required")
 		}
 	} else if !hasUser {
-		return fmt.Errorf("API token (authid/secret) ou identifiant/mot de passe requis")
+		return fmt.Errorf("API token (authid/secret) or username/password required")
 	}
 
 	// Validate Datastore
 	if pbs.Datastore == "" {
-		return fmt.Errorf("datastore requis")
+		return fmt.Errorf("datastore required")
 	}
 	if err := security.ValidateDatastore(pbs.Datastore); err != nil {
-		return fmt.Errorf("datastore invalide: %w", err)
+		return fmt.Errorf("invalid datastore: %w", err)
 	}
 
 	// Validate Certificate Fingerprint if present
 	if pbs.CertFingerprint != "" {
 		if err := security.ValidateFingerprint(pbs.CertFingerprint); err != nil {
-			return fmt.Errorf("empreinte certificat invalide: %w", err)
+			return fmt.Errorf("invalid certificate fingerprint: %w", err)
 		}
 	}
 

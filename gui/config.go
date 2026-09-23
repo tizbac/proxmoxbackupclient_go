@@ -261,51 +261,51 @@ func (c *Config) Save() error {
 func (c *Config) Validate() error {
 	// Validate BaseURL
 	if c.BaseURL == "" {
-		return fmt.Errorf("URL du serveur PBS requis")
+		return fmt.Errorf("PBS server URL required")
 	}
 	if err := security.ValidateURL(c.BaseURL); err != nil {
-		return fmt.Errorf("URL invalide: %w", err)
+		return fmt.Errorf("invalid URL: %w", err)
 	}
 
 	// Auth: an API token (AuthID+Secret), a stored username/password (a fresh
 	// ticket is minted per operation by App.withAuth), or an in-flight ticket.
 	if c.AuthID != "" {
 		if err := security.ValidateAuthID(c.AuthID); err != nil {
-			return fmt.Errorf("authentication ID invalide: %w", err)
+			return fmt.Errorf("invalid authentication ID: %w", err)
 		}
 		if c.Secret == "" {
-			return fmt.Errorf("secret requis")
+			return fmt.Errorf("secret required")
 		}
 	} else if c.Ticket == "" && (c.Username == "" || c.Password == "") {
-		return fmt.Errorf("authentification requise (API token ou utilisateur/mot de passe)")
+		return fmt.Errorf("authentication required (API token or username/password)")
 	}
 
 	// Validate Datastore
 	if c.Datastore == "" {
-		return fmt.Errorf("datastore requis")
+		return fmt.Errorf("datastore required")
 	}
 	if err := security.ValidateDatastore(c.Datastore); err != nil {
-		return fmt.Errorf("datastore invalide: %w", err)
+		return fmt.Errorf("invalid datastore: %w", err)
 	}
 
 	// Validate BackupID if present
 	if c.BackupID != "" {
 		if err := security.ValidateBackupID(c.BackupID); err != nil {
-			return fmt.Errorf("backup ID invalide: %w", err)
+			return fmt.Errorf("invalid backup ID: %w", err)
 		}
 	}
 
 	// Validate Certificate Fingerprint if present
 	if c.CertFingerprint != "" {
 		if err := security.ValidateFingerprint(c.CertFingerprint); err != nil {
-			return fmt.Errorf("empreinte certificat invalide: %w", err)
+			return fmt.Errorf("invalid certificate fingerprint: %w", err)
 		}
 	}
 
 	// Validate BackupDir if present
 	if c.BackupDir != "" {
 		if err := security.ValidatePath(c.BackupDir); err != nil {
-			return fmt.Errorf("chemin de backup invalide: %w", err)
+			return fmt.Errorf("invalid backup path: %w", err)
 		}
 	}
 
@@ -378,7 +378,7 @@ func (c *Config) AddPBSServer(pbs *PBSServer) error {
 		pbs.Username = ""
 		pbs.Password = ""
 	} else if pbs.Username != "" && pbs.Password == "" {
-		return fmt.Errorf("mot de passe requis pour la connexion utilisateur/mot de passe")
+		return fmt.Errorf("password required for username/password login")
 	}
 
 	if c.PBSServers == nil {
