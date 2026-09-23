@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Tree, TreeItem, TreeItemLayout, Spinner } from '@fluentui/react-components'
 import { Folder20Regular, Document20Regular } from '@fluentui/react-icons'
 import { normPath, isUnder, checkState, computeReincludeExcludes } from './treeSelection'
@@ -181,26 +181,59 @@ export default function DirectoryTree({ roots, excludes, onChange }) {
   const rootEntries = childrenByPath[''] // ListDirectory("") result
   const treeRoots = Array.isArray(rootEntries) ? rootEntries : []
 
+  // Select All / None — Explorer's own convention of a checkbox in the list's
+  // header row. Only top-level directories are eligible to become roots (see
+  // this file's doc comment), so "all" means every top-level directory, not
+  // every rendered row. Tri-state (indeterminate) when some but not all are.
+  const topLevelDirs = treeRoots.filter((n) => n.is_dir)
+  const topLevelStates = topLevelDirs.map((n) => checkState(n.path, roots, excludes))
+  const allChecked = topLevelDirs.length > 0 && topLevelStates.every((s) => s === true)
+  const noneChecked = topLevelStates.every((s) => s === false)
+  const selectAllRef = useRef(null)
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = !allChecked && !noneChecked
+  }, [allChecked, noneChecked])
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      onChange({ roots: topLevelDirs.map((n) => n.path), excludes: [] })
+    } else {
+      onChange({ roots: [], excludes: [] })
+    }
+  }
+
   return (
-    <div style={{ border: '1px solid #d0d0d0', borderRadius: 4, maxHeight: 320, overflow: 'auto', padding: '4px 0' }}>
-      {rootEntries === 'loading' && (
-        <div style={{ padding: 12 }}>
-          <Spinner size="tiny" label="Loading drives..." />
-        </div>
+    <div style={{ border: '1px solid #d0d0d0', borderRadius: 4, overflow: 'hidden' }}>
+      {topLevelDirs.length > 0 && (
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px',
+          backgroundColor: '#f0f0f0', borderBottom: '1px solid #d0d0d0', fontWeight: 600,
+          fontSize: '13px', color: '#555', cursor: 'pointer',
+        }}>
+          <input ref={selectAllRef} type="checkbox" checked={allChecked} onChange={handleSelectAll} />
+          Select All
+        </label>
       )}
-      {rootEntries === 'error' && <div style={{ padding: 12, color: '#b91c1c' }}>Unable to list drives</div>}
-      {treeRoots.length > 0 && (
-        <Tree
-          aria-label="Backup folder picker"
-          selectionMode="multiselect"
-          openItems={openItems}
-          onOpenChange={handleOpenChange}
-          checkedItems={checkedItems}
-          onCheckedChange={handleCheckedChange}
-        >
-          {treeRoots.map((node) => renderNode(node))}
-        </Tree>
-      )}
+      <div style={{ maxHeight: 290, overflow: 'auto', padding: '4px 0' }}>
+        {rootEntries === 'loading' && (
+          <div style={{ padding: 12 }}>
+            <Spinner size="tiny" label="Loading drives..." />
+          </div>
+        )}
+        {rootEntries === 'error' && <div style={{ padding: 12, color: '#b91c1c' }}>Unable to list drives</div>}
+        {treeRoots.length > 0 && (
+          <Tree
+            aria-label="Backup folder picker"
+            selectionMode="multiselect"
+            openItems={openItems}
+            onOpenChange={handleOpenChange}
+            checkedItems={checkedItems}
+            onCheckedChange={handleCheckedChange}
+          >
+            {treeRoots.map((node) => renderNode(node))}
+          </Tree>
+        )}
+      </div>
     </div>
   )
 }

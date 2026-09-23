@@ -426,6 +426,30 @@ body {
     cursor: default;
 }
 
+/* Backup Set editor's tab strip (Source/Exclusions/Schedule/Destination) —
+   chevron shape per the mockup Mick preferred over flat tabheads. These are
+   still independently clickable tabs, not a linear wizard's steps — there's
+   no "done" state, just which one is active. */
+.chev {
+    border: none;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 20px 10px 26px;
+    margin-right: -12px;
+    cursor: pointer;
+    clip-path: polygon(0 0, 88% 0, 100% 50%, 88% 100%, 0 100%, 12% 50%);
+    position: relative;
+    background: #e2e2e2;
+    color: #888;
+}
+
+.chev.active {
+    background: var(--accent);
+    color: #fff;
+    z-index: 2;
+}
+
 .card h3 {
     margin-bottom: 10px;
 }

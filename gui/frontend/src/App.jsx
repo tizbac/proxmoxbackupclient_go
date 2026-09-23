@@ -176,6 +176,7 @@ function App() {
   const [messageLog, setMessageLog] = useState([])
   const [editingJobId, setEditingJobId] = useState(null) // Track which job is being edited
   const [showBackupForm, setShowBackupForm] = useState(false) // Backup tab: form open vs. Backup Sets landing view
+  const [backupFormTab, setBackupFormTab] = useState('source') // Backup Set editor: Source/Exclusions/Schedule/Destination
   const [jobName, setJobName] = useState('') // User-facing name for the backup set being created/edited
   const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
   const [backupStats, setBackupStats] = useState({
@@ -2079,16 +2080,18 @@ function App() {
                     setExcludeList('')
                     setTreeExcludes([])
                     setBackupType('directory')
-                    setShowBackupForm(true)
+                    if (!config['backup-id']) setConfig({...config, 'backup-id': hostname})
+                    setBackupFormTab('source'); setShowBackupForm(true)
                   }}
                 >
-                  {t('manageBackupSets')}
+                  {t('addNewBackupSet')}
                 </button>
                 <button
                   className="btn btn-secondary"
                   onClick={() => {
                     setBackupMode('oneshot')
-                    setShowBackupForm(true)
+                    if (!config['backup-id']) setConfig({...config, 'backup-id': hostname})
+                    setBackupFormTab('source'); setShowBackupForm(true)
                   }}
                 >
                   {t('oneOffBackup')}
@@ -2175,7 +2178,7 @@ function App() {
                               setBackupType(job.backupType)
                               setExcludeList(job.excludeList.join('\n'))
                               setTreeExcludes([])
-                              setShowBackupForm(true)
+                              setBackupFormTab('source'); setShowBackupForm(true)
                             }}
                           >
                             {t('editJob')}
@@ -2207,7 +2210,8 @@ function App() {
           )}
 
           {showBackupForm && (
-          <div className="card" style={{marginTop: '10px', padding: '20px'}}>
+          <>
+          <div style={{marginTop: '10px'}}>
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
               <h3 style={{margin: 0}}>
                 {backupMode === 'oneshot' ? t('oneOffBackup') : (editingJobId ? t('editBackupSet') : t('newBackupSet'))}
@@ -2236,6 +2240,21 @@ function App() {
               </div>
             )}
 
+          {/* Backup Set editor: chevron tabs (Source/Exclusions/Schedule/Destination).
+              A one-off backup has no tabs at all — every section below just
+              renders unconditionally for it via the "backupMode === 'oneshot' ||"
+              half of each section's condition. */}
+          {backupMode === 'scheduled' && (
+            <div style={{display: 'flex', paddingTop: '4px', marginBottom: '0'}}>
+              <button className={`chev ${backupFormTab === 'source' ? 'active' : ''}`} onClick={() => setBackupFormTab('source')}>{t('tabSource')}</button>
+              <button className={`chev ${backupFormTab === 'exclusions' ? 'active' : ''}`} onClick={() => setBackupFormTab('exclusions')}>{t('tabExclusions')}</button>
+              <button className={`chev ${backupFormTab === 'schedule' ? 'active' : ''}`} onClick={() => setBackupFormTab('schedule')}>{t('tabSchedule')}</button>
+              <button className={`chev ${backupFormTab === 'destination' ? 'active' : ''}`} onClick={() => setBackupFormTab('destination')}>{t('tabDestination')}</button>
+            </div>
+          )}
+          <div className="card" style={{marginTop: backupMode === 'scheduled' ? '0' : '10px', borderRadius: backupMode === 'scheduled' ? '0 6px 6px 6px' : '8px'}}>
+
+          {(backupMode === 'oneshot' || backupFormTab === 'source') && (
           <div className="form-group">
             <label>{t('backupType')}</label>
             <select value={backupType} onChange={(e) => setBackupType(e.target.value)}>
@@ -2243,25 +2262,11 @@ function App() {
               <option value="machine">{t('backupTypeMachine')}</option>
             </select>
           </div>
-
-          {/* Backup Mode Tabs */}
-          <div className="form-group">
-            <label>{t('executionMode')}</label>
-            <TabList
-              selectedValue={backupMode}
-              onTabSelect={(_e, data) => setBackupMode(data.value)}
-              style={{marginTop: '10px'}}
-            >
-              <Tab value="oneshot">{t('oneshotMode')}</Tab>
-              <Tab value="scheduled">{t('scheduledMode')}</Tab>
-            </TabList>
-          </div>
+          )}
 
           {/* Scheduling Options */}
-          {backupMode === 'scheduled' && (
-            <div className="card" style={{marginTop: '20px', padding: '20px'}}>
-              <h3 style={{marginTop: 0}}>{t('schedulingConfig')}</h3>
-
+          {backupMode === 'scheduled' && backupFormTab === 'schedule' && (
+            <div>
               {editingJobId && (
                 <div className="info-box" style={{backgroundColor: '#fff3cd', borderColor: '#ffc107', marginBottom: '15px'}}>
                   <strong>{t('editMode')}</strong> - {t('editModeText')}
@@ -2403,6 +2408,8 @@ function App() {
             </div>
           )}
 
+          {(backupMode === 'oneshot' || backupFormTab === 'source') && (
+          <>
           {backupType === 'directory' && (
             <div className="form-group">
               <label>{t('directoriesToBackup')}</label>
@@ -2448,8 +2455,10 @@ function App() {
               selectedDrives={selectedDrives}
             />
           )}
+          </>
+          )}
 
-              {backupType === 'directory' && (
+          {(backupMode === 'oneshot' || backupFormTab === 'exclusions') && backupType === 'directory' && (
                 <div className="form-group">
                   <label>{t('filesToExclude')}</label>
                   <textarea
@@ -2461,14 +2470,19 @@ function App() {
                 </div>
               )}
 
+          {(backupMode === 'oneshot' || backupFormTab === 'destination') && (
+          <>
           <div className="form-group">
             <label>{t('backupID')}</label>
-            <input
-              type="text"
-              value={config['backup-id']}
-              onChange={(e) => setConfig({...config, 'backup-id': e.target.value})}
-              placeholder={t('backupIDPlaceholder')}
-            />
+            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+              <input
+                type="text"
+                value={config['backup-id']}
+                onChange={(e) => setConfig({...config, 'backup-id': e.target.value})}
+                placeholder={t('backupIDPlaceholder')}
+              />
+              <span style={{fontSize: '12px', color: '#999'}}>{t('backupIdDefaultNote')}</span>
+            </div>
           </div>
 
           <div className="form-group">
@@ -2493,6 +2507,8 @@ function App() {
               </div>
             )}
           </div>
+          </>
+          )}
 
           {backupType === 'directory' && backupMode === 'oneshot' && (
             <div className="form-group">
@@ -2510,6 +2526,10 @@ function App() {
             </div>
           )}
 
+          </div>
+          </div>
+
+          <div style={{marginTop: '16px'}}>
           <button className="btn" onClick={handleStartBackup} disabled={backupRunning || (progress > 0 && progress < 100)}>
             {backupMode === 'oneshot'
               ? (backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `${t('startBackup')}`)
@@ -2542,6 +2562,7 @@ function App() {
             </button>
           )}
           </div>
+          </>
           )}
 
           {status.visible && activeTab === 'backup' && (
