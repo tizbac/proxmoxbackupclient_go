@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	stdruntime "runtime"
 	"runtime/debug"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -253,8 +254,36 @@ func (a *App) domReady(ctx context.Context) {
 	writeDebugLog("App.domReady() called - UI loaded successfully")
 }
 
+// forceQuitRequested distinguishes an EXPLICIT quit (File > Exit, the tray's
+// own "Quit" item) from an ambiguous window-close (titlebar X / Alt+F4),
+// which should keep minimizing to tray as designed (so a scheduled backup
+// isn't silently killed by an accidental close). Found 2026-09-23 — Wails'
+// runtime.Quit() funnels through this SAME beforeClose hook as the window's
+// own close button (verified against Wails' own source,
+// internal/frontend/desktop/windows/frontend.go's Quit()), so without this
+// flag EVERY quit path — including File > Exit — was silently swallowed
+// into a tray-hide, identical to clicking the X. The tray's own "Quit"
+// button masked this with a hacky 2-second delayed os.Exit(0) fallback;
+// this flag makes that fallback unnecessary (removed in tray.go) since
+// runtime.Quit() now actually completes, running normal Wails shutdown
+// (a.shutdown/pbscommon.CloseAllActive) instead of a raw process kill.
+var forceQuitRequested atomic.Bool
+
+// RequestQuit performs a genuine, unconditional quit — unlike closing the
+// window (which always minimizes to tray on Windows by design), this always
+// terminates the app. Wired to File > Exit and the tray's own "Quit" item.
+func (a *App) RequestQuit() {
+	writeDebugLog("RequestQuit() called - quitting for real, bypassing tray-hide")
+	forceQuitRequested.Store(true)
+	runtime.Quit(a.ctx)
+}
+
 // beforeClose is called when the application is about to quit.
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	if forceQuitRequested.Load() {
+		writeDebugLog("App.beforeClose() called - forced quit requested, allowing close")
+		return false
+	}
 	// Only Windows has a tray that keeps the app alive, so only there do we
 	// swallow the close and hide the window. On other platforms the tray is a
 	// no-op, so we must let the window close or the app can never be quit.

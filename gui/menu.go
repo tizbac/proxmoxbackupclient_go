@@ -23,7 +23,11 @@ func buildAppMenu(a *App) *menu.Menu {
 	})
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Exit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
-		runtime.Quit(a.ctx)
+		// RequestQuit (not a bare runtime.Quit) — closing the window normally
+		// minimizes to tray by design; Exit here means a real, unconditional
+		// quit. See forceQuitRequested's doc comment in main.go for why a
+		// plain runtime.Quit() alone doesn't actually exit.
+		a.RequestQuit()
 	})
 
 	viewMenu := appMenu.AddSubmenu("View")

@@ -1,11 +1,10 @@
-// +build windows
+//go:build windows && !service
+// +build windows,!service
 
 package main
 
 import (
 	"fmt"
-	"os"
-	"time"
 
 	"github.com/getlantern/systray"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -70,14 +69,13 @@ func onReady(a *App) func() {
 					writeDebugLog("Tray: Quit clicked")
 					// Quit systray first
 					systray.Quit()
-					// Request Wails shutdown
-					runtime.Quit(a.ctx)
-					// Force exit after short delay if graceful shutdown doesn't work
-					go func() {
-						time.Sleep(2 * time.Second)
-						writeDebugLog("Force exit after timeout")
-						os.Exit(0)
-					}()
+					// RequestQuit (not a bare runtime.Quit) actually terminates
+					// the app now — see forceQuitRequested's doc comment in
+					// main.go. The old code here masked the fact that a plain
+					// runtime.Quit() was silently swallowed (same beforeClose
+					// hook the window's own close button hits) with a hacky
+					// 2-second delayed os.Exit(0) fallback; no longer needed.
+					a.RequestQuit()
 				}
 			}
 		}()
