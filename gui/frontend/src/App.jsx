@@ -330,7 +330,7 @@ function App() {
     const unsubProgress = EventsOn('backup:progress', (data) => {
       const percent = Math.round(data.percent)
       setProgress(percent)
-      showStatus(`🔄 ${data.message}`, 'info', true)
+      showStatus(`${data.message}`, 'info', true)
 
       // Track whether a backup is running (drives the Start/Stop button state).
       setBackupRunning(true)
@@ -423,7 +423,7 @@ function App() {
     if (!EventsOn) return
     const unsubP = EventsOn('restore:progress', (data) => {
       setRestoreProgress(Math.round((data.percent || 0) * 100))
-      showStatus(`🔄 ${data.message || ''}`, 'info', true)
+      showStatus(`${data.message || ''}`, 'info', true)
     })
     // Structured live stats (bytes transferred), mirroring backup:stats.
     // Same cumulative-average speed calc as the backup side (item 5's fix) —
@@ -469,7 +469,7 @@ function App() {
       const done = data.done || 0
       const total = data.total || 0
       const gb = ((data.bytes || 0) / (1024 * 1024 * 1024)).toFixed(1)
-      showStatus(`📊 ${t('splitAnalyzing')} ${done}/${total} (${gb} GB)`, 'info')
+      showStatus(`${t('splitAnalyzing')} ${done}/${total} (${gb} GB)`, 'info')
     })
     return () => { if (unsub) unsub() }
   }, [])
@@ -880,13 +880,13 @@ function App() {
     const uname = (serverFormData.username || '').trim().toLowerCase()
     const isPamUser = uname.endsWith('@pam')
     const tabs = [
-      ['server', `🌐 ${t('srvTabServer')}`],
-      ['userpass', `👤 ${t('srvTabUserpass')}`],
-      ['token', `🔑 ${t('srvTabToken')}`]
+      ['server', `${t('srvTabServer')}`],
+      ['userpass', `${t('srvTabUserpass')}`],
+      ['token', `${t('srvTabToken')}`]
     ]
     return (
       <div className="card">
-        <h3>{editingServer ? `✏️ ${t('editServer')}` : `➕ ${t('addServer')}`}</h3>
+        <h3>{editingServer ? `${t('editServer')}` : `${t('addServer')}`}</h3>
 
         <div style={{display: 'flex', gap: '8px', marginBottom: '15px'}}>
           {tabs.map(([key, label]) => (
@@ -959,7 +959,7 @@ function App() {
               <label>{t('password')}</label>
               <input type="password" value={serverFormData.password} onChange={(e) => setServerFormData({...serverFormData, password: e.target.value})} placeholder={serverFormData.password_set ? t('passwordKeepCurrent') : t('phPassword')} />
             </div>
-            <div className="info-box">💡 {t('userpassHint')}</div>
+            <div className="info-box">{t('userpassHint')}</div>
           </>
         )}
 
@@ -973,18 +973,18 @@ function App() {
               <label>{t('secret')}</label>
               <input type="password" value={serverFormData.secret} onChange={(e) => setServerFormData({...serverFormData, secret: e.target.value})} placeholder={serverFormData.secret_set ? t('secretKeepCurrent') : t('phSecret')} />
             </div>
-            <div className="info-box">💡 <strong>{t('tipTitle')}</strong> {t('tipAPIToken')}<br/>{t('tipAPITokenPath')}</div>
+            <div className="info-box"><strong>{t('tipTitle')}</strong> {t('tipAPIToken')}<br/>{t('tipAPITokenPath')}</div>
           </>
         )}
 
         <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
           {editingServer ? (
             <>
-              <button onClick={handleUpdatePBSServer} style={{flex: 1}}>💾 {t('update')}</button>
+              <button onClick={handleUpdatePBSServer} style={{flex: 1}}>{t('update')}</button>
               <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>❌ {t('cancel')}</button>
             </>
           ) : (
-            <button onClick={handleAddPBSServer} style={{flex: 1}}>➕ {t('addServer')}</button>
+            <button onClick={handleAddPBSServer} style={{flex: 1}}>{t('addServer')}</button>
           )}
         </div>
       </div>
@@ -1093,7 +1093,7 @@ function App() {
     }
 
     try {
-      showStatus(`📊 ${t('splitAnalyzing')}`, 'info')
+      showStatus(`${t('splitAnalyzing')}`, 'info')
       const splitPlan = await window.go.main.App.CreateBackupSplitPlan(
         dirList,
         config['backup-id'] || hostname,
@@ -1106,7 +1106,7 @@ function App() {
       // selected root. Fall back to a normal full backup of the roots, which
       // always captures everything.
       if (!splitPlan || splitPlan.length <= 1) {
-        showStatus(`🚀 ${t('statusBackupStarting')}`, 'info')
+        showStatus(`${t('statusBackupStarting')}`, 'info')
         setProgress(5)
         await StartBackup(
           backupType,
@@ -1121,7 +1121,7 @@ function App() {
         return
       }
 
-      showStatus(`🔄 Lancement de ${splitPlan.length} backups partiels...`, 'info')
+      showStatus(`Lancement de ${splitPlan.length} backups partiels...`, 'info')
 
       // Arm a one-shot listener for the next backup:complete BEFORE starting a
       // part, so a fast completion can't be missed. The backend emits this event
@@ -1144,7 +1144,7 @@ function App() {
       for (let i = 0; i < splitPlan.length; i++) {
         const job = splitPlan[i]
         showStatus(
-          `📦 Backup ${job.index}/${job.total_jobs}: ${job.size_fmt}...`,
+          `Backup ${job.index}/${job.total_jobs}: ${job.size_fmt}...`,
           'info'
         )
 
@@ -1194,7 +1194,7 @@ function App() {
       // Honest aggregate: only claim success when EVERY part actually succeeded.
       if (failures.length === 0) {
         showStatus(
-          `🎉 ${t('allPartsDone', { n: succeeded, total: splitPlan.length })}`,
+          `${t('allPartsDone', { n: succeeded, total: splitPlan.length })}`,
           'success'
         )
       } else {
@@ -1307,7 +1307,7 @@ function App() {
     }
 
     // One-shot mode - execute immediately
-    showStatus(`🚀 ${t('statusBackupStarting')}`, 'info')
+    showStatus(`${t('statusBackupStarting')}`, 'info')
     setProgress(5)
     setBackupRunning(true)
 
@@ -1393,7 +1393,7 @@ function App() {
     // failed host's exact backup-id string, so browsing everything and
     // picking it out by eye is the actual workflow, not typing a name.
 
-    showStatus('🔍 Recherche des snapshots...', 'info')
+    showStatus('Recherche des snapshots...', 'info')
     setSelectedSnapshot(null)
     setSnapshotEntries([])
     setSelectedPaths(new Set())
@@ -1419,7 +1419,7 @@ function App() {
     setSnapshotEntries([])
     setSelectedPaths(new Set())
     setExpandedDirs(new Set())
-    showStatus(`📥 ${t('loadingSnapshotContents')}`, 'info')
+    showStatus(`${t('loadingSnapshotContents')}`, 'info')
     const effectiveBackupId = snap.backup_id || restoreBackupId
     try {
       // Backend uses the snapshot's actual backup_id (snap.backup_id) so split
@@ -1609,7 +1609,7 @@ function App() {
     setRestoreLoading(true)
     setRestoreProgress(0)
     setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
-    showStatus(`🔄 ${t('statusRestoring').replace('{time}', selectedSnapshot.time)}`, 'info')
+    showStatus(`${t('statusRestoring').replace('{time}', selectedSnapshot.time)}`, 'info')
 
     try {
       await RestoreSnapshot(
@@ -1745,12 +1745,10 @@ function App() {
             onChange={() => togglePathSelection(entry.path)}
             style={{ marginRight: '8px' }}
           />
-          {entry.is_dir ? (
+          {entry.is_dir && (
             <span onClick={() => toggleDir(entry.path)} style={{ cursor: 'pointer', userSelect: 'none', marginRight: '4px' }}>
-              {isExpanded ? '📂' : '📁'}
+              {isExpanded ? '▾' : '▸'}
             </span>
-          ) : (
-            <span style={{ marginRight: '4px' }}>📄</span>
           )}
           <span
             onClick={() => entry.is_dir && toggleDir(entry.path)}
@@ -1798,7 +1796,7 @@ function App() {
       <div className="app-main">
         <div className="hero">
           <div>
-            <h1>🛡️ {brand.is_default ? t('appTitle') : brand.title}</h1>
+            <h1>{brand.is_default ? t('appTitle') : brand.title}</h1>
             <p>{brand.is_default ? t('appSubtitle') : brand.title}</p>
           </div>
           <LanguageSwitcher />
@@ -1854,16 +1852,16 @@ function App() {
               <div style={{padding: '22px 26px', overflowY: 'auto', flex: '1 1 auto'}}>
                 {prefsTab === 'account' && (
                   <>
-                    <h2 style={{marginTop: 0}}>🖥️ {t('serversTitle')}</h2>
+                    <h2 style={{marginTop: 0}}>{t('serversTitle')}</h2>
 
                     {pbsServers.length === 0 ? (
                       <>
                         <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#eef2ff', borderLeft: '4px solid var(--accent)'}}>
-                          👋 <strong>{t('welcomeMessage')}</strong> {t('welcomeText')}<br/>
+                          <strong>{t('welcomeMessage')}</strong> {t('welcomeText')}<br/>
                           {!config.baseurl && (
                             <>
                               <br/>
-                              <strong>📦 {t('noPBSYet')}</strong><br/>
+                              <strong>{t('noPBSYet')}</strong><br/>
                               {brand.buy_storage_url ? (
                               <a
                                 href={brand.buy_storage_url}
@@ -1894,7 +1892,7 @@ function App() {
                     ) : (
                       <>
                         <div className="info-box" style={{marginBottom: '20px'}}>
-                          💡 <strong>{t('multiPBSInfo')}</strong> {t('multiPBSText')}<br/>
+                          <strong>{t('multiPBSInfo')}</strong> {t('multiPBSText')}<br/>
                           {t('multiPBSExample')}
                         </div>
 
@@ -1922,17 +1920,17 @@ function App() {
                                   <td>{server.baseurl}</td>
                                   <td>{server.datastore}/{server.namespace || '-'}</td>
                                   <td>
-                                    {serverStatus[server.id] === 'testing' && <span style={{color: '#3b82f6'}}>🔄 {t('testing')}</span>}
+                                    {serverStatus[server.id] === 'testing' && <span style={{color: '#3b82f6'}}>{t('testing')}</span>}
                                     {serverStatus[server.id] === 'online' && <span style={{color: '#10b981'}}>🟢 {t('online')}</span>}
                                     {serverStatus[server.id] === 'offline' && <span style={{color: '#ef4444'}}>🔴 {t('offline')}</span>}
                                     {!serverStatus[server.id] && <span style={{color: '#999'}}>⚪ {t('untested')}</span>}
                                   </td>
                                   <td>
                                     <button onClick={() => handleTestPBSConnection(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                                      🔍 {t('testServer')}
+                                      {t('testServer')}
                                     </button>
                                      <button onClick={() => handleEditServer(server)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                                       ✏️ {t('editServer')}
+                                       {t('editServer')}
                                      </button>
                                      {server.id !== defaultPBSID && (
                                       <button onClick={() => handleSetDefaultPBS(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#fbbf24'}}>
@@ -1940,7 +1938,7 @@ function App() {
                                       </button>
                                     )}
                                     <button onClick={() => handleDeletePBSServer(server.id)} style={{padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#ef4444', color: 'white'}}>
-                                      🗑️ {t('deleteServer')}
+                                      {t('deleteServer')}
                                     </button>
                                   </td>
                                 </tr>
@@ -1987,8 +1985,8 @@ function App() {
           <div className="form-group">
             <label>{t('backupType')}</label>
             <select value={backupType} onChange={(e) => setBackupType(e.target.value)}>
-              <option value="directory">📁 {t('backupTypeDirectory')}</option>
-              <option value="machine">💾 {t('backupTypeMachine')}</option>
+              <option value="directory">{t('backupTypeDirectory')}</option>
+              <option value="machine">{t('backupTypeMachine')}</option>
             </select>
           </div>
 
@@ -2000,19 +1998,19 @@ function App() {
               onTabSelect={(_e, data) => setBackupMode(data.value)}
               style={{marginTop: '10px'}}
             >
-              <Tab value="oneshot">⚡ {t('oneshotMode')}</Tab>
-              <Tab value="scheduled">📅 {t('scheduledMode')}</Tab>
+              <Tab value="oneshot">{t('oneshotMode')}</Tab>
+              <Tab value="scheduled">{t('scheduledMode')}</Tab>
             </TabList>
           </div>
 
           {/* Scheduling Options */}
           {backupMode === 'scheduled' && (
             <div className="card" style={{marginTop: '20px', padding: '20px'}}>
-              <h3 style={{marginTop: 0}}>⏰ {t('schedulingConfig')}</h3>
+              <h3 style={{marginTop: 0}}>{t('schedulingConfig')}</h3>
 
               {editingJobId && (
                 <div className="info-box" style={{backgroundColor: '#fff3cd', borderColor: '#ffc107', marginBottom: '15px'}}>
-                  ✏️ <strong>{t('editMode')}</strong> - {t('editModeText')}
+                  <strong>{t('editMode')}</strong> - {t('editModeText')}
                 </div>
               )}
 
@@ -2025,7 +2023,7 @@ function App() {
                       onChange={(e) => setRunAtStartup(e.target.checked)}
                       style={{width: '20px', height: '20px', cursor: 'pointer'}}
                     />
-                    <span>🚀 {t('runAtStartup')}</span>
+                    <span>{t('runAtStartup')}</span>
                   </label>
                 </div>
               )}
@@ -2038,9 +2036,9 @@ function App() {
                   size="small"
                   style={{marginTop: '10px'}}
                 >
-                  <Tab value="daily">📆 {t('triggerModeDaily')}</Tab>
-                  <Tab value="interval">🔁 {t('triggerModeInterval')}</Tab>
-                  <Tab value="manual">🖐️ {t('triggerModeManual')}</Tab>
+                  <Tab value="daily">{t('triggerModeDaily')}</Tab>
+                  <Tab value="interval">{t('triggerModeInterval')}</Tab>
+                  <Tab value="manual">{t('triggerModeManual')}</Tab>
                 </TabList>
               </div>
 
@@ -2134,10 +2132,10 @@ function App() {
 
               <div className="info-box" style={{backgroundColor: '#eef2ff'}}>
                 {triggerMode === 'manual' ? (
-                  <>🖐️ {t('schedulingInfoManual')}</>
+                  <>{t('schedulingInfoManual')}</>
                 ) : (
                   <>
-                    💡 {triggerMode === 'daily'
+                    {triggerMode === 'daily'
                       ? <>{t('schedulingInfo')} <strong>{scheduleTime}</strong></>
                       : <>{t('schedulingInfoInterval').replace('{n}', intervalMinutes)}
                           {!windowAllDay && ` ${t('windowBetween')} ${windowStart} ${t('windowAnd')} ${windowEnd}`}</>}
@@ -2261,7 +2259,7 @@ function App() {
           {progress > 0 && progress < 100 && (
             <div style={{marginTop: '20px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
               <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
-                <strong style={{fontSize: '15px'}}>📊 {t('backupProgress')}</strong>
+                <strong style={{fontSize: '15px'}}>{t('backupProgress')}</strong>
                 <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{progress}%</span>
               </div>
 
@@ -2288,23 +2286,23 @@ function App() {
                 )}
                 {backupStats.speed > 0 && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    ⚡ <strong>{t('speed')}</strong> {formatSpeed(backupStats.speed)}
+                    <strong>{t('speed')}</strong> {formatSpeed(backupStats.speed)}
                   </div>
                 )}
                 {backupStats.startTime && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    ⏰ <strong>{t('elapsedTime')}</strong> {Math.floor((Date.now() - backupStats.startTime) / 1000)}s
+                    <strong>{t('elapsedTime')}</strong> {Math.floor((Date.now() - backupStats.startTime) / 1000)}s
                   </div>
                 )}
                 {backupStats.bytesDone > 0 && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    📦 <strong>{t('dataSizeLabel')}</strong> {Math.round(backupStats.bytesDone / 1048576)}
+                    <strong>{t('dataSizeLabel')}</strong> {Math.round(backupStats.bytesDone / 1048576)}
                     {backupStats.bytesTotal > 0 ? ` / ${Math.round(backupStats.bytesTotal / 1048576)}` : ''} MB
                   </div>
                 )}
                 {(backupStats.newChunks > 0 || backupStats.reusedChunks > 0) && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    🧩 <strong>{t('chunksLabel')}</strong> {backupStats.newChunks} {t('newChunksLabel')} · {backupStats.reusedChunks} {t('reusedChunksLabel')}
+                    <strong>{t('chunksLabel')}</strong> {backupStats.newChunks} {t('newChunksLabel')} · {backupStats.reusedChunks} {t('reusedChunksLabel')}
                     {backupStats.failedChunks > 0 ? (
                       <span style={{color: '#c0392b', fontWeight: 'bold'}}> · {backupStats.failedChunks} {t('failedChunksLabel')}</span>
                     ) : ''}
@@ -2312,7 +2310,7 @@ function App() {
                 )}
                 {backupStats.currentDir && (
                   <div style={{fontSize: '13px', color: '#495057', gridColumn: '1 / -1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                    📁 <strong>{t('currentDirLabel')}</strong> {backupStats.currentDir}
+                    <strong>{t('currentDirLabel')}</strong> {backupStats.currentDir}
                   </div>
                 )}
               </div>
@@ -2327,8 +2325,8 @@ function App() {
 
           <button className="btn" onClick={handleStartBackup} disabled={backupRunning || (progress > 0 && progress < 100)}>
             {backupMode === 'oneshot'
-              ? (backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `🚀 ${t('startBackup')}`)
-              : (editingJobId ? `✏️ ${t('updateSchedule')}` : `💾 ${t('saveSchedule')}`)
+              ? (backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `${t('startBackup')}`)
+              : (editingJobId ? `${t('updateSchedule')}` : `${t('saveSchedule')}`)
             }
           </button>
           {backupMode === 'oneshot' && (
@@ -2359,7 +2357,7 @@ function App() {
           {/* Scheduled Jobs List */}
           {backupMode === 'scheduled' && scheduledJobs.length > 0 && (
             <div className="card" style={{marginTop: '30px'}}>
-              <h3 style={{marginTop: 0}}>📅 {t('scheduledJobs')}</h3>
+              <h3 style={{marginTop: 0}}>{t('scheduledJobs')}</h3>
               <div style={{maxHeight: '480px', overflowY: 'auto'}}>
               {scheduledJobs.map(job => (
                 <div key={job.id} style={{
@@ -2374,23 +2372,23 @@ function App() {
                       <strong>{job.name}</strong>
                       <div style={{fontSize: '14px', color: '#6c757d', marginTop: '5px'}}>
                         {job.triggerMode === 'manual'
-                          ? <>🖐️ {t('triggerModeManual')}</>
+                          ? <>{t('triggerModeManual')}</>
                           : job.triggerMode === 'interval'
-                          ? <>🔁 {t('triggerModeInterval')} — {t('everyNMinutes').replace('{n}', job.intervalMinutes)}
+                          ? <>{t('triggerModeInterval')} — {t('everyNMinutes').replace('{n}', job.intervalMinutes)}
                               {!job.windowAllDay && ` (${job.windowStart}–${job.windowEnd})`}</>
-                          : <>📆 {t('triggerModeDaily')} — ⏰ {job.scheduleTime}</>}
+                          : <>{t('triggerModeDaily')} — {job.scheduleTime}</>}
                         {job.triggerMode !== 'manual' && (
                           <>
                             {' • '}
                             {!job.daysOfWeek || job.daysOfWeek.length === 0 || job.daysOfWeek.length === 7
                               ? t('everyDay')
                               : job.daysOfWeek.map(d => t(`day${d}`)).join(', ')}
-                            {job.runAtStartup && ` • 🚀 ${t('atStartupLabel')}`}
+                            {job.runAtStartup && ` • ${t('atStartupLabel')}`}
                           </>
                         )}
                       </div>
                       <div style={{fontSize: '13px', color: '#6c757d', marginTop: '3px'}}>
-                        📁 {job.backupDirs.join(', ')}
+                        {job.backupDirs.join(', ')}
                       </div>
                     </div>
                     <div style={{display: 'flex', gap: '10px'}}>
@@ -2445,11 +2443,11 @@ function App() {
                           setTreeExcludes([])
                           // Switch to backup tab to show the form
                           setActiveTab('backup')
-                          showStatus(`✏️ ${t('editModeInfo')}`, 'info')
+                          showStatus(`${t('editModeInfo')}`, 'info')
                           window.scrollTo({top: 0, behavior: 'smooth'})
                         }}
                       >
-                        ✏️ {t('editJob')}
+                        {t('editJob')}
                       </button>
                       <button
                         className="btn btn-secondary"
@@ -2468,7 +2466,7 @@ function App() {
                           }
                         }}
                       >
-                        🗑️ {t('deleteJob')}
+                        {t('deleteJob')}
                       </button>
                     </div>
                   </div>
@@ -2547,14 +2545,14 @@ function App() {
             </div>
           </div>
 
-          <button className="btn" onClick={handleListSnapshots}>📋 {t('listSnapshots')}</button>
+          <button className="btn" onClick={handleListSnapshots}>{t('listSnapshots')}</button>
           <button
             className="btn"
             type="button"
             onClick={() => setShowSearch(v => !v)}
             style={{marginLeft: '8px'}}
           >
-            🔎 {t('searchTitle')}
+            {t('searchTitle')}
           </button>
 
           {showSearch && (
@@ -2611,7 +2609,7 @@ function App() {
 
               <div style={{marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center'}}>
                 <button className="btn" type="button" onClick={handleSearch} disabled={searchRunning}>
-                  {searchRunning ? `⏳ ${t('searching')}` : `🔎 ${t('searchButton')}`}
+                  {searchRunning ? `⏳ ${t('searching')}` : `${t('searchButton')}`}
                 </button>
                 {searchRunning && (
                   <button className="btn" type="button" onClick={handleCancelSearch} style={{backgroundColor: '#ef4444'}}>
@@ -2637,7 +2635,7 @@ function App() {
                   </p>
                   {searchResult.snapshots_in_range === 0 && (
                     <p style={{fontSize: '12px', color: '#b45309', margin: '0 0 8px 0'}}>
-                      💡 {t('searchNoSnapshotsInRange')}
+                      {t('searchNoSnapshotsInRange')}
                     </p>
                   )}
                   {(searchResult.snapshots_skipped > 0 && !searchAssembleMissing) && (
@@ -2665,7 +2663,6 @@ function App() {
                             padding: '6px 10px', borderBottom: '1px solid #f1f5f9', fontSize: '13px'
                           }}
                         >
-                          <span style={{fontSize: '15px'}}>{hit.is_dir ? '📁' : '📄'}</span>
                           <div style={{flex: 1, minWidth: 0}}>
                             <div style={{fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
                               {hit.path.split('/').pop() || hit.path}
@@ -2723,7 +2720,7 @@ function App() {
                         color: snapshotViewMode === 'list' ? '#fff' : '#333',
                       }}
                     >
-                      ☰ {t('listView')}
+                      {t('listView')}
                     </button>
                   </div>
                 )}
@@ -2759,7 +2756,7 @@ function App() {
                           backgroundColor: isActive ? '#eff6ff' : '#fff',
                         }}
                       >
-                        <span style={{flex: '0 0 220px'}}>📸 {snap.time}</span>
+                        <span style={{flex: '0 0 220px'}}>{snap.time}</span>
                         <span style={{flex: '1 1 auto', color: '#718096', fontSize: '14px'}}>
                           {snap.backup_id}{snap.protected ? ' 🔒' : ''}
                         </span>
@@ -2788,7 +2785,7 @@ function App() {
                         }}
                         onClick={() => handleSelectSnapshot(snap)}
                       >
-                        <h3>📸 {snap.time}</h3>
+                        <h3>{snap.time}</h3>
                         <p style={{color: '#718096', fontSize: '14px', marginTop: '5px'}}>
                           {snap.backup_id}{snap.protected ? ' 🔒' : ''}<br/>
                           {t('typeLabel')}: {snap.backup_type || 'N/A'} · {formatBytes(snap.size)}
@@ -2832,7 +2829,7 @@ function App() {
           {selectedSnapshot && (
             <div style={{marginTop: '24px'}}>
               <div style={{display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'}}>
-                <h3 style={{margin: 0}}>📂 {t('snapshotContents')} — {selectedSnapshot.time}</h3>
+                <h3 style={{margin: 0}}>{t('snapshotContents')} — {selectedSnapshot.time}</h3>
                 <button
                   className="btn"
                   type="button"
@@ -2840,7 +2837,7 @@ function App() {
                   title={t('reloadTreeHint') || 'Bypass local cache and re-download the snapshot tree'}
                   style={{padding: '4px 10px', fontSize: '13px'}}
                 >
-                  🔄 {t('reloadTree') || 'Recharger'}
+                  {t('reloadTree') || 'Recharger'}
                 </button>
                 <button
                   className="btn btn-secondary"
@@ -2981,7 +2978,7 @@ function App() {
                           style={{flex: 1}}
                         />
                         <button className="btn" onClick={handleBrowseRestoreDest} type="button">
-                          📁 {t('browse')}
+                          {t('browse')}
                         </button>
                       </div>
                     </div>
@@ -3051,7 +3048,7 @@ function App() {
                     </div>
                     <p style={{textAlign: 'center', fontSize: '13px', color: '#64748b', marginTop: '4px'}}>
                       {restoreProgress}%
-                      {restoreStats.speed > 0 ? ` · ⚡ ${formatSpeed(restoreStats.speed)}` : ''}
+                      {restoreStats.speed > 0 ? ` · ${formatSpeed(restoreStats.speed)}` : ''}
                     </p>
                   </div>
                 )}
@@ -3060,7 +3057,7 @@ function App() {
           })()}
 
           <div className="info-box" style={{marginTop: '20px'}}>
-            💡 <strong>{t('restoreInfo')}</strong> {t('restoreInfoText')}<br/>
+            <strong>{t('restoreInfo')}</strong> {t('restoreInfoText')}<br/>
             {t('restoreInfoText2')}
           </div>
 
@@ -3093,7 +3090,7 @@ function App() {
                 data-external="true"
                 rel="noopener noreferrer"
               >
-                📦 {buyStorage.text}
+                {buyStorage.text}
               </a>
             </div>
 
@@ -3111,7 +3108,7 @@ function App() {
               </div>
 
               <div className="card">
-                <h3>🌐 Links</h3>
+                <h3>Links</h3>
                 <ul style={{lineHeight: 2, marginLeft: '20px'}}>
                   {[
                     ['about', 'About'],
@@ -3130,7 +3127,7 @@ function App() {
               </div>
 
               <div className="card">
-                <h3>🚀 {t('technology')}</h3>
+                <h3>{t('technology')}</h3>
                 <ul style={{lineHeight: 2, marginLeft: '20px'}}>
                   <li>{t('techList.wails')}</li>
                   <li>{t('techList.performance')}</li>
@@ -3244,7 +3241,7 @@ function App() {
 
         {/* Message Log Tab */}
         <div className={`tab-content ${activeTab === 'messagelog' ? 'active' : ''}`}>
-          <h2>📜 {t('navMessageLog')}</h2>
+          <h2>{t('navMessageLog')}</h2>
           {messageLog.length === 0 ? (
             <p style={{color: '#718096'}}>{t('messageLogEmpty')}</p>
           ) : (

@@ -152,6 +152,14 @@ body {
     animation: fadeIn 0.3s;
 }
 
+/* The global reset above zeroes every element's margin, including h2 — some
+   pages happened to get visual breathing room from whatever followed the
+   heading, others (Restore/Reports/Message Log) didn't and sat almost
+   flush against it. One consistent rule instead of patching each page. */
+.tab-content > h2 {
+    margin-bottom: 20px;
+}
+
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
