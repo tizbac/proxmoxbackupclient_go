@@ -85,7 +85,19 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		return err
 	}
 
-	// Prepare backup options
+	// Prepare backup options. Kind/BackupType mirror the direct-mode mapping
+	// in main.go's startBackupDirect exactly (RunBackupInline branches on
+	// Kind == "machine" to decide whether to do a machine-type backup at
+	// all — this stub never set it before, so a machine backup routed
+	// through the service silently fell through to the directory path;
+	// found and fixed 2026-09-23 alongside the service build's other
+	// pre-existing compile errors).
+	kind := "directory"
+	pbsBackupType := "host"
+	if backupType == "machine" {
+		kind = "machine"
+		pbsBackupType = "vm"
+	}
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
 		AuthID:          pbsCfg.AuthID,
@@ -95,9 +107,10 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		Datastore:       pbsCfg.Datastore,
 		Namespace:       pbsCfg.Namespace,
 		CertFingerprint: pbsCfg.CertFingerprint,
-		BackupDirs:      allDirs,
+		BackupObjects:   allDirs,
 		BackupID:        backupID,
-		BackupType:      backupType,
+		Kind:            kind,
+		BackupType:      pbsBackupType,
 		UseVSS:          useVSS,
 		Compression:     compression,
 		ExcludeList:     excludeList,
@@ -125,5 +138,75 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 	defer release()
 
 	writeDebugLog("[Service] Executing backup via RunBackupInline")
+	return RunBackupInline(opts)
+}
+
+// StartMachineBackup starts a machine (whole-disk) backup job — service
+// implementation using RunBackupInline. Mirrors StartBackup's own stub
+// exactly; added 2026-09-23 (the service build previously didn't implement
+// this at all, failing api.BackupHandler's interface check).
+func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+	writeDebugLog(fmt.Sprintf("[Service] StartMachineBackup called: type=%s, devices=%v, id=%s, vss=%v, compression=%s, pbsServerID=%s", backupType, backupDevices, backupID, useVSS, compression, pbsServerID))
+
+	a.ReloadConfig()
+	if a.config == nil {
+		return fmt.Errorf("configuration not loaded")
+	}
+
+	if backupID == "" {
+		backupID, _ = os.Hostname()
+		writeDebugLog(fmt.Sprintf("[Backup ID] Empty backup-id, using hostname: %s", backupID))
+	}
+	if compression == "" {
+		compression = "fastest"
+		writeDebugLog("[Compression] Using default: fastest")
+	}
+	for _, device := range backupDevices {
+		if device == "" {
+			return fmt.Errorf("one or more devices are empty")
+		}
+	}
+
+	pbsCfg, err := a.resolvePBS(pbsServerID)
+	if err != nil {
+		return err
+	}
+
+	opts := BackupOptions{
+		BaseURL:         pbsCfg.BaseURL,
+		AuthID:          pbsCfg.AuthID,
+		Secret:          pbsCfg.Secret,
+		Ticket:          pbsCfg.Ticket,
+		CSRFToken:       pbsCfg.CSRFToken,
+		Datastore:       pbsCfg.Datastore,
+		Namespace:       pbsCfg.Namespace,
+		CertFingerprint: pbsCfg.CertFingerprint,
+		BackupObjects:   backupDevices,
+		BackupID:        backupID,
+		Kind:            "machine",
+		BackupType:      "vm",
+		UseVSS:          useVSS,
+		Compression:     compression,
+		ExcludeList:     []string{},
+		DisableSplit:    pbsCfg.DisableSplit,
+		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
+		OnProgress: func(percent float64, message string) {
+			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent, message))
+		},
+		OnComplete: func(success bool, message string) {
+			if success {
+				writeDebugLog(fmt.Sprintf("[Machine Backup Complete] SUCCESS - %s", message))
+			} else {
+				writeDebugLog(fmt.Sprintf("[Machine Backup Complete] FAILED - %s", message))
+			}
+		},
+	}
+
+	release := acquireOperationSlot(fmt.Sprintf("machine backup of %s", backupID), func(heldBy string) {
+		writeDebugLog(fmt.Sprintf("[Service] Queued — waiting for %s to finish", heldBy))
+	})
+	defer release()
+
+	writeDebugLog("[Service] Executing machine backup via RunBackupInline")
 	return RunBackupInline(opts)
 }

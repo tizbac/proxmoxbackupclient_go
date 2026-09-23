@@ -312,17 +312,6 @@ func (a *App) GetVersion() string {
 	return appVersion
 }
 
-// PhysicalDiskInfo represents information about a physical disk
-type PhysicalDiskInfo struct {
-	DiskNumber   int64  `json:"disk_number"`
-	Size         int64  `json:"size"`
-	Model        string `json:"model"`
-	IsBootDisk   bool   `json:"is_boot_disk"`
-	IsSystemDisk bool   `json:"is_system_disk"`
-	DeviceID     string `json:"device_id"`
-	DevicePath   string `json:"device_path"`
-}
-
 // ListPhysicalDisks returns a list of available physical disks
 func (a *App) ListPhysicalDisks() ([]PhysicalDiskInfo, error) {
 	writeDebugLog("ListPhysicalDisks() called from frontend")
