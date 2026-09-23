@@ -35,6 +35,15 @@ const translations = {
     tabRestore: "Restauration",
     tabAbout: "À propos",
 
+    // Nav overhaul (sidebar / native menu / known limitations)
+    navReports: "Rapports",
+    navMessageLog: "Journal des messages",
+    knownLimitations: "Limitations connues",
+    knownLimitationsIntro: "Ceci est une version de développement active. Certains éléments sont encore en cours de finalisation :",
+    limitationNtfsAcl: "La restauration des permissions NTFS (ACL), des flux de données alternatifs et des attributs étendus n'est pas encore implémentée : les fichiers sont restaurés avec les permissions par défaut.",
+    limitationDevBuild: "Les Rapports et le Journal des messages sont en cours de développement et ne sont pas encore disponibles.",
+    devBuildBadge: "Version de développement",
+
     // Common
     save: "Enregistrer",
     cancel: "Annuler",
@@ -378,6 +387,15 @@ const translations = {
     tabBackup: "Backup",
     tabRestore: "Restore",
     tabAbout: "About",
+
+    // Nav overhaul (sidebar / native menu / known limitations)
+    navReports: "Reports",
+    navMessageLog: "Message Log",
+    knownLimitations: "Known Limitations",
+    knownLimitationsIntro: "This is an active development build. A few things are still being finished:",
+    limitationNtfsAcl: "Restoring NTFS permissions (ACLs), alternate data streams and extended attributes isn't implemented yet — files restore with default permissions.",
+    limitationDevBuild: "Reports and the Message Log are being built next and aren't available yet.",
+    devBuildBadge: "Development build",
 
     // Common
     save: "Save",
@@ -723,6 +741,15 @@ const translations = {
     tabRestore: "Ripristino",
     tabAbout: "Informazioni",
 
+    // Nav overhaul (sidebar / native menu / known limitations)
+    navReports: "Report",
+    navMessageLog: "Registro messaggi",
+    knownLimitations: "Limitazioni note",
+    knownLimitationsIntro: "Questa è una versione di sviluppo attiva. Alcune funzioni sono ancora in fase di completamento:",
+    limitationNtfsAcl: "Il ripristino dei permessi NTFS (ACL), dei flussi di dati alternativi e degli attributi estesi non è ancora implementato: i file vengono ripristinati con i permessi predefiniti.",
+    limitationDevBuild: "Report e Registro messaggi sono in fase di sviluppo e non sono ancora disponibili.",
+    devBuildBadge: "Versione di sviluppo",
+
     // Common
     save: "Salva",
     cancel: "Annulla",
@@ -1067,6 +1094,15 @@ const translations = {
     tabRestore: "Wiederherstellung",
     tabAbout: "Über",
 
+    // Nav overhaul (sidebar / native menu / known limitations)
+    navReports: "Berichte",
+    navMessageLog: "Meldungsprotokoll",
+    knownLimitations: "Bekannte Einschränkungen",
+    knownLimitationsIntro: "Dies ist eine aktive Entwicklungsversion. Einige Dinge werden noch fertiggestellt:",
+    limitationNtfsAcl: "Die Wiederherstellung von NTFS-Berechtigungen (ACLs), alternativen Datenströmen und erweiterten Attributen ist noch nicht implementiert — Dateien werden mit Standardberechtigungen wiederhergestellt.",
+    limitationDevBuild: "Berichte und das Meldungsprotokoll befinden sich in Entwicklung und sind noch nicht verfügbar.",
+    devBuildBadge: "Entwicklungsversion",
+
     // Common
     save: "Speichern",
     cancel: "Abbrechen",
@@ -1410,6 +1446,15 @@ const translations = {
     tabBackup: "Kopia zapasowa",
     tabRestore: "Przywracanie",
     tabAbout: "O programie",
+
+    // Nav overhaul (sidebar / native menu / known limitations)
+    navReports: "Raporty",
+    navMessageLog: "Dziennik komunikatów",
+    knownLimitations: "Znane ograniczenia",
+    knownLimitationsIntro: "To jest aktywna wersja rozwojowa. Kilka elementów jest wciąż dopracowywanych:",
+    limitationNtfsAcl: "Przywracanie uprawnień NTFS (ACL), alternatywnych strumieni danych i rozszerzonych atrybutów nie jest jeszcze zaimplementowane — pliki są przywracane z domyślnymi uprawnieniami.",
+    limitationDevBuild: "Raporty i Dziennik komunikatów są w trakcie tworzenia i nie są jeszcze dostępne.",
+    devBuildBadge: "Wersja rozwojowa",
 
     // Common
     save: "Zapisz",

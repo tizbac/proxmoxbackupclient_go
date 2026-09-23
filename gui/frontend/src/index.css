@@ -20,22 +20,114 @@ body {
     flex-direction: column;
 }
 
-.header {
-    background: #000000;
-    color: var(--accent);
-    padding: 20px;
-    text-align: center;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+/* ==================== APP SHELL (sidebar + hero + status bar) ==================== */
+
+.app-shell {
+    height: 100vh;
+    width: 100%;
+    display: flex;
+    overflow: hidden;
 }
 
-.header h1 {
-    font-size: 28px;
-    margin-bottom: 5px;
+.sidenav {
+    flex: 0 0 190px;
+    display: flex;
+    flex-direction: column;
+    background: #202020;
+    overflow-y: auto;
 }
 
-.header p {
-    opacity: 0.8;
+.nav-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    cursor: pointer;
+    font: inherit;
     font-size: 14px;
+    font-weight: 600;
+    padding: 14px 18px;
+    color: #d8d8d8;
+    background: transparent;
+    border-bottom: 1px solid #2c2c2c;
+}
+
+.nav-btn:hover:not(:disabled) {
+    background: #2c2c2c;
+}
+
+.nav-btn.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+.nav-btn-disabled {
+    color: #666;
+    cursor: default;
+}
+
+.nav-btn-secondary {
+    font-weight: 500;
+    color: #a8a8a8;
+}
+
+.nav-spacer {
+    flex: 1 1 auto;
+}
+
+.app-main {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: #fff;
+}
+
+.hero {
+    flex: 0 0 auto;
+    background: linear-gradient(90deg, #202020 0%, var(--accent) 65%, var(--accent) 100%);
+    color: #fff;
+    padding: 18px 26px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.hero h1 {
+    font-size: 22px;
+    margin-bottom: 3px;
+}
+
+.hero p {
+    opacity: 0.85;
+    font-size: 13px;
+}
+
+.app-statusbar {
+    flex: 0 0 auto;
+    height: 26px;
+    background: #f0f0f0;
+    border-top: 1px solid #d8d8d8;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-size: 12px;
+    color: #555;
+}
+
+.statusbar-link {
+    border: none;
+    background: transparent;
+    color: #555;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    text-decoration: underline;
+}
+
+.statusbar-link:hover {
+    color: var(--accent);
 }
 
 .container {
@@ -43,37 +135,10 @@ body {
     padding: 30px;
     overflow-y: auto;
     background: #ffffff;
-    margin: 20px;
-    border-radius: 10px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
     max-width: 1200px;
     width: 100%;
     margin-left: auto;
     margin-right: auto;
-}
-
-.tabs {
-    display: flex;
-    border-bottom: 2px solid var(--accent);
-    margin-bottom: 30px;
-}
-
-.tab {
-    padding: 15px 30px;
-    cursor: pointer;
-    border-bottom: 3px solid transparent;
-    transition: all 0.3s;
-    font-weight: 500;
-    color: #000000;
-}
-
-.tab:hover {
-    background: #f7fafc;
-}
-
-.tab.active {
-    border-bottom-color: var(--accent);
-    color: var(--accent);
 }
 
 .tab-content {
@@ -343,13 +408,13 @@ body {
         max-width: 100%;
     }
 
-    .header h1 {
-        font-size: 24px;
+    .hero h1 {
+        font-size: 19px;
     }
 
-    .tab {
-        padding: 12px 20px;
-        font-size: 14px;
+    .nav-btn {
+        padding: 12px 14px;
+        font-size: 13px;
     }
 
     /* Make tables horizontally scrollable */
@@ -371,15 +436,44 @@ body {
         min-height: -webkit-fill-available; /* iOS Safari fix */
     }
 
-    .header {
+    /* Below this width the sidebar can't afford its own column — collapse
+       it into a horizontal scrollable strip above the content, same as the
+       old top tab-bar it replaced. */
+    .app-shell {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+    }
+
+    .sidenav {
+        flex: 0 0 auto;
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .nav-btn {
+        flex-shrink: 0;
+        white-space: nowrap;
+        border-bottom: none;
+        border-right: 1px solid #2c2c2c;
+    }
+
+    .nav-spacer {
+        display: none;
+    }
+
+    .hero {
         padding: 15px 10px;
     }
 
-    .header h1 {
-        font-size: 20px;
+    .hero h1 {
+        font-size: 18px;
     }
 
-    .header p {
+    .hero p {
         font-size: 12px;
     }
 
@@ -389,20 +483,9 @@ body {
         border-radius: 8px;
     }
 
-    /* Horizontal scrollable tabs */
-    .tabs {
-        overflow-x: auto;
-        overflow-y: hidden;
-        flex-wrap: nowrap;
-        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
-        margin-bottom: 20px;
-    }
-
-    .tab {
+    .nav-btn {
         padding: 10px 15px;
         font-size: 13px;
-        white-space: nowrap;
-        flex-shrink: 0;
     }
 
     .tab-content {
@@ -496,11 +579,11 @@ body {
 
 /* Very small mobile screens */
 @media (max-width: 480px) {
-    .header h1 {
-        font-size: 18px;
+    .hero h1 {
+        font-size: 16px;
     }
 
-    .header p {
+    .hero p {
         font-size: 11px;
     }
 
@@ -509,7 +592,7 @@ body {
         padding: 10px;
     }
 
-    .tab {
+    .nav-btn {
         padding: 8px 12px;
         font-size: 12px;
     }
@@ -554,15 +637,15 @@ body {
 
 /* Landscape mode on small screens */
 @media (max-height: 600px) and (orientation: landscape) {
-    .header {
+    .hero {
         padding: 10px;
     }
 
-    .header h1 {
+    .hero h1 {
         font-size: 16px;
     }
 
-    .header p {
+    .hero p {
         display: none; /* Hide subtitle in landscape */
     }
 
@@ -571,7 +654,7 @@ body {
         padding: 10px;
     }
 
-    .tab {
+    .nav-btn {
         padding: 6px 12px;
     }
 }
@@ -583,7 +666,7 @@ body {
         -webkit-app-region: no-drag;
     }
 
-    .header {
+    .hero {
         -webkit-app-region: drag;
     }
 

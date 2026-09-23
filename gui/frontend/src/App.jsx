@@ -4,6 +4,7 @@ import { useTranslation } from './i18n/i18nContext'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
 import DirectoryTree from './components/DirectoryTree'
+import KnownLimitationsModal from './components/KnownLimitationsModal'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
@@ -79,6 +80,7 @@ function formatSpeed(bytesPerSec) {
 function App() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('servers')
+  const [showLimitations, setShowLimitations] = useState(false)
   const [hostname, setHostname] = useState('')
   const [appVersion, setAppVersion] = useState('dev')
   const [brand, setBrand] = useState({ name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', logo: '', accent: '#e87003', accent_hover: '#d46100', buy_storage_url: '', buy_storage_text: '', is_default: true })
@@ -462,6 +464,22 @@ function App() {
       showStatus(`📊 ${t('splitAnalyzing')} ${done}/${total} (${gb} GB)`, 'info')
     })
     return () => { if (unsub) unsub() }
+  }, [])
+
+  // Native menu bar (gui/menu.go) drives navigation the same way a sidebar
+  // click does — it only ever asks us to switch tabs or open an overlay.
+  useEffect(() => {
+    if (!EventsOn) return
+    const unsubGoto = EventsOn('nav:goto', (tab) => {
+      if (tab) setActiveTab(tab)
+    })
+    const unsubLimitations = EventsOn('nav:limitations', () => {
+      setShowLimitations(true)
+    })
+    return () => {
+      if (unsubGoto) unsubGoto()
+      if (unsubLimitations) unsubLimitations()
+    }
   }, [])
 
   // Load config with hostname on mount
@@ -1702,33 +1720,39 @@ function App() {
   }
 
   return (
-    <>
-      <div className="header">
-        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+    <div className="app-shell">
+      <nav className="sidenav">
+        <button className={`nav-btn ${activeTab === 'backup' ? 'active' : ''}`} onClick={() => setActiveTab('backup')}>
+          {t('tabBackup')}
+        </button>
+        <button className={`nav-btn ${activeTab === 'restore' ? 'active' : ''}`} onClick={() => setActiveTab('restore')}>
+          {t('tabRestore')}
+        </button>
+        <button className="nav-btn nav-btn-disabled" disabled title={t('comingSoon')}>
+          {t('navReports')}
+        </button>
+        <button className="nav-btn nav-btn-disabled" disabled title={t('comingSoon')}>
+          {t('navMessageLog')}
+        </button>
+        <div className="nav-spacer" />
+        <button className={`nav-btn nav-btn-secondary ${activeTab === 'servers' ? 'active' : ''}`} onClick={() => setActiveTab('servers')}>
+          {t('tabServers')}
+        </button>
+        <button className={`nav-btn nav-btn-secondary ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>
+          {t('tabAbout')}
+        </button>
+      </nav>
+
+      <div className="app-main">
+        <div className="hero">
           <div>
             <h1>🛡️ {brand.is_default ? t('appTitle') : brand.title}</h1>
             <p>{brand.is_default ? t('appSubtitle') : brand.title}</p>
           </div>
           <LanguageSwitcher />
         </div>
-      </div>
 
       <div className="container">
-        <div className="tabs">
-          <div className={`tab ${activeTab === 'servers' ? 'active' : ''}`} onClick={() => setActiveTab('servers')}>
-            {t('tabServers')}
-          </div>
-          <div className={`tab ${activeTab === 'backup' ? 'active' : ''}`} onClick={() => setActiveTab('backup')}>
-            {t('tabBackup')}
-          </div>
-          <div className={`tab ${activeTab === 'restore' ? 'active' : ''}`} onClick={() => setActiveTab('restore')}>
-            {t('tabRestore')}
-          </div>
-          <div className={`tab ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>
-            {t('tabAbout')}
-          </div>
-        </div>
-
         {/* PBS Configuration Tab */}
         <div className={`tab-content ${activeTab === 'servers' ? 'active' : ''}`}>
           <h2>🖥️ {t('serversTitle')}</h2>
@@ -3018,7 +3042,16 @@ function App() {
         </div>
       </div>
 
-    </>
+        <div className="app-statusbar">
+          <span>{t('devBuildBadge')}{appVersion && appVersion !== 'dev' ? ` v${appVersion}` : ''}</span>
+          <button className="statusbar-link" onClick={() => setShowLimitations(true)}>
+            ⚠️ {t('knownLimitations')}
+          </button>
+        </div>
+      </div>
+
+      {showLimitations && <KnownLimitationsModal onClose={() => setShowLimitations(false)} />}
+    </div>
   )
 }
 

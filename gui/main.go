@@ -121,6 +121,7 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		Menu:             buildAppMenu(app),
 		StartHidden:      *minimized, // Start hidden if --minimized flag is set
 		OnStartup:        app.startup,
 		OnDomReady:       app.domReady,
