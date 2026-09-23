@@ -82,8 +82,10 @@ function formatSpeed(bytesPerSec) {
 
 function App() {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState('servers')
+  const [activeTab, setActiveTab] = useState('backup')
   const [showLimitations, setShowLimitations] = useState(false)
+  const [showPreferences, setShowPreferences] = useState(false)
+  const [prefsTab, setPrefsTab] = useState('account')
   const [hostname, setHostname] = useState('')
   const [appVersion, setAppVersion] = useState('dev')
   const [brand, setBrand] = useState({ name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', logo: '', accent: '#e87003', accent_hover: '#d46100', buy_storage_url: '', buy_storage_text: '', is_default: true })
@@ -481,9 +483,14 @@ function App() {
     const unsubLimitations = EventsOn('nav:limitations', () => {
       setShowLimitations(true)
     })
+    const unsubPreferences = EventsOn('nav:preferences', () => {
+      setPrefsTab('account')
+      setShowPreferences(true)
+    })
     return () => {
       if (unsubGoto) unsubGoto()
       if (unsubLimitations) unsubLimitations()
+      if (unsubPreferences) unsubPreferences()
     }
   }, [])
 
@@ -614,6 +621,13 @@ function App() {
         if (ListPBSServers) {
           const servers = await ListPBSServers()
           setPbsServers(servers || [])
+          // First run: nothing to back up to yet, so open Preferences straight
+          // to Account Information instead of landing the user on a Backup
+          // tab that has nothing configured behind it.
+          if (!servers || servers.length === 0) {
+            setPrefsTab('account')
+            setShowPreferences(true)
+          }
         }
 
         if (GetDefaultPBSID) {
@@ -1199,6 +1213,16 @@ function App() {
       return
     }
 
+    // Nothing to back up to — block here rather than let StartBackup fail
+    // downstream with a raw connection error, and take the user straight to
+    // where they can fix it.
+    if (pbsServers.length === 0) {
+      showStatus(`❌ ${t('noPbsServerConfigured')}`, 'error')
+      setPrefsTab('account')
+      setShowPreferences(true)
+      return
+    }
+
     // Parse backup directories (one per line)
     const dirList = backupDirs.split('\n').map(d => d.trim()).filter(d => d)
 
@@ -1353,6 +1377,14 @@ function App() {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
+
+    if (pbsServers.length === 0) {
+      showStatus(`❌ ${t('noPbsServerConfigured')}`, 'error')
+      setPrefsTab('account')
+      setShowPreferences(true)
+      return
+    }
+
     // Backup ID is deliberately optional — the backend already supports an
     // empty filter (returns every snapshot in the datastore, not just one
     // host's). Needed for disaster recovery: restoring onto a REPLACEMENT
@@ -1754,8 +1786,8 @@ function App() {
           {t('navMessageLog')}
         </button>
         <div className="nav-spacer" />
-        <button className={`nav-btn nav-btn-secondary ${activeTab === 'servers' ? 'active' : ''}`} onClick={() => setActiveTab('servers')}>
-          {t('tabServers')}
+        <button className="nav-btn nav-btn-secondary" onClick={() => { setPrefsTab('account'); setShowPreferences(true) }}>
+          {t('prefsTitle')}
         </button>
         <button className={`nav-btn nav-btn-secondary ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>
           {t('tabAbout')}
@@ -1773,121 +1805,183 @@ function App() {
 
       <div className="container">
         {/* PBS Configuration Tab */}
-        <div className={`tab-content ${activeTab === 'servers' ? 'active' : ''}`}>
-          <ThemePicker />
+        {/* Preferences is a dialog (matching the mockup), not a sidebar tab —
+            opened via the sidebar's Preferences button, Tools > Preferences,
+            or automatically on first run when no PBS server is configured. */}
+        {showPreferences && (
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+            }}
+            onClick={() => setShowPreferences(false)}
+          >
+            <div
+              style={{
+                width: '760px', maxWidth: '92vw', maxHeight: '88vh',
+                display: 'flex', flexDirection: 'column',
+                background: '#f3f3f3', border: '1px solid #999', borderRadius: '4px',
+                boxShadow: '0 10px 40px rgba(0,0,0,.3)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{
+                height: '34px', flex: '0 0 auto', background: '#fff', borderBottom: '1px solid #ddd',
+                display: 'flex', alignItems: 'center', padding: '0 14px', fontSize: '14px',
+                color: '#3a3a3a', justifyContent: 'space-between',
+              }}>
+                <span>{t('prefsTitle')}</span>
+                <button
+                  onClick={() => setShowPreferences(false)}
+                  style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#555'}}
+                >
+                  ✕
+                </button>
+              </div>
 
-          <h2>🖥️ {t('serversTitle')}</h2>
+              <div style={{background: '#fff', borderBottom: '1px solid #ddd', display: 'flex', padding: '0 10px', flex: '0 0 auto'}}>
+                <button className={`tabhead ${prefsTab === 'account' ? 'active' : ''}`} onClick={() => setPrefsTab('account')}>
+                  {t('prefsAccountInfo')}
+                </button>
+                <button className="tabhead disabled" disabled title={t('comingSoon')}>{t('prefsBackupOptions')}</button>
+                <button className={`tabhead ${prefsTab === 'theme' ? 'active' : ''}`} onClick={() => setPrefsTab('theme')}>
+                  {t('themeTitle')}
+                </button>
+                <button className="tabhead disabled" disabled title={t('comingSoon')}>{t('navMessageLog')}</button>
+              </div>
 
-          {/* Show form first if no servers configured */}
-          {pbsServers.length === 0 ? (
-            <>
-              <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#eef2ff', borderLeft: '4px solid var(--accent)'}}>
-                👋 <strong>{t('welcomeMessage')}</strong> {t('welcomeText')}<br/>
-                {!config.baseurl && (
+              <div style={{padding: '22px 26px', overflowY: 'auto', flex: '1 1 auto'}}>
+                {prefsTab === 'account' && (
                   <>
-                    <br/>
-                    <strong>📦 {t('noPBSYet')}</strong><br/>
-                    {brand.buy_storage_url ? (
-                    <a
-                      href={brand.buy_storage_url}
-                      target="_blank"
-                      data-external="true"
-                      rel="noopener noreferrer"
-                      style={{color: 'var(--accent)', fontWeight: 'bold', textDecoration: 'underline'}}
-                    >
-                      {t('orderStorage')} →
-                    </a>
+                    <h2 style={{marginTop: 0}}>🖥️ {t('serversTitle')}</h2>
+
+                    {pbsServers.length === 0 ? (
+                      <>
+                        <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#eef2ff', borderLeft: '4px solid var(--accent)'}}>
+                          👋 <strong>{t('welcomeMessage')}</strong> {t('welcomeText')}<br/>
+                          {!config.baseurl && (
+                            <>
+                              <br/>
+                              <strong>📦 {t('noPBSYet')}</strong><br/>
+                              {brand.buy_storage_url ? (
+                              <a
+                                href={brand.buy_storage_url}
+                                target="_blank"
+                                data-external="true"
+                                rel="noopener noreferrer"
+                                style={{color: 'var(--accent)', fontWeight: 'bold', textDecoration: 'underline'}}
+                              >
+                                {t('orderStorage')} →
+                              </a>
+                              ) : (
+                                <a
+                                href="https://www.proxmox.com/en/downloads/proxmox-backup-server"
+                                target="_blank"
+                                data-external="true"
+                                rel="noopener noreferrer"
+                                style={{color: 'var(--accent)', fontWeight: 'bold', textDecoration: 'underline'}}
+                                >
+                                {t('downloadPBS')} →
+                                </a>
+                              )}
+                            </>
+                          )}
+                        </div>
+
+                        {renderServerForm()}
+                      </>
                     ) : (
-                      <a
-                      href="https://www.proxmox.com/en/downloads/proxmox-backup-server"
-                      target="_blank"
-                      data-external="true"
-                      rel="noopener noreferrer"
-                      style={{color: 'var(--accent)', fontWeight: 'bold', textDecoration: 'underline'}}
-                      >
-                      {t('downloadPBS')} →
-                      </a>
+                      <>
+                        <div className="info-box" style={{marginBottom: '20px'}}>
+                          💡 <strong>{t('multiPBSInfo')}</strong> {t('multiPBSText')}<br/>
+                          {t('multiPBSExample')}
+                        </div>
+
+                        <div className="card" style={{marginBottom: '20px'}}>
+                          <h3>{t('configuredServers')} ({pbsServers.length})</h3>
+
+                          <table style={{width: '100%', marginTop: '15px'}}>
+                            <thead>
+                              <tr>
+                                <th>{t('name')}</th>
+                                <th>{t('url')}</th>
+                                <th>{t('datastore')}</th>
+                                <th>{t('status')}</th>
+                                <th>{t('actions')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {pbsServers.map(server => (
+                                <tr key={server.id}>
+                                  <td>
+                                    <strong>{server.name}</strong>
+                                    {server.id === defaultPBSID && <span style={{marginLeft: '5px', color: '#fbbf24'}}>⭐ {t('default')}</span>}
+                                    {server.description && <div style={{fontSize: '0.85em', color: '#999'}}>{server.description}</div>}
+                                  </td>
+                                  <td>{server.baseurl}</td>
+                                  <td>{server.datastore}/{server.namespace || '-'}</td>
+                                  <td>
+                                    {serverStatus[server.id] === 'testing' && <span style={{color: '#3b82f6'}}>🔄 {t('testing')}</span>}
+                                    {serverStatus[server.id] === 'online' && <span style={{color: '#10b981'}}>🟢 {t('online')}</span>}
+                                    {serverStatus[server.id] === 'offline' && <span style={{color: '#ef4444'}}>🔴 {t('offline')}</span>}
+                                    {!serverStatus[server.id] && <span style={{color: '#999'}}>⚪ {t('untested')}</span>}
+                                  </td>
+                                  <td>
+                                    <button onClick={() => handleTestPBSConnection(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
+                                      🔍 {t('testServer')}
+                                    </button>
+                                     <button onClick={() => handleEditServer(server)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
+                                       ✏️ {t('editServer')}
+                                     </button>
+                                     {server.id !== defaultPBSID && (
+                                      <button onClick={() => handleSetDefaultPBS(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#fbbf24'}}>
+                                        ⭐ {t('setDefault')}
+                                      </button>
+                                    )}
+                                    <button onClick={() => handleDeletePBSServer(server.id)} style={{padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#ef4444', color: 'white'}}>
+                                      🗑️ {t('deleteServer')}
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {renderServerForm()}
+                      </>
+                    )}
+
+                    {status.visible && showPreferences && prefsTab === 'account' && (
+                      <div className={`status ${status.type} visible`}>{status.message}</div>
                     )}
                   </>
                 )}
+
+                {prefsTab === 'theme' && <ThemePicker />}
               </div>
 
-          {/* Add/Edit Server Form */}
-          {renderServerForm()}
-            </>
-          ) : (
-            <>
-              {/* Multi-PBS info for users with existing servers */}
-              <div className="info-box" style={{marginBottom: '20px'}}>
-                💡 <strong>{t('multiPBSInfo')}</strong> {t('multiPBSText')}<br/>
-                {t('multiPBSExample')}
+              <div style={{display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 26px', borderTop: '1px solid #ddd', flex: '0 0 auto'}}>
+                <button className="btn btn-primary" onClick={() => setShowPreferences(false)}>{t('prefsOK')}</button>
+                <button className="btn" onClick={() => setShowPreferences(false)}>{t('cancel')}</button>
+                <button className="btn">{t('prefsHelp')}</button>
               </div>
-
-              {/* Server List */}
-              <div className="card" style={{marginBottom: '20px'}}>
-                <h3>{t('configuredServers')} ({pbsServers.length})</h3>
-
-                <table style={{width: '100%', marginTop: '15px'}}>
-                  <thead>
-                    <tr>
-                      <th>{t('name')}</th>
-                      <th>{t('url')}</th>
-                      <th>{t('datastore')}</th>
-                      <th>{t('status')}</th>
-                      <th>{t('actions')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pbsServers.map(server => (
-                      <tr key={server.id}>
-                        <td>
-                          <strong>{server.name}</strong>
-                          {server.id === defaultPBSID && <span style={{marginLeft: '5px', color: '#fbbf24'}}>⭐ {t('default')}</span>}
-                          {server.description && <div style={{fontSize: '0.85em', color: '#999'}}>{server.description}</div>}
-                        </td>
-                        <td>{server.baseurl}</td>
-                        <td>{server.datastore}/{server.namespace || '-'}</td>
-                        <td>
-                          {serverStatus[server.id] === 'testing' && <span style={{color: '#3b82f6'}}>🔄 {t('testing')}</span>}
-                          {serverStatus[server.id] === 'online' && <span style={{color: '#10b981'}}>🟢 {t('online')}</span>}
-                          {serverStatus[server.id] === 'offline' && <span style={{color: '#ef4444'}}>🔴 {t('offline')}</span>}
-                          {!serverStatus[server.id] && <span style={{color: '#999'}}>⚪ {t('untested')}</span>}
-                        </td>
-                        <td>
-                          <button onClick={() => handleTestPBSConnection(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                            🔍 {t('testServer')}
-                          </button>
-                           <button onClick={() => handleEditServer(server)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                             ✏️ {t('editServer')}
-                           </button>
-                           {server.id !== defaultPBSID && (
-                            <button onClick={() => handleSetDefaultPBS(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#fbbf24'}}>
-                              ⭐ {t('setDefault')}
-                            </button>
-                          )}
-                          <button onClick={() => handleDeletePBSServer(server.id)} style={{padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#ef4444', color: 'white'}}>
-                            🗑️ {t('deleteServer')}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Add/Edit Server Form */}
-              {renderServerForm()}
-            </>
-          )}
-
-          {status.visible && activeTab === 'servers' && (
-            <div className={`status ${status.type} visible`}>{status.message}</div>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
 
         {/* Backup Tab */}
         <div className={`tab-content ${activeTab === 'backup' ? 'active' : ''}`}>
           <h2>{t('backupTitle')}</h2>
+
+          {pbsServers.length === 0 && (
+            <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#fff3cd', borderLeft: '4px solid #ffc107', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'}}>
+              <span>{t('noPbsServerBanner')}</span>
+              <button className="btn" onClick={() => { setPrefsTab('account'); setShowPreferences(true) }}>
+                {t('openPreferences')}
+              </button>
+            </div>
+          )}
 
           <div className="form-group">
             <label>{t('backupType')}</label>
@@ -2443,6 +2537,15 @@ function App() {
         {/* Restore Tab */}
         <div className={`tab-content ${activeTab === 'restore' ? 'active' : ''}`}>
           <h2>{t('restoreTitle')}</h2>
+
+          {pbsServers.length === 0 && (
+            <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#fff3cd', borderLeft: '4px solid #ffc107', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'}}>
+              <span>{t('noPbsServerBanner')}</span>
+              <button className="btn" onClick={() => { setPrefsTab('account'); setShowPreferences(true) }}>
+                {t('openPreferences')}
+              </button>
+            </div>
+          )}
 
           {/* BETA Warning */}
           <div style={{

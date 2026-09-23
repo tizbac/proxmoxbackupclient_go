@@ -43,7 +43,7 @@ func buildAppMenu(a *App) *menu.Menu {
 	backupSetsItem := toolsMenu.AddText("Manage Backup Sets…", nil, nil)
 	backupSetsItem.Disabled = true // wizard lands in a later phase of the UI overhaul
 	toolsMenu.AddText("Preferences…", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
-		runtime.EventsEmit(a.ctx, "nav:goto", "servers")
+		runtime.EventsEmit(a.ctx, "nav:preferences")
 	})
 
 	helpMenu := appMenu.AddSubmenu("Help")

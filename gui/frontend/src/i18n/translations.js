@@ -63,6 +63,14 @@ const translations = {
     themeFieldHeroEnd: "Dégradé — extrémité claire",
     themeCustomHint: "Valeurs hexadécimales CSS à 6 chiffres. Une valeur invalide est ignorée.",
     themePreview: "Aperçu",
+    prefsTitle: "Préférences",
+    prefsAccountInfo: "Informations du compte",
+    prefsBackupOptions: "Options de sauvegarde",
+    prefsOK: "OK",
+    prefsHelp: "Aide",
+    noPbsServerConfigured: "Aucun serveur PBS n'est configuré — configurez-en un dans les Préférences d'abord.",
+    noPbsServerBanner: "⚠️ Aucun serveur PBS n'est configuré.",
+    openPreferences: "Ouvrir les Préférences",
 
     // Common
     save: "Enregistrer",
@@ -440,6 +448,14 @@ const translations = {
     themeFieldHeroEnd: "Gradient — light end",
     themeCustomHint: "Standard 6-digit CSS hex values. An invalid value is ignored.",
     themePreview: "Preview",
+    prefsTitle: "Preferences",
+    prefsAccountInfo: "Account Information",
+    prefsBackupOptions: "Backup Options",
+    prefsOK: "OK",
+    prefsHelp: "Help",
+    noPbsServerConfigured: "No PBS server is configured yet — set one up in Preferences first.",
+    noPbsServerBanner: "⚠️ No PBS server is configured.",
+    openPreferences: "Open Preferences",
 
     // Common
     save: "Save",
@@ -817,6 +833,14 @@ const translations = {
     themeFieldHeroEnd: "Gradiente — estremità chiara",
     themeCustomHint: "Valori esadecimali CSS a 6 cifre. Un valore non valido viene ignorato.",
     themePreview: "Anteprima",
+    prefsTitle: "Preferenze",
+    prefsAccountInfo: "Informazioni account",
+    prefsBackupOptions: "Opzioni di backup",
+    prefsOK: "OK",
+    prefsHelp: "Guida",
+    noPbsServerConfigured: "Nessun server PBS configurato: configuratene uno nelle Preferenze prima.",
+    noPbsServerBanner: "⚠️ Nessun server PBS configurato.",
+    openPreferences: "Apri Preferenze",
 
     // Common
     save: "Salva",
@@ -1194,6 +1218,14 @@ const translations = {
     themeFieldHeroEnd: "Verlauf — helles Ende",
     themeCustomHint: "Standard 6-stellige CSS-Hex-Werte. Ein ungültiger Wert wird ignoriert.",
     themePreview: "Vorschau",
+    prefsTitle: "Einstellungen",
+    prefsAccountInfo: "Kontoinformationen",
+    prefsBackupOptions: "Sicherungsoptionen",
+    prefsOK: "OK",
+    prefsHelp: "Hilfe",
+    noPbsServerConfigured: "Es ist noch kein PBS-Server eingerichtet — richten Sie zuerst einen in den Einstellungen ein.",
+    noPbsServerBanner: "⚠️ Es ist kein PBS-Server eingerichtet.",
+    openPreferences: "Einstellungen öffnen",
 
     // Common
     save: "Speichern",
@@ -1571,6 +1603,14 @@ const translations = {
     themeFieldHeroEnd: "Gradient — jasny koniec",
     themeCustomHint: "Standardowe 6-cyfrowe wartości hex CSS. Nieprawidłowa wartość jest ignorowana.",
     themePreview: "Podgląd",
+    prefsTitle: "Preferencje",
+    prefsAccountInfo: "Informacje o koncie",
+    prefsBackupOptions: "Opcje kopii zapasowej",
+    prefsOK: "OK",
+    prefsHelp: "Pomoc",
+    noPbsServerConfigured: "Nie skonfigurowano jeszcze serwera PBS — najpierw skonfiguruj go w Preferencjach.",
+    noPbsServerBanner: "⚠️ Nie skonfigurowano serwera PBS.",
+    openPreferences: "Otwórz Preferencje",
 
     // Common
     save: "Zapisz",
