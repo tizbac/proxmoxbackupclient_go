@@ -399,6 +399,9 @@ func (a *App) SaveConfig(config *Config) error {
 		if config.Secret == "" {
 			config.Secret = a.config.Secret
 		}
+		if config.Theme == nil {
+			config.Theme = a.config.Theme
+		}
 		if config.SMTPPassword == "" {
 			config.SMTPPassword = a.config.SMTPPassword
 		}

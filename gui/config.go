@@ -55,6 +55,27 @@ type Config struct {
 	SMTPPassword string `json:"smtp_password,omitempty"`
 	EmailFrom    string `json:"email_from,omitempty"`
 	EmailTo      string `json:"email_to,omitempty"`
+
+	// ==================== UI PREFERENCES ====================
+	// Theme is the user's Preferences > Theme choice. Persisted here (like
+	// every other setting) rather than in the frontend's browser localStorage,
+	// which doesn't survive a WebView2 profile reset. nil means "no theme
+	// saved yet — use the built-in default".
+	Theme *ThemeSettings `json:"theme,omitempty"`
+}
+
+// ThemeSettings is the app's accent color plus the hero banner's 3-stop
+// gradient (dark end -> Accent, at 60% -> light end). Accent/AccentHover/
+// HeroStart/HeroEnd are only meaningful when Preset == "custom" — for a
+// built-in preset the frontend already knows its colors and only needs the
+// name, but they're saved either way so a custom theme's exact values
+// survive even if the built-in preset list changes later.
+type ThemeSettings struct {
+	Preset      string `json:"preset"` // "amber" | "blue" | "green" | "red" | "dark" | "custom"
+	Accent      string `json:"accent,omitempty"`
+	AccentHover string `json:"accentHover,omitempty"`
+	HeroStart   string `json:"heroStart,omitempty"`
+	HeroEnd     string `json:"heroEnd,omitempty"`
 }
 
 // sanitized returns a copy of the config with all secrets stripped (legacy PBS
@@ -193,7 +214,7 @@ func LoadConfig() *Config {
 		// Create default PBS server from legacy config
 		defaultPBS := &PBSServer{
 			ID:              "default",
-			Name:            "Serveur PBS Principal",
+			Name:            "Main PBS Server",
 			BaseURL:         config.BaseURL,
 			CertFingerprint: config.CertFingerprint,
 			AuthID:          config.AuthID,

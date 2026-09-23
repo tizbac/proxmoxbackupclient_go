@@ -524,7 +524,7 @@ function App() {
             setBrand(b)
             // A saved Theme choice (Preferences) always wins over the brand's own
             // default accent — it's a later, more specific, explicit user choice.
-            if (!hasStoredTheme()) {
+            if (!(await hasStoredTheme())) {
               const root = document.documentElement.style
               if (b.accent) root.setProperty('--accent', b.accent)
               if (b.accent_hover) root.setProperty('--accent-hover', b.accent_hover)

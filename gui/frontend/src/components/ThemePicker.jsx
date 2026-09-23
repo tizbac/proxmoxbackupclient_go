@@ -13,7 +13,6 @@ const PRESETS = {
   dark: { accent: '#2b2b2b', accentHover: '#1a1a1a', heroStart: '#0d0d0d', heroEnd: '#4a4a4a' },
 }
 
-const STORAGE_KEY = 'pbsTheme'
 const HEX_RE = /^#[0-9a-fA-F]{6}$/
 
 // Accepts "#b3261e", "b3261e", or either with stray whitespace — typing the
@@ -36,16 +35,24 @@ function applyTheme(colors) {
   root.setProperty('--hero-end', colors.heroEnd)
 }
 
-// Loads any saved theme preference and applies it immediately. Exported so
-// App.jsx's brand-loading effect can check for a saved preference and skip
-// overwriting it with the brand's own default accent — a saved theme choice
-// always wins, regardless of which effect happens to run first.
-export function hasStoredTheme() {
-  try {
-    return !!localStorage.getItem(STORAGE_KEY)
-  } catch {
-    return false
-  }
+// Theme is persisted via the Go backend (config.json, alongside every other
+// setting) rather than browser localStorage — see gui/theme.go. Accessed as
+// a plain global rather than threaded through App.jsx's props, since Theme
+// is a self-contained concern nothing else in the app depends on.
+function backendGetTheme() {
+  return window.go?.main?.App?.GetTheme ? window.go.main.App.GetTheme() : Promise.resolve(null)
+}
+function backendSaveTheme(theme) {
+  if (window.go?.main?.App?.SaveTheme) window.go.main.App.SaveTheme(theme)
+}
+
+// Resolves true if a theme has already been saved. Exported so App.jsx's
+// brand-loading effect can skip applying the brand's own default accent when
+// a saved theme should take precedence — a saved theme choice always wins,
+// regardless of which effect happens to run first.
+export async function hasStoredTheme() {
+  const saved = await backendGetTheme()
+  return !!(saved && saved.preset)
 }
 
 export default function ThemePicker() {
@@ -58,25 +65,27 @@ export default function ThemePicker() {
   // accent when a theme is stored (see hasStoredTheme); it never applies one
   // itself, so this is the one place a saved theme takes effect on startup.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw) return
-      const saved = JSON.parse(raw)
-      if (saved.preset) setPreset(saved.preset)
-      const colors = saved.preset === 'custom' ? { ...PRESETS.amber, ...saved.custom } : PRESETS[saved.preset]
-      if (saved.custom) setCustom({ ...PRESETS.amber, ...saved.custom })
+    let cancelled = false
+    backendGetTheme().then((saved) => {
+      if (cancelled || !saved || !saved.preset) return
+      setPreset(saved.preset)
+      const customColors = {
+        accent: saved.accent || PRESETS.amber.accent,
+        accentHover: saved.accentHover || PRESETS.amber.accentHover,
+        heroStart: saved.heroStart || PRESETS.amber.heroStart,
+        heroEnd: saved.heroEnd || PRESETS.amber.heroEnd,
+      }
+      const colors = saved.preset === 'custom' ? customColors : PRESETS[saved.preset]
+      if (saved.preset === 'custom') setCustom(customColors)
       if (colors) applyTheme(colors)
-    } catch {
-      // ignore corrupt saved value, keep defaults
-    }
+    }).catch(() => {
+      // Backend unavailable (dev preview without Wails) — keep CSS defaults.
+    })
+    return () => { cancelled = true }
   }, [])
 
   const save = (nextPreset, nextCustom) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ preset: nextPreset, custom: nextCustom }))
-    } catch {
-      // localStorage unavailable (private mode etc.) — theme still applies for this session
-    }
+    backendSaveTheme({ preset: nextPreset, ...nextCustom })
   }
 
   const pick = (name) => {
@@ -104,7 +113,7 @@ export default function ThemePicker() {
 
   return (
     <div className="card" style={{ marginBottom: '20px' }}>
-      <h3 style={{ marginTop: 0 }}>🎨 {t('themeTitle')}</h3>
+      <h3 style={{ marginTop: 0 }}>{t('themeTitle')}</h3>
       <p style={{ color: '#718096', fontSize: '13px', marginBottom: '14px' }}>{t('themeIntro')}</p>
 
       <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
