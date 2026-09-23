@@ -908,12 +908,22 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		CertFingerprint: pbsCfg.CertFingerprint,
 		BackupObjects:   targetDirs,
 		BackupID:        backupID,
-		BackupType:      "host", // "host" for directory, would be "vm" for machine
-		UseVSS:          useVSS,
-		Compression:     compression,
-		ExcludeList:     excludeList,
-		DisableSplit:    a.config.DisableSplit,
-		SplitSizeBytes:  a.config.SplitSizeBytes(),
+		// Kind decides which backup pipeline RunBackupInline actually runs
+		// (directory walk vs. raw-disk machine backup) — added 2026-09-23
+		// after this was left unset here, silently misrouting a
+		// machine-type call into the directory pipeline (found via
+		// scheduler.go's executeScheduledJob, which used to call this
+		// function's caller, StartBackup, for machine jobs too — fixed
+		// there as well, this is defensive so a future caller doing the
+		// same thing fails safely instead of the directory path trying to
+		// treat a \\.\PhysicalDriveN device path as a folder).
+		Kind:           backupType,
+		BackupType:     "host", // "host" for directory, would be "vm" for machine
+		UseVSS:         useVSS,
+		Compression:    compression,
+		ExcludeList:    excludeList,
+		DisableSplit:   a.config.DisableSplit,
+		SplitSizeBytes: a.config.SplitSizeBytes(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 

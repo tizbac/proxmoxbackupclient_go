@@ -26,14 +26,14 @@ type ScheduledJob struct {
 	// PBSServerID is which configured PBS server this set backs up to; ""
 	// means the app's current default server (same convention Restore's own
 	// server dropdown already uses).
-	PBSServerID  string   `json:"pbsServerId,omitempty"`
-	UseVSS       bool     `json:"useVSS"`
-	BackupType   string   `json:"backupType"`
-	ExcludeList  []string `json:"excludeList"`
-	Compression  string   `json:"compression"`       // "fastest", "default", "better", "best"
-	LastRun      string   `json:"lastRun,omitempty"` // ISO timestamp
-	NextRun      string   `json:"nextRun,omitempty"` // ISO timestamp
-	Enabled      bool     `json:"enabled"`
+	PBSServerID string   `json:"pbsServerId,omitempty"`
+	UseVSS      bool     `json:"useVSS"`
+	BackupType  string   `json:"backupType"`
+	ExcludeList []string `json:"excludeList"`
+	Compression string   `json:"compression"`       // "fastest", "default", "better", "best"
+	LastRun     string   `json:"lastRun,omitempty"` // ISO timestamp
+	NextRun     string   `json:"nextRun,omitempty"` // ISO timestamp
+	Enabled     bool     `json:"enabled"`
 
 	// TriggerMode selects how ScheduleTime/the interval fields below are
 	// interpreted. "" (the zero value, matching every job saved before this
@@ -785,16 +785,40 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 		driveLetters = []string{}
 	}
 
-	err := a.StartBackup(
-		job.BackupType,
-		job.BackupDirs,
-		driveLetters,
-		job.ExcludeList,
-		job.BackupID,
-		job.UseVSS,
-		compression,
-		job.PBSServerID,
-	)
+	// Route to the right top-level entry point by the job's own type — a
+	// machine (whole-disk) backup set must call StartMachineBackup, not
+	// StartBackup. Found 2026-09-23: this always called StartBackup
+	// regardless of type, which for a machine job passed \\.\PhysicalDriveN
+	// device paths into the DIRECTORY backup pipeline (RunBackupInline
+	// decides machine vs. directory via BackupOptions.Kind, which
+	// startBackupDirect never sets) — silently misrouted into treating a
+	// raw device path as a folder to walk, panicking almost immediately
+	// ("slice bounds out of range") rather than doing an actual disk
+	// backup. Only the frontend's own one-off machine backup button ever
+	// called StartMachineBackup correctly; every SCHEDULED machine backup
+	// set has never actually worked.
+	var err error
+	if job.BackupType == "machine" {
+		err = a.StartMachineBackup(
+			job.BackupType,
+			driveLetters,
+			job.BackupID,
+			job.UseVSS,
+			compression,
+			job.PBSServerID,
+		)
+	} else {
+		err = a.StartBackup(
+			job.BackupType,
+			job.BackupDirs,
+			driveLetters,
+			job.ExcludeList,
+			job.BackupID,
+			job.UseVSS,
+			compression,
+			job.PBSServerID,
+		)
+	}
 
 	// Add history entry derived from the REAL outcome. In service mode StartBackup
 	// runs synchronously (app_service_stubs.go returns RunBackupInline's error), so
