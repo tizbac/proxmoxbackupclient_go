@@ -43,6 +43,13 @@ const translations = {
     limitationNtfsAcl: "La restauration des permissions NTFS (ACL), des flux de données alternatifs et des attributs étendus n'est pas encore implémentée : les fichiers sont restaurés avec les permissions par défaut.",
     limitationDevBuild: "Les Rapports et le Journal des messages sont en cours de développement et ne sont pas encore disponibles.",
     devBuildBadge: "Version de développement",
+    messageLogEmpty: "Aucun message pour le moment.",
+    msgColDateTime: "Date / Heure",
+    msgColSource: "Source",
+    msgColMessage: "Message",
+    msgSourceBackup: "Sauvegarde",
+    msgSourceRestore: "Restauration",
+    msgLogCap: "Limite de 1 000 messages.",
 
     // Common
     save: "Enregistrer",
@@ -400,6 +407,13 @@ const translations = {
     limitationNtfsAcl: "Restoring NTFS permissions (ACLs), alternate data streams and extended attributes isn't implemented yet — files restore with default permissions.",
     limitationDevBuild: "Reports and the Message Log are being built next and aren't available yet.",
     devBuildBadge: "Development build",
+    messageLogEmpty: "No messages yet.",
+    msgColDateTime: "Date / Time",
+    msgColSource: "Source",
+    msgColMessage: "Message",
+    msgSourceBackup: "Backup",
+    msgSourceRestore: "Restore",
+    msgLogCap: "1,000 message cap.",
 
     // Common
     save: "Save",
@@ -757,6 +771,13 @@ const translations = {
     limitationNtfsAcl: "Il ripristino dei permessi NTFS (ACL), dei flussi di dati alternativi e degli attributi estesi non è ancora implementato: i file vengono ripristinati con i permessi predefiniti.",
     limitationDevBuild: "Report e Registro messaggi sono in fase di sviluppo e non sono ancora disponibili.",
     devBuildBadge: "Versione di sviluppo",
+    messageLogEmpty: "Nessun messaggio per ora.",
+    msgColDateTime: "Data / Ora",
+    msgColSource: "Origine",
+    msgColMessage: "Messaggio",
+    msgSourceBackup: "Backup",
+    msgSourceRestore: "Ripristino",
+    msgLogCap: "Limite di 1.000 messaggi.",
 
     // Common
     save: "Salva",
@@ -1114,6 +1135,13 @@ const translations = {
     limitationNtfsAcl: "Die Wiederherstellung von NTFS-Berechtigungen (ACLs), alternativen Datenströmen und erweiterten Attributen ist noch nicht implementiert — Dateien werden mit Standardberechtigungen wiederhergestellt.",
     limitationDevBuild: "Berichte und das Meldungsprotokoll befinden sich in Entwicklung und sind noch nicht verfügbar.",
     devBuildBadge: "Entwicklungsversion",
+    messageLogEmpty: "Noch keine Meldungen.",
+    msgColDateTime: "Datum / Uhrzeit",
+    msgColSource: "Quelle",
+    msgColMessage: "Meldung",
+    msgSourceBackup: "Sicherung",
+    msgSourceRestore: "Wiederherstellung",
+    msgLogCap: "Begrenzt auf 1.000 Meldungen.",
 
     // Common
     save: "Speichern",
@@ -1471,6 +1499,13 @@ const translations = {
     limitationNtfsAcl: "Przywracanie uprawnień NTFS (ACL), alternatywnych strumieni danych i rozszerzonych atrybutów nie jest jeszcze zaimplementowane — pliki są przywracane z domyślnymi uprawnieniami.",
     limitationDevBuild: "Raporty i Dziennik komunikatów są w trakcie tworzenia i nie są jeszcze dostępne.",
     devBuildBadge: "Wersja rozwojowa",
+    messageLogEmpty: "Brak komunikatów.",
+    msgColDateTime: "Data / godzina",
+    msgColSource: "Źródło",
+    msgColMessage: "Komunikat",
+    msgSourceBackup: "Kopia zapasowa",
+    msgSourceRestore: "Przywracanie",
+    msgLogCap: "Limit 1000 komunikatów.",
 
     // Common
     save: "Zapisz",

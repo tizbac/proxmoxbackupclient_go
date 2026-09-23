@@ -8,7 +8,7 @@ import KnownLimitationsModal from './components/KnownLimitationsModal'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
-let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, RunScheduledJobNow, GetJobHistory, GetSystemInfo, GetLastBackupDirs
+let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, RunScheduledJobNow, GetJobHistory, GetMessageLog, GetSystemInfo, GetLastBackupDirs
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
@@ -39,6 +39,7 @@ if (window.go) {
   DeleteScheduledJob = window.go.main.App.DeleteScheduledJob
   RunScheduledJobNow = window.go.main.App.RunScheduledJobNow
   GetJobHistory = window.go.main.App.GetJobHistory
+  GetMessageLog = window.go.main.App.GetMessageLog
   GetSystemInfo = window.go.main.App.GetSystemInfo
   GetLastBackupDirs = window.go.main.App.GetLastBackupDirs
   // Multi-PBS
@@ -168,6 +169,7 @@ function App() {
   const [daysOfWeek, setDaysOfWeek] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
   const [scheduledJobs, setScheduledJobs] = useState([])
   const [jobHistory, setJobHistory] = useState([])
+  const [messageLog, setMessageLog] = useState([])
   const [editingJobId, setEditingJobId] = useState(null) // Track which job is being edited
   const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
   const [backupStats, setBackupStats] = useState({
@@ -483,6 +485,16 @@ function App() {
       if (unsubLimitations) unsubLimitations()
     }
   }, [])
+
+  // Message Log is refetched each time its tab becomes active rather than
+  // kept live — it's a review/audit screen, not something the user watches
+  // update in real time while a backup runs (backup:progress covers that).
+  useEffect(() => {
+    if (activeTab !== 'messagelog' || !GetMessageLog) return
+    GetMessageLog().then(setMessageLog).catch((err) => {
+      console.error('GetMessageLog failed:', err)
+    })
+  }, [activeTab])
 
   // Load config with hostname on mount
   useEffect(() => {
@@ -1733,7 +1745,7 @@ function App() {
         <button className="nav-btn nav-btn-disabled" disabled title={t('comingSoon')}>
           {t('navReports')}
         </button>
-        <button className="nav-btn nav-btn-disabled" disabled title={t('comingSoon')}>
+        <button className={`nav-btn ${activeTab === 'messagelog' ? 'active' : ''}`} onClick={() => setActiveTab('messagelog')}>
           {t('navMessageLog')}
         </button>
         <div className="nav-spacer" />
@@ -3080,6 +3092,53 @@ function App() {
               {t('techStack')}
             </p>
           </div>
+        </div>
+
+        {/* Message Log Tab */}
+        <div className={`tab-content ${activeTab === 'messagelog' ? 'active' : ''}`}>
+          <h2>📜 {t('navMessageLog')}</h2>
+          {messageLog.length === 0 ? (
+            <p style={{color: '#718096'}}>{t('messageLogEmpty')}</p>
+          ) : (
+            <div style={{border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden'}}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '16px',
+                padding: '8px 14px', fontSize: '12px', fontWeight: 'bold',
+                color: '#718096', backgroundColor: '#f7fafc', borderBottom: '1px solid #e2e8f0',
+                textTransform: 'uppercase', letterSpacing: '0.03em',
+              }}>
+                <span style={{flex: '0 0 160px'}}>{t('msgColDateTime')}</span>
+                <span style={{flex: '0 0 100px'}}>{t('msgColSource')}</span>
+                <span style={{flex: '1 1 auto'}}>{t('msgColMessage')}</span>
+              </div>
+              <div style={{maxHeight: '520px', overflowY: 'auto'}}>
+                {messageLog.map((entry, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '16px',
+                      padding: '8px 14px', fontSize: '13px',
+                      borderTop: idx === 0 ? 'none' : '1px solid #f0f0f0',
+                    }}
+                  >
+                    <span style={{flex: '0 0 160px', color: '#718096'}}>
+                      {new Date(entry.timestamp).toLocaleString()}
+                    </span>
+                    <span style={{flex: '0 0 100px', color: '#718096'}}>
+                      {entry.source === 'Backup' ? t('msgSourceBackup')
+                        : entry.source === 'Restore' ? t('msgSourceRestore')
+                        : entry.source}
+                    </span>
+                    <span style={{flex: '1 1 auto'}}>
+                      {entry.level === 'error' ? '❌ ' : entry.level === 'warning' ? '⚠️ ' : 'ℹ️ '}
+                      {entry.message}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <p style={{fontSize: '11px', color: '#a0aec0', marginTop: '10px'}}>{t('msgLogCap')}</p>
         </div>
       </div>
 

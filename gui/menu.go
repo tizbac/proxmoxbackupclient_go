@@ -35,8 +35,9 @@ func buildAppMenu(a *App) *menu.Menu {
 	})
 	reportsItem := viewMenu.AddText("Reports", nil, nil)
 	reportsItem.Disabled = true
-	msgLogItem := viewMenu.AddText("Message Log", nil, nil)
-	msgLogItem.Disabled = true
+	viewMenu.AddText("Message Log", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "messagelog")
+	})
 
 	toolsMenu := appMenu.AddSubmenu("Tools")
 	backupSetsItem := toolsMenu.AddText("Manage Backup Sets…", nil, nil)

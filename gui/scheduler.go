@@ -352,8 +352,17 @@ func (a *App) GetJobHistory() ([]JobHistory, error) {
 	return history, nil
 }
 
-// AddJobHistory adds a job to history
+// AddJobHistory adds a job to history. Every backup completion (scheduled or
+// interactive one-shot) funnels through here, which makes it the single safe
+// place to also feed the Message Log — no need to touch the backup control
+// flow itself at each of its several completion sites.
 func (a *App) AddJobHistory(entry JobHistory) error {
+	level := "info"
+	if entry.Status == "failed" {
+		level = "error"
+	}
+	LogMessage("Backup", level, fmt.Sprintf("%s: %s", entry.Name, entry.Message))
+
 	history, err := a.GetJobHistory()
 	if err != nil {
 		// Refuse to overwrite the history file with just this entry when the

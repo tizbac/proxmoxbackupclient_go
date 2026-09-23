@@ -1476,6 +1476,11 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 			msg = err.Error()
 			writeDebugLog(fmt.Sprintf("Restore failed: %v", err))
 		}
+		restoreLevel := "info"
+		if !success {
+			restoreLevel = "error"
+		}
+		LogMessage("Restore", restoreLevel, msg)
 		if a.ctx != nil {
 			runtime.EventsEmit(a.ctx, "restore:complete", map[string]interface{}{
 				"success": success,
