@@ -38,10 +38,10 @@ const (
 // descendants. Paths use forward slashes (archive style); backslashes are
 // accepted and normalized.
 //
-	// RestoreACLs / RestoreADS / RestoreTimestamps are reserved for the upcoming
-	// NTFS sidecar work — accepted today so the API surface is stable, but only
-	// RestoreTimestamps has any effect (always-on: mtime is restored). The other
-	// two are no-ops until the per-file .proxmox_meta sidecar lands.
+// RestoreACLs / RestoreADS / RestoreTimestamps are reserved for the upcoming
+// NTFS sidecar work — accepted today so the API surface is stable, but only
+// RestoreTimestamps has any effect (always-on: mtime is restored). The other
+// two are no-ops until the per-file .proxmox_meta sidecar lands.
 type RestoreOptions struct {
 	BaseURL         string
 	AuthID          string
@@ -87,6 +87,11 @@ type RestoreOptions struct {
 	// BackupProgressStats — just bytes done/total and which archive is
 	// currently being fetched.
 	OnStats func(*RestoreProgressStats)
+
+	// ParallelExtraction opts into pbscommon.PXARReader.ExtractWithRewriterParallel
+	// instead of the original ExtractWithRewriter — see Config.ParallelRestore's
+	// doc comment. Defaults to false (the proven sequential path).
+	ParallelExtraction bool
 }
 
 // RestoreProgressStats is the structured payload behind RestoreOptions.OnStats.
@@ -343,7 +348,27 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, progres
 		return opts.Ctx != nil && opts.Ctx.Err() != nil
 	})
 
-	return fn(pbscommon.NewPXARReaderAt(ra, size))
+	reader := pbscommon.NewPXARReaderAt(ra, size)
+	fnErr := fn(reader)
+
+	// Diagnostic timing breakdown (added 2026-09-23, alongside the chunk
+	// prefetch work): FetchNanos/HashNanos are summed across however many
+	// concurrent prefetch fetches ran, so they can exceed real elapsed time —
+	// CopyNanos/FSOverheadNanos are real wall-clock (extraction is
+	// single-threaded), so they're the more direct signal for "is the
+	// filesystem side now the bottleneck".
+	rs := ra.Stats()
+	ps := reader.Stats()
+	writeBackupLog(fmt.Sprintf(
+		"%s: timing breakdown for %s — chunk fetch %.2fs (network+decompress, %d chunks), hash verify %.2fs, archive copy %.2fs, filesystem overhead %.2fs (create/close/rename/chtimes)",
+		logTag, archiveName,
+		time.Duration(rs.FetchNanos).Seconds(), rs.ChunksFetched,
+		time.Duration(rs.HashNanos).Seconds(),
+		time.Duration(ps.CopyNanos).Seconds(),
+		time.Duration(ps.FSOverheadNanos).Seconds(),
+	))
+
+	return fnErr
 }
 
 // listSnapshotViaCatalog lists a snapshot's file tree from the compact
@@ -1041,7 +1066,11 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		}, nil, func(reader *pbscommon.PXARReader) error {
 			progress(archiveBase+archiveSpan*0.9, fmt.Sprintf("Extracting %s...", archiveName))
 			var eerr error
-			extractedHere, eerr = reader.ExtractWithRewriter(archiveRewriter, archiveIncludes, opts.Overwrite)
+			if opts.ParallelExtraction {
+				extractedHere, eerr = reader.ExtractWithRewriterParallel(archiveRewriter, archiveIncludes, opts.Overwrite, 0)
+			} else {
+				extractedHere, eerr = reader.ExtractWithRewriter(archiveRewriter, archiveIncludes, opts.Overwrite)
+			}
 			if eerr != nil {
 				writeBackupLog(fmt.Sprintf("PXAR extraction failed for %s: %v", archiveName, eerr))
 				return fmt.Errorf("failed to extract archive %s: %v", archiveName, eerr)

@@ -104,7 +104,8 @@ function App() {
     namespace: '',
     backupdir: '',
     'backup-id': '',
-    usevss: true
+    usevss: true,
+    parallel_restore: false
   })
 
   // Multi-PBS states
@@ -1004,6 +1005,25 @@ function App() {
 
   // ==================== END MULTI-PBS HANDLERS ====================
 
+  // Shared shape SaveConfig expects — SaveConfig REPLACES the whole stored
+  // config (aside from a few backend-preserved fields like the PBS secret),
+  // so any caller saving even one unrelated setting (e.g. the Advanced tab's
+  // parallel-restore toggle) must still round-trip every other field here or
+  // risk wiping them. Centralized so the Account Info save and any other
+  // settings save can't drift apart on this.
+  const buildTrimmedConfig = (cfg) => ({
+    baseurl: (cfg.baseurl || '').trim(),
+    certfingerprint: (cfg.certfingerprint || '').trim(),
+    authid: (cfg.authid || '').trim(),
+    secret: (cfg.secret || '').trim(),
+    datastore: (cfg.datastore || '').trim(),
+    namespace: (cfg.namespace || '').trim(),
+    backupdir: (cfg.backupdir || '').trim(),
+    'backup-id': (cfg['backup-id'] || '').trim() || hostname, // Use hostname if empty
+    usevss: cfg.usevss !== undefined ? cfg.usevss : true,
+    parallel_restore: !!cfg.parallel_restore
+  })
+
   const handleSaveConfig = async () => {
     if (!SaveConfig) {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
@@ -1011,18 +1031,7 @@ function App() {
     }
 
     try {
-      // Trim all string values to remove whitespace (with safe fallback for undefined)
-      const trimmedConfig = {
-        baseurl: (config.baseurl || '').trim(),
-        certfingerprint: (config.certfingerprint || '').trim(),
-        authid: (config.authid || '').trim(),
-        secret: (config.secret || '').trim(),
-        datastore: (config.datastore || '').trim(),
-        namespace: (config.namespace || '').trim(),
-        backupdir: (config.backupdir || '').trim(),
-        'backup-id': (config['backup-id'] || '').trim() || hostname, // Use hostname if empty
-        usevss: config.usevss !== undefined ? config.usevss : true
-      }
+      const trimmedConfig = buildTrimmedConfig(config)
       await SaveConfig(trimmedConfig)
       setConfig(trimmedConfig)
       showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
@@ -1867,6 +1876,9 @@ function App() {
                 <button className={`tabhead ${prefsTab === 'theme' ? 'active' : ''}`} onClick={() => setPrefsTab('theme')}>
                   {t('themeTitle')}
                 </button>
+                <button className={`tabhead ${prefsTab === 'advanced' ? 'active' : ''}`} onClick={() => setPrefsTab('advanced')}>
+                  {t('prefsAdvanced')}
+                </button>
                 <button className="tabhead disabled" disabled title={t('comingSoon')}>{t('navMessageLog')}</button>
               </div>
 
@@ -1979,6 +1991,35 @@ function App() {
                 )}
 
                 {prefsTab === 'theme' && <ThemePicker />}
+
+                {prefsTab === 'advanced' && (
+                  <>
+                    <h2 style={{marginTop: 0}}>{t('prefsAdvanced')}</h2>
+                    <div className="form-group">
+                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
+                        <input
+                          type="checkbox"
+                          checked={!!config.parallel_restore}
+                          onChange={async (e) => {
+                            const updated = {...config, parallel_restore: e.target.checked}
+                            setConfig(updated)
+                            if (!SaveConfig) return
+                            try {
+                              await SaveConfig(buildTrimmedConfig(updated))
+                              showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                            }
+                          }}
+                        />
+                        <span>{t('parallelRestoreLabel')}</span>
+                      </label>
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('parallelRestoreHint')}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div style={{display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 26px', borderTop: '1px solid #ddd', flex: '0 0 auto'}}>

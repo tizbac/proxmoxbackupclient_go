@@ -34,8 +34,8 @@ type Config struct {
 	// so it authenticates via the PBSAuthCookie.
 	Ticket    string `json:"-"`
 	CSRFToken string `json:"-"`
-	Datastore       string `json:"datastore,omitempty"`
-	Namespace       string `json:"namespace,omitempty"`
+	Datastore string `json:"datastore,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 
 	// ==================== BACKUP SETTINGS ====================
 	BackupDir      string   `json:"backupdir,omitempty"`
@@ -47,6 +47,19 @@ type Config struct {
 	// per-bin target size; 0 means the default (DefaultSplitSizeGB).
 	DisableSplit bool `json:"disable_split,omitempty"`
 	SplitSizeGB  int  `json:"split_size_gb,omitempty"`
+
+	// ==================== RESTORE SETTINGS ====================
+	// ParallelRestore opts into extracting files through a worker pool
+	// instead of one at a time — added 2026-09-23 after a real restore's
+	// timing breakdown showed per-file filesystem overhead (create/close/
+	// rename/chtimes), not network, as the dominant cost once chunk-fetch
+	// prefetch was in place. Defaults to false (the original, proven
+	// sequential path — pbscommon.PXARReader.ExtractWithRewriter) since this
+	// is newer, less-proven code touching real file writes during restore;
+	// true uses ExtractWithRewriterParallel instead. Both paths are kept
+	// fully independent in pbscommon so this can never change the default's
+	// behavior.
+	ParallelRestore bool `json:"parallel_restore,omitempty"`
 
 	// ==================== EMAIL NOTIFICATIONS ====================
 	SMTPHost     string `json:"smtp_host,omitempty"`

@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,6 +26,38 @@ type PXARReader struct {
 	ra     io.ReaderAt
 	size   int64
 	offset int64
+
+	// copyNanos/fsOverheadNanos accumulate wall-clock time spent during
+	// ExtractWithRewriter: copyNanos is time inside io.Copy (reading archive
+	// payload — including any chunk-cache-miss wait — and writing it to the
+	// temp file); fsOverheadNanos is everything else per file (CreateTemp,
+	// Close, Rename, Chtimes). Extraction is single-threaded (one entry at a
+	// time), so unlike DIDXReaderAtStats these ARE real wall-clock time on
+	// the critical path, not a sum across concurrent goroutines. Diagnostic
+	// only, added 2026-09-23 alongside DIDXReaderAtStats — see Stats' doc
+	// comment.
+	copyNanos       atomic.Int64
+	fsOverheadNanos atomic.Int64
+}
+
+// PXARReaderStats is a snapshot of where ExtractWithRewriter's time went.
+// Unlike DIDXReaderAtStats, these ARE real cumulative wall-clock time on the
+// single extraction thread (no concurrency to sum across), so CopyNanos +
+// FSOverheadNanos is a meaningful fraction of the whole extraction's
+// duration — directly comparable against the DIDXReaderAt's own FetchNanos
+// to see which side (network/decompress/hash vs. local filesystem) actually
+// dominates a given restore.
+type PXARReaderStats struct {
+	CopyNanos       int64 // time inside io.Copy (archive payload -> temp file, includes any cache-miss wait)
+	FSOverheadNanos int64 // time in CreateTemp/Close/Rename/Chtimes, summed across every extracted file
+}
+
+// Stats returns a snapshot of this reader's cumulative extraction time so far.
+func (pr *PXARReader) Stats() PXARReaderStats {
+	return PXARReaderStats{
+		CopyNanos:       pr.copyNanos.Load(),
+		FSOverheadNanos: pr.fsOverheadNanos.Load(),
+	}
 }
 
 // PXARHeader represents a generic PXAR entry header.
@@ -415,7 +449,9 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		// (v2-H-08). NOTE: a symlink/reparse point in the destination's PARENT chain
 		// can still redirect the write — confining the parent chain (no-follow /
 		// Windows reparse handling) is a separate hardening.
+		fsStart := time.Now()
 		out, err := os.CreateTemp(filepath.Dir(fullPath), filepath.Base(fullPath)+".proxmox-*.part")
+		pr.fsOverheadNanos.Add(int64(time.Since(fsStart)))
 		if err != nil {
 			extracted = append(extracted, PXARExtractedFile{
 				Path: fullPath, Size: e.Size,
@@ -425,8 +461,12 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		}
 		tmpPath := out.Name()
 		_ = out.Chmod(os.FileMode(e.Mode & 0777))
+		copyStart := time.Now()
 		_, copyErr := io.Copy(out, payload)
+		pr.copyNanos.Add(int64(time.Since(copyStart)))
+		fsStart = time.Now()
 		closeErr := out.Close()
+		pr.fsOverheadNanos.Add(int64(time.Since(fsStart)))
 		if copyErr != nil {
 			_ = os.Remove(tmpPath)
 			extracted = append(extracted, PXARExtractedFile{
@@ -443,7 +483,10 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			})
 			return nil
 		}
-		if renErr := os.Rename(tmpPath, fullPath); renErr != nil {
+		fsStart = time.Now()
+		renErr := os.Rename(tmpPath, fullPath)
+		pr.fsOverheadNanos.Add(int64(time.Since(fsStart)))
+		if renErr != nil {
 			_ = os.Remove(tmpPath)
 			extracted = append(extracted, PXARExtractedFile{
 				Path: fullPath, Size: e.Size,
@@ -452,8 +495,10 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			return nil
 		}
 		if e.ModTime > 0 {
+			fsStart = time.Now()
 			t := time.Unix(e.ModTime, 0)
 			_ = os.Chtimes(fullPath, t, t)
+			pr.fsOverheadNanos.Add(int64(time.Since(fsStart)))
 		}
 		extracted = append(extracted, PXARExtractedFile{
 			Path: fullPath, Size: e.Size,
@@ -462,6 +507,184 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		return nil
 	})
 	return extracted, err
+}
+
+// ExtractWithRewriterParallel is ExtractWithRewriter's opt-in, experimental
+// twin (added 2026-09-23 — see Config.ParallelRestore): same semantics, same
+// zip-slip/overwrite/include rules, but each file's slow per-file filesystem
+// work (CreateTemp/Copy/Close/Rename/Chtimes — measured as the dominant cost
+// once chunk-fetch prefetch made network no longer the bottleneck) runs on a
+// bounded worker pool instead of one file at a time.
+//
+// This is safe because each file's payload is an independent io.SectionReader
+// over the archive's underlying io.ReaderAt (see the PXAR_PAYLOAD case in
+// walk) — reading it later, from a different goroutine, doesn't depend on the
+// walk's own position. When that underlying reader is a DIDXReaderAt (the
+// restore path), concurrent ReadAt calls are already safe by design (the
+// inflight map coalesces concurrent requests for the same chunk — see
+// TestDIDXReaderAt_ConcurrentReadersCoalesce).
+//
+// Deliberately NOT sharing code with ExtractWithRewriter: the two are kept
+// fully independent so enabling this can never change what the proven
+// sequential path does, and disabling it always reverts to exactly that
+// path's existing, unmodified behavior.
+//
+// Directory creation, the archive walk itself, and the overwrite-exists
+// check all stay on the walking goroutine (cheap, and a file's parent
+// directory must exist before a worker can write into it) — only the slow
+// per-file work is handed to workers. workers <= 0 defaults to 4.
+func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, includePaths []string, overwrite bool, workers int) ([]PXARExtractedFile, error) {
+	if rewriter == nil {
+		return nil, fmt.Errorf("path rewriter required")
+	}
+	if workers <= 0 {
+		workers = 4
+	}
+	includes := NormalizeIncludes(includePaths)
+
+	type fileJob struct {
+		entry    PXARTreeEntry
+		fullPath string
+		payload  *io.SectionReader
+	}
+
+	var mu sync.Mutex
+	extracted := make([]PXARExtractedFile, 0, 64)
+	appendResult := func(r PXARExtractedFile) {
+		mu.Lock()
+		extracted = append(extracted, r)
+		mu.Unlock()
+	}
+
+	jobs := make(chan fileJob, workers*2)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				appendResult(pr.extractOneFileParallel(j.entry, j.fullPath, j.payload))
+			}
+		}()
+	}
+
+	walkErr := pr.walk(func(e PXARTreeEntry, payload *io.SectionReader) error {
+		if !pathMatches(e.Path, includes) {
+			return nil
+		}
+		if isUnsafeArchivePath(e.Path) {
+			appendResult(PXARExtractedFile{
+				Path: e.Path, IsDir: e.IsDir,
+				Skipped: true, SkipReason: "unsafe archive path refused (possible traversal)",
+			})
+			return nil
+		}
+		fullPath := rewriter(e.Path)
+		if fullPath == "" {
+			return nil
+		}
+		if e.IsDir {
+			if err := os.MkdirAll(fullPath, 0755); err != nil {
+				appendResult(PXARExtractedFile{
+					Path: fullPath, IsDir: true,
+					Skipped: true, SkipReason: fmt.Sprintf("mkdir: %v", err),
+				})
+				return nil
+			}
+			appendResult(PXARExtractedFile{
+				Path: fullPath, IsDir: true,
+				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime,
+			})
+			return nil
+		}
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+			appendResult(PXARExtractedFile{
+				Path: fullPath, Size: e.Size,
+				Skipped: true, SkipReason: fmt.Sprintf("mkdir parent: %v", err),
+			})
+			return nil
+		}
+		if !overwrite {
+			if _, err := os.Stat(fullPath); err == nil {
+				appendResult(PXARExtractedFile{
+					Path: fullPath, Size: e.Size,
+					Skipped: true, Expected: true, SkipReason: "already exists",
+				})
+				return nil
+			}
+		}
+		jobs <- fileJob{entry: e, fullPath: fullPath, payload: payload}
+		return nil
+	})
+
+	close(jobs)
+	wg.Wait()
+
+	return extracted, walkErr
+}
+
+// extractOneFileParallel does the actual CreateTemp/Copy/Close/Rename/Chtimes
+// work for one file, run concurrently by ExtractWithRewriterParallel's worker
+// pool. Mirrors ExtractWithRewriter's own inline file-writing body exactly
+// (same temp-then-rename safety, same zip-slip protections already applied by
+// the caller) — duplicated rather than shared, deliberately (see
+// ExtractWithRewriterParallel's doc comment).
+func (pr *PXARReader) extractOneFileParallel(e PXARTreeEntry, fullPath string, payload *io.SectionReader) PXARExtractedFile {
+	fsStart := time.Now()
+	out, err := os.CreateTemp(filepath.Dir(fullPath), filepath.Base(fullPath)+".proxmox-*.part")
+	pr.fsOverheadNanos.Add(int64(time.Since(fsStart)))
+	if err != nil {
+		return PXARExtractedFile{
+			Path: fullPath, Size: e.Size,
+			Skipped: true, SkipReason: fmt.Sprintf("open: %v", err),
+		}
+	}
+	tmpPath := out.Name()
+	_ = out.Chmod(os.FileMode(e.Mode & 0777))
+
+	copyStart := time.Now()
+	_, copyErr := io.Copy(out, payload)
+	pr.copyNanos.Add(int64(time.Since(copyStart)))
+
+	fsStart = time.Now()
+	closeErr := out.Close()
+	pr.fsOverheadNanos.Add(int64(time.Since(fsStart)))
+
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return PXARExtractedFile{
+			Path: fullPath, Size: e.Size,
+			Skipped: true, SkipReason: fmt.Sprintf("write: %v", copyErr),
+		}
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return PXARExtractedFile{
+			Path: fullPath, Size: e.Size,
+			Skipped: true, SkipReason: fmt.Sprintf("close: %v", closeErr),
+		}
+	}
+
+	fsStart = time.Now()
+	renErr := os.Rename(tmpPath, fullPath)
+	pr.fsOverheadNanos.Add(int64(time.Since(fsStart)))
+	if renErr != nil {
+		_ = os.Remove(tmpPath)
+		return PXARExtractedFile{
+			Path: fullPath, Size: e.Size,
+			Skipped: true, SkipReason: fmt.Sprintf("rename: %v", renErr),
+		}
+	}
+	if e.ModTime > 0 {
+		fsStart = time.Now()
+		t := time.Unix(e.ModTime, 0)
+		_ = os.Chtimes(fullPath, t, t)
+		pr.fsOverheadNanos.Add(int64(time.Since(fsStart)))
+	}
+	return PXARExtractedFile{
+		Path: fullPath, Size: e.Size,
+		Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime,
+	}
 }
 
 // isUnsafeArchivePath reports whether a PXAR entry path could escape the restore

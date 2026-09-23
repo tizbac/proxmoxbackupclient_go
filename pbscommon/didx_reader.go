@@ -10,6 +10,7 @@ import (
 	"io"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -32,8 +33,8 @@ const chunkFetchTimeout = 60 * time.Second
 // multiplexes concurrent streams over the one connection, so this needs no
 // extra connections, just extra goroutines issuing concurrent requests.
 const (
-	chunkPrefetchWindow      = 6 // how many chunks ahead of the one just resolved to prefetch
-	chunkPrefetchConcurrency = 4 // max background prefetch fetches in flight at once
+	chunkPrefetchWindow      = 32 // how many chunks ahead of the one just resolved to prefetch
+	chunkPrefetchConcurrency = 16 // max background prefetch fetches in flight at once
 )
 
 // ErrReadCancelled is returned by a DIDXReaderAt read once its cancel predicate
@@ -84,6 +85,41 @@ type DIDXReaderAt struct {
 	// prefetchSem bounds how many background prefetch fetches run at once,
 	// independent of however many ReadAt callers exist.
 	prefetchSem chan struct{}
+
+	// fetchNanos/hashNanos accumulate wall-clock time spent in GetChunkData
+	// (network round-trip + zstd decompression) and in the SHA-256 digest
+	// check, across every chunk this reader has fetched — including
+	// background prefetch workers, all summing into the same counters.
+	// Diagnostic only (see Stats' doc comment): added 2026-09-23 to find out
+	// where restore time actually goes once network latency was no longer
+	// the dominant cost after prefetching landed.
+	fetchNanos atomic.Int64
+	hashNanos  atomic.Int64
+}
+
+// DIDXReaderAtStats is a snapshot of where this reader's cumulative fetch
+// time went. Nanos are SUMMED across however many chunks/goroutines did the
+// work, not wall-clock — with prefetch running several fetches concurrently,
+// this can exceed the restore's real elapsed time. That's fine for its
+// purpose: comparing FetchNanos against HashNanos (and, in the caller, against
+// the extraction/write side's own totals) shows which phase dominates the
+// real work, without needing per-chunk log spam.
+type DIDXReaderAtStats struct {
+	FetchNanos    int64 // cumulative time inside GetChunkData (network + decompress)
+	HashNanos     int64 // cumulative time verifying each chunk's SHA-256
+	ChunksFetched int   // count of chunks actually fetched from the server (cache hits don't count)
+}
+
+// Stats returns a snapshot of this reader's cumulative fetch/hash time so far.
+func (r *DIDXReaderAt) Stats() DIDXReaderAtStats {
+	r.mu.Lock()
+	fetched := r.fetched
+	r.mu.Unlock()
+	return DIDXReaderAtStats{
+		FetchNanos:    r.fetchNanos.Load(),
+		HashNanos:     r.hashNanos.Load(),
+		ChunksFetched: fetched,
+	}
 }
 
 // SetCancelCheck installs a predicate polled before each read and chunk fetch;
@@ -197,9 +233,11 @@ func (r *DIDXReaderAt) fetchOnce(ci int) ([]byte, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	fetchStart := time.Now()
 	fetchCtx, cancelFetch := context.WithTimeout(ctx, chunkFetchTimeout)
 	chunk, err := r.pbs.GetChunkData(fetchCtx, digest)
 	cancelFetch()
+	r.fetchNanos.Add(int64(time.Since(fetchStart)))
 	if err != nil {
 		return nil, fmt.Errorf("fetch chunk %s (index %d/%d): %w", digest, ci, len(r.idx.digests), err)
 	}
@@ -209,7 +247,9 @@ func (r *DIDXReaderAt) fetchOnce(ci int) ([]byte, error) {
 	}
 	// PBS dynamic-index digests are the SHA-256 of the chunk plaintext; a mismatch
 	// means a corrupted or tampered chunk — fail rather than serve wrong data.
+	hashStart := time.Now()
 	sum := sha256.Sum256(chunk)
+	r.hashNanos.Add(int64(time.Since(hashStart)))
 	if hex.EncodeToString(sum[:]) != digest {
 		return nil, fmt.Errorf("chunk %s (index %d): content hash mismatch", digest, ci)
 	}
