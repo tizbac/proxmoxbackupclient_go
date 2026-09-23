@@ -28,28 +28,34 @@ type PXARReader struct {
 	offset int64
 
 	// copyNanos/fsOverheadNanos accumulate wall-clock time spent during
-	// ExtractWithRewriter: copyNanos is time inside io.Copy (reading archive
-	// payload — including any chunk-cache-miss wait — and writing it to the
-	// temp file); fsOverheadNanos is everything else per file (CreateTemp,
-	// Close, Rename, Chtimes). Extraction is single-threaded (one entry at a
-	// time), so unlike DIDXReaderAtStats these ARE real wall-clock time on
-	// the critical path, not a sum across concurrent goroutines. Diagnostic
-	// only, added 2026-09-23 alongside DIDXReaderAtStats — see Stats' doc
-	// comment.
+	// extraction: copyNanos is time inside io.Copy (reading archive payload —
+	// including any chunk-cache-miss wait — and writing it to the temp file);
+	// fsOverheadNanos is everything else per file (CreateTemp, Close, Rename,
+	// Chtimes). ExtractWithRewriter (sequential) writes one file at a time,
+	// so for THAT path these are real wall-clock time on the critical path.
+	// ExtractWithRewriterParallel shares these same counters across its
+	// worker pool, so when that path is used the totals are a SUM across
+	// however many workers ran concurrently, same caveat as
+	// DIDXReaderAtStats' FetchNanos — found 2026-09-23 when a real restore's
+	// reported "109.61s" filesystem overhead turned out to mean ~27s of real
+	// time across ~4 concurrent workers, not a genuine 5x regression (the
+	// real regression that run DID have was smaller but real: 28s wall-clock
+	// vs 22s sequential on the same archive, measured from the
+	// "Starting restore"/"Restore completed" log timestamps, not this
+	// counter). Diagnostic only, added 2026-09-23.
 	copyNanos       atomic.Int64
 	fsOverheadNanos atomic.Int64
 }
 
-// PXARReaderStats is a snapshot of where ExtractWithRewriter's time went.
-// Unlike DIDXReaderAtStats, these ARE real cumulative wall-clock time on the
-// single extraction thread (no concurrency to sum across), so CopyNanos +
-// FSOverheadNanos is a meaningful fraction of the whole extraction's
-// duration — directly comparable against the DIDXReaderAt's own FetchNanos
-// to see which side (network/decompress/hash vs. local filesystem) actually
-// dominates a given restore.
+// PXARReaderStats is a snapshot of where extraction's time went. For
+// ExtractWithRewriter (sequential) these are real cumulative wall-clock time
+// on the single extraction thread, directly comparable against the
+// DIDXReaderAt's own FetchNanos. For ExtractWithRewriterParallel they are
+// SUMMED across however many workers ran concurrently — see the copyNanos/
+// fsOverheadNanos field doc for why that distinction matters in practice.
 type PXARReaderStats struct {
 	CopyNanos       int64 // time inside io.Copy (archive payload -> temp file, includes any cache-miss wait)
-	FSOverheadNanos int64 // time in CreateTemp/Close/Rename/Chtimes, summed across every extracted file
+	FSOverheadNanos int64 // time in CreateTemp/Close/Rename/Chtimes, summed across every extracted file (and across workers, if the parallel path was used)
 }
 
 // Stats returns a snapshot of this reader's cumulative extraction time so far.
@@ -515,6 +521,16 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 // work (CreateTemp/Copy/Close/Rename/Chtimes — measured as the dominant cost
 // once chunk-fetch prefetch made network no longer the bottleneck) runs on a
 // bounded worker pool instead of one file at a time.
+//
+// NOT confirmed to actually be faster: a real test on the test VM (2 vCPUs,
+// virtualized storage) measured 28s wall-clock for this path vs 22s for the
+// sequential one on the same archive — slower, not faster, most likely
+// filesystem/lock contention from concurrent CreateTemp/Rename/Chtimes
+// outweighing the parallelism gain on that specific environment. This is
+// exactly why the setting defaults to off and exists as an opt-in rather
+// than replacing the sequential path: it may help on different hardware
+// (more cores, faster/non-virtualized storage) but should not be assumed to
+// help in general.
 //
 // This is safe because each file's payload is an independent io.SectionReader
 // over the archive's underlying io.ReaderAt (see the PXAR_PAYLOAD case in
