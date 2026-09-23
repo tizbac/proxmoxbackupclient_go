@@ -1931,55 +1931,57 @@ function App() {
                           {t('multiPBSExample')}
                         </div>
 
-                        <div className="card" style={{marginBottom: '20px'}}>
-                          <h3>{t('configuredServers')} ({pbsServers.length})</h3>
-
-                          <table style={{width: '100%', marginTop: '15px'}}>
-                            <thead>
-                              <tr>
-                                <th>{t('name')}</th>
-                                <th>{t('url')}</th>
-                                <th>{t('datastore')}</th>
-                                <th>{t('status')}</th>
-                                <th>{t('actions')}</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {pbsServers.map(server => (
-                                <tr key={server.id}>
-                                  <td>
-                                    <strong>{server.name}</strong>
-                                    {server.id === defaultPBSID && <span style={{marginLeft: '5px', color: '#fbbf24'}}>⭐ {t('default')}</span>}
-                                    {server.description && <div style={{fontSize: '0.85em', color: '#999'}}>{server.description}</div>}
-                                  </td>
-                                  <td>{server.baseurl}</td>
-                                  <td>{server.datastore}/{server.namespace || '-'}</td>
-                                  <td>
-                                    {serverStatus[server.id] === 'testing' && <span style={{color: '#3b82f6'}}>{t('testing')}</span>}
-                                    {serverStatus[server.id] === 'online' && <span style={{color: '#10b981'}}>🟢 {t('online')}</span>}
-                                    {serverStatus[server.id] === 'offline' && <span style={{color: '#ef4444'}}>🔴 {t('offline')}</span>}
-                                    {!serverStatus[server.id] && <span style={{color: '#999'}}>⚪ {t('untested')}</span>}
-                                  </td>
-                                  <td>
-                                    <button onClick={() => handleTestPBSConnection(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                                      {t('testServer')}
-                                    </button>
-                                     <button onClick={() => handleEditServer(server)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                                       {t('editServer')}
-                                     </button>
-                                     {server.id !== defaultPBSID && (
-                                      <button onClick={() => handleSetDefaultPBS(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#fbbf24'}}>
-                                        ⭐ {t('setDefault')}
-                                      </button>
-                                    )}
-                                    <button onClick={() => handleDeletePBSServer(server.id)} style={{padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#ef4444', color: 'white'}}>
-                                      {t('deleteServer')}
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                        <div style={{fontSize: '13px', fontWeight: 700, color: '#333', marginBottom: '6px'}}>
+                          {t('configuredServers')} ({pbsServers.length})
+                        </div>
+                        <div style={{border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', marginBottom: '20px'}}>
+                          {pbsServers.map((server, idx) => {
+                            const status = serverStatus[server.id]
+                            const dotColor = status === 'online' ? '#10b981' : status === 'offline' ? '#ef4444' : status === 'testing' ? '#3b82f6' : '#cbd5e1'
+                            return (
+                              <div key={server.id} style={{
+                                display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px',
+                                borderTop: idx === 0 ? 'none' : '1px solid #e6e6e6',
+                              }}>
+                                <div style={{flex: 1, minWidth: 0}}>
+                                  <strong>{server.name}</strong>
+                                  {server.id === defaultPBSID ? (
+                                    <span style={{
+                                      display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em',
+                                      padding: '2px 7px', borderRadius: '3px', background: '#fff3cd', color: '#8a6d00',
+                                      border: '1px solid #f1d98a', verticalAlign: 'middle', marginLeft: '6px',
+                                    }}>
+                                      ⭐ {t('default').toUpperCase()}
+                                    </span>
+                                  ) : (
+                                    <a href="#" onClick={(e) => { e.preventDefault(); handleSetDefaultPBS(server.id) }} style={{fontSize: '11px', color: '#3d5aa8', textDecoration: 'none', marginLeft: '8px'}}>
+                                      ☆ {t('setDefault')}
+                                    </a>
+                                  )}
+                                  {server.description && <div style={{fontSize: '0.85em', color: '#999', marginTop: '2px'}}>{server.description}</div>}
+                                  <div style={{fontSize: '12px', color: '#6c757d', marginTop: '3px'}}>
+                                    {server.baseurl} &nbsp;·&nbsp; {server.datastore}/{server.namespace || '-'}
+                                  </div>
+                                  <div style={{fontSize: '12px', color: '#888', marginTop: '2px'}}>
+                                    <span style={{display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', marginRight: '5px', background: dotColor}}></span>
+                                    {status === 'testing' && t('testing')}
+                                    {status === 'online' && t('online')}
+                                    {status === 'offline' && t('offline')}
+                                    {!status && t('untested')}
+                                  </div>
+                                </div>
+                                <button className="btn" onClick={() => handleTestPBSConnection(server.id)} style={{padding: '6px 12px', fontSize: '12.5px'}}>
+                                  {t('testServer')}
+                                </button>
+                                <button className="btn btn-secondary" onClick={() => handleEditServer(server)} style={{padding: '6px 12px', fontSize: '12.5px'}}>
+                                  {t('editServer')}
+                                </button>
+                                <button onClick={() => handleDeletePBSServer(server.id)} style={{padding: '6px 12px', fontSize: '12.5px', backgroundColor: '#fff', color: '#c0392b', border: '1px solid #f0b4ac', borderRadius: '4px', cursor: 'pointer'}}>
+                                  {t('deleteServer')}
+                                </button>
+                              </div>
+                            )
+                          })}
                         </div>
 
                         {renderServerForm()}
