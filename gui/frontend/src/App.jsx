@@ -115,6 +115,7 @@ function App() {
   const [defaultPBSID, setDefaultPBSID] = useState('')
   const [selectedPBSID, setSelectedPBSID] = useState('')
   const [editingServer, setEditingServer] = useState(null)
+  const [showServerForm, setShowServerForm] = useState(false) // Account Info: add/edit form visible below the list?
   const [serverFormData, setServerFormData] = useState({
     id: '',
     name: '',
@@ -729,6 +730,7 @@ function App() {
       })
       setEditingServer(null)
       setServerTab('server')
+      setShowServerForm(false)
       await loadPBSServers()
     } catch (err) {
       showStatus(`❌ ${t('statusError')} ${err}`, 'error')
@@ -768,6 +770,7 @@ function App() {
       })
       setEditingServer(null)
       setServerTab('server')
+      setShowServerForm(false)
       await loadPBSServers()
     } catch (err) {
       showStatus(`❌ ${t('statusError')} ${err}`, 'error')
@@ -858,6 +861,26 @@ function App() {
     })
     setServerTab(server.username ? 'userpass' : (server.authid ? 'token' : 'server'))
     setEditingServer(server.id)
+    setShowServerForm(true)
+  }
+
+  const handleShowAddServer = () => {
+    setServerFormData({
+      id: '',
+      name: '',
+      baseurl: '',
+      certfingerprint: '',
+      authid: '',
+      secret: '',
+      username: '',
+      password: '',
+      datastore: '',
+      namespace: '',
+      description: ''
+    })
+    setServerTab('server')
+    setEditingServer(null)
+    setShowServerForm(true)
   }
 
   const handleCancelEdit = () => {
@@ -876,6 +899,7 @@ function App() {
     })
     setServerTab('server')
     setEditingServer(null)
+    setShowServerForm(false)
   }
 
   const switchServerTab = (key) => {
@@ -998,7 +1022,10 @@ function App() {
               <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>❌ {t('cancel')}</button>
             </>
           ) : (
-            <button onClick={handleAddPBSServer} style={{flex: 1}}>{t('addServer')}</button>
+            <>
+              <button onClick={handleAddPBSServer} style={{flex: 1}}>{t('addServer')}</button>
+              <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>❌ {t('cancel')}</button>
+            </>
           )}
         </div>
       </div>
@@ -1931,8 +1958,13 @@ function App() {
                           {t('multiPBSExample')}
                         </div>
 
-                        <div style={{fontSize: '13px', fontWeight: 700, color: '#333', marginBottom: '6px'}}>
-                          {t('configuredServers')} ({pbsServers.length})
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px'}}>
+                          <div style={{fontSize: '13px', fontWeight: 700, color: '#333'}}>
+                            {t('configuredServers')} ({pbsServers.length})
+                          </div>
+                          <button className="btn btn-primary" onClick={handleShowAddServer} style={{padding: '6px 14px', fontSize: '12.5px'}}>
+                            + {t('addServer')}
+                          </button>
                         </div>
                         <div style={{border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', marginBottom: '20px'}}>
                           {pbsServers.map((server, idx) => {
@@ -1984,7 +2016,7 @@ function App() {
                           })}
                         </div>
 
-                        {renderServerForm()}
+                        {showServerForm && renderServerForm()}
                       </>
                     )}
 
@@ -1999,7 +2031,7 @@ function App() {
                 {prefsTab === 'advanced' && (
                   <>
                     <h2 style={{marginTop: 0}}>{t('prefsAdvanced')}</h2>
-                    <div className="form-group">
+                    <div className="form-group" style={{marginTop: '20px'}}>
                       <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
                         <input
                           type="checkbox"
