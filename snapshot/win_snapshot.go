@@ -11,9 +11,18 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/st-matskevich/go-vss"
 )
+
+// hidden returns a SysProcAttr that suppresses the console window a child
+// process would otherwise briefly flash on screen — this app has no console
+// of its own (it's a windowed GUI), so cmd/vssadmin/net always get a new,
+// visible one unless told not to.
+func hidden() *syscall.SysProcAttr {
+	return &syscall.SysProcAttr{HideWindow: true}
+}
 
 // shadowIDRe matches a bare VSS shadow-copy GUID (8-4-4-4-12 hex).
 var shadowIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -101,6 +110,7 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 
 		// Check VSS writers status before creating snapshot
 		checkWritersCmd := exec.Command("vssadmin", "list", "writers")
+		checkWritersCmd.SysProcAttr = hidden()
 		writersOutput, _ := checkWritersCmd.CombinedOutput()
 		writersStatus := string(writersOutput)
 
@@ -233,6 +243,7 @@ func VSSCleanup() error {
 		// Live symlink ⇒ the shadow still exists ⇒ a genuine orphan from a crash.
 		fmt.Printf("VSS Cleanup: removing orphaned Proxmox Backup Client shadow %s...\n", id)
 		deleteCmd := exec.Command("vssadmin", "delete", "shadows", "/shadow={"+id+"}", "/quiet")
+		deleteCmd.SysProcAttr = hidden()
 		if out, derr := deleteCmd.CombinedOutput(); derr != nil {
 			// Keep the marker so a later run retries; never fall back to /all.
 			fmt.Printf("VSS Cleanup: could not delete shadow %s (best-effort, will retry): %v - %s\n", id, derr, string(out))
@@ -283,6 +294,7 @@ func isShadowAlreadyInProgress(err error) bool {
 // not 0x8004230f) before relying on it.
 func vssForceReset() error {
 	deleteCmd := exec.Command("vssadmin", "delete", "shadows", "/all", "/quiet")
+	deleteCmd.SysProcAttr = hidden()
 	if out, err := deleteCmd.CombinedOutput(); err != nil {
 		fmt.Printf("VSS reset: delete shadows warning: %v - %s\n", err, string(out))
 	}
@@ -296,6 +308,7 @@ func vssForceReset() error {
 func restartVSSService() error {
 	fmt.Println("VSS Cleanup: Restarting VSS service to clear stuck state...")
 	stopCmd := exec.Command("net", "stop", "VSS")
+	stopCmd.SysProcAttr = hidden()
 	if out, err := stopCmd.CombinedOutput(); err != nil {
 		// "service is not started" is fine — we'll start it next.
 		if !strings.Contains(string(out), "not started") &&
@@ -304,6 +317,7 @@ func restartVSSService() error {
 		}
 	}
 	startCmd := exec.Command("net", "start", "VSS")
+	startCmd.SysProcAttr = hidden()
 	if out, err := startCmd.CombinedOutput(); err != nil {
 		// "already started" is fine.
 		if strings.Contains(string(out), "already been started") ||

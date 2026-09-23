@@ -4,6 +4,7 @@ package main
 
 import (
 	"os/exec"
+	"syscall"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -28,6 +29,7 @@ func cleanupTaskScheduler() {
 
 	// Try to delete the scheduled task (ignore errors if doesn't exist)
 	cmd := exec.Command("schtasks", "/Delete", "/TN", taskName, "/F")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	output, err := cmd.CombinedOutput()
 
 	if err == nil {
