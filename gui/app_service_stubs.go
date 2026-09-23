@@ -45,8 +45,8 @@ func (a *App) ReloadConfig() {
 
 // StartBackup starts a backup job
 // Service implementation using RunBackupInline
-func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string) error {
-	writeDebugLog(fmt.Sprintf("[Service] StartBackup called: type=%s, dirs=%v, id=%s, vss=%v, compression=%s", backupType, backupDirs, backupID, useVSS, compression))
+func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+	writeDebugLog(fmt.Sprintf("[Service] StartBackup called: type=%s, dirs=%v, id=%s, vss=%v, compression=%s, pbsServerID=%s", backupType, backupDirs, backupID, useVSS, compression, pbsServerID))
 
 	// Re-read config from disk so this run uses the current token / default PBS /
 	// pinned fingerprint rather than the snapshot loaded when the service started.
@@ -76,11 +76,11 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		allDirs = driveLetters
 	}
 
-	// Resolve the EFFECTIVE PBS config: a multi-PBS-only config keeps the legacy
-	// BaseURL/AuthID/Secret/Datastore fields empty, so building options from those
-	// directly yielded "PBS connection parameters required" in service mode (the GUI
-	// standalone path already used EffectivePBS — audit M-01/M-04, reported in prod).
-	pbsCfg, err := a.withAuth(a.config.EffectivePBS())
+	// Resolve which configured PBS server this run targets. Empty pbsServerID
+	// picks the configured default (same EffectivePBS fallback this used
+	// before — audit M-01/M-04, reported in prod — resolvePBS keeps that
+	// behavior for the empty case and adds picking a SPECIFIC server on top).
+	pbsCfg, err := a.resolvePBS(pbsServerID)
 	if err != nil {
 		return err
 	}

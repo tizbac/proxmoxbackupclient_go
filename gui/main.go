@@ -86,6 +86,8 @@ func main() {
 	writeDebugLog(fmt.Sprintf("Backup log: %s", GetBackupLogPath()))
 	writeDebugLog(fmt.Sprintf("Crash report path: %s", crashReportPath))
 
+	startStallWatchdog()
+
 	// Install SIGINT/SIGTERM handler so any live PBS backup session gets
 	// closed before we exit. Without this, a forced kill (e.g. "update
 	// and restart") leaves the HTTP/2 connection dangling — PBS keeps
@@ -641,8 +643,8 @@ func (a *App) emitAnalysisProgress(done, total int, scannedBytes uint64) {
 }
 
 // StartBackup starts a backup operation (routes to service or direct based on mode)
-func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string) error {
-	writeDebugLog(fmt.Sprintf("StartBackup() called - mode: %s, VSS: %v, compression: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, a.isServiceProcess))
+func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+	writeDebugLog(fmt.Sprintf("StartBackup() called - mode: %s, VSS: %v, compression: %s, pbsServerID: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsServerID, a.isServiceProcess))
 
 	// Default to "fastest" if compression is empty
 	if compression == "" {
@@ -663,21 +665,21 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 	switch a.mode {
 	case api.ModeService:
 		// Use HTTP API to communicate with service (service has admin rights as LocalSystem)
-		return a.startBackupViaService(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression)
+		return a.startBackupViaService(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID)
 	case api.ModeStandalone:
 		// Direct execution - check admin if VSS requested
 		if useVSS && !isAdmin() {
 			return fmt.Errorf("VSS (Shadow Copy) requires administrator privileges - please restart the application as administrator or disable VSS")
 		}
-		return a.startBackupDirect(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression)
+		return a.startBackupDirect(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID)
 	default:
 		return fmt.Errorf("unknown execution mode: %v", a.mode)
 	}
 }
 
 // StartMachineBackup starts a machine backup operation
-func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error {
-	writeDebugLog(fmt.Sprintf("StartMachineBackup() called - mode: %s, VSS: %v, compression: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, a.isServiceProcess))
+func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+	writeDebugLog(fmt.Sprintf("StartMachineBackup() called - mode: %s, VSS: %v, compression: %s, pbsServerID: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsServerID, a.isServiceProcess))
 
 	// Default to "fastest" if compression is empty
 	if compression == "" {
@@ -698,20 +700,20 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	switch a.mode {
 	case api.ModeService:
 		// Use HTTP API to communicate with service (service has admin rights as LocalSystem)
-		return a.startMachineBackupViaService(backupType, backupDevices, backupID, useVSS, compression)
+		return a.startMachineBackupViaService(backupType, backupDevices, backupID, useVSS, compression, pbsServerID)
 	case api.ModeStandalone:
 		// Direct execution - check admin if VSS requested
 		if useVSS && !isAdmin() {
 			return fmt.Errorf("VSS (Shadow Copy) requires administrator privileges - please restart the application as administrator or disable VSS")
 		}
-		return a.startMachineBackupDirect(backupType, backupDevices, backupID, useVSS, compression)
+		return a.startMachineBackupDirect(backupType, backupDevices, backupID, useVSS, compression, pbsServerID)
 	default:
 		return fmt.Errorf("unknown execution mode: %v", a.mode)
 	}
 }
 
 // startBackupViaService sends backup request to the service via HTTP API
-func (a *App) startBackupViaService(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string) error {
+func (a *App) startBackupViaService(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
 	writeDebugLog("[Service Mode] Sending backup request to service")
 
 	req := &api.BackupRequest{
@@ -722,6 +724,7 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 		ExcludeList:  excludeList,
 		UseVSS:       useVSS,
 		Compression:  compression,
+		PBSServerID:  pbsServerID,
 	}
 
 	resp, err := a.apiClient.StartBackup(req)
@@ -739,7 +742,7 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 }
 
 // startMachineBackupViaService sends machine backup request to the service via HTTP API
-func (a *App) startMachineBackupViaService(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error {
+func (a *App) startMachineBackupViaService(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
 	writeDebugLog("[Service Mode] Sending machine backup request to service")
 
 	req := &api.BackupRequest{
@@ -748,6 +751,7 @@ func (a *App) startMachineBackupViaService(backupType string, backupDevices []st
 		DriveLetters: backupDevices, // Using DriveLetters field for machine backup devices
 		UseVSS:       useVSS,
 		Compression:  compression,
+		PBSServerID:  pbsServerID,
 	}
 
 	resp, err := a.apiClient.StartMachineBackup(req)
@@ -818,7 +822,7 @@ func (a *App) pollBackupProgress(jobID string) {
 }
 
 // startBackupDirect performs backup directly (standalone mode)
-func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string) error {
+func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
 	// Use hostname as fallback if backupID is empty
 	if backupID == "" {
 		backupID = a.GetHostname()
@@ -827,8 +831,8 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 
 	// Sanitize backup ID for logging
 	sanitizedID := security.SanitizeForLog(backupID)
-	writeDebugLog(fmt.Sprintf("[Standalone Mode] StartBackup: type=%s, id=%s, vss=%v, compression=%s, dir_count=%d",
-		backupType, sanitizedID, useVSS, compression, len(backupDirs)))
+	writeDebugLog(fmt.Sprintf("[Standalone Mode] StartBackup: type=%s, id=%s, vss=%v, compression=%s, pbsServerID=%s, dir_count=%d",
+		backupType, sanitizedID, useVSS, compression, pbsServerID, len(backupDirs)))
 
 	// Validate BackupID (now guaranteed to be non-empty)
 	if err := security.ValidateBackupID(backupID); err != nil {
@@ -845,8 +849,9 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	// Note: Admin check for VSS is done in StartBackup() routing layer
 	// If we're here via service, we're already running as LocalSystem
 
-	// Resolve PBS fields from multi-PBS default, minting a fresh ticket (u/p).
-	pbsCfg, err := a.withAuth(a.config.EffectivePBS())
+	// Resolve PBS fields — a specific server if the caller named one (a Backup
+	// Set's own Destination choice, or a one-off's dropdown), else the default.
+	pbsCfg, err := a.resolvePBS(pbsServerID)
 	if err != nil {
 		return err
 	}
@@ -1043,7 +1048,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 }
 
 // startMachineBackupDirect performs machine backup directly (standalone mode)
-func (a *App) startMachineBackupDirect(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error {
+func (a *App) startMachineBackupDirect(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
 	// Use hostname as fallback if backupID is empty
 	if backupID == "" {
 		backupID = a.GetHostname()
@@ -1052,8 +1057,8 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 
 	// Sanitize backup ID for logging
 	sanitizedID := security.SanitizeForLog(backupID)
-	writeDebugLog(fmt.Sprintf("[Standalone Mode] StartMachineBackup: type=%s, id=%s, vss=%v, compression=%s, device_count=%d, devs=%v",
-		backupType, sanitizedID, useVSS, compression, len(backupDevices), backupDevices))
+	writeDebugLog(fmt.Sprintf("[Standalone Mode] StartMachineBackup: type=%s, id=%s, vss=%v, compression=%s, pbsServerID=%s, device_count=%d, devs=%v",
+		backupType, sanitizedID, useVSS, compression, pbsServerID, len(backupDevices), backupDevices))
 
 	// Validate BackupID (now guaranteed to be non-empty)
 	if err := security.ValidateBackupID(backupID); err != nil {
@@ -1063,15 +1068,15 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	// Validate backup devices
 	for _, device := range backupDevices {
 		if device == "" {
-			return fmt.Errorf("One or more devices are empty")
+			return fmt.Errorf("one or more devices are empty")
 		}
 	}
 
 	// Note: Admin check for VSS is done in StartMachineBackup() routing layer
 	// If we're here via service, we're already running as LocalSystem
 
-	// Resolve PBS fields from multi-PBS default, minting a fresh ticket (u/p).
-	pbsCfg, err := a.withAuth(a.config.EffectivePBS())
+	// Resolve PBS fields — a specific server if the caller named one, else the default.
+	pbsCfg, err := a.resolvePBS(pbsServerID)
 	if err != nil {
 		return err
 	}
@@ -1236,24 +1241,6 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 
 // ==================== RESTORE ====================
 
-// resolveRestorePBS picks the PBS server to restore from. When pbsID is empty
-// the default PBS server is used. Falls back to legacy single-server fields
-// when no multi-PBS entry is configured.
-func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
-	if pbsID != "" {
-		pbs, err := a.config.GetPBSServer(pbsID)
-		if err != nil {
-			return nil, err
-		}
-		return a.withAuth(pbs.ToConfig())
-	}
-	cfg := a.config.EffectivePBS()
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-	return a.withAuth(cfg)
-}
-
 // ListSnapshots lists available snapshots on a PBS server, optionally filtered
 // by backup ID (partial match supports split backups).
 //
@@ -1262,7 +1249,7 @@ func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
 func (a *App) ListSnapshots(pbsID, backupID string) ([]map[string]interface{}, error) {
 	writeDebugLog(fmt.Sprintf("ListSnapshots(pbs=%s, backupID=%s)", pbsID, backupID))
 
-	cfg, err := a.resolveRestorePBS(pbsID)
+	cfg, err := a.resolvePBS(pbsID)
 	if err != nil {
 		return nil, err
 	}
@@ -1303,7 +1290,7 @@ func (a *App) ListSnapshotContents(pbsID, backupID string, snapshotUnix int64, f
 	writeDebugLog(fmt.Sprintf("ListSnapshotContents(pbs=%s, backupID=%s, unix=%d, force=%v)",
 		pbsID, backupID, snapshotUnix, forceRefresh))
 
-	cfg, err := a.resolveRestorePBS(pbsID)
+	cfg, err := a.resolvePBS(pbsID)
 	if err != nil {
 		return nil, err
 	}
@@ -1336,7 +1323,7 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 	writeDebugLog(fmt.Sprintf("GetSnapshotMeta(pbs=%s, backupID=%s, unix=%d)",
 		pbsID, backupID, snapshotUnix))
 
-	cfg, err := a.resolveRestorePBS(pbsID)
+	cfg, err := a.resolvePBS(pbsID)
 	if err != nil {
 		return nil, err
 	}
@@ -1382,7 +1369,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	writeDebugLog(fmt.Sprintf("RestoreSnapshot(pbs=%s, backupID=%s, snap=%s, mode=%s, dest=%s, includes=%d, crossHost=%v, acl=%v, ads=%v, ts=%v, overwrite=%v)",
 		pbsID, backupID, snapshotID, mode, destPath, len(includePaths), allowCrossHost, restoreACLs, restoreADS, restoreTimestamps, overwrite))
 
-	cfg, err := a.resolveRestorePBS(pbsID)
+	cfg, err := a.resolvePBS(pbsID)
 	if err != nil {
 		return err
 	}
@@ -1415,6 +1402,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	}
 
 	emit := func(percent float64, message string) {
+		markRestoreProgress()
 		if a.ctx == nil {
 			return
 		}
@@ -1449,6 +1437,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	// Structured live stats for the GUI's restore transfer-rate display,
 	// mirroring the backup side's OnStats/"backup:stats" pair above.
 	opts.OnStats = func(stats *RestoreProgressStats) {
+		markRestoreProgress()
 		if a.ctx == nil {
 			return
 		}
@@ -1459,7 +1448,9 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		})
 	}
 
+	markRestoreStarted()
 	go func() {
+		defer markRestoreDone()
 		// A restore can fail in surprising ways (corrupt archive, disk full).
 		// Recover so a panic surfaces as an error in the UI instead of taking
 		// the whole GUI process down.
@@ -1551,7 +1542,7 @@ func (a *App) SearchFiles(pbsID, hostPrefix, query, mode string, fromUnix, toUni
 	writeDebugLog(fmt.Sprintf("SearchFiles(pbs=%s, prefix=%s, query=%q, mode=%s, from=%d, to=%d, assemble=%v)",
 		pbsID, hostPrefix, query, mode, fromUnix, toUnix, assembleMissing))
 
-	cfg, err := a.resolveRestorePBS(pbsID)
+	cfg, err := a.resolvePBS(pbsID)
 	if err != nil {
 		return nil, err
 	}

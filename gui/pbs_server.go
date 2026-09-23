@@ -5,6 +5,27 @@ import (
 	"security"
 )
 
+// resolvePBS picks which configured PBS server to use — for a restore, or a
+// backup too. When pbsID is empty the default PBS server is used. Falls back
+// to legacy single-server fields when no multi-PBS entry is configured.
+// Shared (no build tag) so both the GUI and the service build resolve a
+// destination server identically — main.go's RestoreSnapshot/StartBackup and
+// app_service_stubs.go's StartBackup both call this same implementation.
+func (a *App) resolvePBS(pbsID string) (*Config, error) {
+	if pbsID != "" {
+		pbs, err := a.config.GetPBSServer(pbsID)
+		if err != nil {
+			return nil, err
+		}
+		return a.withAuth(pbs.ToConfig())
+	}
+	cfg := a.config.EffectivePBS()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return a.withAuth(cfg)
+}
+
 // PBSServer represents a single Proxmox Backup Server configuration
 type PBSServer struct {
 	ID              string `json:"id"`                // Unique identifier (e.g., "pbs1", "default")

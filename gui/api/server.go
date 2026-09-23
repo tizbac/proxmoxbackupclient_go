@@ -30,14 +30,14 @@ type Server struct {
 // BackupHandler interface that the service must implement
 // NOTE: StartBackup will be called in a goroutine (async), so it must be thread-safe
 type BackupHandler interface {
-	StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string) error
+	StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string) error
 	GetConfigWithHostname() map[string]interface{}
 	GetScheduledJobsForAPI() []map[string]interface{}
 	SaveScheduledJobFromMap(job map[string]interface{}) error
 	UpdateScheduledJobFromMap(job map[string]interface{}) error
 	DeleteScheduledJobFromMap(jobID string) error
 	PinServerFingerprint(id, fingerprint string) error
-	StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error
+	StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string) error
 }
 
 // NewServer creates a new API server. token is the shared local-auth secret that
@@ -201,6 +201,7 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 			req.BackupID,
 			req.UseVSS,
 			compression,
+			req.PBSServerID,
 		)
 
 		// Update final status if callbacks didn't fire

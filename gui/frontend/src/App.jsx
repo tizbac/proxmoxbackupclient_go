@@ -179,6 +179,7 @@ function App() {
   const [backupFormTab, setBackupFormTab] = useState('source') // Backup Set editor: Source/Exclusions/Schedule/Destination
   const [jobName, setJobName] = useState('') // User-facing name for the backup set being created/edited
   const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
+  const [backupPBSID, setBackupPBSID] = useState('') // Destination tab: which configured PBS server this backup/set targets
   const [backupStats, setBackupStats] = useState({
     startTime: null,
     lastUpdate: null,
@@ -292,6 +293,13 @@ function App() {
   useEffect(() => {
     if (!restorePBSID && defaultPBSID) {
       setRestorePBSID(defaultPBSID)
+    }
+  }, [defaultPBSID])
+
+  // Sync backup destination PBS dropdown with default once it's loaded
+  useEffect(() => {
+    if (!backupPBSID && defaultPBSID) {
+      setBackupPBSID(defaultPBSID)
     }
   }, [defaultPBSID])
 
@@ -1118,7 +1126,8 @@ function App() {
           getEffectiveExcludeList(),
           config['backup-id'],
           config.usevss,
-          ''
+          '',
+          backupPBSID
         )
         showStatus(`⏳ ${t('statusBackupRunning')}`, 'info')
         return
@@ -1162,7 +1171,8 @@ function App() {
             [...getEffectiveExcludeList(), ...(job.exclude_list || [])],
             job.backup_id,
             config.usevss,
-            ''
+            '',
+            backupPBSID
           )
         } catch (err) {
           // The part never started (validation / dispatch error): no completion
@@ -1276,7 +1286,8 @@ function App() {
         useVSS: config.usevss,
         backupType: backupType,
         excludeList: backupType === 'directory' ? getEffectiveExcludeList() : [],
-        driveLetters: backupType === 'machine' ? selectedDrives : []
+        driveLetters: backupType === 'machine' ? selectedDrives : [],
+        pbsServerId: backupPBSID
       }
 
       // Save or update to backend
@@ -1330,7 +1341,8 @@ function App() {
           excludeListToSend,
           config['backup-id'],
           config.usevss,
-          ''
+          '',
+          backupPBSID
         )
       } else {
         // Filter out any empty drives to prevent empty string issues
@@ -1340,7 +1352,8 @@ function App() {
           validDrives,
           config['backup-id'],
           config.usevss,
-          ''
+          '',
+          backupPBSID
         )
       }
       // Backup started in background - progress will be shown via events.
@@ -2081,6 +2094,7 @@ function App() {
                     setTreeExcludes([])
                     setBackupType('directory')
                     if (!config['backup-id']) setConfig({...config, 'backup-id': hostname})
+                    setBackupPBSID(defaultPBSID)
                     setBackupFormTab('source'); setShowBackupForm(true)
                   }}
                 >
@@ -2091,6 +2105,7 @@ function App() {
                   onClick={() => {
                     setBackupMode('oneshot')
                     if (!config['backup-id']) setConfig({...config, 'backup-id': hostname})
+                    setBackupPBSID(defaultPBSID)
                     setBackupFormTab('source'); setShowBackupForm(true)
                   }}
                 >
@@ -2176,6 +2191,7 @@ function App() {
                               setBackupDirs(job.backupDirs.join('\n'))
                               setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                               setBackupType(job.backupType)
+                              setBackupPBSID(job.pbsServerId || defaultPBSID)
                               setExcludeList(job.excludeList.join('\n'))
                               setTreeExcludes([])
                               setBackupFormTab('source'); setShowBackupForm(true)
@@ -2472,6 +2488,20 @@ function App() {
 
           {(backupMode === 'oneshot' || backupFormTab === 'destination') && (
           <>
+          <div className="form-group">
+            <label>{t('backupPBSServer')}</label>
+            <select
+              value={backupPBSID}
+              onChange={(e) => setBackupPBSID(e.target.value)}
+            >
+              {pbsServers.length === 0 && <option value="">{t('noPBSServer')}</option>}
+              {pbsServers.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name} {s.id === defaultPBSID ? '⭐' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="form-group">
             <label>{t('backupID')}</label>
             <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>

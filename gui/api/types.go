@@ -9,6 +9,7 @@ type BackupRequest struct {
 	ExcludeList  []string `json:"exclude_list,omitempty"`
 	UseVSS       bool     `json:"use_vss"`
 	Compression  string   `json:"compression,omitempty"` // "fastest", "default", "better", "best"
+	PBSServerID  string   `json:"pbs_server_id,omitempty"` // empty = the configured default server
 }
 
 // BackupResponse represents the result of a backup operation

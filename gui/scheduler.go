@@ -23,6 +23,10 @@ type ScheduledJob struct {
 	BackupDirs   []string `json:"backupDirs"`
 	DriveLetters []string `json:"driveLetters"` // physical disks for machine backups
 	BackupID     string   `json:"backupId"`
+	// PBSServerID is which configured PBS server this set backs up to; ""
+	// means the app's current default server (same convention Restore's own
+	// server dropdown already uses).
+	PBSServerID  string   `json:"pbsServerId,omitempty"`
 	UseVSS       bool     `json:"useVSS"`
 	BackupType   string   `json:"backupType"`
 	ExcludeList  []string `json:"excludeList"`
@@ -789,6 +793,7 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 		job.BackupID,
 		job.UseVSS,
 		compression,
+		job.PBSServerID,
 	)
 
 	// Add history entry derived from the REAL outcome. In service mode StartBackup

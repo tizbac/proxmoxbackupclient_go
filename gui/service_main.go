@@ -13,6 +13,7 @@ import (
 
 func main() {
 	writeDebugLog("ProxmoxBackupClientSVC starting...")
+	startStallWatchdog()
 
 	// Command-line flags for service control
 	svcFlag := flag.String("service", "", "Control the system service: install, uninstall, start, stop, restart")
