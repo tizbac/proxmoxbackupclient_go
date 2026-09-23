@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -90,7 +91,15 @@ func (f * FIDXServer) ReadAt(p []byte, off int64) (n int, err error) {
 		if ok {
 			
 		} else {
-			data, err := f.client.GetChunkData(f.chunks[idx.Index])
+			// context.Background() — pbsnbd serves reads on demand for however
+			// long the NBD device stays attached (a Clonezilla restore session
+			// can run for hours), so there's no natural per-call deadline to
+			// thread through io.ReaderAt's fixed signature here. Found while
+			// fixing this to compile at all (2026-09-24): GetChunkData's
+			// context parameter was added for the GUI restore path's own
+			// stuck-chunk timeout — this call site predates that and was
+			// simply never updated, so pbsnbd hasn't compiled in a while.
+			data, err := f.client.GetChunkData(context.Background(), f.chunks[idx.Index])
 			if err != nil {
 				panic(err)
 			}
