@@ -1296,6 +1296,15 @@ func backupDirectory(client *pbscommon.PBSClient, newchunk, reusechunk, failedch
 	originalPath := backupdir
 
 	if usevss {
+		// VSS setup (checking writer status, creating the shadow copy) can take
+		// a few seconds with nothing else to report — without this the UI is
+		// left showing the previous, now-stale "Connecting to PBS..." message
+		// for the whole pause. Real chunk-level progress from backupReal below
+		// naturally overwrites this once the snapshot is ready.
+		if progress != nil {
+			progress(0.05, "Initialising Shadow Copy...")
+		}
+
 		var bytesArchived uint64
 		var aclMeta *BackupFileMeta
 		var skipped, excluded, readErrs []string
