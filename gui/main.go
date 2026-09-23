@@ -1028,8 +1028,15 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		})
 	}
 
-	// Run backup inline (in background goroutine to not block UI)
+	// Run backup inline (in background goroutine to not block UI). Queues
+	// behind any backup/restore already running in this process — see
+	// operation_queue.go.
 	go func() {
+		release := acquireOperationSlot(fmt.Sprintf("backup of %s", backupID), func(heldBy string) {
+			opts.OnProgress(0.01, fmt.Sprintf("Queued — waiting for %s to finish...", heldBy))
+		})
+		defer release()
+
 		var err error
 		if backupType == "machine" {
 			// For machine backups, we need to set the backup type to "vm" for the inline backup function
@@ -1228,8 +1235,15 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		})
 	}
 
-	// Run backup inline (in background goroutine to not block UI)
+	// Run backup inline (in background goroutine to not block UI). Queues
+	// behind any backup/restore already running in this process — see
+	// operation_queue.go.
 	go func() {
+		release := acquireOperationSlot(fmt.Sprintf("backup of %s", backupID), func(heldBy string) {
+			opts.OnProgress(0.01, fmt.Sprintf("Queued — waiting for %s to finish...", heldBy))
+		})
+		defer release()
+
 		err := RunBackupInline(opts)
 		if err != nil {
 			writeDebugLog(fmt.Sprintf("Machine backup error: %v", err))
@@ -1448,8 +1462,17 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		})
 	}
 
-	markRestoreStarted()
+	// Queues behind any backup/restore already running in this process — see
+	// operation_queue.go. markRestoreStarted (and the stall watchdog's clock)
+	// only start once this restore actually begins, not while it's waiting
+	// its turn — a long queue wait is expected, not a stall.
 	go func() {
+		release := acquireOperationSlot(fmt.Sprintf("restore of %s", backupID), func(heldBy string) {
+			emit(0.01, fmt.Sprintf("Queued — waiting for %s to finish...", heldBy))
+		})
+		defer release()
+
+		markRestoreStarted()
 		defer markRestoreDone()
 		// A restore can fail in surprising ways (corrupt archive, disk full).
 		// Recover so a panic surfaces as an error in the UI instead of taking

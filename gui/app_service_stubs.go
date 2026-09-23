@@ -115,7 +115,15 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		},
 	}
 
-	// Execute backup using inline implementation
+	// Execute backup using inline implementation. Queues behind any
+	// backup/restore already running in THIS process — see
+	// operation_queue.go's doc comment for the cross-process caveat (a
+	// manual restore run from a separate GUI process isn't covered here).
+	release := acquireOperationSlot(fmt.Sprintf("backup of %s", backupID), func(heldBy string) {
+		writeDebugLog(fmt.Sprintf("[Service] Queued — waiting for %s to finish", heldBy))
+	})
+	defer release()
+
 	writeDebugLog("[Service] Executing backup via RunBackupInline")
 	return RunBackupInline(opts)
 }
