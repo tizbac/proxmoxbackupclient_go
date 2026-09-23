@@ -1989,6 +1989,253 @@ function App() {
             </div>
           )}
 
+          {/* Always visible regardless of whether the form below is open — a
+              backup started via "Run Now" on a set never opens the form at all. */}
+          {progress > 0 && progress < 100 && (
+            <div style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
+              <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
+                <strong style={{fontSize: '15px'}}>{t('backupProgress')}</strong>
+                <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{progress}%</span>
+              </div>
+
+              <div className="progress" style={{height: '30px', marginBottom: '12px'}}>
+                <div
+                  className="progress-bar"
+                  style={{
+                    width: `${progress}%`,
+                    fontSize: '14px',
+                    lineHeight: '30px',
+                    transition: 'width 0.3s ease',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {progress}%
+                </div>
+              </div>
+
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px'}}>
+                {backupStats.eta !== null && (
+                  <div style={{fontSize: '13px', color: '#495057'}}>
+                    <strong>{t('timeRemaining')}</strong> {Math.floor(backupStats.eta / 60)}m {backupStats.eta % 60}s
+                  </div>
+                )}
+                {backupStats.speed > 0 && (
+                  <div style={{fontSize: '13px', color: '#495057'}}>
+                    <strong>{t('speed')}</strong> {formatSpeed(backupStats.speed)}
+                  </div>
+                )}
+                {backupStats.startTime && (
+                  <div style={{fontSize: '13px', color: '#495057'}}>
+                    <strong>{t('elapsedTime')}</strong> {Math.floor((Date.now() - backupStats.startTime) / 1000)}s
+                  </div>
+                )}
+                {backupStats.bytesDone > 0 && (
+                  <div style={{fontSize: '13px', color: '#495057'}}>
+                    <strong>{t('dataSizeLabel')}</strong> {Math.round(backupStats.bytesDone / 1048576)}
+                    {backupStats.bytesTotal > 0 ? ` / ${Math.round(backupStats.bytesTotal / 1048576)}` : ''} MB
+                  </div>
+                )}
+                {(backupStats.newChunks > 0 || backupStats.reusedChunks > 0) && (
+                  <div style={{fontSize: '13px', color: '#495057'}}>
+                    <strong>{t('chunksLabel')}</strong> {backupStats.newChunks} {t('newChunksLabel')} · {backupStats.reusedChunks} {t('reusedChunksLabel')}
+                    {backupStats.failedChunks > 0 ? (
+                      <span style={{color: '#c0392b', fontWeight: 'bold'}}> · {backupStats.failedChunks} {t('failedChunksLabel')}</span>
+                    ) : ''}
+                  </div>
+                )}
+                {backupStats.currentDir && (
+                  <div style={{fontSize: '13px', color: '#495057', gridColumn: '1 / -1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                    <strong>{t('currentDirLabel')}</strong> {backupStats.currentDir}
+                  </div>
+                )}
+              </div>
+
+              {status.message && status.type === 'info' && (
+                <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef'}}>
+                  {status.message}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!showBackupForm && (
+            <>
+              <div style={{display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '20px'}}>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setEditingJobId(null)
+                    setJobName('')
+                    setBackupMode('scheduled')
+                    setScheduleTime('02:00')
+                    setRunAtStartup(false)
+                    setTriggerMode('daily')
+                    setIntervalMinutes(120)
+                    setWindowAllDay(true)
+                    setWindowStart('09:00')
+                    setWindowEnd('17:00')
+                    setDaysOfWeek(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+                    setBackupDirs('')
+                    setExcludeList('')
+                    setTreeExcludes([])
+                    setBackupType('directory')
+                    setShowBackupForm(true)
+                  }}
+                >
+                  {t('manageBackupSets')}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setBackupMode('oneshot')
+                    setShowBackupForm(true)
+                  }}
+                >
+                  {t('oneOffBackup')}
+                </button>
+                <span style={{fontSize: '13px', color: '#666'}}>{t('manageBackupSetsHint')}</span>
+              </div>
+
+              <div>
+                <div style={{fontSize: '13px', fontWeight: 700, color: '#333', marginBottom: '6px'}}>{t('yourBackupSets')}</div>
+                {scheduledJobs.length === 0 ? (
+                  <p style={{color: '#718096'}}>{t('noBackupSetsYet')}</p>
+                ) : (
+                  <div style={{border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden'}}>
+                    <div style={{maxHeight: '480px', overflowY: 'auto'}}>
+                      {scheduledJobs.map((job, idx) => (
+                        <div key={job.id} style={{
+                          display: 'flex', alignItems: 'center', gap: '14px', padding: '12px 16px',
+                          borderTop: idx === 0 ? 'none' : '1px solid #e6e6e6',
+                        }}>
+                          <div style={{flex: 1, minWidth: 0}}>
+                            <strong>{job.name}</strong>
+                            <div style={{fontSize: '12px', color: '#6c757d', marginTop: '2px'}}>
+                              <span style={{
+                                display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em',
+                                padding: '2px 7px', borderRadius: '3px', background: '#eef0f4', color: '#3d5aa8',
+                                border: '1px solid #ccd4e6', verticalAlign: 'middle', marginRight: '6px',
+                              }}>
+                                {job.triggerMode === 'manual' ? t('triggerModeManual').toUpperCase()
+                                  : job.triggerMode === 'interval' ? t('triggerModeInterval').toUpperCase()
+                                  : t('triggerModeDaily').toUpperCase()}
+                              </span>
+                              {job.triggerMode === 'manual'
+                                ? t('manualOnDemand')
+                                : job.triggerMode === 'interval'
+                                ? <>{t('everyNMinutes').replace('{n}', job.intervalMinutes)}
+                                    {!job.windowAllDay && ` (${job.windowStart}–${job.windowEnd})`}</>
+                                : <>{job.scheduleTime}</>}
+                              {job.triggerMode !== 'manual' && (
+                                <>
+                                  {' · '}
+                                  {!job.daysOfWeek || job.daysOfWeek.length === 0 || job.daysOfWeek.length === 7
+                                    ? t('everyDay')
+                                    : job.daysOfWeek.map(d => t(`day${d}`)).join(', ')}
+                                </>
+                              )}
+                            </div>
+                            <div style={{fontSize: '12px', color: '#888', marginTop: '2px'}}>
+                              {t('lastRun')} {job.lastRun ? new Date(job.lastRun).toLocaleString() : t('neverRun')}
+                            </div>
+                          </div>
+                          <button
+                            className="btn"
+                            disabled={runningJobId === job.id}
+                            onClick={async () => {
+                              setRunningJobId(job.id)
+                              try {
+                                await RunScheduledJobNow(job.id)
+                                showStatus(`▶️ ${job.name}`, 'success')
+                              } catch (err) {
+                                showStatus(`❌ ${t('runNowError').replace('{error}', err)}`, 'error')
+                              } finally {
+                                setRunningJobId(null)
+                              }
+                            }}
+                          >
+                            {runningJobId === job.id ? '…' : t('runNow')}
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => {
+                              setEditingJobId(job.id)
+                              setJobName(job.name || '')
+                              setBackupMode('scheduled')
+                              setScheduleTime(job.scheduleTime)
+                              setRunAtStartup(job.runAtStartup)
+                              setTriggerMode(job.triggerMode || 'daily')
+                              setIntervalMinutes(job.intervalMinutes || 120)
+                              setWindowAllDay(job.windowAllDay !== false)
+                              setWindowStart(job.windowStart || '09:00')
+                              setWindowEnd(job.windowEnd || '17:00')
+                              setDaysOfWeek(job.daysOfWeek && job.daysOfWeek.length > 0 ? job.daysOfWeek : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+                              setBackupDirs(job.backupDirs.join('\n'))
+                              setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
+                              setBackupType(job.backupType)
+                              setExcludeList(job.excludeList.join('\n'))
+                              setTreeExcludes([])
+                              setShowBackupForm(true)
+                            }}
+                          >
+                            {t('editJob')}
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            onClick={async () => {
+                              try {
+                                await DeleteScheduledJob(job.id)
+                                setScheduledJobs(scheduledJobs.filter(j => j.id !== job.id))
+                                showStatus(t('statusJobDeleted'), 'success')
+                                if (editingJobId === job.id) {
+                                  setEditingJobId(null)
+                                }
+                              } catch (err) {
+                                showStatus(`❌ ${t('statusError')} ${err}`, 'error')
+                              }
+                            }}
+                          >
+                            {t('deleteJob')}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {showBackupForm && (
+          <div className="card" style={{marginTop: '10px', padding: '20px'}}>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
+              <h3 style={{margin: 0}}>
+                {backupMode === 'oneshot' ? t('oneOffBackup') : (editingJobId ? t('editBackupSet') : t('newBackupSet'))}
+              </h3>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowBackupForm(false)
+                  setEditingJobId(null)
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {backupMode === 'scheduled' && (
+              <div className="form-group">
+                <label>{t('backupSetName')}</label>
+                <input
+                  type="text"
+                  value={jobName}
+                  onChange={(e) => setJobName(e.target.value)}
+                  placeholder={t('backupSetNamePlaceholder')}
+                  style={{width: '100%', maxWidth: '400px'}}
+                />
+              </div>
+            )}
+
           <div className="form-group">
             <label>{t('backupType')}</label>
             <select value={backupType} onChange={(e) => setBackupType(e.target.value)}>
@@ -2263,73 +2510,6 @@ function App() {
             </div>
           )}
 
-          {progress > 0 && progress < 100 && (
-            <div style={{marginTop: '20px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
-              <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
-                <strong style={{fontSize: '15px'}}>{t('backupProgress')}</strong>
-                <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{progress}%</span>
-              </div>
-
-              <div className="progress" style={{height: '30px', marginBottom: '12px'}}>
-                <div
-                  className="progress-bar"
-                  style={{
-                    width: `${progress}%`,
-                    fontSize: '14px',
-                    lineHeight: '30px',
-                    transition: 'width 0.3s ease',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  {progress}%
-                </div>
-              </div>
-
-              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px'}}>
-                {backupStats.eta !== null && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    ⏱️ <strong>{t('timeRemaining')}</strong> {Math.floor(backupStats.eta / 60)}m {backupStats.eta % 60}s
-                  </div>
-                )}
-                {backupStats.speed > 0 && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('speed')}</strong> {formatSpeed(backupStats.speed)}
-                  </div>
-                )}
-                {backupStats.startTime && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('elapsedTime')}</strong> {Math.floor((Date.now() - backupStats.startTime) / 1000)}s
-                  </div>
-                )}
-                {backupStats.bytesDone > 0 && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('dataSizeLabel')}</strong> {Math.round(backupStats.bytesDone / 1048576)}
-                    {backupStats.bytesTotal > 0 ? ` / ${Math.round(backupStats.bytesTotal / 1048576)}` : ''} MB
-                  </div>
-                )}
-                {(backupStats.newChunks > 0 || backupStats.reusedChunks > 0) && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('chunksLabel')}</strong> {backupStats.newChunks} {t('newChunksLabel')} · {backupStats.reusedChunks} {t('reusedChunksLabel')}
-                    {backupStats.failedChunks > 0 ? (
-                      <span style={{color: '#c0392b', fontWeight: 'bold'}}> · {backupStats.failedChunks} {t('failedChunksLabel')}</span>
-                    ) : ''}
-                  </div>
-                )}
-                {backupStats.currentDir && (
-                  <div style={{fontSize: '13px', color: '#495057', gridColumn: '1 / -1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                    <strong>{t('currentDirLabel')}</strong> {backupStats.currentDir}
-                  </div>
-                )}
-              </div>
-
-              {status.message && status.type === 'info' && (
-                <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef'}}>
-                  {status.message}
-                </div>
-              )}
-            </div>
-          )}
-
           <button className="btn" onClick={handleStartBackup} disabled={backupRunning || (progress > 0 && progress < 100)}>
             {backupMode === 'oneshot'
               ? (backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `${t('startBackup')}`)
@@ -2339,9 +2519,10 @@ function App() {
           {backupMode === 'oneshot' && (
             <button className="btn btn-secondary" onClick={handleStopBackup} disabled={!backupRunning}>{t('stopBackup')}</button>
           )}
-          {backupMode === 'scheduled' && editingJobId && (
+          {backupMode === 'scheduled' && (
             <button className="btn btn-secondary" onClick={() => {
               setEditingJobId(null)
+              setJobName('')
               setScheduleTime('02:00')
               setRunAtStartup(false)
               setTriggerMode('daily')
@@ -2354,133 +2535,13 @@ function App() {
               setExcludeList('')
               setTreeExcludes([])
               setBackupType('directory')
-              setActiveTab('scheduled')
-              showStatus(`✖️ ${t('statusEditCancelled')}`, 'info')
+              setShowBackupForm(false)
+              if (editingJobId) showStatus(t('statusEditCancelled'), 'info')
             }}>
-              ✖️ {t('cancel')}
+              {t('cancel')}
             </button>
           )}
-
-          {/* Scheduled Jobs List */}
-          {backupMode === 'scheduled' && scheduledJobs.length > 0 && (
-            <div className="card" style={{marginTop: '30px'}}>
-              <h3 style={{marginTop: 0}}>{t('scheduledJobs')}</h3>
-              <div style={{maxHeight: '480px', overflowY: 'auto'}}>
-              {scheduledJobs.map(job => (
-                <div key={job.id} style={{
-                  padding: '15px',
-                  marginBottom: '10px',
-                  backgroundColor: '#f8f9fa',
-                  borderRadius: '8px',
-                  border: '1px solid #dee2e6'
-                }}>
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                    <div>
-                      <strong>{job.name}</strong>
-                      <div style={{fontSize: '14px', color: '#6c757d', marginTop: '5px'}}>
-                        {job.triggerMode === 'manual'
-                          ? <>{t('triggerModeManual')}</>
-                          : job.triggerMode === 'interval'
-                          ? <>{t('triggerModeInterval')} — {t('everyNMinutes').replace('{n}', job.intervalMinutes)}
-                              {!job.windowAllDay && ` (${job.windowStart}–${job.windowEnd})`}</>
-                          : <>{t('triggerModeDaily')} — {job.scheduleTime}</>}
-                        {job.triggerMode !== 'manual' && (
-                          <>
-                            {' • '}
-                            {!job.daysOfWeek || job.daysOfWeek.length === 0 || job.daysOfWeek.length === 7
-                              ? t('everyDay')
-                              : job.daysOfWeek.map(d => t(`day${d}`)).join(', ')}
-                            {job.runAtStartup && ` • ${t('atStartupLabel')}`}
-                          </>
-                        )}
-                      </div>
-                      <div style={{fontSize: '13px', color: '#6c757d', marginTop: '3px'}}>
-                        {job.backupDirs.join(', ')}
-                      </div>
-                    </div>
-                    <div style={{display: 'flex', gap: '10px'}}>
-                      <button
-                        className="btn"
-                        style={{padding: '8px 15px', fontSize: '14px'}}
-                        disabled={runningJobId === job.id}
-                        onClick={async () => {
-                          setRunningJobId(job.id)
-                          try {
-                            await RunScheduledJobNow(job.id)
-                            showStatus(`▶️ ${job.name}`, 'success')
-                          } catch (err) {
-                            showStatus(`❌ ${t('runNowError').replace('{error}', err)}`, 'error')
-                          } finally {
-                            setRunningJobId(null)
-                          }
-                        }}
-                      >
-                        {runningJobId === job.id ? '⏳' : '▶️'} {t('runNow')}
-                      </button>
-                      <button
-                        className="btn"
-                        style={{padding: '8px 15px', fontSize: '14px'}}
-                        onClick={() => {
-                          // Load job data into form for editing
-                          setEditingJobId(job.id)
-                          setBackupMode('scheduled')
-                          setScheduleTime(job.scheduleTime)
-                          setRunAtStartup(job.runAtStartup)
-                          // A job saved before these fields existed has none
-                          // of them — fall back to the same defaults the
-                          // backend treats an absent value as (daily, every
-                          // day), so an old job round-trips unchanged.
-                          setTriggerMode(job.triggerMode || 'daily')
-                          setIntervalMinutes(job.intervalMinutes || 120)
-                          setWindowAllDay(job.windowAllDay !== false)
-                          setWindowStart(job.windowStart || '09:00')
-                          setWindowEnd(job.windowEnd || '17:00')
-                          setDaysOfWeek(job.daysOfWeek && job.daysOfWeek.length > 0 ? job.daysOfWeek : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
-                          setBackupDirs(job.backupDirs.join('\n'))
-                          setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
-                          setBackupType(job.backupType)
-                          // A saved job's exclude_list is already the flat merge of
-                          // wildcard-box + tree-derived entries (see
-                          // getEffectiveExcludeList) — there's no way to tell them
-                          // apart back out, so re-editing loads everything into the
-                          // wildcard box and the tree starts fresh with no per-item
-                          // excludes of its own. Known, acceptable round-trip
-                          // limitation, not a bug.
-                          setExcludeList(job.excludeList.join('\n'))
-                          setTreeExcludes([])
-                          // Switch to backup tab to show the form
-                          setActiveTab('backup')
-                          showStatus(`${t('editModeInfo')}`, 'info')
-                          window.scrollTo({top: 0, behavior: 'smooth'})
-                        }}
-                      >
-                        {t('editJob')}
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        style={{padding: '8px 15px', fontSize: '14px'}}
-                        onClick={async () => {
-                          try {
-                            await DeleteScheduledJob(job.id)
-                            setScheduledJobs(scheduledJobs.filter(j => j.id !== job.id))
-                            showStatus(t('statusJobDeleted'), 'success')
-                            // Cancel edit mode if deleting the job being edited
-                            if (editingJobId === job.id) {
-                              setEditingJobId(null)
-                            }
-                          } catch (err) {
-                            showStatus(`❌ ${t('statusError')} ${err}`, 'error')
-                          }
-                        }}
-                      >
-                        {t('deleteJob')}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              </div>
-            </div>
+          </div>
           )}
 
           {status.visible && activeTab === 'backup' && (
