@@ -8,7 +8,7 @@ import KnownLimitationsModal from './components/KnownLimitationsModal'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
-let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs
+let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, RunScheduledJobNow, GetJobHistory, GetSystemInfo, GetLastBackupDirs
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
@@ -37,6 +37,7 @@ if (window.go) {
   UpdateScheduledJob = window.go.main.App.UpdateScheduledJob
   GetScheduledJobs = window.go.main.App.GetScheduledJobs
   DeleteScheduledJob = window.go.main.App.DeleteScheduledJob
+  RunScheduledJobNow = window.go.main.App.RunScheduledJobNow
   GetJobHistory = window.go.main.App.GetJobHistory
   GetSystemInfo = window.go.main.App.GetSystemInfo
   GetLastBackupDirs = window.go.main.App.GetLastBackupDirs
@@ -168,6 +169,7 @@ function App() {
   const [scheduledJobs, setScheduledJobs] = useState([])
   const [jobHistory, setJobHistory] = useState([])
   const [editingJobId, setEditingJobId] = useState(null) // Track which job is being edited
+  const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
   const [backupStats, setBackupStats] = useState({
     startTime: null,
     lastUpdate: null,
@@ -1217,13 +1219,13 @@ function App() {
         id: editingJobId || Date.now().toString(),
         name: `Backup ${config['backup-id'] || hostname}`,
         scheduleTime: scheduleTime,
-        runAtStartup: runAtStartup,
+        runAtStartup: triggerMode === 'manual' ? false : runAtStartup,
         triggerMode: triggerMode,
         intervalMinutes: triggerMode === 'interval' ? intervalMinutes : undefined,
         windowAllDay: triggerMode === 'interval' ? windowAllDay : undefined,
         windowStart: triggerMode === 'interval' && !windowAllDay ? windowStart : undefined,
         windowEnd: triggerMode === 'interval' && !windowAllDay ? windowEnd : undefined,
-        daysOfWeek: daysOfWeek,
+        daysOfWeek: triggerMode === 'manual' ? [] : daysOfWeek,
         backupDirs: backupType === 'directory' ? dirList : [],
         backupId: config['backup-id'],
         useVSS: config.usevss,
@@ -1900,17 +1902,19 @@ function App() {
                 </div>
               )}
 
-              <div className="form-group">
-                <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer'}}>
-                  <input
-                    type="checkbox"
-                    checked={runAtStartup}
-                    onChange={(e) => setRunAtStartup(e.target.checked)}
-                    style={{width: '20px', height: '20px', cursor: 'pointer'}}
-                  />
-                  <span>🚀 {t('runAtStartup')}</span>
-                </label>
-              </div>
+              {triggerMode !== 'manual' && (
+                <div className="form-group">
+                  <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer'}}>
+                    <input
+                      type="checkbox"
+                      checked={runAtStartup}
+                      onChange={(e) => setRunAtStartup(e.target.checked)}
+                      style={{width: '20px', height: '20px', cursor: 'pointer'}}
+                    />
+                    <span>🚀 {t('runAtStartup')}</span>
+                  </label>
+                </div>
+              )}
 
               <div className="form-group">
                 <label>{t('triggerMode')}</label>
@@ -1922,6 +1926,7 @@ function App() {
                 >
                   <Tab value="daily">📆 {t('triggerModeDaily')}</Tab>
                   <Tab value="interval">🔁 {t('triggerModeInterval')}</Tab>
+                  <Tab value="manual">🖐️ {t('triggerModeManual')}</Tab>
                 </TabList>
               </div>
 
@@ -1983,43 +1988,51 @@ function App() {
                 </>
               )}
 
-              <div className="form-group">
-                <label>{t('daysOfWeekLabel')}</label>
-                <div style={{display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap'}}>
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
-                    const selected = daysOfWeek.includes(day)
-                    return (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => setDaysOfWeek(selected ? daysOfWeek.filter(d => d !== day) : [...daysOfWeek, day])}
-                        style={{
-                          padding: '6px 10px',
-                          backgroundColor: selected ? 'var(--accent)' : '#e2e8f0',
-                          color: selected ? 'white' : '#4a5568',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '13px',
-                          fontWeight: selected ? 'bold' : 'normal'
-                        }}
-                      >
-                        {t(`day${day}`)}
-                      </button>
-                    )
-                  })}
+              {triggerMode !== 'manual' && (
+                <div className="form-group">
+                  <label>{t('daysOfWeekLabel')}</label>
+                  <div style={{display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap'}}>
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
+                      const selected = daysOfWeek.includes(day)
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => setDaysOfWeek(selected ? daysOfWeek.filter(d => d !== day) : [...daysOfWeek, day])}
+                          style={{
+                            padding: '6px 10px',
+                            backgroundColor: selected ? 'var(--accent)' : '#e2e8f0',
+                            color: selected ? 'white' : '#4a5568',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            fontWeight: selected ? 'bold' : 'normal'
+                          }}
+                        >
+                          {t(`day${day}`)}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="info-box" style={{backgroundColor: '#eef2ff'}}>
-                💡 {triggerMode === 'daily'
-                  ? <>{t('schedulingInfo')} <strong>{scheduleTime}</strong></>
-                  : <>{t('schedulingInfoInterval').replace('{n}', intervalMinutes)}
-                      {!windowAllDay && ` ${t('windowBetween')} ${windowStart} ${t('windowAnd')} ${windowEnd}`}</>}
-                <br/>{t('schedulingInfoDays')} {daysOfWeek.length === 0 || daysOfWeek.length === 7
-                  ? t('everyDay')
-                  : daysOfWeek.map(d => t(`day${d}`)).join(', ')}
-                {runAtStartup && <><br/>{t('andAtStartup')}</>}
+                {triggerMode === 'manual' ? (
+                  <>🖐️ {t('schedulingInfoManual')}</>
+                ) : (
+                  <>
+                    💡 {triggerMode === 'daily'
+                      ? <>{t('schedulingInfo')} <strong>{scheduleTime}</strong></>
+                      : <>{t('schedulingInfoInterval').replace('{n}', intervalMinutes)}
+                          {!windowAllDay && ` ${t('windowBetween')} ${windowStart} ${t('windowAnd')} ${windowEnd}`}</>}
+                    <br/>{t('schedulingInfoDays')} {daysOfWeek.length === 0 || daysOfWeek.length === 7
+                      ? t('everyDay')
+                      : daysOfWeek.map(d => t(`day${d}`)).join(', ')}
+                    {runAtStartup && <><br/>{t('andAtStartup')}</>}
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -2245,21 +2258,45 @@ function App() {
                     <div>
                       <strong>{job.name}</strong>
                       <div style={{fontSize: '14px', color: '#6c757d', marginTop: '5px'}}>
-                        {job.triggerMode === 'interval'
+                        {job.triggerMode === 'manual'
+                          ? <>🖐️ {t('triggerModeManual')}</>
+                          : job.triggerMode === 'interval'
                           ? <>🔁 {t('triggerModeInterval')} — {t('everyNMinutes').replace('{n}', job.intervalMinutes)}
                               {!job.windowAllDay && ` (${job.windowStart}–${job.windowEnd})`}</>
                           : <>📆 {t('triggerModeDaily')} — ⏰ {job.scheduleTime}</>}
-                        {' • '}
-                        {!job.daysOfWeek || job.daysOfWeek.length === 0 || job.daysOfWeek.length === 7
-                          ? t('everyDay')
-                          : job.daysOfWeek.map(d => t(`day${d}`)).join(', ')}
-                        {job.runAtStartup && ` • 🚀 ${t('atStartupLabel')}`}
+                        {job.triggerMode !== 'manual' && (
+                          <>
+                            {' • '}
+                            {!job.daysOfWeek || job.daysOfWeek.length === 0 || job.daysOfWeek.length === 7
+                              ? t('everyDay')
+                              : job.daysOfWeek.map(d => t(`day${d}`)).join(', ')}
+                            {job.runAtStartup && ` • 🚀 ${t('atStartupLabel')}`}
+                          </>
+                        )}
                       </div>
                       <div style={{fontSize: '13px', color: '#6c757d', marginTop: '3px'}}>
                         📁 {job.backupDirs.join(', ')}
                       </div>
                     </div>
                     <div style={{display: 'flex', gap: '10px'}}>
+                      <button
+                        className="btn"
+                        style={{padding: '8px 15px', fontSize: '14px'}}
+                        disabled={runningJobId === job.id}
+                        onClick={async () => {
+                          setRunningJobId(job.id)
+                          try {
+                            await RunScheduledJobNow(job.id)
+                            showStatus(`▶️ ${job.name}`, 'success')
+                          } catch (err) {
+                            showStatus(`❌ ${t('runNowError').replace('{error}', err)}`, 'error')
+                          } finally {
+                            setRunningJobId(null)
+                          }
+                        }}
+                      >
+                        {runningJobId === job.id ? '⏳' : '▶️'} {t('runNow')}
+                      </button>
                       <button
                         className="btn"
                         style={{padding: '8px 15px', fontSize: '14px'}}
