@@ -912,7 +912,12 @@ function App() {
     }
   }
 
-  const renderServerForm = () => {
+  // asModal: false for the first-run empty-state form (inline, nothing to
+  // overlay), true for editing/adding once servers already exist (a real
+  // modal over the server list, chevron tabs matching the Backup Set editor —
+  // Mick: "might be more natural" than the old always-visible inline form).
+  // Both share the same tab content; only the surrounding chrome differs.
+  const renderServerForm = (asModal = false) => {
     // A PAM-realm user (e.g. root@pam) is a full host account: a compromised
     // backup machine could then reach the PBS host and destroy/compromise backups.
     const uname = (serverFormData.username || '').trim().toLowerCase()
@@ -922,25 +927,17 @@ function App() {
       ['userpass', `${t('srvTabUserpass')}`],
       ['token', `${t('srvTabToken')}`]
     ]
-    return (
-      <div className="card">
-        <h3>{editingServer ? `${t('editServer')}` : `${t('addServer')}`}</h3>
+    const title = editingServer ? t('editServer') : t('addServer')
+    const onSubmit = editingServer ? handleUpdatePBSServer : handleAddPBSServer
 
-        <div style={{display: 'flex', gap: '8px', marginBottom: '15px'}}>
+    const body = (
+      <>
+        <div style={{marginBottom: '18px'}}>
           {tabs.map(([key, label]) => (
             <button
               key={key}
+              className={`chev ${serverTab === key ? 'active' : ''}`}
               onClick={() => switchServerTab(key)}
-              style={{
-                flex: 1,
-                padding: '8px',
-                backgroundColor: serverTab === key ? 'var(--accent)' : '#e2e8f0',
-                color: serverTab === key ? 'white' : '#4a5568',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }}
             >
               {label}
             </button>
@@ -1014,19 +1011,42 @@ function App() {
             <div className="info-box"><strong>{t('tipTitle')}</strong> {t('tipAPIToken')}<br/>{t('tipAPITokenPath')}</div>
           </>
         )}
+      </>
+    )
 
-        <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
-          {editingServer ? (
-            <>
-              <button onClick={handleUpdatePBSServer} style={{flex: 1}}>{t('update')}</button>
-              <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>❌ {t('cancel')}</button>
-            </>
-          ) : (
-            <>
-              <button onClick={handleAddPBSServer} style={{flex: 1}}>{t('addServer')}</button>
-              <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>❌ {t('cancel')}</button>
-            </>
-          )}
+    if (!asModal) {
+      return (
+        <div className="card">
+          <h3>{title}</h3>
+          {body}
+          <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
+            <button onClick={onSubmit} style={{flex: 1}}>{t('save')}</button>
+            <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>❌ {t('cancel')}</button>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div
+        style={{position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100}}
+        onClick={handleCancelEdit}
+      >
+        <div
+          style={{width: '520px', maxWidth: '92vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: '#f3f3f3', borderRadius: '8px', boxShadow: '0 20px 60px rgba(0,0,0,.4)', overflow: 'hidden'}}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{height: '40px', background: '#fff', borderBottom: '1px solid #ddd', display: 'flex', alignItems: 'center', padding: '0 16px', fontSize: '14px', fontWeight: 600, color: '#333', justifyContent: 'space-between'}}>
+            <span>{title}</span>
+            <span style={{cursor: 'pointer', color: '#888'}} onClick={handleCancelEdit}>✕</span>
+          </div>
+          <div style={{padding: '20px 22px', overflowY: 'auto', flex: '1 1 auto'}}>
+            {body}
+          </div>
+          <div style={{display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 22px', borderTop: '1px solid #ddd', background: '#fff'}}>
+            <button className="btn btn-primary" onClick={onSubmit}>{t('save')}</button>
+            <button className="btn" onClick={handleCancelEdit}>{t('cancel')}</button>
+          </div>
         </div>
       </div>
     )
@@ -2016,7 +2036,7 @@ function App() {
                           })}
                         </div>
 
-                        {showServerForm && renderServerForm()}
+                        {showServerForm && renderServerForm(true)}
                       </>
                     )}
 
