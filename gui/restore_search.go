@@ -139,7 +139,7 @@ func buildMatcher(mode SearchMatchMode, query string) (entryMatcher, error) {
 		// a user who explicitly wants case-sensitivity can override with (?-i).
 		re, err := regexp.Compile("(?i)" + query)
 		if err != nil {
-			return nil, fmt.Errorf("expression régulière invalide: %v", err)
+			return nil, fmt.Errorf("invalid regular expression: %v", err)
 		}
 		return func(path string) bool { return re.MatchString(baseName(path)) }, nil
 
@@ -194,7 +194,7 @@ func joinOriginPath(meta *BackupMeta, archivePath string) string {
 // AssembleMissing is set. Results are newest-snapshot-first.
 func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
 	if opts.BaseURL == "" || !((opts.AuthID != "" && opts.Secret != "") || opts.Ticket != "") {
-		return nil, fmt.Errorf("paramètres de connexion PBS requis")
+		return nil, fmt.Errorf("PBS connection parameters required")
 	}
 	if opts.Datastore == "" {
 		return nil, fmt.Errorf("datastore requis")
@@ -331,7 +331,7 @@ func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
 	}
 
 	if opts.OnProgress != nil {
-		opts.OnProgress(1.0, fmt.Sprintf("Terminé : %d résultat(s)", len(result.Hits)))
+		opts.OnProgress(1.0, fmt.Sprintf("Done: %d result(s)", len(result.Hits)))
 	}
 	writeBackupLog(fmt.Sprintf("Search done: %d hits, %d searched, %d assembled, %d skipped, truncated=%v cancelled=%v",
 		len(result.Hits), result.SnapshotsSearched, result.SnapshotsAssembled, result.SnapshotsSkipped, result.Truncated, result.Cancelled))

@@ -664,7 +664,7 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 	case api.ModeStandalone:
 		// Direct execution - check admin if VSS requested
 		if useVSS && !isAdmin() {
-			return fmt.Errorf("VSS (Shadow Copy) nécessite les privilèges administrateur - veuillez redémarrer l'application en tant qu'administrateur ou désactiver VSS")
+			return fmt.Errorf("VSS (Shadow Copy) requires administrator privileges - please restart the application as administrator or disable VSS")
 		}
 		return a.startBackupDirect(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression)
 	default:
@@ -699,7 +699,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	case api.ModeStandalone:
 		// Direct execution - check admin if VSS requested
 		if useVSS && !isAdmin() {
-			return fmt.Errorf("VSS (Shadow Copy) nécessite les privilèges administrateur - veuillez redémarrer l'application en tant qu'administrateur ou désactiver VSS")
+			return fmt.Errorf("VSS (Shadow Copy) requires administrator privileges - please restart the application as administrator or disable VSS")
 		}
 		return a.startMachineBackupDirect(backupType, backupDevices, backupID, useVSS, compression)
 	default:
@@ -724,7 +724,7 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 	resp, err := a.apiClient.StartBackup(req)
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("[Service Mode] Backup request failed: %v", err))
-		return fmt.Errorf("échec de la communication avec le service: %w", err)
+		return fmt.Errorf("communication with the service failed: %w", err)
 	}
 
 	writeDebugLog(fmt.Sprintf("[Service Mode] Backup started: %s (JobID: %s)", resp.Message, resp.JobID))
@@ -750,7 +750,7 @@ func (a *App) startMachineBackupViaService(backupType string, backupDevices []st
 	resp, err := a.apiClient.StartMachineBackup(req)
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("[Service Mode] Machine backup request failed: %v", err))
-		return fmt.Errorf("échec de la communication avec le service: %w", err)
+		return fmt.Errorf("communication with the service failed: %w", err)
 	}
 
 	writeDebugLog(fmt.Sprintf("[Service Mode] Machine backup started: %s (JobID: %s)", resp.Message, resp.JobID))
@@ -857,7 +857,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	var targetDirs []string
 	if backupType == "directory" {
 		if len(backupDirs) == 0 {
-			return fmt.Errorf("au moins un répertoire de sauvegarde requis")
+			return fmt.Errorf("at least one backup directory required")
 		}
 		targetDirs = backupDirs
 	}
@@ -960,7 +960,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			// Add manual backup to history
 			historyEntry := JobHistory{
 				ID:         fmt.Sprintf("%d", time.Now().Unix()),
-				Name:       fmt.Sprintf("Backup manuel - %s", backupID),
+				Name:       fmt.Sprintf("Manual backup - %s", backupID),
 				Timestamp:  time.Now().Format(time.RFC3339),
 				Status:     "success",
 				Message:    message,
@@ -1268,7 +1268,7 @@ func (a *App) ListSnapshots(pbsID, backupID string) ([]map[string]interface{}, e
 		cfg.Datastore, cfg.Namespace, cfg.CertFingerprint, backupID)
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("ListSnapshotsInline failed: %v", err))
-		return nil, fmt.Errorf("échec de la liste des snapshots: %v", err)
+		return nil, fmt.Errorf("failed to list snapshots: %v", err)
 	}
 
 	result := make([]map[string]interface{}, 0, len(snaps))
@@ -1471,7 +1471,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 			err = RestoreSnapshotInline(opts)
 		}()
 		success := err == nil
-		msg := "Restauration terminée"
+		msg := "Restore completed"
 		if err != nil {
 			msg = err.Error()
 			writeDebugLog(fmt.Sprintf("Restore failed: %v", err))
@@ -1511,7 +1511,7 @@ func (a *App) OpenRestoreDestDialog() (dir string, err error) {
 	// the previous guard disabled the picker for every GUI user with a service).
 	if a.isServiceProcess {
 		writeDebugLog("OpenRestoreDestDialog: native picker skipped in the headless service process — use manual path entry")
-		return "", fmt.Errorf("sélecteur de dossier indisponible dans le service — saisissez le chemin de destination manuellement")
+		return "", fmt.Errorf("folder picker unavailable in service mode — enter the destination path manually")
 	}
 	defer func() {
 		if r := recover(); r != nil {

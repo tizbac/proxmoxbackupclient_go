@@ -325,10 +325,10 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 				var msg string
 				failed := c.failedchunk.Load()
 				if failed > 0 {
-					msg = fmt.Sprintf("Traité: %d MB (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
+					msg = fmt.Sprintf("Processed: %d MB (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
 						sizeMB, c.newchunk.Load(), c.reusechunk.Load(), failed)
 				} else {
-					msg = fmt.Sprintf("Traité: %d MB (New: %d, Reused: %d chunks)",
+					msg = fmt.Sprintf("Processed: %d MB (New: %d, Reused: %d chunks)",
 						sizeMB, c.newchunk.Load(), c.reusechunk.Load())
 				}
 
@@ -342,10 +342,10 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 						progress = 0.9
 					}
 					if failed > 0 {
-						msg = fmt.Sprintf("Traité: %d / %d MB (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
+						msg = fmt.Sprintf("Processed: %d / %d MB (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
 							sizeMB, totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load(), failed)
 					} else {
-						msg = fmt.Sprintf("Traité: %d / %d MB (New: %d, Reused: %d chunks)",
+						msg = fmt.Sprintf("Processed: %d / %d MB (New: %d, Reused: %d chunks)",
 							sizeMB, totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load())
 					}
 				} else {
@@ -857,7 +857,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 				writeBackupLog(fmt.Sprintf("Cancellation requested — stopping before backup of %s", dir))
 				client.Close()
 				if opts.OnComplete != nil {
-					opts.OnComplete(false, "Backup annulé par l'utilisateur")
+					opts.OnComplete(false, "Backup cancelled by user")
 				}
 				return fmt.Errorf("backup cancelled by user")
 			}
@@ -907,7 +907,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 				if opts.Ctx != nil && opts.Ctx.Err() != nil {
 					writeBackupLog("Cancellation requested during session-lost wait — aborting")
 					if opts.OnComplete != nil {
-						opts.OnComplete(false, "Backup annulé par l'utilisateur")
+						opts.OnComplete(false, "Backup cancelled by user")
 					}
 					return fmt.Errorf("backup cancelled by user")
 				}
@@ -915,7 +915,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 				if remaining <= 0 {
 					break
 				}
-				progress(0, fmt.Sprintf("Session PBS perdue, attente %s avant nouvelle tentative complète (lock PBS en cours de libération)...",
+				progress(0, fmt.Sprintf("PBS session lost, waiting %s before a full retry (PBS lock being released)...",
 					remaining.Round(time.Second)))
 				sleepFor := 30 * time.Second
 				if remaining < sleepFor {
@@ -1017,9 +1017,9 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	var completionMsg, progressMsg string
 	switch {
 	case partial:
-		completionMsg = fmt.Sprintf("⚠️  Backup partiel en %s: %d/%d dossiers OK, %.1f MB (%d new, %d reused chunks)\nErreurs:\n%s",
+		completionMsg = fmt.Sprintf("⚠️  Partial backup in %s: %d/%d folders OK, %.1f MB (%d new, %d reused chunks)\nErrors:\n%s",
 			formatDuration(duration), successfulDirs, len(opts.BackupObjects), totalSizeMB, newchunk.Load(), reusechunk.Load(), strings.Join(dirErrors, "\n"))
-		progressMsg = fmt.Sprintf("Backup partiel : %d/%d dossiers OK", successfulDirs, len(opts.BackupObjects))
+		progressMsg = fmt.Sprintf("Partial backup: %d/%d folders OK", successfulDirs, len(opts.BackupObjects))
 	case failed > 0:
 		completionMsg = fmt.Sprintf("⚠️  Backup completed with errors in %s: %.1f MB backed up (%d new, %d reused, %d FAILED chunks)",
 			formatDuration(duration), totalSizeMB, newchunk.Load(), reusechunk.Load(), failed)
@@ -1033,7 +1033,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	progress(1.0, progressMsg)
 
 	if len(allSkipped) > 0 {
-		completionMsg += fmt.Sprintf("\n⚠️  %d fichiers/dossiers ignorés (accès refusé ou junction points)", len(allSkipped))
+		completionMsg += fmt.Sprintf("\n⚠️  %d files/folders skipped (access denied or junction points)", len(allSkipped))
 		writeBackupLog(fmt.Sprintf("=== SKIPPED FILES/DIRECTORIES (%d) ===", len(allSkipped)))
 
 		// Log first 50 skipped files in detail

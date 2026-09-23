@@ -200,7 +200,7 @@ func LoadConfig() *Config {
 			Secret:          config.Secret,
 			Datastore:       config.Datastore,
 			Namespace:       config.Namespace,
-			Description:     "Serveur PBS par défaut (migré depuis ancienne config)",
+			Description:     "Default PBS server (migrated from old config)",
 		}
 
 		// Initialize PBSServers map if nil
@@ -334,7 +334,7 @@ func (c *Config) GetPBSServer(id string) (*PBSServer, error) {
 
 	// If still empty, return error
 	if id == "" {
-		return nil, fmt.Errorf("aucun serveur PBS spécifié et pas de serveur par défaut")
+		return nil, fmt.Errorf("no PBS server specified and no default server")
 	}
 
 	// Get server by ID
@@ -366,7 +366,7 @@ func (c *Config) AddPBSServer(pbs *PBSServer) error {
 
 	// Check if ID already exists
 	if _, exists := c.PBSServers[pbs.ID]; exists {
-		return fmt.Errorf("serveur PBS avec ID '%s' existe déjà", pbs.ID)
+		return fmt.Errorf("PBS server with ID '%s' already exists", pbs.ID)
 	}
 
 	c.PBSServers[pbs.ID] = pbs

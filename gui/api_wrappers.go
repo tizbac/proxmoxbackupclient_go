@@ -64,7 +64,7 @@ func (a *App) pinFingerprintLocal(id, fingerprint string) error {
 	pbs.CertFingerprint = fingerprint
 	if err := a.config.UpdatePBSServer(pbs); err != nil {
 		writeDebugLog(fmt.Sprintf("pinFingerprintLocal: could not persist fingerprint for %q: %v", id, err))
-		return fmt.Errorf("impossible d'enregistrer l'empreinte (config.json non accessible en écriture ?): %w", err)
+		return fmt.Errorf("unable to save the fingerprint (config.json not writable?): %w", err)
 	}
 	// Read the file back so the log states unambiguously whether the fingerprint
 	// reached disk — this separates a write/permission failure from a TLS-apply bug
