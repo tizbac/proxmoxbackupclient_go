@@ -5,6 +5,7 @@ import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
 import DirectoryTree from './components/DirectoryTree'
 import KnownLimitationsModal from './components/KnownLimitationsModal'
+import ThemePicker, { hasStoredTheme } from './components/ThemePicker'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
@@ -513,9 +514,13 @@ function App() {
           const b = await GetBrand()
           if (b) {
             setBrand(b)
-            const root = document.documentElement.style
-            if (b.accent) root.setProperty('--accent', b.accent)
-            if (b.accent_hover) root.setProperty('--accent-hover', b.accent_hover)
+            // A saved Theme choice (Preferences) always wins over the brand's own
+            // default accent — it's a later, more specific, explicit user choice.
+            if (!hasStoredTheme()) {
+              const root = document.documentElement.style
+              if (b.accent) root.setProperty('--accent', b.accent)
+              if (b.accent_hover) root.setProperty('--accent-hover', b.accent_hover)
+            }
             if (b.title) document.title = version ? `${b.title} v${version}` : b.title
           }
         }
@@ -1769,6 +1774,8 @@ function App() {
       <div className="container">
         {/* PBS Configuration Tab */}
         <div className={`tab-content ${activeTab === 'servers' ? 'active' : ''}`}>
+          <ThemePicker />
+
           <h2>🖥️ {t('serversTitle')}</h2>
 
           {/* Show form first if no servers configured */}

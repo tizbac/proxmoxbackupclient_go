@@ -5,10 +5,16 @@ box-sizing: border-box;
 }
 
 /* Primary accent color — overridable at runtime by the active brand
-   (see App.jsx -> BrandFromExecutable) via documentElement.style.setProperty. */
+   (see App.jsx -> BrandFromExecutable) via documentElement.style.setProperty,
+   and then by the user's own Theme choice in Preferences (components/ThemePicker.jsx),
+   which takes precedence over the brand default once a theme has been saved.
+   --hero-start/--hero-end are the two outer stops of the hero banner's
+   gradient; --accent is always its middle (60%) stop. */
 :root {
     --accent: #e87003;
     --accent-hover: #d46100;
+    --hero-start: #5c3a1e;
+    --hero-end: #fbe9d7;
 }
 
 body {
@@ -85,7 +91,7 @@ body {
 
 .hero {
     flex: 0 0 auto;
-    background: linear-gradient(90deg, #202020 0%, var(--accent) 65%, var(--accent) 100%);
+    background: linear-gradient(90deg, var(--hero-start) 0%, var(--accent) 60%, var(--hero-end) 100%);
     color: #fff;
     padding: 18px 26px;
     display: flex;
