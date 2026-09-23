@@ -20,6 +20,22 @@ import (
 // finish well inside this.
 const chunkFetchTimeout = 60 * time.Second
 
+// chunkPrefetchWindow/chunkPrefetchConcurrency bound the background read-ahead
+// added 2026-09-23 after a restore measured at ~6MB/s: chunkAt used to fetch
+// exactly one chunk at a time, fully sequential (request, wait for the full
+// round-trip, only then request the next), so throughput was bounded by
+// per-chunk latency rather than link bandwidth. Since PXAR extraction walks
+// the stream in mostly-linear order, whichever chunk chunkAt just resolved
+// triggers background fetches of the next few indices into the same LRU
+// cache, so by the time the sequential reader actually asks for them they are
+// often already there. HTTP/2 (already in use for the PBS connection)
+// multiplexes concurrent streams over the one connection, so this needs no
+// extra connections, just extra goroutines issuing concurrent requests.
+const (
+	chunkPrefetchWindow      = 6 // how many chunks ahead of the one just resolved to prefetch
+	chunkPrefetchConcurrency = 4 // max background prefetch fetches in flight at once
+)
+
 // ErrReadCancelled is returned by a DIDXReaderAt read once its cancel predicate
 // reports true, so a long lazy walk (e.g. a cross-snapshot search) can be
 // aborted between chunk fetches instead of running to completion.
@@ -56,6 +72,18 @@ type DIDXReaderAt struct {
 
 	mu      sync.Mutex // serializes fetch bookkeeping (fetched counter)
 	fetched int
+
+	// inflight coalesces concurrent requests for the SAME chunk index (from
+	// ReadAt's own caller racing a background prefetch worker, or two
+	// prefetch triggers overlapping) into a single network fetch instead of
+	// issuing duplicate requests. Keyed by chunk index; the channel is closed
+	// once that chunk's fetch attempt finishes (success or failure).
+	inflightMu sync.Mutex
+	inflight   map[int]chan struct{}
+
+	// prefetchSem bounds how many background prefetch fetches run at once,
+	// independent of however many ReadAt callers exist.
+	prefetchSem chan struct{}
 }
 
 // SetCancelCheck installs a predicate polled before each read and chunk fetch;
@@ -90,11 +118,13 @@ func (pbs *PBSClient) NewDIDXReaderAt(archiveName string, cacheChunks int, progr
 		return nil, 0, err
 	}
 	return &DIDXReaderAt{
-		pbs:      pbs,
-		idx:      idx,
-		cache:    newChunkCache(cacheChunks),
-		progress: progress,
-		ctx:      context.Background(),
+		pbs:         pbs,
+		idx:         idx,
+		cache:       newChunkCache(cacheChunks),
+		progress:    progress,
+		ctx:         context.Background(),
+		inflight:    make(map[int]chan struct{}),
+		prefetchSem: make(chan struct{}, chunkPrefetchConcurrency),
 	}, int64(idx.total), nil
 }
 
@@ -109,13 +139,59 @@ func (r *DIDXReaderAt) chunkIndexAt(pos uint64) int {
 
 // chunkAt returns the decompressed bytes of chunk ci, from cache or by fetching
 // it from the server (verifying size and SHA-256 against the index digest).
+// On a cache miss it also kicks off background prefetch of the next several
+// chunks, so a mostly-linear walk (the common case) turns most subsequent
+// fetches into cache hits instead of a fresh network round-trip each time.
 func (r *DIDXReaderAt) chunkAt(ci int) ([]byte, error) {
 	if r.cancel != nil && r.cancel() {
 		return nil, ErrReadCancelled
 	}
+	data, err := r.ensureChunk(ci)
+	if err != nil {
+		return nil, err
+	}
+	r.triggerPrefetch(ci)
+	return data, nil
+}
+
+// ensureChunk returns chunk ci's bytes, from cache if present, otherwise by
+// fetching it — coalescing concurrent requests for the SAME index (ReadAt's
+// caller racing a background prefetch worker, or two overlapping prefetch
+// triggers) into a single network fetch via the inflight map.
+func (r *DIDXReaderAt) ensureChunk(ci int) ([]byte, error) {
 	if data, ok := r.cache.get(ci); ok {
 		return data, nil
 	}
+
+	r.inflightMu.Lock()
+	if ch, ok := r.inflight[ci]; ok {
+		r.inflightMu.Unlock()
+		<-ch
+		if data, ok := r.cache.get(ci); ok {
+			return data, nil
+		}
+		// The in-flight attempt failed and isn't propagated to a second
+		// waiter by design (keeps this simple) — retry once, synchronously.
+		return r.fetchOnce(ci)
+	}
+	ch := make(chan struct{})
+	r.inflight[ci] = ch
+	r.inflightMu.Unlock()
+
+	data, err := r.fetchOnce(ci)
+
+	r.inflightMu.Lock()
+	delete(r.inflight, ci)
+	r.inflightMu.Unlock()
+	close(ch)
+
+	return data, err
+}
+
+// fetchOnce does the actual network fetch, validation, cache population and
+// progress bump for chunk ci. Callers arrange for it to run at most once per
+// index at a time (see ensureChunk) — this does no coalescing of its own.
+func (r *DIDXReaderAt) fetchOnce(ci int) ([]byte, error) {
 	digest := r.idx.digests[ci]
 	ctx := r.ctx
 	if ctx == nil {
@@ -147,6 +223,49 @@ func (r *DIDXReaderAt) chunkAt(ci int) ([]byte, error) {
 		r.progress(fetched, len(r.idx.digests))
 	}
 	return chunk, nil
+}
+
+// triggerPrefetch schedules background fetches for the chunkPrefetchWindow
+// indices following ci, skipping any already cached or already in flight,
+// bounded by prefetchSem so at most chunkPrefetchConcurrency run at once. A
+// full semaphore just means this call schedules fewer than the full window —
+// the next chunkAt along the walk tries again from its own position.
+func (r *DIDXReaderAt) triggerPrefetch(ci int) {
+	total := len(r.idx.digests)
+	for offset := 1; offset <= chunkPrefetchWindow; offset++ {
+		next := ci + offset
+		if next >= total {
+			break
+		}
+		if _, ok := r.cache.get(next); ok {
+			continue
+		}
+		r.inflightMu.Lock()
+		_, already := r.inflight[next]
+		r.inflightMu.Unlock()
+		if already {
+			continue
+		}
+		select {
+		case r.prefetchSem <- struct{}{}:
+		default:
+			return // worker pool full — try again from a later chunkAt call
+		}
+		go func(idx int) {
+			defer func() { <-r.prefetchSem }()
+			if r.ctx != nil {
+				select {
+				case <-r.ctx.Done():
+					return
+				default:
+				}
+			}
+			if r.cancel != nil && r.cancel() {
+				return
+			}
+			_, _ = r.ensureChunk(idx) // best-effort; the real consumer surfaces any error when it gets here
+		}(next)
+	}
 }
 
 // ReadAt implements io.ReaderAt over the reconstructed stream, fetching only the
