@@ -13,6 +13,7 @@ let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, 
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
+let SetParallelRestore
 
 // Check if we're running in Wails
 if (window.go) {
@@ -54,6 +55,7 @@ if (window.go) {
   TestPBSConnection = window.go.main.App.TestPBSConnection
   GetServerFingerprint = window.go.main.App.GetServerFingerprint
   PinPBSServerFingerprint = window.go.main.App.PinPBSServerFingerprint
+  SetParallelRestore = window.go.main.App.SetParallelRestore
 }
 
 // Wails events + runtime (open external URLs in the system browser)
@@ -2001,14 +2003,15 @@ function App() {
                           type="checkbox"
                           checked={!!config.parallel_restore}
                           onChange={async (e) => {
-                            const updated = {...config, parallel_restore: e.target.checked}
-                            setConfig(updated)
-                            if (!SaveConfig) return
+                            const checked = e.target.checked
+                            setConfig({...config, parallel_restore: checked})
+                            if (!SetParallelRestore) return
                             try {
-                              await SaveConfig(buildTrimmedConfig(updated))
+                              await SetParallelRestore(checked)
                               showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
                             } catch (err) {
                               showStatus(`❌ ${err}`, 'error')
+                              setConfig({...config, parallel_restore: !checked}) // revert on failure
                             }
                           }}
                         />
