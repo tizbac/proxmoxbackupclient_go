@@ -20,6 +20,16 @@ It is a **suite of tools** for backing up to PBS:
 
 > ⚠️ **Disclaimer:** This project is **not affiliated in any way** with **Proxmox Server Solutions GmbH**. "Proxmox", the Proxmox logo and related names are the property of their respective owners; here they are used **only** to state compatibility. See [proxmox.com](https://www.proxmox.com/) for their products.
 
+## 🔧 About this fork
+
+This is **mjb-is's fork** of the upstream project — repo: **https://github.com/mjb-is/proxmoxbackupclient_go**. Focus areas: hardening the Windows/Linux GUI client and building a fully automated bare-metal restore path on top of Clonezilla. Highlights over upstream:
+
+- **Rebuilt GUI**: a native File/View/Tools/Help menu bar, a left sidebar (Backup, Restore, Reports, Message Log, Servers, About), a "Backup Sets" scheduler (daily / interval / manual trigger modes, with a type badge and a one-click "Run Now"), a Reports page with full backup history, a capped Message Log, and a Preferences dialog with five colour themes (Amber, Blue, Green, Red, Dark) plus a custom colour option. Six interface languages now (French, English, Italian, German, Polish, Spanish).
+- **A real PBS/NBD chunk-fetch reliability fix**: a `zstd.NewReader` call in the reader path was started with a live `io.Reader` instead of `nil`, silently spinning up an unused background streaming-decode goroutine that could deadlock a bare-metal restore mid-transfer. Fixed upstream too, merged as [PR #85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85).
+- **New: a fully automated "PBS Bare Metal Restore" wizard** for the Clonezilla live ISO — see [below](#clonezilla-live-iso-bare-metal-restore).
+
+Anything of general use gets sent upstream as a PR (like #85 above) rather than kept fork-only; day-to-day fork-specific work stays here.
+
 ## 📦 Download
 
 👉 **[Download the latest release](https://github.com/tizbac/proxmoxbackupclient_go/releases)**
@@ -47,7 +57,11 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 ## ✨ Features
 
 ### GUI — Proxmox Backup Client GUI (recommended)
-- **🌍 Multilingual** — French, English, Italian, German and Polish interfaces
+- **🌍 Multilingual** — French, English, Italian, German, Polish and Spanish interfaces
+- Native menu bar + sidebar navigation (Backup, Restore, Reports, Message Log, Servers, About)
+- **Backup Sets** — reusable named jobs with daily / interval / manual scheduling, a directory-vs-machine type badge, and "Run Now"
+- **Reports** page with full backup history, and a capped **Message Log** for diagnostics
+- **Preferences** dialog with five colour themes (Amber, Blue, Green, Red, Dark) plus a custom colour option
 - User-friendly configuration with connection test
 - Real-time backup progress with throughput and time remaining
 - VSS (Volume Shadow Copy) support for consistent backups
@@ -55,7 +69,7 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 - Snapshot browsing, file search (wildcards) and restoration
 - Multi-PBS server support with certificate fingerprint pinning (TOFU)
 - Windows service mode + scheduled backups
-- Backup cancel, history (last 6) and rerun
+- Backup cancel, full history and rerun
 - Debug logging for diagnostics
 
 ### CLI tools
@@ -65,14 +79,15 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 
 ### 📸 Screenshots
 
-![Server configuration](docs/screenshots/nimbus-gui-liste-servers.png)
-*Multi-PBS server management with status indicators*
-
-![Add server form](docs/screenshots/nimbus-gui-add-server-form.png)
-*Simple server configuration with connection test*
-
-![One-shot backup](docs/screenshots/nimbus-gui-one-shot-backup.png)
-*Real-time backup progress with ETA and throughput*
+<!-- The three screenshots this section used to show (docs/screenshots/nimbus-gui-*.png) are the
+     pre-fork "Nimbus Backup v0.2.26" French tab-based UI and no longer reflect what ships today
+     (see "About this fork" above for the rebuilt native-menu/sidebar UI) — removed rather than
+     left in place to avoid showing the wrong app. Replace with current shots, saved under these
+     names, and this comment can go:
+       docs/screenshots/gui-backup-sets.png       — sidebar + Backup Sets list (type badges visible)
+       docs/screenshots/gui-restore.png           — Restore tab with a snapshot's file tree open
+       docs/screenshots/gui-reports.png           — Reports page (run list + detail panel)
+       docs/screenshots/gui-preferences-theme.png — Preferences dialog, Theme tab -->
 
 ### Smart system exclusions (file mode)
 When backing up an entire drive (e.g. `D:\`), the GUI automatically excludes:
@@ -177,11 +192,9 @@ If you get a `Device or resource busy` error, you have to force disconnect by ru
 
 ### Restore to physical machine
 
-A live CD / PXE boot system will be released that will allow logging in to a PBS server, selecting the backup, and launching clonezilla. For now the best way is spinning up a clonezilla live and copying to it the nbd server executable; before proceeding with clonezilla, on another tty, you launch `pbsnbd`.
+This fork ships a patched Clonezilla Live ISO with a fully automated **"PBS Bare Metal Restore"** boot menu entry — see [Clonezilla live ISO (bare-metal restore)](#clonezilla-live-iso-bare-metal-restore) below. It's a separate, first-position, default-on-timeout entry that skips Clonezilla's own language/keyboard prompts entirely: enter your PBS connection details, pick a snapshot, confirm the auto-detected target disk, and it handles network setup, NBD attach, the restore itself and an automatic reboot with no further input.
 
-I suggest also copying over command line parameters such as authid, baseurl, fingerprint etc, they are a pain in the... to hand type!
-
-Once pbsnbd is up and running, you can use the clonezilla disk-to-local-disk option.
+The older, semi-manual route also still ships on the same ISO, as its own entry in Clonezilla's normal mode-selection menu ("pbs-nbd"): it walks you through PBS connection details and attaches the chosen snapshot to `/dev/nbd0` in the background, then leaves you to drive the actual restore through Clonezilla's own standard disk-restore wizard by hand.
 
 ## Usage — Directory Backup
 
@@ -314,14 +327,19 @@ Legacy single-PBS configuration is automatically migrated to a `default` server 
 
 ### Clonezilla live ISO (bare-metal restore)
 
-The rescue workflow is built by patching a stock Clonezilla Live ISO with the `pbsnbd` / `machinebackup` binaries plus a **pbs-nbd** entry in the Clonezilla main menu (boots from CD, USB via `dd`, and UEFI):
+The rescue workflow is built by patching a stock Clonezilla Live ISO with the `pbsnbd` / `machinebackup` binaries plus two menu entries (boots from CD, USB via `dd`, and UEFI):
+
+- **`ocs-pbs-nbd`** — a **"pbs-nbd"** entry added to Clonezilla's own mode-selection menu. Prompts for your PBS connection details and the snapshot to restore, attaches it to `/dev/nbd0` in the background, then hands off to Clonezilla's normal disk-restore wizard for you to drive by hand.
+- **`ocs-pbs-bare-metal-restore`** — a new, first-position, default-on-timeout boot menu entry: **"Proxmox Backup Client Go - PBS Bare Metal Restore"**. Skips Clonezilla's language/keyboard prompts and its own generic wizard entirely, and walks straight from PBS credentials to a completed, auto-rebooted restore: DHCP is tried first (falling back to a static-IP prompt only if it fails), NTP sync runs by default, the target disk is auto-detected, and on success the machine shows a completion message and reboots on its own. Works identically for Windows- and Linux-sourced backups (Clonezilla restores at the raw block level, so it's OS-agnostic). Built to its own ISO filename alongside the manual-wizard ISO, so both stay available.
+
+Also fixed on the Clonezilla side, independent of either menu entry: a `zstd.NewReader` deadlock in the PBS chunk-fetch path (merged upstream as [PR #85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85)) and a 100%-reproducible "first restore pass fails with 'no partition', rerun succeeds" bug, root-caused to Clonezilla's own `is_disk_without_part_and_fs()` (in `ocs-functions`) racing against udev rather than any NBD-attach timing.
 
 ```bash
 ./patch-clonezilla.sh \
   -o clonezilla-live-patched.iso \
   clonezilla-live-3.3.3-15-amd64.iso \
   ./build/pbsnbd ./build/machinebackup \
-  ./clonezilla-patch/ocs-pbs-nbd
+  ./clonezilla-patch/ocs-pbs-nbd ./clonezilla-patch/ocs-pbs-bare-metal-restore
 ```
 
 Full details (why a full ISO rebuild instead of an in-place swap, prerequisites, menu flow, verification) in **[PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md)**.
