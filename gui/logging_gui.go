@@ -32,7 +32,26 @@ func init() {
 		}
 		logDir = filepath.Join(programData, "ProxmoxBackupClient")
 	} else {
-		logDir = "/var/log/proxmoxbackupclient"
+		// /var/log requires root to create a new subdirectory, which this GUI
+		// build (unlike the service build, which does run as root under
+		// systemd) is not guaranteed to have. Confirmed live 2026-09-24: on a
+		// normal desktop session the os.MkdirAll below failed silently (its
+		// error is discarded), so backup/debug logging was completely dead
+		// for the entire session with no visible sign beyond one line printed
+		// to a terminal the app wasn't even launched from — made a real
+		// restore bug impossible to diagnose from logs alone. Use a per-user
+		// location that works regardless of privilege (including when
+		// deliberately run via sudo, e.g. for machine/VSS backups), matching
+		// the XDG Base Directory convention for log-like state data.
+		stateHome := os.Getenv("XDG_STATE_HOME")
+		if stateHome == "" {
+			home, herr := os.UserHomeDir()
+			if herr != nil {
+				home = "/tmp"
+			}
+			stateHome = filepath.Join(home, ".local", "state")
+		}
+		logDir = filepath.Join(stateHome, "proxmoxbackupclient")
 	}
 	// #nosec G703 -- ProgramData is a trusted Windows system environment variable
 	_ = os.MkdirAll(logDir, 0700)
