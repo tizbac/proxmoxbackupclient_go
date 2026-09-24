@@ -953,7 +953,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 				writeDebugLog("[OnProgress] No callbacks/context (service or headless mode)")
 			}
 		},
-		OnComplete: func(success bool, message string) {
+		OnComplete: func(success bool, message string, msgKey MessageKey, msgP msgParams) {
 			writeDebugLog(fmt.Sprintf("Backup complete: success=%v, %s", success, message))
 
 			// Check if there's a registered callback for any job (service mode)
@@ -987,8 +987,10 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnComplete] Emitting Wails event (GUI mode)")
 				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
-					"success": success,
-					"message": message,
+					"success":       success,
+					"message":       message,
+					"message_key":   msgKey,
+					"message_params": msgP,
 				})
 			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
 				writeDebugLog("[OnComplete] No callbacks/context (service or headless mode)")
@@ -996,14 +998,16 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 
 			// Add manual backup to history
 			historyEntry := JobHistory{
-				ID:         fmt.Sprintf("%d", time.Now().Unix()),
-				Name:       fmt.Sprintf("Manual backup - %s", backupID),
-				Timestamp:  time.Now().Format(time.RFC3339),
-				Status:     "success",
-				Message:    message,
-				BackupDirs: targetDirs,
-				BackupID:   backupID,
-				UseVSS:     useVSS,
+				ID:            fmt.Sprintf("%d", time.Now().Unix()),
+				Name:          fmt.Sprintf("Manual backup - %s", backupID),
+				Timestamp:     time.Now().Format(time.RFC3339),
+				Status:        "success",
+				Message:       message,
+				BackupDirs:    targetDirs,
+				BackupID:      backupID,
+				UseVSS:        useVSS,
+				MessageKey:    msgKey,
+				MessageParams: msgP,
 			}
 			if !success {
 				historyEntry.Status = "failed"
@@ -1216,7 +1220,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 				writeDebugLog("[OnProgress] No callbacks/context (service or headless mode)")
 			}
 		},
-		OnComplete: func(success bool, message string) {
+		OnComplete: func(success bool, message string, msgKey MessageKey, msgP msgParams) {
 			writeDebugLog(fmt.Sprintf("Machine backup complete: success=%v, %s", success, message))
 
 			// Check if there's a registered callback for any job (service mode)
@@ -1250,8 +1254,10 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnComplete] Emitting Wails event (GUI mode)")
 				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
-					"success": success,
-					"message": message,
+					"success":       success,
+					"message":       message,
+					"message_key":   msgKey,
+					"message_params": msgP,
 				})
 			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
 				writeDebugLog("[OnComplete] No callbacks/context (service or headless mode)")
@@ -1259,14 +1265,16 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 
 			// Add manual backup to history
 			historyEntry := JobHistory{
-				ID:         fmt.Sprintf("%d", time.Now().Unix()),
-				Name:       fmt.Sprintf("Backup machine - %s", backupID),
-				Timestamp:  time.Now().Format(time.RFC3339),
-				Status:     "success",
-				Message:    message,
-				BackupDirs: backupDevices,
-				BackupID:   backupID,
-				UseVSS:     useVSS,
+				ID:            fmt.Sprintf("%d", time.Now().Unix()),
+				Name:          fmt.Sprintf("Backup machine - %s", backupID),
+				Timestamp:     time.Now().Format(time.RFC3339),
+				Status:        "success",
+				Message:       message,
+				BackupDirs:    backupDevices,
+				BackupID:      backupID,
+				UseVSS:        useVSS,
+				MessageKey:    msgKey,
+				MessageParams: msgP,
 			}
 			if !success {
 				historyEntry.Status = "failed"
@@ -1565,19 +1573,25 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		}()
 		success := err == nil
 		msg := "Restore completed"
+		msgKey := MsgRestoreCompleted
+		var msgP msgParams
 		if err != nil {
-			msg = err.Error()
 			writeDebugLog(fmt.Sprintf("Restore failed: %v", err))
+			msgKey = MsgRestoreFailed
+			msgP = msgParams{"error": err.Error()}
+			msg = fmt.Sprintf("Restore failed: %s", err.Error())
 		}
 		restoreLevel := "info"
 		if !success {
 			restoreLevel = "error"
 		}
-		LogMessage("Restore", restoreLevel, msg)
+		LogMessage("Restore", restoreLevel, msg, "", msgKey, msgP)
 		if a.ctx != nil {
 			runtime.EventsEmit(a.ctx, "restore:complete", map[string]interface{}{
-				"success": success,
-				"message": msg,
+				"success":        success,
+				"message":        msg,
+				"message_key":    msgKey,
+				"message_params": msgP,
 			})
 		}
 	}()

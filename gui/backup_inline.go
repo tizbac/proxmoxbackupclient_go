@@ -46,8 +46,15 @@ type BackupOptions struct {
 	ExcludeList     []string // User-configured exclusion patterns applied by the PXAR writer (H-04)
 	DisableSplit    bool     // When true, never auto-split regardless of size
 	SplitSizeBytes  uint64   // Auto-split threshold and per-bin target; 0 = default (SplitThreshold)
-	OnProgress      func(percent float64, message string)
-	OnComplete      func(success bool, message string)
+	OnProgress func(percent float64, message string)
+	// OnComplete's message is always plain, already-formatted English text
+	// (backward-compatible with every existing consumer). key/params are
+	// additive — see msgcodes.go's doc comment — and let a consumer that
+	// wants a localized version (main.go's JobHistory-building closures) get
+	// one without parsing the message string back apart. key is "" when no
+	// translation exists for this particular message (rare, kept for safety
+	// rather than as a real code path).
+	OnComplete func(success bool, message string, key MessageKey, params msgParams)
 	// OnResult delivers the full structured result (Group 0 contract). It is
 	// additive: OnComplete keeps firing with the success bool for existing
 	// consumers. OnResult is the source the sidecar (Group 1) and rich history read.
@@ -715,16 +722,19 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		writeBackupLog(fmt.Sprintf("[DEBUG] Checking directory %d/%d: %s", idx+1, len(opts.BackupObjects), dir))
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			errMsg := fmt.Sprintf("Backup directory does not exist: %s", dir)
+			errKey, errParams := MsgBackupDirNotExist, msgParams{"dir": dir}
 			writeBackupLog(errMsg)
 			if opts.OnComplete != nil {
-				opts.OnComplete(false, errMsg)
+				opts.OnComplete(false, errMsg, errKey, errParams)
 			}
 			if opts.OnResult != nil {
 				opts.OnResult(&BackupStatus{
-					Outcome:     OutcomeFailed,
-					BackupID:    opts.BackupID,
-					DurationSec: time.Since(startTime).Seconds(),
-					Message:     errMsg,
+					Outcome:       OutcomeFailed,
+					BackupID:      opts.BackupID,
+					DurationSec:   time.Since(startTime).Seconds(),
+					Message:       errMsg,
+					MessageKey:    errKey,
+					MessageParams: errParams,
 				})
 			}
 			return fmt.Errorf("%s", errMsg)
@@ -790,7 +800,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	// error — shared by every "whole run failed" exit below (all directories
 	// failed, session lost and retries exhausted, manifest upload failed,
 	// finalize failed) so they all report identically.
-	failRun := func(errMsg string) error {
+	failRun := func(errMsg string, key MessageKey, params msgParams) error {
 		writeBackupLog(errMsg)
 		status := &BackupStatus{
 			Outcome:          OutcomeFailed,
@@ -805,9 +815,11 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 			ExcludedByPolicy: excludedToIssues(allExcluded),
 			SkippedReadError: skippedToIssues(allReadErrors),
 			Message:          errMsg,
+			MessageKey:       key,
+			MessageParams:    params,
 		}
 		if opts.OnComplete != nil {
-			opts.OnComplete(false, errMsg)
+			opts.OnComplete(false, errMsg, key, params)
 		}
 		if opts.OnResult != nil {
 			opts.OnResult(status)
@@ -889,7 +901,8 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		if catalogIndexErr != nil {
 			client.Close()
 			if jobAttempt >= maxJobAttempts {
-				return failRun(fmt.Sprintf("failed to create shared catalog index: %v", catalogIndexErr))
+				return failRun(fmt.Sprintf("failed to create shared catalog index: %v", catalogIndexErr),
+					MsgCatalogCreateFailed, msgParams{"error": catalogIndexErr.Error()})
 			}
 			writeBackupLog(fmt.Sprintf("Failed to create shared catalog index (attempt %d/%d): %v — retrying whole job",
 				jobAttempt, maxJobAttempts, catalogIndexErr))
@@ -903,7 +916,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 				writeBackupLog(fmt.Sprintf("Cancellation requested — stopping before backup of %s", dir))
 				client.Close()
 				if opts.OnComplete != nil {
-					opts.OnComplete(false, "Backup cancelled by user")
+					opts.OnComplete(false, "Backup cancelled by user", MsgBackupCancelled, nil)
 				}
 				return fmt.Errorf("backup cancelled by user")
 			}
@@ -944,7 +957,8 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 			// Session-fatal: tear down the dead session before retrying or giving up.
 			client.Close()
 			if jobAttempt >= maxJobAttempts {
-				return failRun(fmt.Sprintf("PBS session lost and retries exhausted: %v", sessionFatal))
+				return failRun(fmt.Sprintf("PBS session lost and retries exhausted: %v", sessionFatal),
+					MsgSessionLost, msgParams{"error": sessionFatal.Error()})
 			}
 			writeBackupLog(fmt.Sprintf("Waiting %s for PBS to release the backup group lock before retrying the whole job...",
 				sessionLostRetryWait))
@@ -953,7 +967,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 				if opts.Ctx != nil && opts.Ctx.Err() != nil {
 					writeBackupLog("Cancellation requested during session-lost wait — aborting")
 					if opts.OnComplete != nil {
-						opts.OnComplete(false, "Backup cancelled by user")
+						opts.OnComplete(false, "Backup cancelled by user", MsgBackupCancelled, nil)
 					}
 					return fmt.Errorf("backup cancelled by user")
 				}
@@ -989,11 +1003,13 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		if len(sharedCatalog.entries) > 0 {
 			if rootErr := pbscommon.WriteSharedCatalogRoot(sharedCatalog.writeCB(client), sharedCatalog.pos, sharedCatalog.entries); rootErr != nil {
 				client.Close()
-				return failRun(fmt.Sprintf("failed to finalize shared catalog: %v", rootErr))
+				return failRun(fmt.Sprintf("failed to finalize shared catalog: %v", rootErr),
+					MsgCatalogFinalizeFailed, msgParams{"error": rootErr.Error()})
 			}
 			if eofErr := catalogChunk.EOF(client); eofErr != nil {
 				client.Close()
-				return failRun(fmt.Sprintf("failed to close shared catalog index: %v", eofErr))
+				return failRun(fmt.Sprintf("failed to close shared catalog index: %v", eofErr),
+					MsgCatalogCloseFailed, msgParams{"error": eofErr.Error()})
 			}
 		}
 
@@ -1022,7 +1038,8 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		// If NO directory was backed up successfully, fail the whole backup.
 		if successfulDirs == 0 {
 			client.Close()
-			return failRun(fmt.Sprintf("All %d directories failed:\n%s", len(opts.BackupObjects), strings.Join(dirErrors, "\n")))
+			return failRun(fmt.Sprintf("All %d directories failed:\n%s", len(opts.BackupObjects), strings.Join(dirErrors, "\n")),
+				MsgAllDirsFailed, msgParams{"total": len(opts.BackupObjects), "errors": strings.Join(dirErrors, "\n")})
 		}
 
 		manifestCfg := retry.DefaultConfig()
@@ -1034,7 +1051,8 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		manifestCancel()
 		if manifestErr != nil {
 			client.Close()
-			return failRun(fmt.Sprintf("Failed to upload manifest: %v", manifestErr))
+			return failRun(fmt.Sprintf("Failed to upload manifest: %v", manifestErr),
+				MsgManifestUploadFailed, msgParams{"error": manifestErr.Error()})
 		}
 
 		finishCfg := retry.DefaultConfig()
@@ -1046,7 +1064,8 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		finishCancel()
 		if finishErr != nil {
 			client.Close()
-			return failRun(fmt.Sprintf("Failed to finalize backup session: %v", finishErr))
+			return failRun(fmt.Sprintf("Failed to finalize backup session: %v", finishErr),
+				MsgSessionFinalizeFailed, msgParams{"error": finishErr.Error()})
 		}
 
 		writeBackupLog(fmt.Sprintf("Session finalized: %d/%d directories committed", successfulDirs, len(opts.BackupObjects)))
@@ -1061,22 +1080,55 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	failed := failedchunk.Load()
 	partial := len(dirErrors) > 0
 	var completionMsg, progressMsg string
+	var completionKey MessageKey
+	var completionParams msgParams
 	switch {
 	case partial:
 		completionMsg = fmt.Sprintf("⚠️  Partial backup in %s: %d/%d folders OK, %.1f MB (%d new, %d reused chunks)\nErrors:\n%s",
 			formatDuration(duration), successfulDirs, len(opts.BackupObjects), totalSizeMB, newchunk.Load(), reusechunk.Load(), strings.Join(dirErrors, "\n"))
 		progressMsg = fmt.Sprintf("Partial backup: %d/%d folders OK", successfulDirs, len(opts.BackupObjects))
+		completionKey = MsgBackupPartial
+		completionParams = msgParams{
+			"duration": formatDuration(duration),
+			"ok":       successfulDirs,
+			"total":    len(opts.BackupObjects),
+			"mb":       fmt.Sprintf("%.1f", totalSizeMB),
+			"new":      newchunk.Load(),
+			"reused":   reusechunk.Load(),
+			"errors":   strings.Join(dirErrors, "\n"),
+		}
 	case failed > 0:
 		completionMsg = fmt.Sprintf("⚠️  Backup completed with errors in %s: %.1f MB backed up (%d new, %d reused, %d FAILED chunks)",
 			formatDuration(duration), totalSizeMB, newchunk.Load(), reusechunk.Load(), failed)
 		progressMsg = fmt.Sprintf("Backup completed with %d failed chunks", failed)
+		completionKey = MsgBackupCompletedWithErrors
+		completionParams = msgParams{
+			"duration": formatDuration(duration),
+			"mb":       fmt.Sprintf("%.1f", totalSizeMB),
+			"new":      newchunk.Load(),
+			"reused":   reusechunk.Load(),
+			"failed":   failed,
+		}
 	default:
 		completionMsg = fmt.Sprintf("Backup completed in %s: %.1f MB backed up (%d new, %d reused chunks)",
 			formatDuration(duration), totalSizeMB, newchunk.Load(), reusechunk.Load())
 		progressMsg = "Backup completed"
+		completionKey = MsgBackupCompleted
+		completionParams = msgParams{
+			"duration": formatDuration(duration),
+			"mb":       fmt.Sprintf("%.1f", totalSizeMB),
+			"new":      newchunk.Load(),
+			"reused":   reusechunk.Load(),
+		}
 	}
 
 	progress(1.0, progressMsg)
+
+	// skipped rides along in every completion key's params (0 when there were
+	// none) so the frontend can splice in the "N files skipped" clause itself
+	// — see msgcodes.go's MsgSkippedFilesNote doc comment — without losing
+	// that detail when a localized message_key is rendered instead of Message.
+	completionParams["skipped"] = len(allSkipped)
 
 	if len(allSkipped) > 0 {
 		completionMsg += fmt.Sprintf("\n⚠️  %d files/folders skipped (access denied or junction points)", len(allSkipped))
@@ -1132,6 +1184,8 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		ExcludedByPolicy: excludedToIssues(allExcluded),
 		SkippedReadError: skippedToIssues(allReadErrors),
 		Message:          completionMsg,
+		MessageKey:       completionKey,
+		MessageParams:    completionParams,
 	}
 
 	// One machine-greppable result line for support (pairs with the start-of-run
@@ -1144,7 +1198,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	// existing consumers; OnResult carries the full structured status for the
 	// sidecar (Group 1) and rich history.
 	if opts.OnComplete != nil {
-		opts.OnComplete(status.Success(), completionMsg)
+		opts.OnComplete(status.Success(), completionMsg, completionKey, completionParams)
 	}
 	if opts.OnResult != nil {
 		opts.OnResult(status)
@@ -1192,35 +1246,41 @@ func runMachineBackupInline(opts BackupOptions) error {
 	if err != nil {
 		// Handle error case
 		errMsg := fmt.Sprintf("Machine backup failed: %v", err)
+		errParams := msgParams{"error": err.Error()}
 		writeBackupLog(errMsg)
-		
+
 		if opts.OnComplete != nil {
-			opts.OnComplete(false, errMsg)
+			opts.OnComplete(false, errMsg, MsgMachineBackupFailed, errParams)
 		}
 		if opts.OnResult != nil {
 			opts.OnResult(&BackupStatus{
-				Outcome:     OutcomeFailed,
-				BackupID:    opts.BackupID,
-				DurationSec: time.Since(startTime).Seconds(),
-				Message:     errMsg,
+				Outcome:       OutcomeFailed,
+				BackupID:      opts.BackupID,
+				DurationSec:   time.Since(startTime).Seconds(),
+				Message:       errMsg,
+				MessageKey:    MsgMachineBackupFailed,
+				MessageParams: errParams,
 			})
 		}
 		return fmt.Errorf("%s", errMsg)
 	}
-	
+
 	// Success case
 	duration := time.Since(startTime)
 	completionMsg := fmt.Sprintf("Machine backup completed in %s", formatDuration(duration))
-	
+	completionParams := msgParams{"duration": formatDuration(duration)}
+
 	if opts.OnComplete != nil {
-		opts.OnComplete(true, completionMsg)
+		opts.OnComplete(true, completionMsg, MsgMachineBackupCompleted, completionParams)
 	}
 	if opts.OnResult != nil {
 		opts.OnResult(&BackupStatus{
-			Outcome:     OutcomeVerifiedSuccess,
-			BackupID:    opts.BackupID,
-			DurationSec: duration.Seconds(),
-			Message:     completionMsg,
+			Outcome:       OutcomeVerifiedSuccess,
+			BackupID:      opts.BackupID,
+			DurationSec:   duration.Seconds(),
+			Message:       completionMsg,
+			MessageKey:    MsgMachineBackupCompleted,
+			MessageParams: completionParams,
 		})
 	}
 	

@@ -70,6 +70,13 @@ type JobHistory struct {
 	BackupDirs []string `json:"backupDirs"`
 	BackupID   string   `json:"backupId"`
 	UseVSS     bool     `json:"useVSS"`
+
+	// MessageKey/MessageParams — see BackupStatus's fields of the same name
+	// in backup_status.go and msgcodes.go's doc comment. Empty on every entry
+	// persisted before this field existed; the frontend falls back to
+	// Message for those.
+	MessageKey    MessageKey `json:"message_key,omitempty"`
+	MessageParams msgParams  `json:"message_params,omitempty"`
 }
 
 func getScheduledJobsPath() (string, error) {
@@ -365,7 +372,7 @@ func (a *App) AddJobHistory(entry JobHistory) error {
 	if entry.Status == "failed" {
 		level = "error"
 	}
-	LogMessage("Backup", level, fmt.Sprintf("%s: %s", entry.Name, entry.Message))
+	LogMessage("Backup", level, fmt.Sprintf("%s: %s", entry.Name, entry.Message), entry.Name, entry.MessageKey, entry.MessageParams)
 
 	history, err := a.GetJobHistory()
 	if err != nil {
@@ -628,6 +635,8 @@ func (a *App) CleanupAbandonedJobs() {
 			writeDebugLog(fmt.Sprintf("Marking abandoned job as failed: %s", entry.Name))
 			history[i].Status = "failed"
 			history[i].Message = "Abandoned (application interrupted)"
+			history[i].MessageKey = MsgJobAbandoned
+			history[i].MessageParams = nil
 			history[i].Timestamp = time.Now().Format(time.RFC3339)
 			modified = true
 		}
@@ -837,12 +846,15 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 		BackupDirs: job.BackupDirs,
 		BackupID:   job.BackupID,
 		UseVSS:     job.UseVSS,
+		MessageKey: MsgBackupCompletedGeneric,
 	}
 
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("Scheduled job error: %v", err))
 		historyEntry.Status = "failed"
 		historyEntry.Message = fmt.Sprintf("Error: %v", err)
+		historyEntry.MessageKey = MsgScheduledJobError
+		historyEntry.MessageParams = msgParams{"error": err.Error()}
 	}
 
 	if err := a.AddJobHistory(historyEntry); err != nil {

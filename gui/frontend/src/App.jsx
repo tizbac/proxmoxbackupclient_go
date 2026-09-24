@@ -82,6 +82,41 @@ function formatSpeed(bytesPerSec) {
   return dec === bin ? dec : `${dec} (${bin})`
 }
 
+// renderLocalizedMessage renders a JobHistory/MessageLogEntry's message in the
+// user's chosen language via t(message_key, message_params) — added
+// 2026-09-24 alongside the backend's message-catalog change (see
+// gui/msgcodes.go). Falls back to the entry's plain-text `message` field
+// when: there's no message_key at all (every entry persisted before this
+// change), or the key isn't recognized by the current translations.js (t()
+// returns the key itself unchanged in that case — the one signal available
+// to detect a miss). skippedNote is spliced in for the three backup-
+// completion keys that carry a `skipped` count, so the "N files skipped"
+// detail survives translation instead of being silently dropped — see
+// MsgSkippedFilesNote's doc comment in msgcodes.go.
+//
+// Returns { text, usedKey } rather than just a string: usedKey tells a
+// caller (the Message Log row) whether to add its own "{jobName}: " prefix,
+// since the plain-text fallback already has that prefix baked in from the
+// old fmt.Sprintf("%s: %s", ...) composition and mustn't get it twice — and
+// a simple "did the output change" check isn't reliable, because an English
+// viewer's translated text can legitimately be byte-identical to the stored
+// English fallback.
+function renderLocalizedMessage(entry, t) {
+  const key = entry.message_key
+  if (key) {
+    const params = entry.message_params || {}
+    const withNote = { ...params }
+    if (typeof params.skipped === 'number') {
+      withNote.skippedNote = params.skipped > 0 ? t('logSkippedFilesNote', { count: params.skipped }) : ''
+    }
+    const translated = t(key, withNote)
+    if (translated !== key) {
+      return { text: translated, usedKey: true }
+    }
+  }
+  return { text: entry.message, usedKey: false }
+}
+
 function App() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('backup')
@@ -410,7 +445,8 @@ function App() {
       setProgress(data.success ? 100 : 0)
       setBackupRunning(false)
       setBackupStats({ startTime: null, lastUpdate: null, lastPercent: 0, speed: 0, eta: null, bytesDone: 0, bytesTotal: 0, newChunks: 0, reusedChunks: 0, failedChunks: 0, currentDir: '' })
-      showStatus(data.success ? '✅ ' + data.message : '❌ ' + data.message, data.success ? 'success' : 'error')
+      const localizedMsg = renderLocalizedMessage(data, t).text
+      showStatus(data.success ? '✅ ' + localizedMsg : '❌ ' + localizedMsg, data.success ? 'success' : 'error')
 
       // Add to job history
       const historyEntry = {
@@ -419,6 +455,8 @@ function App() {
         timestamp: new Date().toISOString(),
         status: data.success ? 'success' : 'failed',
         message: data.message,
+        message_key: data.message_key,
+        message_params: data.message_params,
         backupDirs: backupDirs.split('\n').map(d => d.trim()).filter(d => d),
         backupId: config['backup-id'] || hostname,
         useVSS: config.usevss
@@ -458,7 +496,8 @@ function App() {
       setRestoreLoading(false)
       setRestoreProgress(data.success ? 100 : 0)
       setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
-      showStatus(data.success ? `✅ ${data.message}` : `❌ ${data.message}`, data.success ? 'success' : 'error')
+      const localizedMsg = renderLocalizedMessage(data, t).text
+      showStatus(data.success ? `✅ ${localizedMsg}` : `❌ ${localizedMsg}`, data.success ? 'success' : 'error')
     })
     return () => {
       if (unsubP) unsubP()
@@ -1250,15 +1289,16 @@ function App() {
           succeeded++
           showStatus(`✅ ${t('backupPartDone', { n: job.index, total: job.total_jobs })}`, 'success')
         } else {
+          const resultMsg = renderLocalizedMessage(result, t).text || ''
           showStatus(
-            `❌ ${t('backupPartFailed', { n: job.index, total: job.total_jobs, msg: result.message || '' })}`,
+            `❌ ${t('backupPartFailed', { n: job.index, total: job.total_jobs, msg: resultMsg })}`,
             'error'
           )
           const retry = window.confirm(
-            t('splitRetryPrompt', { n: job.index, total: job.total_jobs, msg: result.message || '' })
+            t('splitRetryPrompt', { n: job.index, total: job.total_jobs, msg: resultMsg })
           )
           if (retry) { i--; continue }
-          failures.push(t('partDone', { n: job.index, msg: result.message || t('partFailed') }))
+          failures.push(t('partDone', { n: job.index, msg: resultMsg || t('partFailed') }))
         }
       }
 
@@ -3428,7 +3468,7 @@ function App() {
                         {selected.message && (
                           <>
                             <strong>{t('msgColMessage')}</strong>
-                            <span style={{whiteSpace: 'pre-wrap'}}>{selected.message}</span>
+                            <span style={{whiteSpace: 'pre-wrap'}}>{renderLocalizedMessage(selected, t).text}</span>
                           </>
                         )}
                         <strong>{t('backupID')}</strong>
@@ -3501,7 +3541,10 @@ function App() {
                     </span>
                     <span style={{flex: '1 1 auto'}}>
                       {entry.level === 'error' ? '❌ ' : entry.level === 'warning' ? '⚠️ ' : 'ℹ️ '}
-                      {entry.message}
+                      {(() => {
+                        const { text, usedKey } = renderLocalizedMessage(entry, t)
+                        return (usedKey && entry.job_name ? `${entry.job_name}: ` : '') + text
+                      })()}
                     </span>
                   </div>
                 ))}

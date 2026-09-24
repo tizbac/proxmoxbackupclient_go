@@ -81,7 +81,16 @@ type BackupStatus struct {
 	Corrupted        []FileIssue `json:"corrupted,omitempty"`
 
 	// Message is the human-readable summary already shown in logs and the UI.
+	// Kept as plain, already-formatted English text for backward compatibility
+	// (every existing consumer, and any persisted entry with no MessageKey).
 	Message string `json:"message"`
+
+	// MessageKey/MessageParams let the frontend render Message in the user's
+	// chosen language via t(key, params) instead of the fixed English text —
+	// see msgcodes.go's doc comment. Empty MessageKey means "no translation
+	// available for this message", and the frontend falls back to Message.
+	MessageKey    MessageKey `json:"message_key,omitempty"`
+	MessageParams msgParams  `json:"message_params,omitempty"`
 }
 
 // Success reports whether the run reached a success level — fully verified, or

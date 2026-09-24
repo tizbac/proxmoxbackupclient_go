@@ -122,7 +122,7 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent, message))
 		},
-		OnComplete: func(success bool, message string) {
+		OnComplete: func(success bool, message string, _ MessageKey, _ msgParams) {
 			if success {
 				writeDebugLog(fmt.Sprintf("[Backup Complete] SUCCESS - %s", message))
 			} else {
@@ -199,7 +199,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent, message))
 		},
-		OnComplete: func(success bool, message string) {
+		OnComplete: func(success bool, message string, _ MessageKey, _ msgParams) {
 			if success {
 				writeDebugLog(fmt.Sprintf("[Machine Backup Complete] SUCCESS - %s", message))
 			} else {
