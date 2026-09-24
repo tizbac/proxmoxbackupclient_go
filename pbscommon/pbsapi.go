@@ -1284,8 +1284,24 @@ func (pbs *PBSClient) GetChunkData(ctx context.Context, digest string) ([]byte, 
 	if slices.Equal(ret[:8], blobUncompressedMagic) {
 		return ret[12:], nil
 	} else if slices.Equal(ret[:8], blobCompressedMagic) {
-		rd1 := bytes.NewReader(ret[12:])
-		dec, err := zstd.NewReader(rd1)
+		// zstd.NewReader(nil), not NewReader(bytes.NewReader(...)): decoding
+		// below is done entirely via DecodeAll on the byte slice, so the
+		// decoder is never Read() from. Passing a real io.Reader here (as
+		// this used to) starts klauspost/compress/zstd's background
+		// streaming-decode goroutines (startStreamDecoder), which then sit
+		// parked forever on a channel receive waiting for a Read() call that
+		// never comes — confirmed 2026-09-24 via a SIGQUIT goroutine dump of
+		// a real hung restore: two goroutines blocked in exactly
+		// zstd.(*Decoder).startStreamDecoder for 8+ minutes. A restore fetches
+		// thousands of chunks, each constructing (and Close()ing) one of
+		// these, so this leaked/wedged a small fraction of the time — the
+		// exact "stalls at a different point every time, no error, nothing
+		// in the retry/reconnect logs" symptom chased most of this session.
+		// The fetch/retry/reconnect machinery in nbd/fidxserver.go and
+		// DIDXReaderAt never had a chance against this: by the time it hangs,
+		// the network read is long done, so no context timeout on the HTTP
+		// request can touch it.
+		dec, err := zstd.NewReader(nil)
 
 		if err != nil {
 			return nil, err
