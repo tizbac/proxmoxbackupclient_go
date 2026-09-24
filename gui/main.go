@@ -114,8 +114,8 @@ func main() {
 	// Create application options
 	appOptions := &options.App{
 		Title:     fmt.Sprintf("%s v%s", BrandFromExecutable().Title, appVersion),
-		Width:     1200,
-		Height:    840,
+		Width:     1080,
+		Height:    720,
 		MaxWidth:  1680, // Prevent window from being too large
 		MaxHeight: 1008, // Prevent title bar from going off-screen
 		MinWidth:  480,  // Allow very small windows for low-res screens
