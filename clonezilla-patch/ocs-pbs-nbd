@@ -396,7 +396,23 @@ done
 if [ -b "$NBDDEV" ]; then
   partprobe "$NBDDEV" >/dev/null 2>&1
   if partx -a "$NBDDEV" >/dev/null 2>&1; then
-    ATTACH_NOTE="\n\nPartition table scanned (partx -a) — ${NBDDEV}p1, p2, ... should now be visible to Clonezilla's device-device restore."
+    # partx -a creates the kernel partition device NODES (nbd0p1, p2, ...)
+    # synchronously, but udev's own database of those nodes is updated
+    # asynchronously — Clonezilla's own restore tooling reads udev's view
+    # (via blkid/lsblk-style lookups), not just the raw device nodes. Found
+    # 2026-09-24 running several real restores back to back: the FIRST
+    # ocs-onthefly attempt right after attach reliably failed with "Source
+    # disk does not have any partition" every single time, and a second,
+    # identical attempt a little later always then worked — the classic
+    # signature of a settle race, not a real problem (the on-disk partition
+    # table was always correct; `parted`'s own diagnostic print, which reads
+    # the raw device directly rather than through udev, always showed it
+    # correctly even on the failing first attempt). udevadm settle blocks
+    # until udev's event queue is drained, i.e. exactly until the partition
+    # nodes it just created are fully catalogued — the right tool for
+    # exactly this race, rather than a guessed fixed sleep.
+    udevadm settle --timeout=10 >/dev/null 2>&1
+    ATTACH_NOTE="\n\nPartition table scanned (partx -a) and udev settled — ${NBDDEV}p1, p2, ... should now be visible to Clonezilla's device-device restore."
   else
     ATTACH_NOTE="\n\nNote: partx -a found no partitions on ${NBDDEV} (expected for an unpartitioned source; ocs-onthefly's device-device mode needs at least one partition on a GPT/MBR source)."
   fi
