@@ -445,14 +445,21 @@ fi
 #            size match, e.g. replacement hardware with a slightly larger disk)
 #   -k0      use the partition table from the source image (default, explicit)
 #   -sfsck   skip checking/repairing the source filesystem
-#   -p choose  ask reboot/shutdown/command-line once the restore finishes,
-#            same as Mick's own manual choice -- not assumed automatically
+# No -p (postaction) here deliberately: this is the zero-choice BMR flow, so
+# the reboot itself is handled explicitly below with our own message,
+# instead of ocs-onthefly's own generic "-p choose" prompt (which is right
+# for the manual ocs-pbs-nbd path, where an operator is already driving
+# Clonezilla's menus, but wrong here).
 echo "> Starting restore: ${NBDDEV} -> ${TARGET} ..."
-ocs-onthefly -icds -k0 -sfsck -p choose -f "$NBDDEV" -d "$TARGET"
+ocs-onthefly -icds -k0 -sfsck -f "$NBDDEV" -d "$TARGET"
 RC=$?
 if [ "$RC" != "0" ]; then
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
   --msgbox "Restore finished with a non-zero exit code ($RC).\nCheck ${ocs_log_dir} for details.\n\n$msg_press_enter_to_continue" 0 0 $DIA_ESC
+else
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
+  --msgbox "Restore is complete. The system will now reboot and you will be prompted when to remove the temporary boot drive." 0 0 $DIA_ESC
+  reboot
 fi
 
 exit "$RC"
