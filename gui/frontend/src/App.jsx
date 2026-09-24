@@ -1077,7 +1077,7 @@ function App() {
           style={{width: '520px', maxWidth: '92vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: '#f3f3f3', borderRadius: '8px', boxShadow: '0 20px 60px rgba(0,0,0,.4)', overflow: 'hidden'}}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={{height: '40px', background: '#fff', borderBottom: '1px solid #ddd', display: 'flex', alignItems: 'center', padding: '0 16px', fontSize: '14px', fontWeight: 600, color: '#333', justifyContent: 'space-between'}}>
+          <div style={{height: '40px', flexShrink: 0, background: '#fff', borderBottom: '1px solid #ddd', display: 'flex', alignItems: 'center', padding: '0 16px', fontSize: '14px', fontWeight: 600, color: '#333', justifyContent: 'space-between'}}>
             <span>{title}</span>
             <span style={{cursor: 'pointer', color: '#888'}} onClick={handleCancelEdit}>✕</span>
           </div>
@@ -1086,11 +1086,20 @@ function App() {
               form taller than this floor while Edit sat right at it, so
               the modal still visibly grew for Add vs Edit despite this.
               Raised from 420 to cover that one extra form-group's height
-              (~60px) so both modes render at the same size. */}
-          <div style={{padding: '20px 22px', overflowY: 'auto', flex: '1 1 auto', minHeight: '480px'}}>
+              (~60px) so both modes render at the same size.
+              Found live 2026-09-24: a flat 480px minHeight, combined with
+              the outer box's maxHeight:80vh + overflow:hidden, clipped the
+              Save/Cancel footer clean off screen whenever 80vh was shorter
+              than header+480+footer (any laptop under ~ 745px tall at 80vh).
+              Capped against the viewport with min() so the floor can never
+              push total dialog height past what the box can actually show;
+              the body's own overflowY:auto still scrolls instead of the
+              footer disappearing. Footer also pinned with flexShrink:0 so
+              it's never the flex item that gives way if space is short. */}
+          <div style={{padding: '20px 22px', overflowY: 'auto', flex: '1 1 auto', minHeight: 'min(480px, calc(80vh - 110px))'}}>
             {body}
           </div>
-          <div style={{display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 22px', borderTop: '1px solid #ddd', background: '#fff'}}>
+          <div style={{display: 'flex', flexShrink: 0, justifyContent: 'flex-end', gap: '10px', padding: '14px 22px', borderTop: '1px solid #ddd', background: '#fff'}}>
             <button className="btn btn-primary" onClick={onSubmit}>{t('save')}</button>
             <button className="btn" onClick={handleCancelEdit}>{t('cancel')}</button>
           </div>
