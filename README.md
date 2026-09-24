@@ -131,6 +131,11 @@ Both of the following are required, independently, or a Linux machine backup ref
    cd elastio-snap
    sudo make
    sudo make install
+   sudo depmod -a     # required - `make install` only copies the .ko, it never
+                       # runs depmod, so a bare `modprobe elastio-snap` right
+                       # after a fresh install fails with "not found in
+                       # directory" even though the file is right there
+                       # (confirmed live 2026-09-24)
    sudo modprobe elastio-snap
    lsmod | grep elastio-snap   # confirms it loaded
    ```
