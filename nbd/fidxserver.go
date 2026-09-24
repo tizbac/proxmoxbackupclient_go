@@ -72,7 +72,7 @@ func (f *FIDXServer) reconnect(observedGen int) {
 	if f.reconnectGen != observedGen {
 		return
 	}
-	fmt.Println("Reconnecting to PBS after a chunk fetch failure...")
+	fmt.Printf("[%s] Reconnecting to PBS after a chunk fetch failure...\n", time.Now().Format(time.RFC3339))
 	f.client.Close()
 	// ocs-pbs-nbd always authenticates with username/password (ticket) auth,
 	// never an API token — refresh the ticket too, in case a long enough
@@ -86,7 +86,7 @@ func (f *FIDXServer) reconnect(observedGen int) {
 	}
 	f.client.Connect(true, f.client.Manifest.BackupType)
 	f.reconnectGen++
-	fmt.Println("Reconnected.")
+	fmt.Printf("[%s] Reconnected.\n", time.Now().Format(time.RFC3339))
 }
 
 func NewFIDXServer(data []byte, client *pbscommon.PBSClient) (*FIDXServer, error) {
@@ -178,16 +178,35 @@ func (f * FIDXServer) ReadAt(p []byte, off int64) (n int, err error) {
 			// FIDXServer.reconnect) BEFORE the next retry, instead of
 			// retrying on what's likely the same degraded connection.
 			var data []byte
+			attempt := 0
 			retryCfg := retry.DefaultConfig()
 			retryCfg.MaxAttempts = 5
 			fetchErr := retry.DoWithJitter(context.Background(), retryCfg, retry.DefaultRetryable, func() error {
+				attempt++
+				// Diagnostic logging added 2026-09-24 after a live stall where
+				// NEITHER a new "Got" line NOR a "Reconnecting..." line
+				// appeared for far longer than chunkFetchTimeout x 5 should
+				// allow, with pbsnbd still alive throughout - i.e. no visible
+				// evidence the timeout/retry/reconnect logic was firing AT
+				// ALL, not just failing to recover. Without this, that is
+				// unfalsifiable from the log alone. With it, the next
+				// occurrence will show exactly: whether an attempt started,
+				// how long it actually ran before returning (vs the intended
+				// chunkFetchTimeout bound), and the exact error returned.
+				attemptStart := time.Now()
+				fmt.Printf("[%s] Fetching chunk %s (attempt %d/%d)...\n", attemptStart.Format(time.RFC3339), f.chunks[idx.Index], attempt, retryCfg.MaxAttempts)
 				fetchCtx, cancel := context.WithTimeout(context.Background(), chunkFetchTimeout)
 				defer cancel()
 				d, ferr := f.client.GetChunkData(fetchCtx, f.chunks[idx.Index])
+				elapsed := time.Since(attemptStart)
 				if ferr != nil {
+					fmt.Printf("[%s] Attempt %d/%d for chunk %s FAILED after %s: %v\n", time.Now().Format(time.RFC3339), attempt, retryCfg.MaxAttempts, f.chunks[idx.Index], elapsed, ferr)
 					gen := f.reconnectGeneration()
 					f.reconnect(gen)
 					return ferr
+				}
+				if elapsed > 5*time.Second {
+					fmt.Printf("[%s] Attempt %d for chunk %s succeeded but took %s\n", time.Now().Format(time.RFC3339), attempt, f.chunks[idx.Index], elapsed)
 				}
 				data = d
 				return nil
