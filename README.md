@@ -113,6 +113,42 @@ The above command will look at Disk 0, detect all mounted partitions, take a VSS
 
 The next backup will be incremental, hashing has been parallelized so speeds of 1 GB/sec can be easily reached.
 
+### Linux machine backup prerequisites (VSS equivalent)
+
+Windows machine backup uses VSS (hence "launch with administrator rights" above); Linux has no VSS, so this
+project uses the `elastio-snap` kernel module (a maintained fork of `dattobd`) for the same job — a
+point-in-time, consistent snapshot of a live block device while it keeps being written to.
+
+Both of the following are required, independently, or a Linux machine backup refuses to run:
+
+1. **The kernel module must be installed and loaded.** `elastio-snap`'s documented repository-package
+   install (see [its INSTALL.md](https://github.com/elastio/elastio-snap/blob/master/INSTALL.md)) currently
+   points at a moved/broken URL for at least Ubuntu 22.04 (confirmed 2026-09-24 — the repo package
+   404s after a redirect). Building from source works reliably instead:
+   ```bash
+   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
+   git clone --depth 1 https://github.com/elastio/elastio-snap.git
+   cd elastio-snap
+   sudo make
+   sudo make install
+   sudo modprobe elastio-snap
+   lsmod | grep elastio-snap   # confirms it loaded
+   ```
+   This builds and loads it for the current boot only; consult your distro's docs to load it automatically
+   on every boot (e.g. an `/etc/modules-load.d/` entry) if you want that.
+
+2. **The backup process itself must run as root (EUID 0).** Even with the module loaded, `CreateVSSSnapshot`
+   (the Linux snapshot path despite the Windows-centric name) explicitly refuses to run as a non-root user —
+   a consistent whole-disk snapshot needs the module's root-only control interface, so this is a hard
+   requirement, not something a `disk`-group membership or similar can substitute for. Run the GUI or
+   `machinebackup` with `sudo` (or as root) for a machine-type backup specifically; a plain file/directory
+   backup has no such requirement.
+
+If a machine backup fails with `backup device /dev/sdX: open /dev/sdX: permission denied`, that's usually
+just needing your user in the `disk` group for basic read access (`sudo usermod -aG disk $USER`, then log
+out/in) — but that alone is NOT enough for a real snapshot; you'll still hit the root requirement above
+immediately after.
+
 ### File restore — NEW!
 
 File restore is possible by using the nbd tool.
