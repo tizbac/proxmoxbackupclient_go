@@ -1,0 +1,15 @@
+--- a/boot/grub/grub.cfg
++++ b/boot/grub/grub.cfg
+@@ -96,6 +96,12 @@
+ play 960 440 1 0 4 440 1
+
+
++menuentry "Proxmox Backup Client Go - PBS Bare Metal Restore" --id pbs-bare-metal-restore {
++  search --set -f /live/vmlinuz
++  $linux_cmd /live/vmlinuz boot=live union=overlay username=user config components loglevel=3 hostname=cl-3.3.3-37 noswap edd=on nomodeset enforcing=0 locales=en_US.UTF-8 keyboard-layouts=gb ocs_live_run="/usr/local/sbin/ocs-pbs-bare-metal-restore" ocs_live_extra_param="" ocs_live_batch="no" vga=788 net.ifnames=0 quiet nosplash i915.blacklist=yes radeonhd.blacklist=yes nouveau.blacklist=yes vmwgfx.enable_fbdev=1 ocs_1_cpu_udev scsi_mod.use_blk_mq=0 nvme.poll_queues=1
++  $initrd_cmd /live/initrd.img
++}
++
+ menuentry "Clonezilla live (VGA 800x600)" --id live-default {
+   search --set -f /live/vmlinuz
+   $linux_cmd /live/vmlinuz boot=live union=overlay username=user config components loglevel=3 hostname=cl-3.3.3-37 noswap edd=on nomodeset enforcing=0 locales= keyboard-layouts= ocs_live_run="ocs-live-general" ocs_live_extra_param="" ocs_live_batch="no" vga=788 net.ifnames=0 quiet nosplash i915.blacklist=yes radeonhd.blacklist=yes nouveau.blacklist=yes vmwgfx.enable_fbdev=1 ocs_1_cpu_udev scsi_mod.use_blk_mq=0 nvme.poll_queues=1

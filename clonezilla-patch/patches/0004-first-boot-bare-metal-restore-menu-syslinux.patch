@@ -1,0 +1,22 @@
+--- a/syslinux/syslinux.cfg
++++ b/syslinux/syslinux.cfg
+@@ -28,8 +28,18 @@
+ # simple menu title
+ MENU TITLE clonezilla.org, clonezilla.nchc.org.tw
+
+-label Clonezilla live
++label PBS Bare Metal Restore
+   MENU DEFAULT
++  MENU LABEL Proxmox Backup Client Go - PBS Bare Metal Restore
++  kernel /live/vmlinuz
++  append initrd=/live/initrd.img boot=live union=overlay username=user config components loglevel=3 hostname=cl-3.3.3-37 noswap edd=on nomodeset enforcing=0 noeject locales=en_US.UTF-8 keyboard-layouts=gb ocs_live_run="/usr/local/sbin/ocs-pbs-bare-metal-restore" ocs_live_extra_param="" ocs_live_batch="no" vga=788 net.ifnames=0 quiet nosplash i915.blacklist=yes radeonhd.blacklist=yes nouveau.blacklist=yes vmwgfx.enable_fbdev=1 ocs_1_cpu_udev scsi_mod.use_blk_mq=0 nvme.poll_queues=1
++  TEXT HELP
++  Fully automated PBS bare-metal restore - no manual menu
++  navigation needed. Boots straight into the restore wizard.
++  ENDTEXT
++
++label Clonezilla live
++  # MENU DEFAULT
+   # MENU HIDE
+   MENU LABEL Clonezilla live (VGA 800x600)
+   # MENU PASSWD
