@@ -393,13 +393,32 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			sizes[i] = uint64(size)
 			totalSize += uint64(size)
 		} else {
-			// For file devices, get file size
-			info, err := os.Stat(dev)
+			// Covers both a Linux/Unix block device (e.g. /dev/sda) and a
+			// plain regular file (e.g. a disk-image test fixture). os.Stat's
+			// Size() is the wrong tool for the block-device case: stat(2)
+			// reports 0 for a block special file's own inode, not the
+			// device's actual capacity. Confirmed live 2026-09-24: this
+			// silently zeroed totalSize for a real /dev/sda machine backup,
+			// making every progress report divide 0/0 (logged as "NaN%")
+			// despite the backup itself running and completing correctly --
+			// backupWholeDisk (linux.go) gets the real size via this same
+			// Open+Seek approach, entirely independently of this size-only
+			// lookup, which is why the actual backup was never affected,
+			// only its reported progress. Seek-to-end after Open works
+			// correctly for both a block device and a regular file, so one
+			// code path covers both instead of needing a platform/file-type
+			// branch here.
+			f, err := os.Open(dev)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get file size for %s: %v", dev, err)
+				return nil, fmt.Errorf("failed to open %s for size lookup: %v", dev, err)
 			}
-			sizes[i] = uint64(info.Size())
-			totalSize += uint64(info.Size())
+			size, serr := f.Seek(0, io.SeekEnd)
+			f.Close()
+			if serr != nil {
+				return nil, fmt.Errorf("failed to get size for %s: %v", dev, serr)
+			}
+			sizes[i] = uint64(size)
+			totalSize += uint64(size)
 		}
 	}
 
