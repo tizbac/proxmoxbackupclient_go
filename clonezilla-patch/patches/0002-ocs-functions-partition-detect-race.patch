@@ -1,0 +1,24 @@
+--- a/usr/share/drbl/sbin/ocs-functions
++++ b/usr/share/drbl/sbin/ocs-functions
+@@ -16580,6 +16580,21 @@
+   local rc=1
+   [ -z "$dev_" ] && exit 1
+   part_no="$(LC_ALL=C lsblk -l -n -o TYPE /dev/$dev_ | grep -Ew "^part" | wc -l)"
++  if [ "$part_no" -eq 0 ]; then
++    # Retry once after forcing a rescan + udev settle: a source attached
++    # moments earlier in this live session (e.g. an NBD device) can race
++    # lsblk here -- lsblk reads udev's device database, not just the raw
++    # kernel partition table, so a just-created source can transiently show
++    # zero partitions even though the on-disk table is already correct.
++    # Added 2026-09-24: this is the actual check behind Clonezilla's own
++    # "Source disk does not have any partition" error on a PBS-NBD restore's
++    # first pass -- a rerun always then passed, the classic signature of
++    # this exact race, at THIS check, not at NBD attach time (long done and
++    # unrelated by the time this runs).
++    partprobe /dev/$dev_ >/dev/null 2>&1
++    udevadm settle --timeout=5 >/dev/null 2>&1
++    part_no="$(LC_ALL=C lsblk -l -n -o TYPE /dev/$dev_ | grep -Ew "^part" | wc -l)"
++  fi
+   if is_whole_disk $dev_ && [ "$part_no" -eq 0 ] && \
+      ! is_block_device_with_fs $dev_; then
+     rc=0
