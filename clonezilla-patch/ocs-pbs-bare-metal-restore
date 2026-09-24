@@ -80,8 +80,32 @@ echo "=== PBS Bare Metal Restore (fully automated) ==="
 
 load_credentials
 
-# 1. network up (DHCP-first, same as the sshfs/nfs/smb remote-repo wizards)
+# 1. network up. Auto-attempt DHCP on every detected NIC FIRST, silently --
+# network_config_if_necessary (below) only runs Clonezilla's own interactive
+# ocs-live-netcfg wizard (which is where BOTH the "DHCP or static?" choice
+# AND its own internal time-sync prompt live) when it finds NO IP already
+# configured, so a successful pre-emptive DHCP here skips that whole
+# interactive wizard entirely -- this is the zero-prompt path for the
+# common case (a real network with DHCP). If DHCP genuinely isn't
+# available, network_config_if_necessary still falls back to the
+# interactive wizard as a safety net, same as it always did.
+for nic in /sys/class/net/*; do
+  dev="$(basename "$nic")"
+  [ "$dev" = "lo" ] && continue
+  echo "> Attempting DHCP on ${dev}..."
+  dhcpcd -t 15 "$dev" >/dev/null 2>&1
+done
 network_config_if_necessary
+
+# Sync time via NTP automatically, no prompt either way: -b (batch, never
+# asks anything, including the interactive timezone/RTC fallback this
+# script has for a no-internet case -- that fallback is deliberately
+# skipped, not just silenced, since it needs a human's timezone answer) and
+# -i (internet-based sync only). Touches /run/live/ocs-live-time-sync on
+# success, which ALSO makes ocs-live-netcfg's own internal time-sync prompt
+# (see above) correctly skip itself if the interactive network fallback
+# above ever runs after this succeeds.
+ocs-live-time-sync -b -i >/dev/null 2>&1 || true
 
 # 2. stop a previous pbsnbd instance so this run starts from a clean slate
 PIDS=""
