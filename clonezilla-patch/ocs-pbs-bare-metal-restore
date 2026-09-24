@@ -126,121 +126,93 @@ if ! modprobe nbd max_part=0; then
 fi
 sleep 1
 
-# 4a. PBS server URL
-ask_="true"
-while [ "$ask_" = "true" ]; do
+# 4. PBS connection details -- one combined form (server URL, username,
+# password, datastore) instead of 4 separate screens, matching Mick's
+# explicit ask 2026-09-24. First attempt used a hardcoded 17x70 box size,
+# which failed live ("Program terminated." immediately after the mixedform
+# call, before ever visibly rendering) despite the identical command
+# rendering fine in a sandboxed pty test -- likely the real Clonezilla
+# text console's actual dimensions differ from that sandbox. Using 0 0
+# (auto-size to content, same as every other dialog in this script) this
+# time instead of guessing fixed dimensions.
+PBS_SERVER="${SAVED_SERVER:-https://}"
+PBS_USER="${SAVED_USER:-root@pam}"
+PBS_PASS="${SAVED_PASS}"
+PBS_DS_NS="${SAVED_DSNS}"
+
+while true; do
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --inputbox "PBS server URL (https:// is pre-filled):" \
-  0 0 "${SAVED_SERVER:-https://}" $DIA_ESC \
+  --mixedform "Enter PBS connection details:" 0 0 4 \
+    "Server URL:" 1 1 "$PBS_SERVER" 1 14 50 0 0 \
+    "Username:"   3 1 "$PBS_USER"   3 14 50 0 0 \
+    "Password:"   5 1 "$PBS_PASS"   5 14 50 0 1 \
+    "Datastore:"  7 1 "$PBS_DS_NS"  7 14 50 0 0 \
+  $DIA_ESC \
   2> "$DIA_TMP"
-  PBS_SERVER="$(cat "$DIA_TMP")"
+  if [ "$?" != "0" ]; then
+    echo "$msg_program_stop!"
+    exit 1
+  fi
+  PBS_SERVER="$(sed -n '1p' "$DIA_TMP")"
+  PBS_USER="$(sed -n '2p' "$DIA_TMP")"
+  PBS_PASS="$(sed -n '3p' "$DIA_TMP")"
+  PBS_DS_NS="$(sed -n '4p' "$DIA_TMP")"
+
+  ERR=""
   case "$PBS_SERVER" in
-    https://*) [ "$PBS_SERVER" != "https://" ] && ask_="false" ;;
-    *) ;;
+    https://*) [ "$PBS_SERVER" = "https://" ] && ERR="Server URL must be complete, e.g. https://pbs.example.com:8007" ;;
+    *) ERR="Server URL must start with https://" ;;
   esac
-  if [ "$ask_" = "true" ]; then
-    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$msg_nchc_clonezilla" \
-    --yesno "The server URL must be complete and start with https://\n(e.g. https://pbs.example.com:8007)\n\n$msg_do_u_want_to_do_it_again" 0 0
-    case "$?" in
-      0) ask_="true" ;;
-      1) echo "$msg_program_stop!"; exit 1 ;;
+  if [ -z "$ERR" ]; then
+    case "$PBS_USER" in
+      *@*) ;;
+      *) ERR="Username must include a realm, e.g. 'user@pam' or 'user@pbs'." ;;
     esac
+  fi
+  [ -z "$ERR" ] && [ -z "$PBS_PASS" ] && ERR="Password must not be empty."
+  if [ -z "$ERR" ]; then
+    case "$PBS_DS_NS" in
+      '') ERR="Datastore must not be empty." ;;
+      /*) ERR="Datastore must not start with '/'." ;;
+    esac
+  fi
+  if [ -n "$ERR" ]; then
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$msg_nchc_clonezilla" \
+    --msgbox "$ERR" 0 0 $DIA_ESC
+    continue
+  fi
+
+  PBS_DS="${PBS_DS_NS%%/*}"
+  if [ "$PBS_DS_NS" != "${PBS_DS_NS#*/}" ]; then
+    PBS_NS="${PBS_DS_NS#*/}"
+  else
+    PBS_NS=""
+  fi
+  NS_OPT=""
+  [ -n "$PBS_NS" ] && NS_OPT="-namespace $PBS_NS"
+
+  echo "> Testing connection to ${PBS_SERVER} (datastore=${PBS_DS}${PBS_NS:+, namespace=${PBS_NS}})..."
+  if "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
+       -datastore "$PBS_DS" $NS_OPT -list > "$LIST_TMP" 2> "$LIST_ERR"; then
+    if [ -s "$LIST_TMP" ]; then
+      break
+    fi
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
+    --msgbox "Connected, but no backups found in datastore '${PBS_DS}'${PBS_NS:+ (namespace '${PBS_NS}')}.\n\nCheck the details and try again." 0 0 $DIA_ESC
+  else
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
+    --msgbox "Connection test failed:\n$(cat "$LIST_ERR")\n\nCheck the details and try again." 0 0 $DIA_ESC
   fi
 done
 echo "PBS server URL  : $PBS_SERVER"
-
-# 4b. PBS username/password
-ask_="true"
-while [ "$ask_" = "true" ]; do
-  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --inputbox "PBS username (must include the realm, e.g. root@pam or user@pbs):" \
-  0 0 "${SAVED_USER:-root@pam}" $DIA_ESC \
-  2> "$DIA_TMP"
-  PBS_USER="$(cat "$DIA_TMP")"
-  case "$PBS_USER" in
-    *@*) ask_="false" ;;
-    *) ;;
-  esac
-  if [ "$ask_" = "true" ]; then
-    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$msg_nchc_clonezilla" \
-    --yesno "The username must include a realm, e.g. 'user@pam' or 'user@pbs'.\n\n$msg_do_u_want_to_do_it_again" 0 0
-    case "$?" in
-      0) ask_="true" ;;
-      1) echo "$msg_program_stop!"; exit 1 ;;
-    esac
-  fi
-done
 echo "PBS username    : $PBS_USER"
-
-ask_="true"
-while [ "$ask_" = "true" ]; do
-  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --passwordbox "Enter the password for user '${PBS_USER}':" 8 60 "${SAVED_PASS}" \
-  2> "$DIA_TMP"
-  PBS_PASS="$(cat "$DIA_TMP")"
-  if [ -n "$PBS_PASS" ]; then
-    ask_="false"
-  else
-    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$msg_nchc_clonezilla" \
-    --yesno "The password must not be empty.\n\n$msg_do_u_want_to_do_it_again" 0 0
-    case "$?" in
-      0) ask_="true" ;;
-      1) echo "$msg_program_stop!"; exit 1 ;;
-    esac
-  fi
-done
 echo "PBS password    : (entered)"
-
-# 4c. datastore (optionally with a namespace after the first "/")
-ask_="true"
-while [ "$ask_" = "true" ]; do
-  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --inputbox "PBS datastore (namespace may be appended after a '/', e.g. zfs or zfs/pippo):" \
-  0 0 "${SAVED_DSNS}" $DIA_ESC \
-  2> "$DIA_TMP"
-  PBS_DS_NS="$(cat "$DIA_TMP")"
-  case "$PBS_DS_NS" in
-    '')      ;;
-    /*)      ;;
-    *)       ask_="false" ;;
-  esac
-  if [ "$ask_" = "true" ]; then
-    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$msg_nchc_clonezilla" \
-    --yesno "The datastore must not be empty and must not start with '/'.\nExample: zfs  or  zfs/pippo\n\n$msg_do_u_want_to_do_it_again" 0 0
-    case "$?" in
-      0) ask_="true" ;;
-      1) echo "$msg_program_stop!"; exit 1 ;;
-    esac
-  fi
-done
-PBS_DS="${PBS_DS_NS%%/*}"
-if [ "$PBS_DS_NS" != "${PBS_DS_NS#*/}" ]; then
-  PBS_NS="${PBS_DS_NS#*/}"
-else
-  PBS_NS=""
-fi
-NS_OPT=""
-[ -n "$PBS_NS" ] && NS_OPT="-namespace $PBS_NS"
 echo "PBS datastore   : ${PBS_DS}"
 echo "PBS namespace   : ${PBS_NS:-<none>}"
 
 save_credentials
 
-# 5. list the backups
-echo "> Listing backups on ${PBS_SERVER} (datastore=${PBS_DS}${PBS_NS:+, namespace=${PBS_NS}})..."
-if ! "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
-     -datastore "$PBS_DS" $NS_OPT -list > "$LIST_TMP" 2> "$LIST_ERR"; then
-  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --msgbox "Could not list the backups:\n$(cat "$LIST_ERR")\n\n$msg_program_stop" 0 0 $DIA_ESC
-  exit 1
-fi
-if [ ! -s "$LIST_TMP" ]; then
-  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --msgbox "No backups found in datastore '${PBS_DS}'${PBS_NS:+ (namespace '${PBS_NS}')}.\n\n$msg_program_stop" 0 0 $DIA_ESC
-  exit 1
-fi
-
-# 6. three-level selection: (a) <kind>/<backupid>, (b) date, (c) .fidx file
+# 5. three-level selection: (a) <kind>/<backupid>, (b) date, (c) .fidx file
 declare -A KDT
 declare -a KDT_ORDER
 while IFS= read -r line; do
@@ -354,7 +326,7 @@ else
 fi
 echo "Selected file      : $SELECTED"
 
-# 7. attach in the foreground this time (we need it up before continuing,
+# 6. attach in the foreground this time (we need it up before continuing,
 # unlike ocs-pbs-nbd's fork-and-return-to-menu design) -- setsid so it
 # survives this script's own exit once the restore is running.
 echo "> Attaching '${SELECTED}' to ${NBDDEV}..."
@@ -376,7 +348,7 @@ partprobe "$NBDDEV" >/dev/null 2>&1
 partx -a "$NBDDEV" >/dev/null 2>&1
 udevadm settle --timeout=10 >/dev/null 2>&1
 
-# 8. auto-detect the target disk: the one non-NBD, non-removable, non-loop,
+# 7. auto-detect the target disk: the one non-NBD, non-removable, non-loop,
 # non-optical local block device. Zero or more than one -> ask, never guess
 # on an ambiguous multi-disk machine (this is an irreversible drive-wipe).
 declare -a CANDIDATES
@@ -419,7 +391,7 @@ echo "Target disk        : $TARGET"
 SRC_SIZE="$(LC_ALL=C parted -s "$NBDDEV" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
 TGT_SIZE="$(LC_ALL=C parted -s "$TARGET" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
 
-# 9. confirmation before the destructive write: shows source+target+sizes.
+# 8. confirmation before the destructive write: shows source+target+sizes.
 # Deliberately just the one dialog here, not also a typed device-name
 # step -- ocs-onthefly itself (below, no -batch) still asks its own two
 # separate "y" confirmations before actually wiping the destination, so a
