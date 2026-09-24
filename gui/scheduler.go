@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 )
 
 // runningJobs tracks currently executing jobs to prevent duplicates
@@ -806,6 +808,15 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 	// backup. Only the frontend's own one-off machine backup button ever
 	// called StartMachineBackup correctly; every SCHEDULED machine backup
 	// set has never actually worked.
+	// Let startBackupDirect/startMachineBackupDirect's OnComplete (main.go)
+	// use this job's real name for the history entry it writes, instead of
+	// the generic "Manual backup - X"/"Backup machine - X" label — see
+	// currentScheduledJobName's doc comment (app_types.go) for why a plain
+	// field is safe here (operation_queue.go already serializes to one
+	// backup/restore at a time process-wide).
+	a.setScheduledJobName(job.Name)
+	defer a.setScheduledJobName("")
+
 	var err error
 	if job.BackupType == "machine" {
 		err = a.StartMachineBackup(
@@ -829,36 +840,57 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 		)
 	}
 
-	// Add history entry derived from the REAL outcome. In service mode StartBackup
-	// runs synchronously (app_service_stubs.go returns RunBackupInline's error), so
-	// err here reflects the finished backup: nil = success, non-nil = partial/failed.
-	// NOTE: in GUI-standalone mode StartBackup is still fire-and-forget (the backup
-	// runs in a goroutine and its error is not awaited here), so err is nil at this
-	// point; the honest standalone history is recorded by startBackupDirect's
-	// OnComplete instead. Making the standalone path awaitable belongs to the
-	// service/GUI unification (Group 5).
-	historyEntry := JobHistory{
-		ID:         fmt.Sprintf("%d", startTime.Unix()),
-		Name:       job.Name,
-		Timestamp:  time.Now().Format(time.RFC3339),
-		Status:     "success",
-		Message:    "Backup completed",
-		BackupDirs: job.BackupDirs,
-		BackupID:   job.BackupID,
-		UseVSS:     job.UseVSS,
-		MessageKey: MsgBackupCompletedGeneric,
-	}
+	// Add history entry derived from the REAL outcome, service mode only.
+	// In service mode StartBackup runs synchronously (app_service_stubs.go
+	// returns RunBackupInline's error), so err here genuinely reflects the
+	// finished backup: nil is success, non-nil is partial/failed, and this
+	// is the only history write that exists at all for service mode
+	// (main.go's OnComplete-based writer above isn't even compiled into
+	// service builds).
+	//
+	// In GUI-standalone mode, StartBackup is fire-and-forget (the backup
+	// runs in a goroutine and its error is not awaited here), so err is
+	// always nil at this point regardless of the real outcome, meaning a
+	// history entry written here would always claim "success" whether or
+	// not that were true. Found live 2026-09-24: this produced a second,
+	// always-"success" entry for every standalone scheduled run, a few
+	// seconds before the accurate one startBackupDirect's OnComplete wrote
+	// once the backup actually finished (now correctly using this job's
+	// real name too, via currentScheduledJobName), giving two rows in
+	// Reports for one real run. Skip entirely in standalone mode; that
+	// OnComplete write is now the single source of truth there.
+	if a.mode == api.ModeService {
+		historyEntry := JobHistory{
+			ID:         fmt.Sprintf("%d", startTime.Unix()),
+			Name:       job.Name,
+			Timestamp:  time.Now().Format(time.RFC3339),
+			Status:     "success",
+			Message:    "Backup completed",
+			BackupDirs: job.BackupDirs,
+			BackupID:   job.BackupID,
+			UseVSS:     job.UseVSS,
+			MessageKey: MsgBackupCompletedGeneric,
+		}
 
-	if err != nil {
-		writeDebugLog(fmt.Sprintf("Scheduled job error: %v", err))
-		historyEntry.Status = "failed"
-		historyEntry.Message = fmt.Sprintf("Error: %v", err)
-		historyEntry.MessageKey = MsgScheduledJobError
-		historyEntry.MessageParams = msgParams{"error": err.Error()}
-	}
+		if err != nil {
+			writeDebugLog(fmt.Sprintf("Scheduled job error: %v", err))
+			historyEntry.Status = "failed"
+			historyEntry.Message = fmt.Sprintf("Error: %v", err)
+			historyEntry.MessageKey = MsgScheduledJobError
+			historyEntry.MessageParams = msgParams{"error": err.Error()}
+		}
 
-	if err := a.AddJobHistory(historyEntry); err != nil {
-		writeDebugLog(fmt.Sprintf("Warning: Failed to add job history: %v", err))
+		if err := a.AddJobHistory(historyEntry); err != nil {
+			writeDebugLog(fmt.Sprintf("Warning: Failed to add job history: %v", err))
+		}
+	} else if err != nil {
+		// Standalone mode: err here is only ever non-nil for an immediate,
+		// synchronous failure (e.g. StartBackup rejecting bad parameters
+		// before ever launching the async goroutine). A real mid-backup
+		// failure is still only visible via the OnComplete-based write. Log
+		// it so it's not silently lost, but don't write a competing history
+		// entry for it.
+		writeDebugLog(fmt.Sprintf("Scheduled job %s failed to start: %v", job.Name, err))
 	}
 
 	// Update job's last run and calculate next run.

@@ -1081,7 +1081,13 @@ function App() {
             <span>{title}</span>
             <span style={{cursor: 'pointer', color: '#888'}} onClick={handleCancelEdit}>✕</span>
           </div>
-          <div style={{padding: '20px 22px', overflowY: 'auto', flex: '1 1 auto', minHeight: '420px'}}>
+          {/* minHeight only sets a floor — Add's extra "Server ID" field
+              (rendered only when !editingServer, see below) made the Add
+              form taller than this floor while Edit sat right at it, so
+              the modal still visibly grew for Add vs Edit despite this.
+              Raised from 420 to cover that one extra form-group's height
+              (~60px) so both modes render at the same size. */}
+          <div style={{padding: '20px 22px', overflowY: 'auto', flex: '1 1 auto', minHeight: '480px'}}>
             {body}
           </div>
           <div style={{display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 22px', borderTop: '1px solid #ddd', background: '#fff'}}>
@@ -2277,6 +2283,18 @@ function App() {
                                 {job.triggerMode === 'manual' ? t('triggerModeManual').toUpperCase()
                                   : job.triggerMode === 'interval' ? t('triggerModeInterval').toUpperCase()
                                   : t('triggerModeDaily').toUpperCase()}
+                              </span>
+                              {/* Backup type badge — reuses the existing backupTypeDirectory/
+                                  backupTypeMachine translations (already in all 6 languages),
+                                  taking just the first word so it fits a compact badge like the
+                                  trigger-mode one above, instead of the full "Directory (specific
+                                  folder)"-style dropdown-option text. */}
+                              <span style={{
+                                display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em',
+                                padding: '2px 7px', borderRadius: '3px', background: '#eef3ec', color: '#2e7d47',
+                                border: '1px solid '+'#c8e0cf', verticalAlign: 'middle', marginRight: '6px',
+                              }}>
+                                {(job.backupType === 'machine' ? t('backupTypeMachine') : t('backupTypeDirectory')).split(' ')[0].toUpperCase()}
                               </span>
                               {job.triggerMode === 'manual'
                                 ? t('manualOnDemand')

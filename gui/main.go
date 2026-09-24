@@ -996,10 +996,16 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 				writeDebugLog("[OnComplete] No callbacks/context (service or headless mode)")
 			}
 
-			// Add manual backup to history
+			// Add manual backup to history. Name uses the triggering scheduled
+			// job's real name when set (see scheduledJobNameOr's doc comment) —
+			// this is the ONLY history write for a standalone-mode scheduled
+			// job now (executeScheduledJob's own write is skipped in that mode,
+			// see scheduler.go), since this closure fires with the real,
+			// already-known outcome, unlike that earlier, necessarily-guessed
+			// write.
 			historyEntry := JobHistory{
 				ID:            fmt.Sprintf("%d", time.Now().Unix()),
-				Name:          fmt.Sprintf("Manual backup - %s", backupID),
+				Name:          a.scheduledJobNameOr(fmt.Sprintf("Manual backup - %s", backupID)),
 				Timestamp:     time.Now().Format(time.RFC3339),
 				Status:        "success",
 				Message:       message,
@@ -1263,10 +1269,12 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 				writeDebugLog("[OnComplete] No callbacks/context (service or headless mode)")
 			}
 
-			// Add manual backup to history
+			// Add manual backup to history. Name uses the triggering scheduled
+			// job's real name when set — see the directory-backup OnComplete's
+			// matching comment above (startBackupDirect) for the full reasoning.
 			historyEntry := JobHistory{
 				ID:            fmt.Sprintf("%d", time.Now().Unix()),
-				Name:          fmt.Sprintf("Backup machine - %s", backupID),
+				Name:          a.scheduledJobNameOr(fmt.Sprintf("Backup machine - %s", backupID)),
 				Timestamp:     time.Now().Format(time.RFC3339),
 				Status:        "success",
 				Message:       message,
