@@ -377,7 +377,34 @@ setsid "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PA
      -datastore "$PBS_DS" $NS_OPT -nbd "$NBDNUM" -path "$SELECTED" < /dev/null > "$ATTACH_LOG" 2>&1 &
 PBSNBD_PID=$!
 
+# Wait for the device node to appear, then force the kernel to scan its
+# partition table and create /dev/nbd${N}p1, p2, ... — without this,
+# ocs-onthefly refuses the source with "does not have any partition" even
+# though `parted`/fdisk can clearly read the GPT/MBR table on the raw
+# device, because it checks for kernel partition NODES, not the on-disk
+# table itself. Found 2026-09-24 running the very first real restore test
+# against a live NBD-attached PBS machine backup: partprobe alone left the
+# nodes missing, partx -a is what actually created them. Best-effort —
+# a genuinely unpartitioned source (e.g. a single-file/database backup) is
+# expected to fail partx here, which is fine, not fatal.
+ATTACH_NOTE=""
+WAITED=0
+while [ ! -b "$NBDDEV" ] && [ "$WAITED" -lt 20 ]; do
+  sleep 0.5
+  WAITED=$((WAITED + 1))
+done
+if [ -b "$NBDDEV" ]; then
+  partprobe "$NBDDEV" >/dev/null 2>&1
+  if partx -a "$NBDDEV" >/dev/null 2>&1; then
+    ATTACH_NOTE="\n\nPartition table scanned (partx -a) — ${NBDDEV}p1, p2, ... should now be visible to Clonezilla's device-device restore."
+  else
+    ATTACH_NOTE="\n\nNote: partx -a found no partitions on ${NBDDEV} (expected for an unpartitioned source; ocs-onthefly's device-device mode needs at least one partition on a GPT/MBR source)."
+  fi
+else
+  ATTACH_NOTE="\n\nWARNING: ${NBDDEV} did not appear within 10s — check the log below before proceeding."
+fi
+
 $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
---msgbox "pbsnbd forked in background (PID ${PBSNBD_PID}).\n\n${NBDDEV} will appear once the NBD connection is established.\nCheck with:  lsblk\nDetach later with:  nbd-client -d ${NBDDEV}\n\nLog: ${ATTACH_LOG}" 0 0 $DIA_ESC
+--msgbox "pbsnbd forked in background (PID ${PBSNBD_PID}).\n\n${NBDDEV} will appear once the NBD connection is established.\nCheck with:  lsblk\nDetach later with:  nbd-client -d ${NBDDEV}\n\nLog: ${ATTACH_LOG}${ATTACH_NOTE}" 0 0 $DIA_ESC
 
 exit 0
