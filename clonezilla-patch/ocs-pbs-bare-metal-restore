@@ -419,23 +419,18 @@ echo "Target disk        : $TARGET"
 SRC_SIZE="$(LC_ALL=C parted -s "$NBDDEV" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
 TGT_SIZE="$(LC_ALL=C parted -s "$TARGET" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
 
-# 9. double confirmation before the destructive write, matching Clonezilla's
-# own convention (Mick's explicit ask) -- first shows source+target+sizes,
-# second requires typing the exact target device name.
+# 9. confirmation before the destructive write: shows source+target+sizes.
+# Deliberately just the one dialog here, not also a typed device-name
+# step -- ocs-onthefly itself (below, no -batch) still asks its own two
+# separate "y" confirmations before actually wiping the destination, so a
+# third, slower, typed confirmation on top of that was redundant friction
+# rather than real extra safety. Mick's call, 2026-09-24, after the first
+# real timed run: this was the slowest manual step other than the
+# mandatory PBS server details.
 $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore - CONFIRM" \
 --yesno "Source (PBS snapshot) : ${NBDDEV}  (${SRC_SIZE:-unknown size})\nTarget (THIS MACHINE)  : ${TARGET}  (${TGT_SIZE:-unknown size})\n\nEVERYTHING on ${TARGET} will be PERMANENTLY OVERWRITTEN.\n\nContinue?" 0 0
 if [ "$?" != "0" ]; then
   echo "$msg_program_stop!"
-  exit 1
-fi
-
-$DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore - FINAL CONFIRM" \
---inputbox "Type exactly:  ${TARGET}\n\nto confirm you want to WIPE this device and restore onto it:" 0 0 "" $DIA_ESC \
-2> "$DIA_TMP"
-TYPED="$(cat "$DIA_TMP")"
-if [ "$TYPED" != "$TARGET" ]; then
-  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --msgbox "Typed value did not match '${TARGET}'.\n\n$msg_program_stop" 0 0 $DIA_ESC
   exit 1
 fi
 
