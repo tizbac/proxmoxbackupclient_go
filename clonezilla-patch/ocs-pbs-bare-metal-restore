@@ -369,7 +369,7 @@ else
   declare -a MENUT
   i=1
   for c in "${CANDIDATES[@]}"; do
-    sz="$(LC_ALL=C parted -s "$c" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
+    sz="$(LC_ALL=C parted -s "$c" unit GiB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
     MENUT+=("$i" "$c  (${sz:-unknown size})")
     i=$((i+1))
   done
@@ -386,8 +386,12 @@ else
 fi
 echo "Target disk        : $TARGET"
 
-SRC_SIZE="$(LC_ALL=C parted -s "$NBDDEV" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
-TGT_SIZE="$(LC_ALL=C parted -s "$TARGET" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
+# GiB, not GB: parted's "GB" unit is decimal (x1000^3), while Proxmox's own
+# disk size=NNG is binary GiB (x1024^3) -- a 40G Proxmox disk showed as
+# "42.9GB" here otherwise, which read as a real size mismatch but was purely
+# a unit-convention difference. Confirmed live 2026-09-24.
+SRC_SIZE="$(LC_ALL=C parted -s "$NBDDEV" unit GiB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
+TGT_SIZE="$(LC_ALL=C parted -s "$TARGET" unit GiB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
 
 # 8. confirmation before the destructive write: shows source+target+sizes.
 # Deliberately just the one dialog here, not also a typed device-name
