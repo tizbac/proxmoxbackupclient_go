@@ -8,10 +8,18 @@ import (
 	"fmt"
 	"io"
 	"pbscommon"
+	"retry"
 	"slices"
 	"sync"
+	"time"
 )
 const LRU_CACHE_LIFE = 16 //will be 16*4MB usage
+
+// chunkFetchTimeout bounds a SINGLE chunk fetch attempt — see the retry loop
+// in ReadAt. Matches pbscommon/didx_reader.go's DIDXReaderAt.chunkFetchTimeout
+// (the GUI restore path's own equivalent), for the same reason: chunks are at
+// most ~16MB, so even a slow link should comfortably finish well inside this.
+const chunkFetchTimeout = 60 * time.Second
 
 type CachedChunk struct {
 	Data []byte
@@ -91,17 +99,45 @@ func (f * FIDXServer) ReadAt(p []byte, off int64) (n int, err error) {
 		if ok {
 			
 		} else {
-			// context.Background() — pbsnbd serves reads on demand for however
-			// long the NBD device stays attached (a Clonezilla restore session
-			// can run for hours), so there's no natural per-call deadline to
-			// thread through io.ReaderAt's fixed signature here. Found while
-			// fixing this to compile at all (2026-09-24): GetChunkData's
-			// context parameter was added for the GUI restore path's own
-			// stuck-chunk timeout — this call site predates that and was
-			// simply never updated, so pbsnbd hasn't compiled in a while.
-			data, err := f.client.GetChunkData(context.Background(), f.chunks[idx.Index])
-			if err != nil {
-				panic(err)
+			// A per-attempt timeout, not a deadline on the whole session
+			// (pbsnbd serves reads for however long the NBD device stays
+			// attached — a Clonezilla restore can run for hours): each
+			// individual chunk fetch gets chunkFetchTimeout, retried up to
+			// 5 times, mirroring pbscommon/didx_reader.go's DIDXReaderAt
+			// (the GUI restore path's own equivalent protection). Added
+			// 2026-09-24 after a real bare-metal restore test hung
+			// indefinitely mid-partition-clone: GetChunkData(context.
+			// Background()) has no deadline at all, so one stuck HTTP/2
+			// stream (the exact class of hang seen earlier the same night
+			// in the GUI, root cause still unconfirmed server-side) blocked
+			// this ReadAt — and therefore Clonezilla's partclone — forever,
+			// with the only recovery being to kill pbsnbd and restart the
+			// whole attach+restore from scratch. A retried, bounded fetch
+			// gives a stuck stream a real chance to recover on its own
+			// before that drastic step is needed.
+			var data []byte
+			retryCfg := retry.DefaultConfig()
+			retryCfg.MaxAttempts = 5
+			fetchErr := retry.DoWithJitter(context.Background(), retryCfg, retry.DefaultRetryable, func() error {
+				fetchCtx, cancel := context.WithTimeout(context.Background(), chunkFetchTimeout)
+				defer cancel()
+				d, ferr := f.client.GetChunkData(fetchCtx, f.chunks[idx.Index])
+				if ferr != nil {
+					return ferr
+				}
+				data = d
+				return nil
+			})
+			if fetchErr != nil {
+				// All retries exhausted — this used to be the ONLY outcome
+				// (immediately, on the very first error, timeout or not).
+				// Still fatal: FIDXServer has no way to report a read
+				// failure through io.ReaderAt's contract back to the NBD
+				// protocol layer gracefully at this call depth, so this
+				// crashes pbsnbd same as before. The real improvement is
+				// upstream — a transient stall now gets up to 5 chances,
+				// each up to chunkFetchTimeout, to clear on its own first.
+				panic(fetchErr)
 			}
 
 			for _, idx2 := range f.cached {

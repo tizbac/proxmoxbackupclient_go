@@ -7,6 +7,7 @@ require (
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/rivo/tview v0.42.0
 	pbscommon v0.0.0
+	retry v0.0.0
 )
 
 require (
@@ -27,3 +28,5 @@ require (
 
 // Local package replacements
 replace pbscommon => ../pbscommon
+
+replace retry => ../pkg/retry
