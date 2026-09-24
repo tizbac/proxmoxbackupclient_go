@@ -2,7 +2,7 @@
 // (no React/DOM/Wails needed — pure functions only). Run with:
 //   node src/components/treeSelection.test.mjs
 import assert from 'node:assert/strict'
-import { isChecked, checkState, computeReincludeExcludes } from './treeSelection.js'
+import { isChecked, checkState, computeReincludeExcludes, normPath, isUnder } from './treeSelection.js'
 
 // Fixture:
 //   C:\Data
@@ -103,6 +103,28 @@ check(
 check(
   'excluded folder itself (not just a descendant) -> false, not mixed',
   checkState('C:\\Data\\A', ['C:\\Data'], afterExcludeA),
+  false
+)
+
+// POSIX root ("/") regression — see normPath's doc comment. On Linux,
+// ListDirectory("") returns "/" itself as a top-level entry; normPath must
+// never collapse "/" down to the same '' key used for "root not yet
+// requested", or DirectoryTree.jsx's renderNode recurses into "/"'s own
+// (never-loaded) children forever on first render. This crashed a real GUI
+// build with "RangeError: Maximum call stack size exceeded" the moment the
+// backup form mounted, no click needed.
+check("normPath('/') is not the empty-string sentinel", normPath('/') === '', false)
+check("normPath('/') is stable/idempotent", normPath(normPath('/')), normPath('/'))
+check('POSIX root covers a nested absolute path', isUnder('/', '/home/user/file'), true)
+check('POSIX root covers itself', isUnder('/', '/'), true)
+check(
+  'a Linux path tree behaves the same as the Windows fixture above',
+  isChecked('/home/user/docs/file.txt', ['/'], ['/home/user/private']),
+  true
+)
+check(
+  'excluded folder under POSIX root is correctly unchecked',
+  isChecked('/home/user/private/secret.txt', ['/'], ['/home/user/private']),
   false
 )
 

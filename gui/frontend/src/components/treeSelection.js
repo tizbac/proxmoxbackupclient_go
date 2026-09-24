@@ -7,14 +7,27 @@
 // Windows paths arrive with backslashes; everything here compares
 // case-insensitively on forward slashes so "C:\Users" and "c:/users" (or a
 // trailing slash either way) are treated as the same path.
+//
+// POSIX root ("/") is a special case: stripping its trailing slash would
+// otherwise collapse it to '', the same key DirectoryTree.jsx uses for "the
+// root listing hasn't been requested yet" (see loadChildren('')). On Linux,
+// ListDirectory("") returns "/" itself as a real top-level entry (see
+// dirlist_other.go), so that collision made renderNode treat "/"'s
+// (never-yet-loaded) children as already being the root listing it's PART
+// of, recursing into itself forever on the very first render — no click
+// needed. Confirmed live via a real "RangeError: Maximum call stack size
+// exceeded" crash the moment the backup form mounted on Linux. Never
+// normalize "/" down to ''.
 export function normPath(p) {
-  return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  const s = p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  return (s === '' && p.startsWith('/')) ? '/' : s
 }
 
 // True when `path` IS `root` or sits anywhere under it.
 export function isUnder(root, path) {
   const r = normPath(root)
   const p = normPath(path)
+  if (r === '/') return true // POSIX root covers every absolute path
   return p === r || p.startsWith(r + '/')
 }
 
