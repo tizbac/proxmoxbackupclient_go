@@ -68,7 +68,7 @@ func LogMessage(source, level, message, jobName string, key MessageKey, params m
 
 	var entries []MessageLogEntry
 	if data, rerr := os.ReadFile(logPath); rerr == nil {
-		_ = json.Unmarshal(data, &entries) // a corrupt file just starts a fresh log, not a crash
+		_ = json.Unmarshal(stripUTF8BOM(data), &entries) // a corrupt file just starts a fresh log, not a crash
 	}
 
 	entries = append(entries, MessageLogEntry{
@@ -110,6 +110,7 @@ func (a *App) GetMessageLog() ([]MessageLogEntry, error) {
 		}
 		return nil, err
 	}
+	data = stripUTF8BOM(data)
 
 	var entries []MessageLogEntry
 	if err := json.Unmarshal(data, &entries); err != nil {

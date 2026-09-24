@@ -216,7 +216,7 @@ func LoadConfig() *Config {
 		return config
 	}
 
-	if err := json.Unmarshal(data, config); err != nil {
+	if err := json.Unmarshal(stripUTF8BOM(data), config); err != nil {
 		return config
 	}
 

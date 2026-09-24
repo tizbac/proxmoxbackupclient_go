@@ -91,7 +91,7 @@ func loadSnapshotTreeCache(key snapshotCacheKey) (*cachedSnapshotTree, bool) {
 		return nil, false
 	}
 	var c cachedSnapshotTree
-	if err := json.Unmarshal(data, &c); err != nil {
+	if err := json.Unmarshal(stripUTF8BOM(data), &c); err != nil {
 		writeBackupLog(fmt.Sprintf("Restore cache: ignoring malformed file %s: %v", filepath.Base(path), err))
 		return nil, false
 	}

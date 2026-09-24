@@ -193,6 +193,7 @@ func (a *App) GetScheduledJobs() ([]ScheduledJob, error) {
 		}
 		return nil, err
 	}
+	data = stripUTF8BOM(data)
 
 	var jobs []ScheduledJob
 	if err := json.Unmarshal(data, &jobs); err != nil {
@@ -356,6 +357,7 @@ func (a *App) GetJobHistory() ([]JobHistory, error) {
 		}
 		return nil, err
 	}
+	data = stripUTF8BOM(data)
 
 	var history []JobHistory
 	if err := json.Unmarshal(data, &history); err != nil {
