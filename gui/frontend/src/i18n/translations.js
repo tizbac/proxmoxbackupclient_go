@@ -387,15 +387,16 @@ const translations = {
       // About
       aboutTitle: "À propos",
       version: "Version",
-      orderStorageCTA: "Commander du stockage Proxmox Backup Client",
       features: "Fonctionnalités",
       featuresList: {
-        directories: "Sauvegarde répertoires & disques",
-        machine: "Machine complète (C:\\, D:\\, etc.)",
-        restore: "Restauration snapshots",
-        vss: "Support VSS (Shadow Copy)",
-        dedup: "Déduplication & compression",
-        modern: "Interface Wails moderne"
+        backupSets: { title: "Jobs de sauvegarde", desc: "Planifiés (quotidien/intervalle) ou manuels, lancement en un clic" },
+        multiPbs: { title: "Support multi-PBS", desc: "Épinglage de l'empreinte du certificat (TOFU)" },
+        bareMetalRestore: { title: "Restauration bare-metal automatisée", desc: "Démarrer un ISO Clonezilla patché directement vers une restauration PBS" },
+        snapshotRestore: { title: "Parcours & restauration des snapshots", desc: "Recherche au niveau fichier, pas seulement disque entier" },
+        languages: { title: "Interface en six langues", desc: "Français, anglais, italien, allemand, polonais, espagnol" },
+        themes: { title: "Cinq thèmes de couleur", desc: "Plus une option de couleur personnalisée" },
+        reportsLog: { title: "Rapports & journal des messages", desc: "Historique complet des sauvegardes et diagnostics" },
+        dedup: { title: "Déduplication & compression", desc: "Snapshots à chaud VSS (Windows) / elastio-snap (Linux)" }
       },
       technology: "Technologie",
       techList: {
@@ -406,8 +407,9 @@ const translations = {
         nogpu: "Pas de dépendance GPU"
       },
       copyright: "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems — voir https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
-      basedOn: "",
-      techStack: "Interface Wails + React + Vite",
+      legalCredit: "Basé sur ProxmoxBackupClient de tizbac, l'interface Nimbus Backup, et l'esprit et le fonctionnement de Backup for Workgroups (BFW).",
+      legalLicense: "Sous licence GNU General Public License v3.0 (GPLv3).",
+      legalDisclaimer: "Non affilié à Proxmox Server Solutions GmbH. « Proxmox » et les marques associées sont la propriété de leurs détenteurs respectifs, utilisées ici uniquement pour indiquer la compatibilité.",
 
       // Status Messages
       statusDiskError: "Erreur lors de la détection des disques:",
@@ -827,15 +829,16 @@ const translations = {
       // About
       aboutTitle: "About",
       version: "Version",
-      orderStorageCTA: "Order Proxmox Backup Client storage",
       features: "Features",
       featuresList: {
-        directories: "Directory & disk backup",
-        machine: "Full machine (C:\\, D:\\, etc.)",
-        restore: "Snapshot restoration",
-        vss: "VSS support (Shadow Copy)",
-        dedup: "Deduplication & compression",
-        modern: "Modern Wails interface"
+        backupSets: { title: "Backup Sets", desc: "Scheduled (daily/interval) or manual jobs, one-click Run Now" },
+        multiPbs: { title: "Multi-PBS support", desc: "Certificate fingerprint pinning (TOFU)" },
+        bareMetalRestore: { title: "Automated bare-metal restore", desc: "Boot a patched Clonezilla ISO straight into a PBS restore" },
+        snapshotRestore: { title: "Snapshot browsing & restore", desc: "File-level search, not just whole-disk" },
+        languages: { title: "Six-language interface", desc: "French, English, Italian, German, Polish, Spanish" },
+        themes: { title: "Five colour themes", desc: "Plus a custom colour option" },
+        reportsLog: { title: "Reports & Message Log", desc: "Full backup history and diagnostics" },
+        dedup: { title: "Deduplication & compression", desc: "VSS (Windows) / elastio-snap (Linux) live snapshots" }
       },
       technology: "Technology",
       techList: {
@@ -846,8 +849,9 @@ const translations = {
         nogpu: "No GPU dependency"
       },
       copyright: "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems — see https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
-      basedOn: "",
-      techStack: "Wails + React + Vite interface",
+      legalCredit: "Based on tizbac's ProxmoxBackupClient, the Nimbus Backup GUI, and the workflow and feel of Backup for Workgroups (BFW).",
+      legalLicense: "Licensed under the GNU General Public License v3.0 (GPLv3).",
+      legalDisclaimer: "Not affiliated with Proxmox Server Solutions GmbH. \"Proxmox\" and related marks are the property of their respective owners, used here only to state compatibility.",
 
       // Status Messages
       statusDiskError: "Error detecting disks:",
@@ -1267,15 +1271,16 @@ const translations = {
       // About
       aboutTitle: "Informazioni",
       version: "Versione",
-      orderStorageCTA: "Ordina spazio di archiviazione Proxmox Backup Client",
       features: "Funzionalità",
       featuresList: {
-        directories: "Backup directory & dischi",
-        machine: "Macchina completa (C:\\, D:\\, etc.)",
-        restore: "Ripristino snapshot",
-        vss: "Supporto VSS (Shadow Copy)",
-        dedup: "Deduplicazione & compressione",
-        modern: "Interfaccia Wails moderna"
+        backupSets: { title: "Backup Sets", desc: "Pianificati (giornaliero/intervallo) o manuali, avvio con un clic" },
+        multiPbs: { title: "Supporto multi-PBS", desc: "Pinning dell'impronta del certificato (TOFU)" },
+        bareMetalRestore: { title: "Ripristino bare-metal automatizzato", desc: "Avvia un ISO Clonezilla patchato direttamente in un ripristino PBS" },
+        snapshotRestore: { title: "Navigazione & ripristino snapshot", desc: "Ricerca a livello di file, non solo dell'intero disco" },
+        languages: { title: "Interfaccia in sei lingue", desc: "Francese, inglese, italiano, tedesco, polacco, spagnolo" },
+        themes: { title: "Cinque temi colore", desc: "Più un'opzione colore personalizzata" },
+        reportsLog: { title: "Report & registro messaggi", desc: "Cronologia completa dei backup e diagnostica" },
+        dedup: { title: "Deduplicazione & compressione", desc: "Snapshot live VSS (Windows) / elastio-snap (Linux)" }
       },
       technology: "Tecnologia",
       techList: {
@@ -1286,8 +1291,9 @@ const translations = {
         nogpu: "Nessuna dipendenza GPU"
       },
       copyright: "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems — vedi https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
-      basedOn: "",
-      techStack: "Interfaccia Wails + React + Vite",
+      legalCredit: "Basato su ProxmoxBackupClient di tizbac, sulla GUI Nimbus Backup, e sul funzionamento e sullo stile di Backup for Workgroups (BFW).",
+      legalLicense: "Distribuito con licenza GNU General Public License v3.0 (GPLv3).",
+      legalDisclaimer: "Non affiliato a Proxmox Server Solutions GmbH. \"Proxmox\" e i marchi correlati sono proprietà dei rispettivi titolari, usati qui solo per indicare la compatibilità.",
 
       // Status Messages
       statusDiskError: "Errore durante il rilevamento dei dischi:",
@@ -1707,15 +1713,16 @@ const translations = {
       // About
       aboutTitle: "Über",
       version: "Version",
-      orderStorageCTA: "Proxmox Backup Client-Speicher bestellen",
       features: "Funktionen",
       featuresList: {
-        directories: "Verzeichnis- & Festplattensicherung",
-        machine: "Vollständige Maschine (C:\\, D:\\, etc.)",
-        restore: "Snapshot-Wiederherstellung",
-        vss: "VSS-Unterstützung (Schattenkopie)",
-        dedup: "Deduplikation & Kompression",
-        modern: "Moderne Wails-Oberfläche"
+        backupSets: { title: "Backup Sets", desc: "Geplant (täglich/Intervall) oder manuell, Start per Klick über Run Now" },
+        multiPbs: { title: "Multi-PBS-Unterstützung", desc: "Zertifikats-Fingerprint-Pinning (TOFU)" },
+        bareMetalRestore: { title: "Automatisierte Bare-Metal-Wiederherstellung", desc: "Bootet ein gepatchtes Clonezilla-ISO direkt in eine PBS-Wiederherstellung" },
+        snapshotRestore: { title: "Snapshot-Durchsuchung & Wiederherstellung", desc: "Dateibasierte Suche, nicht nur die ganze Festplatte" },
+        languages: { title: "Sechssprachige Oberfläche", desc: "Französisch, Englisch, Italienisch, Deutsch, Polnisch, Spanisch" },
+        themes: { title: "Fünf Farbthemen", desc: "Plus eine eigene Farboption" },
+        reportsLog: { title: "Berichte & Nachrichtenprotokoll", desc: "Vollständiger Sicherungsverlauf und Diagnose" },
+        dedup: { title: "Deduplikation & Kompression", desc: "Live-Snapshots per VSS (Windows) / elastio-snap (Linux)" }
       },
       technology: "Technologie",
       techList: {
@@ -1726,8 +1733,9 @@ const translations = {
         nogpu: "Keine GPU-Abhängigkeit"
       },
       copyright: "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems — siehe https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
-      basedOn: "",
-      techStack: "Wails + React + Vite-Oberfläche",
+      legalCredit: "Basiert auf tizbacs ProxmoxBackupClient, der Nimbus Backup GUI, sowie der Arbeitsweise und dem Gefühl von Backup for Workgroups (BFW).",
+      legalLicense: "Lizenziert unter der GNU General Public License v3.0 (GPLv3).",
+      legalDisclaimer: "Nicht verbunden mit Proxmox Server Solutions GmbH. \"Proxmox\" und verwandte Marken sind Eigentum ihrer jeweiligen Inhaber und werden hier nur zur Angabe der Kompatibilität verwendet.",
 
       // Status Messages
       statusDiskError: "Fehler beim Erkennen von Festplatten:",
@@ -2147,15 +2155,16 @@ const translations = {
       // About
       aboutTitle: "O programie",
       version: "Wersja",
-      orderStorageCTA: "Zamów magazyn Proxmox Backup Client",
       features: "Funkcje",
       featuresList: {
-        directories: "Kopia zapasowa katalogów i dysków",
-        machine: "Pełna maszyna (C:\\, D:\\, itp.)",
-        restore: "Przywracanie snapshotów",
-        vss: "Obsługa VSS (Kopia Cienia)",
-        dedup: "Deduplikacja i kompresja",
-        modern: "Nowoczesny interfejs Wails"
+        backupSets: { title: "Zestawy kopii zapasowych", desc: "Harmonogram (codziennie/interwał) lub ręcznie, uruchomienie jednym kliknięciem" },
+        multiPbs: { title: "Obsługa wielu serwerów PBS", desc: "Przypinanie odcisku certyfikatu (TOFU)" },
+        bareMetalRestore: { title: "Automatyczne przywracanie bare-metal", desc: "Uruchom spatchowane ISO Clonezilla prosto do przywracania z PBS" },
+        snapshotRestore: { title: "Przeglądanie i przywracanie snapshotów", desc: "Wyszukiwanie na poziomie plików, nie tylko całego dysku" },
+        languages: { title: "Interfejs w sześciu językach", desc: "Francuski, angielski, włoski, niemiecki, polski, hiszpański" },
+        themes: { title: "Pięć motywów kolorystycznych", desc: "Plus opcja własnego koloru" },
+        reportsLog: { title: "Raporty i dziennik komunikatów", desc: "Pełna historia kopii zapasowych i diagnostyka" },
+        dedup: { title: "Deduplikacja i kompresja", desc: "Migawki na żywo VSS (Windows) / elastio-snap (Linux)" }
       },
       technology: "Technologia",
       techList: {
@@ -2166,8 +2175,9 @@ const translations = {
         nogpu: "Brak zależności GPU"
       },
       copyright: "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems — zobacz https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
-      basedOn: "",
-      techStack: "Interfejs Wails + React + Vite",
+      legalCredit: "Oparte na ProxmoxBackupClient autorstwa tizbac, interfejsie Nimbus Backup oraz sposobie działania i klimacie Backup for Workgroups (BFW).",
+      legalLicense: "Udostępniane na licencji GNU General Public License v3.0 (GPLv3).",
+      legalDisclaimer: "Brak powiązania z Proxmox Server Solutions GmbH. \"Proxmox\" i powiązane znaki są własnością ich odpowiednich właścicieli, użyte tu wyłącznie w celu wskazania zgodności.",
 
       // Status Messages
       statusDiskError: "Błąd wykrywania dysków:",
@@ -2588,15 +2598,16 @@ const translations = {
       // About
       aboutTitle: "Acerca de",
       version: "Versión",
-      orderStorageCTA: "Solicitar almacenamiento de Proxmox Backup Client",
       features: "Funciones",
       featuresList: {
-        directories: "Copia de seguridad de directorios y discos",
-        machine: "Máquina completa (C:\\, D:\\, etc.)",
-        restore: "Restauración de instantáneas",
-        vss: "Compatibilidad con VSS (Shadow Copy)",
-        dedup: "Deduplicación y compresión",
-        modern: "Interfaz Wails moderna"
+        backupSets: { title: "Conjuntos de copias de seguridad", desc: "Programados (diario/intervalo) o manuales, un clic para Run Now" },
+        multiPbs: { title: "Compatibilidad multi-PBS", desc: "Fijación de la huella del certificado (TOFU)" },
+        bareMetalRestore: { title: "Restauración bare-metal automatizada", desc: "Arranca una ISO de Clonezilla parcheada directamente a una restauración de PBS" },
+        snapshotRestore: { title: "Exploración y restauración de instantáneas", desc: "Búsqueda a nivel de archivo, no solo del disco completo" },
+        languages: { title: "Interfaz en seis idiomas", desc: "Francés, inglés, italiano, alemán, polaco, español" },
+        themes: { title: "Cinco temas de color", desc: "Además de una opción de color personalizada" },
+        reportsLog: { title: "Informes y registro de mensajes", desc: "Historial completo de copias de seguridad y diagnósticos" },
+        dedup: { title: "Deduplicación y compresión", desc: "Instantáneas en vivo VSS (Windows) / elastio-snap (Linux)" }
       },
       technology: "Tecnología",
       techList: {
@@ -2607,8 +2618,9 @@ const translations = {
         nogpu: "Sin dependencia de GPU"
       },
       copyright: "© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems — ver https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1",
-      basedOn: "",
-      techStack: "Interfaz Wails + React + Vite",
+      legalCredit: "Basado en ProxmoxBackupClient de tizbac, la interfaz Nimbus Backup, y el funcionamiento y estilo de Backup for Workgroups (BFW).",
+      legalLicense: "Licenciado bajo la GNU General Public License v3.0 (GPLv3).",
+      legalDisclaimer: "No afiliado a Proxmox Server Solutions GmbH. \"Proxmox\" y las marcas relacionadas son propiedad de sus respectivos titulares, usadas aquí solo para indicar compatibilidad.",
 
       // Status Messages
       statusDiskError: "Error al detectar discos:",

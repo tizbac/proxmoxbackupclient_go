@@ -47,7 +47,13 @@ export function I18nProvider({ children }) {
       }
     }
 
-    return value || key
+    // Only a genuinely missing key falls back to its own name — an
+    // intentionally empty string (e.g. a since-removed line like the old
+    // "basedOn") must still render as empty, not as the raw key. Found
+    // live 2026-09-25: the About page's "basedOn" showed the literal text
+    // "basedOn" on screen because this used `value || key`, which treats
+    // any falsy value (including "") the same as a missing one.
+    return value === undefined ? key : value
   }
 
   return (

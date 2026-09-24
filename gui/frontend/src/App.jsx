@@ -6,7 +6,6 @@ import MachineBackupConfig from './components/MachineBackupConfig'
 import DirectoryTree from './components/DirectoryTree'
 import KnownLimitationsModal from './components/KnownLimitationsModal'
 import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
-import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
 let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, RunScheduledJobNow, GetJobHistory, GetMessageLog, GetSystemInfo, GetLastBackupDirs
@@ -126,11 +125,6 @@ function App() {
   const [hostname, setHostname] = useState('')
   const [appVersion, setAppVersion] = useState('dev')
   const [brand, setBrand] = useState({ name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', logo: '', accent: '#e87003', accent_hover: '#d46100', buy_storage_url: '', buy_storage_text: '', is_default: true })
-  // Buy-storage CTA: brand-specific when provided, otherwise the PBS download page.
-  const buyStorage = {
-    url: brand.buy_storage_url || 'https://www.proxmox.com/en/downloads.php#download-proxmox-backup-server',
-    text: brand.buy_storage_text || t('orderStorageCTA')
-  }
   const [systemInfo, setSystemInfo] = useState({ mode: 'Standalone', is_admin: false, service_available: false, os: '' })
   const [config, setConfig] = useState({
     baseurl: '',
@@ -3360,87 +3354,63 @@ function App() {
           )}
         </div>
 
-        {/* About Tab */}
+        {/* About Tab — deliberately no logo: a recreated Proxmox mark here
+            would visually contradict the README's own non-affiliation
+            disclaimer, and the hero banner above already names the app, so
+            repeating it in a second, bigger header was pure duplication.
+            No storage-upsell CTA either — that's RDEM Systems' own brand
+            upsell (still shown, brand-gated, in Preferences' server list),
+            not something this fork's About page should push unconditionally. */}
         <div className={`tab-content ${activeTab === 'about' ? 'active' : ''}`}>
-          <h2 style={{textAlign: 'center'}}>{t('aboutTitle')}</h2>
+          <div style={{display: 'flex', alignItems: 'baseline', gap: '10px'}}>
+            <h2 style={{margin: 0}}>{t('aboutTitle')}</h2>
+            <span style={{fontSize: '12px', color: '#718096'}}>{t('version')} {appVersion}</span>
+          </div>
 
-          <img
-            src={brand.logo || logo}
-            alt={brand.title}
-            className="logo"
-            onError={(e) => e.target.style.display = 'none'}
-          />
+          <div className="card" style={{marginTop: '18px'}}>
+            <h3>{t('technology')}</h3>
+            <ul className="tech-grid">
+              <li>{t('techList.wails')}</li>
+              <li>{t('techList.performance')}</li>
+              <li>{t('techList.interface')}</li>
+              <li>{t('techList.logs')}</li>
+              <li>{t('techList.nogpu')}</li>
+            </ul>
+          </div>
 
-          <div style={{textAlign: 'center', marginTop: '30px'}}>
-            <h3>{brand.title}</h3>
-            <p style={{color: '#718096', margin: '10px 0'}}>{t('version')} {appVersion}</p>
+          <div className="card" style={{marginTop: '20px'}}>
+            <h3>{t('features')}</h3>
+            <ul className="feature-grid">
+              {['backupSets', 'multiPbs', 'bareMetalRestore', 'snapshotRestore', 'languages', 'themes', 'reportsLog', 'dedup'].map((k) => (
+                <li key={k}>
+                  <strong>{t(`featuresList.${k}.title`)}</strong>
+                  {t(`featuresList.${k}.desc`)}
+                </li>
+              ))}
+            </ul>
+          </div>
 
-            {/* Upsell / buy-storage CTA (brand-specific when configured) */}
-            <div style={{margin: '20px 0'}}>
-              <a
-                className="cta-btn"
-                href={buyStorage.url}
-                target="_blank"
-                data-external="true"
-                rel="noopener noreferrer"
-              >
-                {buyStorage.text}
-              </a>
+          <div className="card" style={{marginTop: '20px', display: 'flex', alignItems: 'center', gap: '28px'}}>
+            <h3 style={{margin: 0}}>Links</h3>
+            {[
+              ['updates', 'Releases', 'https://github.com/tizbac/proxmoxbackupclient_go/releases'],
+              ['contact', 'Source code', 'https://github.com/mjb-is/proxmoxbackupclient_go'],
+              ['license', 'License', 'https://github.com/mjb-is/proxmoxbackupclient_go/blob/master/LICENSE']
+            ].map(([k, label, fallback]) => {
+              const u = (brand.urls && brand.urls[k]) || fallback
+              return (
+                <a key={k} href={u} target="_blank" data-external="true" rel="noopener noreferrer" style={{fontSize: '13px', fontWeight: 600}}>{label}</a>
+              )
+            })}
+          </div>
+
+          <div className="info-box" style={{marginTop: '20px', fontSize: '12px', lineHeight: 1.7}}>
+            <div>{t('legalCredit')}</div>
+            <div style={{marginTop: '6px'}}>
+              {t('copyright')} &mdash; <a href="https://github.com/mjb-is/proxmoxbackupclient_go/graphs/contributors" style={{color: 'var(--accent)'}} target="_blank" rel="noopener noreferrer">view contributors</a>
             </div>
-
-            <div className="grid" style={{marginTop: '30px', textAlign: 'left'}}>
-              <div className="card">
-                <h3>✅ {t('features')}</h3>
-                <ul style={{lineHeight: 2, marginLeft: '20px'}}>
-                  <li>{t('featuresList.directories')}</li>
-                  <li>{t('featuresList.machine')}</li>
-                  <li>{t('featuresList.restore')}</li>
-                  <li>{t('featuresList.vss')}</li>
-                  <li>{t('featuresList.dedup')}</li>
-                  <li>{t('featuresList.modern')}</li>
-                </ul>
-              </div>
-
-              <div className="card">
-                <h3>Links</h3>
-                <ul style={{lineHeight: 2, marginLeft: '20px'}}>
-                  {[
-                    ['about', 'About'],
-                    ['help', 'Help / Forum'],
-                    ['updates', 'Releases'],
-                    ['contact', 'Contact / Repo']
-                  ].map(([k, label]) => {
-                    const u = (brand.urls && brand.urls[k]) || brand.brand_url || 'https://www.proxmox.com/'
-                    return (
-                      <li key={k}>
-                        <a href={u} target="_blank" data-external="true" rel="noopener noreferrer">{label}</a>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-
-              <div className="card">
-                <h3>{t('technology')}</h3>
-                <ul style={{lineHeight: 2, marginLeft: '20px'}}>
-                  <li>{t('techList.wails')}</li>
-                  <li>{t('techList.performance')}</li>
-                  <li>{t('techList.interface')}</li>
-                  <li>{t('techList.logs')}</li>
-                  <li>{t('techList.nogpu')}</li>
-                </ul>
-              </div>
-            </div>
-
-            <p style={{marginTop: '30px'}}>
-              <strong>{t('copyright')}</strong><br/>
-              <a href="https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1" style={{color: 'var(--accent)'}} target="_blank">proxmoxbackupclient_go contributors</a>
-            </p>
-
-            <p style={{marginTop: '20px', color: '#718096', fontSize: '12px'}}>
-              {t('basedOn')}<br/>
-              {t('techStack')}
-            </p>
+            <div style={{marginTop: '6px'}}>{t('legalLicense')}</div>
+            <div style={{marginTop: '6px', color: '#718096'}}>{t('legalDisclaimer')}</div>
           </div>
         </div>
 
