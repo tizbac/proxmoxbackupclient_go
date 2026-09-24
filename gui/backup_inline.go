@@ -201,6 +201,23 @@ func calculateDirSizeCtx(ctx context.Context, path string) (uint64, error) {
 	return totalSize, err
 }
 
+// chunkUploadWorkers bounds how many chunk uploads for one archive run
+// concurrently. Benchmarked 2026-09-24 against the real test PBS with fresh
+// (non-dedupable) 4MB chunks: serial uploads topped out ~26 MB/s even on a
+// quiet LAN (each upload waits out its own round trip before the next chunk
+// starts); 8 concurrent workers nearly doubled that to ~46-52 MB/s, and
+// 16/32 workers gave no further gain (same diminishing-returns shape the
+// restore-side prefetch tuning found in didx_reader.go). 8 matches
+// machinebackuplib's already-proven worker count for the same reason.
+const chunkUploadWorkers = 8
+
+// uploadJob is one chunk handed from the (single-threaded) scan/hash loop in
+// HandleData/EOF to the upload worker pool started by Init.
+type uploadJob struct {
+	digest string
+	data   []byte
+}
+
 type ChunkState struct {
 	assignments         []string
 	assignmentsOffset  []uint64
@@ -222,9 +239,19 @@ type ChunkState struct {
 	totalSize           *atomic.Uint64     // Total size, updated by background scan
 	uploadErrors        []string           // Collect upload errors to report at the end
 	errorsMutex         sync.Mutex         // Protect uploadErrors slice
+
+	// Pipelined chunk upload (added 2026-09-24, see chunkUploadWorkers doc
+	// comment). HandleData/EOF stay single-threaded for scanning/hashing/
+	// dedup bookkeeping (position-ordered, exactly as before) and only hand
+	// the actual network upload off to this pool, so the next chunk's scan
+	// and upload overlap instead of waiting for each other.
+	uploadJobs chan uploadJob
+	uploadWG   sync.WaitGroup
+	fatalErrMu sync.Mutex
+	fatalErr   error
 }
 
-func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, failedchunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool], onProgress func(float64, string), totalSize *atomic.Uint64, onStats func(*BackupProgressStats), currentDir string) {
+func (c *ChunkState) Init(client *pbscommon.PBSClient, newchunk *atomic.Uint64, reusechunk *atomic.Uint64, failedchunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool], onProgress func(float64, string), totalSize *atomic.Uint64, onStats func(*BackupProgressStats), currentDir string) {
 	c.assignments = make([]string, 0)
 	c.assignmentsOffset = make([]uint64, 0)
 	c.pos = 0
@@ -247,9 +274,183 @@ func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, fa
 	c.lastProgressPercent = 0.0
 	c.totalSize = totalSize
 	c.uploadErrors = make([]string, 0)
+	c.startUploadWorkers(client)
+}
+
+// startUploadWorkers launches the upload pool. c.wrid isn't set yet at this
+// point (CreateDynamicIndex runs after Init, before any real data flows) —
+// safe because each worker only reads c.wrid when a job arrives, and the
+// channel send that delivers the first job happens-after c.wrid is written,
+// per the Go memory model's channel-synchronization guarantee.
+func (c *ChunkState) startUploadWorkers(client *pbscommon.PBSClient) {
+	c.uploadJobs = make(chan uploadJob, chunkUploadWorkers*2)
+	c.uploadWG.Add(chunkUploadWorkers)
+	for i := 0; i < chunkUploadWorkers; i++ {
+		go func() {
+			defer c.uploadWG.Done()
+			for job := range c.uploadJobs {
+				retryConfig := retry.DefaultConfig()
+				retryConfig.MaxAttempts = 5
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				err := retry.DoWithJitter(ctx, retryConfig, retry.DefaultRetryable, func() error {
+					return client.UploadDynamicCompressedChunk(c.wrid, job.digest, job.data)
+				})
+				cancel()
+				if err != nil {
+					errMsg := fmt.Sprintf("⚠️  Failed to upload chunk %s after %d retries: %v", job.digest, retryConfig.MaxAttempts, err)
+					writeBackupLog(errMsg)
+					c.failedchunk.Add(1)
+					c.errorsMutex.Lock()
+					c.uploadErrors = append(c.uploadErrors, errMsg)
+					c.errorsMutex.Unlock()
+					// C3 fail-closed (see processChunk/EOF): latch the first fatal
+					// error. EOF waits for every worker to drain, checks this, and
+					// skips AssignDynamicChunks/CloseDynamicIndex if it's set — so a
+					// chunk we couldn't upload never ends up referenced by a
+					// finalized, unrestorable snapshot.
+					c.fatalErrMu.Lock()
+					if c.fatalErr == nil {
+						c.fatalErr = fmt.Errorf("chunk upload failed, aborting to avoid committing a corrupt snapshot: %w", err)
+					}
+					c.fatalErrMu.Unlock()
+					continue
+				}
+				c.newchunk.Add(1)
+			}
+		}()
+	}
+}
+
+// checkFatal reports the first upload failure seen by any worker so far, if
+// any. Called after every chunk is scanned so a background upload failure
+// stops the walk promptly instead of only being noticed at EOF.
+func (c *ChunkState) checkFatal() error {
+	c.fatalErrMu.Lock()
+	defer c.fatalErrMu.Unlock()
+	return c.fatalErr
+}
+
+// processChunk hashes/dedups/bookkeeps c.currentChunk (the scanner's current
+// break) and, for a new chunk, hands it to the upload worker pool instead of
+// uploading inline — HandleData's caller (the pxar walk) can move on to
+// scanning the next chunk immediately instead of blocking on this one's
+// network round trip. Shared by HandleData's loop and EOF's final tail
+// chunk, which used to duplicate this whole block.
+func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
+	// A worker may have already latched a fatal error from an earlier chunk
+	// (uploads happen in the background — see uploadJobs) — check before
+	// hashing/queuing more work so a failure stops new uploads promptly
+	// instead of only after HandleData's next call.
+	if err := c.checkFatal(); err != nil {
+		return err
+	}
+
+	h := sha256.New()
+	if _, err := h.Write(c.currentChunk); err != nil {
+		return fmt.Errorf("failed to hash chunk: %w", err)
+	}
+	bindigest := h.Sum(nil)
+	shahash := hex.EncodeToString(bindigest)
+
+	// GetOrSet marks the digest known BEFORE upload confirms, atomically, so
+	// a duplicate of this chunk found later in the same stream (common —
+	// e.g. runs of zeros) is never submitted twice while the first upload is
+	// still in flight (same pattern machinebackuplib's uploadWorker already
+	// uses in production). This is safe even though the upload could still
+	// fail: on any upload failure c.fatalErr is latched and EOF aborts
+	// before AssignDynamicChunks/CloseDynamicIndex, so an optimistically
+	// "known" chunk from a failed run never ends up referenced by a
+	// finalized snapshot (see checkFatal/EOF).
+	if _, known := c.knownChunks.GetOrSet(shahash, true); !known {
+		writeBackupLog(fmt.Sprintf("New chunk[%s] %d bytes", shahash, len(c.currentChunk)))
+		c.uploadJobs <- uploadJob{digest: shahash, data: c.currentChunk}
+	} else {
+		writeBackupLog(fmt.Sprintf("Reuse chunk[%s] %d bytes", shahash, len(c.currentChunk)))
+		c.reusechunk.Add(1)
+	}
+
+	if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.currentChunk)))); err != nil {
+		return fmt.Errorf("failed to write chunk offset: %w", err)
+	}
+	if _, err := c.chunkdigests.Write(h.Sum(nil)); err != nil {
+		return fmt.Errorf("failed to write chunk digest: %w", err)
+	}
+
+	c.assignmentsOffset = append(c.assignmentsOffset, c.pos)
+	c.assignments = append(c.assignments, shahash)
+	c.pos += uint64(len(c.currentChunk))
+	c.chunkcount += 1
+
+	// Report progress every 10 MB
+	if c.onProgress != nil && c.pos-c.lastProgressReport > 10*1024*1024 {
+		c.lastProgressReport = c.pos
+		sizeMB := c.pos / (1024 * 1024)
+
+		// Build progress message with chunk stats
+		var msg string
+		failed := c.failedchunk.Load()
+		if failed > 0 {
+			msg = fmt.Sprintf("Processed: %d MB (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
+				sizeMB, c.newchunk.Load(), c.reusechunk.Load(), failed)
+		} else {
+			msg = fmt.Sprintf("Processed: %d MB (New: %d, Reused: %d chunks)",
+				sizeMB, c.newchunk.Load(), c.reusechunk.Load())
+		}
+
+		// Calculate progress based on total size if available
+		var progress float64
+		totalSize := c.totalSize.Load()
+		if totalSize > 0 {
+			// Progress from 10% to 90% based on bytes processed
+			progress = 0.1 + (float64(c.pos)/float64(totalSize))*0.8
+			if progress > 0.9 {
+				progress = 0.9
+			}
+			if failed > 0 {
+				msg = fmt.Sprintf("Processed: %d / %d MB (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
+					sizeMB, totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load(), failed)
+			} else {
+				msg = fmt.Sprintf("Processed: %d / %d MB (New: %d, Reused: %d chunks)",
+					sizeMB, totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load())
+			}
+		} else {
+			// No total size yet, show indeterminate progress
+			progress = 0.1 + float64(sizeMB%100)/1000.0 // Slowly increment from 10%
+			if progress > 0.5 {
+				progress = 0.5
+			}
+		}
+
+		// Never report backwards progress - totalSize can increase during backup
+		if progress < c.lastProgressPercent {
+			progress = c.lastProgressPercent
+		}
+		c.lastProgressPercent = progress
+
+		c.onProgress(progress, msg)
+
+		// Structured live stats for the GUI (same cadence as the message).
+		if c.onStats != nil {
+			c.onStats(&BackupProgressStats{
+				Percent:      progress,
+				BytesDone:    c.pos,
+				BytesTotal:   totalSize,
+				NewChunks:    c.newchunk.Load(),
+				ReusedChunks: c.reusechunk.Load(),
+				FailedChunks: failed,
+				CurrentDir:   c.currentDir,
+				Message:      msg,
+			})
+		}
+	}
+
+	return c.checkFatal()
 }
 
 func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
+	if err := c.checkFatal(); err != nil {
+		return err
+	}
 	chunkpos := c.C.Scan(b)
 
 	if chunkpos == 0 {
@@ -258,125 +459,8 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 		for chunkpos > 0 {
 			c.currentChunk = append(c.currentChunk, b[:chunkpos]...)
 
-			h := sha256.New()
-			if _, err := h.Write(c.currentChunk); err != nil {
-				return fmt.Errorf("failed to hash chunk: %w", err)
-			}
-			bindigest := h.Sum(nil)
-			shahash := hex.EncodeToString(bindigest)
-
-			if _, known := c.knownChunks.Get(shahash); !known {
-				writeBackupLog(fmt.Sprintf("New chunk[%s] %d bytes", shahash, len(c.currentChunk)))
-
-				// Retry chunk upload with exponential backoff
-				chunkData := c.currentChunk // Capture for closure
-				retryConfig := retry.DefaultConfig()
-				retryConfig.MaxAttempts = 5 // More retries for chunk uploads
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				defer cancel()
-
-				err := retry.DoWithJitter(ctx, retryConfig, retry.DefaultRetryable, func() error {
-					return client.UploadDynamicCompressedChunk(c.wrid, shahash, chunkData)
-				})
-				if err != nil {
-					errMsg := fmt.Sprintf("⚠️  Failed to upload chunk %s after %d retries: %v", shahash, retryConfig.MaxAttempts, err)
-					writeBackupLog(errMsg)
-					c.failedchunk.Add(1)
-
-					// Collect error for final report
-					c.errorsMutex.Lock()
-					c.uploadErrors = append(c.uploadErrors, errMsg)
-					c.errorsMutex.Unlock()
-
-					// C3 fail-closed: a chunk we could not upload must NOT be indexed.
-					// Indexing it would close a dynamic index referencing a digest that
-					// is absent from the datastore — an unrestorable snapshot. Abort the
-					// writer now (whether the error is fatal or transient); WriteDir's EOF,
-					// CloseDynamicIndex, manifest and Finish are never reached for this dir.
-					return fmt.Errorf("chunk upload failed, aborting to avoid committing a corrupt snapshot: %w", err)
-				}
-				// Mark the chunk known ONLY after a confirmed upload, so a failed chunk
-				// can never make a later identical chunk be skipped as "reused".
-				c.knownChunks.Set(shahash, true)
-				c.newchunk.Add(1)
-			} else {
-				writeBackupLog(fmt.Sprintf("Reuse chunk[%s] %d bytes", shahash, len(c.currentChunk)))
-				c.reusechunk.Add(1)
-			}
-
-			if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.currentChunk)))); err != nil {
-				return fmt.Errorf("failed to write chunk offset: %w", err)
-			}
-			if _, err := c.chunkdigests.Write(h.Sum(nil)); err != nil {
-				return fmt.Errorf("failed to write chunk digest: %w", err)
-			}
-
-			c.assignmentsOffset = append(c.assignmentsOffset, c.pos)
-			c.assignments = append(c.assignments, shahash)
-			c.pos += uint64(len(c.currentChunk))
-			c.chunkcount += 1
-
-			// Report progress every 10 MB
-			if c.onProgress != nil && c.pos-c.lastProgressReport > 10*1024*1024 {
-				c.lastProgressReport = c.pos
-				sizeMB := c.pos / (1024 * 1024)
-
-				// Build progress message with chunk stats
-				var msg string
-				failed := c.failedchunk.Load()
-				if failed > 0 {
-					msg = fmt.Sprintf("Processed: %d MB (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
-						sizeMB, c.newchunk.Load(), c.reusechunk.Load(), failed)
-				} else {
-					msg = fmt.Sprintf("Processed: %d MB (New: %d, Reused: %d chunks)",
-						sizeMB, c.newchunk.Load(), c.reusechunk.Load())
-				}
-
-				// Calculate progress based on total size if available
-				var progress float64
-				totalSize := c.totalSize.Load()
-				if totalSize > 0 {
-					// Progress from 10% to 90% based on bytes processed
-					progress = 0.1 + (float64(c.pos)/float64(totalSize))*0.8
-					if progress > 0.9 {
-						progress = 0.9
-					}
-					if failed > 0 {
-						msg = fmt.Sprintf("Processed: %d / %d MB (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
-							sizeMB, totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load(), failed)
-					} else {
-						msg = fmt.Sprintf("Processed: %d / %d MB (New: %d, Reused: %d chunks)",
-							sizeMB, totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load())
-					}
-				} else {
-					// No total size yet, show indeterminate progress
-					progress = 0.1 + float64(sizeMB%100)/1000.0 // Slowly increment from 10%
-					if progress > 0.5 {
-						progress = 0.5
-					}
-				}
-
-				// Never report backwards progress - totalSize can increase during backup
-				if progress < c.lastProgressPercent {
-					progress = c.lastProgressPercent
-				}
-				c.lastProgressPercent = progress
-
-				c.onProgress(progress, msg)
-
-				// Structured live stats for the GUI (same cadence as the message).
-				if c.onStats != nil {
-					c.onStats(&BackupProgressStats{
-						Percent:      progress,
-						BytesDone:    c.pos,
-						BytesTotal:   totalSize,
-						NewChunks:    c.newchunk.Load(),
-						ReusedChunks: c.reusechunk.Load(),
-						FailedChunks: failed,
-						CurrentDir:   c.currentDir,
-						Message:      msg,
-					})
-				}
+			if err := c.processChunk(client); err != nil {
+				return err
 			}
 
 			c.currentChunk = make([]byte, 0)
@@ -390,56 +474,18 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 
 func (c *ChunkState) EOF(client *pbscommon.PBSClient) error {
 	if len(c.currentChunk) > 0 {
-		h := sha256.New()
-		if _, err := h.Write(c.currentChunk); err != nil {
-			return fmt.Errorf("failed to hash final chunk: %w", err)
+		if err := c.processChunk(client); err != nil {
+			return err
 		}
+	}
 
-		shahash := hex.EncodeToString(h.Sum(nil))
-		if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.currentChunk)))); err != nil {
-			return fmt.Errorf("failed to write final chunk offset: %w", err)
-		}
-		if _, err := c.chunkdigests.Write(h.Sum(nil)); err != nil {
-			return fmt.Errorf("failed to write final chunk digest: %w", err)
-		}
-
-		if _, known := c.knownChunks.Get(shahash); !known {
-			writeBackupLog(fmt.Sprintf("New chunk[%s] %d bytes", shahash, len(c.currentChunk)))
-
-			// Retry final chunk upload with exponential backoff
-			chunkData := c.currentChunk
-			retryConfig := retry.DefaultConfig()
-			retryConfig.MaxAttempts = 5
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			defer cancel()
-
-			err := retry.DoWithJitter(ctx, retryConfig, retry.DefaultRetryable, func() error {
-				return client.UploadDynamicCompressedChunk(c.wrid, shahash, chunkData)
-			})
-			if err != nil {
-				errMsg := fmt.Sprintf("⚠️  Failed to upload final chunk %s after %d retries: %v", shahash, retryConfig.MaxAttempts, err)
-				writeBackupLog(errMsg)
-				c.failedchunk.Add(1)
-
-				c.errorsMutex.Lock()
-				c.uploadErrors = append(c.uploadErrors, errMsg)
-				c.errorsMutex.Unlock()
-
-				// C3 fail-closed (see HandleData): never index an unconfirmed chunk —
-				// abort before the chunk is appended to the index and before EOF closes it.
-				return fmt.Errorf("final chunk upload failed, aborting to avoid committing a corrupt snapshot: %w", err)
-			}
-			// Mark known only after a confirmed upload.
-			c.knownChunks.Set(shahash, true)
-			c.newchunk.Add(1)
-		} else {
-			writeBackupLog(fmt.Sprintf("Reuse chunk[%s] %d bytes", shahash, len(c.currentChunk)))
-			c.reusechunk.Add(1)
-		}
-		c.assignmentsOffset = append(c.assignmentsOffset, c.pos)
-		c.assignments = append(c.assignments, shahash)
-		c.pos += uint64(len(c.currentChunk))
-		c.chunkcount += 1
+	// Every remaining chunk has been handed to the upload workers (possibly
+	// still in flight) — stop accepting new jobs and wait for all of them to
+	// finish before touching AssignDynamicChunks/CloseDynamicIndex below.
+	close(c.uploadJobs)
+	c.uploadWG.Wait()
+	if err := c.checkFatal(); err != nil {
+		return err
 	}
 
 	// Assign chunks in batches with retry
@@ -837,7 +883,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		// below writes its catalog data into this same index; it is
 		// finalized once, after the loop, not per directory.
 		catalogChunk := ChunkState{}
-		catalogChunk.Init(&newchunk, &reusechunk, &failedchunk, haxmap.New[string, bool](), nil, &totalSize, nil, "")
+		catalogChunk.Init(client, &newchunk, &reusechunk, &failedchunk, haxmap.New[string, bool](), nil, &totalSize, nil, "")
 		var catalogIndexErr error
 		catalogChunk.wrid, catalogIndexErr = client.CreateDynamicIndex("catalog.pcat1.didx")
 		if catalogIndexErr != nil {
@@ -1421,7 +1467,7 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 	writeBackupLog(fmt.Sprintf("Known chunks: %d", knownChunks.Len()))
 
 	pxarChunk := ChunkState{}
-	pxarChunk.Init(newchunk, reusechunk, failedchunk, knownChunks, progress, totalSize, onStats, backupdir)
+	pxarChunk.Init(client, newchunk, reusechunk, failedchunk, knownChunks, progress, totalSize, onStats, backupdir)
 
 	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
 	if err != nil {
