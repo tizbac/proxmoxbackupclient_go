@@ -5,7 +5,7 @@ import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
 import DirectoryTree from './components/DirectoryTree'
 import KnownLimitationsModal from './components/KnownLimitationsModal'
-import ThemePicker, { hasStoredTheme } from './components/ThemePicker'
+import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
@@ -578,7 +578,9 @@ function App() {
             setBrand(b)
             // A saved Theme choice (Preferences) always wins over the brand's own
             // default accent — it's a later, more specific, explicit user choice.
-            if (!(await hasStoredTheme())) {
+            if (await hasStoredTheme()) {
+              await applyStoredTheme()
+            } else {
               const root = document.documentElement.style
               if (b.accent) root.setProperty('--accent', b.accent)
               if (b.accent_hover) root.setProperty('--accent-hover', b.accent_hover)

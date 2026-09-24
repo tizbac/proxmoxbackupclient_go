@@ -55,6 +55,30 @@ export async function hasStoredTheme() {
   return !!(saved && saved.preset)
 }
 
+// Resolves a stored theme's colors and applies them (CSS vars) — the actual
+// work ThemePicker's own mount-effect does, extracted so App.jsx's startup
+// effect can do it too. Without this, a saved theme only ever took effect
+// once the user happened to open the Preferences > Theme tab and mount
+// ThemePicker itself — on a fresh launch the UI just sat on CSS defaults
+// (or the brand's own accent) until then, even though hasStoredTheme()
+// correctly reported a theme was saved and App.jsx correctly skipped
+// applying the brand's default because of it. Confirmed live 2026-09-24:
+// "the correct theme shows selected the moment I open the Theme tab, and
+// the UI colors only update right then" — because that mount was genuinely
+// the first time anything ever called applyTheme() this session.
+export async function applyStoredTheme() {
+  const saved = await backendGetTheme()
+  if (!saved || !saved.preset) return
+  const customColors = {
+    accent: saved.accent || PRESETS.amber.accent,
+    accentHover: saved.accentHover || PRESETS.amber.accentHover,
+    heroStart: saved.heroStart || PRESETS.amber.heroStart,
+    heroEnd: saved.heroEnd || PRESETS.amber.heroEnd,
+  }
+  const colors = saved.preset === 'custom' ? customColors : PRESETS[saved.preset]
+  if (colors) applyTheme(colors)
+}
+
 export default function ThemePicker() {
   const { t } = useTranslation()
   const [preset, setPreset] = useState('amber')
