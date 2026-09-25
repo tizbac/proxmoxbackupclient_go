@@ -648,65 +648,35 @@ bar doesn't have, not a styling mismatch.
 6 languages), since the same checkbox gates elastio-snap/dattobd on Linux as much as VSS on
 Windows.
 
-### 📧 Email notifications in the GUI (engine already exists, just not wired to it)
+### ~~📧 Email notifications in the GUI~~ ✅ DONE 2026-09-25
 
-**What's already there:** `clientcommon/mail.go` is a complete, working SMTP client
-(`SetupMailClient`/`SendMail`, TLS/STARTTLS/plain on 465/587/25) plus a templated `MailCtx`
-(Go `text/template`, fields: `Success`/`Partial`/`Status`/`Duration`/`NewChunks`/`ReusedChunks`/
-`ReadErrors`/`Hostname`/`StartTime`/`EndTime`/`ErrorStr`). `proxmoxbackup-directory` fully wires
-it up already — `-mail-host`/`-mail-port`/`-mail-username`/`-mail-password`/`-mail-insecure`/
-`-mail-from`/`-mail-to`/`-mail-subject-template`/`-mail-body-template` flags, config-file driven
-via `SMTPConfig` (`directorybackup/config.go`), and it even supports multiple from/to pairs
-(`SMTP.Mails []...`). `proxmoxbackup-machine` defines the same `-mail-*` flags
-(`machinebackup/main.go`) but never actually calls `SetupMailClient`/`SendMail` — dead/unwired.
+Global SMTP account in Preferences > Advanced (`SetSMTPSettings`/`SendTestEmail`,
+`gui/email_notifications.go`), reusing the existing `clientcommon/mail.go` engine. Per-Backup-Set
+on-completion/on-failure email toggles live on the new Alerts tab (see below) — two independent
+fields with their own recipient, not a single success/failure/always/never selector.
 
-**What's missing:** the GUI itself (`gui/*.go`) has zero references to any of this — no
-Preferences tab, no per-Backup-Set option, nothing. Every notification in the GUI today is
-purely visual (Reports/Message Log), nothing leaves the machine.
+### ~~🖥️ Post-backup actions (shutdown PC, exit app, run an application)~~ ✅ DONE 2026-09-25
 
-**Two design directions to weigh** (not mutually exclusive):
-- [ ] **Global**: one SMTP setup in Preferences (reusing `clientcommon`'s existing client/config
-      shape), used to push a message whenever *anything* completes — effectively mailing out
-      Message Log entries or a Reports summary as they happen.
-- [ ] **Per-Backup-Set**: notification options on each `ScheduledJob` (on success / on failure /
-      always / never, maybe its own subject/body template override), so a Backup Set can opt in
-      or out independently once the global SMTP account is configured.
+New "Alerts" chevron tab on the Backup Set editor (scheduled Backup Sets only), modelled on
+Backup for Workgroups' "Special Items" step: on-completion/on-failure email (reusing the global
+SMTP account above, each with its own recipient), run an application before/after the backup,
+exit the app after the backup, shut down the computer after the backup — fired in that order,
+shutdown always last since it's irreversible. New `ScheduledJob` fields are all-off zero values,
+so pre-existing jobs need no migration (verified via a JSON round-trip check).
 
-A sensible shape is probably: one global SMTP account in Preferences (host/port/auth, matching
-what `directorybackup` already accepts), then a lightweight per-Backup-Set toggle that reuses it.
-Wire `machinebackup`'s already-declared-but-dead `-mail-*` flags while at it, so both CLI tools
-actually behave the same way.
+Fires from `executeScheduledJob`'s existing service-mode synchronous branch, and via a new
+`currentScheduledJobPostActions` field (mirrors the existing `currentScheduledJobName` pattern)
+read inside `startBackupDirect`/`startMachineBackupDirect`'s `OnComplete` for standalone mode.
 
-### 🖥️ Post-backup actions (shutdown PC, exit app, run an application)
+**Verified:** `gui` builds clean under both default and `-tags service`; a full `wails build`
+succeeds and generates the new bindings correctly; frontend build clean, all 6 languages have
+matching key coverage; `ScheduledJob`'s new fields round-trip through JSON correctly, including
+old-shape jobs loading with everything safely off.
 
-**Suggested 2026-09-25**, referencing Backup for Workgroups' own "Special Items" wizard step
-("When Your Backup Session Completes": send e-mail, close BFW, turn off your computer, write
-results to the Event log; plus "Run an Application" before/after). This fork's Backup Set editor
-has no equivalent — worth adding as its own chevron tab (same pattern as the planned "Alerts" tab
-above), covering:
-- [ ] **Turn off the computer** after this Backup Set completes — the one item with a genuine,
-      already-open reference implementation upstream: PR #43
-      (https://github.com/tizbac/proxmoxbackupclient_go/pull/43, "feat: add option for shutting
-      down pc after backup") touches root-level `config.go`/`main.go` from before the module
-      refactor, so it isn't directly portable, but the feature idea and its shutdown-invocation
-      approach are worth a look before reimplementing from scratch.
-- [ ] **Exit Proxmox Backup Client Go** after this Backup Set completes (BFW's "Close Backup for
-      Workgroups" equivalent) — relevant mainly for the one-shot/manual-run case, not scheduled
-      background jobs.
-- [ ] **Run an application** before and/or after the backup (BFW's "Run an Application" section) —
-      a command/path field plus before/after timing, presumably with its own success/failure
-      handling (does an after-backup command run on failure too, or only on success?).
-- [ ] **Send an e-mail** on completion — already tracked in full above ("Email notifications in the
-      GUI"); this tab is a natural place to surface that per-Backup-Set toggle once it exists,
-      rather than a separate thing. **Final shape confirmed 2026-09-25: two independent fields**,
-      not a single success/failure/always/never selector — "On completion, email to: [address]"
-      and "On failed backup, email to: [address]", each with its own on/off, since the recipient
-      may genuinely differ (e.g. failures going somewhere more urgent than routine successes), or
-      one may be wanted without the other. Both reuse the global SMTP account from Preferences.
-
-Should probably be scoped per-Backup-Set (like BFW's own wizard, which is per backup job) rather
-than global in Preferences, since "shut down after this backup" only makes sense for specific jobs
-(e.g. an overnight one-shot), not every scheduled run.
+**Not independently verified:** actual SMTP delivery against a real mail server, and live
+GUI rendering/interaction (no reachable test client with a live desktop session at the time —
+the JSX follows the exact same structural patterns as neighboring, already-working sections).
+Worth a real click-through and a test email with real SMTP credentials before relying on this.
 
 ### ~~🔧 Two small pulls from upstream~~ ✅ DONE 2026-09-25
 
