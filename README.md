@@ -79,15 +79,144 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 
 ### 📸 Screenshots
 
-<!-- The three screenshots this section used to show (docs/screenshots/nimbus-gui-*.png) are the
-     pre-fork "Nimbus Backup v0.2.26" French tab-based UI and no longer reflect what ships today
-     (see "About this fork" above for the rebuilt native-menu/sidebar UI) — removed rather than
-     left in place to avoid showing the wrong app. Replace with current shots, saved under these
-     names, and this comment can go:
-       docs/screenshots/gui-backup-sets.png       — sidebar + Backup Sets list (type badges visible)
-       docs/screenshots/gui-restore.png           — Restore tab with a snapshot's file tree open
-       docs/screenshots/gui-reports.png           — Reports page (run list + detail panel)
-       docs/screenshots/gui-preferences-theme.png — Preferences dialog, Theme tab -->
+<table>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-backup-sets.png" width="280">](docs/screenshots/gui-backup-sets.png)
+**Backup Sets** — named jobs with a repeat/manual trigger badge and a directory/machine type badge, Run Now on each
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-backup-progress.png" width="280">](docs/screenshots/gui-backup-progress.png)
+**Live backup progress** — throughput, ETA, and new-vs-reused chunk counts as it runs
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-restore.png" width="280">](docs/screenshots/gui-restore.png)
+**Restore** — pick a PBS server and backup ID, list snapshots or search across them by filename
+
+</td>
+</tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-restore-progress.png" width="280">](docs/screenshots/gui-restore-progress.png)
+**Selective restore** — tick individual files/folders from the snapshot tree, restore in place or elsewhere
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-reports.png" width="280">](docs/screenshots/gui-reports.png)
+**Reports** — full run history with a detail panel (duration, chunks, folders backed up)
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-message-log.png" width="280">](docs/screenshots/gui-message-log.png)
+**Message Log** — a capped, timestamped diagnostic feed across every backup and restore
+
+</td>
+</tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-preferences-servers.png" width="280">](docs/screenshots/gui-preferences-servers.png)
+**Multi-PBS** — manage several PBS servers, test connectivity, pick a default
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-preferences-edit-server.png" width="280">](docs/screenshots/gui-preferences-edit-server.png)
+**Add/edit a server** — URL, user/password or API token, datastore and namespace
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-theme-amber.png" width="280">](docs/screenshots/gui-theme-amber.png)
+**Themes** — five built-in colour palettes plus a custom colour, recolouring the whole app live (see the strip below)
+
+</td>
+</tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-preferences-advanced.png" width="280">](docs/screenshots/gui-preferences-advanced.png)
+**Advanced options** — explained honestly: parallel restore extraction is experimental and measured *slower* on our own test hardware
+
+</td>
+</tr>
+</table>
+
+**🎨 Colour themes** — the Preferences dialog itself recolours with each pick, not just a swatch:
+
+<table>
+<tr>
+<td width="16.6%">
+
+[<img src="docs/screenshots/gui-theme-amber.png" width="180">](docs/screenshots/gui-theme-amber.png)
+Amber
+
+</td>
+<td width="16.6%">
+
+[<img src="docs/screenshots/gui-theme-blue.png" width="180">](docs/screenshots/gui-theme-blue.png)
+Classic Blue
+
+</td>
+<td width="16.6%">
+
+[<img src="docs/screenshots/gui-theme-green.png" width="180">](docs/screenshots/gui-theme-green.png)
+Green
+
+</td>
+<td width="16.6%">
+
+[<img src="docs/screenshots/gui-theme-red.png" width="180">](docs/screenshots/gui-theme-red.png)
+Red
+
+</td>
+<td width="16.6%">
+
+[<img src="docs/screenshots/gui-theme-dark.png" width="180">](docs/screenshots/gui-theme-dark.png)
+Dark
+
+</td>
+<td width="16.6%">
+
+[<img src="docs/screenshots/gui-theme-custom.png" width="180">](docs/screenshots/gui-theme-custom.png)
+Custom
+
+</td>
+</tr>
+</table>
+
+**🌍 Multilingual** — the Reports page in French, Italian and Spanish (also available: English, German, Polish):
+
+<table>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-lang-french.png" width="280">](docs/screenshots/gui-lang-french.png)
+Français
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-lang-italian.png" width="280">](docs/screenshots/gui-lang-italian.png)
+Italiano
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-lang-spanish.png" width="280">](docs/screenshots/gui-lang-spanish.png)
+Español
+
+</td>
+</tr>
+</table>
 
 ### Smart system exclusions (file mode)
 When backing up an entire drive (e.g. `D:\`), the GUI automatically excludes:
