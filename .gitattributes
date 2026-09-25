@@ -1,0 +1,10 @@
+# Force LF for every script/text format this project ships to Linux, so a
+# Windows checkout (core.autocrlf=true) never silently rewrites them to
+# CRLF. Found live 2026-09-25: packaging/linux/run-as-root.sh was deployed
+# via direct scp from a Windows working copy (not a git clone on the
+# target, which pulls the clean LF blob directly), so it picked up CRLF
+# line endings, breaking its shebang ("#!/bin/bash\r" doesn't exist) with
+# a misleading "No such file or directory" from the desktop launcher.
+*.sh text eol=lf
+*.patch text eol=lf
+clonezilla-patch/* text eol=lf
