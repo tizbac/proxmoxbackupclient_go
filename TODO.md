@@ -513,6 +513,40 @@ type ScheduledJob struct {
 
 ## 🟢 P2 - NICE TO HAVE (Backlog)
 
+### 🌍 BMR wizard is hardcoded to English (`locales=en_US.UTF-8 keyboard-layouts=gb`)
+
+**Question raised (2026-09-25):** the automated boot entry hardcodes English/UK layout rather
+than asking, unlike stock Clonezilla. Should it offer the same 6 languages the GUI supports?
+
+**Two genuinely different things are involved, easy to conflate:**
+- Clonezilla's **own** native prompts (`$msg_program_stop`, `$msg_nchc_clonezilla`,
+  `$msg_do_u_want_to_do_it_again`, etc. — already used throughout
+  `ocs-pbs-bare-metal-restore`) come from Clonezilla's own message catalog, loaded via
+  `ask_and_load_lang_set` based on `locales=`. Clonezilla genuinely ships real translations
+  (DRBL/NCHC project) — changing `locales=` would very likely localize *these* correctly.
+- Almost everything a user actually sees in this wizard is **our own hardcoded English text**
+  written directly into the script (every dialog title, every PBS prompt, the final "Restore is
+  complete..." message) — none of it goes through Clonezilla's translation system, so changing
+  `locales=` alone would do nothing for it and produce a broken-looking mix of a few translated
+  native strings next to all our own prompts still in English.
+
+**Real fix, if wanted:** a language-selection `$DIA --menu` as the very first prompt (same 6
+languages as the GUI), then a genuine translation table for every one of the wizard's own
+strings — the bash equivalent of `translations.js`, not a one-line boot-param change.
+
+**Worth weighing against the wizard's own design goal:** hardcoding `locales=`/`keyboard-layouts=`
+was specifically to skip Clonezilla's language/keyboard prompts for speed during a bare-metal
+recovery. A language picker adds back exactly one prompt this wizard was built to eliminate —
+reasonable to just default to English and move on, given this is a rare, one-off boot rather than
+daily-use software, unlike the GUI where full localization clearly earns its keep.
+
+- [ ] Decide: worth it for a rare, one-off boot flow, or leave English-only and revisit if
+      non-English users actually ask for it?
+- [ ] If yes: build the language picker + full string table in
+      `clonezilla-patch/ocs-pbs-bare-metal-restore`, verify Clonezilla's own `$msg_*` strings
+      actually do localize correctly for each of the 6 languages (not independently confirmed
+      yet, just expected from how Clonezilla's own i18n is documented to work)
+
 ### ~~💾 Settings export/import (portability across machines)~~ ✅ DONE 2026-09-25
 
 Preferences → Advanced now has Export/Import Settings buttons (`gui/settings_export.go`,
