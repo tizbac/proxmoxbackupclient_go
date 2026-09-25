@@ -543,17 +543,11 @@ connected to a real trigger.
 - [ ] Confirm the Stop button is actually visible/enabled during a running machine backup in the
       frontend (not just fixed on the backend) once this lands
 
-### ⚠️ Deleting a Backup Set has no confirmation prompt (unlike deleting a server)
+### ~~⚠️ Deleting a Backup Set has no confirmation prompt~~ ✅ FIXED 2026-09-25
 
-**Found 2026-09-25:** deleting a PBS server already asks first — `handleDeletePBSServer`
-(`gui/frontend/src/App.jsx` ~line 825) calls `confirm(t('confirmDeleteServer')...)` before
-`DeletePBSServer`. Deleting a Backup Set does not: the Delete button's `onClick` (~line 2431)
-calls `DeleteScheduledJob(job.id)` immediately, no confirmation at all, one misclick and a job
-(schedule, exclusions, everything) is just gone.
-
-- [ ] Add the same `confirm(...)` pattern to the Backup Set delete handler
-- [ ] New translation key (e.g. `confirmDeleteJob`, mirroring `confirmDeleteServer`) across all
-      six languages, naming the job so it's clear what's about to be deleted
+Added the same `confirm(...)` pattern `handleDeletePBSServer` already used, with a new
+`confirmDeleteJob` translation key (mirroring `confirmDeleteServer`) across all 6 languages,
+naming the job being deleted.
 
 ### 📋 Clone a Backup Set
 
@@ -656,15 +650,10 @@ Restore now uses the same `.progress`/`.progress-bar` CSS classes as backup (30p
 `#2563eb`. The transfer speed still shows as its own line below, since that's extra detail backup's
 bar doesn't have, not a styling mismatch.
 
-#### VSS label in Preferences → Destination says "Windows Shadow Copy" only
-**Found 2026-09-25:** the `useVSS` checkbox label (`gui/frontend/src/i18n/translations.js:446`,
-`"Use VSS (Windows Shadow Copy)"`, rendered at `App.jsx:1864` via `t('useVSS')`) only names the
-Windows mechanism, even though this same checkbox also gates the Linux snapshot path
-(`snapshot/linux_snapshot.go`, elastio-snap/dattobd) — same setting, two different backends
-depending on platform, and the label only describes one of them.
-- [ ] Update the `useVSS` string in all 6 languages to also name the Linux side, e.g. "Use VSS
-      (Windows Shadow Copy) / Linux Snapshot" — same pattern as `translations.js:128,446,764,
-      1082,1400` (fr/en/it/de/pl) plus the Spanish entry
+#### ~~VSS label in Preferences → Destination says "Windows Shadow Copy" only~~ ✅ FIXED 2026-09-25
+`useVSS` label now reads "Use VSS (Windows Shadow Copy / Linux Snapshot)" (and equivalent in all
+6 languages), since the same checkbox gates elastio-snap/dattobd on Linux as much as VSS on
+Windows.
 
 ### 📧 Email notifications in the GUI (engine already exists, just not wired to it)
 
