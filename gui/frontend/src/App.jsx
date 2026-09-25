@@ -3393,7 +3393,7 @@ function App() {
           <div className="card" style={{marginTop: '20px', display: 'flex', alignItems: 'center', gap: '28px'}}>
             <h3 style={{margin: 0}}>Links</h3>
             {[
-              ['updates', 'Releases', 'https://github.com/tizbac/proxmoxbackupclient_go/releases'],
+              ['updates', 'Releases', 'https://github.com/mjb-is/proxmoxbackupclient_go/releases'],
               ['contact', 'Source code', 'https://github.com/mjb-is/proxmoxbackupclient_go'],
               ['license', 'License', 'https://github.com/mjb-is/proxmoxbackupclient_go/blob/master/LICENSE']
             ].map(([k, label, fallback]) => {

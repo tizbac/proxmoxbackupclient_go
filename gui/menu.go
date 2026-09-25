@@ -54,7 +54,7 @@ func buildAppMenu(a *App) *menu.Menu {
 		runtime.EventsEmit(a.ctx, "nav:goto", "restore")
 	})
 	toolsMenu.AddSeparator()
-	toolsMenu.AddText("Preferences…", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
+	toolsMenu.AddText("Preferences…", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "nav:preferences")
 	})
 

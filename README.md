@@ -32,7 +32,7 @@ Anything of general use gets sent upstream as a PR (like #85 above) rather than 
 
 ## 📦 Download
 
-👉 **[Download the latest release](https://github.com/tizbac/proxmoxbackupclient_go/releases)**
+👉 **[Download the latest release](https://github.com/mjb-is/proxmoxbackupclient_go/releases)**
 
 > ⚠️ **Windows shows "virus detected" (e.g. `Trojan:Win32/Sabsik.FL.A!ml`) or a SmartScreen warning?**
 > This is a **known false positive** for Go/Wails applications — it is *not* a virus. The `!ml` suffix indicates a machine-learning model detection that flags *unsigned and uncommon* executables.
