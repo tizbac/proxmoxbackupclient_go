@@ -82,31 +82,32 @@ to nil for legacy snapshots with no meta file. `gui/backup_meta.go:12`.
   existing comment noting this is fine since the project targets Windows — separate from the
   Windows-specific SDDL/attrs blob, not something the ACL work touches.
 
-#### 🐧 Linux side has no equivalent at all — POSIX ACLs / xattrs
+#### ~~🐧 Linux side has no equivalent at all — POSIX ACLs / xattrs~~ ✅ DONE 2026-09-26
 
-**Found 2026-09-26** while checking whether the NTFS fix above had a Linux counterpart: it
-doesn't, and this was never on the list before. `pbscommon/pxar.go` already defines the real
-PXAR format's magic-number constants for this (`PXAR_XATTR`, `PXAR_ACL_USER`, `PXAR_ACL_GROUP`,
-`PXAR_ACL_GROUP_OBJ`, `PXAR_ACL_DEFAULT`, `PXAR_ACL_DEFAULT_USER`, `PXAR_ACL_DEFAULT_GROUP`,
-`PXAR_FCAPS`), but nothing ever writes one during backup, and `pbscommon/pxar_reader.go` has its
-own comment stating outright: "Symlinks, ACLs, xattrs and devices are still skipped (read past)
-for now." Unlike the NTFS case, this isn't even capture-only — it's untouched on both sides.
+Turned out simpler than the original options below suggested: no cgo, no shelling out to
+`getfacl`/`setfacl` needed at all. POSIX ACLs are themselves stored by the kernel as ordinary
+extended attributes under reserved names (`system.posix_acl_access`/`system.posix_acl_default`,
+a stable kernel ABI), so a generic xattr walk (`unix.Listxattr`/`unix.Getxattr`/`unix.Setxattr`)
+captures and restores them for free without parsing that binary format at all.
 
-Impact: a Linux directory backup with `setfacl`-applied POSIX ACLs, extended attributes (e.g.
-`user.*` namespace, `security.selinux` context), or Linux file capabilities (`setcap`) silently
-loses all of it on restore — a plain-permissions copy comes back, not what was actually there.
+`gui/backup_meta_linux.go` (capture) / `gui/restore_meta_linux.go` (restore) — same
+`NTFSMetaCollector`/`applyNTFSMetadata` names the Windows implementation uses (shared naming
+convention already established there), gated behind the same `RestoreOptions.RestoreACLs` flag,
+new `FileMetaEntry.Xattrs map[string][]byte` field. Restore UI's ACL checkbox re-worded to be
+platform-neutral instead of NTFS-specific, all 6 languages.
 
-- [ ] Capture: extend the existing walk (same place `NTFSMetaCollector`/`MetaCollector` hooks in
-      for Windows) with a Linux-only collector reading POSIX ACLs (`syscall`/`golang.org/x/sys/unix`
-      has no direct ACL wrapper — likely needs cgo against `libacl`, or shelling out to
-      `getfacl`/`setfacl` similarly to how this project already does for other things) and xattrs
-      (`unix.Listxattr`/`unix.Getxattr`, no cgo needed for those).
-- [ ] Restore: apply captured ACLs/xattrs back (`unix.Setxattr` for xattrs; ACLs again likely need
-      `libacl` or `setfacl`).
-- [ ] Decide whether to actually use PXAR's own native entry types (`PXAR_ACL_USER` etc., writing
-      real spec-compliant archives other PXAR tools could also read) or a side-car blob matching
-      the Windows approach (simpler, consistent with how ACLs/attrs are already done for Windows,
-      but archives no longer round-trip through a generic PXAR reader alone).
+**Verified live** on the real Linux test client (`gui/zz_posix_acl_restore_livetest_test.go`):
+set a real file's ACL via the actual `setfacl` tool (a named-user ACE) plus a generic `user.*`
+xattr, backed up and restored through a real PBS round-trip, confirmed both came back correctly
+— including checking the restored file with the real `getfacl` tool afterward, not just a raw
+byte comparison, proving the kernel genuinely accepts what was written back, not just that bytes
+were copied.
+
+Went with a side-car blob matching the Windows approach (not PXAR's own native ACL/xattr entry
+types) — simpler, and consistent with how the Windows side already works, at the cost of the
+archives not round-tripping through a generic PXAR reader alone. `PXAR_ACL_USER` etc. in
+`pbscommon/pxar.go` remain unused constants; native-entry support is still a possible future
+alternative if that trade-off ever matters.
 
 ---
 
