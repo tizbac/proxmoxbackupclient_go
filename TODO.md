@@ -709,6 +709,27 @@ Should probably be scoped per-Backup-Set (like BFW's own wizard, which is per ba
 than global in Preferences, since "shut down after this backup" only makes sense for specific jobs
 (e.g. an overnight one-shot), not every scheduled run.
 
+### 🔧 Two small pulls from upstream, queued for the next code update (2026-09-25)
+
+Found while surveying tizbac's open PRs for anything relevant to this fork (see
+[[project_windows_pbs_client_fork]] memory for the full survey) — both apply cleanly, neither
+needs design discussion, just scheduling:
+
+- [ ] **Fix the `config.json.example` JSON bug** (upstream PR #81,
+      https://github.com/tizbac/proxmoxbackupclient_go/pull/81) — the `"to"` fields in the `mails`
+      array are missing their closing quote (`"to": "receiver1@example.com` with no trailing `"`).
+      This fork has the identical bug, confirmed by inspection — trivial two-line fix, just apply
+      it.
+- [ ] **Pull in PR #76's `PBS_*` environment variable support**
+      (https://github.com/tizbac/proxmoxbackupclient_go/pull/76) — adds `PBS_REPOSITORY` (and the
+      atom vars `PBS_SERVER`/`PBS_PORT`/`PBS_DATASTORE`/`PBS_AUTH_ID`/`PBS_PASSWORD`/
+      `PBS_FINGERPRINT`) to `directorybackup`, `machinebackup`, and `nbd`, via a new
+      `pbscommon/pbsrepo.go` that ports the real `proxmox-backup-client`'s own repository-URL
+      regex/parsing from its Rust source. This fork's CLI tools have no environment-variable
+      configuration at all today (confirmed by inspection — no `pbsrepo.go`, no `PBS_` env reads
+      anywhere in `pbscommon`/`directorybackup`/`machinebackup`/`nbd`), so this is a genuinely new,
+      useful capability for scripted/CI use, not just a fix.
+
 ### 🆕 Sprint 4 - Polish & Production Ready (1 semaine)
 
 #### Code Signing - Windows Trust 🔐
