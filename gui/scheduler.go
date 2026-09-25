@@ -60,6 +60,29 @@ type ScheduledJob struct {
 	// Empty/nil means every day — the behavior every job had before this
 	// field existed, so this is also a safe no-migration default.
 	DaysOfWeek []string `json:"daysOfWeek,omitempty"`
+
+	// ==================== POST-BACKUP ACTIONS ====================
+	// Modelled on Backup for Workgroups' "Special Items" wizard step. All
+	// independent of each other and off by default — every field here is a
+	// safe no-migration default (zero value) for jobs saved before they
+	// existed. EmailOnSuccess/EmailOnFailure each reuse the one global SMTP
+	// account (Config.SMTP*/EmailFrom) but have their own recipient, since
+	// a failure notification often wants to go somewhere more urgent than a
+	// routine success one.
+	EmailOnSuccess   bool   `json:"emailOnSuccess,omitempty"`
+	EmailOnSuccessTo string `json:"emailOnSuccessTo,omitempty"`
+	EmailOnFailure   bool   `json:"emailOnFailure,omitempty"`
+	EmailOnFailureTo string `json:"emailOnFailureTo,omitempty"`
+	// RunAppBefore/RunAppAfter are shell commands (cmd /C on Windows, sh -c
+	// elsewhere), empty means disabled. Best-effort: a failing command is
+	// logged, never blocks or fails the backup itself.
+	RunAppBefore string `json:"runAppBefore,omitempty"`
+	RunAppAfter  string `json:"runAppAfter,omitempty"`
+	// ExitAppAfter/ShutdownAfter fire after RunAppAfter and the notification
+	// email, in that order — a shutdown is irreversible, so it is always the
+	// last thing attempted.
+	ExitAppAfter  bool `json:"exitAppAfter,omitempty"`
+	ShutdownAfter bool `json:"shutdownAfter,omitempty"`
 }
 
 // JobHistory represents a completed backup job
@@ -818,6 +841,14 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 	// backup/restore at a time process-wide).
 	a.setScheduledJobName(job.Name)
 	defer a.setScheduledJobName("")
+	// Carries this job's post-backup-action settings to startBackupDirect/
+	// startMachineBackupDirect's OnComplete (main.go), which is where the
+	// real outcome is known in standalone mode — see the field's doc comment
+	// (app_types.go) for why.
+	a.setScheduledJobPostActions(&job)
+	defer a.setScheduledJobPostActions(nil)
+
+	runPreBackupApp(job)
 
 	var err error
 	if job.BackupType == "machine" {
@@ -885,14 +916,22 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 		if err := a.AddJobHistory(historyEntry); err != nil {
 			writeDebugLog(fmt.Sprintf("Warning: Failed to add job history: %v", err))
 		}
+		// Service mode: this synchronous err is the real, final outcome (see
+		// the comment above), so this is the one place to fire post-backup
+		// actions for it — startBackupDirect's OnComplete (main.go) isn't
+		// even compiled into service builds.
+		a.runPostBackupActions(job, err == nil, historyEntry.Message)
 	} else if err != nil {
 		// Standalone mode: err here is only ever non-nil for an immediate,
 		// synchronous failure (e.g. StartBackup rejecting bad parameters
 		// before ever launching the async goroutine). A real mid-backup
 		// failure is still only visible via the OnComplete-based write. Log
 		// it so it's not silently lost, but don't write a competing history
-		// entry for it.
+		// entry for it. Post-actions still fire here for this specific
+		// immediate-failure case, since OnComplete never runs at all when
+		// the backup never actually started.
 		writeDebugLog(fmt.Sprintf("Scheduled job %s failed to start: %v", job.Name, err))
+		a.runPostBackupActions(job, false, err.Error())
 	}
 
 	// Update job's last run and calculate next run.

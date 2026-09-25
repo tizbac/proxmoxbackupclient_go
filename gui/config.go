@@ -62,10 +62,16 @@ type Config struct {
 	ParallelRestore bool `json:"parallel_restore,omitempty"`
 
 	// ==================== EMAIL NOTIFICATIONS ====================
+	// Global SMTP account, used by every Backup Set's own on-completion/
+	// on-failure email toggle (see ScheduledJob) rather than each job storing
+	// its own SMTP credentials. EmailTo is unused by that per-job flow (each
+	// job has its own recipient) but kept for backward compatibility with
+	// anything that already persisted it.
 	SMTPHost     string `json:"smtp_host,omitempty"`
 	SMTPPort     string `json:"smtp_port,omitempty"`
 	SMTPUsername string `json:"smtp_username,omitempty"`
 	SMTPPassword string `json:"smtp_password,omitempty"`
+	SMTPInsecure bool   `json:"smtp_insecure,omitempty"`
 	EmailFrom    string `json:"email_from,omitempty"`
 	EmailTo      string `json:"email_to,omitempty"`
 

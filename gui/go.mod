@@ -3,6 +3,7 @@ module github.com/tizbac/proxmoxbackupclient_go/gui
 go 1.25.0
 
 require (
+	clientcommon v0.0.0-00010101000000-000000000000
 	github.com/alphadose/haxmap v1.4.1
 	github.com/getlantern/systray v1.2.2
 	github.com/kardianos/service v1.3.0
@@ -46,6 +47,7 @@ require (
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/rodolfoag/gow32 v0.0.0-20230512144032-1e896a3c51aa // indirect
 	github.com/samber/lo v1.49.1 // indirect
 	github.com/st-matskevich/go-vss v0.3.3 // indirect
 	github.com/tawesoft/golib/v2 v2.16.0 // indirect
@@ -57,6 +59,7 @@ require (
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/net v0.54.0 // indirect
+	golang.org/x/term v0.43.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 )
 

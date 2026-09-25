@@ -378,6 +378,16 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		"usevss":           cfg.UseVSS,
 		"parallel_restore": cfg.ParallelRestore,
 		"hostname":         hostname,
+		// Global SMTP account (Preferences > Advanced). Same M-04 pattern as
+		// the PBS secret above: never hand the real password to the webview,
+		// only whether one is stored — SetSMTPSettings keeps the existing
+		// password when the frontend submits an empty value.
+		"smtp_host":         cfg.SMTPHost,
+		"smtp_port":         cfg.SMTPPort,
+		"smtp_username":     cfg.SMTPUsername,
+		"smtp_password_set": cfg.SMTPPassword != "",
+		"smtp_insecure":     cfg.SMTPInsecure,
+		"email_from":        cfg.EmailFrom,
 	}
 
 	// Pre-fill backup-id with hostname if empty
@@ -1031,6 +1041,14 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 					writeDebugLog(fmt.Sprintf("Saved %d backup directories to config", len(backupDirs)))
 				}
 			}
+
+			// Standalone-mode post-backup actions (email/run-app/exit/shutdown)
+			// for a scheduled job — only set when this run was actually
+			// triggered by one (see currentScheduledJobPostActions' doc
+			// comment); a genuine one-off backup from the form leaves this nil.
+			if job := a.currentPostActionsJob(); job != nil {
+				a.runPostBackupActions(*job, success, message)
+			}
 		},
 	}
 
@@ -1289,6 +1307,14 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			}
 			if err := a.AddJobHistory(historyEntry); err != nil {
 				writeDebugLog(fmt.Sprintf("Warning: Failed to add manual backup to history: %v", err))
+			}
+
+			// Standalone-mode post-backup actions (email/run-app/exit/shutdown)
+			// for a scheduled job — only set when this run was actually
+			// triggered by one (see currentScheduledJobPostActions' doc
+			// comment); a genuine one-off backup from the form leaves this nil.
+			if job := a.currentPostActionsJob(); job != nil {
+				a.runPostBackupActions(*job, success, message)
 			}
 		},
 	}

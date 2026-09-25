@@ -31,6 +31,20 @@ type App struct {
 	// and cleared via defer right after, in executeScheduledJob only.
 	currentScheduledJobNameMu sync.Mutex
 	currentScheduledJobName   string
+
+	// currentScheduledJobPostActions carries a running scheduled job's own
+	// post-backup-action settings (email/run-app/exit/shutdown, see
+	// ScheduledJob) across to startBackupDirect/startMachineBackupDirect's
+	// OnComplete closure (main.go), which is where the REAL outcome is known
+	// in standalone/GUI mode — executeScheduledJob's own call to
+	// StartBackup/StartMachineBackup is fire-and-forget there (see
+	// currentScheduledJobName's doc comment for the same reasoning; safe as
+	// a plain field for the identical reason: operation_queue.go already
+	// serializes to one backup at a time process-wide). nil means "not
+	// triggered by a scheduled job" (the normal one-off case) — OnComplete
+	// must check for nil before using it.
+	currentScheduledJobPostActionsMu sync.Mutex
+	currentScheduledJobPostActions   *ScheduledJob
 }
 
 // progressCallbacks stores the callback functions for a backup operation
@@ -57,6 +71,20 @@ func (a *App) scheduledJobNameOr(fallback string) string {
 		return a.currentScheduledJobName
 	}
 	return fallback
+}
+
+// setScheduledJobPostActions/currentPostActionsJob are the accessors for
+// currentScheduledJobPostActions — see its doc comment on the App struct.
+func (a *App) setScheduledJobPostActions(job *ScheduledJob) {
+	a.currentScheduledJobPostActionsMu.Lock()
+	a.currentScheduledJobPostActions = job
+	a.currentScheduledJobPostActionsMu.Unlock()
+}
+
+func (a *App) currentPostActionsJob() *ScheduledJob {
+	a.currentScheduledJobPostActionsMu.Lock()
+	defer a.currentScheduledJobPostActionsMu.Unlock()
+	return a.currentScheduledJobPostActions
 }
 
 // NewApp creates a new App application struct

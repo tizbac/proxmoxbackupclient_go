@@ -14,6 +14,7 @@ let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer
 let GetServerFingerprint, PinPBSServerFingerprint
 let SetParallelRestore
 let ExportSettings, ImportSettings
+let SetSMTPSettings, SendTestEmail
 
 // Check if we're running in Wails
 if (window.go) {
@@ -58,6 +59,8 @@ if (window.go) {
   SetParallelRestore = window.go.main.App.SetParallelRestore
   ExportSettings = window.go.main.App.ExportSettings
   ImportSettings = window.go.main.App.ImportSettings
+  SetSMTPSettings = window.go.main.App.SetSMTPSettings
+  SendTestEmail = window.go.main.App.SendTestEmail
 }
 
 // Wails events + runtime (open external URLs in the system browser)
@@ -126,6 +129,20 @@ function App() {
   const [showPreferences, setShowPreferences] = useState(false)
   const [prefsTab, setPrefsTab] = useState('account')
   const [exportIncludeSecrets, setExportIncludeSecrets] = useState(false)
+  // Preferences > Advanced > Email notifications (global SMTP account, used
+  // by every Backup Set's own on-completion/on-failure toggle). Password is
+  // never round-tripped from the backend (see GetConfigWithHostname's
+  // smtp_password_set) — an empty smtpPassword field here just means "keep
+  // whatever's already saved" when Save is pressed, same convention as the
+  // PBS secret field.
+  const [smtpHost, setSmtpHost] = useState('')
+  const [smtpPort, setSmtpPort] = useState('587')
+  const [smtpUsername, setSmtpUsername] = useState('')
+  const [smtpPassword, setSmtpPassword] = useState('')
+  const [smtpPasswordSet, setSmtpPasswordSet] = useState(false)
+  const [smtpInsecure, setSmtpInsecure] = useState(false)
+  const [emailFrom, setEmailFrom] = useState('')
+  const [testEmailTo, setTestEmailTo] = useState('')
   const [hostname, setHostname] = useState('')
   const [appVersion, setAppVersion] = useState('dev')
   const [brand, setBrand] = useState({ name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', logo: '', accent: '#e87003', accent_hover: '#d46100', buy_storage_url: '', buy_storage_text: '', is_default: true })
@@ -213,7 +230,17 @@ function App() {
   const [messageLog, setMessageLog] = useState([])
   const [editingJobId, setEditingJobId] = useState(null) // Track which job is being edited
   const [showBackupForm, setShowBackupForm] = useState(false) // Backup tab: form open vs. Backup Sets landing view
-  const [backupFormTab, setBackupFormTab] = useState('source') // Backup Set editor: Source/Exclusions/Schedule/Destination
+  const [backupFormTab, setBackupFormTab] = useState('source') // Backup Set editor: Source/Exclusions/Schedule/Destination/Alerts
+  // Alerts tab: post-backup actions, modelled on Backup for Workgroups'
+  // "Special Items" step. All independent, all off by default.
+  const [emailOnSuccess, setEmailOnSuccess] = useState(false)
+  const [emailOnSuccessTo, setEmailOnSuccessTo] = useState('')
+  const [emailOnFailure, setEmailOnFailure] = useState(false)
+  const [emailOnFailureTo, setEmailOnFailureTo] = useState('')
+  const [runAppBefore, setRunAppBefore] = useState('')
+  const [runAppAfter, setRunAppAfter] = useState('')
+  const [exitAppAfter, setExitAppAfter] = useState(false)
+  const [shutdownAfter, setShutdownAfter] = useState(false)
   const [jobName, setJobName] = useState('') // User-facing name for the backup set being created/edited
   const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
   const [backupPBSID, setBackupPBSID] = useState('') // Destination tab: which configured PBS server this backup/set targets
@@ -625,6 +652,14 @@ function App() {
             if (data.backupdir) {
               setBackupDirs(data.backupdir)
             }
+
+            // Global SMTP account (Preferences > Advanced)
+            setSmtpHost(data.smtp_host || '')
+            setSmtpPort(data.smtp_port || '587')
+            setSmtpUsername(data.smtp_username || '')
+            setSmtpPasswordSet(!!data.smtp_password_set)
+            setSmtpInsecure(!!data.smtp_insecure)
+            setEmailFrom(data.email_from || '')
           }
         }
       } catch (err) {
@@ -1400,7 +1435,15 @@ function App() {
         backupType: backupType,
         excludeList: backupType === 'directory' ? getEffectiveExcludeList() : [],
         driveLetters: backupType === 'machine' ? selectedDrives : [],
-        pbsServerId: backupPBSID
+        pbsServerId: backupPBSID,
+        emailOnSuccess: emailOnSuccess,
+        emailOnSuccessTo: emailOnSuccess ? emailOnSuccessTo.trim() : '',
+        emailOnFailure: emailOnFailure,
+        emailOnFailureTo: emailOnFailure ? emailOnFailureTo.trim() : '',
+        runAppBefore: runAppBefore.trim(),
+        runAppAfter: runAppAfter.trim(),
+        exitAppAfter: exitAppAfter,
+        shutdownAfter: shutdownAfter
       }
 
       // Save or update to backend
@@ -1428,6 +1471,10 @@ function App() {
         setWindowEnd('17:00')
         setDaysOfWeek(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
         setBackupDirs('')
+        setEmailOnSuccess(false); setEmailOnSuccessTo('')
+        setEmailOnFailure(false); setEmailOnFailureTo('')
+        setRunAppBefore(''); setRunAppAfter('')
+        setExitAppAfter(false); setShutdownAfter(false)
         setShowBackupForm(false)
       } catch (err) {
         showStatus(`❌ ${t('statusError')} ${err}`, 'error')
@@ -2132,6 +2179,89 @@ function App() {
                     </div>
 
                     <div className="form-group" style={{marginTop: '24px'}}>
+                      <h3 style={{marginBottom: '8px'}}>{t('emailNotificationsTitle')}</h3>
+                      <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('emailNotificationsIntro')}</p>
+
+                      <div style={{display: 'flex', gap: '10px', marginBottom: '10px'}}>
+                        <div style={{flex: 2}}>
+                          <label>{t('smtpHost')}</label>
+                          <input type="text" value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.example.com" />
+                        </div>
+                        <div style={{flex: 1}}>
+                          <label>{t('smtpPort')}</label>
+                          <input type="text" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="587" />
+                        </div>
+                      </div>
+                      <div style={{display: 'flex', gap: '10px', marginBottom: '10px'}}>
+                        <div style={{flex: 1}}>
+                          <label>{t('smtpUsername')}</label>
+                          <input type="text" value={smtpUsername} onChange={(e) => setSmtpUsername(e.target.value)} />
+                        </div>
+                        <div style={{flex: 1}}>
+                          <label>{t('smtpPassword')}</label>
+                          <input
+                            type="password"
+                            value={smtpPassword}
+                            onChange={(e) => setSmtpPassword(e.target.value)}
+                            placeholder={smtpPasswordSet ? t('smtpPasswordSetPlaceholder') : ''}
+                          />
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label>{t('emailFromLabel')}</label>
+                        <input type="text" value={emailFrom} onChange={(e) => setEmailFrom(e.target.value)} placeholder="backups@example.com" />
+                      </div>
+                      <label style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer'}}>
+                        <input type="checkbox" checked={smtpInsecure} onChange={(e) => setSmtpInsecure(e.target.checked)} />
+                        <span>{t('smtpInsecureLabel')}</span>
+                      </label>
+
+                      <button
+                        className="btn"
+                        onClick={async () => {
+                          if (!SetSMTPSettings) return
+                          try {
+                            await SetSMTPSettings(smtpHost.trim(), smtpPort.trim(), smtpUsername.trim(), smtpPassword, smtpInsecure, emailFrom.trim())
+                            setSmtpPasswordSet(smtpPasswordSet || smtpPassword !== '')
+                            setSmtpPassword('')
+                            showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                          } catch (err) {
+                            showStatus(`❌ ${err}`, 'error')
+                          }
+                        }}
+                      >
+                        {t('save')}
+                      </button>
+
+                      <div style={{display: 'flex', gap: '10px', alignItems: 'center', marginTop: '16px'}}>
+                        <input
+                          type="text"
+                          value={testEmailTo}
+                          onChange={(e) => setTestEmailTo(e.target.value)}
+                          placeholder={t('testEmailPlaceholder')}
+                          style={{flex: 1}}
+                        />
+                        <button
+                          className="btn btn-secondary"
+                          onClick={async () => {
+                            if (!SendTestEmail) return
+                            try {
+                              await SendTestEmail(testEmailTo.trim())
+                              showStatus(`✅ ${t('statusTestEmailSent')}`, 'success')
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                            }
+                          }}
+                        >
+                          {t('sendTestEmailBtn')}
+                        </button>
+                      </div>
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('emailNotificationsHint')}
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{marginTop: '24px'}}>
                       <h3 style={{marginBottom: '8px'}}>{t('settingsPortabilityTitle')}</h3>
                       <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('settingsPortabilityIntro')}</p>
 
@@ -2306,6 +2436,10 @@ function App() {
                     setBackupType('directory')
                     if (!config['backup-id']) setConfig({...config, 'backup-id': hostname})
                     setBackupPBSID(defaultPBSID)
+                    setEmailOnSuccess(false); setEmailOnSuccessTo('')
+                    setEmailOnFailure(false); setEmailOnFailureTo('')
+                    setRunAppBefore(''); setRunAppAfter('')
+                    setExitAppAfter(false); setShutdownAfter(false)
                     setBackupFormTab('source'); setShowBackupForm(true)
                   }}
                 >
@@ -2423,6 +2557,10 @@ function App() {
                               setBackupPBSID(job.pbsServerId || defaultPBSID)
                               setExcludeList(job.excludeList.join('\n'))
                               setTreeExcludes([])
+                              setEmailOnSuccess(!!job.emailOnSuccess); setEmailOnSuccessTo(job.emailOnSuccessTo || '')
+                              setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
+                              setRunAppBefore(job.runAppBefore || ''); setRunAppAfter(job.runAppAfter || '')
+                              setExitAppAfter(!!job.exitAppAfter); setShutdownAfter(!!job.shutdownAfter)
                               setBackupFormTab('source'); setShowBackupForm(true)
                             }}
                           >
@@ -2498,6 +2636,7 @@ function App() {
               <button className={`chev ${backupFormTab === 'exclusions' ? 'active' : ''}`} onClick={() => setBackupFormTab('exclusions')}>{t('tabExclusions')}</button>
               <button className={`chev ${backupFormTab === 'schedule' ? 'active' : ''}`} onClick={() => setBackupFormTab('schedule')}>{t('tabSchedule')}</button>
               <button className={`chev ${backupFormTab === 'destination' ? 'active' : ''}`} onClick={() => setBackupFormTab('destination')}>{t('tabDestination')}</button>
+              <button className={`chev ${backupFormTab === 'alerts' ? 'active' : ''}`} onClick={() => setBackupFormTab('alerts')}>{t('tabAlerts')}</button>
             </div>
           )}
           <div className="card" style={{marginTop: backupMode === 'scheduled' ? '0' : '10px', borderRadius: backupMode === 'scheduled' ? '0 6px 6px 6px' : '8px'}}>
@@ -2766,6 +2905,74 @@ function App() {
               <div className="info-box" style={{marginTop: '10px', backgroundColor: '#d1ecf1', borderColor: '#bee5eb'}}>
                 ℹ️ <strong>{t('vssServiceAvailable')}</strong><br/>
                 {t('vssServiceHint')}
+              </div>
+            )}
+          </div>
+          </>
+          )}
+
+          {backupMode === 'scheduled' && backupFormTab === 'alerts' && (
+          <>
+          <div className="form-group">
+            <label style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
+              <input type="checkbox" checked={emailOnSuccess} onChange={(e) => setEmailOnSuccess(e.target.checked)} />
+              <span>{t('emailOnSuccessLabel')}</span>
+            </label>
+            {emailOnSuccess && (
+              <input
+                type="text"
+                value={emailOnSuccessTo}
+                onChange={(e) => setEmailOnSuccessTo(e.target.value)}
+                placeholder={t('emailToPlaceholder')}
+                style={{marginTop: '8px'}}
+              />
+            )}
+          </div>
+
+          <div className="form-group">
+            <label style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
+              <input type="checkbox" checked={emailOnFailure} onChange={(e) => setEmailOnFailure(e.target.checked)} />
+              <span>{t('emailOnFailureLabel')}</span>
+            </label>
+            {emailOnFailure && (
+              <input
+                type="text"
+                value={emailOnFailureTo}
+                onChange={(e) => setEmailOnFailureTo(e.target.value)}
+                placeholder={t('emailToPlaceholder')}
+                style={{marginTop: '8px'}}
+              />
+            )}
+          </div>
+          {(emailOnSuccess || emailOnFailure) && !smtpHost && (
+            <div className="info-box" style={{backgroundColor: '#fff3cd', borderColor: '#ffc107', marginBottom: '16px'}}>
+              ⚠️ {t('emailNoSmtpWarning')}
+            </div>
+          )}
+
+          <div className="form-group">
+            <label>{t('runAppBeforeLabel')}</label>
+            <input type="text" value={runAppBefore} onChange={(e) => setRunAppBefore(e.target.value)} placeholder={t('runAppPlaceholder')} />
+          </div>
+          <div className="form-group">
+            <label>{t('runAppAfterLabel')}</label>
+            <input type="text" value={runAppAfter} onChange={(e) => setRunAppAfter(e.target.value)} placeholder={t('runAppPlaceholder')} />
+          </div>
+
+          <div className="form-group">
+            <label style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
+              <input type="checkbox" checked={exitAppAfter} onChange={(e) => setExitAppAfter(e.target.checked)} />
+              <span>{t('exitAppAfterLabel')}</span>
+            </label>
+          </div>
+          <div className="form-group">
+            <label style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
+              <input type="checkbox" checked={shutdownAfter} onChange={(e) => setShutdownAfter(e.target.checked)} />
+              <span>{t('shutdownAfterLabel')}</span>
+            </label>
+            {shutdownAfter && (
+              <div className="info-box" style={{marginTop: '10px', backgroundColor: '#fff3cd', borderColor: '#ffc107'}}>
+                ⚠️ {t('shutdownAfterWarning')}
               </div>
             )}
           </div>
