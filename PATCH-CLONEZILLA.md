@@ -144,6 +144,78 @@ When the user picks it, the helper:
    usable while `/dev/nbd0` attaches. Rerunning the flow warns and stops the
    previous background instance first.
 
+## Included boot entry: fully automated PBS Bare Metal Restore
+
+Where `ocs-pbs-nbd` above hands off to Clonezilla's own generic device-image/
+device-device wizard once the snapshot is attached, this is a separate,
+first-position, default-on-timeout **boot menu entry** — not a Clonezilla
+main-menu option — that skips Clonezilla's language/keyboard prompts and its
+own wizard entirely, walking straight from PBS credentials to a completed,
+auto-rebooted restore.
+
+- Helper `/usr/local/sbin/ocs-pbs-bare-metal-restore`
+  (`clonezilla-patch/ocs-pbs-bare-metal-restore`) is injected into the live
+  rootfs, deliberately **not** sharing code with `ocs-pbs-nbd` (some
+  duplication of the network/credentials/snapshot-picker/NBD-attach steps) —
+  each script can then be modified without risking the other's already-proven
+  behaviour.
+- Patches `0003-first-boot-bare-metal-restore-menu-grub.patch` and
+  `0004-first-boot-bare-metal-restore-menu-syslinux.patch` add a new
+  **"Proxmox Backup Client Go - PBS Bare Metal Restore"** entry as the first,
+  default-on-timeout item in both `boot/grub/grub.cfg` and
+  `syslinux/syslinux.cfg`, booted via
+  `locales=en_US.UTF-8 keyboard-layouts=gb
+  ocs_live_run="/usr/local/sbin/ocs-pbs-bare-metal-restore"` — those boot
+  parameters are what actually skip Clonezilla's language/keyboard prompts
+  and its own `ocs-live-general` main-menu launcher.
+- Patch `0002-ocs-functions-partition-detect-race.patch` fixes a real,
+  100%-reproducible bug found while testing this flow: a source disk
+  attached moments earlier in the same live session (here, the NBD device)
+  could make Clonezilla's own `is_disk_without_part_and_fs()` report zero
+  partitions on the first restore pass — `lsblk` reads udev's device
+  database, not just the kernel's raw partition table, so a just-created
+  source can transiently look empty even though its on-disk table is
+  already correct. A rerun always then passed, the classic signature of
+  this exact race. The fix retries once (`partprobe` + `udevadm settle` +
+  recount) the moment this check first sees zero partitions.
+
+When the automated flow runs:
+
+1. Attempts DHCP on every detected NIC first (`dhcpcd -t 15`), silently —
+   Clonezilla's own interactive `ocs-live-netcfg` wizard (DHCP-or-static
+   choice, plus its own internal time-sync prompt) only ever runs as a
+   fallback if no IP came up on its own. Time syncs automatically via
+   `ocs-live-time-sync -b -i`, no prompt either way.
+2. Asks for the PBS server URL, username (with realm), password and
+   datastore (optionally `datastore/namespace`) — the same shape of prompts
+   as `ocs-pbs-nbd`, with basic validation and a retry loop, but as four
+   separate screens (a combined single-form attempt was tried and reverted;
+   see the fork's own history if picking that back up).
+3. Lists and lets the user pick a snapshot via the same three-level
+   kind/date/file menu `ocs-pbs-nbd` uses, then attaches it via `pbsnbd`
+   in the **foreground** this time (the automated flow needs the device up
+   before continuing, unlike `ocs-pbs-nbd`'s fork-and-return-to-menu
+   design).
+4. Auto-detects the restore target: the one local block device that is not
+   `nbd*`/`loop*`/`sr*`/`ram*` and not marked removable. Zero or more than
+   one candidate means asking, never guessing, on what is an irreversible
+   whole-disk overwrite.
+5. Shows one confirmation (source/target/sizes, from `parted ... unit GB`)
+   before the write — deliberately just the one dialog, since
+   `ocs-onthefly` itself still asks its own two separate confirmations
+   before actually wiping the destination.
+6. Runs `ocs-onthefly -icds -k0 -sfsck -f <nbd-device> -d <target>` directly,
+   with no `-p` postaction — success shows a plain-language completion
+   message and reboots on its own; failure shows the exit code and where to
+   find the logs, no reboot.
+
+**Tested repeatedly on isolated VMs** (Windows and Linux Mint sources,
+32-40 GiB disks), consistently 8-11 minutes from power-on to a working
+login prompt — **not yet tested on physical hardware.** A pre-built ISO
+(includes both this entry and `ocs-pbs-nbd`) is available from
+[this fork's releases](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
+if you'd rather try it before building your own.
+
 ## Generated ISO build (for reference)
 
 Step 4 expands to (values shown are the Clonezilla defaults):
