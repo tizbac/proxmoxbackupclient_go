@@ -23,7 +23,6 @@ export default function KnownLimitationsModal({ onClose }) {
         <p style={{ marginBottom: '14px' }}>{t('knownLimitationsIntro')}</p>
         <ul style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <li>{t('limitationNtfsAcl')}</li>
-          <li>{t('limitationDevBuild')}</li>
         </ul>
       </div>
     </div>
