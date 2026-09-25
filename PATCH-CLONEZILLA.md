@@ -209,6 +209,18 @@ When the automated flow runs:
    message and reboots on its own; failure shows the exit code and where to
    find the logs, no reboot.
 
+**English/UK-only, by design, for now:** `locales=en_US.UTF-8 keyboard-layouts=gb` is hardcoded
+in both menu patches, so this entry skips Clonezilla's language/keyboard prompt entirely rather
+than defaulting to English within it — the whole point of this entry is skipping every avoidable
+prompt during a bare-metal recovery, and that one is no exception. Clonezilla's own native
+prompts (the `$msg_*` strings this script already calls) would very likely localize correctly if
+`locales=` pointed elsewhere, since Clonezilla ships real translations — but nearly everything
+this script actually shows (every PBS prompt, every dialog title, the completion message) is our
+own hardcoded English text with no translation table behind it yet, so changing just `locales=`
+would produce a broken-looking mix rather than a real translation. Offering a language choice
+here properly would mean building that string table and accepting one more prompt back into a
+flow designed to have as few as possible — a real but separate piece of work, not a quick fix.
+
 **Tested repeatedly on isolated VMs** (Windows and Linux Mint sources,
 32-40 GiB disks), consistently 8-11 minutes from power-on to a working
 login prompt — **not yet tested on physical hardware.** A pre-built ISO
