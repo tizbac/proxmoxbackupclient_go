@@ -21,7 +21,6 @@ import (
 
 type snapControl struct {
 	name      string
-	bin       string
 	devPrefix string
 	module    string
 	ctlDevice string
@@ -43,18 +42,13 @@ var (
 
 func detectControl() (snapControl, bool) {
 	candidates := []snapControl{
-		{name: "elastio-snap", bin: "elioctl", devPrefix: "/dev/elastio-snap", module: "elastio-snap", ctlDevice: "/dev/elastio-snap-ctl", infoFile: "/proc/elastio-snap-info"},
-		{name: "dattobd", bin: "dbdctl", devPrefix: "/dev/datto", module: "dattobd", ctlDevice: "/dev/datto-ctl", infoFile: "/proc/datto-info"},
+		{name: "elastio-snap", devPrefix: "/dev/elastio-snap", module: "elastio-snap", ctlDevice: "/dev/elastio-snap-ctl", infoFile: "/proc/elastio-snap-info"},
+		{name: "dattobd", devPrefix: "/dev/datto", module: "dattobd", ctlDevice: "/dev/datto-ctl", infoFile: "/proc/datto-info"},
 	}
 	for _, c := range candidates {
-		if _, err := exec.LookPath(c.bin); err != nil {
-			continue
+		if ensureModule(c) {
+			return c, true
 		}
-		if !ensureModule(c) {
-			log.Printf("Warning: %s control tool (%s) is installed but its kernel module is not usable; skipping", c.name, c.bin)
-			continue
-		}
-		return c, true
 	}
 	return snapControl{}, false
 }
@@ -221,9 +215,9 @@ func destroyStaleTracers(c snapControl, device, originMount string) error {
 		}
 		log.Printf("Removing stale %s snapshot %d left tracing %s by a previous run",
 			c.name, d.Minor, device)
-		if out, err := exec.Command(c.bin, "destroy", strconv.Itoa(d.Minor)).CombinedOutput(); err != nil {
-			errs = append(errs, fmt.Errorf("could not destroy stale %s snapshot %d on %s: %v: %s",
-				c.name, d.Minor, device, err, strings.TrimSpace(string(out))))
+		if err := ioctlDestroySnapshot(c.ctlDevice, c.name, d.Minor); err != nil {
+			errs = append(errs, fmt.Errorf("could not destroy stale %s snapshot %d on %s: %w",
+				c.name, d.Minor, device, err))
 			continue
 		}
 		os.Remove(filepath.Join(originMount, filepath.Base(d.CowFile)))
@@ -251,10 +245,9 @@ func createOne(c snapControl, absPath string, needFiles bool) (*linuxSnapshot, s
 
 	syscall.Sync()
 
-	out, err := exec.Command(c.bin, "setup-snapshot", device, cowFile, strconv.Itoa(minor)).CombinedOutput()
-	if err != nil {
+	if err := ioctlSetupSnapshot(c.ctlDevice, c.name, device, cowFile, minor); err != nil {
 		os.Remove(cowFile)
-		return nil, "", fmt.Errorf("%s setup-snapshot %s: %v: %s", c.bin, device, err, strings.TrimSpace(string(out)))
+		return nil, "", err
 	}
 
 	snapDev := fmt.Sprintf("%s%d", c.devPrefix, minor)
@@ -334,9 +327,8 @@ func cleanupOne(ls *linuxSnapshot) error {
 		ls.mountpoint = ""
 	}
 	var retErr error
-	if out, err := exec.Command(ls.control.bin, "destroy", strconv.Itoa(ls.minor)).CombinedOutput(); err != nil {
-		retErr = fmt.Errorf("failed to destroy %s snapshot %d: %v: %s",
-			ls.control.name, ls.minor, err, strings.TrimSpace(string(out)))
+	if err := ioctlDestroySnapshot(ls.control.ctlDevice, ls.control.name, ls.minor); err != nil {
+		retErr = fmt.Errorf("failed to destroy %s snapshot %d: %w", ls.control.name, ls.minor, err)
 	}
 	if ls.cowFile != "" {
 		os.Remove(ls.cowFile)
@@ -359,7 +351,7 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 	}
 	control, ok := detectControl()
 	if !ok {
-		return fmt.Errorf("no usable block snapshot module loaded (install and enable elastio-snap or dattobd): refusing to proceed with an inconsistent full-system snapshot")
+		return fmt.Errorf("no usable block snapshot module loaded: install and load elastio-snap or dattobd first (see \"Linux machine backup prerequisites\" in this project's README for build/install steps) - refusing to proceed with an inconsistent full-system snapshot")
 	}
 
 	snapshots := make(map[string]SnapShot, len(paths))
