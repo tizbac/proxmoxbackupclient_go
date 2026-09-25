@@ -513,6 +513,18 @@ type ScheduledJob struct {
 
 ## 🟢 P2 - NICE TO HAVE (Backlog)
 
+### ⚠️ Deleting a Backup Set has no confirmation prompt (unlike deleting a server)
+
+**Found 2026-09-25:** deleting a PBS server already asks first — `handleDeletePBSServer`
+(`gui/frontend/src/App.jsx` ~line 825) calls `confirm(t('confirmDeleteServer')...)` before
+`DeletePBSServer`. Deleting a Backup Set does not: the Delete button's `onClick` (~line 2431)
+calls `DeleteScheduledJob(job.id)` immediately, no confirmation at all, one misclick and a job
+(schedule, exclusions, everything) is just gone.
+
+- [ ] Add the same `confirm(...)` pattern to the Backup Set delete handler
+- [ ] New translation key (e.g. `confirmDeleteJob`, mirroring `confirmDeleteServer`) across all
+      six languages, naming the job so it's clear what's about to be deleted
+
 ### 🌍 BMR wizard skips language selection entirely — English only
 
 **Question raised (2026-09-25):** the automated boot entry's whole point is skipping stock
