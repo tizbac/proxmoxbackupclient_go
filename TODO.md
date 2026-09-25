@@ -55,39 +55,32 @@ and restore: written at `gui/backup_inline.go:1502`, read back at `gui/restore_i
 original folder path in the restore UI instead of the sanitized backup-id. Gracefully falls back
 to nil for legacy snapshots with no meta file. `gui/backup_meta.go:12`.
 
-#### Étape 1 : NTFS Metadata Fidelity — half-built, differently than this section originally planned
+#### Étape 1 : NTFS Metadata Fidelity — ACLs/attributes ✅ DONE 2026-09-26, ADS/Creation Time still open
 
-**Real current status, not the plan below:**
-- ✅ **ACLs (Security Descriptors) and DOS attributes: captured, but never restored.** A real
-  Windows collector (`gui/backup_meta_windows.go`, added by commit `ee3d6e0`) reads each file's
-  SDDL string + owner/group/DACL (SACL deliberately excluded) plus its DOS attributes bitmask
-  during the pxar walk, via a `MetaCollector` interface hooked into `pbscommon/pxar.go`, and
-  uploads it all as one gzipped JSON blob per backup (`proxmox-client-acls.json.gz.blob`,
-  `gui/backup_meta.go:17`) — a different architecture than the per-file `.nimbus_meta` sidecar
-  this section originally sketched, and no `pkg/ntfs/backup_stream.go`/`BackupRead()` wrapper was
-  built. **The gap: nothing reads that blob back on restore.** `ee3d6e0`'s own commit message says
-  outright "Restore side (phase 2, not in this commit): a dedicated tool will fetch the blob...
-  and apply SetNamedSecurityInfo + SetFileAttributes" — confirmed that phase 2 never landed
-  (`SetNamedSecurityInfo`/`SetFileSecurity` appear nowhere in any `.go` source file).
-- ❌ **Alternate Data Streams** (e.g. `Zone.Identifier`): still completely untouched, no code
+- ✅ **ACLs (Security Descriptors) and DOS attributes: captured AND restored, end to end.**
+  Capture: `gui/backup_meta_windows.go` (commit `ee3d6e0`) reads each file's SDDL string +
+  owner/group/DACL (SACL deliberately excluded) plus DOS attributes during the pxar walk, uploads
+  one gzipped JSON blob per snapshot (`proxmox-client-acls.json.gz.blob`, `gui/backup_meta.go:17`).
+  Restore: `pbscommon.PBSClient.DownloadBlob` (the `UploadBlob` inverse) fetches it,
+  `gui/restore_meta_windows.go`'s `applyNTFSMetadata` calls `SetNamedSecurityInfo`/
+  `SetFileAttributes` per file, wired into `RestoreSnapshotInline` per archive after extraction.
+  Opt-in via `RestoreOptions.RestoreACLs` — that field already existed end to end (frontend
+  checkbox state → `RestoreSnapshot` → this field) but was permanently `false` behind a disabled
+  "(coming soon)" checkbox; enabled it now that the sidecar it was waiting for exists.
+  **Verified live**: a real file with a non-default DACL (explicit deny-Everyone-write ACE) and
+  the Hidden attribute, backed up and restored through a real PBS round-trip, both the DACL (SDDL
+  string comparison) and the attribute matched exactly
+  (`gui/zz_ntfs_acl_restore_livetest_test.go`).
+- ❌ **Alternate Data Streams** (e.g. `Zone.Identifier`): still genuinely untouched, no code
   anywhere, before or after the ACL work.
-- ❌ **Creation Time**: still completely untouched — only `ModTime` is ever captured, exactly as
-  this section originally said, and that part is still accurate.
-- **UID/GID hardcoding** in `pbscommon/pxar.go`: unchanged, now at lines 534-535/854-855/962-963
-  (`uid: 1000, gid: 1000`), with an existing comment noting this is fine since the project targets
-  Windows — not something the ACL/attrs work touches, since PXAR's own uid/gid fields are separate
-  from the Windows-specific SDDL/attrs blob.
-
-**What's actually left to do** (narrower than the original plan, since capture already works):
-- [ ] Restore-side pass: fetch `proxmox-client-acls.json.gz.blob` for the snapshot being restored,
-      decode it, and call `SetNamedSecurityInfo`/`SetFileAttributes` on each extracted file — this
-      alone closes the ACL and DOS-attribute gap, since capture is already solid.
-- [ ] Alternate Data Streams: genuinely greenfield, needs both capture (add an ADS field to
-      `FileMetaEntry` + a collector) and restore application.
-- [ ] Creation Time: same, greenfield on both sides.
-- [ ] Round-trip tests for all three once restore-side application exists: custom ACL, ADS
-      (`Zone.Identifier`), Hidden/System attributes, each backed up then restored then verified
-      identical.
+  - [ ] Needs both capture (add an ADS field to `FileMetaEntry` + a collector) and restore
+        application — the checkbox for this already exists in the UI too, still correctly
+        disabled/"(coming soon)" since nothing backs it yet.
+- ❌ **Creation Time**: still untouched — only `ModTime` is ever captured/restored.
+  - [ ] Genuinely greenfield on both sides.
+- **UID/GID hardcoding** in `pbscommon/pxar.go`: unchanged (`uid: 1000, gid: 1000`), with an
+  existing comment noting this is fine since the project targets Windows — separate from the
+  Windows-specific SDDL/attrs blob, not something the ACL work touches.
 
 ---
 
