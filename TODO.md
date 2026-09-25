@@ -513,10 +513,13 @@ type ScheduledJob struct {
 
 ## 🟢 P2 - NICE TO HAVE (Backlog)
 
-### 🌍 BMR wizard is hardcoded to English (`locales=en_US.UTF-8 keyboard-layouts=gb`)
+### 🌍 BMR wizard skips language selection entirely — English only
 
-**Question raised (2026-09-25):** the automated boot entry hardcodes English/UK layout rather
-than asking, unlike stock Clonezilla. Should it offer the same 6 languages the GUI supports?
+**Question raised (2026-09-25):** the automated boot entry's whole point is skipping stock
+Clonezilla's prompts for speed, and that includes the language/keyboard one —
+`locales=en_US.UTF-8 keyboard-layouts=gb` is hardcoded, so it never asks at all, unlike stock
+Clonezilla or the manual `pbs-nbd` entry. Should it offer the same 6 languages the GUI supports
+instead of skipping the choice outright?
 
 **Two genuinely different things are involved, easy to conflate:**
 - Clonezilla's **own** native prompts (`$msg_program_stop`, `$msg_nchc_clonezilla`,
