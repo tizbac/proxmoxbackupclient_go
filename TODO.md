@@ -562,22 +562,11 @@ To actually close this gap for a future release:
 
 ### 🎨 GUI polish (this fork)
 
-#### Restore progress bar doesn't match the backup one
-**Problem:** Backup's progress bar uses the shared `.progress`/`.progress-bar` CSS classes
-(`gui/frontend/src/index.css`) — 24-30px tall, themed via `var(--accent)`/`var(--accent-hover)`,
-percentage text rendered inside the bar. Restore's progress bar (`gui/frontend/src/App.jsx`,
-around the `restoreProgress` render) is a separate, bespoke inline-styled `<div>` — 8px tall,
-hardcoded to `#2563eb` (a fixed blue, ignoring the active theme entirely), with the percentage
-shown as text below the bar instead of inside it. Noticeable side by side: thinner and doesn't
-recolour with the rest of the app when a theme is picked.
-
-**Fix:** Switch restore's progress bar to the same `.progress`/`.progress-bar` classes backup
-already uses, so both match and both follow the active theme.
-
-- [ ] Replace the inline-styled restore progress div with `className="progress"` /
-      `className="progress-bar"`, matching backup's markup
-- [ ] Move the percentage text inside the bar (or confirm below-the-bar placement is intentional
-      and just fix the colour/height instead, if that layout is preferred)
+#### ~~Restore progress bar doesn't match the backup one~~ ✅ FIXED 2026-09-25
+Restore now uses the same `.progress`/`.progress-bar` CSS classes as backup (30px, themed via
+`var(--accent)`, percentage rendered inside the bar) instead of a bespoke 8px div hardcoded to
+`#2563eb`. The transfer speed still shows as its own line below, since that's extra detail backup's
+bar doesn't have, not a styling mismatch.
 
 ### 📧 Email notifications in the GUI (engine already exists, just not wired to it)
 

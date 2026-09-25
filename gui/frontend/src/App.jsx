@@ -3343,18 +3343,29 @@ function App() {
 
                 {restoreLoading && (
                   <div style={{marginTop: '12px'}}>
-                    <div style={{height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden'}}>
-                      <div style={{
-                        height: '100%',
-                        width: `${restoreProgress}%`,
-                        backgroundColor: '#2563eb',
-                        transition: 'width 0.3s ease'
-                      }}/>
+                    {/* Matches backup's own .progress/.progress-bar (index.css) instead of a
+                        bespoke hardcoded-blue div — found live 2026-09-25: restore's bar was
+                        8px and always #2563eb regardless of theme, next to backup's 30px,
+                        var(--accent)-themed one right above it in the same app. */}
+                    <div className="progress" style={{height: '30px'}}>
+                      <div
+                        className="progress-bar"
+                        style={{
+                          width: `${restoreProgress}%`,
+                          fontSize: '14px',
+                          lineHeight: '30px',
+                          transition: 'width 0.3s ease',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        {restoreProgress}%
+                      </div>
                     </div>
-                    <p style={{textAlign: 'center', fontSize: '13px', color: '#64748b', marginTop: '4px'}}>
-                      {restoreProgress}%
-                      {restoreStats.speed > 0 ? ` · ${formatSpeed(restoreStats.speed)}` : ''}
-                    </p>
+                    {restoreStats.speed > 0 && (
+                      <p style={{textAlign: 'center', fontSize: '13px', color: '#64748b', marginTop: '4px'}}>
+                        {formatSpeed(restoreStats.speed)}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
