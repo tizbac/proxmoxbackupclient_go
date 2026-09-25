@@ -513,6 +513,36 @@ type ScheduledJob struct {
 
 ## 🟢 P2 - NICE TO HAVE (Backlog)
 
+### ⏹️ No way to cancel a running machine backup (directory backups already can)
+
+**Question raised (2026-09-25):** noticed there's no Cancel option once a full machine backup is
+running. Is a clean cancel even possible without orphaning the block snapshot?
+
+**Yes — the cleanup design already supports it safely, it's just not wired up.** Both platforms'
+`CreateVSSSnapshot` (`snapshot/linux_snapshot.go:356`, `snapshot/win_snapshot.go:82`) use a
+deferred cleanup that destroys/releases every snapshot it created, in reverse order, regardless of
+*how* the function returns — a normal completion, an early error, or a cancellation signal that
+makes the callback return an error all unwind through the same `defer` and clean up correctly.
+That's proven safe already: it's the exact same path a normal error takes today. The only thing
+that would skip it is the process being killed outright (`kill -9`, a crash, a power cut) rather
+than cancelled in-process — that's a real risk either way, not something a Cancel button changes.
+
+**What's actually missing:** the GUI's Stop button (`CancelBackup()`, `gui/backup_inline.go:99`)
+only cancels the *directory*-backup path — `RunBackupInline` registers itself with the shared
+cancel context (`newBackupContext()`, called at `backup_inline.go:565`), but the machine-backup
+path (`runMachineBackupInline`, `backup_inline.go:1216`) calls `machinebackuplib.Backup()` directly
+and never registers with that context at all, so Stop has zero effect on a running machine backup
+today. `machinebackuplib/linux.go` (and `windows.go`) already return an `errCancelled` sentinel at
+a few points in their copy loops, suggesting partial groundwork for exactly this, just never
+connected to a real trigger.
+
+- [ ] Give `runMachineBackupInline`/`machinebackuplib.Backup` a cancellation signal (context, or a
+      simple flag checked in the copy loop, matching the existing `errCancelled` return points)
+- [ ] Wire the GUI's Stop button to it the same way `newBackupContext()` already does for
+      directory backups, so one Cancel path covers both backup types
+- [ ] Confirm the Stop button is actually visible/enabled during a running machine backup in the
+      frontend (not just fixed on the backend) once this lands
+
 ### ⚠️ Deleting a Backup Set has no confirmation prompt (unlike deleting a server)
 
 **Found 2026-09-25:** deleting a PBS server already asks first — `handleDeletePBSServer`
