@@ -8,3 +8,5 @@
 *.sh text eol=lf
 *.patch text eol=lf
 clonezilla-patch/* text eol=lf
+packaging/debian/pbsgo-gui-root text eol=lf
+packaging/debian/pbsgo-gui text eol=lf
