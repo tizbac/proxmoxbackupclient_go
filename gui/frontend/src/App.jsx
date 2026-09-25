@@ -2431,6 +2431,9 @@ function App() {
                           <button
                             className="btn btn-secondary"
                             onClick={async () => {
+                              if (!confirm(t('confirmDeleteJob').replace('{name}', job.name))) {
+                                return
+                              }
                               try {
                                 await DeleteScheduledJob(job.id)
                                 setScheduledJobs(scheduledJobs.filter(j => j.id !== job.id))

@@ -447,6 +447,7 @@ const translations = {
       statusError: "Erreur:",
       statusConfirm: "Êtes-vous sûr ?",
       confirmDeleteServer: "Voulez-vous vraiment supprimer le serveur PBS \"{id}\" ?",
+      confirmDeleteJob: "Voulez-vous vraiment supprimer le jeu de sauvegarde \"{name}\" ?",
   },
   en: {
     // Header
@@ -896,6 +897,7 @@ const translations = {
       statusError: "Error:",
       statusConfirm: "Are you sure?",
       confirmDeleteServer: "Do you really want to delete the PBS server \"{id}\"?",
+      confirmDeleteJob: "Do you really want to delete the Backup Set \"{name}\"?",
   },
   it: {
     // Header
@@ -1345,6 +1347,7 @@ const translations = {
       statusError: "Errore:",
       statusConfirm: "Sei sicuro?",
       confirmDeleteServer: "Vuoi davvero eliminare il server PBS \"{id}\"?",
+      confirmDeleteJob: "Vuoi davvero eliminare il set di backup \"{name}\"?",
   },
   de: {
     // Header
@@ -1794,6 +1797,7 @@ const translations = {
       statusError: "Fehler:",
       statusConfirm: "Sind Sie sicher?",
       confirmDeleteServer: "Möchten Sie wirklich den PBS-Server \"{id}\" löschen?",
+      confirmDeleteJob: "Möchten Sie das Sicherungsset \"{name}\" wirklich löschen?",
   },
   pl: {
     // Header
@@ -2243,6 +2247,7 @@ const translations = {
       statusError: "Błąd:",
       statusConfirm: "Czy na pewno?",
       confirmDeleteServer: "Czy naprawdę chcesz usunąć serwer PBS \"{id}\"?",
+      confirmDeleteJob: "Czy naprawdę chcesz usunąć zestaw kopii zapasowej \"{name}\"?",
   },
   es: {
     // Header
@@ -2693,6 +2698,7 @@ const translations = {
       statusError: "Error:",
       statusConfirm: "¿Está seguro?",
       confirmDeleteServer: "¿Realmente desea eliminar el servidor PBS \"{id}\"?",
+      confirmDeleteJob: "¿Realmente desea eliminar el conjunto de copia de seguridad \"{name}\"?",
   }
 }
 
