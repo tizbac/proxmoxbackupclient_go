@@ -57,6 +57,13 @@ func buildAppMenu(a *App) *menu.Menu {
 	toolsMenu.AddText("Preferences…", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "nav:preferences")
 	})
+	toolsMenu.AddSeparator()
+	// Points at /releases/latest rather than a specific version's asset URL,
+	// so this never goes stale across future releases even though the ISO's
+	// filename carries a version number.
+	toolsMenu.AddText("Download Bare Metal Restore ISO…", nil, func(_ *menu.CallbackData) {
+		runtime.BrowserOpenURL(a.ctx, "https://github.com/mjb-is/proxmoxbackupclient_go/releases/latest")
+	})
 
 	helpMenu := appMenu.AddSubmenu("Help")
 	helpMenu.AddText("Known Limitations", nil, func(_ *menu.CallbackData) {
