@@ -294,8 +294,8 @@ function App() {
   const [restoreOptions, setRestoreOptions] = useState({
     overwrite: false,
     timestamps: true,
-    acls: false, // disabled in UI until NTFS sidecar lands
-    ads: false   // disabled in UI until NTFS sidecar lands
+    acls: false, // opt-in — off by default even though the NTFS sidecar now exists
+    ads: false   // still disabled in UI: no ADS capture/restore sidecar exists yet
   })
   const [restoreLoading, setRestoreLoading] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
@@ -3629,9 +3629,13 @@ function App() {
                     />
                     {t('optionTimestamps')}
                   </label>
-                  <label style={{display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.5}} title={t('optionComingSoon')}>
-                    <input type="checkbox" disabled checked={false} />
-                    {t('optionACLs')} <span style={{fontSize: '11px'}}>({t('comingSoon')})</span>
+                  <label style={{display: 'flex', alignItems: 'center', gap: '6px'}} title={t('optionACLsHint')}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.acls}
+                      onChange={(e) => setRestoreOptions(o => ({...o, acls: e.target.checked}))}
+                    />
+                    {t('optionACLs')}
                   </label>
                   <label style={{display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.5}} title={t('optionComingSoon')}>
                     <input type="checkbox" disabled checked={false} />

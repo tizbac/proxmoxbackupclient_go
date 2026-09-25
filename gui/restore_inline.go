@@ -989,6 +989,30 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	}
 	writeBackupLog(fmt.Sprintf("Resolved %d archive(s) for this snapshot: %v", len(archiveNames), archiveNames))
 
+	// NTFS ACLs/DOS attributes (Windows only — a no-op elsewhere; opt-in via
+	// opts.RestoreACLs, same field RestoreSnapshot has accepted since before
+	// this was implemented, previously always false — "reserved, requires
+	// NTFS sidecar"). Captured during backup into one combined blob per
+	// snapshot (see gui/backup_meta_windows.go). Fetched once here, up
+	// front, rather than per-archive — best-effort: nil on any failure
+	// (missing blob on a legacy/non-Windows snapshot, network error) just
+	// means files restore without their ACLs/attributes re-applied, never
+	// fails the restore.
+	var combinedACLMeta *CombinedBackupFileMeta
+	if opts.RestoreACLs {
+		aclClient := &pbscommon.PBSClient{
+			BaseURL: opts.BaseURL, CertFingerPrint: opts.CertFingerprint,
+			AuthID: opts.AuthID, Secret: opts.Secret, Ticket: opts.Ticket, CSRFToken: opts.CSRFToken,
+			Datastore: opts.Datastore, Namespace: opts.Namespace, Insecure: opts.CertFingerprint != "",
+			Manifest: pbscommon.BackupManifest{BackupID: opts.BackupID, BackupTime: opts.SnapshotTime.Unix()},
+		}
+		aclClient.Connect(true, "host")
+		if m, aerr := downloadCombinedBackupFileMeta(aclClient); aerr == nil {
+			combinedACLMeta = m
+		}
+		aclClient.Close()
+	}
+
 	progress(0.20, "Downloading backup archive...")
 	// AssembleDIDXToFile downloads the .didx index and reassembles the actual
 	// PXAR stream chunk-by-chunk into a temp file (bounded memory), then we walk
@@ -1085,6 +1109,40 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			return err
 		}
 
+		// Re-apply captured NTFS ACLs/DOS attributes now that this archive's
+		// files are actually on disk. archiveName carries PBS's manifest
+		// filename suffix (".pxar.didx"); the combined blob keys its Archives
+		// map by the bare archive base name (see archiveBaseName / where
+		// combinedACLs.Archives is populated in backup_inline.go) — strip it
+		// to look up the right entry. Best-effort per file: an apply failure
+		// is logged, never fails the restore — the file's content is already
+		// safely on disk regardless.
+		if combinedACLMeta != nil {
+			bareArchive := strings.TrimSuffix(archiveName, ".pxar.didx")
+			if archiveMeta, ok := combinedACLMeta.Archives[bareArchive]; ok && archiveMeta != nil {
+				entryIdx := buildFileMetaIndex(archiveMeta)
+				applied, failed := 0, 0
+				for _, f := range extractedHere {
+					if f.Skipped || f.ArchivePath == "" {
+						continue
+					}
+					entry, ok := entryIdx[f.ArchivePath]
+					if !ok {
+						continue
+					}
+					if aerr := applyNTFSMetadata(f.Path, entry, archiveMeta.SDDLs); aerr != nil {
+						failed++
+						writeBackupLog(fmt.Sprintf("NTFS metadata apply failed for %s: %v", f.Path, aerr))
+					} else {
+						applied++
+					}
+				}
+				if applied > 0 || failed > 0 {
+					writeBackupLog(fmt.Sprintf("NTFS ACLs/attributes for %s: applied %d, failed %d", archiveName, applied, failed))
+				}
+			}
+		}
+
 		// v2-H-09's match check (below the loop) must use the SAME rewriter an
 		// archive was actually extracted with, against this archive's own
 		// STRIPPED includes (archiveIncludes) — not the raw, wrapper-prefixed
@@ -1138,10 +1196,11 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		successCount, dirCount, skipCount, errorSkipCount))
 	progress(0.95, fmt.Sprintf("Extracted %d files", successCount))
 
-	if opts.RestoreACLs || opts.RestoreADS {
-		// Reserved options — sidecar metadata isn't written by the backup yet.
-		// Log the request so it shows up in support transcripts.
-		writeBackupLog("NOTE: ACL/ADS restore requested but not yet implemented (NTFS sidecar pending)")
+	if opts.RestoreADS {
+		// Still reserved — no ADS capture/restore sidecar exists yet (unlike
+		// RestoreACLs, which is now real, applied earlier in this function
+		// per-archive). Log the request so it shows up in support transcripts.
+		writeBackupLog("NOTE: ADS restore requested but not yet implemented (no ADS sidecar exists)")
 	}
 
 	progress(1.0, "Restore completed")
