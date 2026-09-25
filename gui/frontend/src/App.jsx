@@ -2350,6 +2350,12 @@ function App() {
                               setWindowEnd(job.windowEnd || '17:00')
                               setDaysOfWeek(job.daysOfWeek && job.daysOfWeek.length > 0 ? job.daysOfWeek : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
                               setBackupDirs(job.backupDirs.join('\n'))
+                              // Machine-type jobs keep their selected disks in driveLetters, not
+                              // backupDirs — without restoring this, handleStartBackup's "select
+                              // at least one disk" guard blocks saving ANY edit (not just a
+                              // rename) to a machine-type backup set, since selectedDrives looks
+                              // empty even though the job has real disks configured.
+                              setSelectedDrives(job.driveLetters || [])
                               setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                               setBackupType(job.backupType)
                               setBackupPBSID(job.pbsServerId || defaultPBSID)
