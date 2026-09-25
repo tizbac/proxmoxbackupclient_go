@@ -639,6 +639,16 @@ Restore now uses the same `.progress`/`.progress-bar` CSS classes as backup (30p
 `#2563eb`. The transfer speed still shows as its own line below, since that's extra detail backup's
 bar doesn't have, not a styling mismatch.
 
+#### VSS label in Preferences → Destination says "Windows Shadow Copy" only
+**Found 2026-09-25:** the `useVSS` checkbox label (`gui/frontend/src/i18n/translations.js:446`,
+`"Use VSS (Windows Shadow Copy)"`, rendered at `App.jsx:1864` via `t('useVSS')`) only names the
+Windows mechanism, even though this same checkbox also gates the Linux snapshot path
+(`snapshot/linux_snapshot.go`, elastio-snap/dattobd) — same setting, two different backends
+depending on platform, and the label only describes one of them.
+- [ ] Update the `useVSS` string in all 6 languages to also name the Linux side, e.g. "Use VSS
+      (Windows Shadow Copy) / Linux Snapshot" — same pattern as `translations.js:128,446,764,
+      1082,1400` (fr/en/it/de/pl) plus the Spanish entry
+
 ### 📧 Email notifications in the GUI (engine already exists, just not wired to it)
 
 **What's already there:** `clientcommon/mail.go` is a complete, working SMTP client
