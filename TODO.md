@@ -699,7 +699,11 @@ above), covering:
       handling (does an after-backup command run on failure too, or only on success?).
 - [ ] **Send an e-mail** on completion — already tracked in full above ("Email notifications in the
       GUI"); this tab is a natural place to surface that per-Backup-Set toggle once it exists,
-      rather than a separate thing.
+      rather than a separate thing. **Confirmed 2026-09-25: needs an on-failure option
+      specifically**, not just on-success — this is arguably the more useful of the two for an
+      unattended scheduled job (finding out it broke, versus finding out it worked), so the
+      per-Backup-Set toggle should be a choice (on success / on failure / always / never), not a
+      single on/off, using the global SMTP account already configured in Preferences.
 
 Should probably be scoped per-Backup-Set (like BFW's own wizard, which is per backup job) rather
 than global in Preferences, since "shut down after this backup" only makes sense for specific jobs
