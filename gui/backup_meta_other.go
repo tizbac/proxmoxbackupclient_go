@@ -1,13 +1,15 @@
-//go:build !windows
-// +build !windows
+//go:build !windows && !linux
+// +build !windows,!linux
 
 package main
 
 import "os"
 
-// NTFSMetaCollector is a no-op on non-Windows platforms. It still satisfies
-// the pbscommon.MetaCollector interface so callers can unconditionally wire
-// it up without build-tag branching.
+// NTFSMetaCollector is a no-op on platforms with no real implementation
+// (Windows and Linux both have one — see backup_meta_windows.go and
+// backup_meta_linux.go). It still satisfies the pbscommon.MetaCollector
+// interface so callers can unconditionally wire it up without build-tag
+// branching.
 type NTFSMetaCollector struct{}
 
 func NewNTFSMetaCollector(root, hostname string) *NTFSMetaCollector { return &NTFSMetaCollector{} }

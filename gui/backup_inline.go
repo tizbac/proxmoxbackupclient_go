@@ -1503,11 +1503,12 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 		}
 	}
 
-	// NTFS metadata collector: captures ACLs/owner/attrs for every entry during
-	// the walk. Implementation is Windows-only; no-op on other platforms. Its
-	// output is returned (raw, ungzipped) to the caller, which aggregates every
-	// directory's metadata into ONE combined blob for the whole snapshot
-	// (see runBackupInlineInternal) instead of uploading one blob per directory.
+	// Metadata collector: captures ACLs/owner/attrs (Windows) or extended
+	// attributes including POSIX ACLs (Linux) for every entry during the
+	// walk; no-op on other platforms. Its output is returned (raw, ungzipped)
+	// to the caller, which aggregates every directory's metadata into ONE
+	// combined blob for the whole snapshot (see runBackupInlineInternal)
+	// instead of uploading one blob per directory.
 	ntfsCollector := NewNTFSMetaCollector(backupdir, hostname)
 	archive.MetaCollector = ntfsCollector
 
