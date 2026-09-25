@@ -532,6 +532,35 @@ already uses, so both match and both follow the active theme.
 - [ ] Move the percentage text inside the bar (or confirm below-the-bar placement is intentional
       and just fix the colour/height instead, if that layout is preferred)
 
+### 📧 Email notifications in the GUI (engine already exists, just not wired to it)
+
+**What's already there:** `clientcommon/mail.go` is a complete, working SMTP client
+(`SetupMailClient`/`SendMail`, TLS/STARTTLS/plain on 465/587/25) plus a templated `MailCtx`
+(Go `text/template`, fields: `Success`/`Partial`/`Status`/`Duration`/`NewChunks`/`ReusedChunks`/
+`ReadErrors`/`Hostname`/`StartTime`/`EndTime`/`ErrorStr`). `proxmoxbackup-directory` fully wires
+it up already — `-mail-host`/`-mail-port`/`-mail-username`/`-mail-password`/`-mail-insecure`/
+`-mail-from`/`-mail-to`/`-mail-subject-template`/`-mail-body-template` flags, config-file driven
+via `SMTPConfig` (`directorybackup/config.go`), and it even supports multiple from/to pairs
+(`SMTP.Mails []...`). `proxmoxbackup-machine` defines the same `-mail-*` flags
+(`machinebackup/main.go`) but never actually calls `SetupMailClient`/`SendMail` — dead/unwired.
+
+**What's missing:** the GUI itself (`gui/*.go`) has zero references to any of this — no
+Preferences tab, no per-Backup-Set option, nothing. Every notification in the GUI today is
+purely visual (Reports/Message Log), nothing leaves the machine.
+
+**Two design directions to weigh** (not mutually exclusive):
+- [ ] **Global**: one SMTP setup in Preferences (reusing `clientcommon`'s existing client/config
+      shape), used to push a message whenever *anything* completes — effectively mailing out
+      Message Log entries or a Reports summary as they happen.
+- [ ] **Per-Backup-Set**: notification options on each `ScheduledJob` (on success / on failure /
+      always / never, maybe its own subject/body template override), so a Backup Set can opt in
+      or out independently once the global SMTP account is configured.
+
+A sensible shape is probably: one global SMTP account in Preferences (host/port/auth, matching
+what `directorybackup` already accepts), then a lightweight per-Backup-Set toggle that reuses it.
+Wire `machinebackup`'s already-declared-but-dead `-mail-*` flags while at it, so both CLI tools
+actually behave the same way.
+
 ### 🆕 Sprint 4 - Polish & Production Ready (1 semaine)
 
 #### Code Signing - Windows Trust 🔐
