@@ -1,16 +1,32 @@
 #!/bin/sh
 # pbsgo-gui-root: launch the Proxmox Backup Client GUI with root
 # privileges, which machine (whole-disk) backup requires.
+#
+# HOME must be forwarded explicitly to the elevated process: without it,
+# sudo/pkexec give it root's own home instead of the invoking user's, so it
+# can't find the existing PBS server config under ~/.proxmox-backup-guardian
+# and looks freshly unconfigured. Any config file it then creates or
+# rewrites there also ends up root-owned, unreadable by the user on a later
+# unprivileged launch, unless ownership is handed back afterward. Both
+# fixes have to run as ONE elevated command (a single `sh -c '...; chown
+# ...'`), never as a step placed after this script's own `exec` -- exec
+# replaces this process outright, so nothing here ever runs again once
+# sudo/pkexec starts. (Same bugs found and fixed live 2026-09-24/25 in this
+# fork's dev-only equivalent, packaging/linux/run-as-root.sh; not yet
+# re-verified through an actual built-and-installed .deb.)
 if [ "$(id -u)" = "0" ]; then
     exec /usr/lib/pbsgo/pbsgo-gui "$@"
 fi
 
+REAL_UID_GID="$(id -u):$(id -g)"
+RUN_AND_FIXUP='HOME="$HOME" /usr/lib/pbsgo/pbsgo-gui "$@"; chown -R '"$REAL_UID_GID"' "$HOME/.proxmox-backup-guardian"'
+
 if command -v sudo >/dev/null 2>&1; then
     if [ -n "${DISPLAY:-}" ]; then
         # Keep the X11 session reachable from the elevated process.
-        exec sudo env "DISPLAY=$DISPLAY" "XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}" /usr/lib/pbsgo/pbsgo-gui "$@"
+        exec sudo env "DISPLAY=$DISPLAY" "XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}" "HOME=$HOME" sh -c "$RUN_AND_FIXUP" sh "$@"
     fi
-    exec sudo /usr/lib/pbsgo/pbsgo-gui "$@"
+    exec sudo env "HOME=$HOME" sh -c "$RUN_AND_FIXUP" sh "$@"
 fi
 
-exec pkexec /usr/lib/pbsgo/pbsgo-gui "$@"
+exec pkexec env "DISPLAY=$DISPLAY" "XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}" "HOME=$HOME" sh -c "$RUN_AND_FIXUP" sh "$@"
