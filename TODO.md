@@ -513,28 +513,20 @@ type ScheduledJob struct {
 
 ## 🟢 P2 - NICE TO HAVE (Backlog)
 
-### 💾 Settings export/import (portability across machines)
+### ~~💾 Settings export/import (portability across machines)~~ ✅ DONE 2026-09-25
 
-**Idea (2026-09-25):** moving to a new/second machine currently means manually re-entering every
-PBS server (URL, datastore, namespace, auth), the theme, and — once built — mail/SMTP setup, one
-field at a time. An "Export Settings" / "Import Settings" pair in Preferences, producing a single
-JSON bundle, would cover the two files that actually hold this today:
+Preferences → Advanced now has Export/Import Settings buttons (`gui/settings_export.go`,
+`App.ExportSettings`/`App.ImportSettings`), producing a single JSON bundle covering `config.json`
+(`PBSServers`, `DefaultPBSID`, theme, SMTP host settings) and `scheduled_jobs.json` (the actual
+Backup Sets). Import upserts by ID rather than replacing wholesale, so it can't wipe out unrelated
+local servers or jobs.
 
-- `config.json` (`gui/config.go`'s `Config` struct) — `PBSServers` map (each with `AuthID`/
-  `Secret` or username/password), `DefaultPBSID`, `ThemeSettings`, backup defaults
-- `scheduled_jobs.json` (`ScheduledJob[]`, `gui/scheduler.go`) — the actual Backup Sets, so a
-  machine swap doesn't mean rebuilding every job by hand either
-
-**The real design question is secrets**, not the mechanics of reading/writing JSON: PBS API
-tokens/passwords and (once it exists) an SMTP password would sit in the exported file in
-plaintext unless something is done about it. Options to weigh, not mutually exclusive:
-- [ ] Export everything *except* secrets by default (URLs/datastores/theme/job definitions
-      import cleanly; each PBS server needs its token/password re-entered once on the new
-      machine, same one-time cost as today but for every other field, not this one too)
-- [ ] Encrypt the export with a passphrase prompted at export/import time, if a full
-      zero-re-entry restore is worth the added complexity
-- [ ] At minimum, warn clearly in the UI ("this file contains your PBS credentials in plain
-      text") if a no-encryption plain-export option ships at all
+**Secrets question resolved as:** exclude by default, via an "Include passwords/tokens" checkbox
+that defaults off, with a clear in-UI warning when turned on. A server whose secret was excluded
+at export time keeps whatever's already configured locally for that same server ID on import,
+rather than blanking it. Passphrase-encrypted export was considered and skipped for now — plain
+JSON plus a clear warning was judged sufficient for a personal/homelab tool; revisit if this ever
+needs to be safe to email or store somewhere less trusted.
 
 ### 📦 Release pipeline for this fork (MSI, CI attestation, VirusTotal)
 

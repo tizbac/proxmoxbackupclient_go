@@ -13,6 +13,7 @@ let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, 
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
 let SetParallelRestore
+let ExportSettings, ImportSettings
 
 // Check if we're running in Wails
 if (window.go) {
@@ -55,6 +56,8 @@ if (window.go) {
   GetServerFingerprint = window.go.main.App.GetServerFingerprint
   PinPBSServerFingerprint = window.go.main.App.PinPBSServerFingerprint
   SetParallelRestore = window.go.main.App.SetParallelRestore
+  ExportSettings = window.go.main.App.ExportSettings
+  ImportSettings = window.go.main.App.ImportSettings
 }
 
 // Wails events + runtime (open external URLs in the system browser)
@@ -122,6 +125,7 @@ function App() {
   const [showLimitations, setShowLimitations] = useState(false)
   const [showPreferences, setShowPreferences] = useState(false)
   const [prefsTab, setPrefsTab] = useState('account')
+  const [exportIncludeSecrets, setExportIncludeSecrets] = useState(false)
   const [hostname, setHostname] = useState('')
   const [appVersion, setAppVersion] = useState('dev')
   const [brand, setBrand] = useState({ name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', logo: '', accent: '#e87003', accent_hover: '#d46100', buy_storage_url: '', buy_storage_text: '', is_default: true })
@@ -2124,6 +2128,64 @@ function App() {
                       </label>
                       <div className="info-box" style={{marginTop: '10px'}}>
                         ℹ️ {t('parallelRestoreHint')}
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{marginTop: '24px'}}>
+                      <h3 style={{marginBottom: '8px'}}>{t('settingsPortabilityTitle')}</h3>
+                      <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('settingsPortabilityIntro')}</p>
+
+                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '12px'}}>
+                        <input
+                          type="checkbox"
+                          checked={exportIncludeSecrets}
+                          onChange={(e) => setExportIncludeSecrets(e.target.checked)}
+                        />
+                        <span>{t('exportIncludeSecrets')}</span>
+                      </label>
+                      {exportIncludeSecrets && (
+                        <div className="info-box" style={{marginTop: '-4px', marginBottom: '12px', borderColor: '#e53e3e'}}>
+                          ⚠️ {t('exportSecretsWarning')}
+                        </div>
+                      )}
+
+                      <div style={{display: 'flex', gap: '10px'}}>
+                        <button
+                          className="btn"
+                          onClick={async () => {
+                            if (!ExportSettings) return
+                            try {
+                              const path = await ExportSettings(exportIncludeSecrets)
+                              if (path) {
+                                showStatus(`✅ ${t('statusSettingsExported')} ${path}`, 'success')
+                              }
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                            }
+                          }}
+                        >
+                          {t('exportSettingsBtn')}
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={async () => {
+                            if (!ImportSettings) return
+                            try {
+                              const path = await ImportSettings()
+                              if (path) {
+                                showStatus(`✅ ${t('statusSettingsImported')}`, 'success')
+                                // Reflect imported servers/jobs/theme immediately without
+                                // requiring a manual app restart.
+                                if (ListPBSServers) setPbsServers(await ListPBSServers())
+                                if (GetScheduledJobs) setScheduledJobs(await GetScheduledJobs())
+                              }
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                            }
+                          }}
+                        >
+                          {t('importSettingsBtn')}
+                        </button>
                       </div>
                     </div>
                   </>
