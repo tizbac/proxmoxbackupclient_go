@@ -678,6 +678,33 @@ what `directorybackup` already accepts), then a lightweight per-Backup-Set toggl
 Wire `machinebackup`'s already-declared-but-dead `-mail-*` flags while at it, so both CLI tools
 actually behave the same way.
 
+### 🖥️ Post-backup actions (shutdown PC, exit app, run an application)
+
+**Suggested 2026-09-25**, referencing Backup for Workgroups' own "Special Items" wizard step
+("When Your Backup Session Completes": send e-mail, close BFW, turn off your computer, write
+results to the Event log; plus "Run an Application" before/after). This fork's Backup Set editor
+has no equivalent — worth adding as its own chevron tab (same pattern as the planned "Alerts" tab
+above), covering:
+- [ ] **Turn off the computer** after this Backup Set completes — the one item with a genuine,
+      already-open reference implementation upstream: PR #43
+      (https://github.com/tizbac/proxmoxbackupclient_go/pull/43, "feat: add option for shutting
+      down pc after backup") touches root-level `config.go`/`main.go` from before the module
+      refactor, so it isn't directly portable, but the feature idea and its shutdown-invocation
+      approach are worth a look before reimplementing from scratch.
+- [ ] **Exit Proxmox Backup Client Go** after this Backup Set completes (BFW's "Close Backup for
+      Workgroups" equivalent) — relevant mainly for the one-shot/manual-run case, not scheduled
+      background jobs.
+- [ ] **Run an application** before and/or after the backup (BFW's "Run an Application" section) —
+      a command/path field plus before/after timing, presumably with its own success/failure
+      handling (does an after-backup command run on failure too, or only on success?).
+- [ ] **Send an e-mail** on completion — already tracked in full above ("Email notifications in the
+      GUI"); this tab is a natural place to surface that per-Backup-Set toggle once it exists,
+      rather than a separate thing.
+
+Should probably be scoped per-Backup-Set (like BFW's own wizard, which is per backup job) rather
+than global in Preferences, since "shut down after this backup" only makes sense for specific jobs
+(e.g. an overnight one-shot), not every scheduled run.
+
 ### 🆕 Sprint 4 - Polish & Production Ready (1 semaine)
 
 #### Code Signing - Windows Trust 🔐
