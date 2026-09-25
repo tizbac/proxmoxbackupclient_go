@@ -2727,7 +2727,18 @@ function App() {
           </div>
 
           <div style={{marginTop: '16px'}}>
-          <button className="btn" onClick={handleStartBackup} disabled={backupRunning || (progress > 0 && progress < 100)}>
+          {/* Saving a Backup Set's metadata (name/schedule/dirs) is a fast,
+              independent operation -- it has nothing to do with a one-shot
+              backup's live progress, so scheduled mode must never gate on
+              backupRunning/progress. Found live 2026-09-25: those are only
+              ever reset by the backup:complete event: if a one-shot run
+              anywhere else in the app ever left progress stuck between 0
+              and 100 (an interrupted run, a missed event), this button
+              stayed permanently disabled for every future Backup Set
+              add/edit, and no field in the form -- including the name --
+              could ever re-enable it, since none of them were ever part of
+              this condition to begin with. */}
+          <button className="btn" onClick={handleStartBackup} disabled={backupMode === 'oneshot' && (backupRunning || (progress > 0 && progress < 100))}>
             {backupMode === 'oneshot'
               ? (backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `${t('startBackup')}`)
               : (editingJobId ? `${t('updateSchedule')}` : `${t('saveSchedule')}`)
