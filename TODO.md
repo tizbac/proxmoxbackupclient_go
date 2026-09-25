@@ -555,6 +555,23 @@ calls `DeleteScheduledJob(job.id)` immediately, no confirmation at all, one misc
 - [ ] New translation key (e.g. `confirmDeleteJob`, mirroring `confirmDeleteServer`) across all
       six languages, naming the job so it's clear what's about to be deleted
 
+### 📋 Clone a Backup Set
+
+**Suggested 2026-09-25.** Each Backup Set row already has Run Now/Edit/Delete buttons
+(`gui/frontend/src/App.jsx` ~line 2383-2431) — a Clone button would sit naturally alongside them.
+Setting up a new Backup Set similar to an existing one (same source/exclude/schedule shape, just a
+different destination or a tweak) currently means re-filling the whole wizard from scratch.
+
+- [ ] Reuse the Edit handler's field-population logic (~line 2402-2426, the same one that restores
+      `backupDirs`/`selectedDrives`/`excludeList`/schedule/etc. into the form) but leave
+      `editingJobId` unset (or explicitly null) so Save creates a new job via `SaveScheduledJob`
+      instead of updating the original via `UpdateScheduledJob`
+- [ ] Default the cloned name to something like "{original name} (copy)" so it's obviously a copy
+      and doesn't collide, but leave it editable before the first save
+- [ ] Decide whether `lastRun`/job history should reset for the clone (it should — a clone hasn't
+      actually run yet) — `SaveScheduledJob` creating a fresh job with a new ID should already give
+      this for free, worth confirming rather than assuming
+
 ### 🌍 BMR wizard skips language selection entirely — English only
 
 **Question raised (2026-09-25):** the automated boot entry's whole point is skipping stock
