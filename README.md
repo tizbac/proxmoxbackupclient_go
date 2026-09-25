@@ -35,24 +35,17 @@ Anything of general use gets sent upstream as a PR (like #85 above) rather than 
 👉 **[Download the latest release](https://github.com/mjb-is/proxmoxbackupclient_go/releases)**
 
 > ⚠️ **Windows shows "virus detected" (e.g. `Trojan:Win32/Sabsik.FL.A!ml`) or a SmartScreen warning?**
-> This is a **known false positive** for Go/Wails applications — it is *not* a virus. The `!ml` suffix indicates a machine-learning model detection that flags *unsigned and uncommon* executables.
-> See [why this happens and how to verify the download](https://github.com/tizbac/proxmoxbackupclient_go).
+> This is a **known false positive** for Go/Wails applications — it is *not* a virus. The `!ml` suffix indicates a machine-learning model detection that flags *unsigned and uncommon* executables. Upstream has more detail: [why this happens and how to verify their download](https://github.com/tizbac/proxmoxbackupclient_go).
 
-### 🔎 Verifying any download
+### 🔎 Verifying a download
 
-Every release provides SHA-256 checksums and a **signed provenance attestation** (cryptographic proof that the binary was produced by this repository's CI, from a precise commit):
+Every release from this fork includes a `SHA256SUMS.txt`:
 
 ```powershell
-Get-FileHash .\ProxmoxBackupClient.exe -Algorithm SHA256   # compare with SHA256SUMS.txt
-gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclient_go
+Get-FileHash .\ProxmoxBackupClient-v0.3.0-windows-amd64.zip -Algorithm SHA256   # compare with SHA256SUMS.txt
 ```
 
-**VirusTotal — 0 detections.** Independent multi-engine reports of recent MSI installers:
-[0.2.108](https://www.virustotal.com/gui/file/6e8fb7ce9af740d470e947addb8daba4331c0b88e8bfdec9e0697ea8f7f29e9e/detection) ·
-[0.2.107](https://www.virustotal.com/gui/file/6fd6c6fa77e0305c129ef882a3745100aa6033187a6d52a4af94149ab6b666d2/detection) ·
-[0.2.106](https://www.virustotal.com/gui/file/ad6e56700ed9df8e088906e38cee2e2882fc7045f4e39269de0e379a01784ad7/detection)
-
-> ℹ️ **Code signing:** Windows binaries are **not yet Authenticode-signed** (an OSS certificate via [SignPath Foundation](https://signpath.org) is pending). In the meantime, provenance is established through the attestation and checksums above.
+> ℹ️ **No code signing, CI-signed attestation, or VirusTotal scan yet** for this fork's own builds (upstream's own releases have some of these — see their repo). These are built and uploaded manually, not yet through a CI pipeline that could produce a verifiable build-provenance attestation. See [TODO.md](TODO.md) if you'd like to help set that up.
 
 ## ✨ Features
 
