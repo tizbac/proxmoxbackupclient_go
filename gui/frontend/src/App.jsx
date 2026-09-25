@@ -2568,6 +2568,41 @@ function App() {
                           </button>
                           <button
                             className="btn btn-secondary"
+                            onClick={() => {
+                              // Same field population as Edit, but editingJobId stays null so
+                              // Save creates a brand-new job (SaveScheduledJob) instead of
+                              // updating this one (UpdateScheduledJob) — see TODO.md "Clone a
+                              // Backup Set". lastRun/history naturally reset for free since the
+                              // clone gets its own fresh ID and has never actually run yet.
+                              setEditingJobId(null)
+                              setJobName(t('cloneNameSuffix').replace('{name}', job.name || ''))
+                              setBackupMode('scheduled')
+                              setScheduleTime(job.scheduleTime)
+                              setRunAtStartup(job.runAtStartup)
+                              setTriggerMode(job.triggerMode || 'daily')
+                              setIntervalMinutes(job.intervalMinutes || 120)
+                              setWindowAllDay(job.windowAllDay !== false)
+                              setWindowStart(job.windowStart || '09:00')
+                              setWindowEnd(job.windowEnd || '17:00')
+                              setDaysOfWeek(job.daysOfWeek && job.daysOfWeek.length > 0 ? job.daysOfWeek : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+                              setBackupDirs(job.backupDirs.join('\n'))
+                              setSelectedDrives(job.driveLetters || [])
+                              setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
+                              setBackupType(job.backupType)
+                              setBackupPBSID(job.pbsServerId || defaultPBSID)
+                              setExcludeList(job.excludeList.join('\n'))
+                              setTreeExcludes([])
+                              setEmailOnSuccess(!!job.emailOnSuccess); setEmailOnSuccessTo(job.emailOnSuccessTo || '')
+                              setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
+                              setRunAppBefore(job.runAppBefore || ''); setRunAppAfter(job.runAppAfter || '')
+                              setExitAppAfter(!!job.exitAppAfter); setShutdownAfter(!!job.shutdownAfter)
+                              setBackupFormTab('source'); setShowBackupForm(true)
+                            }}
+                          >
+                            {t('cloneJob')}
+                          </button>
+                          <button
+                            className="btn btn-secondary"
                             onClick={async () => {
                               if (!confirm(t('confirmDeleteJob').replace('{name}', job.name))) {
                                 return

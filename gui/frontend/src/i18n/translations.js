@@ -312,6 +312,8 @@ const translations = {
       statusJobUpdated: "Ensemble de sauvegarde mis à jour",
       statusJobScheduled: "Ensemble de sauvegarde enregistré",
       editJob: "Éditer",
+      cloneJob: "Dupliquer",
+      cloneNameSuffix: "{name} (copie)",
       deleteJob: "Supprimer",
       editModeInfo: "Mode édition - modifiez et sauvegardez",
 
@@ -786,6 +788,8 @@ const translations = {
       statusJobUpdated: "Backup set updated",
       statusJobScheduled: "Backup set saved",
       editJob: "Edit",
+      cloneJob: "Clone",
+      cloneNameSuffix: "{name} (copy)",
       deleteJob: "Delete",
       editModeInfo: "Edit mode - modify and save",
 
@@ -1260,6 +1264,8 @@ const translations = {
       statusJobUpdated: "Set di backup aggiornato",
       statusJobScheduled: "Set di backup salvato",
       editJob: "Modifica",
+      cloneJob: "Duplica",
+      cloneNameSuffix: "{name} (copia)",
       deleteJob: "Elimina",
       editModeInfo: "Modalità modifica - modifica e salva",
 
@@ -1734,6 +1740,8 @@ const translations = {
       statusJobUpdated: "Sicherungssatz aktualisiert",
       statusJobScheduled: "Sicherungssatz gespeichert",
       editJob: "Bearbeiten",
+      cloneJob: "Duplizieren",
+      cloneNameSuffix: "{name} (Kopie)",
       deleteJob: "Löschen",
       editModeInfo: "Bearbeitungsmodus - ändern und speichern",
 
@@ -2208,6 +2216,8 @@ const translations = {
       statusJobUpdated: "Zestaw kopii zapasowej zaktualizowany",
       statusJobScheduled: "Zestaw kopii zapasowej zapisany",
       editJob: "Edytuj",
+      cloneJob: "Duplikuj",
+      cloneNameSuffix: "{name} (kopia)",
       deleteJob: "Usuń",
       editModeInfo: "Tryb edycji - modyfikuj i zapisz",
 
@@ -2683,6 +2693,8 @@ const translations = {
       statusJobUpdated: "Conjunto de copia de seguridad actualizado",
       statusJobScheduled: "Conjunto de copia de seguridad guardado",
       editJob: "Editar",
+      cloneJob: "Duplicar",
+      cloneNameSuffix: "{name} (copia)",
       deleteJob: "Eliminar",
       editModeInfo: "Modo de edición - modifique y guarde",
 
