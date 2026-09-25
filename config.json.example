@@ -20,10 +20,10 @@
         },
         "mails": [{
             "from": "sender1@example.com",
-            "to": "receiver1@example.com
+            "to": "receiver1@example.com"
         }, {
             "from": "sender2@example.com",
-            "to": "receiver2@example.com
+            "to": "receiver2@example.com"
         }]
 
     }

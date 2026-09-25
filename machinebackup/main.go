@@ -11,6 +11,9 @@ import (
 
 	"os"
 	"runtime"
+
+	"pbscommon"
+
 	"github.com/tawesoft/golib/v2/dialog"
 )
 
@@ -62,6 +65,7 @@ func loadConfig() *machinebackuplib.Config {
 	config := &machinebackuplib.Config{
 		BackupType: "host",
 	}
+	pbscommon.ApplyPBSEnvVars(&config.BaseURL, &config.AuthID, &config.Secret, &config.Datastore, &config.CertFingerprint)
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {

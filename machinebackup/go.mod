@@ -6,6 +6,7 @@ require (
 	clientcommon v0.0.0
 	github.com/tawesoft/golib/v2 v2.16.0
 	machinebackuplib v0.0.0
+	pbscommon v0.0.0
 )
 
 require (
@@ -22,7 +23,6 @@ require (
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/term v0.36.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
-	pbscommon v0.0.0 // indirect
 	snapshot v0.0.0 // indirect
 )
 

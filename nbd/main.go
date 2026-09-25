@@ -167,6 +167,10 @@ func main() {
 	backupPath := flag.String("path", "", "Path to backup, eg. vm/100/2026-03-01T00:07:00Z/drive-scsi0.img.fidx")
 	listFlag := flag.Bool("list", false, "List available fidx images as 'type/id/time/file' lines and exit (no TUI)")
 	helpFlag := flag.Bool("help", false, "Show help")
+	// Fills any of these still at their flag default from the PBS_* environment
+	// variables before Parse() runs, so an explicit CLI flag still wins over an
+	// env var, which still wins over the built-in default.
+	pbscommon.ApplyPBSEnvVars(baseURLFlag, authIDFlag, secretFlag, datastoreFlag, certFingerprintFlag)
 	flag.Parse()
 	if *helpFlag {
 		flag.PrintDefaults()

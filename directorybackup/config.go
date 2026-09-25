@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"pbscommon"
 )
 
 type MailSendConfig struct {
@@ -102,6 +104,7 @@ func loadConfig() *Config {
 	config := &Config{
 		UseVSS: true,
 	}
+	pbscommon.ApplyPBSEnvVars(&config.BaseURL, &config.AuthID, &config.Secret, &config.Datastore, &config.CertFingerprint)
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {
