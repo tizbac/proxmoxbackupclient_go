@@ -921,6 +921,38 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 			Archives: make(map[string]*BackupFileMeta),
 		}
 
+		// Launch every directory's background size scan CONCURRENTLY, right
+		// now, rather than each directory only starting its own scan once its
+		// own turn in the loop below arrives (that's what backupReal used to
+		// do). Found live 2026-09-26: with the sequential-per-directory
+		// timing, jobProg.sizeEstimate only ever reflected whichever
+		// directories had ALREADY been reached — a job backing up a large
+		// network share first and a small local folder second showed the
+		// network share's own size as "total" for its entire run (correct,
+		// since the local folder's scan genuinely hadn't started yet, so its
+		// size genuinely wasn't known), only growing to the true combined
+		// total once the second directory's turn began. Mick saw this as
+		// "two passes ... rather than the combined progress" even though the
+		// numbers themselves were accurate at each moment. Scanning every
+		// directory up front instead means the combined total is normally
+		// already fully known well before the first directory even finishes,
+		// so the percentage bar climbs smoothly across the whole job from
+		// the start.
+		for _, dir := range opts.BackupObjects {
+			dir := dir
+			go func() {
+				writeBackupLog(fmt.Sprintf("Starting background size calculation for: %s", dir))
+				ctx, cancel := context.WithTimeout(context.Background(), analysisSizeBudget)
+				defer cancel()
+				size, err := calculateDirSizeCtx(ctx, dir)
+				if err != nil {
+					writeBackupLog(fmt.Sprintf("WARNING: Size calculation had errors for %s: %v", dir, err))
+				}
+				jobProg.sizeEstimate.Add(size)
+				writeBackupLog(fmt.Sprintf("Size calculated for %s: %d MB", dir, size/(1024*1024)))
+			}()
+		}
+
 		writeBackupLog(fmt.Sprintf("[Session] Connecting (attempt %d/%d) for %d selected folder(s)",
 			jobAttempt, maxJobAttempts, len(opts.BackupObjects)))
 		client.Connect(false, "host")
@@ -1499,24 +1531,10 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 	// multi-archive session (runBackupInlineInternal) — not per directory here.
 	knownChunks := haxmap.New[string, bool]()
 
-	// Start background scan to calculate this directory's own size, ADDED to
-	// the job-wide estimate every directory in this job shares (drives the
-	// progress %, aggregated across the whole job — see jobProgress's doc
-	// comment). Non-blocking — the backup streams in parallel — but bound it
-	// with the same runaway guard so a whole-drive root can't leave a
-	// goroutine walking forever (junctions are already skipped); a partial
-	// size just makes the % approximate.
-	go func() {
-		writeBackupLog(fmt.Sprintf("Starting background size calculation for: %s", backupdir))
-		ctx, cancel := context.WithTimeout(context.Background(), analysisSizeBudget)
-		defer cancel()
-		size, err := calculateDirSizeCtx(ctx, backupdir)
-		if err != nil {
-			writeBackupLog(fmt.Sprintf("WARNING: Size calculation had errors: %v", err))
-		}
-		jobProg.sizeEstimate.Add(size)
-		writeBackupLog(fmt.Sprintf("Total size calculated: %d MB", size/(1024*1024)))
-	}()
+	// This directory's own contribution to jobProg.sizeEstimate was already
+	// launched, alongside every OTHER directory in this job, right when the
+	// attempt started (see the comment there for why) — nothing to scan here
+	// anymore.
 
 	// ⚠️ Archive + catalog names are now derived from archiveBase (unique per
 	// directory within the session — see archiveBaseName above), NOT the old

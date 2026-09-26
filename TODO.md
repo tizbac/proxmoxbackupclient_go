@@ -663,6 +663,19 @@ itself, so it still holds across a directory boundary.
 `BytesTotal` reported during the run matched the combined 18MB exactly, never just one directory's
 own size. Kept as a permanent regression test (`gui/zz_progress_aggregation_livetest_test.go`).
 
+**Follow-up found live 2026-09-26** (same day, real mixed local+network job on pbstest-winclient):
+Mick — "it seems to show progress in two passes and separately for each folder, rather than
+showing the combined progress." The math itself was already correct at every moment (screenshot 1:
+network folder mid-run, total 1100MB — its own size, since the local folder's scan genuinely hadn't
+started yet; screenshot 2: local folder's turn, total 1245MB — 1100+145, the true combined size,
+confirming the aggregation fix above DID work), but each directory's background size-scan only
+launched once that directory's own turn in the loop arrived, so the combined total only became
+fully known partway through the job — visibly two distinct "totals" rather than one number that
+holds steady from the start. Fixed by hoisting every directory's background scan to launch
+concurrently right when the attempt begins (instead of sequentially, one per directory, as its own
+turn comes up) — the combined total is now normally fully known well before the first directory
+even finishes. Re-verified against the same regression test after the change: still exactly 18MB.
+
 #### ~~VSS/snapshot fired for network-share backup dirs and failed outright~~ ✅ FIXED 2026-09-26
 
 **Found live 2026-09-26**, immediately after the tree-picker network-drive fix below: created a
