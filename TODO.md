@@ -627,6 +627,49 @@ To actually close this gap for a future release:
 
 ### 🎨 GUI polish (this fork)
 
+#### ~~Reports: scheduled-job name reverted to generic "Manual backup - X" label~~ ✅ FIXED 2026-09-26
+
+**Bug found live 2026-09-26:** ran "Backup with VSS" and "Backup without VSS" (two named Backup
+Sets) via Run Now — both showed up in Reports as generic "Manual backup - pbstest-winclient"
+instead of their real names.
+
+**Root cause:** `executeScheduledJob` set `currentScheduledJobName`/`currentScheduledJobPostActions`
+right before calling `StartBackup`, then cleared both via `defer` immediately after. In standalone
+(GUI) mode `StartBackup` is fire-and-forget (the real backup runs in a goroutine and
+`executeScheduledJob` returns immediately), so the defer cleared both fields before the backup even
+started, let alone before `OnComplete` (main.go) read them seconds later to write the Reports entry.
+Same bug therefore also silently broke the post-backup actions (email/run-app/shutdown) added for
+item #7, in standalone mode specifically — not caught by that work's own testing, which never
+exercised the Run Now path with more than one job's timing gap.
+
+**Fix:** stopped clearing via `defer` right after the setter. The three genuinely-final points now
+clear explicitly instead: `OnComplete` (main.go, the normal standalone case, once it has actually
+consumed the values) or one of `executeScheduledJob`'s two synchronous branches (service mode; or
+standalone's immediate pre-goroutine failure, where `OnComplete` never runs). Race-safety verified
+via `operation_queue.go`: the next backup can't acquire the slot until the current one's `OnComplete`
+has already finished, since the slot release is deferred around the same `RunBackupInline` call that
+invokes `OnComplete` synchronously.
+
+Also added, while in the area (Mick: "the detail in the report should add more info, such as the
+mode Scheduled/Manual, VSS On/Off etc"): `JobHistory` gained `BackupType` ("directory"/"machine")
+and `Trigger` ("scheduled"/"startup"/"manual"/"oneoff") fields, threaded through the same
+set-at-start/clear-at-consumption lifecycle as the name fix above. Reports detail pane now shows
+Mode and Type rows, and VSS reads "On"/"Off" text instead of a checkmark/dash. All new i18n keys
+added across all 6 languages, careful to rename around a pre-existing `backupTypeDirectory`/
+`backupTypeMachine` key pair (used elsewhere for the Backup Set type selector) rather than silently
+overriding it — caught via a key-count check before it shipped.
+
+**Verified live** on pbstest-winclient: re-ran both jobs after deploying the fix, Reports showed
+"Backup with VSS"/"Backup without VSS" correctly.
+
+#### ~~Email settings deserve their own Preferences tab~~ ✅ DONE 2026-09-26
+
+Moved the whole SMTP/email-notifications section out of Preferences → Advanced into its own
+"Email" tab (new `prefsEmail` i18n key, all 6 languages), leaving Advanced for the parallel-restore
+toggle and settings export/import. Real SMTP details (found on polaris's Uptime Kuma notification
+config, `mail.beebys.net:465`, `mums@beebys.net`) written into pbstest-winclient's `config.json`
+directly so the tab isn't empty on next open.
+
 #### Relabel restore-mode radio buttons
 
 - [ ] "Restore in-place" → "Restore to original path"

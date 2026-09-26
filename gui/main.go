@@ -1022,6 +1022,8 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 				BackupDirs:    targetDirs,
 				BackupID:      backupID,
 				UseVSS:        useVSS,
+				BackupType:    backupType,
+				Trigger:       a.triggerOr("oneoff"),
 				MessageKey:    msgKey,
 				MessageParams: msgP,
 			}
@@ -1049,6 +1051,15 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			if job := a.currentPostActionsJob(); job != nil {
 				a.runPostBackupActions(*job, success, message)
 			}
+
+			// Clear all three scheduled-job fields now that this run has
+			// actually consumed them — see setScheduledJobName's doc comment
+			// (scheduler.go) for why the clear lives here instead of a defer
+			// right after the setter. A genuine one-off backup left them
+			// already empty/nil, so this is a harmless no-op for that case.
+			a.setScheduledJobName("")
+			a.setScheduledJobPostActions(nil)
+			a.setScheduledJobTrigger("")
 		},
 	}
 
@@ -1299,6 +1310,8 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 				BackupDirs:    backupDevices,
 				BackupID:      backupID,
 				UseVSS:        useVSS,
+				BackupType:    "machine",
+				Trigger:       a.triggerOr("oneoff"),
 				MessageKey:    msgKey,
 				MessageParams: msgP,
 			}
@@ -1316,6 +1329,15 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			if job := a.currentPostActionsJob(); job != nil {
 				a.runPostBackupActions(*job, success, message)
 			}
+
+			// Clear all three scheduled-job fields now that this run has
+			// actually consumed them — see setScheduledJobName's doc comment
+			// (scheduler.go) for why the clear lives here instead of a defer
+			// right after the setter. A genuine one-off backup left them
+			// already empty/nil, so this is a harmless no-op for that case.
+			a.setScheduledJobName("")
+			a.setScheduledJobPostActions(nil)
+			a.setScheduledJobTrigger("")
 		},
 	}
 

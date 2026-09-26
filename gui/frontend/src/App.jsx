@@ -2027,6 +2027,9 @@ function App() {
                 <button className={`tabhead ${prefsTab === 'theme' ? 'active' : ''}`} onClick={() => setPrefsTab('theme')}>
                   {t('themeTitle')}
                 </button>
+                <button className={`tabhead ${prefsTab === 'email' ? 'active' : ''}`} onClick={() => setPrefsTab('email')}>
+                  {t('prefsEmail')}
+                </button>
                 <button className={`tabhead ${prefsTab === 'advanced' ? 'active' : ''}`} onClick={() => setPrefsTab('advanced')}>
                   {t('prefsAdvanced')}
                 </button>
@@ -2150,36 +2153,10 @@ function App() {
 
                 {prefsTab === 'theme' && <ThemePicker />}
 
-                {prefsTab === 'advanced' && (
+                {prefsTab === 'email' && (
                   <>
-                    <h2 style={{marginTop: 0}}>{t('prefsAdvanced')}</h2>
-                    <div className="form-group" style={{marginTop: '20px'}}>
-                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
-                        <input
-                          type="checkbox"
-                          checked={!!config.parallel_restore}
-                          onChange={async (e) => {
-                            const checked = e.target.checked
-                            setConfig({...config, parallel_restore: checked})
-                            if (!SetParallelRestore) return
-                            try {
-                              await SetParallelRestore(checked)
-                              showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
-                            } catch (err) {
-                              showStatus(`❌ ${err}`, 'error')
-                              setConfig({...config, parallel_restore: !checked}) // revert on failure
-                            }
-                          }}
-                        />
-                        <span>{t('parallelRestoreLabel')}</span>
-                      </label>
-                      <div className="info-box" style={{marginTop: '10px'}}>
-                        ℹ️ {t('parallelRestoreHint')}
-                      </div>
-                    </div>
-
-                    <div className="form-group" style={{marginTop: '24px'}}>
-                      <h3 style={{marginBottom: '8px'}}>{t('emailNotificationsTitle')}</h3>
+                    <h2 style={{marginTop: 0}}>{t('prefsEmail')}</h2>
+                    <div className="form-group">
                       <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('emailNotificationsIntro')}</p>
 
                       <div style={{display: 'flex', gap: '10px', marginBottom: '10px'}}>
@@ -2258,6 +2235,36 @@ function App() {
                       </div>
                       <div className="info-box" style={{marginTop: '10px'}}>
                         ℹ️ {t('emailNotificationsHint')}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {prefsTab === 'advanced' && (
+                  <>
+                    <h2 style={{marginTop: 0}}>{t('prefsAdvanced')}</h2>
+                    <div className="form-group" style={{marginTop: '20px'}}>
+                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
+                        <input
+                          type="checkbox"
+                          checked={!!config.parallel_restore}
+                          onChange={async (e) => {
+                            const checked = e.target.checked
+                            setConfig({...config, parallel_restore: checked})
+                            if (!SetParallelRestore) return
+                            try {
+                              await SetParallelRestore(checked)
+                              showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                              setConfig({...config, parallel_restore: !checked}) // revert on failure
+                            }
+                          }}
+                        />
+                        <span>{t('parallelRestoreLabel')}</span>
+                      </label>
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('parallelRestoreHint')}
                       </div>
                     </div>
 
@@ -3803,6 +3810,24 @@ function App() {
                         <span>{selected.status === 'success' ? '✅' : selected.status === 'failed' ? '❌' : '⏳'} {selected.status}</span>
                         <strong>{t('msgColDateTime')}</strong>
                         <span>{new Date(selected.timestamp).toLocaleString()}</span>
+                        {selected.trigger && (
+                          <>
+                            <strong>{t('reportsMode')}</strong>
+                            <span>{
+                              selected.trigger === 'scheduled' ? t('triggerScheduled') :
+                              selected.trigger === 'startup' ? t('triggerStartup') :
+                              selected.trigger === 'manual' ? t('triggerManual') :
+                              selected.trigger === 'oneoff' ? t('triggerOneoff') :
+                              selected.trigger
+                            }</span>
+                          </>
+                        )}
+                        {selected.backupType && (
+                          <>
+                            <strong>{t('reportsType')}</strong>
+                            <span>{selected.backupType === 'machine' ? t('reportsTypeMachine') : t('reportsTypeDirectory')}</span>
+                          </>
+                        )}
                         {selected.message && (
                           <>
                             <strong>{t('msgColMessage')}</strong>
@@ -3812,7 +3837,7 @@ function App() {
                         <strong>{t('backupID')}</strong>
                         <span>{selected.backupId}</span>
                         <strong>VSS</strong>
-                        <span>{selected.useVSS ? '✅' : '—'}</span>
+                        <span>{selected.useVSS ? t('vssOn') : t('vssOff')}</span>
                         {selected.backupDirs && selected.backupDirs.length > 0 && (
                           <>
                             <strong>{t('reportsFolders')}</strong>

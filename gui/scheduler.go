@@ -96,6 +96,20 @@ type JobHistory struct {
 	BackupID   string   `json:"backupId"`
 	UseVSS     bool     `json:"useVSS"`
 
+	// BackupType is "directory" or "machine" — which top-level pipeline ran.
+	// Always set for entries written from now on (each OnComplete closure in
+	// main.go is specific to one type, so it's a literal, not derived from
+	// anything). Empty for entries persisted before this field existed.
+	BackupType string `json:"backupType,omitempty"`
+
+	// Trigger says how this run started: "scheduled" (automatic, interval
+	// fired), "startup" (automatic, RunAtStartup fired), "manual" (user
+	// clicked "Run Now" on a Backup Set), or "oneoff" (a genuine one-off
+	// backup from the Backup tab, with no Backup Set involved at all).
+	// Empty for entries persisted before this field existed — the frontend
+	// shows those as unknown rather than guessing.
+	Trigger string `json:"trigger,omitempty"`
+
 	// MessageKey/MessageParams — see BackupStatus's fields of the same name
 	// in backup_status.go and msgcodes.go's doc comment. Empty on every entry
 	// persisted before this field existed; the frontend falls back to
@@ -362,7 +376,7 @@ func (a *App) RunScheduledJobNow(jobID string) error {
 	}
 
 	writeDebugLog(fmt.Sprintf("RunScheduledJobNow: manually triggering %s", target.Name))
-	go a.executeScheduledJob(*target)
+	go a.executeScheduledJob(*target, "manual")
 	return nil
 }
 
@@ -712,7 +726,7 @@ func (a *App) HandleStartupRun() {
 		// Check if this job is already running (mutex protection)
 		// If scheduler already started it, the mutex will prevent duplicate execution
 		writeDebugLog(fmt.Sprintf("Executing startup job: %s", job.Name))
-		go a.executeScheduledJob(job)
+		go a.executeScheduledJob(job, "startup")
 	}
 }
 
@@ -775,13 +789,15 @@ func (a *App) checkAndRunScheduledJobs() {
 
 		if shouldRun {
 			writeDebugLog(fmt.Sprintf("[Scheduler] Executing scheduled job: %s", job.Name))
-			go a.executeScheduledJob(job)
+			go a.executeScheduledJob(job, "scheduled")
 		}
 	}
 }
 
-// executeScheduledJob executes a scheduled job
-func (a *App) executeScheduledJob(job ScheduledJob) {
+// executeScheduledJob executes a scheduled job. trigger records how this run
+// started ("scheduled", "startup", or "manual") — see
+// currentScheduledJobTrigger's doc comment (app_types.go).
+func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	// Check if job is already running
 	runningJobsMutex.Lock()
 	if runningJobs[job.ID] {
@@ -839,14 +855,26 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 	// currentScheduledJobName's doc comment (app_types.go) for why a plain
 	// field is safe here (operation_queue.go already serializes to one
 	// backup/restore at a time process-wide).
+	//
+	// Deliberately NOT cleared via defer here: in standalone mode,
+	// StartBackup/StartMachineBackup below are fire-and-forget (the real
+	// backup runs in a goroutine and this function returns immediately), so
+	// a defer here would clear the name/post-actions before the backup even
+	// starts, let alone finishes — found live 2026-09-26 when two named
+	// Backup Sets ("Backup with VSS"/"Backup without VSS") both showed up in
+	// Reports as the generic "Manual backup - X" label. The goroutine's
+	// OnComplete (main.go) is what actually consumes these fields once the
+	// real outcome is known, so it is also what clears them — safe due to
+	// operation_queue.go's serialization: the next backup can't acquire the
+	// slot (and call setScheduledJobName again) until OnComplete has fully
+	// finished, since the slot's release is deferred around the same
+	// RunBackupInline call that invokes OnComplete synchronously before
+	// returning. The two branches below (service mode, and standalone's
+	// immediate-failure case) are genuinely synchronous — OnComplete never
+	// runs for either — so they clear explicitly themselves.
 	a.setScheduledJobName(job.Name)
-	defer a.setScheduledJobName("")
-	// Carries this job's post-backup-action settings to startBackupDirect/
-	// startMachineBackupDirect's OnComplete (main.go), which is where the
-	// real outcome is known in standalone mode — see the field's doc comment
-	// (app_types.go) for why.
 	a.setScheduledJobPostActions(&job)
-	defer a.setScheduledJobPostActions(nil)
+	a.setScheduledJobTrigger(trigger)
 
 	runPreBackupApp(job)
 
@@ -902,6 +930,8 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 			BackupDirs: job.BackupDirs,
 			BackupID:   job.BackupID,
 			UseVSS:     job.UseVSS,
+			BackupType: job.BackupType,
+			Trigger:    trigger,
 			MessageKey: MsgBackupCompletedGeneric,
 		}
 
@@ -919,8 +949,14 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 		// Service mode: this synchronous err is the real, final outcome (see
 		// the comment above), so this is the one place to fire post-backup
 		// actions for it — startBackupDirect's OnComplete (main.go) isn't
-		// even compiled into service builds.
+		// even compiled into service builds. Also the right place to clear
+		// the name/post-actions fields set above: nothing else will (see
+		// their setter's doc comment for why the clear moved here/OnComplete
+		// instead of a defer right after the setter).
 		a.runPostBackupActions(job, err == nil, historyEntry.Message)
+		a.setScheduledJobName("")
+		a.setScheduledJobPostActions(nil)
+		a.setScheduledJobTrigger("")
 	} else if err != nil {
 		// Standalone mode: err here is only ever non-nil for an immediate,
 		// synchronous failure (e.g. StartBackup rejecting bad parameters
@@ -929,9 +965,13 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 		// it so it's not silently lost, but don't write a competing history
 		// entry for it. Post-actions still fire here for this specific
 		// immediate-failure case, since OnComplete never runs at all when
-		// the backup never actually started.
+		// the backup never actually started — for the same reason, this is
+		// also where the name/post-actions fields set above must be cleared.
 		writeDebugLog(fmt.Sprintf("Scheduled job %s failed to start: %v", job.Name, err))
 		a.runPostBackupActions(job, false, err.Error())
+		a.setScheduledJobName("")
+		a.setScheduledJobPostActions(nil)
+		a.setScheduledJobTrigger("")
 	}
 
 	// Update job's last run and calculate next run.
