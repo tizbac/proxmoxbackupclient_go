@@ -627,6 +627,50 @@ To actually close this gap for a future release:
 
 ### 🎨 GUI polish (this fork)
 
+#### ~~No way to stop a Backup-Set-triggered ("Run Now") backup once started~~ ✅ FIXED 2026-09-26
+
+Found live on rigel: a real machine (whole-disk) backup was running with no visible Stop button
+anywhere — screenshot showed the "always visible" progress card (Backup Sets landing page) with no
+stop control at all. Root cause: `handleStopBackup`/the Stop button only ever existed inside the
+one-shot backup FORM, which the app navigates away from immediately once a backup actually starts
+(`setShowBackupForm(false)` fires right after). So the Stop button was reachable only for the
+handful of seconds before a backup began, never during it — for every trigger path, not just
+Backup Sets. Added the same Stop button (reusing the existing `handleStopBackup`/`CancelBackup`
+wiring, no new backend needed) directly onto the always-visible progress card itself.
+
+Had to stop that specific rigel backup manually via SSH in the meantime (`sudo kill` the root
+backup process, then `elioctl destroy` the two leftover elastio-snap devices it left behind —
+a plain SIGTERM skips the app's own snapshot-cleanup defer, so that's a manual step after any
+non-UI stop).
+
+#### 🚧 IN PROGRESS: pass the Backup Set name through as the PBS snapshot's comment
+
+Mick: "we don't seem to have comment wired in to pass through to the backup in pbs" — confirmed:
+`BackupManifest.Comment` exists (matches PBS's real manifest schema, already used for READING an
+existing snapshot's comment) but nothing anywhere ever WRITES it — zero `.Comment =` assignments in
+the whole codebase, no GUI field, every backup we create has an empty PBS comment.
+
+**Agreed design** (no new field needed for scheduled Backup Sets — reuse what already exists):
+- Backup Set-triggered runs (scheduled or Run Now): use the Backup Set's own **Name** as the PBS
+  comment (already meaningful, already unique per job, already what Reports labels the run with —
+  `a.scheduledJobNameOr(...)`, already set at the right time by `executeScheduledJob`).
+- A genuine one-off (Backup tab, no Backup Set at all): add a new, explicitly-optional
+  **"Backup Name (for PBS Comment)"** text field to the one-off form. Empty stays the existing
+  generic "Manual backup - X"/"Backup machine - X" fallback (unchanged from today); a typed value
+  overrides it and becomes the comment.
+
+**Done so far:** `BackupOptions.Comment` field added (`gui/backup_inline.go`), wired into the
+directory-backup path's `client.Manifest.Comment`. **Still needed:** thread `comment` through
+`StartBackup`/`StartMachineBackup` (both the `!service` and `service` build variants), the
+`startBackupDirect`/`startMachineBackupDirect` precedence logic (explicit comment wins, else
+`scheduledJobNameOr(fallback)`), `api.BackupRequest`/`BackupHandler` (the service-mode HTTP
+forwarding path), `machinebackuplib.Config`/its own manifest construction (machine backups use a
+separate library, entirely unwired so far), `scheduler.go`'s 3 call sites (pass `""` — scheduled
+jobs get their comment via the existing `currentScheduledJobName` mechanism instead), and the new
+one-off form field itself (state + input + i18n keys, all 6 languages) plus its parameter on the
+two frontend `StartBackup`/`StartMachineBackup` call sites. Paused mid-implementation to prioritize
+the Stop button fix above and today's 3-way redeploy — pick back up next session.
+
 #### No way to set the default PBS server from the UI (Mick, 2026-09-26, on rigel)
 
 **Reported:** "there is no way to set which server is the default in the UI" — Mick had to have me

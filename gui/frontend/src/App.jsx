@@ -2430,6 +2430,18 @@ function App() {
                   {status.message}
                 </div>
               )}
+
+              {/* This card is the ONLY progress display for a backup started via
+                  "Run Now" on a Backup Set (the one-shot form's own Stop button,
+                  below, never even mounts for that path — setShowBackupForm(false)
+                  fires immediately once the backup starts). Found live 2026-09-26:
+                  no way at all to stop a Backup-Set-triggered run once started,
+                  for any backup type including machine/whole-disk ones. */}
+              <div style={{marginTop: '12px'}}>
+                <button className="btn btn-secondary" onClick={handleStopBackup} disabled={!backupRunning}>
+                  {t('stopBackup')}
+                </button>
+              </div>
             </div>
           )}
 

@@ -46,6 +46,14 @@ type BackupOptions struct {
 	ExcludeList     []string // User-configured exclusion patterns applied by the PXAR writer (H-04)
 	DisableSplit    bool     // When true, never auto-split regardless of size
 	SplitSizeBytes  uint64   // Auto-split threshold and per-bin target; 0 = default (SplitThreshold)
+	// Comment is sent as-is as the PBS snapshot's manifest comment (shows up
+	// next to the snapshot in PBS's own web UI). Callers set this to the
+	// triggering Backup Set's own name — see startBackupDirect/
+	// startMachineBackupDirect, which reuse the exact same name (or
+	// "Manual backup - X"/"Backup machine - X" fallback for a genuine
+	// one-off) that Reports already labels the run with, rather than
+	// inventing a second, separate description field.
+	Comment string
 	OnProgress      func(percent float64, message string)
 	// OnComplete's message is always plain, already-formatted English text
 	// (backward-compatible with every existing consumer). key/params are
@@ -806,6 +814,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		CompressionLevel: compressionLevel,
 		Manifest: pbscommon.BackupManifest{
 			BackupID: opts.BackupID,
+			Comment:  opts.Comment,
 		},
 	}
 
