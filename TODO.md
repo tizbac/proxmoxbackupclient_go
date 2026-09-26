@@ -627,6 +627,24 @@ To actually close this gap for a future release:
 
 ### 🎨 GUI polish (this fork)
 
+#### No way to set the default PBS server from the UI (Mick, 2026-09-26, on rigel)
+
+**Reported:** "there is no way to set which server is the default in the UI" — Mick had to have me
+add rigel's production PBS server via a direct `config.json` edit, then couldn't find a way in the
+app itself to make it the default over the pre-existing test server.
+
+**Not yet confirmed whether this is a genuine gap or a discoverability/edge-case issue:** the
+mechanism DOES exist in code — `handleSetDefaultPBS` (App.jsx) → `SetDefaultPBSServer` (main.go) →
+`Config.SetDefaultPBS` (config.go), surfaced as a small "☆ Set Default" text link next to every
+*non*-default server in Preferences → Account's server list (only the non-default ones get the
+link; the current default shows a "⭐ DEFAULT" badge instead, nothing clickable). Rigel had only
+ONE PBS server configured at the time Mick looked (before I added the production one) — with only
+one server, there's nothing else to promote, so no link would show at all, which may be exactly
+what he hit rather than the feature being absent. Needs a real look once rigel has 2+ servers
+configured (it does now) to confirm the link actually appears and works, or whether there's a
+genuine bug/discoverability problem (e.g. the link is easy to miss, or doesn't appear in whatever
+view he was actually looking at).
+
 #### ~~Branded builds could still have their accent color overridden via the Theme tab~~ ✅ DONE 2026-09-26
 
 Prompted by tizbac asking (PR #78) whether filename-based branding (`gui/brand.go`, unchanged —
