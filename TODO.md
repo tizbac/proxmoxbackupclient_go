@@ -627,6 +627,42 @@ To actually close this gap for a future release:
 
 ### 🎨 GUI polish (this fork)
 
+#### ~~Branded builds could still have their accent color overridden via the Theme tab~~ ✅ DONE 2026-09-26
+
+Prompted by tizbac asking (PR #78) whether filename-based branding (`gui/brand.go`, unchanged —
+byte-identical to what's already in his repo) still works under this fork's restyling. Mick: "if
+branding is applied could we potentially just disallow theme picking in the UI, not display the
+option at all, so branded colours cannot be overridden." A real brand's accent is a deliberate
+vendor choice, not a default — the Theme tab (Preferences) is now hidden entirely when
+`brand.is_default` is false, and any theme saved BEFORE a build was rebranded is now ignored
+outright at startup too (not just made unreachable going forward), so a stale saved theme can't
+leak through either. Verified live: renamed the built exe to `NimbusBackup.exe` with zero rebuild —
+title bar and accent immediately switched to the Nimbus identity, confirming the filename mechanism
+itself needs no PR (already identical upstream); the actual gap tizbac was probing is the newer
+Theme Picker layered on top, which does NOT exist upstream yet — a PR for the general UI/theme work
+is under discussion, not yet started.
+
+#### ~~Progress bar/total size not aggregated across multiple directories~~ ✅ FIXED 2026-09-26
+
+**Mick (2026-09-26):** backed up one local folder + one network share (mixed job) — "it still said
+total 1.1GB but the end file was 1.2GB with both folders. Maybe the progress bar isn't aggregating
+both folders sizes for the progress?" Confirmed: exactly that. Each directory's background
+size-scan populated a PRIVATE, per-directory `*atomic.Uint64` fed straight into that directory's
+own `ChunkState` — the live "Data: X / Y MB" readout and percentage were always scoped to
+whichever ONE directory was currently being archived, never the sum across the whole job.
+
+**Fix:** new `jobProgress` struct (`gui/backup_inline.go`), one instance shared across every
+directory in an attempt: `sizeEstimate` (every directory's own background-scanned size, summed as
+each one's scan completes) and `bytesDoneBase` (bytes already archived by directories that
+finished before the current one — repurposes the pre-existing job-wide `totalSize` accumulator
+that already tracked exactly this for the final report, now also feeding the LIVE baseline). The
+backwards-progress guard moved from per-`ChunkState` (reset fresh each directory) to `jobProgress`
+itself, so it still holds across a directory boundary.
+
+**Verified live**: two directories of known, different sizes (3MB + 15MB) backed up in one job —
+`BytesTotal` reported during the run matched the combined 18MB exactly, never just one directory's
+own size. Kept as a permanent regression test (`gui/zz_progress_aggregation_livetest_test.go`).
+
 #### ~~VSS/snapshot fired for network-share backup dirs and failed outright~~ ✅ FIXED 2026-09-26
 
 **Found live 2026-09-26**, immediately after the tree-picker network-drive fix below: created a
@@ -649,10 +685,9 @@ rather than failing the whole run.
 
 **Verified:** `pathSupportsSnapshot` tested live against real paths (both a raw UNC path and a
 mapped network drive letter correctly return false; local drives correctly return true). Full
-`go build`/`vet` clean on Windows and Linux. Not yet re-tested end-to-end with VSS actually
-enabled against the real network-share Backup Set (Mick confirmed the backup itself completes fine
-with VSS off, 66%/44 MB/s — this fix makes that the automatic behavior when VSS is on too, rather
-than requiring the checkbox to be manually unticked).
+`go build`/`vet` clean on Windows and Linux. **Confirmed live end-to-end** (Mick, 2026-09-26):
+re-ran the network-share Backup Set with VSS **on** this time — completed, correctly skipped the
+snapshot for the network path automatically.
 
 #### ~~Tree picker only shows local drives, not mapped network shares~~ ✅ FIXED 2026-09-26
 

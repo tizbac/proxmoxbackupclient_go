@@ -602,8 +602,15 @@ function App() {
           if (b) {
             setBrand(b)
             // A saved Theme choice (Preferences) always wins over the brand's own
-            // default accent — it's a later, more specific, explicit user choice.
-            if (await hasStoredTheme()) {
+            // default accent — it's a later, more specific, explicit user choice —
+            // but only for the DEFAULT (unbranded) identity. A real brand's accent
+            // is a deliberate vendor choice, not a default to override: the Theme
+            // tab is hidden entirely for one (see the Preferences tab bar), but
+            // that alone wouldn't undo a theme saved BEFORE this build was
+            // rebranded, so ignore any stored theme outright whenever a real
+            // brand is active rather than relying only on the picker being
+            // unreachable going forward.
+            if (b.is_default && await hasStoredTheme()) {
               await applyStoredTheme()
             } else {
               const root = document.documentElement.style
@@ -2024,9 +2031,15 @@ function App() {
                   {t('prefsAccountInfo')}
                 </button>
                 <button className="tabhead disabled" disabled title={t('comingSoon')}>{t('prefsBackupOptions')}</button>
-                <button className={`tabhead ${prefsTab === 'theme' ? 'active' : ''}`} onClick={() => setPrefsTab('theme')}>
-                  {t('themeTitle')}
-                </button>
+                {/* A real brand's own accent is a deliberate vendor choice, not a
+                    default the user is meant to override — hide the picker entirely
+                    for a branded build (brand.is_default false) rather than merely
+                    disabling it, so there is no UI path to a non-brand color at all. */}
+                {brand.is_default && (
+                  <button className={`tabhead ${prefsTab === 'theme' ? 'active' : ''}`} onClick={() => setPrefsTab('theme')}>
+                    {t('themeTitle')}
+                  </button>
+                )}
                 <button className={`tabhead ${prefsTab === 'email' ? 'active' : ''}`} onClick={() => setPrefsTab('email')}>
                   {t('prefsEmail')}
                 </button>
@@ -2151,7 +2164,7 @@ function App() {
                   </>
                 )}
 
-                {prefsTab === 'theme' && <ThemePicker />}
+                {prefsTab === 'theme' && brand.is_default && <ThemePicker />}
 
                 {prefsTab === 'email' && (
                   <>

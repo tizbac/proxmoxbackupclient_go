@@ -37,7 +37,7 @@ type BackupOptions struct {
 	Datastore       string
 	Namespace       string
 	CertFingerprint string
-	BackupObjects      []string // Multiple directories or drives to backup
+	BackupObjects   []string // Multiple directories or drives to backup
 	BackupID        string
 	BackupType      string // "host" for directory, "vm" for machine
 	Kind            string // "disk", "directory", or "machine"
@@ -46,7 +46,7 @@ type BackupOptions struct {
 	ExcludeList     []string // User-configured exclusion patterns applied by the PXAR writer (H-04)
 	DisableSplit    bool     // When true, never auto-split regardless of size
 	SplitSizeBytes  uint64   // Auto-split threshold and per-bin target; 0 = default (SplitThreshold)
-	OnProgress func(percent float64, message string)
+	OnProgress      func(percent float64, message string)
 	// OnComplete's message is always plain, already-formatted English text
 	// (backward-compatible with every existing consumer). key/params are
 	// additive — see msgcodes.go's doc comment — and let a consumer that
@@ -225,27 +225,48 @@ type uploadJob struct {
 	data   []byte
 }
 
+// jobProgress is shared across every directory in one backup attempt so the
+// live progress bar reflects the WHOLE job, not just whichever directory is
+// currently being archived. Found live 2026-09-26: backed up one local
+// folder and one network share in the same Backup Set — the displayed
+// running total stayed at the size of whichever directory's own background
+// scan happened to have populated a PRIVATE, per-directory total, even
+// though the two folders together came to more. sizeEstimate and
+// bytesDoneBase both only ever grow within one attempt (a retried attempt
+// gets a fresh jobProgress, same lifetime as the pre-existing totalSize
+// accumulator this replaces), so the percentage this feeds is monotonic by
+// construction; lastPercent is the belt-and-braces guard against a momentary
+// dip right at a directory boundary (sizeEstimate growing slightly out of
+// step with bytesDoneBase as each directory's own scan completes at its own
+// pace).
+type jobProgress struct {
+	sizeEstimate  atomic.Uint64 // sum of every directory's own background-scanned size, growing as each dir's scan completes
+	bytesDoneBase atomic.Uint64 // bytes already archived by directories that finished before the one currently in progress
+
+	lastPercentMu sync.Mutex
+	lastPercent   float64
+}
+
 type ChunkState struct {
-	assignments         []string
+	assignments        []string
 	assignmentsOffset  []uint64
-	pos                 uint64
-	wrid                uint64
-	chunkcount          uint64
-	chunkdigests        hash.Hash
+	pos                uint64
+	wrid               uint64
+	chunkcount         uint64
+	chunkdigests       hash.Hash
 	currentChunk       []byte
-	C                   pbscommon.Chunker
-	newchunk            *atomic.Uint64
-	reusechunk          *atomic.Uint64
-	failedchunk         *atomic.Uint64     // Track failed chunk uploads
-	knownChunks         *haxmap.Map[string, bool]
-	onProgress          func(float64, string)
-	onStats             func(*BackupProgressStats) // Structured live stats for the GUI (nil for the catalog stream)
-	currentDir          string                     // Directory currently being archived, for the stats payload
-	lastProgressReport  uint64
-	lastProgressPercent float64            // Track last reported percentage to prevent backwards progress
-	totalSize           *atomic.Uint64     // Total size, updated by background scan
-	uploadErrors        []string           // Collect upload errors to report at the end
-	errorsMutex         sync.Mutex         // Protect uploadErrors slice
+	C                  pbscommon.Chunker
+	newchunk           *atomic.Uint64
+	reusechunk         *atomic.Uint64
+	failedchunk        *atomic.Uint64 // Track failed chunk uploads
+	knownChunks        *haxmap.Map[string, bool]
+	onProgress         func(float64, string)
+	onStats            func(*BackupProgressStats) // Structured live stats for the GUI (nil for the catalog stream)
+	currentDir         string                     // Directory currently being archived, for the stats payload
+	lastProgressReport uint64
+	progress           *jobProgress // Shared job-wide totals — see jobProgress's doc comment
+	uploadErrors       []string     // Collect upload errors to report at the end
+	errorsMutex        sync.Mutex   // Protect uploadErrors slice
 
 	// Pipelined chunk upload (added 2026-09-24, see chunkUploadWorkers doc
 	// comment). HandleData/EOF stay single-threaded for scanning/hashing/
@@ -258,7 +279,7 @@ type ChunkState struct {
 	fatalErr   error
 }
 
-func (c *ChunkState) Init(client *pbscommon.PBSClient, newchunk *atomic.Uint64, reusechunk *atomic.Uint64, failedchunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool], onProgress func(float64, string), totalSize *atomic.Uint64, onStats func(*BackupProgressStats), currentDir string) {
+func (c *ChunkState) Init(client *pbscommon.PBSClient, newchunk *atomic.Uint64, reusechunk *atomic.Uint64, failedchunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool], onProgress func(float64, string), progress *jobProgress, onStats func(*BackupProgressStats), currentDir string) {
 	c.assignments = make([]string, 0)
 	c.assignmentsOffset = make([]uint64, 0)
 	c.pos = 0
@@ -278,8 +299,7 @@ func (c *ChunkState) Init(client *pbscommon.PBSClient, newchunk *atomic.Uint64, 
 	c.onStats = onStats
 	c.currentDir = currentDir
 	c.lastProgressReport = 0
-	c.lastProgressPercent = 0.0
-	c.totalSize = totalSize
+	c.progress = progress
 	c.uploadErrors = make([]string, 0)
 	c.startUploadWorkers(client)
 }
@@ -404,21 +424,27 @@ func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
 				sizeMB, c.newchunk.Load(), c.reusechunk.Load())
 		}
 
-		// Calculate progress based on total size if available
+		// Calculate progress against the WHOLE JOB's total, not just this one
+		// directory's — bytesDone/totalSize both sum across every directory in
+		// the job (see jobProgress's doc comment). c.pos alone is only this
+		// directory's own bytes; bytesDoneBase adds back what earlier
+		// directories in the same job already contributed.
 		var progress float64
-		totalSize := c.totalSize.Load()
+		bytesDoneBase := c.progress.bytesDoneBase.Load()
+		bytesDone := bytesDoneBase + c.pos
+		totalSize := c.progress.sizeEstimate.Load()
 		if totalSize > 0 {
 			// Progress from 10% to 90% based on bytes processed
-			progress = 0.1 + (float64(c.pos)/float64(totalSize))*0.8
+			progress = 0.1 + (float64(bytesDone)/float64(totalSize))*0.8
 			if progress > 0.9 {
 				progress = 0.9
 			}
 			if failed > 0 {
 				msg = fmt.Sprintf("Processed: %d / %d MB (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
-					sizeMB, totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load(), failed)
+					bytesDone/(1024*1024), totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load(), failed)
 			} else {
 				msg = fmt.Sprintf("Processed: %d / %d MB (New: %d, Reused: %d chunks)",
-					sizeMB, totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load())
+					bytesDone/(1024*1024), totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load())
 			}
 		} else {
 			// No total size yet, show indeterminate progress
@@ -428,11 +454,18 @@ func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
 			}
 		}
 
-		// Never report backwards progress - totalSize can increase during backup
-		if progress < c.lastProgressPercent {
-			progress = c.lastProgressPercent
+		// Never report backwards progress. This guard is on the SHARED
+		// jobProgress, not this one directory's ChunkState, precisely so it
+		// still holds across a directory boundary: totalSize can grow as each
+		// directory's own background size-scan completes at its own pace,
+		// which without this could otherwise show as a momentary dip right
+		// when a new directory starts.
+		c.progress.lastPercentMu.Lock()
+		if progress < c.progress.lastPercent {
+			progress = c.progress.lastPercent
 		}
-		c.lastProgressPercent = progress
+		c.progress.lastPercent = progress
+		c.progress.lastPercentMu.Unlock()
 
 		c.onProgress(progress, msg)
 
@@ -440,7 +473,7 @@ func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
 		if c.onStats != nil {
 			c.onStats(&BackupProgressStats{
 				Percent:      progress,
-				BytesDone:    c.pos,
+				BytesDone:    bytesDone,
 				BytesTotal:   totalSize,
 				NewChunks:    c.newchunk.Load(),
 				ReusedChunks: c.reusechunk.Load(),
@@ -664,7 +697,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	if opts.Kind == "machine" {
 		return runMachineBackupInline(opts)
 	}
-	
+
 	// Default to directory backup for "disk" or "directory" kinds
 	// (existing logic handles these cases)
 
@@ -785,12 +818,16 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	// attempt loop below and keep accumulating across a whole-job retry: chunks
 	// uploaded in a failed attempt are real work PBS already has (content-
 	// addressed dedup), not phantom double-counting — only the FINAL committed
-	// attempt's directories ever contribute to totalSize / the reported
-	// Directories list.
+	// attempt's directories ever contribute to jobProg.bytesDoneBase / the
+	// reported Directories list. jobProg.bytesDoneBase doubles as both the
+	// running total fed to BackupStatus.TotalBytes below AND the live
+	// progress-bar baseline every directory's own ChunkState reads from (see
+	// jobProgress's doc comment) — same one accumulator, same lifetime the
+	// old totalSize this replaces had.
 	var newchunk atomic.Uint64
 	var reusechunk atomic.Uint64
 	var failedchunk atomic.Uint64
-	var totalSize atomic.Uint64
+	jobProg := &jobProgress{}
 	var dirErrors []string
 	var dirResults []DirResult
 	var allReadErrors, allSkipped, allExcluded []string
@@ -807,7 +844,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 			BackupID:         opts.BackupID,
 			BackupTime:       client.Manifest.BackupTime,
 			DurationSec:      time.Since(startTime).Seconds(),
-			TotalBytes:       totalSize.Load(),
+			TotalBytes:       jobProg.bytesDoneBase.Load(),
 			NewChunks:        newchunk.Load(),
 			ReusedChunks:     reusechunk.Load(),
 			FailedChunks:     failedchunk.Load(),
@@ -895,7 +932,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		// below writes its catalog data into this same index; it is
 		// finalized once, after the loop, not per directory.
 		catalogChunk := ChunkState{}
-		catalogChunk.Init(client, &newchunk, &reusechunk, &failedchunk, haxmap.New[string, bool](), nil, &totalSize, nil, "")
+		catalogChunk.Init(client, &newchunk, &reusechunk, &failedchunk, haxmap.New[string, bool](), nil, jobProg, nil, "")
 		var catalogIndexErr error
 		catalogChunk.wrid, catalogIndexErr = client.CreateDynamicIndex("catalog.pcat1.didx")
 		if catalogIndexErr != nil {
@@ -924,7 +961,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 
 			archiveBase := archiveBaseName(dir, usedArchiveNames)
 			dirBytes, aclMeta, dirSkipped, dirExcluded, dirReadErrors, err :=
-				backupDirectory(client, &newchunk, &reusechunk, &failedchunk, dir, archiveBase, opts.UseVSS, progress, opts.OnStats, opts.ExcludeList, sharedCatalog)
+				backupDirectory(client, &newchunk, &reusechunk, &failedchunk, dir, archiveBase, opts.UseVSS, progress, jobProg, opts.OnStats, opts.ExcludeList, sharedCatalog)
 
 			allSkipped = append(allSkipped, dirSkipped...)
 			allExcluded = append(allExcluded, dirExcluded...)
@@ -948,7 +985,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 			if aclMeta != nil {
 				combinedACLs.Archives[archiveBase] = aclMeta
 			}
-			totalSize.Add(dirBytes)
+			jobProg.bytesDoneBase.Add(dirBytes)
 			dirResults = append(dirResults, DirResult{Path: dir, OK: true})
 			successfulDirs++
 		}
@@ -1074,7 +1111,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 
 	// Calculate backup duration and size
 	duration := time.Since(startTime)
-	totalSizeMB := float64(totalSize.Load()) / (1024 * 1024)
+	totalSizeMB := float64(jobProg.bytesDoneBase.Load()) / (1024 * 1024)
 
 	// Build completion message with duration, size, and chunk stats
 	failed := failedchunk.Load()
@@ -1176,7 +1213,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		BackupID:         opts.BackupID,
 		BackupTime:       client.Manifest.BackupTime,
 		DurationSec:      duration.Seconds(),
-		TotalBytes:       totalSize.Load(),
+		TotalBytes:       jobProg.bytesDoneBase.Load(),
 		NewChunks:        newchunk.Load(),
 		ReusedChunks:     reusechunk.Load(),
 		FailedChunks:     failed,
@@ -1215,7 +1252,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 // runMachineBackupInline handles machine backup using machinebackuplib
 func runMachineBackupInline(opts BackupOptions) error {
 	startTime := time.Now()
-	
+
 	// Create machine backup config from opts
 	cfg := &machinebackuplib.Config{
 		BaseURL:         opts.BaseURL,
@@ -1240,7 +1277,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 		}
 		return opts.Ctx != nil && opts.Ctx.Err() != nil
 	}
-	
+
 	// Perform machine backup
 	_, err := machinebackuplib.Backup(cfg, progress)
 	if err != nil {
@@ -1283,7 +1320,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 			MessageParams: completionParams,
 		})
 	}
-	
+
 	return nil
 }
 
@@ -1397,7 +1434,7 @@ func (s *sharedCatalogCoordinator) writeCB(client *pbscommon.PBSClient) pbscommo
 // skipped/excluded/read-error path lists for this directory. catalog is the
 // whole job attempt's shared catalog coordinator (see above) — every
 // directory's catalog data goes through the same one.
-func backupDirectory(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, archiveBase string, usevss bool, progress func(float64, string), onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator) (uint64, *BackupFileMeta, []string, []string, []string, error) {
+func backupDirectory(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, archiveBase string, usevss bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator) (uint64, *BackupFileMeta, []string, []string, []string, error) {
 	writeBackupLog(fmt.Sprintf("Starting backup of %s", backupdir))
 	originalPath := backupdir
 
@@ -1435,16 +1472,16 @@ func backupDirectory(client *pbscommon.PBSClient, newchunk, reusechunk, failedch
 				break
 			}
 			var e error
-			bytesArchived, aclMeta, skipped, excluded, readErrs, e = backupReal(client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, onStats, excludeList, catalog)
+			bytesArchived, aclMeta, skipped, excluded, readErrs, e = backupReal(client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, jobProg, onStats, excludeList, catalog)
 			return e
 		})
 		return bytesArchived, aclMeta, skipped, excluded, readErrs, err
 	}
 
-	return backupReal(client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, onStats, excludeList, catalog)
+	return backupReal(client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, jobProg, onStats, excludeList, catalog)
 }
 
-func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, originalPath string, archiveBase string, vssUsed bool, progress func(float64, string), onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator) (returnBytes uint64, returnMeta *BackupFileMeta, returnSkipped, returnExcluded, returnReadErrors []string, returnErr error) {
+func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, originalPath string, archiveBase string, vssUsed bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator) (returnBytes uint64, returnMeta *BackupFileMeta, returnSkipped, returnExcluded, returnReadErrors []string, returnErr error) {
 	// Panic recovery - critical to prevent silent crashes during backup
 	defer func() {
 		if r := recover(); r != nil {
@@ -1462,11 +1499,13 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 	// multi-archive session (runBackupInlineInternal) — not per directory here.
 	knownChunks := haxmap.New[string, bool]()
 
-	// Start background scan to calculate total size (drives the progress %). This
-	// is non-blocking — the backup streams in parallel — but bound it with the same
-	// runaway guard so a whole-drive root can't leave a goroutine walking forever
-	// (junctions are already skipped); a partial size just makes the % approximate.
-	totalSize := &atomic.Uint64{}
+	// Start background scan to calculate this directory's own size, ADDED to
+	// the job-wide estimate every directory in this job shares (drives the
+	// progress %, aggregated across the whole job — see jobProgress's doc
+	// comment). Non-blocking — the backup streams in parallel — but bound it
+	// with the same runaway guard so a whole-drive root can't leave a
+	// goroutine walking forever (junctions are already skipped); a partial
+	// size just makes the % approximate.
 	go func() {
 		writeBackupLog(fmt.Sprintf("Starting background size calculation for: %s", backupdir))
 		ctx, cancel := context.WithTimeout(context.Background(), analysisSizeBudget)
@@ -1475,7 +1514,7 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 		if err != nil {
 			writeBackupLog(fmt.Sprintf("WARNING: Size calculation had errors: %v", err))
 		}
-		totalSize.Store(size)
+		jobProg.sizeEstimate.Add(size)
 		writeBackupLog(fmt.Sprintf("Total size calculated: %d MB", size/(1024*1024)))
 	}()
 
@@ -1543,7 +1582,7 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 	writeBackupLog(fmt.Sprintf("Known chunks: %d", knownChunks.Len()))
 
 	pxarChunk := ChunkState{}
-	pxarChunk.Init(client, newchunk, reusechunk, failedchunk, knownChunks, progress, totalSize, onStats, backupdir)
+	pxarChunk.Init(client, newchunk, reusechunk, failedchunk, knownChunks, progress, jobProg, onStats, backupdir)
 
 	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
 	if err != nil {
