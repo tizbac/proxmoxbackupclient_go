@@ -769,13 +769,27 @@ toggle and settings export/import. Real SMTP details (found on polaris's Uptime 
 config, `mail.beebys.net:465`, `mums@beebys.net`) written into pbstest-winclient's `config.json`
 directly so the tab isn't empty on next open.
 
-#### Relabel restore-mode radio buttons
+#### ~~Relabel restore-mode radio buttons~~ ✅ DONE 2026-09-26
 
-- [ ] "Restore in-place" → "Restore to original path"
-- [ ] the other restore-mode option → "Restore to alternate path"
+`restoreModeInPlace`/`restoreModeAlternate` (App.jsx's restore-destination radio group) reworded
+in all 6 languages, matched to each language's own already-established noun for the alternate
+option (e.g. Italian/English use "path", French/German/Polish/Spanish use "location/place") rather
+than forcing a literal "path" cognate everywhere — parallel construction within each language, not
+a mechanical find-replace.
 
-Find the relevant labels/keys in `App.jsx` + `translations.js` (all 6 languages) — likely the
-restore-destination radio group on the Restore tab.
+#### 🌍 Language switcher: dropdown UI ready for 18 languages, 12 new ones still need real translations
+
+Prompted by discussing Romanian/Latvian/Ukrainian/Baltic-language UK migrant communities. Added to
+`LanguageSwitcher.jsx`: bg/cs/el/hu/lv/lt/nl/pt/ro/sk/tr/uk alongside the existing 6, tightened row
+padding (10px→5px vertical) and gave the dropdown panel a fixed 210px width (sized for the longest
+native name — Nederlands/Slovenčina/Українська — independent of whichever language happens to be
+selected, so it never has to wrap), plus a `maxHeight`/scroll safety net.
+
+**Not yet done:** `translations.js` itself only has real content for the original 6 — selecting any
+of the 12 new languages right now will show missing-key fallbacks almost everywhere (~490 lines of
+real translation needed per language, ~5,900 lines total). Do NOT ship the widened switcher without
+first either filling in the real translations or gating the new entries behind having content —
+right now it's UI-only, would present broken/empty screens if someone actually picked e.g. Romanian.
 
 #### ~~Restore progress bar doesn't match the backup one~~ ✅ FIXED 2026-09-25
 Restore now uses the same `.progress`/`.progress-bar` CSS classes as backup (30px, themed via

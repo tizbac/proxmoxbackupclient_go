@@ -5,13 +5,29 @@ function LanguageSwitcher() {
   const { language, setLanguage } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
 
+  // Sorted alphabetically by native name — same convention as before, just
+  // extended. Portuguese/Dutch each have two plausible flags (PT/BR,
+  // NL/BE); picked the European-market one deliberately rather than
+  // leaving it arbitrary.
   const languages = [
-    { code: 'en', name: 'English', flag: '🇬🇧' },
-    { code: 'it', name: 'Italiano', flag: '🇮🇹' },
-    { code: 'fr', name: 'Français', flag: '🇫🇷' },
-    { code: 'pl', name: 'Polski', flag: '🇵🇱' },
+    { code: 'bg', name: 'Български', flag: '🇧🇬' },
+    { code: 'cs', name: 'Čeština', flag: '🇨🇿' },
     { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
-    { code: 'es', name: 'Español', flag: '🇪🇸' }
+    { code: 'en', name: 'English', flag: '🇬🇧' },
+    { code: 'es', name: 'Español', flag: '🇪🇸' },
+    { code: 'el', name: 'Ελληνικά', flag: '🇬🇷' },
+    { code: 'fr', name: 'Français', flag: '🇫🇷' },
+    { code: 'hu', name: 'Magyar', flag: '🇭🇺' },
+    { code: 'it', name: 'Italiano', flag: '🇮🇹' },
+    { code: 'lv', name: 'Latviešu', flag: '🇱🇻' },
+    { code: 'lt', name: 'Lietuvių', flag: '🇱🇹' },
+    { code: 'nl', name: 'Nederlands', flag: '🇳🇱' },
+    { code: 'pl', name: 'Polski', flag: '🇵🇱' },
+    { code: 'pt', name: 'Português', flag: '🇵🇹' },
+    { code: 'ro', name: 'Română', flag: '🇷🇴' },
+    { code: 'sk', name: 'Slovenčina', flag: '🇸🇰' },
+    { code: 'tr', name: 'Türkçe', flag: '🇹🇷' },
+    { code: 'uk', name: 'Українська', flag: '🇺🇦' },
   ]
 
   const currentLanguage = languages.find(lang => lang.code === language) || languages[0]
@@ -52,7 +68,13 @@ function LanguageSwitcher() {
         position: 'absolute',
         top: '100%',
         left: 0,
-        width: '100%',
+        // Fixed to fit the longest native name (Nederlands/Slovenčina/
+        // Українська) regardless of which language is currently selected —
+        // not tied to the trigger button's own width, so the panel never
+        // has to wrap or crowd its longest entries.
+        width: '210px',
+        maxHeight: '70vh',
+        overflowY: 'auto',
         backgroundColor: 'white',
         border: '1px solid #ddd',
         borderRadius: '8px',
@@ -69,7 +91,7 @@ function LanguageSwitcher() {
           alignItems: 'center',
           gap: '8px',
           width: '100%',
-          padding: '10px 16px',
+          padding: '5px 16px',
           border: 'none',
           backgroundColor: 'transparent',
           cursor: 'pointer',
