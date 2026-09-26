@@ -627,6 +627,33 @@ To actually close this gap for a future release:
 
 ### 🎨 GUI polish (this fork)
 
+#### ~~VSS/snapshot fired for network-share backup dirs and failed outright~~ ✅ FIXED 2026-09-26
+
+**Found live 2026-09-26**, immediately after the tree-picker network-drive fix below: created a
+Backup Set pointed at `\\DEEPTHOUGHT\backup-8000gb\Test Files` with VSS on — failed outright:
+`VSS_VOLUME_SUPPORT - snapshots are not supported for drive \\DEEPTHOUGHT\backup-8000gb\` (also
+surfaced a `%!s(<nil>)` Go formatting artifact from the third-party `go-vss` library's own error
+message, sidestepped rather than patched, since the real fix means that code path is never reached
+for a network path at all). Mick: "we need to gate VSS to not fire for network shares m, including
+if there is a mix of local and network drives."
+
+**Fix:** new `pathSupportsSnapshot(path string) bool` (`gui/snapshot_path_windows.go` /
+`_linux.go` / `_other.go`) — Windows checks `GetDriveType` on the path's volume root (handles both
+a raw UNC path and a drive letter mapped to one, verified live against both forms); Linux checks
+`Statfs` against known network/pseudo filesystem magic numbers (NFS/SMB/CIFS/FUSE) so a CIFS/NFS
+mount gets the same graceful fallback rather than elastio-snap/dattobd failing to find a backing
+block device. `backupDirectory` (`gui/backup_inline.go`) checks this **per directory**, not once
+for the whole job — a job backing up one local folder and one network share still gets a real
+snapshot for the local one; only the network path silently backs up live instead, logged clearly
+rather than failing the whole run.
+
+**Verified:** `pathSupportsSnapshot` tested live against real paths (both a raw UNC path and a
+mapped network drive letter correctly return false; local drives correctly return true). Full
+`go build`/`vet` clean on Windows and Linux. Not yet re-tested end-to-end with VSS actually
+enabled against the real network-share Backup Set (Mick confirmed the backup itself completes fine
+with VSS off, 66%/44 MB/s — this fix makes that the automatic behavior when VSS is on too, rather
+than requiring the checkbox to be manually unticked).
+
 #### ~~Tree picker only shows local drives, not mapped network shares~~ ✅ FIXED 2026-09-26
 
 **Mick (2026-09-26):** "the tree picker only lists local drives, so if i map a network shared it

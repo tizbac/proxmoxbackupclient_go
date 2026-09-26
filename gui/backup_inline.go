@@ -1401,6 +1401,21 @@ func backupDirectory(client *pbscommon.PBSClient, newchunk, reusechunk, failedch
 	writeBackupLog(fmt.Sprintf("Starting backup of %s", backupdir))
 	originalPath := backupdir
 
+	// A network/remote path (a UNC share, or a drive letter mapped to one)
+	// can't be snapshotted — VSS on Windows and the elastio-snap/dattobd
+	// block-device snapshot on Linux both operate on a real local volume,
+	// which a network share isn't. Found live 2026-09-26: a Backup Set
+	// pointed at \\DEEPTHOUGHT\backup-8000gb with VSS on failed outright
+	// ("VSS_VOLUME_SUPPORT - snapshots are not supported for drive ...").
+	// Checked per-directory (not once for the whole job) so a job mixing
+	// local and network paths still gets a real snapshot for the local
+	// ones — only the network path(s) fall back to a live, unsnapshotted
+	// read, same as if VSS had never been requested for that one directory.
+	if usevss && !pathSupportsSnapshot(backupdir) {
+		writeBackupLog(fmt.Sprintf("Skipping snapshot for %s: network/remote paths don't support volume snapshots — backing up live instead", backupdir))
+		usevss = false
+	}
+
 	if usevss {
 		// VSS setup (checking writer status, creating the shadow copy) can take
 		// a few seconds with nothing else to report — without this the UI is
