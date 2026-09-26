@@ -627,6 +627,14 @@ To actually close this gap for a future release:
 
 ### 🎨 GUI polish (this fork)
 
+#### Relabel restore-mode radio buttons
+
+- [ ] "Restore in-place" → "Restore to original path"
+- [ ] the other restore-mode option → "Restore to alternate path"
+
+Find the relevant labels/keys in `App.jsx` + `translations.js` (all 6 languages) — likely the
+restore-destination radio group on the Restore tab.
+
 #### ~~Restore progress bar doesn't match the backup one~~ ✅ FIXED 2026-09-25
 Restore now uses the same `.progress`/`.progress-bar` CSS classes as backup (30px, themed via
 `var(--accent)`, percentage rendered inside the bar) instead of a bespoke 8px div hardcoded to
