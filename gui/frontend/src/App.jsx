@@ -2855,11 +2855,14 @@ function App() {
                 <summary style={{cursor: 'pointer', color: '#666', fontSize: '0.9em'}}>
                   {t('advancedEditAsText')}
                 </summary>
-                {/* Raw path entry, unchanged from before the tree picker — kept for
-                    UNC paths (\\server\share) and anything else ListDirectory can't
-                    browse (it only enumerates local drive letters), and for
-                    copy-pasting a long list. The tree and this box share the same
-                    backupDirs state, so either one stays in sync with the other. */}
+                {/* Raw path entry, unchanged from before the tree picker — kept for a
+                    bare UNC path with no drive letter assigned at all (the tree picker
+                    now also lists mapped network drives, including ones invisible to
+                    an elevated process via the HKCU\Network registry fallback — see
+                    dirlist_windows.go — but a share that was never mapped to a letter
+                    still has no root node to expand into), and for copy-pasting a long
+                    list. The tree and this box share the same backupDirs state, so
+                    either one stays in sync with the other. */}
                 <textarea
                   value={backupDirs}
                   onChange={(e) => {

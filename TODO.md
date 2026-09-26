@@ -627,6 +627,30 @@ To actually close this gap for a future release:
 
 ### 🎨 GUI polish (this fork)
 
+#### ~~Tree picker only shows local drives, not mapped network shares~~ ✅ FIXED 2026-09-26
+
+**Mick (2026-09-26):** "the tree picker only lists local drives, so if i map a network shared it
+doesn't present as available to choose a folder for backup." Confirmed Windows-specific (Linux
+network shares are ordinary filesystem mounts, so they already work); confirmed the app was running
+elevated ("Run as Administrator") when this was seen.
+
+**Root cause:** `GetLogicalDrives()` (`dirlist_windows.go`) only reports drives visible in the
+calling process's own logon session. A drive mapped in the normal interactive desktop session gets
+a SEPARATE logon session when a process is later elevated via UAC ("Run as Administrator") — a
+well-documented Windows behavior — so the elevated app's own `GetLogicalDrives()` call genuinely
+can't see it at the OS level, confirmed via a direct Go test isolating just that one API call.
+`GetDriveType` itself has no bias against network drives (`DRIVE_REMOTE` shows up fine when the
+session isn't split) — the problem is purely session visibility, not drive-type filtering.
+
+**Fix:** `listRoots()` now falls back to `HKCU\Network\<Letter>\RemotePath`, which records every
+mapped drive per-user regardless of logon session, for any letter `GetLogicalDrives` missed. Points
+the resulting root straight at the raw UNC target (`\\server\share`) rather than the drive letter,
+since opening the UNC path directly establishes a fresh SMB connection using cached credentials —
+verified this works correctly (`filepath.Join`/`Clean`/`os.ReadDir` all handle a real `\\server\share`
+UNC root correctly, confirmed against a real live share). Purely additive: a letter `GetLogicalDrives`
+already sees (the normal non-broken case) is left alone, so nothing changes when the app isn't
+elevated or the drive genuinely isn't there.
+
 #### ~~Reports: scheduled-job name reverted to generic "Manual backup - X" label~~ ✅ FIXED 2026-09-26
 
 **Bug found live 2026-09-26:** ran "Backup with VSS" and "Backup without VSS" (two named Backup
