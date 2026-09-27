@@ -40,7 +40,7 @@ const translations = {
     navMessageLog: "Journal des messages",
     knownLimitations: "Limitations connues",
     knownLimitationsIntro: "Ceci est une version de développement active. Certains éléments sont encore en cours de finalisation :",
-    limitationNtfsAcl: "La restauration des permissions NTFS (ACL), des flux de données alternatifs et des attributs étendus n'est pas encore implémentée : les fichiers sont restaurés avec les permissions par défaut.",
+    limitationNtfsAcl: "La restauration des flux de données alternatifs (ADS) et des attributs étendus NTFS hérités n'est pas encore implémentée. Les permissions NTFS/ACL (Windows) et les ACL POSIX (Linux) sont déjà restaurées.",
     devBuildBadge: "Version de développement",
     messageLogEmpty: "Aucun message pour le moment.",
     msgColDateTime: "Date / Heure",
@@ -427,7 +427,8 @@ const translations = {
       restoreBetaSelective: "Restauration sélective (fichier par fichier)",
       restoreBetaTimestamps: "Restauration des dates de modification",
       restoreBetaMultiServer: "Sélection parmi plusieurs serveurs PBS",
-      restoreBetaACLs: "Permissions NTFS, ADS, attributs étendus (sprint NTFS sidecar à venir)",
+      restoreBetaACLsDone: "Permissions NTFS/ACL (Windows) et ACL POSIX (Linux)",
+      restoreBetaACLs: "Flux de données alternatifs (ADS) et attributs étendus NTFS hérités",
 
       // About
       aboutTitle: "À propos",
@@ -528,7 +529,7 @@ const translations = {
     navMessageLog: "Message Log",
     knownLimitations: "Known Limitations",
     knownLimitationsIntro: "This is an active development build. A few things are still being finished:",
-    limitationNtfsAcl: "Restoring NTFS permissions (ACLs), alternate data streams and extended attributes isn't implemented yet — files restore with default permissions.",
+    limitationNtfsAcl: "Restoring Alternate Data Streams (ADS) and legacy NTFS extended attributes isn't implemented yet. NTFS/ACL permissions (Windows) and POSIX ACLs (Linux) are already restored.",
     devBuildBadge: "Development build",
     messageLogEmpty: "No messages yet.",
     msgColDateTime: "Date / Time",
@@ -915,7 +916,8 @@ const translations = {
       restoreBetaSelective: "Selective restore (file by file)",
       restoreBetaTimestamps: "Modification time restore",
       restoreBetaMultiServer: "Select from multiple PBS Servers",
-      restoreBetaACLs: "NTFS permissions, ADS, extended attributes (NTFS sidecar sprint pending)",
+      restoreBetaACLsDone: "NTFS/ACL permissions (Windows) and POSIX ACLs (Linux)",
+      restoreBetaACLs: "Alternate Data Streams (ADS) and legacy NTFS extended attributes",
 
       // About
       aboutTitle: "About",
@@ -1016,7 +1018,7 @@ const translations = {
     navMessageLog: "Registro messaggi",
     knownLimitations: "Limitazioni note",
     knownLimitationsIntro: "Questa è una versione di sviluppo attiva. Alcune funzioni sono ancora in fase di completamento:",
-    limitationNtfsAcl: "Il ripristino dei permessi NTFS (ACL), dei flussi di dati alternativi e degli attributi estesi non è ancora implementato: i file vengono ripristinati con i permessi predefiniti.",
+    limitationNtfsAcl: "Il ripristino degli stream di dati alternativi (ADS) e degli attributi estesi NTFS legacy non è ancora implementato. I permessi NTFS/ACL (Windows) e le ACL POSIX (Linux) sono già ripristinati.",
     devBuildBadge: "Versione di sviluppo",
     messageLogEmpty: "Nessun messaggio per ora.",
     msgColDateTime: "Data / Ora",
@@ -1403,7 +1405,8 @@ const translations = {
       restoreBetaSelective: "Ripristino selettivo (file per file)",
       restoreBetaTimestamps: "Ripristino orari di modifica",
       restoreBetaMultiServer: "Selezione tra più server PBS",
-      restoreBetaACLs: "Permessi NTFS, ADS, attributi estesi (sprint sidecar NTFS in attesa)",
+      restoreBetaACLsDone: "Permessi NTFS/ACL (Windows) e ACL POSIX (Linux)",
+      restoreBetaACLs: "Stream di dati alternativi (ADS) e attributi estesi NTFS legacy",
 
       // About
       aboutTitle: "Informazioni",
@@ -1504,7 +1507,7 @@ const translations = {
     navMessageLog: "Meldungsprotokoll",
     knownLimitations: "Bekannte Einschränkungen",
     knownLimitationsIntro: "Dies ist eine aktive Entwicklungsversion. Einige Dinge werden noch fertiggestellt:",
-    limitationNtfsAcl: "Die Wiederherstellung von NTFS-Berechtigungen (ACLs), alternativen Datenströmen und erweiterten Attributen ist noch nicht implementiert — Dateien werden mit Standardberechtigungen wiederhergestellt.",
+    limitationNtfsAcl: "Die Wiederherstellung von alternativen Datenströmen (ADS) und veralteten erweiterten NTFS-Attributen ist noch nicht implementiert. NTFS-/ACL-Berechtigungen (Windows) und POSIX-ACLs (Linux) werden bereits wiederhergestellt.",
     devBuildBadge: "Entwicklungsversion",
     messageLogEmpty: "Noch keine Meldungen.",
     msgColDateTime: "Datum / Uhrzeit",
@@ -1891,7 +1894,8 @@ const translations = {
       restoreBetaSelective: "Selektive Wiederherstellung (Datei für Datei)",
       restoreBetaTimestamps: "Änderungszeiten wiederherstellen",
       restoreBetaMultiServer: "Auswahl aus mehreren PBS-Servern",
-      restoreBetaACLs: "NTFS-Berechtigungen, ADS, erweiterte Attribute (NTFS-Sidecar-Sprint anstehend)",
+      restoreBetaACLsDone: "NTFS-/ACL-Berechtigungen (Windows) und POSIX-ACLs (Linux)",
+      restoreBetaACLs: "Alternative Datenströme (ADS) und veraltete erweiterte NTFS-Attribute",
 
       // About
       aboutTitle: "Über",
@@ -1992,7 +1996,7 @@ const translations = {
     navMessageLog: "Dziennik komunikatów",
     knownLimitations: "Znane ograniczenia",
     knownLimitationsIntro: "To jest aktywna wersja rozwojowa. Kilka elementów jest wciąż dopracowywanych:",
-    limitationNtfsAcl: "Przywracanie uprawnień NTFS (ACL), alternatywnych strumieni danych i rozszerzonych atrybutów nie jest jeszcze zaimplementowane — pliki są przywracane z domyślnymi uprawnieniami.",
+    limitationNtfsAcl: "Przywracanie alternatywnych strumieni danych (ADS) i przestarzałych rozszerzonych atrybutów NTFS nie jest jeszcze zaimplementowane. Uprawnienia NTFS/ACL (Windows) i ACL POSIX (Linux) są już przywracane.",
     devBuildBadge: "Wersja rozwojowa",
     messageLogEmpty: "Brak komunikatów.",
     msgColDateTime: "Data / godzina",
@@ -2379,7 +2383,8 @@ const translations = {
       restoreBetaSelective: "Wybiórcze przywracanie (plik po pliku)",
       restoreBetaTimestamps: "Przywracanie czasów modyfikacji",
       restoreBetaMultiServer: "Wybór spośród wielu serwerów PBS",
-      restoreBetaACLs: "Uprawnienia NTFS, ADS, rozszerzone atrybuty (NTFS sidecar sprint w toku)",
+      restoreBetaACLsDone: "Uprawnienia NTFS/ACL (Windows) i ACL POSIX (Linux)",
+      restoreBetaACLs: "Alternatywne strumienie danych (ADS) i przestarzałe rozszerzone atrybuty NTFS",
 
       // About
       aboutTitle: "O programie",
@@ -2480,7 +2485,7 @@ const translations = {
     navMessageLog: "Registro de mensajes",
     knownLimitations: "Limitaciones conocidas",
     knownLimitationsIntro: "Esta es una versión de desarrollo activa. Algunas cosas todavía se están terminando:",
-    limitationNtfsAcl: "Restaurar permisos NTFS (ACL), flujos de datos alternativos y atributos extendidos aún no está implementado — los archivos se restauran con permisos predeterminados.",
+    limitationNtfsAcl: "Restaurar flujos de datos alternativos (ADS) y atributos extendidos NTFS heredados aún no está implementado. Los permisos NTFS/ACL (Windows) y las ACL POSIX (Linux) ya se restauran.",
     devBuildBadge: "Versión de desarrollo",
     messageLogEmpty: "Aún no hay mensajes.",
     msgColDateTime: "Fecha / Hora",
@@ -2868,7 +2873,8 @@ const translations = {
       restoreBetaSelective: "Restauración selectiva (archivo por archivo)",
       restoreBetaTimestamps: "Restauración de la hora de modificación",
       restoreBetaMultiServer: "Selección entre varios servidores PBS",
-      restoreBetaACLs: "Permisos NTFS, ADS, atributos extendidos (sprint del sidecar NTFS pendiente)",
+      restoreBetaACLsDone: "Permisos NTFS/ACL (Windows) y ACL POSIX (Linux)",
+      restoreBetaACLs: "Flujos de datos alternativos (ADS) y atributos extendidos NTFS heredados",
 
       // About
       aboutTitle: "Acerca de",

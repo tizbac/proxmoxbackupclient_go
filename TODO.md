@@ -627,6 +627,33 @@ To actually close this gap for a future release:
 
 ### 🎨 GUI polish (this fork)
 
+#### ⚠️ UNRESOLVED: app froze (high CPU, totally unresponsive) after a machine backup completed on rigel
+
+Mick, 2026-09-26/27: after "Rigel Full Machine Backup" (57m18s, `success=true`, clean completion
+logged) finished, the app became completely unresponsive — no buttons worked, couldn't move or
+close the window. `ps aux` confirmed the process itself at 123% CPU (still climbing minutes later),
+not just a slow UI. Backend logs show nothing at all after `OnComplete` fired — no further log
+lines, no errors, no repeated activity — meaning the Go business logic genuinely finished cleanly;
+the sustained CPU was in the SAME process that also hosts the embedded WebKitGTK renderer (Wails
+doesn't use Electron's separate-process model), which points at the JS/render side rather than a
+Go-side loop, but no specific line of code was identified as the cause. Reviewed the
+`backup:progress`/`backup:stats`/`backup:complete` event-handling `useEffect` (empty dependency
+array, no resubscription loop, ordinary state updates) and found nothing obviously wrong. Today's
+actual frontend diff (the Stop button addition) is minimal/additive and doesn't look like a
+plausible cause on inspection either.
+
+**Resolved for THIS session** by: `sudo kill` the frozen process via SSH (confirmed the backup's
+own snapshot had already been cleaned up correctly, since it completed before freezing — no
+`elioctl destroy` needed this time), restarting `anydesk.service` (didn't help), then a full reboot
+of rigel (did fix it — AnyDesk reconnected and input worked again).
+
+**Not root-caused.** Only reproduced once so far, on a real 57-minute machine backup reaching
+genuine 100% — most of this session's testing used short synthetic backups via live tests, so this
+may be the first time this exact code path (a real machine backup's OnComplete, at scale) has run.
+Next time this happens: before killing, try capturing a goroutine dump (`SIGQUIT` on Linux writes
+one to stderr) and check if WebKitGTK's own process/thread (if separately visible via `ps`) is the
+one actually spinning, to narrow down Go vs. renderer definitively.
+
 #### ~~No way to stop a Backup-Set-triggered ("Run Now") backup once started~~ ✅ FIXED 2026-09-26
 
 Found live on rigel: a real machine (whole-disk) backup was running with no visible Stop button
@@ -643,33 +670,51 @@ backup process, then `elioctl destroy` the two leftover elastio-snap devices it 
 a plain SIGTERM skips the app's own snapshot-cleanup defer, so that's a manual step after any
 non-UI stop).
 
-#### 🚧 IN PROGRESS: pass the Backup Set name through as the PBS snapshot's comment
+#### ~~Pass the Backup Set name through as the PBS snapshot's comment~~ ✅ BACKEND DONE 2026-09-27, 🚧 UI FIELD STILL PENDING
 
 Mick: "we don't seem to have comment wired in to pass through to the backup in pbs" — confirmed:
-`BackupManifest.Comment` exists (matches PBS's real manifest schema, already used for READING an
-existing snapshot's comment) but nothing anywhere ever WRITES it — zero `.Comment =` assignments in
-the whole codebase, no GUI field, every backup we create has an empty PBS comment.
+`BackupManifest.Comment` existed (matches PBS's real manifest schema, already used for READING an
+existing snapshot's comment) but nothing anywhere ever WROTE it — zero `.Comment =` assignments in
+the whole codebase, no GUI field, every backup created an empty PBS comment.
 
 **Agreed design** (no new field needed for scheduled Backup Sets — reuse what already exists):
 - Backup Set-triggered runs (scheduled or Run Now): use the Backup Set's own **Name** as the PBS
   comment (already meaningful, already unique per job, already what Reports labels the run with —
   `a.scheduledJobNameOr(...)`, already set at the right time by `executeScheduledJob`).
-- A genuine one-off (Backup tab, no Backup Set at all): add a new, explicitly-optional
-  **"Backup Name (for PBS Comment)"** text field to the one-off form. Empty stays the existing
+- A genuine one-off (Backup tab, no Backup Set at all): a new, explicitly-optional
+  **"Backup Name (for PBS Comment)"** text field on the one-off form. Empty stays the existing
   generic "Manual backup - X"/"Backup machine - X" fallback (unchanged from today); a typed value
   overrides it and becomes the comment.
 
-**Done so far:** `BackupOptions.Comment` field added (`gui/backup_inline.go`), wired into the
-directory-backup path's `client.Manifest.Comment`. **Still needed:** thread `comment` through
-`StartBackup`/`StartMachineBackup` (both the `!service` and `service` build variants), the
-`startBackupDirect`/`startMachineBackupDirect` precedence logic (explicit comment wins, else
-`scheduledJobNameOr(fallback)`), `api.BackupRequest`/`BackupHandler` (the service-mode HTTP
-forwarding path), `machinebackuplib.Config`/its own manifest construction (machine backups use a
-separate library, entirely unwired so far), `scheduler.go`'s 3 call sites (pass `""` — scheduled
-jobs get their comment via the existing `currentScheduledJobName` mechanism instead), and the new
-one-off form field itself (state + input + i18n keys, all 6 languages) plus its parameter on the
-two frontend `StartBackup`/`StartMachineBackup` call sites. Paused mid-implementation to prioritize
-the Stop button fix above and today's 3-way redeploy — pick back up next session.
+**Done:** `BackupOptions.Comment` end-to-end for directory backups (`gui/backup_inline.go`);
+`StartBackup`/`StartMachineBackup` signatures (both `!service` and `service` build variants) plus
+`startBackupDirect`/`startMachineBackupDirect`'s precedence logic (explicit comment wins, else
+`scheduledJobNameOr(fallback)`); `api.BackupRequest`/`BackupHandler` (the service-mode HTTP
+forwarding path); `machinebackuplib.Config` + its own manifest construction (machine backups use a
+separate library — this is what "Rigel Full Machine Backup" actually needed); `scheduler.go`'s 2
+call sites (pass `""` — scheduled jobs get their comment via `currentScheduledJobName` instead);
+all 4 frontend `StartBackup`/`StartMachineBackup` call sites updated to the new arity (passing `''`
+for now). Verified: `go build`/`vet` clean on Windows (`!service` and `-tags service`) and Linux,
+full `wails build` succeeds.
+
+**Still pending:** the actual new "Backup Name (for PBS Comment)" **input field** on the one-off
+form itself (state + `<input>` + i18n keys, all 6 languages) — right now every one-off backup still
+gets the generic "Manual backup - X" fallback exactly as before (correct, unchanged behavior — just
+not yet the NEW capability). A Backup Set's own name, though, IS now correctly sent as the PBS
+comment for every scheduled/Run-Now backup, both directory and machine type.
+
+#### ~~Restore banner + Known Limitations claimed NTFS/ACL restore still unimplemented~~ ✅ FIXED 2026-09-27
+
+Mick: "the banner on restore still says restore in beta and ntfs file permissions not supported, i
+think we are past that no" — confirmed both were stale: the Restore tab's "BETA FEATURE" banner
+listed "❌ NTFS permissions, ADS, extended attributes (NTFS sidecar sprint pending)" as one block,
+and the Known Limitations modal made the same claim, neither updated after the NTFS ACL (Windows)
+and POSIX ACL/xattr (Linux) restore work landed. Mick: keep the "beta" framing (restore genuinely
+still is), but the checklist needed to be accurate — added a new ✅ line for NTFS/ACL + POSIX ACL
+permissions (now done), narrowed the ❌ line to just what's still genuinely missing: ADS (Alternate
+Data Streams — the `Zone.Identifier` "downloaded from the internet" tag, etc.) and legacy NTFS
+Extended Attributes (a rarely-used OS/2-compat feature, distinct from ACLs). Same fix applied to
+the Known Limitations modal's text. All 6 languages.
 
 #### No way to set the default PBS server from the UI (Mick, 2026-09-26, on rigel)
 

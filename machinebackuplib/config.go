@@ -37,6 +37,8 @@ type Config struct {
 	SMTP            *SMTPConfig `json:"smtp"`
 	SysTray         bool        `json:"systray"`
 	BackupType      string      `json:"backuptype"`
+	// Comment is sent as-is as the PBS snapshot's manifest comment.
+	Comment string `json:"comment,omitempty"`
 }
 
 func (c *Config) Valid() bool {

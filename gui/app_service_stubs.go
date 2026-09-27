@@ -45,7 +45,7 @@ func (a *App) ReloadConfig() {
 
 // StartBackup starts a backup job
 // Service implementation using RunBackupInline
-func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
 	writeDebugLog(fmt.Sprintf("[Service] StartBackup called: type=%s, dirs=%v, id=%s, vss=%v, compression=%s, pbsServerID=%s", backupType, backupDirs, backupID, useVSS, compression, pbsServerID))
 
 	// Re-read config from disk so this run uses the current token / default PBS /
@@ -101,6 +101,19 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		kind = "machine"
 	}
 	pbsBackupType := "host"
+
+	// Resolve the PBS comment — see main.go's startBackupDirect for the full
+	// reasoning (same precedence: explicit comment wins, else the
+	// scheduled-job name a scheduled run's history is already labeled with,
+	// else the generic fallback matching this kind).
+	if comment == "" {
+		fallback := fmt.Sprintf("Manual backup - %s", backupID)
+		if kind == "machine" {
+			fallback = fmt.Sprintf("Backup machine - %s", backupID)
+		}
+		comment = a.scheduledJobNameOr(fallback)
+	}
+
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
 		AuthID:          pbsCfg.AuthID,
@@ -112,6 +125,7 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		CertFingerprint: pbsCfg.CertFingerprint,
 		BackupObjects:   allDirs,
 		BackupID:        backupID,
+		Comment:         comment,
 		Kind:            kind,
 		BackupType:      pbsBackupType,
 		UseVSS:          useVSS,
@@ -148,7 +162,7 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 // implementation using RunBackupInline. Mirrors StartBackup's own stub
 // exactly; added 2026-09-23 (the service build previously didn't implement
 // this at all, failing api.BackupHandler's interface check).
-func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
 	writeDebugLog(fmt.Sprintf("[Service] StartMachineBackup called: type=%s, devices=%v, id=%s, vss=%v, compression=%s, pbsServerID=%s", backupType, backupDevices, backupID, useVSS, compression, pbsServerID))
 
 	a.ReloadConfig()
@@ -175,6 +189,12 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		return err
 	}
 
+	// Resolve the PBS comment — see main.go's startMachineBackupDirect for
+	// the full reasoning.
+	if comment == "" {
+		comment = a.scheduledJobNameOr(fmt.Sprintf("Backup machine - %s", backupID))
+	}
+
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
 		AuthID:          pbsCfg.AuthID,
@@ -186,6 +206,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		CertFingerprint: pbsCfg.CertFingerprint,
 		BackupObjects:   backupDevices,
 		BackupID:        backupID,
+		Comment:         comment,
 		Kind:            "machine",
 		// "host", not "vm" — see startBackupDirect's machine branch in
 		// main.go for why: "vm" requires a numeric VMID backup-id, which

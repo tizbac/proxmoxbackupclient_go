@@ -358,6 +358,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		Insecure:        cfg.CertFingerprint != "",
 		Manifest: pbscommon.BackupManifest{
 			BackupID: cfg.BackupID,
+			Comment:  cfg.Comment,
 		},
 	}
 	// A pre-obtained session ticket (GUI login) wins; otherwise exchange

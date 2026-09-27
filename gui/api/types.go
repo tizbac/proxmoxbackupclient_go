@@ -10,6 +10,7 @@ type BackupRequest struct {
 	UseVSS       bool     `json:"use_vss"`
 	Compression  string   `json:"compression,omitempty"` // "fastest", "default", "better", "best"
 	PBSServerID  string   `json:"pbs_server_id,omitempty"` // empty = the configured default server
+	Comment      string   `json:"comment,omitempty"` // sent as-is as the PBS snapshot's manifest comment
 }
 
 // BackupResponse represents the result of a backup operation

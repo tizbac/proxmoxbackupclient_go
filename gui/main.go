@@ -672,7 +672,7 @@ func (a *App) emitAnalysisProgress(done, total int, scannedBytes uint64) {
 }
 
 // StartBackup starts a backup operation (routes to service or direct based on mode)
-func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
 	writeDebugLog(fmt.Sprintf("StartBackup() called - mode: %s, VSS: %v, compression: %s, pbsServerID: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsServerID, a.isServiceProcess))
 
 	// Default to "fastest" if compression is empty
@@ -694,20 +694,20 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 	switch a.mode {
 	case api.ModeService:
 		// Use HTTP API to communicate with service (service has admin rights as LocalSystem)
-		return a.startBackupViaService(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID)
+		return a.startBackupViaService(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID, comment)
 	case api.ModeStandalone:
 		// Direct execution - check admin if VSS requested
 		if useVSS && !isAdmin() {
 			return fmt.Errorf("VSS (Shadow Copy) requires administrator privileges - please restart the application as administrator or disable VSS")
 		}
-		return a.startBackupDirect(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID)
+		return a.startBackupDirect(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID, comment)
 	default:
 		return fmt.Errorf("unknown execution mode: %v", a.mode)
 	}
 }
 
 // StartMachineBackup starts a machine backup operation
-func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
 	writeDebugLog(fmt.Sprintf("StartMachineBackup() called - mode: %s, VSS: %v, compression: %s, pbsServerID: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsServerID, a.isServiceProcess))
 
 	// Default to "fastest" if compression is empty
@@ -729,20 +729,20 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	switch a.mode {
 	case api.ModeService:
 		// Use HTTP API to communicate with service (service has admin rights as LocalSystem)
-		return a.startMachineBackupViaService(backupType, backupDevices, backupID, useVSS, compression, pbsServerID)
+		return a.startMachineBackupViaService(backupType, backupDevices, backupID, useVSS, compression, pbsServerID, comment)
 	case api.ModeStandalone:
 		// Direct execution - check admin if VSS requested
 		if useVSS && !isAdmin() {
 			return fmt.Errorf("VSS (Shadow Copy) requires administrator privileges - please restart the application as administrator or disable VSS")
 		}
-		return a.startMachineBackupDirect(backupType, backupDevices, backupID, useVSS, compression, pbsServerID)
+		return a.startMachineBackupDirect(backupType, backupDevices, backupID, useVSS, compression, pbsServerID, comment)
 	default:
 		return fmt.Errorf("unknown execution mode: %v", a.mode)
 	}
 }
 
 // startBackupViaService sends backup request to the service via HTTP API
-func (a *App) startBackupViaService(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+func (a *App) startBackupViaService(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
 	writeDebugLog("[Service Mode] Sending backup request to service")
 
 	req := &api.BackupRequest{
@@ -754,6 +754,7 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 		UseVSS:       useVSS,
 		Compression:  compression,
 		PBSServerID:  pbsServerID,
+		Comment:      comment,
 	}
 
 	resp, err := a.apiClient.StartBackup(req)
@@ -771,7 +772,7 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 }
 
 // startMachineBackupViaService sends machine backup request to the service via HTTP API
-func (a *App) startMachineBackupViaService(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+func (a *App) startMachineBackupViaService(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
 	writeDebugLog("[Service Mode] Sending machine backup request to service")
 
 	req := &api.BackupRequest{
@@ -781,6 +782,7 @@ func (a *App) startMachineBackupViaService(backupType string, backupDevices []st
 		UseVSS:       useVSS,
 		Compression:  compression,
 		PBSServerID:  pbsServerID,
+		Comment:      comment,
 	}
 
 	resp, err := a.apiClient.StartMachineBackup(req)
@@ -851,11 +853,24 @@ func (a *App) pollBackupProgress(jobID string) {
 }
 
 // startBackupDirect performs backup directly (standalone mode)
-func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
 	// Use hostname as fallback if backupID is empty
 	if backupID == "" {
 		backupID = a.GetHostname()
 		writeDebugLog(fmt.Sprintf("[Backup ID] Empty backup-id, using hostname: %s", backupID))
+	}
+
+	// Resolve the PBS comment: an explicit comment (typed into the one-off
+	// form's "Backup Name" field) always wins; otherwise fall back to
+	// whichever of the same two sources Reports already uses for this run's
+	// history label — the triggering Backup Set's own name
+	// (currentScheduledJobName, already set by executeScheduledJob before
+	// this call) or the generic "Manual backup - X" text for a genuine
+	// one-off that also left the new field blank. Same value, same
+	// precedence, just read here (backup start) instead of only at
+	// OnComplete (history write) — see scheduledJobNameOr's doc comment.
+	if comment == "" {
+		comment = a.scheduledJobNameOr(fmt.Sprintf("Manual backup - %s", backupID))
 	}
 
 	// Sanitize backup ID for logging
@@ -918,6 +933,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		CertFingerprint: pbsCfg.CertFingerprint,
 		BackupObjects:   targetDirs,
 		BackupID:        backupID,
+		Comment:         comment,
 		// Kind decides which backup pipeline RunBackupInline actually runs
 		// (directory walk vs. raw-disk machine backup) — added 2026-09-23
 		// after this was left unset here, silently misrouting a
@@ -1134,11 +1150,17 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 }
 
 // startMachineBackupDirect performs machine backup directly (standalone mode)
-func (a *App) startMachineBackupDirect(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string) error {
+func (a *App) startMachineBackupDirect(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
 	// Use hostname as fallback if backupID is empty
 	if backupID == "" {
 		backupID = a.GetHostname()
 		writeDebugLog(fmt.Sprintf("[Backup ID] Empty backup-id, using hostname: %s", backupID))
+	}
+
+	// Resolve the PBS comment — see startBackupDirect's matching comment for
+	// the full reasoning (same precedence, machine-backup's own fallback text).
+	if comment == "" {
+		comment = a.scheduledJobNameOr(fmt.Sprintf("Backup machine - %s", backupID))
 	}
 
 	// Sanitize backup ID for logging
@@ -1207,6 +1229,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		CertFingerprint: pbsCfg.CertFingerprint,
 		BackupObjects:   backupDevices,
 		BackupID:        backupID,
+		Comment:         comment,
 		Kind:            "machine",
 		// "host", not "vm" — see the matching comment in startBackupDirect's
 		// machine branch for why: "vm" requires a numeric VMID backup-id,

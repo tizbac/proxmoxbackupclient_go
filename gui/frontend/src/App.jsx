@@ -1281,7 +1281,8 @@ function App() {
           config['backup-id'],
           config.usevss,
           '',
-          backupPBSID
+          backupPBSID,
+          ''
         )
         showStatus(`⏳ ${t('statusBackupRunning')}`, 'info')
         return
@@ -1326,7 +1327,8 @@ function App() {
             job.backup_id,
             config.usevss,
             '',
-            backupPBSID
+            backupPBSID,
+            ''
           )
         } catch (err) {
           // The part never started (validation / dispatch error): no completion
@@ -1509,7 +1511,8 @@ function App() {
           config['backup-id'],
           config.usevss,
           '',
-          backupPBSID
+          backupPBSID,
+          ''
         )
       } else {
         // Filter out any empty drives to prevent empty string issues
@@ -1520,7 +1523,8 @@ function App() {
           config['backup-id'],
           config.usevss,
           '',
-          backupPBSID
+          backupPBSID,
+          ''
         )
       }
       // Backup started in background - progress will be shown via events.
@@ -3154,6 +3158,7 @@ function App() {
               <span>✅ {t('restoreBetaSelective')}</span>
               <span>✅ {t('restoreBetaTimestamps')}</span>
               <span>✅ {t('restoreBetaMultiServer')}</span>
+              <span>✅ {t('restoreBetaACLsDone')}</span>
             </div>
             <div style={{fontSize: '13px', marginTop: '6px'}}>
               ❌ {t('restoreBetaACLs')}

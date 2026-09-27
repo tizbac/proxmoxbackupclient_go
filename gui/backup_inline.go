@@ -1307,6 +1307,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 		BackupID:        opts.BackupID,
 		BackupType:      opts.BackupType,
 		BackupDevices:   opts.BackupObjects,
+		Comment:         opts.Comment,
 	}
 
 	// Progress callback wrapper. Returning true (user pressed Stop, which

@@ -880,6 +880,9 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 
 	var err error
 	if job.BackupType == "machine" {
+		// comment: "" -- a scheduled job's comment comes from
+		// currentScheduledJobName (set just above), not this parameter; see
+		// startMachineBackupDirect's own precedence logic.
 		err = a.StartMachineBackup(
 			job.BackupType,
 			driveLetters,
@@ -887,6 +890,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			job.UseVSS,
 			compression,
 			job.PBSServerID,
+			"",
 		)
 	} else {
 		err = a.StartBackup(
@@ -898,6 +902,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			job.UseVSS,
 			compression,
 			job.PBSServerID,
+			"",
 		)
 	}
 
