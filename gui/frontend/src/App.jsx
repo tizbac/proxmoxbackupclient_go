@@ -264,6 +264,17 @@ function App() {
   const [backupRunning, setBackupRunning] = useState(false)
   const statusTimeoutRef = useRef(null)
 
+  // Set when THIS process tries to start a backup/restore while another one
+  // (backup or restore — they share one process-wide slot, operation_queue.go)
+  // is already holding it. Kept separate from progress/status so a second
+  // click never clobbers the currently-active job's own display — see the
+  // backup:progress/restore:progress handlers below, which route a "Queued —"
+  // message here instead of treating it as real progress.
+  const [backupQueuedMsg, setBackupQueuedMsg] = useState(null)
+  const [restoreQueuedMsg, setRestoreQueuedMsg] = useState(null)
+  const backupCardRef = useRef(null)
+  const restoreCardRef = useRef(null)
+
   const [snapshots, setSnapshots] = useState([])
   const [restoreBackupId, setRestoreBackupId] = useState('')
   const [showSnapshots, setShowSnapshots] = useState(false)
@@ -405,6 +416,17 @@ function App() {
     if (!EventsOn) return
 
     const unsubProgress = EventsOn('backup:progress', (data) => {
+      // acquireOperationSlot (gui/operation_queue.go) fires this exact message
+      // — still hardcoded English on the Go side, not through the message-key
+      // i18n system — the instant a second backup/restore can't start yet.
+      // Route it to its own state instead of the normal progress path so it
+      // never overwrites whatever the CURRENTLY active job's card is showing.
+      if (typeof data.message === 'string' && data.message.startsWith('Queued —')) {
+        setBackupQueuedMsg(data.message)
+        return
+      }
+      setBackupQueuedMsg(null)
+
       const percent = Math.round(data.percent)
       setProgress(percent)
       showStatus(`${data.message}`, 'info', true)
@@ -471,6 +493,7 @@ function App() {
     const unsubComplete = EventsOn('backup:complete', (data) => {
       setProgress(data.success ? 100 : 0)
       setBackupRunning(false)
+      setBackupQueuedMsg(null)
       setBackupStats({ startTime: null, lastUpdate: null, lastPercent: 0, speed: 0, eta: null, bytesDone: 0, bytesTotal: 0, newChunks: 0, reusedChunks: 0, failedChunks: 0, currentDir: '' })
       const localizedMsg = renderLocalizedMessage(data, t).text
       showStatus(data.success ? '✅ ' + localizedMsg : '❌ ' + localizedMsg, data.success ? 'success' : 'error')
@@ -502,6 +525,12 @@ function App() {
   useEffect(() => {
     if (!EventsOn) return
     const unsubP = EventsOn('restore:progress', (data) => {
+      // Same "Queued —" routing as backup:progress above — see its comment.
+      if (typeof data.message === 'string' && data.message.startsWith('Queued —')) {
+        setRestoreQueuedMsg(data.message)
+        return
+      }
+      setRestoreQueuedMsg(null)
       setRestoreProgress(Math.round((data.percent || 0) * 100))
       showStatus(`${data.message || ''}`, 'info', true)
     })
@@ -521,6 +550,7 @@ function App() {
     })
     const unsubC = EventsOn('restore:complete', (data) => {
       setRestoreLoading(false)
+      setRestoreQueuedMsg(null)
       setRestoreProgress(data.success ? 100 : 0)
       setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
       const localizedMsg = renderLocalizedMessage(data, t).text
@@ -532,6 +562,27 @@ function App() {
       if (unsubC) unsubC()
     }
   }, [])
+
+  // Scroll the relevant progress card into view the moment a backup/restore
+  // actually starts, from wherever the user currently is on the page — found
+  // live 2026-09-27: nothing drew the eye to it otherwise, easy to miss that
+  // a Run Now/Restore click did anything if you'd scrolled away.
+  const prevBackupActiveRef = useRef(false)
+  useEffect(() => {
+    const active = progress > 0 && progress < 100
+    if (active && !prevBackupActiveRef.current) {
+      backupCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    prevBackupActiveRef.current = active
+  }, [progress])
+
+  const prevRestoreActiveRef = useRef(false)
+  useEffect(() => {
+    if (restoreLoading && !prevRestoreActiveRef.current) {
+      restoreCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    prevRestoreActiveRef.current = restoreLoading
+  }, [restoreLoading])
 
   // Listen to search progress
   useEffect(() => {
@@ -2392,7 +2443,7 @@ function App() {
           {/* Always visible regardless of whether the form below is open — a
               backup started via "Run Now" on a set never opens the form at all. */}
           {progress > 0 && progress < 100 && (
-            <div style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
+            <div ref={backupCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
               <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
                 <strong style={{fontSize: '15px'}}>{t('backupProgress')}</strong>
                 <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{progress}%</span>
@@ -2467,6 +2518,26 @@ function App() {
                   {t('stopBackup')}
                 </button>
               </div>
+
+              {/* Whatever's waiting behind this one, shown as a compact row
+                  under the active card rather than its own big one — it has
+                  nothing to show yet, so it expands into this same card once
+                  its own turn actually starts (its progress events land on
+                  the normal path above, not here, the moment that happens). */}
+              {backupQueuedMsg && (
+                <div style={{marginTop: '10px', padding: '8px 10px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '12.5px', color: '#6c757d', border: '1px dashed #ced4da'}}>
+                  ⏳ {backupQueuedMsg}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Nothing else is visible for backup right now (progress is 0), but
+              something's queued behind whatever's holding the slot — most
+              often a Restore. */}
+          {!(progress > 0 && progress < 100) && backupQueuedMsg && (
+            <div ref={backupCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '10px 15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px dashed #ced4da', fontSize: '13px', color: '#6c757d'}}>
+              ⏳ {backupQueuedMsg}
             </div>
           )}
 
@@ -3140,7 +3211,12 @@ function App() {
           </>
           )}
 
-          {status.visible && activeTab === 'backup' && (
+          {/* Suppressed while the card above is already showing this same
+              status.message — found live 2026-09-27: during VSS setup
+              (progress still 0) this was the only place it showed at all,
+              then once real progress started the card ALSO started
+              rendering it, duplicating the same text in two places at once. */}
+          {status.visible && activeTab === 'backup' && !(progress > 0 && progress < 100) && (
             <div className={`status ${status.type} visible`}>{status.message}</div>
           )}
         </div>
@@ -3155,6 +3231,73 @@ function App() {
               <button className="btn" onClick={() => { setPrefsTab('account'); setShowPreferences(true) }}>
                 {t('openPreferences')}
               </button>
+            </div>
+          )}
+
+          {/* Always visible regardless of which snapshot is selected/open below —
+              mirrors the backup tab's own always-visible card (same reasoning:
+              this used to live nested inside the snapshot-detail view, so
+              navigating to a different snapshot while a restore ran made its
+              own progress/Stop button disappear from view entirely). */}
+          {restoreLoading && (
+            <div ref={restoreCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
+              <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
+                <strong style={{fontSize: '15px'}}>{t('restoring')}</strong>
+                <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{restoreProgress}%</span>
+              </div>
+
+              <div className="progress" style={{height: '30px', marginBottom: '12px'}}>
+                <div
+                  className="progress-bar"
+                  style={{
+                    width: `${restoreProgress}%`,
+                    fontSize: '14px',
+                    lineHeight: '30px',
+                    transition: 'width 0.3s ease',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {restoreProgress}%
+                </div>
+              </div>
+
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px'}}>
+                {restoreStats.speed > 0 && (
+                  <div style={{fontSize: '13px', color: '#495057'}}>
+                    <strong>{t('speed')}</strong> {formatSpeed(restoreStats.speed)}
+                  </div>
+                )}
+                {restoreStats.bytesDone > 0 && (
+                  <div style={{fontSize: '13px', color: '#495057'}}>
+                    <strong>{t('dataSizeLabel')}</strong> {Math.round(restoreStats.bytesDone / 1048576)}
+                    {restoreStats.bytesTotal > 0 ? ` / ${Math.round(restoreStats.bytesTotal / 1048576)}` : ''} MB
+                  </div>
+                )}
+              </div>
+
+              {status.message && status.type === 'info' && (
+                <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef'}}>
+                  {status.message}
+                </div>
+              )}
+
+              <div style={{marginTop: '12px'}}>
+                <button className="btn btn-secondary" onClick={handleStopRestore} disabled={!restoreLoading}>
+                  {t('stopRestore')}
+                </button>
+              </div>
+
+              {restoreQueuedMsg && (
+                <div style={{marginTop: '10px', padding: '8px 10px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '12.5px', color: '#6c757d', border: '1px dashed #ced4da'}}>
+                  ⏳ {restoreQueuedMsg}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!restoreLoading && restoreQueuedMsg && (
+            <div ref={restoreCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '10px 15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px dashed #ced4da', fontSize: '13px', color: '#6c757d'}}>
+              ⏳ {restoreQueuedMsg}
             </div>
           )}
 
@@ -3712,34 +3855,11 @@ function App() {
                   {restoreLoading ? `⏳ ${t('restoring')}` : `▶️ ${t('restore')}`}
                 </button>
                 <button className="btn btn-secondary" onClick={handleStopRestore} disabled={!restoreLoading}>{t('stopRestore')}</button>
-
-                {restoreLoading && (
-                  <div style={{marginTop: '12px'}}>
-                    {/* Matches backup's own .progress/.progress-bar (index.css) instead of a
-                        bespoke hardcoded-blue div — found live 2026-09-25: restore's bar was
-                        8px and always #2563eb regardless of theme, next to backup's 30px,
-                        var(--accent)-themed one right above it in the same app. */}
-                    <div className="progress" style={{height: '30px'}}>
-                      <div
-                        className="progress-bar"
-                        style={{
-                          width: `${restoreProgress}%`,
-                          fontSize: '14px',
-                          lineHeight: '30px',
-                          transition: 'width 0.3s ease',
-                          fontWeight: 'bold'
-                        }}
-                      >
-                        {restoreProgress}%
-                      </div>
-                    </div>
-                    {restoreStats.speed > 0 && (
-                      <p style={{textAlign: 'center', fontSize: '13px', color: '#64748b', marginTop: '4px'}}>
-                        {formatSpeed(restoreStats.speed)}
-                      </p>
-                    )}
-                  </div>
-                )}
+                {/* Progress display itself moved to the always-visible card at
+                    the top of this tab (2026-09-27) — it used to live here,
+                    which made it (and the only Stop button that could reach
+                    it) disappear the moment you browsed to a different
+                    snapshot while a restore was running. */}
               </div>
             )
           })()}
@@ -3749,7 +3869,10 @@ function App() {
             {t('restoreInfoText2')}
           </div>
 
-          {status.visible && activeTab === 'restore' && (
+          {/* Suppressed while the card above is already showing this same
+              status.message — same reasoning as the backup tab's own version
+              of this condition. */}
+          {status.visible && activeTab === 'restore' && !restoreLoading && (
             <div className={`status ${status.type} visible`}>{status.message}</div>
           )}
         </div>

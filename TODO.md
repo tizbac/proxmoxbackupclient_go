@@ -734,7 +734,7 @@ not a bug. Confirmed this was purely that one-server edge case: rigel now has 2+
 and the code path is sound for that case. Not re-verified by clicking through the actual running
 GUI (no RDP/screenshot access this session) — flag if it still doesn't work once you've tried it.
 
-#### Progress card: kill the duplicate 2nd indicator, auto-scroll to it, and show a queue underneath (Mick, 2026-09-27)
+#### ~~Progress card: kill the duplicate 2nd indicator, auto-scroll to it, and show a queue underneath~~ ✅ DONE 2026-09-27
 
 Started from: "the initial message for physical blocks under vss, or 'Initiating shadow copy' comes
 up at the bottom of the page and remains there with some second progress when the top of the page
@@ -766,6 +766,23 @@ underneath it which then expands to full progress once it becomes active."
    exists. Frontend needs a compact "queued" row shown underneath the active progress card (not its
    own separate big card) for whatever's waiting; when the active job finishes and the queued one's
    turn starts, that row expands into the same full detailed progress card the active one has now.
+
+**Implemented:** Backend untouched — all frontend (`App.jsx`). New `backupQueuedMsg`/
+`restoreQueuedMsg` state, set by matching on the literal `"Queued —"` prefix inside the existing
+`backup:progress`/`restore:progress` handlers instead of letting it fall through to the normal
+progress path, so a second click never clobbers whichever job's card is actually active. Both bottom
+page-level status divs now also require `!(progress > 0 && progress < 100)` /
+`!restoreLoading` to render, so they no longer duplicate the active card's own text. Two new
+`useEffect`s (watching `progress`/`restoreLoading` transition from inactive to active) call
+`scrollIntoView({behavior:'smooth', block:'start'})` on the relevant card's new ref the moment it
+first mounts. Restore's whole progress display (previously nested inside the snapshot-selection
+view, `restoreLoading && (...)` block that used to sit next to the Restore/Stop buttons) moved to a
+new always-visible card at the top of the Restore tab, structurally mirroring the backup tab's card
+— fixes the same "disappears if you browse to a different snapshot mid-restore" class of bug the
+Stop-button fix addressed for backup. Verified: `npm run build` clean, `go build`/`vet` clean on both
+build tags, full `wails build` succeeds. Not yet exercised live against a real queued-second-job
+scenario (needs two backups/restores actually racing on rigel or a test client to confirm the queued
+row's text and the expand-into-full-card handoff look right on screen).
 
 #### ~~Branded builds could still have their accent color overridden via the Theme tab~~ ✅ DONE 2026-09-26
 
