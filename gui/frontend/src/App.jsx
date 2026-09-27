@@ -264,14 +264,21 @@ function App() {
   const [backupRunning, setBackupRunning] = useState(false)
   const statusTimeoutRef = useRef(null)
 
-  // Set when THIS process tries to start a backup/restore while another one
-  // (backup or restore — they share one process-wide slot, operation_queue.go)
-  // is already holding it. Kept separate from progress/status so a second
-  // click never clobbers the currently-active job's own display — see the
-  // backup:progress/restore:progress handlers below, which route a "Queued —"
-  // message here instead of treating it as real progress.
-  const [backupQueuedMsg, setBackupQueuedMsg] = useState(null)
-  const [restoreQueuedMsg, setRestoreQueuedMsg] = useState(null)
+  // Ordered list of display names waiting behind whatever's currently
+  // active — backup and restore share ONE list because they share one
+  // process-wide slot (operation_queue.go): only one thing is ever truly
+  // active, regardless of type, so there's only one real queue to show.
+  // Populated by parsing the backend's "Queued: <name> — waiting for
+  // <heldBy> to finish..." message (gui/main.go's acquireOperationSlot
+  // call sites), which now names ITSELF, not just who it's waiting behind
+  // — covers a manual click queuing behind another AND two schedules
+  // firing close together, since both paths share the same mechanism.
+  // Popped on completion (FIFO) — operation_queue.go doesn't guarantee
+  // strict FIFO among 3+ simultaneous waiters (a plain sync.Mutex isn't
+  // fair), so with a queue 2+ deep the displayed ORDER is a best-effort
+  // approximation; the actual serialization is correct regardless.
+  const [pendingQueue, setPendingQueue] = useState([])
+  const QUEUED_MSG_RE = /^Queued: (.+) — waiting for .+ to finish\.\.\.$/
   const backupCardRef = useRef(null)
   const restoreCardRef = useRef(null)
 
@@ -419,21 +426,21 @@ function App() {
       // acquireOperationSlot (gui/operation_queue.go) fires this exact message
       // — still hardcoded English on the Go side, not through the message-key
       // i18n system — the instant a second backup/restore can't start yet.
-      // Route it to its own state instead of the normal progress path so it
+      // Route it into pendingQueue instead of the normal progress path so it
       // never overwrites whatever the CURRENTLY active job's card is showing.
-      if (typeof data.message === 'string' && data.message.startsWith('Queued —')) {
-        setBackupQueuedMsg(data.message)
+      const queuedMatch = typeof data.message === 'string' && data.message.match(QUEUED_MSG_RE)
+      if (queuedMatch) {
+        const name = queuedMatch[1]
+        setPendingQueue(q => q.includes(name) ? q : [...q, name])
         return
       }
-      // Deliberately NOT cleared here — this same event channel also carries
+      // Deliberately NOT popped here — this same event channel also carries
       // the ACTIVE job's own normal progress ticks (every 1-5s while it
-      // runs), which would otherwise wipe out a DIFFERENT, still-queued
-      // job's message within a fraction of a second of it appearing. Found
-      // live 2026-09-27: Mick clicked a second Backup Set while one was
-      // running and never saw a queue row — this is why. Correct clear
-      // point is backup:complete below, which is structurally guaranteed to
-      // fire before the queued job's own real progress ever starts
-      // (operation_queue.go serializes them).
+      // runs). Popping here would remove an entry the moment the ACTIVE
+      // job's own next tick arrives, not when it's actually that entry's
+      // turn. Correct pop point is backup:complete below, structurally
+      // guaranteed to fire before whatever was queued next starts producing
+      // its own real progress (operation_queue.go serializes them).
 
       const percent = Math.round(data.percent)
       setProgress(percent)
@@ -501,7 +508,7 @@ function App() {
     const unsubComplete = EventsOn('backup:complete', (data) => {
       setProgress(data.success ? 100 : 0)
       setBackupRunning(false)
-      setBackupQueuedMsg(null)
+      setPendingQueue(q => q.slice(1))
       setBackupStats({ startTime: null, lastUpdate: null, lastPercent: 0, speed: 0, eta: null, bytesDone: 0, bytesTotal: 0, newChunks: 0, reusedChunks: 0, failedChunks: 0, currentDir: '' })
       const localizedMsg = renderLocalizedMessage(data, t).text
       showStatus(data.success ? '✅ ' + localizedMsg : '❌ ' + localizedMsg, data.success ? 'success' : 'error')
@@ -533,13 +540,16 @@ function App() {
   useEffect(() => {
     if (!EventsOn) return
     const unsubP = EventsOn('restore:progress', (data) => {
-      // Same "Queued —" routing as backup:progress above — see its comment.
-      if (typeof data.message === 'string' && data.message.startsWith('Queued —')) {
-        setRestoreQueuedMsg(data.message)
+      // Same routing as backup:progress above — see its comment. Shared
+      // pendingQueue since backup and restore share one process-wide slot.
+      const queuedMatch = typeof data.message === 'string' && data.message.match(QUEUED_MSG_RE)
+      if (queuedMatch) {
+        const name = queuedMatch[1]
+        setPendingQueue(q => q.includes(name) ? q : [...q, name])
         return
       }
-      // Not cleared here — see the matching comment in the backup:progress
-      // handler above. restore:complete is the correct clear point.
+      // Not popped here — see the matching comment in the backup:progress
+      // handler above. restore:complete is the correct pop point.
       setRestoreProgress(Math.round((data.percent || 0) * 100))
       showStatus(`${data.message || ''}`, 'info', true)
     })
@@ -559,7 +569,7 @@ function App() {
     })
     const unsubC = EventsOn('restore:complete', (data) => {
       setRestoreLoading(false)
-      setRestoreQueuedMsg(null)
+      setPendingQueue(q => q.slice(1))
       setRestoreProgress(data.success ? 100 : 0)
       setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
       const localizedMsg = renderLocalizedMessage(data, t).text
@@ -2023,6 +2033,21 @@ function App() {
     )
   }
 
+  // Shared between the Backup and Restore tabs — one real queue (backup and
+  // restore share operation_queue.go's single slot), rendered identically
+  // wherever it's shown, per Mick's requested format: a count line plus a
+  // numbered list of names, not just a single generic "queued" line.
+  const queuePanel = pendingQueue.length > 0 ? (
+    <div style={{marginTop: '10px', padding: '10px 12px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#495057', border: '1px dashed #ced4da'}}>
+      <div style={{fontWeight: 'bold', marginBottom: '4px'}}>
+        ⏳ {pendingQueue.length === 1 ? t('queuedCountOne') : t('queuedCountMany', {n: pendingQueue.length})}
+      </div>
+      <ol style={{margin: 0, paddingLeft: '20px'}}>
+        {pendingQueue.map((name, i) => <li key={i}>{name}</li>)}
+      </ol>
+    </div>
+  ) : null
+
   return (
     <div className="app-shell">
       <nav className="sidenav">
@@ -2528,25 +2553,20 @@ function App() {
                 </button>
               </div>
 
-              {/* Whatever's waiting behind this one, shown as a compact row
-                  under the active card rather than its own big one — it has
-                  nothing to show yet, so it expands into this same card once
-                  its own turn actually starts (its progress events land on
-                  the normal path above, not here, the moment that happens). */}
-              {backupQueuedMsg && (
-                <div style={{marginTop: '10px', padding: '8px 10px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '12.5px', color: '#6c757d', border: '1px dashed #ced4da'}}>
-                  ⏳ {backupQueuedMsg}
-                </div>
-              )}
+              {/* Whatever's waiting behind this one, shown under the active
+                  card rather than its own big one — each expands into this
+                  same card once its own turn actually starts (its progress
+                  events land on the normal path above, not here). */}
+              {queuePanel}
             </div>
           )}
 
           {/* Nothing else is visible for backup right now (progress is 0), but
               something's queued behind whatever's holding the slot — most
               often a Restore. */}
-          {!(progress > 0 && progress < 100) && backupQueuedMsg && (
-            <div ref={backupCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '10px 15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px dashed #ced4da', fontSize: '13px', color: '#6c757d'}}>
-              ⏳ {backupQueuedMsg}
+          {!(progress > 0 && progress < 100) && pendingQueue.length > 0 && (
+            <div ref={backupCardRef} style={{marginTop: '10px', marginBottom: '20px'}}>
+              {queuePanel}
             </div>
           )}
 
@@ -3296,17 +3316,13 @@ function App() {
                 </button>
               </div>
 
-              {restoreQueuedMsg && (
-                <div style={{marginTop: '10px', padding: '8px 10px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '12.5px', color: '#6c757d', border: '1px dashed #ced4da'}}>
-                  ⏳ {restoreQueuedMsg}
-                </div>
-              )}
+              {queuePanel}
             </div>
           )}
 
-          {!restoreLoading && restoreQueuedMsg && (
-            <div ref={restoreCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '10px 15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px dashed #ced4da', fontSize: '13px', color: '#6c757d'}}>
-              ⏳ {restoreQueuedMsg}
+          {!restoreLoading && pendingQueue.length > 0 && (
+            <div ref={restoreCardRef} style={{marginTop: '10px', marginBottom: '20px'}}>
+              {queuePanel}
             </div>
           )}
 

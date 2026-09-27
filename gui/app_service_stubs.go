@@ -149,8 +149,8 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 	// backup/restore already running in THIS process — see
 	// operation_queue.go's doc comment for the cross-process caveat (a
 	// manual restore run from a separate GUI process isn't covered here).
-	release := acquireOperationSlot(fmt.Sprintf("backup of %s", backupID), func(heldBy string) {
-		writeDebugLog(fmt.Sprintf("[Service] Queued — waiting for %s to finish", heldBy))
+	release := acquireOperationSlot(comment, func(heldBy string) {
+		writeDebugLog(fmt.Sprintf("[Service] Queued: %s — waiting for %s to finish", comment, heldBy))
 	})
 	defer release()
 
@@ -229,8 +229,8 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		},
 	}
 
-	release := acquireOperationSlot(fmt.Sprintf("machine backup of %s", backupID), func(heldBy string) {
-		writeDebugLog(fmt.Sprintf("[Service] Queued — waiting for %s to finish", heldBy))
+	release := acquireOperationSlot(comment, func(heldBy string) {
+		writeDebugLog(fmt.Sprintf("[Service] Queued: %s — waiting for %s to finish", comment, heldBy))
 	})
 	defer release()
 

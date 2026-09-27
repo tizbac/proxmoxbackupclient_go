@@ -1116,8 +1116,11 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	// behind any backup/restore already running in this process — see
 	// operation_queue.go.
 	go func() {
-		release := acquireOperationSlot(fmt.Sprintf("backup of %s", backupID), func(heldBy string) {
-			opts.OnProgress(0.01, fmt.Sprintf("Queued — waiting for %s to finish...", heldBy))
+		// comment (resolved above via scheduledJobNameOr) is reused here as the
+		// display name a caller behind THIS one would see — same name either
+		// way, whether this run was triggered by a click or a schedule firing.
+		release := acquireOperationSlot(comment, func(heldBy string) {
+			opts.OnProgress(0.01, fmt.Sprintf("Queued: %s — waiting for %s to finish...", comment, heldBy))
 		})
 		defer release()
 
@@ -1401,8 +1404,8 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	// behind any backup/restore already running in this process — see
 	// operation_queue.go.
 	go func() {
-		release := acquireOperationSlot(fmt.Sprintf("backup of %s", backupID), func(heldBy string) {
-			opts.OnProgress(0.01, fmt.Sprintf("Queued — waiting for %s to finish...", heldBy))
+		release := acquireOperationSlot(comment, func(heldBy string) {
+			opts.OnProgress(0.01, fmt.Sprintf("Queued: %s — waiting for %s to finish...", comment, heldBy))
 		})
 		defer release()
 
@@ -1630,8 +1633,9 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	// only start once this restore actually begins, not while it's waiting
 	// its turn — a long queue wait is expected, not a stall.
 	go func() {
-		release := acquireOperationSlot(fmt.Sprintf("restore of %s", backupID), func(heldBy string) {
-			emit(0.01, fmt.Sprintf("Queued — waiting for %s to finish...", heldBy))
+		restoreLabel := fmt.Sprintf("Restore of %s @ %s", backupID, snapshotID)
+		release := acquireOperationSlot(restoreLabel, func(heldBy string) {
+			emit(0.01, fmt.Sprintf("Queued: %s — waiting for %s to finish...", restoreLabel, heldBy))
 		})
 		defer release()
 
