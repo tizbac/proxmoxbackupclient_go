@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
@@ -132,6 +133,17 @@ func (a *App) triggerOr(fallback string) string {
 		return a.currentScheduledJobTrigger
 	}
 	return fallback
+}
+
+// GetLogsFolder returns the directory holding backup-gui.log/service-gui.log
+// (and their rotated .gz siblings) — GetServiceLogPath/GetBackupLogPath give
+// the individual files, but the frontend's "View Logs" button opens the
+// containing folder via the same BrowserOpenURL/xdg-open path it already
+// uses for external links, so a browsable directory is what it needs. Both
+// build tags (logging_gui.go/logging_service.go) define GetServiceLogPath
+// identically, so either resolves the same real path.
+func (a *App) GetLogsFolder() string {
+	return filepath.Dir(GetServiceLogPath())
 }
 
 // NewApp creates a new App application struct

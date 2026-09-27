@@ -15,6 +15,7 @@ let GetServerFingerprint, PinPBSServerFingerprint
 let SetParallelRestore
 let ExportSettings, ImportSettings
 let SetSMTPSettings, SendTestEmail
+let GetLogsFolder
 
 // Check if we're running in Wails
 if (window.go) {
@@ -59,6 +60,7 @@ if (window.go) {
   SetParallelRestore = window.go.main.App.SetParallelRestore
   ExportSettings = window.go.main.App.ExportSettings
   ImportSettings = window.go.main.App.ImportSettings
+  GetLogsFolder = window.go.main.App.GetLogsFolder
   SetSMTPSettings = window.go.main.App.SetSMTPSettings
   SendTestEmail = window.go.main.App.SendTestEmail
 }
@@ -2341,6 +2343,25 @@ function App() {
                           {t('importSettingsBtn')}
                         </button>
                       </div>
+                    </div>
+
+                    <div className="form-group" style={{marginTop: '24px'}}>
+                      <h3 style={{marginBottom: '8px'}}>{t('logsTitle')}</h3>
+                      <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('logsIntro')}</p>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={async () => {
+                          if (!GetLogsFolder || !OpenBrowser) return
+                          try {
+                            const path = await GetLogsFolder()
+                            OpenBrowser(path)
+                          } catch (err) {
+                            showStatus(`❌ ${err}`, 'error')
+                          }
+                        }}
+                      >
+                        {t('viewLogsBtn')}
+                      </button>
                     </div>
                   </>
                 )}

@@ -716,23 +716,56 @@ Data Streams — the `Zone.Identifier` "downloaded from the internet" tag, etc.)
 Extended Attributes (a rarely-used OS/2-compat feature, distinct from ACLs). Same fix applied to
 the Known Limitations modal's text. All 6 languages.
 
-#### No way to set the default PBS server from the UI (Mick, 2026-09-26, on rigel)
+#### ~~No way to set the default PBS server from the UI~~ ✅ CONFIRMED WORKING (code audit) 2026-09-27
 
-**Reported:** "there is no way to set which server is the default in the UI" — Mick had to have me
-add rigel's production PBS server via a direct `config.json` edit, then couldn't find a way in the
-app itself to make it the default over the pre-existing test server.
+**Reported 2026-09-26 (on rigel):** "there is no way to set which server is the default in the UI"
+— Mick had to have me add rigel's production PBS server via a direct `config.json` edit, then
+couldn't find a way in the app itself to make it the default over the pre-existing test server.
 
-**Not yet confirmed whether this is a genuine gap or a discoverability/edge-case issue:** the
-mechanism DOES exist in code — `handleSetDefaultPBS` (App.jsx) → `SetDefaultPBSServer` (main.go) →
-`Config.SetDefaultPBS` (config.go), surfaced as a small "☆ Set Default" text link next to every
-*non*-default server in Preferences → Account's server list (only the non-default ones get the
-link; the current default shows a "⭐ DEFAULT" badge instead, nothing clickable). Rigel had only
-ONE PBS server configured at the time Mick looked (before I added the production one) — with only
-one server, there's nothing else to promote, so no link would show at all, which may be exactly
-what he hit rather than the feature being absent. Needs a real look once rigel has 2+ servers
-configured (it does now) to confirm the link actually appears and works, or whether there's a
-genuine bug/discoverability problem (e.g. the link is easy to miss, or doesn't appear in whatever
-view he was actually looking at).
+**Confirmed via full code-path audit — no bug:** `handleSetDefaultPBS` (`App.jsx:880-893`) →
+`SetDefaultPBSServer` (`main.go:589-592`) → `Config.SetDefaultPBS` (`config.go:481-488`) validates
+the ID exists, sets `DefaultPBSID`, and persists via `c.Save()`; the frontend then updates its own
+`defaultPBSID` state immediately on success, so the "⭐ DEFAULT" badge/"☆ Set Default" link swap
+re-renders right away with no reload needed. The gating condition for showing the server-list view
+at all is `pbsServers.length === 0` (`App.jsx:2061`) — with exactly the ONE server Mick had at the
+time, the list view still renders, but that sole server is automatically the default (nothing else
+to promote), so it shows only the "⭐ DEFAULT" badge with no clickable link — correct behaviour,
+not a bug. Confirmed this was purely that one-server edge case: rigel now has 2+ servers configured,
+and the code path is sound for that case. Not re-verified by clicking through the actual running
+GUI (no RDP/screenshot access this session) — flag if it still doesn't work once you've tried it.
+
+#### Progress card: kill the duplicate 2nd indicator, auto-scroll to it, and show a queue underneath (Mick, 2026-09-27)
+
+Started from: "the initial message for physical blocks under vss, or 'Initiating shadow copy' comes
+up at the bottom of the page and remains there with some second progress when the top of the page
+starts the proper detailed progress indicator." Converged, over several follow-ups, on a single
+design — Mick: "the backup or restore showing at the top of the page might still be fine, so let's
+stick with that for now and keep the other idea in reserve. We just need to deal with the 2nd
+progress indicator and also make sure that when the progress starts we refocus on it by jumping to
+it from wherever we are on the page" — plus: "we can then show a queue with the next backup waiting
+underneath it which then expands to full progress once it becomes active."
+
+**Decided scope (3 parts):**
+1. **Kill the duplicate indicator.** Keep today's behaviour where the detailed progress card only
+   appears at the top once real progress exists — don't chase the VSS 0%-rounding fix (that's the
+   "other idea," now explicitly parked). Instead stop the OTHER renderer from duplicating it: a
+   page-level status div at the bottom of both the Backup and Restore tabs (`App.jsx:3122-3124` and
+   `App.jsx:3731-3733`) renders `status.message` completely independently of the top progress card
+   (`App.jsx:2373` for backup, gated on `progress > 0 && progress < 100`; restore's own card is
+   gated on `restoreLoading` instead, `App.jsx:3695`). Both read the same `status.message` state, so
+   once the top card mounts, the exact same text also renders at the bottom — that's the "2nd
+   progress indicator." Fix: don't render the bottom status div while its tab's own progress card is
+   already showing (mutually exclusive, not both always-on).
+2. **Auto-scroll/refocus.** When a backup or restore actually starts (the top progress card first
+   mounts), scroll it into view from wherever the user currently is on the page — don't leave them
+   having to scroll down manually to discover it started.
+3. **Queue display.** When a second item is triggered while one is already running,
+   `acquireOperationSlot` (`gui/operation_queue.go`) already fires `onQueued(heldBy)`, and every call
+   site (`gui/main.go`, both backup and restore paths) already turns that into a real message via
+   `opts.OnProgress(0.01, "Queued — waiting for %s to finish...")` — the backend event already
+   exists. Frontend needs a compact "queued" row shown underneath the active progress card (not its
+   own separate big card) for whatever's waiting; when the active job finishes and the queued one's
+   turn starts, that row expands into the same full detailed progress card the active one has now.
 
 #### ~~Branded builds could still have their accent color overridden via the Theme tab~~ ✅ DONE 2026-09-26
 
