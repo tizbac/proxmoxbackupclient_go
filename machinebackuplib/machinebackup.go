@@ -561,7 +561,17 @@ vmgenid: {{.VMGenId}}
 		return nil, fmt.Errorf("finish: %v", err)
 	}
 
-	
+	// PBS's own "Comment" column reads from the dedicated notes API, not from
+	// anything in the manifest just uploaded — verified live against a real
+	// PBS instance (see gui/backup_inline.go's matching call for detail).
+	// Best-effort: the backup already succeeded, so a failure here is
+	// reported via progressCallback, not returned as a backup error.
+	if cfg.Comment != "" {
+		if commentErr := client.SetComment(cfg.Comment); commentErr != nil {
+			progressCallback(100, fmt.Sprintf("WARNING: failed to set PBS snapshot comment: %v", commentErr))
+		}
+	}
+
 	return &BackupResult{
 		Disks: disks,
 	}, nil

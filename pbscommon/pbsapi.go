@@ -102,6 +102,12 @@ type BackupManifest struct {
 	BackupID    string      `json:"backup-id"`
 	BackupTime  int64       `json:"backup-time"`
 	BackupType  string      `json:"backup-type"`
+	// Comment is written into the uploaded index.json.blob but PBS does not
+	// read it from there, and ListSnapshots' response never includes a
+	// "comment" key either — verified live against a real PBS instance. The
+	// snapshot comment PBS's own GUI actually shows comes from a separate
+	// notes sidecar, set via SetComment (below), not this field. Left here
+	// harmless rather than removed, in case a future PBS version honors it.
 	Comment     string      `json:"comment"`
 	Files       []File      `json:"files"`
 	Signature   interface{} `json:"signature"`
@@ -895,6 +901,51 @@ func (pbs *PBSClient) UploadManifest() error {
 		return err
 	}
 	return pbs.UploadBlob("index.json.blob", manifestBin)
+}
+
+// SetComment sets a snapshot's comment via PBS's dedicated notes API (PUT
+// .../admin/datastore/{store}/notes) — the actual field the PBS web UI's
+// snapshot list "Comment" column reads from. BackupManifest.Comment (above)
+// is NOT this: it only round-trips when this struct decodes an existing
+// ListSnapshots response, and verified live against a real PBS instance,
+// that response never includes a "comment" key either — PBS keeps notes in
+// a separate sidecar, not in index.json.blob. Call after Finish() succeeds,
+// using its own plain HTTP client like TestConnection/ListSnapshots do,
+// since pbs.Client's H2 backup-session transport is already torn down by
+// Finish() by the time this runs.
+func (pbs *PBSClient) SetComment(comment string) error {
+	client := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: pbs.buildTLSConfig()},
+	}
+
+	form := url.Values{}
+	form.Set("backup-type", pbs.Manifest.BackupType)
+	form.Set("backup-id", pbs.Manifest.BackupID)
+	form.Set("backup-time", fmt.Sprintf("%d", pbs.Manifest.BackupTime))
+	form.Set("notes", comment)
+	if pbs.Namespace != "" {
+		form.Set("ns", pbs.Namespace)
+	}
+
+	fullURL := fmt.Sprintf("%s/api2/json/admin/datastore/%s/notes", pbs.BaseURL, pbs.Datastore)
+	req, err := http.NewRequest(http.MethodPut, fullURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	pbs.setAuth(req)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("HTTP error setting comment: %d - %s", resp.StatusCode, string(body))
+	}
+	return nil
 }
 
 func (pbs *PBSClient) Finish() error {

@@ -1147,6 +1147,17 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		}
 
 		writeBackupLog(fmt.Sprintf("Session finalized: %d/%d directories committed", successfulDirs, len(opts.BackupObjects)))
+
+		// PBS's own "Comment" column reads from the dedicated notes API, not
+		// from anything in the manifest we just uploaded (verified live
+		// against the test PBS — index.json.blob's Comment field is never
+		// surfaced by ListSnapshots or the GUI). Best-effort: the backup
+		// already succeeded, so a failure here is logged, not fatal.
+		if opts.Comment != "" {
+			if commentErr := client.SetComment(opts.Comment); commentErr != nil {
+				writeBackupLog(fmt.Sprintf("WARNING: failed to set PBS snapshot comment: %v", commentErr))
+			}
+		}
 		break
 	}
 
