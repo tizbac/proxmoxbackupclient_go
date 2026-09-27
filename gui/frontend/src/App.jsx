@@ -279,6 +279,12 @@ function App() {
   // approximation; the actual serialization is correct regardless.
   const [pendingQueue, setPendingQueue] = useState([])
   const QUEUED_MSG_RE = /^Queued: (.+) — waiting for .+ to finish\.\.\.$/
+  // Which Backup Set/restore is actually running right now, so the progress
+  // card's title can say so — same "name" field the backend now sends
+  // alongside every real progress tick (gui/main.go), reusing the display
+  // name already resolved via scheduledJobNameOr for the queue feature.
+  const [activeBackupName, setActiveBackupName] = useState('')
+  const [activeRestoreName, setActiveRestoreName] = useState('')
   const backupCardRef = useRef(null)
   const restoreCardRef = useRef(null)
 
@@ -445,6 +451,7 @@ function App() {
       const percent = Math.round(data.percent)
       setProgress(percent)
       showStatus(`${data.message}`, 'info', true)
+      if (data.name) setActiveBackupName(data.name)
 
       // Track whether a backup is running (drives the Start/Stop button state).
       setBackupRunning(true)
@@ -508,6 +515,7 @@ function App() {
     const unsubComplete = EventsOn('backup:complete', (data) => {
       setProgress(data.success ? 100 : 0)
       setBackupRunning(false)
+      setActiveBackupName('')
       setPendingQueue(q => q.slice(1))
       setBackupStats({ startTime: null, lastUpdate: null, lastPercent: 0, speed: 0, eta: null, bytesDone: 0, bytesTotal: 0, newChunks: 0, reusedChunks: 0, failedChunks: 0, currentDir: '' })
       const localizedMsg = renderLocalizedMessage(data, t).text
@@ -552,6 +560,7 @@ function App() {
       // handler above. restore:complete is the correct pop point.
       setRestoreProgress(Math.round((data.percent || 0) * 100))
       showStatus(`${data.message || ''}`, 'info', true)
+      if (data.name) setActiveRestoreName(data.name)
     })
     // Structured live stats (bytes transferred), mirroring backup:stats.
     // Same cumulative-average speed calc as the backup side (item 5's fix) —
@@ -569,6 +578,7 @@ function App() {
     })
     const unsubC = EventsOn('restore:complete', (data) => {
       setRestoreLoading(false)
+      setActiveRestoreName('')
       setPendingQueue(q => q.slice(1))
       setRestoreProgress(data.success ? 100 : 0)
       setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
@@ -2479,7 +2489,7 @@ function App() {
           {progress > 0 && progress < 100 && (
             <div ref={backupCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
               <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
-                <strong style={{fontSize: '15px'}}>{t('backupProgress')}</strong>
+                <strong style={{fontSize: '15px'}}>{t('backupProgress')}{activeBackupName ? ` - ${activeBackupName}` : ''}</strong>
                 <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{progress}%</span>
               </div>
 
@@ -3271,7 +3281,7 @@ function App() {
           {restoreLoading && (
             <div ref={restoreCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
               <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
-                <strong style={{fontSize: '15px'}}>{t('restoring')}</strong>
+                <strong style={{fontSize: '15px'}}>{t('restoring')}{activeRestoreName ? ` - ${activeRestoreName}` : ''}</strong>
                 <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{restoreProgress}%</span>
               </div>
 

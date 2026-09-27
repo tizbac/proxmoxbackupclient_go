@@ -974,6 +974,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 				runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
 					"percent": percent * 100,
 					"message": message,
+					"name":    comment,
 				})
 			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
 				writeDebugLog("[OnProgress] No callbacks/context (service or headless mode)")
@@ -1268,6 +1269,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 				runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
 					"percent": percent * 100,
 					"message": message,
+					"name":    comment,
 				})
 				if machineTotalBytes > 0 {
 					runtime.EventsEmit(a.ctx, "backup:stats", map[string]interface{}{
@@ -1580,6 +1582,11 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		return fmt.Errorf("invalid snapshot ID: %v", err)
 	}
 
+	// Reused both for the progress card's own title (so it's clear WHICH
+	// restore is running when this card is the only one on screen) and for
+	// the queued-behind-this-one message another operation would show.
+	restoreLabel := fmt.Sprintf("Restore of %s @ %s", backupID, snapshotID)
+
 	emit := func(percent float64, message string) {
 		markRestoreProgress()
 		if a.ctx == nil {
@@ -1588,6 +1595,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		runtime.EventsEmit(a.ctx, "restore:progress", map[string]interface{}{
 			"percent": percent,
 			"message": message,
+			"name":    restoreLabel,
 		})
 	}
 
@@ -1633,7 +1641,6 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	// only start once this restore actually begins, not while it's waiting
 	// its turn — a long queue wait is expected, not a stall.
 	go func() {
-		restoreLabel := fmt.Sprintf("Restore of %s @ %s", backupID, snapshotID)
 		release := acquireOperationSlot(restoreLabel, func(heldBy string) {
 			emit(0.01, fmt.Sprintf("Queued: %s — waiting for %s to finish...", restoreLabel, heldBy))
 		})
