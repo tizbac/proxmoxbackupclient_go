@@ -918,6 +918,36 @@ overriding it — caught via a key-count check before it shipped.
 **Verified live** on pbstest-winclient: re-ran both jobs after deploying the fix, Reports showed
 "Backup with VSS"/"Backup without VSS" correctly.
 
+#### ~~Same symptom came back under real concurrent load~~ ✅ FIXED 2026-09-27 — the "race-safety verified" claim above had a gap
+
+Mick, stress-testing the new queue feature (several "Run Now" clicks in quick succession): "Some of
+the report descriptions still seem generic while others have the backup name." Same visible bug as
+the entry above, different actual cause — the earlier fix's own safety reasoning ("the next backup
+can't acquire the slot until the current one's OnComplete has finished") is true, but only covers
+`operation_queue.go`'s serialization *after* `acquireOperationSlot` — it never covered the EARLIER
+`setScheduledJobName` → `StartBackup` → `scheduledJobNameOr()` read sequence, which happens before
+any of that, in whichever fire-and-forget goroutine `RunScheduledJobNow` just spawned (one goroutine
+per click, `go a.executeScheduledJob(...)`, completely unserialized at that point). Click several
+Backup Sets close together and multiple `executeScheduledJob` instances run genuinely concurrently,
+each reading/writing the SAME shared `currentScheduledJobName` field with no atomicity across the
+three steps — goroutine A's read can land on goroutine B's name, or on the empty value from a THIRD
+job's `OnComplete`-triggered clear landing at just the wrong moment.
+
+**Fix:** stopped relying on the shared field for this data flow at all. `executeScheduledJob` now
+passes `job.Name` directly as the `comment` parameter (a real, non-shared parameter `StartBackup`/
+`StartMachineBackup` already had, from the PBS-comment feature) instead of `""` + a separate
+`scheduledJobNameOr()` lookup. `main.go`'s two `OnComplete` closures reuse the already-resolved local
+`comment` variable for the Reports `Name` field instead of re-querying `currentScheduledJobName` a
+second time, long after the fact. No shared mutable state left in this specific path.
+
+⚠️ **`currentScheduledJobPostActions`/`currentScheduledJobTrigger` are the exact same shared-field
+pattern, not fixed here** — same concurrent-Run-Now-clicks scenario could plausibly apply the WRONG
+job's post-backup actions (email/run-app/shutdown) or record the wrong trigger type, though neither
+has actually been observed/reported yet. Worth the same treatment if it ever surfaces — Trigger has
+no existing parameter slot on `StartBackup`/`StartMachineBackup` to reuse, so fixing it properly
+would need a new one (or a small internal-only variant of these functions for the scheduler's own
+call path, as opposed to the frontend's direct one-off calls).
+
 #### ~~Email settings deserve their own Preferences tab~~ ✅ DONE 2026-09-26
 
 Moved the whole SMTP/email-notifications section out of Preferences → Advanced into its own
