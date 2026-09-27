@@ -425,7 +425,15 @@ function App() {
         setBackupQueuedMsg(data.message)
         return
       }
-      setBackupQueuedMsg(null)
+      // Deliberately NOT cleared here — this same event channel also carries
+      // the ACTIVE job's own normal progress ticks (every 1-5s while it
+      // runs), which would otherwise wipe out a DIFFERENT, still-queued
+      // job's message within a fraction of a second of it appearing. Found
+      // live 2026-09-27: Mick clicked a second Backup Set while one was
+      // running and never saw a queue row — this is why. Correct clear
+      // point is backup:complete below, which is structurally guaranteed to
+      // fire before the queued job's own real progress ever starts
+      // (operation_queue.go serializes them).
 
       const percent = Math.round(data.percent)
       setProgress(percent)
@@ -530,7 +538,8 @@ function App() {
         setRestoreQueuedMsg(data.message)
         return
       }
-      setRestoreQueuedMsg(null)
+      // Not cleared here — see the matching comment in the backup:progress
+      // handler above. restore:complete is the correct clear point.
       setRestoreProgress(Math.round((data.percent || 0) * 100))
       showStatus(`${data.message || ''}`, 'info', true)
     })
