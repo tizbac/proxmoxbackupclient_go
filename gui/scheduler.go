@@ -880,9 +880,19 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 
 	var err error
 	if job.BackupType == "machine" {
-		// comment: "" -- a scheduled job's comment comes from
-		// currentScheduledJobName (set just above), not this parameter; see
-		// startMachineBackupDirect's own precedence logic.
+		// job.Name passed directly, NOT "" + currentScheduledJobName's
+		// fallback lookup. Found live 2026-09-27 testing the queue feature:
+		// clicking several Run Now buttons in quick succession spawns that
+		// many concurrent executeScheduledJob goroutines (RunScheduledJobNow
+		// fires each via `go`), and currentScheduledJobName is a single
+		// shared field — goroutine A's setScheduledJobName(A) → StartBackup
+		// → scheduledJobNameOr() read is NOT atomic as one block; goroutine
+		// B's own setScheduledJobName(B) can land in between, or a THIRD
+		// goroutine's OnComplete-triggered clear can land there, so A's own
+		// history/comment ends up with B's name or the generic fallback.
+		// Passing job.Name straight through as a real parameter has no
+		// shared state to race on. See startMachineBackupDirect: an
+		// already-non-empty comment skips the fallback lookup entirely.
 		err = a.StartMachineBackup(
 			job.BackupType,
 			driveLetters,
@@ -890,7 +900,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			job.UseVSS,
 			compression,
 			job.PBSServerID,
-			"",
+			job.Name,
 		)
 	} else {
 		err = a.StartBackup(
@@ -902,7 +912,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			job.UseVSS,
 			compression,
 			job.PBSServerID,
-			"",
+			job.Name,
 		)
 	}
 

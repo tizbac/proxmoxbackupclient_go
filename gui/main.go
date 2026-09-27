@@ -1023,8 +1023,17 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 				writeDebugLog("[OnComplete] No callbacks/context (service or headless mode)")
 			}
 
-			// Add manual backup to history. Name uses the triggering scheduled
-			// job's real name when set (see scheduledJobNameOr's doc comment) —
+			// Add manual backup to history. Name reuses the SAME `comment`
+			// this function already resolved near the top (either the
+			// triggering job's real name, passed straight through as a
+			// parameter now, or the generic one-off fallback) — NOT a fresh
+			// scheduledJobNameOr() call here. This closure fires whenever the
+			// real backup actually finishes, which can be a long time after
+			// this function returned; by then, other concurrent Run
+			// Now/scheduled goroutines may have overwritten or cleared
+			// currentScheduledJobName several times over, so re-querying it
+			// here got the WRONG job's name (or the generic fallback) —
+			// found live 2026-09-27 stress-testing the queue feature.
 			// this is the ONLY history write for a standalone-mode scheduled
 			// job now (executeScheduledJob's own write is skipped in that mode,
 			// see scheduler.go), since this closure fires with the real,
@@ -1032,7 +1041,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			// write.
 			historyEntry := JobHistory{
 				ID:            fmt.Sprintf("%d", time.Now().Unix()),
-				Name:          a.scheduledJobNameOr(fmt.Sprintf("Manual backup - %s", backupID)),
+				Name:          comment,
 				Timestamp:     time.Now().Format(time.RFC3339),
 				Status:        "success",
 				Message:       message,
@@ -1326,12 +1335,13 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 				writeDebugLog("[OnComplete] No callbacks/context (service or headless mode)")
 			}
 
-			// Add manual backup to history. Name uses the triggering scheduled
-			// job's real name when set — see the directory-backup OnComplete's
-			// matching comment above (startBackupDirect) for the full reasoning.
+			// Add manual backup to history. Reuses the already-resolved
+			// `comment` variable, not a fresh scheduledJobNameOr() call — see
+			// the directory-backup OnComplete's matching comment above
+			// (startBackupDirect) for the full reasoning.
 			historyEntry := JobHistory{
 				ID:            fmt.Sprintf("%d", time.Now().Unix()),
-				Name:          a.scheduledJobNameOr(fmt.Sprintf("Backup machine - %s", backupID)),
+				Name:          comment,
 				Timestamp:     time.Now().Format(time.RFC3339),
 				Status:        "success",
 				Message:       message,
