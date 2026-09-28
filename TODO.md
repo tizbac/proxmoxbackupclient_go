@@ -780,9 +780,47 @@ view, `restoreLoading && (...)` block that used to sit next to the Restore/Stop 
 new always-visible card at the top of the Restore tab, structurally mirroring the backup tab's card
 — fixes the same "disappears if you browse to a different snapshot mid-restore" class of bug the
 Stop-button fix addressed for backup. Verified: `npm run build` clean, `go build`/`vet` clean on both
-build tags, full `wails build` succeeds. Not yet exercised live against a real queued-second-job
-scenario (needs two backups/restores actually racing on rigel or a test client to confirm the queued
-row's text and the expand-into-full-card handoff look right on screen).
+build tags, full `wails build` succeeds. **Verified live 2026-09-27** on winclient: queued 3 Backup
+Sets behind an active one, all 3 showed up correctly named and numbered under the active card.
+
+#### ~~Queued item showed no name, and multiple queued items weren't counted~~ ✅ DONE 2026-09-27
+
+Follow-up to the item above. Mick: "I see a queued message but it doesn't say what backup is queued
+and I clicked two after this and it doesn't indicate 2 in queue" — wanted "2 more backups queued...
+(1) Name A (2) Name B". Also asked whether this would cover scheduled backups clashing too (recalled
+a prior issue about overlapping schedules): the underlying lock (`operation_queue.go`) already
+serialized that case safely, the gap was purely that the message never named who's waiting, only who's
+holding the slot — same gap for both manual and scheduled triggers.
+
+Backend's `acquireOperationSlot` message now reads `"Queued: <name> — waiting for <heldBy> to
+finish..."`, reusing the same `scheduledJobNameOr`-resolved display name already used for the PBS
+comment feature, so a scheduled job and a manual Run Now click surface identically. Frontend replaced
+the old single queued-message state with one shared `pendingQueue` array (backup and restore share the
+one real slot), rendered as a count line plus a numbered list, popped FIFO on completion. New
+`queuedCountOne`/`queuedCountMany` i18n keys added across all 18 languages, parity re-verified.
+
+⚠️ Caveat documented in code: a plain `sync.Mutex` isn't fair, so with 3+ simultaneous waiters the
+*displayed order* is a best-effort approximation — the actual serialization stays correct regardless.
+
+#### ~~Progress card title doesn't say which Backup Set/restore is running~~ ✅ DONE 2026-09-27
+
+Mick: "where it says 'Backup Progress', should we add ' - <Backup Set Name>' so you know which set is
+in progress". Backend now sends a `name` field alongside every `backup:progress`/`restore:progress`
+tick (same resolved display name as the queue feature above); frontend tracks it and appends
+" - <name>" to the card title. Verified live on winclient: title correctly showed the active Backup
+Set's name while 3 others were queued underneath.
+
+#### ~~Reports showed generic labels for some Backup Set runs under concurrent load~~ ✅ DONE 2026-09-27
+
+Found live while stress-testing the queue feature (multiple Run Now clicks in quick succession): a
+real race, not cosmetic — `currentScheduledJobName` is a single process-wide field, and
+`RunScheduledJobNow` spawns each click as its own unserialized goroutine, so concurrent clicks could
+read/clobber each other's name before ever reaching `operation_queue.go`'s actual serialization point.
+Fixed by passing the job's name directly as the already-existing `comment` parameter instead of a
+separate shared-field lookup (commit `53d191e`, full reasoning in the earlier "Reports:
+scheduled-job name reverted to generic" entry's own follow-up above it). ⚠️
+`currentScheduledJobPostActions`/`currentScheduledJobTrigger` are the same shared-field pattern, not
+fixed (different symptom, never actually observed) — flagged as a related known gap if it ever surfaces.
 
 #### ~~Branded builds could still have their accent color overridden via the Theme tab~~ ✅ DONE 2026-09-26
 
@@ -964,7 +1002,7 @@ option (e.g. Italian/English use "path", French/German/Polish/Spanish use "locat
 than forcing a literal "path" cognate everywhere — parallel construction within each language, not
 a mechanical find-replace.
 
-#### 🌍 Language switcher: dropdown UI ready for 18 languages, 12 new ones still need real translations
+#### ~~Language switcher: dropdown UI ready for 18 languages, 12 new ones still need real translations~~ ✅ DONE 2026-09-27
 
 Prompted by discussing Romanian/Latvian/Ukrainian/Baltic-language UK migrant communities. Added to
 `LanguageSwitcher.jsx`: bg/cs/el/hu/lv/lt/nl/pt/ro/sk/tr/uk alongside the existing 6, tightened row
@@ -972,11 +1010,10 @@ padding (10px→5px vertical) and gave the dropdown panel a fixed 210px width (s
 native name — Nederlands/Slovenčina/Українська — independent of whichever language happens to be
 selected, so it never has to wrap), plus a `maxHeight`/scroll safety net.
 
-**Not yet done:** `translations.js` itself only has real content for the original 6 — selecting any
-of the 12 new languages right now will show missing-key fallbacks almost everywhere (~490 lines of
-real translation needed per language, ~5,900 lines total). Do NOT ship the widened switcher without
-first either filling in the real translations or gating the new entries behind having content —
-right now it's UI-only, would present broken/empty screens if someone actually picked e.g. Romanian.
+**Done:** full, real translations added for all 12 languages across all 441 (now 443, after the
+queue-count keys) keys, including the nested `featuresList`/`techList` sub-objects — verified
+programmatically for exact key parity against the English master, zero missing/extra keys, for all
+18 languages. No longer UI-only; every language in the switcher is fully functional.
 
 #### ~~Restore progress bar doesn't match the backup one~~ ✅ FIXED 2026-09-25
 Restore now uses the same `.progress`/`.progress-bar` CSS classes as backup (30px, themed via
