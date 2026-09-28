@@ -672,7 +672,17 @@ func (a *App) emitAnalysisProgress(done, total int, scannedBytes uint64) {
 }
 
 // StartBackup starts a backup operation (routes to service or direct based on mode)
-func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
+// postActionsKey is "" for every existing caller (the frontend's direct
+// one-off calls) except executeScheduledJob (scheduler.go), which registers
+// its own job/trigger via registerPendingPostActions (app_types.go) first and
+// passes the returned key — a plain string keeps this parameter compatible
+// with api.BackupHandler's interface (package api can't reference
+// ScheduledJob, a package-main type, without a cycle), while still avoiding
+// any single shared value for concurrent executeScheduledJob goroutines to
+// race on. Only consumed in the ModeStandalone branch below; service mode
+// already handles its own post-actions/trigger correctly via scheduler.go's
+// local variables and never needs this.
+func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	writeDebugLog(fmt.Sprintf("StartBackup() called - mode: %s, VSS: %v, compression: %s, pbsServerID: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsServerID, a.isServiceProcess))
 
 	// Default to "fastest" if compression is empty
@@ -700,14 +710,15 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 		if useVSS && !isAdmin() {
 			return fmt.Errorf("VSS (Shadow Copy) requires administrator privileges - please restart the application as administrator or disable VSS")
 		}
-		return a.startBackupDirect(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID, comment)
+		return a.startBackupDirect(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID, comment, postActionsKey)
 	default:
 		return fmt.Errorf("unknown execution mode: %v", a.mode)
 	}
 }
 
-// StartMachineBackup starts a machine backup operation
-func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
+// StartMachineBackup starts a machine backup operation. See StartBackup's own
+// doc comment for postActionsKey.
+func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	writeDebugLog(fmt.Sprintf("StartMachineBackup() called - mode: %s, VSS: %v, compression: %s, pbsServerID: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsServerID, a.isServiceProcess))
 
 	// Default to "fastest" if compression is empty
@@ -735,7 +746,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		if useVSS && !isAdmin() {
 			return fmt.Errorf("VSS (Shadow Copy) requires administrator privileges - please restart the application as administrator or disable VSS")
 		}
-		return a.startMachineBackupDirect(backupType, backupDevices, backupID, useVSS, compression, pbsServerID, comment)
+		return a.startMachineBackupDirect(backupType, backupDevices, backupID, useVSS, compression, pbsServerID, comment, postActionsKey)
 	default:
 		return fmt.Errorf("unknown execution mode: %v", a.mode)
 	}
@@ -853,7 +864,7 @@ func (a *App) pollBackupProgress(jobID string) {
 }
 
 // startBackupDirect performs backup directly (standalone mode)
-func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
+func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	// Use hostname as fallback if backupID is empty
 	if backupID == "" {
 		backupID = a.GetHostname()
@@ -1039,6 +1050,17 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			// see scheduler.go), since this closure fires with the real,
 			// already-known outcome, unlike that earlier, necessarily-guessed
 			// write.
+			// One lookup, consumed exactly once — postActionsEntry is nil for
+			// a genuine one-off backup (empty key) or if the key was already
+			// taken. Race-free by construction: this key is unique to THIS
+			// specific run (registerPendingPostActions, app_types.go), not a
+			// single value other concurrent Run Now/scheduled goroutines
+			// could clobber before this closure gets around to reading it.
+			postActionsEntry := a.takePendingPostActions(postActionsKey)
+			resolvedTrigger := "oneoff"
+			if postActionsEntry != nil && postActionsEntry.trigger != "" {
+				resolvedTrigger = postActionsEntry.trigger
+			}
 			historyEntry := JobHistory{
 				ID:            fmt.Sprintf("%d", time.Now().Unix()),
 				Name:          comment,
@@ -1049,7 +1071,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 				BackupID:      backupID,
 				UseVSS:        useVSS,
 				BackupType:    backupType,
-				Trigger:       a.triggerOr("oneoff"),
+				Trigger:       resolvedTrigger,
 				MessageKey:    msgKey,
 				MessageParams: msgP,
 			}
@@ -1071,21 +1093,16 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			}
 
 			// Standalone-mode post-backup actions (email/run-app/exit/shutdown)
-			// for a scheduled job — only set when this run was actually
-			// triggered by one (see currentScheduledJobPostActions' doc
-			// comment); a genuine one-off backup from the form leaves this nil.
-			if job := a.currentPostActionsJob(); job != nil {
-				a.runPostBackupActions(*job, success, message)
+			// for a scheduled job — nil for a genuine one-off backup.
+			if postActionsEntry != nil {
+				a.runPostBackupActions(*postActionsEntry.job, success, message)
 			}
 
-			// Clear all three scheduled-job fields now that this run has
-			// actually consumed them — see setScheduledJobName's doc comment
-			// (scheduler.go) for why the clear lives here instead of a defer
-			// right after the setter. A genuine one-off backup left them
-			// already empty/nil, so this is a harmless no-op for that case.
+			// currentScheduledJobName is still a shared field (kept for the
+			// one-off comment-fallback case) — clear it now that this run has
+			// consumed it. postActions/trigger need no clearing: they are
+			// plain parameters now, not shared state.
 			a.setScheduledJobName("")
-			a.setScheduledJobPostActions(nil)
-			a.setScheduledJobTrigger("")
 		},
 	}
 
@@ -1163,7 +1180,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 }
 
 // startMachineBackupDirect performs machine backup directly (standalone mode)
-func (a *App) startMachineBackupDirect(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
+func (a *App) startMachineBackupDirect(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	// Use hostname as fallback if backupID is empty
 	if backupID == "" {
 		backupID = a.GetHostname()
@@ -1339,6 +1356,11 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			// `comment` variable, not a fresh scheduledJobNameOr() call — see
 			// the directory-backup OnComplete's matching comment above
 			// (startBackupDirect) for the full reasoning.
+			postActionsEntry := a.takePendingPostActions(postActionsKey)
+			resolvedTrigger := "oneoff"
+			if postActionsEntry != nil && postActionsEntry.trigger != "" {
+				resolvedTrigger = postActionsEntry.trigger
+			}
 			historyEntry := JobHistory{
 				ID:            fmt.Sprintf("%d", time.Now().Unix()),
 				Name:          comment,
@@ -1349,7 +1371,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 				BackupID:      backupID,
 				UseVSS:        useVSS,
 				BackupType:    "machine",
-				Trigger:       a.triggerOr("oneoff"),
+				Trigger:       resolvedTrigger,
 				MessageKey:    msgKey,
 				MessageParams: msgP,
 			}
@@ -1360,22 +1382,18 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 				writeDebugLog(fmt.Sprintf("Warning: Failed to add manual backup to history: %v", err))
 			}
 
-			// Standalone-mode post-backup actions (email/run-app/exit/shutdown)
-			// for a scheduled job — only set when this run was actually
-			// triggered by one (see currentScheduledJobPostActions' doc
-			// comment); a genuine one-off backup from the form leaves this nil.
-			if job := a.currentPostActionsJob(); job != nil {
-				a.runPostBackupActions(*job, success, message)
+			// Standalone-mode post-backup actions — see the directory-backup
+			// OnComplete's matching comment above (startBackupDirect) for the
+			// full reasoning.
+			if postActionsEntry != nil {
+				a.runPostBackupActions(*postActionsEntry.job, success, message)
 			}
 
-			// Clear all three scheduled-job fields now that this run has
-			// actually consumed them — see setScheduledJobName's doc comment
-			// (scheduler.go) for why the clear lives here instead of a defer
-			// right after the setter. A genuine one-off backup left them
-			// already empty/nil, so this is a harmless no-op for that case.
+			// currentScheduledJobName is still a shared field (kept for the
+			// one-off comment-fallback case) — clear it now that this run has
+			// consumed it. postActions/trigger need no clearing: they are
+			// plain parameters now, not shared state.
 			a.setScheduledJobName("")
-			a.setScheduledJobPostActions(nil)
-			a.setScheduledJobTrigger("")
 		},
 	}
 

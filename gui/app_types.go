@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 )
@@ -49,30 +51,65 @@ type App struct {
 	currentScheduledJobNameMu sync.Mutex
 	currentScheduledJobName   string
 
-	// currentScheduledJobPostActions carries a running scheduled job's own
-	// post-backup-action settings (email/run-app/exit/shutdown, see
-	// ScheduledJob) across to startBackupDirect/startMachineBackupDirect's
-	// OnComplete closure (main.go), which is where the REAL outcome is known
-	// in standalone/GUI mode — executeScheduledJob's own call to
-	// StartBackup/StartMachineBackup is fire-and-forget there (see
-	// currentScheduledJobName's doc comment for the same reasoning, including
-	// why the clear happens at each consumption point rather than via a
-	// defer right after the setter; safe as a plain field for the identical
-	// reason: operation_queue.go already serializes to one backup at a time
-	// process-wide). nil means "not triggered by a scheduled job" (the
-	// normal one-off case) — OnComplete must check for nil before using it.
-	currentScheduledJobPostActionsMu sync.Mutex
-	currentScheduledJobPostActions   *ScheduledJob
+	// currentScheduledJobPostActions/currentScheduledJobTrigger used to live
+	// here as single shared fields, same as currentScheduledJobName above —
+	// REMOVED 2026-09-28. Unlike the name (which genuinely needs a
+	// shared-field fallback: a one-off backup has no post-actions/trigger
+	// concept at all, so there's nothing to pass through for that case
+	// anyway), these two were ONLY ever read by startBackupDirect/
+	// startMachineBackupDirect's OnComplete closures (main.go). A single
+	// shared field has a real race: RunScheduledJobNow fires each Run Now
+	// click as its own unserialized goroutine, so goroutine A's set here
+	// could be overwritten by goroutine B's own set before A's own
+	// OnComplete (which runs much later, once the real backup actually
+	// finishes) gets around to reading it back — misapplying job B's
+	// shutdown/email/run-app settings to job A's actual outcome. Unlike the
+	// name-only version of this bug (cosmetic — a wrong label in Reports), a
+	// misattributed ShutdownAfter is a real, irreversible consequence.
+	// Never actually observed live; found by auditing this field for the
+	// same shape of bug immediately after fixing the name one.
+	//
+	// Can't just pass *ScheduledJob straight through as a new StartBackup/
+	// StartMachineBackup parameter either (the obvious next idea): those
+	// methods' signatures are constrained by api.BackupHandler (gui/api,
+	// implemented by both this file's App and app_service_stubs.go's), and
+	// package api cannot import ScheduledJob from package main without a
+	// cycle. Fixed instead with pendingPostActions below: each
+	// executeScheduledJob call generates its own unique key, so there is no
+	// single value for concurrent goroutines to race on — the interface gap
+	// (a plain string) stays exactly as small as comment's already is.
+	pendingPostActions sync.Map // key string -> *pendingPostActionsEntry
+}
 
-	// currentScheduledJobTrigger carries how the in-flight run was started
-	// ("scheduled"/"startup"/"manual") across to OnComplete (main.go), for
-	// the same reason and with the same lifecycle as currentScheduledJobName
-	// (set in executeScheduledJob, cleared at whichever of its three
-	// genuinely-final points applies — see that field's doc comment). Empty
-	// means "not triggered by a scheduled job" (a genuine one-off backup),
-	// which OnComplete records as "oneoff" rather than leaving blank.
-	currentScheduledJobTriggerMu sync.Mutex
-	currentScheduledJobTrigger   string
+// pendingPostActionsEntry is what pendingPostActions actually stores — see
+// its doc comment on the App struct above.
+type pendingPostActionsEntry struct {
+	job     *ScheduledJob
+	trigger string
+}
+
+// registerPendingPostActions stores job/trigger under a fresh, unique key and
+// returns it — see the App struct's pendingPostActions doc comment. Call
+// immediately before StartBackup/StartMachineBackup; the returned key is what
+// gets passed as their postActionsKey parameter.
+func (a *App) registerPendingPostActions(job ScheduledJob, trigger string) string {
+	key := fmt.Sprintf("%s-%d", job.ID, time.Now().UnixNano())
+	a.pendingPostActions.Store(key, &pendingPostActionsEntry{job: &job, trigger: trigger})
+	return key
+}
+
+// takePendingPostActions looks up and removes a key's entry — nil if key is
+// empty (the normal one-off case) or already consumed. Call exactly once, from
+// the OnComplete closure that actually knows the real outcome.
+func (a *App) takePendingPostActions(key string) *pendingPostActionsEntry {
+	if key == "" {
+		return nil
+	}
+	v, ok := a.pendingPostActions.LoadAndDelete(key)
+	if !ok {
+		return nil
+	}
+	return v.(*pendingPostActionsEntry)
 }
 
 // progressCallbacks stores the callback functions for a backup operation
@@ -97,40 +134,6 @@ func (a *App) scheduledJobNameOr(fallback string) string {
 	defer a.currentScheduledJobNameMu.Unlock()
 	if a.currentScheduledJobName != "" {
 		return a.currentScheduledJobName
-	}
-	return fallback
-}
-
-// setScheduledJobPostActions/currentPostActionsJob are the accessors for
-// currentScheduledJobPostActions — see its doc comment on the App struct.
-func (a *App) setScheduledJobPostActions(job *ScheduledJob) {
-	a.currentScheduledJobPostActionsMu.Lock()
-	a.currentScheduledJobPostActions = job
-	a.currentScheduledJobPostActionsMu.Unlock()
-}
-
-func (a *App) currentPostActionsJob() *ScheduledJob {
-	a.currentScheduledJobPostActionsMu.Lock()
-	defer a.currentScheduledJobPostActionsMu.Unlock()
-	return a.currentScheduledJobPostActions
-}
-
-// setScheduledJobTrigger/triggerOr are the accessors for
-// currentScheduledJobTrigger — see its doc comment on the App struct.
-func (a *App) setScheduledJobTrigger(trigger string) {
-	a.currentScheduledJobTriggerMu.Lock()
-	a.currentScheduledJobTrigger = trigger
-	a.currentScheduledJobTriggerMu.Unlock()
-}
-
-// triggerOr returns the current run's trigger, or fallback if this
-// backup/restore wasn't triggered by a scheduled job (the normal one-off
-// case).
-func (a *App) triggerOr(fallback string) string {
-	a.currentScheduledJobTriggerMu.Lock()
-	defer a.currentScheduledJobTriggerMu.Unlock()
-	if a.currentScheduledJobTrigger != "" {
-		return a.currentScheduledJobTrigger
 	}
 	return fallback
 }

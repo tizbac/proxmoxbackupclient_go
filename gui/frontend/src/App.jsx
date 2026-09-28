@@ -1364,7 +1364,8 @@ function App() {
           config.usevss,
           '',
           backupPBSID,
-          ''
+          '',
+          '' // postActionsKey — only the scheduler sets this, one-off calls never do
         )
         showStatus(`⏳ ${t('statusBackupRunning')}`, 'info')
         return
@@ -1410,7 +1411,8 @@ function App() {
             config.usevss,
             '',
             backupPBSID,
-            ''
+            '',
+            '' // postActionsKey — see the other one-off StartBackup call above
           )
         } catch (err) {
           // The part never started (validation / dispatch error): no completion
@@ -1594,7 +1596,8 @@ function App() {
           config.usevss,
           '',
           backupPBSID,
-          ''
+          '',
+          '' // postActionsKey — one-off backups never set this
         )
       } else {
         // Filter out any empty drives to prevent empty string issues
@@ -1606,7 +1609,8 @@ function App() {
           config.usevss,
           '',
           backupPBSID,
-          ''
+          '',
+          '' // postActionsKey — one-off backups never set this
         )
       }
       // Backup started in background - progress will be shown via events.

@@ -45,7 +45,12 @@ func (a *App) ReloadConfig() {
 
 // StartBackup starts a backup job
 // Service implementation using RunBackupInline
-func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
+// postActionsKey matches main.go's StartBackup signature (required by
+// api.BackupHandler) but is unused here: a scheduled/Run-Now job running in
+// service mode gets its post-backup actions fired by scheduler.go's own
+// service-mode branch, using its own local job variable directly, never via
+// this parameter — see app_types.go's pendingPostActions doc comment.
+func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	writeDebugLog(fmt.Sprintf("[Service] StartBackup called: type=%s, dirs=%v, id=%s, vss=%v, compression=%s, pbsServerID=%s", backupType, backupDirs, backupID, useVSS, compression, pbsServerID))
 
 	// Re-read config from disk so this run uses the current token / default PBS /
@@ -162,7 +167,8 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 // implementation using RunBackupInline. Mirrors StartBackup's own stub
 // exactly; added 2026-09-23 (the service build previously didn't implement
 // this at all, failing api.BackupHandler's interface check).
-func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
+// postActionsKey: see StartBackup's own doc comment above.
+func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	writeDebugLog(fmt.Sprintf("[Service] StartMachineBackup called: type=%s, devices=%v, id=%s, vss=%v, compression=%s, pbsServerID=%s", backupType, backupDevices, backupID, useVSS, compression, pbsServerID))
 
 	a.ReloadConfig()

@@ -30,14 +30,14 @@ type Server struct {
 // BackupHandler interface that the service must implement
 // NOTE: StartBackup will be called in a goroutine (async), so it must be thread-safe
 type BackupHandler interface {
-	StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error
+	StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error
 	GetConfigWithHostname() map[string]interface{}
 	GetScheduledJobsForAPI() []map[string]interface{}
 	SaveScheduledJobFromMap(job map[string]interface{}) error
 	UpdateScheduledJobFromMap(job map[string]interface{}) error
 	DeleteScheduledJobFromMap(jobID string) error
 	PinServerFingerprint(id, fingerprint string) error
-	StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error
+	StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error
 }
 
 // NewServer creates a new API server. token is the shared local-auth secret that
@@ -203,6 +203,8 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 			compression,
 			req.PBSServerID,
 			req.Comment,
+			"", // postActionsKey: never crosses the HTTP boundary — service mode
+			// fires post-actions from scheduler.go's own local job variable.
 		)
 
 		// Update final status if callbacks didn't fire

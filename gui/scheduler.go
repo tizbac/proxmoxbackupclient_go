@@ -795,8 +795,9 @@ func (a *App) checkAndRunScheduledJobs() {
 }
 
 // executeScheduledJob executes a scheduled job. trigger records how this run
-// started ("scheduled", "startup", or "manual") — see
-// currentScheduledJobTrigger's doc comment (app_types.go).
+// started ("scheduled", "startup", or "manual") — passed straight through to
+// StartBackup/StartMachineBackup as a real parameter (see app_types.go's
+// removal comment for the shared field this used to be).
 func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	// Check if job is already running
 	runningJobsMutex.Lock()
@@ -873,26 +874,27 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	// immediate-failure case) are genuinely synchronous — OnComplete never
 	// runs for either — so they clear explicitly themselves.
 	a.setScheduledJobName(job.Name)
-	a.setScheduledJobPostActions(&job)
-	a.setScheduledJobTrigger(trigger)
 
 	runPreBackupApp(job)
 
+	// job.Name passed directly, and postActions/trigger registered under a
+	// fresh key (app_types.go) rather than a shared field — NOT the generic
+	// fallback lookup a shared field would need. Found live 2026-09-27
+	// testing the queue feature: clicking several Run Now buttons in quick
+	// succession spawns that many concurrent executeScheduledJob goroutines
+	// (RunScheduledJobNow fires each via `go`), and a single shared value has
+	// no atomicity across its own set-then-read sequence — goroutine A's own
+	// set can land in between goroutine B's set and read, so B's
+	// history/comment/post-actions end up using A's values (or the generic
+	// fallback, if a clear lands there instead). Fixed for the name
+	// 2026-09-27; postActions/trigger used to be the exact same shared-field
+	// pattern (currentScheduledJobPostActions/currentScheduledJobTrigger,
+	// removed) but had no one-off use case at all, so a per-run key replaces
+	// them outright instead of just moving where a shared value gets read.
+	postActionsKey := a.registerPendingPostActions(job, trigger)
+
 	var err error
 	if job.BackupType == "machine" {
-		// job.Name passed directly, NOT "" + currentScheduledJobName's
-		// fallback lookup. Found live 2026-09-27 testing the queue feature:
-		// clicking several Run Now buttons in quick succession spawns that
-		// many concurrent executeScheduledJob goroutines (RunScheduledJobNow
-		// fires each via `go`), and currentScheduledJobName is a single
-		// shared field — goroutine A's setScheduledJobName(A) → StartBackup
-		// → scheduledJobNameOr() read is NOT atomic as one block; goroutine
-		// B's own setScheduledJobName(B) can land in between, or a THIRD
-		// goroutine's OnComplete-triggered clear can land there, so A's own
-		// history/comment ends up with B's name or the generic fallback.
-		// Passing job.Name straight through as a real parameter has no
-		// shared state to race on. See startMachineBackupDirect: an
-		// already-non-empty comment skips the fallback lookup entirely.
 		err = a.StartMachineBackup(
 			job.BackupType,
 			driveLetters,
@@ -901,6 +903,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			compression,
 			job.PBSServerID,
 			job.Name,
+			postActionsKey,
 		)
 	} else {
 		err = a.StartBackup(
@@ -913,6 +916,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			compression,
 			job.PBSServerID,
 			job.Name,
+			postActionsKey,
 		)
 	}
 
@@ -964,14 +968,14 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 		// Service mode: this synchronous err is the real, final outcome (see
 		// the comment above), so this is the one place to fire post-backup
 		// actions for it — startBackupDirect's OnComplete (main.go) isn't
-		// even compiled into service builds. Also the right place to clear
-		// the name/post-actions fields set above: nothing else will (see
-		// their setter's doc comment for why the clear moved here/OnComplete
-		// instead of a defer right after the setter).
+		// even compiled into service builds, so it will never consume the
+		// postActionsKey registered above; discard it here instead so the
+		// pendingPostActions map entry doesn't leak for this run's lifetime
+		// (`job` is this function's own local variable throughout, so the
+		// discarded value itself isn't needed — only the cleanup is).
 		a.runPostBackupActions(job, err == nil, historyEntry.Message)
 		a.setScheduledJobName("")
-		a.setScheduledJobPostActions(nil)
-		a.setScheduledJobTrigger("")
+		a.takePendingPostActions(postActionsKey)
 	} else if err != nil {
 		// Standalone mode: err here is only ever non-nil for an immediate,
 		// synchronous failure (e.g. StartBackup rejecting bad parameters
@@ -980,13 +984,12 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 		// it so it's not silently lost, but don't write a competing history
 		// entry for it. Post-actions still fire here for this specific
 		// immediate-failure case, since OnComplete never runs at all when
-		// the backup never actually started — for the same reason, this is
-		// also where the name/post-actions fields set above must be cleared.
+		// the backup never actually started — same leak-prevention reasoning
+		// as the service-mode branch above for the takePendingPostActions call.
 		writeDebugLog(fmt.Sprintf("Scheduled job %s failed to start: %v", job.Name, err))
 		a.runPostBackupActions(job, false, err.Error())
 		a.setScheduledJobName("")
-		a.setScheduledJobPostActions(nil)
-		a.setScheduledJobTrigger("")
+		a.takePendingPostActions(postActionsKey)
 	}
 
 	// Update job's last run and calculate next run.
