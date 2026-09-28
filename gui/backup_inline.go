@@ -1002,13 +1002,27 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 
 			archiveBase := archiveBaseName(dir, usedArchiveNames)
 			dirBytes, aclMeta, dirSkipped, dirExcluded, dirReadErrors, err :=
-				backupDirectory(client, &newchunk, &reusechunk, &failedchunk, dir, archiveBase, opts.UseVSS, progress, jobProg, opts.OnStats, opts.ExcludeList, sharedCatalog)
+				backupDirectory(opts.Ctx, client, &newchunk, &reusechunk, &failedchunk, dir, archiveBase, opts.UseVSS, progress, jobProg, opts.OnStats, opts.ExcludeList, sharedCatalog)
 
 			allSkipped = append(allSkipped, dirSkipped...)
 			allExcluded = append(allExcluded, dirExcluded...)
 			allReadErrors = append(allReadErrors, dirReadErrors...)
 
 			if err != nil {
+				// Cancellation mid-directory (PXARArchive.WriteDir's own
+				// per-file check, pbscommon/pxar.go) — must abort the WHOLE
+				// job here, not just this one directory: falling through to
+				// the generic "directory-local error, keep going" branch
+				// below would silently swallow Stop and move on to the next
+				// directory instead, exactly the bug this fixes.
+				if errors.Is(err, context.Canceled) {
+					writeBackupLog(fmt.Sprintf("Cancellation requested — stopping mid-backup of %s", dir))
+					client.Close()
+					if opts.OnComplete != nil {
+						opts.OnComplete(false, "Backup cancelled by user", MsgBackupCancelled, nil)
+					}
+					return fmt.Errorf("backup cancelled by user")
+				}
 				if isFatalSessionError(err) {
 					writeBackupLog(fmt.Sprintf("Session lost while backing up %s: %v", dir, err))
 					sessionFatal = err
@@ -1487,7 +1501,7 @@ func (s *sharedCatalogCoordinator) writeCB(client *pbscommon.PBSClient) pbscommo
 // skipped/excluded/read-error path lists for this directory. catalog is the
 // whole job attempt's shared catalog coordinator (see above) — every
 // directory's catalog data goes through the same one.
-func backupDirectory(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, archiveBase string, usevss bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator) (uint64, *BackupFileMeta, []string, []string, []string, error) {
+func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, archiveBase string, usevss bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator) (uint64, *BackupFileMeta, []string, []string, []string, error) {
 	writeBackupLog(fmt.Sprintf("Starting backup of %s", backupdir))
 	originalPath := backupdir
 
@@ -1525,16 +1539,16 @@ func backupDirectory(client *pbscommon.PBSClient, newchunk, reusechunk, failedch
 				break
 			}
 			var e error
-			bytesArchived, aclMeta, skipped, excluded, readErrs, e = backupReal(client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, jobProg, onStats, excludeList, catalog)
+			bytesArchived, aclMeta, skipped, excluded, readErrs, e = backupReal(ctx, client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, jobProg, onStats, excludeList, catalog)
 			return e
 		})
 		return bytesArchived, aclMeta, skipped, excluded, readErrs, err
 	}
 
-	return backupReal(client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, jobProg, onStats, excludeList, catalog)
+	return backupReal(ctx, client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, jobProg, onStats, excludeList, catalog)
 }
 
-func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, originalPath string, archiveBase string, vssUsed bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator) (returnBytes uint64, returnMeta *BackupFileMeta, returnSkipped, returnExcluded, returnReadErrors []string, returnErr error) {
+func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, originalPath string, archiveBase string, vssUsed bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator) (returnBytes uint64, returnMeta *BackupFileMeta, returnSkipped, returnExcluded, returnReadErrors []string, returnErr error) {
 	// Panic recovery - critical to prevent silent crashes during backup
 	defer func() {
 		if r := recover(); r != nil {
@@ -1583,6 +1597,7 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 	archive := &pbscommon.PXARArchive{}
 	archive.ArchiveName = archiveName
 	archive.ExcludeList = excludeList
+	archive.Ctx = ctx
 	archive.ExcludeRoot = originalPath // logical root for VSS-safe absolute-pattern matching
 
 	// Inject backup metadata into the PXAR archive root

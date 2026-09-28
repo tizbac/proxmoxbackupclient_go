@@ -2,6 +2,7 @@ package pbscommon
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -283,6 +284,19 @@ type PXARArchive struct {
 	buffer         bytes.Buffer
 	pos            uint64
 	ArchiveName    string
+
+	// Ctx, when set, is checked once per file/subdirectory entry in WriteDir's
+	// main walk loop — nil is a valid, fully-working zero value (no
+	// cancellation support), so every existing caller that never sets this
+	// keeps working unchanged. Found live 2026-09-28: the ONLY existing
+	// cancellation checkpoint was between entire top-level directories
+	// (gui/backup_inline.go's runBackupInlineInternal), so Stop appeared to
+	// do nothing at all for the common case of a single folder (or a whole
+	// single disk) — the backup simply ran to completion regardless, no
+	// matter how long the click-to-stop wait. This checks at file
+	// granularity instead: still not instant for one single giant file, but
+	// responsive for everything else.
+	Ctx context.Context
 
 	catalog_pos  uint64
 	SkippedFiles []string // ALL skips (read errors, junctions, system auto-excludes) — for logging/sidecar display
@@ -583,6 +597,16 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 	}
 
 	for _, file := range files {
+		// Checked once per entry — see Ctx's doc comment above for why this
+		// granularity (not more, not less). context.Canceled propagates up
+		// through every WriteDir/WriteFile caller on the stack; the top-level
+		// caller (gui/backup_inline.go) turns it into the same "Backup
+		// cancelled by user" handling the between-directories check already
+		// used.
+		if a.Ctx != nil && a.Ctx.Err() != nil {
+			return CatalogDir{}, a.Ctx.Err()
+		}
+
 		startpos := a.pos
 
 		// User-configured exclusions (H-04): prune the entry (and its subtree for
