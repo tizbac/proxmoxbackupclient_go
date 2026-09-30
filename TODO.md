@@ -662,6 +662,61 @@ To actually close this gap for a future release:
 
 ### 🎨 GUI polish (this fork)
 
+#### ⏳ IN PROGRESS: is deepthought's backup CPU-bound? (2026-09-30)
+
+Mick's 447.7GB deepthought→PBS directory backup felt slow even though PBS dedup is doing almost
+everything (log showed "New: 2, Reused: 1509" chunks) — investigated and found the read+hash pass
+(`PXARArchive.WriteDir`, content-defined chunking over the whole serialized stream) is entirely
+single-threaded; only chunk *upload* is parallelized (`chunkUploadWorkers = 8`,
+`backup_inline.go`), which barely gets exercised when almost nothing is new. deepthought's CPU is
+a weak 4-core/4-thread embedded AMD GX-420GI, making this plausible as the real bottleneck rather
+than PBS-server-reboot cold-cache (also a real contributing factor that night, separately).
+
+**Set up:** a CPU-sampling script (`C:\ProgramData\ProxmoxBackupClient\cpu_monitor.ps1`, logging to
+`cpu-monitor.csv` every 2s: total system CPU%, per-core breakdown, and the
+`ProxmoxBackupClient.exe` process's own CPU both normalized-to-machine and as "cores-worth") is
+running on deepthought, started ahead of Mick re-running the backup under observation. **Next
+step:** pull `cpu-monitor.csv` once Mick's run finishes and confirm whether it's actually pinned to
+one core (~25% total system CPU, one core in the per-core breakdown near 100%) during the read+hash
+phase — if confirmed, that's real evidence for eventually parallelizing the hash/chunk pass itself
+(much harder than the upload-side parallelism already done, since content-defined chunking is
+inherently sequential over the byte stream — would need a genuinely different chunking strategy to
+parallelize safely).
+
+#### 💡 IDEA, not started: skip re-reading/re-hashing files unchanged since the last backup
+
+Raised 2026-09-30 while investigating the above. Real Proxmox VE's own speed-up for VM backups
+(QEMU dirty bitmaps) doesn't apply here — no filesystem equivalent exists for an arbitrary
+directory tree. More importantly: the actual official `proxmox-backup-client` (Linux-only, no
+Windows build — exactly the gap this fork fills) does the SAME full re-read+re-chunk on every
+run for host/file backups, relying purely on server-side dedup, same as this fork already does.
+So this wouldn't be "catching up to Proxmox," it'd be a genuine NEW feature beyond what even
+Proxmox's own client does.
+
+**Why it's a real, multi-day job and not a quick tweak:** pxar serializes the whole tree into one
+continuous byte stream and cuts chunks by content-defined (rolling-hash) boundaries — NOT per file,
+which is exactly why "Reuse chunk" already works so well with zero explicit skip-logic (identical
+bytes re-cut at the same boundaries). But it also means a single chunk can span the tail of one
+file and the start of the next. To skip *reading* an unchanged file (not just skip *uploading* it)
+would need: (1) fetching/parsing the previous backup's catalog into a per-path
+size+mtime→chunk-digest map, (2) proving a run of unchanged files sits on a safe chunk boundary
+(no adjacent changed file bleeding into the same chunk), (3) splicing old chunk references
+directly into the new index instead of re-chunking that span, (4) still re-walking for metadata
+(permissions/ACLs/timestamps) even for skipped file content. Real correctness risk if the splicing
+logic is wrong (silently wrong chunk reference). Worth doing only if this class of large,
+mostly-static dataset (like deepthought's share) is a recurring pain point — not a default
+priority.
+
+#### ⏳ PENDING DECISION: bump pbs-vm's RAM now that proxmox07 has headroom
+
+Mick added 8GB to proxmox07 (pm07) specifically so the PBS VM (VMID 206, `pbs-vm`) could be given
+more — prompted by investigating whether a freshly-rebooted PBS server's cold page cache (only
+3.8GB total RAM allocated to the VM today) was contributing to slow chunk-lookup performance during
+a backup. proxmox07 now has 16GB free / 17GB available (host total 39GB, other VMs: theearth 6GB,
+dockerhost-04 8GB). VM 206 is currently `memory: 4096` in its config — not yet resized. Need to
+agree a target size with Mick (8GB? 12GB?) and confirm whether the VM's hotplug settings allow a
+live bump or need a reboot, before actually applying it.
+
 #### ⚠️ UNRESOLVED: app froze (high CPU, totally unresponsive) after a machine backup completed on rigel
 
 Mick, 2026-09-26/27: after "Rigel Full Machine Backup" (57m18s, `success=true`, clean completion
@@ -689,7 +744,7 @@ Next time this happens: before killing, try capturing a goroutine dump (`SIGQUIT
 one to stderr) and check if WebKitGTK's own process/thread (if separately visible via `ps`) is the
 one actually spinning, to narrow down Go vs. renderer definitively.
 
-#### 🔧 Progress panel: four fields all show raw base units with no scaling as values grow
+#### ~~Progress panel: four fields all show raw base units with no scaling as values grow~~ ✅ FIXED 2026-09-30
 
 Mick, 2026-09-28: spotted live watching a real 478GB deepthought→PBS backup. Same gap in four
 separate fields — strongly suggests one shared formatting helper either doesn't exist for these or
@@ -717,13 +772,51 @@ Fix should extend `formatBytes`/build a matching duration formatter and actually
 sites (both frontend React fields AND the Go-side "Processed:" message) through them, rather than
 adding a fifth one-off scaling implementation.
 
-#### 🔧 Backup Set save button label — "Update Schedule" should just say "Save Backup Set"
+#### ~~Backup Set save button label — "Update Schedule" should just say "Save Backup Set"~~ ✅ FIXED 2026-09-30
 
 Mick (2026-09-28): the button on the Backup Set editor currently reads "Update Schedule" when
 editing an existing set (`saveSchedule`/`updateSchedule` i18n keys, `App.jsx` ~line 3225) —
-"would be better to just be a 'Save Backup Set' button." Simple relabel, same button/handler,
-just unify both the new-set and editing-existing-set label to one "Save Backup Set" string across
-all 18 languages. Bundle in with the next code change rather than a standalone deploy.
+"would be better to just be a 'Save Backup Set' button." Unified to one "Save Backup Set" label
+across all 18 languages; dropped the now-unused `updateSchedule` key.
+
+#### ~~Tray icon was passive — no reflection of activity, no OS notification~~ ✅ DONE 2026-09-30
+
+Mick: tray tooltip was a static string, and nothing popped up when a scheduled backup finished —
+the only prior signal was email (if configured) or opening the window. `UpdateTrayTooltip`
+existed but had zero callers (dead code). Added: tooltip now shows "Backup running: X" /
+"Restoring: X" while active, "Next: X at \<time\>" (soonest enabled Backup Set) when idle,
+refreshed once a minute off the scheduler's own tick and right after any run finishes
+(`currentOperationLabel`, `operation_queue.go`, stops the idle refresh from clobbering an active
+tooltip). Real Windows toast (Action Center) now fires on every backup/restore completion,
+success or failure, via `github.com/go-toast/toast` (shells out to PowerShell's WinRT API, no
+CGO). Stubbed for non-Windows and Windows-service mode, neither has a tray.
+
+#### ~~Known Limitations wording could be misread as "ACL restore not done"~~ ✅ FIXED 2026-09-30
+
+Mick screenshot: the single run-on sentence ("...isn't implemented yet. NTFS/ACL permissions ...
+are already restored.") reads at a glance like ACL restore itself isn't done — content was
+accurate, just buried the reassurance after the negative clause. Split into the limitation
+(ADS/legacy NTFS extended attributes) and a separate, visually distinct ✅ reassurance line
+(ACLs already restored), across all 18 languages.
+
+#### ~~No Bare Metal Restore Guide existed (the old docs/RESTORE_GUIDE.md was stale/wrong)~~ ✅ DONE 2026-09-30, 🔧 wording follow-up below
+
+Built a real, accurate guide (`gui/docs/BARE_METAL_RESTORE.md`, embedded via `go:embed`) describing
+this fork's actual automated Clonezilla-based restore flow (PBS credentials → snapshot picker →
+target-disk confirmation → automated restore), not the old generic SystemRescue/CLI-restore
+doc that described a mechanism this fork never built. Tools menu: "View Bare Metal Restore Guide"
+(in-app overlay, `BMRGuideModal.jsx`, small hand-rolled Markdown renderer — no new npm dependency)
+and "Download Bare Metal Restore Guide…" (native save dialog), both work fully offline since the
+guide ships in the binary, sitting alongside the existing ISO download.
+
+**Follow-up, Mick (2026-09-30):** the guide's wording only talks about restoring Windows, but the
+actual mechanism (`ocs-onthefly`, a raw whole-disk block copy via NBD) doesn't care what OS is on
+the source snapshot at all — it works for restoring any OS that has a PBS full-machine/disk
+snapshot (Linux, Windows, anything `machinebackuplib`/a physical-disk backup can produce). Reword
+`gui/docs/BARE_METAL_RESTORE.md` to be OS-agnostic (currently says things like "put Windows back
+on" and the post-restore section assumes Windows-specific repair steps) — keep a Windows-specific
+sub-note only where it's genuinely Windows-only (e.g. Startup Repair from a Windows install USB;
+a Linux target would use its own bootloader repair instead).
 
 #### ~~No way to stop a Backup-Set-triggered ("Run Now") backup once started~~ ✅ FIXED 2026-09-26
 
