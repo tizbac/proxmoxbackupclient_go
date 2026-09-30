@@ -5,6 +5,8 @@ import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
 import DirectoryTree from './components/DirectoryTree'
 import KnownLimitationsModal from './components/KnownLimitationsModal'
+import BMRGuideModal from './components/BMRGuideModal'
+import ClosePromptModal from './components/ClosePromptModal'
 import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
 // Wails runtime imports (will be available when built with Wails)
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
@@ -84,9 +86,27 @@ function formatSpeed(bytesPerSec) {
     while (v >= base && u < units.length - 1) { v /= base; u++ }
     return `${v.toFixed(u === 0 ? 0 : 1)} ${units[u]}/s`
   }
-  const dec = scale(bytesPerSec, 1000, ['B', 'KB', 'MB', 'GB'])
-  const bin = scale(bytesPerSec, 1024, ['B', 'KiB', 'MiB', 'GiB'])
+  const dec = scale(bytesPerSec, 1000, ['B', 'KB', 'MB', 'GB', 'TB'])
+  const bin = scale(bytesPerSec, 1024, ['B', 'KiB', 'MiB', 'GiB', 'TiB'])
   return dec === bin ? dec : `${dec} (${bin})`
+}
+
+// Auto-scaling duration formatter (s -> m/s -> h/m/s -> d/h/m/s), for the
+// progress card's time-remaining/elapsed-time fields — both used to show
+// raw seconds (or minutes+seconds with no hours tier), unreadable well
+// before an hour in (a real 478GB job showed "342m 37s" and "2640s").
+function formatDuration(totalSeconds) {
+  let s = Math.max(0, Math.floor(totalSeconds || 0))
+  const days = Math.floor(s / 86400); s -= days * 86400
+  const hours = Math.floor(s / 3600); s -= hours * 3600
+  const minutes = Math.floor(s / 60); s -= minutes * 60
+  const seconds = s
+  const parts = []
+  if (days > 0) parts.push(`${days}d`)
+  if (days > 0 || hours > 0) parts.push(`${hours}h`)
+  if (days > 0 || hours > 0 || minutes > 0) parts.push(`${minutes}m`)
+  parts.push(`${seconds}s`)
+  return parts.join(' ')
 }
 
 // renderLocalizedMessage renders a JobHistory/MessageLogEntry's message in the
@@ -128,6 +148,8 @@ function App() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('backup')
   const [showLimitations, setShowLimitations] = useState(false)
+  const [showBMRGuide, setShowBMRGuide] = useState(false)
+  const [showClosePrompt, setShowClosePrompt] = useState(false)
   const [showPreferences, setShowPreferences] = useState(false)
   const [prefsTab, setPrefsTab] = useState('account')
   const [exportIncludeSecrets, setExportIncludeSecrets] = useState(false)
@@ -645,6 +667,12 @@ function App() {
     const unsubLimitations = EventsOn('nav:limitations', () => {
       setShowLimitations(true)
     })
+    const unsubBMRGuide = EventsOn('nav:bmrguide', () => {
+      setShowBMRGuide(true)
+    })
+    const unsubClosePrompt = EventsOn('nav:closeprompt', () => {
+      setShowClosePrompt(true)
+    })
     const unsubPreferences = EventsOn('nav:preferences', () => {
       setPrefsTab('account')
       setShowPreferences(true)
@@ -652,6 +680,8 @@ function App() {
     return () => {
       if (unsubGoto) unsubGoto()
       if (unsubLimitations) unsubLimitations()
+      if (unsubBMRGuide) unsubBMRGuide()
+      if (unsubClosePrompt) unsubClosePrompt()
       if (unsubPreferences) unsubPreferences()
     }
   }, [])
@@ -2515,7 +2545,7 @@ function App() {
               <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px'}}>
                 {backupStats.eta !== null && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('timeRemaining')}</strong> {Math.floor(backupStats.eta / 60)}m {backupStats.eta % 60}s
+                    <strong>{t('timeRemaining')}</strong> {formatDuration(backupStats.eta)}
                   </div>
                 )}
                 {backupStats.speed > 0 && (
@@ -2525,13 +2555,13 @@ function App() {
                 )}
                 {backupStats.startTime && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('elapsedTime')}</strong> {Math.floor((Date.now() - backupStats.startTime) / 1000)}s
+                    <strong>{t('elapsedTime')}</strong> {formatDuration((Date.now() - backupStats.startTime) / 1000)}
                   </div>
                 )}
                 {backupStats.bytesDone > 0 && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('dataSizeLabel')}</strong> {Math.round(backupStats.bytesDone / 1048576)}
-                    {backupStats.bytesTotal > 0 ? ` / ${Math.round(backupStats.bytesTotal / 1048576)}` : ''} MB
+                    <strong>{t('dataSizeLabel')}</strong> {formatBytes(backupStats.bytesDone)}
+                    {backupStats.bytesTotal > 0 ? ` / ${formatBytes(backupStats.bytesTotal)}` : ''}
                   </div>
                 )}
                 {(backupStats.newChunks > 0 || backupStats.reusedChunks > 0) && (
@@ -3222,7 +3252,7 @@ function App() {
           <button className="btn" onClick={handleStartBackup} disabled={backupMode === 'oneshot' && (backupRunning || (progress > 0 && progress < 100))}>
             {backupMode === 'oneshot'
               ? (backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `${t('startBackup')}`)
-              : (editingJobId ? `${t('updateSchedule')}` : `${t('saveSchedule')}`)
+              : `${t('saveSchedule')}`
             }
           </button>
           {backupMode === 'oneshot' && (
@@ -3312,8 +3342,8 @@ function App() {
                 )}
                 {restoreStats.bytesDone > 0 && (
                   <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('dataSizeLabel')}</strong> {Math.round(restoreStats.bytesDone / 1048576)}
-                    {restoreStats.bytesTotal > 0 ? ` / ${Math.round(restoreStats.bytesTotal / 1048576)}` : ''} MB
+                    <strong>{t('dataSizeLabel')}</strong> {formatBytes(restoreStats.bytesDone)}
+                    {restoreStats.bytesTotal > 0 ? ` / ${formatBytes(restoreStats.bytesTotal)}` : ''}
                   </div>
                 )}
               </div>
@@ -4143,6 +4173,8 @@ function App() {
       </div>
 
       {showLimitations && <KnownLimitationsModal onClose={() => setShowLimitations(false)} />}
+      {showBMRGuide && <BMRGuideModal onClose={() => setShowBMRGuide(false)} />}
+      {showClosePrompt && <ClosePromptModal onClose={() => setShowClosePrompt(false)} />}
     </div>
   )
 }

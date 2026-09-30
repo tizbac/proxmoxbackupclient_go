@@ -285,16 +285,23 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 		return false
 	}
 	// Only Windows has a tray that keeps the app alive, so only there do we
-	// swallow the close and hide the window. On other platforms the tray is a
-	// no-op, so we must let the window close or the app can never be quit.
+	// intercept the close. On other platforms the tray is a no-op, so we must
+	// let the window close or the app can never be quit.
 	if !a.preventCloseToTray() {
 		writeDebugLog("App.beforeClose() called - allowing close (no tray on this platform)")
 		return false
 	}
-	writeDebugLog("App.beforeClose() called - minimizing to tray")
-	// Instead of closing, minimize to tray
-	a.MinimizeToTray()
-	return true // Prevent actual close
+	// Mick, 2026-09-30: clicking the titlebar X used to silently minimize to
+	// tray with no way to actually exit from there — File > Exit / the tray's
+	// own Quit were the only real quit paths, easy to miss. Ask instead of
+	// assuming: emit an event for the frontend's close-prompt modal (Exit vs
+	// Minimize to Tray) and always prevent the native close here — the
+	// modal's own buttons call RequestQuit()/MinimizeToTray() directly once
+	// the user actually picks one, same as File > Exit and Minimize to Tray
+	// already do.
+	writeDebugLog("App.beforeClose() called - prompting Exit vs Minimize to Tray")
+	runtime.EventsEmit(a.ctx, "nav:closeprompt")
+	return true // Prevent actual close; the modal decides what happens next
 }
 
 // shutdown is called at application termination

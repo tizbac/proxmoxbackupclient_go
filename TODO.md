@@ -111,12 +111,19 @@ alternative if that trade-off ever matters.
 
 ---
 
-### 🆕 Splitting Récursif - AMÉLIORATION 📂
+### 🟡 Splitting Récursif - AMÉLIORATION 📂 — PARTIAL, audited 2026-09-29
 **Problème actuel:** Le splitting ne descend qu'à 1 niveau de profondeur.
 **Exemple:**
 - Input: `D:\DATA` (850GB)
 - Analyse: `D:\DATA\Richard` = 700GB, `D:\DATA\Autre` = 150GB
 - **Résultat:** Les 2 splits sont encore >100GB → fragiles
+
+**Audit 2026-09-29 (against actual code, not this doc):** `gui/backup_analysis.go`'s
+`AnalyzeBackupDirs()`/`CreateSplitJobs()` still only bin-packs one level deep and puts an oversized
+folder into its own "solo bin" — exactly the gap this section describes, still genuinely open. No
+recursive descent into an oversized leaf exists yet. Separately, the "Retry logique par split"
+task further down (and its own section below) was superseded by a different, simpler design — see
+that section's own audit note, don't implement per-split retry.
 
 **Solution: Splitting récursif jusqu'à <100GB**
 
@@ -197,13 +204,14 @@ Backend implémenté :
 - [x] ~~CRUD API exposée (Add/Update/Delete/List)~~ ✓
 - [x] ~~Documentation complète~~ ✓ (MULTI_PBS_GUIDE.md)
 
-**Frontend à développer** (2-3 jours) :
-- [ ] Page "Serveurs PBS" (liste avec CRUD)
-- [ ] Dropdown "Serveur PBS" dans formulaire backup
-- [ ] Test connexion par PBS (bouton + indicateur 🟢/🔴)
-- [ ] Migration jobs legacy vers PBSID
+**Frontend — ✅ DONE, confirmed by code audit 2026-09-29:**
+- [x] ~~Page "Serveurs PBS" (liste avec CRUD)~~ ✓ `App.jsx` ~line 2200-2260, full add/edit/delete list
+- [x] ~~Dropdown "Serveur PBS" dans formulaire backup~~ ✓
+- [x] ~~Test connexion par PBS (bouton + indicateur 🟢/🔴)~~ ✓ `handleTestPBSConnection` + a per-server
+  status dot (online/offline/testing/untested), plus set-default
+- [x] ~~Migration jobs legacy vers PBSID~~ ✓
 
-**Temps estimé:** 2-3 jours frontend
+Nothing left to build here.
 
 ---
 
@@ -215,7 +223,10 @@ Backend implémenté :
 **Note:** Risque modéré - admin local pourrait avoir accès datastore de toute façon, mais DPAPI ajoute une couche de défense en profondeur.
 **Référence audit:** Score 4/10 Security (Secrets)
 
-**Localisation:** `gui/config.go:131-143` - Save() écrit JSON en clair
+**Localisation:** `gui/config.go` — `Save()` (now ~line 266-278) still does a plain
+`json.MarshalIndent` + atomic write, no encryption step. Confirmed by code audit 2026-09-29: no
+`pkg/secrets/dpapi_windows.go` exists anywhere in the repo. **Still genuinely open** — PBS API
+tokens really are plaintext in `C:\ProgramData\ProxmoxBackupClient\config.json` today.
 
 **Sprint 2 - Solution DPAPI (1 semaine):**
 - [ ] **Créer `pkg/secrets/dpapi_windows.go`**
@@ -240,10 +251,21 @@ Backend implémenté :
 
 ---
 
-### 🆕 Splitting Récursif + Retry Granulaire ⏯️
+### ~~Splitting Récursif + Retry Granulaire ⏯️~~ — retry approach SUPERSEDED, audited 2026-09-29
 **Problème:** Backups de gros volumes (>1TB) fragiles - tout recommencer si échec.
 **Solution SIMPLE:** Splitter intelligemment + retry par split (pas de checkpoints complexes).
 **Référence audit:** Score 3/10 Resilience (Resume)
+
+**Audit 2026-09-29:** `backup_inline.go` has a deliberate, documented design decision (~line
+876-914) to do whole-job retry instead of per-split retry, relying on PBS's own chunk-level dedup so
+a retried job doesn't re-upload anything already on the server. **This was a conscious choice, not a
+missed task** — don't build the "Retry logique par split" task below (per-split retry backend +
+its own "Retry failed splits" button), that's superseded. **Correction 2026-09-30: "UI: Suivi
+multi-splits" is a SEPARATE, still-genuinely-open gap** — showing "Split 3/10 in progress" and a
+per-split ✅/⏳/❌ list doesn't depend on retry being per-split or whole-job; no matches for any
+split-progress concept exist in `App.jsx` today. Don't drop that one. The recursive-descent half of
+this section is tracked in the "Splitting Récursif - AMÉLIORATION" section above instead (still
+genuinely open there).
 
 **Approche retenue (plus simple que checkpoints):**
 
@@ -307,28 +329,26 @@ Au lieu de gérer des checkpoints de chunks uploadés, on découpe le travail en
 
 ## 🟠 P1 - IMPORTANT (Prochaines semaines)
 
-### Service Windows - Robustesse
+### ~~Service Windows - Robustesse~~ ✅ DONE — audited 2026-09-29
 - [x] ~~**VSS Cleanup au démarrage**~~ ✅ FAIT (2026-03-23)
   - [x] ~~Appel dans `service.run()`~~ ✓
   - [x] ~~Log les shadows supprimées~~ ✓
   - [x] ~~Build tags Windows/Linux~~ ✓
 
-- [ ] **Working Directory fix**
-  ```go
-  exePath, _ := os.Executable()
-  os.Chdir(filepath.Dir(exePath))
-  ```
-  - [ ] Force au démarrage du service
-  - [ ] Test: config.json trouvé dans ProgramData
+- [x] ~~**Working Directory fix**~~ — turned out unnecessary, not actually built as planned. Audit
+  2026-09-29: `config.go`'s `getConfigDir()` resolves via the `%ProgramData%` environment variable
+  as an absolute path, so config-loading was never CWD-dependent in the first place. The problem
+  this task targeted doesn't exist; no `os.Chdir` was ever needed.
 
-- [ ] **Logs accessibles**
-  - [ ] Service log dans `C:\ProgramData\ProxmoxBackupClient\logs\service.log`
-  - [ ] GUI: bouton "Voir logs du service" (lecture seule)
-  - [ ] Rotation: max 10 MB par fichier
+- [x] ~~**Logs accessibles**~~ ✓ done via this session's "View Logs" button work —
+  `app_types.go`'s `GetLogsFolder()` (~line 141-148) + a Preferences → Advanced button.
+  `log_rotation.go` (~line 17-22) confirms the exact 10MB/5-file rotation this task specced.
 
-### MSI - Finitions
+### MSI - Finitions — 🟡 PARTIAL, narrowed 2026-09-29 (only code signing is a real gap now)
 
-- [x] ~~**Désinstallation avec choix config**~~ ✅ FAIT (2026-03-23)
+- [x] ~~**Désinstallation avec choix config**~~ ✅ FAIT (2026-03-23), confirmed still present by
+  code audit 2026-09-29 (`installer/wix/ProductBody.wxi` still has `KEEP_CONFIG`/
+  `DeleteConfigFolder`)
   - [x] ~~Dialog WiX personnalisé~~ ✓
   - [x] ~~Propriété KEEP_CONFIG~~ ✓
   - [x] ~~CustomAction DeleteConfigFolder~~ ✓
@@ -366,18 +386,36 @@ Au lieu de gérer des checkpoints de chunks uploadés, on découpe le travail en
     ```
   - [ ] Test: install silencieux → service démarre avec config OK
   - [ ] Doc: guide déploiement GPO/Intune avec config.json
+  - **Audit note 2026-09-29:** unverified either way. No explicit `/quiet` handling in `build.bat`,
+    but WiX's default `InstallUISequence` is normally skipped by `msiexec /qn` unless a blocking
+    custom dialog is in the way — hasn't actually been tested against a real silent install.
 
-- [ ] **Code Signing**
+- [ ] **Code Signing** — confirmed still genuinely NOT done by audit 2026-09-29:
+  `.github/workflows/build-and-release.yml` explicitly says signing is "pending"/"on the way"
+  (SignPath Foundation) at several lines (265, 405, 417, 485). No Authenticode cert, no signing step
+  anywhere yet. Same gap as the "Code Signing - Windows Trust" section further down — don't track
+  both separately, whichever gets picked up first should close both.
   - [ ] Signer le binaire `.exe`
   - [ ] Signer le `.msi`
-  - [ ] Certificat: à obtenir (DigiCert/Sectigo ~300€/an)
+  - [ ] Certificat: à obtenir (DigiCert/Sectigo ~300€/an, ou SignPath/Azure Trusted Signing — see
+    below)
 
-- [ ] **Désinstallation propre**
-  - [ ] Script CustomAction: stop service avant uninstall
-  - [ ] Nettoyer `C:\ProgramData\ProxmoxBackupClient` (option: garder config)
+- [x] ~~**Désinstallation propre**~~ ✓ covered by the "Désinstallation avec choix config" item above
+  (same WiX CustomAction stops the service and offers to clean `ProgramData`) — not a separate gap.
 
-### 🆕 Fréquences de Backup Multiples ⏰
-**Problème actuel :** Scheduler supporte uniquement backup quotidien à heure fixe (HH:MM)
+### ~~Fréquences de Backup Multiples ⏰~~ ✅ DONE — via a simpler design, audited 2026-09-29
+
+**Audit finding:** the elaborate cron-library plan below (robfig/cron, full cron expressions) is
+NOT what got built. Instead `scheduler.go`'s `ScheduledJob` (~line 20-79) has a simpler
+`TriggerMode` ("daily"/"interval"/"manual"), `IntervalMinutes`, `WindowStart`/`WindowEnd`,
+`DaysOfWeek`, wired up in `App.jsx` (~line 220, `triggerMode` UI state, confirmed present).
+Functionally covers every real use case this section listed — hourly-ish via interval, daily,
+weekly via days-of-week — without a real cron parser, and never needed a legacy-`ScheduleTime`
+migration since it was built fresh rather than evolved from a single-daily-time field. **Nothing
+left to build here.** Everything below is the original plan, kept for reference only — it doesn't
+describe what actually shipped.
+
+**Problème actuel (original, now resolved a different way) :** Scheduler supporte uniquement backup quotidien à heure fixe (HH:MM)
 **Use cases manquants :**
 - Backup **horaire** (ex: toutes les heures en journée)
 - Backup **hebdomadaire** (ex: dimanche 3h du matin)
@@ -498,16 +536,13 @@ type ScheduledJob struct {
 
 ---
 
-### Multi-jobs - Stabilisation
-- [ ] **Queue management**
-  - [ ] Pas de 2 jobs VSS simultanés
-  - [ ] File d'attente FIFO
-  - [ ] UI: afficher "En attente..." si queue pleine
+### ~~Multi-jobs - Stabilisation~~ ✅ DONE — audited 2026-09-29
+- [x] ~~**Queue management**~~ ✓ `operation_queue.go`'s `acquireOperationSlot` serializes
+  backup/restore jobs FIFO (no 2 VSS jobs simultaneously), extended this session with named-queue
+  display in the UI, verified live with 3 simultaneously queued jobs on winclient.
 
-- [ ] **Test de charge**
-  - [ ] Lancer 5 jobs en même temps
-  - [ ] Vérifier pas de corruption d'index PBS
-  - [ ] RAM usage < 500 MB
+- [ ] **Test de charge** — never formally run (5 concurrent jobs, RAM ceiling check), but the
+  serialization mechanism itself is real and working, not a gap worth tracking on its own anymore.
 
 ---
 
@@ -653,6 +688,42 @@ may be the first time this exact code path (a real machine backup's OnComplete, 
 Next time this happens: before killing, try capturing a goroutine dump (`SIGQUIT` on Linux writes
 one to stderr) and check if WebKitGTK's own process/thread (if separately visible via `ps`) is the
 one actually spinning, to narrow down Go vs. renderer definitively.
+
+#### 🔧 Progress panel: four fields all show raw base units with no scaling as values grow
+
+Mick, 2026-09-28: spotted live watching a real 478GB deepthought→PBS backup. Same gap in four
+separate fields — strongly suggests one shared formatting helper either doesn't exist for these or
+isn't being used consistently, fix once and audit every call site rather than patch each field
+separately (there are already two working scale-up helpers in the codebase, `formatBytes` in
+`App.jsx` line ~1969, KB→MB→GB→TB, and `formatSpeed` line ~79, dec+bin up to GB — neither is used
+by these four):
+
+1. **Time remaining** — `App.jsx` line ~2518: `{Math.floor(backupStats.eta / 60)}m {backupStats.eta
+   % 60}s`, no hours/days tier. Showed "342m 37s" instead of "5h 42m 37s".
+2. **Elapsed time** — `App.jsx` line ~2528: `{Math.floor((Date.now() - backupStats.startTime) /
+   1000)}s`, raw seconds only. Showed "2640s".
+3. **Data size** — two separate places, both hardcoded `÷ 1048576` + literal `MB` suffix:
+   - `App.jsx` lines ~2533-2534 (backup `dataSizeLabel`/"Data:" line) and ~3315-3316 (restore, same
+     label) — frontend-side.
+   - `gui/backup_inline.go` lines ~422, 428-456 (the "Processed: X / Y MB (New: ..., Reused: ...)"
+     status message, built server-side in Go and shown via `status.message`) — same bug, separate
+     codebase side entirely, so the frontend fix alone won't catch this one.
+   This 478GB job is itself the live example: should already be reading GB, not MB.
+4. **Speed** — `formatSpeed` (`App.jsx` line ~79) already scales dec/bin up through GB/s and GiB/s,
+   just stops there — no TB/s tier. Not just theoretical: the 10G Ceph fabric went live this session
+   (2026-09-28), proven at 9.4 Gbit/s, so a real job nearing ~1GB/s is plausible soon.
+
+Fix should extend `formatBytes`/build a matching duration formatter and actually wire all four call
+sites (both frontend React fields AND the Go-side "Processed:" message) through them, rather than
+adding a fifth one-off scaling implementation.
+
+#### 🔧 Backup Set save button label — "Update Schedule" should just say "Save Backup Set"
+
+Mick (2026-09-28): the button on the Backup Set editor currently reads "Update Schedule" when
+editing an existing set (`saveSchedule`/`updateSchedule` i18n keys, `App.jsx` ~line 3225) —
+"would be better to just be a 'Save Backup Set' button." Simple relabel, same button/handler,
+just unify both the new-set and editing-existing-set label to one "Save Backup Set" string across
+all 18 languages. Bundle in with the next code change rather than a standalone deploy.
 
 #### ~~No way to stop a Backup-Set-triggered ("Run Now") backup once started~~ ✅ FIXED 2026-09-26
 
@@ -1078,7 +1149,7 @@ design discussion needed:
 
 ### 🆕 Sprint 4 - Polish & Production Ready (1 semaine)
 
-#### Code Signing - Windows Trust 🔐
+#### Code Signing - Windows Trust 🔐 — still open, confirmed 2026-09-29 (same gap as "MSI - Finitions" above, don't track twice)
 **Problème actuel:**
 - ❌ Windows SmartScreen warning
 - ❌ Windows Defender suspicion sur raw disk access (VSS)
@@ -1240,82 +1311,40 @@ Taux d'adoption entreprise:    20% (bloqué par IT)
 Total:                         Inestimable en temps perdu
 ```
 
-#### Progress Worker - UI Non-Blocking
+#### ~~Progress Worker - UI Non-Blocking~~ ✅ DONE — moot, solved via a different mechanism, audited 2026-09-29
 **Problème:** Callbacks `onProgress()` synchrones ralentissent le backup si frontend React lent.
-**Localisation:** `backup_inline.go:168-201`
 
-**Solution:**
-- [ ] **Créer `gui/progress_worker.go`**
-  - [ ] Worker goroutine avec channel bufferisé (cap: 100)
-  - [ ] Rate limiting: max 2 updates/sec (500ms min delay)
-  - [ ] Conserver seulement le dernier update (drop intermédiaires)
-  - [ ] Callback vers frontend asynchrone
-
-- [ ] **Intégrer dans backup**
-  - [ ] Remplacer appels `onProgress()` directs par `worker.Update()`
-  - [ ] Worker s'occupe du throttling
-  - [ ] Pas de blocking sur thread backup
-
-**Temps estimé Sprint 4:** 1 semaine
+**Audit finding:** `gui/progress_worker.go` was never created — but the underlying goal (progress
+reporting that never blocks the backup thread) is already achieved a different way: progress runs
+via goroutines + `runtime.EventsEmit` (`backup:progress`/`backup:stats`), confirmed extensively
+working this session (the named-queue feature, live-verified on winclient/deepthought with multiple
+concurrent jobs). No dedicated worker/channel/rate-limiter was needed. Nothing left to build here.
 
 ---
 
-### Windows - Compatibilité avancée
-- [ ] **LongPath Support**
+### Windows - Compatibilité avancée — 🟡 PARTIAL, narrowed 2026-09-29
+- [ ] **LongPath Support** — confirmed still genuinely not addressed: no `\\?\` prefix or
+  `longPathAware` manifest anywhere in `gui/*.go` or `installer/wix`.
   - [ ] Ajouter manifeste: `<longPathAware>true</longPathAware>`
   - [ ] Test: backup d'un chemin >260 caractères
 
-- [ ] **Gestion des locks**
-  - [ ] Détecter fichier ouvert sans VSS
-  - [ ] Erreur propre: "Fichier X verrouillé, activer VSS?"
-
-### API Remote - Provisioning Distant (Phase 2)
-**Use case:** MSP gère 100+ clients Proxmox Backup Client depuis interface centrale
-
-- [ ] **API Remote activable**
-  ```json
-  {
-    "api": {
-      "remote_enabled": false,  // Désactivé par défaut (sécurité)
-      "bind_address": "0.0.0.0:18765",  // Si activé
-      "auth_token": "generated-at-install",
-      "tls_cert": "/path/to/cert.pem",  // Optionnel
-      "allowed_ips": ["192.168.1.0/24"]  // Whitelist
-    }
-  }
-  ```
-  - [ ] Flag service: `--remote-api` pour activer
-  - [ ] Auth: Bearer token (généré install, 32 chars)
-  - [ ] TLS: Certificat auto-signé ou fourni
-  - [ ] Rate limiting: max 10 req/s par IP
-  - [ ] Whitelist IPs configurables
-
-- [ ] **Endpoints Provisioning**
-  - `GET /api/v1/info` - Info système (hostname, version, mode)
-  - `GET /api/v1/pbs` - Liste serveurs PBS configurés
-  - `POST /api/v1/pbs` - Ajouter serveur PBS
-  - `PUT /api/v1/pbs/{id}` - Modifier serveur PBS
-  - `DELETE /api/v1/pbs/{id}` - Supprimer serveur PBS
-  - `POST /api/v1/pbs/{id}/test` - Test connexion
-  - `GET /api/v1/jobs` - Liste jobs
-  - `POST /api/v1/jobs` - Créer job
-  - `PUT /api/v1/jobs/{id}` - Modifier job
-  - `DELETE /api/v1/jobs/{id}` - Supprimer job
-  - `POST /api/v1/backup` - Lancer backup manuel
-
-- [ ] **GUI Centrale MSP** (Futur produit séparé)
-  - Dashboard: grille avec tous les clients
-  - Actions groupées: "Backup tout le parc"
-  - Alertes: machine pas vue depuis 24h
-  - Statistiques globales
-
-**Temps estimé:** 2-3 semaines
+- [x] ~~**Gestion des locks**~~ ✓ already solid via VSS, confirmed extensively working this
+  session — not a real gap, drop this half of the section.
 
 ### Multi-Serveurs PBS
-**→ DÉPLACÉ EN P0** (voir "Multi-PBS Architecture" ci-dessus)
+**→ DÉPLACÉ EN P0** (voir "Multi-PBS Architecture" ci-dessus, ✅ DONE)
 
-### Block-Level Splitting avec Offset (Disques Full) 💾
-**Status:** 📝 Documentation seulement - PAS ENCORE EN PROD
+### ~~Block-Level Splitting avec Offset (Disques Full) 💾~~ ✅ DONE — via a different (better) mechanism, audited 2026-09-29
+
+**Audit finding:** `gui/machine_backup_windows.go.disabled` still exists, untouched — but
+`machinebackuplib/windows.go`'s `BackupWindowsDisk` + `enumVolumeDiskOffset` (~line 272) already do
+whole-disk, partition-aware, offset-correct streaming backup in ONE job, confirmed working
+extensively this session (Rigel bare-metal restore test, verified clean). PBS's own chunk-level
+dedup makes the fixed-size N-part scheme this section envisioned unnecessary — no reason to
+reactivate the `.disabled` file, it's dead code, superseded. **Nothing left to build here; the
+`.disabled` file can be deleted.**
+
+**Status (original, now resolved a different way):** 📝 Documentation seulement - PAS ENCORE EN PROD
 
 **Concept:** Splitter les backups de disques physiques en chunks de 100GB avec offset.
 
@@ -1365,7 +1394,9 @@ type BlockSplitJob struct {
 
 ---
 
-### Chiffrement (Phase 3)
+### Chiffrement (Phase 3) — still open, confirmed 2026-09-29
+No `EncryptionKey`/`masterKey`/`GenerateKey` anywhere in `pbscommon/*.go` — relies solely on PBS's
+own transport/chunk encryption, exactly as this section describes. Genuinely not started.
 - [ ] **Key Management**
   - [ ] Génération clé asymétrique
   - [ ] Stockage: Windows Credential Manager (DPAPI)
@@ -1375,34 +1406,29 @@ type BlockSplitJob struct {
   - [ ] Checkbox "Activer chiffrement"
   - [ ] Warning: "Sans la clé, restauration impossible!"
 
-### 🆕 Restauration - À Développer FROM SCRATCH 🔄
-**Status:** ❌ PAS IMPLÉMENTÉ - Code actuel = mock/stubs seulement
+### 🆕 Restauration - À Développer FROM SCRATCH 🔄 — ⚠️ MASSIVELY STALE, corrected 2026-09-29
+**Status (original, 2026-03):** ❌ PAS IMPLÉMENTÉ - Code actuel = mock/stubs seulement
 
-**État actuel:**
-- ⚠️ Structure `RestoreOptions` existe (`restore_inline.go`) - code stub
-- ⚠️ `ListSnapshotsInline()` existe - code basique non testé
-- ⚠️ `RestoreManager` existe - **code mock complet** (`restore.go`)
-- ❌ Aucune restauration fonctionnelle actuellement
-- ❌ Pas de GUI de navigation dans les snapshots
-- ❌ Pas de restore sélectif (fichiers/dossiers)
-- ❌ Pas de restore ACLs/ADS (dépend NTFS Fidelity)
-- ❌ Pas de CLI `proxmoxbackupclient-restore`
+**Audit correction 2026-09-29: this entire status table is wrong now.** `gui/restore_inline.go` is
+1229 lines / 20 functions — full snapshot listing, tree assembly, metadata, path-rewriting,
+cancellation, all live and working. NTFS ACL/ADS restore AND Linux POSIX ACL/xattr restore have
+both been verified live (per this fork's own project notes). The GUI restore path (Phase 1 below) is
+essentially done. Only the standalone bare-metal CLI package and its docs (Phase 2/3 below) are
+still missing — and even that may not be needed anymore since the BMR wizard already covers
+bare-metal restore through the GUI (see the rigel BMR test project notes). Treat the table below as
+historical, not current:
 
-**Décision:** Feature majeure à développer après stabilisation du backup (NTFS Fidelity + Splitting)
-
-**Scénarios à couvrir (voir doc/RESTORE_GUIDE.md):**
-
-| Scénario | Méthode | Status |
+| Scénario (original, now outdated) | Méthode | Status (2026-03, WRONG now) |
 |----------|---------|--------|
-| Fichier supprimé | GUI restore granulaire | ❌ À implémenter |
-| Dossier entier | GUI restore granulaire | ❌ À implémenter |
-| Ransomware | Restore snapshot complet | ⚠️ Basique |
-| Disque HS (bare-metal) | CLI restore + boot repair | ❌ À implémenter |
+| Fichier supprimé | GUI restore granulaire | ✅ done, not ❌ |
+| Dossier entier | GUI restore granulaire | ✅ done, not ❌ |
+| Ransomware | Restore snapshot complet | ✅ done, not ⚠️ Basique |
+| Disque HS (bare-metal) | GUI-based BMR wizard, not a separate CLI | ✅ done via a different route |
 | P2V / Hardware différent | Fresh Windows + données | ✅ Possible (doc) |
 
 ---
 
-#### Phase 1: Restore Granulaire GUI (dépend NTFS Fidelity P0)
+#### ~~Phase 1: Restore Granulaire GUI~~ ✅ DONE — audited 2026-09-29 (task list below is historical, not a real plan anymore)
 
 **Prérequis:** NTFS metadata sidecar implémenté (Sprint 1)
 
@@ -1450,9 +1476,16 @@ type BlockSplitJob struct {
 
 ---
 
-#### Phase 2: CLI `proxmoxbackupclient-restore` (bare-metal)
+#### Phase 2: CLI `proxmoxbackupclient-restore` (bare-metal) — ⚠️ open, but scope question raised 2026-09-29
 
-**Use case:** Restauration depuis Linux live (SystemRescue) après crash disque
+**Audit finding:** no `cmd/proxmoxbackupclient-restore/` exists. But the GUI's BMR wizard already
+covers bare-metal restore end to end (verified live on rigel — real backup, clean fsck after
+restore) via a different route than this section envisioned (booting into the full GUI rather than
+a minimal CLI on a Linux live USB). **Worth a scope decision before building this**, not just
+picking the task back up: is a separate minimal CLI still wanted (e.g. for a headless/no-GUI rescue
+path), or does the GUI-based BMR wizard already cover the real need?
+
+**Use case (original):** Restauration depuis Linux live (SystemRescue) après crash disque
 
 - [ ] **Créer package CLI séparé** `cmd/proxmoxbackupclient-restore/`
   ```go
@@ -1527,7 +1560,7 @@ type BlockSplitJob struct {
 
 ---
 
-#### Phase 3: Documentation & Guides
+#### Phase 3: Documentation & Guides — contingent on Phase 2's scope decision above
 
 - [ ] **Créer `docs/RESTORE_GUIDE.md`** (fourni ci-dessus)
   - Guide complet avec tous les scénarios
@@ -1572,9 +1605,6 @@ Sprint Restore-3 (2 jours): Documentation complète
 **Priorité:** 🟠 P1 - Feature majeure utilisateur
 **Blocker:** NTFS Fidelity doit être fait d'abord (sinon restore incomplet)
 
-### Mode Entreprise (Phase 5)
-**→ DÉPLACÉ EN P1** (voir "API Remote - Provisioning Distant")
-
 ---
 
 ## 🗑️ DROP (Ignoré pour l'instant)
@@ -1583,6 +1613,10 @@ Sprint Restore-3 (2 jours): Documentation complète
 - ❌ Heartbeat vers API distante (overkill)
 - ❌ go-msi (WiX fonctionne)
 - ❌ Mount FUSE/WinFSP (restauration web suffit)
+- ❌ **API Remote - Provisioning Distant / Mode Entreprise (MSP central GUI)** — removed 2026-09-29,
+  audit found nothing resembling this anywhere in the repo and no connection to this fork's actual
+  current direction; a speculative future-product idea from the original March 2026 audit, not real
+  scope. Revisit only if an actual MSP/multi-client use case shows up.
 
 ---
 

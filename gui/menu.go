@@ -64,6 +64,20 @@ func buildAppMenu(a *App) *menu.Menu {
 	toolsMenu.AddText("Download Bare Metal Restore ISO…", nil, func(_ *menu.CallbackData) {
 		runtime.BrowserOpenURL(a.ctx, "https://github.com/mjb-is/proxmoxbackupclient_go/releases/latest")
 	})
+	// These two mirror each other's naming ("Bare Metal Restore ISO"/"Bare
+	// Metal Restore Guide") deliberately, so both halves of disaster-recovery
+	// prep sit together in the menu. View opens an in-app overlay (the one
+	// "opens an overlay" exception this file's own convention already makes
+	// for nav:* events); Download calls straight into the App method, same
+	// as the ISO's BrowserOpenURL call above — an action, not a navigation.
+	toolsMenu.AddText("View Bare Metal Restore Guide", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:bmrguide")
+	})
+	toolsMenu.AddText("Download Bare Metal Restore Guide…", nil, func(_ *menu.CallbackData) {
+		if _, err := a.DownloadBMRGuide(); err != nil {
+			writeDebugLog("DownloadBMRGuide (menu): " + err.Error())
+		}
+	})
 
 	helpMenu := appMenu.AddSubmenu("Help")
 	helpMenu.AddText("Known Limitations", nil, func(_ *menu.CallbackData) {

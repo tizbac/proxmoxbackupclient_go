@@ -26,6 +26,26 @@ import (
 	"snapshot"
 )
 
+// formatByteSize auto-scales a byte count (KB/MB/GB/TB) for the "Processed:"
+// progress message below — that message used to hardcode a ÷1024/1024 MB
+// divisor unconditionally, unreadable well past 1000 (a real 478GB job
+// showed "Processed: 489472 / 489472 MB"). Mirrors the frontend's own
+// formatBytes (App.jsx) in spirit; kept as a separate, simpler Go
+// implementation since a debug-log string has no need to match its exact
+// decimal-place formatting.
+func formatByteSize(bytes uint64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := uint64(unit), 0
+	for n := bytes / unit; n >= unit && exp < 3; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGT"[exp])
+}
+
 // BackupOptions contains all parameters for a backup operation
 type BackupOptions struct {
 	Ctx             context.Context // Cancel to request a graceful stop between backup steps
@@ -419,17 +439,16 @@ func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
 	// Report progress every 10 MB
 	if c.onProgress != nil && c.pos-c.lastProgressReport > 10*1024*1024 {
 		c.lastProgressReport = c.pos
-		sizeMB := c.pos / (1024 * 1024)
 
 		// Build progress message with chunk stats
 		var msg string
 		failed := c.failedchunk.Load()
 		if failed > 0 {
-			msg = fmt.Sprintf("Processed: %d MB (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
-				sizeMB, c.newchunk.Load(), c.reusechunk.Load(), failed)
+			msg = fmt.Sprintf("Processed: %s (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
+				formatByteSize(c.pos), c.newchunk.Load(), c.reusechunk.Load(), failed)
 		} else {
-			msg = fmt.Sprintf("Processed: %d MB (New: %d, Reused: %d chunks)",
-				sizeMB, c.newchunk.Load(), c.reusechunk.Load())
+			msg = fmt.Sprintf("Processed: %s (New: %d, Reused: %d chunks)",
+				formatByteSize(c.pos), c.newchunk.Load(), c.reusechunk.Load())
 		}
 
 		// Calculate progress against the WHOLE JOB's total, not just this one
@@ -448,15 +467,15 @@ func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
 				progress = 0.9
 			}
 			if failed > 0 {
-				msg = fmt.Sprintf("Processed: %d / %d MB (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
-					bytesDone/(1024*1024), totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load(), failed)
+				msg = fmt.Sprintf("Processed: %s / %s (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
+					formatByteSize(bytesDone), formatByteSize(totalSize), c.newchunk.Load(), c.reusechunk.Load(), failed)
 			} else {
-				msg = fmt.Sprintf("Processed: %d / %d MB (New: %d, Reused: %d chunks)",
-					bytesDone/(1024*1024), totalSize/(1024*1024), c.newchunk.Load(), c.reusechunk.Load())
+				msg = fmt.Sprintf("Processed: %s / %s (New: %d, Reused: %d chunks)",
+					formatByteSize(bytesDone), formatByteSize(totalSize), c.newchunk.Load(), c.reusechunk.Load())
 			}
 		} else {
 			// No total size yet, show indeterminate progress
-			progress = 0.1 + float64(sizeMB%100)/1000.0 // Slowly increment from 10%
+			progress = 0.1 + float64((c.pos/(1024*1024))%100)/1000.0 // Slowly increment from 10%
 			if progress > 0.5 {
 				progress = 0.5
 			}
