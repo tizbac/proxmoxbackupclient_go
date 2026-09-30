@@ -717,7 +717,7 @@ dockerhost-04 8GB). VM 206 is currently `memory: 4096` in its config — not yet
 agree a target size with Mick (8GB? 12GB?) and confirm whether the VM's hotplug settings allow a
 live bump or need a reboot, before actually applying it.
 
-#### 💡 SCOPED, not started: selective restore from a big combined archive fetches far more chunks than it writes
+#### ~~Selective restore from a big combined archive fetches far more chunks than it writes~~ ✅ FIXED 2026-10-01
 
 Mick, 2026-09-30: restored just the "Beeby-Property" subfolder out of the big combined "Deepthought
 - Data" snapshot (458GB, `f__data.pxar.didx`) from pbstest-winclient — progress looked like it was
@@ -754,15 +754,23 @@ is the smoking gun.
    Backup Set/archive (Mick has "Deepthought - Beeby Property" as one), restore from THAT archive
    directly instead of a subfolder selection inside the big combined one — walks only that smaller
    archive's own size.
-2. **Real fix**: the archive already builds a binary-search-tree directory index on write
-   (`ca_make_bst`, `pxar.go` — this exists specifically so a reader COULD binary-search a directory
-   listing by name instead of scanning linearly) but `pxar_reader.go`'s `walk()` doesn't use it at
-   all — it's a plain linear scan. Teaching the reader to use the existing GOODBYE-table BST to
-   jump component-by-component to a named path (instead of visiting every preceding entry) would
-   make selective restore cheap regardless of where the target sits in a big archive. Real,
-   non-trivial reader-side work — not a quick fix, and out of scope for tonight.
+2. **Real fix, DONE 2026-10-01**: `pbscommon.PXARReader.ResolveArchivePathBST` now uses the archive's
+   existing GOODBYE binary-search-tree index (`ca_make_bst`, `pxar.go`) to jump straight to a named
+   path component-by-component — only ever touching entries on the direct path to the target, never
+   a sibling. `walk()` refactored into `walkRange(cb, startOffset, endOffset, initialPath, rootSeen)`
+   so the target's own subtree still walks with the exact same state machine, just starting partway
+   into the stream; every existing caller goes through `walk()` unchanged. `ExtractWithRewriter` uses
+   this fast path only for a single clean selection, falling back to the proven linear walk on ANY
+   failure (not found, unexpected table shape, I/O error) — read-only, so a bug here can only make a
+   restore slower via fallback, never wrong. Verified live against the test PBS server
+   (`gui/zz_selective_restore_bst_livetest_test.go`): a 512KB target folder inside an archive with a
+   40MB sibling restored correctly with zero sibling leakage, and `ResolveArchivePathBST` resolved
+   directly to the exact byte span 41.9MB into the archive — proof the sibling's chunks were never
+   touched at all. Multiple-selection restores (2+ `IncludePaths` entries) still use the linear walk
+   — a reasonable future extension, not needed for the common single-folder case this targets.
 
-**Separately, the progress bar's denominator is also wrong** regardless of the above: `restore_inline.go`'s
+**Separately, the progress bar's denominator is still wrong** (not addressed by the above):
+`restore_inline.go`'s
 `withSnapshotReader` sets `archiveSize` from `client.NewDIDXReaderAt`'s whole-archive size and sends
 that straight through as `bytesTotal` in `restore:progress`, even when `IncludePaths` narrows what's
 actually being extracted — so the "Data: X / Y" display always shows the WHOLE archive's size as Y,
