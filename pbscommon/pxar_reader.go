@@ -12,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/dchest/siphash"
 )
 
 // PXARReader reads and extracts PXAR archives.
@@ -165,16 +167,40 @@ type walkCallback func(entry PXARTreeEntry, payload *io.SectionReader) error
 // Correctly tracks the directory stack via PXAR_GOODBYE markers, so nested
 // directories and empty directories are handled properly.
 func (pr *PXARReader) walk(cb walkCallback) error {
-	pr.reset()
+	return pr.walkRange(cb, 0, pr.size, "", false)
+}
+
+// walkRange is walk's general form, added for the BST-based selective-restore
+// fast path (ResolveArchivePathBST): once that resolves a target's byte span
+// without visiting anything before it, walking the target's OWN subtree needs
+// this exact same FILENAME/ENTRY/PAYLOAD/GOODBYE state machine, just starting
+// partway into the stream instead of at true offset 0. Every existing caller
+// goes through walk() above, which reproduces the original 0/size/""/false
+// behavior exactly — this function changes nothing for them.
+//
+//   - startOffset/endOffset bound the scan to [startOffset, endOffset) instead
+//     of the whole archive; reads never cross endOffset.
+//   - initialPath seeds currentPath — the archive path of startOffset's
+//     PARENT, so the first entry found (which HAS its own preceding FILENAME,
+//     same as any normal nested entry) composes its path correctly via the
+//     existing joinArchivePath(currentPath, pendingName) call below.
+//   - rootSeen=true skips walk's own special-case for archive offset 0 (the
+//     true root's ENTRY header has no preceding FILENAME and is never itself
+//     emitted) — startOffset is never the true root in this function's actual
+//     use, so every ENTRY found here is a normal, emitted, named entry.
+func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, initialPath string, rootSeen bool) error {
+	pr.offset = startOffset
 	var pathStack []string
-	currentPath := ""
+	currentPath := initialPath
 	pendingName := ""
 	var pendingFileMode uint64
 	var pendingFileMtime uint64
 	hasPendingFile := false
-	rootSeen := false
 
 	for {
+		if pr.offset >= endOffset {
+			break
+		}
 		header, err := pr.readHeader()
 		if err == io.EOF {
 			break
@@ -291,6 +317,127 @@ func (pr *PXARReader) walk(cb walkCallback) error {
 	return nil
 }
 
+// errBSTNotFound is returned internally when the GOODBYE binary-search-tree
+// lookup can't find a requested child — either it genuinely doesn't exist,
+// or something about the table didn't look as expected. Either way the
+// caller (ResolveArchivePathBST's caller, walkSelective) falls back to a
+// full linear walk() rather than treat this as fatal: this whole fast path
+// is a pure optimization, never the only way to reach a file.
+var errBSTNotFound = errors.New("pxar: entry not found via GOODBYE BST")
+
+// siphashKey0/1 must match the exact keys WriteDir (pxar.go) hashes every
+// filename with when building a directory's GOODBYE table — the BST search
+// below only works if it's searching for the SAME hash the writer sorted by.
+const (
+	siphashKey0 = 0x83ac3f1cfbb450db
+	siphashKey1 = 0xaa4f1b6879369fbd
+)
+
+// readGoodByeItem manually parses one 24-byte GoodByeItem (hash, offset, len,
+// each a little-endian uint64, in that FIELD ORDER — see pxar.go's struct
+// declaration) at an exact byte position. Deliberately not binary.Read on the
+// struct: GoodByeItem's fields are unexported, and binary.Read needs to SET
+// struct fields via reflection, which silently zeroes unexported ones
+// regardless of caller package (binary.Write only needs to READ them, which
+// has no such restriction — see WriteFile's own matching comment on
+// PXARFileEntry for the same issue on the write... er, read side there).
+func (pr *PXARReader) readGoodByeItem(pos int64) (hash, offset, length uint64, err error) {
+	buf := make([]byte, 24)
+	if _, err := pr.ra.ReadAt(buf, pos); err != nil {
+		return 0, 0, 0, err
+	}
+	return binary.LittleEndian.Uint64(buf[0:8]),
+		binary.LittleEndian.Uint64(buf[8:16]),
+		binary.LittleEndian.Uint64(buf[16:24]),
+		nil
+}
+
+// findChildSpan looks up name within the GOODBYE table of the directory
+// whose content ends at spanEnd (spanEnd is always a directory's own
+// exclusive end offset — see ResolveArchivePathBST), using the exact same
+// balanced-BST array layout ca_make_bst (pxar.go) builds on write: a sorted
+// array stored heap-style, root at index 0, children at 2i+1/2i+2, so a
+// binary search by hash never needs to visit a sibling outside the search
+// path. Returns [childStart, childEnd) — childStart is where the child's own
+// FILENAME header begins, childEnd is the exclusive end of its entire span
+// (its own content plus, if it's a directory, its own trailing GOODBYE
+// table) — both computed the same way WriteDir itself tracks them on write.
+func (pr *PXARReader) findChildSpan(spanEnd int64, name string) (childStart, childEnd int64, err error) {
+	// The trailer is always the LAST 24 bytes of a directory's GOODBYE table,
+	// and that table is always the last thing written within the directory's
+	// own span — so it's always the 24 bytes immediately before spanEnd.
+	trailerHash, _, goodbyeLen, err := pr.readGoodByeItem(spanEnd - 24)
+	if err != nil {
+		return 0, 0, fmt.Errorf("read trailer: %w", err)
+	}
+	if trailerHash != PXAR_GOODBYE_TAIL_MARKER {
+		return 0, 0, fmt.Errorf("%w: no GOODBYE trailer at expected position", errBSTNotFound)
+	}
+	goodbyeHeaderPos := spanEnd - int64(goodbyeLen)
+	if goodbyeHeaderPos < 0 {
+		return 0, 0, fmt.Errorf("%w: GOODBYE header position negative", errBSTNotFound)
+	}
+
+	entryCount := (int64(goodbyeLen) - 16) / 24 - 1 // total entries minus the trailer itself
+	if entryCount < 0 {
+		return 0, 0, fmt.Errorf("%w: negative entry count", errBSTNotFound)
+	}
+	tableStart := goodbyeHeaderPos + 16 // past the 16-byte PXAR_GOODBYE header
+
+	target := siphash.Hash(siphashKey0, siphashKey1, []byte(name))
+
+	i := int64(0)
+	for i < entryCount {
+		itemPos := tableStart + i*24
+		itemHash, itemOffset, itemLen, err := pr.readGoodByeItem(itemPos)
+		if err != nil {
+			return 0, 0, fmt.Errorf("read BST entry %d: %w", i, err)
+		}
+		switch {
+		case target == itemHash:
+			start := goodbyeHeaderPos - int64(itemOffset)
+			return start, start + int64(itemLen), nil
+		case target < itemHash:
+			i = i*2 + 1
+		default:
+			i = i*2 + 2
+		}
+	}
+	return 0, 0, fmt.Errorf("%w: %q", errBSTNotFound, name)
+}
+
+// ResolveArchivePathBST resolves an archive-relative path (forward slashes,
+// no leading slash — same convention as PXARTreeEntry.Path) to its byte span
+// using ONLY GOODBYE-table binary searches, one per path component — never
+// visiting a sibling file/directory that isn't on the direct path to the
+// target. Returns the target's own [start, end) span and the archive path of
+// its PARENT (for walkRange's initialPath, so entries found while walking the
+// target's own subtree compose correct full paths). Any failure (not found,
+// or anything about a GOODBYE table not matching the expected shape) returns
+// errBSTNotFound-wrapped — always meant to be a "fall back to the proven
+// linear walk" signal, never a hard error surfaced to the user.
+func (pr *PXARReader) ResolveArchivePathBST(path string) (targetStart, targetEnd int64, parentPath string, err error) {
+	path = strings.Trim(path, "/")
+	if path == "" {
+		return 0, 0, "", fmt.Errorf("%w: empty path", errBSTNotFound)
+	}
+	components := strings.Split(path, "/")
+
+	spanEnd := pr.size
+	for idx, comp := range components {
+		start, end, ferr := pr.findChildSpan(spanEnd, comp)
+		if ferr != nil {
+			return 0, 0, "", ferr
+		}
+		if idx == len(components)-1 {
+			return start, end, strings.Join(components[:idx], "/"), nil
+		}
+		spanEnd = end
+	}
+	// unreachable (components is non-empty)
+	return 0, 0, "", errBSTNotFound
+}
+
 // joinArchivePath joins archive paths with forward slashes, never producing
 // a leading or duplicate slash.
 func joinArchivePath(parent, child string) string {
@@ -391,7 +538,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 	includes := NormalizeIncludes(includePaths)
 	extracted := make([]PXARExtractedFile, 0, 64)
 
-	err := pr.walk(func(e PXARTreeEntry, payload *io.SectionReader) error {
+	cb := func(e PXARTreeEntry, payload *io.SectionReader) error {
 		if !pathMatches(e.Path, includes) {
 			return nil
 		}
@@ -518,7 +665,33 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime,
 		})
 		return nil
-	})
+	}
+
+	// Fast path: exactly one clean selection can often be resolved directly
+	// via the archive's own GOODBYE binary-search-tree index
+	// (ResolveArchivePathBST) instead of linearly scanning every entry before
+	// it — see that function's doc comment for why this is safe (it only
+	// ever trusts a GOODBYE table shape it has actually verified) and
+	// pxar.go's ca_make_bst for the index format this relies on. ANY failure
+	// here (not found, unexpected shape, I/O error) falls back to the proven
+	// full walk below — this is a pure optimization, never the only way a
+	// restore can succeed. Multiple includes keep using the full walk for
+	// now: resolving several independent spans and merging their results is
+	// a reasonable future extension, not needed for the common "restore one
+	// folder out of a big snapshot" case this targets.
+	if len(includes) == 1 {
+		if targetStart, targetEnd, parentPath, ferr := pr.ResolveArchivePathBST(includes[0]); ferr == nil {
+			if werr := pr.walkRange(cb, targetStart, targetEnd, parentPath, true); werr == nil {
+				return extracted, nil
+			}
+			// Fast-path walk itself failed partway through (rare) — restart
+			// clean with the full linear walk rather than return a partial,
+			// possibly-confusing result.
+			extracted = extracted[:0]
+		}
+	}
+
+	err := pr.walk(cb)
 	return extracted, err
 }
 
