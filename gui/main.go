@@ -383,7 +383,9 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		"backupdir":        cfg.BackupDir,
 		"backup-id":        cfg.BackupID,
 		"usevss":           cfg.UseVSS,
-		"parallel_restore": cfg.ParallelRestore,
+		"parallel_restore":     cfg.ParallelRestore,
+		"parallel_backup_read": cfg.ParallelBackupRead,
+		"backup_read_workers":  cfg.BackupReadWorkers,
 		"hostname":         hostname,
 		// Global SMTP account (Preferences > Advanced). Same M-04 pattern as
 		// the PBS secret above: never hand the real password to the webview,
@@ -969,6 +971,11 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		ExcludeList:    excludeList,
 		DisableSplit:   a.config.DisableSplit,
 		SplitSizeBytes: a.config.SplitSizeBytes(),
+		// Only meaningful for directory backups (PXARArchive) — harmless to
+		// set unconditionally here since the machine-backup path never reads
+		// it (no PXARArchive involved). See Config.ParallelBackupRead's doc
+		// comment.
+		PrefetchWorkers: a.config.EffectivePrefetchWorkers(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 

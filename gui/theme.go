@@ -38,3 +38,18 @@ func (a *App) SetParallelRestore(enabled bool) error {
 	}
 	return nil
 }
+
+// SetParallelBackupRead persists the Preferences > Advanced "multi-threaded
+// backup reading" toggle and its worker count together (not two separate
+// setters) so a change to either always lands as one consistent save — same
+// SaveConfig/Validate bypass as SetParallelRestore above, for the same
+// multi-PBS reason. workers <= 0 is accepted and just means "use the
+// default" (see Config.EffectivePrefetchWorkers).
+func (a *App) SetParallelBackupRead(enabled bool, workers int) error {
+	a.config.ParallelBackupRead = enabled
+	a.config.BackupReadWorkers = workers
+	if err := a.config.Save(); err != nil {
+		return fmt.Errorf("failed to save backup read-ahead setting: %w", err)
+	}
+	return nil
+}

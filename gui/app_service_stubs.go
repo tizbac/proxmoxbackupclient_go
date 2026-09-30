@@ -144,6 +144,9 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		ExcludeList:     excludeList,
 		DisableSplit:    pbsCfg.DisableSplit,
 		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
+		// Only meaningful for kind=="directory" — harmless to set unconditionally,
+		// the machine-backup path (StartMachineBackup below) never reads it.
+		PrefetchWorkers: pbsCfg.EffectivePrefetchWorkers(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent, message))
 		},

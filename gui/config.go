@@ -61,6 +61,26 @@ type Config struct {
 	// behavior.
 	ParallelRestore bool `json:"parallel_restore,omitempty"`
 
+	// ==================== BACKUP READ PERFORMANCE ====================
+	// ParallelBackupRead opts into prefetching each directory's files into
+	// memory with a worker pool, ahead of the archiver's own single-threaded
+	// scan/chunk/hash pass — added 2026-09-30 after live CPU sampling on a
+	// large (447GB), mostly-unchanged directory backup showed the process
+	// fluctuating at 20-70% of one core rather than pinned, consistent with
+	// disk-read wait rather than CPU-bound hashing. Deliberately does NOT
+	// change chunk boundaries or dedup behavior at all: the archiver
+	// (pbscommon.PXARArchive.WriteFile) still scans/chunks bytes in the exact
+	// same order either way — prefetch only changes where those bytes come
+	// from (an already-filled buffer instead of a blocking disk read), so
+	// there is no one-time re-dedup cost and no format change, unlike a
+	// genuine parallel-hashing redesign would carry. Defaults to false (the
+	// original, proven sequential read path) for the same reason
+	// ParallelRestore above does. BackupReadWorkers is only meaningful when
+	// ParallelBackupRead is true; 0 or unset means the default (see
+	// pbscommon.DefaultPrefetchWorkers).
+	ParallelBackupRead bool `json:"parallel_backup_read,omitempty"`
+	BackupReadWorkers  int  `json:"backup_read_workers,omitempty"`
+
 	// ==================== EMAIL NOTIFICATIONS ====================
 	// Global SMTP account, used by every Backup Set's own on-completion/
 	// on-failure email toggle (see ScheduledJob) rather than each job storing
@@ -125,6 +145,25 @@ func (c *Config) SplitSizeBytes() uint64 {
 		gb = DefaultSplitSizeGB
 	}
 	return uint64(gb) * 1024 * 1024 * 1024
+}
+
+// DefaultBackupReadWorkers is used when ParallelBackupRead is on but
+// BackupReadWorkers hasn't been set — matches chunkUploadWorkers
+// (backup_inline.go) so the read-ahead pool and the upload pool default to
+// the same size.
+const DefaultBackupReadWorkers = 8
+
+// EffectivePrefetchWorkers returns the worker count WriteDir's read-ahead
+// should use: 0 (disabled) unless ParallelBackupRead is on, in which case
+// it's BackupReadWorkers or DefaultBackupReadWorkers if that's unset.
+func (c *Config) EffectivePrefetchWorkers() int {
+	if !c.ParallelBackupRead {
+		return 0
+	}
+	if c.BackupReadWorkers <= 0 {
+		return DefaultBackupReadWorkers
+	}
+	return c.BackupReadWorkers
 }
 
 // atomicWriteFile writes data to path crash-safely: it writes a temp file in the

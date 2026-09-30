@@ -332,6 +332,18 @@ type PXARArchive struct {
 	// that PXAR cannot represent. Best-effort: errors are logged and ignored.
 	MetaCollector MetaCollector
 
+	// PrefetchWorkers > 0 enables per-directory read-ahead: before WriteDir's
+	// file loop runs, it starts up to this many concurrent background reads
+	// for the directory's own regular files (see startPrefetch), so the
+	// (still fully single-threaded) scan/chunk/hash pass in WriteFile finds
+	// bytes already in memory instead of blocking on disk for each file in
+	// turn. This changes NOTHING about chunk boundaries or dedup — WriteFile
+	// still feeds bytes into the archive in the exact same order either way,
+	// only WHERE those bytes come from changes. 0 (the default) is the
+	// original, fully synchronous behavior. See Config.ParallelBackupRead's
+	// doc comment in gui/config.go for the live CPU evidence this responds to.
+	PrefetchWorkers int
+
 	// --- Shared multi-archive catalog support ---
 	// PBS's own web-UI "browse this snapshot" feature is hardcoded server-side
 	// to read a catalog dynamic index literally named "catalog.pcat1.didx" — it
@@ -467,6 +479,84 @@ func (a *PXARArchive) addReadError(msg string) {
 	a.ReadErrors = append(a.ReadErrors, msg)
 }
 
+// prefetchEntry holds the in-flight/completed result of one background
+// read-ahead, scoped to a single WriteDir call's own files (never shared
+// across directories or goroutine-unsafe: each WriteDir call builds and owns
+// its own map, passed down to WriteFile as a plain local value).
+type prefetchEntry struct {
+	data []byte
+	err  error
+	done chan struct{}
+}
+
+// maxPrefetchFileSize bounds per-file memory use for read-ahead — a file
+// larger than this is simply never added to the prefetch set, and WriteFile
+// falls back to its normal streaming read for it, exactly as if prefetching
+// were disabled entirely for that one file.
+const maxPrefetchFileSize = 128 * 1024 * 1024 // 128MB
+
+// startPrefetch kicks off background reads for dirPath's own regular files
+// (not subdirectories — each recursive WriteDir call prefetches only its own
+// level, called again independently as the walk recurses) and returns
+// immediately with a map of path -> in-flight prefetchEntry; callers wait on
+// an individual entry's done channel only when they actually reach that file.
+// Returns nil when prefetching is disabled or nothing in this directory
+// qualifies, in which case a nil-map lookup in the caller's loop is a no-op
+// (Go's zero-value map read), identical to the prefetch-disabled path.
+func (a *PXARArchive) startPrefetch(dirPath string, files []os.DirEntry) map[string]*prefetchEntry {
+	if a.PrefetchWorkers <= 0 {
+		return nil
+	}
+
+	entries := make(map[string]*prefetchEntry)
+	var paths []string
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		if shouldSkipSystemFile(file.Name()) {
+			continue
+		}
+		fullPath := filepath.Join(dirPath, file.Name())
+		if len(a.ExcludeList) > 0 && isExcluded(relExcludePath(a.root, fullPath), file.Name(), a.ExcludeRoot, a.ExcludeList) {
+			continue
+		}
+		info, err := file.Info()
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || info.Size() > maxPrefetchFileSize {
+			continue
+		}
+		entries[fullPath] = &prefetchEntry{done: make(chan struct{})}
+		paths = append(paths, fullPath)
+	}
+
+	if len(paths) == 0 {
+		return nil
+	}
+
+	jobs := make(chan string, len(paths))
+	for _, p := range paths {
+		jobs <- p
+	}
+	close(jobs)
+
+	workers := a.PrefetchWorkers
+	if workers > len(paths) {
+		workers = len(paths)
+	}
+	for i := 0; i < workers; i++ {
+		go func() {
+			for p := range jobs {
+				pe := entries[p]
+				pe.data, pe.err = os.ReadFile(p)
+				close(pe.done)
+			}
+		}()
+	}
+
+	return entries
+}
+
 func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (CatalogDir, error) {
 	//fmt.Printf("Write dir %s at %d\n", path, a.pos)
 
@@ -596,6 +686,8 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		}
 	}
 
+	prefetch := a.startPrefetch(path, files)
+
 	for _, file := range files {
 		// Checked once per entry — see Ctx's doc comment above for why this
 		// granularity (not more, not less). context.Canceled propagates up
@@ -650,7 +742,8 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 				continue
 			}
 
-			F, err := a.WriteFile(filepath.Join(path, file.Name()), file.Name())
+			fullPath := filepath.Join(path, file.Name())
+			F, err := a.WriteFile(fullPath, file.Name(), prefetch[fullPath])
 			if err != nil {
 				return CatalogDir{}, err
 			}
@@ -822,7 +915,7 @@ func WriteSharedCatalogRoot(catalogWriteCB PXAROutCB, catalogPos uint64, entries
 
 // On pxar first item and consquently entry point must always be WriteDir , because toplevel is always a directory
 // So backing up single file is not possible
-func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, error) {
+func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefetchEntry) (CatalogFile, error) {
 	//fmt.Printf("Write file %s at %d\n", path, a.pos)
 
 	// Use Lstat to detect symlinks/junction points without following them
@@ -841,16 +934,41 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 		return CatalogFile{}, nil // Return nil error to continue backup
 	}
 
-	file, err := os.Open(path)
+	// reader is the file's content, sourced from EITHER a background
+	// read-ahead (startPrefetch) or a fresh os.Open below — everything past
+	// this point (header writes, the read loop, shrink/grow detection) is
+	// completely unchanged either way, since both sources satisfy the same
+	// io.Reader contract. fileHandle is only set (and only deferred-closed)
+	// when we actually opened a real file here.
+	var reader io.Reader
+	var fileHandle *os.File
 
-	if err != nil {
-		// Log file open errors but continue backup - don't fail on locked/system files
-		skipMsg := fmt.Sprintf("Cannot open file: %s (Error: %v)", path, err)
-		a.addReadError(skipMsg)
-		return CatalogFile{}, nil
+	if prefetched != nil {
+		<-prefetched.done
+		// Only trust the prefetched bytes if they match what THIS call's own
+		// fresh Lstat just saw — a mismatch means the file changed between
+		// being listed for prefetch and being reached here. Falling through
+		// to a normal synchronous open/read is exactly today's behavior for
+		// that case (correctness over using a stale/short read).
+		if prefetched.err == nil && uint64(len(prefetched.data)) == uint64(fileInfo.Size()) {
+			reader = bytes.NewReader(prefetched.data)
+		}
 	}
 
-	defer file.Close()
+	if reader == nil {
+		f, err := os.Open(path)
+		if err != nil {
+			// Log file open errors but continue backup - don't fail on locked/system files
+			skipMsg := fmt.Sprintf("Cannot open file: %s (Error: %v)", path, err)
+			a.addReadError(skipMsg)
+			return CatalogFile{}, nil
+		}
+		fileHandle = f
+		reader = f
+	}
+	if fileHandle != nil {
+		defer fileHandle.Close()
+	}
 
 	// Capture per-file metadata (NTFS ACLs on Windows). Best-effort.
 	if a.MetaCollector != nil {
@@ -909,7 +1027,7 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 		if remaining := declaredSize - written; remaining < toRead {
 			toRead = remaining
 		}
-		nread, err := file.Read(readbuffer[:toRead])
+		nread, err := reader.Read(readbuffer[:toRead])
 		if nread > 0 {
 			a.buffer.Write(readbuffer[:nread])
 			written += uint64(nread)
@@ -949,8 +1067,18 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 		// tail is NOT in the snapshot. The read loop stopped exactly at declaredSize
 		// (capped), so probe one more byte to detect the growth and flag it — this
 		// silent truncation otherwise passed as success (v2-H-02).
+		//
+		// Note: when reader is prefetched bytes (bytes.Reader, exactly
+		// declaredSize long by construction), this probe can never observe
+		// growth that happened after the prefetch's own os.ReadFile — only the
+		// live-file path can catch that. The size-match check before choosing
+		// the prefetched reader already falls back to a live re-read whenever
+		// the file's size differs from what was prefetched, which covers the
+		// overwhelmingly common case; this is a narrower residual race than
+		// that, on par with the general non-VSS live-file-change risk this
+		// tool already documents elsewhere, not a new class of exposure.
 		var probe [1]byte
-		if n, _ := file.Read(probe[:]); n > 0 {
+		if n, _ := reader.Read(probe[:]); n > 0 {
 			a.addReadError(
 				fmt.Sprintf("File grew during backup, tail past %d bytes not captured (content incomplete): %s", declaredSize, path))
 		}

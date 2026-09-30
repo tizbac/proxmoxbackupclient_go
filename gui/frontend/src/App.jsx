@@ -14,7 +14,7 @@ let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, 
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
-let SetParallelRestore
+let SetParallelRestore, SetParallelBackupRead
 let ExportSettings, ImportSettings
 let SetSMTPSettings, SendTestEmail
 let GetLogsFolder
@@ -60,6 +60,7 @@ if (window.go) {
   GetServerFingerprint = window.go.main.App.GetServerFingerprint
   PinPBSServerFingerprint = window.go.main.App.PinPBSServerFingerprint
   SetParallelRestore = window.go.main.App.SetParallelRestore
+  SetParallelBackupRead = window.go.main.App.SetParallelBackupRead
   ExportSettings = window.go.main.App.ExportSettings
   ImportSettings = window.go.main.App.ImportSettings
   GetLogsFolder = window.go.main.App.GetLogsFolder
@@ -2414,6 +2415,57 @@ function App() {
                       <div className="info-box" style={{marginTop: '10px'}}>
                         ℹ️ {t('parallelRestoreHint')}
                       </div>
+                    </div>
+
+                    <div className="form-group" style={{marginTop: '24px'}}>
+                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
+                        <input
+                          type="checkbox"
+                          checked={!!config.parallel_backup_read}
+                          onChange={async (e) => {
+                            const checked = e.target.checked
+                            const workers = config.backup_read_workers || 0
+                            setConfig({...config, parallel_backup_read: checked})
+                            if (!SetParallelBackupRead) return
+                            try {
+                              await SetParallelBackupRead(checked, workers)
+                              showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                              setConfig({...config, parallel_backup_read: !checked})
+                            }
+                          }}
+                        />
+                        <span>{t('parallelBackupReadLabel')}</span>
+                      </label>
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('parallelBackupReadHint')}
+                      </div>
+                      {config.parallel_backup_read && (
+                        <div style={{marginTop: '10px', display: 'flex', alignItems: 'center', gap: '10px'}}>
+                          <label htmlFor="backupReadWorkers">{t('backupReadWorkersLabel')}</label>
+                          <input
+                            id="backupReadWorkers"
+                            type="number"
+                            min="1"
+                            max="32"
+                            style={{width: '70px'}}
+                            value={config.backup_read_workers || 8}
+                            onChange={(e) => setConfig({...config, backup_read_workers: parseInt(e.target.value) || 8})}
+                            onBlur={async (e) => {
+                              const workers = Math.min(32, Math.max(1, parseInt(e.target.value) || 8))
+                              setConfig({...config, backup_read_workers: workers})
+                              if (!SetParallelBackupRead) return
+                              try {
+                                await SetParallelBackupRead(true, workers)
+                                showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                              } catch (err) {
+                                showStatus(`❌ ${err}`, 'error')
+                              }
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div className="form-group" style={{marginTop: '24px'}}>
