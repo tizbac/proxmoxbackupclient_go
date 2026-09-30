@@ -24,6 +24,9 @@ export default function KnownLimitationsModal({ onClose }) {
         <ul style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <li>{t('limitationNtfsAcl')}</li>
         </ul>
+        <p style={{ marginTop: '12px', marginBottom: 0, fontSize: '13px', color: '#4a5568' }}>
+          ✅ {t('limitationNtfsAclNote')}
+        </p>
       </div>
     </div>
   )
