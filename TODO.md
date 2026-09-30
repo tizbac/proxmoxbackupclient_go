@@ -717,6 +717,60 @@ dockerhost-04 8GB). VM 206 is currently `memory: 4096` in its config — not yet
 agree a target size with Mick (8GB? 12GB?) and confirm whether the VM's hotplug settings allow a
 live bump or need a reboot, before actually applying it.
 
+#### 💡 SCOPED, not started: selective restore from a big combined archive fetches far more chunks than it writes
+
+Mick, 2026-09-30: restored just the "Beeby-Property" subfolder out of the big combined "Deepthought
+- Data" snapshot (458GB, `f__data.pxar.didx`) from pbstest-winclient — progress looked like it was
+restoring the whole 458GB, not just the selected folder. He cancelled it (correctly cautious: that
+VM's C: drive is only 32GB).
+
+**Confirmed NOT a disk-space problem** — winclient's C: still had 12.8GB free after cancelling, so
+nothing close to 458GB was ever being written. The real finding is in the actual restore log
+(`service-gui.log` on winclient): `read header at offset 3927765450: ... (index 1079/129662):
+... context canceled` — 129662 is the WHOLE archive's total chunk count. 1079 chunks fetched to
+reach a ~3.9GB offset works out to ~3.6MB/chunk, almost exactly the ~4MB average chunk size, which
+is the smoking gun.
+
+**Root cause, confirmed by reading the actual code** (`pbscommon/pxar_reader.go`):
+- `ExtractWithRewriter`'s `pr.walk()` visits EVERY entry in the archive sequentially, filtering by
+  `pathMatches(e.Path, includes)` only AFTER reaching each one — not a targeted lookup.
+- `pr.skip(n)` (used to step over a non-matching file's payload) is pure arithmetic
+  (`pr.offset += n`) — genuinely free, confirmed by reading it.
+- BUT `pr.readHeader()`/`pr.read()` (used for every file/dir's header, filename, entry struct —
+  i.e. once per entry, continuously throughout the whole stream) go through the chunk-backed
+  `pr.ra.ReadAt()`. PBS chunks are ~4MB and content-addressed — you can't fetch just 16 header
+  bytes, any read at an offset not yet cached pulls the whole chunk covering it.
+- Net effect: walking to reach one subfolder deep in a big combined archive fetches a fresh chunk
+  roughly every ~4MB of forward progress REGARDLESS of whether that span belongs to a matching or
+  skipped file, because the walk still has to read the next entry's header either way. For a large
+  enough combined archive, this can approach the cost of reading through most of it — not writing
+  it to disk (that part's correctly scoped), but genuinely fetching/decompressing most of its
+  chunks over the network. The progress bar's whole-archive-size denominator (logged separately,
+  see the progress-display finding below) was — in THIS specific sense — not lying as much as it
+  looked at first.
+
+**Two different fixes, very different scope:**
+1. **Available today, no code change**: if the target folder also exists as its own separate
+   Backup Set/archive (Mick has "Deepthought - Beeby Property" as one), restore from THAT archive
+   directly instead of a subfolder selection inside the big combined one — walks only that smaller
+   archive's own size.
+2. **Real fix**: the archive already builds a binary-search-tree directory index on write
+   (`ca_make_bst`, `pxar.go` — this exists specifically so a reader COULD binary-search a directory
+   listing by name instead of scanning linearly) but `pxar_reader.go`'s `walk()` doesn't use it at
+   all — it's a plain linear scan. Teaching the reader to use the existing GOODBYE-table BST to
+   jump component-by-component to a named path (instead of visiting every preceding entry) would
+   make selective restore cheap regardless of where the target sits in a big archive. Real,
+   non-trivial reader-side work — not a quick fix, and out of scope for tonight.
+
+**Separately, the progress bar's denominator is also wrong** regardless of the above: `restore_inline.go`'s
+`withSnapshotReader` sets `archiveSize` from `client.NewDIDXReaderAt`'s whole-archive size and sends
+that straight through as `bytesTotal` in `restore:progress`, even when `IncludePaths` narrows what's
+actually being extracted — so the "Data: X / Y" display always shows the WHOLE archive's size as Y,
+never the selected subset's size. Worth fixing even independent of the bigger chunk-fetch issue
+above (either compute an approximate selected-subset size upfront from the catalog when
+`IncludePaths` is set, or track it against actual progress through the walk rather than a fixed
+whole-archive total).
+
 #### ⚠️ UNRESOLVED: app froze (high CPU, totally unresponsive) after a machine backup completed on rigel
 
 Mick, 2026-09-26/27: after "Rigel Full Machine Backup" (57m18s, `success=true`, clean completion
