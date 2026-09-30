@@ -53,3 +53,13 @@ func acquireOperationSlot(name string, onQueued func(heldBy string)) func() {
 		operationMu.Unlock()
 	}
 }
+
+// currentOperationLabel returns whatever acquireOperationSlot's caller named
+// itself, or "" when idle. Used by the tray's idle-tooltip refresh (tray.go)
+// to avoid clobbering an active "Backup running: X" tooltip with the
+// next-scheduled-run text on the scheduler's own once-a-minute tick.
+func currentOperationLabel() string {
+	operationHeldMu.Lock()
+	defer operationHeldMu.Unlock()
+	return operationHeld
+}

@@ -646,6 +646,7 @@ func (a *App) StartScheduler() {
 			select {
 			case <-ticker.C:
 				a.checkAndRunScheduledJobs()
+				a.RefreshIdleTooltip()
 			case <-a.stopScheduler:
 				writeDebugLog("Scheduler stopped")
 				return

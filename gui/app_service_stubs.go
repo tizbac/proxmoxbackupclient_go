@@ -32,6 +32,12 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 // emitAnalysisProgress is a no-op in the service process (no GUI event sink).
 func (a *App) emitAnalysisProgress(done, total int, scannedBytes uint64) {}
 
+// RefreshIdleTooltip is a no-op in the service process — a Windows Service
+// has no tray icon (tray.go/tray_stub.go, both built only for !service).
+// scheduler.go's own once-a-minute tick calls this unconditionally in every
+// build, so a stub is needed here even though there's nothing to refresh.
+func (a *App) RefreshIdleTooltip() {}
+
 // ReloadConfig reloads configuration from disk. The long-running service loads
 // config once at startup (service.go), so without this it never sees changes
 // made afterwards — a rotated PBS token, a new default PBS, or a fingerprint

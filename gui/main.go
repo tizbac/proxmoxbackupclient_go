@@ -890,6 +890,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	if comment == "" {
 		comment = a.scheduledJobNameOr(fmt.Sprintf("Manual backup - %s", backupID))
 	}
+	a.UpdateTrayTooltip(fmt.Sprintf("Backup running: %s", comment))
 
 	// Sanitize backup ID for logging
 	sanitizedID := security.SanitizeForLog(backupID)
@@ -1110,6 +1111,13 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			// consumed it. postActions/trigger need no clearing: they are
 			// plain parameters now, not shared state.
 			a.setScheduledJobName("")
+
+			if success {
+				a.ShowToastNotification("Backup Complete", comment, false)
+			} else {
+				a.ShowToastNotification("Backup Failed", fmt.Sprintf("%s: %s", comment, message), true)
+			}
+			a.RefreshIdleTooltip()
 		},
 	}
 
@@ -1199,6 +1207,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	if comment == "" {
 		comment = a.scheduledJobNameOr(fmt.Sprintf("Backup machine - %s", backupID))
 	}
+	a.UpdateTrayTooltip(fmt.Sprintf("Backup running: %s", comment))
 
 	// Sanitize backup ID for logging
 	sanitizedID := security.SanitizeForLog(backupID)
@@ -1401,6 +1410,13 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			// consumed it. postActions/trigger need no clearing: they are
 			// plain parameters now, not shared state.
 			a.setScheduledJobName("")
+
+			if success {
+				a.ShowToastNotification("Backup Complete", comment, false)
+			} else {
+				a.ShowToastNotification("Backup Failed", fmt.Sprintf("%s: %s", comment, message), true)
+			}
+			a.RefreshIdleTooltip()
 		},
 	}
 
@@ -1621,6 +1637,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	// restore is running when this card is the only one on screen) and for
 	// the queued-behind-this-one message another operation would show.
 	restoreLabel := fmt.Sprintf("Restore of %s @ %s", backupID, snapshotID)
+	a.UpdateTrayTooltip(fmt.Sprintf("Restoring: %s", restoreLabel))
 
 	emit := func(percent float64, message string) {
 		markRestoreProgress()
@@ -1719,6 +1736,13 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 				"message_params": msgP,
 			})
 		}
+
+		if success {
+			a.ShowToastNotification("Restore Complete", restoreLabel, false)
+		} else {
+			a.ShowToastNotification("Restore Failed", fmt.Sprintf("%s: %s", restoreLabel, msg), true)
+		}
+		a.RefreshIdleTooltip()
 	}()
 	return nil
 }

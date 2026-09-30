@@ -29,3 +29,11 @@ func (a *App) ShowFromTray() {
 func (a *App) UpdateTrayTooltip(message string) {
 	writeDebugLog("UpdateTrayTooltip is only supported on Windows")
 }
+
+// ShowToastNotification is not supported on non-Windows platforms yet
+func (a *App) ShowToastNotification(title, message string, isError bool) {
+	writeDebugLog("ShowToastNotification is only supported on Windows")
+}
+
+// RefreshIdleTooltip is not supported on non-Windows platforms yet (no tray)
+func (a *App) RefreshIdleTooltip() {}
