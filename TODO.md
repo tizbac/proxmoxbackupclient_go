@@ -823,6 +823,11 @@ Bar % = 0.20 + 0.60*done/total (`restore_inline.go` ~1183), so it runs ~20 point
 line (live: bar 22% with 70/1698 chunks, 30% with 291/1698) and parks at 80% while files finish writing.
 Make the percentage track real work (chunks fetched / span chunks, then files written / files total) and
 show a distinct 'finishing, writing files' phase instead of sitting at 80%.
+Mick's requirement: the bar must reach 100% only when everything is fully WRITTEN to disk, not when all
+chunks are pre-fetched. Design: add an `OnFileWritten(bytes)` callback to `ExtractWithRewriter` and
+`ExtractWithRewriterParallel` (called when each file is closed), drive the bar from bytes written /
+effectiveSize (span size), reserve the last few points for NTFS ACL/attribute apply + summary, keep the
+chunks/speed line as a separate download indicator.
 
 #### Restores never appear on the Reports tab (reported 2026-10-01)
 Reports = `GetJobHistory`, which is only written by backup completions (`main.go` ~1079/~1387,
