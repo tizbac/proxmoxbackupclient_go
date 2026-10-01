@@ -807,6 +807,17 @@ to anything already deployed tonight — starts from the next build. No code cha
 command invocation habit; if it's ever worth enforcing for anyone building (not just this session),
 wiring it into `wails.json`/a wrapper script would be the next step, not done here.
 
+**Wrinkle found 2026-10-01**: `wails build -ldflags "-X main.appVersion=dev-<sha>"` works fine on
+Windows but fails on Linux (rigel, pbstest-linux-client) — `wails` v2.13.0's own ldflags-forwarding
+appears to split the value on its internal space before handing it to `go build`, so the linker
+only ever sees a bare `-X` with no attached value (`-X flag requires argument of the form
+importpath.name=value`). Confirmed reproducible, confirmed plain `go build -ldflags "..."` directly
+does NOT have this problem (only `wails build`'s own forwarding does). Workaround used for rigel/
+pbstest-linux-client: `sed -i 's/var appVersion = "dev"/var appVersion = "dev-<sha>"/' version.go`,
+build, then `git checkout -- version.go` to revert the source — never actually committed, just sets
+the compiled-in literal for that one build. Windows builds keep using `-ldflags` directly, no issue
+there.
+
 #### ~~Two config tests were silently writing to the REAL system config path~~ ✅ FIXED 2026-10-01
 
 Found while triaging an unrelated test-suite run: `TestConfigSaveLoad`/`TestGetConfigPath`
