@@ -769,15 +769,27 @@ is the smoking gun.
    touched at all. Multiple-selection restores (2+ `IncludePaths` entries) still use the linear walk
    — a reasonable future extension, not needed for the common single-folder case this targets.
 
-**Separately, the progress bar's denominator is still wrong** (not addressed by the above):
-`restore_inline.go`'s
-`withSnapshotReader` sets `archiveSize` from `client.NewDIDXReaderAt`'s whole-archive size and sends
-that straight through as `bytesTotal` in `restore:progress`, even when `IncludePaths` narrows what's
-actually being extracted — so the "Data: X / Y" display always shows the WHOLE archive's size as Y,
-never the selected subset's size. Worth fixing even independent of the bigger chunk-fetch issue
-above (either compute an approximate selected-subset size upfront from the catalog when
-`IncludePaths` is set, or track it against actual progress through the walk rather than a fixed
-whole-archive total).
+**The progress bar's denominator** ✅ FIXED 2026-10-01 — `restore_inline.go`'s `withSnapshotReader`
+used to set `archiveSize` from `client.NewDIDXReaderAt`'s whole-archive size and send that straight
+through as `bytesTotal`, regardless of `IncludePaths`. Now, when a single clean selection is given,
+it calls the same `ResolveArchivePathBST` the BST fast path above uses to get the selection's real
+byte span, and a new `pbscommon.DIDXReaderAt.ChunkCountInRange` (precise, via the same
+`chunkIndexAt` lookup `chunkAt` itself uses — not an estimate) to get its real chunk count, and
+reports progress against THOSE instead of the whole archive.
+
+**One real wrinkle found live, now fixed too:** `ResolveArchivePathBST` itself fetches/caches
+whatever chunks it touches while navigating the GOODBYE tables — those fetches fire the progress
+callback BEFORE the narrowed totals exist, so without care the caller sees one misleading
+whole-archive-sized reading before the narrowing takes effect, and if the actual extraction then
+finds everything it needs already cached from resolution (common for a small target), no further
+"new chunk" event ever fires to correct it — stuck showing the wrong number forever. Fixed by
+suppressing progress reporting entirely during resolution (`resolvingSpan` flag) and emitting one
+synthetic, correctly-narrowed update immediately after resolution completes, using the real
+fetched-so-far count (`DIDXReaderAt.Stats()`) — so the caller's first-ever reading for a resolved
+selection is already correct. Verified live
+(`gui/zz_restore_progress_denominator_livetest_test.go`): a 512KB target inside a 42MB archive (big
+sibling included) now reports exactly 524,529/524,529 bytes — the target's real size — not the
+archive's.
 
 #### ~~Dev builds all showed "vdev" with no way to tell which commit is actually running~~ ✅ ADOPTED 2026-10-01
 

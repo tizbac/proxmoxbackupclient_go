@@ -173,6 +173,34 @@ func (r *DIDXReaderAt) chunkIndexAt(pos uint64) int {
 	})
 }
 
+// ChunkCountInRange returns how many of the archive's indexed chunks cover
+// any part of the byte range [start, end) — added 2026-10-01 for selective
+// restore's progress reporting, which used to report progress against
+// len(digests) (the WHOLE archive's chunk count) even when only a small
+// selection within it was being restored, making a small selection's
+// progress bar look stuck near zero while chunk-for-chunk it was actually
+// nearly done. Uses the exact same chunkIndexAt lookup chunkAt itself uses,
+// so this is precise, not an estimate.
+func (r *DIDXReaderAt) ChunkCountInRange(start, end int64) int {
+	if start < 0 {
+		start = 0
+	}
+	total := int64(r.idx.total)
+	if end > total {
+		end = total
+	}
+	if end <= start {
+		return 0
+	}
+	first := r.chunkIndexAt(uint64(start))
+	last := r.chunkIndexAt(uint64(end - 1))
+	count := last - first + 1
+	if count < 1 {
+		count = 1
+	}
+	return count
+}
+
 // chunkAt returns the decompressed bytes of chunk ci, from cache or by fetching
 // it from the server (verifying size and SHA-256 against the index digest).
 // On a cache miss it also kicks off background prefetch of the next several

@@ -281,7 +281,15 @@ func resolveArchiveNames(opts RestoreOptions) ([]string, error) {
 // file first. This removes the "free %TEMP% space == archive size" requirement
 // and lets selective restore skip the chunks of files the caller did not select.
 // The PBS reader session stays open for the duration of fn.
-func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, progress func(done, total int, bytesDone, bytesTotal int64), cancel func() bool, fn func(*pbscommon.PXARReader) error) error {
+// archiveIncludes is THIS archive's own archive-relative selection (already
+// stripped of the display-name wrapper — see the caller's own comment on
+// archiveIncludes), used ONLY to narrow progress reporting to the actual
+// selection instead of the whole archive — see the archiveSize/effective*
+// comment below. Pass nil when there's no progress callback to feed (the
+// MetaCheap/other read-only callers) or when the caller doesn't have a
+// single clean selection to offer; either way this never changes what gets
+// extracted, only what the progress bar reports while it happens.
+func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archiveIncludes []string, progress func(done, total int, bytesDone, bytesTotal int64), cancel func() bool, fn func(*pbscommon.PXARReader) error) error {
 	if archiveName == "" {
 		archiveName = "backup.pxar.didx"
 	}
@@ -317,17 +325,56 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, progres
 	// archiveSize is set right below, before any chunk fetch can happen
 	// (NewDIDXReaderAt only downloads the index and returns — chunks are
 	// fetched lazily by fn's later reads) — safe for this closure to capture.
+	//
+	// effectiveSize/effectiveChunks narrow progress reporting to the actual
+	// SELECTION instead of the whole archive, when archiveIncludes resolves
+	// to exactly one clean target below — found live 2026-09-30 (Mick
+	// restoring one subfolder out of a 458GB combined archive): bytesTotal
+	// was always the whole archive's size regardless of IncludePaths, making
+	// a small selection's progress bar look like it was restoring everything.
+	// Both default to 0 (meaning "use the whole-archive values", today's
+	// original behavior) and are only set once, further down, after the
+	// reader exists and ResolveArchivePathBST has had a chance to run — safe
+	// for this closure to capture by reference since it only ever FIRES
+	// later, during real chunk fetches triggered by fn, same as archiveSize
+	// above already relies on.
 	var archiveSize int64
+	var effectiveSize int64
+	var effectiveChunks int
+	// resolvingSpan suppresses progress reporting entirely while
+	// ResolveArchivePathBST (below) is navigating the GOODBYE tables to find
+	// the selection's span — that navigation itself fetches/caches a few
+	// chunks, which would otherwise report against the not-yet-narrowed
+	// whole-archive totals for a brief, misleading moment. Better to emit
+	// nothing for that handful of chunks than emit something wrong; the
+	// synthetic post-resolution update (below) always reports the first real
+	// number the caller sees whenever a single clean selection is in play.
+	var resolvingSpan bool
 	ra, size, err := client.NewDIDXReaderAt(archiveName, 64, func(fetched, total int) {
 		if fetched == total || fetched%32 == 0 {
 			writeBackupLog(fmt.Sprintf("%s: fetched %d/%d chunks of %s", logTag, fetched, total, archiveName))
 		}
-		if progress != nil {
-			var bytesDone int64
-			if total > 0 {
-				bytesDone = int64(float64(archiveSize) * float64(fetched) / float64(total))
+		if progress != nil && !resolvingSpan {
+			reportSize := archiveSize
+			reportTotal := total
+			if effectiveSize > 0 {
+				reportSize = effectiveSize
 			}
-			progress(fetched, total, bytesDone, archiveSize)
+			if effectiveChunks > 0 {
+				reportTotal = effectiveChunks
+			}
+			var bytesDone int64
+			if reportTotal > 0 {
+				bytesDone = int64(float64(reportSize) * float64(fetched) / float64(reportTotal))
+				if bytesDone > reportSize {
+					// fetched exceeded our narrowed estimate — the fast path
+					// (see ResolveArchivePathBST below) wasn't actually used
+					// for some reason and the walk touched more than this
+					// selection alone. Clamp rather than show >100%.
+					bytesDone = reportSize
+				}
+			}
+			progress(fetched, reportTotal, bytesDone, reportSize)
 		}
 	})
 	if err != nil {
@@ -351,6 +398,46 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, progres
 	})
 
 	reader := pbscommon.NewPXARReaderAt(ra, size)
+
+	// Exactly one clean selection can often be resolved directly via the
+	// archive's own GOODBYE BST index (same mechanism ExtractWithRewriter's
+	// own fast path uses — see pxar_reader.go). When it resolves, narrow
+	// progress to that span; when it doesn't (not found, multiple includes,
+	// unexpected shape), effectiveSize/effectiveChunks stay 0 and progress
+	// reports against the whole archive exactly as before — this can only
+	// ever make the progress bar MORE accurate, never change what's
+	// actually extracted (that's still entirely ExtractWithRewriter's call).
+	if len(archiveIncludes) == 1 {
+		resolvingSpan = true
+		targetStart, targetEnd, _, berr := reader.ResolveArchivePathBST(archiveIncludes[0])
+		resolvingSpan = false
+		if berr == nil {
+			effectiveSize = targetEnd - targetStart
+			effectiveChunks = ra.ChunkCountInRange(targetStart, targetEnd)
+
+			// Resolution ran with reporting suppressed (resolvingSpan,
+			// above), so the caller hasn't seen anything yet. If extraction
+			// below finds everything it needs already cached from
+			// resolution (common for a small target), no "new chunk" event
+			// will fire at all to give it its first update. Emit one
+			// synthetic update now, with the real fetched-so-far count
+			// (ra.Stats()) against the narrowed totals, so the caller always
+			// sees at least one accurate data point regardless of what
+			// extraction does next.
+			if progress != nil {
+				fetchedSoFar := ra.Stats().ChunksFetched
+				reportTotal := effectiveChunks
+				if reportTotal < 1 {
+					reportTotal = 1
+				}
+				bytesDone := int64(float64(effectiveSize) * float64(fetchedSoFar) / float64(reportTotal))
+				if bytesDone > effectiveSize {
+					bytesDone = effectiveSize
+				}
+				progress(fetchedSoFar, reportTotal, bytesDone, effectiveSize)
+			}
+		}
+	}
 	fnErr := fn(reader)
 
 	// Diagnostic timing breakdown (added 2026-09-23, alongside the chunk
@@ -533,7 +620,7 @@ func resolveArchiveDisplayNames(opts RestoreOptions, archiveNames []string, canc
 // any failure returns nil.
 func readArchiveMetaCheap(opts RestoreOptions, archiveName string, cancel func() bool) *BackupMeta {
 	var meta *BackupMeta
-	err := withSnapshotReader(opts, archiveName, "MetaCheap", nil, cancel, func(reader *pbscommon.PXARReader) error {
+	err := withSnapshotReader(opts, archiveName, "MetaCheap", nil, nil, cancel, func(reader *pbscommon.PXARReader) error {
 		meta = tryReadBackupMeta(reader)
 		return nil
 	})
@@ -569,7 +656,7 @@ func assembleSnapshotTree(opts RestoreOptions, archiveName, logTag string, cance
 
 	var entries []SnapshotEntry
 	var meta *BackupMeta
-	err := withSnapshotReader(opts, archiveName, logTag, nil, cancel, func(reader *pbscommon.PXARReader) error {
+	err := withSnapshotReader(opts, archiveName, logTag, nil, nil, cancel, func(reader *pbscommon.PXARReader) error {
 		es, lerr := reader.ListEntries()
 		if lerr != nil {
 			return fmt.Errorf("failed to parse archive: %v", lerr)
@@ -1075,7 +1162,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		}
 
 		var extractedHere []pbscommon.PXARExtractedFile
-		err = withSnapshotReader(opts, archiveName, "Restore", func(done, total int, bytesDone, bytesTotal int64) {
+		err = withSnapshotReader(opts, archiveName, "Restore", archiveIncludes, func(done, total int, bytesDone, bytesTotal int64) {
 			// Map this archive's chunk progress to its own slice of the
 			// 0.20–0.80 overall bar, so N archives fill it evenly instead of
 			// each one restarting from 0.20.
