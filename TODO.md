@@ -868,6 +868,8 @@ Follow-ups to the stage label under the restore progress bar (`restore:stage`, b
 
 #### Snapshot picker says only "Loading or empty snapshot..." while a big snapshot's tree loads (idea 2026-10-01)
 
+**Re-measured on vdev-d3644a9 (23:52 log): backend returned the 868,492 entries at +2s (cache hit) but 'Snapshot meta' only fired at +54s. The 'reading file list' elapsed counter stalls at ~10s (main thread blocked) then 'building file tree' shows. So the remaining wait is Wails IPC + JSON.parse of 868k entry objects on the UI thread, not the tree build. Next step is the lazy tree (backend returns top level / children of the expanded folder; selection by path prefix; selection size from the backend), or at minimum a compact columnar payload.**
+
 **Status 2026-10-01: steps (1) and (2) below are IMPLEMENTED (memoised tree + cached Intl.Collator, ancestor-set `selectionBytes`, reading/building/empty placeholder with elapsed seconds and entry count, 18 translations), pending Mick's timing test on the deepthought snapshot. Step (3) lazy tree is still open if it remains slow. The 20% initial progress reserve was also shrunk to 2% then 5%.**
 
 Mick: selecting the 458GB "deepthought" snapshot takes a long while to show its tree and the only
