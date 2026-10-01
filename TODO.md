@@ -845,6 +845,24 @@ restore the Reports tab's last entry is the previous scheduled backup. Fix idea:
 `JobHistory` entry (type=restore, snapshot, dest, files/bytes, outcome incl. cancelled) from the
 restore completion path in `restore_inline.go`, and label restore rows in the Reports list.
 
+#### Restore stage ideas (Mick, 2026-10-01: wants all three, pick up later)
+Follow-ups to the stage label under the restore progress bar (`restore:stage`, built in `1245992`).
+1. **'Verify after restore' checkbox + function.** Optional post-restore pass that re-reads each restored file
+   and compares it with what the snapshot holds (size + content hash against the archive, or at minimum the
+   PXAR entry size/mtime), reported as its own stage ('Verifying restored files...') with n of m, and a
+   pass/fail summary in the Message Log and on the Reports tab (add verified/mismatch counts to the restore
+   `JobHistory` entry). Needs: a `VerifyAfterRestore` option on `RestoreOptions`, a checkbox on the restore
+   options UI (+ 18 translations), a second read of the span (cheap when chunks are still cached) and a
+   decision on what a mismatch does (flag, never delete). Bar: reserve a slice after the ACL phase, so 100%
+   would then mean verified.
+2. **Current file name under the stage label.** Throttled `restore:file` event (or extend `restore:stage`
+   detail) from the extractor callback, showing the path being written; truncate long paths in the middle.
+   The sequential extractor knows the entry when it starts writing; for the parallel one use the most
+   recently started file across workers.
+3. **'Creating folders and setting timestamps' stage.** Name the tail of extraction (directory mtimes/attrs
+   applied after files) as its own stage between 'Fetching chunks and writing files' and 'Restoring ACLs'.
+   Check first whether that phase is long enough on a real restore to be worth a label.
+
 #### Snapshot picker says only "Loading or empty snapshot..." while a big snapshot's tree loads (idea 2026-10-01)
 
 Mick: selecting the 458GB "deepthought" snapshot takes a long while to show its tree and the only
