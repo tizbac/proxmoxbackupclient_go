@@ -845,6 +845,9 @@ restore the Reports tab's last entry is the previous scheduled backup. Fix idea:
 `JobHistory` entry (type=restore, snapshot, dest, files/bytes, outcome incl. cancelled) from the
 restore completion path in `restore_inline.go`, and label restore rows in the Reports list.
 
+#### ✅ Restore skipped mtime for pre-1970 files (fixed 2026-10-01)
+Found by diffing a restore against live: 78 files with source mtime 1969-12-31 23:59:59 (Unix -1) were restored with the restore time. The reader stores secs as uint64, `int64()` gives -1, and `e.ModTime > 0` skipped Chtimes (sequential and parallel paths in `pbscommon/pxar_reader.go`). Now `!= 0`. Directory mtimes not checked.
+
 #### Restore stage ideas (Mick, 2026-10-01: wants all three, pick up later)
 Follow-ups to the stage label under the restore progress bar (`restore:stage`, built in `1245992`).
 1. **'Verify after restore' checkbox + function.** Optional post-restore pass that re-reads each restored file

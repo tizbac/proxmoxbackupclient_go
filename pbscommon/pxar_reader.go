@@ -701,7 +701,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			})
 			return nil
 		}
-		if e.ModTime > 0 {
+		if e.ModTime != 0 { // negative = pre-1970 mtime, still valid
 			fsStart = time.Now()
 			t := time.Unix(e.ModTime, 0)
 			_ = os.Chtimes(fullPath, t, t)
@@ -985,7 +985,7 @@ func (pr *PXARReader) extractOneFileParallel(e PXARTreeEntry, fullPath string, p
 			Skipped: true, SkipReason: fmt.Sprintf("rename: %v", renErr),
 		}
 	}
-	if e.ModTime > 0 {
+	if e.ModTime != 0 { // negative = pre-1970 mtime, still valid
 		fsStart = time.Now()
 		t := time.Unix(e.ModTime, 0)
 		_ = os.Chtimes(fullPath, t, t)
