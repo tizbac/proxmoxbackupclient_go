@@ -56,6 +56,17 @@ type PXARReader struct {
 	// goroutines at once, so it must be goroutine-safe.
 	doneBytes  atomic.Int64
 	onProgress func(doneBytes int64)
+
+	// onFile is told the archive path of each file as its extraction starts
+	// (the restore card's "current file" line). Same goroutine-safety rule
+	// as onProgress.
+	onFile func(path string)
+}
+
+// SetFileCallback registers fn to be called with the archive path of each
+// file as it starts being written. Call before Extract*.
+func (pr *PXARReader) SetFileCallback(fn func(path string)) {
+	pr.onFile = fn
 }
 
 // SetProgressCallback registers fn to be called with the cumulative archive
@@ -707,6 +718,9 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 	// dealt with it (written, created or skipped), so progress reaches 100%
 	// only when the last file is on disk.
 	cb := func(e PXARTreeEntry, payload *io.SectionReader) error {
+		if pr.onFile != nil && !e.IsDir && pathMatches(e.Path, includes) {
+			pr.onFile(e.Path)
+		}
 		if err := extractEntry(e, payload); err != nil {
 			return err
 		}
@@ -809,6 +823,9 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 			go func(jobs chan fileJob) {
 				defer wg.Done()
 				for j := range jobs {
+					if pr.onFile != nil {
+						pr.onFile(j.entry.Path)
+					}
 					appendResult(pr.extractOneFileParallel(j.entry, j.fullPath, j.payload))
 					pr.entryDone(j.entry.Weight)
 				}

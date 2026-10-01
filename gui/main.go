@@ -14,6 +14,7 @@ import (
 	stdruntime "runtime"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -1680,6 +1681,21 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		RestoreTimestamps:  restoreTimestamps,
 		OnProgress:         emit,
 		ParallelExtraction: a.config.ParallelRestore,
+	}
+	var fileEmitMu sync.Mutex
+	var lastFileEmit time.Time
+	opts.OnFile = func(path string) {
+		fileEmitMu.Lock()
+		if time.Since(lastFileEmit) < 200*time.Millisecond {
+			fileEmitMu.Unlock()
+			return
+		}
+		lastFileEmit = time.Now()
+		fileEmitMu.Unlock()
+		if a.ctx == nil {
+			return
+		}
+		runtime.EventsEmit(a.ctx, "restore:file", map[string]interface{}{"path": path})
 	}
 	opts.OnStage = func(stage, detail string) {
 		markRestoreProgress()

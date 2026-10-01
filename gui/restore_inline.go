@@ -86,6 +86,11 @@ type RestoreOptions struct {
 	// restored, otherwise empty.
 	OnStage func(stage, detail string)
 
+	// OnFile reports the archive path of the file currently being written.
+	// May be called from several goroutines and very often; the receiver
+	// is expected to throttle.
+	OnFile func(path string)
+
 	// OnStats delivers structured live progress (bytes transferred) so the GUI
 	// can show a real transfer rate, mirroring BackupOptions.OnStats. Restore
 	// has no chunk-reuse/failure concept (every needed chunk is downloaded
@@ -1084,7 +1089,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		writeBackupLog(fmt.Sprintf("In-place target: %s (host=%s, os=%s)", meta.OriginalPath, meta.Hostname, meta.OS))
 	}
 
-	progress(0.05, "Preparing restore...")
+	progress(0.02, "Preparing restore...")
 
 	// Build the rewriter before downloading so a misconfiguration (missing
 	// dest, cross-host refusal) fails fast. For alternate modes meta is unused;
@@ -1130,7 +1135,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		aclClient.Close()
 	}
 
-	progress(0.20, "Downloading backup archive...")
+	progress(0.05, "Downloading backup archive...")
 	// AssembleDIDXToFile downloads the .didx index and reassembles the actual
 	// PXAR stream chunk-by-chunk into a temp file (bounded memory), then we walk
 	// it from disk and stream each file payload to its destination.
@@ -1150,9 +1155,9 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	var aclJobs []aclJob
 	includesToCheck := pbscommon.NormalizeIncludes(opts.IncludePaths)
 	anyIncludesMatched := false
-	archiveSpan := 0.75 / float64(len(archiveNames))
+	archiveSpan := 0.90 / float64(len(archiveNames))
 	for i, archiveName := range archiveNames {
-		archiveBase := 0.20 + float64(i)*archiveSpan
+		archiveBase := 0.05 + float64(i)*archiveSpan
 		wrapper := displayNames[archiveName]
 
 		// Translate this archive's slice of opts.IncludePaths back to real
@@ -1208,7 +1213,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		// each file completes), not chunks fetched: download runs ahead of
 		// the writers, so a fetch-driven bar parked at its ceiling while
 		// files were still being created. This archive's slice of the
-		// 0.20–0.95 range fills evenly across N archives and reaches its end
+		// 0.05–0.95 range fills evenly across N archives and reaches its end
 		// only when its last file is on disk. Chunk counts stay in the
 		// message (and the speed/Data line) as the separate download
 		// indicator.
@@ -1253,6 +1258,9 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			}
 		}, nil, func(reader *pbscommon.PXARReader) error {
 			stage("transferring", archiveDetail)
+			if opts.OnFile != nil {
+				reader.SetFileCallback(opts.OnFile)
+			}
 			reader.SetProgressCallback(func(doneBytes int64) {
 				uiMu.Lock()
 				defer uiMu.Unlock()

@@ -92,6 +92,18 @@ function formatSpeed(bytesPerSec) {
   return dec === bin ? dec : `${dec} (${bin})`
 }
 
+// Reused collator: same ordering as String.localeCompare but far cheaper per
+// call, which matters when sorting folders with 100k+ entries.
+const pathCollator = new Intl.Collator()
+
+// Shorten a long path by eliding the middle, keeping the start and the file name.
+function middleTruncate(str, max) {
+  if (!str || str.length <= max) return str
+  const keep = max - 3
+  const head = Math.ceil(keep * 0.4)
+  return str.slice(0, head) + '...' + str.slice(str.length - (keep - head))
+}
+
 // Auto-scaling duration formatter (s -> m/s -> h/m/s -> d/h/m/s), for the
 // progress card's time-remaining/elapsed-time fields — both used to show
 // raw seconds (or minutes+seconds with no hours tier), unreadable well
@@ -350,6 +362,9 @@ function App() {
   const [restoreLoading, setRestoreLoading] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
   const [restoreStage, setRestoreStage] = useState({ stage: '', detail: '' })
+  const [restoreFile, setRestoreFile] = useState('')
+  const [snapshotLoad, setSnapshotLoad] = useState({ phase: '', count: 0, startedAt: 0 })
+  const [, setSnapshotLoadTick] = useState(0)
   const [restoreStats, setRestoreStats] = useState({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
 
   // ===== file search across snapshots =====
@@ -589,6 +604,10 @@ function App() {
     })
     const unsubG = EventsOn('restore:stage', (data) => {
       setRestoreStage({ stage: data.stage || '', detail: data.detail || '' })
+      if (data.stage !== 'transferring') setRestoreFile('')
+    })
+    const unsubF = EventsOn('restore:file', (data) => {
+      setRestoreFile(data.path || '')
     })
     // Structured live stats (bytes transferred), mirroring backup:stats.
     // Same cumulative-average speed calc as the backup side (item 5's fix) —
@@ -608,6 +627,7 @@ function App() {
       setRestoreLoading(false)
       setActiveRestoreName('')
       setRestoreStage({ stage: '', detail: '' })
+      setRestoreFile('')
       setPendingQueue(q => q.slice(1))
       setRestoreProgress(data.success ? 100 : 0)
       setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
@@ -618,6 +638,7 @@ function App() {
     return () => {
       if (unsubP) unsubP()
       if (unsubG) unsubG()
+      if (unsubF) unsubF()
       if (unsubS) unsubS()
       if (unsubC) unsubC()
     }
@@ -1737,11 +1758,16 @@ function App() {
     setSelectedPaths(new Set())
     setExpandedDirs(new Set())
     showStatus(`${t('loadingSnapshotContents')}`, 'info')
+    setSnapshotLoad({ phase: 'reading', count: 0, startedAt: Date.now() })
     const effectiveBackupId = snap.backup_id || restoreBackupId
     try {
       // Backend uses the snapshot's actual backup_id (snap.backup_id) so split
       // backups list their real contents, not the partial search term.
       const entries = await ListSnapshotContents(restorePBSID || '', effectiveBackupId, snap.unix, forceRefresh)
+      // Let the "building tree" message paint before the (synchronous,
+      // potentially long) tree build for a very large snapshot freezes the UI.
+      setSnapshotLoad({ phase: 'building', count: (entries || []).length, startedAt: Date.now() })
+      await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))
       setSnapshotEntries(entries || [])
       // Default to "restore everything," represented EXPLICITLY (every
       // top-level entry pre-checked) rather than via an empty selection —
@@ -1752,6 +1778,8 @@ function App() {
       showStatus(`✅ ${(entries || []).length} ${t('entriesLoaded')}`, 'success')
     } catch (err) {
       showStatus(`❌ ${err}`, 'error')
+    } finally {
+      setSnapshotLoad({ phase: '', count: 0, startedAt: 0 })
     }
     // Meta is informational — fire-and-forget. The listing call above has
     // already populated the cache, so this is a cheap cache hit. Failure is
@@ -1952,7 +1980,8 @@ function App() {
   // ===== tree helpers (snapshot navigation) =====
 
   // Build a map childrenByDir: dir -> [entry...] from the flat list, plus a
-  // set of all dir paths. Re-derived on every render — entries are tiny.
+  // set of all dir paths. Memoised as snapshotTree below, since a snapshot
+  // can hold hundreds of thousands of entries.
   const buildTree = (entries) => {
     const childrenByDir = new Map()
     const dirSet = new Set([''])
@@ -1973,7 +2002,7 @@ function App() {
     for (const list of childrenByDir.values()) {
       list.sort((a, b) => {
         if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
-        return a.path.localeCompare(b.path)
+        return pathCollator.compare(a.path, b.path)
       })
     }
     return childrenByDir
@@ -2034,16 +2063,29 @@ function App() {
   // so it sums to 0. Memoized — snapshots can hold 100k+ entries.
   const selectionBytes = useMemo(() => {
     if (!snapshotEntries.length || selectedPaths.size === 0) return 0
-    const sel = Array.from(selectedPaths)
     let sum = 0
     for (const e of snapshotEntries) {
       if (e.is_dir) continue
-      for (const p of sel) {
-        if (e.path === p || e.path.startsWith(p + '/')) { sum += (e.size || 0); break }
+      // Selected itself, or under a selected ancestor: walk the path's
+      // ancestors against the set instead of scanning every selected path.
+      let p = e.path
+      for (;;) {
+        if (selectedPaths.has(p)) { sum += (e.size || 0); break }
+        const slash = p.lastIndexOf('/')
+        if (slash < 0) break
+        p = p.substring(0, slash)
       }
     }
     return sum
   }, [snapshotEntries, selectedPaths])
+
+  const snapshotTree = useMemo(() => buildTree(snapshotEntries), [snapshotEntries])
+
+  useEffect(() => {
+    if (snapshotLoad.phase !== 'reading') return
+    const id = setInterval(() => setSnapshotLoadTick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [snapshotLoad.phase])
 
   // Recursive renderer driven by the children map. Depth is only used for the
   // visual indent.
@@ -3405,6 +3447,11 @@ function App() {
                   {restoreStage.detail ? ` (${restoreStage.detail})` : ''}
                 </div>
               )}
+              {restoreFile && restoreStage.stage === 'transferring' && (
+                <div style={{fontSize: '12px', color: '#495057', marginTop: '-6px', marginBottom: '10px', fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap', overflow: 'hidden'}} title={restoreFile}>
+                  {middleTruncate(restoreFile, 110)}
+                </div>
+              )}
 
               <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px'}}>
                 {restoreStats.speed > 0 && (
@@ -3824,10 +3871,16 @@ function App() {
                 backgroundColor: '#fff'
               }}>
                 {snapshotEntries.length === 0 ? (
-                  <p style={{padding: '12px', color: '#718096'}}>{t('loadingOrEmpty')}</p>
+                  <p style={{padding: '12px', color: '#718096'}}>
+                    {snapshotLoad.phase === 'reading'
+                      ? `${tl('snapshotReading', 'Snapshot found, reading file list...')} (${Math.floor((Date.now() - snapshotLoad.startedAt) / 1000)}s)`
+                      : snapshotLoad.phase === 'building'
+                        ? tl('snapshotBuilding', 'Found {n} entries, building file tree...').replace('{n}', snapshotLoad.count.toLocaleString())
+                        : tl('snapshotEmpty', 'This snapshot has no entries.')}
+                  </p>
                 ) : (
                   (() => {
-                    const tree = buildTree(snapshotEntries)
+                    const tree = snapshotTree
                     const roots = tree.get('') || []
                     return roots.map(e => renderTreeNode(e, tree, 0))
                   })()

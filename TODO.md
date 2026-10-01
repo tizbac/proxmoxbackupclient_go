@@ -855,7 +855,7 @@ Follow-ups to the stage label under the restore progress bar (`restore:stage`, b
    options UI (+ 18 translations), a second read of the span (cheap when chunks are still cached) and a
    decision on what a mismatch does (flag, never delete). Bar: reserve a slice after the ACL phase, so 100%
    would then mean verified.
-2. **Current file name under the stage label.** Throttled `restore:file` event (or extend `restore:stage`
+2. ✅ DONE (2026-10-01, pending Mick's test) **Current file name under the stage label.** Throttled `restore:file` event (or extend `restore:stage`
    detail) from the extractor callback, showing the path being written; truncate long paths in the middle.
    The sequential extractor knows the entry when it starts writing; for the parallel one use the most
    recently started file across workers.
@@ -864,6 +864,8 @@ Follow-ups to the stage label under the restore progress bar (`restore:stage`, b
    Check first whether that phase is long enough on a real restore to be worth a label.
 
 #### Snapshot picker says only "Loading or empty snapshot..." while a big snapshot's tree loads (idea 2026-10-01)
+
+**Status 2026-10-01: steps (1) and (2) below are IMPLEMENTED (memoised tree + cached Intl.Collator, ancestor-set `selectionBytes`, reading/building/empty placeholder with elapsed seconds and entry count, 18 translations), pending Mick's timing test on the deepthought snapshot. Step (3) lazy tree is still open if it remains slow. The 20% initial progress reserve was also shrunk to 2% then 5%.**
 
 Mick: selecting the 458GB "deepthought" snapshot takes a long while to show its tree and the only
 feedback is "Loading or empty snapshot..." (`loadingOrEmpty`, `gui/frontend/src/App.jsx` ~3807). Wanted:
