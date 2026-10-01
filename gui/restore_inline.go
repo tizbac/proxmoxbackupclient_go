@@ -80,6 +80,12 @@ type RestoreOptions struct {
 
 	OnProgress func(percent float64, message string)
 
+	// OnStage reports the current phase of the restore ("preparing",
+	// "locating", "transferring", "acls") so the GUI can label it under the
+	// progress bar. detail is "i/n" while several archives are being
+	// restored, otherwise empty.
+	OnStage func(stage, detail string)
+
 	// OnStats delivers structured live progress (bytes transferred) so the GUI
 	// can show a real transfer rate, mirroring BackupOptions.OnStats. Restore
 	// has no chunk-reuse/failure concept (every needed chunk is downloaded
@@ -1035,6 +1041,14 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		}
 	}
 
+	stage := func(name, detail string) {
+		writeBackupLog(fmt.Sprintf("Restore stage: %s %s", name, detail))
+		if opts.OnStage != nil {
+			opts.OnStage(name, detail)
+		}
+	}
+	stage("preparing", "")
+
 	if opts.BaseURL == "" || !((opts.AuthID != "" && opts.Secret != "") || opts.Ticket != "") {
 		return fmt.Errorf("PBS connection parameters required")
 	}
@@ -1128,6 +1142,12 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	displayNames, _ := resolveArchiveDisplayNames(opts, archiveNames, nil)
 
 	var extracted []pbscommon.PXARExtractedFile
+	type aclJob struct {
+		name  string
+		meta  *BackupFileMeta
+		files []pbscommon.PXARExtractedFile
+	}
+	var aclJobs []aclJob
 	includesToCheck := pbscommon.NormalizeIncludes(opts.IncludePaths)
 	anyIncludesMatched := false
 	archiveSpan := 0.75 / float64(len(archiveNames))
@@ -1178,6 +1198,11 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		}
 
 		var extractedHere []pbscommon.PXARExtractedFile
+		archiveDetail := ""
+		if len(archiveNames) > 1 {
+			archiveDetail = fmt.Sprintf("%d/%d", i+1, len(archiveNames))
+		}
+		stage("locating", archiveDetail)
 
 		// The bar tracks bytes WRITTEN to disk (reported by the extractors as
 		// each file completes), not chunks fetched: download runs ahead of
@@ -1227,6 +1252,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 				})
 			}
 		}, nil, func(reader *pbscommon.PXARReader) error {
+			stage("transferring", archiveDetail)
 			reader.SetProgressCallback(func(doneBytes int64) {
 				uiMu.Lock()
 				defer uiMu.Unlock()
@@ -1265,37 +1291,16 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			return err
 		}
 
-		// Re-apply captured NTFS ACLs/DOS attributes now that this archive's
-		// files are actually on disk. archiveName carries PBS's manifest
-		// filename suffix (".pxar.didx"); the combined blob keys its Archives
-		// map by the bare archive base name (see archiveBaseName / where
-		// combinedACLs.Archives is populated in backup_inline.go) — strip it
-		// to look up the right entry. Best-effort per file: an apply failure
-		// is logged, never fails the restore — the file's content is already
-		// safely on disk regardless.
+		// NTFS ACLs/DOS attributes are re-applied after every archive's files
+		// are on disk (see the ACL phase below the loop), so the bar's last
+		// stretch can show real ACL progress. archiveName carries PBS's
+		// manifest filename suffix (".pxar.didx"); the combined blob keys its
+		// Archives map by the bare archive base name (see archiveBaseName /
+		// where combinedACLs.Archives is populated in backup_inline.go).
 		if combinedACLMeta != nil {
 			bareArchive := strings.TrimSuffix(archiveName, ".pxar.didx")
 			if archiveMeta, ok := combinedACLMeta.Archives[bareArchive]; ok && archiveMeta != nil {
-				entryIdx := buildFileMetaIndex(archiveMeta)
-				applied, failed := 0, 0
-				for _, f := range extractedHere {
-					if f.Skipped || f.ArchivePath == "" {
-						continue
-					}
-					entry, ok := entryIdx[f.ArchivePath]
-					if !ok {
-						continue
-					}
-					if aerr := applyNTFSMetadata(f.Path, entry, archiveMeta.SDDLs); aerr != nil {
-						failed++
-						writeBackupLog(fmt.Sprintf("NTFS metadata apply failed for %s: %v", f.Path, aerr))
-					} else {
-						applied++
-					}
-				}
-				if applied > 0 || failed > 0 {
-					writeBackupLog(fmt.Sprintf("NTFS ACLs/attributes for %s: applied %d, failed %d", archiveName, applied, failed))
-				}
+				aclJobs = append(aclJobs, aclJob{name: archiveName, meta: archiveMeta, files: extractedHere})
 			}
 		}
 
@@ -1356,6 +1361,51 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	writeBackupLog(fmt.Sprintf("Extraction complete: %d files, %d dirs, %d skipped (expected), %d failed",
 		successCount, dirCount, skipCount, errorSkipCount))
 	progress(0.95, fmt.Sprintf("Extracted %d files", successCount))
+
+	// Best-effort per file: an apply failure is logged, never fails the
+	// restore, since the file's content is already safely on disk.
+	if len(aclJobs) > 0 {
+		type aclItem struct {
+			path  string
+			entry FileMetaEntry
+			sddls []string
+			arch  string
+		}
+		var items []aclItem
+		for _, j := range aclJobs {
+			entryIdx := buildFileMetaIndex(j.meta)
+			for _, f := range j.files {
+				if f.Skipped || f.ArchivePath == "" {
+					continue
+				}
+				if entry, ok := entryIdx[f.ArchivePath]; ok {
+					items = append(items, aclItem{f.Path, entry, j.meta.SDDLs, j.name})
+				}
+			}
+		}
+		if len(items) > 0 {
+			stage("acls", "")
+			applied, failed := 0, 0
+			lastEmit := time.Time{}
+			for n, it := range items {
+				if opts.Ctx != nil && opts.Ctx.Err() != nil {
+					return fmt.Errorf("restore cancelled while applying ACLs")
+				}
+				if aerr := applyNTFSMetadata(it.path, it.entry, it.sddls); aerr != nil {
+					failed++
+					writeBackupLog(fmt.Sprintf("NTFS metadata apply failed for %s: %v", it.path, aerr))
+				} else {
+					applied++
+				}
+				if time.Since(lastEmit) >= 250*time.Millisecond {
+					lastEmit = time.Now()
+					progress(0.95+0.05*float64(n+1)/float64(len(items)),
+						fmt.Sprintf("Restoring ACLs and attributes: %d of %d files", n+1, len(items)))
+				}
+			}
+			writeBackupLog(fmt.Sprintf("NTFS ACLs/attributes: applied %d, failed %d", applied, failed))
+		}
+	}
 
 	if opts.RestoreADS {
 		// Still reserved — no ADS capture/restore sidecar exists yet (unlike

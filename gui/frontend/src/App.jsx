@@ -349,6 +349,7 @@ function App() {
   })
   const [restoreLoading, setRestoreLoading] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
+  const [restoreStage, setRestoreStage] = useState({ stage: '', detail: '' })
   const [restoreStats, setRestoreStats] = useState({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
 
   // ===== file search across snapshots =====
@@ -586,6 +587,9 @@ function App() {
       showStatus(`${data.message || ''}`, 'info', true)
       if (data.name) setActiveRestoreName(data.name)
     })
+    const unsubG = EventsOn('restore:stage', (data) => {
+      setRestoreStage({ stage: data.stage || '', detail: data.detail || '' })
+    })
     // Structured live stats (bytes transferred), mirroring backup:stats.
     // Same cumulative-average speed calc as the backup side (item 5's fix) —
     // not the delta-since-last-event approach that produced inflated rates.
@@ -603,6 +607,7 @@ function App() {
     const unsubC = EventsOn('restore:complete', (data) => {
       setRestoreLoading(false)
       setActiveRestoreName('')
+      setRestoreStage({ stage: '', detail: '' })
       setPendingQueue(q => q.slice(1))
       setRestoreProgress(data.success ? 100 : 0)
       setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
@@ -612,6 +617,7 @@ function App() {
     })
     return () => {
       if (unsubP) unsubP()
+      if (unsubG) unsubG()
       if (unsubS) unsubS()
       if (unsubC) unsubC()
     }
@@ -3387,6 +3393,18 @@ function App() {
                   {restoreProgress}%
                 </div>
               </div>
+
+              {restoreStage.stage && (
+                <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px'}}>
+                  {{
+                    preparing: tl('restoreStagePreparing', 'Connecting and preparing restore...'),
+                    locating: tl('restoreStageLocating', 'Reading snapshot index and locating files...'),
+                    transferring: tl('restoreStageTransferring', 'Fetching chunks and writing files...'),
+                    acls: tl('restoreStageAcls', 'Restoring ACLs and attributes...'),
+                  }[restoreStage.stage] || restoreStage.stage}
+                  {restoreStage.detail ? ` (${restoreStage.detail})` : ''}
+                </div>
+              )}
 
               <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px'}}>
                 {restoreStats.speed > 0 && (

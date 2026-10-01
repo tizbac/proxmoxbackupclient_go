@@ -836,9 +836,9 @@ chunks/speed line as a separate download indicator.
 #### Restores never appear on the Reports tab (reported 2026-10-01)
 DONE 2026-10-01 (awaiting Mick's live check). `JobHistory` has Kind/Restore* fields; `appendJobHistory` records
 success/failed/cancelled restores and the Reports tab shows snapshot, destination, paths, files, size, duration.
-New labels use an English fallback (`tl()` in App.jsx), so the 17 non-English languages still need translations
-for reportsTypeRestore, reportsSnapshot, reportsDestination, reportsPaths, reportsWholeSnapshot, reportsFiles,
-reportsSize, reportsDuration. Original analysis follows.
+New labels are translated in all 18 languages (`tl()` in App.jsx keeps an English fallback for any future key).
+Restore stage label under the bar (preparing / locating / transferring / acls via `restore:stage`); NTFS ACLs are
+now applied after all archives, in the 95-100% stretch, with a live 'n of m files' count. Original analysis follows.
 Reports = `GetJobHistory`, which is only written by backup completions (`main.go` ~1079/~1387,
 `scheduler.go` ~944). Restores (success, fail or stopped) go only to the message log, so after a failed
 restore the Reports tab's last entry is the previous scheduled backup. Fix idea: add a restore

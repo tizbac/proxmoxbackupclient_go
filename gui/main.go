@@ -1681,6 +1681,16 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		OnProgress:         emit,
 		ParallelExtraction: a.config.ParallelRestore,
 	}
+	opts.OnStage = func(stage, detail string) {
+		markRestoreProgress()
+		if a.ctx == nil {
+			return
+		}
+		runtime.EventsEmit(a.ctx, "restore:stage", map[string]interface{}{
+			"stage":  stage,
+			"detail": detail,
+		})
+	}
 
 	// Structured live stats for the GUI's restore transfer-rate display,
 	// mirroring the backup side's OnStats/"backup:stats" pair above.
