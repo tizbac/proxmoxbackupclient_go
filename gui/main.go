@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	stdruntime "runtime"
 	"runtime/debug"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -1699,6 +1700,12 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	// operation_queue.go. markRestoreStarted (and the stall watchdog's clock)
 	// only start once this restore actually begins, not while it's waiting
 	// its turn — a long queue wait is expected, not a stall.
+	var restoredFiles int
+	var restoredBytes int64
+	opts.OnSummary = func(files, dirs int, bytes int64) {
+		restoredFiles, restoredBytes = files, bytes
+	}
+
 	go func() {
 		release := acquireOperationSlot(restoreLabel, func(heldBy string) {
 			emit(0.01, fmt.Sprintf("Queued: %s — waiting for %s to finish...", restoreLabel, heldBy))
@@ -1707,6 +1714,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 
 		markRestoreStarted()
 		defer markRestoreDone()
+		restoreStart := time.Now()
 		// A restore can fail in surprising ways (corrupt archive, disk full).
 		// Recover so a panic surfaces as an error in the UI instead of taking
 		// the whole GUI process down.
@@ -1735,6 +1743,44 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 			restoreLevel = "error"
 		}
 		LogMessage("Restore", restoreLevel, msg, "", msgKey, msgP)
+
+		// Record the run on the Reports tab (written before restore:complete
+		// so the page's refresh on that event already sees it).
+		histStatus := "success"
+		if !success {
+			histStatus = "failed"
+			if strings.Contains(strings.ToLower(err.Error()), "cancel") {
+				histStatus = "cancelled"
+			}
+		}
+		histDest := destPath
+		if restoreMode == RestoreModeOriginal {
+			histDest = "(original location)"
+		}
+		histPaths := includePaths
+		if len(histPaths) > 50 {
+			histPaths = histPaths[:50]
+		}
+		if herr := a.appendJobHistory(JobHistory{
+			ID:              fmt.Sprintf("restore-%d", restoreStart.UnixNano()),
+			Name:            restoreLabel,
+			Timestamp:       time.Now().Format(time.RFC3339),
+			Status:          histStatus,
+			Message:         msg,
+			MessageKey:      msgKey,
+			MessageParams:   msgP,
+			BackupID:        backupID,
+			Kind:            "restore",
+			RestoreSnapshot: snapshotID,
+			RestoreDest:     histDest,
+			RestorePaths:    histPaths,
+			RestoreFiles:    restoredFiles,
+			RestoreBytes:    restoredBytes,
+			DurationSec:     int(time.Since(restoreStart).Seconds()),
+		}); herr != nil {
+			writeDebugLog(fmt.Sprintf("Restore: failed to record Reports history: %v", herr))
+		}
+
 		if a.ctx != nil {
 			runtime.EventsEmit(a.ctx, "restore:complete", map[string]interface{}{
 				"success":        success,

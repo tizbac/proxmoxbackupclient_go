@@ -819,6 +819,10 @@ sequential extractor. Live test Step 5 (test PBS): span 7 chunks, fetched 8, 480
 do: Mick to re-run the production restore on the new build; expect it to end promptly at 100%.
 
 #### Restore progress bar should be properly representative (Mick, 2026-10-01, after the restore itself is verified)
+DONE 2026-10-01 (awaiting Mick's live check). Bar now = bytes written / span size, mapped 0.20-0.95 across archives,
+1.0 only at 'Restore completed'. Each PXAR entry carries a Weight; extractors call `PXARReader.SetProgressCallback`
+when a file is fully written (parallel: from the worker). Live test asserts the callback reaches ~100% of the span.
+Original analysis follows.
 Bar % = 0.20 + 0.60*done/total (`restore_inline.go` ~1183), so it runs ~20 points ahead of the Data/chunks
 line (live: bar 22% with 70/1698 chunks, 30% with 291/1698) and parks at 80% while files finish writing.
 Make the percentage track real work (chunks fetched / span chunks, then files written / files total) and
@@ -830,6 +834,11 @@ effectiveSize (span size), reserve the last few points for NTFS ACL/attribute ap
 chunks/speed line as a separate download indicator.
 
 #### Restores never appear on the Reports tab (reported 2026-10-01)
+DONE 2026-10-01 (awaiting Mick's live check). `JobHistory` has Kind/Restore* fields; `appendJobHistory` records
+success/failed/cancelled restores and the Reports tab shows snapshot, destination, paths, files, size, duration.
+New labels use an English fallback (`tl()` in App.jsx), so the 17 non-English languages still need translations
+for reportsTypeRestore, reportsSnapshot, reportsDestination, reportsPaths, reportsWholeSnapshot, reportsFiles,
+reportsSize, reportsDuration. Original analysis follows.
 Reports = `GetJobHistory`, which is only written by backup completions (`main.go` ~1079/~1387,
 `scheduler.go` ~944). Restores (success, fail or stopped) go only to the message log, so after a failed
 restore the Reports tab's last entry is the previous scheduled backup. Fix idea: add a restore

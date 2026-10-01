@@ -47,6 +47,29 @@ type PXARReader struct {
 	// counter). Diagnostic only, added 2026-09-23.
 	copyNanos       atomic.Int64
 	fsOverheadNanos atomic.Int64
+
+	// doneBytes/onProgress drive the restore progress bar by work actually
+	// completed on disk: every entry the extractors finish (file closed and
+	// renamed, directory created, or deliberately skipped) adds its Weight
+	// (the archive bytes it occupies, see PXARTreeEntry.Weight). onProgress
+	// receives the running total and may be called from several worker
+	// goroutines at once, so it must be goroutine-safe.
+	doneBytes  atomic.Int64
+	onProgress func(doneBytes int64)
+}
+
+// SetProgressCallback registers fn to be called with the cumulative archive
+// bytes whose extraction has completed. Call before Extract*; not safe to
+// change while an extraction is running.
+func (pr *PXARReader) SetProgressCallback(fn func(doneBytes int64)) {
+	pr.onProgress = fn
+}
+
+func (pr *PXARReader) entryDone(weight int64) {
+	n := pr.doneBytes.Add(weight)
+	if pr.onProgress != nil {
+		pr.onProgress(n)
+	}
 }
 
 // PXARReaderStats is a snapshot of where extraction's time went. For
@@ -82,6 +105,12 @@ type PXARTreeEntry struct {
 	Size    uint64
 	Mode    uint32
 	ModTime int64
+	// Weight is the number of archive bytes this entry accounts for: from the
+	// end of the previous emitted entry to the end of this one (headers,
+	// filename, payload). Summed over a span it equals the span's size, which
+	// is what lets extraction progress be measured against the same total
+	// the download side reports. Only set by walkRange.
+	Weight int64
 }
 
 // PXARExtractedFile represents an extracted file (or directory) with metadata.
@@ -196,6 +225,7 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 	var pendingFileMode uint64
 	var pendingFileMtime uint64
 	hasPendingFile := false
+	lastEmit := startOffset
 
 	for {
 		if pr.offset >= endOffset {
@@ -256,11 +286,14 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 					rootSeen = true
 				} else {
 					subPath := joinArchivePath(currentPath, pendingName)
+					weight := pr.offset - lastEmit
+					lastEmit = pr.offset
 					if err := cb(PXARTreeEntry{
 						Path:    subPath,
 						IsDir:   true,
 						Mode:    uint32(mode),
 						ModTime: int64(mtimeSecs),
+						Weight:  weight,
 					}, nil); err != nil {
 						return err
 					}
@@ -284,12 +317,15 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 			if hasPendingFile {
 				path := joinArchivePath(currentPath, pendingName)
 				payload := io.NewSectionReader(pr.ra, pr.offset, contentSize)
+				weight := pr.offset + contentSize - lastEmit
+				lastEmit = pr.offset + contentSize
 				if err := cb(PXARTreeEntry{
 					Path:    path,
 					IsDir:   false,
 					Size:    uint64(contentSize),
 					Mode:    uint32(pendingFileMode),
 					ModTime: int64(pendingFileMtime),
+					Weight:  weight,
 				}, payload); err != nil {
 					return err
 				}
@@ -538,7 +574,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 	includes := NormalizeIncludes(includePaths)
 	extracted := make([]PXARExtractedFile, 0, 64)
 
-	cb := func(e PXARTreeEntry, payload *io.SectionReader) error {
+	extractEntry := func(e PXARTreeEntry, payload *io.SectionReader) error {
 		if !pathMatches(e.Path, includes) {
 			return nil
 		}
@@ -667,6 +703,17 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		return nil
 	}
 
+	// Every entry the walker hands over counts as done once extractEntry has
+	// dealt with it (written, created or skipped), so progress reaches 100%
+	// only when the last file is on disk.
+	cb := func(e PXARTreeEntry, payload *io.SectionReader) error {
+		if err := extractEntry(e, payload); err != nil {
+			return err
+		}
+		pr.entryDone(e.Weight)
+		return nil
+	}
+
 	// Fast path: exactly one clean selection can often be resolved directly
 	// via the archive's own GOODBYE binary-search-tree index
 	// (ResolveArchivePathBST) instead of linearly scanning every entry before
@@ -688,6 +735,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			// clean with the full linear walk rather than return a partial,
 			// possibly-confusing result.
 			extracted = extracted[:0]
+			pr.doneBytes.Store(0)
 		}
 	}
 
@@ -762,6 +810,7 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 				defer wg.Done()
 				for j := range jobs {
 					appendResult(pr.extractOneFileParallel(j.entry, j.fullPath, j.payload))
+					pr.entryDone(j.entry.Weight)
 				}
 			}(jobs)
 		}
@@ -772,7 +821,8 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 	}
 	startPool()
 
-	cb := func(e PXARTreeEntry, payload *io.SectionReader) error {
+	var queued bool
+	extractEntry := func(e PXARTreeEntry, payload *io.SectionReader) error {
 		if !pathMatches(e.Path, includes) {
 			return nil
 		}
@@ -817,7 +867,22 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 				return nil
 			}
 		}
+		queued = true
 		jobs <- fileJob{entry: e, fullPath: fullPath, payload: payload}
+		return nil
+	}
+	// A queued file is counted by its worker once written; everything else
+	// (directories, skips, filtered entries) is complete as soon as the
+	// walker has handled it. The walker calls cb serially, so queued is not
+	// shared across goroutines.
+	cb := func(e PXARTreeEntry, payload *io.SectionReader) error {
+		queued = false
+		if err := extractEntry(e, payload); err != nil {
+			return err
+		}
+		if !queued {
+			pr.entryDone(e.Weight)
+		}
 		return nil
 	}
 
@@ -836,6 +901,7 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 				mu.Lock()
 				extracted = extracted[:0]
 				mu.Unlock()
+				pr.doneBytes.Store(0)
 				startPool()
 			}
 		}

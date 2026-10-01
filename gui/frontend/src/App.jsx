@@ -147,6 +147,7 @@ function renderLocalizedMessage(entry, t) {
 
 function App() {
   const { t } = useTranslation()
+  const tl = (key, fallback) => { const v = t(key); return v === key ? fallback : v }
   const [activeTab, setActiveTab] = useState('backup')
   const [showLimitations, setShowLimitations] = useState(false)
   const [showBMRGuide, setShowBMRGuide] = useState(false)
@@ -607,6 +608,7 @@ function App() {
       setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
       const localizedMsg = renderLocalizedMessage(data, t).text
       showStatus(data.success ? `✅ ${localizedMsg}` : `❌ ${localizedMsg}`, data.success ? 'success' : 'error')
+      if (GetJobHistory) GetJobHistory().then(h => setJobHistory(h || []))
     })
     return () => {
       if (unsubP) unsubP()
@@ -4081,7 +4083,7 @@ function App() {
                         }}
                       >
                         <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                          <span>{job.status === 'success' ? '✅' : job.status === 'failed' ? '❌' : '⏳'}</span>
+                          <span>{job.status === 'success' ? '✅' : job.status === 'failed' ? '❌' : job.status === 'cancelled' ? '⏹️' : '⏳'}</span>
                           <strong style={{fontSize: '14px'}}>{job.name}</strong>
                         </div>
                         <div style={{fontSize: '12px', color: '#718096', marginTop: '4px'}}>
@@ -4105,7 +4107,7 @@ function App() {
                         fontSize: '14px',
                       }}>
                         <strong>{t('status')}</strong>
-                        <span>{selected.status === 'success' ? '✅' : selected.status === 'failed' ? '❌' : '⏳'} {selected.status}</span>
+                        <span>{selected.status === 'success' ? '✅' : selected.status === 'failed' ? '❌' : selected.status === 'cancelled' ? '⏹️' : '⏳'} {selected.status}</span>
                         <strong>{t('msgColDateTime')}</strong>
                         <span>{new Date(selected.timestamp).toLocaleString()}</span>
                         {selected.trigger && (
@@ -4120,7 +4122,23 @@ function App() {
                             }</span>
                           </>
                         )}
-                        {selected.backupType && (
+                        {selected.kind === 'restore' && (
+                          <>
+                            <strong>{t('reportsType')}</strong>
+                            <span>{tl('reportsTypeRestore', 'Restore')}</span>
+                            {selected.restoreSnapshot && (<><strong>{tl('reportsSnapshot', 'Snapshot')}</strong><span>{selected.restoreSnapshot}</span></>)}
+                            {selected.restoreDest && (<><strong>{tl('reportsDestination', 'Destination')}</strong><span>{selected.restoreDest}</span></>)}
+                            <strong>{tl('reportsPaths', 'Paths')}</strong>
+                            <span>{selected.restorePaths && selected.restorePaths.length > 0 ? selected.restorePaths.join(', ') : tl('reportsWholeSnapshot', 'Whole snapshot')}</span>
+                            <strong>{tl('reportsFiles', 'Files')}</strong>
+                            <span>{selected.restoreFiles || 0}</span>
+                            <strong>{tl('reportsSize', 'Size')}</strong>
+                            <span>{formatBytes(selected.restoreBytes || 0)}</span>
+                            <strong>{tl('reportsDuration', 'Duration')}</strong>
+                            <span>{formatDuration(selected.durationSec || 0)}</span>
+                          </>
+                        )}
+                        {selected.kind !== 'restore' && selected.backupType && (
                           <>
                             <strong>{t('reportsType')}</strong>
                             <span>{selected.backupType === 'machine' ? t('reportsTypeMachine') : t('reportsTypeDirectory')}</span>
@@ -4132,18 +4150,26 @@ function App() {
                             <span style={{whiteSpace: 'pre-wrap'}}>{renderLocalizedMessage(selected, t).text}</span>
                           </>
                         )}
-                        <strong>{t('backupID')}</strong>
-                        <span>{selected.backupId}</span>
-                        <strong>VSS</strong>
-                        <span>{selected.useVSS ? t('vssOn') : t('vssOff')}</span>
-                        {selected.backupDirs && selected.backupDirs.length > 0 && (
+                        {selected.backupId && (
+                          <>
+                            <strong>{t('backupID')}</strong>
+                            <span>{selected.backupId}</span>
+                          </>
+                        )}
+                        {selected.kind !== 'restore' && (
+                          <>
+                            <strong>VSS</strong>
+                            <span>{selected.useVSS ? t('vssOn') : t('vssOff')}</span>
+                          </>
+                        )}
+                        {selected.kind !== 'restore' && selected.backupDirs && selected.backupDirs.length > 0 && (
                           <>
                             <strong>{t('reportsFolders')}</strong>
                             <span>{selected.backupDirs.join(', ')}</span>
                           </>
                         )}
                       </div>
-                      {selected.status === 'failed' && (
+                      {selected.status === 'failed' && selected.kind !== 'restore' && (
                         <button
                           className="btn"
                           style={{marginTop: '16px'}}

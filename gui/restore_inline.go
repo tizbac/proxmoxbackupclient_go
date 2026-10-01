@@ -88,6 +88,11 @@ type RestoreOptions struct {
 	// currently being fetched.
 	OnStats func(*RestoreProgressStats)
 
+	// OnSummary, when set, is called once extraction has finished with the
+	// number of files written, directories created and file bytes written
+	// (Reports-tab history). Not called when extraction fails outright.
+	OnSummary func(files, dirs int, bytes int64)
+
 	// ParallelExtraction opts into pbscommon.PXARReader.ExtractWithRewriterParallel
 	// instead of the original ExtractWithRewriter — see Config.ParallelRestore's
 	// doc comment. Defaults to false (the proven sequential path).
@@ -1125,7 +1130,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	var extracted []pbscommon.PXARExtractedFile
 	includesToCheck := pbscommon.NormalizeIncludes(opts.IncludePaths)
 	anyIncludesMatched := false
-	archiveSpan := 0.60 / float64(len(archiveNames))
+	archiveSpan := 0.75 / float64(len(archiveNames))
 	for i, archiveName := range archiveNames {
 		archiveBase := 0.20 + float64(i)*archiveSpan
 		wrapper := displayNames[archiveName]
@@ -1173,15 +1178,47 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		}
 
 		var extractedHere []pbscommon.PXARExtractedFile
+
+		// The bar tracks bytes WRITTEN to disk (reported by the extractors as
+		// each file completes), not chunks fetched: download runs ahead of
+		// the writers, so a fetch-driven bar parked at its ceiling while
+		// files were still being created. This archive's slice of the
+		// 0.20–0.95 range fills evenly across N archives and reaches its end
+		// only when its last file is on disk. Chunk counts stay in the
+		// message (and the speed/Data line) as the separate download
+		// indicator.
+		var (
+			uiMu          sync.Mutex
+			uiPct         = archiveBase
+			uiTotal       int64
+			uiWritten     int64
+			uiChunksDone  int
+			uiChunksTotal int
+			uiLastEmit    time.Time
+		)
+		// Caller holds uiMu.
+		emitUI := func(force bool) {
+			if uiTotal <= 0 {
+				return
+			}
+			now := time.Now()
+			if !force && now.Sub(uiLastEmit) < 250*time.Millisecond {
+				return
+			}
+			uiLastEmit = now
+			progress(uiPct, fmt.Sprintf("Restoring %s: %s of %s written (%d/%d chunks downloaded)",
+				archiveName, formatByteSize(uint64(uiWritten)), formatByteSize(uint64(uiTotal)), uiChunksDone, uiChunksTotal))
+		}
+
 		err = withSnapshotReader(opts, archiveName, "Restore", archiveIncludes, func(done, total int, bytesDone, bytesTotal int64) {
-			// Map this archive's chunk progress to its own slice of the
-			// 0.20–0.80 overall bar, so N archives fill it evenly instead of
-			// each one restarting from 0.20.
 			if total == 0 {
 				return
 			}
-			pct := archiveBase + archiveSpan*(float64(done)/float64(total))
-			progress(pct, fmt.Sprintf("Downloading %s (%d/%d chunks)", archiveName, done, total))
+			uiMu.Lock()
+			uiTotal = bytesTotal
+			uiChunksDone, uiChunksTotal = done, total
+			emitUI(false)
+			uiMu.Unlock()
 			if opts.OnStats != nil {
 				opts.OnStats(&RestoreProgressStats{
 					BytesDone:      uint64(bytesDone),
@@ -1190,7 +1227,22 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 				})
 			}
 		}, nil, func(reader *pbscommon.PXARReader) error {
-			progress(archiveBase+archiveSpan*0.9, fmt.Sprintf("Extracting %s...", archiveName))
+			reader.SetProgressCallback(func(doneBytes int64) {
+				uiMu.Lock()
+				defer uiMu.Unlock()
+				if doneBytes <= uiWritten { // parallel workers can report out of order
+					return
+				}
+				uiWritten = doneBytes
+				if uiTotal > 0 {
+					frac := float64(doneBytes) / float64(uiTotal)
+					if frac > 1 {
+						frac = 1
+					}
+					uiPct = archiveBase + archiveSpan*frac
+				}
+				emitUI(false)
+			})
 			var eerr error
 			if opts.ParallelExtraction {
 				extractedHere, eerr = reader.ExtractWithRewriterParallel(archiveRewriter, archiveIncludes, opts.Overwrite, 0)
@@ -1201,6 +1253,12 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 				writeBackupLog(fmt.Sprintf("PXAR extraction failed for %s: %v", archiveName, eerr))
 				return fmt.Errorf("failed to extract archive %s: %v", archiveName, eerr)
 			}
+			// Extraction returned, so this archive's last file is on disk.
+			uiMu.Lock()
+			uiPct = archiveBase + archiveSpan
+			uiWritten = uiTotal
+			emitUI(true)
+			uiMu.Unlock()
 			return nil
 		})
 		if err != nil {
@@ -1274,6 +1332,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	skipCount := 0      // deliberate skips (e.g. already exists with overwrite off)
 	errorSkipCount := 0 // genuine failures (open/write/rename/mkdir)
 	dirCount := 0
+	var bytesRestored int64
 	for _, f := range extracted {
 		if f.Skipped {
 			if f.Expected {
@@ -1287,7 +1346,11 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			dirCount++
 		} else {
 			successCount++
+			bytesRestored += int64(f.Size)
 		}
+	}
+	if opts.OnSummary != nil {
+		opts.OnSummary(successCount, dirCount, bytesRestored)
 	}
 
 	writeBackupLog(fmt.Sprintf("Extraction complete: %d files, %d dirs, %d skipped (expected), %d failed",

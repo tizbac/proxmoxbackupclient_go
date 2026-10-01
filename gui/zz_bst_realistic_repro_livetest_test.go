@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync/atomic"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -372,6 +373,18 @@ func TestZZBSTRealisticReproManual(t *testing.T) {
 		t.Fatalf("resolve (parallel): %v", rerr3)
 	}
 	r3.LimitPrefetchTo(e3)
+	var parLast, parMax int64
+	prPar.SetProgressCallback(func(d int64) {
+		// workers call concurrently, so values may arrive slightly out of
+		// order; only track the maximum and check it never exceeds the span.
+		for {
+			cur := atomic.LoadInt64(&parMax)
+			if d <= cur || atomic.CompareAndSwapInt64(&parMax, cur, d) {
+				break
+			}
+		}
+		atomic.StoreInt64(&parLast, d)
+	})
 	parFiles, perr := prPar.ExtractWithRewriterParallel(func(p string) string {
 		return filepath.Join(parDest, p)
 	}, []string{"target_folder"}, true, 4)
@@ -392,6 +405,14 @@ func TestZZBSTRealisticReproManual(t *testing.T) {
 	}
 	if parWritten != targetFileCount {
 		t.Errorf("FAIL: parallel extractor wrote %d files, expected %d", parWritten, targetFileCount)
+	}
+	spanBytes := targetEnd - targetStart
+	t.Logf("parallel progress: max reported=%d of span=%d (%.1f%%)", parMax, spanBytes, 100*float64(parMax)/float64(spanBytes))
+	if parMax > spanBytes {
+		t.Errorf("FAIL: progress callback reported %d bytes, more than the %d-byte span", parMax, spanBytes)
+	}
+	if float64(parMax) < 0.95*float64(spanBytes) {
+		t.Errorf("FAIL: progress callback only reached %d of %d span bytes, the bar would stall short of 100%%", parMax, spanBytes)
 	}
 	t.Log("PASS: selective restore content is byte-for-byte correct and complete, no sibling leakage")
 }

@@ -116,6 +116,20 @@ type JobHistory struct {
 	// Message for those.
 	MessageKey    MessageKey `json:"message_key,omitempty"`
 	MessageParams msgParams  `json:"message_params,omitempty"`
+
+	// Kind is "restore" for a restore run; empty means a backup (every entry
+	// written before restores were recorded). Status for a restore is
+	// "success", "failed" or "cancelled" (the user pressed Stop).
+	Kind string `json:"kind,omitempty"`
+
+	// Restore-only details, empty/zero for backups. BackupID above holds the
+	// restored backup ID; RestoreSnapshot is the snapshot's UTC timestamp.
+	RestoreSnapshot string   `json:"restoreSnapshot,omitempty"`
+	RestoreDest     string   `json:"restoreDest,omitempty"`
+	RestorePaths    []string `json:"restorePaths,omitempty"` // selected paths; empty = whole snapshot
+	RestoreFiles    int      `json:"restoreFiles,omitempty"`
+	RestoreBytes    int64    `json:"restoreBytes,omitempty"`
+	DurationSec     int      `json:"durationSec,omitempty"`
 }
 
 func getScheduledJobsPath() (string, error) {
@@ -414,7 +428,13 @@ func (a *App) AddJobHistory(entry JobHistory) error {
 		level = "error"
 	}
 	LogMessage("Backup", level, fmt.Sprintf("%s: %s", entry.Name, entry.Message), entry.Name, entry.MessageKey, entry.MessageParams)
+	return a.appendJobHistory(entry)
+}
 
+// appendJobHistory persists entry at the top of the Reports history without
+// touching the Message Log. Restores use it directly because they already
+// write their own "Restore" Message Log line.
+func (a *App) appendJobHistory(entry JobHistory) error {
 	history, err := a.GetJobHistory()
 	if err != nil {
 		// Refuse to overwrite the history file with just this entry when the
