@@ -752,19 +752,27 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 		mu.Unlock()
 	}
 
-	jobs := make(chan fileJob, workers*2)
+	var jobs chan fileJob
 	var wg sync.WaitGroup
-	wg.Add(workers)
-	for i := 0; i < workers; i++ {
-		go func() {
-			defer wg.Done()
-			for j := range jobs {
-				appendResult(pr.extractOneFileParallel(j.entry, j.fullPath, j.payload))
-			}
-		}()
+	startPool := func() {
+		jobs = make(chan fileJob, workers*2)
+		wg.Add(workers)
+		for i := 0; i < workers; i++ {
+			go func(jobs chan fileJob) {
+				defer wg.Done()
+				for j := range jobs {
+					appendResult(pr.extractOneFileParallel(j.entry, j.fullPath, j.payload))
+				}
+			}(jobs)
+		}
 	}
+	stopPool := func() {
+		close(jobs)
+		wg.Wait()
+	}
+	startPool()
 
-	walkErr := pr.walk(func(e PXARTreeEntry, payload *io.SectionReader) error {
+	cb := func(e PXARTreeEntry, payload *io.SectionReader) error {
 		if !pathMatches(e.Path, includes) {
 			return nil
 		}
@@ -811,10 +819,33 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 		}
 		jobs <- fileJob{entry: e, fullPath: fullPath, payload: payload}
 		return nil
-	})
+	}
 
-	close(jobs)
-	wg.Wait()
+	// Same GOODBYE-BST fast path as ExtractWithRewriter: a single clean
+	// selection is walked inside its own span only. Without this, a selective
+	// restore with parallel extraction scanned the ENTIRE archive after the
+	// selection (found live 2026-10-01: 129,662-chunk walk of a 458GB snapshot
+	// for a 1,698-chunk folder). Any failure falls back to the full walk.
+	fastDone := false
+	if len(includes) == 1 {
+		if targetStart, targetEnd, parentPath, ferr := pr.ResolveArchivePathBST(includes[0]); ferr == nil {
+			if werr := pr.walkRange(cb, targetStart, targetEnd, parentPath, true); werr == nil {
+				fastDone = true
+			} else {
+				stopPool()
+				mu.Lock()
+				extracted = extracted[:0]
+				mu.Unlock()
+				startPool()
+			}
+		}
+	}
+	var walkErr error
+	if !fastDone {
+		walkErr = pr.walk(cb)
+	}
+
+	stopPool()
 
 	return extracted, walkErr
 }

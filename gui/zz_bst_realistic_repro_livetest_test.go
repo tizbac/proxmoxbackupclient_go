@@ -354,6 +354,45 @@ func TestZZBSTRealisticReproManual(t *testing.T) {
 	if unbounded <= bounded {
 		t.Logf("NOTE: unbounded run did not over-fetch (%d vs %d); test data may be too small to show the overshoot", unbounded, bounded)
 	}
+
+	// --- Step 5: the PARALLEL extractor (Config.ParallelRestore) must also
+	// stay inside the span. It used to call the full linear walk, so a
+	// selective restore kept reading the rest of the archive after the
+	// selection was done (found live 2026-10-01 on a 458GB snapshot).
+	r3, sz3, err := client.NewDIDXReaderAt(archiveName, 64, nil)
+	if err != nil {
+		t.Fatalf("NewDIDXReaderAt (parallel): %v", err)
+	}
+	prPar := pbscommon.NewPXARReaderAt(r3, sz3)
+	parDest := t.TempDir()
+	r3.SetPrefetchEnabled(false)
+	_, e3, _, rerr3 := prPar.ResolveArchivePathBST("target_folder")
+	r3.SetPrefetchEnabled(true)
+	if rerr3 != nil {
+		t.Fatalf("resolve (parallel): %v", rerr3)
+	}
+	r3.LimitPrefetchTo(e3)
+	parFiles, perr := prPar.ExtractWithRewriterParallel(func(p string) string {
+		return filepath.Join(parDest, p)
+	}, []string{"target_folder"}, true, 4)
+	if perr != nil {
+		t.Fatalf("ExtractWithRewriterParallel: %v", perr)
+	}
+	time.Sleep(2 * time.Second)
+	parFetched := r3.Stats().ChunksFetched
+	parWritten := 0
+	for _, f := range parFiles {
+		if !f.IsDir && !f.Skipped {
+			parWritten++
+		}
+	}
+	t.Logf("parallel extract: span chunks=%d, fetched=%d, files written=%d (expect %d)", spanChunks, parFetched, parWritten, targetFileCount)
+	if parFetched > spanChunks+2 {
+		t.Errorf("FAIL: parallel extractor fetched %d chunks for a %d-chunk span, it is still walking past the selection", parFetched, spanChunks)
+	}
+	if parWritten != targetFileCount {
+		t.Errorf("FAIL: parallel extractor wrote %d files, expected %d", parWritten, targetFileCount)
+	}
 	t.Log("PASS: selective restore content is byte-for-byte correct and complete, no sibling leakage")
 }
 

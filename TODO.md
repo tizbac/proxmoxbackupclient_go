@@ -809,9 +809,38 @@ clamped to the total so the bar can never show >100% again. Zero value of the ne
 read-ahead, so readers built without `NewDIDXReaderAt` (and whole-archive restores) behave exactly as
 before (my first version got this wrong and broke `TestDIDXReaderAt_PrefetchOverlapsLatency`; caught
 by the unit test run, fixed before commit).
-**Still to do: Mick to re-run the real "Beeby Property" restore to completion and compare against
-4,189 files / 5.756GB (live folder has gained a few small files since the snapshot, so expect a
-tiny difference).**
+**Update 2026-10-01 (live production run, build aec0af1):** read-ahead fix verified (chunks stopped at
+1698/1698, bar clamped at 80%). Restored folder matched live: 4,185/4,186 files identical by path+size
+(1 rename, 3 files added after the snapshot). BUT the restore kept fetching chunks after the folder
+was written. Real cause: with `parallel_restore: true`, `ExtractWithRewriterParallel` had NO BST fast
+path and always did a full linear `pr.walk` (129,662 chunks for a 1,698-chunk folder). Fixed by giving
+it the same `ResolveArchivePathBST` + `walkRange` fast path (with fallback to full walk) as the
+sequential extractor. Live test Step 5 (test PBS): span 7 chunks, fetched 8, 480/480 files. Still to
+do: Mick to re-run the production restore on the new build; expect it to end promptly at 100%.
+Cosmetic: progress % = 0.20 + 0.60*done/total, so the bar runs ~20 points ahead of the Data/chunks line.
+
+#### Restores never appear on the Reports tab (reported 2026-10-01)
+Reports = `GetJobHistory`, which is only written by backup completions (`main.go` ~1079/~1387,
+`scheduler.go` ~944). Restores (success, fail or stopped) go only to the message log, so after a failed
+restore the Reports tab's last entry is the previous scheduled backup. Fix idea: add a restore
+`JobHistory` entry (type=restore, snapshot, dest, files/bytes, outcome incl. cancelled) from the
+restore completion path in `restore_inline.go`, and label restore rows in the Reports list.
+
+#### Snapshot picker says only "Loading or empty snapshot..." while a big snapshot's tree loads (idea 2026-10-01)
+
+Mick: selecting the 458GB "deepthought" snapshot takes a long while to show its tree and the only
+feedback is "Loading or empty snapshot..." (`loadingOrEmpty`, `gui/frontend/src/App.jsx` ~3807). Wanted:
+show that a snapshot WAS found and that the content is being walked, ideally with progress.
+Findings so far (no code changed): (1) `handleSelectSnapshot` clears `snapshotEntries` to `[]` and awaits ONE blocking
+`ListSnapshotContents` call; the same placeholder is used for "still loading" and "genuinely empty",
+so they cannot be told apart. (2) Backend `assembleSnapshotTree` (`gui/restore_inline.go`) tries the small
+`catalog.pcat1.didx` first (`listSnapshotViaCatalog`, a single `ReadAt` of the whole catalog, no progress),
+and only on failure falls back to `reader.ListEntries()` over the data archive, which is the multi-GB
+walk. A slow load on a big snapshot is either a big catalog download or that fallback; the log line
+"Catalog unavailable ... falling back to data-archive walk" says which. Cheap step: a separate
+`loadingEntries` bool so the UI says "Snapshot found, reading file list..." instead of "empty". Better:
+emit a Wails event from the backend (phase: catalog / archive walk, chunks fetched of total via
+`ra.Stats()`, entries found so far) and render it under the spinner. Cache hit path already skips all of this.
 
 #### ~~Dev builds all showed "vdev" with no way to tell which commit is actually running~~ ✅ ADOPTED 2026-10-01
 
