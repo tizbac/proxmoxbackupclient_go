@@ -817,7 +817,12 @@ path and always did a full linear `pr.walk` (129,662 chunks for a 1,698-chunk fo
 it the same `ResolveArchivePathBST` + `walkRange` fast path (with fallback to full walk) as the
 sequential extractor. Live test Step 5 (test PBS): span 7 chunks, fetched 8, 480/480 files. Still to
 do: Mick to re-run the production restore on the new build; expect it to end promptly at 100%.
-Cosmetic: progress % = 0.20 + 0.60*done/total, so the bar runs ~20 points ahead of the Data/chunks line.
+
+#### Restore progress bar should be properly representative (Mick, 2026-10-01, after the restore itself is verified)
+Bar % = 0.20 + 0.60*done/total (`restore_inline.go` ~1183), so it runs ~20 points ahead of the Data/chunks
+line (live: bar 22% with 70/1698 chunks, 30% with 291/1698) and parks at 80% while files finish writing.
+Make the percentage track real work (chunks fetched / span chunks, then files written / files total) and
+show a distinct 'finishing, writing files' phase instead of sitting at 80%.
 
 #### Restores never appear on the Reports tab (reported 2026-10-01)
 Reports = `GetJobHistory`, which is only written by backup completions (`main.go` ~1079/~1387,
