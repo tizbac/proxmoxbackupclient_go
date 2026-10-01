@@ -879,6 +879,18 @@ walk. A slow load on a big snapshot is either a big catalog download or that fal
 emit a Wails event from the backend (phase: catalog / archive walk, chunks fetched of total via
 `ra.Stats()`, entries found so far) and render it under the spinner. Cache hit path already skips all of this.
 
+**Measured 2026-10-01 (winclient log, deepthought 868,492-entry snapshot): the BACKEND IS NOT THE SLOW PART.**
+Catalog fast path, 24MB catalog: 'Listing contents' 23:13:32 -> 'Listed 868492 entries' 23:13:33 (~1s). Yet the next
+frontend step (`GetSnapshotMeta`, fired only after `ListSnapshotContents` returns and `setSnapshotEntries` runs)
+logs 60-90s later on every load, cached or not. So the wait is Wails IPC of 868k entries as JSON plus the React
+side: `buildTree(snapshotEntries)` is called inline in the render (App.jsx ~3830, not memoised), so it rebuilds a
+Map over 868k entries on EVERY render (every status/progress/checkbox state change), and `selectionBytes`
+(~2036) walks all entries too. Backend phase events would show a bar for the 1s part and nothing for the 60-90s.
+Better plan: (1) `useMemo` the tree on `snapshotEntries`; (2) a `loadingEntries` state so the placeholder says
+'Snapshot found, N entries, building tree...' (the count is known the moment the call returns); (3) consider
+lazy tree: backend returns only the children of the expanded folder (or top level first), so 868k entries never
+cross IPC at once. Time each stage (IPC vs buildTree vs first paint) before choosing between (1) and (3).
+
 #### ~~Dev builds all showed "vdev" with no way to tell which commit is actually running~~ ✅ ADOPTED 2026-10-01
 
 Mick: every build tonight showed "vdev" in the title bar (see any screenshot) — `gui/version.go`'s
