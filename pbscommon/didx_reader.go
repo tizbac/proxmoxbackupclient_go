@@ -71,8 +71,16 @@ type DIDXReaderAt struct {
 	// browsing calls that don't go through a cancellable restore).
 	ctx context.Context
 
-	mu      sync.Mutex // serializes fetch bookkeeping (fetched counter)
+	mu      sync.Mutex // serializes fetch bookkeeping (fetched counter, prefetch bound)
 	fetched int
+
+	// prefetchOff disables read-ahead entirely; prefetchLimit, when > 0, is an
+	// EXCLUSIVE upper bound on the chunk index triggerPrefetch may fetch — see
+	// LimitPrefetchTo. Zero values mean unbounded read-ahead (the original,
+	// whole-archive-restore behavior), so a DIDXReaderAt built without
+	// NewDIDXReaderAt still prefetches.
+	prefetchOff   bool
+	prefetchLimit int
 
 	// inflight coalesces concurrent requests for the SAME chunk index (from
 	// ReadAt's own caller racing a background prefetch worker, or two
@@ -162,6 +170,41 @@ func (pbs *PBSClient) NewDIDXReaderAt(archiveName string, cacheChunks int, progr
 		inflight:    make(map[int]chan struct{}),
 		prefetchSem: make(chan struct{}, chunkPrefetchConcurrency),
 	}, int64(idx.total), nil
+}
+
+// SetPrefetchEnabled turns background read-ahead off (false) or back on,
+// unbounded (true). Used around ResolveArchivePathBST, whose GOODBYE-table
+// lookups are random access: each one would otherwise trigger a useless
+// 32-chunk prefetch past the table it just read.
+func (r *DIDXReaderAt) SetPrefetchEnabled(enabled bool) {
+	r.mu.Lock()
+	r.prefetchOff = !enabled
+	r.prefetchLimit = 0
+	r.mu.Unlock()
+}
+
+// LimitPrefetchTo restricts background read-ahead so it never fetches chunks
+// lying wholly past byte offset endOffset (exclusive). Added 2026-10-01 after
+// a real selective restore of one ~5.8GB folder out of a 458GB archive showed
+// its fetched-chunk counter running past the folder's own chunk count (2453
+// of 1698, ~107%) and the restored output still short when stopped:
+// triggerPrefetch (2026-09-23) was written when a DIDXReaderAt only ever
+// served a whole-archive walk, so it kept prefetching up to chunkPrefetchWindow
+// chunks past the one just read even after the BST fast path had narrowed
+// the walk to a small span, spending bandwidth and the shared HTTP/2
+// connection on chunks that walk would never read, and counting every one of
+// them toward progress. Call this after a successful ResolveArchivePathBST,
+// passing the resolved targetEnd. endOffset <= 0 or >= the archive size
+// restores unbounded prefetch.
+func (r *DIDXReaderAt) LimitPrefetchTo(endOffset int64) {
+	limit := 0
+	if endOffset > 0 && endOffset < int64(r.idx.total) {
+		limit = r.chunkIndexAt(uint64(endOffset-1)) + 1
+	}
+	r.mu.Lock()
+	r.prefetchOff = false
+	r.prefetchLimit = limit
+	r.mu.Unlock()
 }
 
 // chunkIndexAt returns the index of the chunk whose [start,end) span contains pos.
@@ -300,6 +343,15 @@ func (r *DIDXReaderAt) fetchOnce(ci int) ([]byte, error) {
 // the next chunkAt along the walk tries again from its own position.
 func (r *DIDXReaderAt) triggerPrefetch(ci int) {
 	total := len(r.idx.digests)
+	r.mu.Lock()
+	off, limit := r.prefetchOff, r.prefetchLimit
+	r.mu.Unlock()
+	if off {
+		return
+	}
+	if limit > 0 && limit < total {
+		total = limit
+	}
 	for offset := 1; offset <= chunkPrefetchWindow; offset++ {
 		next := ci + offset
 		if next >= total {

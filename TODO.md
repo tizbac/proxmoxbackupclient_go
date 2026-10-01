@@ -791,6 +791,28 @@ selection is already correct. Verified live
 sibling included) now reports exactly 524,529/524,529 bytes — the target's real size — not the
 archive's.
 
+**Follow-up: read-ahead ran past the selection, found live 2026-10-01 (commit after 04ee621).**
+Mick restored "Beeby Property" (real source 4,189 files / 609 dirs / 5.756GB on
+`\deepthought\media-5-1000gb\Data`) out of the 458GB "deepthought" production snapshot. Progress
+read 5.8GB/1698 chunks (the estimate was RIGHT) but kept going to ~107% (2453/1698 chunks); Mick
+stopped it there and the destination held only 3,737 files / 495 dirs / 4.69GB, i.e. the restore
+was genuinely INCOMPLETE, not complete-with-a-wrong-estimate. Root cause: `DIDXReaderAt.triggerPrefetch`
+(added 2026-09-23 for whole-archive restores) reads ahead 32 chunks past whatever it just resolved with no
+idea the BST fast path had narrowed the walk to `[targetStart, targetEnd)`, so it fetched (and
+counted toward progress) chunks belonging to whatever follows the selection in the archive, wasting
+bandwidth/HTTP2 concurrency the real walk needed. Reproduced and fixed
+(`gui/zz_bst_realistic_repro_livetest_test.go`): 7-chunk span with a 160MB file after it, unbounded
+read-ahead fetched 40 chunks, bounded fetched 8. Fix: `DIDXReaderAt.LimitPrefetchTo(endOffset)` +
+`SetPrefetchEnabled(false)` around `ResolveArchivePathBST` (its GOODBYE lookups are random access, so
+read-ahead there is pure waste), both wired into `withSnapshotReader`; displayed `fetched` also
+clamped to the total so the bar can never show >100% again. Zero value of the new fields = unbounded
+read-ahead, so readers built without `NewDIDXReaderAt` (and whole-archive restores) behave exactly as
+before (my first version got this wrong and broke `TestDIDXReaderAt_PrefetchOverlapsLatency`; caught
+by the unit test run, fixed before commit).
+**Still to do: Mick to re-run the real "Beeby Property" restore to completion and compare against
+4,189 files / 5.756GB (live folder has gained a few small files since the snapshot, so expect a
+tiny difference).**
+
 #### ~~Dev builds all showed "vdev" with no way to tell which commit is actually running~~ ✅ ADOPTED 2026-10-01
 
 Mick: every build tonight showed "vdev" in the title bar (see any screenshot) — `gui/version.go`'s

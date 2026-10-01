@@ -363,6 +363,9 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 			if effectiveChunks > 0 {
 				reportTotal = effectiveChunks
 			}
+			if fetched > reportTotal {
+				fetched = reportTotal
+			}
 			var bytesDone int64
 			if reportTotal > 0 {
 				bytesDone = int64(float64(reportSize) * float64(fetched) / float64(reportTotal))
@@ -409,11 +412,16 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 	// actually extracted (that's still entirely ExtractWithRewriter's call).
 	if len(archiveIncludes) == 1 {
 		resolvingSpan = true
+		ra.SetPrefetchEnabled(false)
 		targetStart, targetEnd, _, berr := reader.ResolveArchivePathBST(archiveIncludes[0])
 		resolvingSpan = false
+		ra.SetPrefetchEnabled(true)
 		if berr == nil {
 			effectiveSize = targetEnd - targetStart
 			effectiveChunks = ra.ChunkCountInRange(targetStart, targetEnd)
+			// Extraction will only ever read [targetStart, targetEnd); stop
+			// read-ahead fetching (and counting) chunks past it.
+			ra.LimitPrefetchTo(targetEnd)
 
 			// Resolution ran with reporting suppressed (resolvingSpan,
 			// above), so the caller hasn't seen anything yet. If extraction
@@ -429,6 +437,9 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 				reportTotal := effectiveChunks
 				if reportTotal < 1 {
 					reportTotal = 1
+				}
+				if fetchedSoFar > reportTotal {
+					fetchedSoFar = reportTotal
 				}
 				bytesDone := int64(float64(effectiveSize) * float64(fetchedSoFar) / float64(reportTotal))
 				if bytesDone > effectiveSize {
