@@ -779,6 +779,40 @@ above (either compute an approximate selected-subset size upfront from the catal
 `IncludePaths` is set, or track it against actual progress through the walk rather than a fixed
 whole-archive total).
 
+#### ~~Dev builds all showed "vdev" with no way to tell which commit is actually running~~ ✅ ADOPTED 2026-10-01
+
+Mick: every build tonight showed "vdev" in the title bar (see any screenshot) — `gui/version.go`'s
+`appVersion` defaults to the literal string "dev" and is only ever overridden via
+`-ldflags -X main.appVersion=...`, which only the CI release workflow
+(`.github/workflows/build-and-release.yml`) actually passes (using the git tag). Every ad-hoc dev
+build/deploy tonight (local `wails build` and every remote SSH build) passed no `-ldflags` at all.
+
+**Going forward:** every `wails build` I run (local or remote via SSH) passes
+`-ldflags "-X main.appVersion=dev-<short-sha>"`, using `git rev-parse --short HEAD` at build time —
+e.g. "dev-e2900c8". Shows up everywhere `appVersion` already does (title bar, debug log header,
+`GetVersion()`, exported settings bundles, the service's own API server). Not retroactively applied
+to anything already deployed tonight — starts from the next build. No code change needed, this is a
+command invocation habit; if it's ever worth enforcing for anyone building (not just this session),
+wiring it into `wails.json`/a wrapper script would be the next step, not done here.
+
+#### ~~Two config tests were silently writing to the REAL system config path~~ ✅ FIXED 2026-10-01
+
+Found while triaging an unrelated test-suite run: `TestConfigSaveLoad`/`TestGetConfigPath`
+(`gui/config_test.go`) set `$HOME` to a temp dir, expecting `getConfigPath()` to resolve under it —
+testing the OLD fallback behavior from before `getConfigDir()` was rewritten to resolve via
+`%ProgramData%` first (deliberately, so the GUI and the Windows Service agree on one config
+location — see the "Service Windows - Robustesse" entry elsewhere in this file). `$HOME` has zero
+effect on Windows' real home-dir resolution OR on `%ProgramData%`-first logic, so
+`TestConfigSaveLoad`'s call to `config.Save()` was actually writing to the REAL
+`C:\ProgramData\ProxmoxBackupClient\config.json` on whatever machine ran it — confirmed live: it
+clobbered this dev machine's real config with dummy test values (`pbs.example.com` /
+`test@pbs!token` / `secret123`), timestamp matching exactly when the test suite was run tonight.
+Not yet known whether that dev machine's config held anything real before — ask Mick.
+
+**Fix:** both tests now redirect `%ProgramData%` itself to a temp dir for their duration (restoring
+it after), so `getConfigDir()`'s real, unchanged logic resolves somewhere safe instead of the real
+system path. Both pass and no longer touch anything outside their own temp dir.
+
 #### ⚠️ UNRESOLVED: app froze (high CPU, totally unresponsive) after a machine backup completed on rigel
 
 Mick, 2026-09-26/27: after "Rigel Full Machine Backup" (57m18s, `success=true`, clean completion

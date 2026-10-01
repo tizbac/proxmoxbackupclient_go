@@ -75,13 +75,19 @@ func TestConfigValidation(t *testing.T) {
 }
 
 func TestConfigSaveLoad(t *testing.T) {
-	// Create temp directory for test
+	// getConfigDir() resolves via %ProgramData% first (so the GUI, running as
+	// the logged-in user, and the Windows Service, running as LocalSystem,
+	// agree on one shared config location) — NOT via $HOME, which this test
+	// used to set with zero effect. Un-redirected, Config.Save() below wrote
+	// straight to the REAL C:\ProgramData\ProxmoxBackupClient\config.json on
+	// whatever machine ran this test (confirmed live 2026-10-01: it clobbered
+	// a real dev machine's config with these exact dummy values). Redirect
+	// %ProgramData% itself to a temp dir instead, so the real
+	// getConfigDir() logic runs unchanged but resolves somewhere safe.
 	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	defer func() { _ = os.Setenv("HOME", oldHome) }()
-
-	// Set temp HOME for test
-	_ = os.Setenv("HOME", tmpDir)
+	oldProgramData := os.Getenv("ProgramData")
+	defer func() { _ = os.Setenv("ProgramData", oldProgramData) }()
+	_ = os.Setenv("ProgramData", tmpDir)
 
 	config := &Config{
 		BaseURL:   "https://pbs.example.com:8007",
@@ -97,8 +103,9 @@ func TestConfigSaveLoad(t *testing.T) {
 		t.Fatalf("Config.Save() error = %v", err)
 	}
 
-	// Verify file exists
-	configPath := filepath.Join(tmpDir, ".proxmox-backup-guardian", "config.json")
+	// Verify file exists, at the REAL path getConfigDir() actually resolves
+	// to (ProgramData-first), not the old home-dir fallback.
+	configPath := filepath.Join(tmpDir, "ProxmoxBackupClient", "config.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Fatalf("Config file not created at %s", configPath)
 	}
@@ -121,18 +128,20 @@ func TestConfigSaveLoad(t *testing.T) {
 }
 
 func TestGetConfigPath(t *testing.T) {
+	// See TestConfigSaveLoad's comment: getConfigDir() resolves via
+	// %ProgramData% first, not $HOME — redirect that instead so this
+	// doesn't touch (or depend on) the real system config path.
 	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	defer func() { _ = os.Setenv("HOME", oldHome) }()
-
-	_ = os.Setenv("HOME", tmpDir)
+	oldProgramData := os.Getenv("ProgramData")
+	defer func() { _ = os.Setenv("ProgramData", oldProgramData) }()
+	_ = os.Setenv("ProgramData", tmpDir)
 
 	configPath, err := getConfigPath()
 	if err != nil {
 		t.Fatalf("getConfigPath() error = %v", err)
 	}
 
-	expectedPath := filepath.Join(tmpDir, ".proxmox-backup-guardian", "config.json")
+	expectedPath := filepath.Join(tmpDir, "ProxmoxBackupClient", "config.json")
 	if configPath != expectedPath {
 		t.Errorf("getConfigPath() = %v, want %v", configPath, expectedPath)
 	}
