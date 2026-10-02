@@ -404,8 +404,9 @@ func (pbs *PBSClient) ObtainTicket() error {
 }
 
 func (pbs *PBSClient) ListSnapshots() ([]BackupManifest, error) {
+	// PBS reads every manifest in the datastore; on a cold cache over a spinning disk that exceeds 10s.
 	client := &http.Client{
-		Timeout:   10 * time.Second,
+		Timeout:   120 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: pbs.buildTLSConfig()},
 	}
 
