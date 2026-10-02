@@ -681,14 +681,19 @@ function App() {
   // actually starts, from wherever the user currently is on the page — found
   // live 2026-09-27: nothing drew the eye to it otherwise, easy to miss that
   // a Run Now/Restore click did anything if you'd scrolled away.
+  // The card is shown from the moment a backup starts (backupRunning), not only
+  // once progress passes 0: machine backups report 0% for a while ("blocks
+  // read") and the card used to vanish then, leaving that status line at the
+  // bottom of the page until the first real percentage arrived.
+  const backupCardActive = progress < 100 && (backupRunning || progress > 0)
   const prevBackupActiveRef = useRef(false)
   useEffect(() => {
-    const active = progress > 0 && progress < 100
+    const active = backupCardActive
     if (active && !prevBackupActiveRef.current) {
       backupCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
     prevBackupActiveRef.current = active
-  }, [progress])
+  }, [backupCardActive])
 
   const prevRestoreActiveRef = useRef(false)
   useEffect(() => {
@@ -2690,7 +2695,7 @@ function App() {
 
           {/* Always visible regardless of whether the form below is open — a
               backup started via "Run Now" on a set never opens the form at all. */}
-          {progress > 0 && progress < 100 && (
+          {backupCardActive && (
             <div ref={backupCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
               <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
                 <strong style={{fontSize: '15px'}}>{t('backupProgress')}{activeBackupName ? ` - ${activeBackupName}` : ''}</strong>
@@ -2783,7 +2788,7 @@ function App() {
           {/* Nothing else is visible for backup right now (progress is 0), but
               something's queued behind whatever's holding the slot — most
               often a Restore. */}
-          {!(progress > 0 && progress < 100) && pendingQueue.length > 0 && (
+          {!backupCardActive && pendingQueue.length > 0 && (
             <div ref={backupCardRef} style={{marginTop: '10px', marginBottom: '20px'}}>
               {queuePanel}
             </div>
@@ -3526,7 +3531,7 @@ function App() {
               (progress still 0) this was the only place it showed at all,
               then once real progress started the card ALSO started
               rendering it, duplicating the same text in two places at once. */}
-          {status.visible && activeTab === 'backup' && !(progress > 0 && progress < 100) && (
+          {status.visible && activeTab === 'backup' && !backupCardActive && (
             <div className={`status ${status.type} visible`}>{status.message}</div>
           )}
         </div>
