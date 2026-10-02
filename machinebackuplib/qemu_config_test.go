@@ -20,8 +20,8 @@ func TestRenderQemuConfigUsesVMIDForEveryDisk(t *testing.T) {
 	cfg := string(out)
 	for _, want := range []string{
 		"name: testhost",
-		"sata0: local:107/vm-107-disk-0.raw,cache=writeback,discard=on,iothread=1,size=1073741824",
-		"sata1: local:107/vm-107-disk-1.raw,cache=writeback,discard=on,iothread=1,size=2147483648",
+		"sata0: local:107/vm-107-disk-0.raw,cache=writeback,discard=on,size=1073741824",
+		"sata1: local:107/vm-107-disk-1.raw,cache=writeback,discard=on,size=2147483648",
 		"vmgenid: 11111111-1111-1111-1111-111111111111",
 	} {
 		if !strings.Contains(cfg, want) {
