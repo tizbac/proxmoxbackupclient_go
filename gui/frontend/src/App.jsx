@@ -640,7 +640,10 @@ function App() {
       setPendingQueue(q => q.slice(1))
       setRestoreProgress(data.success ? 100 : 0)
       setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
-      const localizedMsg = renderLocalizedMessage(data, t).text
+      let localizedMsg = renderLocalizedMessage(data, t).text
+      if (data.success && data.verify_ran) {
+        localizedMsg += ' - ' + tl('restoreVerifiedSuffix', '{n} files verified against the snapshot').replace('{n}', data.verified || 0)
+      }
       showStatus(data.success ? `✅ ${localizedMsg}` : `❌ ${localizedMsg}`, data.success ? 'success' : 'error')
       if (GetJobHistory) GetJobHistory().then(h => setJobHistory(h || []))
     })

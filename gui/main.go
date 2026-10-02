@@ -1848,11 +1848,18 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 				"message":        msg,
 				"message_key":    msgKey,
 				"message_params": msgP,
+				"verify_ran":     verifyAfterRestore,
+				"verified":       verifiedFiles,
+				"verify_failed":  len(verifyFailures),
 			})
 		}
 
 		if success {
-			a.ShowToastNotification("Restore Complete", restoreLabel, false)
+			toastBody := restoreLabel
+			if verifyAfterRestore {
+				toastBody = fmt.Sprintf("%s (%d files verified)", restoreLabel, verifiedFiles)
+			}
+			a.ShowToastNotification("Restore Complete", toastBody, false)
 		} else {
 			a.ShowToastNotification("Restore Failed", fmt.Sprintf("%s: %s", restoreLabel, msg), true)
 		}
