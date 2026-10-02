@@ -1577,7 +1577,7 @@ func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk,
 		// for the whole pause. Real chunk-level progress from backupReal below
 		// naturally overwrites this once the snapshot is ready.
 		if progress != nil {
-			progress(0.05, "Initialising Shadow Copy...")
+			progress(0.05, "Creating VSS snapshot...")
 		}
 
 		var bytesArchived uint64

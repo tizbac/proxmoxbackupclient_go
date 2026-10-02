@@ -422,7 +422,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 	// system CreateVSSSnapshot can take a while (it runs the VSS writers),
 	// and without this the GUI progress bar appears frozen at 0%.
 	if progressCallback != nil {
-		progressCallback(0, fmt.Sprintf("%s: creating VSS snapshot", diskdev))
+		progressCallback(0, "Creating VSS snapshot...")
 	}
 
 	return total, snapshot.CreateVSSSnapshot(snapshot_paths, false, func(snapshots map[string]snapshot.SnapShot) error {

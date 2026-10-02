@@ -686,6 +686,9 @@ function App() {
   // read") and the card used to vanish then, leaving that status line at the
   // bottom of the page until the first real percentage arrived.
   const backupCardActive = progress < 100 && (backupRunning || progress > 0)
+  // The bar never reads 0% while the card is up: every backup type (directory,
+  // machine, scheduled, one-off) shares this card, so they all start at 1%.
+  const shownProgress = Math.max(1, progress)
   const prevBackupActiveRef = useRef(false)
   useEffect(() => {
     const active = backupCardActive
@@ -2699,21 +2702,21 @@ function App() {
             <div ref={backupCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
               <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
                 <strong style={{fontSize: '15px'}}>{t('backupProgress')}{activeBackupName ? ` - ${activeBackupName}` : ''}</strong>
-                <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{progress}%</span>
+                <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{shownProgress}%</span>
               </div>
 
               <div className="progress" style={{height: '30px', marginBottom: '12px'}}>
                 <div
                   className="progress-bar"
                   style={{
-                    width: `${progress}%`,
+                    width: `${shownProgress}%`,
                     fontSize: '14px',
                     lineHeight: '30px',
                     transition: 'width 0.3s ease',
                     fontWeight: 'bold'
                   }}
                 >
-                  {progress}%
+                  {shownProgress}%
                 </div>
               </div>
 
