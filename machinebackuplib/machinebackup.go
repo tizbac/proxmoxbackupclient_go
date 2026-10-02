@@ -361,7 +361,7 @@ scsihw: virtio-scsi-single
 smbios1: uuid={{.SMBIOS}}
 sockets: 1
 {{range .Disks}}
-sata{{.Index}}: local:{{$.VMID}}/vm-{{$.VMID}}-disk-{{.Index}}.raw,cache=writeback,discard=on,iothread=1,size={{.Size}}
+sata{{.Index}}: local:{{$.VMID}}/vm-{{$.VMID}}-disk-{{.Index}}.raw,cache=writeback,discard=on,size={{.Size}}
 {{end}}
 vmgenid: {{.VMGenId}}
 `))
