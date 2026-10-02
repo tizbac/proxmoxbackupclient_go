@@ -22,6 +22,8 @@ func TestRenderQemuConfigUsesVMIDForEveryDisk(t *testing.T) {
 		"name: testhost",
 		"sata0: local:107/vm-107-disk-0.raw,cache=writeback,discard=on,size=1073741824",
 		"sata1: local:107/vm-107-disk-1.raw,cache=writeback,discard=on,size=2147483648",
+		"#qmdump#map:sata0:drive-sata0::raw:",
+		"#qmdump#map:sata1:drive-sata1::raw:",
 		"vmgenid: 11111111-1111-1111-1111-111111111111",
 	} {
 		if !strings.Contains(cfg, want) {
