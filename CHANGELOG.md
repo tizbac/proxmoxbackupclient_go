@@ -24,7 +24,8 @@ Fork changes (mjb-is/proxmoxbackupclient_go), 2026-09-25 to 2026-10-02. Builds f
 - VSS is skipped for network-share backup directories; multi-directory backups aggregate progress and total size correctly.
 - Selective restore sized its progress bar by the whole archive and fetched far more chunks than needed.
 - The PBS chunk-fetch `zstd.NewReader` deadlock that made full-machine restores hang (merged upstream as PR #85).
-- The generated VM config for the `vm` snapshot type: the SATA drive no longer carries `iothread=1`, which Proxmox VE rejects, and a non-numeric ID now says what to do instead of failing after the disk transfer.
+- The generated VM config for the `vm` snapshot type: the SATA drive no longer carries `iothread=1`, which Proxmox VE rejects, a non-numeric ID now says what to do instead of failing after the disk transfer, and `#qmdump#map` lines are written so Proxmox VE actually restores the disk (without them the restore finished in about a second with no disk). Verified: 32 GiB restored in 332 s into local-lvm.
+- The progress card now never shows below 1% while visible, and the VSS start message reads "Creating VSS snapshot..." for every backup type.
 - `config.json.example` had unterminated JSON strings; config tests no longer write to the real system config path.
 
 ## [0.2.119] - 2026-06-12
