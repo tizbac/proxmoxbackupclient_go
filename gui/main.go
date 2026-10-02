@@ -1133,6 +1133,12 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	// Structured live stats + final structured result for the GUI (standalone mode).
 	// In the service process there is no Wails runtime, and the service-mode stats
 	// bridge is a separate backlog item (service-mode progress), so we only emit here.
+	opts.OnFile = func(path string) {
+		if a.isServiceProcess || a.ctx == nil {
+			return
+		}
+		runtime.EventsEmit(a.ctx, "backup:file", map[string]interface{}{"path": path})
+	}
 	opts.OnStats = func(stats *BackupProgressStats) {
 		if a.isServiceProcess || a.ctx == nil {
 			return
@@ -1432,6 +1438,12 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	// Structured live stats + final structured result for the GUI (standalone mode).
 	// In the service process there is no Wails runtime, and the service-mode stats
 	// bridge is a separate backlog item (service-mode progress), so we only emit here.
+	opts.OnFile = func(path string) {
+		if a.isServiceProcess || a.ctx == nil {
+			return
+		}
+		runtime.EventsEmit(a.ctx, "backup:file", map[string]interface{}{"path": path})
+	}
 	opts.OnStats = func(stats *BackupProgressStats) {
 		if a.isServiceProcess || a.ctx == nil {
 			return

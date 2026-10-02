@@ -96,6 +96,9 @@ type BackupOptions struct {
 	// OnStats delivers structured live progress so the GUI can show real
 	// statistics instead of parsing them out of the progress message string.
 	OnStats func(*BackupProgressStats)
+	// OnFile reports the file currently being archived (directory backups only,
+	// sampled about twice a second and only when it changed).
+	OnFile func(path string)
 }
 
 // isFatalSessionError returns true for errors that make the current PBS session
@@ -276,6 +279,8 @@ type uploadJob struct {
 type jobProgress struct {
 	sizeEstimate  atomic.Uint64 // sum of every directory's own background-scanned size, growing as each dir's scan completes
 	bytesDoneBase atomic.Uint64 // bytes already archived by directories that finished before the one currently in progress
+
+	currentFile atomic.Value // string: logical path of the file most recently started
 
 	lastPercentMu sync.Mutex
 	lastPercent   float64
@@ -862,6 +867,26 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	var reusechunk atomic.Uint64
 	var failedchunk atomic.Uint64
 	jobProg := &jobProgress{}
+	if opts.OnFile != nil {
+		fileTickerDone := make(chan struct{})
+		defer close(fileTickerDone)
+		go func() {
+			t := time.NewTicker(500 * time.Millisecond)
+			defer t.Stop()
+			last := ""
+			for {
+				select {
+				case <-fileTickerDone:
+					return
+				case <-t.C:
+					if p, _ := jobProg.currentFile.Load().(string); p != "" && p != last {
+						last = p
+						opts.OnFile(p)
+					}
+				}
+			}
+		}()
+	}
 	var dirErrors []string
 	var dirResults []DirResult
 	var allReadErrors, allSkipped, allExcluded []string
@@ -1624,6 +1649,12 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 	archive.ExcludeList = excludeList
 	archive.Ctx = ctx
 	archive.ExcludeRoot = originalPath
+	archive.OnFile = func(p string) {
+		if vssUsed && strings.HasPrefix(p, backupdir) {
+			p = originalPath + p[len(backupdir):]
+		}
+		jobProg.currentFile.Store(p)
+	}
 	archive.PrefetchWorkers = prefetchWorkers // logical root for VSS-safe absolute-pattern matching
 
 	// Inject backup metadata into the PXAR archive root

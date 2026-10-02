@@ -298,6 +298,10 @@ type PXARArchive struct {
 	// responsive for everything else.
 	Ctx context.Context
 
+	// OnFile, when set, is called with each file's path as WriteFile starts it
+	// (progress display only; must be cheap and non-blocking).
+	OnFile func(path string)
+
 	catalog_pos  uint64
 	SkippedFiles []string // ALL skips (read errors, junctions, system auto-excludes) — for logging/sidecar display
 	// ReadErrors is the OUTCOME-affecting subset of SkippedFiles: genuine read
@@ -916,6 +920,9 @@ func WriteSharedCatalogRoot(catalogWriteCB PXAROutCB, catalogPos uint64, entries
 // On pxar first item and consquently entry point must always be WriteDir , because toplevel is always a directory
 // So backing up single file is not possible
 func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefetchEntry) (CatalogFile, error) {
+	if a.OnFile != nil {
+		a.OnFile(path)
+	}
 	//fmt.Printf("Write file %s at %d\n", path, a.pos)
 
 	// Use Lstat to detect symlinks/junction points without following them

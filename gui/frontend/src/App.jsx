@@ -298,6 +298,7 @@ function App() {
   })
   const [status, setStatus] = useState({ message: '', type: '', visible: false })
   const [backupRunning, setBackupRunning] = useState(false)
+  const [backupFile, setBackupFile] = useState('')
   const statusTimeoutRef = useRef(null)
 
   // Ordered list of display names waiting behind whatever's currently
@@ -508,6 +509,11 @@ function App() {
       }))
     })
 
+    // File currently being archived (directory backups; throttled in the backend).
+    const unsubFile = EventsOn('backup:file', (data) => {
+      setBackupFile(data.path || '')
+    })
+
     // Structured live statistics (bytes + chunk counts) emitted alongside progress.
     const unsubStats = EventsOn('backup:stats', (data) => {
       const now = Date.now()
@@ -555,6 +561,7 @@ function App() {
     const unsubComplete = EventsOn('backup:complete', (data) => {
       setProgress(data.success ? 100 : 0)
       setBackupRunning(false)
+      setBackupFile('')
       setActiveBackupName('')
       setPendingQueue(q => q.slice(1))
       setBackupStats({ startTime: null, lastUpdate: null, lastPercent: 0, speed: 0, eta: null, bytesDone: 0, bytesTotal: 0, newChunks: 0, reusedChunks: 0, failedChunks: 0, currentDir: '' })
@@ -579,6 +586,7 @@ function App() {
 
     return () => {
       if (unsubProgress) unsubProgress()
+      if (unsubFile) unsubFile()
       if (unsubStats) unsubStats()
       if (unsubComplete) unsubComplete()
     }
@@ -2672,6 +2680,11 @@ function App() {
                     {backupStats.failedChunks > 0 ? (
                       <span style={{color: '#c0392b', fontWeight: 'bold'}}> · {backupStats.failedChunks} {t('failedChunksLabel')}</span>
                     ) : ''}
+                  </div>
+                )}
+                {backupRunning && backupFile && (
+                  <div style={{fontSize: '12px', color: '#495057', gridColumn: '1 / -1', fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap', overflow: 'hidden'}} title={backupFile}>
+                    {middleTruncate(backupFile, 110)}
                   </div>
                 )}
                 {backupStats.currentDir && (

@@ -264,18 +264,31 @@ func TestE2EDirectoryModes(t *testing.T) {
 
 	doBackup := func(label string, vss bool, prefetch int) {
 		var rs *BackupStatus
+		var files []string
 		start := time.Now()
 		err := RunBackupInline(BackupOptions{
 			BaseURL: e2eBaseURL, AuthID: e2eAuthID, Secret: e2eSecret, Datastore: e2eStore, CertFingerprint: e2eFP,
 			BackupObjects: []string{src}, BackupID: backupID, BackupType: "host", Kind: "directory",
 			Compression: "fastest", UseVSS: vss, PrefetchWorkers: prefetch,
 			OnResult: func(s *BackupStatus) { rs = s },
+			OnFile: func(p string) { files = append(files, p) },
 		})
 		if err != nil {
 			t.Fatalf("%s: backup failed: %v", label, err)
 		}
 		if rs == nil || !rs.Success() || rs.FailedChunks != 0 || len(rs.SkippedReadError) != 0 {
 			t.Fatalf("%s: bad result %+v", label, rs)
+		}
+		t.Logf("%s: OnFile events=%d last=%q", label, len(files), func() string {
+			if len(files) == 0 {
+				return ""
+			}
+			return files[len(files)-1]
+		}())
+		for _, f := range files {
+			if !strings.HasPrefix(f, src) {
+				t.Errorf("%s: OnFile path %q is not under the source %q", label, f, src)
+			}
 		}
 		t.Logf("%s: OK in %v, bytes=%d new=%d reused=%d (vss=%v prefetch=%d)", label, time.Since(start).Round(time.Millisecond), rs.TotalBytes, rs.NewChunks, rs.ReusedChunks, vss, prefetch)
 		snaps = append(snaps, snap{unix: rs.BackupTime, state: e2eSnapshotState(t, src), label: label})
