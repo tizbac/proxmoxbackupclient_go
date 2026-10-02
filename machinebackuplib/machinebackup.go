@@ -330,6 +330,44 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 type BackupDisk struct {
 	Index int
 	Size  int64
+	GPT   bool // disk carries a GPT, so a VM booting it needs UEFI (OVMF)
+}
+
+// diskHasGPT reports whether the device starts with a GPT: the "EFI PART"
+// header sits in LBA 1, which is byte 512 on 512-byte-sector disks and byte
+// 4096 on 4Kn ones. Failure to read counts as "no", i.e. the BIOS default.
+func diskHasGPT(dev string) bool {
+	f, err := os.Open(dev)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	buf := make([]byte, 8192)
+	if _, err := io.ReadFull(f, buf); err != nil {
+		return false
+	}
+	return gptSignatureIn(buf)
+}
+
+func gptSignatureIn(head []byte) bool {
+	for _, off := range []int{512, 4096} {
+		if len(head) >= off+8 && string(head[off:off+8]) == "EFI PART" {
+			return true
+		}
+	}
+	return false
+}
+
+// bootDiskIsGPT looks at sata0, the disk the generated config boots from:
+// the lowest-indexed backed-up disk.
+func bootDiskIsGPT(disks []BackupDisk) bool {
+	best := -1
+	for i, d := range disks {
+		if best < 0 || d.Index < disks[best].Index {
+			best = i
+		}
+	}
+	return best >= 0 && disks[best].GPT
 }
 
 // BackupResult represents the result of a backup operation
@@ -345,6 +383,7 @@ type qemuConfigData struct {
 	Disks   []BackupDisk
 	OS      string
 	SMBIOS  string
+	UEFI    bool
 }
 
 // VMID is not a field of BackupDisk, so inside the {{range .Disks}} block it
@@ -357,7 +396,14 @@ type qemuConfigData struct {
 // data). Storage is left empty so the storage chosen in the restore dialog
 // applies; PVE falls back to "local" (no images) if none is chosen. The sata
 // line is rewritten by PVE with the newly allocated volume.
-var qemuConfigTemplate = template.Must(template.New("qemuconfig").Parse(`boot: order=sata0
+//
+// UEFI adds "bios: ovmf" for GPT boot disks (verified 2026-10-03: a Windows
+// GPT disk gives "no bootable device" under the default SeaBIOS and boots
+// under OVMF). No efidisk0 is written: PVE's restore only fills drives that
+// have an image in the archive, and without one PVE starts OVMF with a
+// temporary efivars disk, which is enough for Windows to boot.
+var qemuConfigTemplate = template.Must(template.New("qemuconfig").Parse(`{{if .UEFI}}bios: ovmf
+{{end}}boot: order=sata0
 cores: 4
 machine: q35
 memory: 2048
@@ -496,6 +542,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			matches := re.FindStringSubmatch(dev)
 			idx, _ := strconv.ParseInt(matches[1], 10, 32)
 			
+			isGPT := diskHasGPT(dev)
 			size, err := BackupWindowsDisk(client, int(idx), deviceCallback)
 			if err != nil {
 				return nil, fmt.Errorf("backup disk %s %v", dev, err)
@@ -504,6 +551,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			disks = append(disks, BackupDisk{
 				Index: int(idx),
 				Size:  size,
+				GPT:   isGPT,
 			})
 			
 			// Update progress for this disk
@@ -519,6 +567,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			// consistent, stitched full-disk image (partition table + every
 			// partition, mounted ones snapshotted). Anything else falls back
 			// to a plain raw read of the device/file.
+			isGPT := diskHasGPT(dev)
 			handled, size, err := backupWholeDisk(client, dev, i, deviceCallback)
 			if err != nil {
 				return nil, fmt.Errorf("backup device %s: %v", dev, err)
@@ -527,6 +576,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 				disks = append(disks, BackupDisk{
 					Index: i,
 					Size:  size,
+					GPT:   isGPT,
 				})
 			} else if err := BackupFileDevice(client, dev, deviceCallback); err != nil {
 				return nil, fmt.Errorf("backup device %s: %v", dev, err)
@@ -564,6 +614,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			Disks:   disks,
 			VMName:  hostname,
 			SMBIOS:  uuid.New().String(), //TODO extract from real machine
+			UEFI:    bootDiskIsGPT(disks),
 		}
 		if runtime.GOOS == "windows" { // TODO Improve
 			cfgt.OS = "win11"
