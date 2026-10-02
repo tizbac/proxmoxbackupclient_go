@@ -856,6 +856,20 @@ Open findings (not fixed):
 - A file whose mtime is exactly 0 (1970-01-01 00:00:00 UTC) restores with the restore time: the archive stores 0 as "no mtime", so `ModTime != 0` cannot tell them apart. Rare, needs a format-level flag to fix.
 - FIXED 2026-10-02 (6373ee1, upstream PR tizbac#90 library, #91 GUI "host"): the VM config template used `{{.VMID}}` inside `{{range .Disks}}`, so `BackupType: "vm"` failed at the end. Unit test added. Verified live 02/10 with `PBS_E2E_TYPE=vm` (qemu-server.conf.blob uploaded, 64/64 chunks restored identical).
 
+#### Backup: show the file currently being processed (Mick, 2026-10-02)
+Directory backups only report progress every 10 MB of data (`gui/backup_inline.go` ~446, `BackupProgressStats.CurrentDir` = the top-level folder being archived), so nothing visible moves while many small files or one big file stream past. Show the file path in the live stats.
+- Take the path from the archiver as it starts each file (pxar encode loop), store it in an atomic string on the shared `jobProgress`, and have the existing 10 MB / timer tick read it into `BackupProgressStats` (e.g. `CurrentFile`). Do NOT emit a Wails event per file: a 100k-small-file job would flood the IPC bridge, same lesson as the snapshot-tree stall.
+- Also tick on a time basis (about 1 per second) so a stuck or slow file still shows its name when no 10 MB boundary is crossed.
+- With prefetch workers the "current" file is the one being encoded, not the one being prefetched.
+- UI: one truncated-in-the-middle line under the progress bar on the running job, and in the Message Log only on error or slow-file events, not every file.
+- Machine mode is block level, so it has no file names; keep device and partition plus bytes there.
+
+#### Experimental: machine backup as "vm" type (Mick, 2026-10-02)
+Fork only, not for upstream. GUI "Backup as" choice for machine backups: default "host" with the host name as backup ID; optional "vm" that needs a numeric VMID and is labelled experimental. Open questions to settle first by a real restore on a Proxmox VE node:
+- Does PVE restore a `vm/<id>` snapshot written by this client (config `sataN` entries vs `drive-sataN.img.fidx` names, where N is the Windows disk number)?
+- Windows UEFI/GPT will not boot as generated (no OVMF/EFI disk/TPM in the config); BIOS Linux or data disks are likelier to work.
+- Clash avoidance with real VM backups in the `vm/<id>` namespace: leading zeros (`000107`, may still parse as 107 in PVE) versus a reserved high range (e.g. 9000107, valid numeric VMID). Test both; the GUI should add the prefix automatically, show the resulting ID, and warn.
+
 #### Restore stage ideas (Mick, 2026-10-01: wants all three, pick up later)
 Follow-ups to the stage label under the restore progress bar (`restore:stage`, built in `1245992`).
 1. **'Verify after restore' checkbox + function.** Optional post-restore pass that re-reads each restored file
