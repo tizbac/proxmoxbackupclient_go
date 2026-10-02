@@ -3495,6 +3495,7 @@ function App() {
                     preparing: tl('restoreStagePreparing', 'Connecting and preparing restore...'),
                     locating: tl('restoreStageLocating', 'Reading snapshot index and locating files...'),
                     transferring: tl('restoreStageTransferring', 'Fetching chunks and writing files...'),
+                    dirtimes: tl('restoreStageDirTimes', 'Setting folder timestamps...'),
                     verifying: tl('restoreStageVerifying', 'Verifying restored files...'),
                     acls: tl('restoreStageAcls', 'Restoring ACLs and attributes...'),
                   }[restoreStage.stage] || restoreStage.stage}

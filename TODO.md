@@ -888,6 +888,7 @@ Follow-ups to the stage label under the restore progress bar (`restore:stage`, b
 3. **'Creating folders and setting timestamps' stage.** Name the tail of extraction (directory mtimes/attrs
    applied after files) as its own stage between 'Fetching chunks and writing files' and 'Restoring ACLs'.
    Check first whether that phase is long enough on a real restore to be worth a label.
+   **DONE 2026-10-02 (pending Mick's live test).** Finding: folder mtimes were NEVER restored (only file mtimes; the e2e test skips folders, so nobody saw it). `gui/restore_dirtimes.go` `applyDirectoryTimes` now sets every restored folder's mtime from the snapshot after all files are written (deepest first, failures counted not fatal), under a new `dirtimes` stage ("Setting folder timestamps...", 18 languages). Unit test `restore_dirtimes_test.go`. The opt-in e2e comparison still skips folder mtimes; enable it next time the live e2e is run.
 
 #### Snapshot picker says only "Loading or empty snapshot..." while a big snapshot's tree loads (idea 2026-10-01)
 

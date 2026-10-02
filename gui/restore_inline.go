@@ -81,7 +81,7 @@ type RestoreOptions struct {
 	OnProgress func(percent float64, message string)
 
 	// OnStage reports the current phase of the restore ("preparing",
-	// "locating", "transferring", "acls") so the GUI can label it under the
+	// "locating", "transferring", "dirtimes", "acls") so the GUI can label it under the
 	// progress bar. detail is "i/n" while several archives are being
 	// restored, otherwise empty.
 	OnStage func(stage, detail string)
@@ -1384,6 +1384,19 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	writeBackupLog(fmt.Sprintf("Extraction complete: %d files, %d dirs, %d skipped (expected), %d failed",
 		successCount, dirCount, skipCount, errorSkipCount))
 	progress(extractEnd, fmt.Sprintf("Extracted %d files", successCount))
+
+	if dirCount > 0 {
+		stage("dirtimes", "")
+		dApplied, dFailed := applyDirectoryTimes(extracted,
+			func() bool { return opts.Ctx != nil && opts.Ctx.Err() != nil },
+			func(done, total int) {
+				progress(extractEnd, fmt.Sprintf("Setting folder timestamps: %d of %d", done, total))
+			})
+		writeBackupLog(fmt.Sprintf("Folder timestamps: applied %d, failed %d", dApplied, dFailed))
+		if opts.Ctx != nil && opts.Ctx.Err() != nil {
+			return fmt.Errorf("restore cancelled while setting folder timestamps")
+		}
+	}
 
 	var verifyFailures []string
 	if opts.VerifyAfterRestore {
