@@ -707,7 +707,7 @@ logic is wrong (silently wrong chunk reference). Worth doing only if this class 
 mostly-static dataset (like deepthought's share) is a recurring pain point — not a default
 priority.
 
-#### ⏳ PENDING DECISION: bump pbs-vm's RAM now that proxmox07 has headroom
+#### ✅ DONE 2026-10-02: pbs-vm (VM 206) RAM bumped 4GB to 8GB by Mick (verified 7947MB after reboot). Re-check buff/cache and backup speed after a few runs; 12GB is the next step if still cache-starved. Original note:
 
 Mick added 8GB to proxmox07 (pm07) specifically so the PBS VM (VMID 206, `pbs-vm`) could be given
 more — prompted by investigating whether a freshly-rebooted PBS server's cold page cache (only
