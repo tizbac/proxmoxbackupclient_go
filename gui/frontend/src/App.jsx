@@ -9,6 +9,7 @@ import BMRGuideModal from './components/BMRGuideModal'
 import ClosePromptModal from './components/ClosePromptModal'
 import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
 // Wails runtime imports (will be available when built with Wails)
+let OpenSnapshotTree, ListSnapshotChildren, SnapshotSelectionBytes
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
 let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, RunScheduledJobNow, GetJobHistory, GetMessageLog, GetSystemInfo, GetLastBackupDirs
 // Multi-PBS functions
@@ -28,6 +29,9 @@ if (window.go) {
   StartMachineBackup = window.go.main.App.StartMachineBackup
   ListSnapshots = window.go.main.App.ListSnapshots
   ListSnapshotContents = window.go.main.App.ListSnapshotContents
+  OpenSnapshotTree = window.go.main.App.OpenSnapshotTree
+  ListSnapshotChildren = window.go.main.App.ListSnapshotChildren
+  SnapshotSelectionBytes = window.go.main.App.SnapshotSelectionBytes
   GetSnapshotMeta = window.go.main.App.GetSnapshotMeta
   RestoreSnapshot = window.go.main.App.RestoreSnapshot
   OpenRestoreDestDialog = window.go.main.App.OpenRestoreDestDialog
@@ -345,7 +349,11 @@ function App() {
   const [restorePBSID, setRestorePBSID] = useState('')
   const [selectedSnapshot, setSelectedSnapshot] = useState(null) // { id, unix, time }
   const [snapshotMeta, setSnapshotMeta] = useState(null)         // .proxmox_backup_client_meta.json sidecar (null if legacy)
-  const [snapshotEntries, setSnapshotEntries] = useState([])     // flat list from backend
+  const [snapshotChildren, setSnapshotChildren] = useState(() => new Map()) // dir path ('' = root) -> sorted children, loaded lazily
+  const [snapshotCount, setSnapshotCount] = useState(0)             // total entries in the open snapshot
+  const [selectionBytes, setSelectionBytes] = useState(0)
+  const [moreShown, setMoreShown] = useState(() => new Map())       // dir path -> how many children are rendered
+  const snapshotCtxRef = useRef(null)                               // {pbsID, backupID, unix, gen} of the open snapshot
   const [expandedDirs, setExpandedDirs] = useState(new Set())     // expanded paths in tree
   const [selectedPaths, setSelectedPaths] = useState(new Set())   // selected entry paths
   const [restoreDestPath, setRestoreDestPath] = useState('')
@@ -1745,7 +1753,9 @@ function App() {
 
     showStatus(t('listingSnapshots'), 'info')
     setSelectedSnapshot(null)
-    setSnapshotEntries([])
+    setSnapshotChildren(new Map())
+    setSnapshotCount(0)
+    snapshotCtxRef.current = null
     setSelectedPaths(new Set())
     setExpandedDirs(new Set())
 
@@ -1759,40 +1769,51 @@ function App() {
     }
   }
 
+  const sortChildren = (list) => (list || []).slice().sort((a, b) => {
+    if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
+    return pathCollator.compare(a.path, b.path)
+  })
+
   const handleSelectSnapshot = async (snap, forceRefresh = false) => {
-    if (!ListSnapshotContents) {
+    if (!OpenSnapshotTree) {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
     setSelectedSnapshot(snap)
     setSnapshotMeta(null)
-    setSnapshotEntries([])
+    setSnapshotChildren(new Map())
+    setSnapshotCount(0)
+    setSelectionBytes(0)
+    setMoreShown(new Map())
     setSelectedPaths(new Set())
     setExpandedDirs(new Set())
     showStatus(`${t('loadingSnapshotContents')}`, 'info')
     setSnapshotLoad({ phase: 'reading', count: 0, startedAt: Date.now() })
     const effectiveBackupId = snap.backup_id || restoreBackupId
+    const gen = (snapshotCtxRef.current?.gen || 0) + 1
+    snapshotCtxRef.current = { pbsID: restorePBSID || '', backupID: effectiveBackupId, unix: snap.unix, gen }
     try {
       // Backend uses the snapshot's actual backup_id (snap.backup_id) so split
-      // backups list their real contents, not the partial search term.
-      const entries = await ListSnapshotContents(restorePBSID || '', effectiveBackupId, snap.unix, forceRefresh)
-      // Let the "building tree" message paint before the (synchronous,
-      // potentially long) tree build for a very large snapshot freezes the UI.
-      setSnapshotLoad({ phase: 'building', count: (entries || []).length, startedAt: Date.now() })
-      await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))
-      setSnapshotEntries(entries || [])
+      // backups list their real contents, not the partial search term. Only the
+      // top level crosses IPC; deeper folders are fetched when expanded.
+      const opened = await OpenSnapshotTree(restorePBSID || '', effectiveBackupId, snap.unix, forceRefresh)
+      if (snapshotCtxRef.current?.gen !== gen) return
+      const root = sortChildren(opened?.root)
+      setSnapshotChildren(new Map([['', root]]))
+      setSnapshotCount(opened?.count || 0)
       // Default to "restore everything," represented EXPLICITLY (every
       // top-level entry pre-checked) rather than via an empty selection —
       // selecting a directory already implies every descendant, so this is
       // still functionally "everything" by default, just no longer relying
       // on emptiness to mean that.
-      setSelectedPaths(new Set((entries || []).filter(e => !e.path.includes('/')).map(e => e.path)))
-      showStatus(`✅ ${(entries || []).length} ${t('entriesLoaded')}`, 'success')
+      setSelectedPaths(new Set(root.map(e => e.path)))
+      showStatus(`✅ ${(opened?.count || 0).toLocaleString()} ${t('entriesLoaded')}`, 'success')
     } catch (err) {
       showStatus(`❌ ${err}`, 'error')
     } finally {
-      setSnapshotLoad({ phase: '', count: 0, startedAt: 0 })
+      if (snapshotCtxRef.current?.gen === gen) setSnapshotLoad({ phase: '', count: 0, startedAt: 0 })
     }
+    if (snapshotCtxRef.current?.gen !== gen) return
     // Meta is informational — fire-and-forget. The listing call above has
     // already populated the cache, so this is a cheap cache hit. Failure is
     // silent: legacy snapshots simply have no sidecar.
@@ -1992,42 +2013,29 @@ function App() {
 
   // ===== tree helpers (snapshot navigation) =====
 
-  // Build a map childrenByDir: dir -> [entry...] from the flat list, plus a
-  // set of all dir paths. Memoised as snapshotTree below, since a snapshot
-  // can hold hundreds of thousands of entries.
-  const buildTree = (entries) => {
-    const childrenByDir = new Map()
-    const dirSet = new Set([''])
-    childrenByDir.set('', [])
-    for (const e of entries) {
-      if (e.is_dir) dirSet.add(e.path)
+  // Only the folders the user has expanded are ever held here: the backend
+  // keeps the full listing and hands over one folder's children on request.
+  const loadChildren = async (path) => {
+    const ctx = snapshotCtxRef.current
+    if (!ctx || !ListSnapshotChildren) return
+    try {
+      const list = sortChildren(await ListSnapshotChildren(ctx.pbsID, ctx.backupID, ctx.unix, path))
+      if (snapshotCtxRef.current?.gen !== ctx.gen) return
+      setSnapshotChildren(prev => new Map(prev).set(path, list))
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
     }
-    for (const e of entries) {
-      const slash = e.path.lastIndexOf('/')
-      const parent = slash < 0 ? '' : e.path.substring(0, slash)
-      // Some archives may emit a child without ever emitting the parent dir
-      // entry. Make sure such parents still exist as buckets.
-      if (!childrenByDir.has(parent)) childrenByDir.set(parent, [])
-      childrenByDir.get(parent).push(e)
-      if (e.is_dir && !childrenByDir.has(e.path)) childrenByDir.set(e.path, [])
-    }
-    // Sort each bucket: dirs first, then alphabetical
-    for (const list of childrenByDir.values()) {
-      list.sort((a, b) => {
-        if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
-        return pathCollator.compare(a.path, b.path)
-      })
-    }
-    return childrenByDir
   }
 
   const toggleDir = (path) => {
+    const opening = !expandedDirs.has(path)
     setExpandedDirs(prev => {
       const next = new Set(prev)
       if (next.has(path)) next.delete(path)
       else next.add(path)
       return next
     })
+    if (opening && !snapshotChildren.has(path)) loadChildren(path)
   }
 
   const togglePathSelection = (path) => {
@@ -2040,7 +2048,7 @@ function App() {
   }
 
   const handleSelectAllEntries = () => {
-    setSelectedPaths(new Set(snapshotEntries.filter(e => !e.path.includes('/')).map(e => e.path)))
+    setSelectedPaths(new Set((snapshotChildren.get('') || []).map(e => e.path)))
   }
 
   const handleSelectNoneEntries = () => {
@@ -2073,26 +2081,27 @@ function App() {
   // Total bytes the current selection will restore. Selecting a directory pulls
   // in all its descendants, so we sum every file that is itself selected or
   // lives under a selected path. An empty selection means "restore nothing",
-  // so it sums to 0. Memoized — snapshots can hold 100k+ entries.
-  const selectionBytes = useMemo(() => {
-    if (!snapshotEntries.length || selectedPaths.size === 0) return 0
-    let sum = 0
-    for (const e of snapshotEntries) {
-      if (e.is_dir) continue
-      // Selected itself, or under a selected ancestor: walk the path's
-      // ancestors against the set instead of scanning every selected path.
-      let p = e.path
-      for (;;) {
-        if (selectedPaths.has(p)) { sum += (e.size || 0); break }
-        const slash = p.lastIndexOf('/')
-        if (slash < 0) break
-        p = p.substring(0, slash)
-      }
+  // so it sums to 0. The backend holds the full listing and does the sum;
+  // debounced so ticking boxes quickly sends one request, not one per click.
+  useEffect(() => {
+    const ctx = snapshotCtxRef.current
+    if (!ctx || !SnapshotSelectionBytes || selectedPaths.size === 0) {
+      setSelectionBytes(0)
+      return
     }
-    return sum
-  }, [snapshotEntries, selectedPaths])
+    let cancelled = false
+    const id = setTimeout(async () => {
+      try {
+        const n = await SnapshotSelectionBytes(ctx.pbsID, ctx.backupID, ctx.unix, Array.from(selectedPaths))
+        if (!cancelled) setSelectionBytes(n || 0)
+      } catch (_err) {
+        // size is informational; leave the previous figure
+      }
+    }, 150)
+    return () => { cancelled = true; clearTimeout(id) }
+  }, [selectedPaths, snapshotCount])
 
-  const snapshotTree = useMemo(() => buildTree(snapshotEntries), [snapshotEntries])
+  const TREE_PAGE = 1000
 
   useEffect(() => {
     if (snapshotLoad.phase !== 'reading') return
@@ -2135,10 +2144,35 @@ function App() {
             </span>
           )}
         </div>
-        {entry.is_dir && isExpanded && (childrenByDir.get(entry.path) || []).map(child =>
-          renderTreeNode(child, childrenByDir, depth + 1)
-        )}
+        {entry.is_dir && isExpanded && renderTreeChildren(entry.path, childrenByDir, depth + 1)}
       </div>
+    )
+  }
+
+  // Children of one folder, rendered TREE_PAGE at a time so a folder holding
+  // tens of thousands of files cannot freeze the UI.
+  const renderTreeChildren = (path, childrenByDir, depth) => {
+    const list = childrenByDir.get(path)
+    const rowStyle = { padding: '4px 8px', paddingLeft: `${8 + depth * 20}px`, color: '#64748b', fontSize: '13px' }
+    if (!list) return <div style={rowStyle}>{tl('snapshotFolderLoading', 'Loading...')}</div>
+    const limit = moreShown.get(path) || TREE_PAGE
+    return (
+      <>
+        {list.slice(0, limit).map(child => renderTreeNode(child, childrenByDir, depth))}
+        {list.length > limit && (
+          <div style={rowStyle}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: '2px 10px', fontSize: '12px' }}
+              onClick={() => setMoreShown(prev => new Map(prev).set(path, limit + TREE_PAGE))}
+            >
+              {tl('snapshotShowMore', 'Show {n} more').replace('{n}', Math.min(TREE_PAGE, list.length - limit).toLocaleString())}
+            </button>
+            {' '}{tl('snapshotOfTotal', '{shown} of {total} shown').replace('{shown}', limit.toLocaleString()).replace('{total}', list.length.toLocaleString())}
+          </div>
+        )}
+      </>
     )
   }
 
@@ -3547,7 +3581,9 @@ function App() {
                   setRestorePBSID(e.target.value)
                   setShowSnapshots(false)
                   setSelectedSnapshot(null)
-                  setSnapshotEntries([])
+                  setSnapshotChildren(new Map())
+                  setSnapshotCount(0)
+                  snapshotCtxRef.current = null
                 }}
               >
                 {pbsServers.length === 0 && <option value="">{t('noPBSServer')}</option>}
@@ -3890,20 +3926,14 @@ function App() {
                 overflowY: 'auto',
                 backgroundColor: '#fff'
               }}>
-                {snapshotEntries.length === 0 ? (
+                {(snapshotChildren.get('') || []).length === 0 ? (
                   <p style={{padding: '12px', color: '#718096'}}>
                     {snapshotLoad.phase === 'reading'
                       ? `${tl('snapshotReading', 'Snapshot found, reading file list...')} (${Math.floor((Date.now() - snapshotLoad.startedAt) / 1000)}s)`
-                      : snapshotLoad.phase === 'building'
-                        ? tl('snapshotBuilding', 'Found {n} entries, building file tree...').replace('{n}', snapshotLoad.count.toLocaleString())
-                        : tl('snapshotEmpty', 'This snapshot has no entries.')}
+                      : tl('snapshotEmpty', 'This snapshot has no entries.')}
                   </p>
                 ) : (
-                  (() => {
-                    const tree = snapshotTree
-                    const roots = tree.get('') || []
-                    return roots.map(e => renderTreeNode(e, tree, 0))
-                  })()
+                  renderTreeChildren('', snapshotChildren, 0)
                 )}
               </div>
               <p style={{marginTop: '6px', fontSize: '12px', color: '#64748b'}}>
