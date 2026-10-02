@@ -39,7 +39,7 @@ type BackupOptions struct {
 	CertFingerprint string
 	BackupObjects      []string // Multiple directories or drives to backup
 	BackupID        string
-	BackupType      string // "host" for directory, "vm" for machine
+	BackupType      string // "host" for GUI backups; "vm" additionally uploads a VM config and needs a numeric BackupID
 	Kind            string // "disk", "directory", or "machine"
 	UseVSS          bool
 	Compression     string   // Compression level: "fastest", "default", "better", "best"
