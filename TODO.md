@@ -1086,7 +1086,7 @@ backup process, then `elioctl destroy` the two leftover elastio-snap devices it 
 a plain SIGTERM skips the app's own snapshot-cleanup defer, so that's a manual step after any
 non-UI stop).
 
-#### ~~Pass the Backup Set name through as the PBS snapshot's comment~~ ✅ BACKEND DONE 2026-09-27, 🚧 UI FIELD STILL PENDING
+#### ~~Pass the Backup Set name through as the PBS snapshot's comment~~ ✅ DONE 2026-09-27 (backend), 2026-10-02 (UI field: "Backup Name (for PBS Comment)" on the one-off form, all 18 languages, also applied to each part of a split one-off backup)
 
 Mick: "we don't seem to have comment wired in to pass through to the backup in pbs" — confirmed:
 `BackupManifest.Comment` existed (matches PBS's real manifest schema, already used for READING an

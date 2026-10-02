@@ -284,6 +284,7 @@ function App() {
   const [exitAppAfter, setExitAppAfter] = useState(false)
   const [shutdownAfter, setShutdownAfter] = useState(false)
   const [jobName, setJobName] = useState('') // User-facing name for the backup set being created/edited
+  const [oneOffComment, setOneOffComment] = useState('') // Optional PBS snapshot comment for a one-off backup
   const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
   const [backupPBSID, setBackupPBSID] = useState('') // Destination tab: which configured PBS server this backup/set targets
   const [backupStats, setBackupStats] = useState({
@@ -1444,7 +1445,7 @@ function App() {
           config.usevss,
           '',
           backupPBSID,
-          '',
+          oneOffComment.trim(),
           '' // postActionsKey — only the scheduler sets this, one-off calls never do
         )
         showStatus(`⏳ ${t('statusBackupRunning')}`, 'info')
@@ -1491,7 +1492,7 @@ function App() {
             config.usevss,
             '',
             backupPBSID,
-            '',
+            oneOffComment.trim(),
             '' // postActionsKey — see the other one-off StartBackup call above
           )
         } catch (err) {
@@ -1676,7 +1677,7 @@ function App() {
           config.usevss,
           '',
           backupPBSID,
-          '',
+          oneOffComment.trim(),
           '' // postActionsKey — one-off backups never set this
         )
       } else {
@@ -1689,7 +1690,7 @@ function App() {
           config.usevss,
           '',
           backupPBSID,
-          '',
+          oneOffComment.trim(),
           '' // postActionsKey — one-off backups never set this
         )
       }
@@ -2805,6 +2806,7 @@ function App() {
                   className="btn btn-secondary"
                   onClick={() => {
                     setBackupMode('oneshot')
+                    setOneOffComment('')
                     if (!config['backup-id']) setConfig({...config, 'backup-id': hostname})
                     setBackupPBSID(defaultPBSID)
                     setBackupFormTab('source'); setShowBackupForm(true)
@@ -3003,6 +3005,21 @@ function App() {
                 ✕
               </button>
             </div>
+
+            {backupMode === 'oneshot' && (
+              <div className="form-group">
+                <label>{t('backupCommentLabel')}</label>
+                <input
+                  id="oneOffComment"
+                  type="text"
+                  value={oneOffComment}
+                  onChange={(e) => setOneOffComment(e.target.value)}
+                  placeholder={t('backupCommentPlaceholder')}
+                  maxLength={200}
+                  style={{width: '100%', maxWidth: '400px'}}
+                />
+              </div>
+            )}
 
             {backupMode === 'scheduled' && (
               <div className="form-group">
