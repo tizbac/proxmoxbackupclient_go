@@ -164,6 +164,14 @@ function renderLocalizedMessage(entry, t) {
 function App() {
   const { t } = useTranslation()
   const tl = (key, fallback) => { const v = t(key); return v === key ? fallback : v }
+  // Backup ID for the experimental "vm" machine backup: a numeric PBS vm/<id>.
+  // 'range' offsets into a high block so it cannot collide with a real VM's ID.
+  const computeVmBackupId = (n, style) => {
+    const digits = String(n || '').replace(/\D/g, '')
+    const num = parseInt(digits, 10)
+    if (!digits || !(num >= 1 && num <= 999999)) return ''
+    return style === 'zeros' ? '000' + String(num) : String(9000000 + num)
+  }
   const [activeTab, setActiveTab] = useState('backup')
   const [showLimitations, setShowLimitations] = useState(false)
   const [showBMRGuide, setShowBMRGuide] = useState(false)
@@ -285,6 +293,10 @@ function App() {
   const [shutdownAfter, setShutdownAfter] = useState(false)
   const [jobName, setJobName] = useState('') // User-facing name for the backup set being created/edited
   const [oneOffComment, setOneOffComment] = useState('') // Optional PBS snapshot comment for a one-off backup
+  // Experimental: back a machine up as a PBS "vm" snapshot (restorable from Proxmox VE).
+  const [machineAsVM, setMachineAsVM] = useState(false)
+  const [vmIdNumber, setVmIdNumber] = useState('')
+  const [vmIdStyle, setVmIdStyle] = useState('range') // 'range' = 9000000+N, 'zeros' = 000N
   const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
   const [backupPBSID, setBackupPBSID] = useState('') // Destination tab: which configured PBS server this backup/set targets
   const [backupStats, setBackupStats] = useState({
@@ -1572,6 +1584,13 @@ function App() {
       return
     }
 
+    const useVmType = backupType === 'machine' && backupMode === 'oneshot' && machineAsVM
+    const vmBackupID = useVmType ? computeVmBackupId(vmIdNumber, vmIdStyle) : ''
+    if (useVmType && !vmBackupID) {
+      showStatus(`❌ ${tl('machineVmIdInvalid', 'Enter a VM ID between 1 and 999999.')}`, 'error')
+      return
+    }
+
     // Splitting is now an explicit, opt-in choice (the "split this backup" toggle),
     // intended for the first backup of a large volume. When it's off we never size
     // the directories — the backup starts immediately, so a whole-drive root like
@@ -1684,9 +1703,9 @@ function App() {
         // Filter out any empty drives to prevent empty string issues
         const validDrives = selectedDrives.filter(drive => drive && drive.trim() !== '')
         await StartMachineBackup(
-          backupType,
+          useVmType ? 'machine-vm' : backupType,
           validDrives,
-          config['backup-id'],
+          useVmType ? vmBackupID : config['backup-id'],
           config.usevss,
           '',
           backupPBSID,
@@ -2807,6 +2826,8 @@ function App() {
                   onClick={() => {
                     setBackupMode('oneshot')
                     setOneOffComment('')
+                    setMachineAsVM(false)
+                    setVmIdNumber('')
                     if (!config['backup-id']) setConfig({...config, 'backup-id': hostname})
                     setBackupPBSID(defaultPBSID)
                     setBackupFormTab('source'); setShowBackupForm(true)
@@ -3253,6 +3274,48 @@ function App() {
               selectedDrives={selectedDrives}
             />
           )}
+          {backupType === 'machine' && backupMode === 'oneshot' && (
+            <div className="form-group">
+              <label>{tl('machineBackupAsLabel', 'Backup as (experimental)')}</label>
+              <select
+                id="machineBackupAs"
+                value={machineAsVM ? 'vm' : 'host'}
+                onChange={(e) => setMachineAsVM(e.target.value === 'vm')}
+              >
+                <option value="host">{tl('machineBackupAsHost', 'Host backup (default)')}</option>
+                <option value="vm">{tl('machineBackupAsVm', 'Proxmox VE virtual machine (experimental)')}</option>
+              </select>
+              {machineAsVM && (
+                <div style={{marginTop: '10px'}}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap'}}>
+                    <input
+                      id="machineVmId"
+                      type="text"
+                      inputMode="numeric"
+                      value={vmIdNumber}
+                      onChange={(e) => setVmIdNumber(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder={tl('machineVmIdPlaceholder', 'VM ID, e.g. 107')}
+                      style={{width: '140px'}}
+                    />
+                    <select
+                      id="machineVmIdStyle"
+                      value={vmIdStyle}
+                      onChange={(e) => setVmIdStyle(e.target.value)}
+                    >
+                      <option value="range">{tl('machineVmIdStyleRange', 'Reserved range (9000000 + ID)')}</option>
+                      <option value="zeros">{tl('machineVmIdStyleZeros', 'Leading zeros (000 + ID)')}</option>
+                    </select>
+                  </div>
+                  <div style={{fontSize: '13px', marginTop: '6px'}}>
+                    {tl('machineVmIdResult', 'Backup ID in PBS:')} <strong>{computeVmBackupId(vmIdNumber, vmIdStyle) || '-'}</strong>
+                  </div>
+                  <div style={{fontSize: '12px', color: '#b36b00', marginTop: '6px', maxWidth: '520px'}}>
+                    {tl('machineVmWarning', 'Experimental. The snapshot is stored under vm/<ID> so Proxmox VE can list it. A real VM backup with the same ID would share that namespace, so the ID is offset to stay clear of yours. Windows UEFI/GPT disks will not boot as a generated VM; BIOS/MBR and data disks are likelier to.')}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           </>
           )}
 
@@ -3284,6 +3347,7 @@ function App() {
               ))}
             </select>
           </div>
+          {!(backupType === 'machine' && backupMode === 'oneshot' && machineAsVM) && (
           <div className="form-group">
             <label>{t('backupID')}</label>
             <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
@@ -3296,6 +3360,7 @@ function App() {
               <span style={{fontSize: '12px', color: '#999'}}>{t('backupIdDefaultNote')}</span>
             </div>
           </div>
+          )}
 
           <div className="form-group">
             <label>

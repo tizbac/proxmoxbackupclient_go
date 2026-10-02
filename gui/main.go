@@ -1292,11 +1292,10 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		BackupID:        backupID,
 		Comment:         comment,
 		Kind:            "machine",
-		// "host", not "vm" — see the matching comment in startBackupDirect's
-		// machine branch for why: "vm" requires a numeric VMID backup-id,
-		// which every machine backup here defaults to a hostname instead of,
-		// so it always failed after transferring the entire disk.
-		BackupType:     "host",
+		// "host" unless the GUI explicitly asked for the experimental "vm"
+		// snapshot type (backupType "machine-vm", numeric VMID in backupID):
+		// see machineSnapshotType.
+		BackupType:     machineSnapshotType(backupType),
 		UseVSS:         useVSS,
 		Compression:    compression,
 		ExcludeList:    []string{}, // No exclude list for machine backups

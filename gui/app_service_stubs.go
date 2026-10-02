@@ -223,10 +223,9 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		BackupID:        backupID,
 		Comment:         comment,
 		Kind:            "machine",
-		// "host", not "vm" — see startBackupDirect's machine branch in
-		// main.go for why: "vm" requires a numeric VMID backup-id, which
-		// every machine backup here defaults to a hostname instead of.
-		BackupType:     "host",
+		// "host" unless the experimental "vm" type was asked for: see
+		// machineSnapshotType.
+		BackupType:     machineSnapshotType(backupType),
 		UseVSS:         useVSS,
 		Compression:    compression,
 		ExcludeList:    []string{},
