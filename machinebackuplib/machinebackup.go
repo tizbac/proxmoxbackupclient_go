@@ -349,6 +349,14 @@ type qemuConfigData struct {
 
 // VMID is not a field of BackupDisk, so inside the {{range .Disks}} block it
 // has to be reached through $ (the root data) rather than through dot.
+//
+// The "#qmdump#map:<drive>:<devname>:<storage>:<format>:" line per disk is what
+// makes Proxmox VE restore the disk image at all: PVE's restore only allocates
+// and fills drives declared by these lines (found 2026-10-02: without them a
+// restore ends "TASK OK" in a second, copies the config verbatim and writes no
+// data). Storage is left empty so the storage chosen in the restore dialog
+// applies; PVE falls back to "local" (no images) if none is chosen. The sata
+// line is rewritten by PVE with the newly allocated volume.
 var qemuConfigTemplate = template.Must(template.New("qemuconfig").Parse(`boot: order=sata0
 cores: 4
 machine: q35
@@ -362,6 +370,7 @@ smbios1: uuid={{.SMBIOS}}
 sockets: 1
 {{range .Disks}}
 sata{{.Index}}: local:{{$.VMID}}/vm-{{$.VMID}}-disk-{{.Index}}.raw,cache=writeback,discard=on,size={{.Size}}
+#qmdump#map:sata{{.Index}}:drive-sata{{.Index}}::raw:
 {{end}}
 vmgenid: {{.VMGenId}}
 `))
