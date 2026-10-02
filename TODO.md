@@ -873,7 +873,7 @@ Fork only, not for upstream. GUI "Backup as" choice for machine backups: default
 
 #### Restore stage ideas (Mick, 2026-10-01: wants all three, pick up later)
 Follow-ups to the stage label under the restore progress bar (`restore:stage`, built in `1245992`).
-1. **'Verify after restore' checkbox + function.** Optional post-restore pass that re-reads each restored file
+1. ✅ DONE (2026-10-02, pending Mick's test) **'Verify after restore' checkbox + function.** Implemented as SHA-256 of each payload while it is written (`PXARReader.SetHashFiles`), then `verifyRestoredFiles` (gui/restore_verify.go, 4 workers) re-reads size + hash from disk before the ACL phase. Bar: extraction 5-80%, verify 80-95%, ACLs 95-100%. Mismatch = restore reports an error, nothing deleted. Counts on Reports (`restoreVerified/restoreVerifyFailed`). Original spec: Optional post-restore pass that re-reads each restored file
    and compares it with what the snapshot holds (size + content hash against the archive, or at minimum the
    PXAR entry size/mtime), reported as its own stage ('Verifying restored files...') with n of m, and a
    pass/fail summary in the Message Log and on the Reports tab (add verified/mismatch counts to the restore

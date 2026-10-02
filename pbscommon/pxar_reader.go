@@ -2,6 +2,7 @@ package pbscommon
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -61,6 +62,27 @@ type PXARReader struct {
 	// (the restore card's "current file" line). Same goroutine-safety rule
 	// as onProgress.
 	onFile func(path string)
+
+	// hashFiles makes the extractors SHA-256 every file payload as it is
+	// written (PXARExtractedFile.SHA256), for the optional verify-after-restore
+	// pass. Off by default so a normal restore pays nothing.
+	hashFiles bool
+}
+
+// SetHashFiles turns per-file SHA-256 of the extracted payloads on or off.
+// Call before Extract*.
+func (pr *PXARReader) SetHashFiles(on bool) { pr.hashFiles = on }
+
+// copyPayload copies a file payload to out, returning its SHA-256 when hashing
+// is enabled (nil otherwise).
+func (pr *PXARReader) copyPayload(out io.Writer, payload io.Reader) ([]byte, error) {
+	if !pr.hashFiles {
+		_, err := io.Copy(out, payload)
+		return nil, err
+	}
+	h := sha256.New()
+	_, err := io.Copy(io.MultiWriter(out, h), payload)
+	return h.Sum(nil), err
 }
 
 // SetFileCallback registers fn to be called with the archive path of each
@@ -145,6 +167,9 @@ type PXARExtractedFile struct {
 	// because overwrite was disabled). Error skips (open/write/rename/mkdir
 	// failures) leave this false so they still fail the restore.
 	Expected bool
+	// SHA256 is the hash of the payload as written, set only for files when
+	// the reader was told to hash (SetHashFiles).
+	SHA256 []byte
 }
 
 // NewPXARReader creates a new PXAR reader from an in-memory byte slice. Kept for
@@ -669,7 +694,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		tmpPath := out.Name()
 		_ = out.Chmod(os.FileMode(e.Mode & 0777))
 		copyStart := time.Now()
-		_, copyErr := io.Copy(out, payload)
+		sum, copyErr := pr.copyPayload(out, payload)
 		pr.copyNanos.Add(int64(time.Since(copyStart)))
 		fsStart = time.Now()
 		closeErr := out.Close()
@@ -709,7 +734,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		}
 		extracted = append(extracted, PXARExtractedFile{
 			Path: fullPath, ArchivePath: e.Path, Size: e.Size,
-			Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime,
+			Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, SHA256: sum,
 		})
 		return nil
 	}
@@ -953,7 +978,7 @@ func (pr *PXARReader) extractOneFileParallel(e PXARTreeEntry, fullPath string, p
 	_ = out.Chmod(os.FileMode(e.Mode & 0777))
 
 	copyStart := time.Now()
-	_, copyErr := io.Copy(out, payload)
+	sum, copyErr := pr.copyPayload(out, payload)
 	pr.copyNanos.Add(int64(time.Since(copyStart)))
 
 	fsStart = time.Now()
@@ -993,7 +1018,7 @@ func (pr *PXARReader) extractOneFileParallel(e PXARTreeEntry, fullPath string, p
 	}
 	return PXARExtractedFile{
 		Path: fullPath, ArchivePath: e.Path, Size: e.Size,
-		Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime,
+		Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, SHA256: sum,
 	}
 }
 

@@ -314,10 +314,14 @@ func TestE2EDirectoryModes(t *testing.T) {
 			start := time.Now()
 			var last float64
 			var monotonic = true
+			var verified int
+			var verifyFails []string
 			err := RestoreSnapshotInline(RestoreOptions{
 				BaseURL: e2eBaseURL, AuthID: e2eAuthID, Secret: e2eSecret, Datastore: e2eStore, CertFingerprint: e2eFP,
 				BackupID: backupID, SnapshotTime: time.Unix(s.unix, 0).UTC(), DestPath: dest,
 				Mode: RestoreModeAlternateAbs, Overwrite: true, ParallelExtraction: parallel,
+				VerifyAfterRestore: true,
+				OnVerifySummary: func(v int, f []string) { verified, verifyFails = v, f },
 				OnProgress: func(p float64, m string) {
 					if p+1e-9 < last {
 						monotonic = false
@@ -329,7 +333,10 @@ func TestE2EDirectoryModes(t *testing.T) {
 				t.Errorf("%s: %v", label, err)
 				continue
 			}
-			t.Logf("%s: restored in %v, final progress %.2f monotonic=%v", label, time.Since(start).Round(time.Millisecond), last, monotonic)
+			t.Logf("%s: restored in %v, final progress %.2f monotonic=%v, verified %d files, %d mismatches", label, time.Since(start).Round(time.Millisecond), last, monotonic, verified, len(verifyFails))
+			if verified == 0 || len(verifyFails) > 0 {
+				t.Errorf("%s: verify-after-restore checked %d files, mismatches: %v", label, verified, verifyFails)
+			}
 			if !monotonic {
 				t.Errorf("%s: progress went backwards", label)
 			}

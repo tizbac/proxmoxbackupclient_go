@@ -129,6 +129,11 @@ type JobHistory struct {
 	RestorePaths    []string `json:"restorePaths,omitempty"` // selected paths; empty = whole snapshot
 	RestoreFiles    int      `json:"restoreFiles,omitempty"`
 	RestoreBytes    int64    `json:"restoreBytes,omitempty"`
+	// Verify-after-restore outcome; RestoreVerifyRan distinguishes "checked,
+	// 0 mismatches" from "not checked".
+	RestoreVerifyRan    bool `json:"restoreVerifyRan,omitempty"`
+	RestoreVerified     int  `json:"restoreVerified,omitempty"`
+	RestoreVerifyFailed int  `json:"restoreVerifyFailed,omitempty"`
 	DurationSec     int      `json:"durationSec,omitempty"`
 }
 

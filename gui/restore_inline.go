@@ -104,6 +104,14 @@ type RestoreOptions struct {
 	// (Reports-tab history). Not called when extraction fails outright.
 	OnSummary func(files, dirs int, bytes int64)
 
+	// VerifyAfterRestore re-reads every restored file once extraction is done
+	// and checks size and SHA-256 against what the snapshot delivered (stage
+	// "verifying"). A mismatch fails the restore but never deletes anything.
+	VerifyAfterRestore bool
+	// OnVerifySummary reports the outcome of that pass: how many files matched
+	// and one "path: reason" line per file that did not.
+	OnVerifySummary func(verified int, failures []string)
+
 	// ParallelExtraction opts into pbscommon.PXARReader.ExtractWithRewriterParallel
 	// instead of the original ExtractWithRewriter — see Config.ParallelRestore's
 	// doc comment. Defaults to false (the proven sequential path).
@@ -1155,7 +1163,13 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	var aclJobs []aclJob
 	includesToCheck := pbscommon.NormalizeIncludes(opts.IncludePaths)
 	anyIncludesMatched := false
-	archiveSpan := 0.90 / float64(len(archiveNames))
+	// Extraction fills 0.05 to extractEnd; verify (when asked for) takes the
+	// slice up to 0.95 and the ACL phase the last 5%, so 100% means verified.
+	extractEnd := 0.95
+	if opts.VerifyAfterRestore {
+		extractEnd = 0.80
+	}
+	archiveSpan := (extractEnd - 0.05) / float64(len(archiveNames))
 	for i, archiveName := range archiveNames {
 		archiveBase := 0.05 + float64(i)*archiveSpan
 		wrapper := displayNames[archiveName]
@@ -1258,6 +1272,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			}
 		}, nil, func(reader *pbscommon.PXARReader) error {
 			stage("transferring", archiveDetail)
+			reader.SetHashFiles(opts.VerifyAfterRestore)
 			if opts.OnFile != nil {
 				reader.SetFileCallback(opts.OnFile)
 			}
@@ -1368,7 +1383,42 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 
 	writeBackupLog(fmt.Sprintf("Extraction complete: %d files, %d dirs, %d skipped (expected), %d failed",
 		successCount, dirCount, skipCount, errorSkipCount))
-	progress(0.95, fmt.Sprintf("Extracted %d files", successCount))
+	progress(extractEnd, fmt.Sprintf("Extracted %d files", successCount))
+
+	var verifyFailures []string
+	if opts.VerifyAfterRestore {
+		stage("verifying", "")
+		var vMu sync.Mutex
+		var vLast time.Time
+		verified, fails, verr := verifyRestoredFiles(opts.Ctx, extracted, func(done, total int, path string) {
+			if opts.OnFile != nil {
+				opts.OnFile(path)
+			}
+			vMu.Lock()
+			defer vMu.Unlock()
+			if total > 0 && time.Since(vLast) >= 250*time.Millisecond {
+				vLast = time.Now()
+				progress(extractEnd+(0.95-extractEnd)*float64(done)/float64(total),
+					fmt.Sprintf("Verifying restored files: %d of %d", done, total))
+			}
+		})
+		if verr != nil {
+			return verr
+		}
+		for i, f := range fails {
+			if i >= 200 {
+				writeBackupLog(fmt.Sprintf("VERIFY FAILED: ... and %d more", len(fails)-i))
+				break
+			}
+			writeBackupLog("VERIFY FAILED: " + f)
+		}
+		writeBackupLog(fmt.Sprintf("Verification complete: %d files match the snapshot, %d do not", verified, len(fails)))
+		verifyFailures = fails
+		if opts.OnVerifySummary != nil {
+			opts.OnVerifySummary(verified, fails)
+		}
+		progress(0.95, fmt.Sprintf("Verified %d files", verified))
+	}
 
 	// Best-effort per file: an apply failure is logged, never fails the
 	// restore, since the file's content is already safely on disk.
@@ -1443,6 +1493,9 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	// overwrite was disabled are the requested behaviour, not an error.
 	if errorSkipCount > 0 {
 		return fmt.Errorf("restore completed with %d failed files (see logs)", errorSkipCount)
+	}
+	if len(verifyFailures) > 0 {
+		return fmt.Errorf("restore finished but %d restored file(s) failed verification against the snapshot (see logs)", len(verifyFailures))
 	}
 	return nil
 }

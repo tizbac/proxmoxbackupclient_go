@@ -1618,9 +1618,9 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 // Progress is streamed to the frontend via the "restore:progress" event;
 // completion via "restore:complete".
 func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string,
-	includePaths []string, allowCrossHost, restoreACLs, restoreADS, restoreTimestamps, overwrite bool) error {
-	writeDebugLog(fmt.Sprintf("RestoreSnapshot(pbs=%s, backupID=%s, snap=%s, mode=%s, dest=%s, includes=%d, crossHost=%v, acl=%v, ads=%v, ts=%v, overwrite=%v)",
-		pbsID, backupID, snapshotID, mode, destPath, len(includePaths), allowCrossHost, restoreACLs, restoreADS, restoreTimestamps, overwrite))
+	includePaths []string, allowCrossHost, restoreACLs, restoreADS, restoreTimestamps, overwrite, verifyAfterRestore bool) error {
+	writeDebugLog(fmt.Sprintf("RestoreSnapshot(pbs=%s, backupID=%s, snap=%s, mode=%s, dest=%s, includes=%d, crossHost=%v, acl=%v, ads=%v, ts=%v, overwrite=%v, verify=%v)",
+		pbsID, backupID, snapshotID, mode, destPath, len(includePaths), allowCrossHost, restoreACLs, restoreADS, restoreTimestamps, overwrite, verifyAfterRestore))
 
 	cfg, err := a.resolvePBS(pbsID)
 	if err != nil {
@@ -1693,6 +1693,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		RestoreTimestamps:  restoreTimestamps,
 		OnProgress:         emit,
 		ParallelExtraction: a.config.ParallelRestore,
+		VerifyAfterRestore: verifyAfterRestore,
 	}
 	var fileEmitMu sync.Mutex
 	var lastFileEmit time.Time
@@ -1743,6 +1744,11 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	opts.OnSummary = func(files, dirs int, bytes int64) {
 		restoredFiles, restoredBytes = files, bytes
 	}
+	var verifiedFiles int
+	var verifyFailures []string
+	opts.OnVerifySummary = func(verified int, failures []string) {
+		verifiedFiles, verifyFailures = verified, failures
+	}
 
 	go func() {
 		release := acquireOperationSlot(restoreLabel, func(heldBy string) {
@@ -1781,6 +1787,20 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 			restoreLevel = "error"
 		}
 		LogMessage("Restore", restoreLevel, msg, "", msgKey, msgP)
+		if verifyAfterRestore {
+			if len(verifyFailures) > 0 {
+				LogMessage("Restore", "error", fmt.Sprintf("Verification: %d restored file(s) do NOT match the snapshot (%d matched)", len(verifyFailures), verifiedFiles), "", "", nil)
+				for i, f := range verifyFailures {
+					if i >= 20 {
+						LogMessage("Restore", "error", fmt.Sprintf("... and %d more (see the backup log)", len(verifyFailures)-i), "", "", nil)
+						break
+					}
+					LogMessage("Restore", "error", "Verify failed: "+f, "", "", nil)
+				}
+			} else if success {
+				LogMessage("Restore", "info", fmt.Sprintf("Verification: all %d restored files match the snapshot", verifiedFiles), "", "", nil)
+			}
+		}
 
 		// Record the run on the Reports tab (written before restore:complete
 		// so the page's refresh on that event already sees it).
@@ -1814,6 +1834,9 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 			RestorePaths:    histPaths,
 			RestoreFiles:    restoredFiles,
 			RestoreBytes:    restoredBytes,
+			RestoreVerified: verifiedFiles,
+			RestoreVerifyFailed: len(verifyFailures),
+			RestoreVerifyRan:    verifyAfterRestore && (success || len(verifyFailures) > 0),
 			DurationSec:     int(time.Since(restoreStart).Seconds()),
 		}); herr != nil {
 			writeDebugLog(fmt.Sprintf("Restore: failed to record Reports history: %v", herr))

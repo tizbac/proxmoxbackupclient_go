@@ -357,6 +357,7 @@ function App() {
   const [restoreOptions, setRestoreOptions] = useState({
     overwrite: false,
     timestamps: true,
+    verify: false, // re-read restored files and compare with the snapshot
     acls: false, // opt-in — off by default even though the NTFS sidecar now exists
     ads: false   // still disabled in UI: no ADS capture/restore sidecar exists yet
   })
@@ -1976,7 +1977,8 @@ function App() {
         restoreOptions.acls,
         restoreOptions.ads,
         restoreOptions.timestamps,
-        restoreOptions.overwrite
+        restoreOptions.overwrite,
+        restoreOptions.verify
       )
       // Completion arrives via the restore:complete event.
     } catch (err) {
@@ -3455,12 +3457,13 @@ function App() {
                     preparing: tl('restoreStagePreparing', 'Connecting and preparing restore...'),
                     locating: tl('restoreStageLocating', 'Reading snapshot index and locating files...'),
                     transferring: tl('restoreStageTransferring', 'Fetching chunks and writing files...'),
+                    verifying: tl('restoreStageVerifying', 'Verifying restored files...'),
                     acls: tl('restoreStageAcls', 'Restoring ACLs and attributes...'),
                   }[restoreStage.stage] || restoreStage.stage}
                   {restoreStage.detail ? ` (${restoreStage.detail})` : ''}
                 </div>
               )}
-              {restoreFile && restoreStage.stage === 'transferring' && (
+              {restoreFile && (restoreStage.stage === 'transferring' || restoreStage.stage === 'verifying') && (
                 <div style={{fontSize: '12px', color: '#495057', marginTop: '-6px', marginBottom: '10px', fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap', overflow: 'hidden'}} title={restoreFile}>
                   {middleTruncate(restoreFile, 110)}
                 </div>
@@ -4040,6 +4043,14 @@ function App() {
                     />
                     {t('optionTimestamps')}
                   </label>
+                  <label style={{display: 'flex', alignItems: 'center', gap: '6px'}} title={tl('optionVerifyHint', 'After restoring, re-read every restored file and compare it with the snapshot. Takes extra time; mismatches are reported, nothing is deleted.')}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.verify}
+                      onChange={(e) => setRestoreOptions(o => ({...o, verify: e.target.checked}))}
+                    />
+                    {tl('optionVerify', 'Verify after restore')}
+                  </label>
                   <label style={{display: 'flex', alignItems: 'center', gap: '6px'}} title={t('optionACLsHint')}>
                     <input
                       type="checkbox"
@@ -4218,6 +4229,7 @@ function App() {
                             <span>{selected.restoreFiles || 0}</span>
                             <strong>{tl('reportsSize', 'Size')}</strong>
                             <span>{formatBytes(selected.restoreBytes || 0)}</span>
+                            {selected.restoreVerifyRan && (<><strong>{tl('reportsVerification', 'Verification')}</strong><span style={selected.restoreVerifyFailed > 0 ? {color: '#c0392b', fontWeight: 'bold'} : undefined}>{selected.restoreVerifyFailed > 0 ? tl('reportsVerifyFailed', '{n} file(s) did not match').replace('{n}', selected.restoreVerifyFailed) : tl('reportsVerifyOk', 'All {n} files match').replace('{n}', selected.restoreVerified || 0)}</span></>)}
                             <strong>{tl('reportsDuration', 'Duration')}</strong>
                             <span>{formatDuration(selected.durationSec || 0)}</span>
                           </>
