@@ -337,11 +337,55 @@ type BackupResult struct {
 	Disks []BackupDisk
 }
 
+// qemuConfigData is the input to qemuConfigTemplate.
+type qemuConfigData struct {
+	VMGenId string
+	VMID    int64
+	VMName  string
+	Disks   []BackupDisk
+	OS      string
+	SMBIOS  string
+}
+
+// VMID is not a field of BackupDisk, so inside the {{range .Disks}} block it
+// has to be reached through $ (the root data) rather than through dot.
+var qemuConfigTemplate = template.Must(template.New("qemuconfig").Parse(`boot: order=sata0
+cores: 4
+machine: q35
+memory: 2048
+name: {{.VMName}}
+numa: 0
+onboot: 0
+ostype: {{.OS}}
+scsihw: virtio-scsi-single
+smbios1: uuid={{.SMBIOS}}
+sockets: 1
+{{range .Disks}}
+sata{{.Index}}: local:{{$.VMID}}/vm-{{$.VMID}}-disk-{{.Index}}.raw,cache=writeback,discard=on,iothread=1,size={{.Size}}
+{{end}}
+vmgenid: {{.VMGenId}}
+`))
+
+func renderQemuConfig(data qemuConfigData) ([]byte, error) {
+	var wr bytes.Buffer
+	if err := qemuConfigTemplate.Execute(&wr, data); err != nil {
+		return nil, fmt.Errorf("execute VM config template: %v", err)
+	}
+	return wr.Bytes(), nil
+}
+
 // Backup performs a machine backup using the provided configuration
 func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, error) {
 	// Validate configuration
 	if !cfg.Valid() {
 		return nil, fmt.Errorf("invalid configuration")
+	}
+	// A "vm" backup needs a numeric VMID for the generated VM config; reject a
+	// bad ID now rather than after every disk has been transferred.
+	if cfg.BackupType == "vm" {
+		if _, err := strconv.ParseInt(cfg.BackupID, 10, 32); err != nil {
+			return nil, fmt.Errorf("backup type \"vm\" needs a numeric VM ID as backup ID, got %q", cfg.BackupID)
+		}
 	}
 
 	client := &pbscommon.PBSClient{
@@ -477,34 +521,6 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 	}
 
 	if cfg.BackupType == "vm" {
-		type ConfigTemplate struct {
-			VMGenId string
-			VMID    int64
-			VMName  string
-			Disks   []BackupDisk
-			OS      string
-			SMBIOS  string
-		}
-
-		tmpl, err := template.New("qemuconfig").Parse(`boot: order=sata0
-cores: 4
-machine: q35
-memory: 2048
-name: {{.VMName}}
-numa: 0
-onboot: 0
-ostype: {{.OS}}
-scsihw: virtio-scsi-single
-smbios1: uuid={{.SMBIOS}}
-sockets: 1
-{{range .Disks}}
-sata{{.Index}}: local:{{.VMID}}/vm-{{.VMID}}-disk-{{.Index}}.raw,cache=writeback,discard=on,iothread=1,size={{.Size}}
-{{end}}
-vmgenid: {{.VMGenId}}
-		`)
-		if err != nil {
-			return nil, fmt.Errorf("parse VM config template %v", err)
-		}
 		vmid, err := strconv.ParseInt(cfg.BackupID, 10, 32)
 		if err != nil {
 			return nil, fmt.Errorf("parse VM ID %v", err)
@@ -513,8 +529,7 @@ vmgenid: {{.VMGenId}}
 		if err != nil {
 			return nil, fmt.Errorf("get hostname: %v", err)
 		}
-		wr := bytes.Buffer{}
-		cfgt := ConfigTemplate{
+		cfgt := qemuConfigData{
 			VMGenId: uuid.New().String(),
 			VMID:    vmid,
 			Disks:   disks,
@@ -526,10 +541,11 @@ vmgenid: {{.VMGenId}}
 		} else {
 			cfgt.OS = "l26"
 		}
-		if err := tmpl.Execute(&wr, cfgt); err != nil {
-			return nil, fmt.Errorf("execute VM config template: %v", err)
+		wr, err := renderQemuConfig(cfgt)
+		if err != nil {
+			return nil, err
 		}
-		if err := client.UploadBlob("qemu-server.conf.blob", wr.Bytes()); err != nil {
+		if err := client.UploadBlob("qemu-server.conf.blob", wr); err != nil {
 			return nil, fmt.Errorf("upload VM config blob: %v", err)
 		}
 	}
