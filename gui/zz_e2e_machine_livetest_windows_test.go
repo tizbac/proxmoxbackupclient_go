@@ -24,14 +24,20 @@ func TestE2EMachineWindows(t *testing.T) {
 	if srcN == "" || dstN == "" {
 		t.Skip("set PBS_E2E_SRC_DISK and PBS_E2E_DST_DISK")
 	}
-	backupID := fmt.Sprintf("e2e-machine-%d", time.Now().Unix()) // the GUI backs machines up as type "host"
+	// PBS_E2E_TYPE=vm also exercises the generated qemu-server.conf (needs a numeric ID).
+	btype := "host" // what the GUI uses for machine backups
+	backupID := fmt.Sprintf("e2e-machine-%d", time.Now().Unix())
+	if os.Getenv("PBS_E2E_TYPE") == "vm" {
+		btype = "vm"
+		backupID = "9" + fmt.Sprint(time.Now().Unix()%100000)
+	}
 	srcDev := `\\.\PhysicalDrive` + srcN
 	dstDev := `\\.\PhysicalDrive` + dstN
 
 	start := time.Now()
 	_, err := machinebackuplib.Backup(&machinebackuplib.Config{
 		BaseURL: e2eBaseURL, CertFingerprint: e2eFP, AuthID: e2eAuthID, Secret: e2eSecret,
-		Datastore: e2eStore, BackupID: backupID, BackupType: "host", BackupDevices: []string{srcDev},
+		Datastore: e2eStore, BackupID: backupID, BackupType: btype, BackupDevices: []string{srcDev},
 	}, func(p float64, m string) bool { return false })
 	if err != nil {
 		t.Fatalf("machine backup: %v", err)
@@ -49,18 +55,26 @@ func TestE2EMachineWindows(t *testing.T) {
 	}
 	var snapTime int64
 	for _, m := range manifests {
-		if m.BackupID == backupID && m.BackupType == "host" && m.BackupTime > snapTime {
+		if m.BackupID == backupID && m.BackupType == btype && m.BackupTime > snapTime {
 			snapTime = m.BackupTime
 		}
 	}
 	if snapTime == 0 {
 		t.Fatalf("snapshot for %s not found", backupID)
 	}
-	t.Logf("snapshot host/%s/%d", backupID, snapTime)
-	rc.Manifest.BackupType = "host"
+	t.Logf("snapshot %s/%s/%d", btype, backupID, snapTime)
+	rc.Manifest.BackupType = btype
 	rc.Manifest.BackupTime = snapTime
-	rc.Connect(true, "host")
+	rc.Connect(true, btype)
 	defer rc.Close()
+
+	if btype == "vm" {
+		blob, err := rc.DownloadToBytes("qemu-server.conf.blob")
+		if err != nil {
+			t.Fatalf("qemu-server.conf.blob: %v", err)
+		}
+		t.Logf("qemu-server.conf.blob present, %d bytes", len(blob))
+	}
 
 	name := fmt.Sprintf("drive-sata%s.img.fidx", srcN)
 	data, err := rc.DownloadToBytes(name)
@@ -148,5 +162,5 @@ func TestE2EMachineWindows(t *testing.T) {
 	if bad > 0 {
 		t.Errorf("%d chunks read back from the destination disk do not match PBS", bad)
 	}
-	t.Logf("E2E_MACHINE_SNAPSHOT host %s %d", backupID, snapTime)
+	t.Logf("E2E_MACHINE_SNAPSHOT %s %s %d", btype, backupID, snapTime)
 }

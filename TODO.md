@@ -854,7 +854,7 @@ Directory mode PASS: 3 backups (full, incremental with VSS + prefetch, unchanged
 Machine mode PASS: 256 MB NTFS VHD disk backed up via `\.\PhysicalDriveN`, fidx read back, all 64 chunks hash to their digests, image written to a second disk, every chunk reads back identical, 306 of 306 files identical, chkdsk clean.
 Open findings (not fixed):
 - A file whose mtime is exactly 0 (1970-01-01 00:00:00 UTC) restores with the restore time: the archive stores 0 as "no mtime", so `ModTime != 0` cannot tell them apart. Rare, needs a format-level flag to fix.
-- `machinebackuplib/machinebackup.go` ~521: the VM config template uses `{{.VMID}}` inside `{{range .Disks}}`, where dot is a `BackupDisk`, so `BackupType: "vm"` fails at the very end with "can't evaluate field VMID" (should be `$.VMID`). The GUI uses type "host" so it is not hit; the standalone machine CLI path is. Upstream code (tizbac, 2026-08-14).
+- FIXED 2026-10-02 (6373ee1, upstream PR tizbac#90 library, #91 GUI "host"): the VM config template used `{{.VMID}}` inside `{{range .Disks}}`, so `BackupType: "vm"` failed at the end. Unit test added. Still TODO: live end-to-end run with `PBS_E2E_TYPE=vm` (test is ready, blocked 02/10 by deepthought USB disks dropping, which took the test PBS datastore on L: offline).
 
 #### Restore stage ideas (Mick, 2026-10-01: wants all three, pick up later)
 Follow-ups to the stage label under the restore progress bar (`restore:stage`, built in `1245992`).
