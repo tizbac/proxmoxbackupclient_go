@@ -2105,12 +2105,12 @@ function App() {
   const renderTreeNode = (entry, childrenByDir, depth) => {
     const isExpanded = expandedDirs.has(entry.path)
     const isSelected = selectedPaths.has(entry.path)
-    const indent = { paddingLeft: `${depth * 16}px` }
+    const indent = { paddingLeft: `${8 + depth * 20}px` }
     const origin = absOriginPath(entry.path)
     const rowTitle = origin ? t('originTooltip').replace('{path}', origin) : entry.path
     return (
       <div key={entry.path}>
-        <div title={rowTitle} style={{ ...indent, display: 'flex', alignItems: 'center', padding: '4px 8px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}>
+        <div title={rowTitle} style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', ...indent, cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}>
           <input
             type="checkbox"
             checked={isSelected}
@@ -2122,6 +2122,7 @@ function App() {
               {isExpanded ? '▾' : '▸'}
             </span>
           )}
+          {!entry.is_dir && <span style={{ display: 'inline-block', width: '14px', marginRight: '4px' }} />}
           <span
             onClick={() => entry.is_dir && toggleDir(entry.path)}
             style={{ flex: 1, cursor: entry.is_dir ? 'pointer' : 'default', fontSize: '14px' }}
