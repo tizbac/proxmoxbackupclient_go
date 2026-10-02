@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Fork changes (mjb-is/proxmoxbackupclient_go), 2026-09-25 to 2026-10-02. Builds from this period are versioned by commit (`dev-<sha>`).
+
+### Added
+- **Restore:** NTFS ACL and DOS attribute restore (Windows); POSIX ACL and extended attribute capture and restore (Linux); folder timestamps restored in a final stage; optional "Verify after restore" pass with the result in the completion banner; restore history in Reports; stage label under the progress bar; current-file line; a progress bar that tracks bytes written.
+- **Restore performance:** selective restore uses the archive's own GOODBYE index instead of a linear scan; read-ahead is bounded to the selected span; the snapshot tree loads one folder at a time with server-side selection sizes; the PBS snapshot listing timeout is raised to 120s for cold datastores; pre-1970 timestamps are applied.
+- **Backup Sets:** clone a set; confirm before deleting; the set's name is sent to PBS as the snapshot comment; an optional comment field on one-off backups; email notifications and post-backup actions (shutdown, exit, run an application); settings export and import.
+- **Progress and queue:** the progress card names the active set, shows from the moment a backup starts, has its own Stop button, and lists what is queued behind it; the current file is shown during directory backups; tray tooltip activity and Windows toast notifications; a prompt on window close while a job is running.
+- **Backup:** optional multi-threaded read-ahead (experimental); elastio-snap/dattobd called through ioctl instead of CLI wrappers; 18 interface languages; a bare-metal restore guide.
+- **Experimental:** machine backup as a PBS `vm` snapshot from the one-off form (numeric ID, reserved range by default).
+
+### Fixed
+- Machine-type Backup Sets could not save any edit, and the Save button stayed disabled while an unrelated one-shot backup was running.
+- Scheduler races that cleared a set's name and post-backup actions before completion read them, and gave generic labels in Reports.
+- Stop did nothing mid-directory for a directory backup; machine backup cancellation is covered by a live test.
+- VSS is skipped for network-share backup directories; multi-directory backups aggregate progress and total size correctly.
+- Selective restore sized its progress bar by the whole archive and fetched far more chunks than needed.
+- The PBS chunk-fetch `zstd.NewReader` deadlock that made full-machine restores hang (merged upstream as PR #85).
+- The generated VM config for the `vm` snapshot type: the SATA drive no longer carries `iothread=1`, which Proxmox VE rejects, and a non-numeric ID now says what to do instead of failing after the disk transfer.
+- `config.json.example` had unterminated JSON strings; config tests no longer write to the real system config path.
+
 ## [0.2.119] - 2026-06-12
 
 ### Internal

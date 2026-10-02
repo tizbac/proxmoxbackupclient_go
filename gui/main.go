@@ -1192,9 +1192,10 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			// has no such requirement and is the right choice for a plain
 			// bare-metal backup (the Clonezilla/NBD restore path reads the
 			// raw disk chunks directly, not this VM config, so nothing about
-			// that workflow needs "vm" type). "vm" would only make sense for
-			// an explicit, not-yet-built Physical-to-Virtual-into-Proxmox-VE
-			// feature with its own numeric-VMID input.
+			// that workflow needs "vm" type). The experimental "vm" type, with
+			// its own numeric-VMID input on the one-off form, is reached via
+			// StartMachineBackup instead: see machineSnapshotType. This
+			// StartBackup path always stays "host".
 			opts.BackupType = "host"
 			err = RunBackupInline(opts)
 		} else {
@@ -1610,9 +1611,9 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 //     destPath/<basename>.
 //
 // includePaths uses archive-style paths (forward slash). When empty the entire
-// snapshot is restored. The ACL/ADS/timestamps flags are accepted today but
-// only timestamps is effective — the per-file NTFS sidecar required for the
-// other two is still on the roadmap.
+// snapshot is restored. restoreACLs (NTFS ACLs/attributes on Windows, POSIX
+// ACLs/xattrs on Linux) and timestamps are effective; restoreADS is still a
+// logged no-op because no alternate data stream capture exists yet.
 //
 // Progress is streamed to the frontend via the "restore:progress" event;
 // completion via "restore:complete".

@@ -24,9 +24,13 @@ It is a **suite of tools** for backing up to PBS:
 
 This is **mjb-is's fork** of the upstream project — repo: **https://github.com/mjb-is/proxmoxbackupclient_go**. Focus areas: creating functionality and flow that would allow PBS to be the single server-based backup system in my homelab, which currently uses a mix of Proxmox Backup Server with Proxmox VE VM and Linux host backups, Backup for Workgroups for Windows servers file-based and bare-metal recovery, FastFileSync/Rsync incremental file mirrors, and CloneZilla/RescueZilla. Hardening the Windows/Linux GUI client and building a fully automated bare-metal restore path on top of Clonezilla. Highlights over upstream:
 
-- **Rebuilt GUI**: a refined native File/View/Tools/Help menu bar, a left sidebar (Backup, Restore, Reports, Message Log, Servers, About), a "Backup Sets" scheduler (enhanced daily / interval / manual trigger modes, with a type badge and a one-click "Run Now"), a Reports page with full backup history, a capped Message Log, and a Preferences dialog with five colour themes (Amber, Blue, Green, Red, Dark) plus a custom colour option. Six interface languages now (French, English, Italian, German, Polish, Spanish), with removal of all hardcoded language, so the full application displays consistently in the selected language.
+- **Rebuilt GUI**: a refined native File/View/Tools/Help menu bar, a left sidebar (Backup, Restore, Reports, Message Log, Servers, About), a "Backup Sets" scheduler (enhanced daily / interval / manual trigger modes, with a type badge and a one-click "Run Now"), a Reports page with full backup history, a capped Message Log, and a Preferences dialog with five colour themes (Amber, Blue, Green, Red, Dark) plus a custom colour option. Eighteen interface languages now (French, English, Italian, German, Polish, Spanish, Bulgarian, Czech, Greek, Hungarian, Latvian, Lithuanian, Dutch, Portuguese, Romanian, Slovak, Turkish and Ukrainian), with removal of all hardcoded language, so the full application displays consistently in the selected language.
 - **A real PBS/NBD chunk-fetch reliability fix**: Regular hangs on full machine backup restore (4 fails to 1 success typical) due to a `zstd.NewReader` call in the reader path started with a live `io.Reader` instead of `nil`, silently spinning up an unused background streaming-decode goroutine that could deadlock a bare-metal restore mid-transfer. Fixed upstream too, merged as [PR #85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85).
 - **New: a fully automated "PBS Bare Metal Restore" wizard** for the Clonezilla live ISO — see [below](#clonezilla-live-iso-bare-metal-restore). Test restore of a 32GiB Windows machine from power-on into the boot ISO, through to a restored Windows login, in just 8 minutes; similarly, a 40GiB Linux Mint restore in 10 minutes to the login prompt. Both tested on isolated VMs, still to be tested on bare metal.
+- **Restore fidelity and feedback**: NTFS ACLs and DOS attributes are re-applied on Windows, and POSIX ACLs and extended attributes on Linux (both verified live). Folder timestamps are restored as well as file ones. An optional "Verify after restore" pass re-reads what was written and compares it with the snapshot. Selective restore uses the archive's own index instead of scanning it, the snapshot tree loads one folder at a time, and the restore progress bar tracks bytes actually written, with a stage label under it and the run recorded in Reports.
+- **Backup Set workflow**: clone a set, a Backup Set's name is written to PBS as the snapshot comment (one-off backups get an optional comment field), email notifications with on-failure options, post-backup actions (shut down, exit the app, run an application), settings export and import between machines, a queue that names what is waiting behind the active job, and a Stop button on the progress card.
+- **Backup behaviour**: an optional multi-threaded read-ahead for backups (experimental), the file currently being archived is shown during directory backups, network shares are no longer snapshotted with VSS, and mapped drives are visible in the folder picker even when the app is elevated. A tray tooltip and Windows toast notifications report backup and restore activity.
+- **Experimental: machine backup as a Proxmox VE "vm" snapshot.** The one-off backup form can store a machine backup as `vm/<id>` so Proxmox VE can list and restore it. The ID is numeric, with an offset into a reserved range by default so it cannot clash with a real VM. The generated VM config is minimal (SATA disk, no UEFI or TPM), so a Windows UEFI machine is not expected to boot as a VM. Host backup remains the default.
 
 Anything of general use gets sent upstream as a PR (like #85 above) rather than kept fork-only; day-to-day fork-specific work stays here. The original author may choose to merge anything else from this repo as they see fit under GPL.
 
@@ -50,7 +54,7 @@ Get-FileHash .\ProxmoxBackupClient-v0.3.0-windows-amd64.zip -Algorithm SHA256   
 ## ✨ Features
 
 ### GUI — Proxmox Backup Client GUI (recommended)
-- **🌍 Multilingual** — French, English, Italian, German, Polish and Spanish interfaces
+- **🌍 Multilingual** — 18 interface languages: French, English, Italian, German, Polish, Spanish, Bulgarian, Czech, Greek, Hungarian, Latvian, Lithuanian, Dutch, Portuguese, Romanian, Slovak, Turkish and Ukrainian
 - Native menu bar + sidebar navigation (Backup, Restore, Reports, Message Log, Servers, About)
 - **Backup Sets** — reusable named jobs with daily / interval / manual scheduling, a directory-vs-machine type badge, and "Run Now"
 - **Reports** page with full backup history, and a capped **Message Log** for diagnostics
@@ -59,7 +63,9 @@ Get-FileHash .\ProxmoxBackupClient-v0.3.0-windows-amd64.zip -Algorithm SHA256   
 - Real-time backup progress with throughput and time remaining
 - VSS (Volume Shadow Copy) support for consistent backups
 - Multi-folder backups, file and disk modes
-- Snapshot browsing, file search (wildcards) and restoration
+- Snapshot browsing, file search (wildcards) and selective restoration, with NTFS/POSIX ACL restore, folder timestamps and an optional verify pass
+- Email notifications and post-backup actions, Backup Set cloning, settings export and import
+- Experimental machine backup as a Proxmox VE `vm` snapshot
 - Multi-PBS server support with certificate fingerprint pinning (TOFU)
 - Windows service mode + scheduled backups
 - Backup cancel, full history and rerun
@@ -186,7 +192,7 @@ Custom
 </tr>
 </table>
 
-**🌍 Multilingual** — the Reports page in French, Italian and Spanish (also available: English, German, Polish):
+**🌍 Multilingual** — the Reports page in French, Italian and Spanish (and 15 more, including English, German and Polish):
 
 <table>
 <tr>
@@ -417,7 +423,7 @@ If you use the Windows planning utility it should theoretically prevent two inst
 ## 🔨 Building from source
 
 ### Prerequisites
-- Go 1.22 or later
+- Go 1.25 or later
 - Node.js 20 or later
 - Wails CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 
@@ -491,7 +497,6 @@ build_cli.bat      # CLI
 - **[TODO.md](TODO.md)** — open roadmap and ideas.
 - **[RELEASE_NOTES.md](RELEASE_NOTES.md)** — stable product state and available builds.
 - **[MSI_UNINSTALL_TEST.md](MSI_UNINSTALL_TEST.md)** — MSI uninstall dialog (keep/delete configuration) and its test plan.
-- **[FIXES_SUMMARY.md](FIXES_SUMMARY.md)** — GUI fix notes (directory vs machine-backup mode switching).
 
 ## 🌐 Tech Support in Italy
 
@@ -541,7 +546,7 @@ The **GPLv3 license remains active**, and you will still be free to fork the pro
 The GUI is now fully implemented, but contributions are still welcome, especially:
 
 1. Encryption support (still missing)
-2. Physical-to-virtual (P2V) migration, restoring a bare-metal backup into a virtual machine (still incomplete)
+2. Physical-to-virtual (P2V) migration, restoring a bare-metal backup into a virtual machine (partly there: the experimental `vm` snapshot type gives Proxmox VE a restorable config, but not UEFI/TPM or driver handling)
 3. Async upload / multicore upload of chunks (multicore compression is already implemented for machine backup)
 4. Proxmox side patch to add another kind of entry to pxar format with Windows security descriptors in it
 5. Support for Windows symlinks

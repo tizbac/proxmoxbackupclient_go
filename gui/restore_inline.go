@@ -38,10 +38,11 @@ const (
 // descendants. Paths use forward slashes (archive style); backslashes are
 // accepted and normalized.
 //
-// RestoreACLs / RestoreADS / RestoreTimestamps are reserved for the upcoming
-// NTFS sidecar work — accepted today so the API surface is stable, but only
-// RestoreTimestamps has any effect (always-on: mtime is restored). The other
-// two are no-ops until the per-file .proxmox_meta sidecar lands.
+// RestoreACLs re-applies the captured NTFS ACLs/DOS attributes (Windows) or
+// POSIX ACLs/xattrs (Linux) from the snapshot's metadata blob. RestoreTimestamps
+// is always effective: file mtimes, and folder mtimes in a final pass, are
+// restored regardless. RestoreADS is still reserved: no alternate data stream
+// capture exists yet, so it is a logged no-op.
 type RestoreOptions struct {
 	BaseURL         string
 	AuthID          string
@@ -65,8 +66,8 @@ type RestoreOptions struct {
 
 	IncludePaths      []string
 	Overwrite         bool
-	RestoreACLs       bool // reserved — requires NTFS sidecar
-	RestoreADS        bool // reserved — requires NTFS sidecar
+	RestoreACLs       bool // applies NTFS ACLs/attributes (Windows) or POSIX ACLs/xattrs (Linux)
+	RestoreADS        bool // reserved, no ADS capture exists yet
 	RestoreTimestamps bool // mtime is always restored; flag kept for symmetry
 
 	// Ctx, when set, bounds the whole restore: cancelling it aborts an
