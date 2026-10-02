@@ -384,7 +384,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 	// bad ID now rather than after every disk has been transferred.
 	if cfg.BackupType == "vm" {
 		if _, err := strconv.ParseInt(cfg.BackupID, 10, 32); err != nil {
-			return nil, fmt.Errorf("backup type \"vm\" needs a numeric VM ID as backup ID, got %q", cfg.BackupID)
+			return nil, fmt.Errorf("backup type \"vm\" needs a numeric VM ID (e.g. 100) as the backup ID, got %q: use a numeric ID, or use backup type \"host\" if a VM-type snapshot is not required", cfg.BackupID)
 		}
 	}
 
