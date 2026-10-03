@@ -30,7 +30,7 @@ This is **mjb-is's fork** of the upstream project — repo: **https://github.com
 - **Restore fidelity and feedback**: NTFS ACLs and DOS attributes are re-applied on Windows, and POSIX ACLs and extended attributes on Linux (both verified live). Folder timestamps are restored as well as file ones. An optional "Verify after restore" pass re-reads what was written and compares it with the snapshot. Selective restore uses the archive's own index instead of scanning it, the snapshot tree loads one folder at a time, and the restore progress bar tracks bytes actually written, with a stage label under it and the run recorded in Reports.
 - **Backup Set workflow**: clone a set, a Backup Set's name is written to PBS as the snapshot comment (one-off backups get an optional comment field), email notifications with on-failure options, post-backup actions (shut down, exit the app, run an application), settings export and import between machines, a queue that names what is waiting behind the active job, and a Stop button on the progress card.
 - **Backup behaviour**: an optional multi-threaded read-ahead for backups (experimental), the file currently being archived is shown during directory backups, network shares are no longer snapshotted with VSS, and mapped drives are visible in the folder picker even when the app is elevated. A tray tooltip and Windows toast notifications report backup and restore activity.
-- **Experimental: machine backup as a Proxmox VE "vm" snapshot.** The one-off backup form can store a machine backup as `vm/<id>` so Proxmox VE can list and restore it (pick a target Storage in the restore dialog; a restored Windows UEFI/GPT disk is verified to boot). The ID is numeric, with an offset into a reserved range by default so it cannot clash with a real VM. The generated VM config is minimal (SATA disk, OVMF for GPT disks, no TPM or Secure Boot keys, no drivers), so expect a bare-bones VM. This also works as a physical-to-virtual conversion: a `vm` snapshot restores onto Proxmox VE and boots (verified with a Windows Server UEFI disk), and the same snapshot can still be restored onto bare metal with the Clonezilla bare-metal restore, which lists `vm` snapshots alongside `host` ones (verified over PXE onto a blank VM). Host backup remains the default.
+- **Experimental: machine backup as a Proxmox VE "vm" snapshot.** The one-off backup form and Backup Sets can store a machine backup as `vm/<id>` so Proxmox VE can list and restore it (pick a target Storage in the restore dialog; a restored Windows UEFI/GPT disk is verified to boot). The ID is numeric, with an offset into a reserved range by default so it cannot clash with a real VM. The generated VM config is minimal (SATA disk, OVMF for GPT disks, no TPM or Secure Boot keys, no drivers), so expect a bare-bones VM. This also works as a physical-to-virtual conversion: a `vm` snapshot restores onto Proxmox VE and boots (verified with a Windows Server UEFI disk), and the same snapshot can still be restored onto bare metal with the Clonezilla bare-metal restore, which lists `vm` snapshots alongside `host` ones (verified over PXE onto a blank VM). A Backup Set stores its numeric ID, so every scheduled run lands in the same `vm/<id>` group; a set with a non-numeric ID is refused at save time. Host backup remains the default.
 
 Anything of general use gets sent upstream as a PR (like #85 above) rather than kept fork-only; day-to-day fork-specific work stays here. The original author may choose to merge anything else from this repo as they see fit under GPL.
 
@@ -97,6 +97,25 @@ Get-FileHash .\ProxmoxBackupClient-v0.3.0-windows-amd64.zip -Algorithm SHA256   
 [<img src="docs/screenshots/gui-restore.png" width="280">](docs/screenshots/gui-restore.png)
 **Restore** — pick a PBS server and backup ID, list snapshots or search across them by filename
 
+</td>
+</tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/backup-sets-vm-badge.png" width="280">](docs/screenshots/backup-sets-vm-badge.png)
+**Backup Sets as Proxmox VE VMs** — a set stored as a `vm` snapshot carries a `MACHINE (VM)` badge
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/backup-set-as-vm.png" width="280">](docs/screenshots/backup-set-as-vm.png)
+**Backup as (experimental)** — choose the Proxmox VE virtual machine type and a numeric ID; the PBS backup ID is shown as you type
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/oneoff-as-vm.png" width="280">](docs/screenshots/oneoff-as-vm.png)
+**One-off backups** — the same option on the one-off form
 </td>
 </tr>
 <tr>

@@ -297,6 +297,16 @@ function App() {
   const [machineAsVM, setMachineAsVM] = useState(false)
   const [vmIdNumber, setVmIdNumber] = useState('')
   const [vmIdStyle, setVmIdStyle] = useState('range') // 'range' = 9000000+N, 'zeros' = 000N
+  // Reverse of computeVmBackupId: refill the editor from a saved Backup Set.
+  const applyVmFieldsFromJob = (job) => {
+    const isVm = job.backupType === 'machine' && !!job.machineAsVm
+    setMachineAsVM(isVm)
+    if (!isVm) { setVmIdNumber(''); setVmIdStyle('range'); return }
+    const id = String(job.backupId || '')
+    if (/^000\d+$/.test(id)) { setVmIdStyle('zeros'); setVmIdNumber(id.slice(3)) }
+    else if (/^9\d{6}$/.test(id)) { setVmIdStyle('range'); setVmIdNumber(String(parseInt(id, 10) - 9000000)) }
+    else { setVmIdStyle('range'); setVmIdNumber(id.replace(/\D/g, '').slice(0, 6)) }
+  }
   const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
   const [backupPBSID, setBackupPBSID] = useState('') // Destination tab: which configured PBS server this backup/set targets
   const [backupStats, setBackupStats] = useState({
@@ -1592,7 +1602,7 @@ function App() {
       return
     }
 
-    const useVmType = backupType === 'machine' && backupMode === 'oneshot' && machineAsVM
+    const useVmType = backupType === 'machine' && machineAsVM
     const vmBackupID = useVmType ? computeVmBackupId(vmIdNumber, vmIdStyle) : ''
     if (useVmType && !vmBackupID) {
       showStatus(`❌ ${tl('machineVmIdInvalid', 'Enter a VM ID between 1 and 999999.')}`, 'error')
@@ -1631,9 +1641,10 @@ function App() {
         windowEnd: triggerMode === 'interval' && !windowAllDay ? windowEnd : undefined,
         daysOfWeek: triggerMode === 'manual' ? [] : daysOfWeek,
         backupDirs: backupType === 'directory' ? dirList : [],
-        backupId: config['backup-id'],
+        backupId: useVmType ? vmBackupID : config['backup-id'],
         useVSS: config.usevss,
         backupType: backupType,
+        machineAsVm: useVmType,
         excludeList: backupType === 'directory' ? getEffectiveExcludeList() : [],
         driveLetters: backupType === 'machine' ? selectedDrives : [],
         pbsServerId: backupPBSID,
@@ -1663,6 +1674,7 @@ function App() {
         }
         // Reset form after save
         setJobName('')
+        setMachineAsVM(false); setVmIdNumber('')
         setScheduleTime('02:00')
         setRunAtStartup(false)
         setTriggerMode('daily')
@@ -2805,6 +2817,7 @@ function App() {
                   onClick={() => {
                     setEditingJobId(null)
                     setJobName('')
+                    setMachineAsVM(false); setVmIdNumber('')
                     setBackupMode('scheduled')
                     setScheduleTime('02:00')
                     setRunAtStartup(false)
@@ -2880,7 +2893,7 @@ function App() {
                                 padding: '2px 7px', borderRadius: '3px', background: '#eef3ec', color: '#2e7d47',
                                 border: '1px solid '+'#c8e0cf', verticalAlign: 'middle', marginRight: '6px',
                               }}>
-                                {(job.backupType === 'machine' ? t('backupTypeMachine') : t('backupTypeDirectory')).split(' ')[0].toUpperCase()}
+                                {(job.backupType === 'machine' ? t('backupTypeMachine') : t('backupTypeDirectory')).split(' ')[0].toUpperCase()}{job.machineAsVm ? ' (VM)' : ''}
                               </span>
                               {job.triggerMode === 'manual'
                                 ? t('manualOnDemand')
@@ -2941,6 +2954,7 @@ function App() {
                               setSelectedDrives(job.driveLetters || [])
                               setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                               setBackupType(job.backupType)
+                              applyVmFieldsFromJob(job)
                               setBackupPBSID(job.pbsServerId || defaultPBSID)
                               setExcludeList(job.excludeList.join('\n'))
                               setTreeExcludes([])
@@ -2976,6 +2990,7 @@ function App() {
                               setSelectedDrives(job.driveLetters || [])
                               setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                               setBackupType(job.backupType)
+                              applyVmFieldsFromJob(job)
                               setBackupPBSID(job.pbsServerId || defaultPBSID)
                               setExcludeList(job.excludeList.join('\n'))
                               setTreeExcludes([])
@@ -3282,7 +3297,7 @@ function App() {
               selectedDrives={selectedDrives}
             />
           )}
-          {backupType === 'machine' && backupMode === 'oneshot' && (
+          {backupType === 'machine' && (
             <div className="form-group">
               <label>{tl('machineBackupAsLabel', 'Backup as (experimental)')}</label>
               <select
@@ -3318,7 +3333,7 @@ function App() {
                     {tl('machineVmIdResult', 'Backup ID in PBS:')} <strong>{computeVmBackupId(vmIdNumber, vmIdStyle) || '-'}</strong>
                   </div>
                   <div style={{fontSize: '12px', color: '#b36b00', marginTop: '6px', maxWidth: '520px'}}>
-                    {tl('machineVmWarning', 'Experimental. The snapshot is stored under vm/<ID> so Proxmox VE can list it. A real VM backup with the same ID would share that namespace, so the ID is offset to stay clear of yours. Windows UEFI/GPT disks will not boot as a generated VM; BIOS/MBR and data disks are likelier to.')}
+                    {tl('machineVmWarning', 'Experimental. The snapshot is stored under vm/<ID> so Proxmox VE can list it. A real VM backup with the same ID would share that namespace, so the ID is offset to stay clear of yours. Restore it from Proxmox VE (pick a target Storage) or with the Clonezilla bare-metal restore. The generated VM is bare-bones: SATA disk, OVMF for GPT disks, no network card, TPM or drivers.')}
                   </div>
                 </div>
               )}
@@ -3355,7 +3370,7 @@ function App() {
               ))}
             </select>
           </div>
-          {!(backupType === 'machine' && backupMode === 'oneshot' && machineAsVM) && (
+          {!(backupType === 'machine' && machineAsVM) && (
           <div className="form-group">
             <label>{t('backupID')}</label>
             <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
@@ -3507,6 +3522,7 @@ function App() {
             <button className="btn btn-secondary" onClick={() => {
               setEditingJobId(null)
               setJobName('')
+              setMachineAsVM(false); setVmIdNumber('')
               setScheduleTime('02:00')
               setRunAtStartup(false)
               setTriggerMode('daily')

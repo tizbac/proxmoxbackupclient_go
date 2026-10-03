@@ -15,7 +15,7 @@ Fork changes (mjb-is/proxmoxbackupclient_go), 2026-09-25 to 2026-10-02. Builds f
 - **Backup Sets:** clone a set; confirm before deleting; the set's name is sent to PBS as the snapshot comment; an optional comment field on one-off backups; email notifications and post-backup actions (shutdown, exit, run an application); settings export and import.
 - **Progress and queue:** the progress card names the active set, shows from the moment a backup starts, has its own Stop button, and lists what is queued behind it; the current file is shown during directory backups; tray tooltip activity and Windows toast notifications; a prompt on window close while a job is running.
 - **Backup:** optional multi-threaded read-ahead (experimental); elastio-snap/dattobd called through ioctl instead of CLI wrappers; 18 interface languages; a bare-metal restore guide.
-- **Experimental:** machine backup as a PBS `vm` snapshot from the one-off form (numeric ID, reserved range by default).
+- **Experimental:** machine backup as a PBS `vm` snapshot, from the one-off form and from Backup Sets (numeric ID, reserved range by default). A set keeps its ID so scheduled runs land in one `vm/<id>` group, and a non-numeric ID is refused when the set is saved. Restores onto Proxmox VE and boots (verified with a Windows UEFI disk), and restores onto bare metal with the Clonezilla bare-metal restore.
 
 ### Fixed
 - Machine-type Backup Sets could not save any edit, and the Save button stayed disabled while an unrelated one-shot backup was running.

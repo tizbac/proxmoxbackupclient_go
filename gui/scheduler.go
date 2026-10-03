@@ -31,6 +31,11 @@ type ScheduledJob struct {
 	PBSServerID string   `json:"pbsServerId,omitempty"`
 	UseVSS      bool     `json:"useVSS"`
 	BackupType  string   `json:"backupType"`
+	// MachineAsVM stores a machine backup set as a Proxmox VE "vm" snapshot
+	// instead of a "host" one (experimental). BackupID must then be the
+	// numeric PBS ID, computed by the editor, so the same set always lands in
+	// the same vm/<id> group.
+	MachineAsVM bool     `json:"machineAsVm,omitempty"`
 	ExcludeList []string `json:"excludeList"`
 	Compression string   `json:"compression"`       // "fastest", "default", "better", "best"
 	LastRun     string   `json:"lastRun,omitempty"` // ISO timestamp
@@ -194,6 +199,9 @@ func getJobHistoryPath() (string, error) {
 // SaveScheduledJob saves a new scheduled job
 func (a *App) SaveScheduledJob(job ScheduledJob) error {
 	writeDebugLog(fmt.Sprintf("SaveScheduledJob called for: %s", job.Name))
+	if err := validateScheduledJob(job); err != nil {
+		return err
+	}
 
 	// Load existing jobs
 	jobs, err := a.GetScheduledJobs()
@@ -290,6 +298,9 @@ func (a *App) GetScheduledJobsForAPI() []map[string]interface{} {
 // UpdateScheduledJob updates an existing scheduled job
 func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 	writeDebugLog(fmt.Sprintf("UpdateScheduledJob called for: %s", job.Name))
+	if err := validateScheduledJob(job); err != nil {
+		return err
+	}
 
 	// Load existing jobs
 	jobs, err := a.GetScheduledJobs()
@@ -922,7 +933,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	var err error
 	if job.BackupType == "machine" {
 		err = a.StartMachineBackup(
-			job.BackupType,
+			scheduledMachineBackupType(job),
 			driveLetters,
 			job.BackupID,
 			job.UseVSS,
