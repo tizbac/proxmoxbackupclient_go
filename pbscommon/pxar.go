@@ -425,6 +425,9 @@ type CatalogFile struct {
 	Name  string
 	MTime uint64
 	Size  uint64
+	// Kind is the catalog entry type byte; zero means a regular file ('f').
+	// 'l' is a symbolic link, which the catalog records by name only.
+	Kind byte
 }
 
 func append_u64_7bit(a []byte, v uint64) []byte {
@@ -634,16 +637,17 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 
 	dir_start_pos := a.pos
 
+	dMode, dUID, dGID, dSecs, dNanos := entryMeta(fileInfo, IFDIR)
 	entry := &PXARFileEntry{
 		hdr:   PXAR_ENTRY,
 		len:   56,
-		mode:  IFDIR | 0o777,
+		mode:  dMode,
 		flags: 0,
-		uid:   1000, //This is fixed because this project for now targeting windows , on which execute, traverse etc permissions don't exist
-		gid:   1000,
+		uid:   dUID, // fixed 1000 off Linux: Windows has no POSIX owners or modes
+		gid:   dGID,
 		mtime: MTime{
-			secs:    uint64(fileInfo.ModTime().Unix()),
-			nanos:   0,
+			secs:    dSecs,
+			nanos:   dNanos,
 			padding: 0,
 		},
 	}
@@ -779,6 +783,12 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 	}
 
 	for _, f := range catalog_files {
+		if f.Kind == 'l' {
+			tabledata = append(tabledata, 'l')
+			tabledata = append_u64_7bit(tabledata, uint64(len(f.Name)))
+			tabledata = append(tabledata, []byte(f.Name)...)
+			continue
+		}
 		tabledata = append(tabledata, 'f')
 		tabledata = append_u64_7bit(tabledata, uint64(len(f.Name)))
 		tabledata = append(tabledata, []byte(f.Name)...)
@@ -934,6 +944,19 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 		return CatalogFile{}, nil
 	}
 
+	if posixFidelity {
+		if fileInfo.Mode()&os.ModeSymlink != 0 {
+			return a.writeSymlink(path, basename, fileInfo)
+		}
+		// FIFOs and sockets would block on open, and device nodes are not
+		// regular data: record them as skipped rather than hang or misread.
+		if !fileInfo.Mode().IsRegular() {
+			a.SkippedFiles = append(a.SkippedFiles,
+				fmt.Sprintf("Special file (skipped): %s", path))
+			return CatalogFile{}, nil
+		}
+	}
+
 	// Skip junction points and symlinks (common on Windows: "Application Data", etc.)
 	if fileInfo.Mode()&os.ModeSymlink != 0 {
 		skipMsg := fmt.Sprintf("Junction point (skipped): %s", path)
@@ -995,16 +1018,17 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	a.buffer.WriteString(basename)
 	a.buffer.WriteByte(0x00)
 
+	fMode, fUID, fGID, fSecs, fNanos := entryMeta(fileInfo, IFREG)
 	entry := &PXARFileEntry{
 		hdr:   PXAR_ENTRY,
 		len:   56,
-		mode:  IFREG | 0o777,
+		mode:  fMode,
 		flags: 0,
-		uid:   1000,
-		gid:   1000,
+		uid:   fUID,
+		gid:   fGID,
 		mtime: MTime{
-			secs:    uint64(fileInfo.ModTime().Unix()),
-			nanos:   0,
+			secs:    fSecs,
+			nanos:   fNanos,
 			padding: 0,
 		},
 	}
@@ -1100,6 +1124,45 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 		MTime: uint64(fileInfo.ModTime().Unix()),
 		Size:  uint64(fileInfo.Size()),
 	}, nil
+}
+
+// writeSymlink stores a symbolic link as FILENAME, ENTRY (IFLNK) and a SYMLINK
+// record holding the NUL-terminated target, the layout Proxmox's own pxar uses.
+// The link is never followed.
+func (a *PXARArchive) writeSymlink(path, basename string, info os.FileInfo) (CatalogFile, error) {
+	target, err := os.Readlink(path)
+	if err != nil {
+		a.addReadError(fmt.Sprintf("Cannot read symlink: %s (Error: %v)", path, err))
+		return CatalogFile{}, nil
+	}
+
+	binary.Write(&a.buffer, binary.LittleEndian, &PXARFilenameEntry{
+		hdr: PXAR_FILENAME,
+		len: uint64(16) + uint64(len(basename)) + 1,
+	})
+	a.buffer.WriteString(basename)
+	a.buffer.WriteByte(0x00)
+
+	mode, uid, gid, secs, nanos := entryMeta(info, IFLNK)
+	binary.Write(&a.buffer, binary.LittleEndian, &PXARFileEntry{
+		hdr:   PXAR_ENTRY,
+		len:   56,
+		mode:  mode,
+		flags: 0,
+		uid:   uid,
+		gid:   gid,
+		mtime: MTime{secs: secs, nanos: nanos},
+	})
+
+	binary.Write(&a.buffer, binary.LittleEndian, PXAR_SYMLINK)
+	binary.Write(&a.buffer, binary.LittleEndian, uint64(16)+uint64(len(target))+1)
+	a.buffer.WriteString(target)
+	a.buffer.WriteByte(0x00)
+
+	if err := a.Flush(); err != nil {
+		return CatalogFile{}, err
+	}
+	return CatalogFile{Name: basename, Kind: 'l'}, nil
 }
 
 // WriteVirtualFile writes an in-memory file into the PXAR archive.

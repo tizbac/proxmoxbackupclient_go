@@ -1274,6 +1274,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		}, nil, func(reader *pbscommon.PXARReader) error {
 			stage("transferring", archiveDetail)
 			reader.SetHashFiles(opts.VerifyAfterRestore)
+			reader.SetRestoreOwnership(restoreOwnershipEnabled())
 			if opts.OnFile != nil {
 				reader.SetFileCallback(opts.OnFile)
 			}
@@ -1394,6 +1395,9 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 				progress(extractEnd, fmt.Sprintf("Setting folder timestamps: %d of %d", done, total))
 			})
 		writeBackupLog(fmt.Sprintf("Folder timestamps: applied %d, failed %d", dApplied, dFailed))
+		if restoreOwnershipEnabled() {
+			applyDirectoryOwnership(extracted)
+		}
 		if opts.Ctx != nil && opts.Ctx.Err() != nil {
 			return fmt.Errorf("restore cancelled while setting folder timestamps")
 		}

@@ -200,6 +200,10 @@ func parseCatalogTable(data []byte, tableStart uint64) ([]catalogDirRef, []catal
 			}
 			pos = np
 			files = append(files, catalogFileRef{name: name, size: size, mtime: mtime})
+		case 'l', 'h', 'b', 'c', 'p', 's':
+			// Symlink, hardlink, block/char device, fifo, socket: recorded by
+			// name only. Listed as zero-size entries.
+			files = append(files, catalogFileRef{name: name})
 		default:
 			return nil, nil, fmt.Errorf("table at %d: unknown entry type %q", tableStart, typ)
 		}

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,7 +20,7 @@ import (
 
 // PXARReader reads and extracts PXAR archives.
 // Supports nested directories, selective extraction, and content listing.
-// Symlinks, ACLs, xattrs and devices are still skipped (read past) for now.
+// Symbolic links are restored. ACLs, xattrs and devices are still skipped (read past).
 //
 // The reader is backed by an io.ReaderAt rather than a single in-memory slice,
 // so a multi-GB archive assembled to a temp file can be walked without ever
@@ -67,6 +68,79 @@ type PXARReader struct {
 	// written (PXARExtractedFile.SHA256), for the optional verify-after-restore
 	// pass. Off by default so a normal restore pays nothing.
 	hashFiles bool
+
+	// restoreOwner applies each entry's recorded owner and full permission
+	// bits (setuid, setgid, sticky) after it is written. Only meaningful on
+	// Linux, and ownership only changes when running as root.
+	restoreOwner bool
+
+	// createdLinks holds every symlink this extraction created. Entries whose
+	// path runs through one are refused, so a hostile archive cannot plant a
+	// link to /etc and then write "through" it. Touched only by the walking
+	// goroutine.
+	createdLinks map[string]struct{}
+}
+
+// SetRestoreOwnership makes extraction restore recorded owners and full mode
+// bits. Off by default: archives written on Windows carry a fixed 1000:1000
+// and 0777, which must not be applied to a Linux restore unless asked for.
+func (pr *PXARReader) SetRestoreOwnership(on bool) { pr.restoreOwner = on }
+
+// underCreatedLink reports whether any parent directory of path is a symlink
+// created earlier in this extraction.
+func (pr *PXARReader) underCreatedLink(path string) bool {
+	if len(pr.createdLinks) == 0 {
+		return false
+	}
+	for p := filepath.Dir(path); ; {
+		if _, ok := pr.createdLinks[p]; ok {
+			return true
+		}
+		up := filepath.Dir(p)
+		if up == p {
+			return false
+		}
+		p = up
+	}
+}
+
+// extractSymlink creates one symbolic link entry.
+func (pr *PXARReader) extractSymlink(e PXARTreeEntry, fullPath string, overwrite bool) PXARExtractedFile {
+	skip := func(reason string, expected bool) PXARExtractedFile {
+		return PXARExtractedFile{Path: fullPath, Skipped: true, Expected: expected, SkipReason: reason}
+	}
+	if runtime.GOOS == "windows" {
+		return skip("symbolic link not restored on Windows", true)
+	}
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+		return skip(fmt.Sprintf("mkdir parent: %v", err), false)
+	}
+	if fi, err := os.Lstat(fullPath); err == nil {
+		if !overwrite {
+			return skip("already exists", true)
+		}
+		if fi.IsDir() {
+			return skip("a directory already exists at the link path", false)
+		}
+		if err := os.Remove(fullPath); err != nil {
+			return skip(fmt.Sprintf("remove existing: %v", err), false)
+		}
+	}
+	if err := os.Symlink(e.LinkTarget, fullPath); err != nil {
+		return skip(fmt.Sprintf("symlink: %v", err), false)
+	}
+	if pr.createdLinks == nil {
+		pr.createdLinks = make(map[string]struct{})
+	}
+	pr.createdLinks[fullPath] = struct{}{}
+	if pr.restoreOwner {
+		chownLink(fullPath, e.UID, e.GID)
+	}
+	setLinkTime(fullPath, e.ModTime, e.ModNanos)
+	return PXARExtractedFile{
+		Path: fullPath, ArchivePath: e.Path,
+		Mode: os.ModeSymlink | 0777, ModTime: e.ModTime, ModNanos: e.ModNanos,
+	}
 }
 
 // SetHashFiles turns per-file SHA-256 of the extracted payloads on or off.
@@ -138,6 +212,15 @@ type PXARTreeEntry struct {
 	Size    uint64
 	Mode    uint32
 	ModTime int64
+	// ModNanos is the sub-second part of ModTime (zero for archives written
+	// on Windows). UID and GID are the recorded owner.
+	ModNanos uint32
+	UID      uint32
+	GID      uint32
+	// IsSymlink marks a symbolic link; LinkTarget is where it points. Such an
+	// entry has no payload.
+	IsSymlink  bool
+	LinkTarget string
 	// Weight is the number of archive bytes this entry accounts for: from the
 	// end of the previous emitted entry to the end of this one (headers,
 	// filename, payload). Summed over a span it equals the span's size, which
@@ -158,9 +241,15 @@ type PXARExtractedFile struct {
 	ArchivePath string
 	Size        uint64
 	Mode       os.FileMode
-	ModTime    int64
-	IsDir      bool
-	Data       []byte
+	// RawMode, UID and GID are the recorded st_mode (with setuid/setgid/sticky),
+	// owner and group; ModNanos is the sub-second mtime.
+	RawMode  uint32
+	UID      uint32
+	GID      uint32
+	ModNanos uint32
+	ModTime  int64
+	IsDir    bool
+	Data     []byte
 	Skipped    bool
 	SkipReason string
 	// Expected marks a deliberate, non-error skip (e.g. a file left untouched
@@ -260,6 +349,7 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 	pendingName := ""
 	var pendingFileMode uint64
 	var pendingFileMtime uint64
+	var pendingUID, pendingGID, pendingNanos uint32
 	hasPendingFile := false
 	lastEmit := startOffset
 
@@ -310,9 +400,15 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 			// Layout: mode(u64) | flags(u64) | uid(u32) | gid(u32) | mtime.secs(u64) | mtime.nanos(u32) | mtime.padding(u32) = 40 bytes
 			var mode uint64
 			var mtimeSecs uint64
+			var uid, gid, nanos uint32
 			if len(data) >= 32 {
 				mode = binary.LittleEndian.Uint64(data[0:8])
 				mtimeSecs = binary.LittleEndian.Uint64(data[24:32])
+			}
+			if len(data) >= 36 {
+				uid = binary.LittleEndian.Uint32(data[16:20])
+				gid = binary.LittleEndian.Uint32(data[20:24])
+				nanos = binary.LittleEndian.Uint32(data[32:36])
 			}
 
 			if mode&IFMT == IFDIR {
@@ -327,9 +423,12 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 					if err := cb(PXARTreeEntry{
 						Path:    subPath,
 						IsDir:   true,
-						Mode:    uint32(mode),
-						ModTime: int64(mtimeSecs),
-						Weight:  weight,
+						Mode:     uint32(mode),
+						ModTime:  int64(mtimeSecs),
+						ModNanos: nanos,
+						UID:      uid,
+						GID:      gid,
+						Weight:   weight,
 					}, nil); err != nil {
 						return err
 					}
@@ -342,6 +441,7 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 				// Regular file: defer emission until the matching PAYLOAD arrives.
 				pendingFileMode = mode
 				pendingFileMtime = mtimeSecs
+				pendingUID, pendingGID, pendingNanos = uid, gid, nanos
 				hasPendingFile = true
 			}
 
@@ -359,9 +459,12 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 					Path:    path,
 					IsDir:   false,
 					Size:    uint64(contentSize),
-					Mode:    uint32(pendingFileMode),
-					ModTime: int64(pendingFileMtime),
-					Weight:  weight,
+					Mode:     uint32(pendingFileMode),
+					ModTime:  int64(pendingFileMtime),
+					ModNanos: pendingNanos,
+					UID:      pendingUID,
+					GID:      pendingGID,
+					Weight:   weight,
 				}, payload); err != nil {
 					return err
 				}
@@ -369,6 +472,32 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 				pendingName = ""
 			}
 			pr.skip(contentSize)
+
+		case PXAR_SYMLINK:
+			pr.skip(16)
+			data, err := pr.read(contentSize)
+			if err != nil {
+				return fmt.Errorf("read symlink: %w", err)
+			}
+			if hasPendingFile && pendingFileMode&IFMT == IFLNK {
+				weight := pr.offset - lastEmit
+				lastEmit = pr.offset
+				if err := cb(PXARTreeEntry{
+					Path:       joinArchivePath(currentPath, pendingName),
+					Mode:       uint32(pendingFileMode),
+					ModTime:    int64(pendingFileMtime),
+					ModNanos:   pendingNanos,
+					UID:        pendingUID,
+					GID:        pendingGID,
+					IsSymlink:  true,
+					LinkTarget: string(bytes.TrimRight(data, "\x00")),
+					Weight:     weight,
+				}, nil); err != nil {
+					return err
+				}
+				hasPendingFile = false
+				pendingName = ""
+			}
 
 		case PXAR_GOODBYE:
 			pr.skip(int64(header.Size))
@@ -533,7 +662,7 @@ func (pr *PXARReader) ReadVirtualFile(name string) ([]byte, error) {
 	var found []byte
 	stopErr := errors.New("pxar: virtual file found")
 	err := pr.walk(func(e PXARTreeEntry, payload *io.SectionReader) error {
-		if e.IsDir {
+		if e.IsDir || e.IsSymlink {
 			return nil
 		}
 		// Root-level files have no slash in their archive path.
@@ -634,6 +763,18 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			return nil
 		}
 
+		if pr.underCreatedLink(fullPath) {
+			extracted = append(extracted, PXARExtractedFile{
+				Path: fullPath, IsDir: e.IsDir,
+				Skipped: true, SkipReason: "refused: path runs through a symlink restored from the archive",
+			})
+			return nil
+		}
+		if e.IsSymlink {
+			extracted = append(extracted, pr.extractSymlink(e, fullPath, overwrite))
+			return nil
+		}
+
 		if e.IsDir {
 			if err := os.MkdirAll(fullPath, 0755); err != nil {
 				extracted = append(extracted, PXARExtractedFile{
@@ -644,7 +785,8 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			}
 			extracted = append(extracted, PXARExtractedFile{
 				Path: fullPath, ArchivePath: e.Path, IsDir: true,
-				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime,
+				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos,
+				RawMode: e.Mode, UID: e.UID, GID: e.GID,
 			})
 			return nil
 		}
@@ -726,15 +868,19 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			})
 			return nil
 		}
+		if pr.restoreOwner {
+			applyModeOwner(fullPath, e.Mode, e.UID, e.GID, true)
+		}
 		if e.ModTime != 0 { // negative = pre-1970 mtime, still valid
 			fsStart = time.Now()
-			t := time.Unix(e.ModTime, 0)
+			t := time.Unix(e.ModTime, int64(e.ModNanos))
 			_ = os.Chtimes(fullPath, t, t)
 			pr.fsOverheadNanos.Add(int64(time.Since(fsStart)))
 		}
 		extracted = append(extracted, PXARExtractedFile{
 			Path: fullPath, ArchivePath: e.Path, Size: e.Size,
-			Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, SHA256: sum,
+			Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos,
+			RawMode: e.Mode, UID: e.UID, GID: e.GID, SHA256: sum,
 		})
 		return nil
 	}
@@ -879,6 +1025,17 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 		if fullPath == "" {
 			return nil
 		}
+		if pr.underCreatedLink(fullPath) {
+			appendResult(PXARExtractedFile{
+				Path: fullPath, IsDir: e.IsDir,
+				Skipped: true, SkipReason: "refused: path runs through a symlink restored from the archive",
+			})
+			return nil
+		}
+		if e.IsSymlink {
+			appendResult(pr.extractSymlink(e, fullPath, overwrite))
+			return nil
+		}
 		if e.IsDir {
 			if err := os.MkdirAll(fullPath, 0755); err != nil {
 				appendResult(PXARExtractedFile{
@@ -889,7 +1046,8 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 			}
 			appendResult(PXARExtractedFile{
 				Path: fullPath, ArchivePath: e.Path, IsDir: true,
-				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime,
+				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos,
+				RawMode: e.Mode, UID: e.UID, GID: e.GID,
 			})
 			return nil
 		}
@@ -1010,15 +1168,19 @@ func (pr *PXARReader) extractOneFileParallel(e PXARTreeEntry, fullPath string, p
 			Skipped: true, SkipReason: fmt.Sprintf("rename: %v", renErr),
 		}
 	}
+	if pr.restoreOwner {
+		applyModeOwner(fullPath, e.Mode, e.UID, e.GID, true)
+	}
 	if e.ModTime != 0 { // negative = pre-1970 mtime, still valid
 		fsStart = time.Now()
-		t := time.Unix(e.ModTime, 0)
+		t := time.Unix(e.ModTime, int64(e.ModNanos))
 		_ = os.Chtimes(fullPath, t, t)
 		pr.fsOverheadNanos.Add(int64(time.Since(fsStart)))
 	}
 	return PXARExtractedFile{
 		Path: fullPath, ArchivePath: e.Path, Size: e.Size,
-		Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, SHA256: sum,
+		Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos,
+		RawMode: e.Mode, UID: e.UID, GID: e.GID, SHA256: sum,
 	}
 }
 
