@@ -110,10 +110,11 @@ service:
 	@echo "🔧 Building Backup Service..."
 	@mkdir -p $(BUILD_DIR)
 	@mkdir -p gui/build/bin
-	cd cmd/service && go mod tidy && go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
-		-o ../../gui/build/bin/$(SERVICE_BIN)$(shell go env GOEXE)
+	@echo "📦 Building service binary for $(shell go env GOOS)/$(shell go env GOARCH)..."
+	cd gui && go build -tags service $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
+		-o build/bin/$(SERVICE_BIN)$(shell go env GOEXE) .
 	@cp gui/build/bin/$(SERVICE_BIN)$(shell go env GOEXE) $(BUILD_DIR)/ || true
-	@echo "✅ Built: gui/build/bin/$(SERVICE_BIN) (for MSI)"
+	@echo "✅ Built: gui/build/bin/$(SERVICE_BIN) (for Windows MSI)"
 	@echo "✅ Built: $(BUILD_DIR)/$(SERVICE_BIN)"
 
 # Debian package (Linux)

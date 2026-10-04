@@ -109,7 +109,7 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		Namespace:       pbsCfg.Namespace,
 		CertFingerprint: pbsCfg.CertFingerprint,
 		Crypt:           pbsCfg.Crypt,
-		BackupDirs:      allDirs,
+		BackupObjects:   allDirs,
 		BackupID:        backupID,
 		BackupType:      backupType,
 		UseVSS:          useVSS,
@@ -132,4 +132,11 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 	// Execute backup using inline implementation
 	writeDebugLog("[Service] Executing backup via RunBackupInline")
 	return RunBackupInline(opts)
+}
+
+// StartMachineBackup is required by api.BackupHandler interface
+// Not used in service mode (machine backups scheduled via StartBackup with backupType="machine")
+func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error {
+	writeDebugLog("[Service] StartMachineBackup called - not implemented, use StartBackup with backupType=machine")
+	return fmt.Errorf("StartMachineBackup not implemented in service mode")
 }

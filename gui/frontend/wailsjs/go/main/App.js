@@ -162,6 +162,10 @@ export function ReloadConfig() {
   return window['go']['main']['App']['ReloadConfig']();
 }
 
+export function RequestElevation() {
+  return window['go']['main']['App']['RequestElevation']();
+}
+
 export function RestoreSnapshot(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
   return window['go']['main']['App']['RestoreSnapshot'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }

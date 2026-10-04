@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	stdruntime "runtime"
@@ -322,20 +323,63 @@ func getSnapshotModule() string {
 	return ""
 }
 
+// RequestElevation re-launches the application with elevated privileges.
+// On Linux this uses pkexec or sudo. On Windows it uses the Wails "RunAsAdmin" mechanism.
+// On macOS it uses osascript with administrator privileges.
+// Returns an error if elevation cannot be requested or was denied.
+func (a *App) RequestElevation() error {
+	switch stdruntime.GOOS {
+	case "linux":
+		return requestElevationLinux()
+	case "windows":
+		return requestElevationWindows()
+	case "darwin":
+		return requestElevationDarwin()
+	default:
+		return fmt.Errorf("elevation not supported on %s", stdruntime.GOOS)
+	}
+}
+
+// requestElevationLinux re-launches the current executable with pkexec or sudo
+func requestElevationLinux() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("cannot determine executable path: %w", err)
+	}
+
+	// Try pkexec first (policykit), then sudo
+	for _, cmd := range [][]string{
+		{"pkexec", exe},
+		{"sudo", exe},
+	} {
+		// Check if the command exists
+		if _, err := exec.LookPath(cmd[0]); err == nil {
+			// Launch detached so the current process can exit
+			return exec.Command(cmd[0], cmd[1:]...).Start()
+		}
+	}
+	return fmt.Errorf("neither pkexec nor sudo found; cannot elevate")
+}
+
+// requestElevationWindows uses Wails runtime to request admin elevation
+func requestElevationWindows() error {
+	// Wails provides a way to restart with admin rights
+	// This is a placeholder - actual implementation uses wails runtime
+	return fmt.Errorf("Windows elevation should use Wails runtime")
+}
+
+// requestElevationDarwin uses osascript to request admin privileges
+func requestElevationDarwin() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("cannot determine executable path: %w", err)
+	}
+	return exec.Command("osascript", "-e", fmt.Sprintf(`do shell script "%s" with administrator privileges`, exe)).Start()
+}
+
 func (a *App) GetVersion() string {
 	writeDebugLog(fmt.Sprintf("GetVersion() returned: %s", appVersion))
 	return appVersion
-}
-
-// PhysicalDiskInfo represents information about a physical disk
-type PhysicalDiskInfo struct {
-	DiskNumber   int64  `json:"disk_number"`
-	Size         int64  `json:"size"`
-	Model        string `json:"model"`
-	IsBootDisk   bool   `json:"is_boot_disk"`
-	IsSystemDisk bool   `json:"is_system_disk"`
-	DeviceID     string `json:"device_id"`
-	DevicePath   string `json:"device_path"`
 }
 
 // ListPhysicalDisks returns a list of available physical disks

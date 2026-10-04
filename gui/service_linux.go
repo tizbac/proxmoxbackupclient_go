@@ -1,4 +1,5 @@
-// +build windows
+//go:build linux && service
+// +build linux,service
 
 package main
 
@@ -7,23 +8,23 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
-	"github.com/kardianos/service"
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 	"pbscommon"
-	"snapshot"
 )
 
-// BackupService wraps the application for Windows Service execution
+// BackupService wraps the application for Linux systemd service execution
 type BackupService struct {
 	app       *App
 	apiServer *api.Server
 	stopChan  chan struct{}
 }
 
-// Start is called when the service starts
-func (s *BackupService) Start(svc service.Service) error {
+// Start is called when the service starts (systemd calls this via RunAsService)
+func (s *BackupService) Start() error {
 	writeDebugLog("Proxmox Backup Client service starting...")
 	s.stopChan = make(chan struct{})
 	go s.run()
@@ -35,7 +36,7 @@ func (s *BackupService) run() {
 	writeDebugLog("Proxmox Backup Client service running")
 
 	// Initialize app with background context (service has no Wails runtime)
-	// IMPORTANT: Service App must be in Standalone mode to execute backups directly
+	// Service App must be in Standalone mode to execute backups directly
 	s.app = &App{
 		ctx:              context.Background(),
 		config:           LoadConfig(),
@@ -46,7 +47,7 @@ func (s *BackupService) run() {
 		isServiceProcess: true, // Prevent mode re-detection (would cause infinite loop)
 	}
 
-	// Load configuration (service will read config from file when needed)
+	// Load configuration
 	configMap := s.app.GetConfigWithHostname()
 	if hostname, ok := configMap["hostname"].(string); ok {
 		writeDebugLog(fmt.Sprintf("Service: Running for %s", hostname))
@@ -54,17 +55,8 @@ func (s *BackupService) run() {
 		writeDebugLog("Service: Running in background")
 	}
 
-	// Config will be loaded from file by each scheduled job when needed
-
 	// Clean up any abandoned jobs from previous crash
 	s.app.CleanupAbandonedJobs()
-
-	// Clear any orphaned VSS shadow copies and reset the VSS service state
-	// from a previously crashed backup process. Without this, the next backup
-	// can fail with "VSS_START - shadow copy creation is already in progress".
-	if err := snapshot.VSSCleanup(); err != nil {
-		writeDebugLog(fmt.Sprintf("VSS cleanup at startup reported error: %v", err))
-	}
 
 	// Recalculate stale nextRun values (e.g. after service restart or missed window)
 	s.app.RecalculateNextRuns()
@@ -72,9 +64,7 @@ func (s *BackupService) run() {
 	// Start the scheduler
 	s.app.StartScheduler()
 
-	// Start HTTP API server for GUI communication (token-authenticated — H-01).
-	// If token init fails the server keeps an empty token and rejects every
-	// request (fail closed) rather than exposing the privileged API unauthenticated.
+	// Start HTTP API server for GUI communication (token-authenticated)
 	apiToken, tokErr := api.EnsureToken(getAPITokenPath())
 	if tokErr != nil {
 		writeDebugLog(fmt.Sprintf("API token init failed (API will reject all requests): %v", tokErr))
@@ -88,25 +78,25 @@ func (s *BackupService) run() {
 		}
 	}()
 
+	// Wait for SIGTERM or SIGINT
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+
 	// Keep the service running (scheduler and API server run in background goroutines)
 	writeDebugLog("Service main loop started, waiting for stop signal")
-	<-s.stopChan // Block until stop signal received
+	<-sigChan // Block until stop signal received
 	writeDebugLog("Stop signal received, service main loop exiting")
+
+	// Signal the main loop to exit
+	close(s.stopChan)
 }
 
 // Stop is called when the service stops
-func (s *BackupService) Stop(svc service.Service) error {
+func (s *BackupService) Stop() error {
 	writeDebugLog("Proxmox Backup Client service stopping...")
 
-	// Close any live PBS backup session before we return, so the server
-	// releases the writer / snapshot lock instead of waiting for TCP
-	// keepalive to reap the abandoned connection.
+	// Close any live PBS backup session
 	pbscommon.CloseAllActive()
-
-	// Signal the main loop to exit
-	if s.stopChan != nil {
-		close(s.stopChan)
-	}
 
 	// Stop the scheduler gracefully
 	if s.app != nil {
@@ -120,39 +110,20 @@ func (s *BackupService) Stop(svc service.Service) error {
 	return nil
 }
 
-// RunAsService starts the application as a Windows Service
+// RunAsService starts the application as a Linux systemd service
 func RunAsService() {
-	writeDebugLog("Attempting to run as Windows Service")
+	writeDebugLog("Running as Linux systemd service")
 
-	svcConfig := &service.Config{
-		Name:        "ProxmoxBackupClient",
-		DisplayName: "Proxmox Backup Client Service",
-		Description: "Executes scheduled backups to Proxmox Backup Server with VSS support",
-	}
+	svc := &BackupService{}
 
-	backupSvc := &BackupService{}
-	s, err := service.New(backupSvc, svcConfig)
-	if err != nil {
+	if err := svc.Start(); err != nil {
 		log.Fatal(err)
 	}
 
-	logger, err := s.Logger(nil)
-	if err != nil {
+	// Block until stop signal is received (handled in svc.run())
+	<-svc.stopChan
+
+	if err := svc.Stop(); err != nil {
 		log.Fatal(err)
 	}
-
-	err = s.Run()
-	if err != nil {
-		logger.Error(err)
-	}
-}
-
-// IsServiceMode checks if running in service mode
-func IsServiceMode() bool {
-	for _, arg := range os.Args {
-		if arg == "--service" {
-			return true
-		}
-	}
-	return false
 }

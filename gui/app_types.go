@@ -7,6 +7,18 @@ import (
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 )
 
+// PhysicalDiskInfo represents information about a physical disk
+// Used by both GUI and service builds
+type PhysicalDiskInfo struct {
+	DiskNumber   int64  `json:"disk_number"`
+	Size         int64  `json:"size"`
+	Model        string `json:"model"`
+	IsBootDisk   bool   `json:"is_boot_disk"`
+	IsSystemDisk bool   `json:"is_system_disk"`
+	DeviceID     string `json:"device_id"`
+	DevicePath   string `json:"device_path"`
+}
+
 // App struct contains the application state
 type App struct {
 	ctx              context.Context

@@ -1,8 +1,13 @@
+//go:build !windows
 // +build !windows
 
 package main
 
-// isAdmin returns true on non-Windows systems (assume we have necessary privileges)
+import (
+	"os"
+)
+
+// isAdmin returns true if running as root (euid == 0) on non-Windows systems
 func isAdmin() bool {
-	return true
+	return os.Geteuid() == 0
 }
