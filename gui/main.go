@@ -1023,8 +1023,12 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	go func() {
 		var err error
 		if backupType == "machine" {
-			// For machine backups, we need to set the backup type to "vm" for the inline backup function
-			opts.BackupType = "vm"
+			// "host", not "vm": "vm" makes machinebackuplib generate a Proxmox VE
+			// VM config, which needs a numeric VMID as the backup ID. The GUI
+			// defaults to a hostname-style ID, so a "vm" backup transferred
+			// every disk and then failed at that last step. "host" has no such
+			// requirement and is the right type for a plain disk backup.
+			opts.BackupType = "host"
 			err = RunBackupInline(opts)
 		} else {
 			opts.BackupType = "host"
@@ -1090,7 +1094,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		BackupObjects:   backupDevices,
 		BackupID:        backupID,
 		Kind:            "machine",
-		BackupType:      "vm", // "vm" for machine backup
+		BackupType:      "host", // see the comment in the machine branch of startBackupDirect
 		UseVSS:          useVSS,
 		Compression:     compression,
 		ExcludeList:     []string{}, // No exclude list for machine backups
