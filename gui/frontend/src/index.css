@@ -173,6 +173,10 @@ body {
     margin-bottom: 20px;
 }
 
+.form-group.no-bottom-margin {
+    margin-bottom: 0;
+}
+
 .form-group label {
     display: block;
     margin-bottom: 8px;

@@ -1336,6 +1336,7 @@ function App() {
           <>
             {/* Encryption key is per-server: snapshots are encrypted per PBS target. */}
             <EncryptionKeyField
+              className="no-bottom-margin"
               value={serverFormData.encryption_key_file}
               onChange={(v) => setServerFormData({...serverFormData, encryption_key_file: v, encryption_key_passphrase: '', clear_encryption_key_passphrase: false})}
               passphraseSet={!!serverFormData.encryption_key_passphrase_set}
@@ -1368,7 +1369,7 @@ function App() {
         onClick={handleCancelEdit}
       >
         <div
-          style={{width: '520px', maxWidth: '92vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: '#f3f3f3', borderRadius: '8px', boxShadow: '0 20px 60px rgba(0,0,0,.4)', overflow: 'hidden'}}
+          style={{width: '520px', maxWidth: '92vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', background: '#f3f3f3', borderRadius: '8px', boxShadow: '0 20px 60px rgba(0,0,0,.4)', overflow: 'hidden'}}
           onClick={(e) => e.stopPropagation()}
         >
           <div style={{height: '40px', flexShrink: 0, background: '#fff', borderBottom: '1px solid #ddd', display: 'flex', alignItems: 'center', padding: '0 16px', fontSize: '14px', fontWeight: 600, color: '#333', justifyContent: 'space-between'}}>

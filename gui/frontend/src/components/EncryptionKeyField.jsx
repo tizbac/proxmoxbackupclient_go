@@ -85,7 +85,10 @@ export default function EncryptionKeyField({
     setBusy(true)
     try {
       const err = await verify(value || '', passphrase)
-      setVerifyMsg(err ? { ok: false, text: String(err) } : { ok: true, text: t('encryptionPassphraseVerified') })
+      const text = String(err || '')
+      setVerifyMsg(text
+        ? { ok: false, text: text.includes('wrong password') ? t('encryptionPassphraseWrong') : text }
+        : { ok: true, text: t('encryptionPassphraseVerified') })
     } catch (e) {
       setVerifyMsg({ ok: false, text: String(e) })
     } finally {
@@ -212,12 +215,12 @@ export default function EncryptionKeyField({
                   {t('encryptionPassphraseVerify')}
                 </button>
               </div>
-              <div style={{ color: '#a06000', fontSize: '12px', marginTop: '4px' }}>{t('encryptionPassphraseRememberNote')}</div>
               {verifyMsg && (
-                <div style={{ color: verifyMsg.ok ? '#1a7f37' : '#c62828', fontSize: '12px', marginTop: '4px', wordBreak: 'break-word' }}>
+                <div style={{ color: verifyMsg.ok ? '#1a7f37' : '#c62828', fontSize: '13px', fontWeight: 600, marginTop: '6px', wordBreak: 'break-word' }}>
                   {verifyMsg.text}
                 </div>
               )}
+              <div style={{ color: '#a06000', fontSize: '12px', marginTop: '4px' }}>{t('encryptionPassphraseRememberNote')}</div>
             </div>
           )}
         </div>
