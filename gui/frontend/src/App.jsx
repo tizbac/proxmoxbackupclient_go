@@ -369,6 +369,9 @@ function App() {
   const [activeBackupName, setActiveBackupName] = useState('')
   const [activeRestoreName, setActiveRestoreName] = useState('')
   const backupCardRef = useRef(null)
+  // Why the last start attempt did not run (cancelled passphrase, bad config).
+  // Shown where the progress card was, because that is where the user is looking.
+  const [backupNotice, setBackupNotice] = useState(null)
   const restoreCardRef = useRef(null)
 
   const [snapshots, setSnapshots] = useState([])
@@ -722,6 +725,7 @@ function App() {
   useEffect(() => {
     const active = backupCardActive
     if (active && !prevBackupActiveRef.current) {
+      setBackupNotice(null)
       backupCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
     prevBackupActiveRef.current = active
@@ -1808,16 +1812,11 @@ function App() {
       setProgress(0)
       setBackupRunning(false)
       // A cancelled passphrase prompt is a deliberate choice, not a failure.
-      // The banner sits below the form, so keep it up and scroll it into
-      // view: the user is looking at the top of the page when the modal closes.
       if (String(err).includes('passphrase entry cancelled')) {
-        showStatus(`⏹️ ${t('encryptionCancelledNoPassphrase')}`, 'info', true)
+        setBackupNotice({ type: 'error', message: t('encryptionCancelledNoPassphrase') })
       } else {
-        showStatus(`❌ ${err}`, 'error', true)
+        setBackupNotice({ type: 'error', message: `${err}` })
       }
-      setTimeout(() => {
-        document.getElementById('backup-status')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }, 100)
     }
   }
 
@@ -2885,6 +2884,13 @@ function App() {
             </div>
           )}
 
+          {!backupCardActive && backupNotice && (
+            <div className={`status ${backupNotice.type} visible`} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '10px', marginBottom: '20px', ...(backupNotice.type === 'error' ? {borderLeft: '6px solid #d32f2f', background: '#fdecea', color: '#8a1c1c'} : {})}}>
+              <span>{backupNotice.type === 'error' ? '❌ ' : ''}{backupNotice.message}</span>
+              <button style={{background: '#d32f2f', border: 'none', color: '#fff', fontSize: '16px', lineHeight: 1, cursor: 'pointer', padding: '4px 10px', borderRadius: '4px'}} onClick={() => setBackupNotice(null)} aria-label="Dismiss">×</button>
+            </div>
+          )}
+
           {!showBackupForm && (
             <>
               <div style={{display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '20px'}}>
@@ -3627,7 +3633,7 @@ function App() {
               then once real progress started the card ALSO started
               rendering it, duplicating the same text in two places at once. */}
           {status.visible && activeTab === 'backup' && !backupCardActive && (
-            <div id="backup-status" className={`status ${status.type} visible`}>{status.message}</div>
+            <div className={`status ${status.type} visible`}>{status.message}</div>
           )}
         </div>
 
