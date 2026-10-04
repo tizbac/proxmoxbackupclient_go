@@ -42,19 +42,20 @@ export default function EncryptionKeyField({
   const openNew = useCallback(resolve('OpenEncryptionKeySaveDialog'), [])
   const verify = useCallback(resolve('VerifyEncryptionKeyPassphrase'), [])
 
-  // Re-inspect whenever the path changes. inspect() is synchronous in Go and
-  // cheap (one stat + a small JSON read), and doing it here means the user
-  // always sees the fingerprint of the key that will be used.
+  // Re-inspect whenever the path changes. Wails bindings always return a
+  // Promise, so the result has to be awaited; a stale answer from a previous
+  // path must not overwrite the current one.
   useEffect(() => {
     if (!inspect) {
       setInfo(null)
-      return
+      return undefined
     }
-    try {
-      setInfo(inspect(value || ''))
-    } catch {
-      setInfo(null)
-    }
+    let live = true
+    Promise.resolve()
+      .then(() => inspect(value || ''))
+      .then((r) => { if (live) setInfo(r || null) })
+      .catch(() => { if (live) setInfo(null) })
+    return () => { live = false }
   }, [value, inspect])
 
   // A different key file or a freshly loaded server resets the unlock choice to
