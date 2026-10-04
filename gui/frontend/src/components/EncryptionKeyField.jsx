@@ -135,16 +135,18 @@ export default function EncryptionKeyField({
           onChange={(e) => onChange(e.target.value)}
           placeholder={t('phEncryptionKey')}
           spellCheck={false}
+          style={{ flex: '1 1 auto', minWidth: 0, width: 'auto' }}
         />
-        <button type="button" className="btn btn-secondary" onClick={handleBrowse} disabled={!openExisting || busy}>
+        <button type="button" className="btn btn-secondary" style={{ whiteSpace: 'nowrap', padding: '8px 12px' }} onClick={handleBrowse} disabled={!openExisting || busy}>
           {t('encryptionKeyBrowse')}
         </button>
-        <button type="button" className="btn btn-secondary" onClick={handleGenerate} disabled={!generate || busy}>
+        <button type="button" className="btn btn-secondary" style={{ whiteSpace: 'nowrap', padding: '8px 12px' }} onClick={handleGenerate} disabled={!generate || busy}>
           {t('encryptionKeyGenerate')}
         </button>
         <button
           type="button"
           className="btn btn-secondary"
+          style={{ whiteSpace: 'nowrap', padding: '8px 12px' }}
           onClick={() => onChange('')}
           disabled={busy || !(value || '')}
         >

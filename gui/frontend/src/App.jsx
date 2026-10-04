@@ -1244,7 +1244,8 @@ function App() {
     const tabs = [
       ['server', `${t('srvTabServer')}`],
       ['userpass', `${t('srvTabUserpass')}`],
-      ['token', `${t('srvTabToken')}`]
+      ['token', `${t('srvTabToken')}`],
+      ['encryption', `${t('srvTabEncryption')}`]
     ]
     const title = editingServer ? t('editServer') : t('addServer')
     const onSubmit = editingServer ? handleUpdatePBSServer : handleAddPBSServer
@@ -1287,16 +1288,6 @@ function App() {
               <label>{t('namespace')}</label>
               <input type="text" value={serverFormData.namespace} onChange={(e) => setServerFormData({...serverFormData, namespace: e.target.value})} placeholder={t('phNamespace')} />
             </div>
-            {/* Encryption key is per-server: snapshots are encrypted per PBS target. */}
-            <EncryptionKeyField
-              value={serverFormData.encryption_key_file}
-              onChange={(v) => setServerFormData({...serverFormData, encryption_key_file: v, encryption_key_passphrase: '', clear_encryption_key_passphrase: false})}
-              passphraseSet={!!serverFormData.encryption_key_passphrase_set}
-              passphrase={serverFormData.encryption_key_passphrase || ''}
-              onPassphraseChange={(v) => setServerFormData(f => ({...f, encryption_key_passphrase: v}))}
-              clearStored={!!serverFormData.clear_encryption_key_passphrase}
-              onClearStoredChange={(v) => setServerFormData(f => ({...f, clear_encryption_key_passphrase: v}))}
-            />
             <div className="form-group">
               <label>{t('certFingerprint')}</label>
               <input type="text" value={serverFormData.certfingerprint} onChange={(e) => setServerFormData({...serverFormData, certfingerprint: e.target.value})} placeholder={t('phCert')} />
@@ -1338,6 +1329,21 @@ function App() {
               <input type="password" value={serverFormData.secret} onChange={(e) => setServerFormData({...serverFormData, secret: e.target.value})} placeholder={serverFormData.secret_set ? t('secretKeepCurrent') : t('phSecret')} />
             </div>
             <div className="info-box"><strong>{t('tipTitle')}</strong> {t('tipAPIToken')}<br/>{t('tipAPITokenPath')}</div>
+          </>
+        )}
+
+        {serverTab === 'encryption' && (
+          <>
+            {/* Encryption key is per-server: snapshots are encrypted per PBS target. */}
+            <EncryptionKeyField
+              value={serverFormData.encryption_key_file}
+              onChange={(v) => setServerFormData({...serverFormData, encryption_key_file: v, encryption_key_passphrase: '', clear_encryption_key_passphrase: false})}
+              passphraseSet={!!serverFormData.encryption_key_passphrase_set}
+              passphrase={serverFormData.encryption_key_passphrase || ''}
+              onPassphraseChange={(v) => setServerFormData(f => ({...f, encryption_key_passphrase: v}))}
+              clearStored={!!serverFormData.clear_encryption_key_passphrase}
+              onClearStoredChange={(v) => setServerFormData(f => ({...f, clear_encryption_key_passphrase: v}))}
+            />
           </>
         )}
       </>
