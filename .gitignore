@@ -3,6 +3,10 @@ dist/
 !gui/frontend/dist/
 build/
 
+# Node (frontend deps; gui/frontend/dist IS tracked, see above)
+node_modules/
+npm-debug.log*
+
 # Binaries
 proxmoxbackupgo_cli.exe
 proxmoxbackupgo.exe

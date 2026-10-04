@@ -45,7 +45,6 @@ type ChunkState struct {
 	knownChunks        *haxmap.Map[string, bool]
 }
 
-
 func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool]) {
 	c.assignments = make([]string, 0)
 	c.assignments_offset = make([]uint64, 0)
@@ -72,12 +71,13 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 			//Append data until break position
 			c.current_chunk = append(c.current_chunk, b[:chunkpos]...)
 
-			h := sha256.New()
-			if _, err := h.Write(c.current_chunk); err != nil {
-				return fmt.Errorf("failed to hash chunk: %w", err)
-			}
-			bindigest := h.Sum(nil)
-			shahash := hex.EncodeToString(bindigest)
+			// The digest has to be the one the chunk is published under:
+			// sha256(plaintext) for a plain snapshot, but
+			// sha256(plaintext || id_key) once a key file is in play, since
+			// that is what the encrypted chunk store and both index formats
+			// key on. GetChunkData re-derives it with the same key.
+			bindigest := client.ChunkDigest(c.current_chunk)
+			shahash := hex.EncodeToString(bindigest[:])
 
 			if _, ok := c.knownChunks.GetOrSet(shahash, true); !ok {
 				fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
@@ -94,7 +94,7 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 			if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.current_chunk)))); err != nil {
 				return fmt.Errorf("failed to write chunk offset: %w", err)
 			}
-			if _, err := c.chunkdigests.Write(h.Sum(nil)); err != nil {
+			if _, err := c.chunkdigests.Write(bindigest[:]); err != nil {
 				return fmt.Errorf("failed to write chunk digest: %w", err)
 			}
 
@@ -119,20 +119,19 @@ func (c *ChunkState) Eof(client *pbscommon.PBSClient) error {
 	//Here we write the remainder of data for which cyclic hash did not trigger
 
 	if len(c.current_chunk) > 0 {
-		h := sha256.New()
-		if _, err := h.Write(c.current_chunk); err != nil {
-			return fmt.Errorf("failed to hash final chunk: %w", err)
-		}
+		// Same digest rule as in HandleData: plain sha256, or
+		// sha256(plaintext || id_key) when the snapshot is encrypted.
+		bindigest := client.ChunkDigest(c.current_chunk)
+		shahash := hex.EncodeToString(bindigest[:])
 
-		shahash := hex.EncodeToString(h.Sum(nil))
 		if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.current_chunk)))); err != nil {
 			return fmt.Errorf("failed to write final chunk offset: %w", err)
 		}
-		if _, err := c.chunkdigests.Write(h.Sum(nil)); err != nil {
+		if _, err := c.chunkdigests.Write(bindigest[:]); err != nil {
 			return fmt.Errorf("failed to write final chunk digest: %w", err)
 		}
 
-			if _, ok := c.knownChunks.GetOrSet(shahash, true); !ok {
+		if _, ok := c.knownChunks.GetOrSet(shahash, true); !ok {
 			fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
 			if err := client.UploadDynamicCompressedChunk(c.wrid, shahash, c.current_chunk); err != nil {
 				return fmt.Errorf("failed to upload final chunk %s: %w", shahash, err)
@@ -216,6 +215,12 @@ func main() {
 
 	insecure := cfg.CertFingerprint != ""
 
+	crypt, err := clientcommon.LoadCryptConfig(cfg.KeyFile, cfg.KeyFilePassphrase)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+
 	// newClient builds a PBS client for one backup group. A multi-directory run
 	// needs one per directory, because each directory is its own group.
 	newClient := func(backupID string) (*pbscommon.PBSClient, error) {
@@ -229,6 +234,7 @@ func main() {
 			Datastore:       cfg.Datastore,
 			Namespace:       cfg.Namespace,
 			Insecure:        insecure,
+			Crypt:           crypt,
 			Manifest: pbscommon.BackupManifest{
 				BackupID: backupID,
 			},

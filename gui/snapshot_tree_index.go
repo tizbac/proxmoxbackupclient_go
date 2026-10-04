@@ -129,7 +129,7 @@ func snapshotIndexFor(opts RestoreOptions, forceRefresh bool) (*snapshotTreeInde
 }
 
 func (a *App) snapshotOpts(pbsID, backupID string, snapshotUnix int64) (RestoreOptions, error) {
-	cfg, err := a.resolvePBS(pbsID)
+	cfg, err := a.resolveRestorePBS(pbsID)
 	if err != nil {
 		return RestoreOptions{}, err
 	}
@@ -147,6 +147,7 @@ func (a *App) snapshotOpts(pbsID, backupID string, snapshotUnix int64) (RestoreO
 		CertFingerprint: cfg.CertFingerprint,
 		BackupID:        backupID,
 		SnapshotTime:    time.Unix(snapshotUnix, 0),
+		Crypt:           cfg.Crypt,
 	}, nil
 }
 

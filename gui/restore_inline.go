@@ -56,6 +56,12 @@ type RestoreOptions struct {
 	SnapshotTime    time.Time
 	DestPath        string
 
+	// Crypt unlocks an encrypted snapshot. Nil means a plain snapshot. Every
+	// chunk fetch goes through pbscommon.PBSClient.GetChunkData, which needs
+	// it to decrypt and to recompute the index's sha256(plaintext || id_key)
+	// digests for verification.
+	Crypt *pbscommon.CryptConfig
+
 	// Mode selects the destination policy. Empty defaults to alternate_abs
 	// (legacy behaviour: dest + full archive path).
 	Mode RestoreMode
@@ -339,6 +345,7 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 		Namespace:        opts.Namespace,
 		Insecure:         opts.CertFingerprint != "",
 		CompressionLevel: pbscommon.CompressionFastest,
+		Crypt:            opts.Crypt,
 		Manifest: pbscommon.BackupManifest{
 			BackupID:   opts.BackupID,
 			BackupTime: opts.SnapshotTime.Unix(),
@@ -518,6 +525,7 @@ func listSnapshotViaCatalog(opts RestoreOptions, cancel func() bool) (entries []
 		Namespace:        opts.Namespace,
 		Insecure:         opts.CertFingerprint != "",
 		CompressionLevel: pbscommon.CompressionFastest,
+		Crypt:            opts.Crypt,
 		Manifest: pbscommon.BackupManifest{
 			BackupID:   opts.BackupID,
 			BackupTime: opts.SnapshotTime.Unix(),
@@ -1135,6 +1143,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			BaseURL: opts.BaseURL, CertFingerPrint: opts.CertFingerprint,
 			AuthID: opts.AuthID, Secret: opts.Secret, Ticket: opts.Ticket, CSRFToken: opts.CSRFToken,
 			Datastore: opts.Datastore, Namespace: opts.Namespace, Insecure: opts.CertFingerprint != "",
+			Crypt:    opts.Crypt, // the metadata blob is encrypted when the snapshot is
 			Manifest: pbscommon.BackupManifest{BackupID: opts.BackupID, BackupTime: opts.SnapshotTime.Unix()},
 		}
 		aclClient.Connect(true, "host")

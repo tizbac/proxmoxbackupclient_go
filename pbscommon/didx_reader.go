@@ -3,8 +3,6 @@ package pbscommon
 import (
 	"container/list"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -316,12 +314,14 @@ func (r *DIDXReaderAt) fetchOnce(ci int) ([]byte, error) {
 	if uint64(len(chunk)) != end-start {
 		return nil, fmt.Errorf("chunk %s (index %d): decompressed size %d != expected %d", digest, ci, len(chunk), end-start)
 	}
-	// PBS dynamic-index digests are the SHA-256 of the chunk plaintext; a mismatch
-	// means a corrupted or tampered chunk — fail rather than serve wrong data.
 	hashStart := time.Now()
-	sum := sha256.Sum256(chunk)
+	// PBS dynamic-index digests are the SHA-256 of the chunk plaintext, or the
+	// id_key-salted digest for an encrypted snapshot (see PBSClient.ChunkDigest).
+	// A mismatch means a corrupted or tampered chunk, so fail rather than serve
+	// wrong data.
+	digestOK := r.pbs.ChunkDigestHex(chunk) == digest
 	r.hashNanos.Add(int64(time.Since(hashStart)))
-	if hex.EncodeToString(sum[:]) != digest {
+	if !digestOK {
 		return nil, fmt.Errorf("chunk %s (index %d): content hash mismatch", digest, ci)
 	}
 	r.cache.put(ci, chunk)

@@ -26,10 +26,24 @@ func (a *App) resolvePBS(pbsID string) (*Config, error) {
 	return a.withAuth(cfg)
 }
 
+// resolveRestorePBS is resolvePBS plus unlocking the configured encryption
+// key. An encrypted snapshot's chunks are unreadable without it, so fail here
+// with a clear message rather than deep inside the chunk fetcher.
+func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
+	cfg, err := a.resolvePBS(pbsID)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.loadCryptConfig(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 // PBSServer represents a single Proxmox Backup Server configuration
 type PBSServer struct {
-	ID              string `json:"id"`                // Unique identifier (e.g., "pbs1", "default")
-	Name            string `json:"name"`              // Human-readable name (e.g., "Big Data Storage")
+	ID              string `json:"id"`   // Unique identifier (e.g., "pbs1", "default")
+	Name            string `json:"name"` // Human-readable name (e.g., "Big Data Storage")
 	BaseURL         string `json:"baseurl"`
 	CertFingerprint string `json:"certfingerprint"`
 	AuthID          string `json:"authid"`
@@ -40,12 +54,19 @@ type PBSServer struct {
 	// never a ticket. A server uses EITHER (AuthID+Secret) OR (Username+Password).
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
-	Datastore       string `json:"datastore"`
-	Namespace       string `json:"namespace"`
-	Description     string `json:"description,omitempty"` // Optional description
-	IsOnline        bool   `json:"is_online,omitempty"`   // Connection status (updated by GUI)
-	SecretSet       bool   `json:"secret_set,omitempty"`  // M-04: set on sanitized copies so the UI knows a token exists without receiving it
-	PasswordSet     bool   `json:"password_set,omitempty"`
+	// EncryptionKeyFile is the path to the PBS encryption key (JSON, as written
+	// by `proxmox-backup-client key create`) to use for this server. It is kept
+	// per-server because two PBS servers rarely share keys, and it is NOT a
+	// secret: only the path is stored here, and the unlocked key lives in the
+	// runtime-only Config.Crypt. Left empty, backups to this server are
+	// unencrypted (and encrypted snapshots stored there cannot be restored).
+	EncryptionKeyFile string `json:"encryption_key_file,omitempty"`
+	Datastore         string `json:"datastore"`
+	Namespace         string `json:"namespace"`
+	Description       string `json:"description,omitempty"` // Optional description
+	IsOnline          bool   `json:"is_online,omitempty"`   // Connection status (updated by GUI)
+	SecretSet         bool   `json:"secret_set,omitempty"`  // M-04: set on sanitized copies so the UI knows a token exists without receiving it
+	PasswordSet       bool   `json:"password_set,omitempty"`
 }
 
 // sanitized returns a copy with the secret and password stripped (SecretSet /
@@ -113,19 +134,26 @@ func (pbs *PBSServer) Validate() error {
 		}
 	}
 
+	// Reject an unusable key file at add/update time, not at backup time. Uses
+	// a throwaway Config so the per-server and legacy paths validate identically.
+	if err := (&Config{EncryptionKeyFile: pbs.EncryptionKeyFile}).validateEncryptionKeyFile(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // ToConfig converts a PBSServer to the legacy Config format (for backward compatibility)
 func (pbs *PBSServer) ToConfig() *Config {
 	return &Config{
-		BaseURL:         pbs.BaseURL,
-		CertFingerprint: pbs.CertFingerprint,
-		AuthID:          pbs.AuthID,
-		Secret:          pbs.Secret,
-		Username:        pbs.Username,
-		Password:        pbs.Password,
-		Datastore:       pbs.Datastore,
-		Namespace:       pbs.Namespace,
+		BaseURL:           pbs.BaseURL,
+		CertFingerprint:   pbs.CertFingerprint,
+		AuthID:            pbs.AuthID,
+		Secret:            pbs.Secret,
+		Username:          pbs.Username,
+		Password:          pbs.Password,
+		EncryptionKeyFile: pbs.EncryptionKeyFile,
+		Datastore:         pbs.Datastore,
+		Namespace:         pbs.Namespace,
 	}
 }

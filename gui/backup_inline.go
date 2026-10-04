@@ -80,6 +80,9 @@ type BackupOptions struct {
 	// one-off) that Reports already labels the run with, rather than
 	// inventing a second, separate description field.
 	Comment string
+	// Crypt encrypts every chunk and signs the manifest. Nil means a plain
+	// snapshot. Populated from Config.Crypt (Config.EncryptionKeyFile).
+	Crypt *pbscommon.CryptConfig
 	OnProgress      func(percent float64, message string)
 	// OnComplete's message is always plain, already-formatted English text
 	// (backward-compatible with every existing consumer). key/params are
@@ -411,12 +414,10 @@ func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
 		return err
 	}
 
-	h := sha256.New()
-	if _, err := h.Write(c.currentChunk); err != nil {
-		return fmt.Errorf("failed to hash chunk: %w", err)
-	}
-	bindigest := h.Sum(nil)
-	shahash := hex.EncodeToString(bindigest)
+	// The digest a chunk is published under: sha256(plaintext), or
+	// sha256(plaintext || id_key) when the snapshot is encrypted.
+	bindigest := client.ChunkDigest(c.currentChunk)
+	shahash := hex.EncodeToString(bindigest[:])
 
 	// GetOrSet marks the digest known BEFORE upload confirms, atomically, so
 	// a duplicate of this chunk found later in the same stream (common —
@@ -438,7 +439,7 @@ func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
 	if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.currentChunk)))); err != nil {
 		return fmt.Errorf("failed to write chunk offset: %w", err)
 	}
-	if _, err := c.chunkdigests.Write(h.Sum(nil)); err != nil {
+	if _, err := c.chunkdigests.Write(bindigest[:]); err != nil {
 		return fmt.Errorf("failed to write chunk digest: %w", err)
 	}
 
@@ -842,6 +843,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		Namespace:        opts.Namespace,
 		Insecure:         opts.CertFingerprint != "",
 		CompressionLevel: compressionLevel,
+		Crypt:            opts.Crypt,
 		Manifest: pbscommon.BackupManifest{
 			BackupID: opts.BackupID,
 			Comment:  opts.Comment,
@@ -1383,6 +1385,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 		BackupType:      opts.BackupType,
 		BackupDevices:   opts.BackupObjects,
 		Comment:         opts.Comment,
+		Crypt:           opts.Crypt,
 	}
 
 	// Progress callback wrapper. Returning true (user pressed Stop, which

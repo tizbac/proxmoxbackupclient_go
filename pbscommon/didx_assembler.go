@@ -2,14 +2,9 @@ package pbscommon
 
 import (
 	"bytes"
-	"context"
-	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"os"
-	"sync"
-	"sync/atomic"
 )
 
 // 8-byte magic prefixing every PBS dynamic-index (.didx) file.
@@ -109,120 +104,4 @@ func (idx *didxIndex) chunkRange(i int) (start, end uint64) {
 		start = idx.offsets[i-1]
 	}
 	return start, idx.offsets[i]
-}
-
-// AssembleDIDXToFile downloads a dynamic-index archive (e.g. "backup.pxar.didx")
-// from PBS and reconstructs the original byte stream into a temp file by
-// fetching every referenced chunk and writing it at its offset.
-//
-// Unlike an in-memory assembly, peak memory is bounded to roughly maxParallel
-// decompressed chunks (a few MB each) rather than the full archive size — so a
-// 100 GB split restores without OOM-killing the process.
-//
-// On success it returns the path of the temp file and its total size. The
-// caller owns the file and MUST remove it when done. On any error the temp
-// file is cleaned up before returning.
-//
-// Chunks are fetched with bounded parallelism (maxParallel; defaults to 8).
-// progress is invoked after each chunk lands with (done, total). It may be nil.
-func (pbs *PBSClient) AssembleDIDXToFile(archiveName string, maxParallel int, progress func(done, total int)) (path string, size int64, err error) {
-	if maxParallel <= 0 {
-		maxParallel = 8
-	}
-
-	idx, err := pbs.downloadDIDXIndex(archiveName)
-	if err != nil {
-		return "", 0, err
-	}
-	chunkCount := len(idx.digests)
-
-	tmp, err := os.CreateTemp("", "proxmox-restore-*.pxar")
-	if err != nil {
-		return "", 0, fmt.Errorf("create temp file for archive assembly: %w", err)
-	}
-	tmpPath := tmp.Name()
-	// Any early return past this point must clean up the temp file.
-	cleanup := func() {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-	}
-
-	if chunkCount == 0 {
-		if cerr := tmp.Close(); cerr != nil {
-			_ = os.Remove(tmpPath)
-			return "", 0, fmt.Errorf("close temp file: %w", cerr)
-		}
-		return tmpPath, 0, nil
-	}
-
-	// Preallocate so concurrent WriteAt calls land at the right offsets.
-	if terr := tmp.Truncate(int64(idx.total)); terr != nil {
-		cleanup()
-		return "", 0, fmt.Errorf("preallocate %d bytes: %w", idx.total, terr)
-	}
-
-	sem := make(chan struct{}, maxParallel)
-	var wg sync.WaitGroup
-	var firstErr atomic.Value
-	var done atomic.Int64
-
-	for i := 0; i < chunkCount; i++ {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(idxNum int) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			if firstErr.Load() != nil {
-				return
-			}
-			chunk, gerr := pbs.GetChunkData(context.Background(), idx.digests[idxNum])
-			if gerr != nil {
-				firstErr.CompareAndSwap(nil, fmt.Errorf("chunk %s (index %d/%d): %w",
-					idx.digests[idxNum], idxNum, chunkCount, gerr))
-				return
-			}
-			start, end := idx.chunkRange(idxNum)
-			expected := int(end - start)
-			if len(chunk) != expected {
-				firstErr.CompareAndSwap(nil, fmt.Errorf("chunk %s (index %d): decompressed size %d != expected %d",
-					idx.digests[idxNum], idxNum, len(chunk), expected))
-				return
-			}
-			// Verify the chunk content against its index digest. PBS dynamic-index
-			// digests are the SHA-256 of the chunk plaintext, so a mismatch means a
-			// corrupted or tampered chunk — fail the restore rather than silently
-			// writing wrong data.
-			sum := sha256.Sum256(chunk)
-			if hex.EncodeToString(sum[:]) != idx.digests[idxNum] {
-				firstErr.CompareAndSwap(nil, fmt.Errorf("chunk %s (index %d): content hash mismatch",
-					idx.digests[idxNum], idxNum))
-				return
-			}
-			// Concurrent WriteAt at non-overlapping offsets is safe on *os.File.
-			if _, werr := tmp.WriteAt(chunk, int64(start)); werr != nil {
-				firstErr.CompareAndSwap(nil, fmt.Errorf("chunk %s (index %d): write at %d: %w",
-					idx.digests[idxNum], idxNum, start, werr))
-				return
-			}
-
-			n := done.Add(1)
-			if progress != nil {
-				progress(int(n), chunkCount)
-			}
-		}(i)
-	}
-
-	wg.Wait()
-
-	if v := firstErr.Load(); v != nil {
-		cleanup()
-		return "", 0, v.(error)
-	}
-
-	if cerr := tmp.Close(); cerr != nil {
-		_ = os.Remove(tmpPath)
-		return "", 0, fmt.Errorf("close temp file: %w", cerr)
-	}
-	return tmpPath, int64(idx.total), nil
 }

@@ -45,7 +45,18 @@ type Config struct {
 	BackupStreamName string      `json:"backupstreamname"`
 	PxarOut          string      `json:"pxarout"`
 	SMTP             *SMTPConfig `json:"smtp"`
-	UseVSS 			 bool        `json:"usevss"`
+	UseVSS           bool        `json:"usevss"`
+
+	// KeyFile is a Proxmox Backup Server encryption key (JSON, as produced by
+	// `proxmox-backup-client key create`). When set, chunks are AES-256-GCM
+	// encrypted and the snapshot manifest is signed — the same layout as
+	// `proxmox-backup-client backup --crypt-mode encrypt --keyfile`.
+	KeyFile string `json:"keyfile"`
+
+	// KeyFilePassphrase unlocks a KeyFile that was created with a scrypt or
+	// PBKDF2 KDF. Left empty, the passphrase is asked for on the console.
+	// Ignored for `--kdf none` key files, which need nothing.
+	KeyFilePassphrase string `json:"keyfilepassphrase"`
 }
 
 // Dirs returns every configured source directory: "backupdir" first (if set),
@@ -109,6 +120,8 @@ func loadConfig() *Config {
 	backupStreamNameFlag := flag.String("backupstream", "", "Filename for stream backup")
 	pxarOutFlag := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
 	noVSSFlag := flag.Bool("novss", false, "Disable VSS ( For filesystems that don't support it, for example veracrypt )")
+	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
+	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
 
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
 	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")
@@ -182,6 +195,12 @@ func loadConfig() *Config {
 	}
 	if *noVSSFlag {
 		config.UseVSS = false
+	}
+	if *keyFileFlag != "" {
+		config.KeyFile = *keyFileFlag
+	}
+	if *keyFilePassphraseFlag != "" {
+		config.KeyFilePassphrase = *keyFilePassphraseFlag
 	}
 
 	initSmtpConfigIfNeeded := func() {

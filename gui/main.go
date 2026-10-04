@@ -382,6 +382,12 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		"secret_set":       cfg.Secret != "",
 		"datastore":        cfg.Datastore,
 		"namespace":        cfg.Namespace,
+		// Unlike Secret, the encryption key path is not a secret (only the path
+		// is stored; the unlocked key never leaves the backend), so it is handed
+		// to the frontend as-is. SaveConfig replaces the whole Config, so the
+		// frontend MUST round-trip this field or every config save would silently
+		// drop the key and restart encrypting with no way to read it back.
+		"encryption_key_file": cfg.EncryptionKeyFile,
 		"backupdir":        cfg.BackupDir,
 		"backup-id":        cfg.BackupID,
 		"usevss":           cfg.UseVSS,
@@ -459,6 +465,14 @@ func (a *App) SaveConfig(config *Config) error {
 	// Validate before saving
 	if err := config.Validate(); err != nil {
 		writeDebugLog(fmt.Sprintf("Config validation failed: %v", err))
+		return err
+	}
+
+	// Unlock the key BEFORE persisting so the runtime-only Crypt matches what is
+	// about to be written, and so an unusable key is reported without having
+	// saved a config that cannot be used.
+	if err := config.loadCryptConfig(); err != nil {
+		writeDebugLog(fmt.Sprintf("Encryption key load failed: %v", err))
 		return err
 	}
 
@@ -928,6 +942,12 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		return err
 	}
 
+	// Unlock the configured encryption key, if any, so every chunk this
+	// backup uploads is AES-256-GCM and the manifest is signed.
+	if err := pbsCfg.loadCryptConfig(); err != nil {
+		return err
+	}
+
 	// Validate backup parameters and build target list
 	var targetDirs []string
 	if backupType == "directory" {
@@ -978,6 +998,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		// it (no PXARArchive involved). See Config.ParallelBackupRead's doc
 		// comment.
 		PrefetchWorkers: a.config.EffectivePrefetchWorkers(),
+		Crypt:           pbsCfg.Crypt,
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
@@ -1256,6 +1277,12 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		return err
 	}
 
+	// Unlock the configured encryption key, if any, so every chunk this
+	// backup uploads is AES-256-GCM and the manifest is signed.
+	if err := pbsCfg.loadCryptConfig(); err != nil {
+		return err
+	}
+
 	// Total size of the selected device(s), for the "X of Y" / speed / ETA
 	// display — added 2026-09-24. Machine backups only ever reported a bare
 	// percentage ("Block N"), unlike directory backups which already have
@@ -1302,6 +1329,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		ExcludeList:    []string{}, // No exclude list for machine backups
 		DisableSplit:   a.config.DisableSplit,
 		SplitSizeBytes: a.config.SplitSizeBytes(),
+		Crypt:          pbsCfg.Crypt,
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
@@ -1543,7 +1571,7 @@ func (a *App) ListSnapshotContents(pbsID, backupID string, snapshotUnix int64, f
 	writeDebugLog(fmt.Sprintf("ListSnapshotContents(pbs=%s, backupID=%s, unix=%d, force=%v)",
 		pbsID, backupID, snapshotUnix, forceRefresh))
 
-	cfg, err := a.resolvePBS(pbsID)
+	cfg, err := a.resolveRestorePBS(pbsID)
 	if err != nil {
 		return nil, err
 	}
@@ -1562,6 +1590,7 @@ func (a *App) ListSnapshotContents(pbsID, backupID string, snapshotUnix int64, f
 		CertFingerprint: cfg.CertFingerprint,
 		BackupID:        backupID,
 		SnapshotTime:    time.Unix(snapshotUnix, 0),
+		Crypt:           cfg.Crypt,
 	}
 	return ListSnapshotContentsInline(opts, "", forceRefresh)
 }
@@ -1576,7 +1605,7 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 	writeDebugLog(fmt.Sprintf("GetSnapshotMeta(pbs=%s, backupID=%s, unix=%d)",
 		pbsID, backupID, snapshotUnix))
 
-	cfg, err := a.resolvePBS(pbsID)
+	cfg, err := a.resolveRestorePBS(pbsID)
 	if err != nil {
 		return nil, err
 	}
@@ -1595,6 +1624,7 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 		CertFingerprint: cfg.CertFingerprint,
 		BackupID:        backupID,
 		SnapshotTime:    time.Unix(snapshotUnix, 0),
+		Crypt:           cfg.Crypt,
 	}
 	return ReadSnapshotMetaInline(opts, false)
 }
@@ -1622,7 +1652,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	writeDebugLog(fmt.Sprintf("RestoreSnapshot(pbs=%s, backupID=%s, snap=%s, mode=%s, dest=%s, includes=%d, crossHost=%v, acl=%v, ads=%v, ts=%v, overwrite=%v, verify=%v)",
 		pbsID, backupID, snapshotID, mode, destPath, len(includePaths), allowCrossHost, restoreACLs, restoreADS, restoreTimestamps, overwrite, verifyAfterRestore))
 
-	cfg, err := a.resolvePBS(pbsID)
+	cfg, err := a.resolveRestorePBS(pbsID)
 	if err != nil {
 		return err
 	}
@@ -1691,6 +1721,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		RestoreACLs:        restoreACLs,
 		RestoreADS:         restoreADS,
 		RestoreTimestamps:  restoreTimestamps,
+		Crypt:              cfg.Crypt,
 		OnProgress:         emit,
 		ParallelExtraction: a.config.ParallelRestore,
 		VerifyAfterRestore: verifyAfterRestore,
@@ -1925,7 +1956,7 @@ func (a *App) SearchFiles(pbsID, hostPrefix, query, mode string, fromUnix, toUni
 	writeDebugLog(fmt.Sprintf("SearchFiles(pbs=%s, prefix=%s, query=%q, mode=%s, from=%d, to=%d, assemble=%v)",
 		pbsID, hostPrefix, query, mode, fromUnix, toUnix, assembleMissing))
 
-	cfg, err := a.resolvePBS(pbsID)
+	cfg, err := a.resolveRestorePBS(pbsID)
 	if err != nil {
 		return nil, err
 	}
@@ -1963,6 +1994,7 @@ func (a *App) SearchFiles(pbsID, hostPrefix, query, mode string, fromUnix, toUni
 		From:            from,
 		To:              to,
 		AssembleMissing: assembleMissing,
+		Crypt:           cfg.Crypt,
 		OnProgress:      emit,
 	}
 	return SearchFilesInline(opts)
