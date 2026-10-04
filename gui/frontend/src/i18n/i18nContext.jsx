@@ -31,15 +31,22 @@ export function I18nProvider({ children }) {
 
   const t = (key, params) => {
     const keys = key.split('.')
-    let value = translations[language]
-
-    for (const k of keys) {
-      if (value && typeof value === 'object') {
-        value = value[k]
-      } else {
-        return key // Return key if translation not found
+    const lookup = (lang) => {
+      let v = translations[lang]
+      for (const k of keys) {
+        if (v && typeof v === 'object') {
+          v = v[k]
+        } else {
+          return undefined
+        }
       }
+      return v
     }
+
+    // A string missing from this language shows in English, not as its raw key.
+    let value = lookup(language)
+    if (value === undefined && language !== 'en') value = lookup('en')
+    if (value === undefined) return key // Return key if translation not found
 
     if (typeof value === 'string' && params) {
       for (const [p, v] of Object.entries(params)) {

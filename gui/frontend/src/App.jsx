@@ -4413,6 +4413,11 @@ function App() {
                         </div>
                         <div style={{fontSize: '12px', color: '#718096', marginTop: '4px'}}>
                           {new Date(job.timestamp).toLocaleString()}
+                          {job.encryption && (
+                            <span style={{marginLeft: '8px', color: job.encryption === 'encrypted' ? '#1a7f37' : '#a06000'}}>
+                              {job.encryption === 'encrypted' ? '🔒 ' + t('reportsEncrypted') : t('reportsUnencrypted')}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )
@@ -4468,6 +4473,14 @@ function App() {
                           <>
                             <strong>{t('reportsType')}</strong>
                             <span>{selected.backupType === 'machine' ? t('reportsTypeMachine') : t('reportsTypeDirectory')}</span>
+                          </>
+                        )}
+                        {selected.kind !== 'restore' && selected.encryption && (
+                          <>
+                            <strong>{t('reportsEncryption')}</strong>
+                            <span style={{color: selected.encryption === 'encrypted' ? '#1a7f37' : '#a06000', fontWeight: 600}}>
+                              {selected.encryption === 'encrypted' ? '🔒 ' + t('reportsEncrypted') : t('reportsUnencrypted')}
+                            </span>
                           </>
                         )}
                         {selected.message && (

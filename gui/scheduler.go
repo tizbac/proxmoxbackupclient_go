@@ -90,6 +90,14 @@ type ScheduledJob struct {
 	ShutdownAfter bool `json:"shutdownAfter,omitempty"`
 }
 
+// encryptionLabel maps "was an encryption key in use" to the JobHistory value.
+func encryptionLabel(keyInUse bool) string {
+	if keyInUse {
+		return "encrypted"
+	}
+	return "unencrypted"
+}
+
 // JobHistory represents a completed backup job
 type JobHistory struct {
 	ID         string   `json:"id"`
@@ -100,6 +108,12 @@ type JobHistory struct {
 	BackupDirs []string `json:"backupDirs"`
 	BackupID   string   `json:"backupId"`
 	UseVSS     bool     `json:"useVSS"`
+
+	// Encryption is "encrypted" when the run uploaded with an unlocked
+	// encryption key, "unencrypted" when it ran with none. Empty for entries
+	// persisted before this field existed, for restores, and for runs that
+	// failed before the key was resolved; the frontend shows those as unknown.
+	Encryption string `json:"encryption,omitempty"`
 
 	// BackupType is "directory" or "machine" — which top-level pipeline ran.
 	// Always set for entries written from now on (each OnComplete closure in
@@ -997,6 +1011,10 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			historyEntry.Message = fmt.Sprintf("Error: %v", err)
 			historyEntry.MessageKey = MsgScheduledJobError
 			historyEntry.MessageParams = msgParams{"error": err.Error()}
+		} else if pbsCfg, perr := a.resolvePBS(job.PBSServerID); perr == nil {
+			// A finished run means the key (if any) unlocked, so the
+			// configured key file is what the snapshot was written with.
+			historyEntry.Encryption = encryptionLabel(pbsCfg.EncryptionKeyFile != "")
 		}
 
 		if err := a.AddJobHistory(historyEntry); err != nil {
