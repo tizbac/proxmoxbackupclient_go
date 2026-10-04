@@ -1,6 +1,10 @@
 package main
 
-import "strings"
+import (
+	"strings"
+
+	"pbscommon"
+)
 
 // Backup result + live-progress types shared across the backup engine, the GUI,
 // the local API and the scheduler. BackupStatus is the single source of truth for
@@ -11,24 +15,14 @@ import "strings"
 // sidecar. The ExcludedByPolicy and Corrupted buckets are defined now but stay empty
 // until Group 1 (user exclusions H-04 and mode-B corruption) fills them.
 
-// BackupStatusFilename is the PBS blob name for the per-snapshot status sidecar.
-// PBS requires a bare basename (no leading dot) ending in ".blob"; the payload is
-// plain JSON. Listed in the manifest so the GUI can read it without a full restore.
-const BackupStatusFilename = "proxmox-client-status.json.blob"
+// The sidecar types live in pbscommon so the directorybackup CLI writes the
+// same blob; these aliases keep the GUI code unchanged.
+const BackupStatusFilename = pbscommon.BackupStatusFilename
 
-// BackupSidecar is the per-snapshot status persisted as a manifest blob: the
-// files excluded by policy and the files skipped on read errors for THIS
-// snapshot (one job → one snapshot, so ONE sidecar covers every directory
-// archived into it — see Directories). It lets the GUI show "in this backup,
-// files X/Y were excluded/skipped" without restoring the archive.
-type BackupSidecar struct {
-	FormatVersion    int         `json:"format_version"`
-	BackupID         string      `json:"backup_id"`
-	Directories      []string    `json:"directories"`
-	GeneratedAt      int64       `json:"generated_at"`
-	ExcludedByPolicy []FileIssue `json:"excluded_by_policy,omitempty"`
-	SkippedReadError []FileIssue `json:"skipped_read_error,omitempty"`
-}
+type (
+	BackupSidecar = pbscommon.BackupSidecar
+	FileIssue     = pbscommon.FileIssue
+)
 
 // BackupOutcome is the three-state result of a backup run.
 type BackupOutcome string
@@ -47,12 +41,6 @@ const (
 	// committed, or a chunk upload failure that would make a committed index corrupt).
 	OutcomeFailed BackupOutcome = "failed"
 )
-
-// FileIssue records one file that was excluded, skipped or corrupted, with the reason.
-type FileIssue struct {
-	Path   string `json:"path"`
-	Reason string `json:"reason"`
-}
 
 // DirResult records the outcome of one selected backup directory.
 type DirResult struct {
@@ -138,19 +126,7 @@ func (s *BackupStatus) merge(child *BackupStatus) {
 	s.Corrupted = append(s.Corrupted, child.Corrupted...)
 }
 
-// skippedToIssues wraps the engine's free-form SkippedFiles descriptions into the
-// FileIssue bucket. The descriptions already embed the reason; Group 1 will record
-// these with a clean path/reason split at the source (pxar.go).
-func skippedToIssues(skipped []string) []FileIssue {
-	if len(skipped) == 0 {
-		return nil
-	}
-	issues := make([]FileIssue, 0, len(skipped))
-	for _, s := range skipped {
-		issues = append(issues, FileIssue{Reason: s})
-	}
-	return issues
-}
+func skippedToIssues(skipped []string) []FileIssue { return pbscommon.SkippedToIssues(skipped) }
 
 // toLogicalPaths replaces the VSS shadow-copy root (from) with the original
 // logical root (to) in each path/description, so excluded/skipped status lists

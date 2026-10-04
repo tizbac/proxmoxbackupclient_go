@@ -4,12 +4,14 @@ import (
 	"clientcommon"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"encoding/hex"
 	"flag"
 	"fmt"
 	"hash"
 	"io"
 	"os"
+	"path/filepath"
 	"pbscommon"
 	"runtime"
 	"snapshot"
@@ -392,12 +394,27 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 	return client.Finish()
 }
 
-func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string) ([]string, error) {
+func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, originalPath string, vssUsed bool) ([]string, error) {
 	client.Connect(false, "host")
 	knownChunks := haxmap.New[string, bool]()
 
 	archive := &pbscommon.PXARArchive{}
 	archive.ArchiveName = "backup.pxar.didx"
+
+	// Captures extended attributes incl. POSIX ACLs on Linux (no-op elsewhere);
+	// uploaded as the same side-car blob the GUI writes so a GUI restore can
+	// re-apply them.
+	hostname, _ := os.Hostname()
+	xattrCollector := pbscommon.NewXattrCollector(backupdir, hostname)
+	archive.MetaCollector = xattrCollector
+
+	// Same root-level meta file the GUI injects: lets the GUI offer "restore to
+	// original path" for CLI snapshots.
+	if metaJSON, merr := pbscommon.GenerateBackupMeta(client.Manifest.BackupID, originalPath, hostname, "directorybackup", vssUsed); merr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to generate backup metadata: %v\n", merr)
+	} else {
+		archive.VirtualFiles = map[string][]byte{pbscommon.BackupMetaFilename: metaJSON}
+	}
 
 	previousDidx, err := client.DownloadPreviousToBytes(archive.ArchiveName)
 	if err != nil {
@@ -485,6 +502,40 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		return nil, err
 	}
 
+	if m, merr := xattrCollector.FinalizeRaw(); merr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to finalize file metadata: %v\n", merr)
+	} else if m != nil {
+		combined := &pbscommon.CombinedBackupFileMeta{
+			Version:  pbscommon.FileMetaVersion,
+			Captured: m.Captured,
+			Host:     hostname,
+			Archives: map[string]*pbscommon.BackupFileMeta{
+				strings.TrimSuffix(archive.ArchiveName, ".pxar.didx"): m,
+			},
+		}
+		entries, _, metaErrs := xattrCollector.Stats()
+		if blob, serr := combined.Serialize(); serr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to serialize file metadata: %v\n", serr)
+		} else if uerr := client.UploadBlob(pbscommon.FileMetaBlobName, blob); uerr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to upload file metadata blob: %v\n", uerr)
+		} else {
+			fmt.Printf("File metadata: %d entries, %d errors\n", entries, metaErrs)
+		}
+	}
+
+	sidecar := &pbscommon.BackupSidecar{
+		FormatVersion:    1,
+		BackupID:         client.Manifest.BackupID,
+		Directories:      []string{originalPath},
+		GeneratedAt:      time.Now().Unix(),
+		SkippedReadError: pbscommon.SkippedToIssues(archive.ReadErrors),
+	}
+	if sb, serr := json.Marshal(sidecar); serr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to serialize status sidecar: %v\n", serr)
+	} else if uerr := client.UploadBlob(pbscommon.BackupStatusFilename, sb); uerr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to upload status sidecar: %v\n", uerr)
+	}
+
 	err = client.UploadManifest()
 	if err != nil {
 		return nil, err
@@ -497,6 +548,10 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, usevss bool) ([]string, error) {
 
 	fmt.Printf("Starting backup of %s\n", backupdir)
+	originalPath := backupdir
+	if abs, aerr := filepath.Abs(backupdir); aerr == nil {
+		originalPath = abs
+	}
 	var err error
 	var readErrors []string
 	if usevss {
@@ -508,12 +563,12 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 			}
 			//Remove VSS snapshot on windows, on linux for now NOP
 			var e error
-			readErrors, e = backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
+			readErrors, e = backup_real(client, newchunk, reusechunk, pxarOut, backupdir, originalPath, true)
 			return e
 
 		})
 	} else {
-		readErrors, err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
+		readErrors, err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir, originalPath, false)
 	}
 
 	if err != nil {

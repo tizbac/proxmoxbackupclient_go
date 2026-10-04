@@ -1,6 +1,14 @@
 import { useTranslation } from '../i18n/i18nContext'
 import { useState } from 'react'
 
+// Flags are bundled SVG images: Windows ships no flag emoji glyphs, so the
+// emoji rendered as bare two-letter codes there while Linux showed flags.
+const flagUrls = import.meta.glob('../assets/flags/*.svg', { eager: true, query: '?url', import: 'default' })
+const Flag = ({ code }) => (
+  <img src={flagUrls[`../assets/flags/${code}.svg`]} alt="" width="20" height="15"
+    style={{ borderRadius: '2px', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)', flexShrink: 0 }} />
+)
+
 function LanguageSwitcher() {
   const { language, setLanguage } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
@@ -10,24 +18,24 @@ function LanguageSwitcher() {
   // NL/BE); picked the European-market one deliberately rather than
   // leaving it arbitrary.
   const languages = [
-    { code: 'bg', name: 'Български', flag: '🇧🇬' },
-    { code: 'cs', name: 'Čeština', flag: '🇨🇿' },
-    { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
-    { code: 'en', name: 'English', flag: '🇬🇧' },
-    { code: 'es', name: 'Español', flag: '🇪🇸' },
-    { code: 'el', name: 'Ελληνικά', flag: '🇬🇷' },
-    { code: 'fr', name: 'Français', flag: '🇫🇷' },
-    { code: 'hu', name: 'Magyar', flag: '🇭🇺' },
-    { code: 'it', name: 'Italiano', flag: '🇮🇹' },
-    { code: 'lv', name: 'Latviešu', flag: '🇱🇻' },
-    { code: 'lt', name: 'Lietuvių', flag: '🇱🇹' },
-    { code: 'nl', name: 'Nederlands', flag: '🇳🇱' },
-    { code: 'pl', name: 'Polski', flag: '🇵🇱' },
-    { code: 'pt', name: 'Português', flag: '🇵🇹' },
-    { code: 'ro', name: 'Română', flag: '🇷🇴' },
-    { code: 'sk', name: 'Slovenčina', flag: '🇸🇰' },
-    { code: 'tr', name: 'Türkçe', flag: '🇹🇷' },
-    { code: 'uk', name: 'Українська', flag: '🇺🇦' },
+    { code: 'bg', name: 'Български', flag: 'bg' },
+    { code: 'cs', name: 'Čeština', flag: 'cz' },
+    { code: 'de', name: 'Deutsch', flag: 'de' },
+    { code: 'en', name: 'English', flag: 'gb' },
+    { code: 'es', name: 'Español', flag: 'es' },
+    { code: 'el', name: 'Ελληνικά', flag: 'gr' },
+    { code: 'fr', name: 'Français', flag: 'fr' },
+    { code: 'hu', name: 'Magyar', flag: 'hu' },
+    { code: 'it', name: 'Italiano', flag: 'it' },
+    { code: 'lv', name: 'Latviešu', flag: 'lv' },
+    { code: 'lt', name: 'Lietuvių', flag: 'lt' },
+    { code: 'nl', name: 'Nederlands', flag: 'nl' },
+    { code: 'pl', name: 'Polski', flag: 'pl' },
+    { code: 'pt', name: 'Português', flag: 'pt' },
+    { code: 'ro', name: 'Română', flag: 'ro' },
+    { code: 'sk', name: 'Slovenčina', flag: 'sk' },
+    { code: 'tr', name: 'Türkçe', flag: 'tr' },
+    { code: 'uk', name: 'Українська', flag: 'ua' },
   ]
 
   const currentLanguage = languages.find(lang => lang.code === language) || languages[0]
@@ -58,7 +66,7 @@ function LanguageSwitcher() {
       transition: 'all 0.2s'
     }}
     >
-    <span>{currentLanguage.flag}</span>
+    <Flag code={currentLanguage.flag} />
     <span>{currentLanguage.name}</span>
     <span>{isOpen ? '▲' : '▼'}</span>
     </button>
@@ -101,7 +109,7 @@ function LanguageSwitcher() {
           transition: 'all 0.2s'
         }}
         >
-        <span>{lang.flag}</span>
+        <Flag code={lang.flag} />
         <span>{lang.name}</span>
         </button>
       ))}

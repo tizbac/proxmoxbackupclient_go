@@ -2042,6 +2042,15 @@ Sprint Restore-3 (2 jours): Documentation complète
 
 ---
 
+## Fork TODO (mjb-is)
+
+### Post-backup action: "Minimise to tray" (before "Exit the app")
+- [ ] Add a "Minimise to tray" choice to the Backup Set post-backup actions, ahead of "Exit the app". Today `ExitAppAfter` calls `os.Exit(0)` (`gui/email_notifications.go`, `runPostBackupActions`), which ends the whole process and with it every other schedule. Minimise hides the window to the tray (`MinimizeToTray()`, already used by the close prompt) and keeps the scheduler running.
+- [ ] Likely shape: `MinimizeAfter bool json:"minimizeAfter,omitempty"` on `ScheduledJob`, run after the app/email steps and before exit/shutdown; mutually exclusive with exit in the form; Windows only (other platforms have no tray, so hide the option or fall back to leaving the window open).
+- [ ] Edge case: a job set to shut down the computer still shuts down after minimising; exit and shutdown stay the last steps.
+
+---
+
 **Dernière mise à jour:** 2026-03-25 (Audit Technique intégré)
 **Mainteneur:** Proxmox Backup Client GO contributors
 **Référence:** Audit `🔬 Proxmox Backup Client - Audit Technique pour Développeurs`
