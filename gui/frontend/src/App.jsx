@@ -1807,7 +1807,17 @@ function App() {
     } catch (err) {
       setProgress(0)
       setBackupRunning(false)
-      showStatus(`❌ ${err}`, 'error')
+      // A cancelled passphrase prompt is a deliberate choice, not a failure.
+      // The banner sits below the form, so keep it up and scroll it into
+      // view: the user is looking at the top of the page when the modal closes.
+      if (String(err).includes('passphrase entry cancelled')) {
+        showStatus(`⏹️ ${t('encryptionCancelledNoPassphrase')}`, 'info', true)
+      } else {
+        showStatus(`❌ ${err}`, 'error', true)
+      }
+      setTimeout(() => {
+        document.getElementById('backup-status')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
     }
   }
 
@@ -3617,7 +3627,7 @@ function App() {
               then once real progress started the card ALSO started
               rendering it, duplicating the same text in two places at once. */}
           {status.visible && activeTab === 'backup' && !backupCardActive && (
-            <div className={`status ${status.type} visible`}>{status.message}</div>
+            <div id="backup-status" className={`status ${status.type} visible`}>{status.message}</div>
           )}
         </div>
 
