@@ -35,10 +35,10 @@ const (
 // descendants. Paths use forward slashes (archive style); backslashes are
 // accepted and normalized.
 //
-	// RestoreACLs / RestoreADS / RestoreTimestamps are reserved for the upcoming
-	// NTFS sidecar work — accepted today so the API surface is stable, but only
-	// RestoreTimestamps has any effect (always-on: mtime is restored). The other
-	// two are no-ops until the per-file .proxmox_meta sidecar lands.
+// RestoreACLs / RestoreADS / RestoreTimestamps are reserved for the upcoming
+// NTFS sidecar work — accepted today so the API surface is stable, but only
+// RestoreTimestamps has any effect (always-on: mtime is restored). The other
+// two are no-ops until the per-file .proxmox_meta sidecar lands.
 type RestoreOptions struct {
 	BaseURL         string
 	AuthID          string
@@ -51,6 +51,12 @@ type RestoreOptions struct {
 	BackupID        string
 	SnapshotTime    time.Time
 	DestPath        string
+
+	// Crypt unlocks an encrypted snapshot. Nil means a plain snapshot. Every
+	// chunk fetch goes through pbscommon.PBSClient.GetChunkData, which needs
+	// it to decrypt and to recompute the index's sha256(plaintext || id_key)
+	// digests for verification.
+	Crypt *pbscommon.CryptConfig
 
 	// Mode selects the destination policy. Empty defaults to alternate_abs
 	// (legacy behaviour: dest + full archive path).
@@ -169,6 +175,7 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, progres
 		Namespace:        opts.Namespace,
 		Insecure:         opts.CertFingerprint != "",
 		CompressionLevel: pbscommon.CompressionFastest,
+		Crypt:            opts.Crypt,
 		Manifest: pbscommon.BackupManifest{
 			BackupID:   opts.BackupID,
 			BackupTime: opts.SnapshotTime.Unix(),
@@ -216,6 +223,7 @@ func listSnapshotViaCatalog(opts RestoreOptions, cancel func() bool) (entries []
 		Namespace:        opts.Namespace,
 		Insecure:         opts.CertFingerprint != "",
 		CompressionLevel: pbscommon.CompressionFastest,
+		Crypt:            opts.Crypt,
 		Manifest: pbscommon.BackupManifest{
 			BackupID:   opts.BackupID,
 			BackupTime: opts.SnapshotTime.Unix(),
@@ -700,9 +708,10 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	}
 
 	progress(0.20, "Downloading backup archive...")
-	// AssembleDIDXToFile downloads the .didx index and reassembles the actual
-	// PXAR stream chunk-by-chunk into a temp file (bounded memory), then we walk
-	// it from disk and stream each file payload to its destination.
+	// The .didx index is parsed lazily and its chunks are fetched on demand by
+	// pbscommon.NewDIDXReaderAt, so we walk the PXAR stream straight off the
+	// network reader and stream each file payload to its destination. Nothing is
+	// materialised on disk first.
 	var extracted []pbscommon.PXARExtractedFile
 	err = withSnapshotReader(opts, "backup.pxar.didx", "Restore", func(done, total int) {
 		// Map chunk progress to the 0.20–0.80 portion of the overall bar.

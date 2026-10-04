@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"pbscommon"
 	"security"
 )
 
@@ -34,8 +35,17 @@ type Config struct {
 	// so it authenticates via the PBSAuthCookie.
 	Ticket    string `json:"-"`
 	CSRFToken string `json:"-"`
-	Datastore       string `json:"datastore,omitempty"`
-	Namespace       string `json:"namespace,omitempty"`
+	Datastore string `json:"datastore,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	// EncryptionKeyFile is the path to a Proxmox Backup Server encryption key
+	// (JSON, as written by `proxmox-backup-client key create`). Snapshots
+	// taken with encryption enabled cannot be listed-restored, extracted or
+	// verified without it: every chunk is AES-256-GCM and the chunk digests in
+	// the indexes are sha256(plaintext || id_key).
+	EncryptionKeyFile string `json:"encryption_key_file,omitempty"`
+	// Crypt is EncryptionKeyFile after it has been read and unlocked, held
+	// runtime-only so the unlocked key never lands in config.json.
+	Crypt *pbscommon.CryptConfig `json:"-"`
 
 	// ==================== BACKUP SETTINGS ====================
 	BackupDir      string   `json:"backupdir,omitempty"`
@@ -192,15 +202,16 @@ func LoadConfig() *Config {
 	if config.BaseURL != "" && len(config.PBSServers) == 0 {
 		// Create default PBS server from legacy config
 		defaultPBS := &PBSServer{
-			ID:              "default",
-			Name:            "Serveur PBS Principal",
-			BaseURL:         config.BaseURL,
-			CertFingerprint: config.CertFingerprint,
-			AuthID:          config.AuthID,
-			Secret:          config.Secret,
-			Datastore:       config.Datastore,
-			Namespace:       config.Namespace,
-			Description:     "Serveur PBS par défaut (migré depuis ancienne config)",
+			ID:                "default",
+			Name:              "Serveur PBS Principal",
+			BaseURL:           config.BaseURL,
+			CertFingerprint:   config.CertFingerprint,
+			AuthID:            config.AuthID,
+			Secret:            config.Secret,
+			EncryptionKeyFile: config.EncryptionKeyFile,
+			Datastore:         config.Datastore,
+			Namespace:         config.Namespace,
+			Description:       "Serveur PBS par défaut (migré depuis ancienne config)",
 		}
 
 		// Initialize PBSServers map if nil
@@ -288,6 +299,40 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate the encryption key file up front. A dangling or unsupported key
+	// path would otherwise only surface much later — deep inside a backup or,
+	// worse, as an "unable to decrypt blob" halfway through a restore — so fail
+	// here where the user just typed the path.
+	if err := c.validateEncryptionKeyFile(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateEncryptionKeyFile checks that EncryptionKeyFile is usable by the GUI
+// without a console to prompt on. It deliberately does NOT touch Crypt: callers
+// that are about to encrypt or decrypt call loadCryptConfig to unlock it.
+//
+// An empty path is valid (unencrypted snapshots). Anything else must exist and
+// must not be passphrase-protected.
+func (c *Config) validateEncryptionKeyFile() error {
+	if c.EncryptionKeyFile == "" {
+		return nil
+	}
+	if err := security.ValidatePath(c.EncryptionKeyFile); err != nil {
+		return fmt.Errorf("chemin de cle de chiffrement invalide: %w", err)
+	}
+	if _, err := os.Stat(c.EncryptionKeyFile); err != nil {
+		return fmt.Errorf("fichier de cle de chiffrement illisible (%s): %w", c.EncryptionKeyFile, err)
+	}
+	keyCfg, err := pbscommon.LoadKeyConfig(c.EncryptionKeyFile)
+	if err != nil {
+		return fmt.Errorf("lecture du fichier de cle de chiffrement %s: %w", c.EncryptionKeyFile, err)
+	}
+	if keyCfg.KDF != nil {
+		return fmt.Errorf("le fichier de cle de chiffrement %s est protege par phrase de passe, ce que l'interface graphique ne peut pas deverrouiller: utilisez une cle creee avec `proxmox-backup-client key create --kdf none`, ou restaurez depuis la ligne de commande", c.EncryptionKeyFile)
+	}
 	return nil
 }
 
@@ -313,6 +358,10 @@ func (c *Config) EffectivePBS() *Config {
 	cp.Secret = pbs.Secret
 	cp.Username = pbs.Username
 	cp.Password = pbs.Password
+	// The key is per-server: without this the whole multi-PBS path silently ran
+	// unencrypted (and could not decrypt encrypted snapshots), because the
+	// legacy top-level EncryptionKeyFile stays empty in that mode.
+	cp.EncryptionKeyFile = pbs.EncryptionKeyFile
 	cp.Datastore = pbs.Datastore
 	cp.Namespace = pbs.Namespace
 	return &cp
@@ -445,4 +494,35 @@ func (c *Config) SetDefaultPBS(id string) error {
 
 	c.DefaultPBSID = id
 	return c.Save()
+}
+
+// loadCryptConfig reads and unlocks EncryptionKeyFile into the runtime-only
+// Crypt field, which every restore-side pbscommon.PBSClient is built with.
+//
+// A passphrase-protected key file cannot be unlocked from a GUI that has no
+// console, so only `--kdf none` key files are accepted here; anything else
+// gets an explicit error naming the flag to set instead of a confusing
+// "unable to decrypt blob - missing CryptConfig" much later. An empty
+// EncryptionKeyFile leaves Crypt nil, which is correct for plain snapshots —
+// encrypted ones will then fail per chunk with a message saying the key is
+// missing.
+func (c *Config) loadCryptConfig() error {
+	if c.EncryptionKeyFile == "" {
+		c.Crypt = nil
+		return nil
+	}
+
+	keyCfg, err := pbscommon.LoadKeyConfig(c.EncryptionKeyFile)
+	if err != nil {
+		return fmt.Errorf("reading encryption key file %s: %w", c.EncryptionKeyFile, err)
+	}
+	if keyCfg.KDF != nil {
+		return fmt.Errorf("encryption key file %s is passphrase-protected, which the GUI cannot unlock: use a key created with `proxmox-backup-client key create --kdf none`, or restore from the command line with proxmoxbackupclient/nbd", c.EncryptionKeyFile)
+	}
+
+	c.Crypt, err = keyCfg.CryptConfig(nil)
+	if err != nil {
+		return fmt.Errorf("unlocking encryption key file %s: %w", c.EncryptionKeyFile, err)
+	}
+	return nil
 }

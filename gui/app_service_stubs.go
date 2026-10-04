@@ -24,6 +24,9 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		result["datastore"] = a.config.Datastore
 		result["certfingerprint"] = a.config.CertFingerprint
 		result["backup-id"] = a.config.BackupID
+		// Reported (path only, never the key) so the service's own status/config
+		// output shows whether scheduled backups are encrypted.
+		result["encryption_key_file"] = a.config.EncryptionKeyFile
 	}
 
 	return result
@@ -85,6 +88,16 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		return err
 	}
 
+	// Unlock the configured encryption key. Without this, SCHEDULED backups ran
+	// unencrypted even when a key was configured: the scheduler goes through
+	// StartBackup, which resolves to this file under -tags service, and the GUI
+	// build's copy of StartBackup (main.go, !service) is the one that already
+	// did this. A scheduled backup silently dropping the key also makes its own
+	// snapshots unrestorable from the GUI later.
+	if err := pbsCfg.loadCryptConfig(); err != nil {
+		return err
+	}
+
 	// Prepare backup options
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
@@ -95,6 +108,7 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		Datastore:       pbsCfg.Datastore,
 		Namespace:       pbsCfg.Namespace,
 		CertFingerprint: pbsCfg.CertFingerprint,
+		Crypt:           pbsCfg.Crypt,
 		BackupDirs:      allDirs,
 		BackupID:        backupID,
 		BackupType:      backupType,

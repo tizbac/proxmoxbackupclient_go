@@ -352,10 +352,16 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		"secret_set": cfg.Secret != "",
 		"datastore":  cfg.Datastore,
 		"namespace":  cfg.Namespace,
-		"backupdir":  cfg.BackupDir,
-		"backup-id":  cfg.BackupID,
-		"usevss":     cfg.UseVSS,
-		"hostname":   hostname,
+		// Unlike Secret, the encryption key path is not a secret (only the path
+		// is stored; the unlocked key never leaves the backend), so it is handed
+		// to the frontend as-is. SaveConfig replaces the whole Config, so the
+		// frontend MUST round-trip this field or every config save would silently
+		// drop the key and restart encrypting with no way to read it back.
+		"encryption_key_file": cfg.EncryptionKeyFile,
+		"backupdir":           cfg.BackupDir,
+		"backup-id":           cfg.BackupID,
+		"usevss":              cfg.UseVSS,
+		"hostname":            hostname,
 	}
 
 	// Pre-fill backup-id with hostname if empty
@@ -413,6 +419,14 @@ func (a *App) SaveConfig(config *Config) error {
 	// Validate before saving
 	if err := config.Validate(); err != nil {
 		writeDebugLog(fmt.Sprintf("Config validation failed: %v", err))
+		return err
+	}
+
+	// Unlock the key BEFORE persisting so the runtime-only Crypt matches what is
+	// about to be written, and so an unusable key is reported without having
+	// saved a config that cannot be used.
+	if err := config.loadCryptConfig(); err != nil {
+		writeDebugLog(fmt.Sprintf("Encryption key load failed: %v", err))
 		return err
 	}
 
@@ -852,6 +866,12 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		return err
 	}
 
+	// Unlock the configured encryption key, if any, so every chunk this
+	// backup uploads is AES-256-GCM and the manifest is signed.
+	if err := pbsCfg.loadCryptConfig(); err != nil {
+		return err
+	}
+
 	// Validate backup parameters and build target list
 	var targetDirs []string
 	if backupType == "directory" {
@@ -886,6 +906,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		ExcludeList:     excludeList,
 		DisableSplit:    a.config.DisableSplit,
 		SplitSizeBytes:  a.config.SplitSizeBytes(),
+		Crypt:           pbsCfg.Crypt,
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
@@ -1081,6 +1102,12 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		return err
 	}
 
+	// Unlock the configured encryption key, if any, so every chunk this
+	// backup uploads is AES-256-GCM and the manifest is signed.
+	if err := pbsCfg.loadCryptConfig(); err != nil {
+		return err
+	}
+
 	// Prepare backup options
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
@@ -1100,6 +1127,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		ExcludeList:     []string{}, // No exclude list for machine backups
 		DisableSplit:    a.config.DisableSplit,
 		SplitSizeBytes:  a.config.SplitSizeBytes(),
+		Crypt:           pbsCfg.Crypt,
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
@@ -1240,18 +1268,30 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 // the default PBS server is used. Falls back to legacy single-server fields
 // when no multi-PBS entry is configured.
 func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
+	var cfg *Config
 	if pbsID != "" {
 		pbs, err := a.config.GetPBSServer(pbsID)
 		if err != nil {
 			return nil, err
 		}
-		return a.withAuth(pbs.ToConfig())
+		cfg = pbs.ToConfig()
+	} else {
+		effective := a.config.EffectivePBS()
+		if err := effective.Validate(); err != nil {
+			return nil, err
+		}
+		cfg = effective
 	}
-	cfg := a.config.EffectivePBS()
-	if err := cfg.Validate(); err != nil {
+	cfg, err := a.withAuth(cfg)
+	if err != nil {
 		return nil, err
 	}
-	return a.withAuth(cfg)
+	// An encrypted snapshot's chunks are unreadable without the key, so fail
+	// here with a clear message rather than deep inside the chunk fetcher.
+	if err := cfg.loadCryptConfig(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
 // ListSnapshots lists available snapshots on a PBS server, optionally filtered
@@ -1319,6 +1359,7 @@ func (a *App) ListSnapshotContents(pbsID, backupID string, snapshotUnix int64, f
 		CertFingerprint: cfg.CertFingerprint,
 		BackupID:        backupID,
 		SnapshotTime:    time.Unix(snapshotUnix, 0),
+		Crypt:           cfg.Crypt,
 	}
 	return ListSnapshotContentsInline(opts, "", forceRefresh)
 }
@@ -1352,6 +1393,7 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 		CertFingerprint: cfg.CertFingerprint,
 		BackupID:        backupID,
 		SnapshotTime:    time.Unix(snapshotUnix, 0),
+		Crypt:           cfg.Crypt,
 	}
 	return ReadSnapshotMetaInline(opts, false)
 }
@@ -1440,6 +1482,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		RestoreACLs:       restoreACLs,
 		RestoreADS:        restoreADS,
 		RestoreTimestamps: restoreTimestamps,
+		Crypt:             cfg.Crypt,
 		OnProgress:        emit,
 	}
 
@@ -1568,6 +1611,7 @@ func (a *App) SearchFiles(pbsID, hostPrefix, query, mode string, fromUnix, toUni
 		From:            from,
 		To:              to,
 		AssembleMissing: assembleMissing,
+		Crypt:           cfg.Crypt,
 		OnProgress:      emit,
 	}
 	return SearchFilesInline(opts)

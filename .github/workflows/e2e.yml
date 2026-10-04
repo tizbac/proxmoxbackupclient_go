@@ -1,0 +1,144 @@
+name: End-to-end tests
+
+# Backups made by our CLIs must be restorable by the *official* Proxmox client.
+# This workflow proves that against a real Proxmox Backup Server in Docker,
+# which is the only way to catch the classes of bug unit tests cannot see:
+# wrong blob framing, an unsignable manifest, a namespace that silently lands in
+# the wrong place, a chunk digest computed over the wrong bytes.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      skip_official_client:
+        description: 'Skip the official-client interop assertions'
+        type: boolean
+        default: false
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      - name: Run tests
+        run: make test
+
+      - name: Check formatting
+        run: |
+          set -euo pipefail
+          # Only the files this project actually maintains; several legacy
+          # files have never been gofmt'd and fixing them is unrelated churn.
+          files=(
+            pbscommon/crypt.go
+            pbscommon/crypt_test.go
+            pbscommon/pbsapi.go
+            pbscommon/pbsapi_crypt_test.go
+            pbscommon/pbsapi_namespace_test.go
+            pbscommon/didx_assembler.go
+            pbscommon/didx_assembler_test.go
+            pbscommon/didx_fixtures_test.go
+            pbscommon/didx_reader.go
+            pbscommon/didx_reader_test.go
+            pbscommon/pxar_reader.go
+            pbscommon/pxar_reader_test.go
+            pbscommon/pxar_fixtures_test.go
+            clientcommon/crypt.go
+            machinebackuplib/machinebackup.go
+            machinebackuplib/slugify_test.go
+            nbd/fidxserver.go
+            nbd/fidxserver_test.go
+            gui/restore_inline.go
+            gui/restore_search.go
+            gui/restore_search_test.go
+            gui/restore_cache.go
+            gui/restore_cache_test.go
+            gui/crypt_key.go
+            gui/crypt_test.go
+            gui/config.go
+            gui/pbs_server.go
+            gui/main.go
+          )
+          out="$(gofmt -l "${files[@]}")"
+          if [ -n "$out" ]; then
+            printf 'not gofmt-clean:\n%s\n' "$out" >&2
+            while read -r f; do printf '::error file=%s::not gofmt-clean\n' "$f"; done <<<"$out"
+            exit 1
+          fi
+
+  e2e:
+    name: End-to-end (PBS in Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      # The reference client is built from Proxmox's own Debian repository by
+      # testing/e2e/run.sh itself (see testing/e2e/official-client/Dockerfile),
+      # so there is no apt step here and no pinned client version to go stale.
+      #
+      # Deliberately NOT done: installing proxmox-backup-client from the
+      # runner's apt. That yields whatever version the runner image ships, which
+      # has been old enough to lack namespace support -- a silently reduced test
+      # matrix rather than an outright failure.
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      - name: Run end-to-end suite
+        id: run-e2e
+        env:
+          E2E_SKIP_OFFICIAL: ${{ inputs.skip_official_client && '1' || '0' }}
+        run: make test-e2e
+
+      - name: PBS container logs
+        if: failure()
+        run: docker logs --tail 200 pbs-e2e || true
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          {
+            echo '### End-to-end diagnostics'
+            echo
+            echo '* PBS image: `ayufan/proxmox-backup-server:latest`'
+            echo '* Official client image: `proxmoxbackupclient-e2e-client:latest`'
+            echo
+            echo 'Re-run just this job with `E2E_KEEP=1` to keep the container and workdir.'
+          } >> "$GITHUB_STEP_SUMMARY"

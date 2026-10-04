@@ -209,18 +209,18 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 		errCh <- err
 	}()
 
+	// uploadWorker is the sole consumer of errCh (it returns the reader error
+	// through its own return value), so this function must not read errCh
+	// itself — a second receive would block forever once the writer has
+	// exited.
 	var uploadErr error
 	go func() {
 		defer close(uploadDone)
 		uploadErr = uploadWorker(client, fidxName, total, ch, errCh)
 	}()
 
-	readErr := <-errCh
 	<-uploadDone
-	if uploadErr != nil {
-		return uploadErr
-	}
-	return readErr
+	return uploadErr
 }
 
 func assembleSegments(total uint64, regions []diskSegment) []diskSegment {

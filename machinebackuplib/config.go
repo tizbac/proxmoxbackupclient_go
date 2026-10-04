@@ -1,5 +1,6 @@
 package machinebackuplib
 
+import "pbscommon"
 
 type MailSendConfig struct {
 	From string `json:"from"`
@@ -37,6 +38,22 @@ type Config struct {
 	SMTP            *SMTPConfig `json:"smtp"`
 	SysTray         bool        `json:"systray"`
 	BackupType      string      `json:"backuptype"`
+
+	// KeyFile is a Proxmox Backup Server encryption key (JSON, as produced by
+	// `proxmox-backup-client key create`). When set, every fixed-index chunk
+	// is AES-256-GCM encrypted and the snapshot manifest is signed — the same
+	// on-disk layout as `proxmox-backup-client backup --crypt-mode encrypt`.
+	KeyFile string `json:"keyfile"`
+
+	// KeyFilePassphrase unlocks a scrypt/PBKDF2 protected KeyFile. Empty means
+	// the caller prompts for it.
+	KeyFilePassphrase string `json:"keyfilepassphrase"`
+
+	// Crypt is KeyFile after it has been read and unlocked. Callers (the CLI,
+	// the GUI) fill this in — via clientcommon.LoadCryptConfig — so that the
+	// passphrase prompt stays with whoever owns the console. It is never
+	// serialized: a -config file carries KeyFile, not the unlocked key.
+	Crypt *pbscommon.CryptConfig `json:"-"`
 }
 
 func (c *Config) Valid() bool {
@@ -62,4 +79,3 @@ func (c *Config) Valid() bool {
 
 	return true
 }
-

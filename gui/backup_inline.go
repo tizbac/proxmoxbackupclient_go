@@ -37,7 +37,7 @@ type BackupOptions struct {
 	Datastore       string
 	Namespace       string
 	CertFingerprint string
-	BackupObjects      []string // Multiple directories or drives to backup
+	BackupObjects   []string // Multiple directories or drives to backup
 	BackupID        string
 	BackupType      string // "host" for GUI backups; "vm" additionally uploads a VM config and needs a numeric BackupID
 	Kind            string // "disk", "directory", or "machine"
@@ -46,8 +46,11 @@ type BackupOptions struct {
 	ExcludeList     []string // User-configured exclusion patterns applied by the PXAR writer (H-04)
 	DisableSplit    bool     // When true, never auto-split regardless of size
 	SplitSizeBytes  uint64   // Auto-split threshold and per-bin target; 0 = default (SplitThreshold)
-	OnProgress      func(percent float64, message string)
-	OnComplete      func(success bool, message string)
+	// Crypt encrypts every chunk and signs the manifest. Nil means a plain
+	// snapshot. Populated from Config.Crypt (Config.EncryptionKeyFile).
+	Crypt      *pbscommon.CryptConfig
+	OnProgress func(percent float64, message string)
+	OnComplete func(success bool, message string)
 	// OnResult delivers the full structured result (Group 0 contract). It is
 	// additive: OnComplete keeps firing with the success bool for existing
 	// consumers. OnResult is the source the sidecar (Group 1) and rich history read.
@@ -203,25 +206,25 @@ func calculateDirSizeCtx(ctx context.Context, path string) (uint64, error) {
 
 type ChunkState struct {
 	assignments         []string
-	assignmentsOffset  []uint64
+	assignmentsOffset   []uint64
 	pos                 uint64
 	wrid                uint64
 	chunkcount          uint64
 	chunkdigests        hash.Hash
-	currentChunk       []byte
+	currentChunk        []byte
 	C                   pbscommon.Chunker
 	newchunk            *atomic.Uint64
 	reusechunk          *atomic.Uint64
-	failedchunk         *atomic.Uint64     // Track failed chunk uploads
+	failedchunk         *atomic.Uint64 // Track failed chunk uploads
 	knownChunks         *haxmap.Map[string, bool]
 	onProgress          func(float64, string)
 	onStats             func(*BackupProgressStats) // Structured live stats for the GUI (nil for the catalog stream)
 	currentDir          string                     // Directory currently being archived, for the stats payload
 	lastProgressReport  uint64
-	lastProgressPercent float64            // Track last reported percentage to prevent backwards progress
-	totalSize           *atomic.Uint64     // Total size, updated by background scan
-	uploadErrors        []string           // Collect upload errors to report at the end
-	errorsMutex         sync.Mutex         // Protect uploadErrors slice
+	lastProgressPercent float64        // Track last reported percentage to prevent backwards progress
+	totalSize           *atomic.Uint64 // Total size, updated by background scan
+	uploadErrors        []string       // Collect upload errors to report at the end
+	errorsMutex         sync.Mutex     // Protect uploadErrors slice
 }
 
 func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, failedchunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool], onProgress func(float64, string), totalSize *atomic.Uint64, onStats func(*BackupProgressStats), currentDir string) {
@@ -674,7 +677,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	if opts.Kind == "machine" {
 		return runMachineBackupInline(opts)
 	}
-	
+
 	// Default to directory backup for "disk" or "directory" kinds
 	// (existing logic handles these cases)
 
@@ -778,6 +781,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		Namespace:        opts.Namespace,
 		Insecure:         opts.CertFingerprint != "",
 		CompressionLevel: compressionLevel,
+		Crypt:            opts.Crypt,
 		Manifest: pbscommon.BackupManifest{
 			BackupID: opts.BackupID,
 		},
@@ -1040,7 +1044,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 // runMachineBackupInline handles machine backup using machinebackuplib
 func runMachineBackupInline(opts BackupOptions) error {
 	startTime := time.Now()
-	
+
 	// Create machine backup config from opts
 	cfg := &machinebackuplib.Config{
 		BaseURL:         opts.BaseURL,
@@ -1054,6 +1058,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 		BackupID:        opts.BackupID,
 		BackupType:      opts.BackupType,
 		BackupDevices:   opts.BackupObjects,
+		Crypt:           opts.Crypt,
 	}
 
 	// Progress callback wrapper. Returning true (user pressed Stop, which
@@ -1065,14 +1070,14 @@ func runMachineBackupInline(opts BackupOptions) error {
 		}
 		return opts.Ctx != nil && opts.Ctx.Err() != nil
 	}
-	
+
 	// Perform machine backup
 	_, err := machinebackuplib.Backup(cfg, progress)
 	if err != nil {
 		// Handle error case
 		errMsg := fmt.Sprintf("Machine backup failed: %v", err)
 		writeBackupLog(errMsg)
-		
+
 		if opts.OnComplete != nil {
 			opts.OnComplete(false, errMsg)
 		}
@@ -1086,11 +1091,11 @@ func runMachineBackupInline(opts BackupOptions) error {
 		}
 		return fmt.Errorf("%s", errMsg)
 	}
-	
+
 	// Success case
 	duration := time.Since(startTime)
 	completionMsg := fmt.Sprintf("Machine backup completed in %s", formatDuration(duration))
-	
+
 	if opts.OnComplete != nil {
 		opts.OnComplete(true, completionMsg)
 	}
@@ -1102,7 +1107,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 			Message:     completionMsg,
 		})
 	}
-	
+
 	return nil
 }
 

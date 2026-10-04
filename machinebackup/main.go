@@ -9,9 +9,9 @@ import (
 
 	"machinebackuplib"
 
+	"github.com/tawesoft/golib/v2/dialog"
 	"os"
 	"runtime"
-	"github.com/tawesoft/golib/v2/dialog"
 )
 
 type arrayFlags []string
@@ -25,7 +25,6 @@ func (i *arrayFlags) Set(value string) error {
 	*i = append(*i, value)
 	return nil
 }
-
 
 func loadConfig() *machinebackuplib.Config {
 	// Define flags
@@ -44,6 +43,8 @@ func loadConfig() *machinebackuplib.Config {
 	backupTypeFlag := flag.String("type", "", "host|vm , vm will allow to restore as VM inside proxmox VE (Physical to Virtual), also it enables to use file restore feature, use numeric backupid")
 	flag.Var(&backupdevs, "backupdev", "Can be specified multiple times,Backup device file ( On windows it can be \\\\.\\PhysicalDriveN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever ; mounted partitions get a consistent point-in-time snapshot via the elastio-snap/dattobd kernel module (requires root)")
 	sysTrayFlag := flag.Bool("systray", false, "Enable systray( Note it can cause issues when running with no user logged in )")
+	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
+	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
 	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")
 	mailUsernameFlag := flag.String("mail-username", "", "mail notification system: mail server username(optional)")
@@ -105,6 +106,12 @@ func loadConfig() *machinebackuplib.Config {
 	config.BackupDevices = backupdevs
 	if *sysTrayFlag {
 		config.SysTray = true
+	}
+	if *keyFileFlag != "" {
+		config.KeyFile = *keyFileFlag
+	}
+	if *keyFilePassphraseFlag != "" {
+		config.KeyFilePassphrase = *keyFilePassphraseFlag
 	}
 
 	if *backupTypeFlag != "" {
@@ -174,8 +181,6 @@ func fatalError(msg string, err error) {
 	os.Exit(1)
 }
 
-
-
 func main() {
 
 	cfg := loadConfig()
@@ -225,58 +230,20 @@ func main() {
 		machinebackuplib.SysTraySetup()
 	}
 
-	machinebackuplib.Backup(cfg, func(percentage float64, message string) bool {
+	// Read and unlock -keyfile (prompting for a passphrase when the key file
+	// is scrypt/PBKDF2 protected and none was given). Left nil for a plain
+	// snapshot.
+	if cfg.Crypt, err = clientcommon.LoadCryptConfig(cfg.KeyFile, cfg.KeyFilePassphrase); err != nil {
+		fatalError("encryption key", err)
+	}
+
+	result, err := machinebackuplib.Backup(cfg, func(percentage float64, message string) bool {
 		return false
 	})
-
-	
-
-	/*partitions, err := disk.Partitions(false) // false means don't include virtual partitions
 	if err != nil {
-		log.Fatalf("Error fetching partitions: %v", err)
+		fatalError("backup", err)
 	}
-
-	// Iterate over partitions and print them
-	for _, partition := range partitions {
-		// Print partition information
-		fmt.Printf("Device: %s\n", partition.Device)
-		fmt.Printf("Mountpoint: %s\n", partition.Mountpoint)
-		fmt.Printf("Filesystem type: %s\n", partition.Fstype)
-
-		// List the corresponding drive letter for each partition
-		// This is platform dependent, but it should map to the drive letter on Windows.
-		// Windows typically assigns a drive letter (like C:, D:) to each partition.
-		// We use partition.Mountpoint to get it, which should include the letter (e.g. "C:\").
-		if partition.Mountpoint != "" {
-			fmt.Printf("Drive Letter: %s\n", partition.Mountpoint)
-		}
+	for _, disk := range result.Disks {
+		fmt.Printf("Backed up disk %d (%d bytes)\n", disk.Index, disk.Size)
 	}
-
-	return
-
-	SNAP := snapshot.CreateVSSSnapshot("C:\\")
-	defer snapshot.VSSCleanup()
-	fmt.Println("ObjectPath: " + SNAP.ObjectPath)
-	file, err := os.Open(strings.TrimRight(SNAP.ObjectPath, "\\"))
-	if err != nil {
-		panic(err)
-	}
-
-	x := make([]byte, 1024)
-	n, err := file.Read(x)
-	if err != nil {
-		panic(err)
-	} else {
-		fmt.Print(n)
-	}*/
-
-	//Windows backup logic will be as follows
-
-	//1. Enumerate fixed non-usb disks ( SATA + NVME )
-	//2. Enumerate partitions with offset and length
-	//3. Start reading using PhysicalDriveX special file
-	//4. If we go into a region that contains a mounted partition, if filesystem is NTFS or ReFS , take VSS snapshot and switch to the associated shadow volume file
-	//4. If the partition is not mounted just keep reading, if the partition is mounted and not NTFS or ReFS for now throw a warning and write zeros
-	//5. For each disk create a fixed index ( Do it in parallel maybe)
-
 }

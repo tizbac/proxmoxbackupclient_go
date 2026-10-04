@@ -53,12 +53,12 @@ type PXARExtractedFile struct {
 	// ACL/attributes side-car, keyed by this same relative path).
 	ArchivePath string
 	Size        uint64
-	Mode       os.FileMode
-	ModTime    int64
-	IsDir      bool
-	Data       []byte
-	Skipped    bool
-	SkipReason string
+	Mode        os.FileMode
+	ModTime     int64
+	IsDir       bool
+	Data        []byte
+	Skipped     bool
+	SkipReason  string
 	// Expected marks a deliberate, non-error skip (e.g. a file left untouched
 	// because overwrite was disabled). Error skips (open/write/rename/mkdir
 	// failures) leave this false so they still fail the restore.

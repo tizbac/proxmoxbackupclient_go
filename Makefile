@@ -68,7 +68,7 @@ endif
 cli-directory:
 	@echo "🔨 Building Directory Backup CLI..."
 	@mkdir -p $(BUILD_DIR)
-	cd directorybackup && go mod tidy && go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
+	cd directorybackup && GOWORK=off go mod tidy && GOWORK=off go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
 		-o ../$(BUILD_DIR)/$(CLI_DIR_BIN)$(shell go env GOEXE)
 	@echo "✅ Built: $(BUILD_DIR)/$(CLI_DIR_BIN)"
 
@@ -127,16 +127,50 @@ gui-dev:
 	@echo "🚀 Starting GUI in development mode..."
 	cd gui && wails dev
 
+# Every module that contains Go code and therefore unit tests.
+#
+# go.work only lists a subset of them: directorybackup, pkg/retry and
+# pkg/security are standalone modules and MUST be built with GOWORK=off,
+# otherwise the go tool refuses to run ("directory prefix . does not contain
+# modules listed in go.work").
+WORKSPACE_MODULES  := pbscommon clientcommon machinebackuplib machinebackup snapshot nbd gui
+STANDALONE_MODULES := directorybackup pkg/retry pkg/security
+
 # Tests
 test:
 	@echo "🧪 Running tests..."
-	go test -v -race -coverprofile=coverage.out ./...
-	@echo "📊 Coverage report:"
-	go tool cover -func=coverage.out
+	@rc=0; \
+	for m in $(WORKSPACE_MODULES); do \
+		echo "==> $$m"; \
+		( cd $$m && go test -race -covermode=atomic -coverprofile=coverage.out ./... ) || rc=1; \
+	done; \
+	for m in $(STANDALONE_MODULES); do \
+		echo "==> $$m"; \
+		( cd $$m && GOWORK=off go test -race -covermode=atomic -coverprofile=coverage.out ./... ) || rc=1; \
+	done; \
+	echo "📊 Coverage:"; \
+	for m in $(WORKSPACE_MODULES); do \
+		[ -f $$m/coverage.out ] || continue; \
+		printf '  %-22s %s\n' "$$m" "$$( cd $$m && go tool cover -func=coverage.out 2>/dev/null | tail -n1 | tr -s ' \t' ' ' )"; \
+	done; \
+	for m in $(STANDALONE_MODULES); do \
+		[ -f $$m/coverage.out ] || continue; \
+		printf '  %-22s %s\n' "$$m" "$$( cd $$m && GOWORK=off go tool cover -func=coverage.out 2>/dev/null | tail -n1 | tr -s ' \t' ' ' )"; \
+	done; \
+	exit $$rc
 
 test-coverage:
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "📊 Coverage report generated: coverage.html"
+
+# End-to-end tests: backs up with our CLIs against a real PBS in Docker and
+# restores with the official proxmox-backup-client. Needs Docker; see
+# testing/e2e/README.md.
+test-e2e:
+	@echo "🧪 Running end-to-end tests against PBS..."
+	./testing/e2e/run.sh
+
+.PHONY: test-e2e
 
 # Security checks
 security-check:

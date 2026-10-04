@@ -30,8 +30,6 @@ import (
 // Return true to cancel the backup operation.
 type ProgressCallback func(percentage float64, message string) bool
 
-
-
 var (
 	errCancelled     = errors.New("backup cancelled by user")
 	errUploadAborted = errors.New("upload aborted")
@@ -43,8 +41,6 @@ Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while
 Last error is: {{.ErrorStr}}{{end}}`
 
 var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
-
-
 
 type ChunkState struct {
 	assignments        []string
@@ -103,6 +99,12 @@ func BytesToString(b int64) string {
 // send): a reader failure or user cancellation makes uploadWorker abort
 // WITHOUT committing the index, so a cancelled/partial run never ends up as a
 // "complete" backup on the server.
+//
+// uploadWorker is the ONLY consumer of readErrCh: it is the sole reader of
+// that channel and reports the reader's error through its own return value.
+// Letting the caller read the channel a second time deadlocks — the value is
+// buffered, so whoever arrives first wins, and the loser's receive blocks
+// forever once the reader goroutine has exited.
 func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint64, ch chan []byte, readErrCh <-chan error) error {
 	var newchunk *atomic.Uint64 = new(atomic.Uint64)
 	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
@@ -139,18 +141,18 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 
 	workerfn := func() {
 		for seg := range ch2 {
-			h := sha256.New()
-			if _, err := h.Write(seg.Data); err != nil {
-				errch <- fmt.Errorf("failed to hash chunk at position %d: %w", seg.Pos, err)
-				break
-			}
-
-			shahash := hex.EncodeToString(h.Sum(nil))
+			// Digest of the *plaintext*, in whichever scheme this snapshot
+			// uses: plain sha256, or sha256(plaintext || id_key) when an
+			// encryption key is configured. This is the value the fixed index
+			// stores and the value the chunk store is keyed by, so it must be
+			// derived the same way on every restore.
+			chunkdigest := client.ChunkDigest(seg.Data)
+			shahash := hex.EncodeToString(chunkdigest[:])
 			//binary.Write(CS.chunkdigests, binary.LittleEndian, (CS.pos + uint64(nread)))
 
 			assignment_mutex.Lock()
-			CS.index_hash_data[seg.Pos] = h.Sum(nil)
-			digests[int64(seg.Pos)] = h.Sum(nil)
+			CS.index_hash_data[seg.Pos] = chunkdigest[:]
+			digests[int64(seg.Pos)] = chunkdigest[:]
 
 			_, exists := knownChunks.GetOrSet(shahash, true)
 			assignment_mutex.Unlock()
@@ -175,8 +177,8 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 				break
 			}
 			percentage := float64(CS.processed_size) / float64(total_size) * 100
-fmt.Printf("Chunk %d/%d/%d - Progress: %.2f%%\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load(), percentage)
-			
+			fmt.Printf("Chunk %d/%d/%d - Progress: %.2f%%\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load(), percentage)
+
 			assignment_mutex.Unlock()
 
 		}
@@ -210,6 +212,9 @@ fmt.Printf("Chunk %d/%d/%d - Progress: %.2f%%\n", CS.chunkcount, int(math.Ceil(f
 
 	// The reader reported an error (or the user cancelled): the data in this
 	// fixed index is partial, so leave it unclosed instead of committing it.
+	// Consuming readErrCh here — and only here — is what makes the ownership
+	// note on uploadWorker hold; see also the deterministic-ordering note on
+	// the reader goroutine in BackupFileDevice.
 	if readErrCh != nil {
 		select {
 		case rerr := <-readErrCh:
@@ -252,8 +257,15 @@ fmt.Printf("Chunk %d/%d/%d - Progress: %.2f%%\n", CS.chunkcount, int(math.Ceil(f
 	return nil
 }
 
+// Slugify turns a device path into the name of the block archive that stores
+// it, i.e. the .fidx file is called Slugify(<device>) + ".fidx".
+//
+// The name has to be stable: it is what identifies the archive inside a
+// snapshot, and every backup of the same device must land on the same name.
+//
+// Everything outside [a-z0-9] is dropped, runs of '-' are collapsed into a
+// single '-' and leading/trailing '-' are trimmed.
 func Slugify(input string) string {
-	// Convert to lowercase
 	s := strings.ToLower(input)
 	s = strings.ReplaceAll(s, "/", "")
 	s = strings.ReplaceAll(s, " ", "")
@@ -261,7 +273,9 @@ func Slugify(input string) string {
 	reg := regexp.MustCompile(`[^a-z0-9-]+`)
 	s = reg.ReplaceAllString(s, "")
 	regDash := regexp.MustCompile(`-+`)
-	s = regDash.ReplaceAllString(s, "")
+	// Collapse the run down to a single '-'. Replacing with "" would delete
+	// the dashes outright, which also made the Trim below dead code.
+	s = regDash.ReplaceAllString(s, "-")
 	s = strings.Trim(s, "-")
 
 	return s
@@ -285,13 +299,18 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 		return err
 	}
 	ch := make(chan []byte)
+	// Buffered so the reader goroutine never blocks on the send, and so the
+	// single value is guaranteed to be sitting in the buffer by the time
+	// uploadWorker's non-blocking receive runs: the value is sent before the
+	// deferred close(ch), and uploadWorker can only finish draining ch once
+	// close(ch) has happened.
 	errCh := make(chan error, 1)
 	go func() {
 		defer close(ch)
 		var rerr error
+		defer func() { errCh <- rerr }()
 		if _, err := f.Seek(0, io.SeekStart); err != nil {
 			rerr = fmt.Errorf("failed to seek to start: %w", err)
-			errCh <- rerr
 			return
 		}
 		for {
@@ -314,17 +333,12 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 			}
 			b++
 		}
-		if rerr == nil {
-			errCh <- nil
-		}
 	}()
 
-	uploadErr := uploadWorker(client, slug+".fidx", uint64(size), ch, errCh)
-	readErr := <-errCh
-	if readErr != nil {
-		return readErr
-	}
-	return uploadErr
+	// uploadWorker owns errCh and surfaces both the upload error and the
+	// reader error through its return value, so there is deliberately no
+	// second receive here.
+	return uploadWorker(client, slug+".fidx", uint64(size), ch, errCh)
 }
 
 type BackupDisk struct {
@@ -455,6 +469,9 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		Datastore:       cfg.Datastore,
 		Namespace:       cfg.Namespace,
 		Insecure:        cfg.CertFingerprint != "",
+		// Nil for a plain snapshot, in which case pbscommon keeps the
+		// pre-encryption sha256 + magic/CRC32 framing.
+		Crypt: cfg.Crypt,
 		Manifest: pbscommon.BackupManifest{
 			BackupID: cfg.BackupID,
 		},
@@ -483,7 +500,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
 			matches := re.FindStringSubmatch(dev)
 			idx, _ := strconv.ParseInt(matches[1], 10, 32)
-			
+
 			// Get disk size using platform-specific function
 			size, err := GetDiskSize(fmt.Sprintf("\\\\.\\PhysicalDrive%d", idx))
 			if err != nil {
@@ -504,7 +521,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 
 	// Track progress for each device
 	currentProcessedSize := uint64(0)
-	
+
 	for i, dev := range cfg.BackupDevices {
 		// Wrap the job-wide callback so a device can keep reporting its own
 		// 0..1 read fraction and it maps to the fraction of the whole job.
@@ -521,19 +538,19 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
 			matches := re.FindStringSubmatch(dev)
 			idx, _ := strconv.ParseInt(matches[1], 10, 32)
-			
+
 			isGPT := diskHasGPT(dev)
 			size, err := BackupWindowsDisk(client, int(idx), deviceCallback)
 			if err != nil {
 				return nil, fmt.Errorf("backup disk %s %v", dev, err)
 			}
-			
+
 			disks = append(disks, BackupDisk{
 				Index: int(idx),
 				Size:  size,
 				GPT:   isGPT,
 			})
-			
+
 			// Update progress for this disk
 			currentProcessedSize += uint64(size)
 			if progressCallback != nil && totalSize > 0 {
@@ -617,7 +634,6 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		return nil, fmt.Errorf("finish: %v", err)
 	}
 
-	
 	return &BackupResult{
 		Disks: disks,
 	}, nil

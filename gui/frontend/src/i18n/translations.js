@@ -87,6 +87,18 @@ const translations = {
       certFingerprint: "Empreinte certificat SSL (optionnel)",
       description: "Description (optionnelle)",
       descriptionPlaceholder: "Stockage SSD pour backups critiques",
+      // Encryption key (per-PBS-server)
+      encryptionKey: "Clé de chiffrement (optionnel)",
+      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      encryptionKeyBrowse: "Parcourir…",
+      encryptionKeyGenerate: "Créer une clé…",
+      encryptionKeyClear: "Effacer",
+      encryptionKeyHint: "Chaque chunk du snapshot est chiffré en AES-256-GCM. Ce fichier est indispensable pour restaurer : conservez une copie en lieu sûr, hors de cette machine.",
+      encryptionKeyUnset: "Aucune clé : les backups ne seront pas chiffrés.",
+      encryptionKeyOk: "Clé chargée — empreinte {fp}",
+      encryptionKeyCreated: "Clé créée dans {path} — empreinte {fp}",
+      encryptionKeyConfirm: "Créer une nouvelle clé de chiffrement dans {path} ? Conservez-la : sans ce fichier, les snapshots chiffrés avec elle deviennent illisibles.",
+      encryptionKeyGenerateFailed: "Échec de la création de la clé : {err}",
 
       // Multi-PBS
       multiPBSInfo: "Multi-PBS :",
@@ -406,6 +418,18 @@ const translations = {
       certFingerprint: "SSL certificate fingerprint (optional)",
       description: "Description (optional)",
       descriptionPlaceholder: "SSD storage for critical backups",
+      // Encryption key (per-PBS-server)
+      encryptionKey: "Encryption key file (optional)",
+      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      encryptionKeyBrowse: "Browse...",
+      encryptionKeyGenerate: "Create a key...",
+      encryptionKeyClear: "Clear",
+      encryptionKeyHint: "Every snapshot chunk is encrypted with AES-256-GCM. This file is required to restore: keep a copy somewhere safe, off this machine.",
+      encryptionKeyUnset: "No key: backups will not be encrypted.",
+      encryptionKeyOk: "Key loaded - fingerprint {fp}",
+      encryptionKeyCreated: "Key created at {path} - fingerprint {fp}",
+      encryptionKeyConfirm: "Create a new encryption key at {path}? Keep it safe: without this file, snapshots encrypted with it become unreadable.",
+      encryptionKeyGenerateFailed: "Key creation failed: {err}",
 
       // Multi-PBS
       multiPBSInfo: "Multi-PBS:",
@@ -725,6 +749,18 @@ const translations = {
       certFingerprint: "Impronta certificato SSL (opzionale)",
       description: "Descrizione (opzionale)",
       descriptionPlaceholder: "Archiviazione SSD per backup critici",
+      // Encryption key (per-PBS-server)
+      encryptionKey: "File chiave di cifratura (opzionale)",
+      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      encryptionKeyBrowse: "Sfoglia...",
+      encryptionKeyGenerate: "Crea una chiave...",
+      encryptionKeyClear: "Cancella",
+      encryptionKeyHint: "Ogni chunk dello snapshot è cifrato con AES-256-GCM. Questo file è necessario per il ripristino: conservane una copia al sicuro, fuori da questa macchina.",
+      encryptionKeyUnset: "Nessuna chiave: i backup non saranno cifrati.",
+      encryptionKeyOk: "Chiave caricata - impronta {fp}",
+      encryptionKeyCreated: "Chiave creata in {path} - impronta {fp}",
+      encryptionKeyConfirm: "Creare una nuova chiave di cifratura in {path}? Conservala: senza questo file gli snapshot cifrati con essa diventano illeggibili.",
+      encryptionKeyGenerateFailed: "Creazione della chiave non riuscita: {err}",
 
       // Multi-PBS
       multiPBSInfo: "Multi-PBS:",
@@ -1044,6 +1080,18 @@ const translations = {
       certFingerprint: "SSL-Zertifikat-Fingerabdruck (optional)",
       description: "Beschreibung (optional)",
       descriptionPlaceholder: "SSD-Speicher für kritische Sicherungen",
+      // Encryption key (per-PBS-server)
+      encryptionKey: "Verschlüsselungsschlüssel-Datei (optional)",
+      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      encryptionKeyBrowse: "Durchsuchen...",
+      encryptionKeyGenerate: "Schlüssel erstellen...",
+      encryptionKeyClear: "Löschen",
+      encryptionKeyHint: "Jeder Snapshot-Chunk wird mit AES-256-GCM verschlüsselt. Diese Datei wird zum Wiederherstellen benötigt: Bewahren Sie eine Kopie sicher außerhalb dieses Rechners auf.",
+      encryptionKeyUnset: "Kein Schlüssel: Backups werden nicht verschlüsselt.",
+      encryptionKeyOk: "Schlüssel geladen - Fingerabdruck {fp}",
+      encryptionKeyCreated: "Schlüssel erstellt unter {path} - Fingerabdruck {fp}",
+      encryptionKeyConfirm: "Neuen Verschlüsselungsschlüssel unter {path} erstellen? Bewahren Sie ihn sicher auf: ohne diese Datei werden damit verschlüsselte Snapshots unlesbar.",
+      encryptionKeyGenerateFailed: "Erstellung des Schlüssels fehlgeschlagen: {err}",
 
       // Multi-PBS
       multiPBSInfo: "Multi-PBS:",
@@ -1363,6 +1411,18 @@ const translations = {
       certFingerprint: "Odcisk palca certyfikatu SSL (opcjonalnie)",
       description: "Opis (opcjonalnie)",
       descriptionPlaceholder: "Magazyn SSD dla krytycznych kopii zapasowych",
+      // Encryption key (per-PBS-server)
+      encryptionKey: "Plik klucza szyfrowania (opcjonalnie)",
+      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      encryptionKeyBrowse: "Przeglądaj...",
+      encryptionKeyGenerate: "Utwórz klucz...",
+      encryptionKeyClear: "Wyczyść",
+      encryptionKeyHint: "Każda porcja migawki jest szyfrowana algorytmem AES-256-GCM. Ten plik jest wymagany do przywracania: przechowuj jego kopię w bezpiecznym miejscu poza tym komputerem.",
+      encryptionKeyUnset: "Brak klucza: kopie zapasowe nie będą szyfrowane.",
+      encryptionKeyOk: "Wczytano klucz - odcisk {fp}",
+      encryptionKeyCreated: "Utworzono klucz w {path} - odcisk {fp}",
+      encryptionKeyConfirm: "Utworzyć nowy klucz szyfrowania w {path}? Zachowaj go: bez tego pliku migawki nim zaszyfrowane staną się nieczytelne.",
+      encryptionKeyGenerateFailed: "Utworzenie klucza nie powiodło się: {err}",
 
       // Multi-PBS
       multiPBSInfo: "Multi-PBS:",

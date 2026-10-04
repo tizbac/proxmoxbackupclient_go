@@ -66,6 +66,10 @@ type SearchOptions struct {
 	To              time.Time
 	AssembleMissing bool
 
+	// Crypt unlocks encrypted snapshots, carried into every per-snapshot
+	// RestoreOptions so the archive walk can decrypt and verify chunks.
+	Crypt *pbscommon.CryptConfig
+
 	OnProgress func(percent float64, message string)
 }
 
@@ -263,6 +267,7 @@ func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
 			CertFingerprint: opts.CertFingerprint,
 			BackupID:        tg.backupID,
 			SnapshotTime:    tg.at,
+			Crypt:           opts.Crypt,
 		}
 		cacheKey := buildSnapshotCacheKey(ropts)
 

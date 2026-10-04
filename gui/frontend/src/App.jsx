@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from './i18n/i18nContext'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
+import EncryptionKeyField from './components/EncryptionKeyField'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, GetBrand, OpenBrowser
@@ -9,6 +10,8 @@ let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, 
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
+// Encryption key management
+let InspectEncryptionKeyFile, GenerateEncryptionKeyFile, OpenEncryptionKeyDialog, OpenEncryptionKeySaveDialog
 
 // Check if we're running in Wails
 if (window.go) {
@@ -46,6 +49,11 @@ if (window.go) {
   TestPBSConnection = window.go.main.App.TestPBSConnection
   GetServerFingerprint = window.go.main.App.GetServerFingerprint
   PinPBSServerFingerprint = window.go.main.App.PinPBSServerFingerprint
+  // Encryption key management
+  InspectEncryptionKeyFile = window.go.main.App.InspectEncryptionKeyFile
+  GenerateEncryptionKeyFile = window.go.main.App.GenerateEncryptionKeyFile
+  OpenEncryptionKeyDialog = window.go.main.App.OpenEncryptionKeyDialog
+  OpenEncryptionKeySaveDialog = window.go.main.App.OpenEncryptionKeySaveDialog
 }
 
 // Wails events + runtime (open external URLs in the system browser)
@@ -73,6 +81,9 @@ function App() {
     secret: '',
     datastore: '',
     namespace: '',
+    // Path to the PBS encryption key file (NOT the key itself). Round-tripped on
+    // save because SaveConfig replaces the whole Config on the Go side.
+    encryption_key_file: '',
     backupdir: '',
     'backup-id': '',
     usevss: true
@@ -94,6 +105,7 @@ function App() {
     password: '',
     datastore: '',
     namespace: '',
+    encryption_key_file: '',
     description: ''
   })
   const [serverStatus, setServerStatus] = useState({}) // Map of server ID -> connection status
@@ -436,6 +448,7 @@ function App() {
               secret: data.secret || '',
               datastore: data.datastore || '',
               namespace: data.namespace || '',
+              encryption_key_file: data.encryption_key_file || '',
               backupdir: data.backupdir || '',
               'backup-id': data['backup-id'] || hn,
               usevss: data.usevss !== undefined ? data.usevss : true
@@ -578,6 +591,7 @@ function App() {
         password: '',
         datastore: '',
         namespace: '',
+        encryption_key_file: '',
         description: ''
       })
       setEditingServer(null)
@@ -617,6 +631,7 @@ function App() {
         password: '',
         datastore: '',
         namespace: '',
+        encryption_key_file: '',
         description: ''
       })
       setEditingServer(null)
@@ -725,6 +740,7 @@ function App() {
       password: '',
       datastore: '',
       namespace: '',
+      encryption_key_file: '',
       description: ''
     })
     setServerTab('server')
@@ -800,6 +816,11 @@ function App() {
               <label>{t('namespace')}</label>
               <input type="text" value={serverFormData.namespace} onChange={(e) => setServerFormData({...serverFormData, namespace: e.target.value})} placeholder={t('phNamespace')} />
             </div>
+            {/* Encryption key is per-server: snapshots are encrypted per PBS target. */}
+            <EncryptionKeyField
+              value={serverFormData.encryption_key_file}
+              onChange={(v) => setServerFormData({...serverFormData, encryption_key_file: v})}
+            />
             <div className="form-group">
               <label>{t('certFingerprint')}</label>
               <input type="text" value={serverFormData.certfingerprint} onChange={(e) => setServerFormData({...serverFormData, certfingerprint: e.target.value})} placeholder={t('phCert')} />
@@ -875,6 +896,7 @@ function App() {
         secret: (config.secret || '').trim(),
         datastore: (config.datastore || '').trim(),
         namespace: (config.namespace || '').trim(),
+        encryption_key_file: (config.encryption_key_file || '').trim(),
         backupdir: (config.backupdir || '').trim(),
         'backup-id': (config['backup-id'] || '').trim() || hostname, // Use hostname if empty
         usevss: config.usevss !== undefined ? config.usevss : true
@@ -902,6 +924,7 @@ function App() {
       secret: (config.secret || '').trim(),
       datastore: (config.datastore || '').trim(),
       namespace: (config.namespace || '').trim(),
+      encryption_key_file: (config.encryption_key_file || '').trim(),
       backupdir: (config.backupdir || '').trim(),
       'backup-id': (config['backup-id'] || '').trim() || hostname, // Use hostname if empty
       usevss: config.usevss !== undefined ? config.usevss : true
