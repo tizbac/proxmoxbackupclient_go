@@ -227,8 +227,10 @@ When the automated flow runs:
    before the write — deliberately just the one dialog, since
    `ocs-onthefly` itself still asks its own two separate confirmations
    before actually wiping the destination.
-6. Runs `ocs-onthefly -icds -k0 -sfsck -f <nbd-device> -d <target>` directly,
-   with no `-p` postaction — success shows a plain-language completion
+6. Runs `ocs-onthefly -icds -k0 -sfsck -j2 -f <nbd-device> -d <target>` directly
+   (`-j2` restores the data between the MBR and the first partition, where GRUB
+   keeps its core image on a BIOS/MBR disk), with no `-p` postaction — success
+   shows a plain-language completion
    message and reboots on its own; failure shows the exit code and where to
    find the logs, no reboot.
 
