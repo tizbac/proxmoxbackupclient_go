@@ -856,6 +856,30 @@ func (pbs *PBSClient) UploadBlob(name string, data []byte) error {
 	return nil
 }
 
+// DownloadBlob fetches a top-level blob previously written by UploadBlob
+// (e.g. the NTFS ACL/attributes side-car) from the current snapshot and
+// decodes it back to its raw payload — the inverse of UploadBlob's magic +
+// CRC32 + payload framing. Deliberately a standalone decoder, not sharing
+// code with FetchChunk's near-identical logic, so this new, less-proven path
+// can't put that already-proven one at risk.
+func (pbs *PBSClient) DownloadBlob(name string) ([]byte, error) {
+	raw, err := pbs.DownloadToBytes(name)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) < 12 {
+		return nil, fmt.Errorf("short blob response for %s: %d bytes", name, len(raw))
+	}
+	if !slices.Equal(raw[:8], blobUncompressedMagic) {
+		return nil, fmt.Errorf("blob %s: unsupported or unrecognized encoding", name)
+	}
+	crc := binary.LittleEndian.Uint32(raw[8:12])
+	if got := crc32.ChecksumIEEE(raw[12:]); got != crc {
+		return nil, fmt.Errorf("blob %s: CRC32 mismatch (got %x, want %x)", name, got, crc)
+	}
+	return raw[12:], nil
+}
+
 func (pbs *PBSClient) UploadManifest() error {
 	manifestBin, err := json.Marshal(pbs.Manifest)
 	if err != nil {

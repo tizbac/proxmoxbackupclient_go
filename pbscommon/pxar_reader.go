@@ -44,8 +44,15 @@ type PXARTreeEntry struct {
 
 // PXARExtractedFile represents an extracted file (or directory) with metadata.
 type PXARExtractedFile struct {
-	Path       string
-	Size       uint64
+	Path string
+	// ArchivePath is the entry's path inside the archive (forward slashes,
+	// relative to the archive root), as opposed to Path (its destination on
+	// disk after the rewriter ran). Only set for entries actually written —
+	// skipped entries leave it empty, since nothing needs it. Lets a caller
+	// match a restored file back to archive-relative metadata (e.g. the NTFS
+	// ACL/attributes side-car, keyed by this same relative path).
+	ArchivePath string
+	Size        uint64
 	Mode       os.FileMode
 	ModTime    int64
 	IsDir      bool
@@ -377,7 +384,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 				return nil
 			}
 			extracted = append(extracted, PXARExtractedFile{
-				Path: fullPath, IsDir: true,
+				Path: fullPath, IsDir: true, ArchivePath: e.Path,
 				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime,
 			})
 			return nil
@@ -456,7 +463,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			_ = os.Chtimes(fullPath, t, t)
 		}
 		extracted = append(extracted, PXARExtractedFile{
-			Path: fullPath, Size: e.Size,
+			Path: fullPath, Size: e.Size, ArchivePath: e.Path,
 			Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime,
 		})
 		return nil

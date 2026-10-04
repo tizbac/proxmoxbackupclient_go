@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" role="img" aria-label="Acme Backup">
+  <rect width="240" height="64" rx="12" fill="#0f172a"/>
+  <path d="M28 48 L48 16 L68 48 Z" fill="none" stroke="#3b82f6" stroke-width="5" stroke-linejoin="round"/>
+  <line x1="38" y1="40" x2="58" y2="40" stroke="#3b82f6" stroke-width="5"/>
+  <text x="84" y="40" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700" fill="#ffffff">Acme</text>
+</svg>

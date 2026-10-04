@@ -677,6 +677,28 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		return err
 	}
 
+	// NTFS ACLs/DOS attributes on Windows, POSIX ACLs/xattrs on Linux — a
+	// no-op elsewhere; opt-in via opts.RestoreACLs, previously always false
+	// ("reserved, requires NTFS sidecar"). Captured during backup into a blob
+	// alongside the archive (see gui/backup_meta_windows.go /
+	// backup_meta_linux.go). Best-effort: nil on any failure (missing blob on
+	// a legacy snapshot, network error) just means files restore without
+	// their ACLs/attributes re-applied, never fails the restore.
+	var aclMeta *BackupFileMeta
+	if opts.RestoreACLs {
+		aclClient := &pbscommon.PBSClient{
+			BaseURL: opts.BaseURL, CertFingerPrint: opts.CertFingerprint,
+			AuthID: opts.AuthID, Secret: opts.Secret, Ticket: opts.Ticket, CSRFToken: opts.CSRFToken,
+			Datastore: opts.Datastore, Namespace: opts.Namespace, Insecure: opts.CertFingerprint != "",
+			Manifest: pbscommon.BackupManifest{BackupID: opts.BackupID, BackupTime: opts.SnapshotTime.Unix()},
+		}
+		aclClient.Connect(true, "host")
+		if m, aerr := downloadBackupFileMeta(aclClient); aerr == nil {
+			aclMeta = m
+		}
+		aclClient.Close()
+	}
+
 	progress(0.20, "Downloading backup archive...")
 	// AssembleDIDXToFile downloads the .didx index and reassembles the actual
 	// PXAR stream chunk-by-chunk into a temp file (bounded memory), then we walk
@@ -727,10 +749,36 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		successCount, dirCount, skipCount, errorSkipCount))
 	progress(0.95, fmt.Sprintf("Extracted %d files", successCount))
 
-	if opts.RestoreACLs || opts.RestoreADS {
-		// Reserved options — sidecar metadata isn't written by the backup yet.
-		// Log the request so it shows up in support transcripts.
-		writeBackupLog("NOTE: ACL/ADS restore requested but not yet implemented (NTFS sidecar pending)")
+	// Re-apply captured ACLs/attributes now that the files are actually on
+	// disk. Best-effort per file: an apply failure is logged, never fails
+	// the restore — the file's content is already safely on disk regardless.
+	if aclMeta != nil {
+		entryIdx := buildFileMetaIndex(aclMeta)
+		applied, failed := 0, 0
+		for _, f := range extracted {
+			if f.Skipped || f.ArchivePath == "" {
+				continue
+			}
+			entry, ok := entryIdx[f.ArchivePath]
+			if !ok {
+				continue
+			}
+			if aerr := applyNTFSMetadata(f.Path, entry, aclMeta.SDDLs); aerr != nil {
+				failed++
+				writeBackupLog(fmt.Sprintf("NTFS metadata apply failed for %s: %v", f.Path, aerr))
+			} else {
+				applied++
+			}
+		}
+		if applied > 0 || failed > 0 {
+			writeBackupLog(fmt.Sprintf("NTFS ACLs/attributes: applied %d, failed %d", applied, failed))
+		}
+	}
+
+	if opts.RestoreADS {
+		// Reserved option — no ADS sidecar exists. Log the request so it
+		// shows up in support transcripts.
+		writeBackupLog("NOTE: ADS restore requested but not yet implemented (no ADS sidecar exists)")
 	}
 
 	progress(1.0, "Restore completed")
