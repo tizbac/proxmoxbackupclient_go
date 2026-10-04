@@ -16,7 +16,7 @@ func TestSnapshotEndToEnd(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("must run as root")
 	}
-	if _, ok := detectControl(); !ok {
+	if _, ok := DetectControl(); !ok {
 		t.Skip("no snapshot control tool (elioctl/dbdctl) installed")
 	}
 	for _, bin := range []string{"mkfs.ext4", "losetup"} {

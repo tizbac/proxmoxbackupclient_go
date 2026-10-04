@@ -292,7 +292,7 @@ func (a *App) GetHostname() string {
 
 // GetSystemInfo returns system information for UI (mode, admin status, etc.)
 func (a *App) GetSystemInfo() map[string]interface{} {
-	return map[string]interface{}{
+	info := map[string]interface{}{
 		"mode":              a.mode.String(),
 		"is_admin":          isAdmin(),
 		"hostname":          a.GetHostname(),
@@ -302,6 +302,24 @@ func (a *App) GetSystemInfo() map[string]interface{} {
 		// was taken on a different platform.
 		"os": stdruntime.GOOS,
 	}
+
+	// On Linux, add snapshot module info for machine backups
+	if stdruntime.GOOS == "linux" {
+		if module := getSnapshotModule(); module != "" {
+			info["snapshot_module"] = module
+		}
+	}
+
+	return info
+}
+
+// getSnapshotModule detects which Linux block snapshot kernel module is available.
+// Returns "elastio-snap", "dattobd", or empty string if neither is loaded.
+func getSnapshotModule() string {
+	if control, ok := snapshot.DetectControl(); ok {
+		return control.Name
+	}
+	return ""
 }
 
 func (a *App) GetVersion() string {

@@ -1845,13 +1845,12 @@ function App() {
           )}
           {backupType === 'machine' && (
             <MachineBackupConfig 
-              config={config}
-              setConfig={setConfig}
               backupType={backupType}
-              setBackupType={setBackupType}
               physicalDisks={physicalDisks}
               setSelectedDrives={setSelectedDrives}
               selectedDrives={selectedDrives}
+              systemInfo={systemInfo}
+              t={t}
             />
           )}
 
