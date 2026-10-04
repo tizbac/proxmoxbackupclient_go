@@ -269,22 +269,22 @@ case "$KEY_CHOICE" in
         --msgbox "Could not mount ${KEY_PART}." 0 0 $DIA_ESC
       exit 1
     fi
-    KEYS=()
+    KEYMENU=()
     while read -r f; do
       [ -n "$f" ] || continue
-      KEYS+=("$f" "")
+      KEYMENU+=("$f" "")
     done < <(find "$KEY_MNT" -maxdepth 3 -type f -name '*.json' -size -8k 2>/dev/null | sort)
-    if [ ${#KEYS[@]} -eq 0 ]; then
+    if [ ${#KEYMENU[@]} -eq 0 ]; then
       umount "$KEY_MNT" 2>/dev/null
       $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
         --msgbox "No key file (*.json) found on ${KEY_PART}." 0 0 $DIA_ESC
       exit 1
     fi
-    if [ ${#KEYS[@]} -eq 2 ]; then
-      KEYFILE="${KEYS[0]}"
+    if [ ${#KEYMENU[@]} -eq 2 ]; then
+      KEYFILE="${KEYMENU[0]}"
     else
       $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
-        --menu "Which file is the encryption key?" 0 0 0 "${KEYS[@]}" 2> "$DIA_TMP"
+        --menu "Which file is the encryption key?" 0 0 0 "${KEYMENU[@]}" 2> "$DIA_TMP"
       KEYFILE="$(cat "$DIA_TMP")"
     fi
     if [ -n "$KEYFILE" ]; then
@@ -450,14 +450,19 @@ setsid "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PA
      -datastore "$PBS_DS" $NS_OPT "${KEY_ARGS[@]}" -nbd "$NBDNUM" -path "$SELECTED" < /dev/null > "$ATTACH_LOG" 2>&1 &
 PBSNBD_PID=$!
 
+# /dev/nbdN exists as soon as the nbd module is loaded, so wait for it to
+# report a size. pbsnbd exits without attaching when it cannot read the image
+# (wrong or missing encryption key, unreachable server).
 WAITED=0
-while [ ! -b "$NBDDEV" ] && [ "$WAITED" -lt 20 ]; do
+while [ "$WAITED" -lt 40 ]; do
+  [ "$(blockdev --getsize64 "$NBDDEV" 2>/dev/null || echo 0)" -gt 0 ] && break
+  pgrep -x pbsnbd >/dev/null 2>&1 || break
   sleep 0.5
   WAITED=$((WAITED + 1))
 done
-if [ ! -b "$NBDDEV" ]; then
+if [ "$(blockdev --getsize64 "$NBDDEV" 2>/dev/null || echo 0)" -le 0 ]; then
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --msgbox "WARNING: ${NBDDEV} did not appear within 10s.\n\nLog: ${ATTACH_LOG}\n\n$msg_program_stop" 0 0 $DIA_ESC
+  --msgbox "WARNING: ${NBDDEV} could not be attached.\n\n$(tail -n 4 "$ATTACH_LOG" 2>/dev/null | cut -c1-200)\n\nIf the backup is encrypted, check that you chose the right key file.\n\nLog: ${ATTACH_LOG}\n\n$msg_program_stop" 0 0 $DIA_ESC
   exit 1
 fi
 partprobe "$NBDDEV" >/dev/null 2>&1

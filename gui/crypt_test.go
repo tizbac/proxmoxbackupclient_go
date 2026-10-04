@@ -38,8 +38,8 @@ func writeKeyFile(t *testing.T, dir, name string) string {
 // `proxmox-backup-client key create` produces by default and what the GUI must
 // refuse (it has no console to prompt on).
 //
-// It uses PBKDF2 rather than scrypt because deriveKey hardcodes scrypt's N at
-// 1<<15, which would make this fixture take seconds to derive. The GUI's
+// It uses PBKDF2 rather than scrypt because scrypt at the official N=65536
+// would make this fixture take seconds to derive. The GUI's
 // decision is driven purely by `KDF != nil`, so the KDF flavour is irrelevant
 // to it — but deriving the real key here keeps the fixture honest: it is a key
 // file that really can be unlocked with the right passphrase, so a test that
@@ -76,9 +76,10 @@ func writePassphraseKeyFile(t *testing.T, dir, name, passphrase string) string {
 
 	cfg := map[string]any{
 		"kdf": map[string]any{
-			"kdf":  "PBKDF2",
-			"iter": 4096,
-			"salt": salt,
+			"PBKDF2": map[string]any{
+				"iter": 4096,
+				"salt": salt,
+			},
 		},
 		"hint":        passphrase[:1],
 		"fingerprint": crypt.Fingerprint(),

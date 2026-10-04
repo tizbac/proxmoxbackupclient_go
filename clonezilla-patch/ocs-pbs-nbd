@@ -276,22 +276,22 @@ case "$KEY_CHOICE" in
         --msgbox "Could not mount ${KEY_PART}." 0 0 $DIA_ESC
       exit 1
     fi
-    KEYS=()
+    KEYMENU=()
     while read -r f; do
       [ -n "$f" ] || continue
-      KEYS+=("$f" "")
+      KEYMENU+=("$f" "")
     done < <(find "$KEY_MNT" -maxdepth 3 -type f -name '*.json' -size -8k 2>/dev/null | sort)
-    if [ ${#KEYS[@]} -eq 0 ]; then
+    if [ ${#KEYMENU[@]} -eq 0 ]; then
       umount "$KEY_MNT" 2>/dev/null
       $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
         --msgbox "No key file (*.json) found on ${KEY_PART}." 0 0 $DIA_ESC
       exit 1
     fi
-    if [ ${#KEYS[@]} -eq 2 ]; then
-      KEYFILE="${KEYS[0]}"
+    if [ ${#KEYMENU[@]} -eq 2 ]; then
+      KEYFILE="${KEYMENU[0]}"
     else
       $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
-        --menu "Which file is the encryption key?" 0 0 0 "${KEYS[@]}" 2> "$DIA_TMP"
+        --menu "Which file is the encryption key?" 0 0 0 "${KEYMENU[@]}" 2> "$DIA_TMP"
       KEYFILE="$(cat "$DIA_TMP")"
     fi
     if [ -n "$KEYFILE" ]; then
