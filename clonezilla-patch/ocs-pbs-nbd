@@ -308,8 +308,9 @@ if [ "$KEY_CHOICE" != "none" ] && [ -n "$KEY_CHOICE" ]; then
     exit 1
   fi
   KEY_ARGS=(-keyfile "$KEYFILE")
-  # A key file protected by a passphrase has a non-null "kdf" entry.
-  if grep -Eq '"kdf"[[:space:]]*:[[:space:]]*"' "$KEYFILE"; then
+  # A key file protected by a passphrase has an object as "kdf" (Scrypt or
+  # PBKDF2); an unprotected one has null.
+  if grep -Eq '"kdf"[[:space:]]*:[[:space:]]*\{' "$KEYFILE"; then
     $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
       --passwordbox "Passphrase for the encryption key:" 0 0 2> "$DIA_TMP"
     KEYPASS="$(cat "$DIA_TMP")"
