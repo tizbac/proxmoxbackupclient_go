@@ -85,11 +85,40 @@ for f in "${FILES[@]}"; do [ -f "$f" ] || { echo "error: not a file: $f" >&2; ex
 [ -f "$MBR_SRC" ] || { echo "error: isohybrid MBR prefix not found: $MBR_SRC" >&2; exit 1; }
 command -v 7z >/dev/null 2>&1 || { echo "error: 7z not found (required to extract the ISO tree)" >&2; exit 1; }
 
+# A patch may declare, in its header (anything before the first "---" line is
+# ignored by `patch`), that a newer Clonezilla already contains the change:
+#   # present-in: usr/share/drbl/sbin/ocs-functions
+#   # present-marker: udevadm settle --timeout=5
+# The patch is treated as already applied when the file exists in the rootfs
+# or ISO tree and contains EVERY marker as a fixed string. Markers must be
+# code, not comments, so upstream rewording a comment cannot defeat the check.
+patch_already_present() {
+  local base="$1" t file marker ok
+  local -a markers=()
+  file="$(sed -n 's/^# present-in: *//p' "$base" | tr -d '\r' | head -n1)"
+  [ -n "$file" ] || return 1
+  while IFS= read -r marker; do
+    [ -n "$marker" ] && markers+=("$marker")
+  done < <(sed -n 's/^# present-marker: *//p' "$base" | tr -d '\r')
+  [ "${#markers[@]}" -ge 1 ] || return 1
+  for t in "$ROOTFS" "$TREE"; do
+    [ -f "$t/$file" ] || continue
+    ok=1
+    for marker in "${markers[@]}"; do
+      grep -qF -- "$marker" "$t/$file" || { ok=0; break; }
+    done
+    [ "$ok" = "1" ] && return 0
+  done
+  return 1
+}
+
 # Apply a set of unified diffs (*.patch) to the extracted filesystem with
 # `patch`. Each patch is tried against the extracted rootfs and the ISO tree
 # (the target path from the diff header decides where it belongs). A patch
-# must apply cleanly (--dry-run first); otherwise we abort so a stock ISO
-# whose upstream files changed is never silently mis-patched.
+# that declares markers (see patch_already_present) and finds them all is
+# skipped, so a newer Clonezilla that ships the same change builds cleanly.
+# Otherwise a patch must apply cleanly (--dry-run first); if not we abort so a stock ISO whose upstream files changed is never silently
+# mis-patched.
 apply_unified_patches() {
   local p base t applied
   command -v patch >/dev/null 2>&1 || { echo "error: 'patch' not found (required to apply menu patches)" >&2; return 1; }
@@ -101,11 +130,16 @@ apply_unified_patches() {
     echo "  no patches in ${PATCH_DIR:-<unset>}, skipping menu patching"
     return 0
   fi
-  local n=0
+  local n=0 skipped=0
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     base="$PATCH_DIR/$p"
     applied=0
+    if patch_already_present "$base"; then
+      echo "        = $p already present in this Clonezilla, skipping"
+      skipped=$((skipped+1))
+      continue
+    fi
     for t in "$ROOTFS" "$TREE"; do
       if patch -d "$t" -p1 -N --dry-run --forward -s < "$base" >/dev/null 2>&1; then
         if ! patch -d "$t" -p1 -N --forward -s < "$base" >/dev/null 2>&1; then
@@ -124,6 +158,7 @@ apply_unified_patches() {
     fi
   done < <(LC_ALL=C find "$PATCH_DIR" -maxdepth 1 -name '*.patch' -type f -printf '%f\n' 2>/dev/null | sort)
   [ "$n" -ge 1 ] && echo "        applied $n unified-diff patch(es)"
+  [ "$skipped" -ge 1 ] && echo "        skipped $skipped already-present patch(es)"
   return 0
 }
 
