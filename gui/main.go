@@ -7,6 +7,7 @@ import (
 	"context"
 	"embed"
 	"flag"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -207,6 +208,7 @@ func (a *App) SetProgressCallbacks(jobID string, onProgress func(string, float64
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	passphrasePrompter = a.promptForPassphrase
 	writeDebugLog("App.startup() called")
 
 	// Detect execution mode (Service vs Standalone)
@@ -388,6 +390,8 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		// frontend MUST round-trip this field or every config save would silently
 		// drop the key and restart encrypting with no way to read it back.
 		"encryption_key_file": cfg.EncryptionKeyFile,
+		// Same pattern as secret/secret_set: only whether a passphrase is stored.
+		"encryption_key_passphrase_set": cfg.EncryptionKeyPassphrase != "",
 		"backupdir":        cfg.BackupDir,
 		"backup-id":        cfg.BackupID,
 		"usevss":           cfg.UseVSS,
@@ -453,7 +457,11 @@ func (a *App) SaveConfig(config *Config) error {
 		if config.SMTPPassword == "" {
 			config.SMTPPassword = a.config.SMTPPassword
 		}
+		config.EncryptionKeyPassphrase = mergeStoredPassphrase(a.config.EncryptionKeyFile, a.config.EncryptionKeyPassphrase,
+			config.EncryptionKeyFile, config.EncryptionKeyPassphrase, config.ClearEncryptionKeyPassphrase)
 	}
+	config.ClearEncryptionKeyPassphrase = false
+	config.EncryptionKeyPassphraseSet = false
 
 	// Log sanitized config (no secrets)
 	writeDebugLog(fmt.Sprintf("SaveConfig() called: URL=%s, AuthID=%s, Datastore=%s, BackupID=%s",
@@ -471,7 +479,9 @@ func (a *App) SaveConfig(config *Config) error {
 	// Unlock the key BEFORE persisting so the runtime-only Crypt matches what is
 	// about to be written, and so an unusable key is reported without having
 	// saved a config that cannot be used.
-	if err := config.loadCryptConfig(); err != nil {
+	// Saving never asks for a passphrase: a protected key without a stored one
+	// is unlocked when a backup or restore first needs it.
+	if err := config.unlockCrypt(false); err != nil && !errors.Is(err, errPassphraseRequired) {
 		writeDebugLog(fmt.Sprintf("Encryption key load failed: %v", err))
 		return err
 	}
@@ -589,6 +599,7 @@ func (a *App) GetPBSServer(id string) (*PBSServer, error) {
 // AddPBSServer adds a new PBS server to the configuration
 func (a *App) AddPBSServer(pbs *PBSServer) error {
 	writeDebugLog(fmt.Sprintf("AddPBSServer(%s) called", pbs.ID))
+	pbs.ClearEncryptionKeyPassphrase = false
 	return a.config.AddPBSServer(pbs)
 }
 
@@ -602,6 +613,13 @@ func (a *App) UpdatePBSServer(pbs *PBSServer) error {
 			pbs.Secret = existing.Secret
 		}
 	}
+	prevPath, prevPass := "", ""
+	if existing, err := a.config.GetPBSServer(pbs.ID); err == nil && existing != nil {
+		prevPath, prevPass = existing.EncryptionKeyFile, existing.EncryptionKeyPassphrase
+	}
+	pbs.EncryptionKeyPassphrase = mergeStoredPassphrase(prevPath, prevPass, pbs.EncryptionKeyFile, pbs.EncryptionKeyPassphrase, pbs.ClearEncryptionKeyPassphrase)
+	pbs.ClearEncryptionKeyPassphrase = false
+	pbs.EncryptionKeyPassphraseSet = false
 	return a.config.UpdatePBSServer(pbs)
 }
 
@@ -2006,4 +2024,32 @@ func (a *App) SearchFiles(pbsID, hostPrefix, query, mode string, fromUnix, toUni
 func (a *App) CancelSearch() {
 	writeDebugLog("CancelSearch requested")
 	CancelFileSearch()
+}
+
+// promptForPassphrase asks the user, through the frontend dialog, for the
+// passphrase of the key file at path, and blocks until they answer.
+func (a *App) promptForPassphrase(path, fingerprint, lastErr string) (string, error) {
+	id, ch := beginPassphrasePrompt(path, fingerprint, lastErr, func(payload map[string]any) {
+		runtime.EventsEmit(a.ctx, "encryption:passphrase-required", payload)
+	})
+	return waitPassphrase(id, ch)
+}
+
+// SubmitEncryptionPassphrase answers an encryption:passphrase-required event.
+// It returns "" on success, or the reason the passphrase was refused so the
+// dialog can stay open for another try.
+func (a *App) SubmitEncryptionPassphrase(id, passphrase string, cancel bool) string {
+	if err := submitPassphrase(id, passphrase, cancel); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// VerifyEncryptionKeyPassphrase checks a passphrase against a key file without
+// storing anything. It returns "" when the passphrase unlocks the key.
+func (a *App) VerifyEncryptionKeyPassphrase(path, passphrase string) string {
+	if err := verifyKeyPassphrase(strings.TrimSpace(path), passphrase); err != nil {
+		return err.Error()
+	}
+	return ""
 }

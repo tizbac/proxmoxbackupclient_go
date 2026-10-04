@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"crypto/sha256"
 	"encoding/json"
 	"os"
@@ -175,26 +176,20 @@ func TestConfigLoadCryptConfigMissingFile(t *testing.T) {
 	}
 }
 
-func TestConfigLoadCryptConfigRejectsPassphraseProtected(t *testing.T) {
-	dir := t.TempDir()
-	// A genuine passphrase-protected key file: loadable with the right
-	// passphrase, so this test proves the GUI refuses on the KDF tag ALONE
-	// (it must never try to prompt) and not because the file is broken.
-	path := writePassphraseKeyFile(t, dir, "protected.json", "hunter2")
-	if _, err := pbscommon.LoadKeyFile(path, []byte("hunter2")); err != nil {
-		t.Fatalf("fixture is not a real passphrase key file: %v", err)
-	}
+func TestConfigLoadCryptConfigProtectedWithoutPassphraseOrPrompter(t *testing.T) {
+	path := writePassphraseKeyFile(t, t.TempDir(), "protected.json", "hunter2")
+	forgetSessionPassphrase(path)
+	old := passphrasePrompter
+	passphrasePrompter = nil
+	defer func() { passphrasePrompter = old }()
 
 	c := &Config{EncryptionKeyFile: path}
 	err := c.loadCryptConfig()
-	if err == nil {
-		t.Fatal("expected an error for a passphrase-protected key file, got nil")
-	}
-	if !strings.Contains(err.Error(), "--kdf none") {
-		t.Fatalf("error should point at the --kdf none workaround, got: %v", err)
+	if !errors.Is(err, errPassphraseRequired) {
+		t.Fatalf("expected ENCRYPTION_PASSPHRASE_REQUIRED, got: %v", err)
 	}
 	if c.Crypt != nil {
-		t.Fatal("Crypt must stay nil for a passphrase-protected key file")
+		t.Fatal("Crypt must stay nil when the key could not be unlocked")
 	}
 }
 
@@ -244,7 +239,7 @@ func TestConfigValidateEncryptionKeyFile(t *testing.T) {
 		{"valid key file", good, ""},
 		{"missing file", missing, "missing.json"},
 		{"malformed file", notAKey, "garbage.json"},
-		{"passphrase protected rejected", protected, "phrase de passe"},
+		{"passphrase protected accepted", protected, ""},
 		{"path traversal rejected", traversal, "cannot contain '..'"},
 	}
 	for _, tc := range tests {
@@ -515,8 +510,8 @@ func TestInspectKeyFileFlagsPassphraseProtected(t *testing.T) {
 	if !info.PassphraseProtected {
 		t.Fatalf("PBKDF2 key not flagged: %+v", info)
 	}
-	if info.Usable {
-		t.Fatal("a passphrase-protected key must not be reported usable by the GUI")
+	if !info.Usable {
+		t.Fatalf("a passphrase-protected key is usable (passphrase stored or asked for): %+v", info)
 	}
 	if info.Fingerprint == "" {
 		t.Fatal("the fingerprint is still displayable, so it should be populated")

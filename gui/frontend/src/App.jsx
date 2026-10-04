@@ -7,6 +7,7 @@ import DirectoryTree from './components/DirectoryTree'
 import KnownLimitationsModal from './components/KnownLimitationsModal'
 import BMRGuideModal from './components/BMRGuideModal'
 import ClosePromptModal from './components/ClosePromptModal'
+import PassphraseModal from './components/PassphraseModal'
 import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
 import EncryptionKeyField from './components/EncryptionKeyField'
 // Wails runtime imports (will be available when built with Wails)
@@ -215,6 +216,9 @@ function App() {
     // Path to the PBS encryption key file (NOT the key itself). Round-tripped on
     // save because SaveConfig replaces the whole Config on the Go side.
     encryption_key_file: '',
+    encryption_key_passphrase_set: false,
+    encryption_key_passphrase: '',
+    clear_encryption_key_passphrase: false,
     backupdir: '',
     'backup-id': '',
     usevss: true,
@@ -239,6 +243,9 @@ function App() {
     datastore: '',
     namespace: '',
     encryption_key_file: '',
+    encryption_key_passphrase_set: false,
+    encryption_key_passphrase: '',
+    clear_encryption_key_passphrase: false,
     description: ''
   })
   const [serverStatus, setServerStatus] = useState({}) // Map of server ID -> connection status
@@ -856,6 +863,9 @@ function App() {
               datastore: data.datastore || '',
               namespace: data.namespace || '',
               encryption_key_file: data.encryption_key_file || '',
+              encryption_key_passphrase_set: !!data.encryption_key_passphrase_set,
+              encryption_key_passphrase: '',
+              clear_encryption_key_passphrase: false,
               backupdir: data.backupdir || '',
               'backup-id': data['backup-id'] || hn,
               usevss: data.usevss !== undefined ? data.usevss : true
@@ -1014,6 +1024,9 @@ function App() {
         datastore: '',
         namespace: '',
         encryption_key_file: '',
+        encryption_key_passphrase_set: false,
+        encryption_key_passphrase: '',
+        clear_encryption_key_passphrase: false,
         description: ''
       })
       setEditingServer(null)
@@ -1055,6 +1068,9 @@ function App() {
         datastore: '',
         namespace: '',
         encryption_key_file: '',
+        encryption_key_passphrase_set: false,
+        encryption_key_passphrase: '',
+        clear_encryption_key_passphrase: false,
         description: ''
       })
       setEditingServer(null)
@@ -1146,7 +1162,9 @@ function App() {
     setServerFormData({
       ...server,
       username: server.username || '',
-      password: ''
+      password: '',
+      encryption_key_passphrase: '',
+      clear_encryption_key_passphrase: false
     })
     setServerTab(server.username ? 'userpass' : (server.authid ? 'token' : 'server'))
     setEditingServer(server.id)
@@ -1165,6 +1183,10 @@ function App() {
       password: '',
       datastore: '',
       namespace: '',
+      encryption_key_file: '',
+      encryption_key_passphrase_set: false,
+      encryption_key_passphrase: '',
+      clear_encryption_key_passphrase: false,
       description: ''
     })
     setServerTab('server')
@@ -1185,6 +1207,9 @@ function App() {
       datastore: '',
       namespace: '',
       encryption_key_file: '',
+      encryption_key_passphrase_set: false,
+      encryption_key_passphrase: '',
+      clear_encryption_key_passphrase: false,
       description: ''
     })
     setServerTab('server')
@@ -1261,7 +1286,12 @@ function App() {
             {/* Encryption key is per-server: snapshots are encrypted per PBS target. */}
             <EncryptionKeyField
               value={serverFormData.encryption_key_file}
-              onChange={(v) => setServerFormData({...serverFormData, encryption_key_file: v})}
+              onChange={(v) => setServerFormData({...serverFormData, encryption_key_file: v, encryption_key_passphrase: '', clear_encryption_key_passphrase: false})}
+              passphraseSet={!!serverFormData.encryption_key_passphrase_set}
+              passphrase={serverFormData.encryption_key_passphrase || ''}
+              onPassphraseChange={(v) => setServerFormData(f => ({...f, encryption_key_passphrase: v}))}
+              clearStored={!!serverFormData.clear_encryption_key_passphrase}
+              onClearStoredChange={(v) => setServerFormData(f => ({...f, clear_encryption_key_passphrase: v}))}
             />
             <div className="form-group">
               <label>{t('certFingerprint')}</label>
@@ -1378,6 +1408,9 @@ function App() {
     datastore: (cfg.datastore || '').trim(),
     namespace: (cfg.namespace || '').trim(),
     encryption_key_file: (cfg.encryption_key_file || '').trim(),
+    // Empty passphrase = keep the stored one; the backend never returns it.
+    encryption_key_passphrase: cfg.encryption_key_passphrase || '',
+    clear_encryption_key_passphrase: !!cfg.clear_encryption_key_passphrase,
     backupdir: (cfg.backupdir || '').trim(),
     'backup-id': (cfg['backup-id'] || '').trim() || hostname, // Use hostname if empty
     usevss: cfg.usevss !== undefined ? cfg.usevss : true,
@@ -1393,7 +1426,16 @@ function App() {
     try {
       const trimmedConfig = buildTrimmedConfig(config)
       await SaveConfig(trimmedConfig)
-      setConfig(trimmedConfig)
+      // Drop the typed passphrase from state now it is saved; the backend holds it.
+      const storedNow = trimmedConfig.encryption_key_passphrase
+        ? true
+        : (trimmedConfig.clear_encryption_key_passphrase ? false : !!config.encryption_key_passphrase_set)
+      setConfig({
+        ...trimmedConfig,
+        encryption_key_passphrase: '',
+        clear_encryption_key_passphrase: false,
+        encryption_key_passphrase_set: storedNow
+      })
       showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
     } catch (err) {
       showStatus(`❌ ${t('statusError')} ${err}`, 'error')
@@ -1416,6 +1458,7 @@ function App() {
       datastore: (config.datastore || '').trim(),
       namespace: (config.namespace || '').trim(),
       encryption_key_file: (config.encryption_key_file || '').trim(),
+      encryption_key_passphrase: config.encryption_key_passphrase || '',
       backupdir: (config.backupdir || '').trim(),
       'backup-id': (config['backup-id'] || '').trim() || hostname, // Use hostname if empty
       usevss: config.usevss !== undefined ? config.usevss : true
@@ -4513,6 +4556,7 @@ function App() {
       {showLimitations && <KnownLimitationsModal onClose={() => setShowLimitations(false)} />}
       {showBMRGuide && <BMRGuideModal onClose={() => setShowBMRGuide(false)} />}
       {showClosePrompt && <ClosePromptModal onClose={() => setShowClosePrompt(false)} />}
+      <PassphraseModal EventsOn={EventsOn} />
     </div>
   )
 }

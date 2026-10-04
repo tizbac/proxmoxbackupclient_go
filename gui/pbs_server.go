@@ -61,6 +61,10 @@ type PBSServer struct {
 	// runtime-only Config.Crypt. Left empty, backups to this server are
 	// unencrypted (and encrypted snapshots stored there cannot be restored).
 	EncryptionKeyFile string `json:"encryption_key_file,omitempty"`
+	// EncryptionKeyPassphrase / ...Set / Clear: see the same fields on Config.
+	EncryptionKeyPassphrase      string `json:"encryption_key_passphrase,omitempty"`
+	EncryptionKeyPassphraseSet   bool   `json:"encryption_key_passphrase_set,omitempty"`
+	ClearEncryptionKeyPassphrase bool   `json:"clear_encryption_key_passphrase,omitempty"`
 	Datastore         string `json:"datastore"`
 	Namespace         string `json:"namespace"`
 	Description       string `json:"description,omitempty"` // Optional description
@@ -77,6 +81,8 @@ func (pbs *PBSServer) sanitized() *PBSServer {
 	c.SecretSet = pbs.Secret != ""
 	c.PasswordSet = pbs.Password != ""
 	c.Secret = ""
+	c.EncryptionKeyPassphraseSet = pbs.EncryptionKeyPassphrase != ""
+	c.EncryptionKeyPassphrase = ""
 	c.Password = "" // never hand the credentials to the frontend
 	return &c
 }
@@ -136,7 +142,7 @@ func (pbs *PBSServer) Validate() error {
 
 	// Reject an unusable key file at add/update time, not at backup time. Uses
 	// a throwaway Config so the per-server and legacy paths validate identically.
-	if err := (&Config{EncryptionKeyFile: pbs.EncryptionKeyFile}).validateEncryptionKeyFile(); err != nil {
+	if err := (&Config{EncryptionKeyFile: pbs.EncryptionKeyFile, EncryptionKeyPassphrase: pbs.EncryptionKeyPassphrase}).validateEncryptionKeyFile(); err != nil {
 		return err
 	}
 
@@ -153,6 +159,7 @@ func (pbs *PBSServer) ToConfig() *Config {
 		Username:          pbs.Username,
 		Password:          pbs.Password,
 		EncryptionKeyFile: pbs.EncryptionKeyFile,
+		EncryptionKeyPassphrase: pbs.EncryptionKeyPassphrase,
 		Datastore:         pbs.Datastore,
 		Namespace:         pbs.Namespace,
 	}

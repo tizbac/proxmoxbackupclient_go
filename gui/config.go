@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -43,6 +44,15 @@ type Config struct {
 	// verified without it: every chunk is AES-256-GCM and the chunk digests in
 	// the indexes are sha256(plaintext || id_key).
 	EncryptionKeyFile string `json:"encryption_key_file,omitempty"`
+	// EncryptionKeyPassphrase is the stored passphrase of a passphrase-protected
+	// key file. Empty means "ask when needed". Stored like the PBS token, and
+	// needed for scheduled jobs, which have nobody to ask. Never sent to the
+	// frontend (EncryptionKeyPassphraseSet says whether one is stored).
+	EncryptionKeyPassphrase    string `json:"encryption_key_passphrase,omitempty"`
+	EncryptionKeyPassphraseSet bool   `json:"encryption_key_passphrase_set,omitempty"`
+	// ClearEncryptionKeyPassphrase is a frontend instruction on save: delete
+	// the stored passphrase. It is never persisted.
+	ClearEncryptionKeyPassphrase bool `json:"clear_encryption_key_passphrase,omitempty"`
 	// Crypt is EncryptionKeyFile after it has been read and unlocked, held
 	// runtime-only so the unlocked key never lands in config.json.
 	Crypt *pbscommon.CryptConfig `json:"-"`
@@ -133,6 +143,8 @@ type ThemeSettings struct {
 func (c *Config) sanitized() *Config {
 	cp := *c
 	cp.Secret = ""
+	cp.EncryptionKeyPassphraseSet = c.EncryptionKeyPassphrase != ""
+	cp.EncryptionKeyPassphrase = ""
 	cp.SMTPPassword = ""
 	cp.Username = "" // runtime credentials, never to the frontend
 	cp.Password = ""
@@ -288,6 +300,7 @@ func LoadConfig() *Config {
 			AuthID:          config.AuthID,
 			Secret:          config.Secret,
 			EncryptionKeyFile: config.EncryptionKeyFile,
+			EncryptionKeyPassphrase: config.EncryptionKeyPassphrase,
 			Datastore:       config.Datastore,
 			Namespace:       config.Namespace,
 			Description:     "Default PBS server (migrated from old config)",
@@ -409,8 +422,10 @@ func (c *Config) validateEncryptionKeyFile() error {
 	if err != nil {
 		return fmt.Errorf("lecture du fichier de cle de chiffrement %s: %w", c.EncryptionKeyFile, err)
 	}
-	if keyCfg.KDF != nil {
-		return fmt.Errorf("le fichier de cle de chiffrement %s est protege par phrase de passe, ce que l'interface graphique ne peut pas deverrouiller: utilisez une cle creee avec `proxmox-backup-client key create --kdf none`, ou restaurez depuis la ligne de commande", c.EncryptionKeyFile)
+	if c.EncryptionKeyPassphrase != "" && keyCfg.KDF != nil {
+		if err := verifyKeyPassphrase(c.EncryptionKeyFile, c.EncryptionKeyPassphrase); err != nil {
+			return fmt.Errorf("la phrase de passe enregistree ne deverrouille pas la cle %s: %w", c.EncryptionKeyFile, err)
+		}
 	}
 	return nil
 }
@@ -441,6 +456,7 @@ func (c *Config) EffectivePBS() *Config {
 	// unencrypted (and could not decrypt encrypted snapshots), because the
 	// legacy top-level EncryptionKeyFile stays empty in that mode.
 	cp.EncryptionKeyFile = pbs.EncryptionKeyFile
+	cp.EncryptionKeyPassphrase = pbs.EncryptionKeyPassphrase
 	cp.Datastore = pbs.Datastore
 	cp.Namespace = pbs.Namespace
 	return &cp
@@ -578,14 +594,20 @@ func (c *Config) SetDefaultPBS(id string) error {
 // loadCryptConfig reads and unlocks EncryptionKeyFile into the runtime-only
 // Crypt field, which every restore-side pbscommon.PBSClient is built with.
 //
-// A passphrase-protected key file cannot be unlocked from a GUI that has no
-// console, so only `--kdf none` key files are accepted here; anything else
-// gets an explicit error naming the flag to set instead of a confusing
-// "unable to decrypt blob - missing CryptConfig" much later. An empty
-// EncryptionKeyFile leaves Crypt nil, which is correct for plain snapshots —
-// encrypted ones will then fail per chunk with a message saying the key is
-// missing.
+// A passphrase-protected key is unlocked with the stored passphrase, else the
+// one entered earlier in this session, else by asking the user through the GUI
+// (see crypt_passphrase.go). In the service build nobody can be asked, so a
+// protected key without a stored passphrase fails with ENCRYPTION_PASSPHRASE_REQUIRED.
+// An empty EncryptionKeyFile leaves Crypt nil, which is correct for plain
+// snapshots; encrypted ones then fail per chunk saying the key is missing.
 func (c *Config) loadCryptConfig() error {
+	return c.unlockCrypt(true)
+}
+
+// unlockCrypt is loadCryptConfig with control over whether the user may be
+// asked for a passphrase. Saving settings must not pop a dialog, so it passes
+// false and treats errPassphraseRequired as fine.
+func (c *Config) unlockCrypt(interactive bool) error {
 	if c.EncryptionKeyFile == "" {
 		c.Crypt = nil
 		return nil
@@ -595,12 +617,17 @@ func (c *Config) loadCryptConfig() error {
 	if err != nil {
 		return fmt.Errorf("reading encryption key file %s: %w", c.EncryptionKeyFile, err)
 	}
-	if keyCfg.KDF != nil {
-		return fmt.Errorf("encryption key file %s is passphrase-protected, which the GUI cannot unlock: use a key created with `proxmox-backup-client key create --kdf none`, or restore from the command line with proxmoxbackupclient/nbd", c.EncryptionKeyFile)
-	}
 
-	c.Crypt, err = keyCfg.CryptConfig(nil)
+	if keyCfg.KDF != nil {
+		c.Crypt, err = unlockProtectedKey(c.EncryptionKeyFile, c.EncryptionKeyPassphrase, keyCfg, interactive)
+	} else {
+		c.Crypt, err = keyCfg.CryptConfig(nil)
+	}
 	if err != nil {
+		if errors.Is(err, errPassphraseRequired) && !interactive {
+			c.Crypt = nil
+			return err
+		}
 		return fmt.Errorf("unlocking encryption key file %s: %w", c.EncryptionKeyFile, err)
 	}
 	return nil

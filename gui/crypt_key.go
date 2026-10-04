@@ -22,11 +22,11 @@ type EncryptionKeyInfo struct {
 	Modified    string `json:"modified,omitempty"`
 	Hint        string `json:"hint,omitempty"`
 	// PassphraseProtected is true for a key file created with
-	// `proxmox-backup-client key create` (the default, KDF=scrypt). The GUI has
-	// no console to prompt on, so such a file can be DISPLAYED but not used.
+	// `proxmox-backup-client key create` (the default, KDF=scrypt). Its
+	// passphrase is either stored in the settings or asked for when needed.
 	PassphraseProtected bool `json:"passphrase_protected"`
-	// Usable is false when the file cannot be used by the GUI — it does not
-	// exist, is malformed, or needs a passphrase. When false, Reason says why.
+	// Usable is false when the file cannot be used by the GUI: it does not
+	// exist or is malformed. When false, Reason says why.
 	Usable bool   `json:"usable"`
 	Reason string `json:"reason,omitempty"`
 }
@@ -63,7 +63,9 @@ func inspectKeyFile(path string) EncryptionKeyInfo {
 	info.PassphraseProtected = keyCfg.KDF != nil
 
 	if info.PassphraseProtected {
-		info.Reason = "cle protegee par phrase de passe: l'interface graphique ne peut pas la deverrouiller (creez-la avec --kdf none)"
+		// Usable: the passphrase is stored in the settings or asked for when
+		// needed. It cannot be checked here without it.
+		info.Usable = true
 		return info
 	}
 
