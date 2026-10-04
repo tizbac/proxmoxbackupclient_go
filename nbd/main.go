@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"bufio"
 	"errors"
 	"flag"
@@ -83,6 +84,17 @@ func nbdStart(pbsclient *pbscommon.PBSClient, fidxdata []byte, nbd_index int) {
 	backend, err := NewFIDXServer(fidxdata, pbsclient)
 	if err != nil {
 		panic(err)
+	}
+	// Fail before the NBD device is attached: a missing or wrong key would
+	// otherwise leave a dead /dev/nbdN that blocks every reader in D state.
+	if len(backend.chunks) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), chunkFetchTimeout)
+		_, err := pbsclient.GetChunkData(ctx, backend.chunks[0])
+		cancel()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "pbsnbd: cannot read the first chunk of the image: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	go func() {

@@ -100,6 +100,22 @@ apply cleanly aborts the run.
 
 Prerequisite for patching: the `patch` utility.
 
+## Encrypted backups
+
+Backups made with `-keyfile` (client-side AES-256-GCM, same key file format
+as `proxmox-backup-client key create`) can only be attached with that key.
+Both helpers ask for it after the datastore: **no key**, **a key file on a
+USB stick / other disk** (the partition is mounted read-only, the `*.json`
+files on it are listed, the chosen one is copied to
+`/tmp/pbs-encryption-key.json` with mode 600 and the stick is unmounted
+again), or **a typed path** (for example a key placed on the boot medium). A
+key file that is passphrase protected (`kdf` set) makes the helper ask for the
+passphrase in a hidden box. The key is handed to `pbsnbd` as
+`-keyfile` / `-keyfile-passphrase`. `pbsnbd` reads the first chunk of the
+image before it touches the NBD device, so a missing or wrong key fails
+immediately with a clear message instead of leaving a dead `/dev/nbdN`.
+The key is never written to the ISO.
+
 ## Included menu option: attach a PBS backup via NBD
 
 - Helper `/usr/local/sbin/ocs-pbs-nbd` (`clonezilla-patch/ocs-pbs-nbd`) is
@@ -130,6 +146,9 @@ When the user picks it, the helper:
      first `/` is passed to `pbsnbd -namespace`** (`ns1/ns2`).
    The last used server/username/password/datastore are kept in
    `/tmp/pbsnbd-credentials` (mode 600) and pre-fill the boxes on the next run.
+   After the datastore, a menu asks whether the backups were made with an
+   **encryption key** (see "Encrypted backups" below): none, a key file on a
+   USB stick or other disk, or a typed path.
 5. Runs `/usr/local/sbin/pbsnbd -list`, which prints the available backups as
    `type/id/time/file.fidx[#comment]` lines sorted by date, **newest first**
    (the trailing `#comment`, if the snapshot has one, is included) and presents
@@ -191,6 +210,8 @@ When the automated flow runs:
    as `ocs-pbs-nbd`, with basic validation and a retry loop, but as four
    separate screens (a combined single-form attempt was tried and reverted;
    see the fork's own history if picking that back up).
+   After the datastore, the same encryption-key menu as `ocs-pbs-nbd` is shown
+   (see "Encrypted backups" below).
 3. Lists and lets the user pick a snapshot via the same three-level
    kind/date/file menu `ocs-pbs-nbd` uses, then attaches it via `pbsnbd`
    in the **foreground** this time (the automated flow needs the device up

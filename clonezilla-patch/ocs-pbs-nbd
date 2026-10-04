@@ -233,11 +233,98 @@ echo "PBS namespace   : ${PBS_NS:-<none>}"
 save_credentials
 echo "Connection settings saved to ${CRED_FILE} (for pre-filling the next run)."
 
+# 4e. optional encryption key. Snapshots made with a keyfile (client-side
+# AES-256-GCM) need the same key to be attached; pbsnbd only reads the key
+# during start-up, so the file is a private copy in /tmp and any USB stick
+# can be unplugged again straight away.
+KEY_ARGS=()
+KEYFILE=""
+KEY_COPY="/tmp/pbs-encryption-key.json"
+KEY_MNT="/mnt/pbs-keystick"
+KEY_TITLE="PBS NBD attach"
+$DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+  --menu "Were these backups made with an encryption key?" 0 0 0 \
+  none "No, the backups are not encrypted" \
+  usb  "Yes, the key file is on a USB stick or other disk" \
+  path "Yes, I will type the path of the key file" \
+  2> "$DIA_TMP"
+KEY_CHOICE="$(cat "$DIA_TMP")"
+case "$KEY_CHOICE" in
+  path)
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+      --inputbox "Path of the encryption key file (for example /run/live/medium/key.json):" 0 0 "" 2> "$DIA_TMP"
+    KEYFILE="$(cat "$DIA_TMP")"
+    ;;
+  usb)
+    PARTS=()
+    while read -r dev fstype size label; do
+      [ -n "$dev" ] || continue
+      PARTS+=("$dev" "${fstype} ${size} ${label}")
+    done < <(lsblk -rpno NAME,FSTYPE,SIZE,LABEL,TYPE 2>/dev/null | awk '$5=="part" && $2!="" && $1 !~ /nbd/ {print $1, $2, $3, $4}')
+    if [ ${#PARTS[@]} -eq 0 ]; then
+      $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+        --msgbox "No disk partition with a filesystem was found. Plug in the USB stick that holds the key file and run this again." 0 0 $DIA_ESC
+      exit 1
+    fi
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+      --menu "Which partition holds the key file?" 0 0 0 "${PARTS[@]}" 2> "$DIA_TMP"
+    KEY_PART="$(cat "$DIA_TMP")"
+    [ -n "$KEY_PART" ] || { echo "$msg_program_stop!"; exit 1; }
+    mkdir -p "$KEY_MNT"
+    if ! mount -o ro "$KEY_PART" "$KEY_MNT" 2>/dev/null; then
+      $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+        --msgbox "Could not mount ${KEY_PART}." 0 0 $DIA_ESC
+      exit 1
+    fi
+    KEYS=()
+    while read -r f; do
+      [ -n "$f" ] || continue
+      KEYS+=("$f" "")
+    done < <(find "$KEY_MNT" -maxdepth 3 -type f -name '*.json' -size -8k 2>/dev/null | sort)
+    if [ ${#KEYS[@]} -eq 0 ]; then
+      umount "$KEY_MNT" 2>/dev/null
+      $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+        --msgbox "No key file (*.json) found on ${KEY_PART}." 0 0 $DIA_ESC
+      exit 1
+    fi
+    if [ ${#KEYS[@]} -eq 2 ]; then
+      KEYFILE="${KEYS[0]}"
+    else
+      $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+        --menu "Which file is the encryption key?" 0 0 0 "${KEYS[@]}" 2> "$DIA_TMP"
+      KEYFILE="$(cat "$DIA_TMP")"
+    fi
+    if [ -n "$KEYFILE" ]; then
+      ( umask 077; cp "$KEYFILE" "$KEY_COPY" )
+      KEYFILE="$KEY_COPY"
+    fi
+    umount "$KEY_MNT" 2>/dev/null
+    ;;
+esac
+if [ "$KEY_CHOICE" != "none" ] && [ -n "$KEY_CHOICE" ]; then
+  if [ -z "$KEYFILE" ] || [ ! -r "$KEYFILE" ]; then
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+      --msgbox "Key file '${KEYFILE}' cannot be read.\n\n$msg_program_stop" 0 0 $DIA_ESC
+    exit 1
+  fi
+  KEY_ARGS=(-keyfile "$KEYFILE")
+  # A key file protected by a passphrase has a non-null "kdf" entry.
+  if grep -Eq '"kdf"[[:space:]]*:[[:space:]]*"' "$KEYFILE"; then
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+      --passwordbox "Passphrase for the encryption key:" 0 0 2> "$DIA_TMP"
+    KEYPASS="$(cat "$DIA_TMP")"
+    KEY_ARGS+=(-keyfile-passphrase "$KEYPASS")
+  fi
+  echo "Encryption key  : ${KEYFILE}"
+else
+  echo "Encryption key  : <none>"
+fi
+
 # 5. list the backups
 echo $msg_delimiter_star_line
 echo "> Listing backups on ${PBS_SERVER} (datastore=${PBS_DS}${PBS_NS:+, namespace=${PBS_NS}})..."
 if ! "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
-     -datastore "$PBS_DS" $NS_OPT -list > "$LIST_TMP" 2> "$LIST_ERR"; then
+     -datastore "$PBS_DS" $NS_OPT "${KEY_ARGS[@]}" -list > "$LIST_TMP" 2> "$LIST_ERR"; then
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
   --msgbox "Could not list the backups:\n$(cat "$LIST_ERR")\n\n$msg_program_stop" 0 0 $DIA_ESC
   exit 1
@@ -374,7 +461,7 @@ echo "> Attaching '${SELECTED}' to ${NBDDEV} in the background (datastore=${PBS_
 # setsid + </dev/null: run in its own session without a controlling terminal,
 # so returning to the Clonezilla main menu does not take the NBD server down.
 setsid "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
-     -datastore "$PBS_DS" $NS_OPT -nbd "$NBDNUM" -path "$SELECTED" < /dev/null > "$ATTACH_LOG" 2>&1 &
+     -datastore "$PBS_DS" $NS_OPT "${KEY_ARGS[@]}" -nbd "$NBDNUM" -path "$SELECTED" < /dev/null > "$ATTACH_LOG" 2>&1 &
 PBSNBD_PID=$!
 
 # Wait for the device node to appear, then force the kernel to scan its
