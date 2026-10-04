@@ -330,6 +330,44 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 type BackupDisk struct {
 	Index int
 	Size  int64
+	GPT   bool // disk carries a GPT, so a VM booting it needs UEFI (OVMF)
+}
+
+// diskHasGPT reports whether the device starts with a GPT: the "EFI PART"
+// header sits in LBA 1, which is byte 512 on 512-byte-sector disks and byte
+// 4096 on 4Kn ones. Failure to read counts as "no", i.e. the BIOS default.
+func diskHasGPT(dev string) bool {
+	f, err := os.Open(dev)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	buf := make([]byte, 8192)
+	if _, err := io.ReadFull(f, buf); err != nil {
+		return false
+	}
+	return gptSignatureIn(buf)
+}
+
+func gptSignatureIn(head []byte) bool {
+	for _, off := range []int{512, 4096} {
+		if len(head) >= off+8 && string(head[off:off+8]) == "EFI PART" {
+			return true
+		}
+	}
+	return false
+}
+
+// bootDiskIsGPT looks at sata0, the disk the generated config boots from:
+// the lowest-indexed backed-up disk.
+func bootDiskIsGPT(disks []BackupDisk) bool {
+	best := -1
+	for i, d := range disks {
+		if best < 0 || d.Index < disks[best].Index {
+			best = i
+		}
+	}
+	return best >= 0 && disks[best].GPT
 }
 
 // BackupResult represents the result of a backup operation
@@ -337,11 +375,72 @@ type BackupResult struct {
 	Disks []BackupDisk
 }
 
+// qemuConfigData is the input to qemuConfigTemplate.
+type qemuConfigData struct {
+	VMGenId string
+	VMID    int64
+	VMName  string
+	Disks   []BackupDisk
+	OS      string
+	SMBIOS  string
+	UEFI    bool
+}
+
+// VMID is not a field of BackupDisk, so inside the {{range .Disks}} block it
+// has to be reached through $ (the root data) rather than through dot.
+//
+// The "#qmdump#map:<drive>:<devname>:<storage>:<format>:" line per disk is what
+// makes Proxmox VE restore the disk image at all: PVE's restore only allocates
+// and fills drives declared by these lines (found 2026-10-02: without them a
+// restore ends "TASK OK" in a second, copies the config verbatim and writes no
+// data). Storage is left empty so the storage chosen in the restore dialog
+// applies; PVE falls back to "local" (no images) if none is chosen. The sata
+// line is rewritten by PVE with the newly allocated volume.
+//
+// UEFI adds "bios: ovmf" for GPT boot disks (verified 2026-10-03: a Windows
+// GPT disk gives "no bootable device" under the default SeaBIOS and boots
+// under OVMF). No efidisk0 is written: PVE's restore only fills drives that
+// have an image in the archive, and without one PVE starts OVMF with a
+// temporary efivars disk, which is enough for Windows to boot.
+var qemuConfigTemplate = template.Must(template.New("qemuconfig").Parse(`{{if .UEFI}}bios: ovmf
+{{end}}boot: order=sata0
+cores: 4
+machine: q35
+memory: 2048
+name: {{.VMName}}
+numa: 0
+onboot: 0
+ostype: {{.OS}}
+scsihw: virtio-scsi-single
+smbios1: uuid={{.SMBIOS}}
+sockets: 1
+{{range .Disks}}
+sata{{.Index}}: local:{{$.VMID}}/vm-{{$.VMID}}-disk-{{.Index}}.raw,cache=writeback,discard=on,size={{.Size}}
+#qmdump#map:sata{{.Index}}:drive-sata{{.Index}}::raw:
+{{end}}
+vmgenid: {{.VMGenId}}
+`))
+
+func renderQemuConfig(data qemuConfigData) ([]byte, error) {
+	var wr bytes.Buffer
+	if err := qemuConfigTemplate.Execute(&wr, data); err != nil {
+		return nil, fmt.Errorf("execute VM config template: %v", err)
+	}
+	return wr.Bytes(), nil
+}
+
 // Backup performs a machine backup using the provided configuration
 func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, error) {
 	// Validate configuration
 	if !cfg.Valid() {
 		return nil, fmt.Errorf("invalid configuration")
+	}
+	// A "vm" backup needs a numeric VMID for the generated VM config; reject a
+	// bad ID now rather than after every disk has been transferred.
+	if cfg.BackupType == "vm" {
+		if _, err := strconv.ParseInt(cfg.BackupID, 10, 32); err != nil {
+			return nil, fmt.Errorf("backup type \"vm\" needs a numeric VM ID (e.g. 100) as the backup ID, got %q: use a numeric ID, or use backup type \"host\" if a VM-type snapshot is not required", cfg.BackupID)
+		}
 	}
 
 	client := &pbscommon.PBSClient{
@@ -423,6 +522,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			matches := re.FindStringSubmatch(dev)
 			idx, _ := strconv.ParseInt(matches[1], 10, 32)
 			
+			isGPT := diskHasGPT(dev)
 			size, err := BackupWindowsDisk(client, int(idx), deviceCallback)
 			if err != nil {
 				return nil, fmt.Errorf("backup disk %s %v", dev, err)
@@ -431,6 +531,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			disks = append(disks, BackupDisk{
 				Index: int(idx),
 				Size:  size,
+				GPT:   isGPT,
 			})
 			
 			// Update progress for this disk
@@ -446,6 +547,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			// consistent, stitched full-disk image (partition table + every
 			// partition, mounted ones snapshotted). Anything else falls back
 			// to a plain raw read of the device/file.
+			isGPT := diskHasGPT(dev)
 			handled, size, err := backupWholeDisk(client, dev, i, deviceCallback)
 			if err != nil {
 				return nil, fmt.Errorf("backup device %s: %v", dev, err)
@@ -454,6 +556,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 				disks = append(disks, BackupDisk{
 					Index: i,
 					Size:  size,
+					GPT:   isGPT,
 				})
 			} else if err := BackupFileDevice(client, dev, deviceCallback); err != nil {
 				return nil, fmt.Errorf("backup device %s: %v", dev, err)
@@ -477,34 +580,6 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 	}
 
 	if cfg.BackupType == "vm" {
-		type ConfigTemplate struct {
-			VMGenId string
-			VMID    int64
-			VMName  string
-			Disks   []BackupDisk
-			OS      string
-			SMBIOS  string
-		}
-
-		tmpl, err := template.New("qemuconfig").Parse(`boot: order=sata0
-cores: 4
-machine: q35
-memory: 2048
-name: {{.VMName}}
-numa: 0
-onboot: 0
-ostype: {{.OS}}
-scsihw: virtio-scsi-single
-smbios1: uuid={{.SMBIOS}}
-sockets: 1
-{{range .Disks}}
-sata{{.Index}}: local:{{.VMID}}/vm-{{.VMID}}-disk-{{.Index}}.raw,cache=writeback,discard=on,iothread=1,size={{.Size}}
-{{end}}
-vmgenid: {{.VMGenId}}
-		`)
-		if err != nil {
-			return nil, fmt.Errorf("parse VM config template %v", err)
-		}
 		vmid, err := strconv.ParseInt(cfg.BackupID, 10, 32)
 		if err != nil {
 			return nil, fmt.Errorf("parse VM ID %v", err)
@@ -513,23 +588,24 @@ vmgenid: {{.VMGenId}}
 		if err != nil {
 			return nil, fmt.Errorf("get hostname: %v", err)
 		}
-		wr := bytes.Buffer{}
-		cfgt := ConfigTemplate{
+		cfgt := qemuConfigData{
 			VMGenId: uuid.New().String(),
 			VMID:    vmid,
 			Disks:   disks,
 			VMName:  hostname,
 			SMBIOS:  uuid.New().String(), //TODO extract from real machine
+			UEFI:    bootDiskIsGPT(disks),
 		}
 		if runtime.GOOS == "windows" { // TODO Improve
 			cfgt.OS = "win11"
 		} else {
 			cfgt.OS = "l26"
 		}
-		if err := tmpl.Execute(&wr, cfgt); err != nil {
-			return nil, fmt.Errorf("execute VM config template: %v", err)
+		wr, err := renderQemuConfig(cfgt)
+		if err != nil {
+			return nil, err
 		}
-		if err := client.UploadBlob("qemu-server.conf.blob", wr.Bytes()); err != nil {
+		if err := client.UploadBlob("qemu-server.conf.blob", wr); err != nil {
 			return nil, fmt.Errorf("upload VM config blob: %v", err)
 		}
 	}
