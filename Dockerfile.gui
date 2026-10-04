@@ -3,11 +3,16 @@
 
 FROM golang:1.21 AS builder
 
-# Install dependencies for Fyne
+# Install build dependencies for the Wails desktop frontend.
+# webkit2gtk-4.1 is the non-EOL WebKitGTK API; the "webkit2_41" build tag is
+# what makes cgo link against it (wails defaults to the EOL webkit2gtk-4.0).
+ARG GTK_PKG=libgtk-3-dev
+ARG WEBKIT_PKG=libwebkit2gtk-4.1-dev
 RUN apt-get update && apt-get install -y \
     gcc \
-    libgl1-mesa-dev \
-    xorg-dev \
+    pkg-config \
+    ${GTK_PKG} \
+    ${WEBKIT_PKG} \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -23,6 +28,7 @@ COPY gui/ .
 ARG VERSION=dev
 ARG COMMIT=unknown
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
+    -tags "desktop,production,webkit2_41" \
     -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
     -o proxmox-backup-gui .
 
@@ -30,6 +36,9 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
 FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y \
+    libgtk-3-0 \
+    libwebkit2gtk-4.1-0 \
+    libgdk-pixbuf-2.0-0 \
     libgl1 \
     libxcursor1 \
     libxrandr2 \

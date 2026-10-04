@@ -1,6 +1,6 @@
 @echo off
 REM Build script for Proxmox Backup Guardian GUI (Windows)
-REM This script MUST be run on a Windows machine for proper OpenGL support
+REM The GUI is a Wails application; on Windows it renders through WebView2.
 
 echo ========================================
 echo Building Proxmox Backup Guardian GUI
@@ -9,7 +9,7 @@ echo.
 
 cd gui
 
-echo [1/3] Checking Go installation...
+echo [1/2] Checking Go installation...
 go version
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Go is not installed or not in PATH
@@ -19,12 +19,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo [2/3] Installing Fyne dependencies...
-go get fyne.io/fyne/v2@latest
-go mod tidy
-
-echo.
-echo [3/3] Building GUI binary with OpenGL support...
+echo [2/2] Building GUI binary with WebView2 support...
 go build -ldflags="-s -w -H windowsgui" -o ..\proxmox-backup-gui.exe .
 
 cd ..

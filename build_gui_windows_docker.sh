@@ -1,7 +1,6 @@
 #!/bin/bash
 # Build Windows GUI using Docker with the Wails framework
-# The GUI is a Wails application (NOT Fyne), so it must be built
-# with `wails build`, not fyne-cross.
+# The GUI is a Wails application, so it must be built with `wails build`.
 #
 # The whole repository is mounted into the container so that the
 # `replace` directives in gui/go.mod (../machinebackuplib, ../pbscommon,

@@ -1,12 +1,12 @@
 module pbsnbd
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/gdamore/tcell/v2 v2.8.1
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/rivo/tview v0.42.0
-	golang.org/x/term v0.35.0
+	golang.org/x/term v0.43.0
 	pbscommon v0.0.0
 )
 
@@ -19,11 +19,11 @@ require (
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/pilebones/go-udev v0.9.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	golang.org/x/crypto v0.42.0 // indirect
-	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326 // indirect
-	golang.org/x/net v0.43.0 // indirect
-	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
+	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
+	golang.org/x/net v0.54.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 )
 
 // Local package replacements

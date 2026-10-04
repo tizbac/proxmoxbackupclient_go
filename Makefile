@@ -16,12 +16,27 @@ CLI_DIR_BIN := proxmoxbackup-directory
 CLI_MACHINE_BIN := proxmoxbackup-machine
 CLI_NBD_BIN := proxmoxbackup-nbd
 SERVICE_BIN := NimbusBackupSVC
-GUI_BIN := NimbusBackup
+GUI_BIN := ProxmoxBackupClient
 
 # Go build flags (security hardening)
 GO_FLAGS := -trimpath -buildmode=pie
 LDFLAGS := -s -w -X main.version=$(VERSION) \
 	-extldflags '-static-pie -Wl,-z,relro,-z,now'
+
+# Wails desktop frontend tags.
+# The "production" tag links the real webkit/gtk cgo backend instead of the
+# stub used by `wails dev`. On Linux, "webkit2_41" selects webkit2gtk-4.1,
+# which is what modern distros ship; wails otherwise defaults to the EOL
+# webkit2gtk-4.0 (and fails to link where 4.0 has been dropped).
+# Ignored on Windows/macOS, which use WebView2/WKWebView instead.
+WAILS_TAGS := production
+ifeq ($(shell go env GOOS),linux)
+  ifeq ($(shell pkg-config --exists webkit2gtk-4.1 2>/dev/null && echo yes),yes)
+    WAILS_TAGS := $(WAILS_TAGS),webkit2_41
+  else
+    $(warning webkit2gtk-4.1 not found: building the GUI against webkit2gtk-4.0 (EOL). Install libwebkit2gtk-4.1-dev / webkit2gtk4.1-devel.)
+  endif
+endif
 
 # Default target
 all: cli gui service
@@ -117,6 +132,7 @@ pkgfedora:
 gui:
 	@echo "🎨 Building GUI application (version $(VERSION))..."
 	cd gui && wails build -clean -platform $(shell go env GOOS)/$(shell go env GOARCH) \
+		-tags "$(WAILS_TAGS)" \
 		-ldflags "-X main.appVersion=$(VERSION)"
 	@mkdir -p $(BUILD_DIR)
 	@cp gui/build/bin/$(GUI_BIN)$(shell go env GOEXE) $(BUILD_DIR)/
@@ -125,7 +141,7 @@ gui:
 # GUI Development mode
 gui-dev:
 	@echo "🚀 Starting GUI in development mode..."
-	cd gui && wails dev
+	cd gui && wails dev -tags "$(WAILS_TAGS)"
 
 # Every module that contains Go code and therefore unit tests.
 #
