@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Fork changes (mjb-is/proxmoxbackupclient_go), 2026-09-25 to 2026-10-02. Builds from this period are versioned by commit (`dev-<sha>`).
+Fork changes (mjb-is/proxmoxbackupclient_go), 2026-09-25 to 2026-10-05. Builds from this period are versioned by commit (`dev-<sha>`).
 
 ### Added
+- **Client-side encryption (CLI, GUI, NBD, Clonezilla BMR):** snapshots can be encrypted with a Proxmox Backup Server key file, the same format `proxmox-backup-client key create` writes. Every chunk is encrypted with AES-256-GCM and the manifest is signed. The CLI tools take `-keyfile` and `-keyfile-passphrase` (`proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`). The GUI has an **Encryption** tab in each PBS server's editor with Browse, Generate and Clear, a key fingerprint display, and a clear warning that a snapshot cannot be restored without the key. Reports record and show whether each backup was encrypted.
+- **Passphrase-protected keys:** keys protected with scrypt or PBKDF2 are supported. For each server choose **Ask me** (the passphrase is asked once per app session and kept in memory only) or **Remember on this computer** (stored in the config like the PBS token, needed for unattended jobs). A Verify button checks the passphrase, and a wrong passphrase gets a plain message. Restore asks for the passphrase when you select a snapshot.
+- **Unattended runs:** scheduled and startup backups never prompt. With an Ask key and no passphrase entered in that session they fail fast with a clear message and write job history. A backup the GUI routes through the installed Windows service also fails fast for an Ask key, telling you to choose "Remember on this computer".
+- **Key file protection (Windows):** a key generated in the GUI is written with a protected ACL, readable only by the current user, SYSTEM and Administrators, and so is the folder created for it. Existing key files and `config.json` are not changed: `config.json` stays readable by local Users and holds the PBS token and any remembered passphrase, so restrict it yourself on a shared machine.
+- **Clonezilla bare-metal restore:** both Clonezilla helpers ask for the key (none, a key file on a USB stick or other disk, or a typed path) and, for a protected key, the passphrase in a hidden box. `pbsnbd` reads the first chunk before attaching the NBD device, so a missing or wrong key stops with a clear message instead of leaving a dead `/dev/nbdN`. The key is never written to the ISO.
 - **Restore:** NTFS ACL and DOS attribute restore (Windows); POSIX ACL and extended attribute capture and restore (Linux); folder timestamps restored in a final stage; optional "Verify after restore" pass with the result in the completion banner; restore history in Reports; stage label under the progress bar; current-file line; a progress bar that tracks bytes written.
 - **Restore performance:** selective restore uses the archive's own GOODBYE index instead of a linear scan; read-ahead is bounded to the selected span; the snapshot tree loads one folder at a time with server-side selection sizes; the PBS snapshot listing timeout is raised to 120s for cold datastores; pre-1970 timestamps are applied.
 - **Backup Sets:** clone a set; confirm before deleting; the set's name is sent to PBS as the snapshot comment; an optional comment field on one-off backups; email notifications and post-backup actions (shutdown, exit, run an application); settings export and import.
@@ -19,6 +24,8 @@ Fork changes (mjb-is/proxmoxbackupclient_go), 2026-09-25 to 2026-10-02. Builds f
 - **Experimental:** machine backup as a PBS `vm` snapshot, from the one-off form and from Backup Sets (numeric ID, reserved range by default). A set keeps its ID so scheduled runs land in one `vm/<id>` group, and a non-numeric ID is refused when the set is saved. Restores onto Proxmox VE and boots (verified with a Windows UEFI disk), and restores onto bare metal with the Clonezilla bare-metal restore.
 
 ### Fixed
+- A passphrase prompt that was cancelled now shows a dismissible red banner and leaves nothing half-backed-up.
+- Scheduled and service-run backups no longer hang waiting for a passphrase that nobody can type.
 - Machine-type Backup Sets could not save any edit, and the Save button stayed disabled while an unrelated one-shot backup was running.
 - Scheduler races that cleared a set's name and post-backup actions before completion read them, and gave generic labels in Reports.
 - Stop did nothing mid-directory for a directory backup; machine backup cancellation is covered by a live test.
@@ -1266,11 +1273,7 @@ Bug #2 - HTTP/2 Connection State:
   - Path traversal prevention
 
 ### Planned
-- **Client-side encryption** - PBS supports encryption, add key management in config
-  - Generate/import encryption keys
-  - Store key securely in config (warn user to backup key!)
-  - Encrypt chunks before upload to PBS
-  - Key recovery mechanism
+- ~~**Client-side encryption**~~ done in the fork, see the Unreleased section
 - **Code signing** for Windows binaries (Authenticode certificate)
 - **Auto-update system** - Check for latest version and prompt for updates
 - System tray icon and background service

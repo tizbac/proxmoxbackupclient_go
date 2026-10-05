@@ -60,6 +60,8 @@ La fonctionnalité **Multi-PBS** permet de configurer plusieurs serveurs Proxmox
 
 2. Cliquez sur **"➕ Ajouter le serveur"**
 
+**Chiffrement (optionnel) :** dans l'éditeur d'un serveur, l'onglet **Chiffrement** permet de choisir (Parcourir) ou de créer (Générer) une clé de chiffrement propre à ce serveur. Les snapshots sont alors chiffrés avant l'envoi. **Sans ce fichier de clé, la restauration est impossible : gardez-en une copie hors de cette machine.** Pour une clé protégée par phrase secrète, choisissez « Me la demander » (une fois par session, les sauvegardes planifiées échouent tant qu'elle n'est pas saisie) ou « La mémoriser sur cet ordinateur » (nécessaire pour les sauvegardes planifiées et le service Windows).
+
 ---
 
 ### Étape 3 : Tester la connexion

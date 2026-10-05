@@ -37,7 +37,14 @@ type PBSServer struct {
     Namespace       string `json:"namespace"`
     Description     string `json:"description,omitempty"`
     IsOnline        bool   `json:"is_online,omitempty"` // Statut connexion
+
+    // Chiffrement côté client (optionnel, par serveur)
+    EncryptionKeyFile          string `json:"encryption_key_file,omitempty"`       // clé PBS (JSON)
+    EncryptionKeyPassphrase    string `json:"encryption_key_passphrase,omitempty"` // seulement si "Remember"
+    EncryptionKeyPassphraseSet bool   `json:"encryption_key_passphrase_set,omitempty"` // renvoyé à la GUI à la place du secret
 }
+
+Une clé de chiffrement est donc propre à chaque serveur PBS. Une clé protégée par phrase secrète est soit demandée une fois par session ("Ask"), soit mémorisée dans la config ("Remember", requis pour les jobs planifiés et le service Windows). Voir la section « Client-side encryption » du README.
 
 // Job (gui/jobs.go)
 type Job struct {

@@ -116,6 +116,8 @@ image before it touches the NBD device, so a missing or wrong key fails
 immediately with a clear message instead of leaving a dead `/dev/nbdN`.
 The key is never written to the ISO.
 
+Restoring an encrypted snapshot with an unprotected key file has been tested live. A bare-metal boot with a passphrase-protected key has not yet been run, so treat that path as untested.
+
 ## Included menu option: attach a PBS backup via NBD
 
 - Helper `/usr/local/sbin/ocs-pbs-nbd` (`clonezilla-patch/ocs-pbs-nbd`) is

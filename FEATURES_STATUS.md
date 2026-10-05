@@ -221,10 +221,10 @@ msiexec /i ProxmoxBackupClient.msi /qn CONFIGFILE="\\ad-server\deploy\config.jso
 ### 🟢 P2 - NICE TO HAVE
 
 #### Chiffrement Client-Side
-**Statut:** ❌ Non démarré
+**Statut:** ✅ Implémenté (fork, 2026-10-05)
 
-**Objectif:** Key management + encryption at rest
-**Temps estimé:** 3-4 semaines
+**Livré:** fichier de clé PBS par serveur (AES-256-GCM, manifeste signé, format `proxmox-backup-client key create`), clés protégées par phrase secrète (Ask / Remember), `-keyfile` sur les outils CLI, onglet Chiffrement dans la GUI, sélection de clé dans Clonezilla BMR, ACL protégée sur les clés générées (Windows).
+**Reste:** stockage DPAPI/Credential Manager, ACL sur les clés et `config.json` existants, test BMR avec clé protégée, relecture native des traductions.
 
 #### Multi-core Compression
 **Statut:** ❌ Non démarré
@@ -279,7 +279,7 @@ msiexec /i ProxmoxBackupClient.msi /qn CONFIGFILE="\\ad-server\deploy\config.jso
 - [ ] Bandwidth limiting
 
 ### Q4 2026 / Q1 2027
-- [ ] Chiffrement client-side
+- [x] Chiffrement client-side (fait, voir README)
 - [ ] Multi-core compression
 - [ ] English translation
 - [ ] Windows toast notifications
@@ -290,7 +290,7 @@ msiexec /i ProxmoxBackupClient.msi /qn CONFIGFILE="\\ad-server\deploy\config.jso
 - ✅ Scheduled backups (FAIT)
 - ✅ MSI installer (FAIT)
 - ⏳ Code signing (BLOQUÉ budget)
-- ❌ Chiffrement (pas commencé)
+- ✅ Chiffrement client-side (FAIT, quelques suivis ouverts)
 - 📝 Documentation complète (partielle)
 
 ---
@@ -327,7 +327,7 @@ msiexec /i ProxmoxBackupClient.msi /qn CONFIGFILE="\\ad-server\deploy\config.jso
 3. **Bandwidth limiting** (feature demandée)
 
 ### Long terme (3-6 mois)
-1. **Chiffrement client-side** (feature entreprise)
+1. ~~Chiffrement client-side~~ (fait)
 2. **Multi-core compression** (perf boost)
 3. **English translation** (marché international)
 

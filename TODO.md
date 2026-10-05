@@ -1740,17 +1740,19 @@ type BlockSplitJob struct {
 
 ---
 
-### Chiffrement (Phase 3) — still open, confirmed 2026-09-29
-No `EncryptionKey`/`masterKey`/`GenerateKey` anywhere in `pbscommon/*.go` — relies solely on PBS's
-own transport/chunk encryption, exactly as this section describes. Genuinely not started.
-- [ ] **Key Management**
-  - [ ] Génération clé asymétrique
-  - [ ] Stockage: Windows Credential Manager (DPAPI)
-  - [ ] Export: bouton "Sauvegarder clé de récupération"
-
-- [ ] **GUI**
-  - [ ] Checkbox "Activer chiffrement"
-  - [ ] Warning: "Sans la clé, restauration impossible!"
+### Chiffrement (Phase 3) — ✅ DONE in the fork (2026-10-05), a few follow-ups open
+Client-side encryption is implemented, but with a PBS key file (AES-256-GCM, signed manifest, same format as `proxmox-backup-client key create`), not the asymmetric key / master key design this section originally planned. See README "Client-side encryption" and CHANGELOG [Unreleased].
+- [x] **Key Management**: key file per PBS server, generate / browse / clear in the Encryption tab, fingerprint shown
+- [x] Passphrase-protected keys (scrypt/PBKDF2), Ask (session) or Remember (config, like the PBS token)
+- [x] Unattended and service runs fail fast on an Ask key instead of prompting
+- [x] Generated key files get a protected ACL (current user, SYSTEM, Administrators) on Windows
+- [x] **GUI**: Encryption tab, passphrase prompt on backup and restore, Reports column, warning that a snapshot cannot be restored without the key
+- [x] CLI `-keyfile` / `-keyfile-passphrase` on directory, machine and nbd tools; Clonezilla BMR key selection
+- [ ] Windows Credential Manager / DPAPI store for the key and remembered passphrase (still plain config)
+- [ ] Tighten the ACL on existing key files and on `config.json` (holds the PBS token and any remembered passphrase, readable by local Users on a default install)
+- [ ] Test a bare-metal boot with a passphrase-protected key, and restore of an encrypted snapshot from the Proxmox VE storage configuration
+- [ ] Native-speaker review of the machine-translated encryption strings in the 17 non-French/English languages
+- [ ] "Export recovery key" button
 
 ### 🆕 Restauration - À Développer FROM SCRATCH 🔄 — ⚠️ MASSIVELY STALE, corrected 2026-09-29
 **Status (original, 2026-03):** ❌ PAS IMPLÉMENTÉ - Code actuel = mock/stubs seulement
