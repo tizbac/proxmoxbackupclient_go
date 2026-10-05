@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-06
+
+### Fixed
+- The Windows executable's file properties (Details tab) now report the release version. 0.5.0 showed an old 0.3.0 there because `gui/wails.json` had not been bumped. The in-app version was already correct. No other changes.
+
 ## [0.5.0] - 2026-10-05
 
 Fork changes (mjb-is/proxmoxbackupclient_go), 2026-09-25 to 2026-10-05.
