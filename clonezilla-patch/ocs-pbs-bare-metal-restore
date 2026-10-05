@@ -232,6 +232,7 @@ save_credentials
 # can be unplugged again straight away.
 KEY_ARGS=()
 KEYFILE=""
+KEY_PROTECTED=0
 KEY_COPY="/tmp/pbs-encryption-key.json"
 KEY_MNT="/mnt/pbs-keystick"
 KEY_TITLE="PBS Bare Metal Restore"
@@ -304,6 +305,7 @@ if [ "$KEY_CHOICE" != "none" ] && [ -n "$KEY_CHOICE" ]; then
   # A key file protected by a passphrase has an object as "kdf" (Scrypt or
   # PBKDF2); an unprotected one has null.
   if grep -Eq '"kdf"[[:space:]]*:[[:space:]]*\{' "$KEYFILE"; then
+    KEY_PROTECTED=1
     $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
       --passwordbox "Passphrase for the encryption key:" 0 0 2> "$DIA_TMP"
     KEYPASS="$(cat "$DIA_TMP")"
@@ -316,12 +318,30 @@ fi
 
 # 5. list the backups
 echo "> Listing backups on ${PBS_SERVER} (datastore=${PBS_DS}${PBS_NS:+, namespace=${PBS_NS}})..."
-if ! "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
-     -datastore "$PBS_DS" $NS_OPT "${KEY_ARGS[@]}" -list > "$LIST_TMP" 2> "$LIST_ERR"; then
+# pbsnbd unlocks the key before it lists anything, so a mistyped passphrase
+# fails here. Give three attempts in total before giving up.
+KEY_TRIES=1
+while ! "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
+     -datastore "$PBS_DS" $NS_OPT "${KEY_ARGS[@]}" -list > "$LIST_TMP" 2> "$LIST_ERR"; do
+  if [ "$KEY_PROTECTED" = "1" ] && grep -qi 'wrong password' "$LIST_ERR"; then
+    if [ "$KEY_TRIES" -ge 3 ]; then
+      $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+      --msgbox "The passphrase was wrong 3 times.\n\n$msg_program_stop" 0 0 $DIA_ESC
+      exit 1
+    fi
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+      --msgbox "That passphrase did not unlock the key (attempt ${KEY_TRIES} of 3). Try again." 0 0 $DIA_ESC
+    KEY_TRIES=$((KEY_TRIES + 1))
+    $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
+      --passwordbox "Passphrase for the encryption key (attempt ${KEY_TRIES} of 3):" 0 0 2> "$DIA_TMP"
+    KEYPASS="$(cat "$DIA_TMP")"
+    KEY_ARGS=(-keyfile "$KEYFILE" -keyfile-passphrase "$KEYPASS")
+    continue
+  fi
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
   --msgbox "Could not list the backups:\n$(cat "$LIST_ERR")\n\n$msg_program_stop" 0 0 $DIA_ESC
   exit 1
-fi
+done
 if [ ! -s "$LIST_TMP" ]; then
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
   --msgbox "No backups found in datastore '${PBS_DS}'${PBS_NS:+ (namespace '${PBS_NS}')}.\n\n$msg_program_stop" 0 0 $DIA_ESC
