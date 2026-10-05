@@ -167,3 +167,20 @@ func TestPassphrasePromptRoundTrip(t *testing.T) {
 		t.Fatal("a finished prompt must not accept another answer")
 	}
 }
+
+func TestIsUnattendedRun(t *testing.T) {
+	a := &App{}
+	if a.isUnattendedRun("") || a.isUnattendedRun("missing") {
+		t.Fatal("empty or unknown key must not be unattended")
+	}
+	cases := map[string]bool{"scheduled": true, "startup": true, "manual": false}
+	for trigger, want := range cases {
+		key := a.registerPendingPostActions(ScheduledJob{ID: "j"}, trigger)
+		if got := a.isUnattendedRun(key); got != want {
+			t.Fatalf("trigger %q: got %v want %v", trigger, got, want)
+		}
+		if a.takePendingPostActions(key) == nil {
+			t.Fatalf("trigger %q: isUnattendedRun must not consume the entry", trigger)
+		}
+	}
+}

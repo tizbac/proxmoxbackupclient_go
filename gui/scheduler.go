@@ -990,7 +990,9 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	// real name too, via currentScheduledJobName), giving two rows in
 	// Reports for one real run. Skip entirely in standalone mode; that
 	// OnComplete write is now the single source of truth there.
-	if a.mode == api.ModeService {
+	// The service process runs jobs synchronously too, but its App is in
+	// ModeStandalone (service.go), so test for the process, not just the mode.
+	if a.mode == api.ModeService || a.isServiceProcess {
 		historyEntry := JobHistory{
 			ID:         fmt.Sprintf("%d", startTime.Unix()),
 			Name:       job.Name,
@@ -1042,6 +1044,25 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 		// the backup never actually started — same leak-prevention reasoning
 		// as the service-mode branch above for the takePendingPostActions call.
 		writeDebugLog(fmt.Sprintf("Scheduled job %s failed to start: %v", job.Name, err))
+		// OnComplete never runs for a run that never started, so without this
+		// the failure (e.g. a passphrase-protected key with no stored passphrase)
+		// would only ever reach the debug log.
+		if herr := a.AddJobHistory(JobHistory{
+			ID:            fmt.Sprintf("%d", startTime.Unix()),
+			Name:          job.Name,
+			Timestamp:     time.Now().Format(time.RFC3339),
+			Status:        "failed",
+			Message:       fmt.Sprintf("Error: %v", err),
+			BackupDirs:    job.BackupDirs,
+			BackupID:      job.BackupID,
+			UseVSS:        job.UseVSS,
+			BackupType:    job.BackupType,
+			Trigger:       trigger,
+			MessageKey:    MsgScheduledJobError,
+			MessageParams: msgParams{"error": err.Error()},
+		}); herr != nil {
+			writeDebugLog(fmt.Sprintf("Warning: Failed to add job history: %v", herr))
+		}
 		a.runPostBackupActions(job, false, err.Error())
 		a.setScheduledJobName("")
 		a.takePendingPostActions(postActionsKey)

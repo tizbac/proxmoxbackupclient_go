@@ -98,6 +98,21 @@ func (a *App) registerPendingPostActions(job ScheduledJob, trigger string) strin
 	return key
 }
 
+// isUnattendedRun reports whether postActionsKey belongs to a run nobody is
+// watching (a timer or startup trigger), as opposed to a Run Now click. Unlike
+// takePendingPostActions it leaves the entry in place.
+func (a *App) isUnattendedRun(key string) bool {
+	if key == "" {
+		return false
+	}
+	v, ok := a.pendingPostActions.Load(key)
+	if !ok {
+		return false
+	}
+	t := v.(*pendingPostActionsEntry).trigger
+	return t == "scheduled" || t == "startup"
+}
+
 // takePendingPostActions looks up and removes a key's entry — nil if key is
 // empty (the normal one-off case) or already consumed. Call exactly once, from
 // the OnComplete closure that actually knows the real outcome.

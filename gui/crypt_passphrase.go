@@ -78,7 +78,7 @@ func unlockProtectedKey(path, stored string, keyCfg *pbscommon.KeyConfig, intera
 		lastErr = err
 	}
 	if !interactive {
-		return nil, fmt.Errorf("%w: encryption key file %s is passphrase-protected", errPassphraseRequired, path)
+		return nil, fmt.Errorf("%w: encryption key file %s is passphrase-protected and no passphrase is stored for it (unattended runs need the passphrase stored in the key settings)", errPassphraseRequired, path)
 	}
 	if passphrasePrompter == nil {
 		msg := "no passphrase is stored for it and nobody is available to enter one (scheduled jobs need the passphrase stored in the key settings)"

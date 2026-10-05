@@ -962,7 +962,14 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 
 	// Unlock the configured encryption key, if any, so every chunk this
 	// backup uploads is AES-256-GCM and the manifest is signed.
-	if err := pbsCfg.loadCryptConfig(); err != nil {
+	// A timer or startup run has nobody to answer a passphrase dialog, so it
+	// may only use a stored or already-entered-this-session passphrase and
+	// otherwise fails straight away.
+	cryptUnlock := pbsCfg.loadCryptConfig
+	if a.isUnattendedRun(postActionsKey) {
+		cryptUnlock = func() error { return pbsCfg.unlockCrypt(false) }
+	}
+	if err := cryptUnlock(); err != nil {
 		return err
 	}
 
@@ -1298,7 +1305,14 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 
 	// Unlock the configured encryption key, if any, so every chunk this
 	// backup uploads is AES-256-GCM and the manifest is signed.
-	if err := pbsCfg.loadCryptConfig(); err != nil {
+	// A timer or startup run has nobody to answer a passphrase dialog, so it
+	// may only use a stored or already-entered-this-session passphrase and
+	// otherwise fails straight away.
+	cryptUnlock := pbsCfg.loadCryptConfig
+	if a.isUnattendedRun(postActionsKey) {
+		cryptUnlock = func() error { return pbsCfg.unlockCrypt(false) }
+	}
+	if err := cryptUnlock(); err != nil {
 		return err
 	}
 
