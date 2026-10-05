@@ -84,6 +84,14 @@ func nbdStart(pbsclient *pbscommon.PBSClient, fidxdata []byte, nbd_index int) {
 	if err != nil {
 		panic(err)
 	}
+	// Fail before the NBD device is attached: a missing or wrong key would
+	// otherwise leave a dead /dev/nbdN that blocks every reader in D state.
+	if len(backend.chunks) > 0 {
+		if _, err := pbsclient.GetChunkData(backend.chunks[0]); err != nil {
+			fmt.Fprintf(os.Stderr, "pbsnbd: cannot read the first chunk of the image: %v\n", err)
+			os.Exit(1)
+		}
+	}
 
 	go func() {
 		for {
