@@ -110,12 +110,17 @@ func (a *App) GenerateEncryptionKeyFile(path string) (EncryptionKeyInfo, error) 
 	}
 
 	dir := filepath.Dir(path)
+	createdDir := false
 	if st, err := os.Stat(dir); err != nil {
 		if !os.IsNotExist(err) {
 			return EncryptionKeyInfo{}, fmt.Errorf("dossier %s: %w", dir, err)
 		}
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			return EncryptionKeyInfo{}, fmt.Errorf("creation du dossier %s: %w", dir, err)
+		}
+		createdDir = true
+		if err := restrictKeyAccess(dir, true); err != nil {
+			writeDebugLog(fmt.Sprintf("GenerateEncryptionKeyFile: could not restrict access to %s: %v", dir, err))
 		}
 	} else if !st.IsDir() {
 		return EncryptionKeyInfo{}, fmt.Errorf("%s n'est pas un dossier", dir)
@@ -130,11 +135,15 @@ func (a *App) GenerateEncryptionKeyFile(path string) (EncryptionKeyInfo, error) 
 		return EncryptionKeyInfo{}, fmt.Errorf("cle invalide: %w", err)
 	}
 
-	// SaveKeyFile writes 0600. On Windows the mode is advisory only, so the key
-	// is additionally hidden from other users by ACL inheritance of the parent
-	// directory created above; nothing else to do here.
+	// SaveKeyFile writes 0600, which Windows ignores, and the parent directory's
+	// ACL is usually inherited from %ProgramData% where every local user can
+	// read. So lock the file down explicitly. Failure is only logged: a key on a
+	// FAT/exFAT USB stick has no ACLs to set, and that is a legitimate place for it.
 	if err := pbscommon.SaveKeyFile(path, crypt); err != nil {
 		return EncryptionKeyInfo{}, fmt.Errorf("ecriture de %s: %w", path, err)
+	}
+	if err := restrictKeyAccess(path, false); err != nil {
+		writeDebugLog(fmt.Sprintf("GenerateEncryptionKeyFile: could not restrict access to %s: %v (createdDir=%v)", path, err, createdDir))
 	}
 
 	info := inspectKeyFile(path)

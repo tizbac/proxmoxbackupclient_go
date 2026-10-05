@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 )
 
@@ -182,5 +183,22 @@ func TestIsUnattendedRun(t *testing.T) {
 		if a.takePendingPostActions(key) == nil {
 			t.Fatalf("trigger %q: isUnattendedRun must not consume the entry", trigger)
 		}
+	}
+}
+
+func TestCheckKeyUsableByService(t *testing.T) {
+	dir := t.TempDir()
+	protected := writePassphraseKeyFile(t, dir, "p.json", "hunter2")
+	if err := checkKeyUsableByService(protected, ""); !errors.Is(err, errPassphraseRequired) {
+		t.Fatalf("protected key without stored passphrase: want errPassphraseRequired, got %v", err)
+	}
+	if err := checkKeyUsableByService(protected, "hunter2"); err != nil {
+		t.Fatalf("stored passphrase: %v", err)
+	}
+	if err := checkKeyUsableByService("", ""); err != nil {
+		t.Fatalf("no key configured: %v", err)
+	}
+	if err := checkKeyUsableByService(filepath.Join(dir, "missing.json"), ""); err != nil {
+		t.Fatalf("unreadable key is the service's to report: %v", err)
 	}
 }

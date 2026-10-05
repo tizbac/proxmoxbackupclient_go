@@ -115,6 +115,22 @@ func unlockProtectedKey(path, stored string, keyCfg *pbscommon.KeyConfig, intera
 	return nil, fmt.Errorf("encryption key file %s: too many wrong passphrases", path)
 }
 
+// checkKeyUsableByService fails early when the server's key is passphrase
+// protected and no passphrase is stored for it. A backup routed through the
+// background service runs as another process that cannot show a prompt, and
+// the session passphrase lives only in this GUI process.
+func checkKeyUsableByService(keyFile, storedPassphrase string) error {
+	if keyFile == "" || storedPassphrase != "" {
+		return nil
+	}
+	keyCfg, err := pbscommon.LoadKeyConfig(keyFile)
+	if err != nil || keyCfg.KDF == nil {
+		// Unreadable keys are reported by the service itself with the real reason.
+		return nil
+	}
+	return fmt.Errorf("%w: this backup runs through the background service, which cannot ask for the passphrase of the encryption key %s. Open the server's Encryption tab and choose \"Remember on this computer\" for this key", errPassphraseRequired, keyFile)
+}
+
 // verifyKeyPassphrase reports whether passphrase unlocks the key file at path.
 func verifyKeyPassphrase(path, passphrase string) error {
 	keyCfg, err := pbscommon.LoadKeyConfig(path)

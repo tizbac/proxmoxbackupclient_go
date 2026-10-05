@@ -26,6 +26,20 @@ func (a *App) resolvePBS(pbsID string) (*Config, error) {
 	return a.withAuth(cfg)
 }
 
+// checkServiceKey applies checkKeyUsableByService to the server a service-routed
+// backup will use. It only reads the stored settings, never contacts the server.
+func (a *App) checkServiceKey(pbsID string) error {
+	cfg := a.config.EffectivePBS()
+	if pbsID != "" {
+		pbs, err := a.config.GetPBSServer(pbsID)
+		if err != nil {
+			return nil
+		}
+		cfg = pbs.ToConfig()
+	}
+	return checkKeyUsableByService(cfg.EncryptionKeyFile, cfg.EncryptionKeyPassphrase)
+}
+
 // resolveRestorePBS is resolvePBS plus unlocking the configured encryption
 // key. An encrypted snapshot's chunks are unreadable without it, so fail here
 // with a clear message rather than deep inside the chunk fetcher.

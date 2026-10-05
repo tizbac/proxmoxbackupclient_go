@@ -797,6 +797,9 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 
 // startBackupViaService sends backup request to the service via HTTP API
 func (a *App) startBackupViaService(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
+	if err := a.checkServiceKey(pbsServerID); err != nil {
+		return err
+	}
 	writeDebugLog("[Service Mode] Sending backup request to service")
 
 	req := &api.BackupRequest{
@@ -827,6 +830,9 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 
 // startMachineBackupViaService sends machine backup request to the service via HTTP API
 func (a *App) startMachineBackupViaService(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
+	if err := a.checkServiceKey(pbsServerID); err != nil {
+		return err
+	}
 	writeDebugLog("[Service Mode] Sending machine backup request to service")
 
 	req := &api.BackupRequest{
