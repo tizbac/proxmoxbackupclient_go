@@ -113,7 +113,7 @@ key file that is passphrase protected (`kdf` set) makes the helper ask for the
 passphrase in a hidden box. The key is handed to `pbsnbd` as
 `-keyfile` / `-keyfile-passphrase`. `pbsnbd` reads the first chunk of the
 image before it touches the NBD device, so a missing or wrong key fails
-immediately with a clear message instead of leaving a dead `/dev/nbdN`.
+immediately with a clear message instead of leaving a dead `/dev/nbdN`. A mistyped passphrase is asked for again, three attempts in total, before the helper stops.
 The key is never written to the ISO.
 
 Restoring an encrypted snapshot with an unprotected key file has been tested live. A bare-metal boot with a passphrase-protected key has not yet been run, so treat that path as untested.
