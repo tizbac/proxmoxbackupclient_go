@@ -1245,7 +1245,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			// has no such requirement and is the right choice for a plain
 			// bare-metal backup (the Clonezilla/NBD restore path reads the
 			// raw disk chunks directly, not this VM config, so nothing about
-			// that workflow needs "vm" type). The experimental "vm" type, with
+			// that workflow needs "vm" type). The "vm" type, with
 			// its own numeric-VMID input on the one-off form, is reached via
 			// StartMachineBackup instead: see machineSnapshotType. This
 			// StartBackup path always stays "host".
@@ -1359,7 +1359,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		BackupID:        backupID,
 		Comment:         comment,
 		Kind:            "machine",
-		// "host" unless the GUI explicitly asked for the experimental "vm"
+		// "host" unless the GUI explicitly asked for the "vm"
 		// snapshot type (backupType "machine-vm", numeric VMID in backupID):
 		// see machineSnapshotType.
 		BackupType:     machineSnapshotType(backupType),

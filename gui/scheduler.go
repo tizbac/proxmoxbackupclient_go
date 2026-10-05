@@ -32,7 +32,7 @@ type ScheduledJob struct {
 	UseVSS      bool     `json:"useVSS"`
 	BackupType  string   `json:"backupType"`
 	// MachineAsVM stores a machine backup set as a Proxmox VE "vm" snapshot
-	// instead of a "host" one (experimental). BackupID must then be the
+	// instead of a "host" one. BackupID must then be the
 	// numeric PBS ID, computed by the editor, so the same set always lands in
 	// the same vm/<id> group.
 	MachineAsVM bool     `json:"machineAsVm,omitempty"`

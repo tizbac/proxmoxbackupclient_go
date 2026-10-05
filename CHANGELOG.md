@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Fork changes (mjb-is/proxmoxbackupclient_go), 2026-09-25 to 2026-10-05. Builds from this period are versioned by commit (`dev-<sha>`).
+## [0.5.0] - 2026-10-05
+
+Fork changes (mjb-is/proxmoxbackupclient_go), 2026-09-25 to 2026-10-05.
+
+### Upstream
+Nine pull requests from this fork have been merged into tizbac/proxmoxbackupclient_go: [#85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85) chunk-fetch zstd deadlock, [#86](https://github.com/tizbac/proxmoxbackupclient_go/pull/86) automated Clonezilla bare-metal restore entry, [#87](https://github.com/tizbac/proxmoxbackupclient_go/pull/87) elastio-snap via ioctl, [#88](https://github.com/tizbac/proxmoxbackupclient_go/pull/88) NTFS and POSIX ACL/xattr restore, [#90](https://github.com/tizbac/proxmoxbackupclient_go/pull/90) restorable and bootable `vm` backups, [#91](https://github.com/tizbac/proxmoxbackupclient_go/pull/91) GUI backs machines up as `host` by default, [#92](https://github.com/tizbac/proxmoxbackupclient_go/pull/92) skip already-applied Clonezilla patches, [#93](https://github.com/tizbac/proxmoxbackupclient_go/pull/93) isolinux BMR menu entry, [#94](https://github.com/tizbac/proxmoxbackupclient_go/pull/94) restore of the data between the MBR and the first partition.
 
 ### Added
 - **Client-side encryption (CLI, GUI, NBD, Clonezilla BMR):** snapshots can be encrypted with a Proxmox Backup Server key file, the same format `proxmox-backup-client key create` writes. Every chunk is encrypted with AES-256-GCM and the manifest is signed. The CLI tools take `-keyfile` and `-keyfile-passphrase` (`proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`). The GUI has an **Encryption** tab in each PBS server's editor with Browse, Generate and Clear, a key fingerprint display, and a clear warning that a snapshot cannot be restored without the key. Reports record and show whether each backup was encrypted.
@@ -21,7 +26,7 @@ Fork changes (mjb-is/proxmoxbackupclient_go), 2026-09-25 to 2026-10-05. Builds f
 - **Progress and queue:** the progress card names the active set, shows from the moment a backup starts, has its own Stop button, and lists what is queued behind it; the current file is shown during directory backups; tray tooltip activity and Windows toast notifications; a prompt on window close while a job is running.
 - **Backup:** optional multi-threaded read-ahead (experimental); elastio-snap/dattobd called through ioctl instead of CLI wrappers; 18 interface languages; a bare-metal restore guide.
 - **Linux host backups keep real file metadata:** a folder backup taken on Linux now records the true mode (including setuid, setgid and sticky), owner and group, nanosecond modification time and symlinks, instead of a fixed 0777 and 1000:1000. Symlinks are stored as links and restored as links (relative, absolute and dangling), never followed. FIFOs, sockets and device nodes are skipped and listed in the backup log. A restore run as root on Linux re-applies owner, group and the full mode bits, and folder owner and mode are set last so a restrictive folder cannot block its own contents; a restore as an ordinary user restores modes only. A restore refuses to write through a symlink it created earlier in the same run. Windows archives are byte-identical to before. Covered by unit tests run as an ordinary user and as root; not yet verified against a live PBS.
-- **Experimental:** machine backup as a PBS `vm` snapshot, from the one-off form and from Backup Sets (numeric ID, reserved range by default). A set keeps its ID so scheduled runs land in one `vm/<id>` group, and a non-numeric ID is refused when the set is saved. Restores onto Proxmox VE and boots (verified with a Windows UEFI disk), and restores onto bare metal with the Clonezilla bare-metal restore.
+- **Machine backup as a PBS `vm` snapshot**, from the one-off form and from Backup Sets (numeric ID, reserved range by default). A set keeps its ID so scheduled runs land in one `vm/<id>` group, and a non-numeric ID is refused when the set is saved. Restores onto Proxmox VE and boots (verified with a Windows UEFI disk), and restores onto bare metal with the Clonezilla bare-metal restore.
 
 ### Fixed
 - A passphrase prompt that was cancelled now shows a dismissible red banner and leaves nothing half-backed-up.

@@ -237,7 +237,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		BackupID:        backupID,
 		Comment:         comment,
 		Kind:            "machine",
-		// "host" unless the experimental "vm" type was asked for: see
+		// "host" unless the "vm" type was asked for: see
 		// machineSnapshotType.
 		BackupType:     machineSnapshotType(backupType),
 		UseVSS:         useVSS,

@@ -173,7 +173,7 @@ function renderLocalizedMessage(entry, t) {
 function App() {
   const { t } = useTranslation()
   const tl = (key, fallback) => { const v = t(key); return v === key ? fallback : v }
-  // Backup ID for the experimental "vm" machine backup: a numeric PBS vm/<id>.
+  // Backup ID for the "vm" machine backup: a numeric PBS vm/<id>.
   // 'range' offsets into a high block so it cannot collide with a real VM's ID.
   const computeVmBackupId = (n, style) => {
     const digits = String(n || '').replace(/\D/g, '')
@@ -312,7 +312,7 @@ function App() {
   const [shutdownAfter, setShutdownAfter] = useState(false)
   const [jobName, setJobName] = useState('') // User-facing name for the backup set being created/edited
   const [oneOffComment, setOneOffComment] = useState('') // Optional PBS snapshot comment for a one-off backup
-  // Experimental: back a machine up as a PBS "vm" snapshot (restorable from Proxmox VE).
+  // Back a machine up as a PBS "vm" snapshot (restorable from Proxmox VE).
   const [machineAsVM, setMachineAsVM] = useState(false)
   const [vmIdNumber, setVmIdNumber] = useState('')
   const [vmIdStyle, setVmIdStyle] = useState('range') // 'range' = 9000000+N, 'zeros' = 000N
@@ -3388,14 +3388,14 @@ function App() {
           )}
           {backupType === 'machine' && (
             <div className="form-group">
-              <label>{tl('machineBackupAsLabel', 'Backup as (experimental)')}</label>
+              <label>{tl('machineBackupAsLabel', 'Backup as')}</label>
               <select
                 id="machineBackupAs"
                 value={machineAsVM ? 'vm' : 'host'}
                 onChange={(e) => setMachineAsVM(e.target.value === 'vm')}
               >
                 <option value="host">{tl('machineBackupAsHost', 'Host backup (default)')}</option>
-                <option value="vm">{tl('machineBackupAsVm', 'Proxmox VE virtual machine (experimental)')}</option>
+                <option value="vm">{tl('machineBackupAsVm', 'Proxmox VE virtual machine')}</option>
               </select>
               {machineAsVM && (
                 <div style={{marginTop: '10px'}}>
@@ -3422,7 +3422,7 @@ function App() {
                     {tl('machineVmIdResult', 'Backup ID in PBS:')} <strong>{computeVmBackupId(vmIdNumber, vmIdStyle) || '-'}</strong>
                   </div>
                   <div style={{fontSize: '12px', color: '#b36b00', marginTop: '6px', maxWidth: '520px'}}>
-                    {tl('machineVmWarning', 'Experimental. The snapshot is stored under vm/<ID> so Proxmox VE can list it. A real VM backup with the same ID would share that namespace, so the ID is offset to stay clear of yours. Restore it from Proxmox VE (pick a target Storage) or with the Clonezilla bare-metal restore. The generated VM is bare-bones: SATA disk, OVMF for GPT disks, no network card, TPM or drivers.')}
+                    {tl('machineVmWarning', 'The snapshot is stored under vm/<ID> so Proxmox VE can list it. A real VM backup with the same ID would share that namespace, so the ID is offset to stay clear of yours. Restore it from Proxmox VE (pick a target Storage) or with the Clonezilla bare-metal restore. The generated VM is bare-bones: SATA disk, OVMF for GPT disks, no network card, TPM or drivers.')}
                   </div>
                 </div>
               )}

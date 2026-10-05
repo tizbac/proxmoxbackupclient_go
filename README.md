@@ -30,9 +30,21 @@ This is **mjb-is's fork** of the upstream project — repo: **https://github.com
 - **Restore fidelity and feedback**: NTFS ACLs and DOS attributes are re-applied on Windows, and POSIX ACLs and extended attributes on Linux (both verified live). Folder timestamps are restored as well as file ones. Linux folder backups also record real modes, owners and symlinks, and a root restore re-applies them. An optional "Verify after restore" pass re-reads what was written and compares it with the snapshot. Selective restore uses the archive's own index instead of scanning it, the snapshot tree loads one folder at a time, and the restore progress bar tracks bytes actually written, with a stage label under it and the run recorded in Reports.
 - **Backup Set workflow**: clone a set, a Backup Set's name is written to PBS as the snapshot comment (one-off backups get an optional comment field), email notifications with on-failure options, post-backup actions (shut down, exit the app, run an application), settings export and import between machines, a queue that names what is waiting behind the active job, and a Stop button on the progress card.
 - **Backup behaviour**: an optional multi-threaded read-ahead for backups (experimental), the file currently being archived is shown during directory backups, network shares are no longer snapshotted with VSS, and mapped drives are visible in the folder picker even when the app is elevated. A tray tooltip and Windows toast notifications report backup and restore activity.
-- **Experimental: machine backup as a Proxmox VE "vm" snapshot.** The one-off backup form and Backup Sets can store a machine backup as `vm/<id>` so Proxmox VE can list and restore it (pick a target Storage in the restore dialog; a restored Windows UEFI/GPT disk is verified to boot). The ID is numeric, with an offset into a reserved range by default so it cannot clash with a real VM. The generated VM config is minimal (SATA disk, OVMF for GPT disks, no TPM or Secure Boot keys, no drivers), so expect a bare-bones VM. This also works as a physical-to-virtual conversion: a `vm` snapshot restores onto Proxmox VE and boots (verified with a Windows Server UEFI disk), and the same snapshot can still be restored onto bare metal with the Clonezilla bare-metal restore, which lists `vm` snapshots alongside `host` ones (verified over PXE onto a blank VM). A Backup Set stores its numeric ID, so every scheduled run lands in the same `vm/<id>` group; a set with a non-numeric ID is refused at save time. Host backup remains the default.
+- **Machine backup as a Proxmox VE "vm" snapshot.** The one-off backup form and Backup Sets can store a machine backup as `vm/<id>` so Proxmox VE can list and restore it (pick a target Storage in the restore dialog; a restored Windows UEFI/GPT disk is verified to boot). The ID is numeric, with an offset into a reserved range by default so it cannot clash with a real VM. The generated VM config is minimal (SATA disk, OVMF for GPT disks, no TPM or Secure Boot keys, no drivers), so expect a bare-bones VM. This also works as a physical-to-virtual conversion: a `vm` snapshot restores onto Proxmox VE and boots (verified with a Windows Server UEFI disk), and the same snapshot can still be restored onto bare metal with the Clonezilla bare-metal restore, which lists `vm` snapshots alongside `host` ones (verified over PXE onto a blank VM). A Backup Set stores its numeric ID, so every scheduled run lands in the same `vm/<id>` group; a set with a non-numeric ID is refused at save time. Host backup remains the default. Restoring these snapshots onto Proxmox VE and onto bare metal has been tested repeatedly with no failures to date.
 
-Anything of general use gets sent upstream as a PR (like #85 above) rather than kept fork-only; day-to-day fork-specific work stays here. The original author may choose to merge anything else from this repo as they see fit under GPL.
+Anything of general use gets sent upstream as a PR rather than kept fork-only; day-to-day fork-specific work stays here. Nine pull requests have been sent to the original project so far, and all nine have been merged:
+
+  - [PR #85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85): Fix zstd decoder goroutine deadlock in `GetChunkData` (hung full-machine restores)
+  - [PR #86](https://github.com/tizbac/proxmoxbackupclient_go/pull/86): Fully automated PBS Bare Metal Restore boot entry for the Clonezilla ISO
+  - [PR #87](https://github.com/tizbac/proxmoxbackupclient_go/pull/87): Linux snapshots: drive elastio-snap/dattobd through ioctl instead of `elioctl`/`dbdctl`
+  - [PR #88](https://github.com/tizbac/proxmoxbackupclient_go/pull/88): Restore: re-apply captured NTFS ACLs (Windows) and POSIX ACLs and xattrs (Linux)
+  - [PR #90](https://github.com/tizbac/proxmoxbackupclient_go/pull/90): `machinebackuplib`: make `vm` backups restorable and bootable on Proxmox VE
+  - [PR #91](https://github.com/tizbac/proxmoxbackupclient_go/pull/91): GUI: back machines up as `host`, not `vm`, by default
+  - [PR #92](https://github.com/tizbac/proxmoxbackupclient_go/pull/92): `patch-clonezilla`: skip patches whose change is already in the base ISO
+  - [PR #93](https://github.com/tizbac/proxmoxbackupclient_go/pull/93): `patch-clonezilla`: add the PBS bare-metal restore entry to `isolinux.cfg`
+  - [PR #94](https://github.com/tizbac/proxmoxbackupclient_go/pull/94): Restore the data between the MBR and the first partition in the BMR flow (BIOS/MBR machines boot after restore)
+
+The original author may choose to merge anything else from this repo as they see fit under GPL.
 
 ## 📦 Download
 
@@ -65,7 +77,7 @@ Get-FileHash .\ProxmoxBackupClient-v0.3.0-windows-amd64.zip -Algorithm SHA256   
 - Multi-folder backups, file and disk modes
 - Snapshot browsing, file search (wildcards) and selective restoration, with NTFS/POSIX ACL restore, folder timestamps and an optional verify pass
 - Email notifications and post-backup actions, Backup Set cloning, settings export and import
-- Experimental machine backup as a Proxmox VE `vm` snapshot
+- Machine backup as a Proxmox VE `vm` snapshot
 - Multi-PBS server support with certificate fingerprint pinning (TOFU)
 - **Client-side encryption** — per-server PBS key file (AES-256-GCM, manifest signed), optional passphrase protection, see [Client-side encryption](#client-side-encryption)
 - Windows service mode + scheduled backups
@@ -112,7 +124,7 @@ All three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapshots.
 <td width="33%">
 
 [<img src="docs/screenshots/backup-set-as-vm.png" width="280">](docs/screenshots/backup-set-as-vm.png)
-**Backup as (experimental)** — choose the Proxmox VE virtual machine type and a numeric ID; the PBS backup ID is shown as you type
+**Backup as** — choose the Proxmox VE virtual machine type and a numeric ID; the PBS backup ID is shown as you type
 
 </td>
 <td width="33%">
@@ -508,7 +520,7 @@ The rescue workflow is built by patching a stock Clonezilla Live ISO with the `p
 - **`ocs-pbs-nbd`** — a **"pbs-nbd"** entry added to Clonezilla's own mode-selection menu. Prompts for your PBS connection details and the snapshot to restore, attaches it to `/dev/nbd0` in the background, then hands off to Clonezilla's normal disk-restore wizard for you to drive by hand.
 - **`ocs-pbs-bare-metal-restore`** — a new, first-position, default-on-timeout boot menu entry: **"Proxmox Backup Client Go - PBS Bare Metal Restore"**. Skips Clonezilla's language/keyboard prompts and its own generic wizard entirely, and walks straight from PBS credentials to a completed, auto-rebooted restore: DHCP is tried first (falling back to a static-IP prompt only if it fails), NTP sync runs by default, the target disk is auto-detected, and on success the machine shows a completion message and reboots on its own. Works identically for Windows- and Linux-sourced backups (Clonezilla restores at the raw block level, so it's OS-agnostic). Built to its own ISO filename alongside the manual-wizard ISO, so both stay available.
 
-Also fixed on the Clonezilla side, independent of either menu entry: a `zstd.NewReader` deadlock in the PBS chunk-fetch path (merged upstream as [PR #85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85)) and a 100%-reproducible "first restore pass fails with 'no partition', rerun succeeds" bug, root-caused to Clonezilla's own `is_disk_without_part_and_fs()` (in `ocs-functions`) racing against udev rather than any NBD-attach timing.
+Also fixed on the Clonezilla side, independent of either menu entry: a `zstd.NewReader` deadlock in the PBS chunk-fetch path (merged upstream as [PR #85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85); the other eight upstream PRs are listed [above](#-about-this-fork)) and a 100%-reproducible "first restore pass fails with 'no partition', rerun succeeds" bug, root-caused to Clonezilla's own `is_disk_without_part_and_fs()` (in `ocs-functions`) racing against udev rather than any NBD-attach timing.
 
 ```bash
 ./patch-clonezilla.sh \
@@ -594,7 +606,7 @@ The **GPLv3 license remains active**, and you will still be free to fork the pro
 The GUI is now fully implemented, but contributions are still welcome, especially:
 
 1. Encryption: native review of the machine-translated encryption strings, and a key-management story beyond a key file (for example a Windows DPAPI or Credential Manager store)
-2. Physical-to-virtual (P2V) migration, restoring a bare-metal backup into a virtual machine (working for the basics via the experimental `vm` snapshot type, verified with a Windows UEFI disk; still missing a NIC, TPM, virtio drivers, CPU/RAM taken from the real machine, and non-SATA disk buses)
+2. Physical-to-virtual (P2V) migration, restoring a bare-metal backup into a virtual machine (working for the basics via the `vm` snapshot type, verified with a Windows UEFI disk; still missing a NIC, TPM, virtio drivers, CPU/RAM taken from the real machine, and non-SATA disk buses)
 3. Async upload / multicore upload of chunks (multicore compression is already implemented for machine backup)
 4. Proxmox side patch to add another kind of entry to pxar format with Windows security descriptors in it
 5. Support for Windows symlinks
