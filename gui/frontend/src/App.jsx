@@ -5,7 +5,7 @@ import MachineBackupConfig from './components/MachineBackupConfig'
 import EncryptionKeyField from './components/EncryptionKeyField'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
-let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, GetBrand, OpenBrowser, RequestElevation
+let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, GetBrand, OpenBrowser, RequestElevation, CanModifyJobs, RequestJobModificationElevation
 let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
@@ -32,6 +32,8 @@ if (window.go) {
   GetVersion = window.go.main.App.GetVersion
   GetBrand = window.go.main.App.GetBrand
   RequestElevation = window.go.main.App.RequestElevation
+  CanModifyJobs = window.go.main.App.CanModifyJobs
+  RequestJobModificationElevation = window.go.main.App.RequestJobModificationElevation
   SaveScheduledJob = window.go.main.App.SaveScheduledJob
   UpdateScheduledJob = window.go.main.App.UpdateScheduledJob
   GetScheduledJobs = window.go.main.App.GetScheduledJobs
@@ -39,15 +41,6 @@ if (window.go) {
   GetJobHistory = window.go.main.App.GetJobHistory
   GetSystemInfo = window.go.main.App.GetSystemInfo
   GetLastBackupDirs = window.go.main.App.GetLastBackupDirs
-  // Multi-PBS
-  ListPBSServers = window.go.main.App.ListPBSServers
-  GetPBSServer = window.go.main.App.GetPBSServer
-  AddPBSServer = window.go.main.App.AddPBSServer
-  UpdatePBSServer = window.go.main.App.UpdatePBSServer
-  DeletePBSServer = window.go.main.App.DeletePBSServer
-  SetDefaultPBSServer = window.go.main.App.SetDefaultPBSServer
-  GetDefaultPBSID = window.go.main.App.GetDefaultPBSID
-  TestPBSConnection = window.go.main.App.TestPBSConnection
   GetServerFingerprint = window.go.main.App.GetServerFingerprint
   PinPBSServerFingerprint = window.go.main.App.PinPBSServerFingerprint
   // Encryption key management
@@ -1134,6 +1127,28 @@ function App() {
       if (!SaveScheduledJob || !UpdateScheduledJob) {
         showStatus('❌ Fonction de planification non disponible', 'error')
         return
+      }
+
+      // Check if user has permission to modify scheduled jobs
+      if (CanModifyJobs) {
+        try {
+          const canModify = await CanModifyJobs()
+          if (!canModify) {
+            // Request elevation
+            if (RequestJobModificationElevation) {
+              showStatus('⚠️ Privilèges administrateur requis pour modifier les jobs planifiés', 'warning')
+              try {
+                await RequestJobModificationElevation()
+              } catch (err) {
+                showStatus(`❌ Échec de l'élévation des privilèges: ${err}`, 'error')
+              }
+            }
+            return
+          }
+        } catch (err) {
+          showStatus(`❌ Erreur vérification privilèges: ${err}`, 'error')
+          return
+        }
       }
 
       // For machine backups, we need to use a different approach for scheduled jobs

@@ -1,10 +1,7 @@
 package api
 
 import (
-	"crypto/rand"
 	"crypto/subtle"
-	"encoding/hex"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -19,33 +16,6 @@ const tokenHeader = "X-Proxmox-Client-Token"
 // maxRequestBody bounds request bodies to avoid unbounded memory from a local
 // caller (audit: "borner les tailles de body").
 const maxRequestBody = 1 << 20 // 1 MiB
-
-// EnsureToken returns the local API token stored at path, generating and writing
-// a fresh random one (0600) if the file is missing or empty. Called by the
-// service before it starts the API server.
-//
-// NOTE: 0600 is best-effort; on Windows it inherits the directory ACL rather than
-// becoming owner-only. Restricting the token file by a proper Windows ACL (so
-// only the service account + the interactive user can read it, denying other
-// local processes) is the remaining hardening to fully close H-01 against a
-// hostile LOCAL process. The custom-header + Origin checks already close the
-// browser/CSRF vector regardless.
-func EnsureToken(path string) (string, error) {
-	if b, err := os.ReadFile(path); err == nil {
-		if t := strings.TrimSpace(string(b)); t != "" {
-			return t, nil
-		}
-	}
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generate api token: %w", err)
-	}
-	t := hex.EncodeToString(buf)
-	if err := os.WriteFile(path, []byte(t), 0o600); err != nil {
-		return "", fmt.Errorf("write api token %q: %w", path, err)
-	}
-	return t, nil
-}
 
 // tokenTransport injects the shared token header into every client request,
 // reading the token file on each call so the GUI picks up a token the service

@@ -28,3 +28,9 @@ func isAdmin() bool {
 
 	return member
 }
+
+// canModifyJobs returns true if the current user has permission to modify
+// scheduled jobs. On Windows, this means running as administrator (UAC elevated).
+func canModifyJobs() bool {
+	return isAdmin()
+}

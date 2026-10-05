@@ -316,7 +316,11 @@ func (a *App) GetSystemInfo() map[string]interface{} {
 
 // getSnapshotModule detects which Linux block snapshot kernel module is available.
 // Returns "elastio-snap", "dattobd", or empty string if neither is loaded.
+// This function is only available on Linux due to build tags in snapshot package.
 func getSnapshotModule() string {
+	if stdruntime.GOOS != "linux" {
+		return ""
+	}
 	if control, ok := snapshot.DetectControl(); ok {
 		return control.Name
 	}
@@ -338,6 +342,19 @@ func (a *App) RequestElevation() error {
 	default:
 		return fmt.Errorf("elevation not supported on %s", stdruntime.GOOS)
 	}
+}
+
+// CanModifyJobs returns true if the current user has permission to modify
+// scheduled jobs. On Windows, this requires running as administrator (UAC elevated).
+// On Linux, this requires being in the wheel/sudo group or having sudo privileges.
+func (a *App) CanModifyJobs() bool {
+	return canModifyJobs()
+}
+
+// RequestJobModificationElevation requests elevation specifically for job modification.
+// On Windows, this uses UAC. On Linux, this uses pkexec or sudo with a prompt for credentials.
+func (a *App) RequestJobModificationElevation() error {
+	return a.RequestElevation()
 }
 
 // requestElevationLinux re-launches the current executable with pkexec or sudo
