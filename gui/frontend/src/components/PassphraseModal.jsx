@@ -40,7 +40,7 @@ export default function PassphraseModal({ EventsOn }) {
     try {
       const err = await fn(req.id, cancel ? '' : passphrase, !!cancel)
       if (err) {
-        setError(String(err))
+        setError(String(err).includes('wrong password') ? t('encryptionPassphraseWrong') : String(err))
         setPassphrase('')
         setBusy(false)
         return
@@ -71,24 +71,26 @@ export default function PassphraseModal({ EventsOn }) {
           <div>{req.path}</div>
           {req.fingerprint && <div>{t('encryptionPromptFingerprint').replace('{fp}', req.fingerprint)}</div>}
         </div>
-        <input
-          ref={inputRef}
-          type="password"
-          value={passphrase}
-          onChange={(e) => setPassphrase(e.target.value)}
-          placeholder={t('encryptionPassphrasePlaceholder')}
-          autoComplete="off"
-          spellCheck={false}
-          disabled={busy}
-        />
+        <div className="form-group no-bottom-margin">
+          <input
+            ref={inputRef}
+            type="password"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            placeholder={t('encryptionPassphrasePlaceholder')}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={busy}
+          />
+        </div>
         {error && (
           <div style={{ color: '#c62828', fontSize: '13px', marginTop: '8px', wordBreak: 'break-word' }}>{error}</div>
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
-          <button type="button" className="btn btn-secondary" onClick={() => submit(true)} disabled={busy}>
+          <button type="button" className="btn btn-secondary" onClick={() => submit(true)} disabled={busy} style={{ margin: 0 }}>
             {t('encryptionPromptCancel')}
           </button>
-          <button type="submit" className="btn" disabled={busy || !passphrase}>
+          <button type="submit" className="btn" disabled={busy || !passphrase} style={{ margin: 0 }}>
             {t('encryptionPromptUnlock')}
           </button>
         </div>

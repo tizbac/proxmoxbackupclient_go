@@ -3351,7 +3351,7 @@ function App() {
                 }}
               />
               <details style={{marginTop: '8px'}}>
-                <summary style={{cursor: 'pointer', color: '#666', fontSize: '0.9em'}}>
+                <summary style={{cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, fontSize: '0.95em', textDecoration: 'underline', padding: '4px 0'}}>
                   {t('advancedEditAsText')}
                 </summary>
                 {/* Raw path entry, unchanged from before the tree picker — kept for a
