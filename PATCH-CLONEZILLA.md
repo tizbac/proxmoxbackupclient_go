@@ -98,6 +98,23 @@ is tried with `--dry-run` against the extracted rootfs and the ISO tree; the
 target path in the diff header decides where it belongs. A patch that does not
 apply cleanly aborts the run.
 
+A patch whose change has since been adopted by Clonezilla itself can opt in to
+being skipped instead. It declares, in its header (text before the first `---`
+line, which `patch` ignores), the file it touches and one or more fixed strings
+that only the fixed code contains:
+
+```
+# present-in: usr/share/drbl/sbin/ocs-functions
+# present-marker: partprobe /dev/$dev_
+# present-marker: udevadm settle --timeout=5
+```
+
+If that file exists in the rootfs or ISO tree and contains every marker, the
+patch is reported as already present and skipped. The markers should be code,
+not comments, so a maintainer rewording a comment cannot defeat the check. A
+patch with no markers is always applied, so the menu patches still abort the
+run if their target files change.
+
 Prerequisite for patching: the `patch` utility.
 
 ## Included menu option: attach a PBS backup via NBD
@@ -178,6 +195,9 @@ auto-rebooted restore.
   already correct. A rerun always then passed, the classic signature of
   this exact race. The fix retries once (`partprobe` + `udevadm settle` +
   recount) the moment this check first sees zero partitions.
+  The same fix was merged into Clonezilla as stevenshiau/clonezilla#192, so this
+  patch declares `present-in` / `present-marker` lines and is skipped
+  automatically when the base ISO already includes it.
 
 When the automated flow runs:
 

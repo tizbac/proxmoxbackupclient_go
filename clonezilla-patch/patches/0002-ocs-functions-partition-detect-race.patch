@@ -1,20 +1,23 @@
+# Merged upstream as stevenshiau/clonezilla#192 (fc96b0e, 2026-10-03). Newer
+# Clonezilla releases already contain it; the markers below let
+# patch-clonezilla.sh detect that and skip this patch.
+# present-in: usr/share/drbl/sbin/ocs-functions
+# present-marker: partprobe /dev/$dev_
+# present-marker: udevadm settle --timeout=5
 --- a/usr/share/drbl/sbin/ocs-functions
 +++ b/usr/share/drbl/sbin/ocs-functions
-@@ -16580,6 +16580,21 @@
+@@ -16580,6 +16580,18 @@
    local rc=1
    [ -z "$dev_" ] && exit 1
    part_no="$(LC_ALL=C lsblk -l -n -o TYPE /dev/$dev_ | grep -Ew "^part" | wc -l)"
 +  if [ "$part_no" -eq 0 ]; then
-+    # Retry once after forcing a rescan + udev settle: a source attached
-+    # moments earlier in this live session (e.g. an NBD device) can race
-+    # lsblk here -- lsblk reads udev's device database, not just the raw
-+    # kernel partition table, so a just-created source can transiently show
-+    # zero partitions even though the on-disk table is already correct.
-+    # Added 2026-09-24: this is the actual check behind Clonezilla's own
-+    # "Source disk does not have any partition" error on a PBS-NBD restore's
-+    # first pass -- a rerun always then passed, the classic signature of
-+    # this exact race, at THIS check, not at NBD attach time (long done and
-+    # unrelated by the time this runs).
++    # lsblk reads udev's device database, not just the kernel's raw
++    # partition table, so a source device attached moments earlier in this
++    # session (e.g. over NBD, or any device whose table was just written)
++    # can transiently show zero partitions here even though the on-disk
++    # table is already correct. Force a rescan + udev settle and recount
++    # once before concluding the disk really has no partitions, rather than
++    # reporting a false "no partition" on this race.
 +    partprobe /dev/$dev_ >/dev/null 2>&1
 +    udevadm settle --timeout=5 >/dev/null 2>&1
 +    part_no="$(LC_ALL=C lsblk -l -n -o TYPE /dev/$dev_ | grep -Ew "^part" | wc -l)"
