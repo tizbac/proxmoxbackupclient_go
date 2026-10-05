@@ -176,11 +176,14 @@ auto-rebooted restore.
   duplication of the network/credentials/snapshot-picker/NBD-attach steps) —
   each script can then be modified without risking the other's already-proven
   behaviour.
-- Patches `0003-first-boot-bare-metal-restore-menu-grub.patch` and
-  `0004-first-boot-bare-metal-restore-menu-syslinux.patch` add a new
+- Patches `0003-first-boot-bare-metal-restore-menu-grub.patch`,
+  `0004-first-boot-bare-metal-restore-menu-syslinux.patch` and
+  `0005-first-boot-bare-metal-restore-menu-isolinux.patch` add a new
   **"Proxmox Backup Client Go - PBS Bare Metal Restore"** entry as the first,
-  default-on-timeout item in both `boot/grub/grub.cfg` and
-  `syslinux/syslinux.cfg`, booted via
+  default-on-timeout item in `boot/grub/grub.cfg` (UEFI),
+  `syslinux/syslinux.cfg` (USB stick / PXE) and `syslinux/isolinux.cfg`
+  (BIOS boot from the ISO as a CD/DVD, which reads `isolinux.cfg`, not
+  `syslinux.cfg`), booted via
   `locales=en_US.UTF-8 keyboard-layouts=gb
   ocs_live_run="/usr/local/sbin/ocs-pbs-bare-metal-restore"` — those boot
   parameters are what actually skip Clonezilla's language/keyboard prompts
