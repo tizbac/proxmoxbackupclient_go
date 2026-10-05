@@ -341,14 +341,75 @@ func verifyPlaintextDigest(plaintext []byte, crypt *CryptConfig, digest []byte) 
 //
 
 // KeyDerivationConfig describes the KDF protecting the raw key inside a key
-// file. Only the fields relevant for the configured KDF are used.
+// file. KDF is "scrypt" or "PBKDF2"; only the fields relevant to it are used.
+// On disk it is serde's externally tagged enum, as written by
+// proxmox-backup-client: {"Scrypt":{"n":..,"r":..,"p":..,"salt":..}} or
+// {"PBKDF2":{"iter":..,"salt":..}}. The flat layout this package wrote before,
+// {"kdf":"scrypt","n":..,"r":..,"p":..,"salt":..}, is still read.
 type KeyDerivationConfig struct {
-	KDF  string `json:"kdf"`
+	KDF  string
+	N    uint64
+	R    uint64
+	P    uint64
+	Iter int
+	Salt string
+}
+
+type kdfParams struct {
 	N    uint64 `json:"n,omitempty"`
 	R    uint64 `json:"r,omitempty"`
 	P    uint64 `json:"p,omitempty"`
 	Iter int    `json:"iter,omitempty"`
 	Salt string `json:"salt"`
+}
+
+type flatKDF struct {
+	KDF string `json:"kdf"`
+	kdfParams
+}
+
+func (k *KeyDerivationConfig) UnmarshalJSON(raw []byte) error {
+	var flat flatKDF
+	if err := json.Unmarshal(raw, &flat); err == nil && flat.KDF != "" {
+		switch flat.KDF {
+		case "scrypt", "PBKDF2":
+			k.KDF = flat.KDF
+			k.N, k.R, k.P, k.Iter, k.Salt = flat.N, flat.R, flat.P, flat.Iter, flat.Salt
+			return nil
+		default:
+			return fmt.Errorf("unsupported key derivation function %q", flat.KDF)
+		}
+	}
+	var tagged map[string]kdfParams
+	if err := json.Unmarshal(raw, &tagged); err != nil {
+		return fmt.Errorf("unrecognised key derivation function in key file: %w", err)
+	}
+	if len(tagged) != 1 {
+		return errors.New("unrecognised key derivation function in key file")
+	}
+	for name, p := range tagged {
+		switch name {
+		case "Scrypt":
+			k.KDF = "scrypt"
+		case "PBKDF2":
+			k.KDF = "PBKDF2"
+		default:
+			return fmt.Errorf("unsupported key derivation function %q", name)
+		}
+		k.N, k.R, k.P, k.Iter, k.Salt = p.N, p.R, p.P, p.Iter, p.Salt
+	}
+	return nil
+}
+
+func (k KeyDerivationConfig) MarshalJSON() ([]byte, error) {
+	p := kdfParams{N: k.N, R: k.R, P: k.P, Iter: k.Iter, Salt: k.Salt}
+	switch k.KDF {
+	case "scrypt":
+		return json.Marshal(map[string]kdfParams{"Scrypt": p})
+	case "PBKDF2":
+		return json.Marshal(map[string]kdfParams{"PBKDF2": p})
+	}
+	return nil, fmt.Errorf("unsupported key derivation function %q", k.KDF)
 }
 
 func (k *KeyDerivationConfig) deriveKey(passphrase []byte) ([]byte, error) {
@@ -361,7 +422,7 @@ func (k *KeyDerivationConfig) deriveKey(passphrase []byte) ([]byte, error) {
 		if k.N == 0 || k.R == 0 || k.P == 0 {
 			return nil, errors.New("invalid scrypt parameters in key file")
 		}
-		return scrypt.Key(passphrase, salt, 1<<15, int(k.R), int(k.P), BlobEncryptionKeySize)
+		return scrypt.Key(passphrase, salt, int(k.N), int(k.R), int(k.P), BlobEncryptionKeySize)
 	case "PBKDF2":
 		if k.Iter <= 0 {
 			return nil, errors.New("invalid PBKDF2 iteration count in key file")
