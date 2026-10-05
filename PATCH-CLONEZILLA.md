@@ -116,7 +116,7 @@ image before it touches the NBD device, so a missing or wrong key fails
 immediately with a clear message instead of leaving a dead `/dev/nbdN`. A mistyped passphrase is asked for again, three attempts in total, before the helper stops.
 The key is never written to the ISO.
 
-Restoring an encrypted snapshot with an unprotected key file has been tested live. A bare-metal boot with a passphrase-protected key has not yet been run, so treat that path as untested.
+Restoring an encrypted snapshot has been tested live with an unprotected key file and with a passphrase-protected (scrypt) key. For the passphrase-protected case a Linux machine backup was restored onto a blank BIOS virtual machine, the key being read from a USB stick and the passphrase typed into the hidden box, and the restored system booted. A wrong passphrase is retried up to three times, and three wrong attempts stop the restore.
 
 ## Included menu option: attach a PBS backup via NBD
 
