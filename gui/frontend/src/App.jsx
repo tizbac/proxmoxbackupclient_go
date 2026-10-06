@@ -21,7 +21,7 @@ let SetParallelRestore, SetParallelBackupRead
 let GetJobPolicy, SetRequireAdminForJobs, RequestElevation
 let ExportSettings, ImportSettings
 let SetSMTPSettings, SendTestEmail
-let GetLogsFolder
+let GetLogsFolder, OpenLogsFolder
 // Encryption key management
 let InspectEncryptionKeyFile, GenerateEncryptionKeyFile, OpenEncryptionKeyDialog, OpenEncryptionKeySaveDialog
 
@@ -76,6 +76,7 @@ if (window.go) {
   ExportSettings = window.go.main.App.ExportSettings
   ImportSettings = window.go.main.App.ImportSettings
   GetLogsFolder = window.go.main.App.GetLogsFolder
+  OpenLogsFolder = window.go.main.App.OpenLogsFolder
   SetSMTPSettings = window.go.main.App.SetSMTPSettings
   SendTestEmail = window.go.main.App.SendTestEmail
   // Encryption key management
@@ -2416,7 +2417,9 @@ function App() {
                 <button className={`tabhead ${prefsTab === 'account' ? 'active' : ''}`} onClick={() => setPrefsTab('account')}>
                   {t('prefsAccountInfo')}
                 </button>
-                <button className="tabhead disabled" disabled title={t('comingSoon')}>{t('prefsBackupOptions')}</button>
+                <button className={`tabhead ${prefsTab === 'backupoptions' ? 'active' : ''}`} onClick={() => setPrefsTab('backupoptions')}>
+                  {t('prefsBackupOptions')}
+                </button>
                 {/* A real brand's own accent is a deliberate vendor choice, not a
                     default the user is meant to override — hide the picker entirely
                     for a branded build (brand.is_default false) rather than merely
@@ -2429,10 +2432,15 @@ function App() {
                 <button className={`tabhead ${prefsTab === 'email' ? 'active' : ''}`} onClick={() => setPrefsTab('email')}>
                   {t('prefsEmail')}
                 </button>
+                <button className={`tabhead ${prefsTab === 'export' ? 'active' : ''}`} onClick={() => setPrefsTab('export')}>
+                  {t('prefsExportTab')}
+                </button>
+                <button className={`tabhead ${prefsTab === 'messagelog' ? 'active' : ''}`} onClick={() => setPrefsTab('messagelog')}>
+                  {t('navMessageLog')}
+                </button>
                 <button className={`tabhead ${prefsTab === 'advanced' ? 'active' : ''}`} onClick={() => setPrefsTab('advanced')}>
                   {t('prefsAdvanced')}
                 </button>
-                <button className="tabhead disabled" disabled title={t('comingSoon')}>{t('navMessageLog')}</button>
               </div>
 
               <div style={{padding: '22px 26px', overflowY: 'auto', flex: '1 1 auto'}}>
@@ -2678,6 +2686,14 @@ function App() {
                         </div>
                       </div>
                     )}
+                    {!jobPolicy.supported && (
+                      <p style={{color: '#718096', fontSize: '13px'}}>{t('comingSoon')}</p>
+                    )}
+                  </>
+                )}
+                {prefsTab === 'backupoptions' && (
+                  <>
+                    <h2 style={{marginTop: 0}}>{t('prefsBackupOptions')}</h2>
                     <div className="form-group" style={{marginTop: '20px'}}>
                       <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
                         <input
@@ -2754,6 +2770,11 @@ function App() {
                       )}
                     </div>
 
+                  </>
+                )}
+                {prefsTab === 'export' && (
+                  <>
+                    <h2 style={{marginTop: 0}}>{t('prefsExportTab')}</h2>
                     <div className="form-group" style={{marginTop: '24px'}}>
                       <h3 style={{marginBottom: '8px'}}>{t('settingsPortabilityTitle')}</h3>
                       <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('settingsPortabilityIntro')}</p>
@@ -2812,16 +2833,20 @@ function App() {
                       </div>
                     </div>
 
+                  </>
+                )}
+                {prefsTab === 'messagelog' && (
+                  <>
+                    <h2 style={{marginTop: 0}}>{t('navMessageLog')}</h2>
                     <div className="form-group" style={{marginTop: '24px'}}>
                       <h3 style={{marginBottom: '8px'}}>{t('logsTitle')}</h3>
                       <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('logsIntro')}</p>
                       <button
                         className="btn btn-secondary"
                         onClick={async () => {
-                          if (!GetLogsFolder || !OpenBrowser) return
+                          if (!OpenLogsFolder) return
                           try {
-                            const path = await GetLogsFolder()
-                            OpenBrowser(path)
+                            await OpenLogsFolder()
                           } catch (err) {
                             showStatus(`❌ ${err}`, 'error')
                           }
