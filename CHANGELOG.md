@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Scheduled job protection (Windows).** Adding, changing, deleting or importing Backup Sets now needs an administrator session, controlled by a switch in Preferences > Advanced. It is on by default; only an administrator can turn it off or on again. Running a Backup Set and viewing history are not restricted. The setting lives in `HKLM\SOFTWARE\ProxmoxBackupClient\Policy`, which Windows only lets administrators write, and a missing or unreadable value means on. While it is on, the service's HTTP job routes are closed. A "Restart as administrator" button and a notice on the Backup Sets page explain what to do. Translated into all 18 languages.
+- Preferences has a new **Export / Import Settings** tab.
+
+### Changed
+- Preferences: the parallel restore and parallel backup read-ahead options moved to the **Backup Options** tab, and View Logs moved to the **Message Log** tab. Both tabs were previously greyed-out placeholders.
+
+### Fixed
+- **View Logs did nothing.** It passed the folder path to the browser-open call, which Wails 2.13 rejects (it only accepts URLs with a scheme). It now opens the folder directly.
+
 ## [0.5.1] - 2026-10-06
 
 ### Fixed
