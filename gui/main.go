@@ -314,19 +314,6 @@ func (a *App) GetSystemInfo() map[string]interface{} {
 	return info
 }
 
-// getSnapshotModule detects which Linux block snapshot kernel module is available.
-// Returns "elastio-snap", "dattobd", or empty string if neither is loaded.
-// This function is only available on Linux due to build tags in snapshot package.
-func getSnapshotModule() string {
-	if stdruntime.GOOS != "linux" {
-		return ""
-	}
-	if control, ok := snapshot.DetectControl(); ok {
-		return control.Name
-	}
-	return ""
-}
-
 // RequestElevation re-launches the application with elevated privileges.
 // On Linux this uses pkexec or sudo. On Windows it uses the Wails "RunAsAdmin" mechanism.
 // On macOS it uses osascript with administrator privileges.
