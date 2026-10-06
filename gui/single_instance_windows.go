@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"syscall"
@@ -18,11 +19,11 @@ const (
 )
 
 var (
-	user32           = windows.NewLazySystemDLL("user32.dll")
-	procFindWindow   = user32.NewProc("FindWindowW")
+	user32            = windows.NewLazySystemDLL("user32.dll")
+	procFindWindow    = user32.NewProc("FindWindowW")
 	procSetForeground = user32.NewProc("SetForegroundWindow")
-	procShowWindow   = user32.NewProc("ShowWindow")
-	procIsIconic     = user32.NewProc("IsIconic")
+	procShowWindow    = user32.NewProc("ShowWindow")
+	procIsIconic      = user32.NewProc("IsIconic")
 )
 
 const (
@@ -45,14 +46,16 @@ func CheckSingleInstance() bool {
 
 	// Try to create or open the mutex
 	mutex, err := windows.CreateMutex(nil, false, mutexNamePtr)
-	if err != nil && err != windows.ERROR_ALREADY_EXISTS {
+	if err != nil && !mutexHeldByAnotherInstance(err) {
 		writeDebugLog(fmt.Sprintf("Failed to create mutex: %v", err))
 		return true // Allow launch on error
 	}
 
-	// Check if mutex already existed (GetLastError returns ERROR_ALREADY_EXISTS even when CreateMutex succeeds)
-	lastErr := windows.GetLastError()
-	if lastErr == windows.ERROR_ALREADY_EXISTS {
+	// The error CreateMutex itself returns is the reliable signal. Do NOT read
+	// windows.GetLastError() afterwards: Go's syscall layer does not preserve it,
+	// so that check always saw 0 and every launch believed it was the first
+	// instance (a second copy simply opened alongside the first).
+	if mutexHeldByAnotherInstance(err) {
 		writeDebugLog("Another instance is already running - attempting to bring it to foreground")
 
 		// Try to find and activate the existing window
@@ -125,6 +128,14 @@ func activateExistingWindow() bool {
 	return true
 }
 
+// mutexHeldByAnotherInstance reports whether a CreateMutex error means another
+// instance already owns the lock. ACCESS_DENIED counts too: an instance running
+// elevated creates the mutex with an administrators-only ACL, which a standard
+// copy cannot open.
+func mutexHeldByAnotherInstance(err error) bool {
+	return errors.Is(err, windows.ERROR_ALREADY_EXISTS) || errors.Is(err, windows.ERROR_ACCESS_DENIED)
+}
+
 func hasArg(flag string) bool {
 	for _, a := range os.Args[1:] {
 		if a == flag {
@@ -142,12 +153,11 @@ func waitForPreviousInstance() {
 		return
 	}
 	for i := 0; i < 40; i++ {
-		h, _ := windows.CreateMutex(nil, false, name)
-		exists := windows.GetLastError() == windows.ERROR_ALREADY_EXISTS
+		h, err := windows.CreateMutex(nil, false, name)
 		if h != 0 {
 			windows.CloseHandle(h)
 		}
-		if !exists {
+		if !mutexHeldByAnotherInstance(err) {
 			return
 		}
 		time.Sleep(300 * time.Millisecond)
