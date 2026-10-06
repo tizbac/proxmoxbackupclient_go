@@ -623,19 +623,26 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 	}
 	var err error
 	var readErrors []string
+	originalDir := backupdir
+	snapshotDir := ""
 	if usevss {
 		err = snapshot.CreateVSSSnapshot(([]string{backupdir}), true, func(snaps map[string]snapshot.SnapShot) error {
 			// Get first snapshot from map (Go 1.22 compatible)
 			for _, snap := range snaps {
-				backupdir = snap.FullPath
+				snapshotDir = snap.FullPath
 				break
 			}
+			backupdir = snapshotDir
 			//Remove VSS snapshot on windows, on linux for now NOP
 			var e error
 			readErrors, e = backup_real(client, newchunk, reusechunk, pxarOut, backupdir, originalPath, true)
 			return e
 
 		})
+		err = unmapSnapshotPath(err, snapshotDir, originalDir)
+		for i := range readErrors {
+			readErrors[i] = unmapSnapshotPathString(readErrors[i], snapshotDir, originalDir)
+		}
 	} else {
 		readErrors, err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir, originalPath, false)
 	}
