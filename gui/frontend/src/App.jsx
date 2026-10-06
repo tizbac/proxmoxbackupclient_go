@@ -2392,7 +2392,9 @@ function App() {
           >
             <div
               style={{
-                width: '760px', maxWidth: '92vw', maxHeight: '88vh',
+                // Fixed height so the dialog does not resize as you move between tabs:
+                // the Account tab's natural height (~1200px), capped to the window.
+                width: '760px', maxWidth: '92vw', height: 'min(88vh, 1200px)', maxHeight: '88vh',
                 display: 'flex', flexDirection: 'column',
                 background: '#f3f3f3', border: '1px solid #999', borderRadius: '4px',
                 boxShadow: '0 10px 40px rgba(0,0,0,.3)',
