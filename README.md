@@ -157,7 +157,8 @@ proxmoxbackupgo.exe
   -secret string
         Secret for authentication
   -backupdir string
-        Backup source directory, must not be symlink
+        Backup source directory, must not be symlink. Repeat the flag to back up
+        several directories in one run (see "Several directories" below)
   -baseurl string
         Base URL for the proxmox backup server, example: https://192.168.1.10:8007
   -certfingerprint string
@@ -197,6 +198,20 @@ proxmoxbackupgo.exe
 ```
 
 For JSON configuration a JSON example is provided, fill in only the needed fields.
+
+### Several directories in one run
+
+Repeat `-backupdir` to back up more than one directory with a single command:
+
+```shell
+proxmoxbackupgo.exe -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -datastore "datastorename" -backupdir "C:\Data" -backupdir "D:\Photos"
+```
+
+Each directory is backed up as its own backup group, with the backup id `<backup-id>_<path>` (the same ids the GUI uses; `-backup-id` defaults to the hostname). Retention, pruning and restore therefore treat every directory as an independent series. A directory that fails does not stop the others, and the exit code is 1 if any of them failed. `-pxarout` cannot be combined with several directories, and two directories that would end up with the same backup id are rejected before anything is uploaded.
+
+In a JSON config file use `"backupdirs": ["C:\\Data", "D:\\Photos"]`. The single `"backupdir"` field keeps working and can be combined with `"backupdirs"`.
+
+Encryption works the same way as for a single directory: `-keyfile` (and `-keyfile-passphrase`, or the interactive prompt) is read once, and every directory's backup group is encrypted with that key.
 
 Note on mail templating:
 [Go's templating engine](https://pkg.go.dev/text/template) is used for mail subjects and bodies, please refer to the documentation for the syntax.

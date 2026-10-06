@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"hash"
@@ -218,26 +219,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	client := &pbscommon.PBSClient{
-		BaseURL:         cfg.BaseURL,
-		CertFingerPrint: cfg.CertFingerprint, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
-		AuthID:          cfg.AuthID,
-		Secret:          cfg.Secret,
-		Username:        cfg.PBSUsername,
-		Password:        cfg.PBSPassword,
-		Datastore:       cfg.Datastore,
-		Namespace:       cfg.Namespace,
-		Insecure:        insecure,
-		Crypt:           crypt,
-		Manifest: pbscommon.BackupManifest{
-			BackupID: cfg.BackupID,
-		},
-	}
-	if client.Username != "" {
-		if err := client.ObtainTicket(); err != nil {
-			fmt.Printf("Error: ticket login failed: %v\n", err)
-			os.Exit(1)
+	// newClient builds a PBS client for one backup group. A multi-directory run
+	// needs one per directory, because each directory is its own group.
+	newClient := func(backupID string) (*pbscommon.PBSClient, error) {
+		c := &pbscommon.PBSClient{
+			BaseURL:         cfg.BaseURL,
+			CertFingerPrint: cfg.CertFingerprint, //"ea:7d:06:f9:87:73:a4:72:d0:e8:05:a4:b3:3d:95:d7:0a:26:dd:6d:5c:ca:e6:99:83:e4:11:3b:5f:10:f4:4b",
+			AuthID:          cfg.AuthID,
+			Secret:          cfg.Secret,
+			Username:        cfg.PBSUsername,
+			Password:        cfg.PBSPassword,
+			Datastore:       cfg.Datastore,
+			Namespace:       cfg.Namespace,
+			Insecure:        insecure,
+			Crypt:           crypt,
+			Manifest: pbscommon.BackupManifest{
+				BackupID: backupID,
+			},
 		}
+		if c.Username != "" {
+			if err := c.ObtainTicket(); err != nil {
+				return nil, err
+			}
+		}
+		return c, nil
 	}
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -245,10 +250,26 @@ func main() {
 		hostname = "unknown"
 	}
 
+	dirs := cfg.Dirs()
+	var client *pbscommon.PBSClient
+	if len(dirs) <= 1 {
+		client, err = newClient(cfg.BackupID)
+		if err != nil {
+			fmt.Printf("Error: ticket login failed: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	begin := time.Now()
 	var readErrors []string
-	if cfg.BackupSourceDir != "" {
-		readErrors, err = backup(client, newchunk, reusechunk, cfg.PxarOut, cfg.BackupSourceDir, cfg.UseVSS)
+	if len(dirs) == 1 {
+		readErrors, err = backup(client, newchunk, reusechunk, cfg.PxarOut, dirs[0], cfg.UseVSS)
+	} else if len(dirs) > 1 {
+		baseID := cfg.BackupID
+		if baseID == "" {
+			baseID = hostname
+		}
+		readErrors, err = backup_many(newClient, newchunk, reusechunk, cfg.PxarOut, dirs, baseID, cfg.UseVSS)
 	} else if cfg.BackupStreamName != "" {
 		sn := cfg.BackupStreamName
 		if !strings.HasSuffix(sn, ".didx") {
@@ -335,6 +356,48 @@ func main() {
 		os.Exit(3)
 	}
 
+}
+
+// backup_many backs up several directories in one run. Each directory is its own
+// backup group with the id <base>_<path> (the same ids the GUI uses), so PBS
+// retention and restore treat every directory as an independent series. A
+// directory that fails does not stop the others; the failures are joined into
+// the returned error.
+func backup_many(newClient func(backupID string) (*pbscommon.PBSClient, error), newchunk, reusechunk *atomic.Uint64, pxarOut string, dirs []string, baseID string, usevss bool) ([]string, error) {
+	if pxarOut != "" {
+		return nil, fmt.Errorf("-pxarout writes a single archive and cannot be combined with several -backupdir")
+	}
+
+	ids := make(map[string]string, len(dirs))
+	for _, dir := range dirs {
+		id := clientcommon.GenerateBackupID(baseID, dir)
+		if other, dup := ids[id]; dup {
+			return nil, fmt.Errorf("%q and %q would both be backed up as backup-id %q; pass distinct directories", other, dir, id)
+		}
+		ids[id] = dir
+	}
+
+	var readErrors []string
+	var failures []error
+	for _, dir := range dirs {
+		id := clientcommon.GenerateBackupID(baseID, dir)
+		fmt.Printf("Backing up %s as backup group %s\n", dir, id)
+
+		client, err := newClient(id)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("%s: ticket login failed: %w", dir, err))
+			continue
+		}
+		dirReadErrors, err := backup(client, newchunk, reusechunk, "", dir, usevss)
+		// Release the session even after a failure, otherwise PBS keeps the
+		// group locked until the connection times out.
+		client.Close()
+		readErrors = append(readErrors, dirReadErrors...)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", dir, err))
+		}
+	}
+	return readErrors, errors.Join(failures...)
 }
 
 func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, filename string, stream io.Reader) error {
@@ -505,19 +568,25 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 	fmt.Printf("Starting backup of %s\n", backupdir)
 	var err error
 	var readErrors []string
+	originalDir := backupdir
+	snapshotDir := ""
 	if usevss {
 		err = snapshot.CreateVSSSnapshot(([]string{backupdir}), true, func(snaps map[string]snapshot.SnapShot) error {
 			// Get first snapshot from map (Go 1.22 compatible)
 			for _, snap := range snaps {
-				backupdir = snap.FullPath
+				snapshotDir = snap.FullPath
 				break
 			}
 			//Remove VSS snapshot on windows, on linux for now NOP
 			var e error
-			readErrors, e = backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
+			readErrors, e = backup_real(client, newchunk, reusechunk, pxarOut, snapshotDir)
 			return e
 
 		})
+		err = unmapSnapshotPath(err, snapshotDir, originalDir)
+		for i := range readErrors {
+			readErrors[i] = unmapSnapshotPathString(readErrors[i], snapshotDir, originalDir)
+		}
 	} else {
 		readErrors, err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir)
 	}

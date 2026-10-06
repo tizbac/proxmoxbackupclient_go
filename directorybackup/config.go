@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 type MailSendConfig struct {
@@ -38,6 +39,7 @@ type Config struct {
 	Namespace        string      `json:"namespace"`
 	BackupID         string      `json:"backup-id"`
 	BackupSourceDir  string      `json:"backupdir"`
+	BackupSourceDirs []string    `json:"backupdirs"`
 	BackupStreamName string      `json:"backupstreamname"`
 	PxarOut          string      `json:"pxarout"`
 	SMTP             *SMTPConfig `json:"smtp"`
@@ -55,12 +57,33 @@ type Config struct {
 	KeyFilePassphrase string `json:"keyfilepassphrase"`
 }
 
+// Dirs returns every configured source directory: "backupdir" first (if set),
+// then the entries of "backupdirs", without duplicates. With more than one,
+// each directory is backed up as its own backup group.
+func (c *Config) Dirs() []string {
+	var dirs []string
+	seen := map[string]bool{}
+	for _, d := range append([]string{c.BackupSourceDir}, c.BackupSourceDirs...) {
+		if d != "" && !seen[d] {
+			seen[d] = true
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
+}
+
+// dirListFlag is a repeatable string flag (-backupdir a -backupdir b).
+type dirListFlag []string
+
+func (d *dirListFlag) String() string     { return strings.Join(*d, ",") }
+func (d *dirListFlag) Set(v string) error { *d = append(*d, v); return nil }
+
 func (c *Config) valid() bool {
 	// Authentication is either an API token (authid+secret) or a PBS
 	// username (ticket login). The ticket password may be omitted: in that
 	// case the CLI asks for it interactively before connecting.
 	authOK := (c.AuthID != "" && c.Secret != "") || c.PBSUsername != ""
-	baseValid := c.BaseURL != "" && authOK && c.Datastore != "" && (c.BackupSourceDir != "" || c.BackupStreamName != "")
+	baseValid := c.BaseURL != "" && authOK && c.Datastore != "" && (len(c.Dirs()) > 0 || c.BackupStreamName != "")
 	if !baseValid {
 		return baseValid
 	}
@@ -90,7 +113,8 @@ func loadConfig() *Config {
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
-	backupSourceDirFlag := flag.String("backupdir", "", "Backup source directory, must not be symlink")
+	var backupSourceDirFlags dirListFlag
+	flag.Var(&backupSourceDirFlags, "backupdir", "Backup source directory, must not be symlink. Repeat the flag to back up several directories; each becomes its own backup group (backup-id <base>_<path>)")
 	backupStreamNameFlag := flag.String("backupstream", "", "Filename for stream backup")
 	pxarOutFlag := flag.String("pxarout", "", "Output PXAR archive for debug purposes (optional)")
 	noVSSFlag := flag.Bool("novss", false, "Disable VSS ( For filesystems that don't support it, for example veracrypt )")
@@ -155,8 +179,9 @@ func loadConfig() *Config {
 	if *backupIDFlag != "" {
 		config.BackupID = *backupIDFlag
 	}
-	if *backupSourceDirFlag != "" {
-		config.BackupSourceDir = *backupSourceDirFlag
+	if len(backupSourceDirFlags) > 0 {
+		config.BackupSourceDir = backupSourceDirFlags[0]
+		config.BackupSourceDirs = backupSourceDirFlags[1:]
 	}
 
 	if *backupStreamNameFlag != "" {
