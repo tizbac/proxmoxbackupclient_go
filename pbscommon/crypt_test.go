@@ -9,6 +9,7 @@ import (
 	"hash/crc32"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 
@@ -355,12 +356,15 @@ func TestKeyFileRoundTrip(t *testing.T) {
 		t.Fatalf("SaveKeyFile: %v", err)
 	}
 
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if perm := info.Mode().Perm(); perm != 0600 {
-		t.Fatalf("key file permissions %o, want 600", perm)
+	// Windows has no Unix permission bits: Go reports 0666 whatever mode was asked for.
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if perm := info.Mode().Perm(); perm != 0600 {
+			t.Fatalf("key file permissions %o, want 600", perm)
+		}
 	}
 
 	loaded, err := LoadKeyFile(path, nil)
