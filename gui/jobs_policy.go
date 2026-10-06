@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 )
 
@@ -18,6 +19,14 @@ import (
 // The protection applies where the job list is a shared machine-wide store,
 // which is Windows (ProgramData). On Linux the job list is the signed-in
 // user's own file, so there is nothing to protect and the policy is not offered.
+
+// elevatedRestartFlagName is passed to the copy relaunched through UAC so it
+// waits for the instance that asked for elevation to exit. It must be a
+// registered flag: main() calls flag.Parse, which exits with status 2 on an
+// unknown one, and the elevated copy used to vanish a moment after the UAC prompt.
+const elevatedRestartFlagName = "elevated-restart"
+
+var _ = flag.Bool(elevatedRestartFlagName, false, "internal: relaunched elevated; wait for the previous instance to exit")
 
 // errJobsAdminRequired is the stable code the frontend maps to a translated
 // message and the "Restart as administrator" action.

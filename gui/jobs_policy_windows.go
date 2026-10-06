@@ -22,7 +22,7 @@ var (
 const jobPolicyValue = "RequireAdminForJobs"
 
 // elevatedRestartFlag tells the relaunched copy to wait for the old instance to exit.
-const elevatedRestartFlag = "--elevated-restart"
+const elevatedRestartFlag = "--" + elevatedRestartFlagName
 
 func jobPolicySupported() bool { return true }
 
