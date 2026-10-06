@@ -51,6 +51,19 @@ type ErrorResponse struct {
 	Details string `json:"details,omitempty"`
 }
 
+// PBSTicket is a short-lived PBS session ticket minted by the service on
+// behalf of the GUI. The GUI never holds PBS credentials in service mode; it
+// asks the service for a ticket right before a restore/listing operation and
+// uses only the non-sensitive connection parameters below.
+type PBSTicket struct {
+	Ticket          string `json:"ticket"`
+	CSRFToken       string `json:"csrf_token,omitempty"`
+	BaseURL         string `json:"base_url"`
+	CertFingerprint string `json:"cert_fingerprint,omitempty"`
+	Datastore       string `json:"datastore,omitempty"`
+	Namespace       string `json:"namespace,omitempty"`
+}
+
 // BackupProgress represents the current state of a running backup
 type BackupProgress struct {
 	JobID     string  `json:"job_id"`

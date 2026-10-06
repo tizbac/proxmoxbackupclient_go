@@ -1,0 +1,11 @@
+#!/bin/sh
+# postinst: runs after package installation
+set -e
+
+# Reload systemd daemon to pick up the new unit file
+systemctl daemon-reload 2>/dev/null || true
+
+# IMPORTANT: Do NOT enable the service by default (no systemctl enable).
+# The user must explicitly enable/start it: sudo systemctl enable --now pbsgo
+
+exit 0

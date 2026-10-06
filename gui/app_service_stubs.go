@@ -79,6 +79,17 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		allDirs = driveLetters
 	}
 
+	// Kind/BackupType follow the GUI direct path (startBackupDirect /
+	// startMachineBackupDirect): empty Kind + "host" = directory backup,
+	// "machine" + "vm" = whole-disk machine backup (runBackupInlineInternal
+	// dispatches on Kind).
+	kind := ""
+	pbsBackupType := "host"
+	if backupType == "machine" {
+		kind = "machine"
+		pbsBackupType = "vm"
+	}
+
 	// Resolve the EFFECTIVE PBS config: a multi-PBS-only config keeps the legacy
 	// BaseURL/AuthID/Secret/Datastore fields empty, so building options from those
 	// directly yielded "PBS connection parameters required" in service mode (the GUI
@@ -98,6 +109,12 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		return err
 	}
 
+	// Machine backups take no exclusion list (same as the GUI direct path).
+	excludes := excludeList
+	if kind == "machine" {
+		excludes = []string{}
+	}
+
 	// Prepare backup options
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
@@ -111,10 +128,11 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		Crypt:           pbsCfg.Crypt,
 		BackupObjects:   allDirs,
 		BackupID:        backupID,
-		BackupType:      backupType,
+		Kind:            kind,
+		BackupType:      pbsBackupType,
 		UseVSS:          useVSS,
 		Compression:     compression,
-		ExcludeList:     excludeList,
+		ExcludeList:     excludes,
 		DisableSplit:    pbsCfg.DisableSplit,
 		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
 		OnProgress: func(percent float64, message string) {
@@ -134,9 +152,76 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 	return RunBackupInline(opts)
 }
 
-// StartMachineBackup is required by api.BackupHandler interface
-// Not used in service mode (machine backups scheduled via StartBackup with backupType="machine")
+// StartMachineBackup starts a whole-disk machine backup job. The service
+// implementation mirrors the GUI direct path (startMachineBackupDirect):
+// Kind "machine" + BackupType "vm", no exclusion list.
 func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error {
-	writeDebugLog("[Service] StartMachineBackup called - not implemented, use StartBackup with backupType=machine")
-	return fmt.Errorf("StartMachineBackup not implemented in service mode")
+	writeDebugLog(fmt.Sprintf("[Service] StartMachineBackup called: type=%s, devices=%v, id=%s, vss=%v, compression=%s",
+		backupType, backupDevices, backupID, useVSS, compression))
+
+	// Re-read config from disk (see StartBackup above).
+	a.ReloadConfig()
+
+	if a.config == nil {
+		return fmt.Errorf("configuration not loaded")
+	}
+
+	// Use hostname as fallback if backupID is empty
+	if backupID == "" {
+		backupID, _ = os.Hostname()
+		writeDebugLog(fmt.Sprintf("[Backup ID] Empty backup-id, using hostname: %s", backupID))
+	}
+
+	// Default to "fastest" if compression is empty
+	if compression == "" {
+		compression = "fastest"
+		writeDebugLog("[Compression] Using default: fastest")
+	}
+
+	// Resolve the EFFECTIVE PBS config (same rationale as StartBackup).
+	pbsCfg, err := a.withAuth(a.config.EffectivePBS())
+	if err != nil {
+		return err
+	}
+
+	// Unlock the configured encryption key for machine backups too.
+	if err := pbsCfg.loadCryptConfig(); err != nil {
+		return err
+	}
+
+	// Prepare backup options
+	opts := BackupOptions{
+		BaseURL:         pbsCfg.BaseURL,
+		AuthID:          pbsCfg.AuthID,
+		Secret:          pbsCfg.Secret,
+		Ticket:          pbsCfg.Ticket,
+		CSRFToken:       pbsCfg.CSRFToken,
+		Datastore:       pbsCfg.Datastore,
+		Namespace:       pbsCfg.Namespace,
+		CertFingerprint: pbsCfg.CertFingerprint,
+		Crypt:           pbsCfg.Crypt,
+		BackupObjects:   backupDevices,
+		BackupID:        backupID,
+		Kind:            "machine",
+		BackupType:      "vm",
+		UseVSS:          useVSS,
+		Compression:     compression,
+		ExcludeList:     []string{},
+		DisableSplit:    pbsCfg.DisableSplit,
+		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
+		OnProgress: func(percent float64, message string) {
+			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent*100, message))
+		},
+		OnComplete: func(success bool, message string) {
+			if success {
+				writeDebugLog(fmt.Sprintf("[Machine Backup Complete] SUCCESS - %s", message))
+			} else {
+				writeDebugLog(fmt.Sprintf("[Machine Backup Complete] FAILED - %s", message))
+			}
+		},
+	}
+
+	// Execute backup using inline implementation
+	writeDebugLog("[Service] Executing machine backup via RunBackupInline")
+	return RunBackupInline(opts)
 }

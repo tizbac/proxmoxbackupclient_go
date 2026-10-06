@@ -58,8 +58,17 @@ func init() {
 }
 
 func main() {
+	// Elevated token-fetch child: this process was launched elevated ONLY to
+	// read the service token file and hand it back (see token_elevated.go).
+	// It must run before flag parsing, single-instance and everything else —
+	// the child never starts the GUI.
+	if handleElevatedTokenFetchChild(os.Args[1:]) {
+		return
+	}
+
 	// Parse command line flags
 	minimized := flag.Bool("minimized", false, "Start minimized to system tray")
+	forceStandalone := flag.Bool("standalone", false, "Force standalone mode (do not connect to the local service)")
 	flag.Parse()
 
 	// Check for single instance (GUI only)
@@ -105,8 +114,24 @@ func main() {
 	// (Task Scheduler or Registry entries before MSI service)
 	CleanupLegacyAutoStart()
 
+	// Resolve the execution mode BEFORE building the app: it decides where
+	// the configuration lives. In service mode the service owns the
+	// privileged state dir (config.json & co. are service-only readable);
+	// in standalone mode the GUI keeps everything in the user's home.
+	execMode, standaloneReason := resolveExecutionMode(*forceStandalone)
+	switch execMode {
+	case api.ModeService:
+		SetConfigDir(serviceStateDir())
+	default:
+		SetConfigDir(standaloneConfigDir())
+		migrateStandaloneFromProgramData()
+	}
+	writeDebugLog(fmt.Sprintf("Execution mode: %s (standalone reason: %q)", execMode.String(), standaloneReason))
+
 	// Create app instance
 	app := NewApp()
+	app.mode = execMode
+	app.standaloneReason = standaloneReason
 	writeDebugLog("App instance created")
 
 	// Create application options
@@ -161,6 +186,55 @@ func main() {
 	writeDebugLog("Application shutdown normally")
 }
 
+// resolveExecutionMode probes the local service and decides how this GUI
+// process runs:
+//
+//	HTTP 200    -> service mode (the token presented is accepted)
+//	HTTP 401    -> service running, token missing: ONE elevated token fetch,
+//	               then re-probe; any failure falls back to standalone
+//	unreachable -> standalone (no service installed/started)
+//
+// The --standalone flag forces standalone unconditionally.
+// PBSGO_TOKEN_FETCH_FAILED=1 (set by the package launcher after its own
+// failed fetch attempt) suppresses the in-GUI elevation prompt so the user
+// is never asked twice for the same token.
+func resolveExecutionMode(forceStandalone bool) (api.ExecutionMode, string) {
+	if forceStandalone {
+		writeDebugLog("Standalone mode forced by --standalone flag")
+		return api.ModeStandalone, "forced"
+	}
+
+	detector := api.NewModeDetector(getAPITokenPath())
+	switch detector.Probe() {
+	case 200:
+		writeDebugLog("Local service is running and accepted the token")
+		return api.ModeService, ""
+	case 401:
+		if os.Getenv("PBSGO_TOKEN_FETCH_FAILED") != "" {
+			writeDebugLog("Service is running but the token is missing and the launcher already attempted an elevated fetch (PBSGO_TOKEN_FETCH_FAILED): not prompting again")
+			return api.ModeStandalone, "auth_failed"
+		}
+		writeDebugLog("Service is running but the token is missing: attempting one elevated token fetch")
+		token, err := elevatedFetchTokenWithHandoff()
+		if err != nil {
+			writeDebugLog(fmt.Sprintf("Elevated token fetch failed: %v — falling back to standalone", err))
+			return api.ModeStandalone, "auth_failed"
+		}
+		// Keep the token in memory only; the root-owned file is never
+		// copied to a user-readable location.
+		api.TokenOverride = token
+		if detector.Probe() == 200 {
+			writeDebugLog("Token acquired via elevated fetch; using service mode")
+			return api.ModeService, ""
+		}
+		writeDebugLog("Token acquired but still rejected; falling back to standalone")
+		return api.ModeStandalone, "auth_failed"
+	default:
+		writeDebugLog("Local service not reachable: standalone mode")
+		return api.ModeStandalone, "no_service"
+	}
+}
+
 func writeCrashReport(message string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
@@ -204,13 +278,17 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	writeDebugLog("App.startup() called")
 
-	// Detect execution mode (Service vs Standalone)
-	detector := api.NewModeDetector(getAPITokenPath())
-	a.mode = detector.DetectMode()
+	// The execution mode was resolved in main() BEFORE the app was built —
+	// it determines where the configuration lives, so it cannot change once
+	// the config is loaded. If the service appears later, StartBackup()
+	// re-detects and switches to service mode lazily.
 	writeDebugLog(fmt.Sprintf("Execution mode: %s", a.mode.String()))
 
-	// If running in standalone mode, start local scheduler
-	// If in service mode, scheduler runs in the service
+	// Standalone mode: one-shot backups/restores work against the user's
+	// home config, but SCHEDULING requires the service, so the local
+	// scheduler is NOT started. The frontend shows a persistent notice and
+	// disables the scheduling UI. In service mode the scheduler runs in
+	// the service.
 	if a.mode == api.ModeStandalone {
 		// Cleanup any abandoned "running" jobs from previous session
 		a.CleanupAbandonedJobs()
@@ -223,14 +301,9 @@ func (a *App) startup(ctx context.Context) {
 			writeDebugLog(fmt.Sprintf("VSS cleanup at startup reported error: %v", err))
 		}
 
-		// Recalculate stale nextRun values (e.g. after restart or missed window)
-		a.RecalculateNextRuns()
-
-		// Start background job scheduler
-		a.StartScheduler()
-		writeDebugLog("Background scheduler started (standalone mode)")
+		writeDebugLog("Standalone mode: local scheduler NOT started (scheduling requires the service)")
 	} else {
-		writeDebugLog("Service mode detected - scheduler runs in service")
+		writeDebugLog("Service mode - scheduler runs in service")
 	}
 
 	// Execute startup jobs (jobs with runAtStartup=true)
@@ -298,6 +371,11 @@ func (a *App) GetSystemInfo() map[string]interface{} {
 		"is_admin":          isAdmin(),
 		"hostname":          a.GetHostname(),
 		"service_available": a.mode == api.ModeService,
+		// standalone + standalone_reason drive the persistent top notice in
+		// the frontend ("running standalone, scheduling not available") and
+		// the disabling of the scheduling UI.
+		"standalone":        a.mode == api.ModeStandalone,
+		"standalone_reason": a.standaloneReason, // "forced" | "no_service" | "auth_failed" | ""
 		// os = runtime.GOOS ("windows", "linux", "darwin") — used by the
 		// restore UI to enable/disable the in-place mode when the snapshot
 		// was taken on a different platform.
@@ -476,6 +554,14 @@ func (a *App) DiagnoseConfig() map[string]interface{} {
 
 // SaveConfig saves the configuration
 func (a *App) SaveConfig(config *Config) error {
+	// In service mode the GUI delegates the write to the service, which owns
+	// the privileged config file (root/SYSTEM-only). The GUI's local config
+	// is hydrated from the service via GetFullConfig; SaveConfig here is only
+	// invoked by the frontend in standalone mode.
+	if a.isDelegatedToService() {
+		return a.pushConfigToService()
+	}
+
 	// M-04: the frontend never receives the stored secrets (GetConfigWithHostname
 	// returns "" + a *_set marker), so an empty value here means "keep the existing
 	// one", not "clear it". Only overwrite when the user supplied a new value.
@@ -521,6 +607,27 @@ func (a *App) SaveConfig(config *Config) error {
 	return nil
 }
 
+// pushConfigToService sends the current (sanitized) config document to the
+// service via /config POST. Empty secrets in the document mean "keep existing"
+// on the service side. The GUI never receives or resends real secrets.
+func (a *App) pushConfigToService() error {
+	if a.apiClient == nil {
+		return fmt.Errorf("no API client for service mode")
+	}
+	doc := a.config.fullConfigDocument()
+	if err := a.apiClient.SaveFullConfig(doc); err != nil {
+		return err
+	}
+	// Re-fetch the sanitized document so a.config stays in sync with the service
+	fetched, err := a.apiClient.GetFullConfig()
+	if err != nil {
+		return err
+	}
+	// Rehydrate from the fetched document (same code path as startup in service mode)
+	a.config = parseFullConfig(fetched)
+	return nil
+}
+
 // TestConnection tests the PBS connection with the provided config (or current if nil)
 func (a *App) TestConnection(config *Config) error {
 	writeDebugLog("TestConnection() called")
@@ -529,6 +636,17 @@ func (a *App) TestConnection(config *Config) error {
 	testConfig := config
 	if testConfig == nil {
 		testConfig = a.config
+	}
+
+	// In service mode the GUI delegates the test to the service, which has
+	// access to the stored credentials (the GUI never holds them).
+	if a.isDelegatedToService() {
+		// Convert the Config (or draft) to a map for the API.
+		// For per-server tests, the caller passes a config with the server ID
+		// in AuthID (legacy) or we need the server ID. We'll pass the draft
+		// fields as-is; the API merges non-empty fields over the stored entry.
+		draft := configToDraftMap(testConfig)
+		return a.apiClient.TestPBSServer("", draft)
 	}
 
 	// M-04: the frontend no longer holds the secret, so an empty secret in the
@@ -582,6 +700,41 @@ func (a *App) TestConnection(config *Config) error {
 	return nil
 }
 
+// configToDraftMap extracts the PBS-relevant fields from a Config for the
+// /pbs/test endpoint. In service mode the GUI sends a draft (partial) that
+// the service merges over the stored server entry.
+func configToDraftMap(cfg *Config) map[string]interface{} {
+	if cfg == nil {
+		return map[string]interface{}{}
+	}
+	draft := map[string]interface{}{}
+	if cfg.BaseURL != "" {
+		draft["baseurl"] = cfg.BaseURL
+	}
+	if cfg.CertFingerprint != "" {
+		draft["certfingerprint"] = cfg.CertFingerprint
+	}
+	if cfg.AuthID != "" {
+		draft["authid"] = cfg.AuthID
+	}
+	if cfg.Secret != "" {
+		draft["secret"] = cfg.Secret
+	}
+	if cfg.Username != "" {
+		draft["username"] = cfg.Username
+	}
+	if cfg.Password != "" {
+		draft["password"] = cfg.Password
+	}
+	if cfg.Datastore != "" {
+		draft["datastore"] = cfg.Datastore
+	}
+	if cfg.Namespace != "" {
+		draft["namespace"] = cfg.Namespace
+	}
+	return draft
+}
+
 // GetLastBackupDirs returns the last used backup directories
 func (a *App) GetLastBackupDirs() []string {
 	writeDebugLog(fmt.Sprintf("GetLastBackupDirs() returned %d directories", len(a.config.LastBackupDirs)))
@@ -599,6 +752,7 @@ func (a *App) ReloadConfig() {
 
 // ListPBSServers returns all configured PBS servers
 func (a *App) ListPBSServers() []*PBSServer {
+	// In service mode the config is hydrated from the service; return it directly.
 	servers := a.config.ListPBSServers()
 	writeDebugLog(fmt.Sprintf("ListPBSServers() returned %d servers", len(servers)))
 	// M-04: never hand PBS tokens to the frontend — return sanitized copies.
@@ -622,6 +776,15 @@ func (a *App) GetPBSServer(id string) (*PBSServer, error) {
 // AddPBSServer adds a new PBS server to the configuration
 func (a *App) AddPBSServer(pbs *PBSServer) error {
 	writeDebugLog(fmt.Sprintf("AddPBSServer(%s) called", pbs.ID))
+
+	// In service mode the GUI modifies its in-memory config and then pushes
+	// the whole document to the service.
+	if a.isDelegatedToService() {
+		if err := a.config.AddPBSServerMem(pbs); err != nil {
+			return err
+		}
+		return a.pushConfigToService()
+	}
 	return a.config.AddPBSServer(pbs)
 }
 
@@ -635,18 +798,39 @@ func (a *App) UpdatePBSServer(pbs *PBSServer) error {
 			pbs.Secret = existing.Secret
 		}
 	}
+
+	if a.isDelegatedToService() {
+		if err := a.config.UpdatePBSServerMem(pbs); err != nil {
+			return err
+		}
+		return a.pushConfigToService()
+	}
 	return a.config.UpdatePBSServer(pbs)
 }
 
 // DeletePBSServer removes a PBS server
 func (a *App) DeletePBSServer(id string) error {
 	writeDebugLog(fmt.Sprintf("DeletePBSServer(%s) called", id))
+
+	if a.isDelegatedToService() {
+		if err := a.config.DeletePBSServerMem(id); err != nil {
+			return err
+		}
+		return a.pushConfigToService()
+	}
 	return a.config.DeletePBSServer(id)
 }
 
 // SetDefaultPBSServer sets the default PBS server
 func (a *App) SetDefaultPBSServer(id string) error {
 	writeDebugLog(fmt.Sprintf("SetDefaultPBSServer(%s) called", id))
+
+	if a.isDelegatedToService() {
+		if err := a.config.SetDefaultPBSMem(id); err != nil {
+			return err
+		}
+		return a.pushConfigToService()
+	}
 	return a.config.SetDefaultPBS(id)
 }
 
@@ -658,6 +842,11 @@ func (a *App) GetDefaultPBSID() string {
 // TestPBSConnection tests connection to a specific PBS server
 func (a *App) TestPBSConnection(pbsID string) error {
 	writeDebugLog(fmt.Sprintf("TestPBSConnection(%s) called", pbsID))
+
+	// In service mode the GUI delegates to the service which has the credentials.
+	if a.isDelegatedToService() {
+		return a.apiClient.TestPBSServer(pbsID, map[string]interface{}{})
+	}
 
 	pbs, err := a.config.GetPBSServer(pbsID)
 	if err != nil {
@@ -1348,6 +1537,26 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 // when no multi-PBS entry is configured.
 func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
 	var cfg *Config
+
+	// In service mode the GUI doesn't hold PBS credentials — it asks the
+	// service for a short-lived ticket and uses that for restore/listing.
+	if a.isDelegatedToService() {
+		ticket, err := a.apiClient.MintPBSTicket(pbsID)
+		if err != nil {
+			return nil, fmt.Errorf("service failed to mint PBS ticket: %w", err)
+		}
+		// Build a Config with the ticket + non-secret connection params.
+		cfg := &Config{
+			BaseURL:         ticket.BaseURL,
+			CertFingerprint: ticket.CertFingerprint,
+			Datastore:       ticket.Datastore,
+			Namespace:       ticket.Namespace,
+			Ticket:          ticket.Ticket,
+			CSRFToken:       ticket.CSRFToken,
+		}
+		return cfg, nil
+	}
+
 	if pbsID != "" {
 		pbs, err := a.config.GetPBSServer(pbsID)
 		if err != nil {

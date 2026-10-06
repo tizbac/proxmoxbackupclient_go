@@ -1,0 +1,104 @@
+name: Build Patched Clonezilla ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      clonezilla_version:
+        description: 'Clonezilla version to patch (e.g., 3.1.1-22)'
+        required: true
+        default: '3.1.1-22'
+      clonezilla_arch:
+        description: 'Architecture (amd64 or i686)'
+        required: true
+        default: 'amd64'
+      patch_dir:
+        description: 'Patch directory (relative to repo root)'
+        required: false
+        default: 'clonezilla-patch'
+      output_name:
+        description: 'Output ISO filename'
+        required: false
+        default: 'clonezilla-pbs-nbd.iso'
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  build-clonezilla-iso:
+    name: Build Clonezilla ISO with PBS NBD
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build pbsnbd binary (linux/amd64 static)
+        run: |
+          cd nbd
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o pbsnbd .
+
+      - name: Download Clonezilla ISO
+        env:
+          CLONEZILLA_VER: ${{ github.event.inputs.clonezilla_version }}
+          CLONEZILLA_ARCH: ${{ github.event.inputs.clonezilla_arch }}
+        run: |
+          ISO_URL="https://osdn.net/projects/clonezilla/downloads/79926/clonezilla-live-${CLONEZILLA_VER}-${CLONEZILLA_ARCH}.iso"
+          echo "Downloading $ISO_URL"
+          curl -fL -o clonezilla-live.iso "$ISO_URL"
+          # Verify checksum (OSDN provides sha256sum.txt)
+          curl -fL "https://osdn.net/projects/clonezilla/downloads/79926/sha256sum.txt" -o sha256sum.txt
+          grep "clonezilla-live-${CLONEZILLA_VER}-${CLONEZILLA_ARCH}.iso" sha256sum.txt | sha256sum -c -
+
+      - name: Install patching dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            7z \
+            patch \
+            xorriso \
+            squashfs-tools \
+            isolinux \
+            syslinux-common
+
+      - name: Run patch-clonezilla.sh
+        env:
+          PATCH_DIR: ${{ github.workspace }}/${{ github.event.inputs.patch_dir }}
+          ISO_SQFS: /live/filesystem.squashfs
+          INSTALL_DIR: usr/local/sbin
+        run: |
+          chmod +x patch-clonezilla.sh
+          ./patch-clonezilla.sh \
+            -o "${{ github.event.inputs.output_name }}" \
+            clonezilla-live.iso \
+            nbd/pbsnbd \
+            "${{ github.event.inputs.patch_dir }}/ocs-pbs-nbd"
+
+      - name: Verify output ISO
+        run: |
+          ls -la "${{ github.event.inputs.output_name }}"
+          # Quick sanity check: verify it's a valid ISO
+          file "${{ github.event.inputs.output_name }}"
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clonezilla-patched-iso
+          path: ${{ github.event.inputs.output_name }}
+          retention-days: 30
+
+      - name: Create Release (on tag)
+        if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ github.event.inputs.output_name }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

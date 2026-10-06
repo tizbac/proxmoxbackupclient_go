@@ -1,5 +1,5 @@
-//go:build windows && service
-// +build windows,service
+//go:build windows
+// +build windows
 
 package main
 
@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/kardianos/service"
@@ -80,6 +82,11 @@ func (s *BackupService) run() {
 	if tokErr != nil {
 		writeDebugLog(fmt.Sprintf("API token init failed (API will reject all requests): %v", tokErr))
 	}
+
+	// Harden file ACLs: token readable by SYSTEM + Administrators; config files
+	// SYSTEM-only. Best-effort — never fail service startup if icacls is missing.
+	go hardenWindowsACLs(serviceStateDir())
+
 	s.apiServer = api.NewServer("127.0.0.1:18765", s.app, apiToken, appVersion)
 	writeDebugLog("Starting HTTP API server on 127.0.0.1:18765")
 
@@ -145,5 +152,54 @@ func RunAsService() {
 	err = s.Run()
 	if err != nil {
 		logger.Error(err)
+	}
+}
+
+// IsServiceMode checks if running in service mode
+func IsServiceMode() bool {
+	for _, arg := range os.Args {
+		if arg == "--service" {
+			return true
+		}
+	}
+	return false
+}
+
+// hardenWindowsACLs applies restrictive ACLs to the service state directory:
+// - api-token: readable by SYSTEM and BUILTIN\Administrators (for elevated GUI fetch)
+// - config.json, scheduled_jobs.json, job_history.json: SYSTEM-only
+// Best-effort: if icacls.exe is missing or fails, we log and continue.
+func hardenWindowsACLs(stateDir string) {
+	icacls, err := exec.LookPath("icacls.exe")
+	if err != nil {
+		writeDebugLog("icacls.exe not found, skipping ACL hardening")
+		return
+	}
+
+	tokenPath := filepath.Join(stateDir, "api-token")
+	configFiles := []string{
+		filepath.Join(stateDir, "config.json"),
+		filepath.Join(stateDir, "scheduled_jobs.json"),
+		filepath.Join(stateDir, "job_history.json"),
+	}
+
+	// api-token: SYSTEM:(OI)(CI)F + BUILTIN\Administrators:(OI)(CI)R
+	// (OI)(CI) = Object Inherit + Container Inherit (for future files)
+	if _, err := exec.Command(icacls, tokenPath,
+		"/inheritance:r",          // remove inherited ACEs
+		"/grant:r", "SYSTEM:(OI)(CI)F",
+		"/grant:r", "BUILTIN\\Administrators:(OI)(CI)R",
+	).CombinedOutput(); err != nil {
+		writeDebugLog(fmt.Sprintf("icacls on api-token failed (non-fatal): %v", err))
+	}
+
+	// Config files: SYSTEM-only (F = full control)
+	for _, f := range configFiles {
+		if _, err := exec.Command(icacls, f,
+			"/inheritance:r",
+			"/grant:r", "SYSTEM:(OI)(CI)F",
+		).CombinedOutput(); err != nil {
+			writeDebugLog(fmt.Sprintf("icacls on %s failed (non-fatal): %v", f, err))
+		}
 	}
 }

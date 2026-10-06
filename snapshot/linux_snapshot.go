@@ -19,14 +19,6 @@ import (
 	"time"
 )
 
-type SnapControl struct {
-	Name      string
-	DevPrefix string
-	Module    string
-	CtlDevice string
-	InfoFile  string
-}
-
 type linuxSnapshot struct {
 	control    SnapControl
 	minor      int

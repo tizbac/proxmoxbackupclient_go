@@ -15,7 +15,7 @@ GUI_DIR := gui
 CLI_DIR_BIN := proxmoxbackup-directory
 CLI_MACHINE_BIN := proxmoxbackup-machine
 CLI_NBD_BIN := proxmoxbackup-nbd
-SERVICE_BIN := NimbusBackupSVC
+SERVICE_BIN := ProxmoxBackupClientSVC
 GUI_BIN := ProxmoxBackupClient
 
 # Go build flags (security hardening)
@@ -105,16 +105,16 @@ else
 	@echo "⏭️  Skipping NBD Server CLI (Linux only)"
 endif
 
-# Service Build (Standalone Windows Service)
+# Service Build (systemd service on Linux, Windows Service on Windows)
 service:
 	@echo "🔧 Building Backup Service..."
 	@mkdir -p $(BUILD_DIR)
 	@mkdir -p gui/build/bin
-	@echo "📦 Building service binary for $(shell go env GOOS)/$(shell go env GOARCH)..."
-	cd gui && go build -tags service $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
+	# Build from gui/ with -tags service (gui/ IS the service package)
+	cd gui && GOWORK=off go build -tags service $(GO_FLAGS) -ldflags="-s -w -X main.appVersion=$(VERSION)" \
 		-o build/bin/$(SERVICE_BIN)$(shell go env GOEXE) .
 	@cp gui/build/bin/$(SERVICE_BIN)$(shell go env GOEXE) $(BUILD_DIR)/ || true
-	@echo "✅ Built: gui/build/bin/$(SERVICE_BIN) (for Windows MSI)"
+	@echo "✅ Built: gui/build/bin/$(SERVICE_BIN) (for MSI / systemd)"
 	@echo "✅ Built: $(BUILD_DIR)/$(SERVICE_BIN)"
 
 # Debian package (Linux)

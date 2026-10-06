@@ -5,10 +5,88 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	stdruntime "runtime"
 
 	"pbscommon"
 	"security"
 )
+
+// configDirOverride pins the config directory (and everything derived from it:
+// config.json, scheduled jobs, job history, restore cache) for this process.
+// It is set once at startup: the service — and the GUI when it talks to the
+// service — use serviceStateDir(); a standalone GUI uses
+// standaloneConfigDir(). When unset, the historical default applies (home dir
+// on Linux, ProgramData on Windows), which existing tests rely on.
+var configDirOverride string
+
+// SetConfigDir pins the config directory for this process. It must be called
+// before any config/scheduler/cache path is resolved.
+func SetConfigDir(dir string) {
+	configDirOverride = dir
+}
+
+// serviceStateDir is the privileged shared state directory owned by the local
+// service: /var/lib/pbsgo on Linux (created 0700 by systemd via
+// StateDirectory=) and C:\ProgramData\ProxmoxBackupClient on Windows. The
+// service writes config.json, scheduled_jobs.json, job_history.json and
+// api-token there; the GUI never writes there directly — every change goes
+// through the service API.
+func serviceStateDir() string {
+	if programData := os.Getenv("ProgramData"); programData != "" {
+		// #nosec G108 -- ProgramData is a trusted Windows system environment variable, not user input
+		return filepath.Join(programData, "ProxmoxBackupClient")
+	}
+	return "/var/lib/pbsgo"
+}
+
+// serviceTokenPath is where the service keeps its local-API token (0600,
+// root-owned on Linux, SYSTEM+Administrators DACL on Windows). The GUI always
+// probes the service through THIS path — never a home-dir copy.
+func serviceTokenPath() string {
+	return filepath.Join(serviceStateDir(), "api-token")
+}
+
+// standaloneConfigDir is where a standalone GUI (local service not running)
+// keeps its config on BOTH platforms: the user's own home directory, so no
+// elevation is needed to read or write it.
+func standaloneConfigDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(homeDir, ".proxmox-backup-guardian")
+}
+
+// migrateStandaloneFromProgramData copies the legacy shared-state files
+// (config.json, scheduled_jobs.json, job_history.json) from the service state
+// dir into the home-based standalone dir, once, when the home copies don't
+// exist yet. Windows-only concern: after the Windows config moved to the home
+// dir, users upgrading from a version that stored everything in ProgramData
+// should keep their settings visible. Best-effort and silent: the files are
+// SYSTEM-only readable once hardened, so the copy may simply not happen.
+func migrateStandaloneFromProgramData() {
+	if stdruntime.GOOS != "windows" {
+		return
+	}
+	src := serviceStateDir()
+	dst := standaloneConfigDir()
+	if src == "" || dst == "" || src == dst {
+		return
+	}
+	for _, name := range []string{"config.json", "scheduled_jobs.json", "job_history.json"} {
+		srcFile := filepath.Join(src, name)
+		dstFile := filepath.Join(dst, name)
+		if _, err := os.Stat(dstFile); err == nil {
+			continue // home copy already exists: never clobber it
+		}
+		data, err := os.ReadFile(srcFile)
+		if err != nil {
+			continue // not readable (e.g. SYSTEM-only ACL): skip
+		}
+		_ = os.MkdirAll(dst, 0755)
+		_ = atomicWriteFile(dstFile, data, 0600)
+	}
+}
 
 type Config struct {
 	// ==================== MULTI-PBS SUPPORT ====================
@@ -127,39 +205,46 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
-// getAPITokenPath is the shared local-API auth token file (H-01), placed next to
-// config.json so the GUI and the privileged service resolve the same path.
+// getAPITokenPath is the shared local-API auth token file (H-01). It always
+// points at the service's token file: the GUI authenticates to the local
+// service (if one is running) with that token, and a standalone GUI has no
+// service to talk to, so no other token path is ever used.
 func getAPITokenPath() string {
-	dir, err := getConfigDir()
-	if err != nil || dir == "" {
-		return "proxmox-client-api-token"
-	}
-	return filepath.Join(dir, "api-token")
+	return serviceTokenPath()
 }
 
 // getConfigDir returns the application's data directory, creating it if needed.
-// On Windows it lives under ProgramData (shared GUI/Service); on Unix it's
-// ~/.proxmox-backup-guardian. Used as the parent for config.json, the restore
-// cache, and any other persistent state.
+// When SetConfigDir() pinned one, that directory is used as-is (service state
+// dir for the service / service-mode GUI, home dir for a standalone GUI).
+// Otherwise the historical default applies: ProgramData on Windows (shared
+// GUI/Service) and ~/.proxmox-backup-guardian on Unix. Used as the parent for
+// config.json, the restore cache, and any other persistent state.
 func getConfigDir() (string, error) {
-	var configDir string
+	configDir := configDirOverride
 
-	if programData := os.Getenv("ProgramData"); programData != "" {
-		// Windows: C:\ProgramData\ProxmoxBackupClient (accessible by both user and LocalSystem)
-		configDir = filepath.Join(programData, "ProxmoxBackupClient")
-	} else if systemDrive := os.Getenv("SystemDrive"); systemDrive != "" {
-		// Windows fallback: if ProgramData not set, use C:\ProgramData hardcoded
-		// This ensures service config is accessible even if env var is missing
-		configDir = filepath.Join(systemDrive, "ProgramData", "ProxmoxBackupClient")
-	} else {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
+	if configDir == "" {
+		if programData := os.Getenv("ProgramData"); programData != "" {
+			// Windows: C:\ProgramData\ProxmoxBackupClient (accessible by both user and LocalSystem)
+			// #nosec G108 -- ProgramData is a trusted Windows system environment variable, not user input
+			configDir = filepath.Join(programData, "ProxmoxBackupClient")
+		} else if systemDrive := os.Getenv("SystemDrive"); systemDrive != "" {
+			// Windows fallback: if ProgramData not set, use C:\ProgramData hardcoded
+			// This ensures service config is accessible even if env var is missing
+			configDir = filepath.Join(systemDrive, "ProgramData", "ProxmoxBackupClient")
+		} else {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
+			configDir = filepath.Join(homeDir, ".proxmox-backup-guardian")
 		}
-		configDir = filepath.Join(homeDir, ".proxmox-backup-guardian")
 	}
 
-	// #nosec G703 -- ProgramData is a trusted Windows system environment variable, not user input
+	if configDir == "" {
+		return "", fmt.Errorf("no config directory available")
+	}
+
+	// #nosec G302 -- configDir is a system location or an explicit override set at startup
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return "", err
 	}
@@ -395,8 +480,10 @@ func (c *Config) GetPBSServer(id string) (*PBSServer, error) {
 	return pbs, nil
 }
 
-// AddPBSServer adds a new PBS server to the configuration
-func (c *Config) AddPBSServer(pbs *PBSServer) error {
+// AddPBSServerMem adds a new PBS server to the in-memory configuration
+// WITHOUT persisting. The GUI in service mode uses it (the service owns the
+// files) and pushes the result through the service API afterwards.
+func (c *Config) AddPBSServerMem(pbs *PBSServer) error {
 	if err := pbs.Validate(); err != nil {
 		return err
 	}
@@ -425,11 +512,20 @@ func (c *Config) AddPBSServer(pbs *PBSServer) error {
 		c.DefaultPBSID = pbs.ID
 	}
 
+	return nil
+}
+
+// AddPBSServer adds a new PBS server to the configuration
+func (c *Config) AddPBSServer(pbs *PBSServer) error {
+	if err := c.AddPBSServerMem(pbs); err != nil {
+		return err
+	}
 	return c.Save()
 }
 
-// UpdatePBSServer updates an existing PBS server
-func (c *Config) UpdatePBSServer(pbs *PBSServer) error {
+// UpdatePBSServerMem updates an existing PBS server in memory WITHOUT
+// persisting (see AddPBSServerMem).
+func (c *Config) UpdatePBSServerMem(pbs *PBSServer) error {
 	if err := pbs.Validate(); err != nil {
 		return err
 	}
@@ -450,11 +546,20 @@ func (c *Config) UpdatePBSServer(pbs *PBSServer) error {
 	}
 
 	c.PBSServers[pbs.ID] = pbs
+	return nil
+}
+
+// UpdatePBSServer updates an existing PBS server
+func (c *Config) UpdatePBSServer(pbs *PBSServer) error {
+	if err := c.UpdatePBSServerMem(pbs); err != nil {
+		return err
+	}
 	return c.Save()
 }
 
-// DeletePBSServer removes a PBS server from the configuration
-func (c *Config) DeletePBSServer(id string) error {
+// DeletePBSServerMem removes a PBS server from the in-memory configuration
+// WITHOUT persisting (see AddPBSServerMem).
+func (c *Config) DeletePBSServerMem(id string) error {
 	if _, exists := c.PBSServers[id]; !exists {
 		return fmt.Errorf("serveur PBS '%s' introuvable", id)
 	}
@@ -474,6 +579,14 @@ func (c *Config) DeletePBSServer(id string) error {
 		}
 	}
 
+	return nil
+}
+
+// DeletePBSServer removes a PBS server from the configuration
+func (c *Config) DeletePBSServer(id string) error {
+	if err := c.DeletePBSServerMem(id); err != nil {
+		return err
+	}
 	return c.Save()
 }
 
@@ -486,13 +599,22 @@ func (c *Config) ListPBSServers() []*PBSServer {
 	return servers
 }
 
-// SetDefaultPBS sets the default PBS server ID
-func (c *Config) SetDefaultPBS(id string) error {
+// SetDefaultPBSMem sets the default PBS server ID in memory WITHOUT persisting
+// (see AddPBSServerMem).
+func (c *Config) SetDefaultPBSMem(id string) error {
 	if _, exists := c.PBSServers[id]; !exists {
 		return fmt.Errorf("serveur PBS '%s' introuvable", id)
 	}
 
 	c.DefaultPBSID = id
+	return nil
+}
+
+// SetDefaultPBS sets the default PBS server ID
+func (c *Config) SetDefaultPBS(id string) error {
+	if err := c.SetDefaultPBSMem(id); err != nil {
+		return err
+	}
 	return c.Save()
 }
 
@@ -525,4 +647,155 @@ func (c *Config) loadCryptConfig() error {
 		return fmt.Errorf("unlocking encryption key file %s: %w", c.EncryptionKeyFile, err)
 	}
 	return nil
+}
+
+// fullConfigDocument returns a sanitized JSON-compatible map of the entire
+// configuration (legacy fields + PBS servers with *_set markers). Used by the
+// GUI in service mode to push the whole config to the service via the API.
+func (c *Config) fullConfigDocument() map[string]interface{} {
+	hostname, _ := os.Hostname()
+	doc := map[string]interface{}{
+		"baseurl":             c.BaseURL,
+		"certfingerprint":     c.CertFingerprint,
+		"authid":              c.AuthID,
+		"secret_set":          c.Secret != "",
+		"datastore":           c.Datastore,
+		"namespace":           c.Namespace,
+		"backupdir":           c.BackupDir,
+		"backup-id":           c.BackupID,
+		"usevss":              c.UseVSS,
+		"last_backup_dirs":    c.LastBackupDirs,
+		"disable_split":       c.DisableSplit,
+		"split_size_gb":       c.SplitSizeGB,
+		"smtp_host":           c.SMTPHost,
+		"smtp_port":           c.SMTPPort,
+		"smtp_username":       c.SMTPUsername,
+		"smtp_password_set":   c.SMTPPassword != "",
+		"email_from":          c.EmailFrom,
+		"email_to":            c.EmailTo,
+		"default_pbs_id":      c.DefaultPBSID,
+		"hostname":            hostname,
+	}
+	servers := map[string]interface{}{}
+	for id, pbs := range c.PBSServers {
+		if pbs == nil {
+			continue
+		}
+		s := pbs.sanitized()
+		servers[id] = map[string]interface{}{
+			"id":                 s.ID,
+			"name":               s.Name,
+			"baseurl":            s.BaseURL,
+			"certfingerprint":    s.CertFingerprint,
+			"authid":             s.AuthID,
+			"secret_set":         s.SecretSet,
+			"username":           s.Username,
+			"password_set":       s.PasswordSet,
+			"datastore":          s.Datastore,
+			"namespace":          s.Namespace,
+			"description":        s.Description,
+		}
+	}
+	doc["pbs_servers"] = servers
+	return doc
+}
+
+// parseFullConfig rebuilds a Config from the sanitized document returned by
+// the service's /config GET. It is the inverse of fullConfigDocument() and
+// preserves the "keep existing secret" semantics: the service fills
+// secret_set/password_set markers but never the actual secrets, so the
+// rehydrated Config has empty secrets (as expected — the GUI never holds them).
+func parseFullConfig(doc map[string]interface{}) *Config {
+	c := &Config{
+		PBSServers: make(map[string]*PBSServer),
+	}
+	str := func(k string) string {
+		if v, ok := doc[k].(string); ok {
+			return v
+		}
+		return ""
+	}
+	num := func(k string) int {
+		if v, ok := doc[k].(float64); ok {
+			return int(v)
+		}
+		return 0
+	}
+	bol := func(k string) bool {
+		if v, ok := doc[k].(bool); ok {
+			return v
+		}
+		return false
+	}
+
+	c.BaseURL = str("baseurl")
+	c.CertFingerprint = str("certfingerprint")
+	c.AuthID = str("authid")
+	// Secret is intentionally empty — the GUI never holds it
+	c.Datastore = str("datastore")
+	c.Namespace = str("namespace")
+	c.BackupDir = str("backupdir")
+	c.BackupID = str("backup-id")
+	c.UseVSS = bol("usevss")
+	c.LastBackupDirs = stringSlice(doc["last_backup_dirs"])
+	c.DisableSplit = bol("disable_split")
+	c.SplitSizeGB = num("split_size_gb")
+	c.SMTPHost = str("smtp_host")
+	c.SMTPPort = str("smtp_port")
+	c.SMTPUsername = str("smtp_username")
+	// SMTPPassword intentionally empty
+	c.EmailFrom = str("email_from")
+	c.EmailTo = str("email_to")
+	c.DefaultPBSID = str("default_pbs_id")
+
+	if servers, ok := doc["pbs_servers"].(map[string]interface{}); ok {
+		for id, srv := range servers {
+			if m, ok := srv.(map[string]interface{}); ok {
+				pbs := &PBSServer{
+					ID:              id,
+					Name:            strFrom(m, "name"),
+					BaseURL:         strFrom(m, "baseurl"),
+					CertFingerprint: strFrom(m, "certfingerprint"),
+					AuthID:          strFrom(m, "authid"),
+					SecretSet:       boolFrom(m, "secret_set"),
+					Username:        strFrom(m, "username"),
+					PasswordSet:     boolFrom(m, "password_set"),
+					Datastore:       strFrom(m, "datastore"),
+					Namespace:       strFrom(m, "namespace"),
+					Description:     strFrom(m, "description"),
+				}
+				c.PBSServers[id] = pbs
+			}
+		}
+	}
+	return c
+}
+
+func strFrom(m map[string]interface{}, k string) string {
+	if v, ok := m[k].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func boolFrom(m map[string]interface{}, k string) bool {
+	if v, ok := m[k].(bool); ok {
+		return v
+	}
+	return false
+}
+
+func stringSlice(v interface{}) []string {
+	if v == nil {
+		return nil
+	}
+	var out []string
+	if arr, ok := v.([]interface{}); ok {
+		for _, x := range arr {
+			if s, ok := x.(string); ok {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
 }

@@ -1641,6 +1641,32 @@ function App() {
           </div>
         </div>
 
+        {/* Standalone mode notice banner */}
+        {systemInfo.standalone && (
+          <div className="info-box" style={{
+            backgroundColor: '#fff3cd',
+            borderColor: '#ffc107',
+            color: '#856404',
+            padding: '12px 16px',
+            marginTop: '16px',
+            marginBottom: '16px',
+            borderLeft: '4px solid #ffc107',
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            <span style={{fontSize: '20px'}}>⚠️</span>
+            <div>
+              <strong>{t('standaloneNoticeTitle')}</strong><br/>
+              <span>{t('standaloneNoticeText')}</span>
+              {systemInfo.standalone_reason === 'forced' && <span style={{marginTop: '4px', display: 'block', fontSize: '0.9em'}}>{t('standaloneReasonForced')}</span>}
+              {systemInfo.standalone_reason === 'no_service' && <span style={{marginTop: '4px', display: 'block', fontSize: '0.9em'}}>{t('standaloneReasonNoService')}</span>}
+              {systemInfo.standalone_reason === 'auth_failed' && <span style={{marginTop: '4px', display: 'block', fontSize: '0.9em'}}>{t('standaloneReasonAuthFailed')}</span>}
+            </div>
+          </div>
+        )}
+
         {/* PBS Configuration Tab */}
         <div className={`tab-content ${activeTab === 'servers' ? 'active' : ''}`}>
           <h2>🖥️ {t('serversTitle')}</h2>
@@ -1770,15 +1796,17 @@ function App() {
             <div style={{display: 'flex', gap: '10px', marginTop: '10px'}}>
               <button
                 onClick={() => setBackupMode('oneshot')}
+                disabled={systemInfo.standalone}
                 style={{
                   flex: 1,
                   padding: '10px',
-                  backgroundColor: backupMode === 'oneshot' ? 'var(--accent)' : '#e2e8f0',
-                  color: backupMode === 'oneshot' ? 'white' : '#4a5568',
+                  backgroundColor: backupMode === 'oneshot' ? 'var(--accent)' : systemInfo.standalone ? '#e2e8f0' : '#e2e8f0',
+                  color: backupMode === 'oneshot' ? 'white' : systemInfo.standalone ? '#a0aec0' : '#4a5568',
                   border: 'none',
                   borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
+                  cursor: systemInfo.standalone ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold',
+                  opacity: systemInfo.standalone ? 0.7 : 1
                 }}
               >
                 <span className="compact-text-long">⚡ {t('oneshotMode')}</span>
@@ -1786,25 +1814,32 @@ function App() {
               </button>
               <button
                 onClick={() => setBackupMode('scheduled')}
+                disabled={systemInfo.standalone}
                 style={{
                   flex: 1,
                   padding: '10px',
-                  backgroundColor: backupMode === 'scheduled' ? 'var(--accent)' : '#e2e8f0',
-                  color: backupMode === 'scheduled' ? 'white' : '#4a5568',
+                  backgroundColor: backupMode === 'scheduled' ? 'var(--accent)' : systemInfo.standalone ? '#e2e8f0' : '#e2e8f0',
+                  color: backupMode === 'scheduled' ? 'white' : systemInfo.standalone ? '#a0aec0' : '#4a5568',
                   border: 'none',
                   borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
+                  cursor: systemInfo.standalone ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold',
+                  opacity: systemInfo.standalone ? 0.7 : 1
                 }}
               >
                 <span className="compact-text-long">📅 {t('scheduledMode')}</span>
                 <span className="compact-text-short">📅 {t('scheduledModeShort')}</span>
               </button>
             </div>
+            {systemInfo.standalone && (
+              <p style={{marginTop: '8px', fontSize: '0.85em', color: '#a0aec0'}}>
+                {t('standaloneSchedulingDisabled')}
+              </p>
+            )}
           </div>
 
           {/* Scheduling Options */}
-          {backupMode === 'scheduled' && (
+          {!systemInfo.standalone && backupMode === 'scheduled' && (
             <div className="card" style={{marginTop: '20px', padding: '20px'}}>
               <h3 style={{marginTop: 0}}>⏰ {t('schedulingConfig')}</h3>
 

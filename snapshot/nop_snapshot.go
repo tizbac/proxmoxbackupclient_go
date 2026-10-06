@@ -20,3 +20,9 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 func VSSCleanup() error {
 	return nil
 }
+
+// DetectControl reports whether a Linux block-snapshot control module is
+// available. Always false on this platform.
+func DetectControl() (SnapControl, bool) {
+	return SnapControl{}, false
+}

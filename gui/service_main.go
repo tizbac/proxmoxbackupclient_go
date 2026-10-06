@@ -1,5 +1,5 @@
-//go:build windows && service
-// +build windows,service
+//go:build service
+// +build service
 
 package main
 
@@ -11,13 +11,6 @@ import (
 	"github.com/kardianos/service"
 )
 
-// Service control for Windows
-var windowsSvcConfig = &service.Config{
-	Name:        "ProxmoxBackupClient",
-	DisplayName: "Proxmox Backup Client SVC",
-	Description: "Executes scheduled backups to Proxmox Backup Server with VSS support",
-}
-
 func main() {
 	writeDebugLog("ProxmoxBackupClientSVC starting...")
 
@@ -25,8 +18,15 @@ func main() {
 	svcFlag := flag.String("service", "", "Control the system service: install, uninstall, start, stop, restart")
 	flag.Parse()
 
+	// Service configuration
+	svcConfig := &service.Config{
+		Name:        "ProxmoxBackupClient",
+		DisplayName: "Proxmox Backup Client SVC",
+		Description: "Executes scheduled backups to Proxmox Backup Server with VSS support",
+	}
+
 	backupSvc := &BackupService{}
-	s, err := service.New(backupSvc, windowsSvcConfig)
+	s, err := service.New(backupSvc, svcConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func main() {
 
 	// Run service
 	writeDebugLog("Starting service...")
-	err := s.Run()
+	err = s.Run()
 	if err != nil {
 		log.Fatal(err)
 	}

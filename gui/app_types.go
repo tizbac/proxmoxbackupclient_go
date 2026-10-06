@@ -7,8 +7,41 @@ import (
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 )
 
-// PhysicalDiskInfo represents information about a physical disk
-// Used by both GUI and service builds
+// App struct contains the application state
+type App struct {
+	ctx              context.Context
+	config           *Config
+	stopScheduler    chan struct{}
+	apiClient        *api.Client
+	mode             api.ExecutionMode
+	// standaloneReason records WHY the GUI is in standalone mode:
+	// "forced" (--standalone flag), "no_service" (service unreachable),
+	// "auth_failed" (service running but token could not be acquired), ""
+	// when running in service mode. Surfaced to the frontend notice.
+	standaloneReason string
+	callbacksMap     map[string]*progressCallbacks
+	callbacksMutex   sync.RWMutex
+	isServiceProcess bool // True if running as Windows Service (never re-detect mode)
+}
+
+// isDelegatedToService reports whether this (non-service) GUI process is
+// running in service mode with a live API client: config reads/writes, PBS
+// tests and ticketing must all go through the service, which is the sole
+// owner of the privileged config files.
+func (a *App) isDelegatedToService() bool {
+	return !a.isServiceProcess && a.mode == api.ModeService && a.apiClient != nil
+}
+
+// progressCallbacks stores the callback functions for a backup operation
+type progressCallbacks struct {
+	onProgress func(jobID string, percent float64, message string)
+	onComplete func(jobID string, success bool, message string)
+}
+
+// PhysicalDiskInfo represents information about a physical disk. It lives in
+// the shared app types (not main.go) because the platform disk-listing files
+// (disklist_linux.go, disklist_windows.go) are compiled into the service build
+// as well.
 type PhysicalDiskInfo struct {
 	DiskNumber   int64  `json:"disk_number"`
 	Size         int64  `json:"size"`
@@ -17,24 +50,6 @@ type PhysicalDiskInfo struct {
 	IsSystemDisk bool   `json:"is_system_disk"`
 	DeviceID     string `json:"device_id"`
 	DevicePath   string `json:"device_path"`
-}
-
-// App struct contains the application state
-type App struct {
-	ctx              context.Context
-	config           *Config
-	stopScheduler    chan struct{}
-	apiClient        *api.Client
-	mode             api.ExecutionMode
-	callbacksMap     map[string]*progressCallbacks
-	callbacksMutex   sync.RWMutex
-	isServiceProcess bool // True if running as Windows Service (never re-detect mode)
-}
-
-// progressCallbacks stores the callback functions for a backup operation
-type progressCallbacks struct {
-	onProgress func(jobID string, percent float64, message string)
-	onComplete func(jobID string, success bool, message string)
 }
 
 // NewApp creates a new App application struct

@@ -1,0 +1,20 @@
+#!/bin/sh
+# postrm: runs after package removal
+set -e
+
+case "$1" in
+    purge)
+        # Remove state directory and logs (systemd StateDirectory= handles this,
+        # but this is a fallback for non-systemd or manual cleanup)
+        rm -rf /var/lib/pbsgo 2>/dev/null || true
+        rm -rf /var/log/proxmoxbackupclient 2>/dev/null || true
+        ;;
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        # Nothing special; systemd will handle StateDirectory cleanup on purge
+        ;;
+esac
+
+# Reload systemd to remove the unit
+systemctl daemon-reload 2>/dev/null || true
+
+exit 0

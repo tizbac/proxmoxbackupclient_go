@@ -44,63 +44,36 @@ type JobHistory struct {
 	UseVSS     bool     `json:"useVSS"`
 }
 
+// getScheduledJobsPath resolves scheduled_jobs.json inside the config dir.
+// The config dir is pinned at startup (SetConfigDir): the service state dir
+// when the scheduler runs inside the service (or the GUI in service mode),
+// the home dir for a standalone GUI.
 func getScheduledJobsPath() (string, error) {
-	// Use ProgramData on Windows (shared between GUI and Service)
-	var configDir string
-
-	if programData := os.Getenv("ProgramData"); programData != "" {
-		// Windows: C:\ProgramData\ProxmoxBackupClient
-		configDir = filepath.Join(programData, "ProxmoxBackupClient")
-	} else if systemDrive := os.Getenv("SystemDrive"); systemDrive != "" {
-		// Windows fallback: if ProgramData not set, use C:\ProgramData hardcoded
-		configDir = filepath.Join(systemDrive, "ProgramData", "ProxmoxBackupClient")
-	} else {
-		// Unix-like: use ~/.proxmox-backup-guardian
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		configDir = filepath.Join(homeDir, ".proxmox-backup-guardian")
-	}
-
-	// #nosec G703 -- ProgramData is a trusted Windows system environment variable, not user input
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	configDir, err := getConfigDir()
+	if err != nil {
 		return "", err
 	}
-
 	return filepath.Join(configDir, "scheduled_jobs.json"), nil
 }
 
+// getJobHistoryPath resolves job_history.json inside the config dir (see
+// getScheduledJobsPath).
 func getJobHistoryPath() (string, error) {
-	// Use ProgramData on Windows (shared between GUI and Service)
-	var configDir string
-
-	if programData := os.Getenv("ProgramData"); programData != "" {
-		// Windows: C:\ProgramData\ProxmoxBackupClient
-		configDir = filepath.Join(programData, "ProxmoxBackupClient")
-	} else if systemDrive := os.Getenv("SystemDrive"); systemDrive != "" {
-		// Windows fallback: if ProgramData not set, use C:\ProgramData hardcoded
-		configDir = filepath.Join(systemDrive, "ProgramData", "ProxmoxBackupClient")
-	} else {
-		// Unix-like: use ~/.proxmox-backup-guardian
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		configDir = filepath.Join(homeDir, ".proxmox-backup-guardian")
-	}
-
-	// #nosec G703 -- ProgramData is a trusted Windows system environment variable, not user input
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	configDir, err := getConfigDir()
+	if err != nil {
 		return "", err
 	}
-
 	return filepath.Join(configDir, "job_history.json"), nil
 }
 
 // SaveScheduledJob saves a new scheduled job
 func (a *App) SaveScheduledJob(job ScheduledJob) error {
 	writeDebugLog(fmt.Sprintf("SaveScheduledJob called for: %s", job.Name))
+
+	// In service mode the GUI delegates to the service, which owns the jobs file.
+	if a.isDelegatedToService() {
+		return a.apiClient.SaveScheduledJob(jobToMap(&job))
+	}
 
 	// Load existing jobs
 	jobs, err := a.GetScheduledJobs()
@@ -144,6 +117,15 @@ func (a *App) SaveScheduledJob(job ScheduledJob) error {
 
 // GetScheduledJobs returns all scheduled jobs
 func (a *App) GetScheduledJobs() ([]ScheduledJob, error) {
+	// In service mode the GUI delegates to the service.
+	if a.isDelegatedToService() {
+		apiJobs, err := a.apiClient.GetScheduledJobs()
+		if err != nil {
+			return nil, err
+		}
+		return apiJobsToSlice(apiJobs), nil
+	}
+
 	jobsPath, err := getScheduledJobsPath()
 	if err != nil {
 		return []ScheduledJob{}, err
@@ -197,6 +179,11 @@ func (a *App) GetScheduledJobsForAPI() []map[string]interface{} {
 func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 	writeDebugLog(fmt.Sprintf("UpdateScheduledJob called for: %s", job.Name))
 
+	// In service mode the GUI delegates to the service.
+	if a.isDelegatedToService() {
+		return a.apiClient.UpdateScheduledJob(jobToMap(&job))
+	}
+
 	// Load existing jobs
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
@@ -244,6 +231,11 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 func (a *App) DeleteScheduledJob(jobID string) error {
 	writeDebugLog(fmt.Sprintf("DeleteScheduledJob called for ID: %s", jobID))
 
+	// In service mode the GUI delegates to the service.
+	if a.isDelegatedToService() {
+		return a.apiClient.DeleteScheduledJob(jobID)
+	}
+
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
 		return err
@@ -273,6 +265,15 @@ func (a *App) DeleteScheduledJob(jobID string) error {
 
 // GetJobHistory returns job history
 func (a *App) GetJobHistory() ([]JobHistory, error) {
+	// In service mode the GUI delegates to the service.
+	if a.isDelegatedToService() {
+		apiHist, err := a.apiClient.GetJobHistory()
+		if err != nil {
+			return nil, err
+		}
+		return apiHistoryToSlice(apiHist), nil
+	}
+
 	historyPath, err := getJobHistoryPath()
 	if err != nil {
 		return []JobHistory{}, err
@@ -684,4 +685,89 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 	if err := atomicWriteFile(jobsPath, data, 0600); err != nil {
 		writeDebugLog(fmt.Sprintf("Warning: Failed to save updated jobs: %v", err))
 	}
+}
+
+// jobToMap converts a ScheduledJob to a map[string]interface{} for the API.
+func jobToMap(job *ScheduledJob) map[string]interface{} {
+	return map[string]interface{}{
+		"id":            job.ID,
+		"name":          job.Name,
+		"backup_type":   job.BackupType,
+		"backup_id":     job.BackupID,
+		"schedule":      job.ScheduleTime,
+		"use_vss":       job.UseVSS,
+		"backup_dirs":   job.BackupDirs,
+		"exclude_list":  job.ExcludeList,
+		"last_run":      job.LastRun,
+		"next_run":      job.NextRun,
+		"enabled":       job.Enabled,
+	}
+}
+
+// apiJobsToSlice converts the API's []map[string]interface{} to []ScheduledJob.
+func apiJobsToSlice(apiJobs []map[string]interface{}) []ScheduledJob {
+	out := make([]ScheduledJob, 0, len(apiJobs))
+	for _, m := range apiJobs {
+		j := ScheduledJob{
+			ID:           getStr(m, "id"),
+			Name:         getStr(m, "name"),
+			BackupType:   getStr(m, "backup_type"),
+			BackupID:     getStr(m, "backup_id"),
+			ScheduleTime: getStr(m, "schedule"),
+			UseVSS:       getBool(m, "use_vss"),
+			BackupDirs:   getStrSlice(m, "backup_dirs"),
+			ExcludeList:  getStrSlice(m, "exclude_list"),
+			LastRun:      getStr(m, "last_run"),
+			NextRun:      getStr(m, "next_run"),
+			Enabled:      getBool(m, "enabled"),
+		}
+		out = append(out, j)
+	}
+	return out
+}
+
+// apiHistoryToSlice converts the API's []map[string]interface{} to []JobHistory.
+func apiHistoryToSlice(apiHist []map[string]interface{}) []JobHistory {
+	out := make([]JobHistory, 0, len(apiHist))
+	for _, m := range apiHist {
+		h := JobHistory{
+			ID:         getStr(m, "id"),
+			Name:       getStr(m, "name"),
+			Timestamp:  getStr(m, "timestamp"),
+			Status:     getStr(m, "status"),
+			Message:    getStr(m, "message"),
+			BackupDirs: getStrSlice(m, "backup_dirs"),
+			BackupID:   getStr(m, "backup_id"),
+			UseVSS:     getBool(m, "use_vss"),
+		}
+		out = append(out, h)
+	}
+	return out
+}
+
+func getStr(m map[string]interface{}, k string) string {
+	if v, ok := m[k].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func getBool(m map[string]interface{}, k string) bool {
+	if v, ok := m[k].(bool); ok {
+		return v
+	}
+	return false
+}
+
+func getStrSlice(m map[string]interface{}, k string) []string {
+	if v, ok := m[k].([]interface{}); ok {
+		out := make([]string, 0, len(v))
+		for _, x := range v {
+			if s, ok := x.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
 }

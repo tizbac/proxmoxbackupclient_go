@@ -14,9 +14,11 @@
 #   /usr/bin/pbsgo            directory/stream backup CLI
 #   /usr/bin/pbsgo-machine    whole-machine (raw disk) backup CLI
 #   /usr/bin/pbsgo-nbd        fidx-to-NBD restore tool (run as root)
-#   /usr/bin/pbsgo-gui        GUI launcher (current user)
+#   /usr/bin/pbsgo-gui        GUI launcher (current user, probes service + token fetch)
 #   /usr/bin/pbsgo-gui-root   GUI launcher (elevated, for machine backup)
 #   /usr/lib/pbsgo/pbsgo-gui  GUI application binary
+#   /usr/lib/pbsgo/pbsgo-service  Service binary (systemd)
+#   /usr/lib/systemd/system/pbsgo.service  systemd unit (NOT enabled by default)
 #   /usr/share/applications/pbsgo-gui.desktop
 set -eu
 
@@ -47,6 +49,7 @@ STAGE=$WORK/root
 mkdir -p "$STAGE/DEBIAN" \
          "$STAGE/usr/bin" \
          "$STAGE/usr/lib/pbsgo" \
+         "$STAGE/usr/lib/systemd/system" \
          "$STAGE/usr/share/applications" \
          "$STAGE/usr/share/icons/hicolor/256x256/apps"
 
@@ -85,10 +88,22 @@ else
     (cd "$ROOT/gui" && go build -tags "$GO_TAGS" -ldflags "-s -w -X main.appVersion=$VERSION" -o "$STAGE/usr/lib/pbsgo/pbsgo-gui" .)
 fi
 
-echo "==> installing launchers and metadata"
+echo "==> building service binary (systemd)"
+(cd "$ROOT/gui" && GOWORK=off go build -tags service -trimpath -buildmode=pie \
+    -ldflags="-s -w -X main.appVersion=$VERSION" \
+    -o "$STAGE/usr/lib/pbsgo/pbsgo-service" .)
+
+echo "==> installing launchers, service unit, and metadata"
 install -m 0755 "$SCRIPT_DIR/pbsgo-gui" "$STAGE/usr/bin/pbsgo-gui"
 install -m 0755 "$SCRIPT_DIR/pbsgo-gui-root" "$STAGE/usr/bin/pbsgo-gui-root"
 install -m 0644 "$SCRIPT_DIR/pbsgo-gui.desktop" "$STAGE/usr/share/applications/pbsgo-gui.desktop"
+install -m 0644 "$ROOT/packaging/systemd/pbsgo.service" "$STAGE/usr/lib/systemd/system/pbsgo.service"
+
+# Maintainer scripts
+install -m 0755 "$SCRIPT_DIR/preinst" "$STAGE/DEBIAN/preinst"
+install -m 0755 "$SCRIPT_DIR/postinst" "$STAGE/DEBIAN/postinst"
+install -m 0755 "$SCRIPT_DIR/prerm" "$STAGE/DEBIAN/prerm"
+install -m 0755 "$SCRIPT_DIR/postrm" "$STAGE/DEBIAN/postrm"
 # Prefer the 1024px icon wails generates; fall back to the tracked
 # 256px source icon on clean checkouts where gui/build/ does not exist.
 if [ -f "$ROOT/gui/build/appicon.png" ]; then
@@ -145,7 +160,8 @@ scan_deps() {
     done
 }
 for bin in "$STAGE"/usr/bin/pbsgo "$STAGE"/usr/bin/pbsgo-machine \
-           "$STAGE"/usr/bin/pbsgo-nbd "$STAGE"/usr/lib/pbsgo/pbsgo-gui; do
+           "$STAGE"/usr/bin/pbsgo-nbd "$STAGE"/usr/lib/pbsgo/pbsgo-gui \
+           "$STAGE"/usr/lib/pbsgo/pbsgo-service; do
     scan_deps "$bin"
 done
 if [ -z "$DEPS" ]; then

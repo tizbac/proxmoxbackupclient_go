@@ -38,6 +38,17 @@ type BackupHandler interface {
 	DeleteScheduledJobFromMap(jobID string) error
 	PinServerFingerprint(id, fingerprint string) error
 	StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error
+	// Config round-trip for the GUI in service mode: the service is the single
+	// privileged writer of config.json, so the GUI reads and writes the whole
+	// (sanitized) document through these two methods.
+	GetFullConfigForAPI() map[string]interface{}
+	SaveFullConfigFromAPI(doc map[string]interface{}) error
+	// Test a stored (or draft) PBS server without touching the GUI's secrets.
+	TestPBSServerForAPI(id string, draft map[string]interface{}) error
+	// Mint a short-lived PBS ticket for restore/listing operations.
+	MintPBSTicketForAPI(id string) (*PBSTicket, error)
+	// Job history as stored by the service's scheduler.
+	GetJobHistoryForAPI() ([]map[string]interface{}, error)
 }
 
 // NewServer creates a new API server. token is the shared local-auth secret that
@@ -64,10 +75,15 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/backup", s.handleBackup)
 	s.mux.HandleFunc("/backup/status/", s.handleBackupStatus)
 	s.mux.HandleFunc("/jobs", s.handleJobs)
+	s.mux.HandleFunc("/jobs/full", s.handleJobsFull)
 	s.mux.HandleFunc("/jobs/create", s.handleJobCreate)
 	s.mux.HandleFunc("/jobs/update", s.handleJobUpdate)
 	s.mux.HandleFunc("/jobs/delete/", s.handleJobDelete)
 	s.mux.HandleFunc("/pbs/fingerprint", s.handlePinFingerprint)
+	s.mux.HandleFunc("/config", s.handleConfig)
+	s.mux.HandleFunc("/pbs/test", s.handleTestPBS)
+	s.mux.HandleFunc("/pbs/ticket", s.handlePBSTicket)
+	s.mux.HandleFunc("/history", s.handleHistory)
 }
 
 // Start starts the HTTP server
@@ -322,6 +338,22 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, resp, http.StatusOK)
 }
 
+// handleJobsFull returns the full ScheduledJob data (as []map) for the GUI's
+// service-mode delegation. It mirrors GetScheduledJobsForAPI but returns the
+// raw maps so the client can unmarshal into its local ScheduledJob type.
+func (s *Server) handleJobsFull(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	jobsData := s.app.GetScheduledJobsForAPI()
+	if jobsData == nil {
+		jobsData = []map[string]interface{}{}
+	}
+	s.writeJSON(w, jobsData, http.StatusOK)
+}
+
 func (s *Server) handleJobCreate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -427,6 +459,99 @@ func (s *Server) handlePinFingerprint(w http.ResponseWriter, r *http.Request) {
 		"message": "Fingerprint pinned successfully",
 	}
 	s.writeJSON(w, resp, http.StatusOK)
+}
+
+// handleConfig serves the sanitized full configuration document (GET) and
+// accepts whole-document writes (POST). The document is sanitized: secrets are
+// replaced by *_set boolean markers, and an empty secret/password on write
+// means "keep the existing value" on the service side.
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.writeJSON(w, s.app.GetFullConfigForAPI(), http.StatusOK)
+	case http.MethodPost:
+		var doc map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&doc); err != nil {
+			s.writeError(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+			return
+		}
+		if err := s.app.SaveFullConfigFromAPI(doc); err != nil {
+			s.writeError(w, fmt.Sprintf("Failed to save config: %v", err), http.StatusInternalServerError)
+			return
+		}
+		// Echo back the stored (sanitized) document so the GUI re-syncs,
+		// including any server-side adjustments (e.g. secret retention).
+		s.writeJSON(w, s.app.GetFullConfigForAPI(), http.StatusOK)
+	default:
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleTestPBS tests connectivity to a stored PBS server, optionally merging
+// a non-empty draft first (so the GUI can test unsaved form edits).
+func (s *Server) handleTestPBS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ID    string                 `json:"id"`
+		Draft map[string]interface{} `json:"draft"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeError(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.app.TestPBSServerForAPI(req.ID, req.Draft); err != nil {
+		s.writeError(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	s.writeJSON(w, map[string]interface{}{"success": true}, http.StatusOK)
+}
+
+// handlePBSTicket mints a short-lived PBS session ticket for the GUI's
+// restore/listing operations. The response carries the ticket plus only the
+// non-sensitive connection parameters (the GUI never sees PBS credentials).
+func (s *Server) handlePBSTicket(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeError(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	ticket, err := s.app.MintPBSTicketForAPI(req.ID)
+	if err != nil {
+		s.writeError(w, fmt.Sprintf("Failed to mint ticket: %v", err), http.StatusInternalServerError)
+		return
+	}
+	s.writeJSON(w, ticket, http.StatusOK)
+}
+
+// handleHistory returns the job history stored by the service's scheduler.
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	history, err := s.app.GetJobHistoryForAPI()
+	if err != nil {
+		s.writeError(w, fmt.Sprintf("Failed to read history: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if history == nil {
+		history = []map[string]interface{}{}
+	}
+	s.writeJSON(w, history, http.StatusOK)
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, data interface{}, status int) {

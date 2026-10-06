@@ -315,3 +315,9 @@ func restartVSSService() error {
 	fmt.Println("VSS Cleanup: VSS service restarted")
 	return nil
 }
+
+// DetectControl reports whether a Linux block-snapshot control module is
+// available. Always false on this platform.
+func DetectControl() (SnapControl, bool) {
+	return SnapControl{}, false
+}

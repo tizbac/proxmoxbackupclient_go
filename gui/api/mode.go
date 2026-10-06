@@ -35,6 +35,15 @@ func (d *ModeDetector) DetectMode() ExecutionMode {
 	return ModeStandalone
 }
 
+// Probe returns the raw service reachability: 200 (running, token accepted),
+// 401 (running, token missing/invalid) or 0 (unreachable). The GUI uses the
+// 401 result to offer a one-time elevated token fetch before falling back to
+// standalone mode.
+func (d *ModeDetector) Probe() int {
+	code, _ := d.client.ProbeStatus()
+	return code
+}
+
 // GetModeName returns a human-readable mode name
 func (m ExecutionMode) String() string {
 	switch m {

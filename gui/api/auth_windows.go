@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -49,47 +48,16 @@ func EnsureToken(path string) (string, error) {
 // Administrators and SYSTEM (the service account) to read it.
 // This ensures only elevated processes can read the token and call the API.
 func setTokenFileACL(path string) error {
-	// Convert path to Windows format
-	pathPtr, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return err
-	}
-
-	// Get current security descriptor
-	var sd *windows.SECURITY_DESCRIPTOR
-	err = windows.GetNamedSecurityInfo(
-		pathPtr,
-		windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION,
-		nil, nil, &sd, nil, nil)
-	if err != nil {
-		return fmt.Errorf("get security info: %w", err)
-	}
-	defer windows.LocalFree(windows.Handle(uintptr(sd)))
-
-	// Build new DACL
-	// Allow SYSTEM full access
-	systemSid, err := createWellKnownSid(windows.WinLocalSystemSid)
-	if err != nil {
-		return err
-	}
-
-	// Allow Administrators full access
-	adminSid, err := createWellKnownSid(windows.WinBuiltinAdministratorsSid)
-	if err != nil {
-		return err
-	}
-
-	// Create new ACL with these two ACEs
-	var newAcl *windows.ACL
-	err = windows.SetEntriesInAcl(
-		2,
+	// Build a fresh DACL from scratch (nil merged ACL): only SYSTEM and
+	// Administrators get access. Windows resolves the well-known names to
+	// SIDs during SetEntriesInAcl.
+	newAcl, err := windows.ACLFromEntries(
 		[]windows.EXPLICIT_ACCESS{
 			{
 				Trustee: windows.TRUSTEE{
-					TrusteeForm:  windows.TRUSTEE_IS_SID,
-					TrusteeType:  windows.TRUSTEE_IS_WELL_KNOWN_GROUP,
-					PtstrName:    (*uint16)(unsafe.Pointer(systemSid)),
+					TrusteeForm:  windows.TRUSTEE_IS_NAME,
+					TrusteeType:  windows.TRUSTEE_IS_UNKNOWN,
+					TrusteeValue: windows.TrusteeValueFromString(`NT AUTHORITY\SYSTEM`),
 				},
 				AccessPermissions: windows.GENERIC_READ | windows.GENERIC_WRITE,
 				AccessMode:        windows.SET_ACCESS,
@@ -97,44 +65,28 @@ func setTokenFileACL(path string) error {
 			},
 			{
 				Trustee: windows.TRUSTEE{
-					TrusteeForm:  windows.TRUSTEE_IS_SID,
-					TrusteeType:  windows.TRUSTEE_IS_WELL_KNOWN_GROUP,
-					PtstrName:    (*uint16)(unsafe.Pointer(adminSid)),
+					TrusteeForm:  windows.TRUSTEE_IS_NAME,
+					TrusteeType:  windows.TRUSTEE_IS_UNKNOWN,
+					TrusteeValue: windows.TrusteeValueFromString(`BUILTIN\Administrators`),
 				},
 				AccessPermissions: windows.GENERIC_READ | windows.GENERIC_WRITE,
 				AccessMode:        windows.SET_ACCESS,
 				Inheritance:       windows.NO_INHERITANCE,
 			},
 		},
-		nil,
-		&newAcl)
+		nil)
 	if err != nil {
 		return fmt.Errorf("create ACL: %w", err)
 	}
 
 	// Set the new DACL
-	err = windows.SetNamedSecurityInfo(
-		pathPtr,
+	if err := windows.SetNamedSecurityInfo(
+		path,
 		windows.SE_FILE_OBJECT,
 		windows.DACL_SECURITY_INFORMATION,
-		nil, nil, newAcl, nil)
-	if err != nil {
+		nil, nil, newAcl, nil); err != nil {
 		return fmt.Errorf("set security info: %w", err)
 	}
 
 	return nil
-}
-
-func createWellKnownSid(sidType int) (*windows.SID, error) {
-	var sid *windows.SID
-	err := windows.AllocateAndInitializeSid(
-		&windows.SECURITY_NT_AUTHORITY,
-		1,
-		uint32(sidType),
-		0, 0, 0, 0, 0, 0, 0,
-		&sid)
-	if err != nil {
-		return nil, err
-	}
-	return sid, nil
 }

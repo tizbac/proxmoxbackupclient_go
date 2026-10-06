@@ -1,0 +1,24 @@
+[Unit]
+Description=Proxmox Backup Client Service
+Documentation=https://github.com/tizbac/proxmoxbackupclient_go
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/pbsgo/pbsgo-service
+StateDirectory=pbsgo
+StateDirectoryMode=0700
+LogsDirectory=proxmoxbackupclient
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+# ProtectHome is NOT set: directory backups read user home directories
+# MemoryDenyWriteExecute is NOT set: breaks Go runtime
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+
+[Install]
+WantedBy=multi-user.target
