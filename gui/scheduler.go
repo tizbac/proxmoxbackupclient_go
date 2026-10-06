@@ -212,6 +212,9 @@ func getJobHistoryPath() (string, error) {
 
 // SaveScheduledJob saves a new scheduled job
 func (a *App) SaveScheduledJob(job ScheduledJob) error {
+	if err := a.checkJobsChangeAllowed(); err != nil {
+		return err
+	}
 	writeDebugLog(fmt.Sprintf("SaveScheduledJob called for: %s", job.Name))
 	if err := validateScheduledJob(job); err != nil {
 		return err
@@ -311,6 +314,9 @@ func (a *App) GetScheduledJobsForAPI() []map[string]interface{} {
 
 // UpdateScheduledJob updates an existing scheduled job
 func (a *App) UpdateScheduledJob(job ScheduledJob) error {
+	if err := a.checkJobsChangeAllowed(); err != nil {
+		return err
+	}
 	writeDebugLog(fmt.Sprintf("UpdateScheduledJob called for: %s", job.Name))
 	if err := validateScheduledJob(job); err != nil {
 		return err
@@ -361,6 +367,9 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 
 // DeleteScheduledJob removes a scheduled job by ID
 func (a *App) DeleteScheduledJob(jobID string) error {
+	if err := a.checkJobsChangeAllowed(); err != nil {
+		return err
+	}
 	writeDebugLog(fmt.Sprintf("DeleteScheduledJob called for ID: %s", jobID))
 
 	jobs, err := a.GetScheduledJobs()

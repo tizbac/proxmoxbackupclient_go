@@ -4,7 +4,9 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -32,6 +34,9 @@ const (
 // Returns true if this is the only instance, false if another exists.
 // If another exists, it attempts to bring that window to the foreground.
 func CheckSingleInstance() bool {
+	if hasArg(elevatedRestartFlag) {
+		waitForPreviousInstance()
+	}
 	mutexNamePtr, err := syscall.UTF16PtrFromString(mutexName)
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("Failed to create mutex name: %v", err))
@@ -118,4 +123,33 @@ func activateExistingWindow() bool {
 	procSetForeground.Call(hwnd)
 
 	return true
+}
+
+func hasArg(flag string) bool {
+	for _, a := range os.Args[1:] {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// waitForPreviousInstance gives the instance that asked for elevation up to
+// ~12s to exit, so the elevated copy does not mistake it for a second launch.
+func waitForPreviousInstance() {
+	name, err := syscall.UTF16PtrFromString(mutexName)
+	if err != nil {
+		return
+	}
+	for i := 0; i < 40; i++ {
+		h, _ := windows.CreateMutex(nil, false, name)
+		exists := windows.GetLastError() == windows.ERROR_ALREADY_EXISTS
+		if h != 0 {
+			windows.CloseHandle(h)
+		}
+		if !exists {
+			return
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
 }

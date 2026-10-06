@@ -18,6 +18,7 @@ let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, 
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
 let SetParallelRestore, SetParallelBackupRead
+let GetJobPolicy, SetRequireAdminForJobs, RequestElevation
 let ExportSettings, ImportSettings
 let SetSMTPSettings, SendTestEmail
 let GetLogsFolder
@@ -68,6 +69,9 @@ if (window.go) {
   GetServerFingerprint = window.go.main.App.GetServerFingerprint
   PinPBSServerFingerprint = window.go.main.App.PinPBSServerFingerprint
   SetParallelRestore = window.go.main.App.SetParallelRestore
+  GetJobPolicy = window.go.main.App.GetJobPolicy
+  SetRequireAdminForJobs = window.go.main.App.SetRequireAdminForJobs
+  RequestElevation = window.go.main.App.RequestElevation
   SetParallelBackupRead = window.go.main.App.SetParallelBackupRead
   ExportSettings = window.go.main.App.ExportSettings
   ImportSettings = window.go.main.App.ImportSettings
@@ -294,6 +298,26 @@ function App() {
   // is equivalent and simpler than special-casing "all checked -> empty").
   const [daysOfWeek, setDaysOfWeek] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
   const [scheduledJobs, setScheduledJobs] = useState([])
+  // Scheduled-job protection (Windows): when require_admin is on, changing
+  // Backup Sets needs an elevated session. Defaults are the permissive "not
+  // applicable" shape until the backend answers (and on platforms without it).
+  const [jobPolicy, setJobPolicy] = useState({ supported: false, require_admin: false, is_admin: true, can_modify: true })
+  const refreshJobPolicy = async () => {
+    if (!GetJobPolicy) return
+    try { setJobPolicy(await GetJobPolicy()) } catch (e) { /* keep last known */ }
+  }
+  const jobErrText = (err) => String(err).includes('JOBS_ADMIN_REQUIRED')
+    ? t('jobsAdminRequired')
+    : `${t('statusError')} ${err}`
+  const restartAsAdmin = async () => {
+    if (!RequestElevation) return
+    try {
+      await RequestElevation()
+    } catch (err) {
+      showStatus(String(err).includes('ELEVATION_CANCELLED') ? `⚠️ ${t('jobsPolicyElevateCancelled')}` : `❌ ${err}`,
+        String(err).includes('ELEVATION_CANCELLED') ? 'warning' : 'error')
+    }
+  }
   const [jobHistory, setJobHistory] = useState([])
   const [selectedHistoryId, setSelectedHistoryId] = useState(null) // Reports page: which run's detail is shown
   const [messageLog, setMessageLog] = useState([])
@@ -958,7 +982,12 @@ function App() {
     }
 
     loadPBSServers()
+    refreshJobPolicy()
   }, [])
+
+  useEffect(() => {
+    if (showPreferences || activeTab === 'backup') refreshJobPolicy()
+  }, [showPreferences, activeTab])
 
   const showStatus = (message, type, persist = false) => {
     if (statusTimeoutRef.current) {
@@ -1767,7 +1796,8 @@ function App() {
         setExitAppAfter(false); setShutdownAfter(false)
         setShowBackupForm(false)
       } catch (err) {
-        showStatus(`❌ ${t('statusError')} ${err}`, 'error')
+        showStatus(`${String(err).includes('JOBS_ADMIN_REQUIRED') ? '🔒' : '❌'} ${jobErrText(err)}`, 'error')
+        refreshJobPolicy()
       }
       return
     }
@@ -2612,6 +2642,42 @@ function App() {
                 {prefsTab === 'advanced' && (
                   <>
                     <h2 style={{marginTop: 0}}>{t('prefsAdvanced')}</h2>
+                    {jobPolicy.supported && (
+                      <div className="form-group" style={{marginTop: '20px'}}>
+                        <h3 style={{marginBottom: '8px'}}>{t('jobsPolicyTitle')}</h3>
+                        <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px', opacity: jobPolicy.is_admin ? 1 : 0.7}}>
+                          <input
+                            type="checkbox"
+                            checked={!!jobPolicy.require_admin}
+                            disabled={!jobPolicy.is_admin}
+                            onChange={async (e) => {
+                              const checked = e.target.checked
+                              try {
+                                await SetRequireAdminForJobs(checked)
+                                showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                              } catch (err) {
+                                showStatus(`❌ ${jobErrText(err)}`, 'error')
+                              }
+                              await refreshJobPolicy()
+                            }}
+                          />
+                          <span>{t('jobsPolicyLabel')}</span>
+                        </label>
+                        <div className="info-box" style={{marginTop: '10px'}}>
+                          ℹ️ {t('jobsPolicyHint')}
+                        </div>
+                        <div style={{marginTop: '10px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap'}}>
+                          {jobPolicy.is_admin ? (
+                            <span>✅ {t('jobsPolicyIsAdmin')}</span>
+                          ) : (
+                            <>
+                              <span>🔒 {t('jobsPolicyNotAdmin')}</span>
+                              <button className="btn btn-secondary" onClick={restartAsAdmin}>{t('jobsPolicyElevateBtn')}</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     <div className="form-group" style={{marginTop: '20px'}}>
                       <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
                         <input
@@ -2900,6 +2966,12 @@ function App() {
 
           {!showBackupForm && (
             <>
+              {jobPolicy.supported && jobPolicy.require_admin && !jobPolicy.is_admin && (
+                <div className="info-box" style={{marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap'}}>
+                  <span>🔒 {t('jobsBanner')}</span>
+                  <button className="btn btn-secondary" onClick={restartAsAdmin}>{t('jobsPolicyElevateBtn')}</button>
+                </div>
+              )}
               <div style={{display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '20px'}}>
                 <button
                   className="btn"
@@ -3106,7 +3178,8 @@ function App() {
                                   setEditingJobId(null)
                                 }
                               } catch (err) {
-                                showStatus(`❌ ${t('statusError')} ${err}`, 'error')
+                                showStatus(`${String(err).includes('JOBS_ADMIN_REQUIRED') ? '🔒' : '❌'} ${jobErrText(err)}`, 'error')
+                                refreshJobPolicy()
                               }
                             }}
                           >

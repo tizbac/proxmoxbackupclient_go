@@ -139,6 +139,14 @@ func (a *App) ImportSettings() (string, error) {
 		return "", fmt.Errorf("settings file has no configuration section")
 	}
 
+	// Importing Backup Sets changes the job list, so it is subject to the same
+	// administrator requirement as adding or editing a set by hand.
+	if len(bundle.ScheduledJobs) > 0 {
+		if err := a.checkJobsChangeAllowed(); err != nil {
+			return "", err
+		}
+	}
+
 	if a.config == nil {
 		a.config = LoadConfig()
 	}

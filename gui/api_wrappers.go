@@ -13,6 +13,9 @@ import (
 
 // SaveScheduledJobFromMap is an API wrapper that accepts map[string]interface{}
 func (a *App) SaveScheduledJobFromMap(jobData map[string]interface{}) error {
+	if err := a.checkJobsChangeAllowedViaAPI(); err != nil {
+		return err
+	}
 	// Convert map to JSON then unmarshal to ScheduledJob
 	jsonData, err := json.Marshal(jobData)
 	if err != nil {
@@ -29,6 +32,9 @@ func (a *App) SaveScheduledJobFromMap(jobData map[string]interface{}) error {
 
 // UpdateScheduledJobFromMap is an API wrapper that accepts map[string]interface{}
 func (a *App) UpdateScheduledJobFromMap(jobData map[string]interface{}) error {
+	if err := a.checkJobsChangeAllowedViaAPI(); err != nil {
+		return err
+	}
 	jsonData, err := json.Marshal(jobData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal job data: %w", err)
@@ -44,6 +50,9 @@ func (a *App) UpdateScheduledJobFromMap(jobData map[string]interface{}) error {
 
 // DeleteScheduledJobFromMap is an API wrapper (same signature, just for consistency)
 func (a *App) DeleteScheduledJobFromMap(jobID string) error {
+	if err := a.checkJobsChangeAllowedViaAPI(); err != nil {
+		return err
+	}
 	return a.DeleteScheduledJob(jobID)
 }
 
