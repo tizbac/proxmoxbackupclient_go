@@ -15,7 +15,7 @@ import (
 // ioctl control interface instead of shelling out to their elioctl/dbdctl
 // CLI wrappers. Those wrappers are themselves thin: they parse arguments and
 // issue the exact same ioctl calls implemented here (see
-// github.com/elastio/elastio-snap's app/elioctl.c and lib/libelastio-snap.c,
+// github.com/Axcient/elastio-snap's app/elioctl.c and lib/libelastio-snap.c,
 // and github.com/datto/dattobd's src/dattobd.h), so removing the dependency
 // on the CLI binaries being installed loses nothing.
 //
@@ -25,7 +25,7 @@ import (
 // making a snapshot survive a reboot, which never applies here.
 
 const (
-	elastioSnapMagic uintptr = 0x41 // 'A', github.com/elastio/elastio-snap src/elastio-snap.h
+	elastioSnapMagic uintptr = 0x41 // 'A', github.com/Axcient/elastio-snap src/elastio-snap.h
 	dattobdMagic     uintptr = 0x91 // github.com/datto/dattobd src/dattobd.h
 
 	// Generic (non-mips/sparc) Linux ioctl number encoding, include/uapi/asm-generic/ioctl.h.
