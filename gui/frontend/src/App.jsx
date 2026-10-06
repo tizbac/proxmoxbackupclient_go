@@ -7,6 +7,7 @@ import DirectoryTree from './components/DirectoryTree'
 import KnownLimitationsModal from './components/KnownLimitationsModal'
 import BMRGuideModal from './components/BMRGuideModal'
 import ClosePromptModal from './components/ClosePromptModal'
+import JobsLockModal from './components/JobsLockModal'
 import PassphraseModal from './components/PassphraseModal'
 import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
 import EncryptionKeyField from './components/EncryptionKeyField'
@@ -303,6 +304,15 @@ function App() {
   // Backup Sets needs an elevated session. Defaults are the permissive "not
   // applicable" shape until the backend answers (and on platforms without it).
   const [jobPolicy, setJobPolicy] = useState({ supported: false, require_admin: false, is_admin: true, can_modify: true })
+  // Backup Set change refused by the lock: a modal that must be acknowledged
+  const [showJobsLock, setShowJobsLock] = useState(false)
+  // Returns true when err was the lock refusal (and shows the modal for it)
+  const handleJobsLockError = (err) => {
+    if (!String(err).includes('JOBS_ADMIN_REQUIRED')) return false
+    setShowJobsLock(true)
+    refreshJobPolicy()
+    return true
+  }
   const refreshJobPolicy = async () => {
     if (!GetJobPolicy) return
     try { setJobPolicy(await GetJobPolicy()) } catch (e) { /* keep last known */ }
@@ -1797,8 +1807,7 @@ function App() {
         setExitAppAfter(false); setShutdownAfter(false)
         setShowBackupForm(false)
       } catch (err) {
-        showStatus(`${String(err).includes('JOBS_ADMIN_REQUIRED') ? '🔒' : '❌'} ${jobErrText(err)}`, 'error')
-        refreshJobPolicy()
+        if (!handleJobsLockError(err)) showStatus(`❌ ${jobErrText(err)}`, 'error')
       }
       return
     }
@@ -2826,7 +2835,7 @@ function App() {
                                 if (GetScheduledJobs) setScheduledJobs(await GetScheduledJobs())
                               }
                             } catch (err) {
-                              showStatus(`❌ ${err}`, 'error')
+                              if (!handleJobsLockError(err)) showStatus(`❌ ${err}`, 'error')
                             }
                           }}
                         >
@@ -3205,8 +3214,7 @@ function App() {
                                   setEditingJobId(null)
                                 }
                               } catch (err) {
-                                showStatus(`${String(err).includes('JOBS_ADMIN_REQUIRED') ? '🔒' : '❌'} ${jobErrText(err)}`, 'error')
-                                refreshJobPolicy()
+                                if (!handleJobsLockError(err)) showStatus(`❌ ${jobErrText(err)}`, 'error')
                               }
                             }}
                           >
@@ -4692,6 +4700,13 @@ function App() {
       {showLimitations && <KnownLimitationsModal onClose={() => setShowLimitations(false)} />}
       {showBMRGuide && <BMRGuideModal onClose={() => setShowBMRGuide(false)} />}
       {showClosePrompt && <ClosePromptModal onClose={() => setShowClosePrompt(false)} />}
+      {showJobsLock && (
+        <JobsLockModal
+          t={t}
+          onClose={() => setShowJobsLock(false)}
+          onRestartAsAdmin={() => { setShowJobsLock(false); restartAsAdmin() }}
+        />
+      )}
       <PassphraseModal EventsOn={EventsOn} />
     </div>
   )
