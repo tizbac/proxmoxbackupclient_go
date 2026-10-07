@@ -581,8 +581,11 @@ Every field in the backup card's 2-column grid is conditional (`eta !== null`, `
 - [ ] Always render the full set of rows in a fixed order; show "Calculating..." for values that are not known yet (ETA, speed, forecast finish) and "Not available" where a value cannot exist for this run (e.g. total size unknown, failed chunks on restore).
 - [ ] Give the current-file and current-folder lines a fixed height (blank or "Waiting..." when empty) so the card does not change height.
 - [ ] Same treatment for the restore card, including the stage line.
-- [ ] Drop the grey "Processed: 333.3 GB / 447.7 GB (New: ..., Reused: ... chunks)" status box under the grid while a backup runs: it repeats the Data and Chunks rows word for word.
-- [ ] Units: `formatBytes` (App.jsx) divides by 1024 but labels the result KB/MB/GB/TB, so "447.7 GB" is really 447.7 GiB (480.7 GB), while the Speed row shows both MB/s and MiB/s correctly. Label it GiB, or show both like `formatSpeed`, so the figures agree with Windows Explorer (GiB, shown as "GB") and PBS (decimal) without guessing.
+- [ ] Units: show sizes as "GB (GiB)", the same convention as Speed's "MB/s (MiB/s)" (`formatSpeed`, App.jsx), so both values reach the user. Today `formatBytes` (App.jsx) and `formatByteSize` (backup_inline.go) divide by 1024 but label the result KB/MB/GB/TB, so "447.7 GB" is really 447.7 GiB (480.7 GB). Apply to:
+  - Backup card Data row: "Data: 357.9 GB (333.3 GiB) / 480.7 GB (447.7 GiB)".
+  - Backup card "Processed: ..." status box (built in backup_inline.go `formatByteSize`), keeping the New / Reused (/ Failed) chunk counts: "Processed: 357.9 GB (333.3 GiB) / 480.7 GB (447.7 GiB) (New: 104587, Reused: 17868 chunks)".
+  - Restore card Data row and the restore progress message (restore_inline.go, also `formatByteSize`).
+  - Decide separately whether file lists, snapshot sizes and the restore selection total use the dual form or just the correct GiB label (dual may be too wide in list columns).
 
 ### ~~⏹️ No way to cancel a running machine backup~~ ✅ ALREADY WORKED — correcting an earlier wrong note (2026-09-25)
 
