@@ -493,6 +493,9 @@ function App() {
   // Recent stats samples ({t, bytes, files, uploaded}) for windowRate.
   const backupSamplesRef = useRef([])
   const restoreSamplesRef = useRef([])
+  // When the current restore stage began, for estimating the steps after the
+  // transfer (folder timestamps, ACLs, verify) from their "N of M" counts.
+  const restoreStageStartRef = useRef({ stage: '', t: 0 })
   // A server call in progress that has no progress of its own (WaitBar):
   // { id, kind, label, startedAt }. waitSeqRef numbers the calls so a reply
   // to a call that a newer one replaced is ignored.
@@ -849,6 +852,9 @@ function App() {
       setRestoreStats(prev => (prev.startTime ? prev : { ...prev, startTime: Date.now() }))
     })
     const unsubG = EventsOn('restore:stage', (data) => {
+      if ((data.stage || '') !== restoreStageStartRef.current.stage) {
+        restoreStageStartRef.current = { stage: data.stage || '', t: Date.now() }
+      }
       setRestoreStage({ stage: data.stage || '', detail: data.detail || '' })
       if (data.stage !== 'transferring') setRestoreFile('')
     })
@@ -876,7 +882,12 @@ function App() {
         } else if (etaRate > 0 && bytesTotal > bytesDone) {
           eta = Math.round((bytesTotal - bytesDone) / etaRate)
         }
-        return { startTime, bytesDone, bytesTotal, speed, eta }
+        // The transfer's average speed, shown once it has finished (a
+        // 10-second window then holds no movement and reads as zero).
+        const lastMoveAt = bytesDone > prev.bytesDone ? now : (prev.lastMoveAt || now)
+        const moveSecs = (lastMoveAt - startTime) / 1000
+        const avgSpeed = moveSecs > 0 ? bytesDone / moveSecs : prev.avgSpeed
+        return { startTime, bytesDone, bytesTotal, speed, eta, lastMoveAt, avgSpeed }
       })
     })
     const unsubC = EventsOn('restore:complete', (data) => {
@@ -3163,7 +3174,9 @@ function App() {
                 } else {
                   stage = tl('stageStarting', 'Starting...')
                 }
-                const forecast = s.eta !== null ? formatClock(now + s.eta * 1000) : null
+                const finishingNow = s.phase === 'finishing'
+                const finishingText = <span className="pending-value">{tl('finishingShort', 'Finishing...')}</span>
+                const forecast = s.eta !== null && !finishingNow ? formatClock(now + s.eta * 1000) : null
                 const filesValue = !s.hasDetail ? na
                   : <>{s.filesDone.toLocaleString()} / {s.filesTotal > 0 ? s.filesTotal.toLocaleString() : calc}</>
                 const processing = s.speed > 0
@@ -3192,9 +3205,9 @@ function App() {
                     </div>
                     <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginBottom: '10px'}}>
                       {row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc)}
-                      {row(tl('forecastFinishLabel', 'Forecast finish:'), forecast || calc)}
+                      {row(tl('forecastFinishLabel', 'Forecast finish:'), forecast || (finishingNow ? finishingText : calc))}
                       {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
-                      {row(t('timeRemaining'), s.eta !== null ? formatDuration(s.eta) : calc)}
+                      {row(t('timeRemaining'), finishingNow ? finishingText : (s.eta !== null ? formatDuration(s.eta) : calc))}
                       {row(tl('filesLabel', 'Files:'), filesValue)}
                       {row(tl('processingLabel', 'Processing:'), processing)}
                       {row(t('currentDirLabel'), folder)}
@@ -4137,6 +4150,23 @@ function App() {
                     }[restoreStage.stage] || restoreStage.stage}{restoreStage.detail ? ` (${restoreStage.detail})` : ''}</>
                   : tl('stageStarting', 'Starting...')
                 const showFile = restoreFile && (restoreStage.stage === 'transferring' || restoreStage.stage === 'verifying')
+                // After the transfer (folder timestamps, ACLs, verify) the time
+                // left comes from the stage's own "N of M" count and how long it
+                // has taken so far; without a count it reads "Finishing...".
+                const finishing = <span className="pending-value">{tl('finishingShort', 'Finishing...')}</span>
+                const afterTransfer = ['dirtimes', 'acls', 'verifying'].includes(restoreStage.stage)
+                const transferDone = afterTransfer || (s.bytesTotal > 0 && s.bytesDone >= s.bytesTotal)
+                let remaining = afterTransfer ? null : s.eta
+                if (afterTransfer && status.message) {
+                  const m = status.message.match(/([\d,]+) of ([\d,]+)/)
+                  const st = restoreStageStartRef.current
+                  if (m && st.stage === restoreStage.stage && st.t > 0) {
+                    const n = parseInt(m[1].replace(/,/g, ''), 10)
+                    const total = parseInt(m[2].replace(/,/g, ''), 10)
+                    const secs = (now - st.t) / 1000
+                    if (n > 0 && total >= n && secs > 1) remaining = Math.round((total - n) * secs / n)
+                  }
+                }
                 return (
                   <>
                     <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px', height: '20px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'}}>
@@ -4144,11 +4174,13 @@ function App() {
                     </div>
                     <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginBottom: '10px'}}>
                       {row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc)}
-                      {row(tl('forecastFinishLabel', 'Forecast finish:'), s.eta !== null ? formatClock(now + s.eta * 1000) : calc)}
+                      {row(tl('forecastFinishLabel', 'Forecast finish:'), remaining !== null ? formatClock(now + remaining * 1000) : (afterTransfer ? finishing : calc))}
                       {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
-                      {row(t('timeRemaining'), s.eta !== null ? formatDuration(s.eta) : calc)}
-                      {row(t('speed'), s.speed > 0 ? formatSpeed(s.speed) : calc)}
-                      {row(t('dataSizeLabel'), s.bytesTotal > 0 ? <>{formatBytesDual(s.bytesDone)} / {formatBytesDual(s.bytesTotal)}</> : calc)}
+                      {row(t('timeRemaining'), remaining !== null ? formatDuration(remaining) : (afterTransfer ? finishing : calc))}
+                      {row(t('speed'), transferDone && s.avgSpeed > 0
+                        ? `${formatSpeed(s.avgSpeed)} ${tl('averageSuffix', '(average)')}`
+                        : (s.speed > 0 ? formatSpeed(s.speed) : calc))}
+                      {row(tl('downloadedLabel', 'Downloaded:'), s.bytesTotal > 0 ? <>{formatBytesDual(s.bytesDone)} / {formatBytesDual(s.bytesTotal)}</> : calc)}
                       <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
                         <strong style={{flex: '0 0 auto'}}>{tl('currentFileLabel', 'Current file:')}</strong>
                         {showFile
