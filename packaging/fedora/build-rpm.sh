@@ -50,7 +50,9 @@ docker run --rm -i \
     "$IMAGE" \
     bash -s <<'DOCKER'
 set -eux
-dnf -y install golang gcc gtk3-devel webkit2gtk4.1-devel tar rpm-build
+# systemd: matches the spec's BuildRequires (unit dir macro + scriptlets);
+# base images normally ship it, but $PBSGO_FEDORA_IMAGE overrides may not
+dnf -y install golang gcc gtk3-devel webkit2gtk4.1-devel tar rpm-build systemd
 export HOME=/root
 cp -r /src /root/rpmbuild
 rpmbuild --define "_topdir /root/rpmbuild" -ba /root/rpmbuild/SPECS/pbsgo.spec

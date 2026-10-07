@@ -6,6 +6,7 @@ Homepage: https://github.com/tizbac/proxmoxbackupclient_go
 Section: admin
 Priority: optional
 Depends: @DEPENDS@
+Recommends: pkexec | policykit-1, sudo
 Description: Backup client for Proxmox Backup Server (CLI + GUI)
  Go-based backup client for Proxmox Backup Server:
   - pbsgo: directory and stream backup with deduplication

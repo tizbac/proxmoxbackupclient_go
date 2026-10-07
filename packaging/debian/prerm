@@ -2,12 +2,19 @@
 # prerm: runs before package removal
 set -e
 
-# Stop and disable the service
-if systemctl is-active --quiet pbsgo 2>/dev/null; then
-    systemctl stop pbsgo 2>/dev/null || true
-fi
-if systemctl is-enabled --quiet pbsgo 2>/dev/null; then
-    systemctl disable pbsgo 2>/dev/null || true
+if [ "$1" = "upgrade" ]; then
+    # Upgrading: stop only, keep the user's enablement intact.
+    if systemctl is-active --quiet pbsgo 2>/dev/null; then
+        systemctl stop pbsgo 2>/dev/null || true
+    fi
+else
+    # Removal: stop and disable.
+    if systemctl is-active --quiet pbsgo 2>/dev/null; then
+        systemctl stop pbsgo 2>/dev/null || true
+    fi
+    if systemctl is-enabled --quiet pbsgo 2>/dev/null; then
+        systemctl disable pbsgo 2>/dev/null || true
+    fi
 fi
 
 exit 0

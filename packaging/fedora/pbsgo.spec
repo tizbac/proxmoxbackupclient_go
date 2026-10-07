@@ -16,6 +16,10 @@ BuildRequires: gtk3-devel
 BuildRequires: webkit2gtk4.1-devel
 BuildRequires: systemd
 
+# pkexec/sudo: used by the pbsgo-gui launcher for one-time token-fetch
+# elevation (soft requirements - the launcher degrades to standalone mode)
+Recommends: polkit sudo
+
 %description
 Go-based backup client for Proxmox Backup Server:
  - pbsgo: directory and stream backup with deduplication
@@ -64,8 +68,10 @@ install -m 0755 gui/pbsgo-service          %{buildroot}%{_libdir}/pbsgo/pbsgo-se
 install -m 0644 gui/Icon.png \
     %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/pbsgo.png
 
-# systemd unit (NOT enabled by default - user must explicitly enable)
-install -m 0644 ../packaging/systemd/pbsgo.service %{buildroot}%{_unitdir}/pbsgo.service
+# systemd unit (NOT enabled by default - user must explicitly enable);
+# %install runs with cwd = the extracted source dir, so packaging/ is here
+# (not ../packaging/)
+install -m 0644 packaging/systemd/pbsgo.service %{buildroot}%{_unitdir}/pbsgo.service
 
 cat > %{buildroot}%{_datadir}/applications/pbsgo-gui.desktop <<'EOF'
 [Desktop Entry]
@@ -192,10 +198,11 @@ sed -i "s|@LIBDIR@|%{_libdir}|g" %{buildroot}%{_bindir}/pbsgo-gui-root
 chmod 0755 %{buildroot}%{_bindir}/pbsgo-gui-root
 
 %pre
-# Stop and disable the service on upgrade/remove to avoid conflicts
-if [ "$1" -gt 1 ] || [ "$1" = 0 ]; then  # upgrade or remove
+# Stop the service on upgrade ($1 >= 2). Deliberately NOT disabling it:
+# the user's enablement must survive upgrades (and fresh installs never
+# enable anything - see %post).
+if [ "$1" -gt 1 ]; then
     systemctl stop pbsgo 2>/dev/null || true
-    systemctl disable pbsgo 2>/dev/null || true
 fi
 
 %post
@@ -218,6 +225,7 @@ systemctl daemon-reload 2>/dev/null || true
 %files
 %license LICENSE
 %doc README.md CHANGELOG.md
+%dir %{_libdir}/pbsgo
 %{_bindir}/pbsgo
 %{_bindir}/pbsgo-machine
 %{_bindir}/pbsgo-nbd

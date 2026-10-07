@@ -2,13 +2,12 @@
 # preinst: runs before package installation
 set -e
 
-# Stop and disable the service on upgrade/remove to avoid conflicts
-if [ "$1" = "upgrade" ] || [ "$1" = "remove" ] || [ "$1" = "deconfigure" ]; then
+# Stop the service on upgrade to avoid conflicts. Deliberately NOT
+# disabling it: the user's enablement must survive an upgrade (fresh
+# installs never enable anything either - see postinst).
+if [ "$1" = "upgrade" ]; then
     if systemctl is-active --quiet pbsgo 2>/dev/null; then
         systemctl stop pbsgo 2>/dev/null || true
-    fi
-    if systemctl is-enabled --quiet pbsgo 2>/dev/null; then
-        systemctl disable pbsgo 2>/dev/null || true
     fi
 fi
 
