@@ -72,6 +72,11 @@ type BackupOptions struct {
 	// read path. Machine/whole-disk backups don't use PXARArchive at all, so
 	// this only affects directory-type backups.
 	PrefetchWorkers int
+	// ChangeDetectionMode is "" / "legacy" (one .pxar.didx per folder, the
+	// default), "data" or "metadata" (split .mpxar.didx + .ppxar.didx; see
+	// pbscommon/change_detection.go). metadata behaves like data until reuse
+	// of unchanged files is implemented.
+	ChangeDetectionMode string
 	// Comment is sent as-is as the PBS snapshot's manifest comment (shows up
 	// next to the snapshot in PBS's own web UI). Callers set this to the
 	// triggering Backup Set's own name — see startBackupDirect/
@@ -548,6 +553,23 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 		}
 		c.currentChunk = append(c.currentChunk, b...)
 	}
+	return nil
+}
+
+// SuggestBoundary cuts the current chunk here if that gives a chunk within
+// the chunker's normal size bounds (average/4 to average*4), the same rule as
+// the official client's payload chunker. Used at file starts in a split
+// archive's payload stream so unchanged files line up on chunk boundaries.
+func (c *ChunkState) SuggestBoundary(client *pbscommon.PBSClient) error {
+	n := uint64(len(c.currentChunk))
+	if n < c.C.MinSize() || n > c.C.MaxSize() {
+		return nil
+	}
+	if err := c.processChunk(client); err != nil {
+		return err
+	}
+	c.currentChunk = make([]byte, 0)
+	c.C.Reset()
 	return nil
 }
 
@@ -1054,7 +1076,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 
 			archiveBase := archiveBaseName(dir, usedArchiveNames)
 			dirBytes, aclMeta, dirSkipped, dirExcluded, dirReadErrors, err :=
-				backupDirectory(opts.Ctx, client, &newchunk, &reusechunk, &failedchunk, dir, archiveBase, opts.UseVSS, progress, jobProg, opts.OnStats, opts.ExcludeList, sharedCatalog, opts.PrefetchWorkers)
+				backupDirectory(opts.Ctx, client, &newchunk, &reusechunk, &failedchunk, dir, archiveBase, opts.UseVSS, progress, jobProg, opts.OnStats, opts.ExcludeList, sharedCatalog, opts.PrefetchWorkers, opts.ChangeDetectionMode)
 
 			allSkipped = append(allSkipped, dirSkipped...)
 			allExcluded = append(allExcluded, dirExcluded...)
@@ -1554,7 +1576,7 @@ func (s *sharedCatalogCoordinator) writeCB(client *pbscommon.PBSClient) pbscommo
 // skipped/excluded/read-error path lists for this directory. catalog is the
 // whole job attempt's shared catalog coordinator (see above) — every
 // directory's catalog data goes through the same one.
-func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, archiveBase string, usevss bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator, prefetchWorkers int) (uint64, *BackupFileMeta, []string, []string, []string, error) {
+func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, archiveBase string, usevss bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator, prefetchWorkers int, changeMode string) (uint64, *BackupFileMeta, []string, []string, []string, error) {
 	writeBackupLog(fmt.Sprintf("Starting backup of %s", backupdir))
 	originalPath := backupdir
 
@@ -1592,16 +1614,16 @@ func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk,
 				break
 			}
 			var e error
-			bytesArchived, aclMeta, skipped, excluded, readErrs, e = backupReal(ctx, client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, jobProg, onStats, excludeList, catalog, prefetchWorkers)
+			bytesArchived, aclMeta, skipped, excluded, readErrs, e = backupReal(ctx, client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, jobProg, onStats, excludeList, catalog, prefetchWorkers, changeMode)
 			return e
 		})
 		return bytesArchived, aclMeta, skipped, excluded, readErrs, err
 	}
 
-	return backupReal(ctx, client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, jobProg, onStats, excludeList, catalog, prefetchWorkers)
+	return backupReal(ctx, client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, jobProg, onStats, excludeList, catalog, prefetchWorkers, changeMode)
 }
 
-func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, originalPath string, archiveBase string, vssUsed bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator, prefetchWorkers int) (returnBytes uint64, returnMeta *BackupFileMeta, returnSkipped, returnExcluded, returnReadErrors []string, returnErr error) {
+func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, originalPath string, archiveBase string, vssUsed bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator, prefetchWorkers int, changeMode string) (returnBytes uint64, returnMeta *BackupFileMeta, returnSkipped, returnExcluded, returnReadErrors []string, returnErr error) {
 	// Panic recovery - critical to prevent silent crashes during backup
 	defer func() {
 		if r := recover(); r != nil {
@@ -1645,10 +1667,23 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 	// (catalog_pos) just gets seeded from the previous archive instead of
 	// reset to 8. catalog (the sharedCatalogCoordinator passed into this
 	// function) drives that; see its doc comment above backupDirectory.
+	// Split modes write the archive as a metadata stream (named here, and
+	// recorded in the catalog under this name) plus a payload stream.
+	split := pbscommon.SplitArchiveMode(changeMode)
 	archiveName := archiveBase + ".pxar.didx"
+	payloadName := ""
+	if split {
+		archiveName = archiveBase + ".mpxar.didx"
+		payloadName = archiveBase + ".ppxar.didx"
+		if changeMode == pbscommon.ChangeDetectionMetadata {
+			writeBackupLog("Change detection: metadata mode is not implemented yet, reading every file (data mode)")
+		}
+		writeBackupLog(fmt.Sprintf("Change detection: %s mode, split archive %s + %s", changeMode, archiveName, payloadName))
+	}
 
 	archive := &pbscommon.PXARArchive{}
 	archive.ArchiveName = archiveName
+	archive.Split = split
 	archive.ExcludeList = excludeList
 	archive.Ctx = ctx
 	archive.ExcludeRoot = originalPath
@@ -1698,7 +1733,37 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 	writeBackupLog(fmt.Sprintf("Known chunks: %d", knownChunks.Len()))
 
 	pxarChunk := ChunkState{}
-	pxarChunk.Init(client, newchunk, reusechunk, failedchunk, knownChunks, progress, jobProg, onStats, backupdir)
+	// payloadChunk carries the file contents of a split archive and drives
+	// progress (its position is the archived data); pxarChunk is then the
+	// small metadata stream and reports no progress of its own.
+	var payloadChunk *ChunkState
+	if split {
+		pxarChunk.Init(client, newchunk, reusechunk, failedchunk, knownChunks, nil, jobProg, nil, "")
+
+		payloadKnown := haxmap.New[string, bool]()
+		prevPayload, perr := client.DownloadPreviousToBytes(payloadName)
+		if perr != nil {
+			writeBackupLog(fmt.Sprintf("No previous payload index for %s: %v", payloadName, perr))
+		}
+		for _, shahash := range pbscommon.ParsePreviousDIDXChunkDigests(prevPayload) {
+			payloadKnown.Set(shahash, true)
+		}
+		writeBackupLog(fmt.Sprintf("Known payload chunks: %d", payloadKnown.Len()))
+		payloadChunk = &ChunkState{}
+		payloadChunk.Init(client, newchunk, reusechunk, failedchunk, payloadKnown, progress, jobProg, onStats, backupdir)
+		payloadChunk.wrid, err = client.CreateDynamicIndex(payloadName)
+		if err != nil {
+			return 0, nil, nil, nil, nil, err
+		}
+		archive.PayloadWriteCB = func(b []byte) error {
+			return payloadChunk.HandleData(b, client)
+		}
+		archive.OnPayloadFileStart = func() error {
+			return payloadChunk.SuggestBoundary(client)
+		}
+	} else {
+		pxarChunk.Init(client, newchunk, reusechunk, failedchunk, knownChunks, progress, jobProg, onStats, backupdir)
+	}
 
 	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
 	if err != nil {
@@ -1742,6 +1807,13 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 	if err = pxarChunk.EOF(client); err != nil {
 		return 0, nil, logicalSkipped, logicalExcluded, logicalReadErrors, err
 	}
+	archivedBytes := pxarChunk.pos
+	if payloadChunk != nil {
+		if err = payloadChunk.EOF(client); err != nil {
+			return 0, nil, logicalSkipped, logicalExcluded, logicalReadErrors, err
+		}
+		archivedBytes += payloadChunk.pos
+	}
 	// The shared catalog index is NOT closed here — it stays open across every
 	// directory in this attempt and is finalized once, by the caller, after
 	// the whole per-directory loop (see runBackupInlineInternal).
@@ -1760,5 +1832,5 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 
 	// pxarChunk.pos is the true archived byte count for this directory (more
 	// accurate than the background size estimate, which only drives the %).
-	return pxarChunk.pos, aclMeta, logicalSkipped, logicalExcluded, logicalReadErrors, nil
+	return archivedBytes, aclMeta, logicalSkipped, logicalExcluded, logicalReadErrors, nil
 }

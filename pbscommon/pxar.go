@@ -398,6 +398,86 @@ type PXARArchive struct {
 	SkipCatalogMagic  bool
 	InitialCatalogPos uint64
 	DeferCatalogRoot  bool
+
+	// --- Split archives (pxar format version 2) ---
+	// Split writes the archive as two streams, the way the official client's
+	// "data" and "metadata" change-detection modes do: WriteCB receives the
+	// metadata stream (.mpxar: format version entry, the directory tree, and
+	// a PXAR_PAYLOAD_REF per regular file) and PayloadWriteCB the payload
+	// stream (.ppxar: start marker, one PXAR_PAYLOAD record per file, tail
+	// marker). Entries also carry the real sub-second mtime in this mode
+	// (on Windows the classic stream keeps writing 0, so existing archives
+	// keep deduplicating against their previous snapshots).
+	Split          bool
+	PayloadWriteCB PXAROutCB
+	// OnPayloadFileStart, when set in split mode, is called right before a
+	// file's PXAR_PAYLOAD record goes into the payload stream, after all
+	// earlier payload bytes have been handed to PayloadWriteCB, so the
+	// payload chunker can cut a chunk at the file start (better reuse later).
+	OnPayloadFileStart func() error
+	payloadBuffer      bytes.Buffer
+	payloadPos         uint64
+}
+
+// PayloadPos returns how many bytes have been written to the payload stream.
+func (a *PXARArchive) PayloadPos() uint64 { return a.payloadPos }
+
+// flushPayload hands the pending payload-stream bytes to PayloadWriteCB.
+func (a *PXARArchive) flushPayload() error {
+	b := make([]byte, 64*1024)
+	for {
+		count, _ := a.payloadBuffer.Read(b)
+		if count <= 0 {
+			break
+		}
+		if err := a.PayloadWriteCB(b[:count]); err != nil {
+			return fmt.Errorf("failed to write PXAR payload data: %w", err)
+		}
+		a.payloadPos += uint64(count)
+	}
+	return nil
+}
+
+// entryMetaFor is entryMeta plus the real sub-second mtime for split
+// archives (entryMeta reports 0 on Windows to keep classic archives stable).
+func (a *PXARArchive) entryMetaFor(info os.FileInfo, kind uint64) (mode uint64, uid, gid uint32, secs uint64, nanos uint32) {
+	mode, uid, gid, secs, nanos = entryMeta(info, kind)
+	if a.Split && nanos == 0 {
+		nanos = uint32(info.ModTime().Nanosecond())
+	}
+	return
+}
+
+// beginPayload starts a file's content: in split mode it writes a
+// PXAR_PAYLOAD_REF into the metadata stream, flushes both streams, gives the
+// payload chunker its file-start hint, then writes the PXAR_PAYLOAD header to
+// the payload stream. In classic mode it writes the inline PXAR_PAYLOAD
+// header. It returns the buffer the content bytes must go to and the flush
+// that moves them on.
+func (a *PXARArchive) beginPayload(size uint64) (*bytes.Buffer, func() error, error) {
+	if !a.Split {
+		binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD)
+		binary.Write(&a.buffer, binary.LittleEndian, size+16)
+		return &a.buffer, a.Flush, a.Flush()
+	}
+	if err := a.flushPayload(); err != nil {
+		return nil, nil, err
+	}
+	binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD_REF)
+	binary.Write(&a.buffer, binary.LittleEndian, uint64(32))
+	binary.Write(&a.buffer, binary.LittleEndian, a.payloadPos)
+	binary.Write(&a.buffer, binary.LittleEndian, size)
+	if err := a.Flush(); err != nil {
+		return nil, nil, err
+	}
+	if a.OnPayloadFileStart != nil {
+		if err := a.OnPayloadFileStart(); err != nil {
+			return nil, nil, err
+		}
+	}
+	binary.Write(&a.payloadBuffer, binary.LittleEndian, PXAR_PAYLOAD)
+	binary.Write(&a.payloadBuffer, binary.LittleEndian, size+16)
+	return &a.payloadBuffer, a.flushPayload, a.flushPayload()
 }
 
 // CatalogPos returns the archive's current catalog stream position. Used by
@@ -662,13 +742,27 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		}
 	}
 
+	if toplevel && a.Split {
+		// pxar format version 2: the metadata stream opens with the version
+		// entry (the root ENTRY follows it), the payload stream with its start
+		// marker.
+		binary.Write(&a.buffer, binary.LittleEndian, PXAR_FORMAT_VERSION)
+		binary.Write(&a.buffer, binary.LittleEndian, uint64(24))
+		binary.Write(&a.buffer, binary.LittleEndian, uint64(2))
+		binary.Write(&a.payloadBuffer, binary.LittleEndian, PXAR_PAYLOAD_START_MARKER)
+		binary.Write(&a.payloadBuffer, binary.LittleEndian, uint64(16))
+		if err := a.flushPayload(); err != nil {
+			return CatalogDir{}, err
+		}
+	}
+
 	if err := a.Flush(); err != nil {
 		return CatalogDir{}, err
 	}
 
 	dir_start_pos := a.pos
 
-	dMode, dUID, dGID, dSecs, dNanos := entryMeta(fileInfo, IFDIR)
+	dMode, dUID, dGID, dSecs, dNanos := a.entryMetaFor(fileInfo, IFDIR)
 	entry := &PXARFileEntry{
 		hdr:   PXAR_ENTRY,
 		len:   56,
@@ -884,6 +978,14 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		return CatalogDir{}, err
 	}
 
+	if toplevel && a.Split {
+		binary.Write(&a.payloadBuffer, binary.LittleEndian, PXAR_PAYLOAD_TAIL_MARKER)
+		binary.Write(&a.payloadBuffer, binary.LittleEndian, uint64(16))
+		if err := a.flushPayload(); err != nil {
+			return CatalogDir{}, err
+		}
+	}
+
 	if toplevel && !a.DeferCatalogRoot {
 		//We write special pointer to root dir here
 
@@ -1065,7 +1167,7 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	a.buffer.WriteString(basename)
 	a.buffer.WriteByte(0x00)
 
-	fMode, fUID, fGID, fSecs, fNanos := entryMeta(fileInfo, IFREG)
+	fMode, fUID, fGID, fSecs, fNanos := a.entryMetaFor(fileInfo, IFREG)
 	entry := &PXARFileEntry{
 		hdr:   PXAR_ENTRY,
 		len:   56,
@@ -1088,12 +1190,11 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	// and the read below (common for files in use WITHOUT VSS: logs, .pst, SQL .mdf)
 	// would otherwise desynchronise the whole archive and corrupt every entry that
 	// follows. So we cap reads at declaredSize and zero-pad any shortfall.
-	binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD)
 	declaredSize := uint64(fileInfo.Size())
-	filesize := declaredSize + 16 //Payload size + header size
-	binary.Write(&a.buffer, binary.LittleEndian, filesize)
-
-	if err := a.Flush(); err != nil {
+	// out/flush are the inline stream for a classic archive, the payload
+	// stream for a split one (see beginPayload).
+	out, flush, err := a.beginPayload(declaredSize)
+	if err != nil {
 		return CatalogFile{}, err
 	}
 
@@ -1150,9 +1251,9 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 			recoveries++
 		}
 		if nread > 0 {
-			a.buffer.Write(readbuffer[:nread])
+			out.Write(readbuffer[:nread])
 			written += uint64(nread)
-			if ferr := a.Flush(); ferr != nil {
+			if ferr := flush(); ferr != nil {
 				return CatalogFile{}, ferr
 			}
 		}
@@ -1179,9 +1280,9 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 			if remaining := declaredSize - written; remaining < n {
 				n = remaining
 			}
-			a.buffer.Write(pad[:n])
+			out.Write(pad[:n])
 			written += n
-			if ferr := a.Flush(); ferr != nil {
+			if ferr := flush(); ferr != nil {
 				return CatalogFile{}, ferr
 			}
 		}
@@ -1235,7 +1336,7 @@ func (a *PXARArchive) writeSymlink(path, basename string, info os.FileInfo) (Cat
 	a.buffer.WriteString(basename)
 	a.buffer.WriteByte(0x00)
 
-	mode, uid, gid, secs, nanos := entryMeta(info, IFLNK)
+	mode, uid, gid, secs, nanos := a.entryMetaFor(info, IFLNK)
 	binary.Write(&a.buffer, binary.LittleEndian, &PXARFileEntry{
 		hdr:   PXAR_ENTRY,
 		len:   56,
@@ -1283,13 +1384,13 @@ func (a *PXARArchive) WriteVirtualFile(filename string, data []byte, mtime uint6
 	}
 	binary.Write(&a.buffer, binary.LittleEndian, entry)
 
-	binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD)
-	filesize := uint64(len(data)) + 16
-	binary.Write(&a.buffer, binary.LittleEndian, filesize)
+	out, flush, err := a.beginPayload(uint64(len(data)))
+	if err != nil {
+		return CatalogFile{}, err
+	}
+	out.Write(data)
 
-	a.buffer.Write(data)
-
-	if err := a.Flush(); err != nil {
+	if err := flush(); err != nil {
 		return CatalogFile{}, err
 	}
 
