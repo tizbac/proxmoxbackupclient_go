@@ -581,6 +581,8 @@ Every field in the backup card's 2-column grid is conditional (`eta !== null`, `
 - [ ] Always render the full set of rows in a fixed order; show "Calculating..." for values that are not known yet (ETA, speed, forecast finish) and "Not available" where a value cannot exist for this run (e.g. total size unknown, failed chunks on restore).
 - [ ] Give the current-file and current-folder lines a fixed height (blank or "Waiting..." when empty) so the card does not change height.
 - [ ] Same treatment for the restore card, including the stage line.
+- [ ] Drop the grey "Processed: 333.3 GB / 447.7 GB (New: ..., Reused: ... chunks)" status box under the grid while a backup runs: it repeats the Data and Chunks rows word for word.
+- [ ] Units: `formatBytes` (App.jsx) divides by 1024 but labels the result KB/MB/GB/TB, so "447.7 GB" is really 447.7 GiB (480.7 GB), while the Speed row shows both MB/s and MiB/s correctly. Label it GiB, or show both like `formatSpeed`, so the figures agree with Windows Explorer (GiB, shown as "GB") and PBS (decimal) without guessing.
 
 ### ~~⏹️ No way to cancel a running machine backup~~ ✅ ALREADY WORKED — correcting an earlier wrong note (2026-09-25)
 
