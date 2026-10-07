@@ -80,6 +80,8 @@ func (a *App) SaveFullConfigFromAPI(doc map[string]interface{}) error {
 	cfg.BaseURL = incoming.BaseURL
 	cfg.CertFingerprint = incoming.CertFingerprint
 	cfg.AuthID = incoming.AuthID
+	cfg.Username = incoming.Username
+	cfg.Password = incoming.Password
 	if incoming.Secret != "" {
 		cfg.Secret = incoming.Secret
 	}
@@ -160,6 +162,15 @@ func (a *App) SaveFullConfigFromAPI(doc map[string]interface{}) error {
 		if cfg.Secret == "" {
 			return fmt.Errorf("secret requis")
 		}
+	} else if cfg.Username != "" {
+		if err := security.ValidateUsername(cfg.Username); err != nil {
+			return fmt.Errorf("Invalid Username: %w", err)
+		}
+		if cfg.Password == "" {
+			return fmt.Errorf("Password required")
+		}
+	} else {
+		return fmt.Errorf("Either username or authid is required!")
 	}
 	if cfg.CertFingerprint != "" {
 		if err := security.ValidateFingerprint(cfg.CertFingerprint); err != nil {
@@ -271,6 +282,8 @@ func (a *App) TestPBSServerForAPI(id string, draft map[string]interface{}) error
 		CertFingerPrint:  cfg.CertFingerprint,
 		AuthID:           cfg.AuthID,
 		Secret:           cfg.Secret,
+		Username:         cfg.Username,
+		Password:         cfg.Password,
 		Ticket:           cfg.Ticket,
 		CSRFToken:        cfg.CSRFToken,
 		Datastore:        cfg.Datastore,
@@ -311,8 +324,8 @@ func (a *App) MintPBSTicketForAPI(id string) (*api.PBSTicket, error) {
 		client := &pbscommon.PBSClient{
 			BaseURL:         cfg.BaseURL,
 			CertFingerPrint: cfg.CertFingerprint,
-			Username:        cfg.AuthID,
-			Password:        cfg.Secret,
+			Username:        cfg.Username,
+			Password:        cfg.Password,
 			Insecure:        cfg.CertFingerprint != "",
 		}
 		if err := client.ObtainTicket(); err != nil {
