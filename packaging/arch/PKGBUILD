@@ -33,10 +33,10 @@ makedepends=(go gtk3 webkit2gtk-4.1)
 depends=(glibc gtk3 webkit2gtk-4.1 gdk-pixbuf2 glib2 libsoup3 systemd)
 options=(!strip)
 
-_commit=4ddb278672bff765b3f4fdde9d277353443d416f
+_commit=ae5a7716eeaef866477c7d365c9899cddbd88c0c
 source=("https://github.com/tizbac/proxmoxbackupclient_go/archive/${_commit}.tar.gz"
         "pbsgo.service")
-sha256sums=('804d78f7cbc37b7e98389c3354477e64fb598c2928302b3b8227a46890246d01'
+sha256sums=('66ae18afa8f62221d8d336a7812e4bc7e55de2e0a0735eca1ddba52058ece212'
             'acf4e8ab59e4a8a1483df5b7ce3bb4745f8073c418465996dc22cada56be7357')
 optdepends=('polkit: pkexec elevation for the service token fetch and machine backup'
             'sudo: fallback elevation when pkexec is unavailable')
