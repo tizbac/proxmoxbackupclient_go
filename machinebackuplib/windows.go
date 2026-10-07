@@ -648,6 +648,6 @@ func SysTraySetup() {
 
 // backupWholeDisk is Linux-only (see linux.go). On Windows whole disks are
 // handled through the \\\\.\\PhysicalDriveN path, so this reports "not handled".
-func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback) (bool, int64, error) {
+func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, useSnapshot bool, progressCallback ProgressCallback) (bool, int64, error) {
 	return false, 0, nil
 }

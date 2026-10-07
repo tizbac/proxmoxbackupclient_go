@@ -125,7 +125,7 @@ func isBlockDevice(path string) bool {
 	return fi.Mode()&os.ModeDevice != 0 && fi.Mode()&os.ModeCharDevice == 0
 }
 
-func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback) (bool, int64, error) {
+func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, useSnapshot bool, progressCallback ProgressCallback) (bool, int64, error) {
 	if !strings.HasPrefix(dev, "/dev/") {
 		return false, 0, nil
 	}
@@ -162,13 +162,43 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progres
 
 	fidxName := fmt.Sprintf("drive-sata%d.img.fidx", index)
 
-	err = snapshot.CreateVSSSnapshot(mountpoints, false, func(snapshots map[string]snapshot.SnapShot) error {
-		return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback)
-	})
-	if err != nil {
-		return true, 0, err
+	if useSnapshot && len(mountpoints) > 0 {
+		// Try to create snapshots for mounted partitions
+		err := snapshot.CreateVSSSnapshot(mountpoints, false, func(snapshots map[string]snapshot.SnapShot) error {
+			return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback)
+		})
+		if err != nil {
+			log.Printf("Warning: snapshot creation failed (%v), falling back to raw disk read (crash-consistent)", err)
+			// Fall through to raw read
+		} else {
+			return true, total, nil
+		}
 	}
-	return true, total, nil
+
+	// Fallback: raw disk read (crash-consistent)
+	log.Printf("Reading raw disk %s (crash-consistent, no snapshots)", dev)
+	return readRawDisk(client, dev, fidxName, uint64(total), progressCallback)
+}
+
+func readRawDisk(client *pbscommon.PBSClient, dev, fidxName string, total uint64, progressCallback ProgressCallback) (bool, int64, error) {
+	// Get partitions for raw read
+	parts, err := enumeratePartitions(strings.TrimPrefix(dev, "/dev/"))
+	if err != nil {
+		return false, 0, err
+	}
+
+	// Create a dummy snapshot map with no valid snapshots - streamStitchedDisk
+	// will skip partitions without valid snapshots and read raw sectors
+	emptySnapshots := make(map[string]snapshot.SnapShot)
+	for _, p := range parts {
+		if p.mountpoint != "" {
+			emptySnapshots[p.mountpoint] = snapshot.SnapShot{}
+		}
+	}
+	if err := streamStitchedDisk(client, dev, fidxName, total, parts, emptySnapshots, progressCallback); err != nil {
+		return false, 0, err
+	}
+	return true, int64(total), nil
 }
 
 type diskSegment struct {

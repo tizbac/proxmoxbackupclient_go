@@ -1059,6 +1059,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 		BackupType:      opts.BackupType,
 		BackupDevices:   opts.BackupObjects,
 		Crypt:           opts.Crypt,
+		UseSnapshot:     opts.UseVSS,
 	}
 
 	// Progress callback wrapper. Returning true (user pressed Stop, which

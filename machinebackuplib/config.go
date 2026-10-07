@@ -54,6 +54,11 @@ type Config struct {
 	// passphrase prompt stays with whoever owns the console. It is never
 	// serialized: a -config file carries KeyFile, not the unlocked key.
 	Crypt *pbscommon.CryptConfig `json:"-"`
+
+	// UseSnapshot controls whether to attempt creating block-level snapshots
+	// (via dattobd/elastio-snap on Linux, VSS on Windows) for crash-consistent
+	// images. When false, the backup reads raw disks (crash-consistent only).
+	UseSnapshot bool `json:"use_snapshot,omitempty"`
 }
 
 func (c *Config) Valid() bool {

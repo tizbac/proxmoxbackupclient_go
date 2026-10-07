@@ -565,7 +565,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			// partition, mounted ones snapshotted). Anything else falls back
 			// to a plain raw read of the device/file.
 			isGPT := diskHasGPT(dev)
-			handled, size, err := backupWholeDisk(client, dev, i, deviceCallback)
+			handled, size, err := backupWholeDisk(client, dev, i, cfg.UseSnapshot, deviceCallback)
 			if err != nil {
 				return nil, fmt.Errorf("backup device %s: %v", dev, err)
 			}
