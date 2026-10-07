@@ -168,15 +168,13 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, useSnap
 			return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback)
 		})
 		if err != nil {
-			log.Printf("Warning: snapshot creation failed (%v), falling back to raw disk read (crash-consistent)", err)
-			// Fall through to raw read
-		} else {
-			return true, total, nil
+			return false, 0, fmt.Errorf("snapshot creation failed (dattobd/elastio-snap required for crash-consistent backup): %w", err)
 		}
+		return true, total, nil
 	}
 
-	// Fallback: raw disk read (crash-consistent)
-	log.Printf("Reading raw disk %s (crash-consistent, no snapshots)", dev)
+	// useSnapshot is false: raw disk read (crash-consistent) - this is the explicit user choice
+	log.Printf("Reading raw disk %s (crash-consistent, snapshots disabled by user)", dev)
 	return readRawDisk(client, dev, fidxName, uint64(total), progressCallback)
 }
 
