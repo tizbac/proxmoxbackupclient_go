@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
@@ -86,6 +87,32 @@ type App struct {
 type pendingPostActionsEntry struct {
 	job     *ScheduledJob
 	trigger string
+	// result is the run's structured outcome, set by the service build's
+	// OnResult so the scheduler's history write can include it.
+	result atomic.Pointer[BackupStatus]
+}
+
+// setRunResult stores status for the run under key, if it is registered.
+func (a *App) setRunResult(key string, status *BackupStatus) {
+	if key == "" || status == nil {
+		return
+	}
+	if v, ok := a.pendingPostActions.Load(key); ok {
+		v.(*pendingPostActionsEntry).result.Store(status)
+	}
+}
+
+// takeRunResult returns the stored outcome of the run under key (nil when
+// none was stored). The entry itself stays for takePendingPostActions.
+func (a *App) takeRunResult(key string) *BackupStatus {
+	if key == "" {
+		return nil
+	}
+	v, ok := a.pendingPostActions.Load(key)
+	if !ok {
+		return nil
+	}
+	return v.(*pendingPostActionsEntry).result.Load()
 }
 
 // registerPendingPostActions stores job/trigger under a fresh, unique key and

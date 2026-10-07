@@ -27,6 +27,14 @@ type Server struct {
 	progressMutex  sync.RWMutex
 }
 
+// RunOptionsRegistrar is optionally implemented by the BackupHandler: it
+// records per-run options that StartBackup's fixed signature cannot carry
+// (a Backup Set's change-detection mode) and returns the key to pass as
+// StartBackup's postActionsKey.
+type RunOptionsRegistrar interface {
+	RegisterRunOptions(backupType, changeDetectionMode string) string
+}
+
 // BackupHandler interface that the service must implement
 // NOTE: StartBackup will be called in a goroutine (async), so it must be thread-safe
 type BackupHandler interface {
@@ -193,6 +201,15 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 			compression = "fastest"
 		}
 
+		// postActionsKey never crosses the HTTP boundary — service mode fires
+		// post-actions from scheduler.go's own local job variable. A request
+		// carrying run options (a Backup Set's change detection) gets a local
+		// key holding them instead.
+		runKey := ""
+		if r, ok := s.app.(RunOptionsRegistrar); ok && req.ChangeDetectionMode != "" {
+			runKey = r.RegisterRunOptions(req.BackupType, req.ChangeDetectionMode)
+		}
+
 		err := s.app.StartBackup(
 			req.BackupType,
 			req.BackupDirs,
@@ -203,8 +220,7 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 			compression,
 			req.PBSServerID,
 			req.Comment,
-			"", // postActionsKey: never crosses the HTTP boundary — service mode
-			// fires post-actions from scheduler.go's own local job variable.
+			runKey,
 		)
 
 		// Update final status if callbacks didn't fire

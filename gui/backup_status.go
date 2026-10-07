@@ -61,6 +61,14 @@ type BackupStatus struct {
 	FailedChunks uint64        `json:"failed_chunks"`
 	Directories  []DirResult   `json:"directories"`
 
+	// ChangeDetection is the change-detection mode of a split-archive run
+	// ("data" or "metadata"; empty for the classic format). ReusedFiles and
+	// ReusedFileBytes count the unchanged files metadata mode took from the
+	// previous snapshot without reading them.
+	ChangeDetection string `json:"change_detection,omitempty"`
+	ReusedFiles     uint64 `json:"reused_files,omitempty"`
+	ReusedFileBytes uint64 `json:"reused_file_bytes,omitempty"`
+
 	// Three buckets of files that did not make it into the backup intact.
 	// ExcludedByPolicy and Corrupted are populated in Group 1; SkippedReadError
 	// comes from the existing PBSClient.SkippedFiles list today.

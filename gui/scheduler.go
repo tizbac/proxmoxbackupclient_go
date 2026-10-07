@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"pbscommon"
 )
 
 // runningJobs tracks currently executing jobs to prevent duplicates
@@ -36,7 +37,20 @@ type ScheduledJob struct {
 	// numeric PBS ID, computed by the editor, so the same set always lands in
 	// the same vm/<id> group.
 	MachineAsVM bool     `json:"machineAsVm,omitempty"`
-	ExcludeList []string `json:"excludeList"`
+	// ChangeDetectionMode is the folder-backup format and change detection,
+	// as in the official client: "" or "legacy" (classic archive, every file
+	// read), "data" (split archive, every file read) or "metadata" (split
+	// archive, unchanged files reused without reading). Ignored for machine
+	// sets, which back up disk images.
+	ChangeDetectionMode string `json:"changeDetectionMode,omitempty"`
+	// FullReadEvery makes every Nth run of a metadata-mode set read every
+	// file (a data-mode run), catching changes that leave size and mtime
+	// untouched and dropping padding from reuse. 0 means never.
+	FullReadEvery int `json:"fullReadEvery,omitempty"`
+	// MetadataRunsSinceFullRead is run state, not a setting: metadata-mode
+	// runs dispatched since the last full read. Kept across edits.
+	MetadataRunsSinceFullRead int `json:"metadataRunsSinceFullRead,omitempty"`
+	ExcludeList                []string `json:"excludeList"`
 	Compression string   `json:"compression"`       // "fastest", "default", "better", "best"
 	LastRun     string   `json:"lastRun,omitempty"` // ISO timestamp
 	NextRun     string   `json:"nextRun,omitempty"` // ISO timestamp
@@ -114,6 +128,13 @@ type JobHistory struct {
 	// persisted before this field existed, for restores, and for runs that
 	// failed before the key was resolved; the frontend shows those as unknown.
 	Encryption string `json:"encryption,omitempty"`
+	// ChangeDetection is the folder backup's mode for this run ("legacy",
+	// "data" or "metadata"; empty for machine backups and older entries).
+	// ReusedFiles/ReusedBytes count unchanged files metadata mode reused
+	// without reading them (0 when not known for this run).
+	ChangeDetection string `json:"changeDetection,omitempty"`
+	ReusedFiles     uint64 `json:"reusedFiles,omitempty"`
+	ReusedBytes     uint64 `json:"reusedBytes,omitempty"`
 
 	// BackupType is "directory" or "machine" — which top-level pipeline ran.
 	// Always set for entries written from now on (each OnComplete closure in
@@ -332,8 +353,9 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 	found := false
 	for i, j := range jobs {
 		if j.ID == job.ID {
-			// Preserve enabled state
+			// Preserve enabled state and run state
 			job.Enabled = j.Enabled
+			job.MetadataRunsSinceFullRead = j.MetadataRunsSinceFullRead
 			// Recalculate next run with new schedule time
 			job.NextRun = calculateNextRun(job)
 			jobs[i] = job
@@ -937,6 +959,15 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 
 	runPreBackupApp(job)
 
+	// This run's change detection (metadata sets read every file on every
+	// FullReadEvery-th run). The job copy carries the decision to the run
+	// through registerPendingPostActions; the counter is stored with LastRun.
+	runMode, nextMetaCount := changeDetectionForRun(job)
+	if job.ChangeDetectionMode == pbscommon.ChangeDetectionMetadata && runMode == pbscommon.ChangeDetectionData {
+		writeDebugLog(fmt.Sprintf("Backup Set %s: full read run (every %d runs)", job.Name, job.FullReadEvery))
+	}
+	job.ChangeDetectionMode = runMode
+
 	// job.Name passed directly, and postActions/trigger registered under a
 	// fresh key (app_types.go) rather than a shared field — NOT the generic
 	// fallback lookup a shared field would need. Found live 2026-09-27
@@ -1015,6 +1046,12 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			Trigger:    trigger,
 			MessageKey: MsgBackupCompletedGeneric,
 		}
+		if job.BackupType != "machine" {
+			historyEntry.ChangeDetection = changeDetectionLabel(job.ChangeDetectionMode)
+			if r := a.takeRunResult(postActionsKey); r != nil {
+				historyEntry.ReusedFiles, historyEntry.ReusedBytes = r.ReusedFiles, r.ReusedFileBytes
+			}
+		}
 
 		if err != nil {
 			writeDebugLog(fmt.Sprintf("Scheduled job error: %v", err))
@@ -1090,6 +1127,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 		if j.ID == job.ID {
 			jobs[i].LastRun = time.Now().Format(time.RFC3339)
 			jobs[i].NextRun = calculateNextRun(j)
+			jobs[i].MetadataRunsSinceFullRead = nextMetaCount
 			found = true
 			break
 		}

@@ -290,6 +290,10 @@ type jobProgress struct {
 
 	currentFile atomic.Value // string: logical path of the file most recently started
 
+	// Metadata change detection totals across every directory of the job.
+	reusedFiles atomic.Uint64
+	reusedBytes atomic.Uint64
+
 	lastPercentMu sync.Mutex
 	lastPercent   float64
 }
@@ -1343,6 +1347,18 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	// — see msgcodes.go's MsgSkippedFilesNote doc comment — without losing
 	// that detail when a localized message_key is rendered instead of Message.
 	completionParams["skipped"] = len(allSkipped)
+	// Same for the change-detection outcome, so the history entry written from
+	// OnComplete can show it (Reports).
+	changeMode := opts.ChangeDetectionMode
+	if pbscommon.SplitArchiveMode(changeMode) {
+		completionParams["changeDetection"] = changeMode
+		completionParams["reusedFiles"] = jobProg.reusedFiles.Load()
+		completionParams["reusedBytes"] = jobProg.reusedBytes.Load()
+		if changeMode == pbscommon.ChangeDetectionMetadata {
+			writeBackupLog(fmt.Sprintf("Metadata change detection: %d unchanged files (%s) reused without reading in this job",
+				jobProg.reusedFiles.Load(), formatByteSize(jobProg.reusedBytes.Load())))
+		}
+	}
 
 	if len(allSkipped) > 0 {
 		completionMsg += fmt.Sprintf("\n⚠️  %d files/folders skipped (access denied or junction points)", len(allSkipped))
@@ -1400,6 +1416,11 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		Message:          completionMsg,
 		MessageKey:       completionKey,
 		MessageParams:    completionParams,
+	}
+	if pbscommon.SplitArchiveMode(changeMode) {
+		status.ChangeDetection = changeMode
+		status.ReusedFiles = jobProg.reusedFiles.Load()
+		status.ReusedFileBytes = jobProg.reusedBytes.Load()
 	}
 
 	// One machine-greppable result line for support (pairs with the start-of-run
@@ -1842,6 +1863,8 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 		if reuseStatsHook != nil {
 			reuseStatsHook(archiveName, st)
 		}
+		jobProg.reusedFiles.Add(st.Files)
+		jobProg.reusedBytes.Add(st.Bytes)
 		writeBackupLog(fmt.Sprintf("Metadata change detection: %d unchanged files (%s) reused without reading, %d chunks reused, %s padding; %d unchanged files read anyway to limit padding",
 			st.Files, formatByteSize(st.Bytes), st.Chunks, formatByteSize(st.Padding), st.OverPadding))
 	}
