@@ -302,6 +302,11 @@ type PXARArchive struct {
 	// (progress display only; must be cheap and non-blocking).
 	OnFile func(path string)
 
+	// OnNotice, when set, receives informational messages for the job log,
+	// such as the source disk dropping out and coming back (see
+	// source_wait.go).
+	OnNotice func(msg string)
+
 	catalog_pos  uint64
 	SkippedFiles []string // ALL skips (read errors, junctions, system auto-excludes) — for logging/sidecar display
 	// ReadErrors is the OUTCOME-affecting subset of SkippedFiles: genuine read
@@ -576,6 +581,12 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 	// Check if directory is a junction point/symlink before reading it
 	fileInfo, err := os.Lstat(path)
 	if err != nil {
+		err = a.retrySource(path, err, "reading directory", func() (e error) { fileInfo, e = os.Lstat(path); return })
+	}
+	if a.walkMustStop(err) {
+		return CatalogDir{}, err
+	}
+	if err != nil {
 		if toplevel {
 			// Toplevel directory MUST be accessible — this is a fatal error
 			return CatalogDir{}, fmt.Errorf("cannot stat backup root directory: %s: %w", path, err)
@@ -594,6 +605,12 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 	}
 
 	files, err := os.ReadDir(path)
+	if err != nil {
+		err = a.retrySource(path, err, "reading directory", func() (e error) { files, e = os.ReadDir(path); return })
+	}
+	if a.walkMustStop(err) {
+		return CatalogDir{}, err
+	}
 	if err != nil {
 		if toplevel {
 			// Toplevel directory MUST be readable — this is a fatal error
@@ -938,6 +955,12 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	// Use Lstat to detect symlinks/junction points without following them
 	fileInfo, err := os.Lstat(path)
 	if err != nil {
+		err = a.retrySource(path, err, "reading", func() (e error) { fileInfo, e = os.Lstat(path); return })
+	}
+	if a.walkMustStop(err) {
+		return CatalogFile{}, err
+	}
+	if err != nil {
 		// Log stat errors but continue backup - don't fail on inaccessible files
 		skipMsg := fmt.Sprintf("Cannot stat file: %s (Error: %v)", path, err)
 		a.addReadError(skipMsg)
@@ -971,7 +994,7 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	// io.Reader contract. fileHandle is only set (and only deferred-closed)
 	// when we actually opened a real file here.
 	var reader io.Reader
-	var fileHandle *os.File
+	var fileHandle io.ReadSeekCloser
 
 	if prefetched != nil {
 		<-prefetched.done
@@ -986,7 +1009,13 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	}
 
 	if reader == nil {
-		f, err := os.Open(path)
+		f, err := openForRead(path)
+		if err != nil {
+			err = a.retrySource(path, err, "opening", func() (e error) { f, e = openForRead(path); return })
+		}
+		if a.walkMustStop(err) {
+			return CatalogFile{}, err
+		}
 		if err != nil {
 			// Log file open errors but continue backup - don't fail on locked/system files
 			skipMsg := fmt.Sprintf("Cannot open file: %s (Error: %v)", path, err)
@@ -996,9 +1025,13 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 		fileHandle = f
 		reader = f
 	}
-	if fileHandle != nil {
-		defer fileHandle.Close()
-	}
+	// A read that fails mid-file may swap in a reopened handle (see
+	// resumeRead), so close whichever handle is current at the end.
+	defer func() {
+		if fileHandle != nil {
+			fileHandle.Close()
+		}
+	}()
 
 	// Capture per-file metadata (NTFS ACLs on Windows). Best-effort.
 	if a.MetaCollector != nil {
@@ -1052,6 +1085,10 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 
 	readbuffer := make([]byte, 1024*64)
 	var written uint64
+	// readFailed is set when the file could not be read to the end: it is
+	// zero-padded and flagged below and the backup carries on.
+	var readFailed error
+	recoveries := 0
 
 	for written < declaredSize {
 		toRead := uint64(len(readbuffer))
@@ -1059,6 +1096,45 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 			toRead = remaining
 		}
 		nread, err := reader.Read(readbuffer[:toRead])
+		if err != nil && err != io.EOF && nread == 0 {
+			// The source may have dropped out (see source_wait.go): wait
+			// for it, reopen the file and read on from the same offset.
+			// The retry reads the next block itself, so a handle that
+			// opens but cannot read never counts as recovered.
+			if recoveries >= maxReadRecoveries {
+				readFailed = err
+				break
+			}
+			rerr := a.retrySource(path, err, "reading", func() error {
+				f, oerr := openForRead(path)
+				if oerr != nil {
+					return oerr
+				}
+				if _, serr := f.Seek(int64(written), io.SeekStart); serr != nil {
+					f.Close()
+					return serr
+				}
+				n, rerr := f.Read(readbuffer[:toRead])
+				if n == 0 && rerr != nil && rerr != io.EOF {
+					f.Close()
+					return rerr
+				}
+				if fileHandle != nil {
+					fileHandle.Close()
+				}
+				fileHandle, reader = f, f
+				nread, err = n, rerr
+				return nil
+			})
+			if a.walkMustStop(rerr) {
+				return CatalogFile{}, fmt.Errorf("failed to read from %s: %w", path, rerr)
+			}
+			if rerr != nil {
+				readFailed = rerr
+				break
+			}
+			recoveries++
+		}
 		if nread > 0 {
 			a.buffer.Write(readbuffer[:nread])
 			written += uint64(nread)
@@ -1069,18 +1145,20 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 		if err == io.EOF {
 			break
 		}
-		if err != nil {
-			return CatalogFile{}, fmt.Errorf("failed to read from %s: %w", path, err)
-		}
 	}
 
-	// File shrank since Lstat (or read short): pad with zeros so the emitted
-	// payload matches the declared length and the stream stays aligned. Flag it as
-	// a content-instability read error so the backup is not reported as fully
-	// verified (v2-H-02) rather than silently passing.
+	// File shrank since Lstat (or read short), or could not be read to the
+	// end: pad with zeros so the emitted payload matches the declared length
+	// and the stream stays aligned. Flag it as a read error so the backup is
+	// not reported as fully verified (v2-H-02) rather than silently passing.
 	if written < declaredSize {
-		a.addReadError(
-			fmt.Sprintf("File shrank during backup, zero-padded to declared size (content inconsistent): %s", path))
+		if readFailed != nil {
+			a.addReadError(
+				fmt.Sprintf("Read failed after %d of %d bytes, zero-padded to declared size (content incomplete): %s (Error: %v)", written, declaredSize, path, readFailed))
+		} else {
+			a.addReadError(
+				fmt.Sprintf("File shrank during backup, zero-padded to declared size (content inconsistent): %s", path))
+		}
 		pad := make([]byte, 1024*64)
 		for written < declaredSize {
 			n := uint64(len(pad))

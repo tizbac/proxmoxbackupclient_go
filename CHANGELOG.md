@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preferences: the parallel restore and parallel backup read-ahead options moved to the **Backup Options** tab, and View Logs moved to the **Message Log** tab. Both tabs were previously greyed-out placeholders.
 
 ### Fixed
+- **A source disk dropping out no longer throws the whole backup away.** One failed read used to fail the job, even if the disk was back seconds later (seen on a USB disk on a shared hub, 389 GB into a 448 GB backup). When a file or folder operation fails with a "device not ready / no longer present" error, the backup now waits up to 2 minutes for the disk to come back, reopens the file and carries on from where it stopped, logging both events. If the folder is reachable again but one file still cannot be read (a bad sector, say), only that file is affected: it is zero-padded to its recorded size and flagged as incomplete, like a file that shrinks during backup. Other read errors (a locked region, for example) are also treated per file instead of failing the job. If the disk does not come back within 2 minutes, the backup fails as before. Applies to the GUI and the `directorybackup` CLI. Tested by detaching a virtual disk mid-file: the backup completed and restored byte-identical, where the previous build failed.
 - **View Logs did nothing.** It passed the folder path to the browser-open call, which Wails 2.13 rejects (it only accepts URLs with a scheme). It now opens the folder directly.
 
 ## [0.5.1] - 2026-10-06

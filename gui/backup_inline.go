@@ -1659,6 +1659,8 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 		jobProg.currentFile.Store(p)
 	}
 	archive.PrefetchWorkers = prefetchWorkers // logical root for VSS-safe absolute-pattern matching
+	// Source disk dropping out and coming back mid-backup (source_wait.go).
+	archive.OnNotice = func(msg string) { writeBackupLog(msg) }
 
 	// Inject backup metadata into the PXAR archive root
 	hostname, _ := os.Hostname()

@@ -469,6 +469,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 
 	archive := &pbscommon.PXARArchive{}
 	archive.ArchiveName = "backup.pxar.didx"
+	archive.OnNotice = func(msg string) { fmt.Println(msg) }
 
 	// Captures extended attributes incl. POSIX ACLs on Linux (no-op elsewhere);
 	// uploaded as the same side-car blob the GUI writes so a GUI restore can
