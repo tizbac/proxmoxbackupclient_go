@@ -12,6 +12,11 @@ import (
 	"os"
 )
 
+// RequestQuit is the GUI's real quit (main.go). The service has no window to
+// quit and never offers "Restart as administrator" (RequestElevation, its only
+// shared caller), so it does nothing here.
+func (a *App) RequestQuit() {}
+
 // GetConfigWithHostname returns the configuration with hostname
 func (a *App) GetConfigWithHostname() map[string]interface{} {
 	hostname, _ := os.Hostname()
