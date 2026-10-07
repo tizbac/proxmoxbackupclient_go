@@ -985,8 +985,10 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	// A Backup Set's change detection for this run (scheduler.go); a one-off
 	// backup (no key) and a machine backup use neither.
 	changeMode := ""
+	scheduledFullRead := false
 	if backupType == "directory" {
 		changeMode = a.runChangeDetectionMode(postActionsKey)
+		scheduledFullRead = a.runScheduledFullRead(postActionsKey)
 	}
 
 	var targetDirs []string
@@ -1039,6 +1041,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		// comment.
 		PrefetchWorkers: a.config.EffectivePrefetchWorkers(),
 		ChangeDetectionMode: changeMode,
+		ScheduledFullRead:   scheduledFullRead,
 		Crypt:               pbsCfg.Crypt,
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
@@ -1162,6 +1165,15 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			}
 			if !success {
 				historyEntry.Status = "failed"
+				// A Stop is the user's choice, not a failure: Reports shows
+				// it as cancelled rather than with a red cross.
+				if isCancelledRun(message, msgKey) {
+					historyEntry.Status = "cancelled"
+				}
+			}
+			if postActionsEntry != nil && postActionsEntry.job != nil && backupType == "directory" {
+				readEveryFile, _ := msgP["readEveryFile"].(bool)
+				a.recordChangeDetectionOutcome(postActionsEntry.job.ID, success, readEveryFile)
 			}
 			if err := a.AddJobHistory(historyEntry); err != nil {
 				writeDebugLog(fmt.Sprintf("Warning: Failed to add manual backup to history: %v", err))
@@ -1212,14 +1224,19 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			return
 		}
 		runtime.EventsEmit(a.ctx, "backup:stats", map[string]interface{}{
-			"percent":      stats.Percent * 100,
-			"bytesDone":    stats.BytesDone,
-			"bytesTotal":   stats.BytesTotal,
-			"newChunks":    stats.NewChunks,
-			"reusedChunks": stats.ReusedChunks,
-			"failedChunks": stats.FailedChunks,
-			"currentDir":   stats.CurrentDir,
-			"message":      stats.Message,
+			"percent":       stats.Percent * 100,
+			"bytesDone":     stats.BytesDone,
+			"bytesTotal":    stats.BytesTotal,
+			"newChunks":     stats.NewChunks,
+			"reusedChunks":  stats.ReusedChunks,
+			"failedChunks":  stats.FailedChunks,
+			"currentDir":    stats.CurrentDir,
+			"message":       stats.Message,
+			"filesDone":     stats.FilesDone,
+			"filesTotal":    stats.FilesTotal,
+			"uploadedBytes": stats.UploadedBytes,
+			"phase":         stats.Phase,
+			"readReason":    stats.ReadReason,
 		})
 	}
 	opts.OnResult = func(status *BackupStatus) {
@@ -1532,14 +1549,19 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			return
 		}
 		runtime.EventsEmit(a.ctx, "backup:stats", map[string]interface{}{
-			"percent":      stats.Percent * 100,
-			"bytesDone":    stats.BytesDone,
-			"bytesTotal":   stats.BytesTotal,
-			"newChunks":    stats.NewChunks,
-			"reusedChunks": stats.ReusedChunks,
-			"failedChunks": stats.FailedChunks,
-			"currentDir":   stats.CurrentDir,
-			"message":      stats.Message,
+			"percent":       stats.Percent * 100,
+			"bytesDone":     stats.BytesDone,
+			"bytesTotal":    stats.BytesTotal,
+			"newChunks":     stats.NewChunks,
+			"reusedChunks":  stats.ReusedChunks,
+			"failedChunks":  stats.FailedChunks,
+			"currentDir":    stats.CurrentDir,
+			"message":       stats.Message,
+			"filesDone":     stats.FilesDone,
+			"filesTotal":    stats.FilesTotal,
+			"uploadedBytes": stats.UploadedBytes,
+			"phase":         stats.Phase,
+			"readReason":    stats.ReadReason,
 		})
 	}
 	opts.OnResult = func(status *BackupStatus) {

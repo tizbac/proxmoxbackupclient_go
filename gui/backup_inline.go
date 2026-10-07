@@ -33,17 +33,26 @@ import (
 // formatBytes (App.jsx) in spirit; kept as a separate, simpler Go
 // implementation since a debug-log string has no need to match its exact
 // decimal-place formatting.
+//
+// Both units are shown, decimal first and binary in brackets, the same
+// convention as the GUI's speed ("357.9 GB (333.3 GiB)"): this used to divide
+// by 1024 and label the result GB, so figures disagreed with PBS (decimal)
+// and looked wrong next to Windows Explorer (binary, labelled GB).
 func formatByteSize(bytes uint64) string {
-	const unit = 1024
-	if bytes < unit {
+	if bytes < 1000 {
 		return fmt.Sprintf("%d B", bytes)
 	}
-	div, exp := uint64(unit), 0
-	for n := bytes / unit; n >= unit && exp < 3; n /= unit {
-		div *= unit
-		exp++
+	scale := func(base float64, units []string) string {
+		v, u := float64(bytes), 0
+		for v >= base && u < len(units)-1 {
+			v /= base
+			u++
+		}
+		return fmt.Sprintf("%.1f %s", v, units[u])
 	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGT"[exp])
+	dec := scale(1000, []string{"B", "KB", "MB", "GB", "TB"})
+	bin := scale(1024, []string{"B", "KiB", "MiB", "GiB", "TiB"})
+	return dec + " (" + bin + ")"
 }
 
 // BackupOptions contains all parameters for a backup operation
@@ -77,6 +86,10 @@ type BackupOptions struct {
 	// pbscommon/change_detection.go). metadata behaves like data until reuse
 	// of unchanged files is implemented.
 	ChangeDetectionMode string
+	// ScheduledFullRead marks a run of a metadata-mode Backup Set turned into
+	// a full read by its "full read every N runs" setting, so the card can
+	// say why every file is being read.
+	ScheduledFullRead bool
 	// Comment is sent as-is as the PBS snapshot's manifest comment (shows up
 	// next to the snapshot in PBS's own web UI). Callers set this to the
 	// triggering Backup Set's own name — see startBackupDirect/
@@ -146,7 +159,10 @@ func (a *App) CancelBackup() error {
 	defer currentBackupCancelMutex.Unlock()
 	if currentBackupCancel != nil {
 		currentBackupCancel()
-		writeDebugLog("CancelBackup: cancellation requested for running backup")
+		// The walk notices between files, so a large file in progress is
+		// finished first; the run then ends as cancelled.
+		writeDebugLog("CancelBackup: cancellation requested for running backup (stops after the current file)")
+		return nil
 	}
 	writeDebugLog("CancelBackup: no backup running (or already cancelled)")
 	return nil
@@ -201,7 +217,14 @@ func getBackupLock(baseURL, datastore string) *sync.Mutex {
 // Returns size and error if access was denied at the root (needs VSS) or if ctx
 // fired (partial size is still returned alongside the context error).
 func calculateDirSizeCtx(ctx context.Context, path string) (uint64, error) {
-	var totalSize uint64
+	size, _, err := calculateDirSizeFilesCtx(ctx, path)
+	return size, err
+}
+
+// calculateDirSizeFilesCtx is calculateDirSizeCtx that also counts the files,
+// for the backup card's "Files: done / total".
+func calculateDirSizeFilesCtx(ctx context.Context, path string) (uint64, uint64, error) {
+	var totalSize, totalFiles uint64
 	var accessDenied bool
 
 	err := filepath.WalkDir(path, func(filePath string, d os.DirEntry, err error) error {
@@ -238,19 +261,20 @@ func calculateDirSizeCtx(ctx context.Context, path string) (uint64, error) {
 				return nil // file vanished or became unreadable: ignore for sizing
 			}
 			totalSize += uint64(info.Size())
+			totalFiles++
 		}
 		return nil
 	})
 
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		// Partial size is still useful for the split heuristic.
-		return totalSize, err
+		return totalSize, totalFiles, err
 	}
 	if accessDenied && totalSize == 0 {
-		return 0, fmt.Errorf("access denied: %s", path)
+		return 0, 0, fmt.Errorf("access denied: %s", path)
 	}
 
-	return totalSize, err
+	return totalSize, totalFiles, err
 }
 
 // chunkUploadWorkers bounds how many chunk uploads for one archive run
@@ -296,6 +320,49 @@ type jobProgress struct {
 
 	lastPercentMu sync.Mutex
 	lastPercent   float64
+
+	// Live figures for the backup card (see emitStats). curPos is the data
+	// position of the directory in progress, so bytesDoneBase+curPos is the
+	// job's bytes done; filesEstimate counts files as sizeEstimate counts
+	// bytes; scansDone counts finished background scans out of scansWanted.
+	// prevBytes/prevFiles total the previous snapshot of each directory that
+	// metadata mode compares with: a total known straight away, used until
+	// the scans finish.
+	curPos        atomic.Uint64
+	filesEstimate atomic.Uint64
+	filesDone     atomic.Uint64
+	uploadedBytes atomic.Uint64
+	scansDone     atomic.Int32
+	scansWanted   atomic.Int32
+	prevBytes     atomic.Uint64
+	prevFiles     atomic.Uint64
+	currentDir    atomic.Value // string
+	phase         atomic.Value // string: "connecting", "data", "finishing"
+	readReason    atomic.Value // string, see BackupProgressStats.ReadReason
+	// anyReuse is set once a directory compares with a usable previous
+	// snapshot; a split run without it read every file.
+	anyReuse atomic.Bool
+}
+
+// totals returns the job's byte and file totals: the background scans' once
+// they have all finished, otherwise the larger of what they have so far and
+// the previous snapshots' totals (0 while neither is known).
+func (p *jobProgress) totals() (bytes, files uint64) {
+	bytes, files = p.sizeEstimate.Load(), p.filesEstimate.Load()
+	if p.scansDone.Load() < p.scansWanted.Load() {
+		if b := p.prevBytes.Load(); b > bytes {
+			bytes = b
+		}
+		if f := p.prevFiles.Load(); f > files {
+			files = f
+		}
+	}
+	return bytes, files
+}
+
+func loadString(v *atomic.Value) string {
+	s, _ := v.Load().(string)
+	return s
 }
 
 type ChunkState struct {
@@ -394,6 +461,9 @@ func (c *ChunkState) startUploadWorkers(client *pbscommon.PBSClient) {
 					continue
 				}
 				c.newchunk.Add(1)
+				if c.progress != nil {
+					c.progress.uploadedBytes.Add(uint64(len(job.data)))
+				}
 			}
 		}()
 	}
@@ -462,79 +532,64 @@ func (c *ChunkState) recordChunk(bindigest [32]byte, shahash string, size uint64
 	c.pos += size
 	c.chunkcount += 1
 
+	// The data stream that drives progress (onStats set: the payload stream
+	// of a split archive, the archive itself otherwise) publishes its
+	// position for the backup card's live figures (emitStats).
+	if c.onStats != nil && c.progress != nil {
+		c.progress.curPos.Store(c.pos)
+	}
+
 	// Report progress every 10 MB
 	if c.onProgress != nil && c.pos-c.lastProgressReport > 10*1024*1024 {
 		c.lastProgressReport = c.pos
-
-		// Build progress message with chunk stats
-		var msg string
-		failed := c.failedchunk.Load()
-		if failed > 0 {
-			msg = fmt.Sprintf("Processed: %s (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
-				formatByteSize(c.pos), c.newchunk.Load(), c.reusechunk.Load(), failed)
-		} else {
-			msg = fmt.Sprintf("Processed: %s (New: %d, Reused: %d chunks)",
-				formatByteSize(c.pos), c.newchunk.Load(), c.reusechunk.Load())
-		}
 
 		// Calculate progress against the WHOLE JOB's total, not just this one
 		// directory's — bytesDone/totalSize both sum across every directory in
 		// the job (see jobProgress's doc comment). c.pos alone is only this
 		// directory's own bytes; bytesDoneBase adds back what earlier
 		// directories in the same job already contributed.
-		var progress float64
-		bytesDoneBase := c.progress.bytesDoneBase.Load()
-		bytesDone := bytesDoneBase + c.pos
-		totalSize := c.progress.sizeEstimate.Load()
+		failed := c.failedchunk.Load()
+		bytesDone := c.progress.bytesDoneBase.Load() + c.pos
+		totalSize, _ := c.progress.totals()
+
+		// The percentage is the share of the data done, capped at 99% until
+		// the run has finished: it used to be squeezed into 10%..90%, so
+		// 442.2 of 447.7 GB (98.8%) showed as "89%" (seen live 2026-10-07).
+		// With no total yet it holds where it is; the card shows the total
+		// as "Calculating..." meanwhile.
+		c.progress.lastPercentMu.Lock()
+		progress := c.progress.lastPercent
 		if totalSize > 0 {
-			// Progress from 10% to 90% based on bytes processed
-			progress = 0.1 + (float64(bytesDone)/float64(totalSize))*0.8
-			if progress > 0.9 {
-				progress = 0.9
-			}
-			if failed > 0 {
-				msg = fmt.Sprintf("Processed: %s / %s (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
-					formatByteSize(bytesDone), formatByteSize(totalSize), c.newchunk.Load(), c.reusechunk.Load(), failed)
-			} else {
-				msg = fmt.Sprintf("Processed: %s / %s (New: %d, Reused: %d chunks)",
-					formatByteSize(bytesDone), formatByteSize(totalSize), c.newchunk.Load(), c.reusechunk.Load())
-			}
-		} else {
-			// No total size yet, show indeterminate progress
-			progress = 0.1 + float64((c.pos/(1024*1024))%100)/1000.0 // Slowly increment from 10%
-			if progress > 0.5 {
-				progress = 0.5
+			progress = float64(bytesDone) / float64(totalSize)
+			if progress > 0.99 {
+				progress = 0.99
 			}
 		}
-
 		// Never report backwards progress. This guard is on the SHARED
 		// jobProgress, not this one directory's ChunkState, precisely so it
 		// still holds across a directory boundary: totalSize can grow as each
 		// directory's own background size-scan completes at its own pace,
 		// which without this could otherwise show as a momentary dip right
 		// when a new directory starts.
-		c.progress.lastPercentMu.Lock()
 		if progress < c.progress.lastPercent {
 			progress = c.progress.lastPercent
 		}
 		c.progress.lastPercent = progress
 		c.progress.lastPercentMu.Unlock()
 
-		c.onProgress(progress, msg)
-
-		// Structured live stats for the GUI (same cadence as the message).
-		if c.onStats != nil {
-			c.onStats(&BackupProgressStats{
-				Percent:      progress,
-				BytesDone:    bytesDone,
-				BytesTotal:   totalSize,
-				NewChunks:    c.newchunk.Load(),
-				ReusedChunks: c.reusechunk.Load(),
-				FailedChunks: failed,
-				CurrentDir:   c.currentDir,
-				Message:      msg,
-			})
+		processed := formatByteSize(bytesDone)
+		if totalSize > 0 {
+			processed += " / " + formatByteSize(totalSize)
 		}
+		var msg string
+		if failed > 0 {
+			msg = fmt.Sprintf("Processed: %s (New: %d, Reused: %d, ⚠️ Failed: %d chunks)",
+				processed, c.newchunk.Load(), c.reusechunk.Load(), failed)
+		} else {
+			msg = fmt.Sprintf("Processed: %s (New: %d, Reused: %d chunks)",
+				processed, c.newchunk.Load(), c.reusechunk.Load())
+		}
+		c.onProgress(progress, msg)
 	}
 
 	return c.checkFatal()
@@ -877,7 +932,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	}
 	writeBackupLog("[DEBUG] All directories checked, calling progress(0.05)")
 
-	progress(0.05, "Connecting to PBS...")
+	progress(0, "Connecting to PBS...")
 	writeBackupLog("[DEBUG] After progress(0.05), before connection log")
 
 	// Debug: log connection parameters with sanitized credentials
@@ -932,9 +987,37 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	var reusechunk atomic.Uint64
 	var failedchunk atomic.Uint64
 	jobProg := &jobProgress{}
-	if opts.OnFile != nil {
-		fileTickerDone := make(chan struct{})
-		defer close(fileTickerDone)
+	jobProg.phase.Store("connecting")
+	// emitStats sends the backup card's live figures. It runs on a timer
+	// rather than from the chunk path so the card keeps a steady cadence
+	// (the GUI measures speeds over the last few seconds of these samples)
+	// whether data is flowing fast, slowly, or not at all.
+	emitStats := func() {
+		if opts.OnStats == nil {
+			return
+		}
+		bytesTotal, filesTotal := jobProg.totals()
+		jobProg.lastPercentMu.Lock()
+		pct := jobProg.lastPercent
+		jobProg.lastPercentMu.Unlock()
+		opts.OnStats(&BackupProgressStats{
+			Percent:       pct,
+			BytesDone:     jobProg.bytesDoneBase.Load() + jobProg.curPos.Load(),
+			BytesTotal:    bytesTotal,
+			NewChunks:     newchunk.Load(),
+			ReusedChunks:  reusechunk.Load(),
+			FailedChunks:  failedchunk.Load(),
+			CurrentDir:    loadString(&jobProg.currentDir),
+			FilesDone:     jobProg.filesDone.Load(),
+			FilesTotal:    filesTotal,
+			UploadedBytes: jobProg.uploadedBytes.Load(),
+			Phase:         loadString(&jobProg.phase),
+			ReadReason:    loadString(&jobProg.readReason),
+		})
+	}
+	if opts.OnFile != nil || opts.OnStats != nil {
+		tickerDone := make(chan struct{})
+		defer close(tickerDone)
 		go func() {
 			// 5 updates a second, the same rate as the restore card's
 			// current-file line: often enough to give a sense of speed.
@@ -943,13 +1026,16 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 			last := ""
 			for {
 				select {
-				case <-fileTickerDone:
+				case <-tickerDone:
 					return
 				case <-t.C:
-					if p, _ := jobProg.currentFile.Load().(string); p != "" && p != last {
-						last = p
-						opts.OnFile(p)
+					if opts.OnFile != nil {
+						if p, _ := jobProg.currentFile.Load().(string); p != "" && p != last {
+							last = p
+							opts.OnFile(p)
+						}
 					}
+					emitStats()
 				}
 			}
 		}()
@@ -1064,18 +1150,21 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		// already fully known well before the first directory even finishes,
 		// so the percentage bar climbs smoothly across the whole job from
 		// the start.
+		jobProg.scansWanted.Add(int32(len(opts.BackupObjects)))
 		for _, dir := range opts.BackupObjects {
 			dir := dir
 			go func() {
 				writeBackupLog(fmt.Sprintf("Starting background size calculation for: %s", dir))
 				ctx, cancel := context.WithTimeout(context.Background(), analysisSizeBudget)
 				defer cancel()
-				size, err := calculateDirSizeCtx(ctx, dir)
+				size, files, err := calculateDirSizeFilesCtx(ctx, dir)
 				if err != nil {
 					writeBackupLog(fmt.Sprintf("WARNING: Size calculation had errors for %s: %v", dir, err))
 				}
 				jobProg.sizeEstimate.Add(size)
-				writeBackupLog(fmt.Sprintf("Size calculated for %s: %d MB", dir, size/(1024*1024)))
+				jobProg.filesEstimate.Add(files)
+				jobProg.scansDone.Add(1)
+				writeBackupLog(fmt.Sprintf("Size calculated for %s: %d MB in %d files", dir, size/(1024*1024), files))
 			}()
 		}
 
@@ -1104,6 +1193,16 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 			continue
 		}
 		sharedCatalog := &sharedCatalogCoordinator{chunk: &catalogChunk}
+
+		switch {
+		case opts.ScheduledFullRead:
+			jobProg.readReason.Store("full_read")
+		case opts.ChangeDetectionMode == pbscommon.ChangeDetectionData:
+			jobProg.readReason.Store("data")
+		default:
+			jobProg.readReason.Store("")
+		}
+		jobProg.phase.Store("data")
 
 		var sessionFatal error
 		for idx, dir := range opts.BackupObjects {
@@ -1158,6 +1257,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 				combinedACLs.Archives[archiveBase] = aclMeta
 			}
 			jobProg.bytesDoneBase.Add(dirBytes)
+			jobProg.curPos.Store(0)
 			dirResults = append(dirResults, DirResult{Path: dir, OK: true})
 			successfulDirs++
 		}
@@ -1201,6 +1301,15 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		// covering every archive written above, and we're done: no whole-job
 		// retry for directory-local errors (matches the old design, which also
 		// never retried a non-fatal per-directory error).
+
+		jobProg.phase.Store("finishing")
+		jobProg.lastPercentMu.Lock()
+		if jobProg.lastPercent < 0.99 && jobProg.lastPercent > 0 {
+			jobProg.lastPercent = 0.99
+		}
+		finishPct := jobProg.lastPercent
+		jobProg.lastPercentMu.Unlock()
+		progress(finishPct, "Finishing: closing the catalog and uploading the manifest...")
 
 		// Finalize the ONE shared catalog now that every directory that
 		// succeeded this attempt has recorded itself into it: write the
@@ -1356,6 +1465,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		completionParams["changeDetection"] = changeMode
 		completionParams["reusedFiles"] = jobProg.reusedFiles.Load()
 		completionParams["reusedBytes"] = jobProg.reusedBytes.Load()
+		completionParams["readEveryFile"] = !jobProg.anyReuse.Load()
 		if changeMode == pbscommon.ChangeDetectionMetadata {
 			writeBackupLog(fmt.Sprintf("Metadata change detection: %d unchanged files (%s) reused without reading in this job",
 				jobProg.reusedFiles.Load(), formatByteSize(jobProg.reusedBytes.Load())))
@@ -1423,6 +1533,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		status.ChangeDetection = changeMode
 		status.ReusedFiles = jobProg.reusedFiles.Load()
 		status.ReusedFileBytes = jobProg.reusedBytes.Load()
+		status.ReadEveryFile = !jobProg.anyReuse.Load()
 	}
 
 	// One machine-greppable result line for support (pairs with the start-of-run
@@ -1662,7 +1773,7 @@ func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk,
 		// for the whole pause. Real chunk-level progress from backupReal below
 		// naturally overwrites this once the snapshot is ready.
 		if progress != nil {
-			progress(0.05, "Creating VSS snapshot...")
+			progress(0, "Creating VSS snapshot...")
 		}
 
 		var bytesArchived uint64
@@ -1742,6 +1853,7 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 		writeBackupLog(fmt.Sprintf("Change detection: %s mode, split archive %s + %s", changeMode, archiveName, payloadName))
 	}
 
+	jobProg.currentDir.Store(originalPath)
 	archive := &pbscommon.PXARArchive{}
 	archive.ArchiveName = archiveName
 	archive.Split = split
@@ -1753,6 +1865,7 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 			p = originalPath + p[len(backupdir):]
 		}
 		jobProg.currentFile.Store(p)
+		jobProg.filesDone.Add(1)
 	}
 	archive.PrefetchWorkers = prefetchWorkers // logical root for VSS-safe absolute-pattern matching
 	// Source disk dropping out and coming back mid-backup (source_wait.go).
@@ -1829,9 +1942,22 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 			prev, prevTime, perr := client.LoadPreviousSplitArchive(archiveName, payloadName, prevPayload)
 			if perr != nil {
 				writeBackupLog(fmt.Sprintf("Metadata change detection: no usable previous snapshot for %s (%v), reading every file", archiveName, perr))
+				if !jobProg.anyReuse.Load() {
+					jobProg.readReason.Store("no_previous")
+				}
 			} else {
 				writeBackupLog(fmt.Sprintf("Metadata change detection: comparing with snapshot %s (%d files)",
 					time.Unix(prevTime, 0).UTC().Format(time.RFC3339), len(prev.Files)))
+				jobProg.anyReuse.Store(true)
+				jobProg.readReason.Store("")
+				// The previous snapshot's totals: the card's total until
+				// the background scans finish (jobProgress.totals).
+				var prevBytes uint64
+				for _, f := range prev.Files {
+					prevBytes += f.Size
+				}
+				jobProg.prevBytes.Add(prevBytes)
+				jobProg.prevFiles.Add(uint64(len(prev.Files)))
 				archive.Reuse = pbscommon.NewPayloadReuse(prev,
 					func() error { return payloadChunk.ForceBoundary(client) },
 					payloadChunk.InjectKnownChunk)

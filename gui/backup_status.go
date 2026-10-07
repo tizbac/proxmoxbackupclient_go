@@ -68,6 +68,10 @@ type BackupStatus struct {
 	ChangeDetection string `json:"change_detection,omitempty"`
 	ReusedFiles     uint64 `json:"reused_files,omitempty"`
 	ReusedFileBytes uint64 `json:"reused_file_bytes,omitempty"`
+	// ReadEveryFile marks a split-archive run that read every file (data
+	// mode, or metadata mode without a usable previous snapshot): a full
+	// read, as far as "full read every N runs" is concerned.
+	ReadEveryFile bool `json:"read_every_file,omitempty"`
 
 	// Three buckets of files that did not make it into the backup intact.
 	// ExcludedByPolicy and Corrupted are populated in Group 1; SkippedReadError
@@ -174,4 +178,20 @@ type BackupProgressStats struct {
 	FailedChunks uint64  `json:"failed_chunks"`
 	CurrentDir   string  `json:"current_dir,omitempty"`
 	Message      string  `json:"message"`
+
+	// FilesDone counts files the walk has reached (read or reused);
+	// FilesTotal is 0 until a total is known (the background scan, or the
+	// previous snapshot's file list in metadata mode).
+	FilesDone  uint64 `json:"files_done"`
+	FilesTotal uint64 `json:"files_total"`
+	// UploadedBytes is the content of new chunks sent to PBS so far: zero
+	// when every file is unchanged, whatever BytesDone says.
+	UploadedBytes uint64 `json:"uploaded_bytes"`
+	// Phase is "connecting", "data" or "finishing".
+	Phase string `json:"phase,omitempty"`
+	// ReadReason says why every file is being read, when it is ("full_read"
+	// for a scheduled full read, "no_previous" when there is no usable
+	// previous snapshot, "data" for a data-mode set); empty for a
+	// change-detection run reusing unchanged files, or the classic format.
+	ReadReason string `json:"read_reason,omitempty"`
 }

@@ -48,8 +48,12 @@ type ScheduledJob struct {
 	// untouched and dropping padding from reuse. 0 means never.
 	FullReadEvery int `json:"fullReadEvery,omitempty"`
 	// MetadataRunsSinceFullRead is run state, not a setting: metadata-mode
-	// runs dispatched since the last full read. Kept across edits.
+	// runs that completed successfully since the last successful full read
+	// (recordChangeDetectionOutcome). Kept across edits.
 	MetadataRunsSinceFullRead int `json:"metadataRunsSinceFullRead,omitempty"`
+	// ScheduledFullRead is per-run state carried by the job copy a run is
+	// dispatched with, never stored: this run is the set's scheduled full read.
+	ScheduledFullRead bool `json:"-"`
 	ExcludeList                []string `json:"excludeList"`
 	Compression string   `json:"compression"`       // "fastest", "default", "better", "best"
 	LastRun     string   `json:"lastRun,omitempty"` // ISO timestamp
@@ -961,10 +965,13 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 
 	// This run's change detection (metadata sets read every file on every
 	// FullReadEvery-th run). The job copy carries the decision to the run
-	// through registerPendingPostActions; the counter is stored with LastRun.
-	runMode, nextMetaCount := changeDetectionForRun(job)
+	// through registerPendingPostActions; the counter moves only when the run
+	// completes (recordChangeDetectionOutcome), so a cancelled or failed run
+	// neither counts towards the next full read nor stands in for one.
+	runMode, _ := changeDetectionForRun(job)
 	if job.ChangeDetectionMode == pbscommon.ChangeDetectionMetadata && runMode == pbscommon.ChangeDetectionData {
 		writeDebugLog(fmt.Sprintf("Backup Set %s: full read run (every %d runs)", job.Name, job.FullReadEvery))
+		job.ScheduledFullRead = true
 	}
 	job.ChangeDetectionMode = runMode
 
@@ -1046,14 +1053,23 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			Trigger:    trigger,
 			MessageKey: MsgBackupCompletedGeneric,
 		}
+		readEveryFile := false
 		if job.BackupType != "machine" {
 			historyEntry.ChangeDetection = changeDetectionLabel(job.ChangeDetectionMode)
 			if r := a.takeRunResult(postActionsKey); r != nil {
 				historyEntry.ReusedFiles, historyEntry.ReusedBytes = r.ReusedFiles, r.ReusedFileBytes
+				readEveryFile = r.ReadEveryFile
 			}
 		}
+		if job.BackupType != "machine" {
+			a.recordChangeDetectionOutcome(job.ID, err == nil, readEveryFile)
+		}
 
-		if err != nil {
+		if err != nil && isCancelledRun(err.Error(), "") {
+			historyEntry.Status = "cancelled"
+			historyEntry.Message = "Backup cancelled by user"
+			historyEntry.MessageKey = MsgBackupCancelled
+		} else if err != nil {
 			writeDebugLog(fmt.Sprintf("Scheduled job error: %v", err))
 			historyEntry.Status = "failed"
 			historyEntry.Message = fmt.Sprintf("Error: %v", err)
@@ -1127,7 +1143,6 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 		if j.ID == job.ID {
 			jobs[i].LastRun = time.Now().Format(time.RFC3339)
 			jobs[i].NextRun = calculateNextRun(j)
-			jobs[i].MetadataRunsSinceFullRead = nextMetaCount
 			found = true
 			break
 		}

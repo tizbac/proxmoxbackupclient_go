@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"pbscommon"
 )
@@ -94,6 +96,82 @@ func paramUint(p msgParams, key string) uint64 {
 		}
 	}
 	return 0
+}
+
+// runScheduledFullRead reports whether the run registered under
+// postActionsKey is its Backup Set's scheduled full read.
+func (a *App) runScheduledFullRead(postActionsKey string) bool {
+	if postActionsKey == "" {
+		return false
+	}
+	v, ok := a.pendingPostActions.Load(postActionsKey)
+	if !ok {
+		return false
+	}
+	e := v.(*pendingPostActionsEntry)
+	return e.job != nil && e.job.ScheduledFullRead
+}
+
+// nextFullReadCount is MetadataRunsSinceFullRead after a run of job ends.
+// Only a successful run moves it: a full read (every file read, whether
+// scheduled, a data-mode set, or no usable previous snapshot) resets it, a
+// metadata run that reused files advances it. A cancelled or failed run
+// leaves it as it was, so it neither brings the next full read closer nor
+// stands in for one (found live 2026-10-07: a cancelled run, a failed run
+// and a Stop counted, making a surprise full read 3 runs after the last).
+func nextFullReadCount(job ScheduledJob, success, readEveryFile bool) int {
+	if !success || job.BackupType == "machine" {
+		return job.MetadataRunsSinceFullRead
+	}
+	if job.ChangeDetectionMode != pbscommon.ChangeDetectionMetadata || readEveryFile {
+		return 0
+	}
+	return job.MetadataRunsSinceFullRead + 1
+}
+
+// recordChangeDetectionOutcome stores a finished run's effect on its Backup
+// Set's full-read counter (nextFullReadCount). jobID "" (a one-off backup)
+// does nothing.
+func (a *App) recordChangeDetectionOutcome(jobID string, success, readEveryFile bool) {
+	if jobID == "" || jobID == "service-request" {
+		return
+	}
+	jobs, err := a.GetScheduledJobs()
+	if err != nil {
+		// Never rewrite the jobs file from a failed read: it would wipe every job.
+		writeDebugLog(fmt.Sprintf("Warning: full-read counter not updated, could not load jobs: %v", err))
+		return
+	}
+	for i := range jobs {
+		if jobs[i].ID != jobID {
+			continue
+		}
+		next := nextFullReadCount(jobs[i], success, readEveryFile)
+		if next == jobs[i].MetadataRunsSinceFullRead {
+			return
+		}
+		jobs[i].MetadataRunsSinceFullRead = next
+		jobsPath, perr := getScheduledJobsPath()
+		if perr != nil {
+			writeDebugLog(fmt.Sprintf("Warning: cannot resolve jobs path: %v", perr))
+			return
+		}
+		data, merr := json.MarshalIndent(jobs, "", "  ")
+		if merr != nil {
+			writeDebugLog(fmt.Sprintf("Warning: cannot marshal jobs: %v", merr))
+			return
+		}
+		if werr := atomicWriteFile(jobsPath, data, 0600); werr != nil {
+			writeDebugLog(fmt.Sprintf("Warning: failed to save the full-read counter: %v", werr))
+		}
+		return
+	}
+}
+
+// isCancelledRun reports whether a run ended because the user stopped it,
+// from its message key or, failing that, its error text.
+func isCancelledRun(message string, key MessageKey) bool {
+	return key == MsgBackupCancelled || strings.Contains(strings.ToLower(message), "cancelled by user")
 }
 
 // changeDetectionLabel is the history label for a run's mode.

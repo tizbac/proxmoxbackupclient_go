@@ -1393,8 +1393,14 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 				return
 			}
 			uiLastEmit = now
+			// Name the stream the file contents come from: for a split
+			// archive that is the payload (.ppxar), not the metadata (.mpxar).
+			shownName := archiveName
+			if isSplitArchive(archiveName) {
+				shownName = splitPayloadName(archiveName)
+			}
 			progress(uiPct, fmt.Sprintf("Restoring %s: %s of %s written (%d/%d chunks downloaded)",
-				archiveName, formatByteSize(uint64(uiWritten)), formatByteSize(uint64(uiTotal)), uiChunksDone, uiChunksTotal))
+				shownName, formatByteSize(uint64(uiWritten)), formatByteSize(uint64(uiTotal)), uiChunksDone, uiChunksTotal))
 		}
 
 		err = withSnapshotReader(opts, archiveName, "Restore", archiveIncludes, func(done, total int, bytesDone, bytesTotal int64) {
