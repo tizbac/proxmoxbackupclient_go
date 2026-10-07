@@ -10,16 +10,16 @@
 #   /usr/bin/pbsgo-gui-root   GUI launcher (elevated, for machine backup)
 #   /usr/lib/systemd/system/pbsgo.service  systemd unit (NOT enabled by default)
 #
-# Build host (Arch) requirements: go, gcc, gtk3, webkit2gtk (Arch ships
-# the cgo headers inside the same packages, no -devel split). The GUI
-# frontend is prebuilt and committed under gui/frontend/dist, so Node.js
-# is not required.
+# Build host (Arch) requirements: base-devel, go, gtk3, webkit2gtk-4.1
+# (Arch ships the cgo headers inside the same packages, no -devel split).
+# The GUI frontend is prebuilt and committed under gui/frontend/dist, so
+# Node.js is not required.
 #
 # Release procedure:
 #   1. push the commit you want to ship
 #   2. point _commit at it and set pkgver to the gui/wails.json
 #      productVersion of that commit (build() enforces the match)
-#   3. fill in sha256sums (e.g. via `makepkg -g` and edit)
+#   3. refresh sha256sums with `makepkg -g` after updating _commit
 #   4. makepkg -f
 
 pkgname=pbsgo
@@ -29,41 +29,55 @@ pkgdesc='Backup client for Proxmox Backup Server (CLI + GUI)'
 arch=(x86_64 aarch64)
 url='https://github.com/tizbac/proxmoxbackupclient_go'
 license=(GPL-3.0-or-later)
-makedepends=(go gtk3 webkit2gtk)
-depends=(glibc gtk3 webkit2gtk glib2 gdk-pixbuf libsoup systemd)
+makedepends=(go gtk3 webkit2gtk-4.1)
+depends=(glibc gtk3 webkit2gtk-4.1 gdk-pixbuf2 glib2 libsoup3 systemd)
 options=(!strip)
 
-_commit=50e52d9e9ad54e7237f8fe37b08fc42a2518b344
+_commit=4ddb278672bff765b3f4fdde9d277353443d416f
 source=("https://github.com/tizbac/proxmoxbackupclient_go/archive/${_commit}.tar.gz"
         "pbsgo.service")
-sha256sums=(SKIP SKIP) # fill in after pushing _commit
+sha256sums=('804d78f7cbc37b7e98389c3354477e64fb598c2928302b3b8227a46890246d01'
+            'acf4e8ab59e4a8a1483df5b7ce3bb4745f8073c418465996dc22cada56be7357')
+optdepends=('polkit: pkexec elevation for the service token fetch and machine backup'
+            'sudo: fallback elevation when pkexec is unavailable')
 
 package() {
-    local srcdir="src/proxmoxbackupclient_go-${_commit}"
+    # NOTE: makepkg runs package() with cwd=$srcdir, and $srcdir is where the
+    # source array entries are unpacked: the tarball extracts into a
+    # subdirectory, pbsgo.service sits at its root. Never shadow $srcdir.
+    local _srcroot="proxmoxbackupclient_go-${_commit}"
     local v
     v=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-        "$srcdir/gui/wails.json")
+        "$_srcroot/gui/wails.json")
     if [[ "$v" != "$pkgver" ]]; then
         echo "error: wails.json productVersion ($v) != pkgver ($pkgver);" \
              "update pkgver and _commit together" >&2
         return 1
     fi
 
-    # --- CLI tools (static-pie: no runtime deps beyond glibc) ----------
+    # go build -o does not create parent directories
+    install -d "${pkgdir}/usr/bin" "${pkgdir}/usr/lib/pbsgo"
+
+    # --- CLI tools ------------------------------------------------------
+    # directorybackup builds module-mode (GOWORK=off) like the Makefile and
+    # packaging/debian/build-deb.sh do: its per-module go.sum is only complete
+    # after a `go mod tidy` pass. machinebackup/nbd/gui build in workspace
+    # mode (go.work/go.work.sum from the tarball), matching build-deb.sh.
     (
-        cd "$srcdir/directorybackup"
+        cd "$_srcroot/directorybackup"
+        GOWORK=off go mod tidy >/dev/null && \
         GOWORK=off go build -trimpath \
             -ldflags "-s -w -X main.version=${pkgver}" \
             -o "${pkgdir}/usr/bin/pbsgo" .
     )
     (
-        cd "$srcdir/machinebackup"
+        cd "$_srcroot/machinebackup"
         go build -trimpath \
             -ldflags "-s -w -X main.version=${pkgver}" \
             -o "${pkgdir}/usr/bin/pbsgo-machine" .
     )
     (
-        cd "$srcdir/nbd"
+        cd "$_srcroot/nbd"
         go build -trimpath \
             -ldflags "-s -w -X main.version=${pkgver}" \
             -o "${pkgdir}/usr/bin/pbsgo-nbd" .
@@ -75,18 +89,17 @@ package() {
     if pkg-config --exists webkit2gtk-4.1; then
         tags="${tags},webkit2_41"
     fi
-    install -d "${pkgdir}/usr/lib/pbsgo"
     (
-        cd "$srcdir/gui"
-        go build -tags "${tags}" \
+        cd "$_srcroot/gui"
+        go build -trimpath -tags "${tags}" \
             -ldflags "-s -w -X main.appVersion=${pkgver}" \
             -o "${pkgdir}/usr/lib/pbsgo/pbsgo-gui" .
     )
 
     # --- Service binary (systemd) ---
     (
-        cd "$srcdir/gui"
-        GOWORK=off go build -tags service -trimpath \
+        cd "$_srcroot/gui"
+        GOWORK=off go build -trimpath -tags service \
             -ldflags "-s -w -X main.appVersion=${pkgver}" \
             -o "${pkgdir}/usr/lib/pbsgo/pbsgo-service" .
     )
@@ -94,7 +107,7 @@ package() {
     install -d "${pkgdir}/usr/share/applications" \
               "${pkgdir}/usr/share/icons/hicolor/256x256/apps" \
               "${pkgdir}/usr/lib/systemd/system"
-    install -m 0644 "$srcdir/gui/Icon.png" \
+    install -m 0644 "$_srcroot/gui/Icon.png" \
         "${pkgdir}/usr/share/icons/hicolor/256x256/apps/pbsgo.png"
     install -m 0644 /dev/stdin \
         "${pkgdir}/usr/share/applications/pbsgo-gui.desktop" <<'EOF'
