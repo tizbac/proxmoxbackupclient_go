@@ -1237,6 +1237,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			"uploadedBytes": stats.UploadedBytes,
 			"phase":         stats.Phase,
 			"readReason":    stats.ReadReason,
+			"changeMode":    stats.ChangeMode,
 		})
 	}
 	opts.OnResult = func(status *BackupStatus) {
@@ -1562,6 +1563,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			"uploadedBytes": stats.UploadedBytes,
 			"phase":         stats.Phase,
 			"readReason":    stats.ReadReason,
+			"changeMode":    stats.ChangeMode,
 		})
 	}
 	opts.OnResult = func(status *BackupStatus) {

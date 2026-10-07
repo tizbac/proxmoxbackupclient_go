@@ -783,3 +783,40 @@ body {
 .compact-text-long {
     display: inline;
 }
+
+/* Indeterminate wait bar (WaitBar in App.jsx): a stripe sliding along a
+   track, in the progress bar's colours, for server calls with no progress
+   of their own. */
+.wait-bar {
+    position: relative;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.wait-bar-stripe {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 35%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 100%);
+    animation: wait-bar-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes wait-bar-slide {
+    0% { left: -35%; }
+    100% { left: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wait-bar-stripe { animation-duration: 4s; }
+}
+
+/* A progress-card value that is not known yet ("Calculating...") or cannot
+   exist for this run ("Not available"). */
+.pending-value {
+    color: #6c757d;
+    font-style: italic;
+}

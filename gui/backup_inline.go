@@ -1013,6 +1013,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 			UploadedBytes: jobProg.uploadedBytes.Load(),
 			Phase:         loadString(&jobProg.phase),
 			ReadReason:    loadString(&jobProg.readReason),
+			ChangeMode:    opts.ChangeDetectionMode,
 		})
 	}
 	if opts.OnFile != nil || opts.OnStats != nil {

@@ -142,6 +142,68 @@ function formatDuration(totalSeconds) {
   return parts.join(' ')
 }
 
+// Sizes in both units, decimal first and binary in brackets, the same
+// convention as formatSpeed: "357.9 GB (333.3 GiB)". The old formatBytes
+// divided by 1024 and labelled the result GB, so a "447.7 GB" snapshot was
+// really 480.7 GB and disagreed with PBS.
+function formatBytesDual(bytes) {
+  if (!bytes || bytes < 1000) return `${bytes || 0} B`
+  const scale = (base, units) => {
+    let v = bytes
+    let u = 0
+    while (v >= base && u < units.length - 1) { v /= base; u++ }
+    return `${v.toFixed(1)} ${units[u]}`
+  }
+  return `${scale(1000, ['B', 'KB', 'MB', 'GB', 'TB'])} (${scale(1024, ['B', 'KiB', 'MiB', 'GiB', 'TiB'])})`
+}
+
+// Wall-clock time with the day, in the user's locale ("Wed 07/10 19:35:51"),
+// for the progress cards' Started and Forecast finish. The day matters for a
+// run that crosses midnight.
+function formatClock(ms) {
+  if (!ms) return ''
+  const d = new Date(ms)
+  const day = d.toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: '2-digit' }).replace(',', '')
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return `${day} ${time}`
+}
+
+// Per-second rate of samples[].key over the last windowMs, or null when the
+// window holds under a second of samples. The progress cards show speeds
+// over the last few seconds (what is happening now) and forecast the finish
+// from a longer window, instead of one average since the start that hides
+// every change of pace.
+function windowRate(samples, key, windowMs, now) {
+  let first = null
+  let last = null
+  for (const s of samples) {
+    if (now - s.t > windowMs) continue
+    if (!first) first = s
+    last = s
+  }
+  if (!first || !last || last.t - first.t < 1000) return null
+  return Math.max(0, (last[key] - first[key]) / ((last.t - first.t) / 1000))
+}
+
+// Indeterminate progress for a server call that gives no progress of its
+// own (listing snapshots, opening folders): a sliding stripe and a seconds
+// counter, with a hint once the wait is long. Stays up for the whole call;
+// the old status line faded after 5 s and left a blank screen.
+function WaitBar({ label, startedAt, slowHint }) {
+  const secs = Math.max(0, Math.floor((Date.now() - (startedAt || Date.now())) / 1000))
+  return (
+    <div role="status" aria-live="polite" style={{margin: '12px 0'}}>
+      <div className="wait-bar"><div className="wait-bar-stripe" /></div>
+      <div style={{fontSize: '13px', color: '#475569', marginTop: '6px'}}>
+        {label} {secs}s
+      </div>
+      {secs >= 15 && slowHint && (
+        <div style={{fontSize: '12px', color: '#64748b', marginTop: '2px'}}>{slowHint}</div>
+      )}
+    </div>
+  )
+}
+
 // renderLocalizedMessage renders a JobHistory/MessageLogEntry's message in the
 // user's chosen language via t(message_key, message_params) — added
 // 2026-09-24 alongside the backend's message-catalog change (see
@@ -176,6 +238,34 @@ function renderLocalizedMessage(entry, t) {
   }
   return { text: entry.message, usedKey: false }
 }
+
+const EMPTY_BACKUP_STATS = {
+  startTime: null,
+  lastUpdate: null,
+  lastPercent: 0,
+  speed: 0,
+  eta: null,
+  // Structured live stats (from the backup:stats event)
+  bytesDone: 0,
+  bytesTotal: 0,
+  newChunks: 0,
+  reusedChunks: 0,
+  failedChunks: 0,
+  currentDir: '',
+  filesDone: 0,
+  filesTotal: 0,
+  uploadedBytes: 0,
+  filesRate: null,
+  uploadRate: null,
+  phase: '',
+  readReason: '',
+  changeMode: '',
+  // hasDetail: the run sends file and upload figures (directory backups);
+  // machine backups only send bytes, so those rows read "Not available".
+  hasDetail: false
+}
+
+const EMPTY_RESTORE_STATS = { startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0, eta: null }
 
 function App() {
   const { t } = useTranslation()
@@ -368,24 +458,24 @@ function App() {
   }
   const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
   const [backupPBSID, setBackupPBSID] = useState('') // Destination tab: which configured PBS server this backup/set targets
-  const [backupStats, setBackupStats] = useState({
-    startTime: null,
-    lastUpdate: null,
-    lastPercent: 0,
-    speed: 0,
-    eta: null,
-    // Structured live stats (from the backup:stats event)
-    bytesDone: 0,
-    bytesTotal: 0,
-    newChunks: 0,
-    reusedChunks: 0,
-    failedChunks: 0,
-    currentDir: ''
-  })
+  const [backupStats, setBackupStats] = useState(EMPTY_BACKUP_STATS)
   const [status, setStatus] = useState({ message: '', type: '', visible: false })
   const [backupRunning, setBackupRunning] = useState(false)
   const [backupFile, setBackupFile] = useState('')
+  const [backupStopRequested, setBackupStopRequested] = useState(false)
   const statusTimeoutRef = useRef(null)
+  // Recent stats samples ({t, bytes, files, uploaded}) for windowRate.
+  const backupSamplesRef = useRef([])
+  const restoreSamplesRef = useRef([])
+  // A server call in progress that has no progress of its own (WaitBar):
+  // { id, kind, label, startedAt }. waitSeqRef numbers the calls so a reply
+  // to a call that a newer one replaced is ignored.
+  const [serverWait, setServerWait] = useState(null)
+  const waitSeqRef = useRef(0)
+  const [, setWaitTick] = useState(0)
+  // The progress cards' clocks (Elapsed, Forecast finish) tick every second
+  // even when no new stats arrive.
+  const [, setCardTick] = useState(0)
 
   // Ordered list of display names waiting behind whatever's currently
   // active — backup and restore share ONE list because they share one
@@ -460,7 +550,7 @@ function App() {
   const [restoreFile, setRestoreFile] = useState('')
   const [snapshotLoad, setSnapshotLoad] = useState({ phase: '', count: 0, startedAt: 0 })
   const [, setSnapshotLoadTick] = useState(0)
-  const [restoreStats, setRestoreStats] = useState({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
+  const [restoreStats, setRestoreStats] = useState(EMPTY_RESTORE_STATS)
 
   // ===== file search across snapshots =====
   const [showSearch, setShowSearch] = useState(false)
@@ -470,6 +560,7 @@ function App() {
   const [searchTo, setSearchTo] = useState('')               // yyyy-mm-dd
   const [searchAssembleMissing, setSearchAssembleMissing] = useState(false)
   const [searchRunning, setSearchRunning] = useState(false)
+  const searchStartedRef = useRef(0)
   const [searchProgress, setSearchProgress] = useState({ percent: 0, message: '' })
   const [searchResult, setSearchResult] = useState(null)     // { hits, snapshots_*, truncated, cancelled }
 
@@ -608,32 +699,34 @@ function App() {
       setBackupFile(data.path || '')
     })
 
-    // Structured live statistics (bytes + chunk counts) emitted alongside progress.
+    // Structured live statistics, every 200 ms while a directory backup runs
+    // (machine backups send bytes only, with each progress tick).
     const unsubStats = EventsOn('backup:stats', (data) => {
       const now = Date.now()
+      const samples = backupSamplesRef.current
+      samples.push({ t: now, bytes: data.bytesDone || 0, files: data.filesDone || 0, uploaded: data.uploadedBytes || 0 })
+      while (samples.length > 0 && now - samples[0].t > 180000) samples.shift()
       setBackupStats(prev => {
         const bytesDone = data.bytesDone || 0
         const bytesTotal = data.bytesTotal || 0
         const startTime = prev.startTime || now
-
-        // Average throughput since the backup started, not a delta since the
-        // last event. A delta-based rate divides by the wall-clock gap
-        // between two consecutive events, which can be tiny (a burst of
-        // small/reused chunks landing back-to-back, or plain event-loop
-        // jitter) — dividing by a near-zero gap produced implausible
-        // "instantaneous" rates in practice (1874.7 MB/s seen live). The
-        // cumulative average is far less prone to single-sample spikes and
-        // is what a progress UI actually wants (not a live graph).
         const elapsed = (now - startTime) / 1000
-        const speed = elapsed > 0 ? bytesDone / elapsed : prev.speed
 
-        // ETA (seconds remaining) from byte throughput. Falls back to keeping
-        // the previous ETA when we can't compute a fresh one (e.g. speed is
-        // still 0 right at the start).
-        let eta = prev.eta
-        if (speed > 0 && bytesTotal > bytesDone && bytesTotal > 0) {
-          const remainingBytes = bytesTotal - bytesDone
-          eta = Math.round(remainingBytes / speed)
+        // Speeds over the last 10 s: what is happening now. Before 10 s of
+        // samples exist, the average since the start stands in.
+        const avg = elapsed > 0 ? bytesDone / elapsed : 0
+        const speed = windowRate(samples, 'bytes', 10000, now) ?? avg
+        const filesRate = windowRate(samples, 'files', 10000, now)
+        const uploadRate = windowRate(samples, 'uploaded', 10000, now)
+
+        // The finish forecast uses the last 2 minutes, so it follows a real
+        // change of pace without swinging with every folder of small files.
+        const etaRate = windowRate(samples, 'bytes', 120000, now) ?? avg
+        let eta = null
+        if (bytesTotal > 0 && bytesDone >= bytesTotal) {
+          eta = 0
+        } else if (etaRate > 0 && bytesTotal > bytesDone) {
+          eta = Math.round((bytesTotal - bytesDone) / etaRate)
         }
 
         return {
@@ -646,7 +739,16 @@ function App() {
           reusedChunks: data.reusedChunks || 0,
           failedChunks: data.failedChunks || 0,
           currentDir: data.currentDir || '',
+          filesDone: data.filesDone || 0,
+          filesTotal: data.filesTotal || 0,
+          uploadedBytes: data.uploadedBytes || 0,
+          phase: data.phase || prev.phase,
+          readReason: data.readReason || '',
+          changeMode: data.changeMode || '',
+          hasDetail: data.phase !== undefined,
           speed,
+          filesRate: filesRate ?? prev.filesRate,
+          uploadRate: uploadRate ?? prev.uploadRate,
           eta
         }
       })
@@ -658,7 +760,9 @@ function App() {
       setBackupFile('')
       setActiveBackupName('')
       setPendingQueue(q => q.slice(1))
-      setBackupStats({ startTime: null, lastUpdate: null, lastPercent: 0, speed: 0, eta: null, bytesDone: 0, bytesTotal: 0, newChunks: 0, reusedChunks: 0, failedChunks: 0, currentDir: '' })
+      setBackupStats(EMPTY_BACKUP_STATS)
+      backupSamplesRef.current = []
+      setBackupStopRequested(false)
       const localizedMsg = renderLocalizedMessage(data, t).text
       showStatus(data.success ? '✅ ' + localizedMsg : '❌ ' + localizedMsg, data.success ? 'success' : 'error')
 
@@ -667,7 +771,8 @@ function App() {
         id: Date.now().toString(),
         name: `Backup ${config['backup-id'] || hostname}`,
         timestamp: new Date().toISOString(),
-        status: data.success ? 'success' : 'failed',
+        // A Stop is the user's choice, not a failure.
+        status: data.success ? 'success' : (data.message_key === 'logBackupCancelled' ? 'cancelled' : 'failed'),
         message: data.message,
         message_key: data.message_key,
         message_params: data.message_params,
@@ -703,6 +808,7 @@ function App() {
       setRestoreProgress(Math.round((data.percent || 0) * 100))
       showStatus(`${data.message || ''}`, 'info', true)
       if (data.name) setActiveRestoreName(data.name)
+      setRestoreStats(prev => (prev.startTime ? prev : { ...prev, startTime: Date.now() }))
     })
     const unsubG = EventsOn('restore:stage', (data) => {
       setRestoreStage({ stage: data.stage || '', detail: data.detail || '' })
@@ -711,18 +817,28 @@ function App() {
     const unsubF = EventsOn('restore:file', (data) => {
       setRestoreFile(data.path || '')
     })
-    // Structured live stats (bytes transferred), mirroring backup:stats.
-    // Same cumulative-average speed calc as the backup side (item 5's fix) —
-    // not the delta-since-last-event approach that produced inflated rates.
+    // Structured live stats (bytes transferred), mirroring backup:stats:
+    // speed over the last 10 s, finish forecast over the last 2 minutes.
     const unsubS = EventsOn('restore:stats', (data) => {
       const now = Date.now()
+      const samples = restoreSamplesRef.current
+      samples.push({ t: now, bytes: data.bytesDone || 0 })
+      while (samples.length > 0 && now - samples[0].t > 180000) samples.shift()
       setRestoreStats(prev => {
         const bytesDone = data.bytesDone || 0
         const bytesTotal = data.bytesTotal || 0
         const startTime = prev.startTime || now
         const elapsed = (now - startTime) / 1000
-        const speed = elapsed > 0 ? bytesDone / elapsed : prev.speed
-        return { startTime, bytesDone, bytesTotal, speed }
+        const avg = elapsed > 0 ? bytesDone / elapsed : 0
+        const speed = windowRate(samples, 'bytes', 10000, now) ?? avg
+        const etaRate = windowRate(samples, 'bytes', 120000, now) ?? avg
+        let eta = null
+        if (bytesTotal > 0 && bytesDone >= bytesTotal) {
+          eta = 0
+        } else if (etaRate > 0 && bytesTotal > bytesDone) {
+          eta = Math.round((bytesTotal - bytesDone) / etaRate)
+        }
+        return { startTime, bytesDone, bytesTotal, speed, eta }
       })
     })
     const unsubC = EventsOn('restore:complete', (data) => {
@@ -732,7 +848,8 @@ function App() {
       setRestoreFile('')
       setPendingQueue(q => q.slice(1))
       setRestoreProgress(data.success ? 100 : 0)
-      setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
+      setRestoreStats(EMPTY_RESTORE_STATS)
+      restoreSamplesRef.current = []
       let localizedMsg = renderLocalizedMessage(data, t).text
       if (data.success && data.verify_ran) {
         localizedMsg += ' - ' + tl('restoreVerifiedSuffix', '{n} files verified against the snapshot').replace('{n}', data.verified || 0)
@@ -761,6 +878,17 @@ function App() {
   // The bar never reads 0% while the card is up: every backup type (directory,
   // machine, scheduled, one-off) shares this card, so they all start at 1%.
   const shownProgress = Math.max(1, progress)
+  useEffect(() => {
+    if (!backupCardActive && !restoreLoading) return
+    const id = setInterval(() => setCardTick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [backupCardActive, restoreLoading])
+  useEffect(() => {
+    if (!serverWait && !searchRunning) return
+    const id = setInterval(() => setWaitTick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [serverWait?.id, searchRunning])
+
   const prevBackupActiveRef = useRef(false)
   useEffect(() => {
     const active = backupCardActive
@@ -1883,6 +2011,7 @@ function App() {
     }
     try {
       await CancelBackup()
+      setBackupStopRequested(true)
       showStatus(`⏹️ ${t('stopBackupInProgress')}`, 'info')
     } catch (err) {
       showStatus(`❌ ${err}`, 'error')
@@ -1922,7 +2051,6 @@ function App() {
     // failed host's exact backup-id string, so browsing everything and
     // picking it out by eye is the actual workflow, not typing a name.
 
-    showStatus(t('listingSnapshots'), 'info')
     setSelectedSnapshot(null)
     setSnapshotChildren(new Map())
     setSnapshotCount(0)
@@ -1930,15 +2058,31 @@ function App() {
     setSelectedPaths(new Set())
     setExpandedDirs(new Set())
 
+    const id = beginServerWait('list', t('listingSnapshots'))
     try {
       const snaps = await ListSnapshots(restorePBSID || '', restoreBackupId)
+      if (waitSeqRef.current !== id) return // a newer call replaced this one
       setSnapshots(snaps || [])
       setShowSnapshots(true)
       showStatus(`✅ ${t('snapshotsFound').replace('{n}', snaps.length)}`, 'success')
     } catch (err) {
-      showStatus(`❌ ${err}`, 'error')
+      if (waitSeqRef.current === id) showStatus(`❌ ${err}`, 'error')
+    } finally {
+      endServerWait(id)
     }
   }
+
+  // beginServerWait shows the WaitBar for a call and returns its number;
+  // endServerWait clears it, unless a newer call has taken over.
+  const beginServerWait = (kind, label) => {
+    const id = ++waitSeqRef.current
+    setServerWait({ id, kind, label, startedAt: Date.now() })
+    return id
+  }
+  const endServerWait = (id) => {
+    setServerWait(w => (w && w.id === id ? null : w))
+  }
+  const slowServerHint = tl('pbsSlowHint', 'PBS is slow to respond (a verify, garbage collection or backup may be running).')
 
   const sortChildren = (list) => (list || []).slice().sort((a, b) => {
     if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
@@ -2041,6 +2185,7 @@ function App() {
     }
     const prefix = (restoreBackupId || hostname || '').trim()
     setSearchRunning(true)
+    searchStartedRef.current = Date.now()
     setSearchResult(null)
     setSearchProgress({ percent: 0, message: '' })
     try {
@@ -2189,12 +2334,15 @@ function App() {
   const loadChildren = async (path) => {
     const ctx = snapshotCtxRef.current
     if (!ctx || !ListSnapshotChildren) return
+    const id = beginServerWait('folder', tl('openingFolder', 'Opening folder...'))
     try {
       const list = sortChildren(await ListSnapshotChildren(ctx.pbsID, ctx.backupID, ctx.unix, path))
       if (snapshotCtxRef.current?.gen !== ctx.gen) return
       setSnapshotChildren(prev => new Map(prev).set(path, list))
     } catch (err) {
       showStatus(`❌ ${err}`, 'error')
+    } finally {
+      endServerWait(id)
     }
   }
 
@@ -2226,9 +2374,12 @@ function App() {
     setSelectedPaths(new Set())
   }
 
+  // Compact size for list columns (file list, snapshot list, search hits):
+  // binary units, labelled as such (it used to say GB for GiB). Totals the
+  // user compares against PBS use formatBytesDual instead.
   const formatBytes = (bytes) => {
     if (!bytes || bytes < 1024) return `${bytes || 0} B`
-    const units = ['KB', 'MB', 'GB', 'TB']
+    const units = ['KiB', 'MiB', 'GiB', 'TiB']
     let n = bytes / 1024
     let i = 0
     while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
@@ -2925,53 +3076,86 @@ function App() {
                 </div>
               </div>
 
-              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px'}}>
-                {backupStats.eta !== null && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('timeRemaining')}</strong> {formatDuration(backupStats.eta)}
+              {/* Every row is always there, in a fixed order, so nothing moves
+                  as values arrive: "Calculating..." until a value exists,
+                  "Not available" where the run cannot provide one (machine
+                  backups have no file counts or upload figure). */}
+              {(() => {
+                const s = backupStats
+                const now = Date.now()
+                const calc = <span className="pending-value">{tl('calculating', 'Calculating...')}</span>
+                const na = <span className="pending-value">{tl('notAvailable', 'Not available')}</span>
+                const row = (label, value) => (
+                  <div style={{fontSize: '13px', color: '#495057', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                    <strong>{label}</strong> {value}
                   </div>
-                )}
-                {backupStats.speed > 0 && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('speed')}</strong> {formatSpeed(backupStats.speed)}
-                  </div>
-                )}
-                {backupStats.startTime && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('elapsedTime')}</strong> {formatDuration((Date.now() - backupStats.startTime) / 1000)}
-                  </div>
-                )}
-                {backupStats.bytesDone > 0 && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('dataSizeLabel')}</strong> {formatBytes(backupStats.bytesDone)}
-                    {backupStats.bytesTotal > 0 ? ` / ${formatBytes(backupStats.bytesTotal)}` : ''}
-                  </div>
-                )}
-                {(backupStats.newChunks > 0 || backupStats.reusedChunks > 0) && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('chunksLabel')}</strong> {backupStats.newChunks} {t('newChunksLabel')} · {backupStats.reusedChunks} {t('reusedChunksLabel')}
-                    {backupStats.failedChunks > 0 ? (
-                      <span style={{color: '#c0392b', fontWeight: 'bold'}}> · {backupStats.failedChunks} {t('failedChunksLabel')}</span>
-                    ) : ''}
-                  </div>
-                )}
-                {backupRunning && backupFile && (
-                  <div style={{fontSize: '12px', color: '#495057', gridColumn: '1 / -1', fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap', overflow: 'hidden'}} title={backupFile}>
-                    {middleTruncate(backupFile, 110)}
-                  </div>
-                )}
-                {backupStats.currentDir && (
-                  <div style={{fontSize: '13px', color: '#495057', gridColumn: '1 / -1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                    <strong>{t('currentDirLabel')}</strong> {backupStats.currentDir}
-                  </div>
-                )}
-              </div>
-
-              {status.message && status.type === 'info' && (
-                <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef'}}>
-                  {status.message}
-                </div>
-              )}
+                )
+                // What the run is doing, and why it is reading every file
+                // when it is.
+                let stage
+                if (backupStopRequested) {
+                  stage = tl('stageStopping', 'Stopping after the current file...')
+                } else if (s.phase === 'finishing') {
+                  stage = tl('stageFinishing', 'Finishing: closing the catalog and uploading the manifest...')
+                } else if (s.phase === 'data') {
+                  stage = {
+                    full_read: tl('readReasonFullRead', 'Scheduled full read: reading every file'),
+                    no_previous: tl('readReasonNoPrevious', 'No previous snapshot to compare with: reading every file'),
+                    data: tl('readReasonData', 'Reading every file (change detection: data)'),
+                  }[s.readReason] || (s.changeMode === 'metadata'
+                    ? tl('stageMetadata', 'Change detection: unchanged files are reused without reading')
+                    : tl('stageReading', 'Reading and uploading files'))
+                } else if (status.message && status.type === 'info' && !status.message.startsWith('Processed:')) {
+                  stage = status.message
+                } else {
+                  stage = tl('stageStarting', 'Starting...')
+                }
+                const forecast = s.eta !== null ? formatClock(now + s.eta * 1000) : null
+                const filesValue = !s.hasDetail ? na
+                  : <>{s.filesDone.toLocaleString()} / {s.filesTotal > 0 ? s.filesTotal.toLocaleString() : calc}</>
+                const processing = s.speed > 0
+                  ? `${formatSpeed(s.speed)}${s.hasDetail && s.filesRate !== null ? ` · ${Math.round(s.filesRate).toLocaleString()} ${tl('filesPerSecond', 'files/s')}` : ''}`
+                  : calc
+                const upload = !s.hasDetail ? na : (s.uploadRate !== null ? formatSpeed(s.uploadRate) : calc)
+                const folder = s.currentDir || (s.hasDetail ? calc : na)
+                let fileLine
+                if (backupFile) {
+                  fileLine = <span style={{fontFamily: 'Consolas, monospace', fontSize: '12px'}} title={backupFile}>{middleTruncate(backupFile, 110)}</span>
+                } else if (!s.hasDetail && s.phase === '' && s.bytesTotal > 0) {
+                  fileLine = na
+                } else {
+                  fileLine = <span className="pending-value">{s.currentDir ? `${tl('scanning', 'Scanning')} ${s.currentDir}...` : tl('waiting', 'Waiting...')}</span>
+                }
+                const processed = s.hasDetail || s.bytesDone > 0
+                  ? <>
+                      {tl('processedLabel', 'Processed:')} {formatBytesDual(s.bytesDone)} / {s.bytesTotal > 0 ? formatBytesDual(s.bytesTotal) : calc}
+                      {s.hasDetail && <> ({tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>})</>}
+                    </>
+                  : <>{tl('processedLabel', 'Processed:')} 0 B / {calc}</>
+                return (
+                  <>
+                    <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px', height: '20px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'}}>
+                      {stage}
+                    </div>
+                    <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginBottom: '10px'}}>
+                      {row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc)}
+                      {row(tl('forecastFinishLabel', 'Forecast finish:'), forecast || calc)}
+                      {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
+                      {row(t('timeRemaining'), s.eta !== null ? formatDuration(s.eta) : calc)}
+                      {row(tl('filesLabel', 'Files:'), filesValue)}
+                      {row(tl('processingLabel', 'Processing:'), processing)}
+                      {row(t('currentDirLabel'), folder)}
+                      {row(tl('uploadLabel', 'Upload:'), upload)}
+                      <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap'}}>
+                        <strong>{tl('currentFileLabel', 'Current file:')}</strong> {fileLine}
+                      </div>
+                    </div>
+                    <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef', minHeight: '18px'}}>
+                      {s.hasDetail || !(status.message && status.type === 'info') ? processed : status.message}
+                    </div>
+                  </>
+                )
+              })()}
 
               {/* This card is the ONLY progress display for a backup started via
                   "Run Now" on a Backup Set (the one-shot form's own Stop button,
@@ -3119,6 +3303,19 @@ function App() {
                             </div>
                             <div style={{fontSize: '12px', color: '#888', marginTop: '2px'}}>
                               {t('lastRun')} {job.lastRun ? new Date(job.lastRun).toLocaleString() : t('neverRun')}
+                              {job.backupType !== 'machine' && job.changeDetectionMode === 'metadata' && job.fullReadEvery > 0 && (() => {
+                                // Same rule as the backend (changeDetectionForRun):
+                                // the run that brings the count to N is a full read.
+                                const left = job.fullReadEvery - (job.metadataRunsSinceFullRead || 0) - 1
+                                return (
+                                  <span>
+                                    {' · '}
+                                    {left <= 0
+                                      ? tl('nextRunFullRead', 'Next run: full read (reads every file)')
+                                      : tl('nextFullReadIn', 'Next full read in {n} runs').replace('{n}', left + 1)}
+                                  </span>
+                                )
+                              })()}
                             </div>
                           </div>
                           <button
@@ -3866,44 +4063,52 @@ function App() {
                 </div>
               </div>
 
-              {restoreStage.stage && (
-                <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px'}}>
-                  {{
-                    preparing: tl('restoreStagePreparing', 'Connecting and preparing restore...'),
-                    locating: tl('restoreStageLocating', 'Reading snapshot index and locating files...'),
-                    transferring: tl('restoreStageTransferring', 'Fetching chunks and writing files...'),
-                    dirtimes: tl('restoreStageDirTimes', 'Setting folder timestamps...'),
-                    verifying: tl('restoreStageVerifying', 'Verifying restored files...'),
-                    acls: tl('restoreStageAcls', 'Restoring ACLs and attributes...'),
-                  }[restoreStage.stage] || restoreStage.stage}
-                  {restoreStage.detail ? ` (${restoreStage.detail})` : ''}
-                </div>
-              )}
-              {restoreFile && (restoreStage.stage === 'transferring' || restoreStage.stage === 'verifying') && (
-                <div style={{fontSize: '12px', color: '#495057', marginTop: '-6px', marginBottom: '10px', fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap', overflow: 'hidden'}} title={restoreFile}>
-                  {middleTruncate(restoreFile, 110)}
-                </div>
-              )}
-
-              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px'}}>
-                {restoreStats.speed > 0 && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('speed')}</strong> {formatSpeed(restoreStats.speed)}
+              {/* Same fixed layout as the backup card. */}
+              {(() => {
+                const s = restoreStats
+                const now = Date.now()
+                const calc = <span className="pending-value">{tl('calculating', 'Calculating...')}</span>
+                const row = (label, value) => (
+                  <div style={{fontSize: '13px', color: '#495057', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                    <strong>{label}</strong> {value}
                   </div>
-                )}
-                {restoreStats.bytesDone > 0 && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    <strong>{t('dataSizeLabel')}</strong> {formatBytes(restoreStats.bytesDone)}
-                    {restoreStats.bytesTotal > 0 ? ` / ${formatBytes(restoreStats.bytesTotal)}` : ''}
-                  </div>
-                )}
-              </div>
-
-              {status.message && status.type === 'info' && (
-                <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef'}}>
-                  {status.message}
-                </div>
-              )}
+                )
+                const stage = restoreStage.stage
+                  ? <>{{
+                      preparing: tl('restoreStagePreparing', 'Connecting and preparing restore...'),
+                      locating: tl('restoreStageLocating', 'Reading snapshot index and locating files...'),
+                      transferring: tl('restoreStageTransferring', 'Fetching chunks and writing files...'),
+                      dirtimes: tl('restoreStageDirTimes', 'Setting folder timestamps...'),
+                      verifying: tl('restoreStageVerifying', 'Verifying restored files...'),
+                      acls: tl('restoreStageAcls', 'Restoring ACLs and attributes...'),
+                    }[restoreStage.stage] || restoreStage.stage}{restoreStage.detail ? ` (${restoreStage.detail})` : ''}</>
+                  : tl('stageStarting', 'Starting...')
+                const showFile = restoreFile && (restoreStage.stage === 'transferring' || restoreStage.stage === 'verifying')
+                return (
+                  <>
+                    <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px', height: '20px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'}}>
+                      {stage}
+                    </div>
+                    <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginBottom: '10px'}}>
+                      {row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc)}
+                      {row(tl('forecastFinishLabel', 'Forecast finish:'), s.eta !== null ? formatClock(now + s.eta * 1000) : calc)}
+                      {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
+                      {row(t('timeRemaining'), s.eta !== null ? formatDuration(s.eta) : calc)}
+                      {row(t('speed'), s.speed > 0 ? formatSpeed(s.speed) : calc)}
+                      {row(t('dataSizeLabel'), s.bytesTotal > 0 ? <>{formatBytesDual(s.bytesDone)} / {formatBytesDual(s.bytesTotal)}</> : calc)}
+                      <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap'}}>
+                        <strong>{tl('currentFileLabel', 'Current file:')}</strong>{' '}
+                        {showFile
+                          ? <span style={{fontFamily: 'Consolas, monospace', fontSize: '12px'}} title={restoreFile}>{middleTruncate(restoreFile, 110)}</span>
+                          : <span className="pending-value">{tl('waiting', 'Waiting...')}</span>}
+                      </div>
+                    </div>
+                    <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef', minHeight: '18px'}}>
+                      {status.message && status.type === 'info' ? status.message : calc}
+                    </div>
+                  </>
+                )
+              })()}
 
               <div style={{marginTop: '12px'}}>
                 <button className="btn btn-secondary" onClick={handleStopRestore} disabled={!restoreLoading}>
@@ -3983,15 +4188,19 @@ function App() {
             </div>
           </div>
 
-          <button className="btn" onClick={handleListSnapshots}>{t('listSnapshots')}</button>
+          <button className="btn" onClick={handleListSnapshots} disabled={serverWait?.kind === 'list'}>{t('listSnapshots')}</button>
           <button
             className="btn"
             type="button"
             onClick={() => setShowSearch(v => !v)}
+            disabled={searchRunning}
             style={{marginLeft: '8px'}}
           >
             {t('searchTitle')}
           </button>
+          {serverWait && serverWait.kind === 'list' && (
+            <WaitBar label={serverWait.label} startedAt={serverWait.startedAt} slowHint={slowServerHint} />
+          )}
 
           {showSearch && (
             <div style={{
@@ -4060,12 +4269,14 @@ function App() {
                     ✖ {t('cancel')}
                   </button>
                 )}
-                {searchRunning && (
-                  <span style={{fontSize: '13px', color: '#64748b'}}>
-                    {searchProgress.percent}% — {searchProgress.message}
-                  </span>
-                )}
               </div>
+              {searchRunning && (
+                <WaitBar
+                  label={`${t('searching')} ${searchProgress.percent}%${searchProgress.message ? ` (${searchProgress.message})` : ''}`}
+                  startedAt={searchStartedRef.current}
+                  slowHint={slowServerHint}
+                />
+              )}
 
               {searchResult && (
                 <div style={{marginTop: '14px'}}>
@@ -4311,21 +4522,26 @@ function App() {
                 backgroundColor: '#fff'
               }}>
                 {(snapshotChildren.get('') || []).length === 0 ? (
-                  <p style={{padding: '12px', color: '#718096'}}>
-                    {snapshotLoad.phase === 'reading'
-                      ? `${tl('snapshotReading', 'Snapshot found, reading file list...')} (${Math.floor((Date.now() - snapshotLoad.startedAt) / 1000)}s)`
-                      : tl('snapshotEmpty', 'This snapshot has no entries.')}
-                  </p>
+                  snapshotLoad.phase === 'reading' ? (
+                    <div style={{padding: '0 12px'}}>
+                      <WaitBar label={tl('snapshotReading', 'Snapshot found, reading file list...')} startedAt={snapshotLoad.startedAt} slowHint={slowServerHint} />
+                    </div>
+                  ) : (
+                    <p style={{padding: '12px', color: '#718096'}}>{tl('snapshotEmpty', 'This snapshot has no entries.')}</p>
+                  )
                 ) : (
                   renderTreeChildren('', snapshotChildren, 0)
                 )}
               </div>
+              {serverWait && serverWait.kind === 'folder' && (
+                <WaitBar label={serverWait.label} startedAt={serverWait.startedAt} slowHint={slowServerHint} />
+              )}
               <p style={{marginTop: '6px', fontSize: '12px', color: '#64748b'}}>
                 {selectedPaths.size === 0
                   ? t('selectionEmptyNone')
                   : t('selectionCountSize')
                       .replace('{n}', selectedPaths.size)
-                      .replace('{size}', formatBytes(selectionBytes))}
+                      .replace('{size}', formatBytesDual(selectionBytes))}
               </p>
             </div>
           )}

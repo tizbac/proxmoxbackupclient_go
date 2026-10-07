@@ -194,4 +194,6 @@ type BackupProgressStats struct {
 	// previous snapshot, "data" for a data-mode set); empty for a
 	// change-detection run reusing unchanged files, or the classic format.
 	ReadReason string `json:"read_reason,omitempty"`
+	// ChangeMode is the run's change-detection mode ("" for the classic format).
+	ChangeMode string `json:"change_mode,omitempty"`
 }
