@@ -585,6 +585,7 @@ Every field in the backup card's 2-column grid is conditional (`eta !== null`, `
   4. The existing grey "Processed:" box, in GB (GiB) form with New / Reused (/ Failed) chunk counts: "Processed: 357.9 GB (333.3 GiB) / 480.7 GB (447.7 GiB) (New: 104,587, Reused: 17,868 chunks)".
   5. Stop button.
   The separate "Data:" and "Chunks:" rows are removed (the Processed box carries both). Before values exist: "Calculating..." (Forecast finish, Time remaining, Speed, Processed total), Current file "Scanning <folder>...".
+- [ ] Percent does not match the data: backup_inline.go maps bytes onto 10%..90% (`0.1 + done/total*0.8`, capped at 0.9), so 442.2 of 447.7 GB (98.8%) shows "89%", and 333.3 of 447.7 (74%) showed "70%". The bar then sits at 89-90% through finalization and jumps to 100%. Show the byte fraction as the percent during the data phase (keep a separate stage line such as "Finishing: uploading indexes..." for the tail), so percent, Processed and Time remaining agree.
 - [ ] Always render the full set of rows in a fixed order; show "Calculating..." for values that are not known yet (ETA, speed, forecast finish) and "Not available" where a value cannot exist for this run (e.g. total size unknown, failed chunks on restore).
 - [ ] Give the current-file and current-folder lines a fixed height (blank or "Waiting..." when empty) so the card does not change height.
 - [ ] Same treatment for the restore card, including the stage line.
