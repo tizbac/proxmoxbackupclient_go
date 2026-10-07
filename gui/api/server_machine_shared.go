@@ -62,6 +62,12 @@ func (s *Server) handleMachineBackup(w http.ResponseWriter, r *http.Request) {
 			appWithContext.SetBackupContext(ctx, cancel)
 			defer appWithContext.ClearBackupContext()
 		}
+		// Also register by job ID for per-job cancellation
+		if appWithReg, ok := s.app.(interface {
+			RegisterBackupCancel(jobID string, cancel context.CancelFunc)
+		}); ok {
+			appWithReg.RegisterBackupCancel(jobID, cancel)
+		}
 
 		handler, ok := s.app.(interface {
 			SetProgressCallbacks(jobID string, onProgress func(string, float64, string), onComplete func(string, bool, string))

@@ -254,6 +254,12 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 			appWithContext.SetBackupContext(ctx, cancel)
 			defer appWithContext.ClearBackupContext()
 		}
+		// Also register by job ID for per-job cancellation
+		if appWithReg, ok := s.app.(interface {
+			RegisterBackupCancel(jobID string, cancel context.CancelFunc)
+		}); ok {
+			appWithReg.RegisterBackupCancel(jobID, cancel)
+		}
 
 		// Set up progress callbacks to update the progress map
 		handler, ok := s.app.(interface {

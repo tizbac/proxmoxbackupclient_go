@@ -328,6 +328,13 @@ func (a *App) ClearBackupContext() {
 	a.cancelFuncsMu.Unlock()
 }
 
+// RegisterBackupCancel registers a cancel function for a specific job ID.
+func (a *App) RegisterBackupCancel(jobID string, cancel context.CancelFunc) {
+	a.cancelFuncsMu.Lock()
+	a.cancelFuncs[jobID] = cancel
+	a.cancelFuncsMu.Unlock()
+}
+
 // GetBackupContext returns the current backup context, or nil if none is set.
 func (a *App) GetBackupContext() context.Context {
 	a.backupCtxMu.Lock()
@@ -338,15 +345,27 @@ func (a *App) GetBackupContext() context.Context {
 // CancelBackup cancels a running backup job by ID.
 // Returns an error if the job is not found or not running.
 func (a *App) CancelBackup(jobID string) error {
-	// Check both backupCancel (set by API handler) and cancelFuncs map
-	a.backupCtxMu.RLock()
-	backupCancel := a.backupCancel
-	a.backupCtxMu.RUnlock()
-
+	// Prefer per-job registration if present
 	a.cancelFuncsMu.Lock()
+	if cancel, ok := a.cancelFuncs[jobID]; ok {
+		delete(a.cancelFuncs, jobID)
+		a.cancelFuncsMu.Unlock()
+		writeDebugLog(fmt.Sprintf("[CancelBackup] Cancellation requested for jobID: %s", jobID))
+		cancel()
+		// Clear current if it matches
+		a.backupCtxMu.Lock()
+		a.backupCtx = nil
+		a.backupCancel = nil
+		a.backupCtxMu.Unlock()
+		return nil
+	}
 	cancelFromMap := a.cancelFuncs["current"]
 	delete(a.cancelFuncs, "current")
 	a.cancelFuncsMu.Unlock()
+
+	a.backupCtxMu.RLock()
+	backupCancel := a.backupCancel
+	a.backupCtxMu.RUnlock()
 
 	cancel := backupCancel
 	if cancel == nil {
@@ -358,6 +377,11 @@ func (a *App) CancelBackup(jobID string) error {
 	}
 	writeDebugLog(fmt.Sprintf("[CancelBackup] Cancellation requested for jobID: %s", jobID))
 	cancel()
+	// Clear context
+	a.backupCtxMu.Lock()
+	a.backupCtx = nil
+	a.backupCancel = nil
+	a.backupCtxMu.Unlock()
 	return nil
 }
 
