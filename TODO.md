@@ -567,6 +567,20 @@ Metadata change detection compares with the NEWEST snapshot in the backup group.
 - [ ] Backup Set editor: warn (not block) when a Data/Metadata set has the same server + backup ID as another set, and suggest a unique ID.
 - [ ] Possibly default new sets to `<hostname>-<set name>` style IDs.
 
+### \U0001F41B Selective restore from a SPLIT (metadata-mode) snapshot downloads most of the data between the selected folders (2026-10-07)
+Seen live on deepthought: 4 folders from deepthought-data (480 GB, 158,801 payload chunks) to F:\TestRestore; after 6.5 min ~10,080 chunks (~30 GB) fetched vs ~7.9 GB written, "written" stalling while fetching continued. Diagnosis (branch pxar-v2-read):
+- Main cause: `walkRange` calls `payloadSection(refOffset, refSize)` at every PXAR_PAYLOAD_REF BEFORE the include filter runs (pbscommon/pxar_reader.go ~596; filter `pathMatches` ~897/~1168). `payloadSection` (~361) does a 16-byte ReadAt to check the payload header, which fetches the chunk at that file's start and fires a 32-chunk read-ahead. Payloads are packed in walk order, so unselected regions under ~96 MB are downloaded completely and each larger unselected file costs ~33 chunks.
+- Multi-include restores use the full `walk()` (~1081, ~1265), visiting every entry (not the goodbye-table fast path).
+- Read-ahead is never bounded for split or multi-select: `LimitPrefetchTo` is only called under `len(archiveIncludes) == 1 && !split` (gui/restore_inline.go ~516); `triggerPrefetch` runs on every chunkAt, hits included (pbscommon/didx_reader.go ~258, ~344).
+- Cache of 64 chunks (restore_inline.go ~429) vs 4 parallel workers + walker each reading ahead 32 => evictions and refetches; every refetch increments `fetched` (didx_reader.go ~329).
+- "Written" adds the weight of unselected entries as the walker passes them (`entryDone` ~1052/~1238), and a selected file only counts when complete, so it stalls on large files and is not real bytes written.
+- [ ] Make the payload header check lazy (on first Read of a SELECTED file) or skip payload refs the include filter rejects. Expected to remove most of the over-fetch.
+- [ ] Multi-include fast path: ResolveArchivePathBST per include, sort spans, walkRange each; create parent dirs from each include's parent path.
+- [ ] Split archives: one metadata-only pass to collect each selected file's payload byte range; replace `prefetchLimit` with an allowed-chunk-range set so read-ahead never leaves a selected range (or the current file).
+- [ ] Progress: totals = sum of selected sizes / chunks in those ranges; "written" = real bytes of selected files only (see the restore-totals item).
+- [ ] Cache >= (workers + 1) x 33 (~192 chunks) or smaller read-ahead in parallel mode; report refetches separately.
+- [ ] Test on pbs-test: selective restore of 2-4 folders from a split snapshot, compare chunks fetched vs the chunk count of the selected ranges.
+
 ### 🐛 Restore: "Listing snapshots..." fades after 5 s while the request is still running (2026-10-07)
 On deepthought, List available snapshots took ~75 s (PBS busy with a group verify); the info message vanished after 5 s (`showStatus` auto-hides non-persistent messages, App.jsx ~1003; the call at ~1916 does not pass `persist`), leaving a blank screen that looked like "no snapshots". Mick clicked three more times, sending overlapping ListSnapshots calls that all returned together.
 - [ ] Keep a visible loading state for the whole call: an indeterminate LINEAR progress bar (sliding stripe, same green as the backup bar) in place where the results will appear, with "Listing snapshots... 12s" under it (persistent, elapsed seconds); one shared component for every server call that can take more than a second; after ~15 s add "PBS is slow to respond (a verify, GC or backup may be running)".
