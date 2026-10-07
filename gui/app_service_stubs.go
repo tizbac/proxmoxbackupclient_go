@@ -60,10 +60,11 @@ func (a *App) ReloadConfig() {
 // StartBackup starts a backup job
 // Service implementation using RunBackupInline
 // postActionsKey matches main.go's StartBackup signature (required by
-// api.BackupHandler) but is unused here: a scheduled/Run-Now job running in
-// service mode gets its post-backup actions fired by scheduler.go's own
-// service-mode branch, using its own local job variable directly, never via
-// this parameter — see app_types.go's pendingPostActions doc comment.
+// api.BackupHandler). Post-backup actions do not use it here: a scheduled/
+// Run-Now job running in service mode gets them fired by scheduler.go's own
+// service-mode branch, using its own local job variable directly — see
+// app_types.go's pendingPostActions doc comment. It does carry the run's
+// change-detection mode in, and its structured result back out.
 func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	writeDebugLog(fmt.Sprintf("[Service] StartBackup called: type=%s, dirs=%v, id=%s, vss=%v, compression=%s, pbsServerID=%s", backupType, backupDirs, backupID, useVSS, compression, pbsServerID))
 
@@ -166,6 +167,9 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		// Only meaningful for kind=="directory" — harmless to set unconditionally,
 		// the machine-backup path (StartMachineBackup below) never reads it.
 		PrefetchWorkers: pbsCfg.EffectivePrefetchWorkers(),
+		// The Backup Set's change detection for this run (scheduler.go), or
+		// the mode a GUI request carried (api server); "" for one-off runs.
+		ChangeDetectionMode: a.runChangeDetectionMode(postActionsKey),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent, message))
 		},
@@ -176,6 +180,15 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 				writeDebugLog(fmt.Sprintf("[Backup Complete] FAILED - %s", message))
 			}
 		},
+		OnResult: func(status *BackupStatus) { a.setRunResult(postActionsKey, status) },
+	}
+	if kind == "machine" {
+		opts.ChangeDetectionMode = ""
+	}
+	// A key registered for a GUI request (RegisterRunOptions) has no
+	// scheduler run to consume it.
+	if v, ok := a.pendingPostActions.Load(postActionsKey); ok && v.(*pendingPostActionsEntry).job.ID == "service-request" {
+		defer a.takePendingPostActions(postActionsKey)
 	}
 
 	// Execute backup using inline implementation. Queues behind any

@@ -115,9 +115,67 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 	return nil
 }
 
+// SuggestBoundary cuts the current chunk here when that gives a chunk within
+// the normal size bounds (the official payload chunker's rule); used at file
+// starts in a split archive's payload stream.
+func (c *ChunkState) SuggestBoundary(client *pbscommon.PBSClient) error {
+	n := uint64(len(c.current_chunk))
+	if n < c.C.MinSize() || n > c.C.MaxSize() {
+		return nil
+	}
+	if err := c.emitCurrent(client); err != nil {
+		return err
+	}
+	c.current_chunk = make([]byte, 0)
+	c.C.Reset()
+	return nil
+}
+
+// ForceBoundary ends the chunk in progress here, whatever its size (needed
+// before metadata change detection appends reused chunks).
+func (c *ChunkState) ForceBoundary(client *pbscommon.PBSClient) error {
+	if err := c.emitCurrent(client); err != nil {
+		return err
+	}
+	c.current_chunk = make([]byte, 0)
+	c.C.Reset()
+	return nil
+}
+
+// InjectKnownChunk appends a chunk of the previous payload index without its
+// data; it must be in that index, which /previous registered with the server.
+func (c *ChunkState) InjectKnownChunk(digest [32]byte, size uint64) error {
+	if len(c.current_chunk) != 0 {
+		return fmt.Errorf("internal error: reused chunk appended while %d bytes are pending", len(c.current_chunk))
+	}
+	shahash := hex.EncodeToString(digest[:])
+	if _, ok := c.knownChunks.Get(shahash); !ok {
+		return fmt.Errorf("internal error: reused chunk %s is not in the previous index", shahash)
+	}
+	if err := binary.Write(c.chunkdigests, binary.LittleEndian, c.pos+size); err != nil {
+		return fmt.Errorf("failed to write chunk offset: %w", err)
+	}
+	if _, err := c.chunkdigests.Write(digest[:]); err != nil {
+		return fmt.Errorf("failed to write chunk digest: %w", err)
+	}
+	c.reusechunk.Add(1)
+	c.assignments_offset = append(c.assignments_offset, c.pos)
+	c.assignments = append(c.assignments, shahash)
+	c.pos += size
+	c.chunkcount += 1
+	return nil
+}
+
 func (c *ChunkState) Eof(client *pbscommon.PBSClient) error {
 	//Here we write the remainder of data for which cyclic hash did not trigger
+	if err := c.emitCurrent(client); err != nil {
+		return err
+	}
+	return c.closeIndex(client)
+}
 
+// emitCurrent publishes the pending bytes as one chunk (no-op when empty).
+func (c *ChunkState) emitCurrent(client *pbscommon.PBSClient) error {
 	if len(c.current_chunk) > 0 {
 		// Same digest rule as in HandleData: plain sha256, or
 		// sha256(plaintext || id_key) when the snapshot is encrypted.
@@ -147,6 +205,10 @@ func (c *ChunkState) Eof(client *pbscommon.PBSClient) error {
 		c.chunkcount += 1
 
 	}
+	return nil
+}
+
+func (c *ChunkState) closeIndex(client *pbscommon.PBSClient) error {
 	//Avoid incurring in request entity too large by chunking assignment PUT requests in blocks of at most 128 chunks
 	for k := 0; k < len(c.assignments); k += 128 {
 		k2 := k + 128
@@ -169,6 +231,7 @@ func main() {
 	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
 
 	cfg := loadConfig()
+	changeDetectionMode = cfg.ChangeDetectionMode
 
 	if ok := cfg.valid(); !ok {
 		if runtime.GOOS == "windows" {
@@ -463,13 +526,22 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 	return client.Finish()
 }
 
+// changeDetectionMode is the -change-detection-mode setting (see Config).
+var changeDetectionMode string
+
 func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, originalPath string, vssUsed bool) ([]string, error) {
 	client.Connect(false, "host")
 	knownChunks := haxmap.New[string, bool]()
 
+	split := pbscommon.SplitArchiveMode(changeDetectionMode)
 	archive := &pbscommon.PXARArchive{}
 	archive.ArchiveName = "backup.pxar.didx"
 	archive.OnNotice = func(msg string) { fmt.Println(msg) }
+	if split {
+		// Metadata stream; the payload stream is backup.ppxar.didx.
+		archive.ArchiveName = "backup.mpxar.didx"
+		archive.Split = true
+	}
 
 	// Captures extended attributes incl. POSIX ACLs on Linux (no-op elsewhere);
 	// uploaded as the same side-car blob the GUI writes so a GUI restore can
@@ -530,6 +602,39 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	pcat1Chunk := ChunkState{}
 	pcat1Chunk.Init(newchunk, reusechunk, knownChunks)
 
+	var payloadChunk *ChunkState
+	if split {
+		payloadKnown := haxmap.New[string, bool]()
+		prevPayload, perr := client.DownloadPreviousToBytes("backup.ppxar.didx")
+		if perr == nil {
+			for _, shahash := range pbscommon.ParsePreviousDIDXChunkDigests(prevPayload) {
+				payloadKnown.Set(shahash, true)
+			}
+		}
+		fmt.Printf("Known payload chunks: %d\n", payloadKnown.Len())
+		payloadChunk = &ChunkState{}
+		payloadChunk.Init(newchunk, reusechunk, payloadKnown)
+		if payloadChunk.wrid, err = client.CreateDynamicIndex("backup.ppxar.didx"); err != nil {
+			return nil, err
+		}
+		archive.PayloadWriteCB = func(b []byte) error { return payloadChunk.HandleData(b, client) }
+		archive.OnPayloadFileStart = func() error { return payloadChunk.SuggestBoundary(client) }
+		if changeDetectionMode == pbscommon.ChangeDetectionMetadata {
+			// Reuse unchanged files from the previous snapshot without
+			// reading them; an unusable previous snapshot means data mode.
+			prev, prevTime, lerr := client.LoadPreviousSplitArchive(archive.ArchiveName, "backup.ppxar.didx", prevPayload)
+			if lerr != nil {
+				fmt.Printf("Metadata change detection: no usable previous snapshot (%v), reading every file\n", lerr)
+			} else {
+				fmt.Printf("Metadata change detection: comparing with snapshot %s (%d files)\n",
+					time.Unix(prevTime, 0).UTC().Format(time.RFC3339), len(prev.Files))
+				archive.Reuse = pbscommon.NewPayloadReuse(prev,
+					func() error { return payloadChunk.ForceBoundary(client) },
+					payloadChunk.InjectKnownChunk)
+			}
+		}
+	}
+
 	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
 	if err != nil {
 		return nil, err
@@ -564,9 +669,19 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	if _, err = archive.WriteDir(backupdir, "", true); err != nil {
 		return nil, fmt.Errorf("failed to write directory archive: %w", err)
 	}
+	if archive.Reuse != nil {
+		st := archive.Reuse.Stats
+		fmt.Printf("Metadata change detection: %d unchanged files (%d bytes) reused without reading, %d chunks reused, %d bytes padding; %d unchanged files read anyway to limit padding\n",
+			st.Files, st.Bytes, st.Chunks, st.Padding, st.OverPadding)
+	}
 
 	if err = pxarChunk.Eof(client); err != nil {
 		return nil, err
+	}
+	if payloadChunk != nil {
+		if err = payloadChunk.Eof(client); err != nil {
+			return nil, err
+		}
 	}
 	if err = pcat1Chunk.Eof(client); err != nil {
 		return nil, err
@@ -580,7 +695,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 			Captured: m.Captured,
 			Host:     hostname,
 			Archives: map[string]*pbscommon.BackupFileMeta{
-				strings.TrimSuffix(archive.ArchiveName, ".pxar.didx"): m,
+				"backup": m, // archive base name, same key for classic and split archives
 			},
 		}
 		entries, _, metaErrs := xattrCollector.Stats()

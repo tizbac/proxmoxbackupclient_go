@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,17 @@ type PXARReader struct {
 	ra     io.ReaderAt
 	size   int64
 	offset int64
+
+	// Split (pxar format version 2) archives: ra/size are the metadata
+	// stream (.mpxar) and payloadRA/payloadSize the payload stream (.ppxar)
+	// that each file's PXAR_PAYLOAD_REF points into. Both nil/zero for a
+	// classic single-stream archive.
+	payloadRA   io.ReaderAt
+	payloadSize int64
+	// metaOnly marks a split archive opened without its payload stream
+	// (NewSplitMetadataReaderAt): file entries then carry their payload
+	// reference but no content.
+	metaOnly bool
 
 	// copyNanos/fsOverheadNanos accumulate wall-clock time spent during
 	// extraction: copyNanos is time inside io.Copy (reading archive payload —
@@ -79,6 +91,37 @@ type PXARReader struct {
 	// link to /etc and then write "through" it. Touched only by the walking
 	// goroutine.
 	createdLinks map[string]struct{}
+
+	// lazyPayload defers a split archive's PXAR_PAYLOAD header check from the
+	// walk to the first read of that file's content (see payloadSection).
+	// The extractors and SelectionRanges set it for their own walk: checking
+	// eagerly read 16 bytes of the payload stream for EVERY file passed,
+	// selected or not, so a selective restore downloaded most of the payload
+	// lying between its selections (found live 2026-10-07: 4 folders worth
+	// 8.6 GB from a 480 GB snapshot fetched ~77 GB before it was stopped).
+	// Listing keeps the eager check, so a bad reference still fails there.
+	lazyPayload bool
+
+	// selectedProgress makes the extractors count progress as the content
+	// bytes of selected files only (directories and unselected entries add
+	// nothing), matching a total of SelectionRanges' selected bytes. Off, they
+	// count each entry's Weight against the whole stream (or BST span).
+	selectedProgress bool
+}
+
+// SetSelectedProgress switches extraction progress to "content bytes of
+// selected files" (see the selectedProgress field). Call before Extract*.
+func (pr *PXARReader) SetSelectedProgress(on bool) { pr.selectedProgress = on }
+
+// progressWeight is what one walked entry adds to doneBytes once handled.
+func (pr *PXARReader) progressWeight(e PXARTreeEntry, matched bool) int64 {
+	if !pr.selectedProgress {
+		return e.Weight
+	}
+	if !matched || e.IsDir || e.IsSymlink {
+		return 0
+	}
+	return int64(e.Size)
 }
 
 // SetRestoreOwnership makes extraction restore recorded owners and full mode
@@ -227,6 +270,10 @@ type PXARTreeEntry struct {
 	// is what lets extraction progress be measured against the same total
 	// the download side reports. Only set by walkRange.
 	Weight int64
+	// PayloadOffset is, for a file in a split archive, the position of its
+	// PXAR_PAYLOAD header in the payload stream (HasPayloadRef set).
+	PayloadOffset uint64
+	HasPayloadRef bool
 }
 
 // PXARExtractedFile represents an extracted file (or directory) with metadata.
@@ -274,6 +321,114 @@ func NewPXARReader(data []byte) *PXARReader {
 // at a time, so memory stays bounded regardless of archive size.
 func NewPXARReaderAt(ra io.ReaderAt, size int64) *PXARReader {
 	return &PXARReader{ra: ra, size: size}
+}
+
+// NewSplitPXARReaderAt creates a reader for a split (format version 2)
+// archive: meta is the metadata stream (.mpxar) and payload the payload
+// stream (.ppxar). Both stream headers are checked up front so a mismatched
+// or truncated pair fails here, not halfway through a restore.
+func NewSplitPXARReaderAt(meta io.ReaderAt, metaSize int64, payload io.ReaderAt, payloadSize int64) (*PXARReader, error) {
+	var hdr [24]byte
+	if metaSize < 24 {
+		return nil, fmt.Errorf("pxar metadata stream too short (%d bytes)", metaSize)
+	}
+	if _, err := meta.ReadAt(hdr[:], 0); err != nil {
+		return nil, fmt.Errorf("read pxar format version: %w", err)
+	}
+	if binary.LittleEndian.Uint64(hdr[0:8]) != PXAR_FORMAT_VERSION || binary.LittleEndian.Uint64(hdr[8:16]) != 24 {
+		return nil, fmt.Errorf("pxar metadata stream does not start with a format version entry")
+	}
+	if v := binary.LittleEndian.Uint64(hdr[16:24]); v != 2 {
+		return nil, fmt.Errorf("unsupported pxar format version %d", v)
+	}
+	if payloadSize < 16 {
+		return nil, fmt.Errorf("pxar payload stream too short (%d bytes)", payloadSize)
+	}
+	if _, err := payload.ReadAt(hdr[:16], 0); err != nil {
+		return nil, fmt.Errorf("read pxar payload start marker: %w", err)
+	}
+	if binary.LittleEndian.Uint64(hdr[0:8]) != PXAR_PAYLOAD_START_MARKER || binary.LittleEndian.Uint64(hdr[8:16]) != 16 {
+		return nil, fmt.Errorf("pxar payload stream does not start with a payload start marker")
+	}
+	return &PXARReader{ra: meta, size: metaSize, payloadRA: payload, payloadSize: payloadSize}, nil
+}
+
+// NewSplitMetadataReaderAt opens only the metadata stream of a split archive,
+// for listing: file entries carry their payload reference (PayloadOffset) and
+// no content. Metadata change detection uses it to learn where each file of
+// the previous snapshot sits in that snapshot's payload stream without
+// downloading the payload.
+func NewSplitMetadataReaderAt(meta io.ReaderAt, metaSize int64) (*PXARReader, error) {
+	var hdr [24]byte
+	if metaSize < 24 {
+		return nil, fmt.Errorf("pxar metadata stream too short (%d bytes)", metaSize)
+	}
+	if _, err := meta.ReadAt(hdr[:], 0); err != nil {
+		return nil, fmt.Errorf("read pxar format version: %w", err)
+	}
+	if binary.LittleEndian.Uint64(hdr[0:8]) != PXAR_FORMAT_VERSION || binary.LittleEndian.Uint64(hdr[8:16]) != 24 {
+		return nil, fmt.Errorf("pxar metadata stream does not start with a format version entry")
+	}
+	if v := binary.LittleEndian.Uint64(hdr[16:24]); v != 2 {
+		return nil, fmt.Errorf("unsupported pxar format version %d", v)
+	}
+	return &PXARReader{ra: meta, size: metaSize, metaOnly: true}, nil
+}
+
+// IsSplit reports whether this reader is over a split (format version 2) archive.
+func (pr *PXARReader) IsSplit() bool { return pr.payloadRA != nil || pr.metaOnly }
+
+// payloadSection returns the content of the file a PXAR_PAYLOAD_REF points
+// at. offset is the position of that file's PXAR_PAYLOAD header in the payload
+// stream; the header must be a PXAR_PAYLOAD record of exactly size+16 bytes,
+// which is what catches a reference into padding or a wrong payload stream.
+//
+// The bounds check costs nothing and always runs here. The header check reads
+// the payload stream, so with lazyPayload set it runs on the first read of the
+// returned section instead, and a file nobody reads is never fetched.
+func (pr *PXARReader) payloadSection(offset, size uint64) (*io.SectionReader, error) {
+	if pr.payloadRA == nil {
+		return nil, fmt.Errorf("payload reference in an archive without a payload stream")
+	}
+	if offset > uint64(pr.payloadSize) || size > uint64(pr.payloadSize) || offset+16+size > uint64(pr.payloadSize) {
+		return nil, fmt.Errorf("payload reference %d+%d is outside the %d-byte payload stream", offset, size, pr.payloadSize)
+	}
+	if pr.lazyPayload {
+		return io.NewSectionReader(&checkedPayload{pr: pr, offset: offset, size: size}, int64(offset)+16, int64(size)), nil
+	}
+	if err := pr.checkPayloadHeader(offset, size); err != nil {
+		return nil, err
+	}
+	return io.NewSectionReader(pr.payloadRA, int64(offset)+16, int64(size)), nil
+}
+
+func (pr *PXARReader) checkPayloadHeader(offset, size uint64) error {
+	var raw [16]byte
+	if _, err := pr.payloadRA.ReadAt(raw[:], int64(offset)); err != nil {
+		return fmt.Errorf("read payload header at %d: %w", offset, err)
+	}
+	if binary.LittleEndian.Uint64(raw[0:8]) != PXAR_PAYLOAD || binary.LittleEndian.Uint64(raw[8:16]) != size+16 {
+		return fmt.Errorf("payload reference %d+%d does not point at a matching payload header", offset, size)
+	}
+	return nil
+}
+
+// checkedPayload is the payload stream as seen by one file in lazyPayload
+// mode: the first read checks that file's PXAR_PAYLOAD header, and every read
+// fails if that check did, so a bad reference still never returns wrong bytes.
+type checkedPayload struct {
+	pr           *PXARReader
+	offset, size uint64
+	once         sync.Once
+	err          error
+}
+
+func (c *checkedPayload) ReadAt(p []byte, off int64) (int, error) {
+	c.once.Do(func() { c.err = c.pr.checkPayloadHeader(c.offset, c.size) })
+	if c.err != nil {
+		return 0, c.err
+	}
+	return c.pr.payloadRA.ReadAt(p, off)
 }
 
 func (pr *PXARReader) readHeader() (*PXARHeader, error) {
@@ -353,6 +508,16 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 	hasPendingFile := false
 	lastEmit := startOffset
 
+	// A span resolved through a GOODBYE table holds exactly one top-level
+	// entry. The official writer records a re-encoded file's GOODBYE size as
+	// file size plus metadata size in split archives, so such a span runs past
+	// the entry; stop at the next top-level FILENAME (or the parent's GOODBYE)
+	// instead of trusting endOffset. For a classic archive the span is exact
+	// and this never triggers.
+	spanMode := rootSeen && startOffset > 0
+	topLevelNames := 0
+
+walkLoop:
 	for {
 		if pr.offset >= endOffset {
 			break
@@ -381,6 +546,12 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 
 		switch header.Type {
 		case PXAR_FILENAME:
+			if spanMode && len(pathStack) == 0 {
+				topLevelNames++
+				if topLevelNames > 1 {
+					break walkLoop
+				}
+			}
 			pr.skip(16)
 			data, err := pr.read(contentSize)
 			if err != nil {
@@ -473,6 +644,49 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 			}
 			pr.skip(contentSize)
 
+		case PXAR_PAYLOAD_REF:
+			pr.skip(16)
+			data, err := pr.read(contentSize)
+			if err != nil {
+				return fmt.Errorf("read payload reference: %w", err)
+			}
+			if len(data) < 16 {
+				return fmt.Errorf("payload reference too short (%d bytes) at offset %d", len(data), pr.offset)
+			}
+			if hasPendingFile {
+				refOffset := binary.LittleEndian.Uint64(data[0:8])
+				refSize := binary.LittleEndian.Uint64(data[8:16])
+				var payload *io.SectionReader
+				if !pr.metaOnly {
+					payload, err = pr.payloadSection(refOffset, refSize)
+					if err != nil {
+						return fmt.Errorf("%s: %w", joinArchivePath(currentPath, pendingName), err)
+					}
+				}
+				// Weight counts this entry's metadata bytes plus its content,
+				// so progress still tracks the work done.
+				weight := pr.offset - lastEmit + int64(refSize)
+				lastEmit = pr.offset
+				if err := cb(PXARTreeEntry{
+					Path:     joinArchivePath(currentPath, pendingName),
+					IsDir:    false,
+					Size:     refSize,
+					Mode:     uint32(pendingFileMode),
+					ModTime:  int64(pendingFileMtime),
+					ModNanos: pendingNanos,
+					UID:      pendingUID,
+					GID:      pendingGID,
+					Weight:   weight,
+
+					PayloadOffset: refOffset,
+					HasPayloadRef: true,
+				}, payload); err != nil {
+					return err
+				}
+				hasPendingFile = false
+				pendingName = ""
+			}
+
 		case PXAR_SYMLINK:
 			pr.skip(16)
 			data, err := pr.read(contentSize)
@@ -500,6 +714,10 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 			}
 
 		case PXAR_GOODBYE:
+			if spanMode && len(pathStack) == 0 {
+				// The parent directory's own GOODBYE: past the target.
+				break walkLoop
+			}
 			pr.skip(int64(header.Size))
 			if len(pathStack) > 0 {
 				currentPath = pathStack[len(pathStack)-1]
@@ -637,6 +855,136 @@ func (pr *PXARReader) ResolveArchivePathBST(path string) (targetStart, targetEnd
 	}
 	// unreachable (components is non-empty)
 	return 0, 0, "", errBSTNotFound
+}
+
+// includeSpan is one selected path resolved to its byte span in the (metadata)
+// stream, plus the archive path of its parent, ready for walkRange.
+type includeSpan struct {
+	start, end int64
+	parent     string
+}
+
+// resolveIncludeSpans resolves every include through the GOODBYE BST, after
+// dropping includes nested inside another include (their span lies inside
+// the outer one's). Spans come back sorted by start. ok is false when any
+// include does not resolve; callers then fall back to a full walk.
+func (pr *PXARReader) resolveIncludeSpans(includes []string) (spans []includeSpan, ok bool) {
+	if len(includes) == 0 {
+		return nil, false
+	}
+	top := make([]string, 0, len(includes))
+	for _, inc := range includes {
+		nested := false
+		for _, other := range includes {
+			if other != inc && strings.HasPrefix(inc, other+"/") {
+				nested = true
+				break
+			}
+		}
+		dup := false
+		for _, t := range top {
+			if t == inc {
+				dup = true
+				break
+			}
+		}
+		if !nested && !dup {
+			top = append(top, inc)
+		}
+	}
+	for _, inc := range top {
+		start, end, parent, err := pr.ResolveArchivePathBST(inc)
+		if err != nil {
+			return nil, false
+		}
+		spans = append(spans, includeSpan{start: start, end: end, parent: parent})
+	}
+	sort.Slice(spans, func(i, j int) bool { return spans[i].start < spans[j].start })
+	return spans, true
+}
+
+// walkIncludes walks just the selected subtrees when every include resolves
+// through the GOODBYE BST, and the whole archive otherwise. reset is called
+// before falling back from a span walk that failed partway, so the caller can
+// drop what that attempt produced.
+func (pr *PXARReader) walkIncludes(cb walkCallback, includes []string, reset func()) error {
+	if spans, ok := pr.resolveIncludeSpans(includes); ok {
+		var werr error
+		for _, s := range spans {
+			if werr = pr.walkRange(cb, s.start, s.end, s.parent, true); werr != nil {
+				break
+			}
+		}
+		if werr == nil {
+			return nil
+		}
+		if reset != nil {
+			reset()
+		}
+	}
+	return pr.walk(cb)
+}
+
+// SelectionRanges returns the byte ranges of the data stream a restore of
+// includePaths will read, merged and sorted, and the number of content bytes
+// they stand for. For a split archive the data stream is the payload stream:
+// one range per selected file (header and content), found by walking the
+// metadata only, without reading any payload. For a classic archive it is the
+// selected subtrees' own spans, which needs every include to resolve through
+// the GOODBYE BST (an error otherwise, since only a full read is then certain).
+// The restore uses the ranges to bound chunk read-ahead and to size progress.
+func (pr *PXARReader) SelectionRanges(includePaths []string) (ranges [][2]int64, selectedBytes int64, err error) {
+	includes := NormalizeIncludes(includePaths)
+	if len(includes) == 0 {
+		return nil, 0, fmt.Errorf("no selection")
+	}
+	if pr.payloadRA == nil {
+		spans, ok := pr.resolveIncludeSpans(includes)
+		if !ok {
+			return nil, 0, fmt.Errorf("selection not resolvable through the archive index")
+		}
+		for _, s := range spans {
+			ranges = append(ranges, [2]int64{s.start, s.end})
+			selectedBytes += s.end - s.start
+		}
+		return mergeRanges(ranges), selectedBytes, nil
+	}
+
+	prevLazy := pr.lazyPayload
+	pr.lazyPayload = true
+	defer func() { pr.lazyPayload = prevLazy }()
+	collect := func(e PXARTreeEntry, _ *io.SectionReader) error {
+		if !e.HasPayloadRef || !pathMatches(e.Path, includes) {
+			return nil
+		}
+		ranges = append(ranges, [2]int64{int64(e.PayloadOffset), int64(e.PayloadOffset) + 16 + int64(e.Size)})
+		selectedBytes += int64(e.Size)
+		return nil
+	}
+	if err := pr.walkIncludes(collect, includes, func() { ranges, selectedBytes = nil, 0 }); err != nil {
+		return nil, 0, err
+	}
+	return mergeRanges(ranges), selectedBytes, nil
+}
+
+// mergeRanges sorts [start,end) ranges and joins overlapping or touching ones.
+func mergeRanges(in [][2]int64) [][2]int64 {
+	if len(in) == 0 {
+		return nil
+	}
+	sort.Slice(in, func(i, j int) bool { return in[i][0] < in[j][0] })
+	out := [][2]int64{in[0]}
+	for _, r := range in[1:] {
+		last := &out[len(out)-1]
+		if r[0] <= last[1] {
+			if r[1] > last[1] {
+				last[1] = r[1]
+			}
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // joinArchivePath joins archive paths with forward slashes, never producing
@@ -889,42 +1237,37 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 	// dealt with it (written, created or skipped), so progress reaches 100%
 	// only when the last file is on disk.
 	cb := func(e PXARTreeEntry, payload *io.SectionReader) error {
-		if pr.onFile != nil && !e.IsDir && pathMatches(e.Path, includes) {
+		matched := pathMatches(e.Path, includes)
+		if pr.onFile != nil && !e.IsDir && matched {
 			pr.onFile(e.Path)
 		}
 		if err := extractEntry(e, payload); err != nil {
 			return err
 		}
-		pr.entryDone(e.Weight)
+		pr.entryDone(pr.progressWeight(e, matched))
 		return nil
 	}
 
-	// Fast path: exactly one clean selection can often be resolved directly
-	// via the archive's own GOODBYE binary-search-tree index
-	// (ResolveArchivePathBST) instead of linearly scanning every entry before
-	// it — see that function's doc comment for why this is safe (it only
-	// ever trusts a GOODBYE table shape it has actually verified) and
-	// pxar.go's ca_make_bst for the index format this relies on. ANY failure
-	// here (not found, unexpected shape, I/O error) falls back to the proven
-	// full walk below — this is a pure optimization, never the only way a
-	// restore can succeed. Multiple includes keep using the full walk for
-	// now: resolving several independent spans and merging their results is
-	// a reasonable future extension, not needed for the common "restore one
-	// folder out of a big snapshot" case this targets.
-	if len(includes) == 1 {
-		if targetStart, targetEnd, parentPath, ferr := pr.ResolveArchivePathBST(includes[0]); ferr == nil {
-			if werr := pr.walkRange(cb, targetStart, targetEnd, parentPath, true); werr == nil {
-				return extracted, nil
-			}
-			// Fast-path walk itself failed partway through (rare) — restart
-			// clean with the full linear walk rather than return a partial,
-			// possibly-confusing result.
-			extracted = extracted[:0]
-			pr.doneBytes.Store(0)
-		}
-	}
+	// Payload headers are checked when a selected file is read, not as the
+	// walk passes each file (see the lazyPayload field).
+	prevLazy := pr.lazyPayload
+	pr.lazyPayload = true
+	defer func() { pr.lazyPayload = prevLazy }()
 
-	err := pr.walk(cb)
+	// Fast path: every selection resolved directly via the archive's own
+	// GOODBYE binary-search-tree index (ResolveArchivePathBST) and only those
+	// subtrees walked, instead of linearly scanning every entry — see that
+	// function's doc comment for why this is safe (it only ever trusts a
+	// GOODBYE table shape it has actually verified) and pxar.go's ca_make_bst
+	// for the index format this relies on. ANY failure (not found, unexpected
+	// shape, I/O error) falls back to the proven full walk — this is a pure
+	// optimization, never the only way a restore can succeed. A span walk
+	// that fails partway restarts clean rather than return a partial,
+	// possibly-confusing result.
+	err := pr.walkIncludes(cb, includes, func() {
+		extracted = extracted[:0]
+		pr.doneBytes.Store(0)
+	})
 	return extracted, err
 }
 
@@ -975,6 +1318,7 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 		entry    PXARTreeEntry
 		fullPath string
 		payload  *io.SectionReader
+		weight   int64
 	}
 
 	var mu sync.Mutex
@@ -998,7 +1342,7 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 						pr.onFile(j.entry.Path)
 					}
 					appendResult(pr.extractOneFileParallel(j.entry, j.fullPath, j.payload))
-					pr.entryDone(j.entry.Weight)
+					pr.entryDone(j.weight)
 				}
 			}(jobs)
 		}
@@ -1068,7 +1412,7 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 			}
 		}
 		queued = true
-		jobs <- fileJob{entry: e, fullPath: fullPath, payload: payload}
+		jobs <- fileJob{entry: e, fullPath: fullPath, payload: payload, weight: pr.progressWeight(e, true)}
 		return nil
 	}
 	// A queued file is counted by its worker once written; everything else
@@ -1081,35 +1425,28 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 			return err
 		}
 		if !queued {
-			pr.entryDone(e.Weight)
+			pr.entryDone(pr.progressWeight(e, pathMatches(e.Path, includes)))
 		}
 		return nil
 	}
 
-	// Same GOODBYE-BST fast path as ExtractWithRewriter: a single clean
-	// selection is walked inside its own span only. Without this, a selective
-	// restore with parallel extraction scanned the ENTIRE archive after the
-	// selection (found live 2026-10-01: 129,662-chunk walk of a 458GB snapshot
-	// for a 1,698-chunk folder). Any failure falls back to the full walk.
-	fastDone := false
-	if len(includes) == 1 {
-		if targetStart, targetEnd, parentPath, ferr := pr.ResolveArchivePathBST(includes[0]); ferr == nil {
-			if werr := pr.walkRange(cb, targetStart, targetEnd, parentPath, true); werr == nil {
-				fastDone = true
-			} else {
-				stopPool()
-				mu.Lock()
-				extracted = extracted[:0]
-				mu.Unlock()
-				pr.doneBytes.Store(0)
-				startPool()
-			}
-		}
-	}
-	var walkErr error
-	if !fastDone {
-		walkErr = pr.walk(cb)
-	}
+	prevLazy := pr.lazyPayload
+	pr.lazyPayload = true
+	defer func() { pr.lazyPayload = prevLazy }()
+
+	// Same GOODBYE-BST fast path as ExtractWithRewriter: the selections are
+	// walked inside their own spans only. Without this, a selective restore
+	// with parallel extraction scanned the ENTIRE archive after the selection
+	// (found live 2026-10-01: 129,662-chunk walk of a 458GB snapshot for a
+	// 1,698-chunk folder). Any failure falls back to the full walk.
+	walkErr := pr.walkIncludes(cb, includes, func() {
+		stopPool()
+		mu.Lock()
+		extracted = extracted[:0]
+		mu.Unlock()
+		pr.doneBytes.Store(0)
+		startPool()
+	})
 
 	stopPool()
 

@@ -293,6 +293,24 @@ proxmoxbackupgo.exe -baseurl ... -backupdir "C:\data" -datastore store -keyfile 
 - Restoring an encrypted snapshot needs the same key file; there is no recovery if it is lost.
 - The Ask-key flow and the service are separate processes: use Remember for anything that runs through the service.
 
+## Faster folder backups: change detection
+
+By default every folder backup reads every file, so a run takes as long as reading the whole folder even when nothing changed. Backup Sets (and the CLI) can use the change-detection modes of the official `proxmox-backup-client` instead:
+
+| Mode | Reads | Stored as |
+|---|---|---|
+| **Legacy** (default) | every file | one `<name>.pxar.didx` per folder, as before |
+| **Data** | every file | a split archive: `<name>.mpxar.didx` (metadata) + `<name>.ppxar.didx` (file contents) |
+| **Metadata** | only new and changed files | the same split archive; files whose size and modification time (to the nanosecond), mode and owner match the previous backup are taken from it without being read |
+
+In **Metadata** mode the first run reads everything (there is nothing to compare with yet); later runs read only what changed. A file changed in a way that keeps its size and modification time is not noticed, which is why a set can also **read every file every N runs** (a Data run): that run catches such changes and drops the padding that reuse leaves in the archive. A file that could not be read completely (zero-padded after a read error) is always read again on the next run. Reuse only happens from a previous backup encrypted the same way, with the same key.
+
+**GUI:** edit a Backup Set, **Destination** tab, **Change detection**. It applies to folder sets only: machine (full disk) backups are disk images and are not affected, so bare-metal (Clonezilla) and Proxmox VE restores work exactly as before. One-off backups use Legacy. **Reports** shows each run's mode and how many unchanged files were reused.
+
+**CLI:** `-change-detection-mode legacy|data|metadata`, or `"change-detection-mode"` in the JSON config.
+
+**Before switching a set to Data or Metadata,** update every machine you restore from: older builds of this client cannot read split archives (they show the folders without their files). The official `proxmox-backup-client` reads them (tested with 3.4.9), and so does PBS 4.2's file browser. The first split backup of a folder shares little with its older Legacy backups, so it costs roughly one more full copy of that folder on the datastore until the old snapshots are pruned.
+
 ## 🚀 Quick start (GUI)
 
 1. Download `ProxmoxBackupClient.exe` (or the `.msi`) from the releases
@@ -415,6 +433,8 @@ proxmoxbackupgo.exe
         Backup ID (optional - if not specified, the hostname is used as the default for host-type backups)
   -pxarout string
         Output PXAR archive for debug purposes (optional)
+  -change-detection-mode string
+        legacy (default), data or metadata: see "Faster folder backups: change detection" (optional)
   -backupstream string  ***NEW***
         Filename for stream backup
   -mail-host string

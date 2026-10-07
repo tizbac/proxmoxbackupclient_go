@@ -29,6 +29,9 @@ func scheduledMachineBackupType(job ScheduledJob) string {
 // numeric, so the mistake surfaces when the set is saved instead of after the
 // whole disk has been transferred.
 func validateScheduledJob(job ScheduledJob) error {
+	if err := validateJobChangeDetection(job); err != nil {
+		return err
+	}
 	if job.BackupType != "machine" || !job.MachineAsVM {
 		return nil
 	}

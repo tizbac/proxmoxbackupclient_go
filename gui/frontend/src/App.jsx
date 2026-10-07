@@ -8,6 +8,7 @@ import KnownLimitationsModal from './components/KnownLimitationsModal'
 import BMRGuideModal from './components/BMRGuideModal'
 import ClosePromptModal from './components/ClosePromptModal'
 import JobsLockModal from './components/JobsLockModal'
+import RadioGroup from './components/RadioGroup'
 import PassphraseModal from './components/PassphraseModal'
 import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
 import EncryptionKeyField from './components/EncryptionKeyField'
@@ -349,6 +350,10 @@ function App() {
   const [oneOffComment, setOneOffComment] = useState('') // Optional PBS snapshot comment for a one-off backup
   // Back a machine up as a PBS "vm" snapshot (restorable from Proxmox VE).
   const [machineAsVM, setMachineAsVM] = useState(false)
+  // Change detection for a directory Backup Set ('legacy' | 'data' | 'metadata')
+  // and, for metadata, a full read every N runs (0 = never).
+  const [changeDetectionMode, setChangeDetectionMode] = useState('legacy')
+  const [fullReadEvery, setFullReadEvery] = useState(0)
   const [vmIdNumber, setVmIdNumber] = useState('')
   const [vmIdStyle, setVmIdStyle] = useState('range') // 'range' = 9000000+N, 'zeros' = 000N
   // Reverse of computeVmBackupId: refill the editor from a saved Backup Set.
@@ -1772,7 +1777,10 @@ function App() {
         runAppBefore: runAppBefore.trim(),
         runAppAfter: runAppAfter.trim(),
         exitAppAfter: exitAppAfter,
-        shutdownAfter: shutdownAfter
+        shutdownAfter: shutdownAfter,
+        // Folder sets only: machine sets back up disk images.
+        changeDetectionMode: backupType === 'directory' && changeDetectionMode !== 'legacy' ? changeDetectionMode : '',
+        fullReadEvery: backupType === 'directory' && changeDetectionMode === 'metadata' ? fullReadEvery : 0
       }
 
       // Save or update to backend
@@ -1805,6 +1813,7 @@ function App() {
         setEmailOnFailure(false); setEmailOnFailureTo('')
         setRunAppBefore(''); setRunAppAfter('')
         setExitAppAfter(false); setShutdownAfter(false)
+        setChangeDetectionMode('legacy'); setFullReadEvery(0)
         setShowBackupForm(false)
       } catch (err) {
         if (!handleJobsLockError(err)) showStatus(`❌ ${jobErrText(err)}`, 'error')
@@ -3034,6 +3043,7 @@ function App() {
                     setEmailOnFailure(false); setEmailOnFailureTo('')
                     setRunAppBefore(''); setRunAppAfter('')
                     setExitAppAfter(false); setShutdownAfter(false)
+                    setChangeDetectionMode('legacy'); setFullReadEvery(0)
                     setBackupFormTab('source'); setShowBackupForm(true)
                   }}
                 >
@@ -3159,6 +3169,7 @@ function App() {
                               setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
                               setRunAppBefore(job.runAppBefore || ''); setRunAppAfter(job.runAppAfter || '')
                               setExitAppAfter(!!job.exitAppAfter); setShutdownAfter(!!job.shutdownAfter)
+                              setChangeDetectionMode(job.changeDetectionMode || 'legacy'); setFullReadEvery(job.fullReadEvery || 0)
                               setBackupFormTab('source'); setShowBackupForm(true)
                             }}
                           >
@@ -3195,6 +3206,7 @@ function App() {
                               setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
                               setRunAppBefore(job.runAppBefore || ''); setRunAppAfter(job.runAppAfter || '')
                               setExitAppAfter(!!job.exitAppAfter); setShutdownAfter(!!job.shutdownAfter)
+                              setChangeDetectionMode(job.changeDetectionMode || 'legacy'); setFullReadEvery(job.fullReadEvery || 0)
                               setBackupFormTab('source'); setShowBackupForm(true)
                             }}
                           >
@@ -3292,11 +3304,17 @@ function App() {
 
           {(backupMode === 'oneshot' || backupFormTab === 'source') && (
           <div className="form-group">
-            <label>{t('backupType')}</label>
-            <select value={backupType} onChange={(e) => setBackupType(e.target.value)}>
-              <option value="directory">{t('backupTypeDirectory')}</option>
-              <option value="machine">{t('backupTypeMachine')}</option>
-            </select>
+            <label id="backupTypeLabel">{t('backupType')}</label>
+            <RadioGroup
+              name="backupType"
+              labelId="backupTypeLabel"
+              value={backupType}
+              onChange={setBackupType}
+              options={[
+                { value: 'directory', label: t('backupTypeDirectory') },
+                { value: 'machine', label: t('backupTypeMachine') },
+              ]}
+            />
           </div>
           )}
 
@@ -3496,15 +3514,17 @@ function App() {
           )}
           {backupType === 'machine' && (
             <div className="form-group">
-              <label>{tl('machineBackupAsLabel', 'Backup as')}</label>
-              <select
-                id="machineBackupAs"
+              <label id="machineBackupAsLabel">{tl('machineBackupAsLabel', 'Backup as')}</label>
+              <RadioGroup
+                name="machineBackupAs"
+                labelId="machineBackupAsLabel"
                 value={machineAsVM ? 'vm' : 'host'}
-                onChange={(e) => setMachineAsVM(e.target.value === 'vm')}
-              >
-                <option value="host">{tl('machineBackupAsHost', 'Host backup (default)')}</option>
-                <option value="vm">{tl('machineBackupAsVm', 'Proxmox VE virtual machine')}</option>
-              </select>
+                onChange={(v) => setMachineAsVM(v === 'vm')}
+                options={[
+                  { value: 'host', label: tl('machineBackupAsHost', 'Host backup (default)') },
+                  { value: 'vm', label: tl('machineBackupAsVm', 'Proxmox VE virtual machine') },
+                ]}
+              />
               {machineAsVM && (
                 <div style={{marginTop: '10px'}}>
                   <div style={{display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap'}}>
@@ -3517,14 +3537,15 @@ function App() {
                       placeholder={tl('machineVmIdPlaceholder', 'VM ID, e.g. 107')}
                       style={{width: '140px'}}
                     />
-                    <select
-                      id="machineVmIdStyle"
+                    <RadioGroup
+                      name="machineVmIdStyle"
                       value={vmIdStyle}
-                      onChange={(e) => setVmIdStyle(e.target.value)}
-                    >
-                      <option value="range">{tl('machineVmIdStyleRange', 'Reserved range (9000000 + ID)')}</option>
-                      <option value="zeros">{tl('machineVmIdStyleZeros', 'Leading zeros (000 + ID)')}</option>
-                    </select>
+                      onChange={setVmIdStyle}
+                      options={[
+                        { value: 'range', label: tl('machineVmIdStyleRange', 'Reserved range (9000000 + ID)') },
+                        { value: 'zeros', label: tl('machineVmIdStyleZeros', 'Leading zeros (000 + ID)') },
+                      ]}
+                    />
                   </div>
                   <div style={{fontSize: '13px', marginTop: '6px'}}>
                     {tl('machineVmIdResult', 'Backup ID in PBS:')} <strong>{computeVmBackupId(vmIdNumber, vmIdStyle) || '-'}</strong>
@@ -3604,6 +3625,58 @@ function App() {
               </div>
             )}
           </div>
+          {backupMode === 'scheduled' && (
+            <div className="form-group">
+              <label id="changeDetectionLabel">{t('changeDetectionLabel')}</label>
+              <RadioGroup
+                name="changeDetectionMode"
+                labelId="changeDetectionLabel"
+                vertical
+                value={backupType === 'machine' ? 'legacy' : changeDetectionMode}
+                onChange={setChangeDetectionMode}
+                disabled={backupType === 'machine'}
+                options={[
+                  { value: 'legacy', label: t('changeDetectionLegacy') },
+                  { value: 'data', label: t('changeDetectionData') },
+                  { value: 'metadata', label: t('changeDetectionMetadata') },
+                ]}
+              />
+              {backupType === 'machine' ? (
+                <div style={{fontSize: '12px', color: '#999', marginTop: '6px', maxWidth: '520px'}}>
+                  {t('changeDetectionMachineNote')}
+                </div>
+              ) : (
+                <>
+                  {changeDetectionMode === 'metadata' && (
+                    <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', flexWrap: 'wrap'}}>
+                      <label htmlFor="fullReadEvery" style={{margin: 0}}>{t('fullReadEveryLabel')}</label>
+                      <input
+                        id="fullReadEvery"
+                        type="text"
+                        inputMode="numeric"
+                        value={fullReadEvery}
+                        onChange={(e) => {
+                          const n = parseInt(e.target.value.replace(/\D/g, '').slice(0, 3), 10)
+                          setFullReadEvery(Number.isNaN(n) ? 0 : Math.min(366, n))
+                        }}
+                        style={{width: '90px'}}
+                      />
+                      <span>{t('fullReadEveryRuns')}</span>
+                    </div>
+                  )}
+                  {changeDetectionMode === 'metadata' && fullReadEvery === 1 && (
+                    <div style={{fontSize: '12px', color: '#b36b00', marginTop: '6px'}}>{t('fullReadEveryOne')}</div>
+                  )}
+                  {changeDetectionMode !== 'legacy' && (
+                    <div style={{fontSize: '12px', color: '#666', marginTop: '6px', maxWidth: '520px'}}>
+                      {changeDetectionMode === 'metadata' ? t('changeDetectionMetadataHint') : t('changeDetectionDataHint')}
+                      {' '}{t('changeDetectionRestoreNote')}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           </>
           )}
 
@@ -3720,6 +3793,7 @@ function App() {
               setEditingJobId(null)
               setJobName('')
               setMachineAsVM(false); setVmIdNumber('')
+              setChangeDetectionMode('legacy'); setFullReadEvery(0)
               setScheduleTime('02:00')
               setRunAtStartup(false)
               setTriggerMode('daily')
@@ -3943,12 +4017,18 @@ function App() {
                   />
                 </div>
                 <div className="form-group" style={{flex: '1 1 160px', margin: 0}}>
-                  <label>{t('searchModeLabel')}</label>
-                  <select value={searchMode} onChange={(e) => setSearchMode(e.target.value)}>
-                    <option value="name">{t('searchModeName')}</option>
-                    <option value="regex">{t('searchModeRegex')}</option>
-                    <option value="path">{t('searchModePath')}</option>
-                  </select>
+                  <label id="searchModeLabel">{t('searchModeLabel')}</label>
+                  <RadioGroup
+                    name="searchMode"
+                    labelId="searchModeLabel"
+                    value={searchMode}
+                    onChange={setSearchMode}
+                    options={[
+                      { value: 'name', label: t('searchModeName') },
+                      { value: 'regex', label: t('searchModeRegex') },
+                      { value: 'path', label: t('searchModePath') },
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -4526,6 +4606,11 @@ function App() {
                               {job.encryption === 'encrypted' ? '🔒 ' + t('reportsEncrypted') : t('reportsUnencrypted')}
                             </span>
                           )}
+                          {job.changeDetection === 'metadata' && (
+                            <span style={{marginLeft: '8px', color: '#2b6cb0'}}>
+                              {job.reusedFiles ? t('reportsReusedShort', {files: job.reusedFiles}) : t('changeDetectionShortMetadata')}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )
@@ -4588,6 +4673,17 @@ function App() {
                             <strong>{t('reportsEncryption')}</strong>
                             <span style={{color: selected.encryption === 'encrypted' ? '#1a7f37' : '#a06000', fontWeight: 600}}>
                               {selected.encryption === 'encrypted' ? '🔒 ' + t('reportsEncrypted') : t('reportsUnencrypted')}
+                            </span>
+                          </>
+                        )}
+                        {selected.kind !== 'restore' && selected.changeDetection && (
+                          <>
+                            <strong>{t('reportsChangeDetection')}</strong>
+                            <span>
+                              {selected.changeDetection === 'metadata' ? t('changeDetectionShortMetadata')
+                                : selected.changeDetection === 'data' ? t('changeDetectionShortData')
+                                : t('changeDetectionShortLegacy')}
+                              {selected.reusedFiles ? ' (' + t('reportsReusedFiles', {files: selected.reusedFiles, size: formatBytes(selected.reusedBytes || 0)}) + ')' : ''}
                             </span>
                           </>
                         )}

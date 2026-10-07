@@ -57,6 +57,12 @@ type Config struct {
 	// PBKDF2 KDF. Left empty, the passphrase is asked for on the console.
 	// Ignored for `--kdf none` key files, which need nothing.
 	KeyFilePassphrase string `json:"keyfilepassphrase"`
+
+	// ChangeDetectionMode is legacy (default), data or metadata, as for
+	// proxmox-backup-client --change-detection-mode. data and metadata write a
+	// split archive (backup.mpxar.didx + backup.ppxar.didx); metadata reads
+	// every file like data until reuse of unchanged files is implemented.
+	ChangeDetectionMode string `json:"change-detection-mode"`
 }
 
 // Dirs returns every configured source directory: "backupdir" first (if set),
@@ -88,6 +94,11 @@ func (c *Config) valid() bool {
 	baseValid := c.BaseURL != "" && authOK && c.Datastore != "" && (len(c.Dirs()) > 0 || c.BackupStreamName != "")
 	if !baseValid {
 		return baseValid
+	}
+
+	if err := pbscommon.ValidateChangeDetectionMode(c.ChangeDetectionMode); err != nil {
+		fmt.Println(err)
+		return false
 	}
 
 	if c.SMTP != nil {
@@ -133,6 +144,8 @@ func loadConfig() *Config {
 	mailSubjectTemplateFlag := flag.String("mail-subject-template", "", "mail notification system: mail subject template(optional)")
 	mailBodyTemplateFlag := flag.String("mail-body-template", "", "mail notification system: mail body template(optional)")
 
+	changeDetectionFlag := flag.String("change-detection-mode", "", "legacy (default), data or metadata: data/metadata write a split archive (backup.mpxar.didx + backup.ppxar.didx)")
+
 	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
 
 	// Parse command line flags
@@ -155,6 +168,9 @@ func loadConfig() *Config {
 		}
 	}
 
+	if *changeDetectionFlag != "" {
+		config.ChangeDetectionMode = *changeDetectionFlag
+	}
 	if *baseURLFlag != "" {
 		config.BaseURL = *baseURLFlag
 	}

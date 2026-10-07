@@ -73,6 +73,18 @@ func (self *Chunker) New(chunk_size_avg uint64) {
 	fmt.Printf("Chunk size min is %d , max %d\n", self.chunk_size_min, self.chunk_size_max)
 }
 
+// Reset forgets the rolling state, exactly as a natural chunk break does, so
+// the caller can cut a chunk at a boundary of its own choosing.
+func (self *Chunker) Reset() {
+	self.h = 0
+	self.chunk_size = 0
+	self.window_size = 0
+}
+
+// MinSize and MaxSize are the chunk size bounds (average/4 and average*4).
+func (self *Chunker) MinSize() uint64 { return self.chunk_size_min }
+func (self *Chunker) MaxSize() uint64 { return self.chunk_size_max }
+
 func (self *Chunker) Scan(data []byte) uint64 {
 	window_len := uint64(len(self.window))
 	data_len := uint64(len(data))

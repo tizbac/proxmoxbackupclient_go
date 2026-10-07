@@ -79,6 +79,9 @@ type DIDXReaderAt struct {
 	// NewDIDXReaderAt still prefetches.
 	prefetchOff   bool
 	prefetchLimit int
+	// prefetchAllowed, when non-nil, restricts read-ahead to these inclusive
+	// [first, last] chunk-index runs, sorted — see LimitPrefetchToRanges.
+	prefetchAllowed [][2]int
 
 	// inflight coalesces concurrent requests for the SAME chunk index (from
 	// ReadAt's own caller racing a background prefetch worker, or two
@@ -178,7 +181,60 @@ func (r *DIDXReaderAt) SetPrefetchEnabled(enabled bool) {
 	r.mu.Lock()
 	r.prefetchOff = !enabled
 	r.prefetchLimit = 0
+	r.prefetchAllowed = nil
 	r.mu.Unlock()
+}
+
+// LimitPrefetchToRanges restricts background read-ahead to chunks that
+// overlap one of the byte ranges [start, end), and returns how many distinct
+// chunks those ranges cover. A selective restore passes the ranges it will
+// read (PXARReader.SelectionRanges), so read-ahead never fetches a chunk that
+// holds only unselected data, and the returned count is the restore's real
+// chunk total. Reads outside the ranges still work (fetched on demand); they
+// just never trigger read-ahead into chunks the ranges do not reach. No
+// ranges disables read-ahead.
+func (r *DIDXReaderAt) LimitPrefetchToRanges(ranges [][2]int64) int {
+	total := int64(r.idx.total)
+	sorted := append([][2]int64(nil), ranges...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i][0] < sorted[j][0] })
+	runs := make([][2]int, 0, len(sorted))
+	for _, rg := range sorted {
+		start, end := rg[0], rg[1]
+		if start < 0 {
+			start = 0
+		}
+		if end > total {
+			end = total
+		}
+		if end <= start {
+			continue
+		}
+		first := r.chunkIndexAt(uint64(start))
+		last := r.chunkIndexAt(uint64(end - 1))
+		if n := len(runs); n > 0 && first <= runs[n-1][1]+1 {
+			if last > runs[n-1][1] {
+				runs[n-1][1] = last
+			}
+			continue
+		}
+		runs = append(runs, [2]int{first, last})
+	}
+	count := 0
+	for _, run := range runs {
+		count += run[1] - run[0] + 1
+	}
+	r.mu.Lock()
+	r.prefetchOff = len(runs) == 0
+	r.prefetchLimit = 0
+	r.prefetchAllowed = runs
+	r.mu.Unlock()
+	return count
+}
+
+// prefetchAllowedAt reports whether chunk ci lies in one of the allowed runs.
+func prefetchAllowedAt(runs [][2]int, ci int) bool {
+	i := sort.Search(len(runs), func(i int) bool { return runs[i][1] >= ci })
+	return i < len(runs) && runs[i][0] <= ci
 }
 
 // LimitPrefetchTo restricts background read-ahead so it never fetches chunks
@@ -202,6 +258,7 @@ func (r *DIDXReaderAt) LimitPrefetchTo(endOffset int64) {
 	r.mu.Lock()
 	r.prefetchOff = false
 	r.prefetchLimit = limit
+	r.prefetchAllowed = nil
 	r.mu.Unlock()
 }
 
@@ -344,7 +401,7 @@ func (r *DIDXReaderAt) fetchOnce(ci int) ([]byte, error) {
 func (r *DIDXReaderAt) triggerPrefetch(ci int) {
 	total := len(r.idx.digests)
 	r.mu.Lock()
-	off, limit := r.prefetchOff, r.prefetchLimit
+	off, limit, allowed := r.prefetchOff, r.prefetchLimit, r.prefetchAllowed
 	r.mu.Unlock()
 	if off {
 		return
@@ -356,6 +413,9 @@ func (r *DIDXReaderAt) triggerPrefetch(ci int) {
 		next := ci + offset
 		if next >= total {
 			break
+		}
+		if allowed != nil && !prefetchAllowedAt(allowed, next) {
+			continue
 		}
 		if _, ok := r.cache.get(next); ok {
 			continue

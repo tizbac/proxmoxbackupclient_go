@@ -747,7 +747,7 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 	switch a.mode {
 	case api.ModeService:
 		// Use HTTP API to communicate with service (service has admin rights as LocalSystem)
-		return a.startBackupViaService(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID, comment)
+		return a.startBackupViaService(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID, comment, postActionsKey)
 	case api.ModeStandalone:
 		// Direct execution - check admin if VSS requested
 		if useVSS && !isAdmin() {
@@ -796,7 +796,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 }
 
 // startBackupViaService sends backup request to the service via HTTP API
-func (a *App) startBackupViaService(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
+func (a *App) startBackupViaService(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	if err := a.checkServiceKey(pbsServerID); err != nil {
 		return err
 	}
@@ -812,6 +812,8 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 		Compression:  compression,
 		PBSServerID:  pbsServerID,
 		Comment:      comment,
+		// A Backup Set's change detection for this run (scheduler.go).
+		ChangeDetectionMode: a.runChangeDetectionMode(postActionsKey),
 	}
 
 	resp, err := a.apiClient.StartBackup(req)
@@ -980,6 +982,13 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	}
 
 	// Validate backup parameters and build target list
+	// A Backup Set's change detection for this run (scheduler.go); a one-off
+	// backup (no key) and a machine backup use neither.
+	changeMode := ""
+	if backupType == "directory" {
+		changeMode = a.runChangeDetectionMode(postActionsKey)
+	}
+
 	var targetDirs []string
 	if backupType == "directory" {
 		if len(backupDirs) == 0 {
@@ -1029,7 +1038,8 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		// it (no PXARArchive involved). See Config.ParallelBackupRead's doc
 		// comment.
 		PrefetchWorkers: a.config.EffectivePrefetchWorkers(),
-		Crypt:           pbsCfg.Crypt,
+		ChangeDetectionMode: changeMode,
+		Crypt:               pbsCfg.Crypt,
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
@@ -1144,6 +1154,11 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 				Trigger:       resolvedTrigger,
 				MessageKey:    msgKey,
 				MessageParams: msgP,
+			}
+			if backupType != "machine" {
+				historyEntry.ChangeDetection = changeDetectionLabel(changeMode)
+				historyEntry.ReusedFiles = paramUint(msgP, "reusedFiles")
+				historyEntry.ReusedBytes = paramUint(msgP, "reusedBytes")
 			}
 			if !success {
 				historyEntry.Status = "failed"
