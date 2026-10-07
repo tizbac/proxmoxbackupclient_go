@@ -399,6 +399,24 @@ function App() {
     return () => { if (unsub) unsub() }
   }, [])
 
+  // The backend flips Standalone -> Service when the privileged service shows
+  // up after the GUI started (re-detected when a backup starts) and pushes the
+  // refreshed system info. Re-reading it keeps the mode badge, the VSS notice
+  // and the machine-backup elevation warning truthful: without this they kept
+  // the value read once on mount, so service mode still asked for admin rights.
+  useEffect(() => {
+    if (!EventsOn || !GetSystemInfo) return
+    const unsub = EventsOn('mode:changed', async (info) => {
+      try {
+        const fresh = info || (await GetSystemInfo())
+        if (fresh) setSystemInfo(prev => ({ ...prev, ...fresh }))
+      } catch (err) {
+        console.error('mode:changed refresh failed:', err)
+      }
+    })
+    return () => { if (unsub) unsub() }
+  }, [])
+
   // Load config with hostname on mount
   useEffect(() => {
     const loadData = async () => {

@@ -35,6 +35,17 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
   const isAdmin = systemInfo?.is_admin === true
   const isLinux = systemInfo?.os === 'linux'
 
+  // Local elevation is needed only when THIS process has to open the block
+  // devices itself, i.e. standalone on Linux. With the privileged service
+  // running, the backup is executed by the service as root, so an unprivileged
+  // GUI must not be blocked (nor told to relaunch with pkexec).
+  // needs_local_elevation is computed by the backend; the ?? falls back to the
+  // old is_admin test if the binary behind the frontend is older.
+  const needsElevation = isLinux && (systemInfo?.needs_local_elevation ?? !isAdmin)
+  // Same, but only true when this process really is unprivileged: the service
+  // (root) performs the machine backup on our behalf.
+  const handledByService = isLinux && !needsElevation && !isAdmin
+
   return (
     <div className="machine-backup-config">
       <h3>{t('machineBackupConfig')}</h3>
@@ -53,7 +64,7 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
         </div>
       )}
 
-      {!isAdmin && isLinux && (
+      {needsElevation && (
         <div className="info-box" style={{ marginBottom: '16px', backgroundColor: '#f8d7da', borderColor: '#f5c6cb' }}>
           <strong>⚠️ {t('elevationRequired')}</strong><br/>
           {t('elevationHint')}
@@ -65,6 +76,12 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
         </div>
       )}
 
+      {handledByService && (
+        <div className="info-box" style={{ marginBottom: '16px', backgroundColor: '#d1ecf1', borderColor: '#bee5eb' }}>
+          ℹ️ <strong>{t('machineBackupServiceInfo')}</strong>
+        </div>
+      )}
+
       <div className="form-group">
         <label>{t('selectDisksToBackup')}</label>
         <div className="drive-selection">
@@ -72,25 +89,25 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
             <button 
               className="btn" 
               onClick={handleSelectAll} 
-              disabled={!isAdmin && isLinux}
+              disabled={needsElevation}
             >{t('selectAll')}</button>
             <button 
               className="btn btn-secondary" 
               onClick={handleDeselectAll} 
-              disabled={!isAdmin && isLinux}
+              disabled={needsElevation}
             >{t('deselectAll')}</button>
           </div>
-          <div className="drives-list" style={{ opacity: (!isAdmin && isLinux) ? 0.6 : 1, pointerEvents: (!isAdmin && isLinux) ? 'none' : 'auto' }}>
+          <div className="drives-list" style={{ opacity: needsElevation ? 0.6 : 1, pointerEvents: needsElevation ? 'none' : 'auto' }}>
             {physicalDisks.length === 0 && (
               <div style={{ padding: '12px', color: '#718096' }}>{t('noPhysicalDisksFound')}</div>
             )}
             {physicalDisks.map((drive) => (
-              <label className="drive-item" key={drive.device_path} style={{ opacity: (!isAdmin && isLinux) ? 0.6 : 1 }}>
+              <label className="drive-item" key={drive.device_path} style={{ opacity: needsElevation ? 0.6 : 1 }}>
                 <input
                   type="checkbox"
                   checked={selectedDrives.includes(drive.device_path)}
                   onChange={() => handleDriveSelect(drive.device_path)}
-                  disabled={!isAdmin && isLinux}
+                  disabled={needsElevation}
                 />
                 <span className="drive-device">{drive.device_path}</span>
                 <span className="drive-size">{(drive.size / (1024 * 1024 * 1024)).toFixed(2)} GB</span>

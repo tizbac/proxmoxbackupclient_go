@@ -374,13 +374,50 @@ func (a *App) GetHostname() string {
 	return hostname
 }
 
+// needsLocalElevation reports whether THIS process has to be root/admin to do
+// privileged work (raw block devices and the kernel snapshot modules for
+// machine backups, VSS snapshots).
+//
+// It is false when the GUI runs unprivileged but a privileged service takes
+// that work over (service mode), and when this process already is the
+// privileged helper. The frontend must not ask such a GUI to relaunch with
+// pkexec — that is what made "machine backup requires admin privileges" show
+// up in service mode.
+func (a *App) needsLocalElevation() bool {
+	if a.isServiceProcess {
+		return false // we ARE the privileged helper
+	}
+	return !isAdmin() && a.mode != api.ModeService
+}
+
+// switchToServiceMode flips the runtime mode after the late service
+// re-detection (the service may start after the GUI) and tells the frontend,
+// so everything derived from it — elevation warnings, the mode badge, the VSS
+// notice — updates instead of keeping the value read at startup.
+func (a *App) switchToServiceMode() {
+	if a.mode == api.ModeService {
+		return
+	}
+	a.mode = api.ModeService
+	// The "why am I standalone" reason is obsolete the moment the service
+	// takes over; leaving it set makes the frontend notice contradict itself.
+	a.standaloneReason = ""
+	if a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, "mode:changed", a.GetSystemInfo())
+}
+
 // GetSystemInfo returns system information for UI (mode, admin status, etc.)
 func (a *App) GetSystemInfo() map[string]interface{} {
 	info := map[string]interface{}{
-		"mode":              a.mode.String(),
-		"is_admin":          isAdmin(),
-		"hostname":          a.GetHostname(),
-		"service_available": a.mode == api.ModeService,
+		"mode":     a.mode.String(),
+		"is_admin": isAdmin(),
+		// needs_local_elevation: see needsLocalElevation. The frontend uses it
+		// (not is_admin) to decide whether to demand an elevated relaunch.
+		"needs_local_elevation": a.needsLocalElevation(),
+		"hostname":              a.GetHostname(),
+		"service_available":     a.mode == api.ModeService,
 		// standalone + standalone_reason drive the persistent top notice in
 		// the frontend ("running standalone, scheduling not available") and
 		// the disabling of the scheduling UI.
@@ -420,6 +457,15 @@ func getSnapshotModule() string {
 // On macOS it uses osascript with administrator privileges.
 // Returns an error if elevation cannot be requested or was denied.
 func (a *App) RequestElevation() error {
+	// Service mode: the privileged service already performs the work that
+	// needs root (machine backups read the block devices as root, VSS runs
+	// there too). Relaunching this unprivileged GUI with pkexec/sudo would
+	// only spawn a second copy of the same unprivileged process, so there is
+	// nothing to elevate.
+	if a.isDelegatedToService() {
+		writeDebugLog("RequestElevation: ignored (service mode: the privileged service does the work)")
+		return nil
+	}
 	switch stdruntime.GOOS {
 	case "linux":
 		return requestElevationLinux()
@@ -435,7 +481,14 @@ func (a *App) RequestElevation() error {
 // CanModifyJobs returns true if the current user has permission to modify
 // scheduled jobs. On Windows, this requires running as administrator (UAC elevated).
 // On Linux, this requires being in the wheel/sudo group or having sudo privileges.
+//
+// In service mode neither applies: the privileged service owns the jobs file
+// and the GUI saves through its API, so an unprivileged GUI may edit jobs
+// without relaunching elevated.
 func (a *App) CanModifyJobs() bool {
+	if a.isDelegatedToService() {
+		return true
+	}
 	return canModifyJobs()
 }
 
@@ -1006,7 +1059,7 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 	if !a.isServiceProcess && a.mode == api.ModeStandalone {
 		if a.apiClient.IsServiceAvailable() {
 			writeDebugLog("[Mode Detection] Service now available, switching to Service mode")
-			a.mode = api.ModeService
+			a.switchToServiceMode()
 		}
 	}
 
@@ -1041,7 +1094,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	if !a.isServiceProcess && a.mode == api.ModeStandalone {
 		if a.apiClient.IsServiceAvailable() {
 			writeDebugLog("[Mode Detection] Service now available, switching to Service mode")
-			a.mode = api.ModeService
+			a.switchToServiceMode()
 		}
 	}
 

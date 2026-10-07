@@ -159,6 +159,7 @@ const translations = {
       elevationRequired: "Privilèges administrateur requis",
       elevationHint: "Les sauvegardes machine sous Linux nécessitent les privilèges root pour accéder aux périphériques de bloc et aux modules de snapshot noyau. Cliquez sur \"Exécuter en tant qu'administrateur\" pour relancer l'application avec sudo/pkexec.",
       runAsAdmin: "Exécuter en tant qu'administrateur",
+      machineBackupServiceInfo: "Les sauvegardes machine s'exécutent en root dans le service privilégié : aucune élévation locale n'est nécessaire.",
       elevationFailed: "Échec de l'élévation des privilèges: {error}",
       // Standalone mode
       standaloneNoticeTitle: "Mode autonome détecté",
@@ -518,6 +519,7 @@ const translations = {
       elevationRequired: "Administrator privileges required",
       elevationHint: "Machine backups on Linux require root privileges to access block devices and kernel snapshot modules. Click \"Run as Administrator\" to relaunch the application with sudo/pkexec.",
       runAsAdmin: "Run as Administrator",
+      machineBackupServiceInfo: "Machine backups run as root inside the privileged service - no local elevation needed.",
       elevationFailed: "Elevation failed: {error}",
       // Standalone mode
       standaloneNoticeTitle: "Standalone mode detected",
@@ -877,6 +879,7 @@ const translations = {
       elevationRequired: "Privilegi amministratore richiesti",
       elevationHint: "I backup macchina su Linux richiedono i privilegi root per accedere ai dispositivi a blocchi e ai moduli snapshot del kernel. Clicca su \"Esegui come amministratore\" per riavviare l'applicazione con sudo/pkexec.",
       runAsAdmin: "Esegui come amministratore",
+      machineBackupServiceInfo: "I backup macchina vengono eseguiti come root nel servizio privilegiato: non è richiesta alcuna elevazione locale.",
       elevationFailed: "Elevazione privilegi fallita: {error}",
       // Standalone mode
       standaloneNoticeTitle: "Modalità autonoma rilevata",
@@ -1236,6 +1239,7 @@ const translations = {
       elevationRequired: "Administratorrechte erforderlich",
       elevationHint: "Maschinen-Backups unter Linux erfordern Root-Rechte für den Zugriff auf Blockgeräte und Kernel-Snapshot-Module. Klicken Sie auf \"Als Administrator ausführen\", um die Anwendung mit sudo/pkexec neu zu starten.",
       runAsAdmin: "Als Administrator ausführen",
+      machineBackupServiceInfo: "Maschinen-Backups laufen als root im privilegierten Dienst - keine lokale Berechtigungssteigerung erforderlich.",
       elevationFailed: "Rechteerhöhung fehlgeschlagen: {error}",
       // Standalone mode
       standaloneNoticeTitle: "Eigenständiger Modus erkannt",
@@ -1595,6 +1599,7 @@ const translations = {
       elevationRequired: "Wymagane uprawnienia administratora",
       elevationHint: "Kopie zapasowe maszyny na Linuxie wymagają uprawnień root do dostępu do urządzeń blokowych i modułów snapshot jądra. Kliknij \"Uruchom jako administrator\", aby ponownie uruchomić aplikację z sudo/pkexec.",
       runAsAdmin: "Uruchom jako administrator",
+      machineBackupServiceInfo: "Kopie zapasowe maszyny działają jako root w usłudze przywilejowanej - podnoszenie uprawnień lokalnie nie jest potrzebne.",
       elevationFailed: "Nie udało się podnieść uprawnień: {error}",
       // Standalone mode
       standaloneNoticeTitle: "Wykryto tryb autonomiczny",
