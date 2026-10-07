@@ -936,7 +936,9 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		fileTickerDone := make(chan struct{})
 		defer close(fileTickerDone)
 		go func() {
-			t := time.NewTicker(500 * time.Millisecond)
+			// 5 updates a second, the same rate as the restore card's
+			// current-file line: often enough to give a sense of speed.
+			t := time.NewTicker(200 * time.Millisecond)
 			defer t.Stop()
 			last := ""
 			for {
