@@ -1,0 +1,5 @@
+# makepkg build leftovers (recreated by every `makepkg` run)
+src/
+pkg/
+*.pkg.tar
+*.log
