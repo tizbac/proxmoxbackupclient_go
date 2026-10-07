@@ -1316,7 +1316,8 @@ function App() {
     } catch (err) {
       setProgress(0)
       setBackupRunning(false)
-      showStatus(`❌ ${err}`, 'error')
+      const errorMessage = err?.message || err?.toString() || 'Unknown error'
+      showStatus(`❌ ${errorMessage}`, 'error')
     }
   }
 
@@ -1329,7 +1330,7 @@ function App() {
       await CancelBackup()
       showStatus(`⏹️ ${t('stopBackupInProgress')}`, 'info')
     } catch (err) {
-      showStatus(`❌ ${err}`, 'error')
+      showStatus(`❌ ${err?.message || err?.toString() || 'Unknown error'}`, 'error')
     }
   }
 

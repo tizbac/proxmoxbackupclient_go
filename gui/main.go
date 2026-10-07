@@ -350,6 +350,14 @@ func (a *App) CancelBackup(jobID string) error {
 	return nil
 }
 
+// ListBackupJobs returns a list of all running/completed backup jobs from the service.
+func (a *App) ListBackupJobs() ([]*api.BackupProgress, error) {
+	if a.apiClient == nil {
+		return nil, fmt.Errorf("no API client available")
+	}
+	return a.apiClient.ListBackupJobs()
+}
+
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
