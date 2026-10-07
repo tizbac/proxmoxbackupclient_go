@@ -31,6 +31,13 @@ type PXARReader struct {
 	size   int64
 	offset int64
 
+	// Split (pxar format version 2) archives: ra/size are the metadata
+	// stream (.mpxar) and payloadRA/payloadSize the payload stream (.ppxar)
+	// that each file's PXAR_PAYLOAD_REF points into. Both nil/zero for a
+	// classic single-stream archive.
+	payloadRA   io.ReaderAt
+	payloadSize int64
+
 	// copyNanos/fsOverheadNanos accumulate wall-clock time spent during
 	// extraction: copyNanos is time inside io.Copy (reading archive payload —
 	// including any chunk-cache-miss wait — and writing it to the temp file);
@@ -276,6 +283,60 @@ func NewPXARReaderAt(ra io.ReaderAt, size int64) *PXARReader {
 	return &PXARReader{ra: ra, size: size}
 }
 
+// NewSplitPXARReaderAt creates a reader for a split (format version 2)
+// archive: meta is the metadata stream (.mpxar) and payload the payload
+// stream (.ppxar). Both stream headers are checked up front so a mismatched
+// or truncated pair fails here, not halfway through a restore.
+func NewSplitPXARReaderAt(meta io.ReaderAt, metaSize int64, payload io.ReaderAt, payloadSize int64) (*PXARReader, error) {
+	var hdr [24]byte
+	if metaSize < 24 {
+		return nil, fmt.Errorf("pxar metadata stream too short (%d bytes)", metaSize)
+	}
+	if _, err := meta.ReadAt(hdr[:], 0); err != nil {
+		return nil, fmt.Errorf("read pxar format version: %w", err)
+	}
+	if binary.LittleEndian.Uint64(hdr[0:8]) != PXAR_FORMAT_VERSION || binary.LittleEndian.Uint64(hdr[8:16]) != 24 {
+		return nil, fmt.Errorf("pxar metadata stream does not start with a format version entry")
+	}
+	if v := binary.LittleEndian.Uint64(hdr[16:24]); v != 2 {
+		return nil, fmt.Errorf("unsupported pxar format version %d", v)
+	}
+	if payloadSize < 16 {
+		return nil, fmt.Errorf("pxar payload stream too short (%d bytes)", payloadSize)
+	}
+	if _, err := payload.ReadAt(hdr[:16], 0); err != nil {
+		return nil, fmt.Errorf("read pxar payload start marker: %w", err)
+	}
+	if binary.LittleEndian.Uint64(hdr[0:8]) != PXAR_PAYLOAD_START_MARKER || binary.LittleEndian.Uint64(hdr[8:16]) != 16 {
+		return nil, fmt.Errorf("pxar payload stream does not start with a payload start marker")
+	}
+	return &PXARReader{ra: meta, size: metaSize, payloadRA: payload, payloadSize: payloadSize}, nil
+}
+
+// IsSplit reports whether this reader is over a split (format version 2) archive.
+func (pr *PXARReader) IsSplit() bool { return pr.payloadRA != nil }
+
+// payloadSection returns the content of the file a PXAR_PAYLOAD_REF points
+// at. offset is the position of that file's PXAR_PAYLOAD header in the payload
+// stream; the header must be a PXAR_PAYLOAD record of exactly size+16 bytes,
+// which is what catches a reference into padding or a wrong payload stream.
+func (pr *PXARReader) payloadSection(offset, size uint64) (*io.SectionReader, error) {
+	if pr.payloadRA == nil {
+		return nil, fmt.Errorf("payload reference in an archive without a payload stream")
+	}
+	if offset > uint64(pr.payloadSize) || size > uint64(pr.payloadSize) || offset+16+size > uint64(pr.payloadSize) {
+		return nil, fmt.Errorf("payload reference %d+%d is outside the %d-byte payload stream", offset, size, pr.payloadSize)
+	}
+	var raw [16]byte
+	if _, err := pr.payloadRA.ReadAt(raw[:], int64(offset)); err != nil {
+		return nil, fmt.Errorf("read payload header at %d: %w", offset, err)
+	}
+	if binary.LittleEndian.Uint64(raw[0:8]) != PXAR_PAYLOAD || binary.LittleEndian.Uint64(raw[8:16]) != size+16 {
+		return nil, fmt.Errorf("payload reference %d+%d does not point at a matching payload header", offset, size)
+	}
+	return io.NewSectionReader(pr.payloadRA, int64(offset)+16, int64(size)), nil
+}
+
 func (pr *PXARReader) readHeader() (*PXARHeader, error) {
 	if pr.offset+16 > pr.size {
 		return nil, io.EOF
@@ -353,6 +414,16 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 	hasPendingFile := false
 	lastEmit := startOffset
 
+	// A span resolved through a GOODBYE table holds exactly one top-level
+	// entry. The official writer records a re-encoded file's GOODBYE size as
+	// file size plus metadata size in split archives, so such a span runs past
+	// the entry; stop at the next top-level FILENAME (or the parent's GOODBYE)
+	// instead of trusting endOffset. For a classic archive the span is exact
+	// and this never triggers.
+	spanMode := rootSeen && startOffset > 0
+	topLevelNames := 0
+
+walkLoop:
 	for {
 		if pr.offset >= endOffset {
 			break
@@ -381,6 +452,12 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 
 		switch header.Type {
 		case PXAR_FILENAME:
+			if spanMode && len(pathStack) == 0 {
+				topLevelNames++
+				if topLevelNames > 1 {
+					break walkLoop
+				}
+			}
 			pr.skip(16)
 			data, err := pr.read(contentSize)
 			if err != nil {
@@ -473,6 +550,43 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 			}
 			pr.skip(contentSize)
 
+		case PXAR_PAYLOAD_REF:
+			pr.skip(16)
+			data, err := pr.read(contentSize)
+			if err != nil {
+				return fmt.Errorf("read payload reference: %w", err)
+			}
+			if len(data) < 16 {
+				return fmt.Errorf("payload reference too short (%d bytes) at offset %d", len(data), pr.offset)
+			}
+			if hasPendingFile {
+				refOffset := binary.LittleEndian.Uint64(data[0:8])
+				refSize := binary.LittleEndian.Uint64(data[8:16])
+				payload, err := pr.payloadSection(refOffset, refSize)
+				if err != nil {
+					return fmt.Errorf("%s: %w", joinArchivePath(currentPath, pendingName), err)
+				}
+				// Weight counts this entry's metadata bytes plus its content,
+				// so progress still tracks the work done.
+				weight := pr.offset - lastEmit + int64(refSize)
+				lastEmit = pr.offset
+				if err := cb(PXARTreeEntry{
+					Path:     joinArchivePath(currentPath, pendingName),
+					IsDir:    false,
+					Size:     refSize,
+					Mode:     uint32(pendingFileMode),
+					ModTime:  int64(pendingFileMtime),
+					ModNanos: pendingNanos,
+					UID:      pendingUID,
+					GID:      pendingGID,
+					Weight:   weight,
+				}, payload); err != nil {
+					return err
+				}
+				hasPendingFile = false
+				pendingName = ""
+			}
+
 		case PXAR_SYMLINK:
 			pr.skip(16)
 			data, err := pr.read(contentSize)
@@ -500,6 +614,10 @@ func (pr *PXARReader) walkRange(cb walkCallback, startOffset, endOffset int64, i
 			}
 
 		case PXAR_GOODBYE:
+			if spanMode && len(pathStack) == 0 {
+				// The parent directory's own GOODBYE: past the target.
+				break walkLoop
+			}
 			pr.skip(int64(header.Size))
 			if len(pathStack) > 0 {
 				currentPath = pathStack[len(pathStack)-1]

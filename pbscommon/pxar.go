@@ -37,6 +37,20 @@ const (
 	PXAR_PAYLOAD             uint64 = 0x28147a1b0b7c1a25
 	PXAR_GOODBYE             uint64 = 0x2fec4fa642d5731d
 	PXAR_GOODBYE_TAIL_MARKER uint64 = 0xef5eed5b753e1555
+
+	// pxar format version 2 ("split" archives, written by the official client's
+	// data and metadata change-detection modes). The metadata stream (.mpxar)
+	// starts with PXAR_FORMAT_VERSION (value 2) and may carry a PXAR_PRELUDE;
+	// regular files carry a PXAR_PAYLOAD_REF (offset u64, size u64) into the
+	// payload stream (.ppxar) instead of an inline PXAR_PAYLOAD. The payload
+	// stream starts with PXAR_PAYLOAD_START_MARKER, holds one PXAR_PAYLOAD
+	// record per file (header + raw bytes, possibly with unreferenced padding
+	// between them) and ends with PXAR_PAYLOAD_TAIL_MARKER.
+	PXAR_FORMAT_VERSION       uint64 = 0x730f6c75df16a40d
+	PXAR_PRELUDE              uint64 = 0xe309d79d9f7b771b
+	PXAR_PAYLOAD_REF          uint64 = 0x419d3d6bc4ba977e
+	PXAR_PAYLOAD_START_MARKER uint64 = 0x834c68c2194a4ed2
+	PXAR_PAYLOAD_TAIL_MARKER  uint64 = 0x6c72b78b984c81b5
 )
 
 var catalog_magic = []byte{145, 253, 96, 249, 196, 103, 88, 213}

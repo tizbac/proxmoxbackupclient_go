@@ -269,6 +269,42 @@ func ListSnapshotsInline(baseURL, authID, secret, ticket, csrf, datastore, names
 // Filters out non-pxar manifest entries (the ACL/status blobs, index.json
 // itself) by suffix — no other file type in this fork's manifests ends in
 // ".pxar.didx".
+// Data archives come in two forms: a classic single-stream archive
+// ("<name>.pxar.didx") and a split one written by the official client's data
+// or metadata change-detection modes ("<name>.mpxar.didx" for the metadata
+// stream plus "<name>.ppxar.didx" for the file contents). A split archive is
+// named by its metadata stream everywhere in this file; the payload stream is
+// derived from it when the archive is opened.
+const (
+	classicArchiveSuffix = ".pxar.didx"
+	splitMetaSuffix      = ".mpxar.didx"
+	splitPayloadSuffix   = ".ppxar.didx"
+)
+
+// isDataArchive reports whether a manifest filename is a data archive this
+// client can restore (classic, or the metadata half of a split pair).
+func isDataArchive(name string) bool {
+	return strings.HasSuffix(name, classicArchiveSuffix) || strings.HasSuffix(name, splitMetaSuffix)
+}
+
+// isSplitArchive reports whether name is the metadata half of a split archive.
+func isSplitArchive(name string) bool { return strings.HasSuffix(name, splitMetaSuffix) }
+
+// splitPayloadName returns the payload stream that belongs to a split
+// archive's metadata stream.
+func splitPayloadName(metaName string) string {
+	return strings.TrimSuffix(metaName, splitMetaSuffix) + splitPayloadSuffix
+}
+
+// archiveBaseOf strips the data-archive suffix: "docs.pxar.didx" and
+// "docs.mpxar.didx" both give "docs" (the key the ACL side-car uses).
+func archiveBaseOf(name string) string {
+	if isSplitArchive(name) {
+		return strings.TrimSuffix(name, splitMetaSuffix)
+	}
+	return strings.TrimSuffix(name, classicArchiveSuffix)
+}
+
 func resolveArchiveNames(opts RestoreOptions) ([]string, error) {
 	client := &pbscommon.PBSClient{
 		BaseURL:          opts.BaseURL,
@@ -293,12 +329,12 @@ func resolveArchiveNames(opts RestoreOptions) ([]string, error) {
 		}
 		names := make([]string, 0, len(m.Files))
 		for _, f := range m.Files {
-			if strings.HasSuffix(f.Filename, ".pxar.didx") {
+			if isDataArchive(f.Filename) {
 				names = append(names, f.Filename)
 			}
 		}
 		if len(names) == 0 {
-			return nil, fmt.Errorf("snapshot manifest has no data archive (.pxar.didx) — nothing to restore")
+			return nil, fmt.Errorf("snapshot manifest has no data archive (.pxar.didx or .mpxar.didx) — nothing to restore")
 		}
 		return names, nil
 	}
@@ -382,9 +418,17 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 	// synthetic post-resolution update (below) always reports the first real
 	// number the caller sees whenever a single clean selection is in play.
 	var resolvingSpan bool
-	ra, size, err := client.NewDIDXReaderAt(archiveName, 64, func(fetched, total int) {
+	// For a split archive the bulk of the data is the payload stream, so that
+	// is the stream progress is reported against; the small metadata stream
+	// is opened separately below.
+	split := isSplitArchive(archiveName)
+	dataName := archiveName
+	if split {
+		dataName = splitPayloadName(archiveName)
+	}
+	ra, size, err := client.NewDIDXReaderAt(dataName, 64, func(fetched, total int) {
 		if fetched == total || fetched%32 == 0 {
-			writeBackupLog(fmt.Sprintf("%s: fetched %d/%d chunks of %s", logTag, fetched, total, archiveName))
+			writeBackupLog(fmt.Sprintf("%s: fetched %d/%d chunks of %s", logTag, fetched, total, dataName))
 		}
 		if progress != nil && !resolvingSpan {
 			reportSize := archiveSize
@@ -432,7 +476,32 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 		return opts.Ctx != nil && opts.Ctx.Err() != nil
 	})
 
-	reader := pbscommon.NewPXARReaderAt(ra, size)
+	var reader *pbscommon.PXARReader
+	var metaRA *pbscommon.DIDXReaderAt
+	if split {
+		var metaSize int64
+		var merr error
+		metaRA, metaSize, merr = client.NewDIDXReaderAt(archiveName, 64, nil)
+		if merr != nil {
+			writeBackupLog(fmt.Sprintf("Failed to open metadata stream (%s): %v", logTag, merr))
+			return fmt.Errorf("failed to open snapshot archive metadata: %w", merr)
+		}
+		metaRA.SetContext(opts.Ctx)
+		metaRA.SetCancelCheck(func() bool {
+			if cancel != nil && cancel() {
+				return true
+			}
+			return opts.Ctx != nil && opts.Ctx.Err() != nil
+		})
+		var serr error
+		reader, serr = pbscommon.NewSplitPXARReaderAt(metaRA, metaSize, ra, size)
+		if serr != nil {
+			writeBackupLog(fmt.Sprintf("Split archive %s is not readable (%s): %v", archiveName, logTag, serr))
+			return fmt.Errorf("failed to open split archive %s: %w", archiveName, serr)
+		}
+	} else {
+		reader = pbscommon.NewPXARReaderAt(ra, size)
+	}
 
 	// Exactly one clean selection can often be resolved directly via the
 	// archive's own GOODBYE BST index (same mechanism ExtractWithRewriter's
@@ -442,7 +511,10 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 	// reports against the whole archive exactly as before — this can only
 	// ever make the progress bar MORE accurate, never change what's
 	// actually extracted (that's still entirely ExtractWithRewriter's call).
-	if len(archiveIncludes) == 1 {
+	// Not for split archives: their GOODBYE spans are metadata-stream offsets,
+	// while progress here counts payload-stream chunks, so a narrowed total
+	// would be wrong. Progress then reports against the whole payload stream.
+	if len(archiveIncludes) == 1 && !split {
 		resolvingSpan = true
 		ra.SetPrefetchEnabled(false)
 		targetStart, targetEnd, _, berr := reader.ResolveArchivePathBST(archiveIncludes[0])
@@ -698,6 +770,14 @@ func assembleSnapshotTree(opts RestoreOptions, archiveName, logTag string, cance
 		}
 	}
 
+	if archiveName == "backup.pxar.didx" {
+		// No usable catalog. The literal "backup.pxar.didx" only exists for
+		// CLI snapshots, and split snapshots made by the official client
+		// carry no catalog at all, so walk every data archive the manifest
+		// lists, each under the same display name the catalog path uses.
+		return listSnapshotByWalking(opts, logTag, cancel)
+	}
+
 	var entries []SnapshotEntry
 	var meta *BackupMeta
 	err := withSnapshotReader(opts, archiveName, logTag, nil, nil, cancel, func(reader *pbscommon.PXARReader) error {
@@ -715,6 +795,47 @@ func assembleSnapshotTree(opts RestoreOptions, archiveName, logTag string, cance
 	if err != nil {
 		return nil, nil, err
 	}
+	return entries, meta, nil
+}
+
+// listSnapshotByWalking lists every data archive of a snapshot by walking it,
+// prefixing each archive's entries with its display name exactly as
+// listSnapshotViaCatalog does, so restore's include translation (which uses
+// the same resolveArchiveDisplayNames mapping) matches what the tree shows.
+func listSnapshotByWalking(opts RestoreOptions, logTag string, cancel func() bool) ([]SnapshotEntry, *BackupMeta, error) {
+	names, err := resolveArchiveNames(opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	displayNames, metaByArchive := resolveArchiveDisplayNames(opts, names, cancel)
+
+	var entries []SnapshotEntry
+	var meta *BackupMeta
+	for _, name := range names {
+		display := displayNames[name]
+		if display == "" {
+			display = name
+		}
+		entries = append(entries, SnapshotEntry{Path: display, IsDir: true})
+		werr := withSnapshotReader(opts, name, logTag, nil, nil, cancel, func(reader *pbscommon.PXARReader) error {
+			es, lerr := reader.ListEntries()
+			if lerr != nil {
+				return fmt.Errorf("failed to parse archive %s: %v", name, lerr)
+			}
+			for _, e := range es {
+				entries = append(entries, SnapshotEntry{Path: display + "/" + e.Path, IsDir: e.IsDir, Size: e.Size, ModTime: e.ModTime})
+			}
+			return nil
+		})
+		if werr != nil {
+			return nil, nil, werr
+		}
+		if meta == nil && metaByArchive[name] != nil {
+			meta = metaByArchive[name]
+		}
+	}
+	writeBackupLog(fmt.Sprintf("Walk listing for %s@%d: %d entries across %d archive(s)",
+		opts.BackupID, opts.SnapshotTime.Unix(), len(entries), len(names)))
 	return entries, meta, nil
 }
 
@@ -1332,7 +1453,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		// Archives map by the bare archive base name (see archiveBaseName /
 		// where combinedACLs.Archives is populated in backup_inline.go).
 		if combinedACLMeta != nil {
-			bareArchive := strings.TrimSuffix(archiveName, ".pxar.didx")
+			bareArchive := archiveBaseOf(archiveName)
 			if archiveMeta, ok := combinedACLMeta.Archives[bareArchive]; ok && archiveMeta != nil {
 				aclJobs = append(aclJobs, aclJob{name: archiveName, meta: archiveMeta, files: extractedHere})
 			}

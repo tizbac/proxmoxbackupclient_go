@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Restore and browse split pxar archives** (format version 2: `.mpxar.didx` metadata stream + `.ppxar.didx` payload stream), as written by the official `proxmox-backup-client` in its `data` and `metadata` change-detection modes. Payload references are followed into the payload stream and checked against the payload header there, so a bad reference fails instead of restoring wrong bytes. Snapshots without a catalog (all split snapshots) are now listed by walking every data archive in the manifest. Verified against snapshots made by the official client 3.4.9 in legacy, data and metadata mode (including reused chunks with padding): every file restored byte-identical, full and partial, sequential and parallel.
 - **Scheduled job protection (Windows).** Adding, changing, deleting or importing Backup Sets now needs an administrator session, controlled by a switch in Preferences > Advanced. It is on by default; only an administrator can turn it off or on again. Running a Backup Set and viewing history are not restricted. The setting lives in `HKLM\SOFTWARE\ProxmoxBackupClient\Policy`, which Windows only lets administrators write, and a missing or unreadable value means on. While it is on, the service's HTTP job routes are closed. A "Restart as administrator" button and a notice on the Backup Sets page explain what to do. Translated into all 18 languages.
 - Preferences has a new **Export / Import Settings** tab.
 
