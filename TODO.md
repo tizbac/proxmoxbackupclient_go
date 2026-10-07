@@ -578,6 +578,13 @@ On a long run (deepthought-data, 478 GB, several hours) "Time remaining 2h 14m" 
 
 ### 📐 Progress cards: fixed layout from the start, no fields appearing and shuffling (Mick, 2026-10-07)
 Every field in the backup card's 2-column grid is conditional (`eta !== null`, `speed > 0`, `startTime`, `bytesDone > 0`, chunk counts > 0, `currentDir`), so fields pop in one by one and the grid reflows, moving items between columns. The restore card has the same pattern.
+- [ ] AGREED LAYOUT (Mick, 2026-10-07; mockup https://claude.ai/artifact/Xm269Bs7Fc7X1Tp36XWk45, "Proposed" artboards), top to bottom:
+  1. Title + percent, progress bar (unchanged).
+  2. 2-column grid: Started / Forecast finish; Elapsed time / Time remaining; Folder / Speed.
+  3. Full width, directly under Folder: "Current file:" + path in the existing monospace style, fixed height, one line (no wrap).
+  4. The existing grey "Processed:" box, in GB (GiB) form with New / Reused (/ Failed) chunk counts: "Processed: 357.9 GB (333.3 GiB) / 480.7 GB (447.7 GiB) (New: 104,587, Reused: 17,868 chunks)".
+  5. Stop button.
+  The separate "Data:" and "Chunks:" rows are removed (the Processed box carries both). Before values exist: "Calculating..." (Forecast finish, Time remaining, Speed, Processed total), Current file "Scanning <folder>...".
 - [ ] Always render the full set of rows in a fixed order; show "Calculating..." for values that are not known yet (ETA, speed, forecast finish) and "Not available" where a value cannot exist for this run (e.g. total size unknown, failed chunks on restore).
 - [ ] Give the current-file and current-folder lines a fixed height (blank or "Waiting..." when empty) so the card does not change height.
 - [ ] Same treatment for the restore card, including the stage line.
