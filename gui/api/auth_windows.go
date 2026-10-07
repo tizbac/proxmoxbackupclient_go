@@ -4,8 +4,6 @@
 package api
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -14,28 +12,30 @@ import (
 )
 
 // EnsureToken returns the local API token stored at path, generating and writing
-// a fresh random one if the file is missing or empty. On Windows, sets ACL to
-// allow only Administrators and SYSTEM to read the token, so only elevated
-// processes can access the API and modify scheduled jobs.
+// a fresh random one if the file is missing or empty. The DACL allows only
+// Administrators and SYSTEM to read it: on Windows that IS the elevation gate,
+// because a non-elevated process (even one started from an Administrators
+// account) holds a filtered token whose Administrators SID is deny-only.
 func EnsureToken(path string) (string, error) {
 	if b, err := os.ReadFile(path); err == nil {
 		if t := strings.TrimSpace(string(b)); t != "" {
+			// Re-apply the DACL every start: a file written by an older build
+			// may still be readable byUsers.
+			_ = setTokenFileACL(path)
 			return t, nil
 		}
 	}
 
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generate api token: %w", err)
+	t, err := GenerateToken()
+	if err != nil {
+		return "", err
 	}
-	t := hex.EncodeToString(buf)
-
-	// Write token file
-	if err := os.WriteFile(path, []byte(t), 0o600); err != nil {
-		return "", fmt.Errorf("write api token %q: %w", path, err)
+	if err := writeTokenFile(path, t); err != nil {
+		return "", err
 	}
 
-	// Set Windows ACL: only Administrators and SYSTEM can read
+	// Set Windows ACL: only Administrators and SYSTEM can read. Best-effort —
+	// the token stays usable by its owner if icacls/ACL plumbing is missing.
 	if err := setTokenFileACL(path); err != nil {
 		// Log but don't fail - token still works for elevated processes
 		// writeDebugLog not available in api package
@@ -43,6 +43,13 @@ func EnsureToken(path string) (string, error) {
 
 	return t, nil
 }
+
+// canReadTokenFile reports whether this process may take the token at path
+// straight from the file. Always yes here: the file's DACL (SYSTEM +
+// Administrators, see EnsureToken) already restricts reads to elevated
+// processes, so there is no wheel-group style shortcut to close — unlike on
+// Unix, where the owner uid is the gate.
+func canReadTokenFile(string) bool { return true }
 
 // setTokenFileACL sets the DACL on the token file to allow only
 // Administrators and SYSTEM (the service account) to read it.

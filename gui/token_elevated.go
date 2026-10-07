@@ -14,7 +14,12 @@ package main
 //  3. the elevated child reads the service token file, writes it to the
 //     handoff file, and exits — it never starts the GUI,
 //  4. the parent polls the handoff file, keeps the token in memory
-//     (api.TokenOverride) and deletes the handoff file.
+//     (api.SetTokenOverride) and deletes the handoff file.
+//
+// The same protocol runs again whenever the service's token is rotated away
+// under a running GUI: the rejected request triggers the hook installed by
+// api.SetUnauthorizedHook, which repeats this fetch (token_refresh.go) instead
+// of failing forever.
 //
 // The child handler MUST run before flag parsing and single-instance checks,
 // so the elevated process does nothing else.
@@ -24,6 +29,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 )
 
 // elevatedTokenFetchFlag is the argv marker identifying the elevated child.
@@ -73,6 +80,18 @@ func handleElevatedTokenFetchChild(args []string) bool {
 // the token. The token is returned in memory; the handoff file is deleted
 // before returning.
 func elevatedFetchTokenWithHandoff() (string, error) {
+	// When we are already privileged enough to read the service token file
+	// (root, an elevated Windows process, or its owner), read it here instead
+	// of launching a child that would read exactly the same bytes: a prompt
+	// the user can decline would otherwise leave the GUI with a token it
+	// knows to be dead (it happens on every rotation of a privileged
+	// session). Everyone else still goes through the handoff below — the gate
+	// in api.ReadOwnTokenFile is what keeps "connect without asking" closed.
+	if token := api.ReadOwnTokenFile(serviceTokenPath()); token != "" {
+		writeDebugLog("[ElevatedTokenFetch] token file is ours to read, no elevation needed")
+		return token, nil
+	}
+
 	tmp, err := os.CreateTemp("", "pbsgo-token-*")
 	if err != nil {
 		return "", fmt.Errorf("cannot create handoff file: %w", err)

@@ -93,7 +93,7 @@ When backing up an entire drive (e.g. `D:\`), the GUI automatically excludes:
 ## 🚀 Quick start (GUI)
 
 1. Download `ProxmoxBackupClient.exe` (or the `.msi`) from the releases
-2. Launch it with administrator rights (required for VSS)
+2. Launch it (no admin rights needed to start: it asks for elevation only when something actually requires it — the service token, or VSS machine backups)
 3. Configure your PBS connection and test it
 4. Select the folders to back up
 5. Start the backup

@@ -35,16 +35,19 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
   const isAdmin = systemInfo?.is_admin === true
   const isLinux = systemInfo?.os === 'linux'
 
-  // Local elevation is needed only when THIS process has to open the block
-  // devices itself, i.e. standalone on Linux. With the privileged service
-  // running, the backup is executed by the service as root, so an unprivileged
-  // GUI must not be blocked (nor told to relaunch with pkexec).
-  // needs_local_elevation is computed by the backend; the ?? falls back to the
-  // old is_admin test if the binary behind the frontend is older.
-  const needsElevation = isLinux && (systemInfo?.needs_local_elevation ?? !isAdmin)
-  // Same, but only true when this process really is unprivileged: the service
-  // (root) performs the machine backup on our behalf.
-  const handledByService = isLinux && !needsElevation && !isAdmin
+  // Local elevation is needed only when THIS process has to open the disks
+  // itself, i.e. standalone and unprivileged. With the privileged service
+  // running, the backup is executed by the service (root / SYSTEM), so an
+  // unprivileged GUI must not be blocked (nor told to relaunch with pkexec or
+  // UAC).
+  // needs_local_elevation is computed by the backend on every platform; the ??
+  // falls back to the old Linux-only is_admin test if the binary behind the
+  // frontend is older.
+  const flagPresent = typeof systemInfo?.needs_local_elevation === 'boolean'
+  const needsElevation = flagPresent ? systemInfo.needs_local_elevation : (isLinux && !isAdmin)
+  // Same, but only when the backend reported the flag and this process really
+  // is unprivileged: the service performs the machine backup on our behalf.
+  const handledByService = flagPresent && !needsElevation && !isAdmin
 
   return (
     <div className="machine-backup-config">
@@ -67,7 +70,7 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
       {needsElevation && (
         <div className="info-box" style={{ marginBottom: '16px', backgroundColor: '#f8d7da', borderColor: '#f5c6cb' }}>
           <strong>⚠️ {t('elevationRequired')}</strong><br/>
-          {t('elevationHint')}
+          {t(isLinux ? 'elevationHint' : 'elevationHintWin')}
           <div style={{ marginTop: '12px' }}>
             <button className="btn" onClick={handleElevation}>
               {t('runAsAdmin')}

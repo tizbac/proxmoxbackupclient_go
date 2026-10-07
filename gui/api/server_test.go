@@ -92,7 +92,7 @@ func newTestServer(t *testing.T, h BackupHandler) (*Server, string, *Client) {
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 
-	// A token file rather than TokenOverride (a package global): each test
+	// A token file rather than SetTokenOverride (a package global): each test
 	// passes its own to the client, so nothing leaks between tests.
 	tokenPath := filepath.Join(t.TempDir(), "api-token")
 	if err := os.WriteFile(tokenPath, []byte(testToken+"\n"), 0600); err != nil {

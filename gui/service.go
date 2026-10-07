@@ -20,9 +20,10 @@ import (
 
 // BackupService wraps the application for Windows Service execution
 type BackupService struct {
-	app       *App
-	apiServer *api.Server
-	stopChan  chan struct{}
+	app          *App
+	apiServer    *api.Server
+	tokenRotator *api.TokenRotator
+	stopChan     chan struct{}
 }
 
 // Start is called when the service starts
@@ -90,6 +91,14 @@ func (s *BackupService) run() {
 	s.apiServer = api.NewServer("127.0.0.1:18765", s.app, apiToken, appVersion)
 	writeDebugLog("Starting HTTP API server on 127.0.0.1:18765")
 
+	// Periodic token regeneration (default 24h, PBSGO_TOKEN_ROTATION/GRACE to
+	// tune, rotation=0 to disable): the replaced token keeps authenticating
+	// for the grace window, and a GUI that outlives it gets a 401 and repeats
+	// the elevated (UAC) fetch instead of failing forever.
+	interval, grace := api.TokenRotationFromEnv()
+	s.tokenRotator = api.NewTokenRotator(s.apiServer, getAPITokenPath(), interval, grace)
+	s.tokenRotator.Start()
+
 	go func() {
 		if err := s.apiServer.Start(); err != nil {
 			writeDebugLog(fmt.Sprintf("API server error: %v", err))
@@ -119,6 +128,11 @@ func (s *BackupService) Stop(svc service.Service) error {
 	// Stop the scheduler gracefully
 	if s.app != nil {
 		s.app.StopScheduler()
+	}
+
+	// Stop rotating the API token
+	if s.tokenRotator != nil {
+		s.tokenRotator.Stop()
 	}
 
 	// Give it a moment to finish current operations

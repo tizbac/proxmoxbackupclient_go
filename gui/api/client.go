@@ -21,13 +21,18 @@ type Client struct {
 	httpClient *http.Client
 }
 
-// NewClient creates a new API client
+// NewClient creates a new API client. The transport chain injects the shared
+// token and, when a 401 hook is installed, re-authenticates a request the
+// service rejected because the token was rotated.
 func NewClient(tokenPath string) *Client {
 	return &Client{
 		baseURL: DefaultServiceURL,
 		httpClient: &http.Client{
-			Timeout:   RequestTimeout,
-			Transport: &tokenTransport{tokenPath: tokenPath, base: http.DefaultTransport},
+			Timeout: RequestTimeout,
+			Transport: &reauthTransport{
+				base:      &tokenTransport{tokenPath: tokenPath, base: http.DefaultTransport},
+				tokenPath: tokenPath,
+			},
 		},
 	}
 }
@@ -36,7 +41,7 @@ func NewClient(tokenPath string) *Client {
 func (c *Client) IsServiceAvailable() bool {
 	client := &http.Client{
 		Timeout:   ConnectionTimeout,
-		Transport: c.httpClient.Transport, // reuse the token-injecting transport
+		Transport: c.httpClient.Transport, // token injection + rotation retry
 	}
 
 	resp, err := client.Get(c.baseURL + "/status")
@@ -296,7 +301,7 @@ func (c *Client) DeleteJob(jobID string) error {
 func (c *Client) ProbeStatus() (int, error) {
 	client := &http.Client{
 		Timeout:   ConnectionTimeout,
-		Transport: c.httpClient.Transport, // reuse the token-injecting transport
+		Transport: c.httpClient.Transport, // token injection + rotation retry
 	}
 	resp, err := client.Get(c.baseURL + "/status")
 	if err != nil {

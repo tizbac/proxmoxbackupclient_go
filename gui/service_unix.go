@@ -24,10 +24,11 @@ import (
 // api-token all live there with 0600/0700 permissions, so only the service
 // (root) can read or write them.
 type BackupService struct {
-	app       *App
-	apiServer *api.Server
-	stopChan  chan struct{}
-	stopOnce  sync.Once
+	app          *App
+	apiServer    *api.Server
+	tokenRotator *api.TokenRotator
+	stopChan     chan struct{}
+	stopOnce     sync.Once
 }
 
 // Start is called when the service starts
@@ -90,6 +91,16 @@ func (s *BackupService) run() {
 	s.apiServer = api.NewServer("127.0.0.1:18765", s.app, apiToken, appVersion)
 	writeDebugLog("Starting HTTP API server on 127.0.0.1:18765")
 
+	// Regenerate the token on a schedule (default 24h, PBSGO_TOKEN_ROTATION to
+	// change, =0 to disable): a secret that lives forever in user sessions
+	// would outlive every legitimate reason to hold it. The server keeps
+	// accepting the replaced token for a grace window (default 10m,
+	// PBSGO_TOKEN_GRACE) so in-flight requests are not cut off; a GUI that is
+	// idle past that window gets a 401 and re-runs the elevated fetch.
+	interval, grace := api.TokenRotationFromEnv()
+	s.tokenRotator = api.NewTokenRotator(s.apiServer, getAPITokenPath(), interval, grace)
+	s.tokenRotator.Start()
+
 	go func() {
 		if err := s.apiServer.Start(); err != nil {
 			writeDebugLog(fmt.Sprintf("API server error: %v", err))
@@ -126,6 +137,12 @@ func (s *BackupService) shutdown() {
 		// Stop the scheduler gracefully
 		if s.app != nil {
 			s.app.StopScheduler()
+		}
+
+		// Stop rotating the API token (in-flight requests already got the
+		// current one from the server, which is going away anyway).
+		if s.tokenRotator != nil {
+			s.tokenRotator.Stop()
 		}
 
 		if s.stopChan != nil {

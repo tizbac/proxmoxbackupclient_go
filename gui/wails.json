@@ -24,7 +24,7 @@
   "windows": {
     "hideConsole": false,
     "manifest": {
-      "level": "requireAdministrator",
+      "level": "asInvoker",
       "uiAccess": false
     },
     "icon": "build/windows/icon.ico"

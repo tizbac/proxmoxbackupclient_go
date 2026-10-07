@@ -119,6 +119,14 @@ func main() {
 	// privileged state dir (config.json & co. are service-only readable);
 	// in standalone mode the GUI keeps everything in the user's home.
 	execMode, standaloneReason := resolveExecutionMode(*forceStandalone)
+	// A service token that expires or is rotated mid-session must be renewed
+	// with the same elevated fetch that got it at launch, instead of turning
+	// every call into a 401. Installed here (and on the late switch to service
+	// mode) so the launch probe above still sees the raw 401 and can fall back
+	// to standalone when the prompt is declined.
+	if execMode == api.ModeService {
+		installTokenRefreshHook()
+	}
 	switch execMode {
 	case api.ModeService:
 		SetConfigDir(serviceStateDir())
@@ -209,13 +217,21 @@ func main() {
 // failed fetch attempt) suppresses the in-GUI elevation prompt so the user
 // is never asked twice for the same token.
 func resolveExecutionMode(forceStandalone bool) (api.ExecutionMode, string) {
+	return resolveExecutionModeWith(forceStandalone,
+		api.NewModeDetector(getAPITokenPath()).Probe,
+		elevatedFetchTokenWithHandoff)
+}
+
+// resolveExecutionModeWith is resolveExecutionMode with the probe and the
+// elevated fetch injected, so the decision table can be tested without a
+// running service or a real pkexec/UAC prompt.
+func resolveExecutionModeWith(forceStandalone bool, probe func() int, fetchToken func() (string, error)) (api.ExecutionMode, string) {
 	if forceStandalone {
 		writeDebugLog("Standalone mode forced by --standalone flag")
 		return api.ModeStandalone, "forced"
 	}
 
-	detector := api.NewModeDetector(getAPITokenPath())
-	switch detector.Probe() {
+	switch probe() {
 	case 200:
 		writeDebugLog("Local service is running and accepted the token")
 		return api.ModeService, ""
@@ -225,19 +241,22 @@ func resolveExecutionMode(forceStandalone bool) (api.ExecutionMode, string) {
 			return api.ModeStandalone, "auth_failed"
 		}
 		writeDebugLog("Service is running but the token is missing: attempting one elevated token fetch")
-		token, err := elevatedFetchTokenWithHandoff()
+		token, err := fetchToken()
 		if err != nil {
 			writeDebugLog(fmt.Sprintf("Elevated token fetch failed: %v — falling back to standalone", err))
 			return api.ModeStandalone, "auth_failed"
 		}
 		// Keep the token in memory only; the root-owned file is never
 		// copied to a user-readable location.
-		api.TokenOverride = token
-		if detector.Probe() == 200 {
+		api.SetTokenOverride(token)
+		if probe() == 200 {
 			writeDebugLog("Token acquired via elevated fetch; using service mode")
 			return api.ModeService, ""
 		}
 		writeDebugLog("Token acquired but still rejected; falling back to standalone")
+		// A token the service refuses must not linger: every later request
+		// would keep presenting it instead of asking for a fresh one.
+		api.SetTokenOverride("")
 		return api.ModeStandalone, "auth_failed"
 	default:
 		writeDebugLog("Local service not reachable: standalone mode")
@@ -376,18 +395,37 @@ func (a *App) GetHostname() string {
 
 // needsLocalElevation reports whether THIS process has to be root/admin to do
 // privileged work (raw block devices and the kernel snapshot modules for
-// machine backups, VSS snapshots).
+// machine backups, VSS snapshots) — and, on Windows, simply to LIST the disks.
+// The rule is per platform, because what the GUI does with the disks differs:
 //
-// It is false when the GUI runs unprivileged but a privileged service takes
-// that work over (service mode), and when this process already is the
-// privileged helper. The frontend must not ask such a GUI to relaunch with
-// pkexec — that is what made "machine backup requires admin privileges" show
-// up in service mode.
+//   - Windows: the GUI opens \\.\PhysicalDriveN itself to list and preview the
+//     disks, and that needs an elevated token — even when the backup would be
+//     executed by the service (the service can do everything else, it cannot
+//     hand the GUI a disk list it has no rights to open).
+//   - Linux: enumerating disks (sysfs) is unprivileged; only OPENING the
+//     devices for the backup needs root, which the service provides in service
+//     mode — so an unprivileged GUI is fine there.
+//
+// It is false when this process already is the privileged helper. The frontend
+// must not ask such a GUI to relaunch with pkexec — that is what made
+// "machine backup requires admin privileges" show up in service mode.
 func (a *App) needsLocalElevation() bool {
-	if a.isServiceProcess {
+	return needsElevationFor(stdruntime.GOOS, isAdmin(), a.isServiceProcess, a.mode)
+}
+
+// needsElevationFor is the pure decision rule behind needsLocalElevation,
+// split out so every platform combination can be tested on any host.
+func needsElevationFor(goos string, admin, serviceProcess bool, mode api.ExecutionMode) bool {
+	if serviceProcess {
 		return false // we ARE the privileged helper
 	}
-	return !isAdmin() && a.mode != api.ModeService
+	if admin {
+		return false // already elevated
+	}
+	if goos == "windows" {
+		return true // disk listing alone demands it
+	}
+	return mode != api.ModeService
 }
 
 // switchToServiceMode flips the runtime mode after the late service
@@ -402,6 +440,9 @@ func (a *App) switchToServiceMode() {
 	// The "why am I standalone" reason is obsolete the moment the service
 	// takes over; leaving it set makes the frontend notice contradict itself.
 	a.standaloneReason = ""
+	// Now that this GUI talks to the service, its token can be rotated away
+	// under it: refresh through an elevated fetch instead of failing.
+	installTokenRefreshHook()
 	if a.ctx == nil {
 		return
 	}
@@ -457,13 +498,14 @@ func getSnapshotModule() string {
 // On macOS it uses osascript with administrator privileges.
 // Returns an error if elevation cannot be requested or was denied.
 func (a *App) RequestElevation() error {
-	// Service mode: the privileged service already performs the work that
-	// needs root (machine backups read the block devices as root, VSS runs
-	// there too). Relaunching this unprivileged GUI with pkexec/sudo would
-	// only spawn a second copy of the same unprivileged process, so there is
-	// nothing to elevate.
-	if a.isDelegatedToService() {
-		writeDebugLog("RequestElevation: ignored (service mode: the privileged service does the work)")
+	// Nothing to elevate when this process already has everything the job
+	// needs: in service mode on Linux the service runs the backup as root, so
+	// relaunching this unprivileged GUI with pkexec/sudo would only spawn a
+	// second copy of the same unprivileged process. On Windows the rule says
+	// otherwise (the GUI must open the disks itself to list them), so the
+	// relaunch happens there.
+	if !a.needsLocalElevation() {
+		writeDebugLog("RequestElevation: ignored (no local elevation needed)")
 		return nil
 	}
 	switch stdruntime.GOOS {
@@ -517,13 +559,6 @@ func requestElevationLinux() error {
 		}
 	}
 	return fmt.Errorf("neither pkexec nor sudo found; cannot elevate")
-}
-
-// requestElevationWindows uses Wails runtime to request admin elevation
-func requestElevationWindows() error {
-	// Wails provides a way to restart with admin rights
-	// This is a placeholder - actual implementation uses wails runtime
-	return fmt.Errorf("windows elevation should use the Wails runtime")
 }
 
 // requestElevationDarwin uses osascript to request admin privileges
@@ -1055,8 +1090,11 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 	}
 
 	// Re-detect mode if currently Standalone (service may have started after GUI)
-	// IMPORTANT: Never re-detect if we ARE the service process (prevents infinite loop)
-	if !a.isServiceProcess && a.mode == api.ModeStandalone {
+	// IMPORTANT: Never re-detect if we ARE the service process (prevents
+	// infinite loop), and never when --standalone said "don't connect": the
+	// flag has to stay honoured for the whole session, otherwise the GUI would
+	// quietly join a service the user asked it to ignore.
+	if !a.isServiceProcess && a.mode == api.ModeStandalone && a.standaloneReason != "forced" {
 		if a.apiClient.IsServiceAvailable() {
 			writeDebugLog("[Mode Detection] Service now available, switching to Service mode")
 			a.switchToServiceMode()
@@ -1090,8 +1128,11 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	}
 
 	// Re-detect mode if currently Standalone (service may have started after GUI)
-	// IMPORTANT: Never re-detect if we ARE the service process (prevents infinite loop)
-	if !a.isServiceProcess && a.mode == api.ModeStandalone {
+	// IMPORTANT: Never re-detect if we ARE the service process (prevents
+	// infinite loop), and never when --standalone said "don't connect": the
+	// flag has to stay honoured for the whole session, otherwise the GUI would
+	// quietly join a service the user asked it to ignore.
+	if !a.isServiceProcess && a.mode == api.ModeStandalone && a.standaloneReason != "forced" {
 		if a.apiClient.IsServiceAvailable() {
 			writeDebugLog("[Mode Detection] Service now available, switching to Service mode")
 			a.switchToServiceMode()

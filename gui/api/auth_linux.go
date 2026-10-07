@@ -4,86 +4,54 @@
 package api
 
 import (
-	"bufio"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
-
-	"golang.org/x/sys/unix"
+	"syscall"
 )
 
 // EnsureToken returns the local API token stored at path, generating and writing
-// a fresh random one if the file is missing or empty. On Linux, sets group
-// ownership to wheel/sudo and permissions to 0640, so only members of those
-// groups can read the token and call the API to modify scheduled jobs.
+// a fresh random one if the file is missing or empty.
+//
+// The file is root-only (0600): the service runs as root and the secret it
+// carries authenticates callers to a privileged API, so nobody else may read it
+// — not even members of wheel/sudo. A normal user's GUI gets the token through
+// an elevated fetch (see token_elevated.go) instead of from this file.
 func EnsureToken(path string) (string, error) {
 	if b, err := os.ReadFile(path); err == nil {
 		if t := strings.TrimSpace(string(b)); t != "" {
+			// Migration: builds up to and including the wheel-group scheme wrote
+			// 0640 with the group set to wheel/sudo, which let any member of
+			// those groups authenticate without an elevation prompt.
+			if err := os.Chmod(path, 0o600); err != nil && !os.IsNotExist(err) {
+				return "", fmt.Errorf("chmod api token %q: %w", path, err)
+			}
 			return t, nil
 		}
 	}
 
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generate api token: %w", err)
+	t, err := GenerateToken()
+	if err != nil {
+		return "", err
 	}
-	t := hex.EncodeToString(buf)
-
-	// Write token file with 0640 permissions (owner rw, group r, other none)
-	if err := os.WriteFile(path, []byte(t), 0o640); err != nil {
-		return "", fmt.Errorf("write api token %q: %w", path, err)
+	if err := writeTokenFile(path, t); err != nil {
+		return "", err
 	}
-
-	// Set group ownership to wheel or sudo. Failure is not fatal: the token
-	// stays usable by its owner (this package has no logger to report it).
-	_ = setTokenFileGroup(path)
-
 	return t, nil
 }
 
-// setTokenFileGroup sets the group ownership of the token file to
-// "wheel" (common on BSD/RHEL) or "sudo" (common on Debian/Ubuntu).
-// This ensures only members of those groups can read the token.
-func setTokenFileGroup(path string) error {
-	// Try wheel group first
-	gid, err := getGroupGID("wheel")
+// canReadTokenFile reports whether this process may take the token at path
+// straight from the file: only when the file is ours (the process owns it) or
+// we are root. The service's token is root-owned, so an unprivileged GUI never
+// reads it directly and always authenticates through an elevation prompt.
+func canReadTokenFile(path string) bool {
+	fi, err := os.Stat(path)
 	if err != nil {
-		// Try sudo group
-		gid, err = getGroupGID("sudo")
-		if err != nil {
-			return fmt.Errorf("neither wheel nor sudo group found")
-		}
+		return false
 	}
-
-	// Change group ownership
-	if err := unix.Chown(path, -1, gid); err != nil {
-		return fmt.Errorf("chown token file: %w", err)
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false
 	}
-
-	return nil
-}
-
-func getGroupGID(name string) (int, error) {
-	f, err := os.Open("/etc/group")
-	if err != nil {
-		return -1, err
-	}
-	defer func() { _ = f.Close() }()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.Split(line, ":")
-		if len(parts) >= 3 && parts[0] == name {
-			var gid int
-			_, err := fmt.Sscanf(parts[2], "%d", &gid)
-			if err != nil {
-				return -1, err
-			}
-			return gid, nil
-		}
-	}
-	return -1, fmt.Errorf("group %s not found", name)
+	return tokenFileOwnedByProcess(int(st.Uid), os.Geteuid())
 }

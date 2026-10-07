@@ -45,27 +45,33 @@ const (
 	swShownormal          = 1
 )
 
-// elevatedFetchToken launches this same executable elevated (UAC, verb
-// "runas") as the token-fetch child and waits for the handoff file. The
-// installed Windows GUI runs with requireAdministrator and reads the token
-// file directly; this path covers non-elevated launches (dev builds,
-// manually extracted binaries) — the child is the same GUI exe, which
-// handles --elevated-token-fetch before starting any UI.
-func elevatedFetchToken(handoffFile string) (string, error) {
-	exe, err := os.Executable()
+// shellExecuteRunas starts exe with the given command line under the UAC
+// "runas" verb and returns as soon as the elevated process exists. Declining
+// the prompt surfaces as ErrElevationDeclined; a missing/failed elevation
+// mechanism (UAC disabled, no shell) as a plain error — callers turn both into
+// "run standalone / give up", never a hang.
+func shellExecuteRunas(exe, params string) error {
+	file, err := windows.UTF16PtrFromString(exe)
 	if err != nil {
-		return "", fmt.Errorf("cannot resolve own executable: %w", err)
+		return fmt.Errorf("cannot encode executable path: %w", err)
+	}
+	verb, err := windows.UTF16PtrFromString("runas")
+	if err != nil {
+		return fmt.Errorf("cannot encode verb: %w", err)
 	}
 
-	file, _ := windows.UTF16PtrFromString(exe)
-	params, _ := windows.UTF16PtrFromString(`--elevated-token-fetch "` + handoffFile + `"`)
-	verb, _ := windows.UTF16PtrFromString("runas")
+	var p *uint16
+	if params != "" {
+		if p, err = windows.UTF16PtrFromString(params); err != nil {
+			return fmt.Errorf("cannot encode parameters: %w", err)
+		}
+	}
 
 	var sei shellExecInfo
 	sei.CbSize = uint32(unsafe.Sizeof(sei))
 	sei.FMask = seeMaskNoCloseProcess
 	sei.LpFile = file
-	sei.LpParameters = params
+	sei.LpParameters = p
 	sei.LpVerb = verb
 	sei.NShow = swShownormal
 
@@ -75,9 +81,26 @@ func elevatedFetchToken(handoffFile string) (string, error) {
 	}
 	if ret == 0 {
 		if callErr == windows.ERROR_CANCELLED { // 1223: user declined UAC
-			return "", ErrElevationDeclined
+			return ErrElevationDeclined
 		}
-		return "", fmt.Errorf("ShellExecuteEx(runas) failed: %v", callErr)
+		return fmt.Errorf("ShellExecuteEx(runas) failed: %v", callErr)
+	}
+	return nil
+}
+
+// elevatedFetchToken launches this same executable elevated (UAC, verb
+// "runas") as the token-fetch child and waits for the handoff file. The GUI
+// runs asInvoker now, so this is the normal launch-time path whenever the
+// service is up and the token file is not ours to read — the child is the
+// same GUI exe, which handles --elevated-token-fetch before starting any UI.
+func elevatedFetchToken(handoffFile string) (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve own executable: %w", err)
+	}
+
+	if err := shellExecuteRunas(exe, `--elevated-token-fetch "`+handoffFile+`"`); err != nil {
+		return "", err
 	}
 
 	writeDebugLog("[ElevatedTokenFetch] launched elevated child, waiting for handoff")

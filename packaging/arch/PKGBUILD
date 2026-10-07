@@ -208,9 +208,11 @@ elevated_fetch() {
 
 # Main launcher logic
 if probe_service; then
-    # Service is reachable. Try to read the token file directly (works if
-    # the user is root, or if the token has been made readable).
-    if [ -r "$TOKEN_FILE" ]; then
+    # Service is reachable. The token file is root-only (0600): read it
+    # directly only when we ARE root. Any other user goes through the elevated
+    # fetch below, so connecting to the privileged service always asks for
+    # elevation instead of quietly using a group-readable secret.
+    if [ "$(id -u)" = "0" ] && [ -r "$TOKEN_FILE" ]; then
         PBSGO_API_TOKEN=$(cat "$TOKEN_FILE" 2>/dev/null | tr -d '[:space:]')
         export PBSGO_API_TOKEN
     else

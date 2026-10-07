@@ -66,8 +66,24 @@ func CheckSingleInstance() bool {
 
 	// We are the first instance - keep the mutex open
 	// Don't close it - it will be released when the process exits
+	instanceMutex = mutex
 	writeDebugLog("No other instance detected - continuing startup")
 	return true
+}
+
+// instanceMutex is the handle keeping this process the single instance;
+// ReleaseSingleInstance closes it (used before an elevated relaunch).
+var instanceMutex windows.Handle
+
+// ReleaseSingleInstance closes the single-instance mutex so an elevated
+// relaunch can acquire it instead of being seen as a duplicate. Safe to call
+// when no instance lock is held.
+func ReleaseSingleInstance() {
+	if instanceMutex != 0 {
+		windows.CloseHandle(instanceMutex)
+		instanceMutex = 0
+		writeDebugLog("Single-instance lock released for elevated relaunch")
+	}
 }
 
 // activateExistingWindow finds the existing Proxmox Backup Client window and brings it to foreground

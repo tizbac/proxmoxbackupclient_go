@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	stdruntime "runtime"
 	"testing"
 
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
@@ -19,6 +20,13 @@ func newElevationTestApp(t *testing.T, mode api.ExecutionMode) *App {
 	t.Helper()
 	SetConfigDir(t.TempDir())
 	t.Cleanup(func() { SetConfigDir("") })
+	// switchToServiceMode installs the token-refresh hook (a package global
+	// that would otherwise survive this test and try a real pkexec/UAC prompt
+	// in the next one).
+	t.Cleanup(func() {
+		api.SetUnauthorizedHook(nil)
+		api.SetTokenOverride("")
+	})
 	return &App{mode: mode, apiClient: api.NewClient(getAPITokenPath())}
 }
 
@@ -31,10 +39,12 @@ func TestNeedsLocalElevation(t *testing.T) {
 	}
 
 	// Service mode: the privileged service runs the backup as root, the GUI
-	// only picks disks and posts the request.
+	// only picks disks and posts the request — true on Linux. On Windows the
+	// GUI still has to open \\.\PhysicalDriveN itself to LIST the disks, which
+	// needs an elevated token even though the backup runs in the service.
 	service := newElevationTestApp(t, api.ModeService)
-	if service.needsLocalElevation() {
-		t.Error("service mode: an unprivileged GUI must not need local elevation")
+	if got, want := service.needsLocalElevation(), stdruntime.GOOS == "windows"; got != want {
+		t.Errorf("service mode: needsLocalElevation() = %v, want %v", got, want)
 	}
 
 	// The service process itself IS the privileged helper.
@@ -53,8 +63,8 @@ func TestGetSystemInfoExposesElevationFlag(t *testing.T) {
 	if !ok {
 		t.Fatalf("needs_local_elevation missing or not a bool: %#v", info["needs_local_elevation"])
 	}
-	if got {
-		t.Error("service mode reported needs_local_elevation=true")
+	if want := stdruntime.GOOS == "windows"; got != want {
+		t.Errorf("service mode needs_local_elevation = %v, want %v (disk listing rules per platform)", got, want)
 	}
 	if info["mode"] != api.ModeService.String() {
 		t.Errorf("mode = %v, want %v", info["mode"], api.ModeService.String())
@@ -117,5 +127,41 @@ func TestSwitchToServiceMode(t *testing.T) {
 	a.switchToServiceMode()
 	if a.mode != api.ModeService {
 		t.Errorf("second switch: mode = %v, want %v", a.mode, api.ModeService)
+	}
+}
+
+// The elevation rule itself, exercised for both platforms on this host: the
+// frontend turns exactly this flag into "run as administrator" or "the service
+// handles it", so the two must never disagree.
+func TestNeedsElevationFor(t *testing.T) {
+	cases := []struct {
+		name        string
+		goos        string
+		admin       bool
+		serviceProc bool
+		mode        api.ExecutionMode
+		want        bool
+	}{
+		{"linux standalone unprivileged", "linux", false, false, api.ModeStandalone, true},
+		{"linux standalone root", "linux", true, false, api.ModeStandalone, false},
+		{"linux service unprivileged", "linux", false, false, api.ModeService, false},
+		{"linux service root", "linux", true, false, api.ModeService, false},
+		{"windows standalone unprivileged", "windows", false, false, api.ModeStandalone, true},
+		{"windows standalone elevated", "windows", true, false, api.ModeStandalone, false},
+		// The Windows difference: listing \\.\PhysicalDriveN needs an
+		// elevated token, so even a GUI that delegates the backup to the
+		// service must ask for one.
+		{"windows service unprivileged", "windows", false, false, api.ModeService, true},
+		{"windows service elevated", "windows", true, false, api.ModeService, false},
+		{"the service process itself never elevates", "linux", false, true, api.ModeStandalone, false},
+		{"the service process itself never elevates (windows)", "windows", false, true, api.ModeStandalone, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := needsElevationFor(c.goos, c.admin, c.serviceProc, c.mode); got != c.want {
+				t.Errorf("needsElevationFor(%s, admin=%v, serviceProc=%v, %v) = %v, want %v",
+					c.goos, c.admin, c.serviceProc, c.mode, got, c.want)
+			}
+		})
 	}
 }

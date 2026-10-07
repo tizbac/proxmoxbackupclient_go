@@ -4,6 +4,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -23,11 +24,20 @@ var jobIDSeq atomic.Uint64
 type Server struct {
 	addr           string
 	app            BackupHandler
-	token          string // shared local-auth token required on every route (H-01)
 	version        string // build version reported by /status
 	mux            *http.ServeMux
 	backupProgress map[string]*BackupProgress
 	progressMutex  sync.RWMutex
+
+	// token is the current shared local-auth secret (H-01). prevToken is the
+	// one it replaced during a rotation and keeps authenticating until
+	// prevValidUntil, so requests already in flight are not cut off at the
+	// exact rotation instant. tokenGrace is how long that honouring lasts.
+	tokenMu        sync.RWMutex
+	token          string
+	prevToken      string
+	prevValidUntil time.Time
+	tokenGrace     time.Duration
 }
 
 // BackupHandler interface that the service must implement
@@ -71,10 +81,60 @@ func NewServer(addr string, handler BackupHandler, token, version string) *Serve
 		version:        version,
 		mux:            http.NewServeMux(),
 		backupProgress: make(map[string]*BackupProgress),
+		tokenGrace:     DefaultTokenGrace,
 	}
 
 	s.setupRoutes()
 	return s
+}
+
+// SetToken replaces the active token and returns the one it replaced, which
+// keeps authenticating until tokenGrace has elapsed. Callers that need file
+// and memory to stay in sync (TokenRotator.Rotate) use the returned value to
+// roll back when the publication step fails.
+func (s *Server) SetToken(token string) string {
+	s.tokenMu.Lock()
+	defer s.tokenMu.Unlock()
+	prev := s.token
+	if s.token != "" && s.token != token {
+		s.prevToken = s.token
+		s.prevValidUntil = time.Now().Add(s.tokenGrace)
+	}
+	s.token = token
+	return prev
+}
+
+// SetTokenGrace overrides how long a replaced token stays accepted. It exists
+// for the rotator (configured grace) and for tests; call it before SetToken.
+func (s *Server) SetTokenGrace(grace time.Duration) {
+	s.tokenMu.Lock()
+	defer s.tokenMu.Unlock()
+	s.tokenGrace = grace
+}
+
+// tokenAccepted reports whether got authenticates against this server: the
+// current token, or — inside the rotation grace window — the token it replaced.
+// An empty current token rejects everything (fail closed: a service whose token
+// could not be initialised must not expose its privileged API — H-01).
+func (s *Server) tokenAccepted(got string) bool {
+	if got == "" {
+		return false
+	}
+	s.tokenMu.RLock()
+	cur, prev, until := s.token, s.prevToken, s.prevValidUntil
+	s.tokenMu.RUnlock()
+
+	if cur == "" {
+		return false
+	}
+	// Compare both even when the primary matched: a short-circuit here would
+	// leak which of the two a guess hit.
+	current := subtle.ConstantTimeCompare([]byte(got), []byte(cur)) == 1
+	previous := prev != "" && subtle.ConstantTimeCompare([]byte(got), []byte(prev)) == 1
+	if current {
+		return true
+	}
+	return previous && time.Now().Before(until)
 }
 
 func (s *Server) setupRoutes() {

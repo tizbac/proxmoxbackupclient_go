@@ -1,0 +1,111 @@
+# This is an example .goreleaser.yml file with some sensible defaults.
+# Make sure to check the documentation at https://goreleaser.com
+
+# The lines below are called `modelines`. See `:help modeline`
+# Feel free to remove those if you don't want/need to use them.
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 1
+
+builds:
+  - id: windows
+    main: ./directorybackup
+    binary: pbsdirectorybackup
+    goos:
+      - windows
+    goarch:
+      - amd64
+  - id: windows_machine
+    main: ./machinebackup
+    binary: pbsmachinebackup
+    goos:
+      - windows
+    goarch:
+      - amd64
+  - id: machine
+    main: ./machinebackup
+    binary: pbsmachinebackup
+    goos:
+      - linux
+      - freebsd
+      - netbsd
+      - openbsd
+      - solaris
+    goarch:
+      - amd64
+<<<<<<< HEAD
+  - id: nbd
+    main: ./nbd
+    binary: pbsnbd
+    goos:
+      - linux
+    goarch:
+      - amd64
+=======
+>>>>>>> b9dafbf (feat: Proxmox Backup Client Go with GUI)
+  - id: directory
+    main: ./directorybackup
+    binary: directorybackup
+    goos:
+      - linux
+      - freebsd
+      - netbsd
+      - openbsd
+      - solaris
+    goarch:
+      - amd64
+
+  - id: darwin-amd64
+    main: ./directorybackup
+    binary: directorybackup
+    goos:
+      - darwin
+    goarch:
+      - amd64
+
+  - id: darwin-arm64
+    main: ./directorybackup
+    binary: directorybackup
+    goos:
+      - darwin
+    goarch:
+      - arm64
+  
+
+release:
+  # for prerelease it doesn't build and distribute
+  prerelease: auto
+
+universal_binaries:
+  - replace: true
+
+archives:
+  - format: tar.gz
+    allow_different_binary_count: true
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+    - goos: windows
+      format: zip
+    
+checksum:
+  name_template: checksums.txt
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+# The lines beneath this are called `modelines`. See `:help modeline`
+# Feel free to remove those if you don't want/use them.
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
