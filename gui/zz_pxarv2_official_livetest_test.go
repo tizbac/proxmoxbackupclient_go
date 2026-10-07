@@ -56,7 +56,7 @@ func pxarv2Expected(t *testing.T, label string) map[string]string {
 	m := map[string]string{}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
-		line := sc.Text()
+		line := strings.TrimRight(sc.Text(), "\r") // CRLF on a Windows checkout
 		if len(line) < 67 {
 			continue
 		}
