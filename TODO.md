@@ -2137,6 +2137,19 @@ Sprint Restore-3 (2 jours): Documentation complète
 - [ ] Likely shape: `MinimizeAfter bool json:"minimizeAfter,omitempty"` on `ScheduledJob`, run after the app/email steps and before exit/shutdown; mutually exclusive with exit in the form; Windows only (other platforms have no tray, so hide the option or fall back to leaving the window open).
 - [ ] Edge case: a job set to shut down the computer still shuts down after minimising; exit and shutdown stay the last steps.
 
+
+### 📝 Found while writing the user manuals (2026-10-07)
+Code read for docs/manual; none of these are fixed yet.
+- [ ] `proxmoxbackup-machine` accepts and validates the `-mail-*` flags but never sends the email (the manual says so for now).
+- [ ] Windows `proxmoxbackup-directory`: invalid options show a message box and then carry on instead of exiting; the "another job running" lock also shows a message box, which blocks an unattended scheduled run. Both should print to stderr and exit non-zero.
+- [ ] `proxmoxbackup-nbd` interactive TUI mode (no `-path`) does not pass the encryption key to the client; only `-list` and `-path` use it.
+- [ ] The automatic "Recovery" exclusion skips a folder named Recovery at any depth, not only at the drive root.
+- [ ] Windows ACL restore sets owner, group and DACL in one call, so when the owner cannot be set (SeRestorePrivilege, see the restore owner item above) the DACL is not applied either. Apply them separately.
+- [ ] Stale English strings: `emailNotificationsIntro` and `emailNoSmtpWarning` point to "Preferences > Advanced" (SMTP is on the Email tab); About `featuresList.languages` says "Six-language" (there are 18).
+- [ ] `gui/docs/BARE_METAL_RESTORE.md` (the in-app guide) lacks the encryption key step and implies API tokens work for the ISO login (it takes username and password only).
+- [ ] `docs/screenshots/gui-backup-progress.png` shows the old progress card; retake with the v0.6.0 card.
+- [ ] Not reviewed for v0.6.0: `FEATURES_STATUS.md`, `RELEASE_NOTES.md`, the translated READMEs (they lack incremental backups and the compatibility section).
+
 ---
 
 **Dernière mise à jour:** 2026-03-25 (Audit Technique intégré)
