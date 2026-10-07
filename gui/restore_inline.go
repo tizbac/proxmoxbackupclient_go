@@ -503,29 +503,41 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 		reader = pbscommon.NewPXARReaderAt(ra, size)
 	}
 
-	// Exactly one clean selection can often be resolved directly via the
-	// archive's own GOODBYE BST index (same mechanism ExtractWithRewriter's
-	// own fast path uses — see pxar_reader.go). When it resolves, narrow
-	// progress to that span; when it doesn't (not found, multiple includes,
-	// unexpected shape), effectiveSize/effectiveChunks stay 0 and progress
-	// reports against the whole archive exactly as before — this can only
-	// ever make the progress bar MORE accurate, never change what's
-	// actually extracted (that's still entirely ExtractWithRewriter's call).
-	// Not for split archives: their GOODBYE spans are metadata-stream offsets,
-	// while progress here counts payload-stream chunks, so a narrowed total
-	// would be wrong. Progress then reports against the whole payload stream.
-	if len(archiveIncludes) == 1 && !split {
+	// A selection is narrowed to the byte ranges of the data stream it will
+	// actually read (PXARReader.SelectionRanges): the selected subtrees' spans
+	// for a classic archive, each selected file's payload for a split one
+	// (found by walking the small metadata stream only). Read-ahead is then
+	// held inside those ranges and progress is sized to them. When the
+	// selection cannot be narrowed (a classic archive whose includes do not
+	// all resolve through the GOODBYE BST), effectiveSize/effectiveChunks stay
+	// 0 and progress reports against the whole archive exactly as before.
+	// This only changes what is fetched ahead and how progress is sized,
+	// never what is extracted (that is entirely ExtractWithRewriter's call).
+	// Until 2026-10-07 this covered only one include in a classic archive;
+	// a split snapshot restore of 4 folders (8.6 GB of a 480 GB snapshot)
+	// reported against the whole archive and read ahead without bound.
+	if len(pbscommon.NormalizeIncludes(archiveIncludes)) > 0 {
 		resolvingSpan = true
 		ra.SetPrefetchEnabled(false)
-		targetStart, targetEnd, _, berr := reader.ResolveArchivePathBST(archiveIncludes[0])
+		ranges, selectedBytes, rerr := reader.SelectionRanges(archiveIncludes)
 		resolvingSpan = false
 		ra.SetPrefetchEnabled(true)
-		if berr == nil {
-			effectiveSize = targetEnd - targetStart
-			effectiveChunks = ra.ChunkCountInRange(targetStart, targetEnd)
-			// Extraction will only ever read [targetStart, targetEnd); stop
-			// read-ahead fetching (and counting) chunks past it.
-			ra.LimitPrefetchTo(targetEnd)
+		if rerr != nil {
+			writeBackupLog(fmt.Sprintf("%s: selection not narrowed (%v); progress counts the whole archive", logTag, rerr))
+		} else {
+			effectiveSize = selectedBytes
+			effectiveChunks = ra.LimitPrefetchToRanges(ranges)
+			if split {
+				// Progress counts selected files' content, the same bytes
+				// selectedBytes sums.
+				reader.SetSelectedProgress(true)
+			}
+			writeBackupLog(fmt.Sprintf("%s: selection is %s in %d chunks (%d ranges) of %s",
+				logTag, formatByteSize(uint64(selectedBytes)), effectiveChunks, len(ranges), dataName))
+			if effectiveSize < 1 {
+				// Nothing but empty files and folders: avoid a zero total.
+				effectiveSize = 1
+			}
 
 			// Resolution ran with reporting suppressed (resolvingSpan,
 			// above), so the caller hasn't seen anything yet. If extraction
