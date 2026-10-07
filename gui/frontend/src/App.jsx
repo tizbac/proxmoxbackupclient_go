@@ -532,6 +532,7 @@ function App() {
 
   const [snapshots, setSnapshots] = useState([])
   const [restoreBackupId, setRestoreBackupId] = useState('')
+  const [showRestoreIdList, setShowRestoreIdList] = useState(false)
   const [showSnapshots, setShowSnapshots] = useState(false)
   // Persisted per-machine (not per-artifact-viewer — this is a real desktop app,
   // one user, so localStorage is a plain, safe preference store here) so the
@@ -2119,6 +2120,21 @@ function App() {
   const endServerWait = (id) => {
     setServerWait(w => (w && w.id === id ? null : w))
   }
+  // Backup IDs used by this machine's Backup Sets (plus its hostname, the
+  // default ID of a one-off backup), each with the sets that use it, for the
+  // Restore tab's Backup ID picker.
+  const restoreIdChoices = (() => {
+    const byId = new Map()
+    for (const j of scheduledJobs || []) {
+      const id = (j.backupId || '').trim()
+      if (!id) continue
+      if (!byId.has(id)) byId.set(id, [])
+      byId.get(id).push(j.name)
+    }
+    const host = (hostname || '').trim()
+    if (host && !byId.has(host)) byId.set(host, [tl('backupIdHostOneOff', 'This computer (one-off backups)')])
+    return [...byId.entries()].map(([id, names]) => ({ id, names })).sort((a, b) => a.id.localeCompare(b.id))
+  })()
   const slowServerHint = tl('pbsSlowHint', 'PBS is slow to respond (a verify, garbage collection or backup may be running).')
 
   const sortChildren = (list) => (list || []).slice().sort((a, b) => {
@@ -4203,14 +4219,66 @@ function App() {
                 ))}
               </select>
             </div>
-            <div className="form-group" style={{flex: '2 1 320px'}}>
-              <label>{t('backupIDToRestore')}</label>
-              <input
-                type="text"
-                value={restoreBackupId}
-                onChange={(e) => setRestoreBackupId(e.target.value)}
-                placeholder={t('phBackupId')}
-              />
+            <div className="form-group" style={{flex: '2 1 320px', position: 'relative'}}>
+              <label htmlFor="restoreBackupId">{t('backupIDToRestore')}</label>
+              {/* Typed freely (another machine's ID, or empty for every
+                  backup in the datastore), or picked from the IDs this
+                  machine's Backup Sets use (the arrow), or cleared (the x). */}
+              <div style={{display: 'flex', gap: '6px', alignItems: 'stretch'}}>
+                <input
+                  id="restoreBackupId"
+                  type="text"
+                  value={restoreBackupId}
+                  onChange={(e) => setRestoreBackupId(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Escape') setShowRestoreIdList(false) }}
+                  placeholder={t('phBackupId')}
+                  style={{flex: '1 1 auto', minWidth: 0}}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  aria-label={tl('backupIdPick', 'Choose a backup ID from your Backup Sets')}
+                  title={tl('backupIdPick', 'Choose a backup ID from your Backup Sets')}
+                  aria-expanded={showRestoreIdList}
+                  onClick={() => setShowRestoreIdList(v => !v)}
+                  disabled={restoreIdChoices.length === 0}
+                  style={{padding: '0 14px', minWidth: '44px', fontSize: '18px', lineHeight: 1}}
+                >
+                  ▾
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  aria-label={tl('backupIdClear', 'Clear (list every backup in the datastore)')}
+                  title={tl('backupIdClear', 'Clear (list every backup in the datastore)')}
+                  onClick={() => { setRestoreBackupId(''); setShowRestoreIdList(false) }}
+                  disabled={!restoreBackupId}
+                  style={{padding: '0 14px', minWidth: '44px'}}
+                >
+                  ✕
+                </button>
+              </div>
+              {showRestoreIdList && restoreIdChoices.length > 0 && (
+                <div
+                  role="listbox"
+                  aria-label={tl('backupIdPick', 'Choose a backup ID from your Backup Sets')}
+                  style={{position: 'absolute', zIndex: 20, left: 0, right: 0, marginTop: '4px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)', maxHeight: '260px', overflowY: 'auto'}}
+                >
+                  {restoreIdChoices.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      role="option"
+                      aria-selected={c.id === restoreBackupId}
+                      onClick={() => { setRestoreBackupId(c.id); setShowRestoreIdList(false) }}
+                      style={{display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', minHeight: '44px', border: 'none', borderBottom: '1px solid #f1f5f9', background: c.id === restoreBackupId ? '#eef6ee' : '#fff', cursor: 'pointer'}}
+                    >
+                      <div style={{fontSize: '14px', fontWeight: 600, color: '#1f2937'}}>{c.id}</div>
+                      <div style={{fontSize: '12px', color: '#64748b'}}>{c.names.join(', ')}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
