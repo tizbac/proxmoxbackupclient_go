@@ -185,6 +185,32 @@ function windowRate(samples, key, windowMs, now) {
   return Math.max(0, (last[key] - first[key]) / ((last.t - first.t) / 1000))
 }
 
+// A path shortened in the middle to fit the space it has (keeping the start
+// and the file name), measured from its own width, so a long path is never
+// cut off at the end where the file name is.
+function FitPath({ path }) {
+  const ref = useRef(null)
+  const [chars, setChars] = useState(110)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const probe = document.createElement('span')
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:inherit'
+    probe.textContent = 'MMMMMMMMMMiiiiiiiiii'
+    el.appendChild(probe)
+    const charWidth = probe.getBoundingClientRect().width / 20 || 7
+    el.removeChild(probe)
+    const ro = new ResizeObserver(() => setChars(Math.max(20, Math.floor(el.clientWidth / charWidth) - 1)))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return (
+    <span ref={ref} title={path} style={{fontFamily: 'Consolas, monospace', fontSize: '12px', flex: '1 1 auto', minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', display: 'block'}}>
+      {middleTruncate(path, chars)}
+    </span>
+  )
+}
+
 // Indeterminate progress for a server call that gives no progress of its
 // own (listing snapshots, opening folders): a sliding stripe and a seconds
 // counter, with a hint once the wait is long. Stays up for the whole call;
@@ -721,12 +747,23 @@ function App() {
 
         // The finish forecast uses the last 2 minutes, so it follows a real
         // change of pace without swinging with every folder of small files.
-        const etaRate = windowRate(samples, 'bytes', 120000, now) ?? avg
+        // It is worked out from bytes AND from files, and the longer one
+        // wins: bytes alone said "14s" with 16 GB but 178,762 small files
+        // left at the end of a change-detection run (seen 2026-10-07), where
+        // the real cost is per file (~1,700 a second); on a full read of
+        // large files the bytes decide it instead.
+        const filesDone = data.filesDone || 0
+        const filesTotal = data.filesTotal || 0
+        const byteRate = windowRate(samples, 'bytes', 120000, now) ?? avg
+        const fileRate = windowRate(samples, 'files', 120000, now) ?? (elapsed > 0 ? filesDone / elapsed : 0)
+        const candidates = []
+        if (byteRate > 0 && bytesTotal > bytesDone) candidates.push((bytesTotal - bytesDone) / byteRate)
+        if (fileRate > 0 && filesTotal > filesDone) candidates.push((filesTotal - filesDone) / fileRate)
         let eta = null
-        if (bytesTotal > 0 && bytesDone >= bytesTotal) {
+        if (candidates.length > 0) {
+          eta = Math.round(Math.max(...candidates))
+        } else if (bytesTotal > 0 && bytesDone >= bytesTotal) {
           eta = 0
-        } else if (etaRate > 0 && bytesTotal > bytesDone) {
-          eta = Math.round((bytesTotal - bytesDone) / etaRate)
         }
 
         return {
@@ -3120,7 +3157,7 @@ function App() {
                 const folder = s.currentDir || (s.hasDetail ? calc : na)
                 let fileLine
                 if (backupFile) {
-                  fileLine = <span style={{fontFamily: 'Consolas, monospace', fontSize: '12px'}} title={backupFile}>{middleTruncate(backupFile, 110)}</span>
+                  fileLine = <FitPath path={backupFile} />
                 } else if (!s.hasDetail && s.phase === '' && s.bytesTotal > 0) {
                   fileLine = na
                 } else {
@@ -3146,8 +3183,8 @@ function App() {
                       {row(tl('processingLabel', 'Processing:'), processing)}
                       {row(t('currentDirLabel'), folder)}
                       {row(tl('uploadLabel', 'Upload:'), upload)}
-                      <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap'}}>
-                        <strong>{tl('currentFileLabel', 'Current file:')}</strong> {fileLine}
+                      <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
+                        <strong style={{flex: '0 0 auto'}}>{tl('currentFileLabel', 'Current file:')}</strong> {fileLine}
                       </div>
                     </div>
                     <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef', minHeight: '18px'}}>
@@ -4096,10 +4133,10 @@ function App() {
                       {row(t('timeRemaining'), s.eta !== null ? formatDuration(s.eta) : calc)}
                       {row(t('speed'), s.speed > 0 ? formatSpeed(s.speed) : calc)}
                       {row(t('dataSizeLabel'), s.bytesTotal > 0 ? <>{formatBytesDual(s.bytesDone)} / {formatBytesDual(s.bytesTotal)}</> : calc)}
-                      <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap'}}>
-                        <strong>{tl('currentFileLabel', 'Current file:')}</strong>{' '}
+                      <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
+                        <strong style={{flex: '0 0 auto'}}>{tl('currentFileLabel', 'Current file:')}</strong>
                         {showFile
-                          ? <span style={{fontFamily: 'Consolas, monospace', fontSize: '12px'}} title={restoreFile}>{middleTruncate(restoreFile, 110)}</span>
+                          ? <FitPath path={restoreFile} />
                           : <span className="pending-value">{tl('waiting', 'Waiting...')}</span>}
                       </div>
                     </div>
