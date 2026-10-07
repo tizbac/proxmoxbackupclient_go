@@ -4126,22 +4126,11 @@ function App() {
             </div>
           )}
 
-          {/* BETA warning — a fixed-amber "main" bar (deliberately not theme-colored,
-              so it reads as a warning regardless of the active accent color), with a
-              second, theme-colored banner below it listing what's actually supported. */}
-          <div style={{
-            backgroundColor: '#FEF3C7',
-            border: '2px solid #F59E0B',
-            borderRadius: '8px',
-            padding: '10px 14px',
-            marginBottom: '8px',
-            color: '#92400E',
-            fontWeight: 'bold',
-            fontSize: '14px'
-          }}>
-            ⚠️ {t('restoreBetaTitle')} — {t('restoreBetaIntro')}
-          </div>
+          {/* What restore covers (it was marked BETA until 2026-10-07, when
+              it had been through full, selective, multi-folder, ACL and
+              cross-machine restores on real data). */}
           <div className="info-box" style={{marginTop: 0, marginBottom: '20px'}}>
+            <div style={{fontSize: '13px', fontWeight: 600, marginBottom: '6px'}}>{tl('restoreSupportsTitle', 'Restore supports:')}</div>
             <div style={{display: 'flex', flexWrap: 'wrap', gap: '6px 20px', fontSize: '13px'}}>
               <span>✅ {t('restoreBetaFilesDirs')}</span>
               <span>✅ {t('restoreBetaSelective')}</span>
