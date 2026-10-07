@@ -548,6 +548,28 @@ type ScheduledJob struct {
 
 ## 🟢 P2 - NICE TO HAVE (Backlog)
 
+### 🗑️ Undelete: restore files that are in the backup but gone from disk (idea from BFW, 2026-10-07)
+Backup for Workgroups offers "undelete": compare a backup set with its live folders and list the files that were deleted, ready to restore. Maps directly onto PBS snapshots.
+- [ ] Pick a Backup Set; list the files of its latest snapshot and check each against the live folders (stat only, no content read). Present the missing ones with size and last backed-up date, tick to restore to the original paths (existing selective restore, `RestoreModeOriginal`).
+- [ ] "Deleted in the last N days": check the set's recent snapshots too and offer each missing file from the NEWEST snapshot that still has it.
+- [ ] Cheap on split (Metadata/Data) snapshots: the file list is the small `.mpxar.didx`, no payload download. Legacy snapshots: use the catalog (written for every snapshot).
+- [ ] Needs one backup ID per set (see below), otherwise the set's history mixes in other sets' snapshots.
+
+### ⏪ Roll back: restore a named Backup Set as it was at a chosen date and time (idea from BFW, 2026-10-07)
+BFW's "roll back" picks a set, shows its history and restores a point in time. PBS snapshots are exactly that; this is mostly presentation.
+- [ ] Start from the Backup Set (not server, then backup ID, then snapshot): show its snapshots as a dated list, or take a date/time and use the snapshot at or before it.
+- [ ] Restore to the original locations with an explicit policy: overwrite files that differ / keep files newer than the snapshot / TRUE rollback that also deletes files that did not exist then (off by default, confirmation showing how many files would be deleted).
+- [ ] Multi-folder sets: one snapshot holds an archive per folder, restore them all (already how restore works).
+- [ ] Depends on one backup ID per set.
+
+### ⚠️ Warn when a Metadata Backup Set shares its backup ID with another set (2026-10-07)
+Metadata change detection compares with the NEWEST snapshot in the backup group. On deepthought the production sets "Beeby Property", "Beeby Trading" and "Data" all used backup ID `deepthought`, so any other set running between two Data runs would have forced a full 448 GB read; fixed by giving Data its own ID `deepthought-data`.
+- [ ] Backup Set editor: warn (not block) when a Data/Metadata set has the same server + backup ID as another set, and suggest a unique ID.
+- [ ] Possibly default new sets to `<hostname>-<set name>` style IDs.
+
+### 🐛 Stop logs "no backup running" while it is in fact stopping one (2026-10-07)
+- [ ] On deepthought, Stop at 08:14:48 logged `CancelBackup: no backup running (or already cancelled)`, yet the run did cancel at 08:15:30 (the walk only checks between files and a large file was in progress). Find which state CancelBackup checks and fix the message; consider showing "Stopping after the current file..." in the UI.
+
 ### ~~⏹️ No way to cancel a running machine backup~~ ✅ ALREADY WORKED — correcting an earlier wrong note (2026-09-25)
 
 **Question raised (2026-09-25):** noticed there's no Cancel option once a full machine backup is
