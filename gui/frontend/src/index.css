@@ -107,6 +107,21 @@ body {
     display: block;
 }
 
+.progress {
+    width: 100%;
+    height: 8px;
+    background-color: #dee2e6;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: #0066cc;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
 .form-group {
     margin-bottom: 20px;
 }

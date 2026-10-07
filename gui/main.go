@@ -302,16 +302,6 @@ func (a *App) SetProgressCallbacks(jobID string, onProgress func(string, float64
 	a.callbacksMutex.Unlock()
 }
 
-// unregisterCancelFunc removes and returns the cancellation function for a job.
-// Returns nil if no cancel function was registered for the jobID.
-func (a *App) unregisterCancelFunc(jobID string) context.CancelFunc {
-	a.cancelFuncsMu.Lock()
-	defer a.cancelFuncsMu.Unlock()
-	cancel := a.cancelFuncs[jobID]
-	delete(a.cancelFuncs, jobID)
-	return cancel
-}
-
 // SetBackupContext sets the context and cancel function for the currently
 // running backup. Called by the API handler in service mode to enable
 // cancellation of the backup via CancelBackup.
@@ -320,6 +310,10 @@ func (a *App) SetBackupContext(ctx context.Context, cancel context.CancelFunc) {
 	defer a.backupCtxMu.Unlock()
 	a.backupCtx = ctx
 	a.backupCancel = cancel
+	// Also register in cancelFuncs map for CancelBackup lookup
+	a.cancelFuncsMu.Lock()
+	a.cancelFuncs["current"] = cancel
+	a.cancelFuncsMu.Unlock()
 }
 
 // ClearBackupContext clears the backup context after the backup completes.
@@ -328,6 +322,10 @@ func (a *App) ClearBackupContext() {
 	defer a.backupCtxMu.Unlock()
 	a.backupCtx = nil
 	a.backupCancel = nil
+	// Also clear from cancelFuncs map
+	a.cancelFuncsMu.Lock()
+	delete(a.cancelFuncs, "current")
+	a.cancelFuncsMu.Unlock()
 }
 
 // GetBackupContext returns the current backup context, or nil if none is set.
@@ -340,7 +338,20 @@ func (a *App) GetBackupContext() context.Context {
 // CancelBackup cancels a running backup job by ID.
 // Returns an error if the job is not found or not running.
 func (a *App) CancelBackup(jobID string) error {
-	cancel := a.unregisterCancelFunc(jobID)
+	// Check both backupCancel (set by API handler) and cancelFuncs map
+	a.backupCtxMu.RLock()
+	backupCancel := a.backupCancel
+	a.backupCtxMu.RUnlock()
+
+	a.cancelFuncsMu.Lock()
+	cancelFromMap := a.cancelFuncs["current"]
+	delete(a.cancelFuncs, "current")
+	a.cancelFuncsMu.Unlock()
+
+	cancel := backupCancel
+	if cancel == nil {
+		cancel = cancelFromMap
+	}
 	if cancel == nil {
 		writeDebugLog(fmt.Sprintf("[CancelBackup] No running backup found for jobID: %s", jobID))
 		return fmt.Errorf("no running backup found for jobID: %s", jobID)

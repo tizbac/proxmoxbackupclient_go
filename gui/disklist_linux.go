@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -21,6 +22,9 @@ func listPhysicalDisks() ([]PhysicalDiskInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read /sys/block: %w", err)
 	}
+	
+	// Build a map of by-id symlinks to their target devices
+	byIDMap := buildByIDMap()
 	
 	for _, entry := range entries {
 		// Skip non-disks (like loop devices, ram disks, etc.)
@@ -46,6 +50,11 @@ func listPhysicalDisks() ([]PhysicalDiskInfo, error) {
 		devicePath := fmt.Sprintf("/dev/%s", entry.Name())
 		deviceID := entry.Name()
 		
+		// Resolve to /dev/disk/by-id symlink for stable identification
+		if byIDPath, ok := byIDMap[entry.Name()]; ok {
+			devicePath = byIDPath
+		}
+		
 		diskInfo := PhysicalDiskInfo{
 			DiskNumber:   0, // Linux doesn't use disk numbers like Windows
 			Size:         size,
@@ -60,6 +69,80 @@ func listPhysicalDisks() ([]PhysicalDiskInfo, error) {
 	}
 	
 	return disks, nil
+}
+
+// buildByIDMap creates a mapping from kernel device names (e.g., "sda", "nvme0n1")
+// to their corresponding /dev/disk/by-id symlink paths.
+// It prefers WWN/SCSI/ATA links over partition links.
+func buildByIDMap() map[string]string {
+	byIDMap := make(map[string]string)
+	
+	byIDDir := "/dev/disk/by-id"
+	entries, err := os.ReadDir(byIDDir)
+	if err != nil {
+		// Directory may not exist on all systems
+		return byIDMap
+	}
+	
+	// Collect all symlinks for each device
+	deviceLinks := make(map[string][]string)
+	
+	for _, entry := range entries {
+		// Skip partition symlinks (ending with -partN)
+		if strings.Contains(entry.Name(), "-part") {
+			continue
+		}
+		
+		linkPath := filepath.Join(byIDDir, entry.Name())
+		target, err := os.Readlink(linkPath)
+		if err != nil {
+			continue
+		}
+		
+		// Extract kernel device name from target (e.g., "../../sda" -> "sda")
+		// The target is a relative path like "../../sda"
+		parts := strings.Split(target, "/")
+		deviceName := parts[len(parts)-1]
+		
+		// Skip if not a valid disk device name
+		if !isDisk(deviceName) {
+			continue
+		}
+		
+		deviceLinks[deviceName] = append(deviceLinks[deviceName], linkPath)
+	}
+	
+	// For each device, pick the best symlink (prefer wwn > scsi > ata > others)
+	for deviceName, links := range deviceLinks {
+		byIDMap[deviceName] = selectBestByIDLink(links)
+	}
+	
+	return byIDMap
+}
+
+// selectBestByIDLink chooses the most reliable by-id symlink.
+// Priority: wwn > scsi > ata > nvme > others
+func selectBestByIDLink(links []string) string {
+	if len(links) == 0 {
+		return ""
+	}
+	if len(links) == 1 {
+		return links[0]
+	}
+	
+	// Priority order for symlink types
+	priorities := []string{"wwn-", "scsi-", "ata-", "nvme-"}
+	
+	for _, prefix := range priorities {
+		for _, link := range links {
+			if strings.HasPrefix(filepath.Base(link), prefix) {
+				return link
+			}
+		}
+	}
+	
+	// Fallback to first link
+	return links[0]
 }
 
 // isDisk checks if a device is a physical disk (not a loop device or ram disk)

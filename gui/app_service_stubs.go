@@ -276,7 +276,20 @@ func (a *App) resolveBackupPBS(pbsID string) (*Config, error) {
 // CancelBackup cancels a running backup job by ID.
 // Returns an error if the job is not found or not running.
 func (a *App) CancelBackup(jobID string) error {
-	cancel := a.unregisterCancelFunc(jobID)
+	// Check both backupCancel (set by API handler) and cancelFuncs map
+	a.backupCtxMu.RLock()
+	backupCancel := a.backupCancel
+	a.backupCtxMu.RUnlock()
+
+	a.cancelFuncsMu.Lock()
+	cancelFromMap := a.cancelFuncs["current"]
+	delete(a.cancelFuncs, "current")
+	a.cancelFuncsMu.Unlock()
+
+	cancel := backupCancel
+	if cancel == nil {
+		cancel = cancelFromMap
+	}
 	if cancel == nil {
 		writeDebugLog(fmt.Sprintf("[CancelBackup] No running backup found for jobID: %s", jobID))
 		return fmt.Errorf("no running backup found for jobID: %s", jobID)
@@ -287,18 +300,3 @@ func (a *App) CancelBackup(jobID string) error {
 }
 
 // GetBackupContext returns the current backup context, or nil if none is set.
-func (a *App) GetBackupContext() context.Context {
-	a.backupCtxMu.Lock()
-	defer a.backupCtxMu.Unlock()
-	return a.backupCtx
-}
-
-// unregisterCancelFunc removes and returns the cancellation function for a job.
-// Returns nil if no cancel function was registered for the jobID.
-func (a *App) unregisterCancelFunc(jobID string) context.CancelFunc {
-	a.cancelFuncsMu.Lock()
-	defer a.cancelFuncsMu.Unlock()
-	cancel := a.cancelFuncs[jobID]
-	delete(a.cancelFuncs, jobID)
-	return cancel
-}

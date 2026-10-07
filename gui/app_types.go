@@ -37,7 +37,7 @@ type App struct {
 	// for service mode to enable cancellation). Protected by backupCtxMu.
 	backupCtx     context.Context
 	backupCancel  context.CancelFunc
-	backupCtxMu   sync.Mutex
+	backupCtxMu   sync.RWMutex
 }
 
 // isDelegatedToService reports whether this (non-service) GUI process is

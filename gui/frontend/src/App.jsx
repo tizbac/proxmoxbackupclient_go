@@ -1626,6 +1626,16 @@ function App() {
     return `${n.toFixed(1)} ${units[i]}`
   }
 
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds < 0) return '--:--'
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = Math.floor(seconds % 60)
+    if (h > 0) return `${h}h ${m}m ${s}s`
+    if (m > 0) return `${m}m ${s}s`
+    return `${s}s`
+  }
+
   // Reconstruct the absolute on-disk location a file came from, by joining the
   // backup's original_path (from the meta sidecar) with the archive-relative
   // path. Critical for split backups, where each part is a separate backup-id
@@ -2391,7 +2401,7 @@ function App() {
           ) : (
             <div>
               <div style={{marginBottom: '15px', padding: '12px', backgroundColor: '#e7f3ff', borderRadius: '8px', border: '1px solid #b6d7ff'}}>
-                <strong>{runningJobs.filter(j => j.running).length}</strong> {t('runningJobsCount', { total: runningJobs.length })}
+                <strong>{runningJobs.filter(j => j.running).length}</strong> {t('runningJobsCount', { count: runningJobs.filter(j => j.running).length, total: runningJobs.length })}
               </div>
               {runningJobs.map(job => (
                 <div key={job.job_id} style={{
