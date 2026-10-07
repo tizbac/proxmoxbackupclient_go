@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 )
@@ -135,6 +136,7 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		ExcludeList:     excludes,
 		DisableSplit:    pbsCfg.DisableSplit,
 		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
+		Ctx:             a.GetBackupContext(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent, message))
 		},
@@ -209,6 +211,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		ExcludeList:     []string{},
 		DisableSplit:    pbsCfg.DisableSplit,
 		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
+		Ctx:             a.GetBackupContext(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent*100, message))
 		},
@@ -268,4 +271,34 @@ func (a *App) resolveBackupPBS(pbsID string) (*Config, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// CancelBackup cancels a running backup job by ID.
+// Returns an error if the job is not found or not running.
+func (a *App) CancelBackup(jobID string) error {
+	cancel := a.unregisterCancelFunc(jobID)
+	if cancel == nil {
+		writeDebugLog(fmt.Sprintf("[CancelBackup] No running backup found for jobID: %s", jobID))
+		return fmt.Errorf("no running backup found for jobID: %s", jobID)
+	}
+	writeDebugLog(fmt.Sprintf("[CancelBackup] Cancellation requested for jobID: %s", jobID))
+	cancel()
+	return nil
+}
+
+// GetBackupContext returns the current backup context, or nil if none is set.
+func (a *App) GetBackupContext() context.Context {
+	a.backupCtxMu.Lock()
+	defer a.backupCtxMu.Unlock()
+	return a.backupCtx
+}
+
+// unregisterCancelFunc removes and returns the cancellation function for a job.
+// Returns nil if no cancel function was registered for the jobID.
+func (a *App) unregisterCancelFunc(jobID string) context.CancelFunc {
+	a.cancelFuncsMu.Lock()
+	defer a.cancelFuncsMu.Unlock()
+	cancel := a.cancelFuncs[jobID]
+	delete(a.cancelFuncs, jobID)
+	return cancel
 }

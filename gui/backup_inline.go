@@ -90,19 +90,6 @@ var (
 	currentBackupCancel      context.CancelFunc
 )
 
-// CancelBackup requests a graceful stop of the currently running backup.
-// It is exported to the GUI and returns false if no backup is running.
-func (a *App) CancelBackup() error {
-	currentBackupCancelMutex.Lock()
-	defer currentBackupCancelMutex.Unlock()
-	if currentBackupCancel != nil {
-		currentBackupCancel()
-		writeDebugLog("CancelBackup: cancellation requested for running backup")
-	}
-	writeDebugLog("CancelBackup: no backup running (or already cancelled)")
-	return nil
-}
-
 // newBackupContext returns a fresh cancellable context and registers its
 // cancel function as the current in-flight backup. Callers should not defer
 // Cancel() (that would also cancel the shared token); instead call

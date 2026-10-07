@@ -173,6 +173,50 @@ func (c *Client) GetBackupStatus(jobID string) (*BackupProgress, error) {
 	return &progress, nil
 }
 
+// ListBackupJobs returns a list of all running/completed backup jobs
+func (c *Client) ListBackupJobs() ([]*BackupProgress, error) {
+	resp, err := c.httpClient.Get(c.baseURL + "/backup/jobs")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list backup jobs: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("service returned error: %d", resp.StatusCode)
+	}
+
+	var jobs []*BackupProgress
+	if err := json.NewDecoder(resp.Body).Decode(&jobs); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return jobs, nil
+}
+
+// CancelBackup cancels a running backup job by ID
+func (c *Client) CancelBackup(jobID string) error {
+	resp, err := c.httpClient.Post(c.baseURL+"/backup/cancel/"+jobID, "application/json", nil)
+	if err != nil {
+		return fmt.Errorf("failed to cancel backup: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("backup job not found")
+	}
+
+	if resp.StatusCode == http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("cannot cancel backup: %s", string(body))
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("service returned error: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 // GetJobs retrieves the list of configured jobs
 func (c *Client) GetJobs() (*JobsResponse, error) {
 	resp, err := c.httpClient.Get(c.baseURL + "/jobs")

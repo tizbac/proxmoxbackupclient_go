@@ -82,6 +82,10 @@ func (f *fakeHandler) GetJobHistoryForAPI() ([]map[string]interface{}, error) {
 	return []map[string]interface{}{}, nil
 }
 
+func (f *fakeHandler) CancelBackup(string) error {
+	return nil
+}
+
 const testToken = "test-local-token"
 
 // newTestServer starts the real routes+auth on a random port and returns the

@@ -302,6 +302,54 @@ func (a *App) SetProgressCallbacks(jobID string, onProgress func(string, float64
 	a.callbacksMutex.Unlock()
 }
 
+// unregisterCancelFunc removes and returns the cancellation function for a job.
+// Returns nil if no cancel function was registered for the jobID.
+func (a *App) unregisterCancelFunc(jobID string) context.CancelFunc {
+	a.cancelFuncsMu.Lock()
+	defer a.cancelFuncsMu.Unlock()
+	cancel := a.cancelFuncs[jobID]
+	delete(a.cancelFuncs, jobID)
+	return cancel
+}
+
+// SetBackupContext sets the context and cancel function for the currently
+// running backup. Called by the API handler in service mode to enable
+// cancellation of the backup via CancelBackup.
+func (a *App) SetBackupContext(ctx context.Context, cancel context.CancelFunc) {
+	a.backupCtxMu.Lock()
+	defer a.backupCtxMu.Unlock()
+	a.backupCtx = ctx
+	a.backupCancel = cancel
+}
+
+// ClearBackupContext clears the backup context after the backup completes.
+func (a *App) ClearBackupContext() {
+	a.backupCtxMu.Lock()
+	defer a.backupCtxMu.Unlock()
+	a.backupCtx = nil
+	a.backupCancel = nil
+}
+
+// GetBackupContext returns the current backup context, or nil if none is set.
+func (a *App) GetBackupContext() context.Context {
+	a.backupCtxMu.Lock()
+	defer a.backupCtxMu.Unlock()
+	return a.backupCtx
+}
+
+// CancelBackup cancels a running backup job by ID.
+// Returns an error if the job is not found or not running.
+func (a *App) CancelBackup(jobID string) error {
+	cancel := a.unregisterCancelFunc(jobID)
+	if cancel == nil {
+		writeDebugLog(fmt.Sprintf("[CancelBackup] No running backup found for jobID: %s", jobID))
+		return fmt.Errorf("no running backup found for jobID: %s", jobID)
+	}
+	writeDebugLog(fmt.Sprintf("[CancelBackup] Cancellation requested for jobID: %s", jobID))
+	cancel()
+	return nil
+}
+
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
@@ -1345,6 +1393,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		DisableSplit:    a.config.DisableSplit,
 		SplitSizeBytes:  a.config.SplitSizeBytes(),
 		Crypt:           pbsCfg.Crypt,
+		Ctx:             a.GetBackupContext(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
@@ -1566,6 +1615,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		DisableSplit:    a.config.DisableSplit,
 		SplitSizeBytes:  a.config.SplitSizeBytes(),
 		Crypt:           pbsCfg.Crypt,
+		Ctx:             a.GetBackupContext(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 

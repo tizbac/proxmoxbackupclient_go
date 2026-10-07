@@ -27,6 +27,17 @@ type App struct {
 	// duplicate guard, run-now) must be testable without a real PBS server.
 	// Production leaves it nil and routes through StartBackup.
 	scheduledBackupFn func(job ScheduledJob) error
+
+	// cancelFuncs tracks cancellation functions for running backup jobs.
+	// Key is jobID, value is the cancel function to call for graceful stop.
+	cancelFuncs     map[string]context.CancelFunc
+	cancelFuncsMu   sync.Mutex
+
+	// backupCtx is the context for the currently running backup (set by API handler
+	// for service mode to enable cancellation). Protected by backupCtxMu.
+	backupCtx     context.Context
+	backupCancel  context.CancelFunc
+	backupCtxMu   sync.Mutex
 }
 
 // isDelegatedToService reports whether this (non-service) GUI process is

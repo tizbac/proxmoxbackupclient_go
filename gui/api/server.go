@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -66,6 +67,8 @@ type BackupHandler interface {
 	MintPBSTicketForAPI(id string) (*PBSTicket, error)
 	// Job history as stored by the service's scheduler.
 	GetJobHistoryForAPI() ([]map[string]interface{}, error)
+	// Cancel a running backup job by ID.
+	CancelBackup(jobID string) error
 }
 
 // NewServer creates a new API server. token is the shared local-auth secret that
@@ -142,6 +145,8 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/backup", s.handleBackup)
 	s.mux.HandleFunc("/backup/machine", s.handleMachineBackup)
 	s.mux.HandleFunc("/backup/status/", s.handleBackupStatus)
+	s.mux.HandleFunc("/backup/jobs", s.handleListBackupJobs)
+	s.mux.HandleFunc("/backup/cancel/", s.handleCancelBackup)
 	s.mux.HandleFunc("/jobs", s.handleJobs)
 	s.mux.HandleFunc("/jobs/full", s.handleJobsFull)
 	s.mux.HandleFunc("/jobs/create", s.handleJobCreate)
@@ -237,6 +242,18 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		log.Printf("[API] Starting async backup: %s", jobID)
+
+		// Create a cancellable context for this backup
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Set the backup context on the App so it can be cancelled
+		if appWithContext, ok := s.app.(interface {
+			SetBackupContext(context.Context, context.CancelFunc)
+			ClearBackupContext()
+		}); ok {
+			appWithContext.SetBackupContext(ctx, cancel)
+			defer appWithContext.ClearBackupContext()
+		}
 
 		// Set up progress callbacks to update the progress map
 		handler, ok := s.app.(interface {
@@ -383,6 +400,63 @@ func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.writeJSON(w, &snapshot, http.StatusOK)
+}
+
+// handleListBackupJobs returns a list of currently running/completed backup jobs
+func (s *Server) handleListBackupJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.progressMutex.RLock()
+	jobs := make([]*BackupProgress, 0, len(s.backupProgress))
+	for _, p := range s.backupProgress {
+		// Copy to avoid race
+		snapshot := *p
+		jobs = append(jobs, &snapshot)
+	}
+	s.progressMutex.RUnlock()
+
+	s.writeJSON(w, jobs, http.StatusOK)
+}
+
+// handleCancelBackup cancels a running backup job by ID
+func (s *Server) handleCancelBackup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract job ID from URL path: /backup/cancel/{jobID}
+	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/backup/cancel/"), "/")
+	if len(pathParts) == 0 || pathParts[0] == "" {
+		s.writeError(w, "Job ID required", http.StatusBadRequest)
+		return
+	}
+	jobID := pathParts[0]
+
+	s.progressMutex.Lock()
+	progress, exists := s.backupProgress[jobID]
+	if !exists {
+		s.progressMutex.Unlock()
+		s.writeError(w, "Job not found", http.StatusNotFound)
+		return
+	}
+	if !progress.Running {
+		s.progressMutex.Unlock()
+		s.writeError(w, "Job is not running", http.StatusBadRequest)
+		return
+	}
+	s.progressMutex.Unlock()
+
+	// Call the app's CancelBackup method
+	if err := s.app.CancelBackup(jobID); err != nil {
+		s.writeError(w, fmt.Sprintf("Failed to cancel job: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.writeJSON(w, map[string]string{"status": "cancelled", "job_id": jobID}, http.StatusOK)
 }
 
 func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {

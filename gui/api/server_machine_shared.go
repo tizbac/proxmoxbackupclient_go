@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -49,6 +50,18 @@ func (s *Server) handleMachineBackup(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		log.Printf("[API] Starting async machine backup: %s", jobID)
+
+		// Create a cancellable context for this backup
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Set the backup context on the App so it can be cancelled
+		if appWithContext, ok := s.app.(interface {
+			SetBackupContext(context.Context, context.CancelFunc)
+			ClearBackupContext()
+		}); ok {
+			appWithContext.SetBackupContext(ctx, cancel)
+			defer appWithContext.ClearBackupContext()
+		}
 
 		handler, ok := s.app.(interface {
 			SetProgressCallbacks(jobID string, onProgress func(string, float64, string), onComplete func(string, bool, string))
