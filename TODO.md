@@ -574,12 +574,16 @@ Seen live on deepthought: 4 folders from deepthought-data (480 GB, 158,801 paylo
 - Read-ahead is never bounded for split or multi-select: `LimitPrefetchTo` is only called under `len(archiveIncludes) == 1 && !split` (gui/restore_inline.go ~516); `triggerPrefetch` runs on every chunkAt, hits included (pbscommon/didx_reader.go ~258, ~344).
 - Cache of 64 chunks (restore_inline.go ~429) vs 4 parallel workers + walker each reading ahead 32 => evictions and refetches; every refetch increments `fetched` (didx_reader.go ~329).
 - "Written" adds the weight of unselected entries as the walker passes them (`entryDone` ~1052/~1238), and a selected file only counts when complete, so it stalls on large files and is not real bytes written.
-- [ ] Make the payload header check lazy (on first Read of a SELECTED file) or skip payload refs the include filter rejects. Expected to remove most of the over-fetch.
-- [ ] Multi-include fast path: ResolveArchivePathBST per include, sort spans, walkRange each; create parent dirs from each include's parent path.
-- [ ] Split archives: one metadata-only pass to collect each selected file's payload byte range; replace `prefetchLimit` with an allowed-chunk-range set so read-ahead never leaves a selected range (or the current file).
-- [ ] Progress: totals = sum of selected sizes / chunks in those ranges; "written" = real bytes of selected files only (see the restore-totals item).
-- [ ] Cache >= (workers + 1) x 33 (~192 chunks) or smaller read-ahead in parallel mode; report refetches separately.
-- [ ] Test on pbs-test: selective restore of 2-4 folders from a split snapshot, compare chunks fetched vs the chunk count of the selected ranges.
+- [x] (pxar-v2-read 40470e4) Make the payload header check lazy (on first Read of a SELECTED file) or skip payload refs the include filter rejects. Expected to remove most of the over-fetch.
+- [x] (40470e4) Multi-include fast path: ResolveArchivePathBST per include, sort spans, walkRange each; create parent dirs from each include's parent path.
+- [x] (40470e4) Split archives: one metadata-only pass to collect each selected file's payload byte range; replace `prefetchLimit` with an allowed-chunk-range set so read-ahead never leaves a selected range (or the current file).
+- [x] (40470e4) Progress: totals = sum of selected sizes / chunks in those ranges; "written" = real bytes of selected files only (see the restore-totals item).
+- [ ] Cache >= (workers + 1) x 33 (~192 chunks) or smaller read-ahead in parallel mode; report refetches separately. (Still open: the fixed restore fetched 3,744 chunks for 3,620 selected, 124 refetches.)
+- [x] Tested live on deepthought 2026-10-07 20:56 with dev-40470e4, same 4 folders: "selection is 8.0 GB in 3620 chunks (3 ranges)", fetched 3,744 chunks (3.4% refetch), extraction 3m50s, 13,514 files / 895 dirs, robocopy compare of all 4 folders identical, 170 files SHA-256 matched. Before the fix: ~25,000 chunks in 20 min without reaching Sarah. Original item: test on pbs-test: selective restore of 2-4 folders from a split snapshot, compare chunks fetched vs the chunk count of the selected ranges.
+
+### 🐛 Restore: 4 files fail NTFS owner apply ("This security ID may not be assigned as the owner") (2026-10-07)
+Selective restore on deepthought to F:\TestRestore: "NTFS ACLs/attributes: applied 14405, failed 4", all under Sarah\ (e.g. "Sarah Beeby - CV - 2024-03-29.pdf"): SetNamedSecurityInfo refuses the recorded owner SID. Setting an arbitrary owner needs SeRestorePrivilege enabled in the token (admin is not enough); check whether the GUI enables it before applying, and whether those 4 files carry a SID unknown on this machine. Data itself was restored correctly.
+- [ ] Enable SeRestorePrivilege (and SeTakeOwnershipPrivilege) for the ACL stage when running elevated; if the owner still cannot be set, apply the DACL without the owner and log it as a warning, not a failure.
 
 ### 🐛 Restore: "Listing snapshots..." fades after 5 s while the request is still running (2026-10-07)
 On deepthought, List available snapshots took ~75 s (PBS busy with a group verify); the info message vanished after 5 s (`showStatus` auto-hides non-persistent messages, App.jsx ~1003; the call at ~1916 does not pass `persist`), leaving a blank screen that looked like "no snapshots". Mick clicked three more times, sending overlapping ListSnapshots calls that all returned together.
