@@ -285,6 +285,10 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 		if progressCallback == nil {
 			return false
 		}
+		if total == 0 {
+			// Unknown total size; report with 0% to avoid NaN
+			return progressCallback(0, fmt.Sprintf("%s: Block %d", dev, b))
+		}
 		return progressCallback(float64(pos)/float64(total), fmt.Sprintf("%s: Block %d", dev, b))
 	}
 

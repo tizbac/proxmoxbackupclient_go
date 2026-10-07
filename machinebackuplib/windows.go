@@ -473,6 +473,9 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			if progressCallback == nil {
 				return false
 			}
+			if total == 0 {
+				return progressCallback(0, fmt.Sprintf("%s: Block %d", diskdev, b))
+			}
 			return progressCallback(float64(pos)/float64(total), fmt.Sprintf("%s: Block %d", diskdev, b))
 		}
 

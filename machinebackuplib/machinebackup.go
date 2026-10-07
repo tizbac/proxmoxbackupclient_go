@@ -326,10 +326,17 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 			ch <- block[:nread]
 			totread = totread + int64(nread)
 			// Returning true stops the backup (user pressed Stop).
-			if progressCallback != nil &&
-				progressCallback((float64(totread)/float64(size)), fmt.Sprintf("%s: Block %d", filename, b)) {
-				rerr = fmt.Errorf("backup cancelled by user")
-				break
+			if progressCallback != nil {
+				var pct float64
+				if size == 0 {
+					pct = 0
+				} else {
+					pct = float64(totread) / float64(size)
+				}
+				if progressCallback(pct, fmt.Sprintf("%s: Block %d", filename, b)) {
+					rerr = fmt.Errorf("backup cancelled by user")
+					break
+				}
 			}
 			b++
 		}
