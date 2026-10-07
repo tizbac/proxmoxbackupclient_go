@@ -33,6 +33,7 @@ const translations = {
     // Tabs
     tabServers: "Configuration PBS",
     tabBackup: "Sauvegarde",
+    tabRunning: "En cours",
     tabRestore: "Restauration",
     tabAbout: "À propos",
 
@@ -358,11 +359,15 @@ const translations = {
       statusSchedulingUnavailable: "Fonction de planification non disponible",
       statusBackupStarting: "Démarrage de la sauvegarde...",
       statusBackupRunning: "Sauvegarde en cours...",
+      statusCancelRequested: "Demande d'annulation envoyée...",
       statusRestoring: "Restauration du snapshot {time}...",
       statusRestoreComplete: "Restauration terminée !",
       statusJobDeleted: "Job supprimé",
       statusJobStarted: "Lancement du job « {name} »",
       statusEditCancelled: "Édition annulée",
+      runningJobs: "Sauvegardes en cours",
+      cancelJob: "Annuler",
+      statusCancelRequested: "Demande d'annulation envoyée...",
       statusError: "Erreur:",
       statusConfirm: "Êtes-vous sûr ?",
       confirmDeleteServer: "Voulez-vous vraiment supprimer le serveur PBS \"{id}\" ?",
@@ -401,6 +406,7 @@ const translations = {
     // Tabs
     tabServers: "PBS Configuration",
     tabBackup: "Backup",
+    tabRunning: "Running",
     tabRestore: "Restore",
     tabAbout: "About",
 
@@ -731,6 +737,11 @@ const translations = {
       statusJobDeleted: "Job deleted",
       statusJobStarted: "Job '{name}' started",
       statusEditCancelled: "Edit cancelled",
+      runningJobs: "Running Jobs",
+      runningJobsCount: "{count} of {total} jobs running",
+      noRunningJobs: "No running jobs",
+      cancelJob: "Cancel",
+      statusCancelRequested: "Cancel requested...",
       statusError: "Error:",
       statusConfirm: "Are you sure?",
       confirmDeleteServer: "Do you really want to delete the PBS server \"{id}\"?",
@@ -769,6 +780,7 @@ const translations = {
     // Tabs
     tabServers: "Configurazione PBS",
     tabBackup: "Backup",
+    tabRunning: "In corso",
     tabRestore: "Ripristino",
     tabAbout: "Informazioni",
 
@@ -1099,6 +1111,11 @@ const translations = {
       statusJobDeleted: "Job eliminato",
       statusJobStarted: "Job «{name}» avviato",
       statusEditCancelled: "Modifica annullata",
+      runningJobs: "Job in corso",
+      runningJobsCount: "{count} di {total} job in esecuzione",
+      noRunningJobs: "Nessun job in esecuzione",
+      cancelJob: "Annulla",
+      statusCancelRequested: "Annullamento richiesto...",
       statusError: "Errore:",
       statusConfirm: "Sei sicuro?",
       confirmDeleteServer: "Vuoi davvero eliminare il server PBS \"{id}\"?",
@@ -1137,6 +1154,7 @@ const translations = {
     // Tabs
     tabServers: "PBS-Konfiguration",
     tabBackup: "Sicherung",
+    tabRunning: "Laufend",
     tabRestore: "Wiederherstellung",
     tabAbout: "Über",
 
@@ -1467,6 +1485,11 @@ const translations = {
       statusJobDeleted: "Auftrag gelöscht",
       statusJobStarted: "Auftrag «{name}» gestartet",
       statusEditCancelled: "Bearbeitung abgebrochen",
+      runningJobs: "Laufende Aufträge",
+      runningJobsCount: "{count} von {total} Aufträge laufen",
+      noRunningJobs: "Keine laufenden Aufträge",
+      cancelJob: "Abbrechen",
+      statusCancelRequested: "Abbruch angefordert...",
       statusError: "Fehler:",
       statusConfirm: "Sind Sie sicher?",
       confirmDeleteServer: "Möchten Sie wirklich den PBS-Server \"{id}\" löschen?",
@@ -1505,6 +1528,7 @@ const translations = {
     // Tabs
     tabServers: "Konfiguracja PBS",
     tabBackup: "Kopia zapasowa",
+    tabRunning: "W toku",
     tabRestore: "Przywracanie",
     tabAbout: "O programie",
 
@@ -1835,6 +1859,11 @@ const translations = {
       statusJobDeleted: "Zadanie usunięte",
       statusJobStarted: "Zadanie „{name}” uruchomione",
       statusEditCancelled: "Edycja anulowana",
+      runningJobs: "Zadania w toku",
+      runningJobsCount: "{count} z {total} zadań działa",
+      noRunningJobs: "Brak zadań w toku",
+      cancelJob: "Anuluj",
+      statusCancelRequested: "Anulowanie w toku...",
       statusError: "Błąd:",
       statusConfirm: "Czy na pewno?",
       confirmDeleteServer: "Czy naprawdę chcesz usunąć serwer PBS \"{id}\"?",

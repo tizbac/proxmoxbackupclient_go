@@ -65,6 +65,7 @@ body {
     transition: all 0.3s;
     font-weight: 500;
     color: #000000;
+    position: relative;
 }
 
 .tab:hover {
@@ -74,6 +75,22 @@ body {
 .tab.active {
     border-bottom-color: var(--accent);
     color: var(--accent);
+}
+
+.badge {
+    display: inline-block;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    margin-left: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    color: white;
+    background-color: #e74c3c;
+    border-radius: 9px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
 .tab-content {

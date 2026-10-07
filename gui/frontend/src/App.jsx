@@ -5,7 +5,7 @@ import MachineBackupConfig from './components/MachineBackupConfig'
 import EncryptionKeyField from './components/EncryptionKeyField'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
-let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, GetBrand, OpenBrowser, RequestElevation, CanModifyJobs, RequestJobModificationElevation
+let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, ListBackupJobs, GetBrand, OpenBrowser, RequestElevation, CanModifyJobs, RequestJobModificationElevation
 let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs, RunScheduledJobNow
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
@@ -28,6 +28,7 @@ if (window.go) {
   SearchFiles = window.go.main.App.SearchFiles
   CancelSearch = window.go.main.App.CancelSearch
   CancelBackup = window.go.main.App.CancelBackup
+  ListBackupJobs = window.go.main.App.ListBackupJobs
   ListPhysicalDisks = window.go.main.App.ListPhysicalDisks
   GetVersion = window.go.main.App.GetVersion
   GetBrand = window.go.main.App.GetBrand
@@ -132,6 +133,7 @@ function App() {
   const [scheduleTime, setScheduleTime] = useState('02:00')
   const [runAtStartup, setRunAtStartup] = useState(false)
   const [scheduledJobs, setScheduledJobs] = useState([])
+  const [runningJobs, setRunningJobs] = useState([])
   const [jobHistory, setJobHistory] = useState([])
   const [editingJobId, setEditingJobId] = useState(null) // Track which job is being edited
   const [backupStats, setBackupStats] = useState({
@@ -729,6 +731,26 @@ function App() {
       showStatus(`❌ ${err}`, 'error')
     }
   }
+
+  // Fetch running backup jobs from service
+  const fetchRunningJobs = async () => {
+    if (!ListBackupJobs) return
+    try {
+      const jobs = await ListBackupJobs()
+      setRunningJobs(jobs || [])
+    } catch (err) {
+      console.error('Failed to fetch running jobs:', err)
+    }
+  }
+
+  // Auto-refresh running jobs when in service mode
+  useEffect(() => {
+    if (!systemInfo.standalone && systemInfo.service_available) {
+      fetchRunningJobs()
+      const interval = setInterval(fetchRunningJobs, 5000)
+      return () => clearInterval(interval)
+    }
+  }, [systemInfo.standalone, systemInfo.service_available])
 
   // True when a connection failure is an unverified-certificate error (self-signed
   // PBS with no fingerprint pinned). These are recoverable via trust-on-first-use.
@@ -1700,6 +1722,12 @@ function App() {
           <div className={`tab ${activeTab === 'backup' ? 'active' : ''}`} onClick={() => setActiveTab('backup')}>
             {t('tabBackup')}
           </div>
+          <div className={`tab ${activeTab === 'running' ? 'active' : ''}`} onClick={() => setActiveTab('running')}>
+            {t('tabRunning')}
+            {runningJobs.filter(j => j.running).length > 0 && (
+              <span className="badge">{runningJobs.filter(j => j.running).length}</span>
+            )}
+          </div>
           <div className={`tab ${activeTab === 'restore' ? 'active' : ''}`} onClick={() => setActiveTab('restore')}>
             {t('tabRestore')}
           </div>
@@ -2242,6 +2270,58 @@ function App() {
             </div>
           )}
 
+          {/* Running Backup Jobs */}
+          {runningJobs.length > 0 && (
+            <div className="card" style={{marginTop: '30px'}}>
+              <h3 style={{marginTop: 0}}>⏳ {t('runningJobs')}</h3>
+              {runningJobs.map(job => (
+                <div key={job.job_id} style={{
+                  padding: '15px',
+                  marginBottom: '10px',
+                  backgroundColor: job.running ? '#e7f3ff' : job.success ? '#d4edda' : '#f8d7da',
+                  borderRadius: '8px',
+                  border: `1px solid ${job.running ? '#b6d7ff' : job.success ? '#c3e6cb' : '#f5c6cb'}`
+                }}>
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                    <div>
+                      <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                        <span style={{fontSize: '20px'}}>
+                          {job.running ? '⏳' : job.success ? '✅' : '❌'}
+                        </span>
+                        <strong>{job.message || `Job ${job.job_id}`}</strong>
+                      </div>
+                      <div style={{fontSize: '13px', color: '#6c757d', marginTop: '5px'}}>
+                        {job.start_time && `🕐 Started: ${new Date(job.start_time).toLocaleString()}`}
+                        {job.running && job.progress > 0 && (
+                          <span style={{marginLeft: '15px', fontWeight: 'bold', color: '#0066cc'}}>
+                            {Math.round(job.progress)}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {job.running && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{padding: '8px 15px', fontSize: '14px'}}
+                        onClick={async () => {
+                          try {
+                            await CancelBackup(job.job_id)
+                            showStatus(`${t('statusCancelRequested')}`, 'info')
+                            fetchRunningJobs()
+                          } catch (err) {
+                            showStatus(`❌ ${err}`, 'error')
+                          }
+                        }}
+                      >
+                        🛑 {t('cancelJob')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Job History */}
           {jobHistory.length > 0 && (
             <div className="card" style={{marginTop: '30px'}}>
@@ -2296,6 +2376,68 @@ function App() {
 
           {status.visible && activeTab === 'backup' && (
             <div className={`status ${status.type} visible`}>{status.message}</div>
+          )}
+        </div>
+
+        {/* Running Jobs Tab */}
+        <div className={`tab-content ${activeTab === 'running' ? 'active' : ''}`}>
+          <h2>⏳ {t('tabRunning')}</h2>
+
+          {runningJobs.length === 0 ? (
+            <div className="info-box" style={{backgroundColor: '#f8f9fa', borderColor: '#dee2e6'}}>
+              📭 {t('noRunningJobs')}
+            </div>
+          ) : (
+            <div>
+              <div style={{marginBottom: '15px', padding: '12px', backgroundColor: '#e7f3ff', borderRadius: '8px', border: '1px solid #b6d7ff'}}>
+                <strong>{runningJobs.filter(j => j.running).length}</strong> {t('runningJobsCount', { total: runningJobs.length })}
+              </div>
+              {runningJobs.map(job => (
+                <div key={job.job_id} style={{
+                  padding: '15px',
+                  marginBottom: '10px',
+                  backgroundColor: job.running ? '#e7f3ff' : job.success ? '#d4edda' : '#f8d7da',
+                  borderRadius: '8px',
+                  border: `1px solid ${job.running ? '#b6d7ff' : job.success ? '#c3e6cb' : '#f5c6cb'}`
+                }}>
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                    <div>
+                      <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                        <span style={{fontSize: '20px'}}>
+                          {job.running ? '⏳' : job.success ? '✅' : '❌'}
+                        </span>
+                        <strong>{job.message || `Job ${job.job_id}`}</strong>
+                      </div>
+                      <div style={{fontSize: '13px', color: '#6c757d', marginTop: '5px'}}>
+                        {job.start_time && `🕐 Started: ${new Date(job.start_time).toLocaleString()}`}
+                        {job.running && job.progress > 0 && (
+                          <span style={{marginLeft: '15px', fontWeight: 'bold', color: '#0066cc'}}>
+                            {Math.round(job.progress)}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {job.running && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{padding: '8px 15px', fontSize: '14px'}}
+                        onClick={async () => {
+                          try {
+                            await CancelBackup(job.job_id)
+                            showStatus(`${t('statusCancelRequested')}`, 'info')
+                            fetchRunningJobs()
+                          } catch (err) {
+                            showStatus(`❌ ${err}`, 'error')
+                          }
+                        }}
+                      >
+                        🛑 {t('cancelJob')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
