@@ -569,7 +569,7 @@ Metadata change detection compares with the NEWEST snapshot in the backup group.
 
 ### 🐛 Restore: "Listing snapshots..." fades after 5 s while the request is still running (2026-10-07)
 On deepthought, List available snapshots took ~75 s (PBS busy with a group verify); the info message vanished after 5 s (`showStatus` auto-hides non-persistent messages, App.jsx ~1003; the call at ~1916 does not pass `persist`), leaving a blank screen that looked like "no snapshots". Mick clicked three more times, sending overlapping ListSnapshots calls that all returned together.
-- [ ] Keep a visible loading state for the whole call: persistent "Listing snapshots..." with a spinner and elapsed seconds; after ~15 s add "PBS is slow to respond (a verify, GC or backup may be running)".
+- [ ] Keep a visible loading state for the whole call: an indeterminate LINEAR progress bar (sliding stripe, same green as the backup bar) in place where the results will appear, with "Listing snapshots... 12s" under it (persistent, elapsed seconds); one shared component for every server call that can take more than a second; after ~15 s add "PBS is slow to respond (a verify, GC or backup may be running)".
 - [ ] Disable List available snapshots / Search for a file while a call is in flight, and ignore responses from superseded requests (request id).
 - [ ] Audit other slow calls for the same pattern: Search for a file, opening a snapshot / directory in the tree, restore preview.
 
