@@ -170,6 +170,10 @@ export function RestoreSnapshot(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, 
   return window['go']['main']['App']['RestoreSnapshot'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
 
+export function RunScheduledJobNow(arg1) {
+  return window['go']['main']['App']['RunScheduledJobNow'](arg1);
+}
+
 export function SaveConfig(arg1) {
   return window['go']['main']['App']['SaveConfig'](arg1);
 }

@@ -86,6 +86,8 @@ export function RequestElevation():Promise<void>;
 
 export function RestoreSnapshot(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:Array<string>,arg7:boolean,arg8:boolean,arg9:boolean,arg10:boolean,arg11:boolean):Promise<void>;
 
+export function RunScheduledJobNow(arg1:string):Promise<void>;
+
 export function SaveConfig(arg1:main.Config):Promise<void>;
 
 export function SaveScheduledJob(arg1:main.ScheduledJob):Promise<void>;

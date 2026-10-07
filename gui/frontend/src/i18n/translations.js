@@ -20,6 +20,7 @@ const translations = {
     pwPrompt: "Mot de passe pour {u} :",
     secretKeepCurrent: "•••••••• (laissez vide pour conserver le token actuel)",
     phServerName: "Mon SSD",
+    errServerNameRequired: "Le nom du serveur est requis",
     phServerURL: "https://pbs-ssd.exemple.com:8007",
     phAuthID: "backup@pbs!nom-du-token",
     phSecret: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
@@ -207,6 +208,8 @@ const translations = {
       scheduledJobs: "Jobs planifiés",
       editJob: "Éditer",
       deleteJob: "Supprimer",
+      runNow: "Exécuter maintenant",
+      runNowHint: "Lance le job immédiatement, sans attendre son horaire",
       editModeInfo: "Mode édition - modifiez et sauvegardez",
 
       // Backup History
@@ -349,6 +352,7 @@ const translations = {
       statusRestoring: "Restauration du snapshot {time}...",
       statusRestoreComplete: "Restauration terminée !",
       statusJobDeleted: "Job supprimé",
+      statusJobStarted: "Lancement du job « {name} »",
       statusEditCancelled: "Édition annulée",
       statusError: "Erreur:",
       statusConfirm: "Êtes-vous sûr ?",
@@ -375,6 +379,7 @@ const translations = {
     pwPrompt: "Password for {u}:",
     secretKeepCurrent: "•••••••• (leave empty to keep current token)",
     phServerName: "My SSD",
+    errServerNameRequired: "Server name is required",
     phServerURL: "https://pbs-ssd.example.com:8007",
     phAuthID: "backup@pbs!token-name",
     phSecret: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
@@ -562,6 +567,8 @@ const translations = {
       scheduledJobs: "Scheduled jobs",
       editJob: "Edit",
       deleteJob: "Delete",
+      runNow: "Run now",
+      runNowHint: "Starts the job immediately, ignoring its schedule",
       editModeInfo: "Edit mode - modify and save",
 
       // Backup History
@@ -704,6 +711,7 @@ const translations = {
       statusRestoring: "Restoring snapshot {time}...",
       statusRestoreComplete: "Restoration complete!",
       statusJobDeleted: "Job deleted",
+      statusJobStarted: "Job '{name}' started",
       statusEditCancelled: "Edit cancelled",
       statusError: "Error:",
       statusConfirm: "Are you sure?",
@@ -730,6 +738,7 @@ const translations = {
     pwPrompt: "Password per {u}:",
     secretKeepCurrent: "•••••••• (lascia vuoto per mantenere il token attuale)",
     phServerName: "Il mio SSD",
+    errServerNameRequired: "Il nome del server è obbligatorio",
     phServerURL: "https://pbs-ssd.esempio.com:8007",
     phAuthID: "backup@pbs!nome-token",
     phSecret: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
@@ -917,6 +926,8 @@ const translations = {
       scheduledJobs: "Job pianificati",
       editJob: "Modifica",
       deleteJob: "Elimina",
+      runNow: "Esegui ora",
+      runNowHint: "Avvia il job immediatamente, ignorando la pianificazione",
       editModeInfo: "Modalità modifica - modifica e salva",
 
       // Backup History
@@ -1059,6 +1070,7 @@ const translations = {
       statusRestoring: "Ripristino snapshot {time}...",
       statusRestoreComplete: "Ripristino completato!",
       statusJobDeleted: "Job eliminato",
+      statusJobStarted: "Job «{name}» avviato",
       statusEditCancelled: "Modifica annullata",
       statusError: "Errore:",
       statusConfirm: "Sei sicuro?",
@@ -1085,6 +1097,7 @@ const translations = {
     pwPrompt: "Passwort für {u}:",
     secretKeepCurrent: "•••••••• (leer lassen, um das aktuelle Token zu behalten)",
     phServerName: "Mein SSD",
+    errServerNameRequired: "Servername ist erforderlich",
     phServerURL: "https://pbs-ssd.beispiel.de:8007",
     phAuthID: "backup@pbs!token-name",
     phSecret: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
@@ -1272,6 +1285,8 @@ const translations = {
       scheduledJobs: "Geplante Aufträge",
       editJob: "Bearbeiten",
       deleteJob: "Löschen",
+      runNow: "Jetzt ausführen",
+      runNowHint: "Startet den Auftrag sofort, unabhängig vom Zeitplan",
       editModeInfo: "Bearbeitungsmodus - ändern und speichern",
 
       // Backup History
@@ -1414,6 +1429,7 @@ const translations = {
       statusRestoring: "Snapshot {time} wird wiederhergestellt...",
       statusRestoreComplete: "Wiederherstellung abgeschlossen!",
       statusJobDeleted: "Auftrag gelöscht",
+      statusJobStarted: "Auftrag «{name}» gestartet",
       statusEditCancelled: "Bearbeitung abgebrochen",
       statusError: "Fehler:",
       statusConfirm: "Sind Sie sicher?",
@@ -1440,6 +1456,7 @@ const translations = {
     pwPrompt: "Hasło dla {u}:",
     secretKeepCurrent: "•••••••• (zostaw puste, aby zachować bieżący token)",
     phServerName: "Mój SSD",
+    errServerNameRequired: "Nazwa serwera jest wymagana",
     phServerURL: "https://pbs-ssd.przyklad.pl:8007",
     phAuthID: "backup@pbs!nazwa-tokena",
     phSecret: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
@@ -1627,6 +1644,8 @@ const translations = {
       scheduledJobs: "Zaplanowane zadania",
       editJob: "Edytuj",
       deleteJob: "Usuń",
+      runNow: "Uruchom teraz",
+      runNowHint: "Uruchamia zadanie natychmiast, nie czekając na harmonogram",
       editModeInfo: "Tryb edycji - modyfikuj i zapisz",
 
       // Backup History
@@ -1769,6 +1788,7 @@ const translations = {
       statusRestoring: "Przywracanie snapshotu {time}...",
       statusRestoreComplete: "Przywracanie zakończone!",
       statusJobDeleted: "Zadanie usunięte",
+      statusJobStarted: "Zadanie „{name}” uruchomione",
       statusEditCancelled: "Edycja anulowana",
       statusError: "Błąd:",
       statusConfirm: "Czy na pewno?",

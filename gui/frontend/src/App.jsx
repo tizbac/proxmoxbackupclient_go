@@ -6,7 +6,7 @@ import EncryptionKeyField from './components/EncryptionKeyField'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, GetBrand, OpenBrowser, RequestElevation, CanModifyJobs, RequestJobModificationElevation
-let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs
+let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs, RunScheduledJobNow
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
@@ -38,6 +38,7 @@ if (window.go) {
   UpdateScheduledJob = window.go.main.App.UpdateScheduledJob
   GetScheduledJobs = window.go.main.App.GetScheduledJobs
   DeleteScheduledJob = window.go.main.App.DeleteScheduledJob
+  RunScheduledJobNow = window.go.main.App.RunScheduledJobNow
   GetJobHistory = window.go.main.App.GetJobHistory
   GetSystemInfo = window.go.main.App.GetSystemInfo
   GetLastBackupDirs = window.go.main.App.GetLastBackupDirs
@@ -567,9 +568,13 @@ function App() {
 
     const isUserPass = !!(serverFormData.username || '').trim()
     try {
-      // Generate ID from name if not provided
-      const id = serverFormData.id ||
-        serverFormData.name.toLowerCase().replace(/[^a-z0-9]/g, '-')
+      const name = (serverFormData.name || '').trim()
+      if (!name) {
+        showStatus(`❌ ${t('errServerNameRequired')}`, 'error')
+        return
+      }
+      // Generate ID from name if not provided (never dereference an empty name).
+      const id = serverFormData.id || name.toLowerCase().replace(/[^a-z0-9]/g, '-')
 
       // Only one auth method is persisted: user/pass drops the token, token drops username.
       const payload = {
@@ -676,6 +681,32 @@ function App() {
       showStatus(`✅ ${t('statusServerSetDefault').replace('{id}', id)}`, 'success')
     } catch (err) {
       showStatus(`❌ Erreur: ${err}`, 'error')
+    }
+  }
+
+  // Manual "run now": starts a stored scheduled job immediately, ignoring its
+  // schedule (an overdue or disabled job still runs — this is an explicit user
+  // action). In service mode the run happens inside the service, which owns the
+  // job files and the history; the GUI only asks for it. The backup runs in the
+  // background, so a rejected start (unknown job, already running) is the only
+  // thing reported back synchronously.
+  const handleRunJobNow = async (job) => {
+    if (!RunScheduledJobNow) {
+      showStatus(t('wailsRuntimeUnavailable'), 'error')
+      return
+    }
+    try {
+      await RunScheduledJobNow(job.id)
+      showStatus(`▶️ ${t('statusJobStarted').replace('{name}', job.name)}`, 'success')
+      // lastRun/nextRun are written when the run finishes: refresh once so the
+      // list does not keep showing a stale state.
+      setTimeout(() => {
+        if (GetScheduledJobs) {
+          GetScheduledJobs().then(jobs => setScheduledJobs(jobs || [])).catch(() => {})
+        }
+      }, 2000)
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
     }
   }
 
@@ -2086,10 +2117,17 @@ function App() {
                         ⏰ {job.scheduleTime} {job.runAtStartup && '• 🚀 Au démarrage'}
                       </div>
                       <div style={{fontSize: '13px', color: '#6c757d', marginTop: '3px'}}>
-                        📁 {job.backupDirs.join(', ')}
+                        📁 {(job.backupDirs || []).join(', ')}
                       </div>
                     </div>
                     <div style={{display: 'flex', gap: '10px'}}>
+                      <button
+                        className="btn"
+                        style={{padding: '8px 15px', fontSize: '14px', backgroundColor: '#e6f4ea', color: '#137333'}}
+                        onClick={() => handleRunJobNow(job)}
+                      >
+                        ▶️ {t('runNow')}
+                      </button>
                       <button
                         className="btn"
                         style={{padding: '8px 15px', fontSize: '14px'}}
@@ -2099,10 +2137,10 @@ function App() {
                           setBackupMode('scheduled')
                           setScheduleTime(job.scheduleTime)
                           setRunAtStartup(job.runAtStartup)
-                          setBackupDirs(job.backupDirs.join('\n'))
+                          setBackupDirs((job.backupDirs || []).join('\n'))
                           setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                           setBackupType(job.backupType)
-                          setExcludeList(job.excludeList.join('\n'))
+                          setExcludeList((job.excludeList || []).join('\n'))
                           // Switch to backup tab to show the form
                           setActiveTab('backup')
                           showStatus(`✏️ ${t('editModeInfo')}`, 'info')
@@ -2173,7 +2211,7 @@ function App() {
                           style={{padding: '8px 15px', fontSize: '14px'}}
                           onClick={() => {
                             // Re-run failed job
-                            setBackupDirs(job.backupDirs.join('\n'))
+                            setBackupDirs((job.backupDirs || []).join('\n'))
                             setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                             showStatus(t('configLoaded'), 'success')
                             window.scrollTo({top: 0, behavior: 'smooth'})
