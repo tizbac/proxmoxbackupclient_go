@@ -18,6 +18,40 @@ It is a **suite of tools** for backing up to PBS:
 
 > Keywords: proxmox backup client windows · PBS client · Windows VSS backup · immutable offsite backups · Proxmox Backup Server interface.
 
+## 📖 User manuals
+
+| Manual | Covers |
+|---|---|
+| **[GUI manual](docs/manual/GUI.md)** | Install, PBS servers, Backup Sets and schedules, incremental backups, progress, restore, Reports, logs, Preferences, troubleshooting |
+| **[Command line manual](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`: every flag, config files, exit codes, scheduling |
+| **[Bare-metal restore manual](docs/manual/BMR.md)** | The restore ISO, step by step; `vm` snapshots onto Proxmox VE; different hardware |
+| [Restore scenarios](docs/RESTORE_GUIDE.md) | Which restore to use when |
+
+## ⚡ New in v0.6.0: incremental folder backups
+
+Folder backups can now skip files that have not changed, using the same **change detection** as the official `proxmox-backup-client`. In **Metadata** mode the client compares each file's size, modification time (to the nanosecond), mode and owner with the previous snapshot. Unchanged files are not even opened: their data is reused from the previous snapshot's chunks. Only new and changed files are read and uploaded.
+
+Measured on a real file server (480.9 GB, 761,866 files on USB disks):
+
+| Run | Time | Read | New chunks uploaded |
+|---|---|---|---|
+| First Metadata run (nothing to compare with) | 4 h 17 min | every file | 135,549 |
+| Following runs | about 8 to 10 min | only changed files; all 761,866 unchanged files reused | 4 to 36 |
+
+Because unchanged data is neither read nor sent, it also cuts traffic to a remote or offsite PBS to little more than what actually changed.
+
+To use it: edit a folder **Backup Set**, **Destination** tab, **Change detection: Metadata**. Set **Read every file every N runs** so that every Nth run is a full read, which catches the rare change that keeps a file's size and time (for example 42 for a set that runs every 4 hours, roughly weekly). Give each set its **own Backup ID**: Metadata mode compares with the newest snapshot in the group, so two sets sharing an ID make each other read everything. Command line: `-change-detection-mode metadata`. Legacy stays the default; details in [Faster folder backups: change detection](#faster-folder-backups-change-detection) and the [GUI manual](docs/manual/GUI.md#7-incremental-folder-backups-change-detection).
+
+## 🤝 Compatible with the official Proxmox client, in both directions
+
+Verified with `proxmox-backup-client` 3.4.9 and PBS 4.2:
+
+- **Legacy, Data and Metadata snapshots made by this client restore byte-identically with the official client**, from both the GUI and the command line, made on Windows or Linux, and PBS 4.2's file browser opens them. On Linux the restored files also keep their exact mode, nanosecond modification time and symlink targets.
+- **Legacy, Data and Metadata snapshots made by the official client restore byte-identically with this client**, fully or selectively.
+- Same split archive format (pxar version 2), same change-detection modes, same encryption key file format (`proxmox-backup-client key create` keys work here, and keys generated here work there), same `PBS_REPOSITORY` style environment variables.
+
+So your backups are never tied to this client: Proxmox's own tools restore every snapshot it makes, and it restores every snapshot the official client makes. The only extra is one small file this client adds at the root of a folder snapshot, `.proxmox_backup_client_meta.json` (the original path), which the official client restores as an ordinary file.
+
 > ⚠️ **Disclaimer:** This project is **not affiliated in any way** with **Proxmox Server Solutions GmbH**. "Proxmox", the Proxmox logo and related names are the property of their respective owners; here they are used **only** to state compatibility. See [proxmox.com](https://www.proxmox.com/) for their products.
 
 ## 🔧 About this fork
@@ -58,7 +92,7 @@ The original author may choose to merge anything else from this repo as they see
 Every release from this fork includes a `SHA256SUMS.txt`:
 
 ```powershell
-Get-FileHash .\ProxmoxBackupClient-v0.3.0-windows-amd64.zip -Algorithm SHA256   # compare with SHA256SUMS.txt
+Get-FileHash .\ProxmoxBackupClient-v0.6.0-windows-amd64.zip -Algorithm SHA256   # compare with SHA256SUMS.txt
 ```
 
 > ℹ️ **No code signing, CI-signed attestation, or VirusTotal scan yet** for this fork's own builds (upstream's own releases have some of these — see their repo). These are built and uploaded manually, not yet through a CI pipeline that could produce a verifiable build-provenance attestation. See [TODO.md](TODO.md) if you'd like to help set that up.
@@ -71,8 +105,9 @@ Get-FileHash .\ProxmoxBackupClient-v0.3.0-windows-amd64.zip -Algorithm SHA256   
 - **Backup Sets** — reusable named jobs with daily / interval / manual scheduling, a directory-vs-machine type badge, and "Run Now"
 - **Reports** page with full backup history, and a capped **Message Log** for diagnostics
 - **Preferences** dialog with five colour themes (Amber, Blue, Green, Red, Dark) plus a custom colour option
+- **Incremental folder backups** (change detection, Metadata mode): unchanged files are reused without being read, as in the official client, with an optional full read every N runs
 - User-friendly configuration with connection test
-- Real-time backup progress with throughput and time remaining
+- Live progress card: start time and forecast finish, files done of total, processing speed (data and files per second) and actual upload speed, current file, and why a run is reading every file
 - VSS (Volume Shadow Copy) support for consistent backups
 - Multi-folder backups, file and disk modes
 - Snapshot browsing, file search (wildcards) and selective restoration, with NTFS/POSIX ACL restore, folder timestamps and an optional verify pass
@@ -85,11 +120,11 @@ Get-FileHash .\ProxmoxBackupClient-v0.3.0-windows-amd64.zip -Algorithm SHA256   
 - Debug logging for diagnostics
 
 ### CLI tools
-- `proxmoxbackup-directory` — directory (PXAR) backups with deduplication
+- `proxmoxbackup-directory` — directory (PXAR) backups with deduplication and `-change-detection-mode legacy|data|metadata`
 - `proxmoxbackup-machine` — full live Windows machine backups (FIDX, VSS, incremental)
 - `proxmoxbackup-nbd` — NBD server for restoring disk backups (Linux)
 
-All three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapshots.
+All three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapshots. Full reference: [command line manual](docs/manual/CLI.md).
 
 ### 📸 Screenshots
 
@@ -282,7 +317,7 @@ Restore asks for the passphrase when you select an encrypted snapshot.
 
 **CLI:**
 ```shell
-proxmoxbackupgo.exe -baseurl ... -backupdir "C:\data" -datastore store -keyfile "C:\keys\pbs-key.json" -keyfile-passphrase "..."
+proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -keyfile "C:\keys\pbs-key.json" -keyfile-passphrase "..."
 ```
 `-keyfile-passphrase` is only needed for a protected key and is prompted for when omitted. `proxmoxbackup-machine` and `proxmoxbackup-nbd` take the same two flags; `proxmoxbackup-nbd` needs them to attach an encrypted disk image and checks the first chunk before touching the NBD device, so a wrong key fails immediately.
 
@@ -295,7 +330,7 @@ proxmoxbackupgo.exe -baseurl ... -backupdir "C:\data" -datastore store -keyfile 
 
 ## Faster folder backups: change detection
 
-By default every folder backup reads every file, so a run takes as long as reading the whole folder even when nothing changed. Backup Sets (and the CLI) can use the change-detection modes of the official `proxmox-backup-client` instead:
+In the default Legacy mode every folder backup reads every file, so a run takes as long as reading the whole folder even when nothing changed. Backup Sets (and the CLI) can use the change-detection modes of the official `proxmox-backup-client` instead. Metadata mode is in daily use on a 480.9 GB, 761,866-file server, where a run with few changes takes about 10 minutes instead of over 4 hours (see [New in v0.6.0](#-new-in-v060-incremental-folder-backups)).
 
 | Mode | Reads | Stored as |
 |---|---|---|
@@ -305,19 +340,23 @@ By default every folder backup reads every file, so a run takes as long as readi
 
 In **Metadata** mode the first run reads everything (there is nothing to compare with yet); later runs read only what changed. A file changed in a way that keeps its size and modification time is not noticed, which is why a set can also **read every file every N runs** (a Data run): that run catches such changes and drops the padding that reuse leaves in the archive. A file that could not be read completely (zero-padded after a read error) is always read again on the next run. Reuse only happens from a previous backup encrypted the same way, with the same key.
 
-**GUI:** edit a Backup Set, **Destination** tab, **Change detection**. It applies to folder sets only: machine (full disk) backups are disk images and are not affected, so bare-metal (Clonezilla) and Proxmox VE restores work exactly as before. One-off backups use Legacy. **Reports** shows each run's mode and how many unchanged files were reused.
+**GUI:** edit a Backup Set, **Destination** tab, **Change detection**. It applies to folder sets only: machine (full disk) backups are disk images and are not affected, so bare-metal (Clonezilla) and Proxmox VE restores work exactly as before. One-off backups use Legacy. Only runs that finish successfully count towards the next full read; the Backup Sets list shows "Next full read in N runs". The progress card says when and why a run is reading every file. **Reports** shows each run's mode and how many unchanged files were reused.
 
-**CLI:** `-change-detection-mode legacy|data|metadata`, or `"change-detection-mode"` in the JSON config.
+**One Backup ID per set.** Metadata mode compares with the newest snapshot in the backup group. If two sets (or two machines) use the same Backup ID, each run compares with the other's snapshot and reads everything.
 
-**Before switching a set to Data or Metadata,** update every machine you restore from: older builds of this client cannot read split archives (they show the folders without their files). The official `proxmox-backup-client` reads them (tested with 3.4.9), and so does PBS 4.2's file browser. The first split backup of a folder shares little with its older Legacy backups, so it costs roughly one more full copy of that folder on the datastore until the old snapshots are pruned.
+**CLI:** `-change-detection-mode legacy|data|metadata`, or `"change-detection-mode"` in the JSON config. There is no CLI "every N runs" flag: schedule an occasional run with `-change-detection-mode data` instead.
+
+**Before switching a set to Data or Metadata,** update every machine you restore from to v0.6.0: builds before split-archive support cannot read split archives (they show the folders without their files). The official `proxmox-backup-client` restores them byte-identically (tested with 3.4.9), and PBS 4.2's file browser opens them. The first split backup of a folder shares little with its older Legacy backups, so it costs roughly one more full copy of that folder on the datastore until the old snapshots are pruned.
 
 ## 🚀 Quick start (GUI)
 
-1. Download `ProxmoxBackupClient.exe` (or the `.msi`) from the releases
-2. Launch it with administrator rights (required for VSS)
-3. Configure your PBS connection and test it
-4. Select the folders to back up
-5. Start the backup
+1. Download the Windows zip (or Linux tar.gz) from the [releases](https://github.com/mjb-is/proxmoxbackupclient_go/releases) and unpack it
+2. Launch `ProxmoxBackupClient.exe` with administrator rights (required for VSS)
+3. Add your PBS server in Preferences and test it
+4. Create a Backup Set (or a one-off backup) and select the folders to back up
+5. Run it
+
+The [GUI manual](docs/manual/GUI.md) walks through every step.
 
 ## NEW! — Full machine live backup
 
@@ -328,7 +367,7 @@ The command syntax is mostly the same, except `-backupdir string`.
 In the case of machine backup executable there's in place of backupdir, `-backupdev`.
 For example an invocation could be:
 
-`machinebackup.exe -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
+`proxmoxbackup-machine.exe -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
 
 The above command will look at Disk 0, detect all mounted partitions, take a VSS snapshot of these, and then create a bootable backup image of the whole disk as FIDX.
 
@@ -389,7 +428,7 @@ For unknown reasons, using `max_part != 0` causes an infinite partition probe lo
 The NBD tool will connect any fixed disk backup, regardless of it being a VM or host backup (that being said, it also works for PVE backups).
 
 To use it use a command line similar to this:
-`./pbsnbd -authid 'apikey' -baseurl https://yourpbs:8007 -secret 'yoursecret' -certfingerprint 'aa:...:xx' -datastore test -namespace test1 -path "vm/107/2025-08-02T23:13:01Z/drive-virtio0.img.fidx"`
+`./proxmoxbackup-nbd -authid 'apikey' -baseurl https://yourpbs:8007 -secret 'yoursecret' -certfingerprint 'aa:...:xx' -datastore test -namespace test1 -path "vm/107/2025-08-02T23:13:01Z/drive-virtio0.img.fidx"`
 
 If you omit `-path`, a terminal UI will show up allowing you to select the fidx file.
 
@@ -407,59 +446,37 @@ The older, semi-manual route also still ships on the same ISO, as its own entry 
 
 ## Usage — Directory Backup
 
-A typical command would look like:
+The full reference, with examples for Windows and Linux, exit codes and scheduling, is in the **[command line manual](docs/manual/CLI.md)**. A typical command:
 
 ```shell
-proxmoxbackupgo.exe -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -backupdir "C:\path\to\backup" -datastore "datastorename"
+proxmoxbackup-directory.exe -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -backupdir "C:\path\to\backup" -datastore "datastorename"
 ```
 
 ```
-proxmoxbackupgo.exe
-  -authid string
-        Authentication ID (PBS Api token)
-  -secret string
-        Secret for authentication
-  -backupdir string
-        Backup source directory, must not be symlink
-  -baseurl string
-        Base URL for the proxmox backup server, example: https://192.168.1.10:8007
-  -certfingerprint string
-        Certificate fingerprint for SSL connection, example: ea:7d:06:f9...
-  -datastore string
-        Datastore name
-  -namespace string
-        Namespace (optional)
-  -backup-id string
-        Backup ID (optional - if not specified, the hostname is used as the default for host-type backups)
-  -pxarout string
-        Output PXAR archive for debug purposes (optional)
-  -change-detection-mode string
-        legacy (default), data or metadata: see "Faster folder backups: change detection" (optional)
-  -backupstream string  ***NEW***
-        Filename for stream backup
-  -mail-host string
-        mail notification system: mail server host(optional)
-  -mail-port string
-        mail notification system: mail server port(optional)
-  -mail-username string
-        mail notification system: mail server username(optional)
-  -mail-password string
-        mail notification system: mail server password(optional)
-  -mail-insecure bool
-        mail notification system: allow insecure communications(optional)
-  -mail-from string
-        mail notification system: sender mail(optional)
-  -mail-to string
-        mail notification system: receiver mail(optional)
-
-  -mail-subject-template string
-        mail notification system: mail subject template(optional)
-  -mail-body-template string
-        mail notification system: mail body template(optional)
-
-  -config string
-        Path to JSON config file. If this flag is provided all the others will override the loaded config file
+proxmoxbackup-directory
+  -baseurl string            PBS URL, example: https://192.168.1.10:8007
+  -certfingerprint string    Certificate fingerprint (asked for interactively when omitted)
+  -authid string             API token ID (user@realm!token)
+  -secret string             API token secret
+  -pbsusername string        PBS user for ticket login (with -pbspassword; overrides -authid/-secret)
+  -pbspassword string        Password for -pbsusername (asked for when omitted)
+  -datastore string          Datastore name
+  -namespace string          Namespace (optional)
+  -backup-id string          Backup ID (default: the hostname)
+  -backupdir string          Source directory; repeat for several (each becomes group <id>_<path>)
+  -change-detection-mode     legacy (default), data or metadata
+  -novss                     Do not snapshot the source (VSS on Windows, elastio-snap/dattobd on Linux)
+  -keyfile string            PBS encryption key file
+  -keyfile-passphrase string Passphrase for a protected key (asked for when omitted)
+  -backupstream string       Back up standard input as <name>.didx instead of a directory
+  -pxarout string            Also write the archive to a local file (debugging)
+  -mail-host, -mail-port, -mail-username, -mail-password, -mail-insecure,
+  -mail-from, -mail-to, -mail-subject-template, -mail-body-template
+                             Email report (optional)
+  -config string             JSON config file; flags given on the command line override it
 ```
+
+The `PBS_REPOSITORY`, `PBS_SERVER`, `PBS_PORT`, `PBS_DATASTORE`, `PBS_AUTH_ID`, `PBS_PASSWORD` and `PBS_FINGERPRINT` environment variables of the official client are read too.
 
 For JSON configuration a JSON example is provided, fill in only the needed fields.
 
@@ -484,7 +501,7 @@ The following variables are available for templating:
 This allows backing up a stream instead of a PXAR, allowing endless possibilities. For example you can invoke:
 
 ```
-mysqldump yourdatabase | ./proxmoxbackupgo -backupstream yourdatabase.sql [other options]
+mysqldump yourdatabase | ./proxmoxbackup-directory -backupstream yourdatabase.sql [other options]
 ```
 
 This allows leveraging buzhash for dedup even when using tar for example, or the sql dump itself. And if someone wants to attempt it, it should be possible with some hack to pipe the DISM command to generate a WIM image to this and have a full host backup.
