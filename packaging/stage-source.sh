@@ -48,11 +48,15 @@ mkdir -p "$STAGE"
 # (tracked, modified and not-yet-committed files alike); only VCS metadata,
 # build outputs and packaging leftovers are dropped. Patterns starting with
 # './' are anchored at the repository root, the others match at any depth.
+#
+# gui/build is BOTH: gui/build/windows/icon.ico is tracked and embedded
+# (gui/icon.go: //go:embed build/windows/icon.ico), while gui/build/bin is the
+# wails output - drop the latter, never the former.
 tar -C "$ROOT" \
     --exclude='./.git' \
     --exclude='./.go' \
     --exclude='./dist' \
-    --exclude='./gui/build' \
+    --exclude='./gui/build/bin' \
     --exclude='./gui/gui' \
     --exclude='./packaging/arch/src' \
     --exclude='./packaging/arch/pkg' \
@@ -69,10 +73,26 @@ tar -C "$ROOT" \
     --exclude='.DS_Store' \
     -cf - . | tar -C "$STAGE" -xf -
 
-# Never ship a tarball containing itself (or a stale copy of one).
-rm -f "$STAGE"/dist/pbsgo-*.tar.gz
+# Never ship a tarball inside the tarball: a previous staging output (dist/,
+# packaging/arch/, or wherever the caller pointed us) must not be re-packed.
+find "$STAGE" -type f -name 'pbsgo-*.tar.gz' -delete
 
 tar -C "$WORK" -czf "$OUT" "pbsgo-$VERSION"
+
+# Sanity check: no tracked file may be swallowed by an exclusion pattern
+# (gui/icon.go embeds gui/build/windows/icon.ico, for instance). Skipped when
+# packaging from a tree without .git.
+if [ -e "$ROOT/.git" ] && command -v git >/dev/null 2>&1; then
+    tar -tzf "$OUT" | sed "s|^pbsgo-$VERSION/||" | grep -v '/$' | LC_ALL=C sort \
+        > "$WORK/in-tarball"
+    git -C "$ROOT" ls-files | LC_ALL=C sort > "$WORK/tracked"
+    missing=$(LC_ALL=C comm -23 "$WORK/tracked" "$WORK/in-tarball")
+    if [ -n "$missing" ]; then
+        echo "error: tracked files missing from $OUT:" >&2
+        echo "$missing" >&2
+        exit 1
+    fi
+fi
 
 BYTES=$(wc -c <"$OUT" | tr -d ' ')
 if command -v sha256sum >/dev/null 2>&1; then
