@@ -567,6 +567,12 @@ Metadata change detection compares with the NEWEST snapshot in the backup group.
 - [ ] Backup Set editor: warn (not block) when a Data/Metadata set has the same server + backup ID as another set, and suggest a unique ID.
 - [ ] Possibly default new sets to `<hostname>-<set name>` style IDs.
 
+### 🐛 Restore: "Listing snapshots..." fades after 5 s while the request is still running (2026-10-07)
+On deepthought, List available snapshots took ~75 s (PBS busy with a group verify); the info message vanished after 5 s (`showStatus` auto-hides non-persistent messages, App.jsx ~1003; the call at ~1916 does not pass `persist`), leaving a blank screen that looked like "no snapshots". Mick clicked three more times, sending overlapping ListSnapshots calls that all returned together.
+- [ ] Keep a visible loading state for the whole call: persistent "Listing snapshots..." with a spinner and elapsed seconds; after ~15 s add "PBS is slow to respond (a verify, GC or backup may be running)".
+- [ ] Disable List available snapshots / Search for a file while a call is in flight, and ignore responses from superseded requests (request id).
+- [ ] Audit other slow calls for the same pattern: Search for a file, opening a snapshot / directory in the tree, restore preview.
+
 ### 🐛 Stop logs "no backup running" while it is in fact stopping one (2026-10-07)
 - [ ] On deepthought, Stop at 08:14:48 logged `CancelBackup: no backup running (or already cancelled)`, yet the run did cancel at 08:15:30 (the walk only checks between files and a large file was in progress). Find which state CancelBackup checks and fix the message; consider showing "Stopping after the current file..." in the UI.
 
