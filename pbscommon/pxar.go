@@ -415,8 +415,12 @@ type PXARArchive struct {
 	// earlier payload bytes have been handed to PayloadWriteCB, so the
 	// payload chunker can cut a chunk at the file start (better reuse later).
 	OnPayloadFileStart func() error
-	payloadBuffer      bytes.Buffer
-	payloadPos         uint64
+	// Reuse, when set in split mode, turns on metadata change detection: a
+	// file unchanged since the previous snapshot is not read, its payload is
+	// taken from the previous payload stream instead (see payload_reuse.go).
+	Reuse         *PayloadReuse
+	payloadBuffer bytes.Buffer
+	payloadPos    uint64
 }
 
 // PayloadPos returns how many bytes have been written to the payload stream.
@@ -425,6 +429,7 @@ func (a *PXARArchive) PayloadPos() uint64 { return a.payloadPos }
 // flushPayload hands the pending payload-stream bytes to PayloadWriteCB.
 func (a *PXARArchive) flushPayload() error {
 	b := make([]byte, 64*1024)
+	wrote := false
 	for {
 		count, _ := a.payloadBuffer.Read(b)
 		if count <= 0 {
@@ -434,8 +439,126 @@ func (a *PXARArchive) flushPayload() error {
 			return fmt.Errorf("failed to write PXAR payload data: %w", err)
 		}
 		a.payloadPos += uint64(count)
+		wrote = true
+	}
+	if wrote && a.Reuse != nil {
+		// New payload data ends any run of reused chunks.
+		a.Reuse.Break()
 	}
 	return nil
+}
+
+// archivePath is path's location inside the archive ("dir/file.txt").
+func (a *PXARArchive) archivePath(path string) string {
+	rel, err := filepath.Rel(a.root, path)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+// reuseCandidate reports whether metadata change detection would consider
+// path unchanged (used to keep read-ahead off files that will not be read).
+func (a *PXARArchive) reuseCandidate(path string, info os.FileInfo) bool {
+	if a.Reuse == nil || !a.Split || !info.Mode().IsRegular() {
+		return false
+	}
+	mode, uid, gid, secs, nanos := a.entryMetaFor(info, IFREG)
+	_, ok := a.Reuse.Lookup(a.archivePath(path), uint32(mode), uid, gid, int64(secs), nanos, uint64(info.Size()))
+	return ok
+}
+
+// writeFileHead writes a regular file's FILENAME and ENTRY records and
+// returns where the ENTRY starts in the unflushed metadata buffer.
+func (a *PXARArchive) writeFileHead(basename string, fileInfo os.FileInfo) int {
+	fname_entry := &PXARFilenameEntry{
+		hdr: PXAR_FILENAME,
+		len: uint64(16) + uint64(len(basename)) + 1,
+	}
+
+	binary.Write(&a.buffer, binary.LittleEndian, fname_entry)
+
+	a.buffer.WriteString(basename)
+	a.buffer.WriteByte(0x00)
+
+	fMode, fUID, fGID, fSecs, fNanos := a.entryMetaFor(fileInfo, IFREG)
+	entry := &PXARFileEntry{
+		hdr:   PXAR_ENTRY,
+		len:   56,
+		mode:  fMode,
+		flags: 0,
+		uid:   fUID,
+		gid:   fGID,
+		mtime: MTime{
+			secs:    fSecs,
+			nanos:   fNanos,
+			padding: 0,
+		},
+	}
+	entryAt := a.buffer.Len()
+	binary.Write(&a.buffer, binary.LittleEndian, entry)
+	return entryAt
+}
+
+// entryNanosOffset is where mtime.nanos sits in an ENTRY record: header (16),
+// mode, flags (8 each), uid, gid (4 each), mtime.secs (8).
+const entryNanosOffset = 48
+
+// markEntryIncomplete changes the recorded mtime of the ENTRY at entryAt in
+// the unflushed metadata buffer by one nanosecond. Used for a file whose
+// content had to be zero-padded: its recorded metadata then never matches
+// the file again, so metadata change detection reads it next time instead of
+// reusing the padded content for as long as the file stays unchanged.
+func (a *PXARArchive) markEntryIncomplete(entryAt int) {
+	b := a.buffer.Bytes()
+	if entryAt < 0 || entryAt+entryNanosOffset+4 > len(b) {
+		return
+	}
+	n := binary.LittleEndian.Uint32(b[entryAt+entryNanosOffset:])
+	binary.LittleEndian.PutUint32(b[entryAt+entryNanosOffset:], n^1)
+}
+
+// tryReuseFile writes path as a reused file when metadata change detection
+// finds it unchanged and the padding budget allows: FILENAME, ENTRY and a
+// PXAR_PAYLOAD_REF into the reused range, without opening the file. done is
+// false when the file must be read normally.
+func (a *PXARArchive) tryReuseFile(path, basename string, fileInfo os.FileInfo) (CatalogFile, bool, error) {
+	mode, uid, gid, secs, nanos := a.entryMetaFor(fileInfo, IFREG)
+	size := uint64(fileInfo.Size())
+	pf, ok := a.Reuse.Lookup(a.archivePath(path), uint32(mode), uid, gid, int64(secs), nanos, size)
+	if !ok {
+		return CatalogFile{}, false, nil
+	}
+	// Everything written so far must be with the chunk layer before chunks
+	// are appended behind it.
+	if err := a.flushPayload(); err != nil {
+		return CatalogFile{}, false, err
+	}
+	newOffset, injected, ok, err := a.Reuse.Reuse(pf, a.payloadPos)
+	if err != nil || !ok {
+		return CatalogFile{}, false, err
+	}
+	a.payloadPos += injected
+
+	if a.MetaCollector != nil {
+		if err := a.MetaCollector.Collect(path, fileInfo, false); err != nil {
+			a.SkippedFiles = append(a.SkippedFiles,
+				fmt.Sprintf("Metadata collect failed for file %s: %v", path, err))
+		}
+	}
+	a.writeFileHead(basename, fileInfo)
+	binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD_REF)
+	binary.Write(&a.buffer, binary.LittleEndian, uint64(32))
+	binary.Write(&a.buffer, binary.LittleEndian, newOffset)
+	binary.Write(&a.buffer, binary.LittleEndian, size)
+	if err := a.Flush(); err != nil {
+		return CatalogFile{}, false, err
+	}
+	return CatalogFile{
+		Name:  basename,
+		MTime: uint64(fileInfo.ModTime().Unix()),
+		Size:  size,
+	}, true, nil
 }
 
 // entryMetaFor is entryMeta plus the real sub-second mtime for split
@@ -453,8 +576,10 @@ func (a *PXARArchive) entryMetaFor(info os.FileInfo, kind uint64) (mode uint64, 
 // payload chunker its file-start hint, then writes the PXAR_PAYLOAD header to
 // the payload stream. In classic mode it writes the inline PXAR_PAYLOAD
 // header. It returns the buffer the content bytes must go to and the flush
-// that moves them on.
-func (a *PXARArchive) beginPayload(size uint64) (*bytes.Buffer, func() error, error) {
+// that moves them on. holdMeta keeps a split archive's metadata unflushed
+// (the caller flushes it after the content), so the file's ENTRY can still be
+// changed once the content is known (markEntryIncomplete).
+func (a *PXARArchive) beginPayload(size uint64, holdMeta bool) (*bytes.Buffer, func() error, error) {
 	if !a.Split {
 		binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD)
 		binary.Write(&a.buffer, binary.LittleEndian, size+16)
@@ -467,8 +592,10 @@ func (a *PXARArchive) beginPayload(size uint64) (*bytes.Buffer, func() error, er
 	binary.Write(&a.buffer, binary.LittleEndian, uint64(32))
 	binary.Write(&a.buffer, binary.LittleEndian, a.payloadPos)
 	binary.Write(&a.buffer, binary.LittleEndian, size)
-	if err := a.Flush(); err != nil {
-		return nil, nil, err
+	if !holdMeta {
+		if err := a.Flush(); err != nil {
+			return nil, nil, err
+		}
 	}
 	if a.OnPayloadFileStart != nil {
 		if err := a.OnPayloadFileStart(); err != nil {
@@ -631,6 +758,9 @@ func (a *PXARArchive) startPrefetch(dirPath string, files []os.DirEntry) map[str
 		info, err := file.Info()
 		if err != nil || info.Mode()&os.ModeSymlink != 0 || info.Size() > maxPrefetchFileSize {
 			continue
+		}
+		if a.reuseCandidate(fullPath, info) {
+			continue // unchanged: will be reused, not read
 		}
 		entries[fullPath] = &prefetchEntry{done: make(chan struct{})}
 		paths = append(paths, fullPath)
@@ -1103,6 +1233,17 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 		return CatalogFile{}, nil // Return nil error to continue backup
 	}
 
+	// Metadata change detection: an unchanged file is not read at all.
+	if a.Split && a.Reuse != nil {
+		cf, done, err := a.tryReuseFile(path, basename, fileInfo)
+		if err != nil {
+			return CatalogFile{}, err
+		}
+		if done {
+			return cf, nil
+		}
+	}
+
 	// reader is the file's content, sourced from EITHER a background
 	// read-ahead (startPrefetch) or a fresh os.Open below — everything past
 	// this point (header writes, the read loop, shrink/grow detection) is
@@ -1157,31 +1298,7 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 		}
 	}
 
-	fname_entry := &PXARFilenameEntry{
-		hdr: PXAR_FILENAME,
-		len: uint64(16) + uint64(len(basename)) + 1,
-	}
-
-	binary.Write(&a.buffer, binary.LittleEndian, fname_entry)
-
-	a.buffer.WriteString(basename)
-	a.buffer.WriteByte(0x00)
-
-	fMode, fUID, fGID, fSecs, fNanos := a.entryMetaFor(fileInfo, IFREG)
-	entry := &PXARFileEntry{
-		hdr:   PXAR_ENTRY,
-		len:   56,
-		mode:  fMode,
-		flags: 0,
-		uid:   fUID,
-		gid:   fGID,
-		mtime: MTime{
-			secs:    fSecs,
-			nanos:   fNanos,
-			padding: 0,
-		},
-	}
-	binary.Write(&a.buffer, binary.LittleEndian, entry)
+	entryAt := a.writeFileHead(basename, fileInfo)
 
 	// The PXAR stream is a flat byte sequence: the next entry's header begins
 	// immediately after exactly declaredSize payload bytes. We commit declaredSize
@@ -1193,7 +1310,7 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	declaredSize := uint64(fileInfo.Size())
 	// out/flush are the inline stream for a classic archive, the payload
 	// stream for a split one (see beginPayload).
-	out, flush, err := a.beginPayload(declaredSize)
+	out, flush, err := a.beginPayload(declaredSize, true)
 	if err != nil {
 		return CatalogFile{}, err
 	}
@@ -1267,6 +1384,9 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	// and the stream stays aligned. Flag it as a read error so the backup is
 	// not reported as fully verified (v2-H-02) rather than silently passing.
 	if written < declaredSize {
+		if a.Split {
+			a.markEntryIncomplete(entryAt)
+		}
 		if readFailed != nil {
 			a.addReadError(
 				fmt.Sprintf("Read failed after %d of %d bytes, zero-padded to declared size (content incomplete): %s (Error: %v)", written, declaredSize, path, readFailed))
@@ -1384,7 +1504,7 @@ func (a *PXARArchive) WriteVirtualFile(filename string, data []byte, mtime uint6
 	}
 	binary.Write(&a.buffer, binary.LittleEndian, entry)
 
-	out, flush, err := a.beginPayload(uint64(len(data)))
+	out, flush, err := a.beginPayload(uint64(len(data)), false)
 	if err != nil {
 		return CatalogFile{}, err
 	}

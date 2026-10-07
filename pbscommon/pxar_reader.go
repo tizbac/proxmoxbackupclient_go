@@ -37,6 +37,10 @@ type PXARReader struct {
 	// classic single-stream archive.
 	payloadRA   io.ReaderAt
 	payloadSize int64
+	// metaOnly marks a split archive opened without its payload stream
+	// (NewSplitMetadataReaderAt): file entries then carry their payload
+	// reference but no content.
+	metaOnly bool
 
 	// copyNanos/fsOverheadNanos accumulate wall-clock time spent during
 	// extraction: copyNanos is time inside io.Copy (reading archive payload —
@@ -234,6 +238,10 @@ type PXARTreeEntry struct {
 	// is what lets extraction progress be measured against the same total
 	// the download side reports. Only set by walkRange.
 	Weight int64
+	// PayloadOffset is, for a file in a split archive, the position of its
+	// PXAR_PAYLOAD header in the payload stream (HasPayloadRef set).
+	PayloadOffset uint64
+	HasPayloadRef bool
 }
 
 // PXARExtractedFile represents an extracted file (or directory) with metadata.
@@ -313,8 +321,30 @@ func NewSplitPXARReaderAt(meta io.ReaderAt, metaSize int64, payload io.ReaderAt,
 	return &PXARReader{ra: meta, size: metaSize, payloadRA: payload, payloadSize: payloadSize}, nil
 }
 
+// NewSplitMetadataReaderAt opens only the metadata stream of a split archive,
+// for listing: file entries carry their payload reference (PayloadOffset) and
+// no content. Metadata change detection uses it to learn where each file of
+// the previous snapshot sits in that snapshot's payload stream without
+// downloading the payload.
+func NewSplitMetadataReaderAt(meta io.ReaderAt, metaSize int64) (*PXARReader, error) {
+	var hdr [24]byte
+	if metaSize < 24 {
+		return nil, fmt.Errorf("pxar metadata stream too short (%d bytes)", metaSize)
+	}
+	if _, err := meta.ReadAt(hdr[:], 0); err != nil {
+		return nil, fmt.Errorf("read pxar format version: %w", err)
+	}
+	if binary.LittleEndian.Uint64(hdr[0:8]) != PXAR_FORMAT_VERSION || binary.LittleEndian.Uint64(hdr[8:16]) != 24 {
+		return nil, fmt.Errorf("pxar metadata stream does not start with a format version entry")
+	}
+	if v := binary.LittleEndian.Uint64(hdr[16:24]); v != 2 {
+		return nil, fmt.Errorf("unsupported pxar format version %d", v)
+	}
+	return &PXARReader{ra: meta, size: metaSize, metaOnly: true}, nil
+}
+
 // IsSplit reports whether this reader is over a split (format version 2) archive.
-func (pr *PXARReader) IsSplit() bool { return pr.payloadRA != nil }
+func (pr *PXARReader) IsSplit() bool { return pr.payloadRA != nil || pr.metaOnly }
 
 // payloadSection returns the content of the file a PXAR_PAYLOAD_REF points
 // at. offset is the position of that file's PXAR_PAYLOAD header in the payload
@@ -562,9 +592,12 @@ walkLoop:
 			if hasPendingFile {
 				refOffset := binary.LittleEndian.Uint64(data[0:8])
 				refSize := binary.LittleEndian.Uint64(data[8:16])
-				payload, err := pr.payloadSection(refOffset, refSize)
-				if err != nil {
-					return fmt.Errorf("%s: %w", joinArchivePath(currentPath, pendingName), err)
+				var payload *io.SectionReader
+				if !pr.metaOnly {
+					payload, err = pr.payloadSection(refOffset, refSize)
+					if err != nil {
+						return fmt.Errorf("%s: %w", joinArchivePath(currentPath, pendingName), err)
+					}
 				}
 				// Weight counts this entry's metadata bytes plus its content,
 				// so progress still tracks the work done.
@@ -580,6 +613,9 @@ walkLoop:
 					UID:      pendingUID,
 					GID:      pendingGID,
 					Weight:   weight,
+
+					PayloadOffset: refOffset,
+					HasPayloadRef: true,
 				}, payload); err != nil {
 					return err
 				}

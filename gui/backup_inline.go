@@ -441,7 +441,12 @@ func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
 		c.reusechunk.Add(1)
 	}
 
-	if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.currentChunk)))); err != nil {
+	return c.recordChunk(bindigest, shahash, uint64(len(c.currentChunk)))
+}
+
+// recordChunk appends a chunk to the index being built and reports progress.
+func (c *ChunkState) recordChunk(bindigest [32]byte, shahash string, size uint64) error {
+	if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + size)); err != nil {
 		return fmt.Errorf("failed to write chunk offset: %w", err)
 	}
 	if _, err := c.chunkdigests.Write(bindigest[:]); err != nil {
@@ -450,7 +455,7 @@ func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
 
 	c.assignmentsOffset = append(c.assignmentsOffset, c.pos)
 	c.assignments = append(c.assignments, shahash)
-	c.pos += uint64(len(c.currentChunk))
+	c.pos += size
 	c.chunkcount += 1
 
 	// Report progress every 10 MB
@@ -571,6 +576,38 @@ func (c *ChunkState) SuggestBoundary(client *pbscommon.PBSClient) error {
 	c.currentChunk = make([]byte, 0)
 	c.C.Reset()
 	return nil
+}
+
+// ForceBoundary ends the chunk in progress here, whatever its size, so the
+// next byte starts a new chunk. Metadata change detection needs this before
+// it appends reused chunks.
+func (c *ChunkState) ForceBoundary(client *pbscommon.PBSClient) error {
+	if len(c.currentChunk) > 0 {
+		if err := c.processChunk(client); err != nil {
+			return err
+		}
+		c.currentChunk = make([]byte, 0)
+	}
+	c.C.Reset()
+	return nil
+}
+
+// InjectKnownChunk appends a chunk of the previous snapshot's index without
+// its data. The chunk must be one the server registered for this session,
+// i.e. listed in the previous index downloaded through /previous.
+func (c *ChunkState) InjectKnownChunk(digest [32]byte, size uint64) error {
+	if err := c.checkFatal(); err != nil {
+		return err
+	}
+	if len(c.currentChunk) != 0 {
+		return fmt.Errorf("internal error: reused chunk appended while %d bytes are pending", len(c.currentChunk))
+	}
+	shahash := hex.EncodeToString(digest[:])
+	if _, known := c.knownChunks.Get(shahash); !known {
+		return fmt.Errorf("internal error: reused chunk %s is not in the previous index", shahash)
+	}
+	c.reusechunk.Add(1)
+	return c.recordChunk(digest, shahash, size)
 }
 
 func (c *ChunkState) EOF(client *pbscommon.PBSClient) error {
@@ -1623,6 +1660,10 @@ func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk,
 	return backupReal(ctx, client, newchunk, reusechunk, failedchunk, backupdir, originalPath, archiveBase, usevss, progress, jobProg, onStats, excludeList, catalog, prefetchWorkers, changeMode)
 }
 
+// reuseStatsHook, when set (tests only), receives each archive's metadata
+// change detection statistics.
+var reuseStatsHook func(archiveName string, st pbscommon.ReuseStats)
+
 func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, originalPath string, archiveBase string, vssUsed bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator, prefetchWorkers int, changeMode string) (returnBytes uint64, returnMeta *BackupFileMeta, returnSkipped, returnExcluded, returnReadErrors []string, returnErr error) {
 	// Panic recovery - critical to prevent silent crashes during backup
 	defer func() {
@@ -1675,9 +1716,6 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 	if split {
 		archiveName = archiveBase + ".mpxar.didx"
 		payloadName = archiveBase + ".ppxar.didx"
-		if changeMode == pbscommon.ChangeDetectionMetadata {
-			writeBackupLog("Change detection: metadata mode is not implemented yet, reading every file (data mode)")
-		}
 		writeBackupLog(fmt.Sprintf("Change detection: %s mode, split archive %s + %s", changeMode, archiveName, payloadName))
 	}
 
@@ -1761,6 +1799,21 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 		archive.OnPayloadFileStart = func() error {
 			return payloadChunk.SuggestBoundary(client)
 		}
+		if changeMode == pbscommon.ChangeDetectionMetadata {
+			// Reuse unchanged files from the previous snapshot without
+			// reading them. Anything unusable about the previous snapshot
+			// just means every file is read, as in data mode.
+			prev, prevTime, perr := client.LoadPreviousSplitArchive(archiveName, payloadName, prevPayload)
+			if perr != nil {
+				writeBackupLog(fmt.Sprintf("Metadata change detection: no usable previous snapshot for %s (%v), reading every file", archiveName, perr))
+			} else {
+				writeBackupLog(fmt.Sprintf("Metadata change detection: comparing with snapshot %s (%d files)",
+					time.Unix(prevTime, 0).UTC().Format(time.RFC3339), len(prev.Files)))
+				archive.Reuse = pbscommon.NewPayloadReuse(prev,
+					func() error { return payloadChunk.ForceBoundary(client) },
+					payloadChunk.InjectKnownChunk)
+			}
+		}
 	} else {
 		pxarChunk.Init(client, newchunk, reusechunk, failedchunk, knownChunks, progress, jobProg, onStats, backupdir)
 	}
@@ -1784,6 +1837,14 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 		return 0, nil, nil, nil, nil, fmt.Errorf("failed to write directory archive: %w", err)
 	}
 	catalog.record(catalogDir, archive)
+	if archive.Reuse != nil {
+		st := archive.Reuse.Stats
+		if reuseStatsHook != nil {
+			reuseStatsHook(archiveName, st)
+		}
+		writeBackupLog(fmt.Sprintf("Metadata change detection: %d unchanged files (%s) reused without reading, %d chunks reused, %s padding; %d unchanged files read anyway to limit padding",
+			st.Files, formatByteSize(st.Bytes), st.Chunks, formatByteSize(st.Padding), st.OverPadding))
+	}
 
 	// Map VSS shadow-copy paths back to the original logical root so the status
 	// lists are meaningful to the user (no-op for non-VSS backups, where
