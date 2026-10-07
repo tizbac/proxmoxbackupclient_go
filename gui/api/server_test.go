@@ -29,7 +29,7 @@ type fakeHandler struct {
 	ranID      string
 }
 
-func (f *fakeHandler) StartBackup(string, []string, []string, []string, string, bool, string) error {
+func (f *fakeHandler) StartBackup(string, []string, []string, []string, string, bool, string, string) error {
 	return nil
 }
 func (f *fakeHandler) GetConfigWithHostname() map[string]interface{} {
@@ -67,7 +67,7 @@ func (f *fakeHandler) RunScheduledJobForAPI(id string) error {
 	return nil
 }
 func (f *fakeHandler) PinServerFingerprint(string, string) error { return nil }
-func (f *fakeHandler) StartMachineBackup(string, []string, string, bool, string) error {
+func (f *fakeHandler) StartMachineBackup(string, []string, string, bool, string, string, string) error {
 	return nil
 }
 func (f *fakeHandler) GetFullConfigForAPI() map[string]interface{} {

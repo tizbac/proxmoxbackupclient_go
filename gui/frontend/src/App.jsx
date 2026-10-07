@@ -121,6 +121,8 @@ function App() {
   const [physicalDisks, setPhysicalDisks] = useState([])
   const [excludeList, setExcludeList] = useState('')
   const [progress, setProgress] = useState(0)
+  const [backupPBSID, setBackupPBSID] = useState('')
+  const [machineBackupKind, setMachineBackupKind] = useState('host')
   // Opt-in: split this backup into parts (for the first backup of a large volume).
   // Off by default → no size analysis, the backup starts immediately.
   const [splitFirstBackup, setSplitFirstBackup] = useState(false)
@@ -1221,7 +1223,9 @@ function App() {
         useVSS: config.usevss,
         backupType: backupType,
         excludeList: backupType === 'directory' ? excludeList.split('\n').filter(l => l.trim()) : [],
-        driveLetters: backupType === 'machine' ? selectedDrives : []
+        driveLetters: backupType === 'machine' ? selectedDrives : [],
+        pbs_id: backupPBSID,
+        backup_kind: machineBackupKind
       }
 
       // Save or update to backend
@@ -1242,6 +1246,8 @@ function App() {
         setScheduleTime('02:00')
         setRunAtStartup(false)
         setBackupDirs('')
+        setBackupPBSID('')
+        setMachineBackupKind('host')
       } catch (err) {
         showStatus(`❌ Erreur: ${err}`, 'error')
       }
@@ -1267,7 +1273,8 @@ function App() {
           excludeListToSend,
           config['backup-id'],
           config.usevss,
-          ''
+          '',
+          backupPBSID
         )
       } else {
         // Filter out any empty drives to prevent empty string issues
@@ -1277,7 +1284,9 @@ function App() {
           validDrives,
           config['backup-id'],
           config.usevss,
-          ''
+          '',
+          backupPBSID,
+          machineBackupKind
         )
       }
       // Backup started in background - progress will be shown via events
@@ -1848,6 +1857,42 @@ function App() {
             </select>
           </div>
 
+          {/* PBS Server Selection */}
+          {pbsServers.length > 0 && (
+            <div className="form-group">
+              <label>{t('backupPBS')}</label>
+              <select
+                value={backupPBSID}
+                onChange={(e) => setBackupPBSID(e.target.value)}
+              >
+                <option value="">{t('defaultPBS')}</option>
+                {pbsServers.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} {s.id === defaultPBSID ? '⭐' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Machine Backup Kind Selection */}
+          {backupType === 'machine' && (
+            <div className="form-group">
+              <label>{t('machineBackupKind')}</label>
+              <select
+                value={machineBackupKind}
+                onChange={(e) => setMachineBackupKind(e.target.value)}
+              >
+                <option value="host">{t('machineBackupKindHost')}</option>
+                <option value="vm">{t('machineBackupKindVM')}</option>
+              </select>
+              <div className="info-box" style={{marginTop: '8px', backgroundColor: '#eef2ff', borderColor: '#c7d2fe'}}>
+                ℹ️ <strong>{t('machineBackupKindInfoTitle')}</strong><br/>
+                {t('machineBackupKindInfo')}
+              </div>
+            </div>
+          )}
+
           {/* Backup Mode Toggle */}
           <div className="form-group">
             <label>{t('executionMode')}</label>
@@ -1993,7 +2038,7 @@ function App() {
                 checked={config.usevss}
                 onChange={(e) => setConfig({...config, usevss: e.target.checked})}
               />
-              {t('useVSS')}
+              {t('useSnapshotting')}
             </label>
             {config.usevss && systemInfo.mode === 'Standalone' && !systemInfo.is_admin && (
               <div className="info-box" style={{marginTop: '10px', backgroundColor: '#fff3cd', borderColor: '#ffc107'}}>
@@ -2109,6 +2154,8 @@ function App() {
               setBackupDirs('')
               setExcludeList('')
               setBackupType('directory')
+              setBackupPBSID('')
+              setMachineBackupKind('host')
               setActiveTab('scheduled')
               showStatus(`✖️ ${t('statusEditCancelled')}`, 'info')
             }}>
@@ -2158,6 +2205,8 @@ function App() {
                           setBackupDirs((job.backupDirs || []).join('\n'))
                           setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                           setBackupType(job.backupType)
+                          setBackupPBSID(job.pbs_id || '')
+                          setMachineBackupKind(job.backup_kind || 'host')
                           setExcludeList((job.excludeList || []).join('\n'))
                           // Switch to backup tab to show the form
                           setActiveTab('backup')

@@ -85,7 +85,7 @@ func (s *Server) handleMachineBackup(w http.ResponseWriter, r *http.Request) {
 			compression = "fastest"
 		}
 
-		err := s.app.StartMachineBackup(req.BackupType, req.DriveLetters, req.BackupID, req.UseVSS, compression)
+		err := s.app.StartMachineBackup(req.BackupType, req.DriveLetters, req.BackupID, req.UseVSS, compression, req.PBSID, req.BackupKind)
 		s.progressMutex.Lock()
 		if progress, exists := s.backupProgress[jobID]; exists && !progress.Complete {
 			progress.Running = false

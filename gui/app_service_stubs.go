@@ -48,8 +48,8 @@ func (a *App) ReloadConfig() {
 
 // StartBackup starts a backup job
 // Service implementation using RunBackupInline
-func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string) error {
-	writeDebugLog(fmt.Sprintf("[Service] StartBackup called: type=%s, dirs=%v, id=%s, vss=%v, compression=%s", backupType, backupDirs, backupID, useVSS, compression))
+func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsID string) error {
+	writeDebugLog(fmt.Sprintf("[Service] StartBackup called: type=%s, dirs=%v, id=%s, vss=%v, compression=%s, pbsID=%s", backupType, backupDirs, backupID, useVSS, compression, pbsID))
 
 	// Re-read config from disk so this run uses the current token / default PBS /
 	// pinned fingerprint rather than the snapshot loaded when the service started.
@@ -154,10 +154,10 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 
 // StartMachineBackup starts a whole-disk machine backup job. The service
 // implementation mirrors the GUI direct path (startMachineBackupDirect):
-// Kind "machine" + BackupType "vm", no exclusion list.
-func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error {
-	writeDebugLog(fmt.Sprintf("[Service] StartMachineBackup called: type=%s, devices=%v, id=%s, vss=%v, compression=%s",
-		backupType, backupDevices, backupID, useVSS, compression))
+// Kind "machine" + BackupType "host" or "vm", no exclusion list.
+func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsID string, backupKind string) error {
+	writeDebugLog(fmt.Sprintf("[Service] StartMachineBackup called: type=%s, devices=%v, id=%s, vss=%v, compression=%s, pbsID=%s, backupKind=%s",
+		backupType, backupDevices, backupID, useVSS, compression, pbsID, backupKind))
 
 	// Re-read config from disk (see StartBackup above).
 	a.ReloadConfig()
@@ -178,8 +178,8 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		writeDebugLog("[Compression] Using default: fastest")
 	}
 
-	// Resolve the EFFECTIVE PBS config (same rationale as StartBackup).
-	pbsCfg, err := a.withAuth(a.config.EffectivePBS())
+	// Resolve PBS config using the specified PBS ID (or default).
+	pbsCfg, err := a.resolveBackupPBS(pbsID)
 	if err != nil {
 		return err
 	}
@@ -203,7 +203,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		BackupObjects:   backupDevices,
 		BackupID:        backupID,
 		Kind:            "machine",
-		BackupType:      "vm",
+		BackupType:      backupKind, // "host" or "vm" based on user selection
 		UseVSS:          useVSS,
 		Compression:     compression,
 		ExcludeList:     []string{},
@@ -224,4 +224,48 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	// Execute backup using inline implementation
 	writeDebugLog("[Service] Executing machine backup via RunBackupInline")
 	return RunBackupInline(opts)
+}
+// resolveBackupPBS picks the PBS server to use for backup operations.
+// When pbsID is empty the default PBS server is used.
+// Falls back to legacy single-server fields when no multi-PBS entry is configured.
+func (a *App) resolveBackupPBS(pbsID string) (*Config, error) {
+	var cfg *Config
+
+	// In service mode the GUI doesn't hold PBS credentials — it asks the
+	// service for a short-lived ticket and uses that for backup.
+	if a.isDelegatedToService() {
+		ticket, err := a.apiClient.MintPBSTicket(pbsID)
+		if err != nil {
+			return nil, fmt.Errorf("service failed to mint PBS ticket: %w", err)
+		}
+		// Build a Config with the ticket + non-secret connection params.
+		cfg := &Config{
+			BaseURL:         ticket.BaseURL,
+			CertFingerprint: ticket.CertFingerprint,
+			Datastore:       ticket.Datastore,
+			Namespace:       ticket.Namespace,
+			Ticket:          ticket.Ticket,
+			CSRFToken:       ticket.CSRFToken,
+		}
+		return cfg, nil
+	}
+
+	if pbsID != "" {
+		pbs, err := a.config.GetPBSServer(pbsID)
+		if err != nil {
+			return nil, err
+		}
+		cfg = pbs.ToConfig()
+	} else {
+		effective := a.config.EffectivePBS()
+		if err := effective.Validate(); err != nil {
+			return nil, err
+		}
+		cfg = effective
+	}
+	cfg, err := a.withAuth(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }

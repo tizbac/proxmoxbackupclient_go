@@ -43,7 +43,7 @@ type Server struct {
 // BackupHandler interface that the service must implement
 // NOTE: StartBackup will be called in a goroutine (async), so it must be thread-safe
 type BackupHandler interface {
-	StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string) error
+	StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsID string) error
 	GetConfigWithHostname() map[string]interface{}
 	GetScheduledJobsForAPI() []map[string]interface{}
 	SaveScheduledJobFromMap(job map[string]interface{}) error
@@ -54,7 +54,7 @@ type BackupHandler interface {
 	// cannot be started (unknown id, already running).
 	RunScheduledJobForAPI(jobID string) error
 	PinServerFingerprint(id, fingerprint string) error
-	StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error
+	StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsID string, backupKind string) error
 	// Config round-trip for the GUI in service mode: the service is the single
 	// privileged writer of config.json, so the GUI reads and writes the whole
 	// (sanitized) document through these two methods.
@@ -292,6 +292,7 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 			req.ExcludeList,
 			req.BackupID,
 			req.UseVSS,
+			req.PBSID,
 			compression,
 		)
 
