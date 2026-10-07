@@ -41,6 +41,15 @@ if (window.go) {
   GetJobHistory = window.go.main.App.GetJobHistory
   GetSystemInfo = window.go.main.App.GetSystemInfo
   GetLastBackupDirs = window.go.main.App.GetLastBackupDirs
+  // Multi-PBS
+  ListPBSServers = window.go.main.App.ListPBSServers
+  GetPBSServer = window.go.main.App.GetPBSServer
+  AddPBSServer = window.go.main.App.AddPBSServer
+  UpdatePBSServer = window.go.main.App.UpdatePBSServer
+  DeletePBSServer = window.go.main.App.DeletePBSServer
+  SetDefaultPBSServer = window.go.main.App.SetDefaultPBSServer
+  GetDefaultPBSID = window.go.main.App.GetDefaultPBSID
+  TestPBSConnection = window.go.main.App.TestPBSConnection
   GetServerFingerprint = window.go.main.App.GetServerFingerprint
   PinPBSServerFingerprint = window.go.main.App.PinPBSServerFingerprint
   // Encryption key management
