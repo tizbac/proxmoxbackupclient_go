@@ -1,7 +1,7 @@
 # Nimbus Backup - Unified Build System
 # Builds both CLI and GUI applications
 
-.PHONY: all cli gui deb pkgarch pkgfedora clean test help install-deps
+.PHONY: all cli gui deb pkgarch pkgfedora stage-source clean test help install-deps
 
 # Version from wails.json
 VERSION := $(shell grep '"productVersion"' gui/wails.json | cut -d'"' -f4)
@@ -53,6 +53,7 @@ help:
 	@echo "  deb          - Build the Debian package (pbsgo, Linux)"
 	@echo "  pkgarch      - Build the Arch package (pbsgo, on Arch)"
 	@echo "  pkgfedora    - Build the Fedora RPM (docker fedora:44)"
+	@echo "  stage-source - Stage the source tarball used by pkgarch/pkgfedora"
 	@echo "  test         - Run all tests"
 	@echo "  clean        - Remove build artifacts"
 	@echo "  install-deps - Install build dependencies"
@@ -121,9 +122,16 @@ service:
 deb:
 	@sh packaging/debian/build-deb.sh $(BUILD_DIR)
 
-# Arch Linux package (run on Arch, see packaging/arch/PKGBUILD)
+# Arch Linux package (run on Arch, see packaging/arch/PKGBUILD).
+# Stages pbsgo-<version>.tar.gz from the CURRENT working tree first, so the
+# package contains the source it was built from (not a GitHub commit).
 pkgarch:
+	@sh packaging/stage-source.sh packaging/arch
 	@cd packaging/arch && makepkg -f -d
+
+# Source tarball the distro packages are built from (uncommitted changes incl.)
+stage-source:
+	@sh packaging/stage-source.sh
 
 # Fedora RPM (built in a fedora:44 Docker container)
 pkgfedora:
@@ -150,20 +158,35 @@ gui-dev:
 # pkg/security are standalone modules and MUST be built with GOWORK=off,
 # otherwise the go tool refuses to run ("directory prefix . does not contain
 # modules listed in go.work").
-WORKSPACE_MODULES  := pbscommon clientcommon machinebackuplib machinebackup snapshot nbd gui
+WORKSPACE_MODULES  := pbscommon clientcommon machinebackuplib machinebackup snapshot nbd gui gui/api
 STANDALONE_MODULES := directorybackup pkg/retry pkg/security
 
 # Tests
+#
+# Coverage is only collected for modules that really contain test files: for a
+# package WITHOUT tests `go test -coverprofile` still instruments it and shells
+# out to $GOTOOLDIR/covdata, a tool the Go 1.25+ toolchain archives no longer
+# ship prebuilt. That would fail the run of a module that has nothing to
+# measure (machinebackup). Such modules are still compiled and vetted.
 test:
 	@echo "🧪 Running tests..."
 	@rc=0; \
+	run_module_tests() { \
+		m="$$1"; gowork="$$2"; \
+		if find "$$m" -name '*_test.go' -not -path '*/vendor/*' | grep -q .; then \
+			echo "==> $$m"; \
+			( cd "$$m" && GOWORK="$$gowork" go test -race -covermode=atomic -coverprofile=coverage.out ./... ) || rc=1; \
+		else \
+			echo "==> $$m (no test files: compile check only)"; \
+			rm -f "$$m/coverage.out"; \
+			( cd "$$m" && GOWORK="$$gowork" go test -race ./... ) || rc=1; \
+		fi; \
+	}; \
 	for m in $(WORKSPACE_MODULES); do \
-		echo "==> $$m"; \
-		( cd $$m && go test -race -covermode=atomic -coverprofile=coverage.out ./... ) || rc=1; \
+		run_module_tests "$$m" auto; \
 	done; \
 	for m in $(STANDALONE_MODULES); do \
-		echo "==> $$m"; \
-		( cd $$m && GOWORK=off go test -race -covermode=atomic -coverprofile=coverage.out ./... ) || rc=1; \
+		run_module_tests "$$m" off; \
 	done; \
 	echo "📊 Coverage:"; \
 	for m in $(WORKSPACE_MODULES); do \
@@ -198,8 +221,18 @@ security-check:
 # Linting
 lint:
 	@echo "🔍 Running linters..."
-	@which golangci-lint || go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	golangci-lint run ./...
+	@command -v golangci-lint >/dev/null 2>&1 || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	@lint_bin=$$(command -v golangci-lint || echo "$$HOME/go/bin/golangci-lint"); \
+	rc=0; \
+	for m in $(WORKSPACE_MODULES); do \
+		echo "==> $$m"; \
+		( cd "$$m" && GOWORK=auto "$$lint_bin" run ./... ) || rc=1; \
+	done; \
+	for m in $(STANDALONE_MODULES); do \
+		echo "==> $$m"; \
+		( cd "$$m" && GOWORK=off "$$lint_bin" run ./... ) || rc=1; \
+	done; \
+	exit $$rc
 
 # Clean build artifacts
 clean:

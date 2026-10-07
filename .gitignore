@@ -13,6 +13,12 @@ proxmoxbackupgo.exe
 proxmox-backup-gui
 proxmox-backup-gui.exe
 proxmox-backup-gui-*
+# `go build ./...` inside a module directory drops the binary next to its
+# sources (gui/gui, machinebackup/machinebackup, ...)
+/gui/gui
+/machinebackup/machinebackup
+/directorybackup/directorybackup
+/nbd/nbd
 *.exe
 *.dll
 *.so

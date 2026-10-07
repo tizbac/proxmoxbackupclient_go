@@ -15,12 +15,19 @@
 # The GUI frontend is prebuilt and committed under gui/frontend/dist, so
 # Node.js is not required.
 #
-# Release procedure:
-#   1. push the commit you want to ship
-#   2. point _commit at it and set pkgver to the gui/wails.json
-#      productVersion of that commit (build() enforces the match)
-#   3. refresh sha256sums with `makepkg -g` after updating _commit
-#   4. makepkg -f
+# Source: the package is built from pbsgo-<pkgver>.tar.gz in THIS directory,
+# produced by `make pkgarch` (packaging/stage-source.sh) from the CURRENT
+# working tree - uncommitted changes included - instead of a commit fetched
+# from GitHub. pkgver must equal the gui/wails.json productVersion of that
+# tree (package() enforces the match).
+#
+# Build procedure:
+#   1. make pkgarch        # stages the tarball, then runs makepkg
+#   or, by hand:
+#   1. sh packaging/stage-source.sh packaging/arch
+#   2. makepkg -f -d
+#   The tarball checksum is SKIP on purpose: it is regenerated from the local
+#   tree on every build, so there is no fixed sum to pin.
 
 pkgname=pbsgo
 pkgver=0.2.119
@@ -33,10 +40,12 @@ makedepends=(go gtk3 webkit2gtk-4.1)
 depends=(glibc gtk3 webkit2gtk-4.1 gdk-pixbuf2 glib2 libsoup3 systemd)
 options=(!strip)
 
-_commit=ae5a7716eeaef866477c7d365c9899cddbd88c0c
-source=("https://github.com/tizbac/proxmoxbackupclient_go/archive/${_commit}.tar.gz"
+# Staged from the working tree by packaging/stage-source.sh (see header): the
+# tarball must sit next to this PKGBUILD before makepkg starts, which is what
+# `make pkgarch` does. SKIP because the sum changes with every staging.
+source=("pbsgo-${pkgver}.tar.gz"
         "pbsgo.service")
-sha256sums=('66ae18afa8f62221d8d336a7812e4bc7e55de2e0a0735eca1ddba52058ece212'
+sha256sums=('SKIP'
             'acf4e8ab59e4a8a1483df5b7ce3bb4745f8073c418465996dc22cada56be7357')
 optdepends=('polkit: pkexec elevation for the service token fetch and machine backup'
             'sudo: fallback elevation when pkexec is unavailable')
@@ -45,13 +54,18 @@ package() {
     # NOTE: makepkg runs package() with cwd=$srcdir, and $srcdir is where the
     # source array entries are unpacked: the tarball extracts into a
     # subdirectory, pbsgo.service sits at its root. Never shadow $srcdir.
-    local _srcroot="proxmoxbackupclient_go-${_commit}"
+    local _srcroot="pbsgo-${pkgver}"
     local v
     v=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
         "$_srcroot/gui/wails.json")
     if [[ "$v" != "$pkgver" ]]; then
         echo "error: wails.json productVersion ($v) != pkgver ($pkgver);" \
-             "update pkgver and _commit together" >&2
+             "update pkgver together with the tree being packaged" >&2
+        return 1
+    fi
+    if [[ ! -d "$_srcroot" ]]; then
+        echo "error: $_srcroot missing in $srcdir - stage the source first:" \
+             "sh packaging/stage-source.sh packaging/arch" >&2
         return 1
     fi
 

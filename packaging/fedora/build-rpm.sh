@@ -4,8 +4,8 @@
 # Usage: packaging/fedora/build-rpm.sh [output-dir]     (default: dist/)
 #
 # Requirements: docker, plus network access from the container (dnf +
-# Go module downloads). The host only needs git and docker; Go, GTK and
-# WebKit are installed inside the container.
+# Go module downloads). The host only needs a POSIX shell, tar and
+# docker; Go, GTK and WebKit are installed inside the container.
 #
 # The container image can be overridden with $PBSGO_FEDORA_IMAGE
 # (default: fedora:44).
@@ -28,12 +28,9 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT INT TERM
 
 echo "==> staging source tree ($VERSION)"
-mkdir -p "$WORK/stage"
-git -C "$ROOT" archive --format=tar HEAD | tar -x -C "$WORK/stage"
-mkdir -p "$WORK/src"
-mv "$WORK/stage" "$WORK/src/pbsgo-$VERSION"
-tar -C "$WORK/src" -czf "$WORK/pbsgo-$VERSION.tar.gz" "pbsgo-$VERSION"
-rmdir "$WORK/src" "$WORK/stage" 2>/dev/null || true
+# Built from the CURRENT working tree (uncommitted changes included) rather
+# than a commit fetched from GitHub: what is packaged is what was built.
+sh "$ROOT/packaging/stage-source.sh" "$WORK/pbsgo-$VERSION.tar.gz"
 
 echo "==> preparing rpmbuild tree"
 RPM=$WORK/rpmbuild
