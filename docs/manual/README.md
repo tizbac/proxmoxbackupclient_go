@@ -16,8 +16,8 @@ For a quick decision on which restore to use, see [Restore scenarios](../RESTORE
 
 This client and the official `proxmox-backup-client` read each other's backups (verified with `proxmox-backup-client` 3.4.9 and PBS 4.2):
 
-* Data and Metadata (split archive) snapshots made by this client restore byte-identically with the official client, and PBS's own file browser opens them.
+* Legacy, Data and Metadata snapshots made by this client (on Windows or Linux) restore byte-identically with the official client, and PBS's own file browser opens them.
 * Legacy, Data and Metadata snapshots made by the official client restore byte-identically with this client.
 * Both use the same split archive format (pxar version 2), the same change-detection modes and the same encryption key file format.
 
-So you are not locked in: a Data or Metadata backup made with this client can be restored with Proxmox's own tools, and anything the official client makes can be restored with this one. (Legacy snapshots written by this client use the classic pxar format; restoring them with the official client has not been part of these tests.)
+So you are not locked in: every backup made with this client can be restored with Proxmox's own tools, and anything the official client makes can be restored with this one.

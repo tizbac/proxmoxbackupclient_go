@@ -476,7 +476,7 @@ The **tray icon** menu has Show window, Backup status and Quit. Windows notifica
 
 This client and the official `proxmox-backup-client` read each other's backups. Tested with `proxmox-backup-client` 3.4.9 and PBS 4.2:
 
-* Data and Metadata snapshots made by this client (GUI and command line) restore byte-identically with the official client, and PBS 4.2's file browser opens them.
+* Legacy, Data and Metadata snapshots made by this client (GUI and command line, Windows and Linux) restore byte-identically with the official client, and PBS 4.2's file browser opens them.
 * Legacy, Data and Metadata snapshots made by the official client restore byte-identically with this client, fully or selectively.
 * Both use the same split archive format (pxar version 2) and the same encryption key file format, so keys work in both.
 

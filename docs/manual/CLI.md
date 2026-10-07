@@ -298,7 +298,7 @@ schtasks /Create /TN "PBS Documents" /SC DAILY /ST 02:00 /RU SYSTEM /RL HIGHEST 
 
 This client and the official `proxmox-backup-client` read each other's backups. Tested with `proxmox-backup-client` 3.4.9 and PBS 4.2:
 
-* `data` and `metadata` snapshots made by this client (command line and GUI) restore byte-identically with the official client, and PBS 4.2's file browser opens them.
+* `legacy`, `data` and `metadata` snapshots made by this client (command line and GUI, Windows and Linux) restore byte-identically with the official client, and PBS 4.2's file browser opens them. On Linux, mode, nanosecond modification time and symlink targets come back exactly too.
 * `legacy`, `data` and `metadata` snapshots made by the official client restore byte-identically with this client.
 * Both use the same split archive format (pxar version 2) and the same key file format.
 * The modes have the same names and meaning as the official `--change-detection-mode`, and the same `PBS_*` environment variables are read.
@@ -313,4 +313,4 @@ proxmox-backup-client snapshot files "host/laptop-documents/2026-10-07T20:45:51Z
 proxmox-backup-client restore "host/laptop-documents/2026-10-07T20:45:51Z" <archive> /tmp/restore
 ```
 
-Add `--keyfile` for an encrypted snapshot. The command line tool names its archive `backup`; the GUI names one archive per folder. The restored tree contains one extra file, `.proxmox_backup_client_meta.json`, which this client adds to record the original path.
+Give the archive name without `.didx`: a snapshot from `proxmoxbackup-directory` holds `backup.pxar.didx` (legacy) or `backup.mpxar.didx` plus `backup.ppxar.didx` (data, metadata), so restore `backup.pxar` or `backup.mpxar`. The GUI names one archive per folder (for example `f__data.mpxar` for F:\Data), so check `snapshot files` first. Add `--keyfile` for an encrypted snapshot. The restored tree contains one extra file, `.proxmox_backup_client_meta.json`, which this client adds to record the original path.

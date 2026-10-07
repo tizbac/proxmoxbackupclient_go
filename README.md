@@ -46,11 +46,11 @@ To use it: edit a folder **Backup Set**, **Destination** tab, **Change detection
 
 Verified with `proxmox-backup-client` 3.4.9 and PBS 4.2:
 
-- **Data and Metadata snapshots made by this client restore byte-identically with the official client**, from both the GUI and the command line, and PBS 4.2's file browser opens them.
+- **Legacy, Data and Metadata snapshots made by this client restore byte-identically with the official client**, from both the GUI and the command line, made on Windows or Linux, and PBS 4.2's file browser opens them. On Linux the restored files also keep their exact mode, nanosecond modification time and symlink targets.
 - **Legacy, Data and Metadata snapshots made by the official client restore byte-identically with this client**, fully or selectively.
 - Same split archive format (pxar version 2), same change-detection modes, same encryption key file format (`proxmox-backup-client key create` keys work here, and keys generated here work there), same `PBS_REPOSITORY` style environment variables.
 
-So Data and Metadata backups are not tied to this client: Proxmox's own tools restore them. (Legacy snapshots written by this client use the classic pxar format; restoring those with the official client was not part of these tests.)
+So your backups are never tied to this client: Proxmox's own tools restore every snapshot it makes, and it restores every snapshot the official client makes. The only extra is one small file this client adds at the root of a folder snapshot, `.proxmox_backup_client_meta.json` (the original path), which the official client restores as an ordinary file.
 
 > ⚠️ **Disclaimer:** This project is **not affiliated in any way** with **Proxmox Server Solutions GmbH**. "Proxmox", the Proxmox logo and related names are the property of their respective owners; here they are used **only** to state compatibility. See [proxmox.com](https://www.proxmox.com/) for their products.
 
