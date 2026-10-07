@@ -18,9 +18,9 @@ const tokenHeader = "X-Proxmox-Client-Token"
 // a normal user's GUI process never has to read the root-owned token file.
 const TokenEnvVar = "PBSGO_API_TOKEN"
 
-// TokenOverride, when non-empty, takes precedence over the environment variable
-// and the token file for every request. The GUI sets it after a successful
-// elevated token fetch.
+// TokenOverride takes precedence over the environment variable and the token
+// file for every request when it is non-empty. The GUI sets it after a
+// successful elevated token fetch.
 var TokenOverride string
 
 // resolveToken returns the token to attach to a request, in priority order:

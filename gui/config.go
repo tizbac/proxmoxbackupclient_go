@@ -395,6 +395,64 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// validatePBSFields validates the legacy top-level PBS block PART BY PART and
+// only where a value is set: it is what a whole-document save (service
+// /config POST, legacy settings form) runs, because Config.Validate() demands
+// a legacy BaseURL and credentials outright — which a multi-PBS-only
+// configuration (empty baseurl/authid, credentials carried per server) can
+// never satisfy. Requiring them there rejected every save with "Either
+// username or authid is required!" even though the document was perfectly
+// valid.
+func (c *Config) validatePBSFields() error {
+	// Credentials first: they are what the legacy block is really about.
+	if c.AuthID != "" {
+		if err := security.ValidateAuthID(c.AuthID); err != nil {
+			return fmt.Errorf("authentication ID invalide: %w", err)
+		}
+		if c.Secret == "" {
+			return fmt.Errorf("secret requis")
+		}
+	} else if c.Username != "" {
+		if err := security.ValidateUsername(c.Username); err != nil {
+			return fmt.Errorf("invalid username: %w", err)
+		}
+		if c.Password == "" {
+			return fmt.Errorf("password required")
+		}
+	} else if c.BaseURL != "" {
+		// A legacy entry with a URL but no credentials at all can never
+		// authenticate; an empty legacy block (multi-PBS-only) is fine.
+		return fmt.Errorf("Either username or authid is required!") //nolint:staticcheck // message predates the linter and is what the GUI/service reports
+	}
+
+	if c.BaseURL != "" {
+		if err := security.ValidateURL(c.BaseURL); err != nil {
+			return fmt.Errorf("URL du serveur PBS invalide: %w", err)
+		}
+	}
+	if c.CertFingerprint != "" {
+		if err := security.ValidateFingerprint(c.CertFingerprint); err != nil {
+			return fmt.Errorf("empreinte certificat invalide: %w", err)
+		}
+	}
+	if c.Datastore != "" {
+		if err := security.ValidateDatastore(c.Datastore); err != nil {
+			return fmt.Errorf("datastore invalide: %w", err)
+		}
+	}
+	if c.BackupID != "" {
+		if err := security.ValidateBackupID(c.BackupID); err != nil {
+			return fmt.Errorf("backup ID invalide: %w", err)
+		}
+	}
+	if c.BackupDir != "" {
+		if err := security.ValidatePath(c.BackupDir); err != nil {
+			return fmt.Errorf("chemin de backup invalide: %w", err)
+		}
+	}
+	return nil
+}
+
 // validateEncryptionKeyFile checks that EncryptionKeyFile is usable by the GUI
 // without a console to prompt on. It deliberately does NOT touch Crypt: callers
 // that are about to encrypt or decrypt call loadCryptConfig to unlock it.
@@ -483,17 +541,16 @@ func (c *Config) GetPBSServer(id string) (*PBSServer, error) {
 // AddPBSServerMem adds a new PBS server to the in-memory configuration
 // WITHOUT persisting. The GUI in service mode uses it (the service owns the
 // files) and pushes the result through the service API afterwards.
+//
+// A new server always carries freshly typed credentials, so requireCreds is
+// unconditional here: an empty secret/password is a missing credential, not
+// "keep the stored one" (there is no stored entry yet).
 func (c *Config) AddPBSServerMem(pbs *PBSServer) error {
-	if err := pbs.Validate(); err != nil {
+	if err := normalizeServerAuth(nil, pbs, true); err != nil {
 		return err
 	}
-
-	// A server authenticates with EITHER a token OR user/password, never both.
-	if pbs.AuthID != "" {
-		pbs.Username = ""
-		pbs.Password = ""
-	} else if pbs.Username != "" && pbs.Password == "" {
-		return fmt.Errorf("mot de passe requis pour la connexion utilisateur/mot de passe")
+	if err := pbs.Validate(); err != nil {
+		return err
 	}
 
 	if c.PBSServers == nil {
@@ -525,33 +582,35 @@ func (c *Config) AddPBSServer(pbs *PBSServer) error {
 
 // UpdatePBSServerMem updates an existing PBS server in memory WITHOUT
 // persisting (see AddPBSServerMem).
-func (c *Config) UpdatePBSServerMem(pbs *PBSServer) error {
-	if err := pbs.Validate(); err != nil {
-		return err
-	}
-
+//
+// requireCreds: false when the caller never received the stored credentials —
+// the service-mode GUI — because an empty secret/password then means "keep the
+// stored one" and the presence check belongs to the service, which owns them.
+// A standalone GUI and the service itself pass true.
+func (c *Config) UpdatePBSServerMem(pbs *PBSServer, requireCreds bool) error {
 	existing, exists := c.PBSServers[pbs.ID]
 	if !exists {
 		return fmt.Errorf("serveur PBS '%s' introuvable", pbs.ID)
 	}
 
-	// A server authenticates with EITHER a token OR user/password, never both.
-	if pbs.AuthID != "" {
-		pbs.Username = ""
-		pbs.Password = ""
-	} else if pbs.Username != "" && pbs.Password == "" && existing.Password != "" {
-		// Empty password on a user/pass edit means "keep the stored one": the
-		// frontend never receives the password, so it cannot echo it back.
-		pbs.Password = existing.Password
+	// Selects the auth method, clears the other one, and applies the
+	// "empty = keep the stored credential" convention (never a silent reuse of
+	// a token secret for a different authid, or of a password for another user).
+	if err := normalizeServerAuth(existing, pbs, requireCreds); err != nil {
+		return err
+	}
+	if err := pbs.validate(requireCreds); err != nil {
+		return err
 	}
 
 	c.PBSServers[pbs.ID] = pbs
 	return nil
 }
 
-// UpdatePBSServer updates an existing PBS server
+// UpdatePBSServer updates an existing PBS server (standalone path: this
+// process holds the stored credentials, so they are required).
 func (c *Config) UpdatePBSServer(pbs *PBSServer) error {
-	if err := c.UpdatePBSServerMem(pbs); err != nil {
+	if err := c.UpdatePBSServerMem(pbs, true); err != nil {
 		return err
 	}
 	return c.Save()
@@ -649,18 +708,27 @@ func (c *Config) loadCryptConfig() error {
 	return nil
 }
 
-// fullConfigDocument returns a sanitized JSON-compatible map of the entire
-// configuration (legacy fields + PBS servers with *_set markers). Used by the
-// GUI in service mode to push the whole config to the service via the API.
+// fullConfigDocument returns a JSON-compatible map of the entire configuration
+// (legacy fields + PBS servers) for the GUI in service mode to push to the
+// service via the API.
+//
+// It is a BACKEND→service document (authenticated local API, never handed to
+// the frontend), so it carries the credentials this process actually knows:
+// a value typed in the current session is transmitted so the service can store
+// it, while an unknown/untouched credential is "" and means "keep the stored
+// one" on the service side (the GUI never receives those — M-04). The *_set
+// markers are kept alongside for the frontend's placeholders.
 func (c *Config) fullConfigDocument() map[string]interface{} {
 	hostname, _ := os.Hostname()
 	doc := map[string]interface{}{
 		"baseurl":             c.BaseURL,
 		"certfingerprint":     c.CertFingerprint,
 		"authid":              c.AuthID,
+		"secret":              c.Secret,
 		"secret_set":          c.Secret != "",
 		"datastore":           c.Datastore,
 		"namespace":           c.Namespace,
+		"encryption_key_file": c.EncryptionKeyFile,
 		"backupdir":           c.BackupDir,
 		"backup-id":           c.BackupID,
 		"usevss":              c.UseVSS,
@@ -670,6 +738,7 @@ func (c *Config) fullConfigDocument() map[string]interface{} {
 		"smtp_host":           c.SMTPHost,
 		"smtp_port":           c.SMTPPort,
 		"smtp_username":       c.SMTPUsername,
+		"smtp_password":       c.SMTPPassword,
 		"smtp_password_set":   c.SMTPPassword != "",
 		"email_from":          c.EmailFrom,
 		"email_to":            c.EmailTo,
@@ -683,19 +752,25 @@ func (c *Config) fullConfigDocument() map[string]interface{} {
 		}
 		s := pbs.sanitized()
 		servers[id] = map[string]interface{}{
-			"id":                 s.ID,
-			"name":               s.Name,
-			"baseurl":            s.BaseURL,
-			"certfingerprint":    s.CertFingerprint,
-			"authid":             s.AuthID,
-			"secret_set":         s.SecretSet,
-			"username":           s.Username,
-			"password_set":       s.PasswordSet,
-			"datastore":          s.Datastore,
-			"namespace":          s.Namespace,
-			"description":        s.Description,
+			"id":                  s.ID,
+			"name":                s.Name,
+			"baseurl":             s.BaseURL,
+			"certfingerprint":     s.CertFingerprint,
+			"authid":              s.AuthID,
+			"secret":              pbs.Secret,  // "" = keep the stored one
+			"secret_set":          s.SecretSet, // unknown to this process ⇒ false
+			"username":            s.Username,
+			"password":            pbs.Password, // "" = keep the stored one
+			"password_set":        s.PasswordSet,
+			"datastore":           s.Datastore,
+			"namespace":           s.Namespace,
+			"encryption_key_file": s.EncryptionKeyFile,
+			"description":         s.Description,
 		}
 	}
+	// Always present (even when empty): the service treats a document without
+	// the key as "this client does not manage servers", which would make a
+	// delete of the last server impossible to persist.
 	doc["pbs_servers"] = servers
 	return doc
 }
@@ -734,6 +809,10 @@ func parseFullConfig(doc map[string]interface{}) *Config {
 	// Secret is intentionally empty — the GUI never holds it
 	c.Datastore = str("datastore")
 	c.Namespace = str("namespace")
+	// The key PATH is not a secret (only the path is stored; the unlocked key
+	// never leaves the backend). Dropping it here would make the next push to
+	// the service hand back an empty path and silently stop encrypting.
+	c.EncryptionKeyFile = str("encryption_key_file")
 	c.BackupDir = str("backupdir")
 	c.BackupID = str("backup-id")
 	c.UseVSS = bol("usevss")
@@ -752,17 +831,18 @@ func parseFullConfig(doc map[string]interface{}) *Config {
 		for id, srv := range servers {
 			if m, ok := srv.(map[string]interface{}); ok {
 				pbs := &PBSServer{
-					ID:              id,
-					Name:            strFrom(m, "name"),
-					BaseURL:         strFrom(m, "baseurl"),
-					CertFingerprint: strFrom(m, "certfingerprint"),
-					AuthID:          strFrom(m, "authid"),
-					SecretSet:       boolFrom(m, "secret_set"),
-					Username:        strFrom(m, "username"),
-					PasswordSet:     boolFrom(m, "password_set"),
-					Datastore:       strFrom(m, "datastore"),
-					Namespace:       strFrom(m, "namespace"),
-					Description:     strFrom(m, "description"),
+					ID:                id,
+					Name:              strFrom(m, "name"),
+					BaseURL:           strFrom(m, "baseurl"),
+					CertFingerprint:   strFrom(m, "certfingerprint"),
+					AuthID:            strFrom(m, "authid"),
+					SecretSet:         boolFrom(m, "secret_set"),
+					Username:          strFrom(m, "username"),
+					PasswordSet:       boolFrom(m, "password_set"),
+					Datastore:         strFrom(m, "datastore"),
+					Namespace:         strFrom(m, "namespace"),
+					EncryptionKeyFile: strFrom(m, "encryption_key_file"),
+					Description:       strFrom(m, "description"),
 				}
 				c.PBSServers[id] = pbs
 			}

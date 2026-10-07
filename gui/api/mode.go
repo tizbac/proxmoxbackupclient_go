@@ -44,7 +44,7 @@ func (d *ModeDetector) Probe() int {
 	return code
 }
 
-// GetModeName returns a human-readable mode name
+// String returns a human-readable mode name
 func (m ExecutionMode) String() string {
 	switch m {
 	case ModeService:
@@ -83,14 +83,14 @@ func GetModeDescription(mode ExecutionMode) string {
 	switch mode {
 	case ModeService:
 		return fmt.Sprintf(
-			"✅ Mode Service\n"+
-				"Le service Windows gère les backups avec privilèges admin.\n"+
+			"✅ Mode Service\n" +
+				"Le service Windows gère les backups avec privilèges admin.\n" +
 				"VSS (Shadow Copy) fonctionne automatiquement.",
 		)
 	case ModeStandalone:
 		return fmt.Sprintf(
-			"⚠️ Mode Standalone\n"+
-				"Backup direct sans service Windows.\n"+
+			"⚠️ Mode Standalone\n" +
+				"Backup direct sans service Windows.\n" +
 				"VSS nécessite de lancer l'application en tant qu'administrateur.",
 		)
 	default:

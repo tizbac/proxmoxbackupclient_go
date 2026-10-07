@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"os"
 	"pbscommon"
-	"security"
 
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 )
@@ -48,14 +47,22 @@ func (a *App) GetFullConfigForAPI() map[string]interface{} {
 	return doc
 }
 
-// SaveFullConfigFromAPI merges a whole sanitized configuration document (as
-// produced by GetFullConfigForAPI plus GUI edits) into the stored config and
-// persists it. The service is the single writer of config.json.
+// SaveFullConfigFromAPI merges a whole configuration document (as produced by
+// GetFullConfigForAPI plus GUI edits) into the stored config and persists it.
+// The service is the single writer of config.json.
 //
-// An EMPTY secret / password / smtp_password in the document means "keep the
-// currently stored value": the GUI never receives or resends real secrets, so
-// retention is the only possible semantics (same convention as
-// Config.UpdatePBSServerMem for the local path).
+// Credential semantics, per entry:
+//   - an empty secret / password means "keep the currently stored value":
+//     the GUI never receives the stored credentials, so retention is the only
+//     possible meaning (same convention as Config.UpdatePBSServerMem);
+//   - a credential the GUI DOES know (typed in this session) is transmitted
+//     and replaces the stored one;
+//   - the auth method is taken from the entry itself (authid ⇒ token,
+//     otherwise user/password), so switching method drops the other one's
+//     stored credentials instead of leaving them behind.
+//
+// Validation runs on a COPY: a rejected document leaves the live config (and
+// config.json) untouched.
 func (a *App) SaveFullConfigFromAPI(doc map[string]interface{}) error {
 	if doc == nil {
 		return fmt.Errorf("document de configuration vide")
@@ -73,17 +80,36 @@ func (a *App) SaveFullConfigFromAPI(doc map[string]interface{}) error {
 	if err := json.Unmarshal(b, &incoming); err != nil {
 		return fmt.Errorf("document de configuration invalide: %w", err)
 	}
+	// Config.Username/Password are json:"-" (runtime-only), so a client that
+	// does send legacy user/password credentials would otherwise have them
+	// silently dropped — and the check below would then always claim that only
+	// an authid is acceptable. Read them from the raw document instead.
+	var creds struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	_ = json.Unmarshal(b, &creds)
 
-	cfg := a.config
+	cfg := *a.config // shallow copy: never mutate the live config before validation
 
 	// --- Legacy single-PBS fields (retention on empty secrets) -------------
 	cfg.BaseURL = incoming.BaseURL
 	cfg.CertFingerprint = incoming.CertFingerprint
 	cfg.AuthID = incoming.AuthID
-	cfg.Username = incoming.Username
-	cfg.Password = incoming.Password
 	if incoming.Secret != "" {
 		cfg.Secret = incoming.Secret
+	}
+	if creds.Username != "" {
+		cfg.Username = creds.Username
+	}
+	if creds.Password != "" {
+		cfg.Password = creds.Password
+	}
+	if cfg.AuthID != "" {
+		// One legacy method too: a token entry must never keep a stale
+		// user/password beside it (and vice versa, see the check below).
+		cfg.Username = ""
+		cfg.Password = ""
 	}
 	cfg.Datastore = incoming.Datastore
 	cfg.Namespace = incoming.Namespace
@@ -95,6 +121,13 @@ func (a *App) SaveFullConfigFromAPI(doc map[string]interface{}) error {
 	cfg.LastBackupDirs = incoming.LastBackupDirs
 	cfg.DisableSplit = incoming.DisableSplit
 	cfg.SplitSizeGB = incoming.SplitSizeGB
+	// The key PATH is not a secret and the GUI knows it, so the document is the
+	// source of truth: keeping it out of the merge would silently drop the
+	// encryption key on the next push and stop encrypting backups.
+	cfg.EncryptionKeyFile = incoming.EncryptionKeyFile
+	if err := cfg.validateEncryptionKeyFile(); err != nil {
+		return err
+	}
 
 	// --- Email notifications -------------------------------------------------
 	cfg.SMTPHost = incoming.SMTPHost
@@ -106,32 +139,34 @@ func (a *App) SaveFullConfigFromAPI(doc map[string]interface{}) error {
 	cfg.EmailFrom = incoming.EmailFrom
 	cfg.EmailTo = incoming.EmailTo
 
-	// --- Multi-PBS servers: whole-map replace, per-server secret retention --
+	// --- Multi-PBS servers: whole-map replace, per-server credential
+	// retention + auth-method resolution -------------------------------------
 	// A server missing from the document was deleted by the GUI. Only replace
 	// when the document actually carries the key: a client that omits
 	// pbs_servers must not wipe the stored servers.
 	if _, present := doc["pbs_servers"]; present {
 		old := cfg.PBSServers
-		cfg.PBSServers = make(map[string]*PBSServer, len(incoming.PBSServers))
+		next := make(map[string]*PBSServer, len(incoming.PBSServers))
 		for id, srv := range incoming.PBSServers {
 			if srv == nil {
 				continue
 			}
 			srv.ID = id
-			srv.IsOnline = false // connection state is runtime-only, never persisted
-			if existing, ok := old[id]; ok {
-				if srv.Secret == "" {
-					srv.Secret = existing.Secret
-				}
-				if srv.Password == "" {
-					srv.Password = existing.Password
-				}
+			srv.IsOnline = false  // connection state is runtime-only, never persisted
+			srv.SecretSet = false // *_set markers are derived when read, never stored
+			srv.PasswordSet = false
+			// Chooses token vs user/password, keeps the stored credential when
+			// the incoming one is empty, and requires the selected method to
+			// actually have a usable credential (the service holds them all).
+			if err := normalizeServerAuth(old[id], srv, true); err != nil {
+				return fmt.Errorf("serveur PBS %q: %w", id, err)
 			}
 			if err := srv.Validate(); err != nil {
 				return fmt.Errorf("serveur PBS %q: %w", id, err)
 			}
-			cfg.PBSServers[id] = srv
+			next[id] = srv
 		}
+		cfg.PBSServers = next
 	}
 
 	// --- Default server -------------------------------------------------------
@@ -150,50 +185,15 @@ func (a *App) SaveFullConfigFromAPI(doc map[string]interface{}) error {
 
 	// --- Field validation (per part; the legacy Validate() would wrongly
 	// require a legacy BaseURL on pure multi-PBS configs) ----------------------
-	if cfg.BaseURL != "" {
-		if err := security.ValidateURL(cfg.BaseURL); err != nil {
-			return fmt.Errorf("URL du serveur PBS invalide: %w", err)
-		}
-	}
-	if cfg.AuthID != "" {
-		if err := security.ValidateAuthID(cfg.AuthID); err != nil {
-			return fmt.Errorf("authentication ID invalide: %w", err)
-		}
-		if cfg.Secret == "" {
-			return fmt.Errorf("secret requis")
-		}
-	} else if cfg.Username != "" {
-		if err := security.ValidateUsername(cfg.Username); err != nil {
-			return fmt.Errorf("Invalid Username: %w", err)
-		}
-		if cfg.Password == "" {
-			return fmt.Errorf("Password required")
-		}
-	} else {
-		return fmt.Errorf("Either username or authid is required!")
-	}
-	if cfg.CertFingerprint != "" {
-		if err := security.ValidateFingerprint(cfg.CertFingerprint); err != nil {
-			return fmt.Errorf("empreinte certificat invalide: %w", err)
-		}
-	}
-	if cfg.Datastore != "" {
-		if err := security.ValidateDatastore(cfg.Datastore); err != nil {
-			return fmt.Errorf("datastore invalide: %w", err)
-		}
-	}
-	if cfg.BackupID != "" {
-		if err := security.ValidateBackupID(cfg.BackupID); err != nil {
-			return fmt.Errorf("backup ID invalide: %w", err)
-		}
-	}
-	if cfg.BackupDir != "" {
-		if err := security.ValidatePath(cfg.BackupDir); err != nil {
-			return fmt.Errorf("chemin de backup invalide: %w", err)
-		}
+	if err := cfg.validatePBSFields(); err != nil {
+		return err
 	}
 
-	return cfg.Save()
+	if err := cfg.Save(); err != nil {
+		return err
+	}
+	a.config = &cfg
+	return nil
 }
 
 // applyPBSDraft merges non-empty string fields of a draft document onto a PBS
@@ -205,6 +205,16 @@ func applyPBSDraft(srv *PBSServer, draft map[string]interface{}) {
 			return v
 		}
 		return ""
+	}
+	// A draft may SWITCH auth method (the frontend sends only the fields of
+	// the active tab): username without authid means the user/password method,
+	// so the stored token has to go first — otherwise normalizeServerAuth would
+	// keep the token and silently discard the draft's username. The opposite
+	// direction needs nothing here: normalizeServerAuth drops user/password as
+	// soon as an authid is present.
+	if str("username") != "" && str("authid") == "" {
+		srv.AuthID = ""
+		srv.Secret = ""
 	}
 	if v := str("name"); v != "" {
 		srv.Name = v
@@ -257,17 +267,14 @@ func (a *App) TestPBSServerForAPI(id string, draft map[string]interface{}) error
 
 	applyPBSDraft(base, draft)
 
-	// A draft token/user may be incomplete on purpose (e.g. "test URL only
-	// with the stored credentials"): fall back to the stored entry's auth.
-	if stored, err := a.config.GetPBSServer(id); err == nil {
-		if base.Secret == "" {
-			base.Secret = stored.Secret
-		}
-		if base.Password == "" {
-			base.Password = stored.Password
-		}
+	// Same resolution as every save path: pick the method the draft asked for,
+	// treat an empty credential as "keep the stored one" (only for that exact
+	// token/user) and require a usable credential afterwards — the service
+	// holds the stored secrets, so requireCreds applies.
+	stored, _ := a.config.GetPBSServer(id)
+	if err := normalizeServerAuth(stored, base, true); err != nil {
+		return err
 	}
-
 	if err := base.Validate(); err != nil {
 		return err
 	}

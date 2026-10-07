@@ -496,3 +496,26 @@ func (c *Client) DeleteScheduledJob(jobID string) error {
 
 	return nil
 }
+
+// RunScheduledJob asks the service to start a stored scheduled job NOW,
+// ignoring its schedule (manual "run now"). The service owns the jobs file
+// and the history, so the run — and its bookkeeping — happen there.
+func (c *Client) RunScheduledJob(jobID string) error {
+	resp, err := c.httpClient.Post(c.baseURL+"/jobs/run/"+jobID, "application/json", nil)
+	if err != nil {
+		return fmt.Errorf("failed to run job: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		// Surface the service's message (unknown job / already running) as-is.
+		var errResp ErrorResponse
+		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error != "" {
+			return fmt.Errorf("%s", errResp.Error)
+		}
+		return fmt.Errorf("failed to run job: %s", string(respBody))
+	}
+
+	return nil
+}

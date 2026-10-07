@@ -75,6 +75,10 @@ func (a *App) SaveScheduledJob(job ScheduledJob) error {
 		return a.apiClient.SaveScheduledJob(jobToMap(&job))
 	}
 
+	if err := job.validate(); err != nil {
+		return err
+	}
+
 	// Load existing jobs
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
@@ -147,7 +151,15 @@ func (a *App) GetScheduledJobs() ([]ScheduledJob, error) {
 	return jobs, nil
 }
 
-// GetScheduledJobsForAPI returns scheduled jobs as map[string]interface{} for API compatibility
+// GetScheduledJobsForAPI returns scheduled jobs as map[string]interface{} for
+// API compatibility.
+//
+// The map is a JSON round-trip of the struct (canonical json tag keys) plus
+// aliases under the historical snake_case names, so both this build and older
+// GUI builds — which read backup_type/schedule/last_run/… — decode the full
+// job. Emitting only the old subset is what used to strip runAtStartup,
+// compression, driveLetters, scheduleTime and the backup fields on the way to
+// the frontend.
 // This method is used by the BackupHandler interface for HTTP API
 func (a *App) GetScheduledJobsForAPI() []map[string]interface{} {
 	jobs, err := a.GetScheduledJobs()
@@ -157,20 +169,18 @@ func (a *App) GetScheduledJobsForAPI() []map[string]interface{} {
 	}
 
 	result := make([]map[string]interface{}, len(jobs))
-	for i, job := range jobs {
-		result[i] = map[string]interface{}{
-			"id":           job.ID,
-			"name":         job.Name,
-			"backup_type":  job.BackupType,
-			"backup_id":    job.BackupID,
-			"schedule":     job.ScheduleTime,
-			"use_vss":      job.UseVSS,
-			"backup_dirs":  job.BackupDirs,
-			"exclude_list": job.ExcludeList,
-			"last_run":     job.LastRun,
-			"next_run":     job.NextRun,
-			"enabled":      job.Enabled,
-		}
+	for i := range jobs {
+		m := jobToMap(&jobs[i])
+		// Legacy aliases (older GUI builds).
+		m["backup_type"] = m["backupType"]
+		m["backup_id"] = m["backupId"]
+		m["schedule"] = m["scheduleTime"]
+		m["use_vss"] = m["useVSS"]
+		m["backup_dirs"] = m["backupDirs"]
+		m["exclude_list"] = m["excludeList"]
+		m["last_run"] = m["lastRun"]
+		m["next_run"] = m["nextRun"]
+		result[i] = m
 	}
 	return result
 }
@@ -182,6 +192,10 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 	// In service mode the GUI delegates to the service.
 	if a.isDelegatedToService() {
 		return a.apiClient.UpdateScheduledJob(jobToMap(&job))
+	}
+
+	if err := job.validate(); err != nil {
+		return err
 	}
 
 	// Load existing jobs
@@ -196,6 +210,10 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 		if j.ID == job.ID {
 			// Preserve enabled state
 			job.Enabled = j.Enabled
+			// The edit form never carries the run record: keep it instead of
+			// overwriting it with an empty value (an update must not erase when
+			// the job last ran).
+			job.LastRun = j.LastRun
 			// Recalculate next run with new schedule time
 			job.NextRun = calculateNextRun(job.ScheduleTime)
 			jobs[i] = job
@@ -328,17 +346,12 @@ func (a *App) AddJobHistory(entry JobHistory) error {
 
 // calculateNextRun calculates the next run time based on schedule time (HH:MM)
 func calculateNextRun(scheduleTime string) string {
-	parts := strings.Split(scheduleTime, ":")
-	if len(parts) != 2 {
+	hour, min, ok := parseScheduleTime(scheduleTime)
+	if !ok {
 		return ""
 	}
 
 	now := time.Now()
-	var hour, min int
-	if _, err := fmt.Sscanf(scheduleTime, "%d:%d", &hour, &min); err != nil {
-		writeDebugLog(fmt.Sprintf("Error parsing schedule time %s: %v", scheduleTime, err))
-		return ""
-	}
 
 	// Schedule for today at the specified time
 	nextRun := time.Date(now.Year(), now.Month(), now.Day(), hour, min, 0, 0, now.Location())
@@ -352,6 +365,39 @@ func calculateNextRun(scheduleTime string) string {
 	}
 
 	return nextRun.Format(time.RFC3339)
+}
+
+// parseScheduleTime parses an "HH:MM" schedule (single-digit hour/minute
+// accepted) and checks the ranges. Everything else — "" , "25:00", "02:75",
+// "morning" — is rejected: calculateNextRun used to turn those into an empty
+// nextRun, which the scheduler silently skips, i.e. a job that never runs.
+func parseScheduleTime(scheduleTime string) (hour, min int, ok bool) {
+	var h, m int
+	if n, err := fmt.Sscanf(scheduleTime, "%d:%d", &h, &m); err != nil || n != 2 {
+		return 0, 0, false
+	}
+	if h < 0 || h > 23 || m < 0 || m > 59 {
+		return 0, 0, false
+	}
+	return h, m, true
+}
+
+// validate reports a job that could not be executed as configured. It runs on
+// every save/update (service side included), so a broken job is rejected where
+// the user edits it instead of failing silently at its scheduled time.
+func (j *ScheduledJob) validate() error {
+	if strings.TrimSpace(j.Name) == "" {
+		return fmt.Errorf("job name requis")
+	}
+	if _, _, ok := parseScheduleTime(j.ScheduleTime); !ok && j.ScheduleTime != "" {
+		return fmt.Errorf("heure de planification invalide (format HH:MM attendu): %q", j.ScheduleTime)
+	} else if j.ScheduleTime == "" && !j.RunAtStartup {
+		return fmt.Errorf("heure de planification requise (format HH:MM)")
+	}
+	if len(j.BackupDirs) == 0 && len(j.DriveLetters) == 0 {
+		return fmt.Errorf("au moins un repertoire ou un disque a sauvegarder est requis")
+	}
+	return nil
 }
 
 // RecalculateNextRuns repairs jobs whose nextRun is MISSING or unparseable by
@@ -569,32 +615,34 @@ func (a *App) checkAndRunScheduledJobs() {
 	}
 }
 
-// executeScheduledJob executes a scheduled job
-func (a *App) executeScheduledJob(job ScheduledJob) {
-	// Check if job is already running
+// claimJob marks a job as running and returns false when it already is. It is
+// the single duplicate guard shared by the scheduler tick, the startup runner
+// and the manual "run now" action, so one job can never execute twice
+// concurrently (a second start is reported instead of silently swallowed).
+func claimJob(jobID string) bool {
 	runningJobsMutex.Lock()
-	if runningJobs[job.ID] {
-		writeDebugLog(fmt.Sprintf("Job %s is already running, skipping", job.Name))
-		runningJobsMutex.Unlock()
-		return
+	defer runningJobsMutex.Unlock()
+	if runningJobs[jobID] {
+		return false
 	}
-	runningJobs[job.ID] = true
-	runningJobsMutex.Unlock()
+	runningJobs[jobID] = true
+	return true
+}
 
-	// Ensure we mark as not running when done
-	defer func() {
-		runningJobsMutex.Lock()
-		delete(runningJobs, job.ID)
-		runningJobsMutex.Unlock()
-	}()
+// releaseJob frees the claim taken by claimJob.
+func releaseJob(jobID string) {
+	runningJobsMutex.Lock()
+	defer runningJobsMutex.Unlock()
+	delete(runningJobs, jobID)
+}
 
-	writeDebugLog(fmt.Sprintf("Executing scheduled job: %s", job.Name))
-
-	// Prepare history entry (will be added at the end with final status)
-	startTime := time.Now()
-
-	// Use StartBackup to route through mode detection (service or direct)
-	writeDebugLog(fmt.Sprintf("[Scheduled Job] Executing via StartBackup (mode: %s)", a.mode.String()))
+// runScheduledBackup performs the backup of a scheduled job: it goes through
+// the test seam App.scheduledBackupFn when one is installed, otherwise through
+// StartBackup (which routes through mode detection: service or direct).
+func (a *App) runScheduledBackup(job ScheduledJob) error {
+	if a.scheduledBackupFn != nil {
+		return a.scheduledBackupFn(job)
+	}
 
 	// Default to "fastest" if compression not set in job
 	compression := job.Compression
@@ -610,7 +658,8 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 		driveLetters = []string{}
 	}
 
-	err := a.StartBackup(
+	// StartBackup routes through mode detection (service or direct).
+	return a.StartBackup(
 		job.BackupType,
 		job.BackupDirs,
 		driveLetters,
@@ -619,6 +668,35 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 		job.UseVSS,
 		compression,
 	)
+}
+
+// executeScheduledJob claims the job and executes it in the calling goroutine.
+// Callers (scheduler tick, startup runner) already run in their own goroutine;
+// a job that is already running is skipped.
+func (a *App) executeScheduledJob(job ScheduledJob) {
+	if !claimJob(job.ID) {
+		writeDebugLog(fmt.Sprintf("Job %s is already running, skipping", job.Name))
+		return
+	}
+	defer releaseJob(job.ID)
+	a.runClaimedJob(job)
+}
+
+// runClaimedJob runs the backup of an already claimed job and records the
+// outcome: a job history entry, then lastRun/nextRun on the job itself. The
+// caller MUST hold the job's claim (claimJob) and release it afterwards.
+//
+// Tests call it directly (synchronously) with scheduledBackup stubbed.
+func (a *App) runClaimedJob(job ScheduledJob) {
+	writeDebugLog(fmt.Sprintf("Executing scheduled job: %s", job.Name))
+
+	// Prepare history entry (will be added at the end with final status)
+	startTime := time.Now()
+
+	// Use StartBackup to route through mode detection (service or direct)
+	writeDebugLog(fmt.Sprintf("[Scheduled Job] Executing via StartBackup (mode: %s)", a.mode.String()))
+
+	err := a.runScheduledBackup(job)
 
 	// Add history entry derived from the REAL outcome. In service mode StartBackup
 	// runs synchronously (app_service_stubs.go returns RunBackupInline's error), so
@@ -687,39 +765,103 @@ func (a *App) executeScheduledJob(job ScheduledJob) {
 	}
 }
 
-// jobToMap converts a ScheduledJob to a map[string]interface{} for the API.
-func jobToMap(job *ScheduledJob) map[string]interface{} {
-	return map[string]interface{}{
-		"id":            job.ID,
-		"name":          job.Name,
-		"backup_type":   job.BackupType,
-		"backup_id":     job.BackupID,
-		"schedule":      job.ScheduleTime,
-		"use_vss":       job.UseVSS,
-		"backup_dirs":   job.BackupDirs,
-		"exclude_list":  job.ExcludeList,
-		"last_run":      job.LastRun,
-		"next_run":      job.NextRun,
-		"enabled":       job.Enabled,
+// RunScheduledJobNow starts a scheduled job immediately, ignoring its
+// schedule — an overdue or disabled job still runs, because this is an
+// explicit user action. The backup runs in the background; the returned error
+// only reports why the run could NOT be started (unknown job, already
+// running).
+//
+// In service mode the whole action is delegated to the service: it owns the
+// jobs file and the job history, so lastRun/nextRun and the history entry must
+// be written there — the GUI cannot write into the root-only state dir.
+func (a *App) RunScheduledJobNow(jobID string) error {
+	writeDebugLog(fmt.Sprintf("RunScheduledJobNow(%s) called", jobID))
+	if a.isDelegatedToService() {
+		return a.apiClient.RunScheduledJob(jobID)
 	}
+	return a.runScheduledJobNow(jobID)
+}
+
+// RunScheduledJobForAPI is the service-side entry point behind
+// POST /jobs/run/{id} (see api.BackupHandler).
+func (a *App) RunScheduledJobForAPI(jobID string) error {
+	return a.runScheduledJobNow(jobID)
+}
+
+// runScheduledJobNow resolves jobID against the stored jobs and starts the
+// run in the background. The claim is taken BEFORE spawning so a duplicate
+// start is reported to the caller rather than silently skipped.
+func (a *App) runScheduledJobNow(jobID string) error {
+	jobs, err := a.GetScheduledJobs()
+	if err != nil {
+		return fmt.Errorf("failed to load scheduled jobs: %w", err)
+	}
+	for _, job := range jobs {
+		if job.ID != jobID {
+			continue
+		}
+		if !claimJob(job.ID) {
+			return fmt.Errorf("job %q est deja en cours d'execution", job.Name)
+		}
+		writeDebugLog(fmt.Sprintf("Manual run of scheduled job: %s", job.Name))
+		go func() {
+			defer releaseJob(job.ID)
+			a.runClaimedJob(job)
+		}()
+		return nil
+	}
+	return fmt.Errorf("job planifie %q introuvable", jobID)
+}
+
+// jobToMap converts a ScheduledJob to the wire map understood by
+// SaveScheduledJobFromMap/UpdateScheduledJobFromMap on the service side.
+//
+// It is a plain JSON round-trip of the struct rather than a hand-written field
+// list: the receiving end decodes the map back into a ScheduledJob, which
+// IGNORES every key that does not match a json tag. The previous hand-picked
+// list used "schedule"/"backup_dirs"/… (no such tags), so in service mode the
+// service stored jobs with nothing but id and name — no schedule, no backup
+// directories, no compression, no drive letters — and the runAtStartup,
+// driveLetters and compression fields never even made it into the map.
+func jobToMap(job *ScheduledJob) map[string]interface{} {
+	m := map[string]interface{}{}
+	if job == nil {
+		return m
+	}
+	b, err := json.Marshal(job)
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("jobToMap: cannot marshal job %s: %v", job.ID, err))
+		return m
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		writeDebugLog(fmt.Sprintf("jobToMap: cannot decode job %s: %v", job.ID, err))
+		return map[string]interface{}{}
+	}
+	return m
 }
 
 // apiJobsToSlice converts the API's []map[string]interface{} to []ScheduledJob.
+// Every field is read under its canonical key first and under the historical
+// snake_case alias second, so a job list coming from an older service (which
+// only emitted the aliases) still decodes completely.
 func apiJobsToSlice(apiJobs []map[string]interface{}) []ScheduledJob {
 	out := make([]ScheduledJob, 0, len(apiJobs))
 	for _, m := range apiJobs {
 		j := ScheduledJob{
-			ID:           getStr(m, "id"),
-			Name:         getStr(m, "name"),
-			BackupType:   getStr(m, "backup_type"),
-			BackupID:     getStr(m, "backup_id"),
-			ScheduleTime: getStr(m, "schedule"),
-			UseVSS:       getBool(m, "use_vss"),
-			BackupDirs:   getStrSlice(m, "backup_dirs"),
-			ExcludeList:  getStrSlice(m, "exclude_list"),
-			LastRun:      getStr(m, "last_run"),
-			NextRun:      getStr(m, "next_run"),
-			Enabled:      getBool(m, "enabled"),
+			ID:           firstStr(m, "id"),
+			Name:         firstStr(m, "name"),
+			ScheduleTime: firstStr(m, "scheduleTime", "schedule"),
+			RunAtStartup: firstBool(m, "runAtStartup", "run_at_startup"),
+			BackupDirs:   firstStrSlice(m, "backupDirs", "backup_dirs"),
+			DriveLetters: firstStrSlice(m, "driveLetters", "drive_letters"),
+			BackupID:     firstStr(m, "backupId", "backup_id"),
+			UseVSS:       firstBool(m, "useVSS", "use_vss"),
+			BackupType:   firstStr(m, "backupType", "backup_type"),
+			ExcludeList:  firstStrSlice(m, "excludeList", "exclude_list"),
+			Compression:  firstStr(m, "compression"),
+			LastRun:      firstStr(m, "lastRun", "last_run"),
+			NextRun:      firstStr(m, "nextRun", "next_run"),
+			Enabled:      firstBool(m, "enabled"),
 		}
 		out = append(out, j)
 	}
@@ -768,6 +910,42 @@ func getStrSlice(m map[string]interface{}, k string) []string {
 			}
 		}
 		return out
+	}
+	return nil
+}
+
+// firstStr/firstBool/firstStrSlice return the value of the first key present,
+// so a decoded job map can use either this build's canonical keys or the
+// historical aliases a different build emitted.
+func firstStr(m map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k].(string); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+func firstBool(m map[string]interface{}, keys ...string) bool {
+	for _, k := range keys {
+		if v, ok := m[k].(bool); ok {
+			return v
+		}
+	}
+	return false
+}
+
+func firstStrSlice(m map[string]interface{}, keys ...string) []string {
+	for _, k := range keys {
+		if v, ok := m[k].([]interface{}); ok {
+			out := make([]string, 0, len(v))
+			for _, x := range v {
+				if s, ok := x.(string); ok {
+					out = append(out, s)
+				}
+			}
+			return out
+		}
 	}
 	return nil
 }

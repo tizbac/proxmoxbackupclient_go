@@ -37,7 +37,7 @@ func handleElevatedTokenFetchChild(args []string) bool {
 		if a != elevatedTokenFetchFlag || i+1 >= len(args) {
 			continue
 		}
-		handoff := args[i + 1]
+		handoff := args[i+1]
 		writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: reading %s -> %s", serviceTokenPath(), handoff))
 
 		token := ""
@@ -80,7 +80,7 @@ func elevatedFetchTokenWithHandoff() (string, error) {
 	name := tmp.Name()
 	_ = tmp.Close()
 	_ = os.Chmod(name, 0600)
-	defer os.Remove(name)
+	defer func() { _ = os.Remove(name) }()
 
 	return elevatedFetchToken(name)
 }

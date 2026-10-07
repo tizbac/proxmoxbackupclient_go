@@ -36,11 +36,9 @@ func EnsureToken(path string) (string, error) {
 		return "", fmt.Errorf("write api token %q: %w", path, err)
 	}
 
-	// Set group ownership to wheel or sudo
-	if err := setTokenFileGroup(path); err != nil {
-		// Log but don't fail - token still works for group members
-		// writeDebugLog not available in api package
-	}
+	// Set group ownership to wheel or sudo. Failure is not fatal: the token
+	// stays usable by its owner (this package has no logger to report it).
+	_ = setTokenFileGroup(path)
 
 	return t, nil
 }
@@ -72,7 +70,7 @@ func getGroupGID(name string) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {

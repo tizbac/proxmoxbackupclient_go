@@ -1,3 +1,6 @@
+// Package api implements the local HTTP API shared by the Proxmox Backup
+// Client GUI and its privileged service: the routes and token authentication
+// (Server) plus the client the GUI uses to reach the service (Client).
 package api
 
 import (
@@ -36,6 +39,10 @@ type BackupHandler interface {
 	SaveScheduledJobFromMap(job map[string]interface{}) error
 	UpdateScheduledJobFromMap(job map[string]interface{}) error
 	DeleteScheduledJobFromMap(jobID string) error
+	// Manual "run now": start a stored scheduled job immediately, ignoring its
+	// schedule. The run is asynchronous; the error only reports a job that
+	// cannot be started (unknown id, already running).
+	RunScheduledJobForAPI(jobID string) error
 	PinServerFingerprint(id, fingerprint string) error
 	StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string) error
 	// Config round-trip for the GUI in service mode: the service is the single
@@ -79,6 +86,7 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/jobs/create", s.handleJobCreate)
 	s.mux.HandleFunc("/jobs/update", s.handleJobUpdate)
 	s.mux.HandleFunc("/jobs/delete/", s.handleJobDelete)
+	s.mux.HandleFunc("/jobs/run/", s.handleJobRun)
 	s.mux.HandleFunc("/pbs/fingerprint", s.handlePinFingerprint)
 	s.mux.HandleFunc("/config", s.handleConfig)
 	s.mux.HandleFunc("/pbs/test", s.handleTestPBS)
@@ -89,7 +97,14 @@ func (s *Server) setupRoutes() {
 // Start starts the HTTP server
 func (s *Server) Start() error {
 	log.Printf("Starting API server on %s", s.addr)
-	return http.ListenAndServe(s.addr, s.authMiddleware(s.mux))
+	return http.ListenAndServe(s.addr, s.Handler())
+}
+
+// Handler returns the routed, token-authenticated handler Start() serves, so
+// the server can be mounted on an arbitrary listener (tests, embedders)
+// instead of always binding s.addr.
+func (s *Server) Handler() http.Handler {
+	return s.authMiddleware(s.mux)
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -424,6 +439,37 @@ func (s *Server) handleJobDelete(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"success": true,
 		"message": "Job deleted successfully",
+	}
+	s.writeJSON(w, resp, http.StatusOK)
+}
+
+// handleJobRun starts a stored scheduled job immediately (manual "run now"),
+// ignoring its schedule. It returns as soon as the job is claimed: the backup,
+// its history entry and the lastRun/nextRun update happen in the background.
+func (s *Server) handleJobRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract job ID from URL path: /jobs/run/{jobID}
+	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/jobs/run/"), "/")
+	if len(pathParts) == 0 || pathParts[0] == "" {
+		s.writeError(w, "Job ID required", http.StatusBadRequest)
+		return
+	}
+	jobID := pathParts[0]
+
+	if err := s.app.RunScheduledJobForAPI(jobID); err != nil {
+		// 409: the caller's view (job list) is stale or the job is already
+		// running — not a server-side failure of the request itself.
+		s.writeError(w, fmt.Sprintf("Failed to run job: %v", err), http.StatusConflict)
+		return
+	}
+
+	resp := map[string]interface{}{
+		"success": true,
+		"message": "Job started",
 	}
 	s.writeJSON(w, resp, http.StatusOK)
 }

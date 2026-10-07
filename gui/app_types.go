@@ -9,11 +9,11 @@ import (
 
 // App struct contains the application state
 type App struct {
-	ctx              context.Context
-	config           *Config
-	stopScheduler    chan struct{}
-	apiClient        *api.Client
-	mode             api.ExecutionMode
+	ctx           context.Context
+	config        *Config
+	stopScheduler chan struct{}
+	apiClient     *api.Client
+	mode          api.ExecutionMode
 	// standaloneReason records WHY the GUI is in standalone mode:
 	// "forced" (--standalone flag), "no_service" (service unreachable),
 	// "auth_failed" (service running but token could not be acquired), ""
@@ -22,6 +22,11 @@ type App struct {
 	callbacksMap     map[string]*progressCallbacks
 	callbacksMutex   sync.RWMutex
 	isServiceProcess bool // True if running as Windows Service (never re-detect mode)
+	// scheduledBackupFn, when set, replaces the backup a scheduled job runs.
+	// It exists for tests: the scheduler bookkeeping (history, lastRun/nextRun,
+	// duplicate guard, run-now) must be testable without a real PBS server.
+	// Production leaves it nil and routes through StartBackup.
+	scheduledBackupFn func(job ScheduledJob) error
 }
 
 // isDelegatedToService reports whether this (non-service) GUI process is

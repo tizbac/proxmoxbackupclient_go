@@ -20,3 +20,5 @@ use (
 	./gui
 	./nbd
 )
+
+use ./gui/api

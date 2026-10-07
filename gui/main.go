@@ -134,6 +134,16 @@ func main() {
 	app.standaloneReason = standaloneReason
 	writeDebugLog("App instance created")
 
+	// Service mode: config.json lives in a root-only state directory (0700 via
+	// systemd StateDirectoryMode=), so LoadConfig() inside NewApp() could not
+	// read it — its result is empty. Fetch the sanitized document from the
+	// service BEFORE the window opens: the frontend asks for the server list on
+	// mount, and an async hydration would race it (saved servers "not showing
+	// up" after a restart of the GUI).
+	if execMode == api.ModeService {
+		app.hydrateFromService()
+	}
+
 	// Create application options
 	appOptions := &options.App{
 		Title:     fmt.Sprintf("%s v%s", BrandFromExecutable().Title, appVersion),
@@ -460,7 +470,7 @@ func requestElevationLinux() error {
 func requestElevationWindows() error {
 	// Wails provides a way to restart with admin rights
 	// This is a placeholder - actual implementation uses wails runtime
-	return fmt.Errorf("Windows elevation should use Wails runtime")
+	return fmt.Errorf("windows elevation should use the Wails runtime")
 }
 
 // requestElevationDarwin uses osascript to request admin privileges
@@ -552,37 +562,84 @@ func (a *App) DiagnoseConfig() map[string]interface{} {
 	}
 }
 
-// SaveConfig saves the configuration
-func (a *App) SaveConfig(config *Config) error {
-	// In service mode the GUI delegates the write to the service, which owns
-	// the privileged config file (root/SYSTEM-only). The GUI's local config
-	// is hydrated from the service via GetFullConfig; SaveConfig here is only
-	// invoked by the frontend in standalone mode.
-	if a.isDelegatedToService() {
-		return a.pushConfigToService()
+// hydrateFromService replaces the in-memory config with the sanitized document
+// the service holds. In service mode the config files are root/SYSTEM-only, so
+// the service API — not the local file — is the only source the GUI can read:
+// startup, ReloadConfig and a service-mode save all go through here. Returns
+// false when the service could not be reached, leaving the current config
+// untouched.
+func (a *App) hydrateFromService() bool {
+	if a.apiClient == nil {
+		return false
 	}
+	doc, err := a.apiClient.GetFullConfig()
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("hydrateFromService: %v", err))
+		return false
+	}
+	a.config = parseFullConfig(doc)
+	writeDebugLog(fmt.Sprintf("Config hydrated from the service (%d PBS server(s))", len(a.config.PBSServers)))
+	return true
+}
 
-	// M-04: the frontend never receives the stored secrets (GetConfigWithHostname
-	// returns "" + a *_set marker), so an empty value here means "keep the existing
-	// one", not "clear it". Only overwrite when the user supplied a new value.
-	if a.config != nil {
-		if config.Secret == "" {
-			config.Secret = a.config.Secret
+// SaveConfig saves the configuration submitted by the legacy settings form.
+//
+// The form carries only the legacy top-level fields (the incoming value has a
+// nil PBS server map), so it is MERGED over the stored config: assigning it
+// directly would silently drop every saved server and the default server id.
+// An empty secret/password keeps the stored one (M-04).
+func (a *App) SaveConfig(config *Config) error {
+	merged := a.config
+	if a.config != nil && config != nil {
+		next := *a.config
+		next.BaseURL = config.BaseURL
+		next.CertFingerprint = config.CertFingerprint
+		next.AuthID = config.AuthID
+		next.Datastore = config.Datastore
+		next.Namespace = config.Namespace
+		next.EncryptionKeyFile = config.EncryptionKeyFile
+		next.BackupDir = config.BackupDir
+		next.BackupID = config.BackupID
+		next.UseVSS = config.UseVSS
+		// M-04: the frontend never receives the stored secrets, so an empty
+		// value means "keep the existing one", not "clear it".
+		if config.Secret != "" {
+			next.Secret = config.Secret
 		}
-		if config.SMTPPassword == "" {
-			config.SMTPPassword = a.config.SMTPPassword
+		if config.SMTPPassword != "" {
+			next.SMTPPassword = config.SMTPPassword
 		}
+		if next.AuthID != "" {
+			// One legacy method only, like every other save path.
+			next.Username = ""
+			next.Password = ""
+		}
+		merged = &next
 	}
 
 	// Log sanitized config (no secrets)
-	writeDebugLog(fmt.Sprintf("SaveConfig() called: URL=%s, AuthID=%s, Datastore=%s, BackupID=%s",
-		security.SanitizeURL(config.BaseURL),
-		config.AuthID,
-		config.Datastore,
-		config.BackupID))
+	if merged != nil {
+		writeDebugLog(fmt.Sprintf("SaveConfig() called: URL=%s, AuthID=%s, Datastore=%s, BackupID=%s",
+			security.SanitizeURL(merged.BaseURL),
+			merged.AuthID,
+			merged.Datastore,
+			merged.BackupID))
+	}
 
-	// Validate before saving
-	if err := config.Validate(); err != nil {
+	// In service mode the GUI delegates the write to the service, which owns
+	// the privileged config file (root/SYSTEM-only) and re-validates the whole
+	// document (including the per-server credentials) before storing it.
+	if a.isDelegatedToService() {
+		a.config = merged
+		return a.pushConfigToService()
+	}
+	if merged == nil {
+		return fmt.Errorf("configuration vide")
+	}
+
+	// Validate per part: a multi-PBS-only config has no legacy BaseURL and must
+	// not be rejected for missing legacy credentials (they live per server).
+	if err := merged.validatePBSFields(); err != nil {
 		writeDebugLog(fmt.Sprintf("Config validation failed: %v", err))
 		return err
 	}
@@ -590,26 +647,27 @@ func (a *App) SaveConfig(config *Config) error {
 	// Unlock the key BEFORE persisting so the runtime-only Crypt matches what is
 	// about to be written, and so an unusable key is reported without having
 	// saved a config that cannot be used.
-	if err := config.loadCryptConfig(); err != nil {
+	if err := merged.loadCryptConfig(); err != nil {
 		writeDebugLog(fmt.Sprintf("Encryption key load failed: %v", err))
 		return err
 	}
 
 	// Save to disk
-	if err := config.Save(); err != nil {
+	if err := merged.Save(); err != nil {
 		writeDebugLog(fmt.Sprintf("Config save to disk failed: %v", err))
 		return err
 	}
 
 	// Update in-memory config
-	a.config = config
+	a.config = merged
 	writeDebugLog("Config saved successfully and loaded into app")
 	return nil
 }
 
-// pushConfigToService sends the current (sanitized) config document to the
-// service via /config POST. Empty secrets in the document mean "keep existing"
-// on the service side. The GUI never receives or resends real secrets.
+// pushConfigToService sends the current config document to the service via
+// /config POST. Credentials this GUI knows (typed in the current session) are
+// transmitted so the service can store them; empty ones mean "keep existing"
+// there — the stored secrets never leave the service.
 func (a *App) pushConfigToService() error {
 	if a.apiClient == nil {
 		return fmt.Errorf("no API client for service mode")
@@ -741,10 +799,18 @@ func (a *App) GetLastBackupDirs() []string {
 	return a.config.LastBackupDirs
 }
 
-// ReloadConfig reloads configuration from disk (for service when config changes)
+// ReloadConfig reloads the configuration. In service mode the state directory
+// is root-only, so reloading from disk would wipe the in-memory config (and
+// with it every saved server): the service API is the source of truth there.
 func (a *App) ReloadConfig() {
-	newConfig := LoadConfig()
-	a.config = newConfig
+	if a.isDelegatedToService() {
+		if a.hydrateFromService() {
+			return
+		}
+		writeDebugLog("ReloadConfig: service unreachable, keeping the in-memory config")
+		return
+	}
+	a.config = LoadConfig()
 	writeDebugLog("Config reloaded from disk")
 }
 
@@ -752,6 +818,13 @@ func (a *App) ReloadConfig() {
 
 // ListPBSServers returns all configured PBS servers
 func (a *App) ListPBSServers() []*PBSServer {
+	// An empty list in service mode means either "the user deleted everything"
+	// or "startup hydration failed" (service restarted, token rotated…). Ask the
+	// service once more instead of reporting an empty list, so saved servers
+	// always show up after a GUI restart.
+	if a.isDelegatedToService() && len(a.config.PBSServers) == 0 {
+		a.hydrateFromService()
+	}
 	// In service mode the config is hydrated from the service; return it directly.
 	servers := a.config.ListPBSServers()
 	writeDebugLog(fmt.Sprintf("ListPBSServers() returned %d servers", len(servers)))
@@ -791,16 +864,16 @@ func (a *App) AddPBSServer(pbs *PBSServer) error {
 // UpdatePBSServer updates an existing PBS server
 func (a *App) UpdatePBSServer(pbs *PBSServer) error {
 	writeDebugLog(fmt.Sprintf("UpdatePBSServer(%s) called", pbs.ID))
-	// M-04: the frontend never receives the token (sanitized), so an empty secret
-	// on update means "keep the stored one", not "clear it".
-	if pbs.Secret == "" {
-		if existing, err := a.config.GetPBSServer(pbs.ID); err == nil && existing != nil {
-			pbs.Secret = existing.Secret
-		}
-	}
 
+	// The "empty = keep the stored credential" resolution happens inside
+	// UpdatePBSServerMem (normalizeServerAuth): it knows the auth method, so a
+	// switch to user/password no longer inherits the old token secret and a
+	// changed authid no longer silently reuses the old secret.
 	if a.isDelegatedToService() {
-		if err := a.config.UpdatePBSServerMem(pbs); err != nil {
+		// This process never received the stored secret/password (M-04): an empty
+		// value here means "keep", and the service — which holds them — performs
+		// the final credential check while saving the pushed document.
+		if err := a.config.UpdatePBSServerMem(pbs, false); err != nil {
 			return err
 		}
 		return a.pushConfigToService()
@@ -1352,7 +1425,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	// Validate backup devices
 	for _, device := range backupDevices {
 		if device == "" {
-			return fmt.Errorf("One or more devices are empty")
+			return fmt.Errorf("one or more devices are empty")
 		}
 	}
 
