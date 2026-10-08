@@ -586,6 +586,9 @@ const translations = {
       confirmDeleteServer: "Voulez-vous vraiment supprimer le serveur PBS \"{id}\" ?",
       confirmDeleteJob: "Voulez-vous vraiment supprimer le jeu de sauvegarde \"{name}\" ?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Formé du nom de cet ordinateur et du nom de l'ensemble, pour que les ensembles de cet ordinateur restent groupés sur PBS. Saisissez le vôtre pour le remplacer.",
+    backupIdUseSuggested: "Utiliser {id}",
+    backupIdChangeNote: "(un nouvel ID crée un nouveau groupe sur PBS : sa première sauvegarde incrémentielle lit tous les fichiers, et les sauvegardes précédentes restent sous l'ancien ID)",
     setMoreMenu: "Plus",
     nextRunAt: "Prochaine exécution",
     nextRunDue: "maintenant",
@@ -1337,6 +1340,9 @@ const translations = {
       confirmDeleteServer: "Do you really want to delete the PBS server \"{id}\"?",
       confirmDeleteJob: "Do you really want to delete the Backup Set \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Made from this computer's name and the set's name, so this computer's sets sit together on PBS. Type to choose your own.",
+    backupIdUseSuggested: "Use {id}",
+    backupIdChangeNote: "(a new ID starts a new group on PBS: its first incremental run reads every file, and earlier backups stay under the old ID)",
     setMoreMenu: "More",
     nextRunAt: "Next run",
     nextRunDue: "due now",
@@ -2088,6 +2094,9 @@ const translations = {
       confirmDeleteServer: "Vuoi davvero eliminare il server PBS \"{id}\"?",
       confirmDeleteJob: "Vuoi davvero eliminare il set di backup \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Composto dal nome di questo computer e dal nome del set, così i set di questo computer restano vicini su PBS. Scrivine uno tuo per cambiarlo.",
+    backupIdUseSuggested: "Usa {id}",
+    backupIdChangeNote: "(un nuovo ID crea un nuovo gruppo su PBS: il primo backup incrementale legge tutti i file e i backup precedenti restano sotto il vecchio ID)",
     setMoreMenu: "Altro",
     nextRunAt: "Prossima esecuzione",
     nextRunDue: "ora",
@@ -2839,6 +2848,9 @@ const translations = {
       confirmDeleteServer: "Möchten Sie wirklich den PBS-Server \"{id}\" löschen?",
       confirmDeleteJob: "Möchten Sie das Sicherungsset \"{name}\" wirklich löschen?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Aus dem Namen dieses Computers und dem Namen des Satzes gebildet, damit die Sätze dieses Computers auf PBS beieinander stehen. Eigene ID eintippen, um sie zu ändern.",
+    backupIdUseSuggested: "{id} verwenden",
+    backupIdChangeNote: "(eine neue ID beginnt eine neue Gruppe auf PBS: ihr erster inkrementeller Lauf liest jede Datei, frühere Sicherungen bleiben unter der alten ID)",
     setMoreMenu: "Mehr",
     nextRunAt: "Nächster Lauf",
     nextRunDue: "jetzt fällig",
@@ -3590,6 +3602,9 @@ const translations = {
       confirmDeleteServer: "Czy naprawdę chcesz usunąć serwer PBS \"{id}\"?",
       confirmDeleteJob: "Czy naprawdę chcesz usunąć zestaw kopii zapasowej \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Utworzony z nazwy tego komputera i nazwy zestawu, aby zestawy tego komputera były razem na PBS. Wpisz własny, aby go zmienić.",
+    backupIdUseSuggested: "Użyj {id}",
+    backupIdChangeNote: "(nowy ID zakłada nową grupę na PBS: pierwsza kopia przyrostowa odczyta każdy plik, a wcześniejsze kopie zostaną pod starym ID)",
     setMoreMenu: "Więcej",
     nextRunAt: "Następne uruchomienie",
     nextRunDue: "teraz",
@@ -4343,6 +4358,9 @@ const translations = {
       confirmDeleteServer: "¿Realmente desea eliminar el servidor PBS \"{id}\"?",
       confirmDeleteJob: "¿Realmente desea eliminar el conjunto de copia de seguridad \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Formado con el nombre de este equipo y el del conjunto, para que los conjuntos de este equipo queden juntos en PBS. Escriba el suyo para cambiarlo.",
+    backupIdUseSuggested: "Usar {id}",
+    backupIdChangeNote: "(un ID nuevo crea un grupo nuevo en PBS: su primera copia incremental lee todos los archivos y las copias anteriores quedan con el ID antiguo)",
     setMoreMenu: "Más",
     nextRunAt: "Próxima ejecución",
     nextRunDue: "ahora",
@@ -5092,6 +5110,9 @@ const translations = {
       confirmDeleteServer: "Наистина ли искате да изтриете PBS сървъра „{id}“?",
       confirmDeleteJob: "Наистина ли искате да изтриете набора за архивиране „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Съставен от името на този компютър и името на набора, за да са наборите на този компютър заедно в PBS. Въведете свой, за да го смените.",
+    backupIdUseSuggested: "Използвай {id}",
+    backupIdChangeNote: "(нов ID започва нова група в PBS: първото ѝ инкрементално копие чете всеки файл, а по-старите копия остават под стария ID)",
     setMoreMenu: "Още",
     nextRunAt: "Следващо изпълнение",
     nextRunDue: "сега",
@@ -5841,6 +5862,9 @@ const translations = {
       confirmDeleteServer: "Opravdu chcete smazat PBS server „{id}“?",
       confirmDeleteJob: "Opravdu chcete smazat sadu záloh „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Složeno z názvu tohoto počítače a názvu sady, aby sady tohoto počítače byly v PBS pohromadě. Napište vlastní, chcete-li jej změnit.",
+    backupIdUseSuggested: "Použít {id}",
+    backupIdChangeNote: "(nové ID založí v PBS novou skupinu: její první přírůstková záloha přečte každý soubor a dřívější zálohy zůstanou pod starým ID)",
     setMoreMenu: "Další",
     nextRunAt: "Další spuštění",
     nextRunDue: "nyní",
@@ -6590,6 +6614,9 @@ const translations = {
       confirmDeleteServer: "Θέλετε πραγματικά να διαγράψετε τον διακομιστή PBS „{id}“;",
       confirmDeleteJob: "Θέλετε πραγματικά να διαγράψετε το Σύνολο Αντιγράφων Ασφαλείας „{name}“;",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Από το όνομα αυτού του υπολογιστή και το όνομα του συνόλου, ώστε τα σύνολα του υπολογιστή να είναι μαζί στο PBS. Πληκτρολογήστε δικό σας για αλλαγή.",
+    backupIdUseSuggested: "Χρήση {id}",
+    backupIdChangeNote: "(νέο ID ξεκινά νέα ομάδα στο PBS: το πρώτο σταδιακό αντίγραφο διαβάζει κάθε αρχείο και τα προηγούμενα μένουν στο παλιό ID)",
     setMoreMenu: "Περισσότερα",
     nextRunAt: "Επόμενη εκτέλεση",
     nextRunDue: "τώρα",
@@ -7339,6 +7366,9 @@ const translations = {
       confirmDeleteServer: "Valóban törli a „{id}” PBS szervert?",
       confirmDeleteJob: "Valóban törli a „{name}” Mentési Készletet?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "A számítógép és a készlet nevéből képezve, így a gép készletei együtt látszanak a PBS-en. Írjon be sajátot a módosításhoz.",
+    backupIdUseSuggested: "{id} használata",
+    backupIdChangeNote: "(új ID új csoportot kezd a PBS-en: az első növekményes mentése minden fájlt beolvas, a korábbi mentések a régi ID alatt maradnak)",
     setMoreMenu: "Továbbiak",
     nextRunAt: "Következő futás",
     nextRunDue: "most esedékes",
@@ -8088,6 +8118,9 @@ const translations = {
       confirmDeleteServer: "Vai tiešām vēlaties dzēst PBS serveri „{id}”?",
       confirmDeleteJob: "Vai tiešām vēlaties dzēst Dublēšanas Kopu „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Veidots no šī datora nosaukuma un kopas nosaukuma, lai šī datora kopas PBS būtu kopā. Ierakstiet savu, lai to mainītu.",
+    backupIdUseSuggested: "Izmantot {id}",
+    backupIdChangeNote: "(jauns ID sāk jaunu grupu PBS: tās pirmā inkrementālā dublēšana nolasa katru failu, un iepriekšējās dublējumkopijas paliek zem vecā ID)",
     setMoreMenu: "Vairāk",
     nextRunAt: "Nākamā palaišana",
     nextRunDue: "tagad",
@@ -8837,6 +8870,9 @@ const translations = {
       confirmDeleteServer: "Ar tikrai norite ištrinti PBS serverį „{id}“?",
       confirmDeleteJob: "Ar tikrai norite ištrinti Atsarginio Kopijavimo Rinkinį „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Sudaryta iš šio kompiuterio ir rinkinio pavadinimų, kad šio kompiuterio rinkiniai PBS būtų kartu. Įveskite savo, jei norite pakeisti.",
+    backupIdUseSuggested: "Naudoti {id}",
+    backupIdChangeNote: "(naujas ID pradeda naują grupę PBS: pirmoji prieauginė kopija perskaito kiekvieną failą, o ankstesnės kopijos lieka po senuoju ID)",
     setMoreMenu: "Daugiau",
     nextRunAt: "Kitas paleidimas",
     nextRunDue: "dabar",
@@ -9586,6 +9622,9 @@ const translations = {
       confirmDeleteServer: "Wilt u de PBS-server „{id}” echt verwijderen?",
       confirmDeleteJob: "Wilt u de Backup Set „{name}” echt verwijderen?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Gemaakt van de naam van deze computer en de naam van de set, zodat de sets van deze computer samen staan op PBS. Typ uw eigen ID om die te wijzigen.",
+    backupIdUseSuggested: "{id} gebruiken",
+    backupIdChangeNote: "(een nieuwe ID begint een nieuwe groep op PBS: de eerste incrementele back-up leest elk bestand en eerdere back-ups blijven onder de oude ID)",
     setMoreMenu: "Meer",
     nextRunAt: "Volgende uitvoering",
     nextRunDue: "nu",
@@ -10335,6 +10374,9 @@ const translations = {
       confirmDeleteServer: "Deseja realmente eliminar o servidor PBS „{id}”?",
       confirmDeleteJob: "Deseja realmente eliminar o Conjunto de Backup „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Formado pelo nome deste computador e o do conjunto, para os conjuntos deste computador ficarem juntos no PBS. Escreva o seu para o alterar.",
+    backupIdUseSuggested: "Usar {id}",
+    backupIdChangeNote: "(um novo ID inicia um novo grupo no PBS: a primeira cópia incremental lê todos os ficheiros e as cópias anteriores ficam com o ID antigo)",
     setMoreMenu: "Mais",
     nextRunAt: "Próxima execução",
     nextRunDue: "agora",
@@ -11084,6 +11126,9 @@ const translations = {
       confirmDeleteServer: "Doriți cu adevărat să ștergeți serverul PBS „{id}”?",
       confirmDeleteJob: "Doriți cu adevărat să ștergeți Setul de Backup „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Format din numele acestui calculator și numele setului, ca seturile acestui calculator să stea împreună în PBS. Scrieți propriul ID pentru a-l schimba.",
+    backupIdUseSuggested: "Folosește {id}",
+    backupIdChangeNote: "(un ID nou începe un grup nou în PBS: prima copie incrementală citește fiecare fișier, iar copiile anterioare rămân sub ID-ul vechi)",
     setMoreMenu: "Mai mult",
     nextRunAt: "Următoarea rulare",
     nextRunDue: "acum",
@@ -11833,6 +11878,9 @@ const translations = {
       confirmDeleteServer: "Naozaj chcete odstrániť PBS server „{id}”?",
       confirmDeleteJob: "Naozaj chcete odstrániť Zálohovaciu Sadu „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Zložené z názvu tohto počítača a názvu sady, aby sady tohto počítača boli v PBS spolu. Napíšte vlastné, ak ho chcete zmeniť.",
+    backupIdUseSuggested: "Použiť {id}",
+    backupIdChangeNote: "(nové ID založí v PBS novú skupinu: jej prvá prírastková záloha prečíta každý súbor a skoršie zálohy zostanú pod starým ID)",
     setMoreMenu: "Viac",
     nextRunAt: "Ďalšie spustenie",
     nextRunDue: "teraz",
@@ -12582,6 +12630,9 @@ const translations = {
       confirmDeleteServer: "„{id}” PBS sunucusunu gerçekten silmek istiyor musunuz?",
       confirmDeleteJob: "„{name}” Yedekleme Setini gerçekten silmek istiyor musunuz?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Bu bilgisayarın adından ve setin adından oluşturuldu; böylece bu bilgisayarın setleri PBS'de bir arada durur. Değiştirmek için kendinizinkini yazın.",
+    backupIdUseSuggested: "{id} kullan",
+    backupIdChangeNote: "(yeni bir ID PBS'de yeni bir grup başlatır: ilk artımlı yedekleme her dosyayı okur, önceki yedekler eski ID altında kalır)",
     setMoreMenu: "Daha fazla",
     nextRunAt: "Sonraki çalıştırma",
     nextRunDue: "şimdi",
@@ -13331,6 +13382,9 @@ const translations = {
       confirmDeleteServer: "Ви дійсно хочете видалити сервер PBS „{id}”?",
       confirmDeleteJob: "Ви дійсно хочете видалити Набір резервного копіювання „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    backupIdSuggested: "Складено з назви цього комп'ютера та назви набору, щоб набори цього комп'ютера були разом у PBS. Введіть власний, щоб змінити.",
+    backupIdUseSuggested: "Використати {id}",
+    backupIdChangeNote: "(новий ID починає нову групу в PBS: її перше інкрементне копіювання читає кожен файл, а попередні копії лишаються під старим ID)",
     setMoreMenu: "Більше",
     nextRunAt: "Наступний запуск",
     nextRunDue: "зараз",

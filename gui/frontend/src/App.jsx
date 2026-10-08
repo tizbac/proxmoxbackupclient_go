@@ -13,6 +13,7 @@ import PassphraseModal from './components/PassphraseModal'
 import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
 import EncryptionKeyField from './components/EncryptionKeyField'
 import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTools'
+import { suggestBackupId } from './backupId'
 // Wails runtime imports (will be available when built with Wails)
 let OpenSnapshotTree, ListSnapshotChildren, SnapshotSelectionBytes
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
@@ -393,6 +394,10 @@ function App() {
   const [serverTab, setServerTab] = useState('server') // active category tab in the server form
 
   const [backupType, setBackupType] = useState('directory')
+  // While true, a folder Backup Set's ID follows its name (suggestBackupId):
+  // on for a new or cloned set until the ID is typed by hand, off when an
+  // existing set is edited (changing its ID would start a new group on PBS).
+  const [backupIdAuto, setBackupIdAuto] = useState(false)
   const [backupDirs, setBackupDirs] = useState('')
   const [selectedDrives, setSelectedDrives] = useState([])
   const [physicalDisks, setPhysicalDisks] = useState([])
@@ -438,6 +443,15 @@ function App() {
   // The Backup Set the Undelete and Roll back pages work on (the set card
   // shortcuts pick it before switching page).
   const [setToolJobId, setSetToolJobId] = useState('')
+  // Backup IDs other sets use, so a suggestion never shares one.
+  const takenBackupIds = (exceptJobId) => scheduledJobs.filter(j => j.id !== exceptJobId).map(j => j.backupId)
+  const suggestedBackupId = (name) => suggestBackupId(name, hostname, takenBackupIds(editingJobId))
+  // Switching a new set between folder and machine: folder sets get the
+  // suggestion, machine sets the computer's name (what bare-metal restore lists).
+  useEffect(() => {
+    if (!backupIdAuto || backupMode !== 'scheduled') return
+    setConfig(c => ({...c, 'backup-id': backupType === 'machine' ? hostname : suggestedBackupId(jobName)}))
+  }, [backupType])
   // Which Backup Set card has its More menu open (null: none).
   const [openSetMenu, setOpenSetMenu] = useState(null)
   useEffect(() => {
@@ -3451,7 +3465,10 @@ function App() {
                     setExcludeList('')
                     setTreeExcludes([])
                     setBackupType('directory')
-                    if (!config['backup-id']) setConfig({...config, 'backup-id': hostname})
+                    // Not the last edited set's ID: that is how two sets came
+                    // to share one backup group.
+                    setConfig({...config, 'backup-id': suggestBackupId('', hostname, takenBackupIds(null))})
+                    setBackupIdAuto(true)
                     setBackupPBSID(defaultPBSID)
                     setEmailOnSuccess(false); setEmailOnSuccessTo('')
                     setEmailOnFailure(false); setEmailOnFailureTo('')
@@ -3610,6 +3627,7 @@ function App() {
                               // empty even though the job has real disks configured.
                               setSelectedDrives(job.driveLetters || [])
                               setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
+                              setBackupIdAuto(false)
                               setBackupType(job.backupType)
                               applyVmFieldsFromJob(job)
                               setBackupPBSID(job.pbsServerId || defaultPBSID)
@@ -3670,7 +3688,12 @@ function App() {
                                     setDaysOfWeek(job.daysOfWeek && job.daysOfWeek.length > 0 ? job.daysOfWeek : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
                                     setBackupDirs(job.backupDirs.join('\n'))
                                     setSelectedDrives(job.driveLetters || [])
-                                    setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
+                                    {
+                                      const cloneName = t('cloneNameSuffix').replace('{name}', job.name || '')
+                                      const ownId = job.backupType === 'machine' ? job.backupId : suggestBackupId(cloneName, hostname, takenBackupIds(null))
+                                      setConfig({...config, 'backup-id': ownId, usevss: job.useVSS})
+                                      setBackupIdAuto(job.backupType !== 'machine')
+                                    }
                                     setBackupType(job.backupType)
                                     applyVmFieldsFromJob(job)
                                     setBackupPBSID(job.pbsServerId || defaultPBSID)
@@ -3759,7 +3782,12 @@ function App() {
                 <input
                   type="text"
                   value={jobName}
-                  onChange={(e) => setJobName(e.target.value)}
+                  onChange={(e) => {
+                    setJobName(e.target.value)
+                    if (backupIdAuto && backupType !== 'machine') {
+                      setConfig(c => ({...c, 'backup-id': suggestedBackupId(e.target.value)}))
+                    }
+                  }}
                   placeholder={t('backupSetNamePlaceholder')}
                   style={{width: '100%', maxWidth: '400px'}}
                 />
@@ -4074,11 +4102,27 @@ function App() {
               <input
                 type="text"
                 value={config['backup-id']}
-                onChange={(e) => setConfig({...config, 'backup-id': e.target.value})}
+                onChange={(e) => { setConfig({...config, 'backup-id': e.target.value}); setBackupIdAuto(false) }}
                 placeholder={t('backupIDPlaceholder')}
               />
               <span style={{fontSize: '12px', color: '#999'}}>{t('backupIdDefaultNote')}</span>
             </div>
+            {backupMode === 'scheduled' && backupType !== 'machine' && (() => {
+              if (backupIdAuto) {
+                return <div style={{fontSize: '12px', color: '#4a5568', marginTop: '4px'}}>
+                  {tl('backupIdSuggested', 'Made from this computer\'s name and the set\'s name, so this computer\'s sets sit together on PBS. Type to choose your own.')}
+                </div>
+              }
+              const suggestion = suggestedBackupId(jobName)
+              if (!editingJobId || !jobName.trim() || suggestion === (config['backup-id'] || '')) return null
+              return <div style={{fontSize: '12px', color: '#4a5568', marginTop: '4px'}}>
+                <button type="button" className="link-button" onClick={() => setConfig({...config, 'backup-id': suggestion})}
+                  style={{background: 'none', border: 'none', padding: 0, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px'}}>
+                  {tl('backupIdUseSuggested', 'Use {id}').replace('{id}', suggestion)}
+                </button>{' '}
+                {tl('backupIdChangeNote', '(a new ID starts a new group on PBS: its first incremental run reads every file, and earlier backups stay under the old ID)')}
+              </div>
+            })()}
           </div>
           )}
 
