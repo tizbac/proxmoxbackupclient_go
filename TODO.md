@@ -587,16 +587,27 @@ Found 2026-10-08: datastore prune job `pbs-prune` (04:00, keep-daily 7, weekly 4
 
 #### Phase 4: finish
 - [x] Side menu: add the two items (nav-btn, activeTab 'undelete' / 'rollback'), shortcuts on the set cards, and keep the progress card visible on both pages while a restore runs (it is the restore card).
-- [ ] Translations (18 languages), GUI manual sections (new chapters for Undelete and Roll back, menu list in the overview), README feature list, CHANGELOG.
+- [x] Translations (18 languages), GUI manual sections (new chapters for Undelete and Roll back, menu list in the overview), README feature list, CHANGELOG. Done 2026-10-08, plus scan progress ("x of about y"), scans about 10 times quicker, in-app confirm dialogs, Tools menu entries.
 - [x] Live tests on pbs-test with a fixture tree (delete, change, add, rename; then undelete and each roll back policy; compare SHA-256 with the original tree; Undo roll back returns the pre roll back state exactly). Scale test on deepthought-data: time and memory of the compare, and an undelete of a few hundred scattered files.
 - [ ] Later, optional: CLI `proxmoxbackup-directory -undelete / -rollback` on the same engine.
 
 Order: phase 0 now, then 1, 2, 3. Undelete is useful on its own after phase 2.
 
+### 💽 Restore files from a machine (disk image) backup (Mick, 2026-10-08)
+Today a machine backup (`drive-*.img.fidx`, host or vm) can only be restored whole: bare-metal restore with the ISO, or a VM restore in Proxmox VE. To get a few files back you need Linux (`proxmoxbackup-nbd` attaches the image read-only as `/dev/nbdN`, then mount and copy, see docs/manual/CLI.md) or PVE's File Restore on a `vm/<id>` snapshot (not yet tried on images this client writes). Goal: browse a disk image in the GUI's Restore page, tick files and folders, and restore them, like a folder backup, on Windows and Linux, with nothing mounted by the OS.
+- [ ] **Read the image on demand.** Random access over the fixed index (the restore code already fetches any chunk by index, with a chunk cache), so browsing touches only the chunks it needs, not the whole disk.
+- [ ] **Partitions.** Read MBR and GPT, list partitions with type, size and label, and pick the ones with a filesystem we can read. Skip MSR, EFI-only and recovery partitions by default but allow them.
+- [ ] **NTFS (first).** A pure-Go read-only NTFS reader over that `io.ReaderAt` (candidate: `www.velocidex.com/golang/go-ntfs`, used by Velociraptor). Folder tree with sizes and times, file contents including fragmented and compressed files; ADS and EFS-encrypted files listed but skipped with a note. Restored files get times and, when restoring as administrator, the security descriptor from `$Secure`, as folder restore does.
+- [ ] **Linux filesystems (later).** ext4 first (a pure-Go reader, or on Linux only the NBD attach that `proxmoxbackup-nbd` already does), then XFS. FAT32/exFAT for EFI and data sticks if cheap.
+- [ ] **GUI.** In Restore, a machine snapshot shows its disks, then partitions, then the same folder tree, search, tick boxes, "Restore to" choices, restore card and Reports row as a folder snapshot ("Restore from disk image: N files"). Search across a large partition reads the MFT once and caches the index locally (as Undelete caches catalogs).
+- [ ] **Speed check.** Listing the MFT of a 500 GB NTFS volume touches maybe 1 to 2 GB of chunks; measure on deepthought's `vm/9000198` and a laptop image; cache MFT-derived indexes like the Undelete catalogs.
+- [ ] **Quick test first:** try PVE File Restore on deepthought's `vm/9000198` snapshot and note whether it works on this client's images (if so, document it as the interim way).
+- [ ] Docs: GUI manual Restore chapter, CLI manual note, CHANGELOG.
+
 ### ⚠️ Warn when a Metadata Backup Set shares its backup ID with another set (2026-10-07)
 Metadata change detection compares with the NEWEST snapshot in the backup group. On deepthought the production sets "Beeby Property", "Beeby Trading" and "Data" all used backup ID `deepthought`, so any other set running between two Data runs would have forced a full 448 GB read; fixed by giving Data its own ID `deepthought-data`.
 - [ ] Backup Set editor: warn (not block) when a Data/Metadata set has the same server + backup ID as another set, and suggest a unique ID.
-- [ ] Possibly default new sets to `<hostname>-<set name>` style IDs.
+- [x] Possibly default new sets to `<hostname>-<set name>` style IDs. Done 2026-10-08: suggested Backup ID (`deepthought-data`), tolerant of a typo in the computer's name, unique among the sets.
 
 ### \U0001F41B Selective restore from a SPLIT (metadata-mode) snapshot downloads most of the data between the selected folders (2026-10-07)
 Seen live on deepthought: 4 folders from deepthought-data (480 GB, 158,801 payload chunks) to F:\TestRestore; after 6.5 min ~10,080 chunks (~30 GB) fetched vs ~7.9 GB written, "written" stalling while fetching continued. Diagnosis (branch pxar-v2-read):
@@ -700,6 +711,12 @@ New Clone button next to Edit/Delete on each Backup Set row, reusing Edit's fiel
 but leaving `editingJobId` unset so Save creates a new job (`SaveScheduledJob`) instead of updating
 the original (`UpdateScheduledJob`). Name defaults to "{name} (copy)" (all 6 languages), editable
 before the first save. `lastRun`/history reset for free since the clone gets its own fresh ID.
+
+### 🛡️ BMR: never offer the boot stick as the restore target (Ventoy, USB SSDs) (2026-10-08)
+`ocs-pbs-bare-metal-restore` step 8 picks the target from `/sys/block`, skipping only nbd, loop, sr, ram and devices with `removable=1`. Booted from a Ventoy stick, the ISO is mapped through device-mapper (`dm-*`, not removable), and a USB SSD stick often reports `removable=0`, so the stick becomes a candidate: the restore asks which disk instead of picking the only internal one. The confirmation screen (disk and size) still guards it, but it should not be offered at all.
+- [ ] Also skip `dm-*` and `zram*`, and the disk(s) behind the live medium: `findmnt -no SOURCE /run/live/medium` (or Ventoy's `/dev/mapper/ventoy`), its parent disk (`lsblk -no PKNAME`) and a dm device's `slaves/`.
+- [ ] Rebuild the ISO (patch-clonezilla.sh on VM140), test from a dd-written stick, a Ventoy stick (BIOS and UEFI) and a USB SSD, on a VM with one and with two internal disks.
+- [ ] Check the key-file step lists the Ventoy data partition (exFAT), so the key `.json` can live on the same stick; document it if it works.
 
 ### 🌍 BMR wizard skips language selection entirely — English only
 
