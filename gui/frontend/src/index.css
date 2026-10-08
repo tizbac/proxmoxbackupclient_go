@@ -813,6 +813,13 @@ body {
     animation: wait-bar-slide 1.4s ease-in-out infinite;
 }
 
+.wait-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 100%);
+    transition: width 0.3s ease-out;
+}
+
 @keyframes wait-bar-slide {
     0% { left: -35%; }
     100% { left: 100%; }

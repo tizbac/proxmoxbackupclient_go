@@ -44,7 +44,7 @@ func TestWalkLiveFolderSkipsWhatABackupSkips(t *testing.T) {
 	writeAt(t, filepath.Join(root, "$RECYCLE.BIN", "r.txt"), "x", tm)
 	writeAt(t, filepath.Join(root, "pagefile.sys"), "x", tm)
 
-	li, err := walkLiveFolder(root, []string{"*.tmp", "sub/cache"}, nil)
+	li, err := walkLiveFolder(root, []string{"*.tmp", "sub/cache"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestCompareIndexes(t *testing.T) {
 		snap[1].Path = "SAME.txt"
 	}
 	sortIndex(snap)
-	li, err := walkLiveFolder(root, nil, nil)
+	li, err := walkLiveFolder(root, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

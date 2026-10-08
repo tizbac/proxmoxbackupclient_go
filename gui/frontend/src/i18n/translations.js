@@ -586,6 +586,8 @@ const translations = {
       confirmDeleteServer: "Voulez-vous vraiment supprimer le serveur PBS \"{id}\" ?",
       confirmDeleteJob: "Voulez-vous vraiment supprimer le jeu de sauvegarde \"{name}\" ?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Lecture du dossier {folder} : {n} sur environ {total} fichiers et dossiers",
+    scanPhaseWalkSoFar: "Lecture du dossier {folder} : {n} fichiers et dossiers pour l'instant",
     jobNameNotUnique: "Un ensemble de sauvegarde nommé « {name} » existe déjà. Chaque ensemble doit avoir son propre nom.",
     backupIdSuggested: "Formé du nom de cet ordinateur et du nom de l'ensemble, pour que les ensembles de cet ordinateur restent groupés sur PBS. Saisissez le vôtre pour le remplacer.",
     backupIdUseSuggested: "Utiliser {id}",
@@ -1341,6 +1343,8 @@ const translations = {
       confirmDeleteServer: "Do you really want to delete the PBS server \"{id}\"?",
       confirmDeleteJob: "Do you really want to delete the Backup Set \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Reading the folder {folder}: {n} of about {total} files and folders",
+    scanPhaseWalkSoFar: "Reading the folder {folder}: {n} files and folders so far",
     jobNameNotUnique: "There is already a Backup Set called \"{name}\". Each set needs its own name.",
     backupIdSuggested: "Made from this computer's name and the set's name, so this computer's sets sit together on PBS. Type to choose your own.",
     backupIdUseSuggested: "Use {id}",
@@ -2096,6 +2100,8 @@ const translations = {
       confirmDeleteServer: "Vuoi davvero eliminare il server PBS \"{id}\"?",
       confirmDeleteJob: "Vuoi davvero eliminare il set di backup \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Lettura della cartella {folder}: {n} di circa {total} file e cartelle",
+    scanPhaseWalkSoFar: "Lettura della cartella {folder}: {n} file e cartelle finora",
     jobNameNotUnique: "Esiste già un set di backup chiamato \"{name}\". Ogni set deve avere un nome diverso.",
     backupIdSuggested: "Composto dal nome di questo computer e dal nome del set, così i set di questo computer restano vicini su PBS. Scrivine uno tuo per cambiarlo.",
     backupIdUseSuggested: "Usa {id}",
@@ -2851,6 +2857,8 @@ const translations = {
       confirmDeleteServer: "Möchten Sie wirklich den PBS-Server \"{id}\" löschen?",
       confirmDeleteJob: "Möchten Sie das Sicherungsset \"{name}\" wirklich löschen?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Ordner {folder} wird gelesen: {n} von etwa {total} Dateien und Ordnern",
+    scanPhaseWalkSoFar: "Ordner {folder} wird gelesen: bisher {n} Dateien und Ordner",
     jobNameNotUnique: "Es gibt bereits einen Sicherungssatz namens „{name}“. Jeder Satz braucht einen eigenen Namen.",
     backupIdSuggested: "Aus dem Namen dieses Computers und dem Namen des Satzes gebildet, damit die Sätze dieses Computers auf PBS beieinander stehen. Eigene ID eintippen, um sie zu ändern.",
     backupIdUseSuggested: "{id} verwenden",
@@ -3606,6 +3614,8 @@ const translations = {
       confirmDeleteServer: "Czy naprawdę chcesz usunąć serwer PBS \"{id}\"?",
       confirmDeleteJob: "Czy naprawdę chcesz usunąć zestaw kopii zapasowej \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Odczyt folderu {folder}: {n} z około {total} plików i folderów",
+    scanPhaseWalkSoFar: "Odczyt folderu {folder}: dotąd {n} plików i folderów",
     jobNameNotUnique: "Zestaw kopii o nazwie „{name}” już istnieje. Każdy zestaw musi mieć własną nazwę.",
     backupIdSuggested: "Utworzony z nazwy tego komputera i nazwy zestawu, aby zestawy tego komputera były razem na PBS. Wpisz własny, aby go zmienić.",
     backupIdUseSuggested: "Użyj {id}",
@@ -4363,6 +4373,8 @@ const translations = {
       confirmDeleteServer: "¿Realmente desea eliminar el servidor PBS \"{id}\"?",
       confirmDeleteJob: "¿Realmente desea eliminar el conjunto de copia de seguridad \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Leyendo la carpeta {folder}: {n} de unos {total} archivos y carpetas",
+    scanPhaseWalkSoFar: "Leyendo la carpeta {folder}: {n} archivos y carpetas hasta ahora",
     jobNameNotUnique: "Ya existe un conjunto de copia llamado \"{name}\". Cada conjunto necesita su propio nombre.",
     backupIdSuggested: "Formado con el nombre de este equipo y el del conjunto, para que los conjuntos de este equipo queden juntos en PBS. Escriba el suyo para cambiarlo.",
     backupIdUseSuggested: "Usar {id}",
@@ -5116,6 +5128,8 @@ const translations = {
       confirmDeleteServer: "Наистина ли искате да изтриете PBS сървъра „{id}“?",
       confirmDeleteJob: "Наистина ли искате да изтриете набора за архивиране „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Четене на папката {folder}: {n} от около {total} файла и папки",
+    scanPhaseWalkSoFar: "Четене на папката {folder}: досега {n} файла и папки",
     jobNameNotUnique: "Вече има набор за архивиране с име „{name}“. Всеки набор трябва да има собствено име.",
     backupIdSuggested: "Съставен от името на този компютър и името на набора, за да са наборите на този компютър заедно в PBS. Въведете свой, за да го смените.",
     backupIdUseSuggested: "Използвай {id}",
@@ -5869,6 +5883,8 @@ const translations = {
       confirmDeleteServer: "Opravdu chcete smazat PBS server „{id}“?",
       confirmDeleteJob: "Opravdu chcete smazat sadu záloh „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Čtení složky {folder}: {n} z přibližně {total} souborů a složek",
+    scanPhaseWalkSoFar: "Čtení složky {folder}: zatím {n} souborů a složek",
     jobNameNotUnique: "Sada záloh s názvem „{name}“ už existuje. Každá sada musí mít vlastní název.",
     backupIdSuggested: "Složeno z názvu tohoto počítače a názvu sady, aby sady tohoto počítače byly v PBS pohromadě. Napište vlastní, chcete-li jej změnit.",
     backupIdUseSuggested: "Použít {id}",
@@ -6622,6 +6638,8 @@ const translations = {
       confirmDeleteServer: "Θέλετε πραγματικά να διαγράψετε τον διακομιστή PBS „{id}“;",
       confirmDeleteJob: "Θέλετε πραγματικά να διαγράψετε το Σύνολο Αντιγράφων Ασφαλείας „{name}“;",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Ανάγνωση του φακέλου {folder}: {n} από περίπου {total} αρχεία και φακέλους",
+    scanPhaseWalkSoFar: "Ανάγνωση του φακέλου {folder}: {n} αρχεία και φάκελοι μέχρι τώρα",
     jobNameNotUnique: "Υπάρχει ήδη σύνολο αντιγράφων με όνομα «{name}». Κάθε σύνολο χρειάζεται δικό του όνομα.",
     backupIdSuggested: "Από το όνομα αυτού του υπολογιστή και το όνομα του συνόλου, ώστε τα σύνολα του υπολογιστή να είναι μαζί στο PBS. Πληκτρολογήστε δικό σας για αλλαγή.",
     backupIdUseSuggested: "Χρήση {id}",
@@ -7375,6 +7393,8 @@ const translations = {
       confirmDeleteServer: "Valóban törli a „{id}” PBS szervert?",
       confirmDeleteJob: "Valóban törli a „{name}” Mentési Készletet?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "{folder} mappa olvasása: {n} / kb. {total} fájl és mappa",
+    scanPhaseWalkSoFar: "{folder} mappa olvasása: eddig {n} fájl és mappa",
     jobNameNotUnique: "Már van „{name}” nevű mentési készlet. Minden készletnek saját név kell.",
     backupIdSuggested: "A számítógép és a készlet nevéből képezve, így a gép készletei együtt látszanak a PBS-en. Írjon be sajátot a módosításhoz.",
     backupIdUseSuggested: "{id} használata",
@@ -8128,6 +8148,8 @@ const translations = {
       confirmDeleteServer: "Vai tiešām vēlaties dzēst PBS serveri „{id}”?",
       confirmDeleteJob: "Vai tiešām vēlaties dzēst Dublēšanas Kopu „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Lasa mapi {folder}: {n} no aptuveni {total} failiem un mapēm",
+    scanPhaseWalkSoFar: "Lasa mapi {folder}: līdz šim {n} faili un mapes",
     jobNameNotUnique: "Dublēšanas kopa ar nosaukumu \"{name}\" jau pastāv. Katrai kopai vajag savu nosaukumu.",
     backupIdSuggested: "Veidots no šī datora nosaukuma un kopas nosaukuma, lai šī datora kopas PBS būtu kopā. Ierakstiet savu, lai to mainītu.",
     backupIdUseSuggested: "Izmantot {id}",
@@ -8881,6 +8903,8 @@ const translations = {
       confirmDeleteServer: "Ar tikrai norite ištrinti PBS serverį „{id}“?",
       confirmDeleteJob: "Ar tikrai norite ištrinti Atsarginio Kopijavimo Rinkinį „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Skaitomas aplankas {folder}: {n} iš maždaug {total} failų ir aplankų",
+    scanPhaseWalkSoFar: "Skaitomas aplankas {folder}: kol kas {n} failų ir aplankų",
     jobNameNotUnique: "Atsarginių kopijų rinkinys „{name}“ jau yra. Kiekvienam rinkiniui reikia savo pavadinimo.",
     backupIdSuggested: "Sudaryta iš šio kompiuterio ir rinkinio pavadinimų, kad šio kompiuterio rinkiniai PBS būtų kartu. Įveskite savo, jei norite pakeisti.",
     backupIdUseSuggested: "Naudoti {id}",
@@ -9634,6 +9658,8 @@ const translations = {
       confirmDeleteServer: "Wilt u de PBS-server „{id}” echt verwijderen?",
       confirmDeleteJob: "Wilt u de Backup Set „{name}” echt verwijderen?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Map {folder} wordt gelezen: {n} van ongeveer {total} bestanden en mappen",
+    scanPhaseWalkSoFar: "Map {folder} wordt gelezen: tot nu toe {n} bestanden en mappen",
     jobNameNotUnique: "Er is al een back-upset met de naam \"{name}\". Elke set heeft een eigen naam nodig.",
     backupIdSuggested: "Gemaakt van de naam van deze computer en de naam van de set, zodat de sets van deze computer samen staan op PBS. Typ uw eigen ID om die te wijzigen.",
     backupIdUseSuggested: "{id} gebruiken",
@@ -10387,6 +10413,8 @@ const translations = {
       confirmDeleteServer: "Deseja realmente eliminar o servidor PBS „{id}”?",
       confirmDeleteJob: "Deseja realmente eliminar o Conjunto de Backup „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "A ler a pasta {folder}: {n} de cerca de {total} ficheiros e pastas",
+    scanPhaseWalkSoFar: "A ler a pasta {folder}: {n} ficheiros e pastas até agora",
     jobNameNotUnique: "Já existe um conjunto de cópia chamado \"{name}\". Cada conjunto precisa do seu próprio nome.",
     backupIdSuggested: "Formado pelo nome deste computador e o do conjunto, para os conjuntos deste computador ficarem juntos no PBS. Escreva o seu para o alterar.",
     backupIdUseSuggested: "Usar {id}",
@@ -11140,6 +11168,8 @@ const translations = {
       confirmDeleteServer: "Doriți cu adevărat să ștergeți serverul PBS „{id}”?",
       confirmDeleteJob: "Doriți cu adevărat să ștergeți Setul de Backup „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Se citește dosarul {folder}: {n} din aproximativ {total} fișiere și dosare",
+    scanPhaseWalkSoFar: "Se citește dosarul {folder}: {n} fișiere și dosare până acum",
     jobNameNotUnique: "Există deja un set de backup numit „{name}”. Fiecare set are nevoie de un nume propriu.",
     backupIdSuggested: "Format din numele acestui calculator și numele setului, ca seturile acestui calculator să stea împreună în PBS. Scrieți propriul ID pentru a-l schimba.",
     backupIdUseSuggested: "Folosește {id}",
@@ -11893,6 +11923,8 @@ const translations = {
       confirmDeleteServer: "Naozaj chcete odstrániť PBS server „{id}”?",
       confirmDeleteJob: "Naozaj chcete odstrániť Zálohovaciu Sadu „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Čítanie priečinka {folder}: {n} z približne {total} súborov a priečinkov",
+    scanPhaseWalkSoFar: "Čítanie priečinka {folder}: zatiaľ {n} súborov a priečinkov",
     jobNameNotUnique: "Sada záloh s názvom „{name}“ už existuje. Každá sada musí mať vlastný názov.",
     backupIdSuggested: "Zložené z názvu tohto počítača a názvu sady, aby sady tohto počítača boli v PBS spolu. Napíšte vlastné, ak ho chcete zmeniť.",
     backupIdUseSuggested: "Použiť {id}",
@@ -12646,6 +12678,8 @@ const translations = {
       confirmDeleteServer: "„{id}” PBS sunucusunu gerçekten silmek istiyor musunuz?",
       confirmDeleteJob: "„{name}” Yedekleme Setini gerçekten silmek istiyor musunuz?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "{folder} klasörü okunuyor: yaklaşık {total} dosya ve klasörden {n}",
+    scanPhaseWalkSoFar: "{folder} klasörü okunuyor: şimdiye kadar {n} dosya ve klasör",
     jobNameNotUnique: "\"{name}\" adlı bir yedekleme seti zaten var. Her setin kendi adı olmalı.",
     backupIdSuggested: "Bu bilgisayarın adından ve setin adından oluşturuldu; böylece bu bilgisayarın setleri PBS'de bir arada durur. Değiştirmek için kendinizinkini yazın.",
     backupIdUseSuggested: "{id} kullan",
@@ -13399,6 +13433,8 @@ const translations = {
       confirmDeleteServer: "Ви дійсно хочете видалити сервер PBS „{id}”?",
       confirmDeleteJob: "Ви дійсно хочете видалити Набір резервного копіювання „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    scanPhaseWalkCount: "Читання папки {folder}: {n} з приблизно {total} файлів і папок",
+    scanPhaseWalkSoFar: "Читання папки {folder}: поки що {n} файлів і папок",
     jobNameNotUnique: "Набір резервних копій «{name}» уже існує. Кожен набір повинен мати власну назву.",
     backupIdSuggested: "Складено з назви цього комп'ютера та назви набору, щоб набори цього комп'ютера були разом у PBS. Введіть власний, щоб змінити.",
     backupIdUseSuggested: "Використати {id}",

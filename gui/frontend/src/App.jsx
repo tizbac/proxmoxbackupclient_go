@@ -233,14 +233,20 @@ function FitPath({ path }) {
 // Indeterminate progress for a server call that gives no progress of its
 // own (listing snapshots, opening folders): a sliding stripe and a seconds
 // counter, with a hint once the wait is long. Stays up for the whole call;
-// the old status line faded after 5 s and left a blank screen.
-function WaitBar({ label, startedAt, slowHint }) {
+// the old status line faded after 5 s and left a blank screen. A caller that
+// knows how far through a step it is passes fraction (0..1) for a real bar.
+function WaitBar({ label, startedAt, slowHint, fraction }) {
   const secs = Math.max(0, Math.floor((Date.now() - (startedAt || Date.now())) / 1000))
+  const known = typeof fraction === 'number' && fraction >= 0
   return (
     <div role="status" aria-live="polite" style={{margin: '12px 0'}}>
-      <div className="wait-bar"><div className="wait-bar-stripe" /></div>
+      <div className="wait-bar">
+        {known
+          ? <div className="wait-bar-fill" style={{width: `${Math.round(Math.min(1, fraction) * 100)}%`}} />
+          : <div className="wait-bar-stripe" />}
+      </div>
       <div style={{fontSize: '13px', color: '#475569', marginTop: '6px'}}>
-        {label} {secs}s
+        {label} · {formatDuration(secs)}
       </div>
       {secs >= 15 && slowHint && (
         <div style={{fontSize: '12px', color: '#64748b', marginTop: '2px'}}>{slowHint}</div>

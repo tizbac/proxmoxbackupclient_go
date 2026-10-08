@@ -16,23 +16,39 @@ function fmtDate(unix) {
 // Scan progress from the backend's setscan:progress events, as one line.
 // Subscribed for the page's whole life: the first event can arrive before a
 // re-render would have subscribed. Lines arriving while idle are ignored.
+// Also returns how far through the current step it is (0..1), or null when
+// the step has no count.
 function useScanProgress(ui, active) {
   const [line, setLine] = useState('')
+  const [fraction, setFraction] = useState(null)
   useEffect(() => {
     if (!ui.EventsOn) return undefined
     const off = ui.EventsOn('setscan:progress', (d) => {
       const tl = ui.tl
+      const done = d.done || 0
+      const total = d.total || 0
+      const num = (n) => n.toLocaleString()
       switch (d.phase) {
-        case 'snapshots': setLine(tl('scanPhaseSnapshots', 'Listing the set\'s snapshots...')); break
-        case 'index': setLine(tl('scanPhaseIndex', 'Reading the file list of snapshot {n} of {total}').replace('{n}', (d.done || 0) + 1).replace('{total}', d.total || 1)); break
-        case 'walk': setLine(tl('scanPhaseWalk', 'Reading the folder {folder}...').replace('{folder}', d.detail || '')); break
-        case 'compare': setLine(tl('scanPhaseCompare', 'Comparing...')); break
-        default: setLine('')
+        case 'snapshots':
+          setLine(tl('scanPhaseSnapshots', 'Listing the set\'s snapshots...')); setFraction(null); break
+        case 'index':
+          setLine(tl('scanPhaseIndex', 'Reading the file list of snapshot {n} of {total}').replace('{n}', done + 1).replace('{total}', total || 1))
+          setFraction(total > 0 ? done / total : null); break
+        case 'walk':
+          // total is what the newest backup had there: an estimate.
+          setLine(total > 0
+            ? tl('scanPhaseWalkCount', 'Reading the folder {folder}: {n} of about {total} files and folders').replace('{folder}', d.detail || '').replace('{n}', num(done)).replace('{total}', num(total))
+            : tl('scanPhaseWalkSoFar', 'Reading the folder {folder}: {n} files and folders so far').replace('{folder}', d.detail || '').replace('{n}', num(done)))
+          setFraction(total > 0 ? Math.min(1, done / total) : null); break
+        case 'compare':
+          setLine(tl('scanPhaseCompare', 'Comparing...')); setFraction(null); break
+        default:
+          setLine(''); setFraction(null)
       }
     })
     return () => { if (typeof off === 'function') off() }
   }, [])
-  return [active ? line : '', setLine]
+  return [active ? line : '', setLine, active ? fraction : null]
 }
 
 export function SetPicker({ ui, jobs, value, onChange }) {
@@ -159,7 +175,7 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   const [dest, setDest] = useState('original')
   const [destPath, setDestPath] = useState('')
   const [verify, setVerify] = useState(true)
-  const [progressLine, setProgressLine] = useScanProgress(ui, !!scanning)
+  const [progressLine, setProgressLine, progressFraction] = useScanProgress(ui, !!scanning)
   const [, tick] = useState(0)
 
   useEffect(() => {
@@ -241,7 +257,7 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
         <button className="btn" onClick={runScan} disabled={!jobId || !!scanning || restoreLoading}>{tl('undeleteFind', 'Find deleted files')}</button>
         {scanning && <button className="btn btn-secondary" onClick={() => ui.CancelSetScan()}>{t('cancel') !== 'cancel' ? t('cancel') : 'Cancel'}</button>}
       </div>
-      {scanning && <WaitBar label={progressLine || tl('undeleteScanning', 'Looking for deleted files...')} startedAt={scanning}
+      {scanning && <WaitBar label={progressLine || tl('undeleteScanning', 'Looking for deleted files...')} startedAt={scanning} fraction={progressFraction}
         slowHint={tl('undeleteSlowHint', 'A large set takes a few minutes: every folder is listed, and each snapshot\'s file list is read once and kept on this computer.')} />}
       {error && <div className="info-box" style={{borderColor: '#e53e3e', color: '#c53030', marginTop: '12px'}}>❌ {error}</div>}
 
@@ -339,7 +355,7 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   const [error, setError] = useState('')
   const [records, setRecords] = useState([])
   const [busyRecord, setBusyRecord] = useState('')
-  const [progressLine, setProgressLine] = useScanProgress(ui, !!previewing)
+  const [progressLine, setProgressLine, progressFraction] = useScanProgress(ui, !!previewing)
   const [, tick] = useState(0)
 
   useEffect(() => {
@@ -481,7 +497,7 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
           {previewing && <button className="btn btn-secondary" onClick={() => ui.CancelSetScan()}>{t('cancel') !== 'cancel' ? t('cancel') : 'Cancel'}</button>}
         </div>
       )}
-      {previewing && <WaitBar label={progressLine || tl('rollbackComparing', 'Comparing the backup with the folders...')} startedAt={previewing}
+      {previewing && <WaitBar label={progressLine || tl('rollbackComparing', 'Comparing the backup with the folders...')} startedAt={previewing} fraction={progressFraction}
         slowHint={tl('undeleteSlowHint', 'A large set takes a few minutes: every folder is listed, and each snapshot\'s file list is read once and kept on this computer.')} />}
 
       {preview && (

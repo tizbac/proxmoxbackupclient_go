@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"pbscommon"
 )
@@ -43,8 +44,26 @@ func pathKey(p string) string {
 }
 
 // sortIndex sorts entries by pathKey so two indexes can be merged in one pass.
+// Each key is made once: lower-casing inside the comparison took about a
+// minute per snapshot on a slow CPU with 868,000 entries.
 func sortIndex(entries []IndexEntry) {
-	sort.Slice(entries, func(i, j int) bool { return pathKey(entries[i].Path) < pathKey(entries[j].Path) })
+	keys := make([]string, len(entries))
+	for i := range entries {
+		keys[i] = pathKey(entries[i].Path)
+	}
+	sort.Sort(keyedEntries{entries, keys})
+}
+
+type keyedEntries struct {
+	e []IndexEntry
+	k []string
+}
+
+func (s keyedEntries) Len() int           { return len(s.e) }
+func (s keyedEntries) Less(i, j int) bool { return s.k[i] < s.k[j] }
+func (s keyedEntries) Swap(i, j int) {
+	s.e[i], s.e[j] = s.e[j], s.e[i]
+	s.k[i], s.k[j] = s.k[j], s.k[i]
 }
 
 // LiveIndex is a walked live folder: every file and folder a backup of it
@@ -54,13 +73,31 @@ type LiveIndex struct {
 	Root       string
 	Entries    []IndexEntry // sorted by pathKey
 	Unreadable []string     // relative paths of folders that could not be listed
+
+	files map[string]struct{} // pathKey of every file, built on first HasFile
+}
+
+// HasFile reports whether the live folder holds a FILE at rel.
+func (li *LiveIndex) HasFile(rel string) bool {
+	if li.files == nil {
+		li.files = make(map[string]struct{}, len(li.Entries))
+		for _, e := range li.Entries {
+			if !e.IsDir {
+				li.files[pathKey(e.Path)] = struct{}{}
+			}
+		}
+	}
+	_, ok := li.files[pathKey(rel)]
+	return ok
 }
 
 // walkLiveFolder lists root the way a backup of it would see it: the same
 // automatic exclusions (system folders and files, the Roll back safety
 // folder), the Backup Set's own exclusion patterns, and junctions/symlinked
 // folders below the top not followed. Only directory listings are read.
-func walkLiveFolder(root string, excludes []string, cancel func() bool) (*LiveIndex, error) {
+// progress, when set, is called with the number of entries found so far,
+// at most a few times a second.
+func walkLiveFolder(root string, excludes []string, cancel func() bool, progress func(n int)) (*LiveIndex, error) {
 	root = filepath.Clean(root)
 	if fi, err := os.Stat(root); err != nil {
 		return nil, err
@@ -68,10 +105,15 @@ func walkLiveFolder(root string, excludes []string, cancel func() bool) (*LiveIn
 		return nil, errors.New(root + " is not a folder")
 	}
 	li := &LiveIndex{Root: root}
+	var lastReport time.Time
 	var walk func(dir, rel string) error
 	walk = func(dir, rel string) error {
 		if cancel != nil && cancel() {
 			return errCompareCancelled
+		}
+		if progress != nil && time.Since(lastReport) >= 250*time.Millisecond {
+			lastReport = time.Now()
+			progress(len(li.Entries))
 		}
 		items, err := os.ReadDir(dir)
 		if err != nil {
@@ -120,6 +162,9 @@ func walkLiveFolder(root string, excludes []string, cancel func() bool) (*LiveIn
 	if err := walk(root, ""); err != nil {
 		return nil, err
 	}
+	if progress != nil {
+		progress(len(li.Entries))
+	}
 	sortIndex(li.Entries)
 	return li, nil
 }
@@ -166,14 +211,17 @@ func compareIndexes(snap []IndexEntry, live *LiveIndex) CompareResult {
 	i, j := 0, 0
 	for i < len(snap) || j < len(live.Entries) {
 		var s, l *IndexEntry
+		var sk, lk string
 		if i < len(snap) {
 			s = &snap[i]
+			sk = pathKey(s.Path)
 		}
 		if j < len(live.Entries) {
 			l = &live.Entries[j]
+			lk = pathKey(l.Path)
 		}
 		switch {
-		case l == nil || (s != nil && pathKey(s.Path) < pathKey(l.Path)):
+		case l == nil || (s != nil && sk < lk):
 			i++
 			if s.IsDir || s.Path == backupMetaFileName {
 				continue
@@ -183,7 +231,7 @@ func compareIndexes(snap []IndexEntry, live *LiveIndex) CompareResult {
 				continue
 			}
 			r.Missing = append(r.Missing, *s)
-		case s == nil || pathKey(l.Path) < pathKey(s.Path):
+		case s == nil || lk < sk:
 			j++
 			if l.IsDir {
 				r.NewDirs = append(r.NewDirs, *l)
@@ -214,13 +262,6 @@ func compareIndexes(snap []IndexEntry, live *LiveIndex) CompareResult {
 		}
 	}
 	return r
-}
-
-// containsKey reports whether a pathKey-sorted index holds a FILE at rel.
-func containsFile(sorted []IndexEntry, rel string) bool {
-	k := pathKey(rel)
-	n := sort.Search(len(sorted), func(i int) bool { return pathKey(sorted[i].Path) >= k })
-	return n < len(sorted) && pathKey(sorted[n].Path) == k && !sorted[n].IsDir
 }
 
 // moveHints finds, for files missing from disk, a live file elsewhere with the

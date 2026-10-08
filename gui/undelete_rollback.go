@@ -56,13 +56,18 @@ func (a *App) ListSetSnapshots(jobID string) ([]SetSnapshot, error) {
 	return listSetSnapshots(cfg, job)
 }
 
-// liveFolders walks every folder of a set.
-func (a *App) liveFolders(job ScheduledJob, cancel func() bool) (map[string]*LiveIndex, error) {
+// liveFolders walks every folder of a set. The progress events carry the
+// number of files and folders found so far and, as an estimate of the total,
+// how many the snapshot idx has for that folder (0 when unknown).
+func (a *App) liveFolders(job ScheduledJob, idx snapshotIndex, snap SetSnapshot, cancel func() bool) (map[string]*LiveIndex, error) {
 	out := map[string]*LiveIndex{}
 	folders := setFoldersOf(job)
-	for i, f := range folders {
-		a.scanProgress("walk", f.Dir, i, len(folders))
-		li, err := walkLiveFolder(f.Dir, job.ExcludeList, cancel)
+	for _, f := range folders {
+		dir := f.Dir
+		expected := len(idx[archiveFor(snap, f.Base)])
+		report := func(n int) { a.scanProgress("walk", dir, n, expected) }
+		report(0)
+		li, err := walkLiveFolder(f.Dir, job.ExcludeList, cancel, report)
 		if err != nil {
 			if errors.Is(err, errCompareCancelled) {
 				return nil, err
@@ -153,7 +158,14 @@ func (a *App) scanUndelete(cfg *Config, job ScheduledJob, snaps []SetSnapshot, c
 	if cancel == nil {
 		cancel = func() bool { return false }
 	}
-	live, err := a.liveFolders(job, cancel)
+	// The newest file list first: it says roughly how many entries the walk
+	// of each folder will find, so the walk can show "x of about y".
+	a.scanProgress("index", snaps[0].ID, 0, len(snaps))
+	newest, err := loadSnapshotIndex(cfg, setBackupID(job), snaps[0], cancel)
+	if err != nil {
+		return nil, err
+	}
+	live, err := a.liveFolders(job, newest, snaps[0], cancel)
 	if err != nil {
 		return nil, err
 	}
@@ -171,10 +183,13 @@ func (a *App) scanUndelete(cfg *Config, job ScheduledJob, snaps []SetSnapshot, c
 		if cancel() {
 			return nil, errCompareCancelled
 		}
-		a.scanProgress("index", snap.ID, si, len(snaps))
-		idx, err := loadSnapshotIndex(cfg, backupID, snap, cancel)
-		if err != nil {
-			return nil, err
+		idx := newest
+		if si > 0 {
+			newest = nil // only one file list in memory at a time
+			a.scanProgress("index", snap.ID, si, len(snaps))
+			if idx, err = loadSnapshotIndex(cfg, backupID, snap, cancel); err != nil {
+				return nil, err
+			}
 		}
 		res.SnapshotsChecked++
 		var goneBy int64
@@ -191,8 +206,11 @@ func (a *App) scanUndelete(cfg *Config, job ScheduledJob, snaps []SetSnapshot, c
 				if e.IsDir || e.Path == backupMetaFileName {
 					continue
 				}
+				if li.HasFile(e.Path) {
+					continue
+				}
 				key := f.Base + "|" + pathKey(e.Path)
-				if found[key] || containsFile(li.Entries, e.Path) {
+				if found[key] {
 					continue
 				}
 				if underAny(e.Path, li.Unreadable) {
@@ -416,7 +434,7 @@ func (a *App) planRollbackFor(cfg *Config, job ScheduledJob, snapshotUnix int64,
 	if err != nil {
 		return nil, err
 	}
-	live, err := a.liveFolders(job, cancel)
+	live, err := a.liveFolders(job, idx, *snap, cancel)
 	if err != nil {
 		return nil, err
 	}
