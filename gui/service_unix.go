@@ -12,9 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	"pbscommon"
+
 	"github.com/kardianos/service"
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
-	"pbscommon"
 )
 
 // BackupService runs the scheduler and the local API server under systemd on
@@ -55,15 +56,7 @@ func (s *BackupService) run() {
 	// #nosec G302 -- stateDir is a fixed system path, not user input
 	_ = os.Chmod(stateDir, 0700)
 
-	s.app = &App{
-		ctx:              context.Background(),
-		config:           LoadConfig(),
-		stopScheduler:    make(chan struct{}),
-		apiClient:        api.NewClient(getAPITokenPath()),
-		mode:             api.ModeStandalone, // Service executes directly, doesn't use API
-		callbacksMap:     make(map[string]*progressCallbacks),
-		isServiceProcess: true, // Prevent mode re-detection (would cause infinite loop)
-	}
+	s.app = NewAppForService(context.Background())
 
 	configMap := s.app.GetConfigWithHostname()
 	if hostname, ok := configMap["hostname"].(string); ok {
