@@ -39,6 +39,10 @@ func (s *BackupService) Start(svc service.Service) error {
 func (s *BackupService) run() {
 	writeDebugLog("Proxmox Backup Client service running")
 
+	// The service owns the privileged state directory on Windows too.
+	// Pin config dir before any config/scheduler operations.
+	SetConfigDir(serviceStateDir())
+
 	// Initialize app with background context (service has no Wails runtime)
 	// IMPORTANT: Service App must be in Standalone mode to execute backups directly
 
