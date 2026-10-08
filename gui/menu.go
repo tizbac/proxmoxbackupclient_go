@@ -53,6 +53,12 @@ func buildAppMenu(a *App) *menu.Menu {
 	toolsMenu.AddText("Restore", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "nav:goto", "restore")
 	})
+	toolsMenu.AddText("Undelete", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "undelete")
+	})
+	toolsMenu.AddText("Roll back", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "rollback")
+	})
 	toolsMenu.AddSeparator()
 	toolsMenu.AddText("Preferences…", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "nav:preferences")

@@ -81,7 +81,7 @@ The menu bar:
 | File | Minimize to Tray | Hides the window to the notification area |
 | File | Exit (Ctrl+Q) | Quits the program |
 | View | Reports, Message Log | Opens that page |
-| Tools | Backup, Restore | Opens that page |
+| Tools | Backup, Restore, Undelete, Roll back | Opens that page |
 | Tools | Preferences… | Opens the Preferences dialog |
 | Tools | Download Bare Metal Restore ISO… | Opens the latest release page in your browser |
 | Tools | View / Download Bare Metal Restore Guide | Shows the built-in guide, or saves it as a Markdown file |
