@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"time"
 
 	"pbscommon"
@@ -31,7 +32,22 @@ type BackupService struct {
 func (s *BackupService) Start(svc service.Service) error {
 	writeDebugLog("Proxmox Backup Client service starting...")
 	s.stopChan = make(chan struct{})
-	go s.run()
+	go func() {
+		// A panic in the run loop kills the process and the SCM reports the
+		// service as "terminated unexpectedly" (error 1053/1067) with nothing
+		// in the log to explain it. Recover, dump the stack to the service
+		// log, and keep the process alive so the failure is diagnosable.
+		defer func() {
+			if r := recover(); r != nil {
+				writeDebugLog(fmt.Sprintf("CRITICAL: service run panic: %v\n%s", r, debug.Stack()))
+				// Exit so the SCM reports a real failure (instead of a
+				// "running" service that does nothing); the stack above is
+				// already flushed to service-service.log.
+				os.Exit(1)
+			}
+		}()
+		s.run()
+	}()
 	return nil
 }
 
@@ -145,8 +161,8 @@ func RunAsService() {
 	writeDebugLog("Attempting to run as Windows Service")
 
 	svcConfig := &service.Config{
-		Name:        "ProxmoxBackupClient",
-		DisplayName: "Proxmox Backup Client Service",
+		Name:        windowsServiceName(),
+		DisplayName: windowsServiceDisplayName(),
 		Description: "Executes scheduled backups to Proxmox Backup Server with VSS support",
 	}
 

@@ -12,16 +12,24 @@ import (
 )
 
 func main() {
-	writeDebugLog("ProxmoxBackupClientSVC starting...")
+	// Service configuration.
+	//
+	// On Windows the Name MUST equal the name the MSI registered the service
+	// with (see service_name_windows.go); a mismatch makes the SCM refuse the
+	// start with error 1061. On other platforms the systemd unit file names
+	// the service explicitly, so the name here is only used for
+	// install/uninstall actions.
+	svcName, svcDisplayName := serviceIdentity()
+
+	writeDebugLog(fmt.Sprintf("%s starting...", svcName))
 
 	// Command-line flags for service control
 	svcFlag := flag.String("service", "", "Control the system service: install, uninstall, start, stop, restart")
 	flag.Parse()
 
-	// Service configuration
 	svcConfig := &service.Config{
-		Name:        "ProxmoxBackupClient",
-		DisplayName: "Proxmox Backup Client SVC",
+		Name:        svcName,
+		DisplayName: svcDisplayName,
 		Description: "Executes scheduled backups to Proxmox Backup Server with VSS support",
 	}
 
@@ -43,9 +51,10 @@ func main() {
 	}
 
 	// Run service
-	writeDebugLog("Starting service...")
+	writeDebugLog(fmt.Sprintf("Starting service %q...", svcName))
 	err = s.Run()
 	if err != nil {
+		writeDebugLog(fmt.Sprintf("service run failed: %v", err))
 		log.Fatal(err)
 	}
 }
