@@ -548,19 +548,45 @@ type ScheduledJob struct {
 
 ## 🟢 P2 - NICE TO HAVE (Backlog)
 
-### 🗑️ Undelete: restore files that are in the backup but gone from disk (idea from BFW, 2026-10-07)
-Backup for Workgroups offers "undelete": compare a backup set with its live folders and list the files that were deleted, ready to restore. Maps directly onto PBS snapshots.
-- [ ] Pick a Backup Set; list the files of its latest snapshot and check each against the live folders (stat only, no content read). Present the missing ones with size and last backed-up date, tick to restore to the original paths (existing selective restore, `RestoreModeOriginal`).
-- [ ] "Deleted in the last N days": check the set's recent snapshots too and offer each missing file from the NEWEST snapshot that still has it.
-- [ ] Cheap on split (Metadata/Data) snapshots: the file list is the small `.mpxar.didx`, no payload download. Legacy snapshots: use the catalog (written for every snapshot).
-- [ ] Needs one backup ID per set (see below), otherwise the set's history mixes in other sets' snapshots.
+### 🗑️ Undelete and ⏪ Roll back: IMPLEMENTATION PLAN (ideas from BFW 2026-10-07, planned 2026-10-08)
+Undelete = files that are in a Backup Set's snapshots but gone from disk, ready to restore. Roll back = put a Backup Set's folders back as they were at a chosen date and time. Both are "compare a snapshot with the live folders, then restore a list of paths", so they share one engine. Folder sets only; machine sets keep bare-metal restore.
 
-### ⏪ Roll back: restore a named Backup Set as it was at a chosen date and time (idea from BFW, 2026-10-07)
-BFW's "roll back" picks a set, shows its history and restores a point in time. PBS snapshots are exactly that; this is mostly presentation.
-- [ ] Start from the Backup Set (not server, then backup ID, then snapshot): show its snapshots as a dated list, or take a date/time and use the snapshot at or before it.
-- [ ] Restore to the original locations with an explicit policy: overwrite files that differ / keep files newer than the snapshot / TRUE rollback that also deletes files that did not exist then (off by default, confirmation showing how many files would be deleted).
-- [ ] Multi-folder sets: one snapshot holds an archive per folder, restore them all (already how restore works).
-- [ ] Depends on one backup ID per set.
+#### Phase 0: retention (decide first, PBS side)
+Found 2026-10-08: datastore prune job `pbs-prune` (04:00, keep-daily 7, weekly 4, monthly 6) cut deepthought-data's six 07/10 snapshots to one. With runs every 4 hours, only the last run of each day survives, so undelete "last N days" and roll back only ever see one point per day.
+- [ ] Short term (needs Mick's OK, PBS config): add `keep-hourly 48` to `pbs-prune`. VM groups back up once a day, so nothing changes for them; file sets keep every run for 2 days, then daily/weekly/monthly as now. Extra snapshots of an incremental set cost almost nothing (4 to 36 new chunks each).
+- [ ] Later, in the client: per Backup Set retention (keep last N / hourly / daily / weekly / monthly), applied by a group prune after each successful run (PBS API prune for one group; the owner of a group may prune it). Only works if the datastore job does not also prune that group: put file sets in their own namespace, or keep the datastore job's rules looser. Show "Rollback points kept: ..." on the set card.
+
+#### Phase 1: shared engine (Go, no UI)
+- [ ] **Set history.** `ListSetSnapshots(jobID)`: the set's server, namespace and backup ID, newest first, with time, size, file count, change mode and comment. The client sends the set's name as the snapshot comment, so filter on it as well: that keeps sets that share a backup ID apart (the warn-on-shared-ID item below is still worth doing).
+- [ ] **Snapshot file index.** Path, size and mtime for every file, from `catalog.pcat1.didx` (ParseCatalog, already used by Restore listing). It is tiny: deepthought-data's catalog is 3 chunks for 761,866 files. If there is no catalog (official-client split snapshots), walk the `.mpxar` only, no payload. Snapshots never change, so cache each index on disk (ProgramData\ProxmoxBackupClient\index-cache\<server>\<group>\<time>, compressed, capped in size, oldest dropped first). Then "last 30 days" downloads only the indexes not seen before.
+- [ ] **Archive to folder mapping.** Each archive is one of the set's folders (archiveBaseName; `.proxmox_backup_client_meta.json` holds the original path). Reuse buildPathRewriter so paths map exactly as Restore to original location does today.
+- [ ] **Compare.** Walk the snapshot index and the live folder side by side, both sorted by name, reading only directory listings (size and mtime come with the listing on Windows, no per-file open). Output per file: unchanged / changed (size or mtime differs; mtime to the second, because Legacy Windows archives store whole seconds) / missing on disk / new on disk. Case-insensitive on Windows. Apply the set's exclude list so excluded files never show as "new". Streamed, so memory stays flat at 761k files. Move hint: a missing file whose name, size and mtime match a new file elsewhere is shown as "moved to ...", not deleted.
+- [ ] **Restore a path list.** Reuse RestoreSnapshotInline with Mode original and IncludePaths. Selective restore already fetches only the selected files' data (40470e4), so 1,000 scattered files cost about their own size. Group paths by source snapshot; one run per snapshot.
+- [ ] Tests: compare engine on temp trees (deleted, changed, added, renamed, case-only rename, excluded, symlinks on Linux); index cache round trip; history filter with a shared backup ID.
+
+#### Phase 2: Undelete (GUI)
+- [ ] Entry points: "Undelete..." on each folder Backup Set card, and an Undelete tab in Restore (pick a set).
+- [ ] Look back (radio): Latest snapshot / Last 7 days / Last 30 days. For "last N days", go through the set's snapshots newest first; each missing file comes from the NEWEST snapshot that still has it, labelled "last backed up <date>" and "deleted between <date> and <date>" (the first snapshot without it).
+- [ ] Results as a folder tree with counts and sizes, name filter, tick boxes (tick a folder = everything under it); moved-file hints shown but unticked by default.
+- [ ] Restore to (radio): Original locations / Another folder. Original never overwrites: if a file has reappeared at that path, skip it and list it.
+- [ ] Uses the existing restore card (progress, Stop, verify after restore, ACLs). Reports row: "Undelete: N files (X GB) from M snapshots".
+- [ ] Expected cost on deepthought-data: the index from cache or a few MB download, plus one directory walk of F:\Data (measure it; a Metadata run walks the same tree in its 10 min, most of which is not the walk).
+
+#### Phase 3: Roll back (GUI)
+- [ ] Entry: "Roll back..." on each folder Backup Set card. Pick a snapshot from the dated list, or enter a date and time and get the newest snapshot at or before it.
+- [ ] Preview (the phase 1 compare, nothing written): counts and expandable lists of files to restore (missing), to replace (changed), and newer files that were not there then.
+- [ ] Policy (radio): **Restore missing and changed files, keep newer files** (default) / **Restore missing files only** / **Exact roll back** (also removes files that did not exist then; off by default, confirm by typing the number of files to be removed).
+- [ ] Safety net, always on: every file roll back would replace or remove is first MOVED into `<volume>\.pbs-rollback\<set>\<time>\<relative path>` on the same volume (a rename: instant, no copy). One "Undo roll back" puts them back; Reports lists the folder and offers Delete after N days. Optional tick box, on by default: "Back up the set now first" (an incremental run, minutes).
+- [ ] Locks: refuse while a backup or restore of that set is running, and hold the set's scheduled runs until roll back finishes.
+- [ ] Files in use or access denied: carry on and list them in the summary. ACLs and folder times as in restore.
+- [ ] Reports row: "Roll back to <date>: restored A, replaced B, removed C (kept in <safety folder>)".
+
+#### Phase 4: finish
+- [ ] Translations (18 languages), GUI manual sections, CHANGELOG.
+- [ ] Live tests on pbs-test with a fixture tree (delete, change, add, rename; then undelete and each roll back policy; compare SHA-256 with the original tree; Undo roll back returns the pre roll back state exactly). Scale test on deepthought-data: time and memory of the compare, and an undelete of a few hundred scattered files.
+- [ ] Later, optional: CLI `proxmoxbackup-directory -undelete / -rollback` on the same engine.
+
+Order: phase 0 now, then 1, 2, 3. Undelete is useful on its own after phase 2.
 
 ### ⚠️ Warn when a Metadata Backup Set shares its backup ID with another set (2026-10-07)
 Metadata change detection compares with the NEWEST snapshot in the backup group. On deepthought the production sets "Beeby Property", "Beeby Trading" and "Data" all used backup ID `deepthought`, so any other set running between two Data runs would have forced a full 448 GB read; fixed by giving Data its own ID `deepthought-data`.
