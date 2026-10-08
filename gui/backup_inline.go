@@ -1018,8 +1018,25 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	}
 	if opts.OnFile != nil || opts.OnStats != nil {
 		tickerDone := make(chan struct{})
-		defer close(tickerDone)
+		tickerExited := make(chan struct{})
+		var stopOnce sync.Once
+		stopTicker := func() {
+			stopOnce.Do(func() { close(tickerDone) })
+			<-tickerExited
+		}
+		defer stopTicker()
+		// The ticker must be silent before the run is reported complete: a
+		// tick after it ("finishing", this run's start time) landed on the
+		// card of the next queued backup, which then showed "Finishing" from
+		// its first second (seen 2026-10-08, Data set then Full Machine).
+		if onComplete := opts.OnComplete; onComplete != nil {
+			opts.OnComplete = func(success bool, message string, key MessageKey, params msgParams) {
+				stopTicker()
+				onComplete(success, message, key, params)
+			}
+		}
 		go func() {
+			defer close(tickerExited)
 			// 5 updates a second, the same rate as the restore card's
 			// current-file line: often enough to give a sense of speed.
 			t := time.NewTicker(200 * time.Millisecond)

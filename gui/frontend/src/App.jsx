@@ -835,7 +835,8 @@ function App() {
           filesDone: data.filesDone || 0,
           filesTotal: data.filesTotal || 0,
           uploadedBytes: data.uploadedBytes || 0,
-          phase: data.phase || prev.phase,
+          // Machine backups send no phase: never keep one from another run.
+          phase: data.phase === undefined ? '' : (data.phase || prev.phase),
           readReason: data.readReason || '',
           changeMode: data.changeMode || '',
           hasDetail: data.phase !== undefined,
