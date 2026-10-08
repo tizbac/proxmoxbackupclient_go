@@ -123,6 +123,27 @@ type RestoreOptions struct {
 	// instead of the original ExtractWithRewriter — see Config.ParallelRestore's
 	// doc comment. Defaults to false (the proven sequential path).
 	ParallelExtraction bool
+
+	// ArchiveIncludes, when set, selects files per archive by the archive's
+	// raw manifest name ("f__data.mpxar.didx") and archive-relative paths,
+	// instead of IncludePaths' display-name-prefixed form. Archives not in
+	// the map are skipped. Used by Undelete and Roll back, which already know
+	// exactly which archive and path each file comes from.
+	ArchiveIncludes map[string][]string
+
+	// ArchiveRoots, with Mode original, gives each archive's restore root
+	// (the Backup Set's own folder for it) by raw archive name, instead of
+	// the OriginalPath in the snapshot's metadata. Archives not in the map
+	// are skipped.
+	ArchiveRoots map[string]string
+
+	// KeepExisting stops Mode original from forcing Overwrite: a file that
+	// exists at its target path is left alone and reported as skipped.
+	KeepExisting bool
+
+	// OnExtracted, when set, receives every extracted entry (files written,
+	// folders created, skips) once extraction has finished.
+	OnExtracted func(files []pbscommon.PXARExtractedFile)
 }
 
 // RestoreProgressStats is the structured payload behind RestoreOptions.OnStats.
@@ -144,6 +165,9 @@ var (
 // CancelRestore requests a graceful stop of the currently running restore.
 // Mirrors CancelBackup exactly. Exported to the GUI.
 func (a *App) CancelRestore() error {
+	if cancelPendingSetOp() {
+		writeDebugLog("CancelRestore: cancelled a roll back waiting for its backup")
+	}
 	currentRestoreCancelMutex.Lock()
 	defer currentRestoreCancelMutex.Unlock()
 	if currentRestoreCancel != nil {
@@ -1174,12 +1198,14 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	// button) — mirrors RunBackupInline's identical setup. Also bounds every
 	// individual chunk fetch (see GetChunkData's doc comment for why that
 	// matters on its own, independent of whether anyone clicks cancel).
-	restoreCtx, restoreCancel := newRestoreContext()
-	defer doneRestoreContext()
+	// A caller that passes its own Ctx (Undelete, Roll back: several restores
+	// and other steps as one operation) has registered it for Stop already;
+	// registering another here would cancel theirs.
 	if opts.Ctx == nil {
+		restoreCtx, _ := newRestoreContext()
+		defer doneRestoreContext()
 		opts.Ctx = restoreCtx
 	}
-	_ = restoreCancel
 
 	mode := opts.Mode
 	if mode == "" {
@@ -1222,7 +1248,14 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	// In-place restores need the sidecar up front to validate before we burn
 	// time on the multi-GB download. Cheap if the snapshot was listed first.
 	var meta *BackupMeta
-	if mode == RestoreModeOriginal {
+	if mode == RestoreModeOriginal && opts.ArchiveRoots != nil {
+		// The caller gives each archive's root itself (a Backup Set's own
+		// folders), so the snapshot's metadata is not needed to place files.
+		if !opts.KeepExisting {
+			opts.Overwrite = true
+		}
+		writeBackupLog(fmt.Sprintf("In-place targets from the Backup Set: %d archive(s)", len(opts.ArchiveRoots)))
+	} else if mode == RestoreModeOriginal {
 		var err error
 		meta, err = ReadSnapshotMetaInline(opts, false)
 		if err != nil {
@@ -1235,7 +1268,11 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		}
 		// In-place implies overwrite. Files in OriginalPath are by definition
 		// candidates for replacement; skipping them would be confusing.
-		opts.Overwrite = true
+		// Undelete asks for the opposite (KeepExisting): never replace a file
+		// that has reappeared.
+		if !opts.KeepExisting {
+			opts.Overwrite = true
+		}
 		writeBackupLog(fmt.Sprintf("In-place target: %s (host=%s, os=%s)", meta.OriginalPath, meta.Hostname, meta.OS))
 	}
 
@@ -1244,9 +1281,13 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	// Build the rewriter before downloading so a misconfiguration (missing
 	// dest, cross-host refusal) fails fast. For alternate modes meta is unused;
 	// for in-place, meta was read above before download.
-	rewriter, err := buildPathRewriter(opts, meta)
-	if err != nil {
-		return err
+	var rewriter pbscommon.PathRewriter
+	if !(mode == RestoreModeOriginal && opts.ArchiveRoots != nil) {
+		var err error
+		rewriter, err = buildPathRewriter(opts, meta)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Resolve the snapshot's REAL archive name(s) instead of assuming the old
@@ -1327,6 +1368,12 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		// This applies to every restore mode, not just alternate_abs.
 		var archiveIncludes []string
 		referencedThisArchive := len(includesToCheck) == 0 // empty overall selection = everything, in every archive, unchanged from before this fix
+		if opts.ArchiveIncludes != nil {
+			// Raw archive name and archive-relative paths, given directly.
+			archiveIncludes = opts.ArchiveIncludes[archiveName]
+			referencedThisArchive = len(archiveIncludes) > 0
+			includesToCheck = nil
+		}
 		for _, inc := range includesToCheck {
 			norm := strings.ReplaceAll(inc, "\\", "/")
 			switch {
@@ -1357,6 +1404,20 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		archiveRewriter := rewriter
 		if mode == RestoreModeAlternateAbs {
 			archiveRewriter = wrapRewriterForArchive(rewriter, wrapper)
+		}
+		if mode == RestoreModeOriginal && opts.ArchiveRoots != nil {
+			root, ok := opts.ArchiveRoots[archiveName]
+			if !ok || root == "" {
+				writeBackupLog(fmt.Sprintf("Skipping archive %s: no folder given for it", archiveName))
+				continue
+			}
+			root = filepath.Clean(root)
+			archiveRewriter = func(archivePath string) string {
+				if archivePath == "" {
+					return root
+				}
+				return filepath.Join(root, filepath.FromSlash(archivePath))
+			}
 		}
 
 		var extractedHere []pbscommon.PXARExtractedFile
@@ -1504,6 +1565,10 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		}
 
 		extracted = append(extracted, extractedHere...)
+	}
+
+	if opts.OnExtracted != nil {
+		opts.OnExtracted(extracted)
 	}
 
 	successCount := 0

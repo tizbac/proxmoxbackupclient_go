@@ -168,6 +168,9 @@ type JobHistory struct {
 
 	// Restore-only details, empty/zero for backups. BackupID above holds the
 	// restored backup ID; RestoreSnapshot is the snapshot's UTC timestamp.
+	// RestoreKind is "undelete" or "rollback" for those restores, empty for
+	// an ordinary one.
+	RestoreKind     string   `json:"restoreKind,omitempty"`
 	RestoreSnapshot string   `json:"restoreSnapshot,omitempty"`
 	RestoreDest     string   `json:"restoreDest,omitempty"`
 	RestorePaths    []string `json:"restorePaths,omitempty"` // selected paths; empty = whole snapshot
@@ -453,6 +456,9 @@ func (a *App) RunScheduledJobNow(jobID string) error {
 	if alreadyRunning {
 		return fmt.Errorf("backup set %q is already running", target.Name)
 	}
+	if rollbackHeld(target.ID) {
+		return fmt.Errorf("backup set %q is being rolled back; run it when the roll back has finished", target.Name)
+	}
 
 	writeDebugLog(fmt.Sprintf("RunScheduledJobNow: manually triggering %s", target.Name))
 	go a.executeScheduledJob(*target, "manual")
@@ -719,9 +725,32 @@ func (a *App) RecalculateNextRuns() {
 	}
 }
 
-// StartScheduler starts the background job scheduler
+// schedulerMu guards starting and stopping the scheduler, which can now
+// happen more than once in a GUI session: Run as Service hands scheduling to
+// the service and takes it back when the service is removed.
+var (
+	schedulerMu      sync.Mutex
+	schedulerRunning bool
+)
+
+// StartScheduler starts the background job scheduler (no-op when running).
 func (a *App) StartScheduler() {
+	schedulerMu.Lock()
+	defer schedulerMu.Unlock()
+	if schedulerRunning {
+		return
+	}
 	writeDebugLog("Starting background job scheduler")
+	if a.stopScheduler == nil {
+		a.stopScheduler = make(chan struct{})
+	}
+	select {
+	case <-a.stopScheduler: // closed by an earlier stop
+		a.stopScheduler = make(chan struct{})
+	default:
+	}
+	stop := a.stopScheduler
+	schedulerRunning = true
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
@@ -732,7 +761,7 @@ func (a *App) StartScheduler() {
 			case <-ticker.C:
 				a.checkAndRunScheduledJobs()
 				a.RefreshIdleTooltip()
-			case <-a.stopScheduler:
+			case <-stop:
 				writeDebugLog("Scheduler stopped")
 				return
 			}
@@ -740,10 +769,16 @@ func (a *App) StartScheduler() {
 	}()
 }
 
-// StopScheduler stops the background job scheduler
+// StopScheduler stops the background job scheduler (no-op when stopped).
 func (a *App) StopScheduler() {
+	schedulerMu.Lock()
+	defer schedulerMu.Unlock()
+	if !schedulerRunning {
+		return
+	}
 	writeDebugLog("Stopping background job scheduler")
 	close(a.stopScheduler)
+	schedulerRunning = false
 }
 
 // CleanupAbandonedJobs marks any "running" jobs as abandoned on app startup
@@ -885,6 +920,12 @@ func (a *App) checkAndRunScheduledJobs() {
 // StartBackup/StartMachineBackup as a real parameter (see app_types.go's
 // removal comment for the shared field this used to be).
 func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
+	// A roll back of this set is putting its folders back: backing them up
+	// half way through would record a mix of old and new.
+	if rollbackHeld(job.ID) {
+		writeDebugLog(fmt.Sprintf("Job %s skipped: a roll back of this set is running", job.Name))
+		return
+	}
 	// Check if job is already running
 	runningJobsMutex.Lock()
 	if runningJobs[job.ID] {

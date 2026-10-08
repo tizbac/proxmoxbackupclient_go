@@ -62,6 +62,25 @@ var excludedSystemFolders = []string{
 	"System Volume Information", // VSS snapshots storage
 	"$RECYCLE.BIN",               // Windows recycle bin
 	"Recovery",                   // Windows recovery partition data
+	RollbackSafetyFolder,         // files Roll back moved aside (gui/rollback.go)
+}
+
+// RollbackSafetyFolder is the folder, at the root of a volume, where Roll back
+// keeps every file it replaced or removed so the roll back can be undone.
+// Never backed up: it holds old versions that are already in the snapshots.
+const RollbackSafetyFolder = ".pbs-rollback"
+
+// IsAutoExcludedFolder and IsAutoExcludedFile report whether a backup skips an
+// entry of this name on its own (system folders and files above), so a
+// comparison with a live folder can skip the same entries.
+func IsAutoExcludedFolder(name string) bool { return shouldSkipSystemFolder(name) }
+func IsAutoExcludedFile(name string) bool   { return shouldSkipSystemFile(name) }
+
+// IsExcludedByPatterns applies a Backup Set's exclusion patterns exactly as a
+// backup does (see isExcluded): rel is the entry's path relative to the
+// backed-up folder, name its base name, root the backed-up folder.
+func IsExcludedByPatterns(rel, name, root string, patterns []string) bool {
+	return isExcluded(rel, name, root, patterns)
 }
 
 // Windows system files to exclude automatically from backups
