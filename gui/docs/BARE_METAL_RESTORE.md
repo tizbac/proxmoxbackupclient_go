@@ -17,6 +17,10 @@ alive and bootable.
 - [ ] You have the **Bare Metal Restore ISO**, written to a USB stick or burned to a disc.
       Get it from Tools → Download Bare Metal Restore ISO… in the client, or directly from
       [this fork's releases page](https://github.com/mjb-is/proxmoxbackupclient_go/releases).
+      Recommended: a [Ventoy](https://www.ventoy.net) stick. Prepare the stick with Ventoy
+      once, then just copy the ISO file onto it, next to any other rescue ISOs you keep;
+      Ventoy's boot menu lists them all. If the restore then asks which disk to restore
+      to, pick the machine's own disk, not the stick.
 - [ ] The machine can reach your Proxmox Backup Server over the network (wired is more
       reliable than Wi-Fi for this — the live environment's Wi-Fi support is limited).
 - [ ] You know the PBS server's URL, a username with access to the datastore (e.g.

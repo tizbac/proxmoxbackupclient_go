@@ -45,6 +45,18 @@ The ISO is a Clonezilla Live image with this project's restore tools added.
 
    Or burn it to a DVD, or attach it to a VM as a CD.
 
+### A multi-purpose rescue stick with Ventoy (recommended)
+
+Writing the ISO as above gives the whole stick to one image. [Ventoy](https://www.ventoy.net) is a better way to keep a recovery stick: it prepares the stick once, and from then on you simply **copy ISO files onto it** like ordinary files. At boot Ventoy shows a menu of every ISO on the stick, so one stick can carry this restore ISO next to a Windows installer, a Linux live system, memtest and so on. Updating to a newer restore ISO is a matter of copying the new file over.
+
+1. Download Ventoy from [ventoy.net](https://www.ventoy.net) and install it to the stick: **Ventoy2Disk.exe** on Windows, `Ventoy2Disk.sh` or VentoyGUI on Linux. This erases the stick once.
+2. Copy `ProxmoxBackupClient-GO-BMR-Restore-<version>.iso` onto the stick's large data partition (it shows up as a normal drive). Do not unpack it.
+3. Boot from the stick and pick the ISO in Ventoy's menu, then carry on as in [section 4](#4-automated-restore-step-by-step).
+
+Ventoy starts on legacy BIOS and UEFI machines. With Secure Boot on, its first start asks you to enrol Ventoy's key once (follow its on-screen steps), or turn Secure Boot off for the restore.
+
+**Check the target disk.** Booted from a Ventoy stick (or a USB SSD that reports itself as a fixed disk), the restore can list the stick next to the machine's own disk and ask which to restore to. Pick the machine's disk; the confirmation screen shows each disk's size before anything is written. Test the stick once on a spare machine or VM, as with any boot media.
+
 The ISO boots on both legacy BIOS and UEFI machines. It can also be network-booted like any Clonezilla Live image; setting that up is not covered here.
 
 You can build your own ISO from a stock Clonezilla Live ISO with `patch-clonezilla.sh`. See [PATCH-CLONEZILLA.md](../../PATCH-CLONEZILLA.md).
