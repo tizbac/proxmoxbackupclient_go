@@ -1421,7 +1421,10 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 
 	// Calculate backup duration and size
 	duration := time.Since(startTime)
-	totalSizeMB := float64(jobProg.bytesDoneBase.Load()) / (1024 * 1024)
+	// Decimal MB, as the "MB" in these messages says (it was MiB: a 30.2 GB
+	// set read "28832.6 MB"). The figure stays in MB so the translated
+	// messages, and Reports entries saved before, keep their unit.
+	totalSizeMB := float64(jobProg.bytesDoneBase.Load()) / 1e6
 
 	// Build completion message with duration, size, and chunk stats
 	failed := failedchunk.Load()

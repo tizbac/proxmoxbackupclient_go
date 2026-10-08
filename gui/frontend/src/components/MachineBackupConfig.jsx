@@ -41,7 +41,7 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
                   onChange={() => handleDriveSelect(drive.device_path)}
                 />
                 <span className="drive-device">{drive.device_path}</span>
-                <span className="drive-size">{(drive.size / (1024 * 1024 * 1024)).toFixed(2)} GB</span>
+                <span className="drive-size">{(drive.size / 1e9).toFixed(1)} GB ({(drive.size / 2 ** 30).toFixed(1)} GiB)</span>
                 <span className="drive-model">{drive.model}</span>
                 {drive.is_boot_disk && <span className="drive-badge">BOOT</span>}
                 {drive.is_system_disk && <span className="drive-badge drive-badge-system">SYSTEM</span>}
