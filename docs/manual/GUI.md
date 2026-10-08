@@ -212,7 +212,9 @@ Each set shows when it last ran and, for scheduled sets, when it runs next. It h
 | More > Clone | Opens the editor with a copy, named "<name> (copy)" |
 | More > Delete | Asks for confirmation, then deletes the set (not its snapshots) |
 
-Click **Add New Backup Set** to create one. Give it a **Backup set name**, fill in the five tabs, then click **Save Backup Set**.
+Click **Add New Backup Set** to create one. Give it a **Backup set name**, fill in the five tabs, then click **Save Backup Set**. Each set needs its own name: a name another set already has (in any mix of capitals) is flagged under the name box and the set is not saved.
+
+Anything that deletes, replaces or restores asks first in a dialog naming the action, for example **Delete this Backup Set?** with **Cancel** and **Delete**. For risky actions the dialog is red and Cancel is selected, so pressing Enter does nothing harmful; Escape or a click outside the dialog cancels.
 
 ### 6.1 Source tab
 
@@ -301,7 +303,13 @@ Real example, a 480.9 GB data share with 761,866 files on USB disks, to a PBS on
 | Run | Time | Files read | New chunks |
 |---|---|---|---|
 | First run (no previous snapshot) | 4 h 17 min | all | 135,549 |
-| Next runs, nothing or little changed | about 8 to 10 min | only changed files (all 761,866 unchanged files reused) | 4 to 36 |
+| Next runs, nothing or little changed, an hour or more after the last run | about 15 min | only changed files (all 761,866 unchanged files reused) | 4 to 40 |
+| The same, run again within a few minutes | about 9 to 10 min | the same | the same |
+| After deleting 39 GB (136 files) | about 10 min | none | 21 (about 106 MB) |
+
+**Why the time varies.** Even an unchanged file has to be looked up on disk (size, time, permissions). Right after a run, Windows still holds those details for every file in memory, so the next run is quick. After an hour or more they have been pushed out and come off the disk again, which on a large set of small files on USB disks adds a few minutes. Nothing is wrong when a 4-hourly run takes longer than a run started straight after another.
+
+**Deleting files still uploads a little.** The file list (names, sizes, times, permissions) is stored apart from the file contents. Where files were removed, the affected parts of the list are written again; the contents of the files that are left are reused. The space the deleted files take on PBS is freed only once the older snapshots that still hold them are pruned and garbage collection runs.
 
 ### Read every file every N runs
 
@@ -429,6 +437,8 @@ The finished restore is recorded in Reports with its snapshot, destination, path
    | Last 7 days / Last 30 days | Every backup of that period. Each missing file is offered from the **newest** backup that still has it |
 
 3. Click **Find deleted files**. The GUI reads each backup's file list (its catalog, a few MB even for hundreds of thousands of files, kept on this computer afterwards so the next search is quicker) and lists the set's folders on disk. No file is opened or read. The set's exclusions apply, so excluded files never show up.
+
+   The bar shows where it is: **Reading the file list of snapshot 2 of 6**, then **Reading the folder F:\Data: 312,400 of about 868,592 files and folders** (the total is what the newest backup had there, so it is an estimate), with the time taken. As a guide, for a set of 760,000 files on USB disks: a backup's file list takes about 10 seconds the first time and a second or two after that, and listing the folders takes from about 30 seconds (just after a backup) to 3 or 4 minutes (disk not read for a while). A 7-day search typically takes 1 to 5 minutes.
 
 The result is a folder tree of the missing files with a tick box on every file and folder. Each file shows its size and when it went: **deleted since** the newest backup, or **deleted between** two backups. A file whose name, size and time match a file somewhere else in the folder is marked **probably moved to ...** and is not ticked, since it most likely still exists under another name or folder. Files under a folder that cannot be read now (permissions) are not listed as missing; a note says how many.
 

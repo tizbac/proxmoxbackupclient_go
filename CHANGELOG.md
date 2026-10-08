@@ -11,8 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Undelete** (new side menu item, and Undelete... on each folder Backup Set): finds files that are in a Backup Set's backups but gone from disk, in the newest backup or every backup of the last 7 or 30 days (each file from the newest backup that still has it, with "deleted between" dates and "probably moved to" hints), and restores the ticked ones where they were (never replacing a file that has come back) or to another folder. Only the backups' catalogs (cached locally per snapshot) and the folders' directory listings are read.
 - **Roll back** (new side menu item, and Roll back... on each folder Backup Set): pick a backup from the set's dated list or by date and time, preview what would change (missing, changed, added since, unchanged), then restore missing and changed files, missing files only, or roll back exactly (also removing files added since, with typed confirmation). Every file it replaces or removes is first moved into `.pbs-rollback` on the same drive and recorded, so **Undo** puts everything back; **Delete kept versions** frees the space. Optional backup of the set first; the set's scheduled runs wait meanwhile. `.pbs-rollback` is excluded from backups.
 - **Run as Service** (Preferences > Advanced, Windows): install, start, stop and remove the background service (`ProxmoxBackupClientSVC.exe` beside the app, service `ProxmoxBackupClientSVC`, Local System, automatic start, restart on failure), with its status and whether the app is handing its work to it. The app stops or resumes its own scheduler to match, so nothing runs twice.
+- **Backup Set cards**: a **Next run** line under the schedule, and the same **Run Now / Edit / More** buttons on every card (More holds Undelete..., Roll back..., Clone and Delete).
+- **Suggested Backup ID** for new folder sets, made from the computer's and the set's name (`deepthought-data`), so one computer's sets sit together on PBS. Editing an older set offers the suggestion, with a note that a new ID starts a new group.
+- **Backup Set names must be unique** (any mix of capitals); a clash is shown under the name box and blocks Save.
+- **In-app confirmation dialogs** with a title and buttons named for the action, red with Cancel selected for risky ones, replacing the bare "wails.localhost" system boxes everywhere.
+- **Undelete and Roll back show real progress**: "x of about y files and folders" while listing the folders, a filling bar, and the time taken in minutes and seconds.
+
+### Changed
+- **Undelete and Roll back scans are about 10 times quicker** on large sets: about 70 seconds per backup's file list on a slow CPU with 868,000 entries went to a few seconds.
+- The Backup Sets list no longer scrolls inside its own box.
 
 ### Fixed
+- **Editing a Backup Set lost its last run time**, so the card said "Never run yet" until the next run.
+- **Add New Backup Set** started with the Backup ID of the set edited last, which is how two sets could end up sharing an ID.
 - **Restore to the original location of a snapshot with several folders** put every folder's files under the first folder's original path (a file from `D:\Photos` could land in `C:\Docs`). Each folder now goes back to its own original path. Found while building Undelete; confirmed and fixed with a live test.
 
 ## [0.6.0] - 2026-10-07

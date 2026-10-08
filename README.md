@@ -36,7 +36,7 @@ Measured on a real file server (480.9 GB, 761,866 files on USB disks):
 | Run | Time | Read | New chunks uploaded |
 |---|---|---|---|
 | First Metadata run (nothing to compare with) | 4 h 17 min | every file | 135,549 |
-| Following runs | about 8 to 10 min | only changed files; all 761,866 unchanged files reused | 4 to 36 |
+| Following runs | about 10 to 15 min (quicker when the last run was minutes ago) | only changed files; all 761,866 unchanged files reused | 4 to 40 |
 
 Because unchanged data is neither read nor sent, it also cuts traffic to a remote or offsite PBS to little more than what actually changed.
 
@@ -332,7 +332,7 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 ## Faster folder backups: change detection
 
-In the default Legacy mode every folder backup reads every file, so a run takes as long as reading the whole folder even when nothing changed. Backup Sets (and the CLI) can use the change-detection modes of the official `proxmox-backup-client` instead. Metadata mode is in daily use on a 480.9 GB, 761,866-file server, where a run with few changes takes about 10 minutes instead of over 4 hours (see [New in v0.6.0](#-new-in-v060-incremental-folder-backups)).
+In the default Legacy mode every folder backup reads every file, so a run takes as long as reading the whole folder even when nothing changed. Backup Sets (and the CLI) can use the change-detection modes of the official `proxmox-backup-client` instead. Metadata mode is in daily use on a 480.9 GB, 761,866-file server, where a run with few changes takes 10 to 15 minutes instead of over 4 hours (see [New in v0.6.0](#-new-in-v060-incremental-folder-backups)).
 
 | Mode | Reads | Stored as |
 |---|---|---|
