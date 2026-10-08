@@ -5,6 +5,11 @@ All notable changes to Proxmox Backup Client (GUI) will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Creation times are backed up and restored (Windows).** Each file's and folder's creation time (Explorer's "Date created") is recorded with the backup, to the 100 ns, alongside the permissions and attributes, and every restore on Windows puts it back, Undelete and Roll back included, whether or not permissions are restored. Backups made before this version did not record it; their restores keep the restore time as before. Linux has no settable creation time.
+
 ## [0.7.0] - 2026-10-08
 
 Two ways to get files back without hunting through snapshots: **Undelete** finds what has gone missing from a Backup Set's folders and puts it back, and **Roll back** returns a set's folders to how they were at a chosen backup, with a preview first and Undo afterwards. Both work from the backups' file lists and the folders' listings, so on a 761,000-file set a search takes a minute or two and no file is opened.

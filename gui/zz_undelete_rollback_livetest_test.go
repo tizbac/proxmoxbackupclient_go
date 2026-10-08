@@ -39,6 +39,9 @@ func undeleteRollbackLive(t *testing.T, mode string) {
 	e2eWriteBytes(t, filepath.Join(src, "projects", "alpha", "sub", "a2.txt"), []byte("alpha two"))
 	e2eWriteBytes(t, filepath.Join(src, "docs", "report.docx"), []byte("report v1"))
 	e2eWriteBytes(t, filepath.Join(src, "docs", "notes.txt"), []byte("notes v1"))
+	// A creation time long before today, to see it come back on undelete.
+	notesCreated := time.Date(2004, 5, 6, 7, 8, 9, 0, time.UTC)
+	setCreated(t, filepath.Join(src, "docs", "notes.txt"), notesCreated)
 
 	backupID := fmt.Sprintf("undel-%s-%d", mode, time.Now().Unix())
 	job := ScheduledJob{ID: "live-" + mode, Name: "Live " + mode, BackupDirs: []string{src}, BackupID: backupID, ExcludeList: []string{"*.tmp"}}
@@ -135,6 +138,11 @@ func undeleteRollbackLive(t *testing.T, mode string) {
 	runRestores(t, "undelete original", undeleteRuns(cfg, job, bySnap, []int64{s2, s1}, "", true, false))
 	now := e2eSnapshotState(t, src)
 	checkSame(t, "undelete notes.txt", state1, now, "docs/notes.txt")
+	if creationTimesKept {
+		if got := readCreated(t, filepath.Join(src, "docs", "notes.txt")); !got.Equal(notesCreated) {
+			t.Errorf("undelete notes.txt: creation time %v, want %v", got.UTC(), notesCreated)
+		}
+	}
 	checkSame(t, "undelete a2.txt", state2, now, "projects/alpha/sub/a2.txt")
 	if b, _ := os.ReadFile(filepath.Join(src, "projects", "alpha", "a1.txt")); string(b) != "came back" {
 		t.Errorf("a1.txt was replaced: %q", b)

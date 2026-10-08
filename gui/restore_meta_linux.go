@@ -24,6 +24,10 @@ import (
 // requiring a capability the restoring process doesn't hold) is reported to
 // the caller as part of a combined error but does not stop the rest of this
 // file's attributes from being applied, or abort the restore.
+// applyCreationTime: Linux has no settable creation (birth) time, so a
+// Windows snapshot restored here keeps the time the file was written.
+func applyCreationTime(destPath string, created int64) error { return nil }
+
 func applyNTFSMetadata(destPath string, entry FileMetaEntry, sddls []string) error {
 	if len(entry.Xattrs) == 0 {
 		return nil

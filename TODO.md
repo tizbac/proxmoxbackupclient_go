@@ -76,8 +76,12 @@ to nil for legacy snapshots with no meta file. `gui/backup_meta.go:12`.
   - [ ] Needs both capture (add an ADS field to `FileMetaEntry` + a collector) and restore
         application — the checkbox for this already exists in the UI too, still correctly
         disabled/"(coming soon)" since nothing backs it yet.
-- ❌ **Creation Time**: still untouched — only `ModTime` is ever captured/restored.
-  - [ ] Genuinely greenfield on both sides.
+- ✅ **Creation Time**: DONE 2026-10-08. `FileMetaEntry.Created` (FILETIME, json "c") captured by
+  NTFSMetaCollector from the walk's own FileInfo (no extra disk access), restored on Windows for
+  every restore (not only with RestoreACLs) by `applyCreationTime` before the ACL step, stage
+  "created" when ACLs are off. Unit round trip + live undelete check (2004 creation time comes
+  back). Linux: nothing to set. The CLI `proxmoxbackup-directory` does not write the NTFS blob, so
+  CLI backups still lack it.
 - **UID/GID hardcoding** in `pbscommon/pxar.go`: unchanged (`uid: 1000, gid: 1000`), with an
   existing comment noting this is fine since the project targets Windows — separate from the
   Windows-specific SDDL/attrs blob, not something the ACL work touches.

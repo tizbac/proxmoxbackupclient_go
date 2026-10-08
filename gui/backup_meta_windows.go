@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -87,6 +88,15 @@ func (c *NTFSMetaCollector) Collect(absPath string, info os.FileInfo, isDir bool
 		}
 	}
 
+	// Creation time: already in the directory listing the walk read, so this
+	// costs no extra disk access.
+	var created int64
+	if info != nil {
+		if d, ok := info.Sys().(*syscall.Win32FileAttributeData); ok && d != nil {
+			created = int64(d.CreationTime.HighDateTime)<<32 | int64(d.CreationTime.LowDateTime)
+		}
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -102,6 +112,7 @@ func (c *NTFSMetaCollector) Collect(absPath string, info os.FileInfo, isDir bool
 		IsDir:   isDir,
 		SDDLIdx: idx,
 		Attrs:   attrs,
+		Created: created,
 	})
 	return nil
 }

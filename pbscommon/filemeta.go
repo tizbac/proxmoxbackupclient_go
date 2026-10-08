@@ -23,6 +23,11 @@ type FileMetaEntry struct {
 	SDDLIdx int    `json:"s"`           // Windows: index into BackupFileMeta.SDDLs (dedup)
 	Attrs   uint32 `json:"a"`           // Windows file attributes bitmask
 	Reparse uint32 `json:"r,omitempty"` // reparse tag (0 if not a reparse point)
+	// Created is the Windows creation time as a FILETIME (100 ns ticks since
+	// 1601-01-01 UTC), 0 when not captured. pxar has no field for it (Linux
+	// has no settable creation time), so it travels here. Added 2026-10-08;
+	// older readers ignore it.
+	Created int64 `json:"c,omitempty"`
 	// Xattrs is Linux-only: every extended attribute on this file, name ->
 	// raw value. POSIX ACLs travel here under their kernel names
 	// (system.posix_acl_access / system.posix_acl_default), as raw bytes.

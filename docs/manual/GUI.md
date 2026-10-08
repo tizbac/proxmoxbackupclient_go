@@ -370,7 +370,7 @@ Anything waiting behind the run is listed under the card.
 
 ## 9. Restore
 
-Open the **Restore** page. The box at the top lists what restore supports: files and folders (full tree), selective restore, modification times, several PBS servers, and NTFS ACLs (Windows) or POSIX ACLs (Linux). Alternate Data Streams (ADS) and legacy NTFS extended attributes are not restored yet.
+Open the **Restore** page. The box at the top lists what restore supports: files and folders (full tree), selective restore, modification times, creation times (Windows), several PBS servers, and NTFS ACLs (Windows) or POSIX ACLs (Linux). Alternate Data Streams (ADS) and legacy NTFS extended attributes are not restored yet.
 
 ### 9.1 Find the snapshot
 
@@ -412,7 +412,7 @@ Selective restore reads only the chunks that hold the ticked files, so restoring
 | Restore to alternate path | Writes to the **Destination folder** you choose (**Browse**) |
 | Keep original directory structure | Alternate path only. On: `dest\Users\alice\doc.txt`. Off: `dest\doc.txt` (good for a single file) |
 | Overwrite existing files | Always on for original path |
-| Restore modification times | Sets file and folder times |
+| Restore modification times | Sets file and folder times. On Windows the **creation time** (Explorer's "Date created") is put back too, for backups made with v0.7.1 or later; older backups did not record it |
 | Verify after restore | Reads every restored file back and compares it with the snapshot. Mismatches are reported; nothing is deleted |
 | Restore permissions/ACLs | Windows: owner, group, permissions (DACL) and Hidden/System/Archive/ReadOnly attributes. Linux: POSIX ACLs and extended attributes. Run as administrator (or root) for this |
 
@@ -420,7 +420,7 @@ Click **▶️ Restore**.
 
 ### 9.5 The restore card
 
-The restore card works like the backup card. Its stage line shows **Connecting and preparing restore...**, **Reading snapshot index and locating files...**, **Fetching chunks and writing files...**, then, after the data, **Setting folder timestamps...**, **Restoring ACLs and attributes...** and **Verifying restored files...** as they apply. The rows are Started, Forecast finish, Elapsed time, Time remaining, Speed (shown as the average once the transfer is done), Downloaded (data done / total) and Current file. **Stop** ends the restore.
+The restore card works like the backup card. Its stage line shows **Connecting and preparing restore...**, **Reading snapshot index and locating files...**, **Fetching chunks and writing files...**, then, after the data, **Setting folder timestamps...**, **Restoring ACLs and attributes...** (or **Restoring creation times...** when permissions are not being restored) and **Verifying restored files...** as they apply. The rows are Started, Forecast finish, Elapsed time, Time remaining, Speed (shown as the average once the transfer is done), Downloaded (data done / total) and Current file. **Stop** ends the restore.
 
 The finished restore is recorded in Reports with its snapshot, destination, paths, file count, size, verification result and duration.
 

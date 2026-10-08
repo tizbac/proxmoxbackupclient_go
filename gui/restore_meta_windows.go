@@ -9,6 +9,33 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// applyCreationTime sets a restored file's or folder's creation time to the
+// captured FILETIME (0 = not captured, left alone). Only the creation time is
+// written; the modification time the extraction set stays as it is.
+func applyCreationTime(destPath string, created int64) error {
+	if created <= 0 {
+		return nil
+	}
+	p, err := windows.UTF16PtrFromString(destPath)
+	if err != nil {
+		return err
+	}
+	// BACKUP_SEMANTICS opens folders too; OPEN_REPARSE_POINT sets the link's
+	// own time, not its target's.
+	h, err := windows.CreateFile(p, windows.FILE_WRITE_ATTRIBUTES,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil,
+		windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return fmt.Errorf("open for creation time: %w", err)
+	}
+	defer windows.CloseHandle(h)
+	ft := windows.Filetime{LowDateTime: uint32(created), HighDateTime: uint32(created >> 32)}
+	if err := windows.SetFileTime(h, &ft, nil, nil); err != nil {
+		return fmt.Errorf("SetFileTime: %w", err)
+	}
+	return nil
+}
+
 // applyNTFSMetadata restores a single file/dir's captured Security
 // Descriptor (owner/group/DACL) and DOS attributes, the counterpart to
 // NTFSMetaCollector.Collect on the backup side. Best-effort by design,

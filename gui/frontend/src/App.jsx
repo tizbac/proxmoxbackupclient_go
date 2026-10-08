@@ -2715,6 +2715,7 @@ function App() {
               dirtimes: tl('restoreStageDirTimes', 'Setting folder timestamps...'),
               verifying: tl('restoreStageVerifying', 'Verifying restored files...'),
               acls: tl('restoreStageAcls', 'Restoring ACLs and attributes...'),
+              created: tl('restoreStageCreated', 'Restoring creation times...'),
             backupfirst: tl('restoreStageBackupFirst', 'Backing up the set before the roll back...'),
             comparing: tl('restoreStageComparing', 'Comparing the backup with the folders...'),
             safety: tl('restoreStageSafety', 'Moving the files to be replaced or removed aside (kept for Undo)...'),
@@ -2725,7 +2726,7 @@ function App() {
         // left comes from the stage's own "N of M" count and how long it
         // has taken so far; without a count it reads "Finishing...".
         const finishing = <span className="pending-value">{tl('finishingShort', 'Finishing...')}</span>
-        const afterTransfer = ['dirtimes', 'acls', 'verifying'].includes(restoreStage.stage)
+        const afterTransfer = ['dirtimes', 'acls', 'created', 'verifying'].includes(restoreStage.stage)
         const transferDone = afterTransfer || (s.bytesTotal > 0 && s.bytesDone >= s.bytesTotal)
         let remaining = afterTransfer ? null : s.eta
         if (afterTransfer && status.message) {
@@ -4437,6 +4438,7 @@ function App() {
               <span>✅ {t('restoreBetaFilesDirs')}</span>
               <span>✅ {t('restoreBetaSelective')}</span>
               <span>✅ {t('restoreBetaTimestamps')}</span>
+              <span>✅ {tl('restoreSupportsCreated', 'Creation times (Windows)')}</span>
               <span>✅ {t('restoreBetaMultiServer')}</span>
               <span>✅ {t('restoreBetaACLsDone')}</span>
             </div>

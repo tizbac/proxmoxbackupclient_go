@@ -9,3 +9,6 @@ package main
 func applyNTFSMetadata(destPath string, entry FileMetaEntry, sddls []string) error {
 	return nil
 }
+
+// applyCreationTime: only Windows has a settable creation time.
+func applyCreationTime(destPath string, created int64) error { return nil }

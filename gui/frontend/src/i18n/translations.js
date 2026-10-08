@@ -586,6 +586,8 @@ const translations = {
       confirmDeleteServer: "Voulez-vous vraiment supprimer le serveur PBS \"{id}\" ?",
       confirmDeleteJob: "Voulez-vous vraiment supprimer le jeu de sauvegarde \"{name}\" ?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Dates de création (Windows)",
+    restoreStageCreated: "Restauration des dates de création...",
     confirmTitle: "Confirmation",
     confirmContinue: "Continuer",
     noticeTitle: "Information",
@@ -1365,6 +1367,8 @@ const translations = {
       confirmDeleteServer: "Do you really want to delete the PBS server \"{id}\"?",
       confirmDeleteJob: "Do you really want to delete the Backup Set \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Creation times (Windows)",
+    restoreStageCreated: "Restoring creation times...",
     confirmTitle: "Please confirm",
     confirmContinue: "Continue",
     noticeTitle: "Information",
@@ -2144,6 +2148,8 @@ const translations = {
       confirmDeleteServer: "Vuoi davvero eliminare il server PBS \"{id}\"?",
       confirmDeleteJob: "Vuoi davvero eliminare il set di backup \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Date di creazione (Windows)",
+    restoreStageCreated: "Ripristino delle date di creazione...",
     confirmTitle: "Conferma",
     confirmContinue: "Continua",
     noticeTitle: "Informazione",
@@ -2923,6 +2929,8 @@ const translations = {
       confirmDeleteServer: "Möchten Sie wirklich den PBS-Server \"{id}\" löschen?",
       confirmDeleteJob: "Möchten Sie das Sicherungsset \"{name}\" wirklich löschen?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Erstellungszeiten (Windows)",
+    restoreStageCreated: "Erstellungszeiten werden wiederhergestellt...",
     confirmTitle: "Bitte bestätigen",
     confirmContinue: "Weiter",
     noticeTitle: "Hinweis",
@@ -3702,6 +3710,8 @@ const translations = {
       confirmDeleteServer: "Czy naprawdę chcesz usunąć serwer PBS \"{id}\"?",
       confirmDeleteJob: "Czy naprawdę chcesz usunąć zestaw kopii zapasowej \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Daty utworzenia (Windows)",
+    restoreStageCreated: "Przywracanie dat utworzenia...",
     confirmTitle: "Potwierdź",
     confirmContinue: "Dalej",
     noticeTitle: "Informacja",
@@ -4483,6 +4493,8 @@ const translations = {
       confirmDeleteServer: "¿Realmente desea eliminar el servidor PBS \"{id}\"?",
       confirmDeleteJob: "¿Realmente desea eliminar el conjunto de copia de seguridad \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Fechas de creación (Windows)",
+    restoreStageCreated: "Restaurando las fechas de creación...",
     confirmTitle: "Confirmar",
     confirmContinue: "Continuar",
     noticeTitle: "Información",
@@ -5260,6 +5272,8 @@ const translations = {
       confirmDeleteServer: "Наистина ли искате да изтриете PBS сървъра „{id}“?",
       confirmDeleteJob: "Наистина ли искате да изтриете набора за архивиране „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Дати на създаване (Windows)",
+    restoreStageCreated: "Възстановяване на датите на създаване...",
     confirmTitle: "Потвърждение",
     confirmContinue: "Продължи",
     noticeTitle: "Информация",
@@ -6037,6 +6051,8 @@ const translations = {
       confirmDeleteServer: "Opravdu chcete smazat PBS server „{id}“?",
       confirmDeleteJob: "Opravdu chcete smazat sadu záloh „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Data vytvoření (Windows)",
+    restoreStageCreated: "Obnovování dat vytvoření...",
     confirmTitle: "Potvrzení",
     confirmContinue: "Pokračovat",
     noticeTitle: "Informace",
@@ -6814,6 +6830,8 @@ const translations = {
       confirmDeleteServer: "Θέλετε πραγματικά να διαγράψετε τον διακομιστή PBS „{id}“;",
       confirmDeleteJob: "Θέλετε πραγματικά να διαγράψετε το Σύνολο Αντιγράφων Ασφαλείας „{name}“;",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Ημερομηνίες δημιουργίας (Windows)",
+    restoreStageCreated: "Επαναφορά ημερομηνιών δημιουργίας...",
     confirmTitle: "Επιβεβαίωση",
     confirmContinue: "Συνέχεια",
     noticeTitle: "Πληροφορία",
@@ -7591,6 +7609,8 @@ const translations = {
       confirmDeleteServer: "Valóban törli a „{id}” PBS szervert?",
       confirmDeleteJob: "Valóban törli a „{name}” Mentési Készletet?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Létrehozási idők (Windows)",
+    restoreStageCreated: "Létrehozási idők visszaállítása...",
     confirmTitle: "Megerősítés",
     confirmContinue: "Folytatás",
     noticeTitle: "Tájékoztatás",
@@ -8368,6 +8388,8 @@ const translations = {
       confirmDeleteServer: "Vai tiešām vēlaties dzēst PBS serveri „{id}”?",
       confirmDeleteJob: "Vai tiešām vēlaties dzēst Dublēšanas Kopu „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Izveides laiki (Windows)",
+    restoreStageCreated: "Atjauno izveides laikus...",
     confirmTitle: "Apstiprināšana",
     confirmContinue: "Turpināt",
     noticeTitle: "Informācija",
@@ -9145,6 +9167,8 @@ const translations = {
       confirmDeleteServer: "Ar tikrai norite ištrinti PBS serverį „{id}“?",
       confirmDeleteJob: "Ar tikrai norite ištrinti Atsarginio Kopijavimo Rinkinį „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Sukūrimo laikai (Windows)",
+    restoreStageCreated: "Atkuriami sukūrimo laikai...",
     confirmTitle: "Patvirtinimas",
     confirmContinue: "Tęsti",
     noticeTitle: "Informacija",
@@ -9922,6 +9946,8 @@ const translations = {
       confirmDeleteServer: "Wilt u de PBS-server „{id}” echt verwijderen?",
       confirmDeleteJob: "Wilt u de Backup Set „{name}” echt verwijderen?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Aanmaaktijden (Windows)",
+    restoreStageCreated: "Aanmaaktijden terugzetten...",
     confirmTitle: "Bevestigen",
     confirmContinue: "Doorgaan",
     noticeTitle: "Informatie",
@@ -10699,6 +10725,8 @@ const translations = {
       confirmDeleteServer: "Deseja realmente eliminar o servidor PBS „{id}”?",
       confirmDeleteJob: "Deseja realmente eliminar o Conjunto de Backup „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Datas de criação (Windows)",
+    restoreStageCreated: "A restaurar as datas de criação...",
     confirmTitle: "Confirmar",
     confirmContinue: "Continuar",
     noticeTitle: "Informação",
@@ -11476,6 +11504,8 @@ const translations = {
       confirmDeleteServer: "Doriți cu adevărat să ștergeți serverul PBS „{id}”?",
       confirmDeleteJob: "Doriți cu adevărat să ștergeți Setul de Backup „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Date de creare (Windows)",
+    restoreStageCreated: "Se restaurează datele de creare...",
     confirmTitle: "Confirmare",
     confirmContinue: "Continuă",
     noticeTitle: "Informație",
@@ -12253,6 +12283,8 @@ const translations = {
       confirmDeleteServer: "Naozaj chcete odstrániť PBS server „{id}”?",
       confirmDeleteJob: "Naozaj chcete odstrániť Zálohovaciu Sadu „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Časy vytvorenia (Windows)",
+    restoreStageCreated: "Obnovujú sa časy vytvorenia...",
     confirmTitle: "Potvrdenie",
     confirmContinue: "Pokračovať",
     noticeTitle: "Informácia",
@@ -13030,6 +13062,8 @@ const translations = {
       confirmDeleteServer: "„{id}” PBS sunucusunu gerçekten silmek istiyor musunuz?",
       confirmDeleteJob: "„{name}” Yedekleme Setini gerçekten silmek istiyor musunuz?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Oluşturma zamanları (Windows)",
+    restoreStageCreated: "Oluşturma zamanları geri yükleniyor...",
     confirmTitle: "Onay",
     confirmContinue: "Devam",
     noticeTitle: "Bilgi",
@@ -13807,6 +13841,8 @@ const translations = {
       confirmDeleteServer: "Ви дійсно хочете видалити сервер PBS „{id}”?",
       confirmDeleteJob: "Ви дійсно хочете видалити Набір резервного копіювання „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    restoreSupportsCreated: "Час створення (Windows)",
+    restoreStageCreated: "Відновлення часу створення...",
     confirmTitle: "Підтвердження",
     confirmContinue: "Продовжити",
     noticeTitle: "Інформація",
