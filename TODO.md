@@ -551,6 +551,8 @@ type ScheduledJob struct {
 ### 🗑️ Undelete and ⏪ Roll back: IMPLEMENTATION PLAN (ideas from BFW 2026-10-07, planned 2026-10-08)
 Undelete = files that are in a Backup Set's snapshots but gone from disk, ready to restore. Roll back = put a Backup Set's folders back as they were at a chosen date and time. Both are "compare a snapshot with the live folders, then restore a list of paths", so they share one engine. Folder sets only; machine sets keep bare-metal restore.
 
+**Navigation (Mick, 2026-10-08):** Undelete and Roll back are MAIN MENU items, so the side menu reads Backup, Restore, Undelete, Roll back, then Reports and Message Log. They are tasks like Backup and Restore ("I need something back"), they need a full page (results tree, snapshot list, preview), and Restore stays the free "browse any snapshot" tool. Each page starts with a **Backup Set picker** (folder sets only; the set gives server, backup ID, folders and exclude list). Each folder Backup Set card gets **Undelete...** and **Roll back...** shortcuts that open the same page with that set already picked: one way of doing each job, two ways in. Later, optional: an "Other backup..." choice in the picker (server, backup ID, target folder) for another machine's backups.
+
 #### Phase 0: retention (decide first, PBS side)
 Found 2026-10-08: datastore prune job `pbs-prune` (04:00, keep-daily 7, weekly 4, monthly 6) cut deepthought-data's six 07/10 snapshots to one. With runs every 4 hours, only the last run of each day survives, so undelete "last N days" and roll back only ever see one point per day.
 - [ ] Short term (needs Mick's OK, PBS config): add `keep-hourly 48` to `pbs-prune`. VM groups back up once a day, so nothing changes for them; file sets keep every run for 2 days, then daily/weekly/monthly as now. Extra snapshots of an incremental set cost almost nothing (4 to 36 new chunks each).
@@ -565,7 +567,7 @@ Found 2026-10-08: datastore prune job `pbs-prune` (04:00, keep-daily 7, weekly 4
 - [ ] Tests: compare engine on temp trees (deleted, changed, added, renamed, case-only rename, excluded, symlinks on Linux); index cache round trip; history filter with a shared backup ID.
 
 #### Phase 2: Undelete (GUI)
-- [ ] Entry points: "Undelete..." on each folder Backup Set card, and an Undelete tab in Restore (pick a set).
+- [ ] **Undelete** side menu item (between Restore and Roll back): page opens with the Backup Set picker; the set card's "Undelete..." shortcut opens it with the set picked. Remembers the last set used.
 - [ ] Look back (radio): Latest snapshot / Last 7 days / Last 30 days. For "last N days", go through the set's snapshots newest first; each missing file comes from the NEWEST snapshot that still has it, labelled "last backed up <date>" and "deleted between <date> and <date>" (the first snapshot without it).
 - [ ] Results as a folder tree with counts and sizes, name filter, tick boxes (tick a folder = everything under it); moved-file hints shown but unticked by default.
 - [ ] Restore to (radio): Original locations / Another folder. Original never overwrites: if a file has reappeared at that path, skip it and list it.
@@ -573,7 +575,7 @@ Found 2026-10-08: datastore prune job `pbs-prune` (04:00, keep-daily 7, weekly 4
 - [ ] Expected cost on deepthought-data: the index from cache or a few MB download, plus one directory walk of F:\Data (measure it; a Metadata run walks the same tree in its 10 min, most of which is not the walk).
 
 #### Phase 3: Roll back (GUI)
-- [ ] Entry: "Roll back..." on each folder Backup Set card. Pick a snapshot from the dated list, or enter a date and time and get the newest snapshot at or before it.
+- [ ] **Roll back** side menu item (after Undelete): page opens with the Backup Set picker; the set card's "Roll back..." shortcut opens it with the set picked. Then pick a snapshot from the dated list, or enter a date and time and get the newest snapshot at or before it.
 - [ ] Preview (the phase 1 compare, nothing written): counts and expandable lists of files to restore (missing), to replace (changed), and newer files that were not there then.
 - [ ] Policy (radio): **Restore missing and changed files, keep newer files** (default) / **Restore missing files only** / **Exact roll back** (also removes files that did not exist then; off by default, confirm by typing the number of files to be removed).
 - [ ] Safety net, always on: every file roll back would replace or remove is first MOVED into `<volume>\.pbs-rollback\<set>\<time>\<relative path>` on the same volume (a rename: instant, no copy). One "Undo roll back" puts them back; Reports lists the folder and offers Delete after N days. Optional tick box, on by default: "Back up the set now first" (an incremental run, minutes).
@@ -582,7 +584,8 @@ Found 2026-10-08: datastore prune job `pbs-prune` (04:00, keep-daily 7, weekly 4
 - [ ] Reports row: "Roll back to <date>: restored A, replaced B, removed C (kept in <safety folder>)".
 
 #### Phase 4: finish
-- [ ] Translations (18 languages), GUI manual sections, CHANGELOG.
+- [ ] Side menu: add the two items (nav-btn, activeTab 'undelete' / 'rollback'), shortcuts on the set cards, and keep the progress card visible on both pages while a restore runs (it is the restore card).
+- [ ] Translations (18 languages), GUI manual sections (new chapters for Undelete and Roll back, menu list in the overview), README feature list, CHANGELOG.
 - [ ] Live tests on pbs-test with a fixture tree (delete, change, add, rename; then undelete and each roll back policy; compare SHA-256 with the original tree; Undo roll back returns the pre roll back state exactly). Scale test on deepthought-data: time and memory of the compare, and an undelete of a few hundred scattered files.
 - [ ] Later, optional: CLI `proxmoxbackup-directory -undelete / -rollback` on the same engine.
 
