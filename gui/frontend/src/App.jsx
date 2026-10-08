@@ -1980,6 +1980,13 @@ function App() {
         showStatus(`❌ ${t('schedulingUnavailable')}`, 'error')
         return
       }
+      // Each set needs its own name (the backend refuses a duplicate too).
+      const wantedName = (jobName.trim() || `Backup ${config['backup-id'] || hostname}`).toLowerCase()
+      const sameName = scheduledJobs.find(j => j.id !== editingJobId && (j.name || '').trim().toLowerCase() === wantedName)
+      if (sameName) {
+        showStatus(`❌ ${tl('jobNameNotUnique', 'There is already a Backup Set called "{name}". Each set needs its own name.').replace('{name}', sameName.name)}`, 'error')
+        return
+      }
 
       // For machine backups, we need to use a different approach for scheduled jobs
       // We'll pass drive letters in a separate field or structure based on backup type
@@ -2633,6 +2640,11 @@ function App() {
       </ol>
     </div>
   ) : null
+
+  // Another set with the name being typed (names must be unique).
+  const nameClash = jobName.trim()
+    ? scheduledJobs.find(j => j.id !== editingJobId && (j.name || '').trim().toLowerCase() === jobName.trim().toLowerCase())
+    : null
 
   // The restore progress card, shown on whichever restore page is open
   // (Restore, Undelete, Roll back): they all run through the same restore.
@@ -3790,7 +3802,14 @@ function App() {
                   }}
                   placeholder={t('backupSetNamePlaceholder')}
                   style={{width: '100%', maxWidth: '400px'}}
+                  aria-invalid={nameClash ? true : undefined}
+                  aria-describedby={nameClash ? 'set-name-clash' : undefined}
                 />
+                {nameClash && (
+                  <div id="set-name-clash" role="alert" style={{color: '#c53030', fontSize: '13px', marginTop: '6px'}}>
+                    {tl('jobNameNotUnique', 'There is already a Backup Set called "{name}". Each set needs its own name.').replace('{name}', nameClash.name)}
+                  </div>
+                )}
               </div>
             )}
 

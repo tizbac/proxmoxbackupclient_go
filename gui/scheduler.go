@@ -255,6 +255,9 @@ func (a *App) SaveScheduledJob(job ScheduledJob) error {
 		// would delete every existing job if the read/parse failed transiently.
 		return fmt.Errorf("failed to load existing jobs (refusing to overwrite): %w", err)
 	}
+	if err := checkUniqueJobName(jobs, job); err != nil {
+		return err
+	}
 
 	// Set enabled by default
 	job.Enabled = true
@@ -340,6 +343,22 @@ func (a *App) GetScheduledJobsForAPI() []map[string]interface{} {
 	return result
 }
 
+// checkUniqueJobName refuses a Backup Set name another set already has
+// (ignoring case and surrounding spaces): the name is how sets are told apart
+// in the list, Reports, notifications and the snapshot comment on PBS.
+func checkUniqueJobName(jobs []ScheduledJob, job ScheduledJob) error {
+	name := strings.TrimSpace(job.Name)
+	if name == "" {
+		return nil
+	}
+	for _, j := range jobs {
+		if j.ID != job.ID && strings.EqualFold(strings.TrimSpace(j.Name), name) {
+			return fmt.Errorf("a Backup Set named %q already exists: each set needs its own name", name)
+		}
+	}
+	return nil
+}
+
 // UpdateScheduledJob updates an existing scheduled job
 func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 	if err := a.checkJobsChangeAllowed(); err != nil {
@@ -354,6 +373,9 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
 		return fmt.Errorf("failed to load jobs: %w", err)
+	}
+	if err := checkUniqueJobName(jobs, job); err != nil {
+		return err
 	}
 
 	// Find and update the job

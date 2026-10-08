@@ -164,3 +164,16 @@ func TestCalculateNextRunAt_ManualNeverSchedules(t *testing.T) {
 		t.Errorf("manual TriggerMode must return empty NextRun, got %q", got)
 	}
 }
+
+func TestCheckUniqueJobName(t *testing.T) {
+	jobs := []ScheduledJob{{ID: "1", Name: "Deepthought - Data"}, {ID: "2", Name: "Beeby Property"}}
+	if err := checkUniqueJobName(jobs, ScheduledJob{ID: "3", Name: "  deepthought - DATA "}); err == nil {
+		t.Error("duplicate name (other case, spaces) accepted")
+	}
+	if err := checkUniqueJobName(jobs, ScheduledJob{ID: "1", Name: "Deepthought - Data"}); err != nil {
+		t.Errorf("saving a set under its own name refused: %v", err)
+	}
+	if err := checkUniqueJobName(jobs, ScheduledJob{ID: "3", Name: "Beeby Trading"}); err != nil {
+		t.Errorf("new name refused: %v", err)
+	}
+}
