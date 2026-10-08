@@ -853,6 +853,16 @@ function App() {
     }
   }, [])
 
+  // Keep the Backup Set cards' Last run and Next run current while the
+  // Backup page is open (runs and the scheduler change them).
+  useEffect(() => {
+    if (activeTab !== 'backup' || !GetScheduledJobs) return undefined
+    const id = setInterval(() => {
+      GetScheduledJobs().then(jobs => { if (jobs) setScheduledJobs(jobs) }).catch(() => {})
+    }, 30000)
+    return () => clearInterval(id)
+  }, [activeTab])
+
   // Listen to restore events
   useEffect(() => {
     if (!EventsOn) return
@@ -1986,13 +1996,15 @@ function App() {
         if (editingJobId) {
           // Update existing job
           await UpdateScheduledJob(jobData)
-          setScheduledJobs(scheduledJobs.map(j => j.id === editingJobId ? jobData : j))
+          // Reload rather than use the form's copy: the backend adds the
+          // next run and keeps the last run and run counters.
+          setScheduledJobs((await GetScheduledJobs()) || scheduledJobs.map(j => j.id === editingJobId ? jobData : j))
           showStatus(`✅ ${t('statusJobUpdated')}`, 'success')
           setEditingJobId(null)
         } else {
           // Create new job
           await SaveScheduledJob(jobData)
-          setScheduledJobs([...scheduledJobs, jobData])
+          setScheduledJobs((await GetScheduledJobs()) || [...scheduledJobs, jobData])
           showStatus(`✅ ${t('statusJobScheduled')}`, 'success')
         }
         // Reset form after save
@@ -3467,14 +3479,16 @@ function App() {
                     <div style={{maxHeight: '480px', overflowY: 'auto'}}>
                       {scheduledJobs.map((job, idx) => (
                         <div key={job.id} style={{
-                          display: 'flex', alignItems: 'center', gap: '14px', padding: '12px 16px',
+                          display: 'flex', alignItems: 'center', gap: '10px 14px', padding: '12px 16px', flexWrap: 'wrap',
                           borderTop: idx === 0 ? 'none' : '1px solid #e6e6e6',
                         }}>
-                          <div style={{flex: 1, minWidth: 0}}>
+                          {/* The text keeps room for its lines; on a narrow window the
+                              buttons wrap below it instead of squeezing it. */}
+                          <div style={{flex: '1 1 340px', minWidth: 0}}>
                             <strong>{job.name}</strong>
-                            <div style={{fontSize: '12px', color: '#6c757d', marginTop: '2px'}}>
+                            <div style={{fontSize: '12px', color: '#6c757d', marginTop: '2px', display: 'flex', alignItems: 'center'}}>
                               <span style={{
-                                display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em',
+                                display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
                                 padding: '2px 7px', borderRadius: '3px', background: '#eef0f4', color: '#3d5aa8',
                                 border: '1px solid #ccd4e6', verticalAlign: 'middle', marginRight: '6px',
                               }}>
@@ -3488,26 +3502,46 @@ function App() {
                                   trigger-mode one above, instead of the full "Directory (specific
                                   folder)"-style dropdown-option text. */}
                               <span style={{
-                                display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em',
+                                display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
                                 padding: '2px 7px', borderRadius: '3px', background: '#eef3ec', color: '#2e7d47',
                                 border: '1px solid '+'#c8e0cf', verticalAlign: 'middle', marginRight: '6px',
                               }}>
                                 {(job.backupType === 'machine' ? t('backupTypeMachine') : t('backupTypeDirectory')).split(' ')[0].toUpperCase()}{job.machineAsVm ? ' (VM)' : ''}
                               </span>
-                              {job.triggerMode === 'manual'
-                                ? t('manualOnDemand')
-                                : job.triggerMode === 'interval'
-                                ? <>{t('everyNMinutes').replace('{n}', job.intervalMinutes)}
-                                    {!job.windowAllDay && ` (${job.windowStart}–${job.windowEnd})`}</>
-                                : <>{job.scheduleTime}</>}
-                              {job.triggerMode !== 'manual' && (
-                                <>
-                                  {' · '}
-                                  {!job.daysOfWeek || job.daysOfWeek.length === 0 || job.daysOfWeek.length === 7
-                                    ? t('everyDay')
-                                    : job.daysOfWeek.map(d => t(`day${d}`)).join(', ')}
-                                </>
-                              )}
+                              {/* Schedule and next run as two tightly spaced lines beside the
+                                  badges, so the card gains no height. nextRun is the ISO time the
+                                  scheduler keeps on the job; manual sets have none. */}
+                              <div style={{lineHeight: 1.3, minWidth: 0}}>
+                                <div>
+                                  {job.triggerMode === 'manual'
+                                    ? t('manualOnDemand')
+                                    : job.triggerMode === 'interval'
+                                    ? <>{t('everyNMinutes').replace('{n}', job.intervalMinutes)}
+                                        {!job.windowAllDay && ` (${job.windowStart}–${job.windowEnd})`}</>
+                                    : <>{job.scheduleTime}</>}
+                                  {job.triggerMode !== 'manual' && (
+                                    <>
+                                      {' · '}
+                                      {!job.daysOfWeek || job.daysOfWeek.length === 0 || job.daysOfWeek.length === 7
+                                        ? t('everyDay')
+                                        : job.daysOfWeek.map(d => t(`day${d}`)).join(', ')}
+                                    </>
+                                  )}
+                                </div>
+                                {job.triggerMode !== 'manual' && job.nextRun && (() => {
+                                  const when = new Date(job.nextRun)
+                                  if (isNaN(when.getTime())) return null
+                                  const now = new Date()
+                                  const sameDay = when.toDateString() === now.toDateString()
+                                  const hm = { hour: '2-digit', minute: '2-digit' }
+                                  const text = when <= now
+                                    ? tl('nextRunDue', 'due now')
+                                    : sameDay
+                                    ? when.toLocaleTimeString([], hm)
+                                    : when.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', ...hm })
+                                  return <div>{tl('nextRunAt', 'Next run')}: {text}</div>
+                                })()}
+                              </div>
                             </div>
                             <div style={{fontSize: '12px', color: '#888', marginTop: '2px'}}>
                               {t('lastRun')} {job.lastRun ? new Date(job.lastRun).toLocaleString() : t('neverRun')}
@@ -3526,6 +3560,7 @@ function App() {
                               })()}
                             </div>
                           </div>
+                          <div className="set-actions" style={{display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end'}}>
                           <button
                             className="btn"
                             disabled={runningJobId === job.id}
@@ -3649,6 +3684,7 @@ function App() {
                           >
                             {t('deleteJob')}
                           </button>
+                          </div>
                         </div>
                       ))}
                     </div>

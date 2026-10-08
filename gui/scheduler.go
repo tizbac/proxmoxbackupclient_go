@@ -363,6 +363,11 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 			// Preserve enabled state and run state
 			job.Enabled = j.Enabled
 			job.MetadataRunsSinceFullRead = j.MetadataRunsSinceFullRead
+			// The editor does not send the last run: keep it, or the card
+			// says "Never run yet" after every edit.
+			if job.LastRun == "" {
+				job.LastRun = j.LastRun
+			}
 			// Recalculate next run with new schedule time
 			job.NextRun = calculateNextRun(job)
 			jobs[i] = job

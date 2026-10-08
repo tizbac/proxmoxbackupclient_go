@@ -586,6 +586,8 @@ const translations = {
       confirmDeleteServer: "Voulez-vous vraiment supprimer le serveur PBS \"{id}\" ?",
       confirmDeleteJob: "Voulez-vous vraiment supprimer le jeu de sauvegarde \"{name}\" ?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Prochaine exécution",
+    nextRunDue: "maintenant",
     scanPhaseSnapshots: "Liste des snapshots de l'ensemble...",
     scanPhaseIndex: "Lecture de la liste des fichiers du snapshot {n} sur {total}",
     scanPhaseWalk: "Lecture du dossier {folder}...",
@@ -1334,6 +1336,8 @@ const translations = {
       confirmDeleteServer: "Do you really want to delete the PBS server \"{id}\"?",
       confirmDeleteJob: "Do you really want to delete the Backup Set \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Next run",
+    nextRunDue: "due now",
     scanPhaseSnapshots: "Listing the set's snapshots...",
     scanPhaseIndex: "Reading the file list of snapshot {n} of {total}",
     scanPhaseWalk: "Reading the folder {folder}...",
@@ -2082,6 +2086,8 @@ const translations = {
       confirmDeleteServer: "Vuoi davvero eliminare il server PBS \"{id}\"?",
       confirmDeleteJob: "Vuoi davvero eliminare il set di backup \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Prossima esecuzione",
+    nextRunDue: "ora",
     scanPhaseSnapshots: "Elenco degli snapshot del set...",
     scanPhaseIndex: "Lettura dell'elenco file dello snapshot {n} di {total}",
     scanPhaseWalk: "Lettura della cartella {folder}...",
@@ -2830,6 +2836,8 @@ const translations = {
       confirmDeleteServer: "Möchten Sie wirklich den PBS-Server \"{id}\" löschen?",
       confirmDeleteJob: "Möchten Sie das Sicherungsset \"{name}\" wirklich löschen?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Nächster Lauf",
+    nextRunDue: "jetzt fällig",
     scanPhaseSnapshots: "Snapshots des Sets werden aufgelistet...",
     scanPhaseIndex: "Dateiliste von Snapshot {n} von {total} wird gelesen",
     scanPhaseWalk: "Ordner {folder} wird gelesen...",
@@ -3578,6 +3586,8 @@ const translations = {
       confirmDeleteServer: "Czy naprawdę chcesz usunąć serwer PBS \"{id}\"?",
       confirmDeleteJob: "Czy naprawdę chcesz usunąć zestaw kopii zapasowej \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Następne uruchomienie",
+    nextRunDue: "teraz",
     scanPhaseSnapshots: "Wyszukiwanie snapshotów zestawu...",
     scanPhaseIndex: "Odczyt listy plików snapshotu {n} z {total}",
     scanPhaseWalk: "Odczyt folderu {folder}...",
@@ -4328,6 +4338,8 @@ const translations = {
       confirmDeleteServer: "¿Realmente desea eliminar el servidor PBS \"{id}\"?",
       confirmDeleteJob: "¿Realmente desea eliminar el conjunto de copia de seguridad \"{name}\"?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Próxima ejecución",
+    nextRunDue: "ahora",
     scanPhaseSnapshots: "Listando las instantáneas del conjunto...",
     scanPhaseIndex: "Leyendo la lista de archivos de la instantánea {n} de {total}",
     scanPhaseWalk: "Leyendo la carpeta {folder}...",
@@ -5074,6 +5086,8 @@ const translations = {
       confirmDeleteServer: "Наистина ли искате да изтриете PBS сървъра „{id}“?",
       confirmDeleteJob: "Наистина ли искате да изтриете набора за архивиране „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Следващо изпълнение",
+    nextRunDue: "сега",
     scanPhaseSnapshots: "Извеждане на снапшотите на набора...",
     scanPhaseIndex: "Четене на списъка с файлове на снапшот {n} от {total}",
     scanPhaseWalk: "Четене на папката {folder}...",
@@ -5820,6 +5834,8 @@ const translations = {
       confirmDeleteServer: "Opravdu chcete smazat PBS server „{id}“?",
       confirmDeleteJob: "Opravdu chcete smazat sadu záloh „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Další spuštění",
+    nextRunDue: "nyní",
     scanPhaseSnapshots: "Výpis snímků sady...",
     scanPhaseIndex: "Čtení seznamu souborů snímku {n} z {total}",
     scanPhaseWalk: "Čtení složky {folder}...",
@@ -6566,6 +6582,8 @@ const translations = {
       confirmDeleteServer: "Θέλετε πραγματικά να διαγράψετε τον διακομιστή PBS „{id}“;",
       confirmDeleteJob: "Θέλετε πραγματικά να διαγράψετε το Σύνολο Αντιγράφων Ασφαλείας „{name}“;",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Επόμενη εκτέλεση",
+    nextRunDue: "τώρα",
     scanPhaseSnapshots: "Καταγραφή των στιγμιότυπων του συνόλου...",
     scanPhaseIndex: "Ανάγνωση της λίστας αρχείων του στιγμιότυπου {n} από {total}",
     scanPhaseWalk: "Ανάγνωση του φακέλου {folder}...",
@@ -7312,6 +7330,8 @@ const translations = {
       confirmDeleteServer: "Valóban törli a „{id}” PBS szervert?",
       confirmDeleteJob: "Valóban törli a „{name}” Mentési Készletet?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Következő futás",
+    nextRunDue: "most esedékes",
     scanPhaseSnapshots: "A készlet pillanatképeinek listázása...",
     scanPhaseIndex: "A(z) {n}/{total}. pillanatkép fájllistájának beolvasása",
     scanPhaseWalk: "Mappa beolvasása: {folder}...",
@@ -8058,6 +8078,8 @@ const translations = {
       confirmDeleteServer: "Vai tiešām vēlaties dzēst PBS serveri „{id}”?",
       confirmDeleteJob: "Vai tiešām vēlaties dzēst Dublēšanas Kopu „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Nākamā palaišana",
+    nextRunDue: "tagad",
     scanPhaseSnapshots: "Kopas momentuzņēmumu uzskaite...",
     scanPhaseIndex: "Nolasa momentuzņēmuma {n} no {total} failu sarakstu",
     scanPhaseWalk: "Nolasa mapi {folder}...",
@@ -8804,6 +8826,8 @@ const translations = {
       confirmDeleteServer: "Ar tikrai norite ištrinti PBS serverį „{id}“?",
       confirmDeleteJob: "Ar tikrai norite ištrinti Atsarginio Kopijavimo Rinkinį „{name}“?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Kitas paleidimas",
+    nextRunDue: "dabar",
     scanPhaseSnapshots: "Sudaromas rinkinio momentinių kopijų sąrašas...",
     scanPhaseIndex: "Skaitomas momentinės kopijos {n} iš {total} failų sąrašas",
     scanPhaseWalk: "Skaitomas aplankas {folder}...",
@@ -9550,6 +9574,8 @@ const translations = {
       confirmDeleteServer: "Wilt u de PBS-server „{id}” echt verwijderen?",
       confirmDeleteJob: "Wilt u de Backup Set „{name}” echt verwijderen?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Volgende uitvoering",
+    nextRunDue: "nu",
     scanPhaseSnapshots: "Snapshots van de set weergeven...",
     scanPhaseIndex: "Bestandslijst van snapshot {n} van {total} lezen",
     scanPhaseWalk: "Map {folder} lezen...",
@@ -10296,6 +10322,8 @@ const translations = {
       confirmDeleteServer: "Deseja realmente eliminar o servidor PBS „{id}”?",
       confirmDeleteJob: "Deseja realmente eliminar o Conjunto de Backup „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Próxima execução",
+    nextRunDue: "agora",
     scanPhaseSnapshots: "A listar os snapshots do conjunto...",
     scanPhaseIndex: "A ler a lista de ficheiros do snapshot {n} de {total}",
     scanPhaseWalk: "A ler a pasta {folder}...",
@@ -11042,6 +11070,8 @@ const translations = {
       confirmDeleteServer: "Doriți cu adevărat să ștergeți serverul PBS „{id}”?",
       confirmDeleteJob: "Doriți cu adevărat să ștergeți Setul de Backup „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Următoarea rulare",
+    nextRunDue: "acum",
     scanPhaseSnapshots: "Se listează instantaneele setului...",
     scanPhaseIndex: "Se citește lista de fișiere a instantaneului {n} din {total}",
     scanPhaseWalk: "Se citește folderul {folder}...",
@@ -11788,6 +11818,8 @@ const translations = {
       confirmDeleteServer: "Naozaj chcete odstrániť PBS server „{id}”?",
       confirmDeleteJob: "Naozaj chcete odstrániť Zálohovaciu Sadu „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Ďalšie spustenie",
+    nextRunDue: "teraz",
     scanPhaseSnapshots: "Výpis snímok sady...",
     scanPhaseIndex: "Čítanie zoznamu súborov snímky {n} z {total}",
     scanPhaseWalk: "Čítanie priečinka {folder}...",
@@ -12534,6 +12566,8 @@ const translations = {
       confirmDeleteServer: "„{id}” PBS sunucusunu gerçekten silmek istiyor musunuz?",
       confirmDeleteJob: "„{name}” Yedekleme Setini gerçekten silmek istiyor musunuz?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Sonraki çalıştırma",
+    nextRunDue: "şimdi",
     scanPhaseSnapshots: "Setin anlık görüntüleri listeleniyor...",
     scanPhaseIndex: "Anlık görüntü {n}/{total} için dosya listesi okunuyor",
     scanPhaseWalk: "{folder} klasörü okunuyor...",
@@ -13280,6 +13314,8 @@ const translations = {
       confirmDeleteServer: "Ви дійсно хочете видалити сервер PBS „{id}”?",
       confirmDeleteJob: "Ви дійсно хочете видалити Набір резервного копіювання „{name}”?",
     // Undelete, Roll back, Run as Service, progress cards (2026-10-08)
+    nextRunAt: "Наступний запуск",
+    nextRunDue: "зараз",
     scanPhaseSnapshots: "Отримання списку знімків набору...",
     scanPhaseIndex: "Читання списку файлів знімка {n} з {total}",
     scanPhaseWalk: "Читання папки {folder}...",

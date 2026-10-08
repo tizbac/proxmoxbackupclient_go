@@ -304,6 +304,14 @@ body {
     margin-right: 10px;
 }
 
+/* Backup Set card actions: compact, so the six buttons fit beside the
+   set's text on one line in a normal window (they wrap as a group when not). */
+.set-actions .btn {
+    padding: 9px 14px;
+    margin-right: 0;
+}
+
+
 .btn:hover {
     background: var(--accent-hover);
     transform: translateY(-2px);
