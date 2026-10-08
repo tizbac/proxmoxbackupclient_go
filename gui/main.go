@@ -84,7 +84,7 @@ func main() {
 	}()
 
 	// Logging is now handled by RotatingLogger (initialized in logging_gui.go)
-	writeDebugLog(fmt.Sprintf("=== %s v%s Starting ===", appName, appVersion))
+	writeDebugLog(fmt.Sprintf("=== %s %s Starting ===", appName, versionLabel()))
 	writeDebugLog(fmt.Sprintf("Time: %s", time.Now().Format(time.RFC3339)))
 	writeDebugLog(fmt.Sprintf("Service log: %s", GetServiceLogPath()))
 	writeDebugLog(fmt.Sprintf("Backup log: %s", GetBackupLogPath()))
@@ -116,7 +116,7 @@ func main() {
 
 	// Create application options
 	appOptions := &options.App{
-		Title:     fmt.Sprintf("%s v%s", BrandFromExecutable().Title, appVersion),
+		Title:     fmt.Sprintf("%s %s", BrandFromExecutable().Title, versionLabel()),
 		Width:     1080,
 		Height:    720,
 		MaxWidth:  1680, // Prevent window from being too large

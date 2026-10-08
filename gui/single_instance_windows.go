@@ -93,9 +93,9 @@ func activateExistingWindow() bool {
 
 	if hwnd == 0 {
 		// Try with the current version suffix (Wails titles the window
-		// "Proxmox Backup Client v<appVersion>"). Derived from appVersion so it never
-		// goes stale across releases.
-		for _, suffix := range []string{" v" + appVersion} {
+		// "Proxmox Backup Client v0.7.0", or "... dev-49d96e4" for a development
+		// build). Derived from the version so it never goes stale across releases.
+		for _, suffix := range []string{" " + versionLabel()} {
 			titleWithVersion := windowName + suffix
 			titlePtr, _ := syscall.UTF16PtrFromString(titleWithVersion)
 			hwnd, _, _ = procFindWindow.Call(

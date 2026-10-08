@@ -353,6 +353,9 @@ function App() {
   const [testEmailTo, setTestEmailTo] = useState('')
   const [hostname, setHostname] = useState('')
   const [appVersion, setAppVersion] = useState('dev')
+  // "v0.7.0" for a release; a development build as is ("dev-49d96e4").
+  const isDevBuild = !appVersion || appVersion.startsWith('dev')
+  const versionLabel = isDevBuild ? appVersion : `v${appVersion}`
   const [brand, setBrand] = useState({ name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', logo: '', accent: '#e87003', accent_hover: '#d46100', buy_storage_url: '', buy_storage_text: '', is_default: true })
   const [systemInfo, setSystemInfo] = useState({ mode: 'Standalone', is_admin: false, service_available: false, os: '' })
   const [config, setConfig] = useState({
@@ -5095,7 +5098,7 @@ function App() {
         <div className={`tab-content ${activeTab === 'about' ? 'active' : ''}`}>
           <div style={{display: 'flex', alignItems: 'baseline', gap: '10px'}}>
             <h2 style={{margin: 0}}>{t('aboutTitle')}</h2>
-            <span style={{fontSize: '12px', color: '#718096'}}>{t('version')} {appVersion}</span>
+            <span style={{fontSize: '12px', color: '#718096'}}>{t('version')} {versionLabel}</span>
           </div>
 
           <div className="card" style={{marginTop: '18px'}}>
@@ -5360,7 +5363,9 @@ function App() {
       </div>
 
         <div className="app-statusbar">
-          <span>{t('devBuildBadge')}{appVersion && appVersion !== 'dev' ? ` v${appVersion}` : ''}</span>
+          {/* A release reads "Version v0.7.0"; only a development build
+              ("dev" or "dev-<commit>") says so. */}
+          <span>{isDevBuild ? `${t('devBuildBadge')} ${appVersion}` : `${t('version')} ${versionLabel}`}</span>
           <button className="statusbar-link" onClick={() => setShowLimitations(true)}>
             ⚠️ {t('knownLimitations')}
           </button>

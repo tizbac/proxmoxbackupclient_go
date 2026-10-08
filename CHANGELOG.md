@@ -5,7 +5,9 @@ All notable changes to Proxmox Backup Client (GUI) will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0] - 2026-10-08
+
+Two ways to get files back without hunting through snapshots: **Undelete** finds what has gone missing from a Backup Set's folders and puts it back, and **Roll back** returns a set's folders to how they were at a chosen backup, with a preview first and Undo afterwards. Both work from the backups' file lists and the folders' listings, so on a 761,000-file set a search takes a minute or two and no file is opened.
 
 ### Added
 - **Undelete** (new side menu item, and Undelete... on each folder Backup Set): finds files that are in a Backup Set's backups but gone from disk, in the newest backup or every backup of the last 7 or 30 days (each file from the newest backup that still has it, with "deleted between" dates and "probably moved to" hints), and restores the ticked ones where they were (never replacing a file that has come back) or to another folder. Only the backups' catalogs (cached locally per snapshot) and the folders' directory listings are read.
@@ -16,12 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Backup Set names must be unique** (any mix of capitals); a clash is shown under the name box and blocks Save.
 - **In-app confirmation dialogs** with a title and buttons named for the action, red with Cancel selected for risky ones, replacing the bare "wails.localhost" system boxes everywhere.
 - **Undelete and Roll back show real progress**: "x of about y files and folders" while listing the folders, a filling bar, and the time taken in minutes and seconds.
+- **Tools menu** lists Undelete and Roll back next to Backup and Restore.
 
 ### Changed
 - **Undelete and Roll back scans are about 10 times quicker** on large sets: about 70 seconds per backup's file list on a slow CPU with 868,000 entries went to a few seconds.
 - The Backup Sets list no longer scrolls inside its own box.
+- The version shows as **"Version v0.7.0"** in the status bar of a release; only development builds say "Development build" (it said so on every release), and they no longer read "vdev-...".
+- The suggested Backup ID recognises the computer's name in the set's name even with a typing slip ("Deepthough - Home Made" gives `deepthought-home-made`).
+- Machine backup disk sizes show GB and GiB, like the rest of the app.
+- The Windows download includes `ProxmoxBackupClientSVC.exe`, the background service.
 
 ### Fixed
+- **A backup queued straight after a folder backup started on "Finishing"**, with the earlier run's start time: a last progress update from the run before landed on the new card.
+- The backup result's "MB backed up" was MiB (a 30.2 GB set read 28,832.6 MB); it is now MB.
 - **Editing a Backup Set lost its last run time**, so the card said "Never run yet" until the next run.
 - **Add New Backup Set** started with the Backup ID of the set edited last, which is how two sets could end up sharing an ID.
 - **Restore to the original location of a snapshot with several folders** put every folder's files under the first folder's original path (a file from `D:\Photos` could land in `C:\Docs`). Each folder now goes back to its own original path. Found while building Undelete; confirmed and fixed with a live test.

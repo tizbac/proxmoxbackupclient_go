@@ -27,6 +27,15 @@ It is a **suite of tools** for backing up to PBS:
 | **[Bare-metal restore manual](docs/manual/BMR.md)** | The restore ISO, step by step; `vm` snapshots onto Proxmox VE; different hardware |
 | [Restore scenarios](docs/RESTORE_GUIDE.md) | Which restore to use when |
 
+## 🗑️ New in v0.7.0: Undelete and Roll back
+
+Two new pages in the GUI, for folder Backup Sets:
+
+- **Undelete** finds the files that are in a set's backups but no longer on disk, in the newest backup or every backup of the last 7 or 30 days, shows them as a folder tree with when each went missing (and "probably moved to ..." when the same file is elsewhere), and restores the ticked ones where they were or to another folder. After deleting 39 GB from a 761,000-file share, a 7-day search found exactly those files in about a minute.
+- **Roll back** puts a set's folders back as they were at a chosen backup. It previews what would change (missing, changed, added since), then restores. Every file it replaces or removes is first moved aside on the same drive, so **Undo** puts everything back.
+
+Only the backups' file lists and the folders' listings are read; no file is opened until it is restored. Also new: in-app confirmation dialogs, a Next run time on each Backup Set card, a suggested Backup ID per set (`deepthought-data`), unique set names, and the background service included in the Windows download (Preferences > Advanced > Run as Service). See the [GUI manual](docs/manual/GUI.md#10-undelete) and the [CHANGELOG](CHANGELOG.md).
+
 ## ⚡ New in v0.6.0: incremental folder backups
 
 Folder backups can now skip files that have not changed, using the same **change detection** as the official `proxmox-backup-client`. In **Metadata** mode the client compares each file's size, modification time (to the nanosecond), mode and owner with the previous snapshot. Unchanged files are not even opened: their data is reused from the previous snapshot's chunks. Only new and changed files are read and uploaded.
