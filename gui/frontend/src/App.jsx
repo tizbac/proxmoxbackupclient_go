@@ -3476,7 +3476,7 @@ function App() {
                   <p style={{color: '#718096'}}>{t('noBackupSetsYet')}</p>
                 ) : (
                   <div style={{border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden'}}>
-                    <div style={{maxHeight: '480px', overflowY: 'auto'}}>
+                    <div>
                       {scheduledJobs.map((job, idx) => (
                         <div key={job.id} style={{
                           display: 'flex', alignItems: 'center', gap: '10px 14px', padding: '12px 16px', flexWrap: 'wrap',
@@ -3484,7 +3484,7 @@ function App() {
                         }}>
                           {/* The text keeps room for its lines; on a narrow window the
                               buttons wrap below it instead of squeezing it. */}
-                          <div style={{flex: '1 1 340px', minWidth: 0}}>
+                          <div style={{flex: '1 0 auto', maxWidth: '100%', minWidth: 0}}>
                             <strong>{job.name}</strong>
                             <div style={{fontSize: '12px', color: '#6c757d', marginTop: '2px', display: 'flex', alignItems: 'center'}}>
                               <span style={{
@@ -3511,7 +3511,7 @@ function App() {
                               {/* Schedule and next run as two tightly spaced lines beside the
                                   badges, so the card gains no height. nextRun is the ISO time the
                                   scheduler keeps on the job; manual sets have none. */}
-                              <div style={{lineHeight: 1.3, minWidth: 0}}>
+                              <div style={{lineHeight: 1.3, minWidth: 0, whiteSpace: 'nowrap'}}>
                                 <div>
                                   {job.triggerMode === 'manual'
                                     ? t('manualOnDemand')
@@ -3543,7 +3543,7 @@ function App() {
                                 })()}
                               </div>
                             </div>
-                            <div style={{fontSize: '12px', color: '#888', marginTop: '2px'}}>
+                            <div style={{fontSize: '12px', color: '#888', marginTop: '2px', whiteSpace: 'nowrap'}}>
                               {t('lastRun')} {job.lastRun ? new Date(job.lastRun).toLocaleString() : t('neverRun')}
                               {job.backupType !== 'machine' && job.changeDetectionMode === 'metadata' && job.fullReadEvery > 0 && (() => {
                                 // Same rule as the backend (changeDetectionForRun):
@@ -3560,7 +3560,7 @@ function App() {
                               })()}
                             </div>
                           </div>
-                          <div className="set-actions" style={{display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end'}}>
+                          <div className="set-actions" style={{display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto'}}>
                           <button
                             className="btn"
                             disabled={runningJobId === job.id}

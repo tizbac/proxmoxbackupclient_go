@@ -307,7 +307,7 @@ body {
 /* Backup Set card actions: compact, so the six buttons fit beside the
    set's text on one line in a normal window (they wrap as a group when not). */
 .set-actions .btn {
-    padding: 9px 14px;
+    padding: 8px 12px;
     margin-right: 0;
 }
 
