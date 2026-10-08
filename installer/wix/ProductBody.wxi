@@ -1,18 +1,10 @@
-<!-- Shared installer body. Included by a brand entry file (see Product.wxs /
-     NimbusBackup.wxs / AcmeBackup.wxs) that supplies the brand identity via
-     !define BEFORE the include. All identity is driven by $(var.*):
-       ProductName, ExeName, ServiceExeName, VendorKey, Manufacturer,
-       UpgradeCode, ProductVersion, ArpUrlAbout, ArpHelpLink,
-       ArpUrlUpdateInfo, ArpContact.
-     The exe is installed under the SAME name as the installer (ExeName); the
-     GUI resolves its brand from the exe base name at runtime (gui/brand.go),
-     so the installed exe name == installer name == brand key. -->
+<?xml version="1.0" encoding="UTF-8"?>
+<Include>
   <Product Id="*"
            Name="$(var.ProductName)"
            Language="1033"
            Version="$(var.ProductVersion)"
            Manufacturer="$(var.Manufacturer)"
-           Icon="AppIcon"
            UpgradeCode="$(var.UpgradeCode)">
 
     <Package InstallerVersion="200"
@@ -221,3 +213,4 @@ This includes:
     </UI>
 
   </Product>
+</Include>

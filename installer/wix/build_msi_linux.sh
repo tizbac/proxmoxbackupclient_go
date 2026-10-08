@@ -27,7 +27,7 @@ VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/
 [ -n "$VERSION" ] || { echo "error: cannot read productVersion from gui/wails.json" >&2; exit 1; }
 
 # WiX toolset URL (v3.14.1 - last stable v3 release)
-WIX_URL="https://github.com/wixtoolset/wix3/releases/download/v3.14.1/wix314-binaries.zip"
+WIX_URL="https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip"
 WIX_SHA256="7e8a7b0c9b7f5e4c2a3f9d8e6b1c4a7f9e2d5c8b1a4e7f0c3d6a9b2e5f8c1d4a" # verify if needed
 
 WORK=$(mktemp -d)
@@ -38,8 +38,13 @@ echo "==> Preparing build artifacts in $WORK"
 # ---- 1. Build GUI (once) and SVC via Docker (golang:1.25) ----
 # The docker build must mount the WHOLE repo because gui/go.mod has
 # replace directives pointing to sibling directories (machinebackuplib, pbscommon, etc.)
-echo "==> Building GUI and SVC binaries via Docker..."
-docker run --rm \
+GUI_EXE="$ROOT/gui/build/bin/ProxmoxBackupClient.exe"
+SVC_EXE="$ROOT/gui/build/bin/ProxmoxBackupClientSVC.exe"
+if [ -f "$GUI_EXE" ] && [ -f "$SVC_EXE" ]; then
+    echo "==> Using existing GUI and SVC binaries"
+else
+    echo "==> Building GUI and SVC binaries via Docker..."
+    docker run --rm \
     -v "$ROOT:/src" \
     -w /src \
     golang:1.25 \
@@ -59,6 +64,7 @@ docker run --rm \
             -ldflags \"-s -w -X main.appVersion=$VERSION\" \
             -o build/bin/ProxmoxBackupClientSVC.exe .
     "
+fi
 
 # Verify artifacts
 GUI_EXE="$ROOT/gui/build/bin/ProxmoxBackupClient.exe"
@@ -85,46 +91,57 @@ cp -r "$ROOT/installer/wix" "$WORK/wixsrc"
 #   SVC: ../../gui/build/bin/$(var.ServiceExeName).exe
 # Our built exes are at $GUI_EXE and $SVC_EXE. We need to copy them to the
 # relative paths expected by the .wxs files.
-mkdir -p "$WORK/wixsrc/../../gui/build/bin"
+mkdir -p "$WORK/wixsrc/../../gui/build/bin" 2>/dev/null || true
 # We'll copy to a temp staging area that matches the relative paths
 STAGE_BIN="$WORK/stage/gui/build/bin"
 mkdir -p "$STAGE_BIN"
 
 # Brands from ProductBody.wxi: ProxmoxBackupClient, AcmeBackup, NimbusBackup
-# The GUI exe gets copied/renamed per brand; SVC is same for all.
+# The GUI exe gets copied/renamed per brand; SVC is same binary but named per brand.
 for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup; do
     cp "$GUI_EXE" "$STAGE_BIN/${BRAND}.exe"
+    # Copy SVC with brand-specific name (e.g., AcmeBackupSVC.exe, NimbusBackupSVC.exe)
+    cp "$SVC_EXE" "$STAGE_BIN/${BRAND}SVC.exe"
 done
-cp "$SVC_EXE" "$STAGE_BIN/ProxmoxBackupClientSVC.exe"
 
 # Symlink the stage into wixsrc's expected location
 ln -sfn "$STAGE_BIN" "$WORK/wixsrc/../../gui/build/bin"
 
+# Copy icons and License.rtf to expected locations
+mkdir -p "$WORK/wixsrc/../icons"
+cp "$ROOT/installer/icons/"*.ico "$WORK/wixsrc/../icons/" 2>/dev/null || true
+cp "$ROOT/installer/wix/License.rtf" "$WORK/wixsrc/" 2>/dev/null || true
+
 # ---- 5. Build MSIs with Wine + candle + light ----
 echo "==> Building MSIs with WiX..."
 cd "$WORK/wixsrc"
+WINE_WIX_BIN="Z:$WIX_BIN"
+WINE_OUT_DIR="Z:$OUT_DIR"
+WINE_WORK_WIXSRC="Z:$WORK/wixsrc"
 
 for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup; do
     WXS_FILE="${BRAND}.wxs"
+    if [ "$BRAND" = "ProxmoxBackupClient" ] && [ ! -f "$WXS_FILE" ]; then
+        WXS_FILE="Product.wxs"
+    fi
     [ -f "$WXS_FILE" ] || { echo "warning: $WXS_FILE not found, skipping" >&2; continue; }
 
     echo "    Building $BRAND.msi..."
     # candle: compile .wxs to .wixobj
-    # ProductBody.wxi defines: ExeName, ServiceExeName, etc.
-    wine "$WIX_BIN/candle.exe" \
+    wine "$WINE_WIX_BIN/candle.exe" \
         -dProductVersion="$VERSION" \
         -ext WixUIExtension \
         -ext WixUtilExtension \
         "$WXS_FILE" \
-        -out "${BRAND}.wixobj"
+        -out "$WINE_WORK_WIXSRC/${BRAND}.wixobj"
 
     # light: link .wixobj to .msi
-    wine "$WIX_BIN/light.exe" \
+    wine "$WINE_WIX_BIN/light.exe" \
         -ext WixUIExtension \
         -ext WixUtilExtension \
         -sval \
-        -out "$OUT_DIR/${BRAND}-${VERSION}.msi" \
-        "${BRAND}.wixobj"
+        -out "$WINE_OUT_DIR/${BRAND}-${VERSION}.msi" \
+        "$WINE_WORK_WIXSRC/${BRAND}.wixobj"
 
     echo "    ✅ $OUT_DIR/${BRAND}-${VERSION}.msi"
 done
