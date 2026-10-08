@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"syscall"
 	"unsafe"
@@ -32,7 +33,21 @@ const (
 // Returns true if this is the only instance, false if another exists.
 // If another exists, it attempts to bring that window to the foreground.
 func CheckSingleInstance() bool {
-	mutexNamePtr, err := syscall.UTF16PtrFromString(mutexName)
+	return checkSingleInstanceNamed(mutexName)
+}
+
+// mutexHeldByAnotherInstance reports whether a CreateMutex error means another
+// instance already owns the lock. ACCESS_DENIED counts too: an instance running
+// elevated creates the mutex with an administrators-only ACL, which a standard
+// copy cannot open.
+func mutexHeldByAnotherInstance(err error) bool {
+	return errors.Is(err, windows.ERROR_ALREADY_EXISTS) || errors.Is(err, windows.ERROR_ACCESS_DENIED)
+}
+
+// checkSingleInstanceNamed is CheckSingleInstance for an arbitrary mutex name,
+// so it can be tested without colliding with a running copy of the app.
+func checkSingleInstanceNamed(name string) bool {
+	mutexNamePtr, err := syscall.UTF16PtrFromString(name)
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("Failed to create mutex name: %v", err))
 		return true // Allow launch on error
@@ -40,14 +55,16 @@ func CheckSingleInstance() bool {
 
 	// Try to create or open the mutex
 	mutex, err := windows.CreateMutex(nil, false, mutexNamePtr)
-	if err != nil && err != windows.ERROR_ALREADY_EXISTS {
+	if err != nil && !mutexHeldByAnotherInstance(err) {
 		writeDebugLog(fmt.Sprintf("Failed to create mutex: %v", err))
 		return true // Allow launch on error
 	}
 
-	// Check if mutex already existed (GetLastError returns ERROR_ALREADY_EXISTS even when CreateMutex succeeds)
-	lastErr := windows.GetLastError()
-	if lastErr == windows.ERROR_ALREADY_EXISTS {
+	// Use the error CreateMutex itself returned. Calling windows.GetLastError()
+	// afterwards does not work: Go's syscall layer does not preserve the value
+	// (it reads back 0), so every launch used to believe it was the first
+	// instance and a second copy simply opened alongside the first.
+	if mutexHeldByAnotherInstance(err) {
 		writeDebugLog("Another instance is already running - attempting to bring it to foreground")
 
 		// Try to find and activate the existing window
