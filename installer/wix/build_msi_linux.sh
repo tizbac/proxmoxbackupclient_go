@@ -96,9 +96,9 @@ mkdir -p "$WORK/wixsrc/../../gui/build/bin" 2>/dev/null || true
 STAGE_BIN="$WORK/stage/gui/build/bin"
 mkdir -p "$STAGE_BIN"
 
-# Brands from ProductBody.wxi: ProxmoxBackupClient, AcmeBackup, NimbusBackup
+# Brands from ProductBody.wxi: ProxmoxBackupClient, AcmeBackup, NimbusBackup, EtitechBackup
 # The GUI exe gets copied/renamed per brand; SVC is same binary but named per brand.
-for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup; do
+for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup EtitechBackup; do
     cp "$GUI_EXE" "$STAGE_BIN/${BRAND}.exe"
     # Copy SVC with brand-specific name (e.g., AcmeBackupSVC.exe, NimbusBackupSVC.exe)
     cp "$SVC_EXE" "$STAGE_BIN/${BRAND}SVC.exe"
@@ -119,7 +119,7 @@ WINE_WIX_BIN="Z:$WIX_BIN"
 WINE_OUT_DIR="Z:$OUT_DIR"
 WINE_WORK_WIXSRC="Z:$WORK/wixsrc"
 
-for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup; do
+for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup EtitechBackup; do
     WXS_FILE="${BRAND}.wxs"
     if [ "$BRAND" = "ProxmoxBackupClient" ] && [ ! -f "$WXS_FILE" ]; then
         WXS_FILE="Product.wxs"

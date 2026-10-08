@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ===================================================================== -->
+<!-- Brand installer entry: "Etitech Backup".                              -->
+<!-- Copy of the Product.wxs pattern with Etitech brand identity.          -->
+<!-- To activate: drop EtitechBackup.ico into installer/icons/, build the   -->
+<!-- EtitechBackup.exe + EtitechBackupSVC.exe under those names, then light  -->
+<!-- THIS file to EtitechBackup.msi. The GUI auto-brands as "etitechbackup"  -->
+<!-- at runtime (gui/brand.go).                                           -->
+<!-- ===================================================================== -->
+<?define ProductName = "Etitech Backup" ?>
+<?define ExeName = "EtitechBackup" ?>
+<?define ServiceExeName = "EtitechBackupSVC" ?>
+<?define VendorKey = "Etitech" ?>
+<?define Manufacturer = "Etitech" ?>
+<!-- Each brand MUST have its own UpgradeCode (distinct from Product.wxs). -->
+<?define UpgradeCode = "4e8d0b2f-7c3e-5f9a-0b6d-2c1e4f5a6b7c" ?>
+<?define ArpUrlAbout = "https://www.etitech.net/about.php" ?>
+<?define ArpHelpLink = "https://www.etitech.net/servizi.php" ?>
+<?define ArpUrlUpdateInfo = "https://www.etitech.net/" ?>
+<?define ArpContact = "https://www.etitech.net/contatti.php" ?>
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <?ifndef ProductVersion ?>
+    <?define ProductVersion = "0.2.72" ?>
+  <?endif ?>
+
+  <?include ProductBody.wxi ?>
+</Wix>

@@ -81,6 +81,22 @@ var brandCatalog = map[string]Brand{
 			"contact": "https://acme.example/contact",
 		},
 	},
+	"etitechbackup": {
+		Name:           "etitechbackup",
+		Title:          "Etitech Backup",
+		Logo:           "/brands/etitech.webp",
+		Accent:         "#4CC1CE",
+		AccentHover:    "#3aaab6",
+		BrandURL:       "https://www.etitech.net/",
+		BuyStorageURL:  "",
+		BuyStorageText: "",
+		Urls: map[string]string{
+			"about":   "https://www.etitech.net/about.php",
+			"help":    "https://www.etitech.net/servizi.php",
+			"updates": "https://www.etitech.net/",
+			"contact": "https://www.etitech.net/contatti.php",
+		},
+	},
 }
 
 // normalizeBrandKey lower-cases a file name and strips its extension so that
