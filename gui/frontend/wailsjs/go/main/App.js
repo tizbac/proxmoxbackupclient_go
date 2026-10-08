@@ -14,8 +14,12 @@ export function AnalyzeBackup(arg1, arg2) {
   return window['go']['main']['App']['AnalyzeBackup'](arg1, arg2);
 }
 
-export function CancelBackup() {
-  return window['go']['main']['App']['CancelBackup']();
+export function CanModifyJobs() {
+  return window['go']['main']['App']['CanModifyJobs']();
+}
+
+export function CancelBackup(arg1) {
+  return window['go']['main']['App']['CancelBackup'](arg1);
 }
 
 export function CancelSearch() {
@@ -24,6 +28,10 @@ export function CancelSearch() {
 
 export function CleanupAbandonedJobs() {
   return window['go']['main']['App']['CleanupAbandonedJobs']();
+}
+
+export function ClearBackupContext() {
+  return window['go']['main']['App']['ClearBackupContext']();
 }
 
 export function CreateBackupSplitPlan(arg1, arg2, arg3) {
@@ -50,6 +58,10 @@ export function GenerateEncryptionKeyFile(arg1) {
   return window['go']['main']['App']['GenerateEncryptionKeyFile'](arg1);
 }
 
+export function GetBackupContext() {
+  return window['go']['main']['App']['GetBackupContext']();
+}
+
 export function GetBrand() {
   return window['go']['main']['App']['GetBrand']();
 }
@@ -66,12 +78,20 @@ export function GetDefaultPBSID() {
   return window['go']['main']['App']['GetDefaultPBSID']();
 }
 
+export function GetFullConfigForAPI() {
+  return window['go']['main']['App']['GetFullConfigForAPI']();
+}
+
 export function GetHostname() {
   return window['go']['main']['App']['GetHostname']();
 }
 
 export function GetJobHistory() {
   return window['go']['main']['App']['GetJobHistory']();
+}
+
+export function GetJobHistoryForAPI() {
+  return window['go']['main']['App']['GetJobHistoryForAPI']();
 }
 
 export function GetLastBackupDirs() {
@@ -114,6 +134,10 @@ export function InspectEncryptionKeyFile(arg1) {
   return window['go']['main']['App']['InspectEncryptionKeyFile'](arg1);
 }
 
+export function ListBackupJobs() {
+  return window['go']['main']['App']['ListBackupJobs']();
+}
+
 export function ListPBSServers() {
   return window['go']['main']['App']['ListPBSServers']();
 }
@@ -132,6 +156,14 @@ export function ListSnapshots(arg1, arg2) {
 
 export function MinimizeToTray() {
   return window['go']['main']['App']['MinimizeToTray']();
+}
+
+export function MintPBSTicketForAPI(arg1) {
+  return window['go']['main']['App']['MintPBSTicketForAPI'](arg1);
+}
+
+export function OpenDirectoryPicker() {
+  return window['go']['main']['App']['OpenDirectoryPicker']();
 }
 
 export function OpenEncryptionKeyDialog() {
@@ -158,6 +190,10 @@ export function RecalculateNextRuns() {
   return window['go']['main']['App']['RecalculateNextRuns']();
 }
 
+export function RegisterBackupCancel(arg1, arg2) {
+  return window['go']['main']['App']['RegisterBackupCancel'](arg1, arg2);
+}
+
 export function ReloadConfig() {
   return window['go']['main']['App']['ReloadConfig']();
 }
@@ -166,8 +202,16 @@ export function RequestElevation() {
   return window['go']['main']['App']['RequestElevation']();
 }
 
+export function RequestJobModificationElevation() {
+  return window['go']['main']['App']['RequestJobModificationElevation']();
+}
+
 export function RestoreSnapshot(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
   return window['go']['main']['App']['RestoreSnapshot'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
+}
+
+export function RunScheduledJobForAPI(arg1) {
+  return window['go']['main']['App']['RunScheduledJobForAPI'](arg1);
 }
 
 export function RunScheduledJobNow(arg1) {
@@ -176,6 +220,10 @@ export function RunScheduledJobNow(arg1) {
 
 export function SaveConfig(arg1) {
   return window['go']['main']['App']['SaveConfig'](arg1);
+}
+
+export function SaveFullConfigFromAPI(arg1) {
+  return window['go']['main']['App']['SaveFullConfigFromAPI'](arg1);
 }
 
 export function SaveScheduledJob(arg1) {
@@ -188,6 +236,10 @@ export function SaveScheduledJobFromMap(arg1) {
 
 export function SearchFiles(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
   return window['go']['main']['App']['SearchFiles'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+}
+
+export function SetBackupContext(arg1, arg2) {
+  return window['go']['main']['App']['SetBackupContext'](arg1, arg2);
 }
 
 export function SetDefaultPBSServer(arg1) {
@@ -206,12 +258,12 @@ export function ShowFromTray() {
   return window['go']['main']['App']['ShowFromTray']();
 }
 
-export function StartBackup(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
-  return window['go']['main']['App']['StartBackup'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+export function StartBackup(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['StartBackup'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
-export function StartMachineBackup(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['StartMachineBackup'](arg1, arg2, arg3, arg4, arg5);
+export function StartMachineBackup(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['StartMachineBackup'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
 export function StartScheduler() {
@@ -228,6 +280,10 @@ export function TestConnection(arg1) {
 
 export function TestPBSConnection(arg1) {
   return window['go']['main']['App']['TestPBSConnection'](arg1);
+}
+
+export function TestPBSServerForAPI(arg1, arg2) {
+  return window['go']['main']['App']['TestPBSServerForAPI'](arg1, arg2);
 }
 
 export function UpdatePBSServer(arg1) {

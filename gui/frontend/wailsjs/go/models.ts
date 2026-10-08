@@ -1,3 +1,56 @@
+export namespace api {
+	
+	export class BackupProgress {
+	    job_id: string;
+	    running: boolean;
+	    progress: number;
+	    message: string;
+	    success: boolean;
+	    complete: boolean;
+	    error?: string;
+	    start_time?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BackupProgress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.job_id = source["job_id"];
+	        this.running = source["running"];
+	        this.progress = source["progress"];
+	        this.message = source["message"];
+	        this.success = source["success"];
+	        this.complete = source["complete"];
+	        this.error = source["error"];
+	        this.start_time = source["start_time"];
+	    }
+	}
+	export class PBSTicket {
+	    ticket: string;
+	    csrf_token?: string;
+	    base_url: string;
+	    cert_fingerprint?: string;
+	    datastore?: string;
+	    namespace?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PBSTicket(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ticket = source["ticket"];
+	        this.csrf_token = source["csrf_token"];
+	        this.base_url = source["base_url"];
+	        this.cert_fingerprint = source["cert_fingerprint"];
+	        this.datastore = source["datastore"];
+	        this.namespace = source["namespace"];
+	    }
+	}
+
+}
+
 export namespace main {
 	
 	export class BackupMeta {
@@ -255,6 +308,8 @@ export namespace main {
 	    backupType: string;
 	    excludeList: string[];
 	    compression: string;
+	    pbs_id?: string;
+	    backup_kind?: string;
 	    lastRun?: string;
 	    nextRun?: string;
 	    enabled: boolean;
@@ -276,6 +331,8 @@ export namespace main {
 	        this.backupType = source["backupType"];
 	        this.excludeList = source["excludeList"];
 	        this.compression = source["compression"];
+	        this.pbs_id = source["pbs_id"];
+	        this.backup_kind = source["backup_kind"];
 	        this.lastRun = source["lastRun"];
 	        this.nextRun = source["nextRun"];
 	        this.enabled = source["enabled"];
