@@ -22,9 +22,14 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 OUT_DIR=${1:-$ROOT/dist}
 
-# Read version from wails.json
-VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/gui/wails.json" | head -n1)
-[ -n "$VERSION" ] || { echo "error: cannot read productVersion from gui/wails.json" >&2; exit 1; }
+# Read version from git tag (exact match) or git short SHA
+# Falls back to wails.json if not in a git repo
+if [ -f "$ROOT/scripts/get-version.sh" ]; then
+    VERSION=$(bash "$ROOT/scripts/get-version.sh" "$ROOT")
+else
+    VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/gui/wails.json" | head -n1)
+fi
+[ -n "$VERSION" ] || { echo "error: cannot determine version" >&2; exit 1; }
 
 # WiX toolset URL (v3.14.1 - last stable v3 release)
 WIX_URL="https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip"

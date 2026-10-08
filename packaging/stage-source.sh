@@ -17,10 +17,16 @@ set -eu
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 
-VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-    "$ROOT/gui/wails.json")
+# Read version from git tag (exact match) or git short SHA
+# Falls back to wails.json if not in a git repo
+if [ -f "$ROOT/scripts/get-version.sh" ]; then
+    VERSION=$(bash "$ROOT/scripts/get-version.sh" "$ROOT")
+else
+    VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+        "$ROOT/gui/wails.json")
+fi
 [ -n "$VERSION" ] || {
-    echo "error: cannot read productVersion from gui/wails.json" >&2
+    echo "error: cannot determine version" >&2
     exit 1
 }
 

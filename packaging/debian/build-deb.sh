@@ -31,8 +31,14 @@ wails_field() {
     sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$ROOT/gui/wails.json" | head -n1
 }
 
-VERSION=$(wails_field productVersion)
-[ -n "$VERSION" ] || { echo "error: cannot read productVersion from gui/wails.json" >&2; exit 1; }
+# Read version from git tag (exact match) or git short SHA
+# Falls back to wails.json if not in a git repo
+if [ -f "$ROOT/scripts/get-version.sh" ]; then
+    VERSION=$(bash "$ROOT/scripts/get-version.sh" "$ROOT")
+else
+    VERSION=$(wails_field productVersion)
+fi
+[ -n "$VERSION" ] || { echo "error: cannot determine version" >&2; exit 1; }
 GUI_OUTPUT=$(wails_field outputfilename)
 [ -n "$GUI_OUTPUT" ] || GUI_OUTPUT=ProxmoxBackupClient
 

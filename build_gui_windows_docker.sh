@@ -9,9 +9,17 @@
 
 set -e
 
+# Read version from git tag (exact match) or git short SHA
+# Falls back to wails.json if not in a git repo
+if [ -f "$(pwd)/scripts/get-version.sh" ]; then
+    VERSION=$(bash "$(pwd)/scripts/get-version.sh" "$(pwd)")
+else
+    VERSION=$(grep -o '"productVersion"[^,]*' gui/wails.json | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+fi
+[ -n "$VERSION" ] || { echo "error: cannot determine version" >&2; exit 1; }
+
 echo "🐳 Building Windows GUI with Docker (Wails)..."
-echo "This will produce a Windows .exe with proper WebView2 support"
-echo ""
+echo "Version: ${VERSION}"
 echo "📦 Output: ${PWD}/ProxmoxBackupClientGO.exe"
 
 OUTPUT_NAME="ProxmoxBackupClientGO.exe"
@@ -29,6 +37,7 @@ docker run --rm \
     --name "${CONTAINER_NAME}" \
     -v "$(pwd):/build" \
     -w /build \
+    -e VERSION="${VERSION}" \
     golang:1.25 \
     bash -euo pipefail -c '
         set -e
@@ -52,10 +61,9 @@ docker run --rm \
         cd /build
 
         echo "🔨 Building Windows AMD64 binary..."
-        VERSION=$(grep -o '"productVersion"[^,]*' /build/gui/wails.json | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
         cd /build/gui
         wails build -clean -platform windows/amd64 \
-            -ldflags "-X main.appVersion=${VERSION:-dev}"
+            -ldflags "-X main.appVersion=${VERSION}"
         cd /build
 
         if [ -f /build/gui/build/bin/ProxmoxBackupClient.exe ]; then

@@ -21,8 +21,14 @@ case "$OUT_DIR" in
 esac
 IMAGE=${PBSGO_FEDORA_IMAGE:-fedora:44}
 
-VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/gui/wails.json")
-[ -n "$VERSION" ] || { echo "error: cannot read productVersion from gui/wails.json" >&2; exit 1; }
+# Read version from git tag (exact match) or git short SHA
+# Falls back to wails.json if not in a git repo
+if [ -f "$ROOT/scripts/get-version.sh" ]; then
+    VERSION=$(bash "$ROOT/scripts/get-version.sh" "$ROOT")
+else
+    VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/gui/wails.json")
+fi
+[ -n "$VERSION" ] || { echo "error: cannot determine version" >&2; exit 1; }
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT INT TERM

@@ -3,8 +3,9 @@
 
 .PHONY: all cli gui deb pkgarch pkgfedora stage-source clean test help install-deps
 
-# Version from wails.json
-VERSION := $(shell grep '"productVersion"' gui/wails.json | cut -d'"' -f4)
+# Version from git tag (exact match) or git short SHA
+# Falls back to wails.json if not in a git repo
+VERSION := $(shell bash scripts/get-version.sh 2>/dev/null || grep '"productVersion"' gui/wails.json | cut -d'"' -f4)
 
 # Build directories
 BUILD_DIR := dist
@@ -126,8 +127,10 @@ deb:
 # Stages pbsgo-<version>.tar.gz from the CURRENT working tree first, so the
 # package contains the source it was built from (not a GitHub commit).
 pkgarch:
-	@sh packaging/stage-source.sh packaging/arch
-	@cd packaging/arch && makepkg -f -d
+	@VERSION=$$(bash scripts/get-version.sh) && \
+	 sed -i "s/^pkgver=.*/pkgver=$${VERSION}/" packaging/arch/PKGBUILD && \
+	 sh packaging/stage-source.sh packaging/arch && \
+	 cd packaging/arch && makepkg -f -d
 
 # Source tarball the distro packages are built from (uncommitted changes incl.)
 stage-source:
