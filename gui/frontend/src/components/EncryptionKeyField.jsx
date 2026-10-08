@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from '../i18n/i18nContext'
+import { askConfirm, showNotice } from './ConfirmDialog'
 
 // Wails bindings are resolved by App.jsx on window.go; this component receives
 // them as props so it stays testable/usable when the runtime is absent (the dev
@@ -31,6 +32,7 @@ export default function EncryptionKeyField({
   className = '',
 }) {
   const { t } = useTranslation()
+  const tl = (key, fallback) => { const v = t(key); return v === key ? fallback : v }
   const [info, setInfo] = useState(null)
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState(passphraseSet && !clearStored ? 'remember' : 'ask')
@@ -112,15 +114,24 @@ export default function EncryptionKeyField({
     try {
       let path = await openNew()
       if (!path) return
-      const msg = t('encryptionKeyConfirm').replace('{path}', path)
-      if (!window.confirm(msg)) return
+      if (!(await askConfirm({
+        title: tl('dlgKeyCreateTitle', 'Create an encryption key?'), icon: '🔑',
+        message: t('encryptionKeyConfirm').replace('{path}', path),
+        confirmLabel: tl('dlgKeyCreateBtn', 'Create key'),
+      }))) return
       const result = await generate(path)
       onChange(path)
       // Trust the backend's own view: it only returns a usable key file.
       if (result) setInfo(result)
-      window.alert(t('encryptionKeyCreated').replace('{path}', path).replace('{fp}', result?.fingerprint || '?'))
+      await showNotice({
+        title: tl('dlgKeyCreatedTitle', 'Encryption key created'), icon: '🔑',
+        message: t('encryptionKeyCreated').replace('{path}', path).replace('{fp}', result?.fingerprint || '?'),
+      })
     } catch (err) {
-      window.alert(t('encryptionKeyGenerateFailed').replace('{err}', err))
+      await showNotice({
+        title: tl('dlgKeyFailedTitle', 'The key could not be created'), icon: '❌',
+        message: t('encryptionKeyGenerateFailed').replace('{err}', err),
+      })
     } finally {
       setBusy(false)
     }

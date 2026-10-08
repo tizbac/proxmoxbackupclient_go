@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import RadioGroup from './RadioGroup'
+import { askConfirm } from './ConfirmDialog'
 
 // Undelete and Roll back pages (side menu) and the Run as Service section of
 // Preferences > Advanced. Backend: gui/undelete_rollback.go,
@@ -225,8 +226,11 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
     const msg = dest === 'original'
       ? tl('undeleteConfirmOriginal', 'Put {n} files ({size}) back where they were? Files that exist again at those places are left alone.')
       : tl('undeleteConfirmOther', 'Restore {n} files ({size}) to {path}?').replace('{path}', destPath)
-    // eslint-disable-next-line no-alert
-    if (!window.confirm(msg.replace('{n}', chosen.length.toLocaleString()).replace('{size}', formatBytesDual(chosenSize)))) return
+    if (!(await askConfirm({
+      title: tl('dlgUndeleteTitle', 'Restore deleted files?'), icon: '♻️',
+      message: msg.replace('{n}', chosen.length.toLocaleString()).replace('{size}', formatBytesDual(chosenSize)),
+      confirmLabel: tl('dlgRestoreBtn', 'Restore'),
+    }))) return
     setError('')
     try {
       onStarted()
@@ -422,8 +426,10 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
     const msg = tl('rollbackConfirm', 'Roll back {set} to {when}? {restore} files will be restored or replaced and {remove} removed. Everything replaced or removed is kept first, so Undo can put it back.')
       .replace('{set}', (jobs.find(j => j.id === jobId) || {}).name || '')
       .replace('{when}', fmtDate(snapUnix)).replace('{restore}', willRestore.toLocaleString()).replace('{remove}', willRemove.toLocaleString())
-    // eslint-disable-next-line no-alert
-    if (!window.confirm(msg)) return
+    if (!(await askConfirm({
+      title: tl('dlgRollbackTitle', 'Roll back the folders?'), message: msg,
+      confirmLabel: tl('dlgRollbackBtn', 'Roll back'), danger: willRemove > 0,
+    }))) return
     setError('')
     try {
       onStarted()
@@ -434,16 +440,22 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   }
 
   const undo = async (r) => {
-    // eslint-disable-next-line no-alert
-    if (!window.confirm(tl('rollbackUndoConfirm', 'Undo this roll back? Files it restored are deleted and the versions it kept go back.'))) return
+    if (!(await askConfirm({
+      title: tl('dlgUndoTitle', 'Undo this roll back?'),
+      message: tl('rollbackUndoConfirm', 'Undo this roll back? Files it restored are deleted and the versions it kept go back.'),
+      confirmLabel: tl('rollbackUndo', 'Undo'),
+    }))) return
     setBusyRecord(r.path)
     try { ui.showStatus('✅ ' + await ui.UndoRollback(r.path), 'success') } catch (e) { ui.showStatus('❌ ' + e, 'error') }
     setBusyRecord('')
     loadRecords(jobId)
   }
   const del = async (r) => {
-    // eslint-disable-next-line no-alert
-    if (!window.confirm(tl('rollbackDeleteConfirm', 'Delete the versions this roll back kept ({size})? It can no longer be undone.').replace('{size}', formatBytesDual(r.bytes)))) return
+    if (!(await askConfirm({
+      title: tl('dlgDeleteKeptTitle', 'Delete the kept versions?'),
+      message: tl('rollbackDeleteConfirm', 'Delete the versions this roll back kept ({size})? It can no longer be undone.').replace('{size}', formatBytesDual(r.bytes)),
+      confirmLabel: tl('delete', 'Delete'), danger: true,
+    }))) return
     setBusyRecord(r.path)
     try { await ui.DeleteRollbackCopies(r.path) } catch (e) { ui.showStatus('❌ ' + e, 'error') }
     setBusyRecord('')
@@ -665,9 +677,12 @@ export function ServiceControl({ ui }) {
               <button className="btn btn-secondary" disabled={!st.isAdmin || !!busy} onClick={() => act('stop', ui.StopBackgroundService)}>{busy === 'stop' ? '…' : tl('serviceStop', 'Stop')}</button>
             )}
             {st.installed && (
-              <button className="btn btn-secondary" disabled={!st.isAdmin || !!busy} onClick={() => {
-                // eslint-disable-next-line no-alert
-                if (window.confirm(tl('serviceRemoveConfirm', 'Stop and remove the background service? Backup Sets, history and settings stay; this app runs the schedules again while it is open.'))) act('remove', ui.RemoveService)
+              <button className="btn btn-secondary" disabled={!st.isAdmin || !!busy} onClick={async () => {
+                if (await askConfirm({
+                  title: tl('dlgServiceRemoveTitle', 'Remove the background service?'),
+                  message: tl('serviceRemoveConfirm', 'Stop and remove the background service? Backup Sets, history and settings stay; this app runs the schedules again while it is open.'),
+                  confirmLabel: tl('serviceRemove', 'Remove'), danger: true,
+                })) act('remove', ui.RemoveService)
               }}>{busy === 'remove' ? '…' : tl('serviceRemove', 'Remove')}</button>
             )}
           </div>

@@ -10,6 +10,7 @@ import ClosePromptModal from './components/ClosePromptModal'
 import JobsLockModal from './components/JobsLockModal'
 import RadioGroup from './components/RadioGroup'
 import PassphraseModal from './components/PassphraseModal'
+import ConfirmHost, { askConfirm } from './components/ConfirmDialog'
 import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
 import EncryptionKeyField from './components/EncryptionKeyField'
 import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTools'
@@ -1375,7 +1376,11 @@ function App() {
       return
     }
 
-    if (!confirm(t('confirmDeleteServer').replace('{id}', id))) {
+    if (!(await askConfirm({
+      title: tl('dlgDeleteServerTitle', 'Delete this PBS server?'),
+      message: t('confirmDeleteServer').replace('{id}', id),
+      confirmLabel: t('delete'), danger: true,
+    }))) {
       return
     }
 
@@ -1426,7 +1431,11 @@ function App() {
           GetServerFingerprint && PinPBSServerFingerprint) {
         try {
           const fp = await GetServerFingerprint(server.baseurl)
-          if (window.confirm(t('tofuConfirm').replace('{host}', server.baseurl).replace('{fp}', fp))) {
+          if (await askConfirm({
+            title: tl('dlgTofuTitle', 'Trust this server\'s certificate?'), icon: '🔐',
+            message: t('tofuConfirm').replace('{host}', server.baseurl).replace('{fp}', fp),
+            confirmLabel: tl('dlgTofuBtn', 'Trust and connect'),
+          })) {
             await PinPBSServerFingerprint(id, fp)
             await loadPBSServers()
             await TestPBSConnection(id)
@@ -1767,7 +1776,11 @@ function App() {
       if (isCertError(err) && !(config.certfingerprint || '').trim() && GetServerFingerprint) {
         try {
           const fp = await GetServerFingerprint((config.baseurl || '').trim())
-          if (window.confirm(t('tofuConfirm').replace('{host}', config.baseurl).replace('{fp}', fp))) {
+          if (await askConfirm({
+            title: tl('dlgTofuTitle', 'Trust this server\'s certificate?'), icon: '🔐',
+            message: t('tofuConfirm').replace('{host}', config.baseurl).replace('{fp}', fp),
+            confirmLabel: tl('dlgTofuBtn', 'Trust and connect'),
+          })) {
             // Reuse the already-normalized testConfig (trimmed fields) for the pinned retest.
             await TestConnection({ ...testConfig, certfingerprint: fp })
             setConfig(prev => ({ ...prev, certfingerprint: fp }))
@@ -1889,9 +1902,11 @@ function App() {
           // The part never started (validation / dispatch error): no completion
           // event will arrive, so cancel the wait and offer a retry.
           completion.cancel()
-          const retry = window.confirm(
-            t('splitStartFailed', { n: job.index, total: job.total_jobs, msg: err })
-          )
+          const retry = await askConfirm({
+            title: tl('dlgPartFailedTitle', 'A backup part did not complete'),
+            message: t('splitStartFailed', { n: job.index, total: job.total_jobs, msg: err }),
+            confirmLabel: tl('dlgRetry', 'Retry'), cancelLabel: tl('dlgSkipPart', 'Skip this part'),
+          })
           if (retry) { i--; continue }
           failures.push(t('partStartFail', { n: job.index, msg: err }))
           continue
@@ -1908,9 +1923,11 @@ function App() {
             `❌ ${t('backupPartFailed', { n: job.index, total: job.total_jobs, msg: resultMsg })}`,
             'error'
           )
-          const retry = window.confirm(
-            t('splitRetryPrompt', { n: job.index, total: job.total_jobs, msg: resultMsg })
-          )
+          const retry = await askConfirm({
+            title: tl('dlgPartFailedTitle', 'A backup part did not complete'),
+            message: t('splitRetryPrompt', { n: job.index, total: job.total_jobs, msg: resultMsg }),
+            confirmLabel: tl('dlgRetry', 'Retry'), cancelLabel: tl('dlgSkipPart', 'Skip this part'),
+          })
           if (retry) { i--; continue }
           failures.push(t('partDone', { n: job.index, msg: resultMsg || t('partFailed') }))
         }
@@ -2412,14 +2429,14 @@ function App() {
       return
     }
 
-    // In-place: scary, get explicit confirmation. confirm() is a stopgap until
-    // we wire a real modal — for the alpha phase it's enough and the message
-    // is precise about what will happen.
+    // In-place: scary, get explicit confirmation.
     if (effectiveMode === 'original') {
       const target = snapshotMeta?.original_path || '?'
-      const msg = t('inPlaceConfirm').replace('{path}', target)
-      // eslint-disable-next-line no-alert
-      if (!window.confirm(msg)) {
+      if (!(await askConfirm({
+        title: tl('dlgInPlaceTitle', 'Restore over the original files?'),
+        message: t('inPlaceConfirm').replace('{path}', target),
+        confirmLabel: tl('dlgRestoreBtn', 'Restore'), danger: true,
+      }))) {
         return
       }
     }
@@ -3731,7 +3748,11 @@ function App() {
                                   role="menuitem"
                                   className="set-more-item"
                                   onClick={async () => {
-                                    if (!confirm(t('confirmDeleteJob').replace('{name}', job.name))) {
+                                    if (!(await askConfirm({
+                                      title: tl('dlgDeleteJobTitle', 'Delete this Backup Set?'),
+                                      message: t('confirmDeleteJob').replace('{name}', job.name),
+                                      confirmLabel: t('delete'), danger: true,
+                                    }))) {
                                       return
                                     }
                                     try {
@@ -5353,6 +5374,7 @@ function App() {
         />
       )}
       <PassphraseModal EventsOn={EventsOn} />
+      <ConfirmHost />
     </div>
   )
 }
