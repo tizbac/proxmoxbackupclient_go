@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"math"
 )
 
 const sectorSize = 512
@@ -289,7 +290,11 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 			// Unknown total size; report with 0% to avoid NaN
 			return progressCallback(0, fmt.Sprintf("%s: Block %d", dev, b))
 		}
-		return progressCallback(float64(pos)/float64(total), fmt.Sprintf("%s: Block %d", dev, b))
+		pct := float64(pos) / float64(total)
+		if math.IsNaN(pct) || math.IsInf(pct, 0) {
+			pct = 0
+		}
+		return progressCallback(pct, fmt.Sprintf("%s: Block %d", dev, b))
 	}
 
 	sendChunk := func(chunk []byte) bool {

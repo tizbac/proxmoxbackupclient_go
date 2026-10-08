@@ -177,6 +177,9 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 				break
 			}
 			percentage := float64(CS.processed_size) / float64(total_size) * 100
+			if math.IsNaN(percentage) || math.IsInf(percentage, 0) {
+				percentage = 0
+			}
 			fmt.Printf("Chunk %d/%d/%d - Progress: %.2f%%\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load(), percentage)
 
 			assignment_mutex.Unlock()
@@ -539,6 +542,9 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 				return false
 			}
 			whole := (float64(baseSize) + fraction*float64(devSize)) / float64(totalSize)
+			if math.IsNaN(whole) || math.IsInf(whole, 0) {
+				whole = 0
+			}
 			return progressCallback(whole, message)
 		}
 		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
@@ -562,6 +568,9 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			currentProcessedSize += uint64(size)
 			if progressCallback != nil && totalSize > 0 {
 				percentage := float64(currentProcessedSize) / float64(totalSize)
+				if math.IsNaN(percentage) || math.IsInf(percentage, 0) {
+					percentage = 0
+				}
 				if progressCallback(percentage, fmt.Sprintf("Backup complete for disk %s", dev)) {
 					return nil, fmt.Errorf("backup cancelled by user")
 				}
@@ -596,6 +605,9 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			currentProcessedSize += uint64(processed)
 			if progressCallback != nil && totalSize > 0 {
 				percentage := float64(currentProcessedSize) / float64(totalSize)
+				if math.IsNaN(percentage) || math.IsInf(percentage, 0) {
+					percentage = 0
+				}
 				if progressCallback(percentage, fmt.Sprintf("Backup complete for device %s", dev)) {
 					return nil, fmt.Errorf("backup cancelled by user")
 				}
