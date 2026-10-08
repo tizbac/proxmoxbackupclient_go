@@ -291,100 +291,6 @@ Please report this issue to the Proxmox Backup Client project:
 	}
 }
 
-// SetProgressCallbacks sets custom progress callbacks for API mode
-func (a *App) SetProgressCallbacks(jobID string, onProgress func(string, float64, string), onComplete func(string, bool, string)) {
-	writeDebugLog(fmt.Sprintf("[SetProgressCallbacks] Registered callbacks for jobID: %s", jobID))
-	a.callbacksMutex.Lock()
-	a.callbacksMap[jobID] = &progressCallbacks{
-		onProgress: onProgress,
-		onComplete: onComplete,
-	}
-	a.callbacksMutex.Unlock()
-}
-
-// SetBackupContext sets the context and cancel function for the currently
-// running backup. Called by the API handler in service mode to enable
-// cancellation of the backup via CancelBackup.
-func (a *App) SetBackupContext(ctx context.Context, cancel context.CancelFunc) {
-	a.backupCtxMu.Lock()
-	defer a.backupCtxMu.Unlock()
-	a.backupCtx = ctx
-	a.backupCancel = cancel
-	// Also register in cancelFuncs map for CancelBackup lookup
-	a.cancelFuncsMu.Lock()
-	a.cancelFuncs["current"] = cancel
-	a.cancelFuncsMu.Unlock()
-}
-
-// ClearBackupContext clears the backup context after the backup completes.
-func (a *App) ClearBackupContext() {
-	a.backupCtxMu.Lock()
-	defer a.backupCtxMu.Unlock()
-	a.backupCtx = nil
-	a.backupCancel = nil
-	// Also clear from cancelFuncs map
-	a.cancelFuncsMu.Lock()
-	delete(a.cancelFuncs, "current")
-	a.cancelFuncsMu.Unlock()
-}
-
-// RegisterBackupCancel registers a cancel function for a specific job ID.
-func (a *App) RegisterBackupCancel(jobID string, cancel context.CancelFunc) {
-	a.cancelFuncsMu.Lock()
-	a.cancelFuncs[jobID] = cancel
-	a.cancelFuncsMu.Unlock()
-}
-
-// GetBackupContext returns the current backup context, or nil if none is set.
-func (a *App) GetBackupContext() context.Context {
-	a.backupCtxMu.Lock()
-	defer a.backupCtxMu.Unlock()
-	return a.backupCtx
-}
-
-// CancelBackup cancels a running backup job by ID.
-// Returns an error if the job is not found or not running.
-func (a *App) CancelBackup(jobID string) error {
-	// Prefer per-job registration if present
-	a.cancelFuncsMu.Lock()
-	if cancel, ok := a.cancelFuncs[jobID]; ok {
-		delete(a.cancelFuncs, jobID)
-		a.cancelFuncsMu.Unlock()
-		writeDebugLog(fmt.Sprintf("[CancelBackup] Cancellation requested for jobID: %s", jobID))
-		cancel()
-		// Clear current if it matches
-		a.backupCtxMu.Lock()
-		a.backupCtx = nil
-		a.backupCancel = nil
-		a.backupCtxMu.Unlock()
-		return nil
-	}
-	cancelFromMap := a.cancelFuncs["current"]
-	delete(a.cancelFuncs, "current")
-	a.cancelFuncsMu.Unlock()
-
-	a.backupCtxMu.RLock()
-	backupCancel := a.backupCancel
-	a.backupCtxMu.RUnlock()
-
-	cancel := backupCancel
-	if cancel == nil {
-		cancel = cancelFromMap
-	}
-	if cancel == nil {
-		writeDebugLog(fmt.Sprintf("[CancelBackup] No running backup found for jobID: %s", jobID))
-		return fmt.Errorf("no running backup found for jobID: %s", jobID)
-	}
-	writeDebugLog(fmt.Sprintf("[CancelBackup] Cancellation requested for jobID: %s", jobID))
-	cancel()
-	// Clear context
-	a.backupCtxMu.Lock()
-	a.backupCtx = nil
-	a.backupCancel = nil
-	a.backupCtxMu.Unlock()
-	return nil
-}
-
 // ListBackupJobs returns a list of all running/completed backup jobs from the service.
 func (a *App) ListBackupJobs() ([]*api.BackupProgress, error) {
 	if a.apiClient == nil {
@@ -1269,6 +1175,10 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 
 	writeDebugLog(fmt.Sprintf("[Service Mode] Backup started: %s (JobID: %s)", resp.Message, resp.JobID))
 
+	// Remember the job so the Stop button (which calls CancelBackup with no id)
+	// can cancel this service-side run.
+	a.setDelegatedJobID(resp.JobID)
+
 	// Start polling for progress updates
 	go a.pollBackupProgress(resp.JobID)
 
@@ -1297,6 +1207,10 @@ func (a *App) startMachineBackupViaService(backupType string, backupDevices []st
 
 	writeDebugLog(fmt.Sprintf("[Service Mode] Machine backup started: %s (JobID: %s)", resp.Message, resp.JobID))
 
+	// Remember the job so the Stop button (which calls CancelBackup with no id)
+	// can cancel this service-side run.
+	a.setDelegatedJobID(resp.JobID)
+
 	// Start polling for progress updates
 	go a.pollBackupProgress(resp.JobID)
 
@@ -1322,6 +1236,7 @@ func (a *App) pollBackupProgress(jobID string) {
 			writeDebugLog(fmt.Sprintf("[Service Mode] Failed to get progress (%d/%d): %v", consecutiveErrors, maxConsecutiveErrors, err))
 			if consecutiveErrors >= maxConsecutiveErrors {
 				writeDebugLog("[Service Mode] Giving up polling after repeated failures")
+				a.clearDelegatedJobID()
 				if a.ctx != nil {
 					runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
 						"success": false,
@@ -1345,6 +1260,7 @@ func (a *App) pollBackupProgress(jobID string) {
 		// If backup completed, emit final event and stop polling
 		if progress.Complete {
 			writeDebugLog(fmt.Sprintf("[Service Mode] Backup completed: success=%v", progress.Success))
+			a.clearDelegatedJobID()
 			if a.ctx != nil {
 				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
 					"success": progress.Success,
@@ -1445,19 +1361,10 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
-			// Check if there's a registered callback for any job (service mode)
-			a.callbacksMutex.RLock()
-			hasCallbacks := len(a.callbacksMap) > 0
-			if hasCallbacks {
-				// Call all registered callbacks (typically just one per backup)
-				for jobID, callbacks := range a.callbacksMap {
-					if callbacks.onProgress != nil {
-						writeDebugLog(fmt.Sprintf("[OnProgress] Calling custom callback for jobID: %s", jobID))
-						callbacks.onProgress(jobID, percent*100, message)
-					}
-				}
-			}
-			a.callbacksMutex.RUnlock()
+			// Forward to the API server's registered callbacks (service mode).
+			// The callback contract is a 0.0-1.0 fraction; the server scales it
+			// to 0-100 for its progress map.
+			hasCallbacks := a.dispatchProgress(percent, message)
 
 			// If no custom callbacks and we have Wails context, emit events (GUI standalone mode)
 			// NEVER emit events if we're the service process (no Wails runtime)
@@ -1474,31 +1381,9 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		OnComplete: func(success bool, message string) {
 			writeDebugLog(fmt.Sprintf("Backup complete: success=%v, %s", success, message))
 
-			// Check if there's a registered callback for any job (service mode)
-			a.callbacksMutex.RLock()
-			hasCallbacks := len(a.callbacksMap) > 0
-			var jobIDsToCleanup []string
-			if hasCallbacks {
-				// Call all registered callbacks and collect jobIDs for cleanup
-				for jobID, callbacks := range a.callbacksMap {
-					if callbacks.onComplete != nil {
-						writeDebugLog(fmt.Sprintf("[OnComplete] Calling custom callback for jobID: %s", jobID))
-						callbacks.onComplete(jobID, success, message)
-					}
-					jobIDsToCleanup = append(jobIDsToCleanup, jobID)
-				}
-			}
-			a.callbacksMutex.RUnlock()
-
-			// Clean up completed callbacks
-			if len(jobIDsToCleanup) > 0 {
-				a.callbacksMutex.Lock()
-				for _, jobID := range jobIDsToCleanup {
-					delete(a.callbacksMap, jobID)
-					writeDebugLog(fmt.Sprintf("[OnComplete] Cleaned up callbacks for jobID: %s", jobID))
-				}
-				a.callbacksMutex.Unlock()
-			}
+			// Forward to the API server's registered callbacks (service mode)
+			// and clean them up once the run is terminal.
+			hasCallbacks := a.dispatchComplete(success, message)
 
 			// If no custom callbacks and we have Wails context, emit events (GUI standalone mode)
 			// NEVER emit events if we're the service process (no Wails runtime)
@@ -1672,19 +1557,10 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
-			// Check if there's a registered callback for any job (service mode)
-			a.callbacksMutex.RLock()
-			hasCallbacks := len(a.callbacksMap) > 0
-			if hasCallbacks {
-				// Call all registered callbacks (typically just one per backup)
-				for jobID, callbacks := range a.callbacksMap {
-					if callbacks.onProgress != nil {
-						writeDebugLog(fmt.Sprintf("[OnProgress] Calling custom callback for jobID: %s", jobID))
-						callbacks.onProgress(jobID, percent*100, message)
-					}
-				}
-			}
-			a.callbacksMutex.RUnlock()
+			// Forward to the API server's registered callbacks (service mode).
+			// The callback contract is a 0.0-1.0 fraction; the server scales it
+			// to 0-100 for its progress map.
+			hasCallbacks := a.dispatchProgress(percent, message)
 
 			// If no custom callbacks and we have Wails context, emit events (GUI standalone mode)
 			// NEVER emit events if we're the service process (no Wails runtime)
@@ -1701,31 +1577,9 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		OnComplete: func(success bool, message string) {
 			writeDebugLog(fmt.Sprintf("Machine backup complete: success=%v, %s", success, message))
 
-			// Check if there's a registered callback for any job (service mode)
-			a.callbacksMutex.RLock()
-			hasCallbacks := len(a.callbacksMap) > 0
-			var jobIDsToCleanup []string
-			if hasCallbacks {
-				// Call all registered callbacks and collect jobIDs for cleanup
-				for jobID, callbacks := range a.callbacksMap {
-					if callbacks.onComplete != nil {
-						writeDebugLog(fmt.Sprintf("[OnComplete] Calling custom callback for jobID: %s", jobID))
-						callbacks.onComplete(jobID, success, message)
-					}
-					jobIDsToCleanup = append(jobIDsToCleanup, jobID)
-				}
-			}
-			a.callbacksMutex.RUnlock()
-
-			// Clean up completed callbacks
-			if len(jobIDsToCleanup) > 0 {
-				a.callbacksMutex.Lock()
-				for _, jobID := range jobIDsToCleanup {
-					delete(a.callbacksMap, jobID)
-					writeDebugLog(fmt.Sprintf("[OnComplete] Cleaned up callbacks for jobID: %s", jobID))
-				}
-				a.callbacksMutex.Unlock()
-			}
+			// Forward to the API server's registered callbacks (service mode)
+			// and clean them up once the run is terminal.
+			hasCallbacks := a.dispatchComplete(success, message)
 
 			// If no custom callbacks and we have Wails context, emit events (GUI standalone mode)
 			// NEVER emit events if we're the service process (no Wails runtime)
@@ -2130,6 +1984,35 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 // so we seed DefaultDirectory with a path we know exists. A recover() turns any
 // Go-level panic into an error instead of taking the process down, and the
 // surrounding logging makes the next failure diagnosable from the debug log.
+func (a *App) OpenDirectoryPicker() (dir string, err error) {
+	if a.ctx == nil {
+		return "", fmt.Errorf("runtime non disponible")
+	}
+	if a.isServiceProcess {
+		writeDebugLog("OpenDirectoryPicker: native picker skipped in the headless service process")
+		return "", fmt.Errorf("sélecteur de dossier indisponible dans le service")
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("folder picker panic: %v", r)
+			writeDebugLog(fmt.Sprintf("CRITICAL: OpenDirectoryPicker panic: %v\n%s", r, debug.Stack()))
+		}
+	}()
+
+	defaultDir, herr := os.UserHomeDir()
+	if herr != nil || defaultDir == "" {
+		defaultDir = os.TempDir()
+	}
+
+	writeDebugLog(fmt.Sprintf("OpenDirectoryPicker: opening folder picker (default=%s)", defaultDir))
+	dir, err = runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:            "Choisir un dossier",
+		DefaultDirectory: defaultDir,
+	})
+	writeDebugLog(fmt.Sprintf("OpenDirectoryPicker: returned dir=%q err=%v", dir, err))
+	return dir, err
+}
+
 func (a *App) OpenRestoreDestDialog() (dir string, err error) {
 	if a.ctx == nil {
 		return "", fmt.Errorf("runtime non disponible")

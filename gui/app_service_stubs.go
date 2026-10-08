@@ -8,7 +8,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 )
@@ -137,7 +136,9 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		DisableSplit:    pbsCfg.DisableSplit,
 		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
 		OnProgress: func(percent float64, message string) {
-			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent, message))
+			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent*100, message))
+			// Feed the API server's progress map so the GUI's polling sees it.
+			a.dispatchProgress(percent, message)
 		},
 		OnComplete: func(success bool, message string) {
 			if success {
@@ -145,6 +146,7 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 			} else {
 				writeDebugLog(fmt.Sprintf("[Backup Complete] FAILED - %s", message))
 			}
+			a.dispatchComplete(success, message)
 		},
 	}
 
@@ -216,7 +218,9 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		DisableSplit:    pbsCfg.DisableSplit,
 		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
 		OnProgress: func(percent float64, message string) {
-			writeDebugLog(fmt.Sprintf("[Machine Backup Complete] %.1f%% - %s", percent*100, message))
+			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent*100, message))
+			// Feed the API server's progress map so the GUI's polling sees it.
+			a.dispatchProgress(percent, message)
 		},
 		OnComplete: func(success bool, message string) {
 			if success {
@@ -224,6 +228,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 			} else {
 				writeDebugLog(fmt.Sprintf("[Machine Backup Complete] FAILED - %s", message))
 			}
+			a.dispatchComplete(success, message)
 		},
 	}
 
@@ -279,60 +284,4 @@ func (a *App) resolveBackupPBS(pbsID string) (*Config, error) {
 		return nil, err
 	}
 	return cfg, nil
-}
-
-// CancelBackup cancels a running backup job by ID.
-// Returns an error if the job is not found or not running.
-func (a *App) CancelBackup(jobID string) error {
-	// Prefer per-job registration if present
-	a.cancelFuncsMu.Lock()
-	if cancel, ok := a.cancelFuncs[jobID]; ok {
-		delete(a.cancelFuncs, jobID)
-		a.cancelFuncsMu.Unlock()
-		writeDebugLog(fmt.Sprintf("[CancelBackup] Cancellation requested for jobID: %s", jobID))
-		cancel()
-		// Clear current if it matches
-		a.backupCtxMu.Lock()
-		a.backupCtx = nil
-		a.backupCancel = nil
-		a.backupCtxMu.Unlock()
-		return nil
-	}
-	cancelFromMap := a.cancelFuncs["current"]
-	delete(a.cancelFuncs, "current")
-	a.cancelFuncsMu.Unlock()
-
-	a.backupCtxMu.RLock()
-	backupCancel := a.backupCancel
-	a.backupCtxMu.RUnlock()
-
-	cancel := backupCancel
-	if cancel == nil {
-		cancel = cancelFromMap
-	}
-	if cancel == nil {
-		writeDebugLog(fmt.Sprintf("[CancelBackup] No running backup found for jobID: %s", jobID))
-		return fmt.Errorf("no running backup found for jobID: %s", jobID)
-	}
-	writeDebugLog(fmt.Sprintf("[CancelBackup] Cancellation requested for jobID: %s", jobID))
-	cancel()
-	a.backupCtxMu.Lock()
-	a.backupCtx = nil
-	a.backupCancel = nil
-	a.backupCtxMu.Unlock()
-	return nil
-}
-
-// GetBackupContext returns the current backup context, or nil if none is set.
-func (a *App) GetBackupContext() context.Context {
-	a.backupCtxMu.RLock()
-	defer a.backupCtxMu.RUnlock()
-	return a.backupCtx
-}
-
-// RegisterBackupCancel registers a cancel function for a specific job ID.
-func (a *App) RegisterBackupCancel(jobID string, cancel context.CancelFunc) {
-	a.cancelFuncsMu.Lock()
-	a.cancelFuncs[jobID] = cancel
-	a.cancelFuncsMu.Unlock()
 }

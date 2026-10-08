@@ -5,7 +5,7 @@ import MachineBackupConfig from './components/MachineBackupConfig'
 import EncryptionKeyField from './components/EncryptionKeyField'
 import logo from './assets/logo.webp'
 // Wails runtime imports (will be available when built with Wails)
-let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, ListBackupJobs, GetBrand, OpenBrowser, RequestElevation, CanModifyJobs, RequestJobModificationElevation
+let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, OpenDirectoryPicker, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, ListBackupJobs, GetBrand, OpenBrowser, RequestElevation, CanModifyJobs, RequestJobModificationElevation
 let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs, RunScheduledJobNow
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
@@ -25,6 +25,7 @@ if (window.go) {
   GetSnapshotMeta = window.go.main.App.GetSnapshotMeta
   RestoreSnapshot = window.go.main.App.RestoreSnapshot
   OpenRestoreDestDialog = window.go.main.App.OpenRestoreDestDialog
+  OpenDirectoryPicker = window.go.main.App.OpenDirectoryPicker
   SearchFiles = window.go.main.App.SearchFiles
   CancelSearch = window.go.main.App.CancelSearch
   CancelBackup = window.go.main.App.CancelBackup
@@ -2032,8 +2033,36 @@ function App() {
                   setConfig({...config, backupdir: dirs[0] || ''})
                 }}
                 rows="4"
-                placeholder="C:\Data&#10;C:\Users&#10;D:\Documents"
+                placeholder="C:\Data&#10;/home/user&#10;/var/lib"
               />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{marginTop: '8px'}}
+                onClick={async () => {
+                  if (!OpenDirectoryPicker) {
+                    showStatus('❌ File picker unavailable', 'error')
+                    return
+                  }
+                  try {
+                    const dir = await OpenDirectoryPicker()
+                    if (dir) {
+                      const dirs = backupDirs.split('\n').map(d => d.trim()).filter(d => d)
+                      if (!dirs.includes(dir)) {
+                        dirs.push(dir)
+                        const newVal = dirs.join('\n')
+                        setBackupDirs(newVal)
+                        setConfig({...config, backupdir: dirs[0] || ''})
+                        showStatus('✅ Added directory', 'success')
+                      }
+                    }
+                  } catch (err) {
+                    showStatus(`❌ ${err}`, 'error')
+                  }
+                }}
+              >
+                📁 Add directory
+              </button>
             </div>
           )}
           {backupType === 'machine' && (
@@ -2282,10 +2311,18 @@ function App() {
           )}
 
           {/* Running Backup Jobs */}
-          {runningJobs.length > 0 && (
+          {false && runningJobs.length > 0 && (
             <div className="card" style={{marginTop: '30px'}}>
               <h3 style={{marginTop: 0}}>⏳ {t('runningJobs')}</h3>
-              {runningJobs.map(job => (
+              {[...runningJobs].sort((a, b) => {
+                  if (a.running !== b.running) return a.running ? -1 : 1
+                  const sa = a.success ? (a.complete ? 1 : 0) : -1
+                  const sb = b.success ? (b.complete ? 1 : 0) : -1
+                  if (sa !== sb) return sa - sb
+                  const ta = a.start_time ? new Date(a.start_time).getTime() : 0
+                  const tb = b.start_time ? new Date(b.start_time).getTime() : 0
+                  return tb - ta
+                }).map(job => (
                 <div key={job.job_id} style={{
                   padding: '15px',
                   marginBottom: '10px',
@@ -2394,16 +2431,24 @@ function App() {
         <div className={`tab-content ${activeTab === 'running' ? 'active' : ''}`}>
           <h2>⏳ {t('tabRunning')}</h2>
 
-          {runningJobs.length === 0 ? (
+          {runningJobs.filter(j => j.running).length === 0 ? (
             <div className="info-box" style={{backgroundColor: '#f8f9fa', borderColor: '#dee2e6'}}>
               📭 {t('noRunningJobs')}
             </div>
           ) : (
             <div>
               <div style={{marginBottom: '15px', padding: '12px', backgroundColor: '#e7f3ff', borderRadius: '8px', border: '1px solid #b6d7ff'}}>
-                <strong>{runningJobs.filter(j => j.running).length}</strong> {t('runningJobsCount', { count: runningJobs.filter(j => j.running).length, total: runningJobs.length })}
+                <strong>{runningJobs.filter(j => j.running).length}</strong> {t('of')} <strong>{runningJobs.length}</strong>
               </div>
-              {runningJobs.map(job => (
+              {[...runningJobs].sort((a, b) => {
+                  if (a.running !== b.running) return a.running ? -1 : 1
+                  const sa = a.success ? (a.complete ? 1 : 0) : -1
+                  const sb = b.success ? (b.complete ? 1 : 0) : -1
+                  if (sa !== sb) return sa - sb
+                  const ta = a.start_time ? new Date(a.start_time).getTime() : 0
+                  const tb = b.start_time ? new Date(b.start_time).getTime() : 0
+                  return tb - ta
+                }).map(job => (
                 <div key={job.job_id} style={{
                   padding: '15px',
                   marginBottom: '10px',

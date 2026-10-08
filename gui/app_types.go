@@ -38,6 +38,12 @@ type App struct {
 	backupCtx     context.Context
 	backupCancel  context.CancelFunc
 	backupCtxMu   sync.RWMutex
+
+	// delegatedJobID is the service job the GUI is currently polling. The Stop
+	// button calls CancelBackup with no id, so the GUI has to remember which
+	// service-side job to cancel.
+	delegatedJobID   string
+	delegatedJobIDMu sync.Mutex
 }
 
 // isDelegatedToService reports whether this (non-service) GUI process is

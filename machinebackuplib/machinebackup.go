@@ -75,6 +75,65 @@ func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, kn
 	c.knownChunks = knownChunks
 }
 
+// deviceSizeBytes returns the size in bytes of a backup device.
+//
+// os.Stat alone is not enough: on Linux a block device (and the
+// /dev/disk/by-id symlink to it) reports st_size == 0. That made the job-wide
+// progress fraction divide by a zero total, collapse to NaN and clamp to 0%,
+// pinning the GUI progress bar at 0 for the whole run even though bytes were
+// clearly flowing. Regular files use stat; block devices and Windows
+// PhysicalDrive paths ask the platform for the real length.
+func deviceSizeBytes(dev string) (uint64, error) {
+	if strings.HasPrefix(dev, `\\.\PhysicalDrive`) {
+		re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
+		matches := re.FindStringSubmatch(dev)
+		if len(matches) < 2 {
+			return 0, fmt.Errorf("invalid physical drive path %q", dev)
+		}
+		idx, err := strconv.ParseInt(matches[1], 10, 32)
+		if err != nil {
+			return 0, fmt.Errorf("invalid physical drive index in %q: %w", dev, err)
+		}
+		size, err := GetDiskSize(fmt.Sprintf(`\\.\PhysicalDrive%d`, idx))
+		if err != nil {
+			return 0, fmt.Errorf("failed to get disk size for %s: %w", dev, err)
+		}
+		if size <= 0 {
+			return 0, fmt.Errorf("device %s reported a non-positive size (%d)", dev, size)
+		}
+		return uint64(size), nil
+	}
+
+	// Regular files: stat is exact and avoids opening the file.
+	if info, err := os.Stat(dev); err == nil && info.Mode().IsRegular() {
+		return uint64(info.Size()), nil
+	}
+
+	// Block devices / other special files.
+	size, err := GetDiskSize(dev)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get size of %s: %w", dev, err)
+	}
+	if size <= 0 {
+		return 0, fmt.Errorf("device %s reported a non-positive size (%d)", dev, size)
+	}
+	return uint64(size), nil
+}
+
+// jobProgressFraction maps a single device's completion fraction (0.0-1.0) to
+// the fraction of the whole job. An unknown total (0 bytes) reports 0 instead
+// of a NaN so the caller can never render a bogus percentage.
+func jobProgressFraction(baseSize, devSize uint64, fraction float64, totalSize uint64) float64 {
+	if totalSize == 0 {
+		return 0
+	}
+	whole := (float64(baseSize) + fraction*float64(devSize)) / float64(totalSize)
+	if math.IsNaN(whole) || math.IsInf(whole, 0) {
+		return 0
+	}
+	return whole
+}
+
 func BytesToString(b int64) string {
 	if b < 1024 {
 		return fmt.Sprintf("%dB", b)
@@ -330,13 +389,16 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 			// Returning true stops the backup (user pressed Stop).
 			if progressCallback != nil {
 				var pct float64
-				if size == 0 {
+				if size <= 0 {
 					pct = 0
 				} else {
 					pct = float64(totread) / float64(size)
+					if math.IsNaN(pct) || math.IsInf(pct, 0) {
+						pct = 0
+					}
 				}
 				if progressCallback(pct, fmt.Sprintf("%s: Block %d", filename, b)) {
-					rerr = fmt.Errorf("backup cancelled by user")
+					rerr = errCancelled
 					break
 				}
 			}
@@ -493,7 +555,9 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		}
 	}
 	if progressCallback != nil {
-		progressCallback(0, "Connecting to Proxmox Backup Server...")
+		if progressCallback(0, "Connecting to Proxmox Backup Server...") {
+			return nil, errCancelled
+		}
 	}
 
 	//Physical drive paths will be like  "\\\\.\\PhysicalDrive0"
@@ -504,28 +568,12 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 	var totalSize uint64 = 0
 	sizes := make([]uint64, len(cfg.BackupDevices))
 	for i, dev := range cfg.BackupDevices {
-		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
-			// For physical drives, get the disk size
-			re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
-			matches := re.FindStringSubmatch(dev)
-			idx, _ := strconv.ParseInt(matches[1], 10, 32)
-
-			// Get disk size using platform-specific function
-			size, err := GetDiskSize(fmt.Sprintf("\\\\.\\PhysicalDrive%d", idx))
-			if err != nil {
-				return nil, fmt.Errorf("failed to get disk size for %s: %v", dev, err)
-			}
-			sizes[i] = uint64(size)
-			totalSize += uint64(size)
-		} else {
-			// For file devices, get file size
-			info, err := os.Stat(dev)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get file size for %s: %v", dev, err)
-			}
-			sizes[i] = uint64(info.Size())
-			totalSize += uint64(info.Size())
+		size, err := deviceSizeBytes(dev)
+		if err != nil {
+			return nil, err
 		}
+		sizes[i] = size
+		totalSize += size
 	}
 
 	// Track progress for each device
@@ -540,11 +588,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			if progressCallback == nil {
 				return false
 			}
-			whole := (float64(baseSize) + fraction*float64(devSize)) / float64(totalSize)
-			if math.IsNaN(whole) || math.IsInf(whole, 0) {
-				whole = 0
-			}
-			return progressCallback(whole, message)
+			return progressCallback(jobProgressFraction(baseSize, devSize, fraction, totalSize), message)
 		}
 		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
 			re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
@@ -563,15 +607,11 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 				GPT:   isGPT,
 			})
 
-			// Update progress for this disk
 			currentProcessedSize += uint64(size)
 			if progressCallback != nil && totalSize > 0 {
-				percentage := float64(currentProcessedSize) / float64(totalSize)
-				if math.IsNaN(percentage) || math.IsInf(percentage, 0) {
-					percentage = 0
-				}
-				if progressCallback(percentage, fmt.Sprintf("Backup complete for disk %s", dev)) {
-					return nil, fmt.Errorf("backup cancelled by user")
+				pct := jobProgressFraction(baseSize, devSize, 1.0, totalSize)
+				if progressCallback(pct, fmt.Sprintf("Backup complete for disk %s", dev)) {
+					return nil, errCancelled
 				}
 			}
 		} else {
@@ -598,17 +638,17 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			processed := int64(0)
 			if handled {
 				processed = size
-			} else if info, err := os.Stat(dev); err == nil {
-				processed = info.Size()
+			} else {
+				ps, perr := deviceSizeBytes(dev)
+				if perr == nil {
+					processed = int64(ps)
+				}
 			}
 			currentProcessedSize += uint64(processed)
 			if progressCallback != nil && totalSize > 0 {
-				percentage := float64(currentProcessedSize) / float64(totalSize)
-				if math.IsNaN(percentage) || math.IsInf(percentage, 0) {
-					percentage = 0
-				}
-				if progressCallback(percentage, fmt.Sprintf("Backup complete for device %s", dev)) {
-					return nil, fmt.Errorf("backup cancelled by user")
+				pct := jobProgressFraction(baseSize, devSize, 1.0, totalSize)
+				if progressCallback(pct, fmt.Sprintf("Backup complete for device %s", dev)) {
+					return nil, errCancelled
 				}
 			}
 		}
