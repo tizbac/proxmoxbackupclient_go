@@ -1436,7 +1436,12 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		DisableSplit:    a.config.DisableSplit,
 		SplitSizeBytes:  a.config.SplitSizeBytes(),
 		Crypt:           pbsCfg.Crypt,
-		Ctx:             a.GetBackupContext(),
+		// Use the backup context that was set via SetBackupContext for this job
+		Ctx: func() context.Context {
+			a.backupCtxMu.RLock()
+			defer a.backupCtxMu.RUnlock()
+			return a.backupCtx
+		}(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
@@ -1658,7 +1663,12 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		DisableSplit:    a.config.DisableSplit,
 		SplitSizeBytes:  a.config.SplitSizeBytes(),
 		Crypt:           pbsCfg.Crypt,
-		Ctx:             a.GetBackupContext(),
+		// Use the backup context that was set via SetBackupContext for this job
+		Ctx: func() context.Context {
+			a.backupCtxMu.RLock()
+			defer a.backupCtxMu.RUnlock()
+			return a.backupCtx
+		}(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 

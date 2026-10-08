@@ -78,7 +78,8 @@ func (s *Server) handleMachineBackup(w http.ResponseWriter, r *http.Request) {
 				func(jid string, percent float64, message string) {
 					s.progressMutex.Lock()
 					if progress, exists := s.backupProgress[jid]; exists {
-						progress.Progress = percent
+						// Progress callback receives fraction (0-1), store as percentage (0-100)
+						progress.Progress = percent * 100
 						progress.Message = message
 					}
 					s.progressMutex.Unlock()

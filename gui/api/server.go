@@ -272,9 +272,10 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 				func(jid string, percent float64, message string) {
 					s.progressMutex.Lock()
 					if progress, exists := s.backupProgress[jid]; exists {
-						progress.Progress = percent
+						// Progress callback receives fraction (0-1), store as percentage (0-100)
+						progress.Progress = percent * 100
 						progress.Message = message
-						log.Printf("[API] Progress update %s: %.1f%% - %s", jid, percent, message)
+						log.Printf("[API] Progress update %s: %.1f%% - %s", jid, percent*100, message)
 					} else {
 						log.Printf("[API] WARNING: Progress update for unknown job %s", jid)
 					}

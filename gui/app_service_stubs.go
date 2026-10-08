@@ -136,7 +136,6 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		ExcludeList:     excludes,
 		DisableSplit:    pbsCfg.DisableSplit,
 		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
-		Ctx:             a.GetBackupContext(),
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent, message))
 		},
@@ -149,10 +148,10 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		},
 	}
 
-	// Add context
-	if a.GetBackupContext() != nil {
-		opts.Ctx = a.GetBackupContext()
-	}
+	// Use the backup context that was set via SetBackupContext for this job
+	a.backupCtxMu.RLock()
+	opts.Ctx = a.backupCtx
+	a.backupCtxMu.RUnlock()
 
 	// Execute backup using inline implementation
 	writeDebugLog("[Service] Executing backup via RunBackupInline")
@@ -217,7 +216,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		DisableSplit:    pbsCfg.DisableSplit,
 		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
 		OnProgress: func(percent float64, message string) {
-			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent*100, message))
+			writeDebugLog(fmt.Sprintf("[Machine Backup Complete] %.1f%% - %s", percent*100, message))
 		},
 		OnComplete: func(success bool, message string) {
 			if success {
@@ -228,10 +227,10 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		},
 	}
 
-	// Add context
-	if a.GetBackupContext() != nil {
-		opts.Ctx = a.GetBackupContext()
-	}
+	// Use the backup context that was set via SetBackupContext for this job
+	a.backupCtxMu.RLock()
+	opts.Ctx = a.backupCtx
+	a.backupCtxMu.RUnlock()
 
 	// Execute backup using inline implementation
 	writeDebugLog("[Service] Executing machine backup via RunBackupInline")
@@ -326,7 +325,9 @@ func (a *App) CancelBackup(jobID string) error {
 
 // GetBackupContext returns the current backup context, or nil if none is set.
 func (a *App) GetBackupContext() context.Context {
-	return nil
+	a.backupCtxMu.RLock()
+	defer a.backupCtxMu.RUnlock()
+	return a.backupCtx
 }
 
 // RegisterBackupCancel registers a cancel function for a specific job ID.
