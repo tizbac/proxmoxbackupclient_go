@@ -201,14 +201,16 @@ Some names are always skipped, at any depth: the folders `System Volume Informat
 
 A Backup Set is a saved backup with a name, a schedule and options. The **Backup** page lists them under **Your backup sets**, each with badges for its schedule type (DAILY, REPEAT, MANUAL) and backup type (DIRECTORY, MACHINE, MACHINE (VM)), its schedule, and **Last run**. A Metadata set with a full read set up also shows **Next full read in N runs** or **Next run: full read (reads every file)**.
 
-Each set has these buttons:
+Each set shows when it last ran and, for scheduled sets, when it runs next. It has **Run Now**, **Edit** and a **More** menu:
 
 | Button | What it does |
 |---|---|
 | Run Now | Starts it now. If another backup or restore is running it waits in the queue |
 | Edit | Opens the editor |
-| Clone | Opens the editor with a copy, named "<name> (copy)" |
-| Delete | Asks for confirmation, then deletes the set (not its snapshots) |
+| More > Undelete... | Folder sets: opens Undelete with this set picked ([section 10](#10-undelete)) |
+| More > Roll back... | Folder sets: opens Roll back with this set picked ([section 11](#11-roll-back)) |
+| More > Clone | Opens the editor with a copy, named "<name> (copy)" |
+| More > Delete | Asks for confirmation, then deletes the set (not its snapshots) |
 
 Click **Add New Backup Set** to create one. Give it a **Backup set name**, fill in the five tabs, then click **Save Backup Set**.
 
@@ -416,7 +418,7 @@ The finished restore is recorded in Reports with its snapshot, destination, path
 
 ## 10. Undelete
 
-**Undelete** (side menu, or **Undelete...** on a folder Backup Set's card) finds files that are in a Backup Set's backups but no longer on disk, and puts them back. From v0.7.0.
+**Undelete** (side menu, or **More > Undelete...** on a folder Backup Set's card) finds files that are in a Backup Set's backups but no longer on disk, and puts them back. From v0.7.0.
 
 1. Pick the **Backup Set** (folder sets only; machine sets are restored with bare-metal restore).
 2. Choose how far to **Look back**:
@@ -441,7 +443,7 @@ Tick **Verify after restore** to check every restored file against the backup, t
 
 ## 11. Roll back
 
-**Roll back** (side menu, or **Roll back...** on a folder Backup Set's card) puts a Backup Set's folders back as they were at a chosen backup. You see what would change first, and everything it replaces or removes is kept, so the roll back can be undone. From v0.7.0.
+**Roll back** (side menu, or **More > Roll back...** on a folder Backup Set's card) puts a Backup Set's folders back as they were at a chosen backup. You see what would change first, and everything it replaces or removes is kept, so the roll back can be undone. From v0.7.0.
 
 1. Pick the **Backup Set**. Its backups are listed newest first with their size; 🔒 marks a protected snapshot.
 2. Pick a backup from the list, or enter a date and time in **The backup at or before** to pick the newest backup at or before it.

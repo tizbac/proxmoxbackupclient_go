@@ -438,6 +438,16 @@ function App() {
   // The Backup Set the Undelete and Roll back pages work on (the set card
   // shortcuts pick it before switching page).
   const [setToolJobId, setSetToolJobId] = useState('')
+  // Which Backup Set card has its More menu open (null: none).
+  const [openSetMenu, setOpenSetMenu] = useState(null)
+  useEffect(() => {
+    if (!openSetMenu) return undefined
+    const close = () => setOpenSetMenu(null)
+    const onKey = (e) => { if (e.key === 'Escape') close() }
+    document.addEventListener('click', close)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', onKey) }
+  }, [openSetMenu])
   // Scheduled-job protection (Windows): when require_admin is on, changing
   // Backup Sets needs an elevated session. Defaults are the permissive "not
   // applicable" shape until the backend answers (and on platforms without it).
@@ -3475,7 +3485,7 @@ function App() {
                 {scheduledJobs.length === 0 ? (
                   <p style={{color: '#718096'}}>{t('noBackupSetsYet')}</p>
                 ) : (
-                  <div style={{border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden'}}>
+                  <div style={{border: '1px solid #e2e8f0', borderRadius: '8px'}}>
                     <div>
                       {scheduledJobs.map((job, idx) => (
                         <div key={job.id} style={{
@@ -3578,18 +3588,6 @@ function App() {
                           >
                             {runningJobId === job.id ? '…' : t('runNow')}
                           </button>
-                          {job.backupType !== 'machine' && (
-                            <>
-                              <button className="btn btn-secondary" title={tl('undeleteShortcutHint', 'Find files of this set that are in its backups but gone from disk')}
-                                onClick={() => { setSetToolJobId(job.id); setActiveTab('undelete') }}>
-                                {tl('undeleteShortcut', 'Undelete...')}
-                              </button>
-                              <button className="btn btn-secondary" title={tl('rollbackShortcutHint', 'Put this set\'s folders back as they were at a backup')}
-                                onClick={() => { setSetToolJobId(job.id); setActiveTab('rollback') }}>
-                                {tl('rollbackShortcut', 'Roll back...')}
-                              </button>
-                            </>
-                          )}
                           <button
                             className="btn btn-secondary"
                             onClick={() => {
@@ -3627,63 +3625,91 @@ function App() {
                           >
                             {t('editJob')}
                           </button>
-                          <button
-                            className="btn btn-secondary"
-                            onClick={() => {
-                              // Same field population as Edit, but editingJobId stays null so
-                              // Save creates a brand-new job (SaveScheduledJob) instead of
-                              // updating this one (UpdateScheduledJob) — see TODO.md "Clone a
-                              // Backup Set". lastRun/history naturally reset for free since the
-                              // clone gets its own fresh ID and has never actually run yet.
-                              setEditingJobId(null)
-                              setJobName(t('cloneNameSuffix').replace('{name}', job.name || ''))
-                              setBackupMode('scheduled')
-                              setScheduleTime(job.scheduleTime)
-                              setRunAtStartup(job.runAtStartup)
-                              setTriggerMode(job.triggerMode || 'daily')
-                              setIntervalMinutes(job.intervalMinutes || 120)
-                              setWindowAllDay(job.windowAllDay !== false)
-                              setWindowStart(job.windowStart || '09:00')
-                              setWindowEnd(job.windowEnd || '17:00')
-                              setDaysOfWeek(job.daysOfWeek && job.daysOfWeek.length > 0 ? job.daysOfWeek : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
-                              setBackupDirs(job.backupDirs.join('\n'))
-                              setSelectedDrives(job.driveLetters || [])
-                              setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
-                              setBackupType(job.backupType)
-                              applyVmFieldsFromJob(job)
-                              setBackupPBSID(job.pbsServerId || defaultPBSID)
-                              setExcludeList(job.excludeList.join('\n'))
-                              setTreeExcludes([])
-                              setEmailOnSuccess(!!job.emailOnSuccess); setEmailOnSuccessTo(job.emailOnSuccessTo || '')
-                              setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
-                              setRunAppBefore(job.runAppBefore || ''); setRunAppAfter(job.runAppAfter || '')
-                              setExitAppAfter(!!job.exitAppAfter); setShutdownAfter(!!job.shutdownAfter)
-                              setChangeDetectionMode(job.changeDetectionMode || 'legacy'); setFullReadEvery(job.fullReadEvery || 0)
-                              setBackupFormTab('source'); setShowBackupForm(true)
-                            }}
-                          >
-                            {t('cloneJob')}
-                          </button>
-                          <button
-                            className="btn btn-secondary"
-                            onClick={async () => {
-                              if (!confirm(t('confirmDeleteJob').replace('{name}', job.name))) {
-                                return
-                              }
-                              try {
-                                await DeleteScheduledJob(job.id)
-                                setScheduledJobs(scheduledJobs.filter(j => j.id !== job.id))
-                                showStatus(t('statusJobDeleted'), 'success')
-                                if (editingJobId === job.id) {
-                                  setEditingJobId(null)
-                                }
-                              } catch (err) {
-                                if (!handleJobsLockError(err)) showStatus(`❌ ${jobErrText(err)}`, 'error')
-                              }
-                            }}
-                          >
-                            {t('deleteJob')}
-                          </button>
+                          {/* One menu for the less frequent actions, the same on every card
+                              (Undelete and Roll back only exist for folder sets). */}
+                          <div style={{position: 'relative'}}>
+                            <button
+                              className="btn btn-secondary"
+                              aria-haspopup="menu"
+                              aria-expanded={openSetMenu === job.id}
+                              onClick={(e) => { e.stopPropagation(); setOpenSetMenu(openSetMenu === job.id ? null : job.id) }}
+                            >
+                              {tl('setMoreMenu', 'More')} ▾
+                            </button>
+                            {openSetMenu === job.id && (
+                              <div role="menu" className="set-more-menu" onClick={() => setOpenSetMenu(null)}>
+                                {job.backupType !== 'machine' && (
+                                  <>
+                                    <button role="menuitem" className="set-more-item" onClick={() => { setSetToolJobId(job.id); setActiveTab('undelete') }}>
+                                      {tl('undeleteShortcut', 'Undelete...')}
+                                    </button>
+                                    <button role="menuitem" className="set-more-item" onClick={() => { setSetToolJobId(job.id); setActiveTab('rollback') }}>
+                                      {tl('rollbackShortcut', 'Roll back...')}
+                                    </button>
+                                  </>
+                                )}
+                                <button
+                                  role="menuitem"
+                                  className="set-more-item"
+                                  onClick={() => {
+                                    // Same field population as Edit, but editingJobId stays null so
+                                    // Save creates a brand-new job (SaveScheduledJob) instead of
+                                    // updating this one (UpdateScheduledJob) — see TODO.md "Clone a
+                                    // Backup Set". lastRun/history naturally reset for free since the
+                                    // clone gets its own fresh ID and has never actually run yet.
+                                    setEditingJobId(null)
+                                    setJobName(t('cloneNameSuffix').replace('{name}', job.name || ''))
+                                    setBackupMode('scheduled')
+                                    setScheduleTime(job.scheduleTime)
+                                    setRunAtStartup(job.runAtStartup)
+                                    setTriggerMode(job.triggerMode || 'daily')
+                                    setIntervalMinutes(job.intervalMinutes || 120)
+                                    setWindowAllDay(job.windowAllDay !== false)
+                                    setWindowStart(job.windowStart || '09:00')
+                                    setWindowEnd(job.windowEnd || '17:00')
+                                    setDaysOfWeek(job.daysOfWeek && job.daysOfWeek.length > 0 ? job.daysOfWeek : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+                                    setBackupDirs(job.backupDirs.join('\n'))
+                                    setSelectedDrives(job.driveLetters || [])
+                                    setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
+                                    setBackupType(job.backupType)
+                                    applyVmFieldsFromJob(job)
+                                    setBackupPBSID(job.pbsServerId || defaultPBSID)
+                                    setExcludeList(job.excludeList.join('\n'))
+                                    setTreeExcludes([])
+                                    setEmailOnSuccess(!!job.emailOnSuccess); setEmailOnSuccessTo(job.emailOnSuccessTo || '')
+                                    setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
+                                    setRunAppBefore(job.runAppBefore || ''); setRunAppAfter(job.runAppAfter || '')
+                                    setExitAppAfter(!!job.exitAppAfter); setShutdownAfter(!!job.shutdownAfter)
+                                    setChangeDetectionMode(job.changeDetectionMode || 'legacy'); setFullReadEvery(job.fullReadEvery || 0)
+                                    setBackupFormTab('source'); setShowBackupForm(true)
+                                  }}
+                                >
+                                  {t('cloneJob')}
+                                </button>
+                                <button
+                                  role="menuitem"
+                                  className="set-more-item"
+                                  onClick={async () => {
+                                    if (!confirm(t('confirmDeleteJob').replace('{name}', job.name))) {
+                                      return
+                                    }
+                                    try {
+                                      await DeleteScheduledJob(job.id)
+                                      setScheduledJobs(scheduledJobs.filter(j => j.id !== job.id))
+                                      showStatus(t('statusJobDeleted'), 'success')
+                                      if (editingJobId === job.id) {
+                                        setEditingJobId(null)
+                                      }
+                                    } catch (err) {
+                                      if (!handleJobsLockError(err)) showStatus(`❌ ${jobErrText(err)}`, 'error')
+                                    }
+                                  }}
+                                >
+                                  {t('deleteJob')}
+                                </button>
+                              </div>
+                            )}
+                          </div>
                           </div>
                         </div>
                       ))}

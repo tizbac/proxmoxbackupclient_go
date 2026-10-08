@@ -828,3 +828,15 @@ body {
     color: #6c757d;
     font-style: italic;
 }
+
+/* Backup Set card "More" menu */
+.set-more-menu {
+    position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
+    min-width: 170px; background: #fff; border: 1px solid #d5dbe3; border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12); padding: 4px 0;
+}
+.set-more-item {
+    display: block; width: 100%; text-align: left; background: none; border: none;
+    padding: 9px 14px; font-size: 14px; color: #2d3748; cursor: pointer;
+}
+.set-more-item:hover, .set-more-item:focus-visible { background: #eef2f7; outline: none; }
