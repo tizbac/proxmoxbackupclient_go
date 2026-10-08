@@ -15,12 +15,14 @@ For the command line tools see [CLI.md](CLI.md). For restoring a whole machine o
 7. [Incremental folder backups (change detection)](#7-incremental-folder-backups-change-detection)
 8. [The backup progress card](#8-the-backup-progress-card)
 9. [Restore](#9-restore)
-10. [Reports](#10-reports)
-11. [Message Log and log files](#11-message-log-and-log-files)
-12. [Preferences](#12-preferences)
-13. [Windows service, tray and closing the window](#13-windows-service-tray-and-closing-the-window)
-14. [Compatibility with the official Proxmox client](#14-compatibility-with-the-official-proxmox-client)
-15. [Troubleshooting](#15-troubleshooting)
+10. [Undelete](#10-undelete)
+11. [Roll back](#11-roll-back)
+12. [Reports](#12-reports)
+13. [Message Log and log files](#13-message-log-and-log-files)
+14. [Preferences](#14-preferences)
+15. [Windows service, tray and closing the window](#15-windows-service-tray-and-closing-the-window)
+16. [Compatibility with the official Proxmox client](#16-compatibility-with-the-official-proxmox-client)
+17. [Troubleshooting](#17-troubleshooting)
 
 ## 1. What the GUI does
 
@@ -69,7 +71,7 @@ The main files are `config.json` (servers, tokens, remembered passphrases), `sch
 
 ## 3. The window
 
-The left sidebar has **Backup**, **Restore**, **Reports**, **Message Log**, then **Preferences** and **About**. The language picker (flag) is at the top right. 18 languages are available.
+The left sidebar has **Backup**, **Restore**, **Undelete**, **Roll back**, **Reports**, **Message Log**, then **Preferences** and **About**. The language picker (flag) is at the top right. 18 languages are available.
 
 The menu bar:
 
@@ -231,7 +233,7 @@ Click **Add New Backup Set** to create one. Give it a **Backup set name**, fill 
 
 A summary under the settings says in words when the set will run. A **Manual** set never runs on its own; use **Run Now**.
 
-Schedules run while the GUI is running (in the tray is fine) or, on Windows, in the installed service ([section 13](#13-windows-service-tray-and-closing-the-window)).
+Schedules run while the GUI is running (in the tray is fine) or, on Windows, in the installed service ([section 15](#15-windows-service-tray-and-closing-the-window)).
 
 ### 6.4 Destination tab
 
@@ -255,7 +257,7 @@ Schedules run while the GUI is running (in the tray is fine) or, on Windows, in 
 | Exit Proxmox Backup Client Go after the backup | Quits the GUI when the set finishes |
 | Turn off the computer after the backup | Shuts the computer down when the set finishes |
 
-Email needs the SMTP account in **Preferences > Email** ([section 12](#12-preferences)). The tab warns if none is set up.
+Email needs the SMTP account in **Preferences > Email** ([section 14](#14-preferences)). The tab warns if none is set up.
 
 ### 6.6 What PBS sees
 
@@ -412,7 +414,70 @@ The restore card works like the backup card. Its stage line shows **Connecting a
 
 The finished restore is recorded in Reports with its snapshot, destination, paths, file count, size, verification result and duration.
 
-## 10. Reports
+## 10. Undelete
+
+**Undelete** (side menu, or **Undelete...** on a folder Backup Set's card) finds files that are in a Backup Set's backups but no longer on disk, and puts them back. From v0.7.0.
+
+1. Pick the **Backup Set** (folder sets only; machine sets are restored with bare-metal restore).
+2. Choose how far to **Look back**:
+
+   | Choice | What is checked |
+   |---|---|
+   | Latest backup | Files in the newest backup that are not on disk now |
+   | Last 7 days / Last 30 days | Every backup of that period. Each missing file is offered from the **newest** backup that still has it |
+
+3. Click **Find deleted files**. The GUI reads each backup's file list (its catalog, a few MB even for hundreds of thousands of files, kept on this computer afterwards so the next search is quicker) and lists the set's folders on disk. No file is opened or read. The set's exclusions apply, so excluded files never show up.
+
+The result is a folder tree of the missing files with a tick box on every file and folder. Each file shows its size and when it went: **deleted since** the newest backup, or **deleted between** two backups. A file whose name, size and time match a file somewhere else in the folder is marked **probably moved to ...** and is not ticked, since it most likely still exists under another name or folder. Files under a folder that cannot be read now (permissions) are not listed as missing; a note says how many.
+
+Use the filter box to narrow the list, **Select all shown** and **Clear shown** for what is visible, then choose **Restore to**:
+
+| Choice | What happens |
+|---|---|
+| Where they were | Each file goes back to its original place. A file that exists there again is left alone and reported as skipped |
+| Another folder | The files go under the folder you choose, keeping their folder structure |
+
+Tick **Verify after restore** to check every restored file against the backup, then click **Undelete N files**. The restore card shows the progress (several backups are restored one after another), Stop works as usual, and Reports records the run as **Undelete**.
+
+## 11. Roll back
+
+**Roll back** (side menu, or **Roll back...** on a folder Backup Set's card) puts a Backup Set's folders back as they were at a chosen backup. You see what would change first, and everything it replaces or removes is kept, so the roll back can be undone. From v0.7.0.
+
+1. Pick the **Backup Set**. Its backups are listed newest first with their size; 🔒 marks a protected snapshot.
+2. Pick a backup from the list, or enter a date and time in **The backup at or before** to pick the newest backup at or before it.
+3. Click **Show what would change**. Nothing is written. The preview compares the backup with the folders now:
+
+   | Box | Meaning |
+   |---|---|
+   | Missing now | In the backup, gone from disk: restored |
+   | Changed since | Different size or modification time: replaced by the backup's version |
+   | Added since | On disk but not in the backup: kept, unless you choose an exact roll back |
+   | Unchanged | Left as they are |
+
+   The files of each group are listed underneath (the first 2,000 of each).
+
+4. Choose **What to do**:
+
+   | Choice | Effect |
+   |---|---|
+   | Restore missing files and replace changed ones; keep files added since | The usual roll back (default) |
+   | Restore missing files only | Nothing on disk is replaced; changed files keep their current version |
+   | Exact roll back: also remove files added since | The folders end up exactly as in the backup. You confirm by typing the number of files that will be removed |
+
+5. **Back up the set first** (on by default) runs the Backup Set once before anything changes, so today's state is a backup too. **Verify after restore** checks the restored files. Then click **Roll back to ...**.
+
+**The safety net.** Before a file is replaced or removed it is moved, not deleted, into `.pbs-rollback` at the root of the same drive (for example `F:\.pbs-rollback\<set name>\<date-time>\`). Moving within a drive is instant, whatever the file size. The folder also holds `rollback.json`, the record of what was moved, restored and removed. `.pbs-rollback` is never backed up. Files that are open in another program cannot be moved; they are left as they are and listed in the result.
+
+While a roll back runs, the set's own scheduled backups wait, and Run Now on that set is refused. Reports records the run as **Roll back**.
+
+**Earlier roll backs of this set** are listed under the page, with what each restored, replaced and removed and how much the kept versions take up:
+
+| Button | What it does |
+|---|---|
+| Undo | Deletes the files the roll back restored, moves every kept version back, makes removed folders again and removes folders the roll back created if they are empty. The safety folder is removed when everything went back |
+| Delete kept versions | Deletes that roll back's safety folder to free the space. It can no longer be undone |
+
+## 12. Reports
 
 **Reports** lists every backup and restore run, newest first, with ✅ success, ❌ failed, ⏹️ cancelled or ⏳ running. The list also shows 🔒 Encrypted or Unencrypted, and for Metadata runs how many files were reused.
 
@@ -422,7 +487,7 @@ Click a run for its details:
 |---|---|
 | Status, Date / Time | |
 | Mode | Automatic (scheduled), Automatic (at startup), Manual (Run Now) or Manual (one-off) |
-| Type | Folders, Full machine or Restore |
+| Type | Folders, Full machine, Restore, Undelete or Roll back |
 | Encryption | Encrypted or Unencrypted |
 | Change detection | Legacy, Data (split archive) or Metadata (unchanged files skipped), with "N unchanged files reused without reading, size" |
 | Message | The result message, including any skipped files |
@@ -430,7 +495,7 @@ Click a run for its details:
 
 A failed backup has a **Rerun** button that loads its folders and Backup ID into the Backup page.
 
-## 11. Message Log and log files
+## 13. Message Log and log files
 
 **Message Log** is a timestamped list of backup and restore messages (ℹ️ information, ⚠️ warning, ❌ error), capped at 1,000 entries.
 
@@ -452,7 +517,7 @@ Every run log ends with a `[RESULT]` line, for example:
 
 A Metadata run also logs how many unchanged files were reused, how many chunks were reused and how much padding that added.
 
-## 12. Preferences
+## 14. Preferences
 
 | Tab | Contents |
 |---|---|
@@ -462,17 +527,27 @@ A Metadata run also logs how many unchanged files were reused, how many chunks w
 | Email | The SMTP account all Backup Sets use: SMTP server, Port, Username, Password, From address, and "Allow an unencrypted connection (not recommended)". **Save**, then **Send test email** to an address to check it. Each set picks its own recipient on its Alerts tab |
 | Export / Import Settings | **Export Settings...** saves your servers, theme and Backup Sets to a file; **Import Settings...** loads one from another computer. Tick "Include passwords/tokens in the export" to include secrets, in plain text, so keep that file safe |
 | Message Log | **View Logs** opens the log folder |
-| Advanced | Scheduled job protection ([section 6.8](#68-administrator-protection-windows)) |
+| Advanced | Scheduled job protection ([section 6.8](#68-administrator-protection-windows)) and **Run as Service** ([section 15](#15-windows-service-tray-and-closing-the-window)) |
 
-## 13. Windows service, tray and closing the window
+## 15. Windows service, tray and closing the window
 
 **Closing the window** (the X) asks whether to **Minimize to Tray** or **Exit**. Minimised, the GUI keeps running in the notification area and its schedules still run. **Exit** (also **File > Exit**) quits completely, and no schedules run from the GUI until you open it again.
 
 The **tray icon** menu has Show window, Backup status and Quit. Windows notifications report finished backups and restores.
 
-**Windows service.** If the Proxmox Backup Client service (`ProxmoxBackupClient`) is installed and running, the GUI detects it at startup. The service then runs the schedules, and backups started from the GUI are handed to it, so schedules run even when nobody is logged in. The service runs as SYSTEM, so VSS works without starting the GUI as administrator. Encryption keys used through the service must be set to **Remember on this computer**. Without the service the GUI runs the schedules itself while it is open.
+**Windows service.** With the background service installed and running, the service runs the schedules and backups started from the GUI are handed to it, so scheduled Backup Sets run even when nobody is signed in and the GUI is closed. The service runs as Local System, so VSS works without starting the GUI as administrator. Encryption keys used through the service must be set to **Remember on this computer**. Without the service, the GUI runs the schedules itself while it is open.
 
-## 14. Compatibility with the official Proxmox client
+**Run as Service** (Preferences > Advanced, Windows) shows whether the service is installed and running, and whether the GUI is handing its work to it. As administrator you can:
+
+| Button | What it does |
+|---|---|
+| Install and start | Installs `ProxmoxBackupClientSVC.exe`, which must be in the same folder as `ProxmoxBackupClient.exe`, as an automatic Windows service named `ProxmoxBackupClientSVC` (the name the installer uses), running as Local System, restarted automatically if it stops unexpectedly. Then starts it. The GUI stops its own scheduler and hands schedules and backups to the service, so nothing runs twice |
+| Start / Stop | Starts or stops the installed service. While it is stopped the GUI runs the schedules again. Stop is refused while the service is running a backup |
+| Remove | Stops and uninstalls the service. Backup Sets, history and settings are not touched; the GUI runs the schedules again while it is open |
+
+If the GUI is not running as administrator, a **Restart as administrator** button is shown. A service installed by an older version under the name `ProxmoxBackupClient` is recognised too.
+
+## 16. Compatibility with the official Proxmox client
 
 This client and the official `proxmox-backup-client` read each other's backups. Tested with `proxmox-backup-client` 3.4.9 and PBS 4.2:
 
@@ -482,7 +557,7 @@ This client and the official `proxmox-backup-client` read each other's backups. 
 
 This client adds one small file at the root of its folder snapshots, `.proxmox_backup_client_meta.json`, which records the original path. The official client restores it as an ordinary file.
 
-## 15. Troubleshooting
+## 17. Troubleshooting
 
 **A USB or external source disk drops out during a backup.** The backup waits up to 2 minutes for the disk to come back, reopens the file and carries on, logging both events. If one file still cannot be read, only that file is affected: it is filled with zeros to its recorded size, marked incomplete in the log, and read again on the next run. If the disk does not come back within 2 minutes the backup fails. A recurring drop-out usually means a cable, port or hub problem; avoid chaining USB hubs.
 

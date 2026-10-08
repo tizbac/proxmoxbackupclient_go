@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Undelete** (new side menu item, and Undelete... on each folder Backup Set): finds files that are in a Backup Set's backups but gone from disk, in the newest backup or every backup of the last 7 or 30 days (each file from the newest backup that still has it, with "deleted between" dates and "probably moved to" hints), and restores the ticked ones where they were (never replacing a file that has come back) or to another folder. Only the backups' catalogs (cached locally per snapshot) and the folders' directory listings are read.
+- **Roll back** (new side menu item, and Roll back... on each folder Backup Set): pick a backup from the set's dated list or by date and time, preview what would change (missing, changed, added since, unchanged), then restore missing and changed files, missing files only, or roll back exactly (also removing files added since, with typed confirmation). Every file it replaces or removes is first moved into `.pbs-rollback` on the same drive and recorded, so **Undo** puts everything back; **Delete kept versions** frees the space. Optional backup of the set first; the set's scheduled runs wait meanwhile. `.pbs-rollback` is excluded from backups.
+- **Run as Service** (Preferences > Advanced, Windows): install, start, stop and remove the background service (`ProxmoxBackupClientSVC.exe` beside the app, service `ProxmoxBackupClientSVC`, Local System, automatic start, restart on failure), with its status and whether the app is handing its work to it. The app stops or resumes its own scheduler to match, so nothing runs twice.
+
+### Fixed
+- **Restore to the original location of a snapshot with several folders** put every folder's files under the first folder's original path (a file from `D:\Photos` could land in `C:\Docs`). Each folder now goes back to its own original path. Found while building Undelete; confirmed and fixed with a live test.
+
 ## [0.6.0] - 2026-10-07
 
 The big one: **incremental folder backups**. With change detection set to Metadata, a Backup Set compares each file with the previous snapshot and reuses the data of every unchanged file without opening it, so only new and changed files are read and sent. On a 480.9 GB share of 761,866 files on a USB disk the first run took 4h17m and every run after it about 10 minutes, with all unchanged files reused and only a handful of new chunks uploaded. Less reading, far less traffic to a remote PBS, and the same restorable snapshots.

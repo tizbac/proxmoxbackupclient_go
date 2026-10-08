@@ -1336,7 +1336,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	// exactly what listSnapshotViaCatalog computed when the user was
 	// selecting paths) — needed to translate the GUI's wrapper-prefixed
 	// selection back to real archive-relative paths below.
-	displayNames, _ := resolveArchiveDisplayNames(opts, archiveNames, nil)
+	displayNames, metaByArchive := resolveArchiveDisplayNames(opts, archiveNames, nil)
 
 	var extracted []pbscommon.PXARExtractedFile
 	type aclJob struct {
@@ -1404,6 +1404,17 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		archiveRewriter := rewriter
 		if mode == RestoreModeAlternateAbs {
 			archiveRewriter = wrapRewriterForArchive(rewriter, wrapper)
+		}
+		if mode == RestoreModeOriginal && opts.ArchiveRoots == nil && len(archiveNames) > 1 {
+			// Each folder of a multi-folder snapshot goes back to its own
+			// original path (its own metadata), not the first folder's.
+			if m := metaByArchive[archiveName]; m != nil && m.OriginalPath != "" {
+				if rw, rerr := buildPathRewriter(opts, m); rerr == nil {
+					archiveRewriter = rw
+				} else {
+					return rerr
+				}
+			}
 		}
 		if mode == RestoreModeOriginal && opts.ArchiveRoots != nil {
 			root, ok := opts.ArchiveRoots[archiveName]

@@ -106,6 +106,8 @@ Get-FileHash .\ProxmoxBackupClient-v0.6.0-windows-amd64.zip -Algorithm SHA256   
 - **Reports** page with full backup history, and a capped **Message Log** for diagnostics
 - **Preferences** dialog with five colour themes (Amber, Blue, Green, Red, Dark) plus a custom colour option
 - **Incremental folder backups** (change detection, Metadata mode): unchanged files are reused without being read, as in the official client, with an optional full read every N runs
+- **Undelete** and **Roll back** (from v0.7.0): find files a Backup Set's backups still have but the disk does not, and put them back; or put a set's folders back as they were at a chosen backup, with a preview first and Undo afterwards. See the [GUI manual](docs/manual/GUI.md#10-undelete)
+- **Run as Service** (Windows, from v0.7.0): install, start, stop or remove the background service from Preferences, so schedules run without anyone signed in
 - User-friendly configuration with connection test
 - Live progress card: start time and forecast finish, files done of total, processing speed (data and files per second) and actual upload speed, current file, and why a run is reading every file
 - VSS (Volume Shadow Copy) support for consistent backups

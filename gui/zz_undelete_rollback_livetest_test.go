@@ -264,3 +264,43 @@ func must(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+// Opt-in (PBS_UNDELETE=1): Restore to the original location of a snapshot
+// with two folders puts each folder's files back under that folder (it used
+// to put both under the first folder's original path).
+func TestRestoreOriginalMultiFolderLive(t *testing.T) {
+	if os.Getenv("PBS_UNDELETE") == "" {
+		t.Skip("set PBS_UNDELETE=1")
+	}
+	base := t.TempDir()
+	d1 := filepath.Join(base, "alpha")
+	d2 := filepath.Join(base, "beta")
+	e2eWriteBytes(t, filepath.Join(d1, "one.txt"), []byte("in alpha"))
+	e2eWriteBytes(t, filepath.Join(d1, "sub", "deep.txt"), []byte("deep in alpha"))
+	e2eWriteBytes(t, filepath.Join(d2, "two.txt"), []byte("in beta"))
+	backupID := fmt.Sprintf("multi-orig-%d", time.Now().Unix())
+	var rs *BackupStatus
+	if err := RunBackupInline(BackupOptions{
+		BaseURL: e2eBaseURL, AuthID: e2eAuthID, Secret: e2eSecret, Datastore: e2eStore, CertFingerprint: e2eFP,
+		BackupObjects: []string{d1, d2}, BackupID: backupID, BackupType: "host", Kind: "directory", Compression: "fastest",
+		OnResult: func(s *BackupStatus) { rs = s },
+	}); err != nil || rs == nil || !rs.Success() {
+		t.Fatalf("backup: %v %+v", err, rs)
+	}
+	must(t, os.Remove(filepath.Join(d1, "sub", "deep.txt")))
+	must(t, os.Remove(filepath.Join(d2, "two.txt")))
+	o := RestoreOptions{BaseURL: e2eBaseURL, AuthID: e2eAuthID, Secret: e2eSecret, Datastore: e2eStore, CertFingerprint: e2eFP,
+		BackupID: backupID, SnapshotTime: time.Unix(rs.BackupTime, 0), Mode: RestoreModeOriginal,
+		IncludePaths: []string{"alpha/sub/deep.txt", "beta/two.txt"}}
+	if err := RestoreSnapshotInline(o); err != nil {
+		t.Fatal(err)
+	}
+	for p, want := range map[string]string{filepath.Join(d1, "sub", "deep.txt"): "deep in alpha", filepath.Join(d2, "two.txt"): "in beta"} {
+		if b, err := os.ReadFile(p); err != nil || string(b) != want {
+			t.Errorf("%s: %q %v", p, b, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(d1, "two.txt")); err == nil {
+		t.Errorf("beta's file landed in alpha")
+	}
+}
