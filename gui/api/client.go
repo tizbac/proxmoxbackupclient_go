@@ -95,7 +95,7 @@ func (c *Client) StartBackup(req *BackupRequest) (*BackupResponse, error) {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		var errResp ErrorResponse
 		if err := json.Unmarshal(respBody, &errResp); err == nil {
 			return nil, fmt.Errorf("backup failed: %s", errResp.Error)
@@ -133,7 +133,7 @@ func (c *Client) StartMachineBackup(req *BackupRequest) (*BackupResponse, error)
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		var errResp ErrorResponse
 		if err := json.Unmarshal(respBody, &errResp); err == nil {
 			return nil, fmt.Errorf("machine backup failed: %s", errResp.Error)
