@@ -4152,7 +4152,10 @@ function App() {
                 onChange={(e) => { setConfig({...config, 'backup-id': e.target.value}); setBackupIdAuto(false) }}
                 placeholder={t('backupIDPlaceholder')}
               />
-              <span style={{fontSize: '12px', color: '#999'}}>{t('backupIdDefaultNote')}</span>
+              {/* Folder sets get a suggested ID with its own note below. */}
+              {!(backupMode === 'scheduled' && backupType !== 'machine') && (
+                <span style={{fontSize: '12px', color: '#999'}}>{t('backupIdDefaultNote')}</span>
+              )}
             </div>
             {backupMode === 'scheduled' && backupType !== 'machine' && (() => {
               if (backupIdAuto) {

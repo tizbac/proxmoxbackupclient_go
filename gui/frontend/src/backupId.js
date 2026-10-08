@@ -11,18 +11,50 @@ export function slugId(s) {
     .replace(/^-+|-+$/g, '')
 }
 
+// editDistance counts the single-letter changes (insert, delete, replace,
+// swap two neighbours) between a and b, stopping early once over max.
+function editDistance(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1
+  let prev2 = null
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]
+    let rowMin = i
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      let v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+      if (prev2 && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, prev2[j - 2] + 1)
+      cur.push(v)
+      rowMin = Math.min(rowMin, v)
+    }
+    if (rowMin > max) return max + 1
+    prev2 = prev
+    prev = cur
+  }
+  return prev[b.length]
+}
+
+// A word of the set's name stands for a word of the computer's name when it
+// is the same, or, for longer names, a typing slip away from it:
+// "Deepthough" or "Deepthgouht" for deepthought.
+function sameWord(word, hostWord) {
+  if (word === hostWord) return true
+  if (!word || hostWord.length < 5) return false
+  return editDistance(word, hostWord, hostWord.length >= 10 ? 2 : 1) <= (hostWord.length >= 10 ? 2 : 1)
+}
+
 // suggestBackupId("Deepthought - Data", "DEEPTHOUGHT") -> "deepthought-data"
 // suggestBackupId("Beeby Property", "deepthought") -> "deepthought-beeby-property"
 // The computer's name is taken out of the set's name wherever it appears
-// (start, middle or end) and put in front once. taken: IDs already used by
-// other sets; a clash gets "-2", "-3"...
+// (start, middle or end, spelt right or nearly so) and put in front once.
+// taken: IDs already used by other sets; a clash gets "-2", "-3"...
 export function suggestBackupId(setName, hostname, taken = []) {
   const host = slugId(hostname) || 'host'
   const hostTokens = host.split('-')
   const tokens = slugId(setName).split('-').filter(Boolean)
   const rest = []
   for (let i = 0; i < tokens.length;) {
-    if (hostTokens.every((h, k) => tokens[i + k] === h)) {
+    if (hostTokens.every((h, k) => sameWord(tokens[i + k], h))) {
       i += hostTokens.length
       continue
     }

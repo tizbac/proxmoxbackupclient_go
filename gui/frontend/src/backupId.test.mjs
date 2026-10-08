@@ -16,6 +16,14 @@ const cases = [
   ['Deepthought - Data', 'deepthought', ['deepthought-data'], 'deepthought-data-2'],
   ['Deepthought - Data', 'deepthought', ['DEEPTHOUGHT-DATA', 'deepthought-data-2'], 'deepthought-data-3'],
   ['Deepthought - Data (copy)', 'deepthought', ['deepthought-data'], 'deepthought-data-copy'],
+  // A slip in the computer's name in the set's name still counts as it
+  ['Deepthough - XXX Home Made', 'DEEPTHOUGHT', [], 'deepthought-xxx-home-made'],
+  ['Deepthgouht - Data', 'deepthought', [], 'deepthought-data'],
+  ['Deeptought Data', 'deepthought', [], 'deepthought-data'],
+  ['Rigle photos', 'rigel', [], 'rigel-photos'],
+  // ...but not a different word, nor a near miss of a short name
+  ['Deep Thinking', 'deepthought', [], 'deepthought-deep-thinking'],
+  ['Data', 'date', [], 'date-data'],
 ]
 for (const [name, host, taken, want] of cases) {
   assert.equal(suggestBackupId(name, host, taken), want, `${name} @ ${host}`)

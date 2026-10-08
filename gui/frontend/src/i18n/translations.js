@@ -1077,7 +1077,7 @@ const translations = {
       filesToExclude: "Files to exclude (one per line, optional)",
       backupID: "Backup ID",
       backupIDPlaceholder: "Leave empty to use hostname",
-      backupIdDefaultNote: "(defaults to computer name — change if required)",
+      backupIdDefaultNote: "(defaults to the computer name; change it if needed)",
       backupCommentLabel: "Backup Name (for PBS Comment)",
       backupCommentPlaceholder: "Optional, shown in the Comment column in PBS",
       tabSource: "Source",
