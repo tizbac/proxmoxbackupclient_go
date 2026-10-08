@@ -33,21 +33,18 @@ type ProgressCallback func(percentage float64, message string) bool
 var (
 	errCancelled     = errors.New("backup cancelled by user")
 	errUploadAborted = errors.New("upload aborted")
-)
-
-var defaultMailSubjectTemplate = "Backup {{.Status}}"
-var defaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}})
+	defaultMailSubjectTemplate = "Backup {{.Status}}"
+	defaultMailBodyTemplate    = `{{if .Success}}Backup complete ({{.FromattedDuration}})
 Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while working, backup may be not completed.
 Last error is: {{.ErrorStr}}{{end}}`
-
-var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
+	didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
+)
 
 type ChunkState struct {
 	assignments        []string
 	index_hash_data    map[uint64][]byte
 	assignments_offset []uint64
 	processed_size     uint64
-	wrid               uint64
 	chunkcount         uint64
 	current_chunk      []byte
 	C                  pbscommon.Chunker
@@ -106,8 +103,8 @@ func BytesToString(b int64) string {
 // buffered, so whoever arrives first wins, and the loser's receive blocks
 // forever once the reader goroutine has exited.
 func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint64, ch chan []byte, readErrCh <-chan error) error {
-	var newchunk *atomic.Uint64 = new(atomic.Uint64)
-	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
+	var newchunk = new(atomic.Uint64)
+	var reusechunk = new(atomic.Uint64)
 	knownChunks := haxmap.New[string, bool]()
 
 	knownChunks2, err := client.GetKnownSha265FromFIDX(filename)
@@ -173,14 +170,16 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 			CS.processed_size += uint64(len(seg.Data))
 			CS.chunkcount++
 			if CS.processed_size > total_size {
-				errch <- fmt.Errorf("Fatal: tried to backup more data than specified size!")
+				errch <- fmt.Errorf("fatal: tried to backup more data than specified size")
 				break
 			}
-			percentage := float64(CS.processed_size) / float64(total_size) * 100
-			if math.IsNaN(percentage) || math.IsInf(percentage, 0) {
-				percentage = 0
+			if total_size > 0 {
+				percentage := float64(CS.processed_size) / float64(total_size) * 100
+				if math.IsNaN(percentage) || math.IsInf(percentage, 0) {
+					percentage = 0
+				}
+				fmt.Printf("Chunk %d/%d/%d - Progress: %.2f%%\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load(), percentage)
 			}
-			fmt.Printf("Chunk %d/%d/%d - Progress: %.2f%%\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load(), percentage)
 
 			assignment_mutex.Unlock()
 

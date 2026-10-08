@@ -30,7 +30,7 @@ func GetDiskSize(path string) (int64, error) {
 }
 
 func BackupWindowsDisk(client *pbscommon.PBSClient, index int,progressCallback ProgressCallback) (int64, error) {
-	return 0, fmt.Errorf("Not supported on this platform")
+	return 0, fmt.Errorf("not supported on this platform")
 }
 
 func SysTraySetup() {
