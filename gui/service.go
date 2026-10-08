@@ -12,10 +12,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/kardianos/service"
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 	"pbscommon"
 	"snapshot"
+
+	"github.com/kardianos/service"
+	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 )
 
 // BackupService wraps the application for Windows Service execution
@@ -40,15 +41,8 @@ func (s *BackupService) run() {
 
 	// Initialize app with background context (service has no Wails runtime)
 	// IMPORTANT: Service App must be in Standalone mode to execute backups directly
-	s.app = &App{
-		ctx:              context.Background(),
-		config:           LoadConfig(),
-		stopScheduler:    make(chan struct{}),
-		apiClient:        api.NewClient(getAPITokenPath()),
-		mode:             api.ModeStandalone, // Service executes directly, doesn't use API
-		callbacksMap:     make(map[string]*progressCallbacks),
-		isServiceProcess: true, // Prevent mode re-detection (would cause infinite loop)
-	}
+
+	s.app = NewAppForService(context.Background())
 
 	// Load configuration (service will read config from file when needed)
 	configMap := s.app.GetConfigWithHostname()
@@ -200,7 +194,7 @@ func hardenWindowsACLs(stateDir string) {
 	// api-token: SYSTEM:(OI)(CI)F + BUILTIN\Administrators:(OI)(CI)R
 	// (OI)(CI) = Object Inherit + Container Inherit (for future files)
 	if _, err := exec.Command(icacls, tokenPath,
-		"/inheritance:r",          // remove inherited ACEs
+		"/inheritance:r", // remove inherited ACEs
 		"/grant:r", "SYSTEM:(OI)(CI)F",
 		"/grant:r", "BUILTIN\\Administrators:(OI)(CI)R",
 	).CombinedOutput(); err != nil {
