@@ -75,6 +75,7 @@ func NewApp() *App {
 		stopScheduler: make(chan struct{}),
 		apiClient:     api.NewClient(getAPITokenPath()),
 		callbacksMap:  make(map[string]*progressCallbacks),
+		cancelFuncs:   make(map[string]context.CancelFunc),
 	}
 }
 
@@ -87,6 +88,7 @@ func NewAppForService(ctx context.Context) *App {
 		apiClient:        api.NewClient(getAPITokenPath()),
 		mode:             api.ModeStandalone, // Service executes directly
 		callbacksMap:     make(map[string]*progressCallbacks),
+		cancelFuncs:      make(map[string]context.CancelFunc),
 		isServiceProcess: true, // Prevent mode re-detection
 	}
 }
