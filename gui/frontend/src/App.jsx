@@ -12,6 +12,7 @@ import RadioGroup from './components/RadioGroup'
 import PassphraseModal from './components/PassphraseModal'
 import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
 import EncryptionKeyField from './components/EncryptionKeyField'
+import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTools'
 // Wails runtime imports (will be available when built with Wails)
 let OpenSnapshotTree, ListSnapshotChildren, SnapshotSelectionBytes
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
@@ -26,6 +27,9 @@ let SetSMTPSettings, SendTestEmail
 let GetLogsFolder, OpenLogsFolder
 // Encryption key management
 let InspectEncryptionKeyFile, GenerateEncryptionKeyFile, OpenEncryptionKeyDialog, OpenEncryptionKeySaveDialog
+// Undelete, Roll back, Run as Service
+let ListSetSnapshots, ScanUndelete, StartUndelete, CancelSetScan, PreviewRollback, StartRollback, ListRollbacks, UndoRollback, DeleteRollbackCopies
+let GetServiceStatus, InstallService, StartBackgroundService, StopBackgroundService, RemoveService
 
 // Check if we're running in Wails
 if (window.go) {
@@ -86,6 +90,20 @@ if (window.go) {
   GenerateEncryptionKeyFile = window.go.main.App.GenerateEncryptionKeyFile
   OpenEncryptionKeyDialog = window.go.main.App.OpenEncryptionKeyDialog
   OpenEncryptionKeySaveDialog = window.go.main.App.OpenEncryptionKeySaveDialog
+  ListSetSnapshots = window.go.main.App.ListSetSnapshots
+  ScanUndelete = window.go.main.App.ScanUndelete
+  StartUndelete = window.go.main.App.StartUndelete
+  CancelSetScan = window.go.main.App.CancelSetScan
+  PreviewRollback = window.go.main.App.PreviewRollback
+  StartRollback = window.go.main.App.StartRollback
+  ListRollbacks = window.go.main.App.ListRollbacks
+  UndoRollback = window.go.main.App.UndoRollback
+  DeleteRollbackCopies = window.go.main.App.DeleteRollbackCopies
+  GetServiceStatus = window.go.main.App.GetServiceStatus
+  InstallService = window.go.main.App.InstallService
+  StartBackgroundService = window.go.main.App.StartBackgroundService
+  StopBackgroundService = window.go.main.App.StopBackgroundService
+  RemoveService = window.go.main.App.RemoveService
 }
 
 // Wails events + runtime (open external URLs in the system browser)
@@ -417,6 +435,9 @@ function App() {
   // is equivalent and simpler than special-casing "all checked -> empty").
   const [daysOfWeek, setDaysOfWeek] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
   const [scheduledJobs, setScheduledJobs] = useState([])
+  // The Backup Set the Undelete and Roll back pages work on (the set card
+  // shortcuts pick it before switching page).
+  const [setToolJobId, setSetToolJobId] = useState('')
   // Scheduled-job protection (Windows): when require_admin is on, changing
   // Backup Sets needs an elevated session. Defaults are the permissive "not
   // applicable" shape until the backend answers (and on platforms without it).
@@ -2577,6 +2598,123 @@ function App() {
     </div>
   ) : null
 
+  // The restore progress card, shown on whichever restore page is open
+  // (Restore, Undelete, Roll back): they all run through the same restore.
+  const restoreCard = restoreLoading ? (
+    <div ref={restoreCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
+      <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
+        <strong style={{fontSize: '15px'}}>{t('restoring')}{activeRestoreName ? ` - ${activeRestoreName}` : ''}</strong>
+        <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{restoreProgress}%</span>
+      </div>
+
+      <div className="progress" style={{height: '30px', marginBottom: '12px'}}>
+        <div
+          className="progress-bar"
+          style={{
+            width: `${restoreProgress}%`,
+            fontSize: '14px',
+            lineHeight: '30px',
+            transition: 'width 0.3s ease',
+            fontWeight: 'bold'
+          }}
+        >
+          {restoreProgress}%
+        </div>
+      </div>
+
+      {/* Same fixed layout as the backup card. */}
+      {(() => {
+        const s = restoreStats
+        const now = Date.now()
+        const calc = <span className="pending-value">{tl('calculating', 'Calculating...')}</span>
+        const row = (label, value) => (
+          <div style={{fontSize: '13px', color: '#495057', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+            <strong>{label}</strong> {value}
+          </div>
+        )
+        const stage = restoreStage.stage
+          ? <>{{
+              preparing: tl('restoreStagePreparing', 'Connecting and preparing restore...'),
+              locating: tl('restoreStageLocating', 'Reading snapshot index and locating files...'),
+              transferring: tl('restoreStageTransferring', 'Fetching chunks and writing files...'),
+              dirtimes: tl('restoreStageDirTimes', 'Setting folder timestamps...'),
+              verifying: tl('restoreStageVerifying', 'Verifying restored files...'),
+              acls: tl('restoreStageAcls', 'Restoring ACLs and attributes...'),
+            backupfirst: tl('restoreStageBackupFirst', 'Backing up the set before the roll back...'),
+            comparing: tl('restoreStageComparing', 'Comparing the backup with the folders...'),
+            safety: tl('restoreStageSafety', 'Moving the files to be replaced or removed aside (kept for Undo)...'),
+            }[restoreStage.stage] || restoreStage.stage}{restoreStage.detail ? ` (${restoreStage.detail})` : ''}</>
+          : tl('stageStarting', 'Starting...')
+        const showFile = restoreFile && (restoreStage.stage === 'transferring' || restoreStage.stage === 'verifying')
+        // After the transfer (folder timestamps, ACLs, verify) the time
+        // left comes from the stage's own "N of M" count and how long it
+        // has taken so far; without a count it reads "Finishing...".
+        const finishing = <span className="pending-value">{tl('finishingShort', 'Finishing...')}</span>
+        const afterTransfer = ['dirtimes', 'acls', 'verifying'].includes(restoreStage.stage)
+        const transferDone = afterTransfer || (s.bytesTotal > 0 && s.bytesDone >= s.bytesTotal)
+        let remaining = afterTransfer ? null : s.eta
+        if (afterTransfer && status.message) {
+          const m = status.message.match(/([\d,]+) of ([\d,]+)/)
+          const st = restoreStageStartRef.current
+          if (m && st.stage === restoreStage.stage && st.t > 0) {
+            const n = parseInt(m[1].replace(/,/g, ''), 10)
+            const total = parseInt(m[2].replace(/,/g, ''), 10)
+            const secs = (now - st.t) / 1000
+            if (n > 0 && total >= n && secs > 1) remaining = Math.round((total - n) * secs / n)
+          }
+        }
+        return (
+          <>
+            <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px', height: '20px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'}}>
+              {stage}
+            </div>
+            <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginBottom: '10px'}}>
+              {row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc)}
+              {row(tl('forecastFinishLabel', 'Forecast finish:'), remaining !== null ? formatClock(now + remaining * 1000) : (afterTransfer ? finishing : calc))}
+              {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
+              {row(t('timeRemaining'), remaining !== null ? formatDuration(remaining) : (afterTransfer ? finishing : calc))}
+              {row(t('speed'), transferDone && s.avgSpeed > 0
+                ? `${formatSpeed(s.avgSpeed)} ${tl('averageSuffix', '(average)')}`
+                : (s.speed > 0 ? formatSpeed(s.speed) : calc))}
+              {row(tl('downloadedLabel', 'Downloaded:'), s.bytesTotal > 0 ? <>{formatBytesDual(s.bytesDone)} / {formatBytesDual(s.bytesTotal)}</> : calc)}
+              <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
+                <strong style={{flex: '0 0 auto'}}>{tl('currentFileLabel', 'Current file:')}</strong>
+                {showFile
+                  ? <FitPath path={restoreFile} />
+                  : <span className="pending-value">{tl('waiting', 'Waiting...')}</span>}
+              </div>
+            </div>
+            <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef', minHeight: '18px'}}>
+              {status.message && status.type === 'info' ? status.message : calc}
+            </div>
+          </>
+        )
+      })()}
+
+      <div style={{marginTop: '12px'}}>
+        <button className="btn btn-secondary" onClick={handleStopRestore} disabled={!restoreLoading}>
+          {t('stopRestore')}
+        </button>
+      </div>
+
+      {queuePanel}
+    </div>
+  ) : null
+
+  // Helpers and bindings the Undelete, Roll back and service sections use.
+  const setToolsUi = {
+    t, tl, formatBytesDual, WaitBar, EventsOn, showStatus, restartAsAdmin,
+    ListSetSnapshots, ScanUndelete, StartUndelete, CancelSetScan, PreviewRollback, StartRollback,
+    ListRollbacks, UndoRollback, DeleteRollbackCopies, OpenRestoreDestDialog,
+    GetServiceStatus, InstallService, StartBackgroundService, StopBackgroundService, RemoveService,
+    onStartFailed: (msg) => { setRestoreLoading(false); showStatus(`❌ ${msg}`, 'error') },
+  }
+  const startSetRestore = () => {
+    setRestoreLoading(true)
+    setRestoreProgress(0)
+    setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
+  }
+
   return (
     <div className="app-shell">
       <nav className="sidenav">
@@ -2585,6 +2723,12 @@ function App() {
         </button>
         <button className={`nav-btn ${activeTab === 'restore' ? 'active' : ''}`} onClick={() => setActiveTab('restore')}>
           {t('tabRestore')}
+        </button>
+        <button className={`nav-btn ${activeTab === 'undelete' ? 'active' : ''}`} onClick={() => setActiveTab('undelete')}>
+          {tl('navUndelete', 'Undelete')}
+        </button>
+        <button className={`nav-btn ${activeTab === 'rollback' ? 'active' : ''}`} onClick={() => setActiveTab('rollback')}>
+          {tl('navRollback', 'Roll back')}
         </button>
         <button className={`nav-btn ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>
           {t('navReports')}
@@ -2921,9 +3065,7 @@ function App() {
                         </div>
                       </div>
                     )}
-                    {!jobPolicy.supported && (
-                      <p style={{color: '#718096', fontSize: '13px'}}>{t('comingSoon')}</p>
-                    )}
+                    <ServiceControl ui={setToolsUi} />
                   </>
                 )}
                 {prefsTab === 'backupoptions' && (
@@ -3401,6 +3543,18 @@ function App() {
                           >
                             {runningJobId === job.id ? '…' : t('runNow')}
                           </button>
+                          {job.backupType !== 'machine' && (
+                            <>
+                              <button className="btn btn-secondary" title={tl('undeleteShortcutHint', 'Find files of this set that are in its backups but gone from disk')}
+                                onClick={() => { setSetToolJobId(job.id); setActiveTab('undelete') }}>
+                                {tl('undeleteShortcut', 'Undelete...')}
+                              </button>
+                              <button className="btn btn-secondary" title={tl('rollbackShortcutHint', 'Put this set\'s folders back as they were at a backup')}
+                                onClick={() => { setSetToolJobId(job.id); setActiveTab('rollback') }}>
+                                {tl('rollbackShortcut', 'Roll back...')}
+                              </button>
+                            </>
+                          )}
                           <button
                             className="btn btn-secondary"
                             onClick={() => {
@@ -4107,103 +4261,7 @@ function App() {
               this used to live nested inside the snapshot-detail view, so
               navigating to a different snapshot while a restore ran made its
               own progress/Stop button disappear from view entirely). */}
-          {restoreLoading && (
-            <div ref={restoreCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
-              <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
-                <strong style={{fontSize: '15px'}}>{t('restoring')}{activeRestoreName ? ` - ${activeRestoreName}` : ''}</strong>
-                <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{restoreProgress}%</span>
-              </div>
-
-              <div className="progress" style={{height: '30px', marginBottom: '12px'}}>
-                <div
-                  className="progress-bar"
-                  style={{
-                    width: `${restoreProgress}%`,
-                    fontSize: '14px',
-                    lineHeight: '30px',
-                    transition: 'width 0.3s ease',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  {restoreProgress}%
-                </div>
-              </div>
-
-              {/* Same fixed layout as the backup card. */}
-              {(() => {
-                const s = restoreStats
-                const now = Date.now()
-                const calc = <span className="pending-value">{tl('calculating', 'Calculating...')}</span>
-                const row = (label, value) => (
-                  <div style={{fontSize: '13px', color: '#495057', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                    <strong>{label}</strong> {value}
-                  </div>
-                )
-                const stage = restoreStage.stage
-                  ? <>{{
-                      preparing: tl('restoreStagePreparing', 'Connecting and preparing restore...'),
-                      locating: tl('restoreStageLocating', 'Reading snapshot index and locating files...'),
-                      transferring: tl('restoreStageTransferring', 'Fetching chunks and writing files...'),
-                      dirtimes: tl('restoreStageDirTimes', 'Setting folder timestamps...'),
-                      verifying: tl('restoreStageVerifying', 'Verifying restored files...'),
-                      acls: tl('restoreStageAcls', 'Restoring ACLs and attributes...'),
-                    }[restoreStage.stage] || restoreStage.stage}{restoreStage.detail ? ` (${restoreStage.detail})` : ''}</>
-                  : tl('stageStarting', 'Starting...')
-                const showFile = restoreFile && (restoreStage.stage === 'transferring' || restoreStage.stage === 'verifying')
-                // After the transfer (folder timestamps, ACLs, verify) the time
-                // left comes from the stage's own "N of M" count and how long it
-                // has taken so far; without a count it reads "Finishing...".
-                const finishing = <span className="pending-value">{tl('finishingShort', 'Finishing...')}</span>
-                const afterTransfer = ['dirtimes', 'acls', 'verifying'].includes(restoreStage.stage)
-                const transferDone = afterTransfer || (s.bytesTotal > 0 && s.bytesDone >= s.bytesTotal)
-                let remaining = afterTransfer ? null : s.eta
-                if (afterTransfer && status.message) {
-                  const m = status.message.match(/([\d,]+) of ([\d,]+)/)
-                  const st = restoreStageStartRef.current
-                  if (m && st.stage === restoreStage.stage && st.t > 0) {
-                    const n = parseInt(m[1].replace(/,/g, ''), 10)
-                    const total = parseInt(m[2].replace(/,/g, ''), 10)
-                    const secs = (now - st.t) / 1000
-                    if (n > 0 && total >= n && secs > 1) remaining = Math.round((total - n) * secs / n)
-                  }
-                }
-                return (
-                  <>
-                    <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px', height: '20px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'}}>
-                      {stage}
-                    </div>
-                    <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginBottom: '10px'}}>
-                      {row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc)}
-                      {row(tl('forecastFinishLabel', 'Forecast finish:'), remaining !== null ? formatClock(now + remaining * 1000) : (afterTransfer ? finishing : calc))}
-                      {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
-                      {row(t('timeRemaining'), remaining !== null ? formatDuration(remaining) : (afterTransfer ? finishing : calc))}
-                      {row(t('speed'), transferDone && s.avgSpeed > 0
-                        ? `${formatSpeed(s.avgSpeed)} ${tl('averageSuffix', '(average)')}`
-                        : (s.speed > 0 ? formatSpeed(s.speed) : calc))}
-                      {row(tl('downloadedLabel', 'Downloaded:'), s.bytesTotal > 0 ? <>{formatBytesDual(s.bytesDone)} / {formatBytesDual(s.bytesTotal)}</> : calc)}
-                      <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
-                        <strong style={{flex: '0 0 auto'}}>{tl('currentFileLabel', 'Current file:')}</strong>
-                        {showFile
-                          ? <FitPath path={restoreFile} />
-                          : <span className="pending-value">{tl('waiting', 'Waiting...')}</span>}
-                      </div>
-                    </div>
-                    <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef', minHeight: '18px'}}>
-                      {status.message && status.type === 'info' ? status.message : calc}
-                    </div>
-                  </>
-                )
-              })()}
-
-              <div style={{marginTop: '12px'}}>
-                <button className="btn btn-secondary" onClick={handleStopRestore} disabled={!restoreLoading}>
-                  {t('stopRestore')}
-                </button>
-              </div>
-
-              {queuePanel}
-            </div>
-          )}
+          {activeTab === 'restore' && restoreCard}
 
           {!restoreLoading && pendingQueue.length > 0 && (
             <div ref={restoreCardRef} style={{marginTop: '10px', marginBottom: '20px'}}>
@@ -4862,6 +4920,22 @@ function App() {
             No storage-upsell CTA either — that's RDEM Systems' own brand
             upsell (still shown, brand-gated, in Preferences' server list),
             not something this fork's About page should push unconditionally. */}
+        <div className={`tab-content ${activeTab === 'undelete' ? 'active' : ''}`}>
+          <UndeletePage ui={setToolsUi} jobs={scheduledJobs} jobId={setToolJobId} setJobId={setSetToolJobId}
+            restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'undelete' ? restoreCard : null} />
+          {status.visible && activeTab === 'undelete' && !restoreLoading && (
+            <div className={`status ${status.type} visible`}>{status.message}</div>
+          )}
+        </div>
+
+        <div className={`tab-content ${activeTab === 'rollback' ? 'active' : ''}`}>
+          <RollbackPage ui={setToolsUi} jobs={scheduledJobs} jobId={setToolJobId} setJobId={setSetToolJobId}
+            restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'rollback' ? restoreCard : null} />
+          {status.visible && activeTab === 'rollback' && !restoreLoading && (
+            <div className={`status ${status.type} visible`}>{status.message}</div>
+          )}
+        </div>
+
         <div className={`tab-content ${activeTab === 'about' ? 'active' : ''}`}>
           <div style={{display: 'flex', alignItems: 'baseline', gap: '10px'}}>
             <h2 style={{margin: 0}}>{t('aboutTitle')}</h2>
@@ -4990,7 +5064,9 @@ function App() {
                         {selected.kind === 'restore' && (
                           <>
                             <strong>{t('reportsType')}</strong>
-                            <span>{tl('reportsTypeRestore', 'Restore')}</span>
+                            <span>{selected.restoreKind === 'undelete' ? tl('reportsTypeUndelete', 'Undelete')
+                              : selected.restoreKind === 'rollback' ? tl('reportsTypeRollback', 'Roll back')
+                              : tl('reportsTypeRestore', 'Restore')}</span>
                             {selected.restoreSnapshot && (<><strong>{tl('reportsSnapshot', 'Snapshot')}</strong><span>{selected.restoreSnapshot}</span></>)}
                             {selected.restoreDest && (<><strong>{tl('reportsDestination', 'Destination')}</strong><span>{selected.restoreDest}</span></>)}
                             <strong>{tl('reportsPaths', 'Paths')}</strong>
