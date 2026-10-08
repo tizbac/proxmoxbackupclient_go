@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       clonezilla_version:
-        description: 'Clonezilla version to patch (e.g., 3.1.1-22)'
+        description: 'Clonezilla version to patch (e.g., 3.3.3-37)'
         required: true
-        default: '3.1.1-22'
+        default: '3.3.3-37'
       clonezilla_arch:
         description: 'Architecture (amd64 or i686)'
         required: true
@@ -50,12 +50,18 @@ jobs:
           CLONEZILLA_VER: ${{ github.event.inputs.clonezilla_version }}
           CLONEZILLA_ARCH: ${{ github.event.inputs.clonezilla_arch }}
         run: |
-          ISO_URL="https://osdn.net/projects/clonezilla/downloads/79926/clonezilla-live-${CLONEZILLA_VER}-${CLONEZILLA_ARCH}.iso"
+          # osdn.net (the upstream default) no longer resolves; the official
+          # releases are mirrored on SourceForge under clonezilla_live_stable.
+          ISO_URL="https://downloads.sourceforge.net/project/clonezilla/clonezilla_live_stable/${CLONEZILLA_VER}/clonezilla-live-${CLONEZILLA_VER}-${CLONEZILLA_ARCH}.iso"
           echo "Downloading $ISO_URL"
-          curl -fL -o clonezilla-live.iso "$ISO_URL"
-          # Verify checksum (OSDN provides sha256sum.txt)
-          curl -fL "https://osdn.net/projects/clonezilla/downloads/79926/sha256sum.txt" -o sha256sum.txt
-          grep "clonezilla-live-${CLONEZILLA_VER}-${CLONEZILLA_ARCH}.iso" sha256sum.txt | sha256sum -c -
+          curl -fL --retry 3 -o clonezilla-live.iso "$ISO_URL"
+          # SourceForge does not publish a checksum file: verify only if the
+          # upstream sha256sum.txt happens to be reachable (it lives on osdn.net).
+          if curl -fsSL --retry 1 "https://osdn.net/projects/clonezilla/downloads/79926/sha256sum.txt" -o sha256sum.txt; then
+            grep "clonezilla-live-${CLONEZILLA_VER}-${CLONEZILLA_ARCH}.iso" sha256sum.txt | sha256sum -c -
+          else
+            echo "warning: sha256sum.txt unreachable, skipping checksum verification" >&2
+          fi
 
       - name: Install patching dependencies
         run: |
@@ -70,7 +76,10 @@ jobs:
 
       - name: Run patch-clonezilla.sh
         env:
-          PATCH_DIR: ${{ github.workspace }}/${{ github.event.inputs.patch_dir }}
+          # The unified diffs live in <patch_dir>/patches; pointing PATCH_DIR at
+          # <patch_dir> itself found no *.patch and silently shipped an ISO
+          # WITHOUT the PBS-NBD main-menu entry.
+          PATCH_DIR: ${{ github.workspace }}/${{ github.event.inputs.patch_dir }}/patches
           ISO_SQFS: /live/filesystem.squashfs
           INSTALL_DIR: usr/local/sbin
         run: |
@@ -79,7 +88,8 @@ jobs:
             -o "${{ github.event.inputs.output_name }}" \
             clonezilla-live.iso \
             nbd/pbsnbd \
-            "${{ github.event.inputs.patch_dir }}/ocs-pbs-nbd"
+            "${{ github.event.inputs.patch_dir }}/ocs-pbs-nbd" \
+            "${{ github.event.inputs.patch_dir }}/ocs-pbs-bare-metal-restore"
 
       - name: Verify output ISO
         run: |

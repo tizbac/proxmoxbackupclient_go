@@ -21,6 +21,11 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 OUT_DIR=${1:-$ROOT/dist}
+# Absolutize: wine maps Z: to the unix root, so a relative OUT_DIR (e.g. the
+# Makefile passing "dist") would be written relative to wine's cwd inside the
+# temp work dir - silently lost when the work dir is cleaned up.
+mkdir -p "$OUT_DIR"
+OUT_DIR=$(cd "$OUT_DIR" && pwd)
 
 # Read version from git tag (exact match) or git short SHA
 # Falls back to wails.json if not in a git repo
@@ -30,6 +35,39 @@ else
     VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/gui/wails.json" | head -n1)
 fi
 [ -n "$VERSION" ] || { echo "error: cannot determine version" >&2; exit 1; }
+
+# Windows Installer (and therefore WiX Product/@Version) only accepts a
+# numeric x.y.z[.w] tuple, each field 0..65534. A tag-less build reports
+# "dev-<sha>" (and a tag may be prefixed with "v"), neither of which compiles
+# (CNDL0108). For those builds derive
+#
+#     <wails.json productVersion>.<number of commits>
+#
+# so every dev MSI carries a valid AND strictly increasing ProductVersion
+# (0.2.119.655), while a tagged release keeps its own numeric version.
+BASE_VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/gui/wails.json" | head -n1)
+
+msi_product_version() {
+    local v="$1" p1 p2 p3 count
+    # already numeric x.y.z or x.y.z.w (an optional leading "v" from a tag)
+    v="${v#v}"
+    if printf '%s\n' "$v" | grep -Eq '^[0-9]+(\.[0-9]+){2,3}$'; then
+        printf '%s\n' "$v"
+        return
+    fi
+    IFS=. read -r p1 p2 p3 _ <<<"$BASE_VERSION"
+    p1="${p1//[^0-9]/}"; p2="${p2//[^0-9]/}"; p3="${p3//[^0-9]/}"
+    p1="${p1:-0}"; p2="${p2:-0}"; p3="${p3:-0}"
+    p1=$((p1 > 65534 ? 65534 : p1))
+    p2=$((p2 > 65534 ? 65534 : p2))
+    p3=$((p3 > 65534 ? 65534 : p3))
+    count=$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || printf '0')
+    count=$(( ${count:-0} % 65534 ))
+    printf '%s.%s.%s.%s\n' "$p1" "$p2" "$p3" "$count"
+}
+
+PRODUCT_VERSION=$(msi_product_version "$VERSION")
+echo "==> Version: $VERSION (MSI ProductVersion: $PRODUCT_VERSION)"
 
 # WiX toolset URL (v3.14.1 - last stable v3 release)
 WIX_URL="https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip"
@@ -45,30 +83,65 @@ echo "==> Preparing build artifacts in $WORK"
 # replace directives pointing to sibling directories (machinebackuplib, pbscommon, etc.)
 GUI_EXE="$ROOT/gui/build/bin/ProxmoxBackupClient.exe"
 SVC_EXE="$ROOT/gui/build/bin/ProxmoxBackupClientSVC.exe"
-if [ -f "$GUI_EXE" ] && [ -f "$SVC_EXE" ]; then
+
+# is_windows_pe <file> - true if the file is a Windows PE executable.
+# Guards against packaging a Linux ELF as the Windows service: Windows cannot
+# start it (error 193/1053) and the MSI install fails at ServiceControl.
+is_windows_pe() {
+    [ -f "$1" ] && file "$1" 2>/dev/null | grep -q "PE32"
+}
+
+NEED_GUI=0
+NEED_SVC=0
+is_windows_pe "$GUI_EXE" || NEED_GUI=1
+is_windows_pe "$SVC_EXE" || NEED_SVC=1
+
+if [ "$NEED_GUI" = 0 ] && [ "$NEED_SVC" = 0 ]; then
     echo "==> Using existing GUI and SVC binaries"
 else
-    echo "==> Building GUI and SVC binaries via Docker..."
+    echo "==> Building missing binaries via Docker (GUI=$NEED_GUI, SVC=$NEED_SVC)..."
+    # Each artifact is rebuilt only when it is missing or is not a Windows PE:
+    # a wails rebuild needs npm (not shipped by golang:1.25), and re-running it
+    # for an already-valid GUI exe only adds minutes and failure modes.
     docker run --rm \
+    -e NEED_GUI="$NEED_GUI" \
+    -e NEED_SVC="$NEED_SVC" \
+    -e VERSION="$VERSION" \
     -v "$ROOT:/src" \
     -w /src \
     golang:1.25 \
-    bash -c "
+    bash -c '
         set -euo pipefail
         cd /src/gui
-        # Build GUI (wails)
-        if command -v wails >/dev/null 2>&1; then
-            wails build -clean -platform windows/amd64 -ldflags \"-X main.appVersion=$VERSION\"
-        else
-            go install github.com/wailsapp/wails/v2/cmd/wails@latest
-            export PATH=\$PATH:\$(go env GOPATH)/bin
-            wails build -clean -platform windows/amd64 -ldflags \"-X main.appVersion=$VERSION\"
+        if [ "${NEED_GUI:-0}" = "1" ]; then
+            # wails compiles the React frontend: golang:1.25 has no node/npm
+            if ! command -v npm >/dev/null 2>&1; then
+                echo "==> installing nodejs/npm in build container"
+                apt-get update -qq
+                apt-get install -y -qq --no-install-recommends nodejs npm >/dev/null
+            fi
+            if ! command -v wails >/dev/null 2>&1; then
+                go install github.com/wailsapp/wails/v2/cmd/wails@latest
+                export PATH="$PATH:$(go env GOPATH)/bin"
+            fi
+            wails build -clean -platform windows/amd64 -ldflags "-X main.appVersion=$VERSION"
         fi
-        # Build SVC
-        GOWORK=off go build -tags service -trimpath -buildmode=pie \
-            -ldflags \"-s -w -X main.appVersion=$VERSION\" \
-            -o build/bin/ProxmoxBackupClientSVC.exe .
-    "
+        if [ "${NEED_SVC:-0}" = "1" ]; then
+            # The bind-mounted repo is owned by a different uid than the
+            # container root, so git refuses it ("dubious ownership") and VCS
+            # stamping then aborts the build. Version info comes from -ldflags,
+            # so stamping is disabled instead of fighting git safe.directory.
+            # NOTE: this bash -c body is single quoted, keep apostrophes out.
+            git config --global --add safe.directory /src 2>/dev/null || true
+            # This container is Linux: GOOS=windows is mandatory, otherwise the
+            # result is an ELF and the Windows SCM cannot start it (error 193,
+            # service timeout 1053) - the MSI install would then fail too.
+            GOOS=windows GOARCH=amd64 CGO_ENABLED=0 GOWORK=off \
+                go build -tags service -trimpath -buildmode=pie -buildvcs=false \
+                -ldflags "-s -w -X main.appVersion=$VERSION" \
+                -o build/bin/ProxmoxBackupClientSVC.exe .
+        fi
+    '
 fi
 
 # Verify artifacts
@@ -76,6 +149,11 @@ GUI_EXE="$ROOT/gui/build/bin/ProxmoxBackupClient.exe"
 SVC_EXE="$ROOT/gui/build/bin/ProxmoxBackupClientSVC.exe"
 [ -f "$GUI_EXE" ] || { echo "error: GUI exe not found at $GUI_EXE" >&2; exit 1; }
 [ -f "$SVC_EXE" ] || { echo "error: SVC exe not found at $SVC_EXE" >&2; exit 1; }
+if ! is_windows_pe "$SVC_EXE"; then
+    echo "error: $SVC_EXE is not a Windows PE binary (built for the wrong OS?)" >&2
+    file "$SVC_EXE" >&2
+    exit 1
+fi
 echo "    GUI: $GUI_EXE"
 echo "    SVC: $SVC_EXE"
 
@@ -134,7 +212,7 @@ for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup EtitechBackup; do
     echo "    Building $BRAND.msi..."
     # candle: compile .wxs to .wixobj
     wine "$WINE_WIX_BIN/candle.exe" \
-        -dProductVersion="$VERSION" \
+        -dProductVersion="$PRODUCT_VERSION" \
         -ext WixUIExtension \
         -ext WixUtilExtension \
         "$WXS_FILE" \

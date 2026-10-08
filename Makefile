@@ -1,7 +1,7 @@
 # Nimbus Backup - Unified Build System
 # Builds both CLI and GUI applications
 
-.PHONY: all cli gui deb pkgarch pkgfedora stage-source clean test help install-deps
+.PHONY: all cli gui deb pkgarch pkgfedora stage-source msi clonezilla clean test help install-deps
 
 # Version from git tag (exact match) or git short SHA
 # Falls back to wails.json if not in a git repo
@@ -55,6 +55,8 @@ help:
 	@echo "  pkgarch      - Build the Arch package (pbsgo, on Arch)"
 	@echo "  pkgfedora    - Build the Fedora RPM (docker fedora:44)"
 	@echo "  stage-source - Stage the source tarball used by pkgarch/pkgfedora"
+	@echo "  msi          - Build the Windows MSI installers on Linux (docker + wine)"
+	@echo "  clonezilla   - Download + patch the Clonezilla live ISO (not in 'all')"
 	@echo "  test         - Run all tests"
 	@echo "  clean        - Remove build artifacts"
 	@echo "  install-deps - Install build dependencies"
@@ -108,16 +110,28 @@ else
 endif
 
 # Service Build (systemd service on Linux, Windows Service on Windows)
+#
+# The default target OS is windows: gui/build/bin/ProxmoxBackupClientSVC.exe is
+# what the MSI packages, and a Linux ELF there cannot be started by the Windows
+# SCM (error 193 / service timeout 1053). Override with `SERVICE_GOOS=linux
+# make service` when a local systemd binary is wanted (the deb/rpm/arch
+# packaging scripts build their own).
+SERVICE_GOOS ?= windows
+SERVICE_GOEXE := $(if $(filter windows,$(SERVICE_GOOS)),.exe,)
+ifneq ($(SERVICE_GOOS),$(shell go env GOOS))
+SERVICE_BUILD_ENV := GOOS=$(SERVICE_GOOS) GOARCH=amd64 CGO_ENABLED=0
+endif
+
 service:
-	@echo "🔧 Building Backup Service..."
+	@echo "🔧 Building Backup Service ($(SERVICE_GOOS))..."
 	@mkdir -p $(BUILD_DIR)
 	@mkdir -p gui/build/bin
 	# Build from gui/ with -tags service (gui/ IS the service package)
-	cd gui && GOWORK=off go build -tags service $(GO_FLAGS) -ldflags="-s -w -X main.appVersion=$(VERSION)" \
-		-o build/bin/$(SERVICE_BIN)$(shell go env GOEXE) .
-	@cp gui/build/bin/$(SERVICE_BIN)$(shell go env GOEXE) $(BUILD_DIR)/ || true
-	@echo "✅ Built: gui/build/bin/$(SERVICE_BIN) (for MSI / systemd)"
-	@echo "✅ Built: $(BUILD_DIR)/$(SERVICE_BIN)"
+	cd gui && GOWORK=off $(SERVICE_BUILD_ENV) go build -tags service $(GO_FLAGS) -ldflags="-s -w -X main.appVersion=$(VERSION)" \
+		-o build/bin/$(SERVICE_BIN)$(SERVICE_GOEXE) .
+	@cp gui/build/bin/$(SERVICE_BIN)$(SERVICE_GOEXE) $(BUILD_DIR)/ || true
+	@echo "✅ Built: gui/build/bin/$(SERVICE_BIN)$(SERVICE_GOEXE) (for MSI / systemd)"
+	@echo "✅ Built: $(BUILD_DIR)/$(SERVICE_BIN)$(SERVICE_GOEXE)"
 
 # Debian package (Linux)
 deb:
@@ -139,6 +153,78 @@ stage-source:
 # Fedora RPM (built in a fedora:44 Docker container)
 pkgfedora:
 	@sh packaging/fedora/build-rpm.sh $(BUILD_DIR)
+
+# Windows MSI installers built on Linux (Docker + Wine + WiX), one per brand.
+# Needs Docker; see installer/wix/build_msi_linux.sh.
+msi:
+	@echo "🪟 Building MSI installers (version $(VERSION))..."
+	@bash installer/wix/build_msi_linux.sh $(BUILD_DIR)
+
+# Download a stock Clonezilla live ISO, inject the PBS-NBD scripts and apply
+# clonezilla-patch/patches/*.patch, producing a bootable recovery ISO.
+#
+# Deliberately NOT part of `all`: it needs network access plus
+# 7z/xorriso/squashfs-tools/fakeroot/patch and takes several minutes.
+#
+#   make clonezilla                       # stable 3.3.3-37 (what the patches target)
+#   CLONEZILLA_VER=3.3.4-6 make clonezilla
+#   CLONEZILLA_MIRROR=<url> make clonezilla
+CLONEZILLA_VER ?= 3.3.3-37
+CLONEZILLA_ARCH ?= amd64
+# SourceForge mirrors the official releases (osdn.net, the upstream default,
+# is frequently unreachable). The path layout is <mirror>/<ver>/<iso>.
+CLONEZILLA_MIRROR ?= https://downloads.sourceforge.net/project/clonezilla/clonezilla_live_stable
+# Optional: URL of a sha256sum file to verify the downloaded ISO against.
+# Empty = skip verification (SourceForge does not publish one).
+CLONEZILLA_SHA256 ?=
+
+CLONEZILLA_CACHE    := $(BUILD_DIR)/clonezilla
+CLONEZILLA_STOCK    := $(CLONEZILLA_CACHE)/clonezilla-live-$(CLONEZILLA_VER)-$(CLONEZILLA_ARCH).iso
+CLONEZILLA_OUT      := $(BUILD_DIR)/clonezilla-pbs-nbd-$(VERSION).iso
+CLONEZILLA_PBSNBD   := $(CLONEZILLA_CACHE)/pbsnbd
+CLONEZILLA_SCRIPTS  := clonezilla-patch/ocs-pbs-nbd clonezilla-patch/ocs-pbs-bare-metal-restore
+CLONEZILLA_PATCHES  := $(wildcard clonezilla-patch/patches/*.patch)
+CLONEZILLA_DEPS     := patch-clonezilla.sh $(CLONEZILLA_PATCHES) $(CLONEZILLA_SCRIPTS)
+
+clonezilla: $(CLONEZILLA_OUT)
+	@echo "✅ Built: $(CLONEZILLA_OUT)"
+
+# Static binary, same flags as .github/workflows/build-clonezilla-iso.yml so
+# it runs on any live environment regardless of the host libc.
+$(CLONEZILLA_PBSNBD): $(wildcard nbd/*.go) nbd/go.mod nbd/go.sum
+	@echo "🔨 Building pbsnbd (static linux/amd64)..."
+	@mkdir -p $(CLONEZILLA_CACHE)
+	cd nbd && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" \
+		-o ../$(CLONEZILLA_PBSNBD) .
+
+# Stock ISO, downloaded once and cached in dist/clonezilla/.
+$(CLONEZILLA_STOCK):
+	@echo "⬇️  Downloading Clonezilla live $(CLONEZILLA_VER)-$(CLONEZILLA_ARCH)..."
+	@mkdir -p $(CLONEZILLA_CACHE)
+	@set -eu; \
+	  url="$(CLONEZILLA_MIRROR)/$(CLONEZILLA_VER)/clonezilla-live-$(CLONEZILLA_VER)-$(CLONEZILLA_ARCH).iso"; \
+	  echo "   $$url"; \
+	  curl -fL --retry 3 -o "$@.tmp" "$$url"; \
+	  if [ -n "$(CLONEZILLA_SHA256)" ]; then \
+	    echo "   verifying sha256"; \
+	    curl -fL --retry 3 -o "$(CLONEZILLA_CACHE)/sha256sum.txt" "$(CLONEZILLA_SHA256)"; \
+	    grep "clonezilla-live-$(CLONEZILLA_VER)-$(CLONEZILLA_ARCH).iso" "$(CLONEZILLA_CACHE)/sha256sum.txt" | (cd "$(CLONEZILLA_CACHE)" && sha256sum -c -); \
+	  else \
+	    echo "   warning: CLONEZILLA_SHA256 not set, skipping checksum verification"; \
+	  fi; \
+	  mv "$@.tmp" "$@"
+
+$(CLONEZILLA_OUT): $(CLONEZILLA_STOCK) $(CLONEZILLA_PBSNBD) $(CLONEZILLA_DEPS)
+	@command -v 7z >/dev/null || { echo "error: 7z not installed (apt install 7zip p7zip-full)" >&2; exit 1; }
+	@command -v xorriso >/dev/null || { echo "error: xorriso not installed (apt install xorriso)" >&2; exit 1; }
+	@command -v unsquashfs >/dev/null || { echo "error: unsquashfs not installed (apt install squashfs-tools)" >&2; exit 1; }
+	@command -v fakeroot >/dev/null || { echo "error: fakeroot not installed (apt install fakeroot)" >&2; exit 1; }
+	@test -f /usr/lib/ISOLINUX/isohdpfx.bin || { echo "error: isohybrid MBR not found (apt install isolinux)" >&2; exit 1; }
+	@echo "🧩 Patching Clonezilla ISO (PBS NBD scripts + main/first-boot menus)..."
+	PATCH_DIR="$(abspath clonezilla-patch/patches)" ISO_SQFS=/live/filesystem.squashfs \
+		./patch-clonezilla.sh -o "$@" "$(CLONEZILLA_STOCK)" \
+		"$(CLONEZILLA_PBSNBD)" $(CLONEZILLA_SCRIPTS)
+	@echo "✅ Built: $@"
 
 # GUI Build
 gui:
