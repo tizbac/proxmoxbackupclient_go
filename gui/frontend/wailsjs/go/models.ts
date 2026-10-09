@@ -161,6 +161,7 @@ export namespace main {
 	    "backup-id"?: string;
 	    usevss: boolean;
 	    last_backup_dirs?: string[];
+	    pinned_disks?: Record<string, string>;
 	    disable_split?: boolean;
 	    split_size_gb?: number;
 	    smtp_host?: string;
@@ -189,6 +190,7 @@ export namespace main {
 	        this["backup-id"] = source["backup-id"];
 	        this.usevss = source["usevss"];
 	        this.last_backup_dirs = source["last_backup_dirs"];
+	        this.pinned_disks = source["pinned_disks"];
 	        this.disable_split = source["disable_split"];
 	        this.split_size_gb = source["split_size_gb"];
 	        this.smtp_host = source["smtp_host"];
@@ -280,6 +282,8 @@ export namespace main {
 	    is_system_disk: boolean;
 	    device_id: string;
 	    device_path: string;
+	    unique_id: string;
+	    drive_letters?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new PhysicalDiskInfo(source);
@@ -294,6 +298,8 @@ export namespace main {
 	        this.is_system_disk = source["is_system_disk"];
 	        this.device_id = source["device_id"];
 	        this.device_path = source["device_path"];
+	        this.unique_id = source["unique_id"];
+	        this.drive_letters = source["drive_letters"];
 	    }
 	}
 	export class ScheduledJob {
