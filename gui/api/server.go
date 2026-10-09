@@ -328,8 +328,13 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				progress.Success = false
 				progress.Error = err.Error()
-				progress.Message = fmt.Sprintf("Backup failed: %v", err)
-				log.Printf("[API] Backup %s failed: %v", jobID, err)
+				if isCancelled(err) {
+					progress.Message = "Backup cancelled by user"
+					log.Printf("[API] Backup %s cancelled by user", jobID)
+				} else {
+					progress.Message = fmt.Sprintf("Backup failed: %v", err)
+					log.Printf("[API] Backup %s failed: %v", jobID, err)
+				}
 			} else {
 				progress.Success = true
 				progress.Progress = 100

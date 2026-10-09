@@ -31,8 +31,11 @@ import (
 type ProgressCallback func(percentage float64, message string) bool
 
 var (
-	errCancelled     = errors.New("backup cancelled by user")
-	errUploadAborted = errors.New("upload aborted")
+	// ErrCancelled is the sentinel a backup run returns when the user pressed
+	// Stop. Callers match it with errors.Is to report a cancellation as such
+	// instead of as a failure.
+	ErrCancelled               = errors.New("backup cancelled by user")
+	errUploadAborted           = errors.New("upload aborted")
 	defaultMailSubjectTemplate = "Backup {{.Status}}"
 	defaultMailBodyTemplate    = `{{if .Success}}Backup complete ({{.FromattedDuration}})
 Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while working, backup may be not completed.
@@ -158,9 +161,17 @@ func BytesToString(b int64) string {
 //
 // uploadWorker is the ONLY consumer of readErrCh: it is the sole reader of
 // that channel and reports the reader's error through its own return value.
-// Letting the caller read the channel a second time deadlocks — the value is
-// buffered, so whoever arrives first wins, and the loser's receive blocks
-// forever once the reader goroutine has exited.
+// Letting the caller read the channel a second time races this function for
+// the single buffered value: if the caller wins, uploadWorker sees an empty
+// channel and commits an index that only holds the chunks read before the
+// cancellation (PBS then fails the close with "unexpected chunk count"); if
+// uploadWorker wins, the caller blocks forever on a channel nobody sends to
+// again.
+//
+// Contract for the reader goroutine: send exactly one value to readErrCh
+// BEFORE closing ch (readErrCh is buffered, so the send never blocks). The
+// drain below can only run once ch is closed, which is what makes the receive
+// deterministic.
 func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint64, ch chan []byte, readErrCh <-chan error) error {
 	var newchunk = new(atomic.Uint64)
 	var reusechunk = new(atomic.Uint64)
@@ -274,15 +285,22 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 	// The reader reported an error (or the user cancelled): the data in this
 	// fixed index is partial, so leave it unclosed instead of committing it.
 	// Consuming readErrCh here — and only here — is what makes the ownership
-	// note on uploadWorker hold; see also the deterministic-ordering note on
-	// the reader goroutine in BackupFileDevice.
+	// note on uploadWorker hold.
+	//
+	// This receive is deliberately BLOCKING rather than a `select` with a
+	// `default` branch. Callers publish their terminal error to readErrCh
+	// *before* closing the data channel, and we only get here once that
+	// channel has been drained and closed, so the value is already buffered
+	// and this cannot block. The old non-blocking `default:` branch is what
+	// let a cancelled Windows machine backup fall through to
+	// AssignFixedChunks + CloseFixedIndex: BackupWindowsDisk was reading the
+	// same channel as a second consumer and won the race, so uploadWorker
+	// took the `default:` path, committed the partial index and PBS rejected
+	// it with "fixed writer close failed - unexpected chunk count".
 	if readErrCh != nil {
-		select {
-		case rerr := <-readErrCh:
-			if rerr != nil {
-				return rerr
-			}
-		default:
+		rerr := <-readErrCh
+		if rerr != nil {
+			return rerr
 		}
 	}
 
@@ -398,7 +416,7 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 					}
 				}
 				if progressCallback(pct, fmt.Sprintf("%s: Block %d", filename, b)) {
-					rerr = errCancelled
+					rerr = ErrCancelled
 					break
 				}
 			}
@@ -556,7 +574,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 	}
 	if progressCallback != nil {
 		if progressCallback(0, "Connecting to Proxmox Backup Server...") {
-			return nil, errCancelled
+			return nil, ErrCancelled
 		}
 	}
 
@@ -598,7 +616,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			isGPT := diskHasGPT(dev)
 			size, err := BackupWindowsDisk(client, int(idx), deviceCallback)
 			if err != nil {
-				return nil, fmt.Errorf("backup disk %s %v", dev, err)
+				return nil, fmt.Errorf("backup disk %s: %w", dev, err)
 			}
 
 			disks = append(disks, BackupDisk{
@@ -611,7 +629,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			if progressCallback != nil && totalSize > 0 {
 				pct := jobProgressFraction(baseSize, devSize, 1.0, totalSize)
 				if progressCallback(pct, fmt.Sprintf("Backup complete for disk %s", dev)) {
-					return nil, errCancelled
+					return nil, ErrCancelled
 				}
 			}
 		} else {
@@ -622,7 +640,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			isGPT := diskHasGPT(dev)
 			handled, size, err := backupWholeDisk(client, dev, i, cfg.UseSnapshot, deviceCallback)
 			if err != nil {
-				return nil, fmt.Errorf("backup device %s: %v", dev, err)
+				return nil, fmt.Errorf("backup device %s: %w", dev, err)
 			}
 			if handled {
 				disks = append(disks, BackupDisk{
@@ -631,7 +649,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 					GPT:   isGPT,
 				})
 			} else if err := BackupFileDevice(client, dev, deviceCallback); err != nil {
-				return nil, fmt.Errorf("backup device %s: %v", dev, err)
+				return nil, fmt.Errorf("backup device %s: %w", dev, err)
 			}
 
 			// Update progress: the whole-disk size when handled, otherwise the file size
@@ -648,7 +666,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			if progressCallback != nil && totalSize > 0 {
 				pct := jobProgressFraction(baseSize, devSize, 1.0, totalSize)
 				if progressCallback(pct, fmt.Sprintf("Backup complete for device %s", dev)) {
-					return nil, errCancelled
+					return nil, ErrCancelled
 				}
 			}
 		}

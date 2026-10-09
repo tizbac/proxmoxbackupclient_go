@@ -536,7 +536,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 						pos += uint64(nbytes)
 					}
 					if report(pos) {
-						return errCancelled
+						return ErrCancelled
 					}
 					b++
 					if rerr == io.EOF {
@@ -573,7 +573,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 				for pos < P.EndByte {
 					nbytes, rerr := snapshot_file.Read(block[:min(uint64(len(block)), P.EndByte-pos)])
 					if report(pos) {
-						return errCancelled
+						return ErrCancelled
 					}
 					b++
 					if nbytes > 0 {
@@ -614,9 +614,13 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 
 		go func() {
 			var rerr error
+			// errCh is buffered and holds exactly one value, and it is sent
+			// BEFORE close(ch): uploadWorker drains ch and only then reads
+			// readErrCh, so this ordering guarantees it sees a cancelled run
+			// and returns without committing a partial fixed index.
 			defer func() {
-				close(ch)
 				errCh <- rerr
+				close(ch)
 			}()
 			for idx, P := range parts {
 				fmt.Printf("Partition: %d\n", idx)
@@ -636,12 +640,16 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			uploadErr = uploadWorker(client, fmt.Sprintf("drive-sata%d.img.fidx", index), uint64(total), ch, errCh)
 		}()
 
-		readErr := <-errCh
+		// uploadWorker is the SOLE consumer of errCh (see its doc comment) and
+		// returns the reader's terminal error — including ErrCancelled from a
+		// user Stop — through its own return value. Reading errCh a second
+		// time here raced it: the caller usually won the receive, which left
+		// uploadWorker taking its empty-channel path and committing a partial
+		// fixed index (PBS then failed the close with "unexpected chunk
+		// count"); in the other interleaving this receive never returned and
+		// the job hung with the VSS snapshots still held.
 		<-uploadDone
-		if uploadErr != nil {
-			return uploadErr
-		}
-		return readErr
+		return uploadErr
 	})
 }
 

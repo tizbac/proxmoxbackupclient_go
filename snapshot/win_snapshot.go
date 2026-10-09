@@ -70,7 +70,7 @@ func getAppDataFolder() (string, error) {
 	return appDataFolder, nil
 }
 
-func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) error {
+func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) (retErr error) {
 
 	// One Snapshotter per volume: go-vss rejects reuse of a single Snapshotter
 	// for a second volume ("snapshotter is already in use"), which made every
@@ -78,9 +78,22 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 	// successful snapshot is held until the backup callback has consumed them,
 	// then released together.
 	snapshotters := make([]*vss.Snapshotter, 0, len(paths))
+	// IDs of the shadows this call actually created, in creation order.
+	createdIDs := make([]string, 0, len(paths))
 	defer func() {
 		for _, s := range snapshotters {
-			s.Release()
+			if err := s.Release(); err != nil {
+				fmt.Printf("⚠️  VSS: releasing snapshot: %v\n", err)
+			}
+		}
+		// Cancelled or failed backup: Release() ends the writer session but
+		// does not itself remove the shadow copy, so explicitly delete the
+		// shadows we just created instead of leaving them (and their symlink
+		// markers) behind until the next startup VSSCleanup. Only ever our own
+		// IDs, and only on the error path — never a blanket `delete shadows
+		// /all`.
+		if retErr != nil && len(createdIDs) > 0 {
+			deleteShadowsBestEffort(createdIDs)
 		}
 	}()
 	snapshots := make(map[string]SnapShot)
@@ -182,11 +195,40 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 		}
 
 		snapshots[path] = SnapShot{FullPath: filepath.Join(appDataFolder, "VSS", snapshot.Id, subPath), Id: snapshot.Id, ObjectPath: snapshot.DeviceObjectPath, Valid: true}
+		createdIDs = append(createdIDs, snapshot.Id)
 
 	}
 
 	return backup_callback(snapshots)
 
+}
+
+// deleteShadowsBestEffort removes shadow copies this process created during a
+// backup that ended in an error or was cancelled by the user, plus the
+// <appData>/VSS/<id> marker symlinks pointing at them.
+//
+// Best-effort by design: `vssadmin delete shadows /shadow={id}` may need
+// `/for=<volume>` on some Windows versions and the shadow may already be gone
+// (a normal release leaves a dangling marker). Either way we log and continue —
+// a leftover shadow is cleaned up by VSSCleanup() on the next start, and we
+// never fall back to `/all`, which would wipe other applications' shadows.
+func deleteShadowsBestEffort(ids []string) {
+	appData, appDataErr := getAppDataFolder()
+	for _, id := range ids {
+		norm := normalizeShadowID(id)
+		if norm == "" {
+			continue // not a shadow-id-shaped entry
+		}
+		deleteCmd := exec.Command("vssadmin", "delete", "shadows", "/shadow={"+norm+"}", "/quiet")
+		if out, err := deleteCmd.CombinedOutput(); err != nil {
+			fmt.Printf("⚠️  VSS: could not delete shadow %s after cancelled/failed backup: %v - %s\n", norm, err, strings.TrimSpace(string(out)))
+			continue
+		}
+		fmt.Printf("✓ VSS: deleted shadow %s after cancelled/failed backup\n", norm)
+		if appDataErr == nil {
+			_ = os.Remove(filepath.Join(appData, "VSS", id))
+		}
+	}
 }
 
 // VSSCleanup removes orphaned VSS snapshots left by a previously crashed Proxmox Backup Client

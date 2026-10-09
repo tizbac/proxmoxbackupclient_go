@@ -804,7 +804,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 			if opts.OnComplete != nil {
 				opts.OnComplete(false, "Backup annulé par l'utilisateur")
 			}
-			return fmt.Errorf("backup cancelled by user")
+			return machinebackuplib.ErrCancelled
 		}
 		writeBackupLog(fmt.Sprintf("Starting backup of directory %d/%d: %s", idx+1, len(opts.BackupObjects), dir))
 
@@ -840,7 +840,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 						if opts.OnComplete != nil {
 							opts.OnComplete(false, "Backup annulé par l'utilisateur")
 						}
-						return fmt.Errorf("backup cancelled by user")
+						return machinebackuplib.ErrCancelled
 					}
 					remaining := time.Until(waitUntil)
 					if remaining <= 0 {
@@ -1062,8 +1062,15 @@ func runMachineBackupInline(opts BackupOptions) error {
 	// Perform machine backup
 	_, err := machinebackuplib.Backup(cfg, progress)
 	if err != nil {
-		// Handle error case
+		// A user Stop is not a failure: report it as a cancellation, and keep
+		// the sentinel intact so callers can match it with errors.Is instead
+		// of string-parsing the message.
+		cancelled := errors.Is(err, machinebackuplib.ErrCancelled) ||
+			(opts.Ctx != nil && opts.Ctx.Err() != nil)
 		errMsg := fmt.Sprintf("Machine backup failed: %v", err)
+		if cancelled {
+			errMsg = "Machine backup cancelled by user"
+		}
 		writeBackupLog(errMsg)
 
 		if opts.OnComplete != nil {
@@ -1077,7 +1084,10 @@ func runMachineBackupInline(opts BackupOptions) error {
 				Message:     errMsg,
 			})
 		}
-		return fmt.Errorf("%s", errMsg)
+		if cancelled {
+			return machinebackuplib.ErrCancelled
+		}
+		return errors.New(errMsg)
 	}
 
 	// Success case

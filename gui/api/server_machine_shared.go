@@ -113,8 +113,13 @@ func (s *Server) handleMachineBackup(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				progress.Success = false
 				progress.Error = err.Error()
-				progress.Message = fmt.Sprintf("Machine backup failed: %v", err)
-				log.Printf("[API] Machine backup %s failed: %v", jobID, err)
+				if isCancelled(err) {
+					progress.Message = "Machine backup cancelled by user"
+					log.Printf("[API] Machine backup %s cancelled by user", jobID)
+				} else {
+					progress.Message = fmt.Sprintf("Machine backup failed: %v", err)
+					log.Printf("[API] Machine backup %s failed: %v", jobID, err)
+				}
 			} else {
 				progress.Success = true
 				progress.Progress = 100

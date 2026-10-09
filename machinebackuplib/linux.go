@@ -234,8 +234,10 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 
 	go func() {
 		err := writeSegments(dev, segments, total, ch, uploadDone, progressCallback)
-		close(ch)
+		// Publish the result BEFORE closing ch — see the ordering contract on
+		// uploadWorker. errCh is buffered, so this send never blocks.
 		errCh <- err
+		close(ch)
 	}()
 
 	// uploadWorker is the sole consumer of errCh (it returns the reader error
@@ -371,7 +373,7 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 			}
 		}
 		if !ok {
-			return errCancelled
+			return ErrCancelled
 		}
 	}
 
@@ -383,7 +385,7 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 		chunk := make([]byte, n)
 		copy(chunk, buffer[:n])
 		if !sendChunk(chunk) {
-			return errCancelled
+			return ErrCancelled
 		}
 		buffer = buffer[n:]
 	}
