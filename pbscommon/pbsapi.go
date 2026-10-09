@@ -907,22 +907,37 @@ func (pbs *PBSClient) defaultCryptMode() string {
 	return CryptModeNone
 }
 
+// zstdLevel maps the configured compression level onto the zstd encoder.
+func (pbs *PBSClient) zstdLevel() zstd.EncoderLevel {
+	switch pbs.CompressionLevel {
+	case CompressionFastest:
+		return zstd.SpeedFastest
+	case CompressionBetter:
+		return zstd.SpeedBetterCompression
+	case CompressionBest:
+		return zstd.SpeedBestCompression
+	default: // CompressionDefault or empty
+		return zstd.SpeedDefault
+	}
+}
+
 func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []byte, dynamic bool, compressed bool) error {
 	var outBuffer []byte
 	var err error
 
 	if pbs.Crypt != nil {
-		// Encrypted chunk: MAGIC || crc32 || IV || TAG || AES-256-GCM(plaintext).
-		// Compression is deliberately skipped — the ENCR_COMPR variant needs
-		// zstd's raw *block* API, which the pure-Go klauspost/compress
-		// encoder does not expose. PBS and the official client both branch
-		// on the magic, so the uncompressed-but-encrypted form is fully
-		// interoperable. The `compressed` argument is therefore ignored
-		// here; callers pass it for the unencrypted path only.
+		// Encrypted chunk: MAGIC || crc32 || IV || TAG || AES-256-GCM(data),
+		// where data is the zstd-compressed plaintext (ENCR_COMPR, what
+		// proxmox-backup-client writes by default) when compression is on
+		// and helps, the plaintext otherwise.
 		//
 		// `size` stays the *plaintext* length and `encoded-size` the framed
 		// length, matching backup_writer.rs's "size": chunk_len.
-		outBuffer, err = pbs.Crypt.EncodeEncrypted(chunkdata)
+		if compressed {
+			outBuffer, err = pbs.Crypt.EncodeEncryptedCompressed(chunkdata, pbs.zstdLevel())
+		} else {
+			outBuffer, err = pbs.Crypt.EncodeEncrypted(chunkdata)
+		}
 		if err != nil {
 			return err
 		}
@@ -930,20 +945,7 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 		outBuffer = append(outBuffer, blobCompressedMagic...)
 		compressedData := make([]byte, 0)
 
-		// Select compression level based on client configuration
-		var encoderLevel zstd.EncoderLevel
-		switch pbs.CompressionLevel {
-		case CompressionFastest:
-			encoderLevel = zstd.SpeedFastest
-		case CompressionBetter:
-			encoderLevel = zstd.SpeedBetterCompression
-		case CompressionBest:
-			encoderLevel = zstd.SpeedBestCompression
-		default: // CompressionDefault or empty
-			encoderLevel = zstd.SpeedDefault
-		}
-
-		w, _ := zstd.NewWriter(nil, zstd.WithEncoderLevel(encoderLevel))
+		w, _ := zstd.NewWriter(nil, zstd.WithEncoderLevel(pbs.zstdLevel()))
 		compressedData = w.EncodeAll(chunkdata, compressedData)
 		checksum := crc32.Checksum(compressedData, crc32.IEEETable)
 		//binary.Write(outBuffer, binary.LittleEndian, checksum)
@@ -1119,7 +1121,8 @@ func (pbs *PBSClient) uploadBlob(name string, data []byte, encrypt bool) error {
 
 	if encrypt && pbs.Crypt != nil {
 		var err error
-		out, err = pbs.Crypt.EncodeEncrypted(data)
+		// Compressed when it helps, as proxmox-backup-client uploads blobs.
+		out, err = pbs.Crypt.EncodeEncryptedCompressed(data, pbs.zstdLevel())
 		if err != nil {
 			return fmt.Errorf("failed to encrypt blob %s: %w", name, err)
 		}
