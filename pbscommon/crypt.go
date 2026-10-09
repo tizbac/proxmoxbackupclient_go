@@ -203,19 +203,38 @@ func (c *CryptConfig) Open(iv, ciphertext, tag []byte) ([]byte, error) {
 // As in proxmox-backup, the CRC32 (IEEE) covers everything after the 44 byte
 // EncryptedDataBlobHeader, i.e. the ciphertext only. The server rejects blobs
 // whose CRC does not match, so this detail is mandatory. This matches
-// proxmox-backup `DataBlob::encode` with a CryptConfig.
-//
-// Note: the official client may additionally zstd-compress before encrypting
-// and then use ENCR_COMPR_BLOB_MAGIC_1_0. Pure Go zstd implementations do not
-// expose the raw block format, so we always emit the uncompressed variant,
-// which the server and the official restore client accept unchanged.
+// proxmox-backup `DataBlob::encode` with a CryptConfig and compress = false;
+// see EncodeEncryptedCompressed for the compressed form.
 func (c *CryptConfig) EncodeEncrypted(data []byte) ([]byte, error) {
+	return c.encodeEncrypted(data, blobEncryptedMagic)
+}
+
+// EncodeEncryptedCompressed is DataBlob::encode with a CryptConfig and
+// compress = true, what proxmox-backup-client does by default: the plaintext
+// is compressed into a regular zstd frame (zstd::bulk::compress), then
+// encrypted and framed with ENCR_COMPR_BLOB_MAGIC_1_0. As in PBS, the
+// compressed form is only used when it is smaller; otherwise this is
+// EncodeEncrypted.
+func (c *CryptConfig) EncodeEncryptedCompressed(data []byte, level zstd.EncoderLevel) ([]byte, error) {
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(level), zstd.WithEncoderConcurrency(1))
+	if err != nil {
+		return nil, err
+	}
+	compressed := enc.EncodeAll(data, nil)
+	_ = enc.Close()
+	if len(compressed) >= len(data) {
+		return c.EncodeEncrypted(data)
+	}
+	return c.encodeEncrypted(compressed, blobEncryptedComprMagic)
+}
+
+func (c *CryptConfig) encodeEncrypted(data, magic []byte) ([]byte, error) {
 	iv, ciphertext, tag, err := c.Seal(data)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]byte, 0, EncryptedDataBlobHeaderSize+len(ciphertext))
-	out = append(out, blobEncryptedMagic...)
+	out = append(out, magic...)
 	out = append(out, 0, 0, 0, 0) // crc placeholder
 	out = append(out, iv...)
 	out = append(out, tag...)
@@ -268,7 +287,7 @@ func DecodeEncryptedBlob(raw []byte, crypt *CryptConfig, digest []byte) ([]byte,
 			return nil, err
 		}
 		return plaintext, nil
-	case bytes.Equal(magic, blobEncryptedMagic):
+	case bytes.Equal(magic, blobEncryptedMagic), bytes.Equal(magic, blobEncryptedComprMagic):
 		if crypt == nil {
 			return nil, errors.New("unable to decrypt blob: missing encryption key")
 		}
@@ -284,12 +303,17 @@ func DecodeEncryptedBlob(raw []byte, crypt *CryptConfig, digest []byte) ([]byte,
 		if err != nil {
 			return nil, err
 		}
+		// ENCR_COMPR: the decrypted data is a zstd frame (what the official
+		// client writes by default).
+		if bytes.Equal(magic, blobEncryptedComprMagic) {
+			if plaintext, err = zstdDecodeAll(plaintext); err != nil {
+				return nil, fmt.Errorf("unable to decompress encrypted blob: %w", err)
+			}
+		}
 		if err := verifyPlaintextDigest(plaintext, crypt, digest); err != nil {
 			return nil, err
 		}
 		return plaintext, nil
-	case bytes.Equal(magic, blobEncryptedComprMagic):
-		return nil, errors.New("unable to decrypt blob: compressed encrypted blobs (zstd block format) are not supported")
 	default:
 		return nil, fmt.Errorf("unknown blob magic %v", magic)
 	}
