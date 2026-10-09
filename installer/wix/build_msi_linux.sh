@@ -91,18 +91,55 @@ is_windows_pe() {
     [ -f "$1" ] && file "$1" 2>/dev/null | grep -q "PE32"
 }
 
+# newest_source_mtime <paths...> - newest mtime (whole seconds) among the
+# sources that end up inside the binaries. Build outputs (frontend dist,
+# generated wailsjs bindings, the exes themselves) are excluded, otherwise a
+# build would immediately invalidate its own result.
+newest_source_mtime() {
+    find "$@" -type f \
+        \( -name '*.go' -o -name '*.jsx' -o -name '*.js' -o -name '*.ts' -o -name '*.tsx' \
+           -o -name '*.css' -o -name '*.html' -o -name '*.json' \
+           -o -name '*.png' -o -name '*.ico' -o -name '*.svg' -o -name '*.webp' \) \
+        -not -path '*/node_modules/*' \
+        -not -path '*/frontend/dist/*' \
+        -not -path '*/frontend/wailsjs/*' \
+        -not -path '*/build/bin/*' \
+        -not -name '*_test.go' \
+        -printf '%T@\n' 2>/dev/null | sort -rn | head -n1 | cut -d. -f1
+}
+
+# source_is_newer <binary> <paths...> - true when any source is newer than the
+# binary, i.e. the binary is stale.
+#
+# A "is it a valid PE" check alone is NOT enough: that is how an exe built
+# before gui/brand.go gained the Etitech entry kept being shipped as
+# EtitechBackup.exe — the file was a perfectly valid PE, but ResolveBrand()
+# inside it only knew the old brands, so the installed app silently ran with
+# the default Proxmox branding instead of the brand its exe name promised.
+source_is_newer() {
+    local bin="$1" newest bin_mtime
+    shift
+    [ -f "$bin" ] || return 0 # missing counts as stale
+    newest=$(newest_source_mtime "$@")
+    [ -n "$newest" ] || return 1
+    bin_mtime=$(stat -c %Y "$bin")
+    [ "$newest" -gt "$bin_mtime" ]
+}
+
 NEED_GUI=0
 NEED_SVC=0
 is_windows_pe "$GUI_EXE" || NEED_GUI=1
 is_windows_pe "$SVC_EXE" || NEED_SVC=1
+source_is_newer "$GUI_EXE" "$ROOT/gui" && { NEED_GUI=1; echo "==> GUI sources are newer than $GUI_EXE — rebuild required"; }
+source_is_newer "$SVC_EXE" "$ROOT/gui" && { NEED_SVC=1; echo "==> SVC sources are newer than $SVC_EXE — rebuild required"; }
 
 if [ "$NEED_GUI" = 0 ] && [ "$NEED_SVC" = 0 ]; then
-    echo "==> Using existing GUI and SVC binaries"
+    echo "==> Using up-to-date GUI and SVC binaries"
 else
-    echo "==> Building missing binaries via Docker (GUI=$NEED_GUI, SVC=$NEED_SVC)..."
-    # Each artifact is rebuilt only when it is missing or is not a Windows PE:
-    # a wails rebuild needs npm (not shipped by golang:1.25), and re-running it
-    # for an already-valid GUI exe only adds minutes and failure modes.
+    echo "==> Building missing/stale binaries via Docker (GUI=$NEED_GUI, SVC=$NEED_SVC)..."
+    # Each artifact is rebuilt when it is missing, is not a Windows PE, or is
+    # older than the sources that go into it. A wails rebuild needs npm (not
+    # shipped by golang:1.25), so only an actually-stale GUI pays for it.
     docker run --rm \
     -e NEED_GUI="$NEED_GUI" \
     -e NEED_SVC="$NEED_SVC" \
@@ -142,6 +179,15 @@ else
                 -o build/bin/ProxmoxBackupClientSVC.exe .
         fi
     '
+    # The container runs as root on a bind mount, so everything it writes
+    # (frontend dist, generated wailsjs bindings, the exes, node_modules) comes
+    # out root-owned: the next local build or npm install then fails until
+    # somebody remembers a sudo chown. Hand the outputs back to the invoking
+    # user. Reuses the image already pulled above, so this needs no download.
+    docker run --rm -v "$ROOT:/src" -w /src golang:1.25 \
+        chown -R "$(id -u):$(id -g)" \
+        /src/gui/build /src/gui/frontend/dist /src/gui/frontend/wailsjs \
+        /src/gui/frontend/node_modules || true
 fi
 
 # Verify artifacts
