@@ -197,6 +197,16 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		return err
 	}
 
+	// Map the saved selection (\\.\PhysicalDriveN) onto the disks present now
+	// through Config.PinnedDisks and refresh those pins (diskpin.go). This is
+	// the path scheduled jobs take, which is exactly where a stale drive number
+	// would otherwise back up the wrong disk unattended.
+	resolvedDevices, err := a.resolveMachineBackupDevices(backupDevices)
+	if err != nil {
+		return err
+	}
+	backupDevices = resolvedDevices
+
 	// Prepare backup options
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,

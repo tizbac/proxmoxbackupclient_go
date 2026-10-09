@@ -72,6 +72,15 @@ type PhysicalDiskInfo struct {
 	IsSystemDisk bool   `json:"is_system_disk"`
 	DeviceID     string `json:"device_id"`
 	DevicePath   string `json:"device_path"`
+	// UniqueID identifies the PHYSICAL disk rather than the slot Windows gave
+	// it this boot ("serial:<serial>", "guid:<gpt disk guid>",
+	// "sig:<mbr signature>"; a weak "size:..."/"mdl:..." when nothing better
+	// is readable). \\.\PhysicalDriveN numbers move around, so this is what a
+	// saved selection is pinned to — see diskpin.go.
+	UniqueID string `json:"unique_id"`
+	// DriveLetters are the mounted Windows volumes on this disk (e.g.
+	// ["C:", "D:"]), for display in the disk picker. Empty when unknown.
+	DriveLetters []string `json:"drive_letters,omitempty"`
 }
 
 // NewApp creates a new App application struct

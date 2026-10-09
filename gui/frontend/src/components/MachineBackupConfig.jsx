@@ -112,7 +112,12 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
                   onChange={() => handleDriveSelect(drive.device_path)}
                   disabled={needsElevation}
                 />
-                <span className="drive-device">{drive.device_path}</span>
+                <span className="drive-device">
+                  {drive.device_path}
+                  {drive.drive_letters && drive.drive_letters.length > 0 && (
+                    <span style={{ color: '#718096' }}>{` (${drive.drive_letters.join(',')})`}</span>
+                  )}
+                </span>
                 <span className="drive-size">{(drive.size / (1024 * 1024 * 1024)).toFixed(2)} GB</span>
                 <span className="drive-model">{drive.model}</span>
                 {drive.is_boot_disk && <span className="drive-badge">{t('boot')}</span>}

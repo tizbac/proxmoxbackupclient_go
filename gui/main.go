@@ -1508,6 +1508,15 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		}
 	}
 
+	// Map the saved selection (\\.\PhysicalDriveN) onto the disks present now,
+	// through the pins recorded by earlier runs (diskpin.go), and refresh those
+	// pins. Also dedupes two saved entries that resolve to one disk.
+	resolvedDevices, err := a.resolveMachineBackupDevices(backupDevices)
+	if err != nil {
+		return err
+	}
+	backupDevices = resolvedDevices
+
 	// Note: Admin check for VSS is done in StartMachineBackup() routing layer
 	// If we're here via service, we're already running as LocalSystem
 

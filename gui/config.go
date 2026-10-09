@@ -130,6 +130,14 @@ type Config struct {
 	BackupID       string   `json:"backup-id,omitempty"`
 	UseVSS         bool     `json:"usevss"`
 	LastBackupDirs []string `json:"last_backup_dirs,omitempty"` // Remember last used directories
+	// PinnedDisks maps a physical disk's stable UniqueID (see diskpin.go) to
+	// the device path it was last seen at, e.g.
+	//   "serial:S4XNX0A123": "\\\\.\\PhysicalDrive0"
+	// A machine backup resolves its saved drive list through this table, so a
+	// config saved as \\.\PhysicalDrive0 keeps backing up the SAME physical
+	// disk after Windows renumbers it. Written by the process running the
+	// backup (the service, or an elevated standalone GUI).
+	PinnedDisks map[string]string `json:"pinned_disks,omitempty"`
 	// Auto-split settings. DisableSplit defaults to false (zero value) so existing
 	// configs keep auto-splitting. SplitSizeGB is both the split threshold and the
 	// per-bin target size; 0 means the default (DefaultSplitSizeGB).
