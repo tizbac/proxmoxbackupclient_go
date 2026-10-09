@@ -46,6 +46,9 @@ func handleElevatedTokenFetchChild(args []string) bool {
 		}
 		handoff := args[i+1]
 		writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: reading %s -> %s", serviceTokenPath(), handoff))
+		if handoff == "" {
+			os.Exit(exitChildBadArgument)
+		}
 
 		token := ""
 		if b, err := os.ReadFile(serviceTokenPath()); err == nil {
@@ -53,24 +56,28 @@ func handleElevatedTokenFetchChild(args []string) bool {
 		} else {
 			writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: cannot read token file: %v", err))
 		}
-
-		if token != "" {
-			// The parent created the handoff file; open it WITHOUT creating
-			// it, so a vanished file can never be re-created root-owned.
-			f, err := os.OpenFile(handoff, os.O_WRONLY|os.O_TRUNC, 0600)
-			if err != nil {
-				writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: cannot open handoff file: %v", err))
-				os.Exit(1)
-			}
-			if _, err := f.WriteString(token); err != nil {
-				writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: cannot write handoff file: %v", err))
-				_ = f.Close()
-				os.Exit(1)
-			}
-			_ = f.Close()
-			writeDebugLog("[ElevatedTokenFetch] child: token handed off")
+		if token == "" {
+			// Tell the parent WHY: it waits on this exit code instead of
+			// polling a handoff file that will never be filled.
+			writeDebugLog("[ElevatedTokenFetch] child: no token available, exiting")
+			os.Exit(exitTokenFileUnread)
 		}
-		os.Exit(0)
+
+		// The parent created the handoff file; open it WITHOUT creating
+		// it, so a vanished file can never be re-created root-owned.
+		f, err := os.OpenFile(handoff, os.O_WRONLY|os.O_TRUNC, 0600)
+		if err != nil {
+			writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: cannot open handoff file: %v", err))
+			os.Exit(exitHandoffUnusable)
+		}
+		if _, err := f.WriteString(token); err != nil {
+			writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: cannot write handoff file: %v", err))
+			_ = f.Close()
+			os.Exit(exitHandoffUnusable)
+		}
+		_ = f.Close()
+		writeDebugLog("[ElevatedTokenFetch] child: token handed off")
+		os.Exit(exitTokenHandedOff)
 	}
 	return false
 }
@@ -104,17 +111,67 @@ func elevatedFetchTokenWithHandoff() (string, error) {
 	return elevatedFetchToken(name)
 }
 
+// elevatedChildTimeout bounds one elevated token fetch: how long the parent
+// waits for the child before giving up (the child itself finishes in
+// milliseconds — it only reads a file — so hitting this is a failure, not
+// normal operation).
+const elevatedChildTimeout = 60 * time.Second
+
+// elevated child exit codes, mirrored in handleElevatedTokenFetchChild. They
+// live here rather than in the Windows-only file because the child handler is
+// platform-independent — the Windows parent just reports them.
+const (
+	exitTokenHandedOff   = 0
+	exitHandoffUnusable  = 1 // handoff file could not be opened/written
+	exitTokenFileUnread  = 2 // service token file missing, unreadable or empty
+	exitChildBadArgument = 3 // --elevated-token-fetch without a path
+)
+
+func elevatedChildExitLabel(code uint32) string {
+	switch code {
+	case exitHandoffUnusable:
+		return "handoff file unusable"
+	case exitTokenFileUnread:
+		return "service token file unreadable"
+	case exitChildBadArgument:
+		return "bad handoff argument"
+	default:
+		return fmt.Sprintf("exit code %d", code)
+	}
+}
+
+func elevatedChildExitHint(code uint32) string {
+	switch code {
+	case exitTokenFileUnread:
+		return "the elevated process could not read the local API token; is the service running?"
+	case exitHandoffUnusable:
+		return "the elevated process could not write the handoff file in the user temp directory"
+	default:
+		return "see the debug log for the child's own report"
+	}
+}
+
+// readHandoff returns the token the elevated child wrote into name, or an
+// error when the file is missing, empty or unreadable.
+func readHandoff(name string) (string, error) {
+	b, err := os.ReadFile(name)
+	if err != nil {
+		return "", err
+	}
+	token := strings.TrimSpace(string(b))
+	if token == "" {
+		return "", fmt.Errorf("handoff file %s is empty", name)
+	}
+	return token, nil
+}
+
 // waitForHandoff polls the handoff file until the elevated child writes the
 // token or the deadline passes.
 func waitForHandoff(name string, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
-		b, err := os.ReadFile(name)
-		if err != nil {
-			continue
-		}
-		if token := strings.TrimSpace(string(b)); token != "" {
+		if token, err := readHandoff(name); err == nil {
 			return token, nil
 		}
 	}

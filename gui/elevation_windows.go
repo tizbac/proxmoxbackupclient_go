@@ -26,7 +26,7 @@ func requestElevationWindows() error {
 	// activate it and exit — nothing would ever come up elevated.
 	ReleaseSingleInstance()
 
-	if err := shellExecuteRunas(exe, ""); err != nil {
+	if _, err := shellExecuteRunas(exe, ""); err != nil {
 		// Nothing was launched: re-acquire the lock, we stay the running
 		// instance in whatever privileges we already have.
 		CheckSingleInstance()

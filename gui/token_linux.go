@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -35,12 +36,40 @@ func elevatedFetchToken(handoffFile string) (string, error) {
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("cannot launch elevated token fetch: %w", err)
 	}
-	// The handoff file is the completion signal, not the child process;
-	// reap the child in the background.
-	go func() { _ = cmd.Wait() }()
 
 	writeDebugLog("[ElevatedTokenFetch] launched elevated child, waiting for handoff")
-	return waitForHandoff(handoffFile, 30*time.Second)
+	waitDone := make(chan error, 1)
+	go func() { waitDone <- cmd.Wait() }()
+
+	select {
+	case err := <-waitDone:
+		// The child is done (it only reads the token file and exits, unless a
+		// pkexec/sudo prompt was up), so its result is final: report the real
+		// reason instead of polling a handoff file that will never be filled.
+		token, readErr := readHandoff(handoffFile)
+		if err != nil {
+			var ee *exec.ExitError
+			if errors.As(err, &ee) && readErr != nil {
+				code := uint32(ee.ExitCode())
+				return "", fmt.Errorf("elevated token fetch failed: child exited with code %s — %s",
+					elevatedChildExitLabel(code), elevatedChildExitHint(code))
+			}
+			if readErr == nil {
+				return token, nil
+			}
+			return "", fmt.Errorf("elevated token fetch failed: %w", err)
+		}
+		if readErr != nil {
+			return "", errors.New("elevated token fetch failed: the child exited without writing the token")
+		}
+		return token, nil
+	case <-time.After(elevatedChildTimeout):
+		// Still running — typically a credential prompt the user is taking
+		// their time with. Keep waiting on the handoff file instead of
+		// abandoning a prompt that may still succeed.
+		writeDebugLog("[ElevatedTokenFetch] child still running after the wait budget; polling the handoff file")
+		return waitForHandoff(handoffFile, elevatedChildTimeout)
+	}
 }
 
 func executableAvailable(name string) bool {
