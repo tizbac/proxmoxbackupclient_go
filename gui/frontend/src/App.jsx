@@ -32,6 +32,7 @@ let InspectEncryptionKeyFile, GenerateEncryptionKeyFile, OpenEncryptionKeyDialog
 // Undelete, Roll back, Run as Service
 let ListSetSnapshots, ScanUndelete, StartUndelete, CancelSetScan, PreviewRollback, StartRollback, ListRollbacks, UndoRollback, DeleteRollbackCopies
 let GetServiceStatus, InstallService, StartBackgroundService, StopBackgroundService, RemoveService
+let PauseBackup, ResumeBackup, GetBackupPauseState
 
 // Check if we're running in Wails
 if (window.go) {
@@ -106,6 +107,9 @@ if (window.go) {
   StartBackgroundService = window.go.main.App.StartBackgroundService
   StopBackgroundService = window.go.main.App.StopBackgroundService
   RemoveService = window.go.main.App.RemoveService
+  PauseBackup = window.go.main.App.PauseBackup
+  ResumeBackup = window.go.main.App.ResumeBackup
+  GetBackupPauseState = window.go.main.App.GetBackupPauseState
 }
 
 // Wails events + runtime (open external URLs in the system browser)
@@ -544,6 +548,15 @@ function App() {
   const [backupRunning, setBackupRunning] = useState(false)
   const [backupFile, setBackupFile] = useState('')
   const [backupStopRequested, setBackupStopRequested] = useState(false)
+  // Pause: since = when the current pause began (ms), 0 while running.
+  const [backupPause, setBackupPause] = useState({ paused: false, since: 0 })
+  // A machine backup sends nothing while paused: tick so "Paused for" counts.
+  const [, setPauseTick] = useState(0)
+  useEffect(() => {
+    if (!backupPause.paused) return undefined
+    const id = setInterval(() => setPauseTick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [backupPause.paused])
   const statusTimeoutRef = useRef(null)
   // Recent stats samples ({t, bytes, files, uploaded}) for windowRate.
   const backupSamplesRef = useRef([])
@@ -784,6 +797,16 @@ function App() {
       setBackupFile(data.path || '')
     })
 
+    // Pause and Resume. On Resume the speed samples start afresh, so the
+    // finish forecast is not dragged down by the paused minutes.
+    const unsubPaused = EventsOn('backup:paused', (data) => {
+      setBackupPause({ paused: !!data.paused, since: data.since || 0 })
+      if (!data.paused) backupSamplesRef.current = []
+    })
+    if (GetBackupPauseState) {
+      GetBackupPauseState().then(st => st && setBackupPause({ paused: !!st.paused, since: st.since || 0 })).catch(() => {})
+    }
+
     // Structured live statistics, every 200 ms while a directory backup runs
     // (machine backups send bytes only, with each progress tick).
     const unsubStats = EventsOn('backup:stats', (data) => {
@@ -860,6 +883,7 @@ function App() {
       setBackupStats(EMPTY_BACKUP_STATS)
       backupSamplesRef.current = []
       setBackupStopRequested(false)
+      setBackupPause({ paused: false, since: 0 })
       const localizedMsg = renderLocalizedMessage(data, t).text
       showStatus(data.success ? '✅ ' + localizedMsg : '❌ ' + localizedMsg, data.success ? 'success' : 'error')
 
@@ -883,6 +907,7 @@ function App() {
     return () => {
       if (unsubProgress) unsubProgress()
       if (unsubFile) unsubFile()
+      if (unsubPaused) unsubPaused()
       if (unsubStats) unsubStats()
       if (unsubComplete) unsubComplete()
     }
@@ -2158,6 +2183,17 @@ function App() {
     }
   }
 
+  const handlePauseResumeBackup = async () => {
+    const fn = backupPause.paused ? ResumeBackup : PauseBackup
+    if (!fn) return
+    try {
+      const st = await fn()
+      if (st) setBackupPause({ paused: !!st.paused, since: st.since || 0 })
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
+    }
+  }
+
   const handleStopRestore = async () => {
     if (!CancelRestore) {
       showStatus(`❌ ${t('stopRestoreUnavailable')}`, 'error')
@@ -3374,9 +3410,12 @@ function App() {
                 )
                 // What the run is doing, and why it is reading every file
                 // when it is.
+                const paused = backupPause.paused
                 let stage
                 if (backupStopRequested) {
                   stage = tl('stageStopping', 'Stopping after the current file...')
+                } else if (paused) {
+                  stage = `⏸ ${tl('stagePaused', 'Paused for {duration}. The connection to the server stays open: Resume carries on from here.').replace('{duration}', formatDuration(Math.max(0, (now - backupPause.since) / 1000)))}`
                 } else if (s.phase === 'finishing') {
                   stage = tl('stageFinishing', 'Finishing: closing the catalog and uploading the manifest...')
                 } else if (s.phase === 'data') {
@@ -3394,6 +3433,7 @@ function App() {
                 }
                 const finishingNow = s.phase === 'finishing'
                 const finishingText = <span className="pending-value">{tl('finishingShort', 'Finishing...')}</span>
+                const pausedText = <span className="pending-value">{tl('pausedShort', 'Paused')}</span>
                 const forecast = s.eta !== null && !finishingNow ? formatClock(now + s.eta * 1000) : null
                 const filesValue = !s.hasDetail ? na
                   : <>{s.filesDone.toLocaleString()} / {s.filesTotal > 0 ? s.filesTotal.toLocaleString() : calc}</>
@@ -3423,9 +3463,9 @@ function App() {
                     </div>
                     <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginBottom: '10px'}}>
                       {row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc)}
-                      {row(tl('forecastFinishLabel', 'Forecast finish:'), forecast || (finishingNow ? finishingText : calc))}
+                      {row(tl('forecastFinishLabel', 'Forecast finish:'), paused ? pausedText : (forecast || (finishingNow ? finishingText : calc)))}
                       {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
-                      {row(t('timeRemaining'), finishingNow ? finishingText : (s.eta !== null ? formatDuration(s.eta) : calc))}
+                      {row(t('timeRemaining'), paused ? pausedText : (finishingNow ? finishingText : (s.eta !== null ? formatDuration(s.eta) : calc)))}
                       {row(tl('filesLabel', 'Files:'), filesValue)}
                       {row(tl('processingLabel', 'Processing:'), processing)}
                       {row(t('currentDirLabel'), folder)}
@@ -3447,7 +3487,14 @@ function App() {
                   fires immediately once the backup starts). Found live 2026-09-26:
                   no way at all to stop a Backup-Set-triggered run once started,
                   for any backup type including machine/whole-disk ones. */}
-              <div style={{marginTop: '12px'}}>
+              <div style={{marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+                {PauseBackup && (
+                  <button className="btn btn-secondary" onClick={handlePauseResumeBackup}
+                    disabled={!backupRunning || backupStopRequested || (!backupPause.paused && backupStats.phase === 'finishing')}
+                    title={backupPause.paused ? '' : tl('pauseBackupHint', 'Stops reading and uploading until you press Resume. Other backups to this server wait meanwhile.')}>
+                    {backupPause.paused ? `▶ ${tl('resumeBackup', 'Resume')}` : `⏸ ${tl('pauseBackup', 'Pause')}`}
+                  </button>
+                )}
                 <button className="btn btn-secondary" onClick={handleStopBackup} disabled={!backupRunning}>
                   {t('stopBackup')}
                 </button>

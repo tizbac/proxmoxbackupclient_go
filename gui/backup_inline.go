@@ -178,6 +178,9 @@ func newBackupContext() (context.Context, context.CancelFunc) {
 	if currentBackupCancel != nil {
 		currentBackupCancel() // cancel any previous run before replacing
 	}
+	// A pause belongs to the run it was pressed in: never carry it into the
+	// next one.
+	backupPause.Resume()
 	ctx, cancel := context.WithCancel(context.Background())
 	currentBackupCancel = cancel
 	return ctx, cancel
@@ -188,6 +191,7 @@ func doneBackupContext() {
 	currentBackupCancelMutex.Lock()
 	defer currentBackupCancelMutex.Unlock()
 	currentBackupCancel = nil
+	backupPause.Resume()
 }
 
 // getBackupLock returns a mutex for the given backup destination
@@ -1604,10 +1608,15 @@ func runMachineBackupInline(opts BackupOptions) error {
 
 	// Progress callback wrapper. Returning true (user pressed Stop, which
 	// cancels opts.Ctx) makes the backup abort without committing the index.
+	// The disk reader calls it after every block, so it is also where a
+	// paused machine backup waits.
 	progress := func(pct float64, msg string) bool {
 		writeBackupLog(fmt.Sprintf("Backup progress: %.1f%% - %s", pct*100, msg))
 		if opts.OnProgress != nil {
 			opts.OnProgress(pct, msg)
+		}
+		if backupPause.Wait(opts.Ctx) != nil {
+			return true
 		}
 		return opts.Ctx != nil && opts.Ctx.Err() != nil
 	}
@@ -1880,6 +1889,7 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 	archive.Split = split
 	archive.ExcludeList = excludeList
 	archive.Ctx = ctx
+	archive.Pause = backupPause
 	archive.ExcludeRoot = originalPath
 	archive.OnFile = func(p string) {
 		if vssUsed && strings.HasPrefix(p, backupdir) {

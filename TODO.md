@@ -608,6 +608,14 @@ Today a machine backup (`drive-*.img.fidx`, host or vm) can only be restored who
 - [ ] **Quick test first:** try PVE File Restore on deepthought's `vm/9000198` snapshot and note whether it works on this client's images (if so, document it as the interim way).
 - [ ] Docs: GUI manual Restore chapter, CLI manual note, CHANGELOG.
 
+### ~~⏸️ Pause and Resume a running backup~~ ✅ DONE (Mick, 2026-10-10)
+Pause button on the progress card; the run waits at its next safe point (between files, 64 KiB blocks of a large file, disk-image blocks) with the PBS session kept open, and Resume carries on. Stop works while paused. `pbscommon/pause.go` (PauseGate), `gui/backup_pause.go`, live test `zz_backup_pause_livetest_test.go` (PBS_PAUSE=1, PBS_PAUSE_SECS). Not available for backups run by the service (nor is Stop): see the next item.
+- [ ] Pause, Resume and Stop for a backup the service runs (needs API endpoints on the service and the GUI to call them).
+- [ ] Maybe: Pause from the tray menu, and a "resume at" time.
+
+### ❔ Speed limit per Backup Set (TENTATIVE, Mick 2026-10-10: not sure)
+A MB/s cap per set (and maybe per server). Mick's doubt: a cap slows every run even when the bandwidth is free, and several machines may back up to the same PBS at once anyway, so letting the competing processes share whatever is available is usually better. Revisit only if a real case needs it (a slow site link, say); Pause covers the "PBS is busy right now" case.
+
 ### ⚠️ Warn when a Metadata Backup Set shares its backup ID with another set (2026-10-07)
 Metadata change detection compares with the NEWEST snapshot in the backup group. On deepthought the production sets "Beeby Property", "Beeby Trading" and "Data" all used backup ID `deepthought`, so any other set running between two Data runs would have forced a full 448 GB read; fixed by giving Data its own ID `deepthought-data`.
 - [ ] Backup Set editor: warn (not block) when a Data/Metadata set has the same server + backup ID as another set, and suggest a unique ID.

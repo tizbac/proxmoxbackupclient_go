@@ -347,6 +347,7 @@ The line under the bar says what the run is doing:
 | Reading and uploading files | A Legacy run |
 | Finishing: closing the catalog and uploading the manifest... | The last step |
 | Stopping after the current file... | You pressed Stop |
+| ⏸ Paused for ... | You pressed Pause; the time counts up |
 
 The rows:
 
@@ -364,7 +365,16 @@ The rows:
 
 The box underneath shows **Processed:** data done / total, in GB with GiB in brackets (1 GB = 1,000,000,000 bytes, 1 GiB = 1,073,741,824 bytes), and the number of **New** and **Reused** chunks, plus any failed chunks in red.
 
-**Stop** ends the run after the current file. Reports record it as cancelled (⏹️), not failed.
+**Pause** holds the run where it is, part way through a file if need be, and the button becomes **Resume**. Nothing is read or uploaded while it is paused, and the connection to PBS stays open, so Resume carries on from the same place. Stopping a backup and starting it again would read everything from the beginning. Use it when the PBS server or the network is busy with something else, or the computer is needed for a while. While a backup is paused:
+
+- other backups and restores in this app wait, as they do behind a running backup;
+- the VSS snapshot stays in place, so its shadow storage grows as files on that drive change;
+- if the connection to PBS drops (the server restarts, the network goes down) the backup fails as it would while running, and has to be run again;
+- Forecast finish and Time remaining show **Paused**, and pick up again from fresh measurements after Resume.
+
+Pause is available for folder and machine backups run by the app. A backup run by the background service cannot be paused or stopped from the app.
+
+**Stop** ends the run after the current file, and also works while paused. Reports record it as cancelled (⏹️), not failed.
 
 Anything waiting behind the run is listed under the card.
 

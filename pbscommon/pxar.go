@@ -331,6 +331,11 @@ type PXARArchive struct {
 	// responsive for everything else.
 	Ctx context.Context
 
+	// Pause, when set, holds the walk while the user has the backup paused
+	// (see pause.go). It is checked at the same points as Ctx, and also
+	// between read blocks so a large file pauses part way through.
+	Pause *PauseGate
+
 	// OnFile, when set, is called with each file's path as WriteFile starts it
 	// (progress display only; must be cheap and non-blocking).
 	OnFile func(path string)
@@ -977,6 +982,9 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		// caller (gui/backup_inline.go) turns it into the same "Backup
 		// cancelled by user" handling the between-directories check already
 		// used.
+		if err := a.Pause.Wait(a.Ctx); err != nil {
+			return CatalogDir{}, err
+		}
 		if a.Ctx != nil && a.Ctx.Err() != nil {
 			return CatalogDir{}, a.Ctx.Err()
 		}
@@ -1342,6 +1350,9 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	recoveries := 0
 
 	for written < declaredSize {
+		if err := a.Pause.Wait(a.Ctx); err != nil {
+			return CatalogFile{}, err
+		}
 		toRead := uint64(len(readbuffer))
 		if remaining := declaredSize - written; remaining < toRead {
 			toRead = remaining

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Pause and Resume a running backup.** A Pause button on the progress card holds a folder or machine backup at its next safe point: between files, between 64 KiB blocks of a large file, or between disk-image blocks. The PBS session stays open (the connection is kept alive with HTTP/2 pings), so Resume carries on where it stopped instead of reading everything again. Stop works while paused. The card shows how long it has been paused, and the log records the pause and its length. Tested against PBS with the backup held part way through a 400 MB file, restored byte for byte afterwards.
 - **Creation times are backed up and restored (Windows).** Each file's and folder's creation time (Explorer's "Date created") is recorded with the backup, to the 100 ns, alongside the permissions and attributes, and every restore on Windows puts it back, Undelete and Roll back included, whether or not permissions are restored. Backups made before this version did not record it; their restores keep the restore time as before. Linux has no settable creation time.
 
 ## [0.7.0] - 2026-10-08
