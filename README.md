@@ -34,6 +34,7 @@ It is a **suite of tools** for backing up to PBS:
 - **Restore files from a machine backup**: each NTFS volume in the image is a folder you can browse, search and tick. Nothing is mounted or downloaded first; only the file table and then the chosen files' data are read (a 127 GB laptop C: with 430,000 files lists in 4 to 15 seconds). So one machine backup per laptop covers both a bare-metal restore and "I need that file back".
 - **Undelete and Roll back** work on machine Backup Sets (Windows), on the folders you choose for the set (by default Desktop, Documents, Pictures, Music, Videos and Downloads).
 - **Pause and Resume** a running folder or machine backup, a **VSS / Snapshot ON-OFF badge** on each set card, and Windows **creation times** backed up and restored.
+- **v0.8.2:** blank disk space is no longer hashed block by block, so a mostly empty disk goes through in about a third of the time (a 50 GB test disk: 3m36s, now 1m15s).
 
 See the [CHANGELOG](CHANGELOG.md).
 

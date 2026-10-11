@@ -848,6 +848,9 @@ To actually close this gap for a future release:
 
 ### 🎨 GUI polish (this fork)
 
+#### Sidebar: subtle separator before Reports (Mick, 2026-10-11)
+Add a thin mid to dark grey line above the Reports button in the left navigation (`App.jsx`, the `nav-btn` list, between Roll back and Reports), so the file/machine backup, restore, roll back and undelete items read as one group and Reports / Message Log as another. Just a divider (e.g. a 1px `border-top` or an `<hr className="nav-sep">` with a little vertical margin), no heading. The colour should follow the theme rather than be one fixed grey: take it from the theme's own variables (a muted shade of the sidebar text or border colour, or the accent at low opacity) so it stays subtle but visible on every theme, light, dark and branded. Check it on each.
+
 #### ⏳ IN PROGRESS: is deepthought's backup CPU-bound? (2026-09-30)
 
 Mick's 447.7GB deepthought→PBS directory backup felt slow even though PBS dedup is doing almost

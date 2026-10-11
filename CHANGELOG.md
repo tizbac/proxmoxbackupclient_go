@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-11
+
+Machine backups get through blank disk space much faster.
+
+### Changed
+- **Blank space no longer costs a SHA-256 per 4 MiB block.** 0.8.0 stopped reading free space from the disk, but every blank block was still hashed to find its digest, which on a laptop CPU without SHA instructions runs at about 300 to 500 MB/s per core. A block of zeros is now recognised with a plain comparison (about 7 GB/s; it stops at the first nonzero byte, so blocks with data pay next to nothing) and given the zero block's digest, worked out once per disk with the snapshot's own digest scheme, so encrypted backups are unaffected. Blank unpartitioned space, and any blank stretch read from the disk, gains the same way. The images are unchanged: same chunks, same digests. Measured: a 50 GB test disk (mostly blank) 3m36s with 0.8.1, 1m15s now; a 931 GB laptop disk with 547 GB free took 38 minutes with 0.8.0, of which about 18 went on hashing blank space.
+
+### Fixed
+- **"Free space not read" counted up only at the end of each partition**, so the progress card and the CLI showed 0 B for most of the backup and then jumped. It now grows as the free space goes by.
+
 ## [0.8.1] - 2026-10-11
 
 The command-line tools catch up with 0.8.0. The GUI is unchanged apart from its version number.
