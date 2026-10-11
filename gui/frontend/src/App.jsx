@@ -23,7 +23,7 @@ let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, 
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
 let SetParallelRestore, SetParallelBackupRead
-let GetJobPolicy, SetRequireAdminForJobs, RequestElevation
+let GetJobPolicy, SetRequireAdminForJobs, RequestElevation, SnapshotSupport
 let ExportSettings, ImportSettings
 let SetSMTPSettings, SendTestEmail
 let GetLogsFolder, OpenLogsFolder
@@ -79,6 +79,7 @@ if (window.go) {
   PinPBSServerFingerprint = window.go.main.App.PinPBSServerFingerprint
   SetParallelRestore = window.go.main.App.SetParallelRestore
   GetJobPolicy = window.go.main.App.GetJobPolicy
+  SnapshotSupport = window.go.main.App.SnapshotSupport
   SetRequireAdminForJobs = window.go.main.App.SetRequireAdminForJobs
   RequestElevation = window.go.main.App.RequestElevation
   SetParallelBackupRead = window.go.main.App.SetParallelBackupRead
@@ -467,6 +468,19 @@ function App() {
   // is equivalent and simpler than special-casing "all checked -> empty").
   const [daysOfWeek, setDaysOfWeek] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
   const [scheduledJobs, setScheduledJobs] = useState([])
+  // path -> whether it can be read through a snapshot (false = network drive,
+  // read live); filled for the folders of sets that ask for a snapshot.
+  const [snapSupport, setSnapSupport] = useState({})
+  useEffect(() => {
+    if (!SnapshotSupport) return
+    const paths = [...new Set(scheduledJobs
+      .filter(j => j.backupType !== 'machine' && j.useVSS)
+      .flatMap(j => j.backupDirs || []))]
+    if (paths.length === 0) return
+    let live = true
+    SnapshotSupport(paths).then(m => { if (live && m) setSnapSupport(prev => ({ ...prev, ...m })) }).catch(() => {})
+    return () => { live = false }
+  }, [scheduledJobs])
   // The Backup Set the Undelete and Roll back pages work on (the set card
   // shortcuts pick it before switching page).
   const [setToolJobId, setSetToolJobId] = useState('')
@@ -3692,7 +3706,15 @@ function App() {
                               {(() => {
                                 const linux = systemInfo.os === 'linux'
                                 const on = job.backupType === 'machine' || !!job.useVSS
-                                const tip = job.backupType === 'machine'
+                                // Folders this set reads live although it asks for a
+                                // snapshot (network drives): amber, PARTLY or N/A.
+                                const liveDirs = on && job.backupType !== 'machine'
+                                  ? (job.backupDirs || []).filter(d => snapSupport[d] === false) : []
+                                const amber = liveDirs.length > 0
+                                const allLive = amber && liveDirs.length === (job.backupDirs || []).length
+                                const tip = amber
+                                  ? tl('snapshotTipSomeLive', 'These folders cannot be snapshotted (network drives) and are read live:') + '\n' + liveDirs.join('\n')
+                                  : job.backupType === 'machine'
                                   ? (linux ? tl('snapshotTipMachineLinux', 'Mounted partitions are read through a snapshot (elastio-snap) when one can be taken; otherwise they are read live.')
                                            : tl('vssTipMachine', 'Disk images always read the volumes through a Volume Shadow Copy.'))
                                   : on
@@ -3701,13 +3723,15 @@ function App() {
                                     : (linux ? tl('snapshotTipOffLinux', 'Files are read live: files that change during the backup may be inconsistent.')
                                              : tl('vssTipOff', 'Files are read live: files open in other programs may be skipped or inconsistent.'))
                                 return (
-                                  <span title={tip} style={{
+                                  <span title={tip} className={'snap-badge' + (amber ? ' snap-badge-amber' : '')} style={{
                                     display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
                                     padding: '2px 7px', borderRadius: '3px', verticalAlign: 'middle', marginRight: '6px', cursor: 'help',
-                                    background: on ? '#eaf4fb' : '#f4f4f4', color: on ? '#1f6f9f' : '#777',
-                                    border: '1px solid ' + (on ? '#c4dfef' : '#ddd'),
+                                    background: amber ? '#fff4e0' : on ? '#eaf4fb' : '#f4f4f4',
+                                    color: amber ? '#9a5b00' : on ? '#1f6f9f' : '#777',
+                                    border: '1px solid ' + (amber ? '#f0cf96' : on ? '#c4dfef' : '#ddd'),
                                   }}>
-                                    {(linux ? tl('snapshotBadge', 'Snapshot') : 'VSS').toUpperCase()} {(on ? t('vssOn') : t('vssOff')).toUpperCase()}
+                                    {(linux ? tl('snapshotBadge', 'Snapshot') : 'VSS').toUpperCase()}{' '}
+                                    {(allLive ? tl('snapshotNA', 'N/A') : amber ? tl('snapshotPartly', 'Partly') : on ? t('vssOn') : t('vssOff')).toUpperCase()}
                                   </span>
                                 )
                               })()}
