@@ -259,17 +259,25 @@ func withoutSystemFolders(entries []imagefs.Entry) []imagefs.Entry {
 
 // listImageSnapshot is assembleSnapshotTree for a disk-image snapshot.
 func listImageSnapshot(opts RestoreOptions, cancel func() bool) ([]SnapshotEntry, error) {
-	s, err := openImageSession(opts, cancel)
-	if err != nil {
-		return nil, err
-	}
-	defer s.close()
-	vols, _, err := openImageVolumes(s, opts, true, cancel)
-	if err != nil {
-		return nil, err
+	key := buildSnapshotCacheKey(opts)
+	vols, cached := loadImageVolumes(key)
+	if cached {
+		writeBackupLog(fmt.Sprintf("Disk image file lists of %s from the cache", opts.BackupID))
+	} else {
+		s, err := openImageSession(opts, cancel)
+		if err != nil {
+			return nil, err
+		}
+		defer s.close()
+		if vols, _, err = openImageVolumes(s, opts, true, cancel); err != nil {
+			return nil, err
+		}
+		if err := saveImageVolumes(key, vols); err != nil {
+			writeBackupLog(fmt.Sprintf("Disk image file lists not cached: %v", err))
+		}
 	}
 	imageListing.Lock()
-	imageListing.key, imageListing.vols = buildSnapshotCacheKey(opts), vols
+	imageListing.key, imageListing.vols = key, vols
 	imageListing.Unlock()
 
 	var out []SnapshotEntry
@@ -343,9 +351,17 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 		return err
 	}
 	if vols == nil {
+		if c, ok := loadImageVolumes(key); ok {
+			vols = c
+		}
+	}
+	if vols == nil {
 		progress(0.04, "Reading the disk image's file tables...")
 		if vols, opened, err = openImageVolumes(s, opts, true, cancelled); err != nil {
 			return err
+		}
+		if err := saveImageVolumes(key, vols); err != nil {
+			writeBackupLog(fmt.Sprintf("Disk image file lists not cached: %v", err))
 		}
 	}
 
@@ -549,6 +565,7 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 	var written int64
 	lastEmit := time.Time{}
 	buf := make([]byte, 1<<20)
+	streams, streamErrs := 0, 0
 	for _, j := range jobs {
 		if cancelled() {
 			return fmt.Errorf("restore cancelled")
@@ -571,6 +588,16 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 			}
 		})
 		ef.ArchivePath = j.vol.Display + "/" + j.entry.Path
+		if !ef.Skipped && len(j.entry.Streams) > 0 {
+			n, err := restoreImageStreams(opened[j.vol.Display], j.dest, j.entry, buf)
+			streams += n
+			if err != nil {
+				streamErrs++
+				if streamErrs <= 20 {
+					writeBackupLog(fmt.Sprintf("Alternate data streams of %s not all restored: %v", j.dest, err))
+				}
+			}
+		}
 		extracted = append(extracted, ef)
 	}
 	if opts.OnStats != nil {
@@ -585,12 +612,47 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 		}
 	}
 
+	if streams > 0 || streamErrs > 0 {
+		writeBackupLog(fmt.Sprintf("Alternate data streams: %d restored, %d files with streams that could not be written", streams, streamErrs))
+	}
+
 	errorSkipCount, verifyFailures, err := finishExtraction(opts, extracted, extractEnd, progress, stage)
 	if err != nil {
 		return err
 	}
+	// Permissions last, as a folder restore does: a restrictive DACL must not
+	// stop the verify or the folder times.
 	if opts.RestoreACLs {
-		writeBackupLog("NOTE: Windows permissions (ACLs) are not restored from a disk image yet; attributes, times and, on Linux, owners and modes are")
+		stage("acls", "")
+		cache := map[uint32]string{}
+		applied, kept, failed := 0, 0, 0
+		apply := func(j job) {
+			if cancelled() {
+				return
+			}
+			ok, ownerKept, err := applyImagePermissions(opened[j.vol.Display], j.dest, j.entry, cache)
+			switch {
+			case err != nil:
+				failed++
+				if failed <= 50 {
+					writeBackupLog(fmt.Sprintf("Permissions not restored on %s: %v", j.dest, err))
+				}
+			case ok:
+				applied++
+				if ownerKept {
+					kept++
+				}
+			}
+		}
+		for _, j := range jobs {
+			apply(j)
+		}
+		for i := len(dirs) - 1; i >= 0; i-- {
+			apply(dirs[i])
+		}
+		if applied > 0 || failed > 0 {
+			writeBackupLog(fmt.Sprintf("NTFS permissions from the disk image: applied %d (owner kept as the restoring account on %d), failed %d", applied, kept, failed))
+		}
 	}
 	progress(1.0, "Restore completed")
 	if errorSkipCount > 0 {

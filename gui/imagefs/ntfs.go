@@ -32,6 +32,18 @@ type Entry struct {
 	HasOwner   bool
 	Symlink    bool
 	LinkTarget string
+
+	// NTFS: the file's security descriptor id in $Secure (0 = none or an
+	// old NTFS 1.x volume), see NTFS.SecurityDescriptor, and its named data
+	// streams (alternate data streams such as Zone.Identifier).
+	SecurityID uint32
+	Streams    []Stream
+}
+
+// Stream is a named data stream of an NTFS file.
+type Stream struct {
+	Name string
+	Size uint64
 }
 
 // UnixSeconds converts a FILETIME to Unix seconds.
@@ -48,6 +60,9 @@ type NTFS struct {
 	recordSize int64
 	diskType   string     // the volume reader's type, as go-ntfs's DebugRuns names it
 	mu         sync.Mutex // go-ntfs keeps an MFT entry cache that is not safe for concurrent use
+
+	sdsOnce sync.Once
+	sds     map[uint32][]byte // security id -> self-relative descriptor, from $Secure:$SDS
 }
 
 // OpenNTFS reads the boot sector and bootstraps the master file table of
@@ -124,9 +139,11 @@ type record struct {
 	mtime   int64
 	created int64
 	attrs   uint32
+	secID   uint32
 	names   []fileName
 	size    uint64
 	hasSize bool
+	streams []Stream
 }
 
 type fileName struct {
@@ -247,6 +264,7 @@ func (v *NTFS) List(cancel func() bool, progress func(done, total int64)) ([]Ent
 		if e.hasSize && !b.hasSize {
 			b.size, b.hasSize = e.size, true
 		}
+		b.streams = mergeStreams(b.streams, e.streams)
 	}
 	return buildEntries(files), nil
 }
@@ -291,7 +309,8 @@ func buildEntries(files map[uint64]*record) []Entry {
 			if parent == "" && strings.HasPrefix(n.name, "$") && num < 64 {
 				continue // a reserved metafile in the root
 			}
-			e := Entry{Path: joinPath(parent, n.name), IsDir: f.isDir, MTime: f.mtime, Created: f.created, Attrs: f.attrs, Record: num}
+			e := Entry{Path: joinPath(parent, n.name), IsDir: f.isDir, MTime: f.mtime, Created: f.created, Attrs: f.attrs, Record: num,
+				SecurityID: f.secID, Streams: f.streams}
 			if !f.isDir {
 				e.Size = f.size
 			}
@@ -379,6 +398,9 @@ func parseRecord(b []byte, num uint64) (r record, ok bool) {
 				r.created = int64(binary.LittleEndian.Uint64(content[0:]))
 				r.mtime = int64(binary.LittleEndian.Uint64(content[8:]))
 				r.attrs = binary.LittleEndian.Uint32(content[32:])
+				if len(content) >= 56 { // NTFS 3.x: security_id at 0x34
+					r.secID = binary.LittleEndian.Uint32(content[52:])
+				}
 			}
 		case 0x30: // $FILE_NAME
 			if len(content) >= 66 {
@@ -394,8 +416,23 @@ func parseRecord(b []byte, num uint64) (r record, ok bool) {
 					name:      decodeUTF16(content[66 : 66+2*n]),
 				})
 			}
-		case 0x80: // $DATA: only the unnamed stream gives the file size
+		case 0x80: // $DATA: the unnamed stream gives the file size
 			if nameLen != 0 {
+				// A named stream (alternate data stream); its size is in the
+				// record holding its first extent.
+				nameOff := int(binary.LittleEndian.Uint16(a[10:]))
+				if nameOff+2*nameLen > len(a) {
+					break
+				}
+				s := Stream{Name: decodeUTF16(a[nameOff : nameOff+2*nameLen])}
+				if !nonResident {
+					s.Size = uint64(len(content))
+				} else if len(a) >= 56 && binary.LittleEndian.Uint64(a[16:]) == 0 {
+					s.Size = binary.LittleEndian.Uint64(a[48:])
+				} else {
+					break // a later extent of a stream listed elsewhere
+				}
+				r.streams = append(r.streams, s)
 				break
 			}
 			if !nonResident {
@@ -407,6 +444,109 @@ func parseRecord(b []byte, num uint64) (r record, ok bool) {
 		off += length
 	}
 	return r, true
+}
+
+// mergeStreams adds b's streams to a, keeping the first of each name.
+func mergeStreams(a, b []Stream) []Stream {
+	for _, s := range b {
+		dup := false
+		for _, x := range a {
+			if x.Name == s.Name {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			a = append(a, s)
+		}
+	}
+	return a
+}
+
+// SecurityDescriptor returns the self-relative security descriptor $Secure
+// holds for id, from the $SDS stream (read once, on first use).
+func (v *NTFS) SecurityDescriptor(id uint32) ([]byte, bool) {
+	v.sdsOnce.Do(v.loadSDS)
+	sd, ok := v.sds[id]
+	return sd, ok
+}
+
+// loadSDS reads $Secure:$SDS. It is a series of 256 KiB blocks, each
+// followed by a mirror copy; an entry is hash, id, its own offset in the
+// stream, length, then the descriptor, 16-byte aligned. An entry whose
+// recorded offset is not where it is found (a mirror block, or slack) ends
+// the block.
+func (v *NTFS) loadSDS() {
+	v.sds = map[uint32][]byte{}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	defer func() { _ = recover() }()
+	e, err := v.ctx.GetMFT(9) // $Secure
+	if err != nil {
+		return
+	}
+	rr, err := parser.OpenStream(v.ctx, e, parser.ATTR_TYPE_DATA, parser.WILDCARD_STREAM_ID, "$SDS")
+	if err != nil {
+		return
+	}
+	size := parser.RangeSize(rr)
+	if size <= 0 || size > 1<<30 {
+		return
+	}
+	buf := make([]byte, size)
+	n, _ := rr.ReadAt(buf, 0)
+	buf = buf[:n]
+	const blockSize = 256 << 10
+	for o := int64(0); o+20 <= int64(len(buf)); {
+		id := binary.LittleEndian.Uint32(buf[o+4:])
+		at := int64(binary.LittleEndian.Uint64(buf[o+8:]))
+		length := int64(binary.LittleEndian.Uint32(buf[o+16:]))
+		if at != o || length < 20+20 || o+length > int64(len(buf)) {
+			// Skip this block's mirror too: the next real block starts two
+			// blocks on.
+			o = (o/blockSize + 2) * blockSize
+			continue
+		}
+		if _, dup := v.sds[id]; !dup {
+			v.sds[id] = append([]byte(nil), buf[o+20:o+length]...)
+		}
+		o += (length + 15) &^ 15
+		if o%blockSize == 0 { // a block ends exactly here: skip its mirror
+			o += blockSize
+		}
+	}
+}
+
+// OpenStream opens a named data stream of a file entry.
+func (v *NTFS) OpenStream(e Entry, name string) (f *File, err error) {
+	var size int64 = -1
+	for _, s := range e.Streams {
+		if s.Name == name {
+			size = int64(s.Size)
+		}
+	}
+	if size < 0 {
+		return nil, fmt.Errorf("NTFS: %s has no stream %q", e.Path, name)
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	defer func() {
+		if p := recover(); p != nil {
+			f, err = nil, fmt.Errorf("NTFS: open stream %s:%s: %v", e.Path, name, p)
+		}
+	}()
+	m, err := v.ctx.GetMFT(int64(e.Record))
+	if err != nil {
+		return nil, err
+	}
+	rr, err := parser.OpenStream(v.ctx, m, parser.ATTR_TYPE_DATA, parser.WILDCARD_STREAM_ID, name)
+	if err != nil {
+		if size == 0 {
+			return &File{r: emptyReader{}, v: v}, nil
+		}
+		return nil, err
+	}
+	return &File{r: rr, v: v, size: size}, nil
 }
 
 func decodeUTF16(b []byte) string {

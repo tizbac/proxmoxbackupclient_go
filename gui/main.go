@@ -259,6 +259,7 @@ func (a *App) startup(ctx context.Context) {
 	// Trim stale restore listing caches in the background (best-effort).
 	go func() {
 		trimSnapshotTreeCache(30 * 24 * time.Hour)
+		trimImageVolumeCache(30 * 24 * time.Hour)
 	}()
 
 	// Setup system tray for background operation
