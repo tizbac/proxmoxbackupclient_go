@@ -17,6 +17,16 @@ import (
 	"pbscommon"
 )
 
+// restoreChunkCache is how many decompressed chunks a restore keeps (about
+// 4 MiB each). parallelPrefetchWindow is the read-ahead per reader when the
+// parallel extraction's workers (4) and the walker share that cache:
+// 5 readers x (1 + 11) = 60 chunks fit in 64.
+const (
+	restoreChunkCache      = 64
+	parallelPrefetchWindow = restoreChunkCache/(parallelExtractWorkers+1) - 1
+	parallelExtractWorkers = 4
+)
+
 // errOwnerKept: a file's permissions were restored but not its recorded
 // owner, which stays the restoring account (applyNTFSMetadata on Windows).
 var errOwnerKept = errors.New("owner not restored")
@@ -464,7 +474,7 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 	if split {
 		dataName = splitPayloadName(archiveName)
 	}
-	ra, size, err := client.NewDIDXReaderAt(dataName, 64, func(fetched, total int) {
+	ra, size, err := client.NewDIDXReaderAt(dataName, restoreChunkCache, func(fetched, total int) {
 		if fetched == total || fetched%32 == 0 {
 			writeBackupLog(fmt.Sprintf("%s: fetched %d/%d chunks of %s", logTag, fetched, total, dataName))
 		}
@@ -504,6 +514,13 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 	// GetChunkData's doc comment. Safe to call even when opts.Ctx is nil
 	// (SetContext falls back to context.Background()).
 	ra.SetContext(opts.Ctx)
+	// Parallel extraction: the workers and the walker each read ahead
+	// through the one cache, and with the default 32-chunk window they
+	// evicted each other's chunks before use (3,744 fetched for 3,620 needed
+	// on deepthought). Share the cache out between them instead.
+	if opts.ParallelExtraction {
+		ra.SetPrefetchWindow(parallelPrefetchWindow)
+	}
 	// Combine the caller's own cancel predicate (if any, e.g. a cross-snapshot
 	// search's own stop button) with the restore context so EITHER aborts
 	// between-chunk reads immediately, not just a hung in-flight one.
@@ -614,9 +631,9 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 	rs := ra.Stats()
 	ps := reader.Stats()
 	writeBackupLog(fmt.Sprintf(
-		"%s: timing breakdown for %s — chunk fetch %.2fs (network+decompress, %d chunks), hash verify %.2fs, archive copy %.2fs, filesystem overhead %.2fs (create/close/rename/chtimes)",
+		"%s: timing breakdown for %s — chunk fetch %.2fs (network+decompress, %d chunks, %d of them fetched again after leaving the cache), hash verify %.2fs, archive copy %.2fs, filesystem overhead %.2fs (create/close/rename/chtimes)",
 		logTag, archiveName,
-		time.Duration(rs.FetchNanos).Seconds(), rs.ChunksFetched,
+		time.Duration(rs.FetchNanos).Seconds(), rs.ChunksFetched, rs.ChunksRefetched,
 		time.Duration(rs.HashNanos).Seconds(),
 		time.Duration(ps.CopyNanos).Seconds(),
 		time.Duration(ps.FSOverheadNanos).Seconds(),
@@ -1547,7 +1564,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			})
 			var eerr error
 			if opts.ParallelExtraction {
-				extractedHere, eerr = reader.ExtractWithRewriterParallel(archiveRewriter, archiveIncludes, opts.Overwrite, 0)
+				extractedHere, eerr = reader.ExtractWithRewriterParallel(archiveRewriter, archiveIncludes, opts.Overwrite, parallelExtractWorkers)
 			} else {
 				extractedHere, eerr = reader.ExtractWithRewriter(archiveRewriter, archiveIncludes, opts.Overwrite)
 			}

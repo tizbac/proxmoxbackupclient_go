@@ -79,6 +79,13 @@ type DIDXReaderAt struct {
 	// NewDIDXReaderAt still prefetches.
 	prefetchOff   bool
 	prefetchLimit int
+	// prefetchWindow is how many chunks ahead to read (0 = chunkPrefetchWindow).
+	prefetchWindow int
+	// seen marks every chunk index fetched at least once, so a second fetch
+	// of the same chunk (it fell out of the cache before it was used again)
+	// is counted as a refetch.
+	seen      []bool
+	refetched int
 	// prefetchAllowed, when non-nil, restricts read-ahead to these inclusive
 	// [first, last] chunk-index runs, sorted — see LimitPrefetchToRanges.
 	prefetchAllowed [][2]int
@@ -117,18 +124,33 @@ type DIDXReaderAtStats struct {
 	FetchNanos    int64 // cumulative time inside GetChunkData (network + decompress)
 	HashNanos     int64 // cumulative time verifying each chunk's SHA-256
 	ChunksFetched int   // count of chunks actually fetched from the server (cache hits don't count)
+	// ChunksRefetched is the part of ChunksFetched that fetched a chunk a
+	// second (or later) time because it had left the cache.
+	ChunksRefetched int
 }
 
 // Stats returns a snapshot of this reader's cumulative fetch/hash time so far.
 func (r *DIDXReaderAt) Stats() DIDXReaderAtStats {
 	r.mu.Lock()
-	fetched := r.fetched
+	fetched, refetched := r.fetched, r.refetched
 	r.mu.Unlock()
 	return DIDXReaderAtStats{
-		FetchNanos:    r.fetchNanos.Load(),
-		HashNanos:     r.hashNanos.Load(),
-		ChunksFetched: fetched,
+		FetchNanos:      r.fetchNanos.Load(),
+		HashNanos:       r.hashNanos.Load(),
+		ChunksFetched:   fetched,
+		ChunksRefetched: refetched,
 	}
+}
+
+// SetPrefetchWindow sets how many chunks ahead of each read are fetched in the
+// background. Several readers sharing one cache (parallel extraction workers)
+// each read ahead, so with the default window they push each other's chunks
+// out before they are used; a smaller window keeps all of them inside the
+// cache. n <= 0 restores the default.
+func (r *DIDXReaderAt) SetPrefetchWindow(n int) {
+	r.mu.Lock()
+	r.prefetchWindow = n
+	r.mu.Unlock()
 }
 
 // SetCancelCheck installs a predicate polled before each read and chunk fetch;
@@ -385,6 +407,13 @@ func (r *DIDXReaderAt) fetchOnce(ci int) ([]byte, error) {
 
 	r.mu.Lock()
 	r.fetched++
+	if r.seen == nil {
+		r.seen = make([]bool, len(r.idx.digests))
+	}
+	if r.seen[ci] {
+		r.refetched++
+	}
+	r.seen[ci] = true
 	fetched := r.fetched
 	r.mu.Unlock()
 	if r.progress != nil {
@@ -401,7 +430,7 @@ func (r *DIDXReaderAt) fetchOnce(ci int) ([]byte, error) {
 func (r *DIDXReaderAt) triggerPrefetch(ci int) {
 	total := len(r.idx.digests)
 	r.mu.Lock()
-	off, limit, allowed := r.prefetchOff, r.prefetchLimit, r.prefetchAllowed
+	off, limit, allowed, window := r.prefetchOff, r.prefetchLimit, r.prefetchAllowed, r.prefetchWindow
 	r.mu.Unlock()
 	if off {
 		return
@@ -409,7 +438,10 @@ func (r *DIDXReaderAt) triggerPrefetch(ci int) {
 	if limit > 0 && limit < total {
 		total = limit
 	}
-	for offset := 1; offset <= chunkPrefetchWindow; offset++ {
+	if window <= 0 {
+		window = chunkPrefetchWindow
+	}
+	for offset := 1; offset <= window; offset++ {
 		next := ci + offset
 		if next >= total {
 			break
