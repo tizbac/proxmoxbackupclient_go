@@ -21,8 +21,12 @@ require (
 
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
+	github.com/Velocidex/json v0.0.0-20220224052537-92f3c0326e5a // indirect
+	github.com/Velocidex/ordereddict v0.0.0-20230909174157-2aa49cc5d11d // indirect
+	github.com/Velocidex/yaml/v2 v2.2.8 // indirect
 	github.com/alessio/shellescape v1.4.2 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/getlantern/context v0.0.0-20190109183933-c447772a6520 // indirect
 	github.com/getlantern/errors v0.0.0-20190325191628-abdb3e3e36f7 // indirect
@@ -63,6 +67,7 @@ require (
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/term v0.43.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
+	www.velocidex.com/golang/go-ntfs v0.2.1 // indirect
 )
 
 // Local package replacements to use sibling directories
