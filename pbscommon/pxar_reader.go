@@ -182,7 +182,7 @@ func (pr *PXARReader) extractSymlink(e PXARTreeEntry, fullPath string, overwrite
 	setLinkTime(fullPath, e.ModTime, e.ModNanos)
 	return PXARExtractedFile{
 		Path: fullPath, ArchivePath: e.Path,
-		Mode: os.ModeSymlink | 0777, ModTime: e.ModTime, ModNanos: e.ModNanos,
+		Mode: os.ModeSymlink | 0777, ModTime: e.ModTime, ModNanos: e.ModNanos, ModTimeSet: e.ModTimeSet,
 	}
 }
 
@@ -258,8 +258,11 @@ type PXARTreeEntry struct {
 	// ModNanos is the sub-second part of ModTime (zero for archives written
 	// on Windows). UID and GID are the recorded owner.
 	ModNanos uint32
-	UID      uint32
-	GID      uint32
+	// ModTimeSet: ModTime came from the archive entry (so 0 is a real
+	// 1970-01-01 mtime, not "unknown").
+	ModTimeSet bool
+	UID        uint32
+	GID        uint32
 	// IsSymlink marks a symbolic link; LinkTarget is where it points. Such an
 	// entry has no payload.
 	IsSymlink  bool
@@ -287,7 +290,7 @@ type PXARExtractedFile struct {
 	// ACL/attributes side-car, keyed by this same relative path).
 	ArchivePath string
 	Size        uint64
-	Mode       os.FileMode
+	Mode        os.FileMode
 	// RawMode, UID and GID are the recorded st_mode (with setuid/setgid/sticky),
 	// owner and group; ModNanos is the sub-second mtime.
 	RawMode  uint32
@@ -295,8 +298,10 @@ type PXARExtractedFile struct {
 	GID      uint32
 	ModNanos uint32
 	ModTime  int64
-	IsDir    bool
-	Data     []byte
+	// ModTimeSet: see PXARTreeEntry.ModTimeSet.
+	ModTimeSet bool
+	IsDir      bool
+	Data       []byte
 	Skipped    bool
 	SkipReason string
 	// Expected marks a deliberate, non-error skip (e.g. a file left untouched
@@ -594,8 +599,8 @@ walkLoop:
 					if err := cb(PXARTreeEntry{
 						Path:    subPath,
 						IsDir:   true,
-						Mode:     uint32(mode),
-						ModTime:  int64(mtimeSecs),
+						Mode:    uint32(mode),
+						ModTime: int64(mtimeSecs), ModTimeSet: true,
 						ModNanos: nanos,
 						UID:      uid,
 						GID:      gid,
@@ -630,8 +635,8 @@ walkLoop:
 					Path:    path,
 					IsDir:   false,
 					Size:    uint64(contentSize),
-					Mode:     uint32(pendingFileMode),
-					ModTime:  int64(pendingFileMtime),
+					Mode:    uint32(pendingFileMode),
+					ModTime: int64(pendingFileMtime), ModTimeSet: true,
 					ModNanos: pendingNanos,
 					UID:      pendingUID,
 					GID:      pendingGID,
@@ -668,11 +673,11 @@ walkLoop:
 				weight := pr.offset - lastEmit + int64(refSize)
 				lastEmit = pr.offset
 				if err := cb(PXARTreeEntry{
-					Path:     joinArchivePath(currentPath, pendingName),
-					IsDir:    false,
-					Size:     refSize,
-					Mode:     uint32(pendingFileMode),
-					ModTime:  int64(pendingFileMtime),
+					Path:    joinArchivePath(currentPath, pendingName),
+					IsDir:   false,
+					Size:    refSize,
+					Mode:    uint32(pendingFileMode),
+					ModTime: int64(pendingFileMtime), ModTimeSet: true,
 					ModNanos: pendingNanos,
 					UID:      pendingUID,
 					GID:      pendingGID,
@@ -697,9 +702,9 @@ walkLoop:
 				weight := pr.offset - lastEmit
 				lastEmit = pr.offset
 				if err := cb(PXARTreeEntry{
-					Path:       joinArchivePath(currentPath, pendingName),
-					Mode:       uint32(pendingFileMode),
-					ModTime:    int64(pendingFileMtime),
+					Path:    joinArchivePath(currentPath, pendingName),
+					Mode:    uint32(pendingFileMode),
+					ModTime: int64(pendingFileMtime), ModTimeSet: true,
 					ModNanos:   pendingNanos,
 					UID:        pendingUID,
 					GID:        pendingGID,
@@ -797,7 +802,7 @@ func (pr *PXARReader) findChildSpan(spanEnd int64, name string) (childStart, chi
 		return 0, 0, fmt.Errorf("%w: GOODBYE header position negative", errBSTNotFound)
 	}
 
-	entryCount := (int64(goodbyeLen) - 16) / 24 - 1 // total entries minus the trailer itself
+	entryCount := (int64(goodbyeLen)-16)/24 - 1 // total entries minus the trailer itself
 	if entryCount < 0 {
 		return 0, 0, fmt.Errorf("%w: negative entry count", errBSTNotFound)
 	}
@@ -1133,7 +1138,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			}
 			extracted = append(extracted, PXARExtractedFile{
 				Path: fullPath, ArchivePath: e.Path, IsDir: true,
-				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos,
+				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos, ModTimeSet: e.ModTimeSet,
 				RawMode: e.Mode, UID: e.UID, GID: e.GID,
 			})
 			return nil
@@ -1219,7 +1224,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		if pr.restoreOwner {
 			applyModeOwner(fullPath, e.Mode, e.UID, e.GID, true)
 		}
-		if e.ModTime != 0 { // negative = pre-1970 mtime, still valid
+		if e.ModTimeSet || e.ModTime != 0 { // 0 from the archive = 1970-01-01; negative = pre-1970
 			fsStart = time.Now()
 			t := time.Unix(e.ModTime, int64(e.ModNanos))
 			_ = os.Chtimes(fullPath, t, t)
@@ -1227,7 +1232,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		}
 		extracted = append(extracted, PXARExtractedFile{
 			Path: fullPath, ArchivePath: e.Path, Size: e.Size,
-			Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos,
+			Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos, ModTimeSet: e.ModTimeSet,
 			RawMode: e.Mode, UID: e.UID, GID: e.GID, SHA256: sum,
 		})
 		return nil
@@ -1390,7 +1395,7 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 			}
 			appendResult(PXARExtractedFile{
 				Path: fullPath, ArchivePath: e.Path, IsDir: true,
-				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos,
+				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos, ModTimeSet: e.ModTimeSet,
 				RawMode: e.Mode, UID: e.UID, GID: e.GID,
 			})
 			return nil
@@ -1508,7 +1513,7 @@ func (pr *PXARReader) extractOneFileParallel(e PXARTreeEntry, fullPath string, p
 	if pr.restoreOwner {
 		applyModeOwner(fullPath, e.Mode, e.UID, e.GID, true)
 	}
-	if e.ModTime != 0 { // negative = pre-1970 mtime, still valid
+	if e.ModTimeSet || e.ModTime != 0 { // 0 from the archive = 1970-01-01; negative = pre-1970
 		fsStart = time.Now()
 		t := time.Unix(e.ModTime, int64(e.ModNanos))
 		_ = os.Chtimes(fullPath, t, t)
@@ -1516,7 +1521,7 @@ func (pr *PXARReader) extractOneFileParallel(e PXARTreeEntry, fullPath string, p
 	}
 	return PXARExtractedFile{
 		Path: fullPath, ArchivePath: e.Path, Size: e.Size,
-		Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos,
+		Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos, ModTimeSet: e.ModTimeSet,
 		RawMode: e.Mode, UID: e.UID, GID: e.GID, SHA256: sum,
 	}
 }

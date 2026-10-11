@@ -17,7 +17,7 @@ import (
 func applyDirectoryTimes(extracted []pbscommon.PXARExtractedFile, cancelled func() bool, onProgress func(done, total int)) (applied, failed int) {
 	var dirs []pbscommon.PXARExtractedFile
 	for _, f := range extracted {
-		if f.IsDir && !f.Skipped && f.ModTime != 0 { // negative = pre-1970, still valid
+		if f.IsDir && !f.Skipped && (f.ModTimeSet || f.ModTime != 0) { // 0 from the archive = 1970-01-01
 			dirs = append(dirs, f)
 		}
 	}
