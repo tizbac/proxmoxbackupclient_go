@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-11
+
+The command-line tools catch up with 0.8.0. The GUI is unchanged apart from its version number.
+
+### Fixed
+- **`proxmoxbackup-machine` crashed at the start of every backup in 0.8.0** ("invalid memory address or nil pointer dereference" in machinebackuplib.Backup): the new progress figures assumed a caller that watches them, which only the GUI was.
+
+### Added
+- **`proxmoxbackup-machine` shows its progress**: one line per percent with the blocks of total and the New / Reused (blank) chunks, uploaded and free space not read so far, then a summary. It gets 0.8.0's free-space skipping and bad-sector handling: `-readfreespace` reads everything instead (a forensic copy), and a backup with unreadable sectors prints where they are and exits with code 3 (snapshot kept), like `proxmoxbackup-directory` with unreadable files.
+- **`proxmoxbackup-directory` on Windows records permissions, attributes and creation times**, as the GUI does, so a GUI restore of a CLI snapshot puts them back. It used the Linux-only collector, which does nothing on Windows; the GUI's NTFS collector now lives in pbscommon and both use it.
+
 ## [0.8.0] - 2026-10-11
 
 Faster, sturdier machine backups and files back from them: Windows machine backups skip free space (about half the read time on a half-empty disk), survive bad sectors and show what they are doing; Restore, Undelete and Roll back read straight from a machine (disk image) backup, so one backup per laptop covers both bare-metal and file restores. Also Pause and Resume, a VSS/Snapshot badge per set, and Windows creation times.
