@@ -503,6 +503,11 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			return nil, fmt.Errorf("ticket login failed: %w", err)
 		}
 	}
+	// Callers that do not watch the figures (the CLI before 0.8.1) pass none;
+	// the backup still keeps them.
+	if cfg.Progress == nil {
+		cfg.Progress = &JobProgress{}
+	}
 	jp := cfg.Progress
 	jp.setPhase("connecting")
 	if progressCallback != nil {

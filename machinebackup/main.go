@@ -12,6 +12,8 @@ import (
 	"github.com/tawesoft/golib/v2/dialog"
 	"os"
 	"runtime"
+	"strings"
+	"time"
 
 	"pbscommon"
 )
@@ -44,6 +46,7 @@ func loadConfig() *machinebackuplib.Config {
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
 	backupTypeFlag := flag.String("type", "", "host|vm , vm will allow to restore as VM inside proxmox VE (Physical to Virtual), also it enables to use file restore feature, use numeric backupid")
 	flag.Var(&backupdevs, "backupdev", "Can be specified multiple times,Backup device file ( On windows it can be \\\\.\\PhysicalDriveN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever ; mounted partitions get a consistent point-in-time snapshot via the elastio-snap/dattobd kernel module (requires root)")
+	readFreeSpaceFlag := flag.Bool("readfreespace", false, "Windows: also read free space and the paging/hibernation files (a forensic copy); by default they go into the image as zeros without being read")
 	sysTrayFlag := flag.Bool("systray", false, "Enable systray( Note it can cause issues when running with no user logged in )")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
 	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
@@ -107,6 +110,9 @@ func loadConfig() *machinebackuplib.Config {
 		config.BackupID = *backupIDFlag
 	}
 	config.BackupDevices = backupdevs
+	if *readFreeSpaceFlag {
+		config.ReadFreeSpace = true
+	}
 	if *sysTrayFlag {
 		config.SysTray = true
 	}
@@ -240,7 +246,24 @@ func main() {
 		fatalError("encryption key", err)
 	}
 
+	// One progress line per whole percent (block lines come every 4 MiB),
+	// every other message as it comes.
+	jp := &machinebackuplib.JobProgress{}
+	cfg.Progress = jp
+	counts := func() string {
+		return fmt.Sprintf("new %d, reused %d (%d blank), uploaded %s, free space not read %s",
+			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(),
+			machinebackuplib.BytesToString(int64(jp.UploadedBytes.Load())), machinebackuplib.BytesToString(int64(jp.FreeSkipped.Load())))
+	}
+	lastPct := -1
+	start := time.Now()
 	result, err := machinebackuplib.Backup(cfg, func(percentage float64, message string) bool {
+		if !strings.Contains(message, ": Block ") {
+			fmt.Printf("%s\n", message)
+		} else if p := int(percentage * 100); p != lastPct {
+			lastPct = p
+			fmt.Printf("%3d%%  %s  (%s)\n", p, message, counts())
+		}
 		return false
 	})
 	if err != nil {
@@ -248,5 +271,17 @@ func main() {
 	}
 	for _, disk := range result.Disks {
 		fmt.Printf("Backed up disk %d (%d bytes)\n", disk.Index, disk.Size)
+	}
+	fmt.Printf("Done in %s: %s read; %s\n", time.Since(start).Round(time.Second),
+		machinebackuplib.BytesToString(int64(jp.BytesTotal.Load())), counts())
+	// Sectors the disk could not read are zeros in the image: the snapshot is
+	// kept, but say where and exit 3 so a scheduled run is noticed.
+	if bad := jp.Unreadable(); len(bad) > 0 {
+		fmt.Fprintf(os.Stderr, "WARNING: %s of the disk could not be read and is zeros in the image:\n",
+			machinebackuplib.BytesToString(int64(jp.UnreadableBytes.Load())))
+		for _, r := range bad {
+			fmt.Fprintf(os.Stderr, "  %s at byte %d (%d bytes)\n", r.Disk, r.Offset, r.Length)
+		}
+		os.Exit(3)
 	}
 }
