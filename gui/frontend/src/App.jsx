@@ -562,6 +562,7 @@ function App() {
   const [runAppBefore, setRunAppBefore] = useState('')
   const [runAppAfter, setRunAppAfter] = useState('')
   const [exitAppAfter, setExitAppAfter] = useState(false)
+  const [minimizeAfter, setMinimizeAfter] = useState(false)
   const [shutdownAfter, setShutdownAfter] = useState(false)
   const [jobName, setJobName] = useState('') // User-facing name for the backup set being created/edited
   const [oneOffComment, setOneOffComment] = useState('') // Optional PBS snapshot comment for a one-off backup
@@ -2120,6 +2121,7 @@ function App() {
         runAppBefore: runAppBefore.trim(),
         runAppAfter: runAppAfter.trim(),
         exitAppAfter: exitAppAfter,
+        minimizeAfter: minimizeAfter && !exitAppAfter,
         shutdownAfter: shutdownAfter,
         // Folder sets only: machine sets back up disk images.
         changeDetectionMode: backupType === 'directory' && changeDetectionMode !== 'legacy' ? changeDetectionMode : '',
@@ -2157,7 +2159,7 @@ function App() {
         setEmailOnSuccess(false); setEmailOnSuccessTo('')
         setEmailOnFailure(false); setEmailOnFailureTo('')
         setRunAppBefore(''); setRunAppAfter('')
-        setExitAppAfter(false); setShutdownAfter(false)
+        setExitAppAfter(false); setMinimizeAfter(false); setShutdownAfter(false)
         setChangeDetectionMode('legacy'); setFullReadEvery(0)
         setShowBackupForm(false)
       } catch (err) {
@@ -3653,7 +3655,7 @@ function App() {
                     setEmailOnSuccess(false); setEmailOnSuccessTo('')
                     setEmailOnFailure(false); setEmailOnFailureTo('')
                     setRunAppBefore(''); setRunAppAfter('')
-                    setExitAppAfter(false); setShutdownAfter(false)
+                    setExitAppAfter(false); setMinimizeAfter(false); setShutdownAfter(false)
                     setChangeDetectionMode('legacy'); setFullReadEvery(0)
                     setBackupFormTab('source'); setShowBackupForm(true)
                   }}
@@ -3843,7 +3845,7 @@ function App() {
                               setEmailOnSuccess(!!job.emailOnSuccess); setEmailOnSuccessTo(job.emailOnSuccessTo || '')
                               setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
                               setRunAppBefore(job.runAppBefore || ''); setRunAppAfter(job.runAppAfter || '')
-                              setExitAppAfter(!!job.exitAppAfter); setShutdownAfter(!!job.shutdownAfter)
+                              setExitAppAfter(!!job.exitAppAfter); setMinimizeAfter(!!job.minimizeAfter); setShutdownAfter(!!job.shutdownAfter)
                               setChangeDetectionMode(job.changeDetectionMode || 'legacy'); setFullReadEvery(job.fullReadEvery || 0)
                               setBackupFormTab('source'); setShowBackupForm(true)
                             }}
@@ -3924,7 +3926,7 @@ function App() {
                                     setEmailOnSuccess(!!job.emailOnSuccess); setEmailOnSuccessTo(job.emailOnSuccessTo || '')
                                     setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
                                     setRunAppBefore(job.runAppBefore || ''); setRunAppAfter(job.runAppAfter || '')
-                                    setExitAppAfter(!!job.exitAppAfter); setShutdownAfter(!!job.shutdownAfter)
+                                    setExitAppAfter(!!job.exitAppAfter); setMinimizeAfter(!!job.minimizeAfter); setShutdownAfter(!!job.shutdownAfter)
                                     setChangeDetectionMode(job.changeDetectionMode || 'legacy'); setFullReadEvery(job.fullReadEvery || 0)
                                     setBackupFormTab('source'); setShowBackupForm(true)
                                   }}
@@ -4502,11 +4504,23 @@ function App() {
             <input type="text" value={runAppAfter} onChange={(e) => setRunAppAfter(e.target.value)} placeholder={t('runAppPlaceholder')} />
           </div>
 
+          {/* What the app window does when the backup finishes: one choice. */}
           <div className="form-group">
-            <label style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
-              <input type="checkbox" checked={exitAppAfter} onChange={(e) => setExitAppAfter(e.target.checked)} />
-              <span>{t('exitAppAfterLabel')}</span>
-            </label>
+            <label>{tl('afterBackupWindowLabel', 'When the backup finishes, the app window:')}</label>
+            {[
+              ['leave', tl('afterBackupLeave', 'Stays as it is')],
+              ['tray', tl('afterBackupTray', 'Minimises to the tray')],
+              ['exit', tl('afterBackupExit', 'Closes (the app exits)')],
+            ].map(([v, label]) => (
+              <label key={v} style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'normal', marginTop: '4px'}}>
+                <input
+                  type="radio" name="afterBackupWindow" value={v}
+                  checked={(exitAppAfter ? 'exit' : minimizeAfter ? 'tray' : 'leave') === v}
+                  onChange={() => { setExitAppAfter(v === 'exit'); setMinimizeAfter(v === 'tray') }}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
           </div>
           <div className="form-group">
             <label style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>

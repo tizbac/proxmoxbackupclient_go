@@ -132,6 +132,11 @@ func (a *App) runPostBackupActions(job ScheduledJob, success bool, message strin
 	a.sendJobNotificationEmail(job, success, message)
 	runPostBackupApp(job.RunAppAfter, job.Name, "after")
 
+	// Only a GUI has a window to hide; the service runs scheduled sets too.
+	if job.MinimizeAfter && !job.ExitAppAfter && a.ctx != nil && !a.isServiceProcess {
+		writeDebugLog(fmt.Sprintf("[PostBackup] job %q configured to minimise to the tray after backup", job.Name))
+		a.MinimizeToTray()
+	}
 	if job.ExitAppAfter {
 		writeDebugLog(fmt.Sprintf("[PostBackup] job %q configured to exit the app after backup — exiting", job.Name))
 		go func() {

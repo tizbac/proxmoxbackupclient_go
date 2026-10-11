@@ -116,6 +116,9 @@ type ScheduledJob struct {
 	// last thing attempted.
 	ExitAppAfter  bool `json:"exitAppAfter,omitempty"`
 	ShutdownAfter bool `json:"shutdownAfter,omitempty"`
+	// MinimizeAfter hides the window to the tray when the backup finishes
+	// (ignored when ExitAppAfter is set; a shutdown still follows).
+	MinimizeAfter bool `json:"minimizeAfter,omitempty"`
 }
 
 // encryptionLabel maps "was an encryption key in use" to the JobHistory value.

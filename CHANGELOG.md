@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Backup Set can minimise the app to the tray when it finishes.** Alerts tab: "When the backup finishes, the app window: stays as it is / minimises to the tray / closes (the app exits)", one choice instead of the old "Exit after the backup" tick box. Turning the computer off stays a separate tick box and still comes last.
 - **Run now: quick or full read** for Metadata Backup Sets, in the card's More menu. Quick reuses unchanged files even when the set is due its "full read every N runs" (the full read stays due for the next run); full read reads every file now and restarts the count. The progress card says "Full read requested". Plain Run Now does what the schedule would.
 
 ### Changed
