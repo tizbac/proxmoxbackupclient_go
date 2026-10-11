@@ -138,7 +138,7 @@ func TestLiveImageBrowse(t *testing.T) {
 
 func readOne(t *testing.T, vol *imagefs.NTFS, e imagefs.Entry) {
 	start := time.Now()
-	f, err := vol.Open(e.Record, int64(e.Size))
+	f, err := vol.OpenRecord(e.Record, int64(e.Size))
 	if err != nil {
 		t.Errorf("%s: %v", e.Path, err)
 		return

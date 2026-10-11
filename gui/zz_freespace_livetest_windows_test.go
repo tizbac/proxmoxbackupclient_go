@@ -112,7 +112,7 @@ func TestLiveFreeSpaceSkip(t *testing.T) {
 			t.Errorf("%s: %v", e.Path, err)
 			continue
 		}
-		fi, err := vol.Open(e.Record, int64(e.Size))
+		fi, err := vol.OpenRecord(e.Record, int64(e.Size))
 		if err != nil {
 			t.Errorf("%s: %v", e.Path, err)
 			continue

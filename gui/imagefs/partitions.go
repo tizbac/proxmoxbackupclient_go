@@ -35,6 +35,9 @@ func (p Partition) Label() string {
 	case "ext":
 		fs = "ext2/3/4"
 	}
+	if p.Number == 0 {
+		return fmt.Sprintf("Whole disk (%s, %s)", fs, humanBytes(p.Size))
+	}
 	return fmt.Sprintf("Partition %d (%s, %s)", p.Number, fs, humanBytes(p.Size))
 }
 
@@ -82,6 +85,12 @@ func ReadPartitions(r io.ReaderAt, diskSize int64) ([]Partition, error) {
 		}
 	}
 	if parts == nil {
+		// A file system straight on the disk, without a partition table (a
+		// "superfloppy" stick, a loop device, a disk given whole to ext4).
+		// FAT and NTFS boot sectors end in 55 AA too, so look first.
+		if fs := Probe(r); fs != "" && fs != "lvm" && fs != "swap" {
+			return []Partition{{Number: 0, Start: 0, Size: diskSize, Scheme: "none", Type: "whole disk", FS: fs}}, nil
+		}
 		if head[510] != 0x55 || head[511] != 0xAA {
 			return nil, ErrNoPartitionTable
 		}
@@ -186,7 +195,8 @@ func readMBR(r io.ReaderAt, mbr []byte, diskSize int64) ([]Partition, error) {
 }
 
 // Probe names the file system at the start of r (a partition): "ntfs",
-// "bitlocker", "fat32", "exfat", "ext", "xfs", "swap", "lvm", or "".
+// "bitlocker", "fat32", "fat" (FAT12/16), "exfat", "ext", "xfs", "swap",
+// "lvm", or "".
 func Probe(r io.ReaderAt) string {
 	b := make([]byte, 4096)
 	n, _ := r.ReadAt(b, 0)
@@ -199,6 +209,8 @@ func Probe(r io.ReaderAt) string {
 		return "bitlocker"
 	case has(82, "FAT32   "):
 		return "fat32"
+	case has(54, "FAT12   "), has(54, "FAT16   "), has(54, "FAT     "):
+		return "fat"
 	case has(3, "EXFAT   "):
 		return "exfat"
 	case has(0, "XFSB"):

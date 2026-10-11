@@ -125,6 +125,7 @@ func imageSetIndex(cfg *Config, job ScheduledJob, snap SetSnapshot, cancel func(
 		offset  int64
 	}
 	lists := map[volKey][]imagefs.Entry{}
+	caseless := map[volKey]bool{}
 	roots := map[string]string{}
 	for _, f := range imageSetFolders(job) {
 		roots[f.Base] = f.Dir
@@ -152,13 +153,14 @@ func imageSetIndex(cfg *Config, job ScheduledJob, snap SetSnapshot, cancel func(
 					part = &parts[i]
 				}
 			}
-			if part == nil || part.FS != "ntfs" {
-				return nil, fmt.Errorf("%s has no NTFS partition at %d in the backup of %s", ib.archive, ib.offset, snap.ID)
+			if part == nil {
+				return nil, fmt.Errorf("%s has no partition at %d in the backup of %s", ib.archive, ib.offset, snap.ID)
 			}
-			vol, err := imagefs.OpenNTFS(io.NewSectionReader(ra, part.Start, part.Size))
+			vol, err := imagefs.OpenVolume(part.FS, io.NewSectionReader(ra, part.Start, part.Size), part.Size)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("%s partition at %d in the backup of %s: %w", ib.archive, ib.offset, snap.ID, err)
 			}
+			caseless[k] = vol.CaseInsensitive()
 			if entries, err = vol.List(cancel, nil); err != nil {
 				if err == imagefs.ErrCancelled {
 					return nil, errCompareCancelled
@@ -167,7 +169,7 @@ func imageSetIndex(cfg *Config, job ScheduledJob, snap SetSnapshot, cancel func(
 			}
 			lists[k] = entries
 		}
-		idx[base] = folderEntries(entries, ib.sub, roots[base], job.ExcludeList)
+		idx[base] = folderEntries(entries, ib.sub, roots[base], job.ExcludeList, caseless[k])
 	}
 	return idx, nil
 }
@@ -176,10 +178,19 @@ func imageSetIndex(cfg *Config, job ScheduledJob, snap SetSnapshot, cancel func(
 // live walk's exclusions (walkLiveFolder): the set's patterns (root is the
 // folder's real path, which they may name), automatically excluded folders
 // with everything below them, and automatically excluded files.
-func folderEntries(all []imagefs.Entry, sub, root string, excludes []string) []IndexEntry {
+func folderEntries(all []imagefs.Entry, sub, root string, excludes []string, caseless bool) []IndexEntry {
 	prefix := ""
 	if sub != "" {
-		prefix = strings.ToLower(sub) + "/"
+		prefix = sub + "/"
+		if caseless {
+			prefix = strings.ToLower(prefix)
+		}
+	}
+	norm := func(s string) string {
+		if caseless {
+			return strings.ToLower(s)
+		}
+		return s
 	}
 	excludedDirs := map[string]bool{} // rel paths of excluded folders
 	under := func(rel string) bool {
@@ -197,9 +208,12 @@ func folderEntries(all []imagefs.Entry, sub, root string, excludes []string) []I
 			if e.IsDir != (pass == 0) {
 				continue
 			}
-			// NTFS names are case-insensitive: match the folder that way.
-			if prefix != "" && !strings.HasPrefix(strings.ToLower(e.Path), prefix) {
+			// NTFS and FAT names are case-insensitive: match the folder that way.
+			if prefix != "" && !strings.HasPrefix(norm(e.Path), prefix) {
 				continue
+			}
+			if e.Symlink {
+				continue // a link is not a file to compare or restore
 			}
 			rel := e.Path[len(prefix):]
 			if rel == "" {

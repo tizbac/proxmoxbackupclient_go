@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -116,7 +117,7 @@ func TestNTFSListAndRead(t *testing.T) {
 		if w.IsDir {
 			continue
 		}
-		f, err := vol.Open(e.Record, int64(e.Size))
+		f, err := vol.OpenRecord(e.Record, int64(e.Size))
 		if err != nil {
 			t.Errorf("%s: open: %v", w.Path, err)
 			continue
@@ -143,7 +144,7 @@ func TestNTFSListAndRead(t *testing.T) {
 	}
 	// The extents of a plain file hold its data, in order.
 	big := got["docs/sub/deep/file.bin"]
-	f, err := vol.Open(big.Record, int64(big.Size))
+	f, err := vol.OpenRecord(big.Record, int64(big.Size))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +169,7 @@ func TestNTFSListAndRead(t *testing.T) {
 		t.Error("extents do not hold the file's data")
 	}
 	if hello := got["hello.txt"]; true {
-		hf, err := vol.Open(hello.Record, int64(hello.Size))
+		hf, err := vol.OpenRecord(hello.Record, int64(hello.Size))
 		if err != nil || len(hf.Extents()) != 0 {
 			t.Errorf("a resident file has no extents on disk: %v %v", hf.Extents(), err)
 		}
@@ -222,5 +223,20 @@ func TestReadPartitionsMBRWithLogical(t *testing.T) {
 func TestNoPartitionTable(t *testing.T) {
 	if _, err := ReadPartitions(bytes.NewReader(make([]byte, 8192)), 8192); err != ErrNoPartitionTable {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// A file system on the whole disk is one "Whole disk" partition, also for
+// FAT, whose boot sector ends in 55 AA like an MBR.
+func TestWholeDiskFileSystem(t *testing.T) {
+	for _, name := range []string{"ext4", "fat32", "exfat"} {
+		r := loadImage(t, name)
+		parts, err := ReadPartitions(r, r.Size())
+		if err != nil || len(parts) != 1 || parts[0].Number != 0 || parts[0].Start != 0 || parts[0].Size != r.Size() {
+			t.Fatalf("%s: %+v, %v", name, parts, err)
+		}
+		if !strings.HasPrefix(parts[0].Label(), "Whole disk (") {
+			t.Errorf("%s: label %q", name, parts[0].Label())
+		}
 	}
 }

@@ -19,10 +19,11 @@ import (
 
 // Files from a machine (disk image) backup: a snapshot whose only archives
 // are drive-*.img.fidx is browsed and restored by reading the partition
-// table and NTFS volumes inside the image (gui/imagefs) straight from the
-// fixed index, fetching only the chunks that hold what is being read. The
-// tree shows one folder per NTFS volume ("Partition 3 - Windows (NTFS, 127.3
-// GB)"); restore writes to another folder, never over the live disk.
+// table and the file systems inside the image (gui/imagefs: NTFS, FAT,
+// exFAT, ext2/3/4, XFS) straight from the fixed index, fetching only the
+// chunks that hold what is being read. The tree shows one folder per volume
+// ("Partition 3 - Windows (NTFS, 127.3 GB)"); restore writes to another
+// folder, never over the live disk.
 
 // snapshotDetails remembers each listed snapshot's type and manifest files,
 // keyed by server, datastore, namespace, ID and time, so the browse and
@@ -104,13 +105,16 @@ func isImageSnapshot(opts RestoreOptions) bool {
 	return len(imageArchives(opts.snapshotFiles)) > 0 && !hasDataArchive(opts.snapshotFiles)
 }
 
-// imageVolume is one NTFS volume of a disk-image snapshot.
+// imageVolume is one browsable volume of a disk-image snapshot.
 type imageVolume struct {
 	Display string // the folder name the tree shows it under
 	Archive string // drive-sata0.img.fidx
 	Start   int64  // partition offset in the image
 	Size    int64
-	Entries []imagefs.Entry // sorted by path, with MFT record numbers for restore
+	FS      string          // "NTFS", "ext4"...
+	Entries []imagefs.Entry // sorted by path, with what Open needs to find each file
+	// CaseInsensitive: names match without regard to case (NTFS, FAT).
+	CaseInsensitive bool
 }
 
 // imageListing keeps the volumes of the last image snapshot listed, so a
@@ -155,25 +159,28 @@ func (s *imageSession) close() { s.client.Close() }
 // volumeName is the folder a volume is shown and restored under:
 // "Partition 3 - Windows (NTFS, 127.3 GB)", with "Disk 2 " in front when the
 // snapshot has more than one disk.
-func volumeName(p imagefs.Partition, label string, disk, disks int) string {
+func volumeName(p imagefs.Partition, label, fsName string, disk, disks int) string {
 	name := fmt.Sprintf("Partition %d", p.Number)
+	if p.Number == 0 {
+		name = "Whole disk"
+	}
 	if label = strings.TrimSpace(strings.NewReplacer("/", "_", "\\", "_", ":", "_").Replace(label)); label != "" {
 		name += " - " + label
 	}
-	name += " (NTFS, " + imagefs.HumanBytes(p.Size) + ")"
+	name += " (" + fsName + ", " + imagefs.HumanBytes(p.Size) + ")"
 	if disks > 1 {
 		name = fmt.Sprintf("Disk %d %s", disk, name)
 	}
 	return name
 }
 
-// openImageVolumes finds the NTFS volumes in every disk of the session and,
-// when list is set, lists their files. Partitions with another file system
-// (EFI FAT32, BitLocker, Linux) are logged and left out.
-func openImageVolumes(s *imageSession, opts RestoreOptions, list bool, cancel func() bool) ([]imageVolume, map[string]*imagefs.NTFS, error) {
+// openImageVolumes finds the browsable volumes in every disk of the session
+// and, when list is set, lists their files. Partitions that cannot be read
+// (BitLocker, swap, LVM, unknown) are logged and left out.
+func openImageVolumes(s *imageSession, opts RestoreOptions, list bool, cancel func() bool) ([]imageVolume, map[string]imagefs.Volume, error) {
 	archives := imageArchives(opts.snapshotFiles)
 	var vols []imageVolume
-	opened := map[string]*imagefs.NTFS{}
+	opened := map[string]imagefs.Volume{}
 	var skipped []string
 	for di, a := range archives {
 		ra := s.readers[a]
@@ -182,40 +189,54 @@ func openImageVolumes(s *imageSession, opts RestoreOptions, list bool, cancel fu
 			return nil, nil, fmt.Errorf("%s: %w", a, err)
 		}
 		for _, p := range parts {
-			if p.FS != "ntfs" {
+			if p.FS == "swap" || p.FS == "lvm" || p.FS == "" {
 				skipped = append(skipped, a+" "+p.Label())
 				continue
 			}
-			vol, err := imagefs.OpenNTFS(io.NewSectionReader(ra, p.Start, p.Size))
+			vol, err := imagefs.OpenVolume(p.FS, io.NewSectionReader(ra, p.Start, p.Size), p.Size)
 			if err != nil {
 				skipped = append(skipped, fmt.Sprintf("%s %s (%v)", a, p.Label(), err))
 				continue
 			}
-			v := imageVolume{Display: volumeName(p, vol.Label(), di+1, len(archives)), Archive: a, Start: p.Start, Size: p.Size}
+			v := imageVolume{Display: volumeName(p, vol.Label(), vol.FSName(), di+1, len(archives)), Archive: a, Start: p.Start, Size: p.Size,
+				FS: vol.FSName(), CaseInsensitive: vol.CaseInsensitive()}
 			if list {
 				start := time.Now()
 				last := time.Time{}
+				// NTFS reads its file table in order, which read-ahead helps;
+				// the Linux file systems jump between inode tables and folder
+				// blocks all over the disk, where read-ahead only fetches
+				// chunks nobody reads.
+				sequential := v.FS == "NTFS"
+				if !sequential {
+					ra.SetPrefetchEnabled(false)
+				}
+				fetched0 := ra.Stats().ChunksFetched
 				v.Entries, err = vol.List(cancel, func(done, total int64) {
 					if time.Since(last) >= 2*time.Second {
 						last = time.Now()
 						writeBackupLog(fmt.Sprintf("Listing %s: %d of %d MB of the file table read", v.Display, done>>20, total>>20))
 					}
 				})
+				if !sequential {
+					ra.SetPrefetchEnabled(true)
+				}
 				if err != nil {
 					return nil, nil, fmt.Errorf("%s: %w", v.Display, err)
 				}
 				v.Entries = withoutSystemFolders(v.Entries)
-				writeBackupLog(fmt.Sprintf("Listed %s: %d entries in %v", v.Display, len(v.Entries), time.Since(start).Round(time.Millisecond)))
+				writeBackupLog(fmt.Sprintf("Listed %s: %d entries in %v (%d chunks read)", v.Display, len(v.Entries),
+					time.Since(start).Round(time.Millisecond), ra.Stats().ChunksFetched-fetched0))
 			}
 			vols = append(vols, v)
 			opened[v.Display] = vol
 		}
 	}
 	if len(skipped) > 0 {
-		writeBackupLog("Disk image partitions not browsable (only NTFS is read): " + strings.Join(skipped, "; "))
+		writeBackupLog("Disk image partitions not browsable: " + strings.Join(skipped, "; "))
 	}
 	if len(vols) == 0 {
-		return nil, nil, fmt.Errorf("this disk image has no NTFS volume to browse (found: %s)", strings.Join(skipped, "; "))
+		return nil, nil, fmt.Errorf("this disk image has no volume that can be browsed (found: %s)", strings.Join(skipped, "; "))
 	}
 	return vols, opened, nil
 }
@@ -377,9 +398,12 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 			if ib, ok := parseImageBase(key); ok {
 				v := volumeAt(ib.archive, ib.offset)
 				if v == nil {
-					return fmt.Errorf("%s: no NTFS volume at %d in the disk image", ib.archive, ib.offset)
+					return fmt.Errorf("%s: no browsable volume at %d in the disk image", ib.archive, ib.offset)
 				}
-				sub := exactCasePath(v.Entries, ib.sub)
+				sub := ib.sub
+				if v.CaseInsensitive {
+					sub = exactCasePath(v.Entries, ib.sub)
+				}
 				root := opts.ArchiveRoots[key]
 				folderName := v.Display
 				if sub != "" {
@@ -453,7 +477,7 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 	type job struct {
 		pick
 		dest string
-		f    *imagefs.File
+		f    imagefs.FileReader
 		at   int64 // first byte on the disk, for reading in disk order
 	}
 	var jobs []job
@@ -476,7 +500,11 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 			dirs = append(dirs, job{pick: p, dest: dest})
 			continue
 		}
-		f, err := opened[p.vol.Display].Open(p.entry.Record, int64(p.entry.Size))
+		if p.entry.Symlink {
+			extracted = append(extracted, restoreImageSymlink(opts, dest, p.entry, p.vol.Display))
+			continue
+		}
+		f, err := opened[p.vol.Display].Open(p.entry)
 		if err != nil {
 			extracted = append(extracted, pbscommon.PXARExtractedFile{Path: dest, ArchivePath: p.vol.Display + "/" + p.entry.Path,
 				Size: p.entry.Size, Skipped: true, SkipReason: err.Error()})
@@ -513,8 +541,9 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 			extracted = append(extracted, pbscommon.PXARExtractedFile{Path: d.dest, IsDir: true, Skipped: true, SkipReason: err.Error()})
 			continue
 		}
+		applyImageOwnerMode(d.dest, d.entry)
 		extracted = append(extracted, pbscommon.PXARExtractedFile{Path: d.dest, ArchivePath: d.vol.Display + "/" + d.entry.Path,
-			IsDir: true, ModTime: imagefs.UnixSeconds(d.entry.MTime), ModNanos: filetimeNanos(d.entry.MTime)})
+			IsDir: true, ModTime: imagefs.UnixSeconds(d.entry.MTime), ModNanos: filetimeNanos(d.entry.MTime), ModTimeSet: d.entry.MTime != 0})
 	}
 
 	var written int64
@@ -561,7 +590,7 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 		return err
 	}
 	if opts.RestoreACLs {
-		writeBackupLog("NOTE: permissions (ACLs) are not restored from a disk image yet; attributes and times are")
+		writeBackupLog("NOTE: Windows permissions (ACLs) are not restored from a disk image yet; attributes, times and, on Linux, owners and modes are")
 	}
 	progress(1.0, "Restore completed")
 	if errorSkipCount > 0 {
@@ -577,7 +606,7 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 // file, then sets its times (and attributes with RestoreACLs). A file that
 // exists is left alone unless Overwrite. Errors are reported in the result
 // (Skipped), as the pxar extractor does, so one bad file does not stop the rest.
-func writeImageFile(opts RestoreOptions, dest string, f *imagefs.File, e imagefs.Entry, buf []byte, onWrite func(int64)) pbscommon.PXARExtractedFile {
+func writeImageFile(opts RestoreOptions, dest string, f imagefs.FileReader, e imagefs.Entry, buf []byte, onWrite func(int64)) pbscommon.PXARExtractedFile {
 	res := pbscommon.PXARExtractedFile{Path: dest, Size: e.Size, ModTime: imagefs.UnixSeconds(e.MTime), ModNanos: filetimeNanos(e.MTime)}
 	skip := func(expected bool, why string) pbscommon.PXARExtractedFile {
 		res.Skipped, res.Expected, res.SkipReason = true, expected, why
@@ -612,6 +641,7 @@ func writeImageFile(opts RestoreOptions, dest string, f *imagefs.File, e imagefs
 		os.Remove(tmp.Name())
 		return skip(false, err.Error())
 	}
+	applyImageOwnerMode(dest, e)
 	mt := time.Unix(res.ModTime, int64(res.ModNanos))
 	if err := os.Chtimes(dest, mt, mt); err != nil {
 		writeBackupLog(fmt.Sprintf("Time not set on %s: %v", dest, err))
@@ -624,6 +654,34 @@ func writeImageFile(opts RestoreOptions, dest string, f *imagefs.File, e imagefs
 	}
 	if h != nil {
 		res.SHA256 = h.Sum(nil)
+	}
+	return res
+}
+
+// restoreImageSymlink recreates a symbolic link from a Linux volume. Where
+// links cannot be made (Windows without the privilege, or a target the
+// reader does not give), it is listed as skipped with the reason.
+func restoreImageSymlink(opts RestoreOptions, dest string, e imagefs.Entry, vol string) pbscommon.PXARExtractedFile {
+	res := pbscommon.PXARExtractedFile{Path: dest, ArchivePath: vol + "/" + e.Path, Mode: os.ModeSymlink | 0o777,
+		ModTime: imagefs.UnixSeconds(e.MTime), ModNanos: filetimeNanos(e.MTime), ModTimeSet: e.MTime != 0}
+	if e.LinkTarget == "" {
+		res.Skipped, res.SkipReason = true, "symbolic link whose target this file system reader does not give"
+		return res
+	}
+	if _, err := os.Lstat(dest); err == nil {
+		if !opts.Overwrite {
+			res.Skipped, res.Expected, res.SkipReason = true, true, "already exists"
+			return res
+		}
+		_ = os.Remove(dest)
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		res.Skipped, res.SkipReason = true, err.Error()
+		return res
+	}
+	if err := os.Symlink(e.LinkTarget, dest); err != nil {
+		res.Skipped, res.SkipReason = true, "symbolic link to "+e.LinkTarget+" not created: "+err.Error()
+		return res
 	}
 	return res
 }
@@ -649,7 +707,7 @@ func (p *progressReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
-// exactCasePath returns sub as the volume spells it (NTFS names are
+// exactCasePath returns sub as the volume spells it (NTFS and FAT names are
 // case-insensitive; a folder typed in a set may differ in case), or sub
 // unchanged when the volume has no such folder.
 func exactCasePath(entries []imagefs.Entry, sub string) string {

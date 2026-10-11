@@ -40,7 +40,7 @@ func TestFolderEntries(t *testing.T) {
 		{Path: "Users/bob/Documents/sub/c.doc", Size: 4},
 		{Path: "Users/bob/Documentsx/d.txt", Size: 5}, // a sibling with the same prefix
 	}
-	got := folderEntries(all, "Users/Bob/Documents", `C:\Users\Bob\Documents`, []string{"*.tmp"})
+	got := folderEntries(all, "Users/Bob/Documents", `C:\Users\Bob\Documents`, []string{"*.tmp"}, true)
 	want := map[string]bool{"a.txt": false, "sub": true, "sub/c.doc": false}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v", got)

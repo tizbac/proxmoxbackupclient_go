@@ -66,17 +66,22 @@ func TestLiveImageRestore(t *testing.T) {
 			opts.VerifyAfterRestore = true
 			opts.RestoreACLs = true
 			opts.IncludePaths = []string{vol + "/" + pick}
+			if pick == "*" { // the whole volume
+				opts.IncludePaths = []string{vol}
+			}
 			var files, verified int
 			var bytes int64
 			opts.OnSummary = func(f, d int, b int64) { files, bytes = f, b }
-			opts.OnVerifySummary = func(v int, fails []string) { verified = v }
+			var failed []string
+			opts.OnVerifySummary = func(v int, fails []string) { verified, failed = v, fails }
 			start := time.Now()
 			if err := RestoreSnapshotInline(opts); err != nil {
 				t.Fatalf("%s: %v", mode, err)
 			}
 			t.Logf("%s: %s: %d files, %d bytes, %d verified in %v", mode, pick, files, bytes, verified, time.Since(start).Round(time.Millisecond))
-			if files == 0 || verified != files {
-				t.Errorf("%s: verified %d of %d", mode, verified, files)
+			// Symbolic links (Linux volumes) count as files but have no content to verify.
+			if files == 0 || verified == 0 || len(failed) > 0 {
+				t.Errorf("%s: verified %d of %d, failed %v", mode, verified, files, failed)
 			}
 		}
 		return

@@ -13,16 +13,25 @@ import (
 	"www.velocidex.com/golang/go-ntfs/parser"
 )
 
-// Entry is one file or folder of an NTFS volume, as the master file table
-// records it.
+// Entry is one file, folder or symbolic link of a volume.
 type Entry struct {
 	Path    string // from the volume root, '/'-separated, no leading slash
 	IsDir   bool
-	Size    uint64 // the unnamed $DATA stream's size; 0 for folders
+	Size    uint64 // the file's (unnamed stream's) size; 0 for folders
 	MTime   int64  // last write, FILETIME (100 ns since 1601)
-	Created int64  // creation, FILETIME
-	Attrs   uint32 // FILE_ATTRIBUTE_* ($STANDARD_INFORMATION)
-	Record  uint64 // MFT record number, for Open
+	Created int64  // creation, FILETIME (0 when the file system has none)
+	Attrs   uint32 // FILE_ATTRIBUTE_* (NTFS, FAT, exFAT)
+	Record  uint64 // where the file system finds the file again (MFT record, inode, first cluster), for Open
+	Aux     uint64 // more of that, file-system specific (exFAT: valid data length)
+
+	// POSIX file systems (ext, XFS): Mode is st_mode with its type bits,
+	// UID and GID the owner (HasOwner). A symbolic link has Symlink set and
+	// its target in LinkTarget.
+	Mode       uint32
+	UID, GID   uint32
+	HasOwner   bool
+	Symlink    bool
+	LinkTarget string
 }
 
 // UnixSeconds converts a FILETIME to Unix seconds.
@@ -57,6 +66,15 @@ func OpenNTFS(r io.ReaderAt) (v *NTFS, err error) {
 	}
 	return &NTFS{ctx: ctx, recordSize: ctx.GetRecordSize(), diskType: fmt.Sprintf("%T", r)}, nil
 }
+
+// FSName is "NTFS".
+func (v *NTFS) FSName() string { return "NTFS" }
+
+// CaseInsensitive: NTFS names match without regard to case.
+func (v *NTFS) CaseInsensitive() bool { return true }
+
+// Open opens a file entry from List.
+func (v *NTFS) Open(e Entry) (FileReader, error) { return v.OpenRecord(e.Record, int64(e.Size)) }
 
 // Label is the volume's name (what Explorer shows, e.g. "Windows"), "" if
 // it has none.
@@ -406,9 +424,9 @@ type File struct {
 	size int64
 }
 
-// Open opens the data of the file in MFT record num. size is the file's
-// size from List; reads stop there.
-func (v *NTFS) Open(num uint64, size int64) (f *File, err error) {
+// OpenRecord opens the data of the file in MFT record num. size is the
+// file's size from List; reads stop there.
+func (v *NTFS) OpenRecord(num uint64, size int64) (f *File, err error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	defer func() {
