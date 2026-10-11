@@ -136,7 +136,7 @@ func (a *App) snapshotOpts(pbsID, backupID string, snapshotUnix int64) (RestoreO
 	if backupID == "" {
 		return RestoreOptions{}, fmt.Errorf("backup ID required")
 	}
-	return RestoreOptions{
+	opts := RestoreOptions{
 		BaseURL:         cfg.BaseURL,
 		AuthID:          cfg.AuthID,
 		Secret:          cfg.Secret,
@@ -148,7 +148,11 @@ func (a *App) snapshotOpts(pbsID, backupID string, snapshotUnix int64) (RestoreO
 		BackupID:        backupID,
 		SnapshotTime:    time.Unix(snapshotUnix, 0),
 		Crypt:           cfg.Crypt,
-	}, nil
+	}
+	// The type (host or vm) and files, so a machine backup opens as a disk
+	// image; the cache key includes the type.
+	fillSnapshotKind(&opts)
+	return opts, nil
 }
 
 // OpenSnapshotTree loads a snapshot's listing (local cache, else the catalog)

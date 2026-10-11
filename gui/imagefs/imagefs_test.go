@@ -138,6 +138,41 @@ func TestNTFSListAndRead(t *testing.T) {
 			t.Errorf("metafile listed: %s", e.Path)
 		}
 	}
+	if l := vol.Label(); l != "TESTNTFS" {
+		t.Errorf("label %q, want TESTNTFS", l)
+	}
+	// The extents of a plain file hold its data, in order.
+	big := got["docs/sub/deep/file.bin"]
+	f, err := vol.Open(big.Record, int64(big.Size))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ext := f.Extents()
+	if len(ext) == 0 {
+		t.Fatal("no extents for a 5 MB file")
+	}
+	var fromExtents []byte
+	part := io.NewSectionReader(r, parts[0].Start, parts[0].Size)
+	for _, x := range ext {
+		b := make([]byte, x[1]-x[0])
+		if _, err := part.ReadAt(b, x[0]); err != nil {
+			t.Fatal(err)
+		}
+		fromExtents = append(fromExtents, b...)
+	}
+	content := make([]byte, big.Size)
+	if _, err := f.ReadAt(content, 0); err != nil && err != io.EOF {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fromExtents[:big.Size], content) {
+		t.Error("extents do not hold the file's data")
+	}
+	if hello := got["hello.txt"]; true {
+		hf, err := vol.Open(hello.Record, int64(hello.Size))
+		if err != nil || len(hf.Extents()) != 0 {
+			t.Errorf("a resident file has no extents on disk: %v %v", hf.Extents(), err)
+		}
+	}
 	if a, b := got["docs/report.docx"], got["docs/link-to-report.docx"]; a.Record == 0 || a.Record != b.Record {
 		t.Errorf("hard links should share a record: %d, %d", a.Record, b.Record)
 	}

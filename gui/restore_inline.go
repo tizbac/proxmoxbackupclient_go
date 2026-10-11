@@ -56,6 +56,14 @@ type RestoreOptions struct {
 	SnapshotTime    time.Time
 	DestPath        string
 
+	// BackupType is the snapshot's PBS type: "host" (the default when empty:
+	// folder and machine backups) or "vm" (a machine backup made as a Proxmox
+	// VE VM). Filled from the snapshot list by fillSnapshotKind when unset.
+	BackupType string
+	// snapshotFiles is the snapshot's manifest file list, also from the
+	// snapshot list; it tells a disk image (only .img.fidx archives) apart.
+	snapshotFiles []string
+
 	// Crypt unlocks an encrypted snapshot. Nil means a plain snapshot. Every
 	// chunk fetch goes through pbscommon.PBSClient.GetChunkData, which needs
 	// it to decrypt and to recompute the index's sha256(plaintext || id_key)
@@ -267,6 +275,7 @@ func ListSnapshotsInline(baseURL, authID, secret, ticket, csrf, datastore, names
 		for _, f := range m.Files {
 			info.Files = append(info.Files, f.Filename)
 		}
+		rememberSnapshot(baseURL, datastore, namespace, info)
 		result = append(result, info)
 	}
 
@@ -411,7 +420,7 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 			BackupTime: opts.SnapshotTime.Unix(),
 		},
 	}
-	client.Connect(true, "host")
+	client.Connect(true, opts.backupType())
 	defer client.Close()
 
 	// archiveSize is set right below, before any chunk fetch can happen
@@ -639,7 +648,7 @@ func listSnapshotViaCatalog(opts RestoreOptions, cancel func() bool) (entries []
 			BackupTime: opts.SnapshotTime.Unix(),
 		},
 	}
-	client.Connect(true, "host")
+	client.Connect(true, opts.backupType())
 	defer client.Close()
 
 	ra, size, err := client.NewDIDXReaderAt("catalog.pcat1.didx", 64, nil)
@@ -792,6 +801,11 @@ func readArchiveMetaCheap(opts RestoreOptions, archiveName string, cancel func()
 // the fast path is taken only for that archive; any other archiveName goes
 // straight to the walk.
 func assembleSnapshotTree(opts RestoreOptions, archiveName, logTag string, cancel func() bool) ([]SnapshotEntry, *BackupMeta, error) {
+	fillSnapshotKind(&opts)
+	if isImageSnapshot(opts) {
+		entries, err := listImageSnapshot(opts, cancel)
+		return entries, nil, err
+	}
 	if archiveName == "" {
 		archiveName = "backup.pxar.didx"
 	}
@@ -882,7 +896,7 @@ func buildSnapshotCacheKey(opts RestoreOptions) snapshotCacheKey {
 		PBSID:      opts.BaseURL,
 		Datastore:  opts.Datastore,
 		Namespace:  opts.Namespace,
-		BackupType: "host", // this client only ever creates host-type snapshots
+		BackupType: opts.backupType(),
 		BackupID:   opts.BackupID,
 		SnapshotAt: opts.SnapshotTime.Unix(),
 	}
@@ -907,6 +921,7 @@ func ListSnapshotContentsInline(opts RestoreOptions, archiveName string, forceRe
 	writeBackupLog(fmt.Sprintf("Listing contents: backupID=%s snapshot=%s archive=%s force=%v",
 		opts.BackupID, opts.SnapshotTime.Format(time.RFC3339), archiveName, forceRefresh))
 
+	fillSnapshotKind(&opts)
 	cacheKey := buildSnapshotCacheKey(opts)
 	if !forceRefresh {
 		if cached, ok := loadSnapshotTreeCache(cacheKey); ok {
@@ -968,6 +983,7 @@ func ReadSnapshotMetaInline(opts RestoreOptions, forceRefresh bool) (*BackupMeta
 		return nil, fmt.Errorf("datastore required")
 	}
 
+	fillSnapshotKind(&opts)
 	cacheKey := buildSnapshotCacheKey(opts)
 	if !forceRefresh {
 		if cached, ok := loadSnapshotTreeCache(cacheKey); ok {
@@ -1245,6 +1261,12 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		return fmt.Errorf("destination path required")
 	}
 
+	// A machine backup: files come out of the disk image (restore_image.go).
+	fillSnapshotKind(&opts)
+	if isImageSnapshot(opts) {
+		return restoreImageSnapshot(opts, mode, progress, stage)
+	}
+
 	// In-place restores need the sidecar up front to validate before we burn
 	// time on the multi-GB download. Cheap if the snapshot was listed first.
 	var meta *BackupMeta
@@ -1324,7 +1346,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			Crypt:    opts.Crypt, // the metadata blob is encrypted when the snapshot is
 			Manifest: pbscommon.BackupManifest{BackupID: opts.BackupID, BackupTime: opts.SnapshotTime.Unix()},
 		}
-		aclClient.Connect(true, "host")
+		aclClient.Connect(true, opts.backupType())
 		if m, aerr := downloadCombinedBackupFileMeta(aclClient); aerr == nil {
 			combinedACLMeta = m
 		}
@@ -1582,88 +1604,9 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		extracted = append(extracted, extractedHere...)
 	}
 
-	if opts.OnExtracted != nil {
-		opts.OnExtracted(extracted)
-	}
-
-	successCount := 0
-	skipCount := 0      // deliberate skips (e.g. already exists with overwrite off)
-	errorSkipCount := 0 // genuine failures (open/write/rename/mkdir)
-	dirCount := 0
-	var bytesRestored int64
-	for _, f := range extracted {
-		if f.Skipped {
-			if f.Expected {
-				skipCount++
-				writeBackupLog(fmt.Sprintf("SKIPPED (expected): %s - %s", f.Path, f.SkipReason))
-			} else {
-				errorSkipCount++
-				writeBackupLog(fmt.Sprintf("SKIPPED (error): %s - %s", f.Path, f.SkipReason))
-			}
-		} else if f.IsDir {
-			dirCount++
-		} else {
-			successCount++
-			bytesRestored += int64(f.Size)
-		}
-	}
-	if opts.OnSummary != nil {
-		opts.OnSummary(successCount, dirCount, bytesRestored)
-	}
-
-	writeBackupLog(fmt.Sprintf("Extraction complete: %d files, %d dirs, %d skipped (expected), %d failed",
-		successCount, dirCount, skipCount, errorSkipCount))
-	progress(extractEnd, fmt.Sprintf("Extracted %d files", successCount))
-
-	if dirCount > 0 {
-		stage("dirtimes", "")
-		dApplied, dFailed := applyDirectoryTimes(extracted,
-			func() bool { return opts.Ctx != nil && opts.Ctx.Err() != nil },
-			func(done, total int) {
-				progress(extractEnd, fmt.Sprintf("Setting folder timestamps: %d of %d", done, total))
-			})
-		writeBackupLog(fmt.Sprintf("Folder timestamps: applied %d, failed %d", dApplied, dFailed))
-		if restoreOwnershipEnabled() {
-			applyDirectoryOwnership(extracted)
-		}
-		if opts.Ctx != nil && opts.Ctx.Err() != nil {
-			return fmt.Errorf("restore cancelled while setting folder timestamps")
-		}
-	}
-
-	var verifyFailures []string
-	if opts.VerifyAfterRestore {
-		stage("verifying", "")
-		var vMu sync.Mutex
-		var vLast time.Time
-		verified, fails, verr := verifyRestoredFiles(opts.Ctx, extracted, func(done, total int, path string) {
-			if opts.OnFile != nil {
-				opts.OnFile(path)
-			}
-			vMu.Lock()
-			defer vMu.Unlock()
-			if total > 0 && time.Since(vLast) >= 250*time.Millisecond {
-				vLast = time.Now()
-				progress(extractEnd+(0.95-extractEnd)*float64(done)/float64(total),
-					fmt.Sprintf("Verifying restored files: %d of %d", done, total))
-			}
-		})
-		if verr != nil {
-			return verr
-		}
-		for i, f := range fails {
-			if i >= 200 {
-				writeBackupLog(fmt.Sprintf("VERIFY FAILED: ... and %d more", len(fails)-i))
-				break
-			}
-			writeBackupLog("VERIFY FAILED: " + f)
-		}
-		writeBackupLog(fmt.Sprintf("Verification complete: %d files match the snapshot, %d do not", verified, len(fails)))
-		verifyFailures = fails
-		if opts.OnVerifySummary != nil {
-			opts.OnVerifySummary(verified, fails)
-		}
-		progress(0.95, fmt.Sprintf("Verified %d files", verified))
+	errorSkipCount, verifyFailures, err := finishExtraction(opts, extracted, extractEnd, progress, stage)
+	if err != nil {
+		return err
 	}
 
 	// Best-effort per file: an apply failure is logged, never fails the
@@ -1770,4 +1713,97 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		return fmt.Errorf("restore finished but %d restored file(s) failed verification against the snapshot (see logs)", len(verifyFailures))
 	}
 	return nil
+}
+
+// finishExtraction runs what every restore does once its files are on disk,
+// whatever they came from (a pxar archive or a disk image): OnExtracted, the
+// counts and OnSummary, folder times (and owners on a Linux root restore),
+// and the optional verify pass, which fills the bar from extractEnd to 0.95.
+// It returns how many files failed (not counting deliberate skips) and the
+// files that failed verification.
+func finishExtraction(opts RestoreOptions, extracted []pbscommon.PXARExtractedFile, extractEnd float64,
+	progress func(float64, string), stage func(string, string)) (errorSkipCount int, verifyFailures []string, err error) {
+	if opts.OnExtracted != nil {
+		opts.OnExtracted(extracted)
+	}
+
+	successCount := 0
+	skipCount := 0      // deliberate skips (e.g. already exists with overwrite off)
+	dirCount := 0
+	var bytesRestored int64
+	for _, f := range extracted {
+		if f.Skipped {
+			if f.Expected {
+				skipCount++
+				writeBackupLog(fmt.Sprintf("SKIPPED (expected): %s - %s", f.Path, f.SkipReason))
+			} else {
+				errorSkipCount++
+				writeBackupLog(fmt.Sprintf("SKIPPED (error): %s - %s", f.Path, f.SkipReason))
+			}
+		} else if f.IsDir {
+			dirCount++
+		} else {
+			successCount++
+			bytesRestored += int64(f.Size)
+		}
+	}
+	if opts.OnSummary != nil {
+		opts.OnSummary(successCount, dirCount, bytesRestored)
+	}
+
+	writeBackupLog(fmt.Sprintf("Extraction complete: %d files, %d dirs, %d skipped (expected), %d failed",
+		successCount, dirCount, skipCount, errorSkipCount))
+	progress(extractEnd, fmt.Sprintf("Extracted %d files", successCount))
+
+	if dirCount > 0 {
+		stage("dirtimes", "")
+		dApplied, dFailed := applyDirectoryTimes(extracted,
+			func() bool { return opts.Ctx != nil && opts.Ctx.Err() != nil },
+			func(done, total int) {
+				progress(extractEnd, fmt.Sprintf("Setting folder timestamps: %d of %d", done, total))
+			})
+		writeBackupLog(fmt.Sprintf("Folder timestamps: applied %d, failed %d", dApplied, dFailed))
+		if restoreOwnershipEnabled() {
+			applyDirectoryOwnership(extracted)
+		}
+		if opts.Ctx != nil && opts.Ctx.Err() != nil {
+			return errorSkipCount, nil, fmt.Errorf("restore cancelled while setting folder timestamps")
+		}
+	}
+
+	if opts.VerifyAfterRestore {
+		stage("verifying", "")
+		var vMu sync.Mutex
+		var vLast time.Time
+		verified, fails, verr := verifyRestoredFiles(opts.Ctx, extracted, func(done, total int, path string) {
+			if opts.OnFile != nil {
+				opts.OnFile(path)
+			}
+			vMu.Lock()
+			defer vMu.Unlock()
+			if total > 0 && time.Since(vLast) >= 250*time.Millisecond {
+				vLast = time.Now()
+				progress(extractEnd+(0.95-extractEnd)*float64(done)/float64(total),
+					fmt.Sprintf("Verifying restored files: %d of %d", done, total))
+			}
+		})
+		if verr != nil {
+			return errorSkipCount, nil, verr
+		}
+		for i, f := range fails {
+			if i >= 200 {
+				writeBackupLog(fmt.Sprintf("VERIFY FAILED: ... and %d more", len(fails)-i))
+				break
+			}
+			writeBackupLog("VERIFY FAILED: " + f)
+		}
+		writeBackupLog(fmt.Sprintf("Verification complete: %d files match the snapshot, %d do not", verified, len(fails)))
+		verifyFailures = fails
+		if opts.OnVerifySummary != nil {
+			opts.OnVerifySummary(verified, fails)
+		}
+		progress(0.95, fmt.Sprintf("Verified %d files", verified))
+	}
+
+	return errorSkipCount, verifyFailures, nil
 }

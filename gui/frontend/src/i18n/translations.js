@@ -804,6 +804,10 @@ const translations = {
     snapshotTipMachineLinux: "Les partitions montées sont lues via un instantané (elastio-snap) quand c'est possible ; sinon elles sont lues en direct.",
     snapshotTipOnLinux: "Les fichiers sont lus depuis un instantané du système de fichiers si le volume le permet ; sinon en direct.",
     snapshotTipOffLinux: "Les fichiers sont lus en direct : ceux qui changent pendant la sauvegarde peuvent être incohérents.",
+    inPlaceDiskImage: "les fichiers d'une image disque vont dans un autre dossier",
+    diskImageShort: "image disque",
+    diskImageHint: "Sauvegarde machine : une image disque. Parcourez-la pour restaurer des fichiers de ses volumes NTFS.",
+    diskImageBanner: "Sauvegarde machine (image disque). Chaque volume NTFS de l'image est un dossier ci-dessous ; seules les parties de l'image que vous ouvrez ou restaurez sont téléchargées. Les fichiers sont restaurés dans un autre dossier, avec leurs dates et (avec l'option des autorisations) leurs attributs ; les autorisations elles-mêmes ne sont pas encore restaurées depuis une image disque.",
   },
   en: {
     // Header
@@ -1610,6 +1614,10 @@ const translations = {
     snapshotTipMachineLinux: "Mounted partitions are read through a snapshot (elastio-snap) when one can be taken; otherwise they are read live.",
     snapshotTipOnLinux: "Files are read from a file system snapshot where the volume supports one; otherwise they are read live.",
     snapshotTipOffLinux: "Files are read live: files that change during the backup may be inconsistent.",
+    inPlaceDiskImage: "files from a disk image go to another folder",
+    diskImageShort: "disk image",
+    diskImageHint: "Machine backup: a disk image. Browse it to restore files from its NTFS volumes.",
+    diskImageBanner: "Machine backup (disk image). Each NTFS volume in the image is a folder below; only the parts of the image you open or restore are downloaded. Files are restored to another folder, with their dates and (with the permissions option) attributes; permissions themselves are not restored from a disk image yet.",
   },
   it: {
     // Header
@@ -2416,6 +2424,10 @@ const translations = {
     snapshotTipMachineLinux: "Le partizioni montate vengono lette tramite uno snapshot (elastio-snap) quando possibile; altrimenti vengono lette direttamente.",
     snapshotTipOnLinux: "I file vengono letti da uno snapshot del file system se il volume lo supporta; altrimenti direttamente.",
     snapshotTipOffLinux: "I file vengono letti direttamente: quelli che cambiano durante il backup possono essere incoerenti.",
+    inPlaceDiskImage: "i file di un'immagine disco vanno in un'altra cartella",
+    diskImageShort: "immagine disco",
+    diskImageHint: "Backup macchina: un'immagine disco. Sfogliala per ripristinare file dai suoi volumi NTFS.",
+    diskImageBanner: "Backup macchina (immagine disco). Ogni volume NTFS dell'immagine è una cartella qui sotto; si scaricano solo le parti dell'immagine che apri o ripristini. I file vengono ripristinati in un'altra cartella, con le date e (con l'opzione dei permessi) gli attributi; i permessi stessi non vengono ancora ripristinati da un'immagine disco.",
   },
   de: {
     // Header
@@ -3222,6 +3234,10 @@ const translations = {
     snapshotTipMachineLinux: "Eingehängte Partitionen werden über einen Snapshot (elastio-snap) gelesen, wenn einer möglich ist, sonst direkt.",
     snapshotTipOnLinux: "Dateien werden aus einem Dateisystem-Snapshot gelesen, wenn das Volume das unterstützt, sonst direkt.",
     snapshotTipOffLinux: "Dateien werden direkt gelesen: Dateien, die sich während der Sicherung ändern, können inkonsistent sein.",
+    inPlaceDiskImage: "Dateien aus einem Datenträgerabbild kommen in einen anderen Ordner",
+    diskImageShort: "Datenträgerabbild",
+    diskImageHint: "Maschinensicherung: ein Datenträgerabbild. Durchsuchen Sie es, um Dateien aus seinen NTFS-Volumes wiederherzustellen.",
+    diskImageBanner: "Maschinensicherung (Datenträgerabbild). Jedes NTFS-Volume im Abbild ist unten ein Ordner; heruntergeladen werden nur die Teile des Abbilds, die Sie öffnen oder wiederherstellen. Dateien werden in einen anderen Ordner wiederhergestellt, mit ihren Zeitstempeln und (mit der Berechtigungsoption) Attributen; die Berechtigungen selbst werden aus einem Datenträgerabbild noch nicht wiederhergestellt.",
   },
   pl: {
     // Header
@@ -4028,6 +4044,10 @@ const translations = {
     snapshotTipMachineLinux: "Zamontowane partycje są czytane przez migawkę (elastio-snap), gdy da się ją utworzyć; w przeciwnym razie na żywo.",
     snapshotTipOnLinux: "Pliki są czytane z migawki systemu plików, jeśli wolumin ją obsługuje; w przeciwnym razie na żywo.",
     snapshotTipOffLinux: "Pliki są czytane na żywo: pliki zmieniane w trakcie kopii mogą być niespójne.",
+    inPlaceDiskImage: "pliki z obrazu dysku trafiają do innego folderu",
+    diskImageShort: "obraz dysku",
+    diskImageHint: "Kopia maszyny: obraz dysku. Przeglądaj go, aby przywrócić pliki z jego woluminów NTFS.",
+    diskImageBanner: "Kopia maszyny (obraz dysku). Każdy wolumin NTFS obrazu to folder poniżej; pobierane są tylko części obrazu, które otwierasz lub przywracasz. Pliki są przywracane do innego folderu, z datami i (z opcją uprawnień) atrybutami; same uprawnienia nie są jeszcze przywracane z obrazu dysku.",
   },
   es: {
     // Header
@@ -4836,6 +4856,10 @@ const translations = {
     snapshotTipMachineLinux: "Las particiones montadas se leen mediante una instantánea (elastio-snap) cuando se puede; si no, en directo.",
     snapshotTipOnLinux: "Los archivos se leen de una instantánea del sistema de archivos si el volumen la admite; si no, en directo.",
     snapshotTipOffLinux: "Los archivos se leen en directo: los que cambian durante la copia pueden quedar inconsistentes.",
+    inPlaceDiskImage: "los archivos de una imagen de disco van a otra carpeta",
+    diskImageShort: "imagen de disco",
+    diskImageHint: "Copia de máquina: una imagen de disco. Explórela para restaurar archivos de sus volúmenes NTFS.",
+    diskImageBanner: "Copia de máquina (imagen de disco). Cada volumen NTFS de la imagen es una carpeta abajo; solo se descargan las partes de la imagen que abre o restaura. Los archivos se restauran en otra carpeta, con sus fechas y (con la opción de permisos) sus atributos; los permisos en sí aún no se restauran desde una imagen de disco.",
   },
   bg: {
     // Header
@@ -5640,6 +5664,10 @@ const translations = {
     snapshotTipMachineLinux: "Монтираните дялове се четат чрез снимка (elastio-snap), когато може да се направи; иначе се четат на живо.",
     snapshotTipOnLinux: "Файловете се четат от снимка на файловата система, ако томът я поддържа; иначе на живо.",
     snapshotTipOffLinux: "Файловете се четат на живо: променящите се по време на архивирането може да са непоследователни.",
+    inPlaceDiskImage: "файловете от образ на диск отиват в друга папка",
+    diskImageShort: "образ на диск",
+    diskImageHint: "Архив на машина: образ на диск. Разгледайте го, за да възстановите файлове от NTFS томовете му.",
+    diskImageBanner: "Архив на машина (образ на диск). Всеки NTFS том в образа е папка по-долу; изтеглят се само частите от образа, които отваряте или възстановявате. Файловете се възстановяват в друга папка, с датите си и (с опцията за права) атрибутите си; самите права още не се възстановяват от образ на диск.",
   },
   cs: {
     // Header
@@ -6444,6 +6472,10 @@ const translations = {
     snapshotTipMachineLinux: "Připojené oddíly se čtou přes snímek (elastio-snap), pokud jej lze vytvořit; jinak se čtou přímo.",
     snapshotTipOnLinux: "Soubory se čtou ze snímku souborového systému, pokud jej svazek podporuje; jinak přímo.",
     snapshotTipOffLinux: "Soubory se čtou přímo: soubory měněné během zálohy mohou být nekonzistentní.",
+    inPlaceDiskImage: "soubory z obrazu disku jdou do jiné složky",
+    diskImageShort: "obraz disku",
+    diskImageHint: "Záloha počítače: obraz disku. Procházejte jej a obnovte soubory z jeho svazků NTFS.",
+    diskImageBanner: "Záloha počítače (obraz disku). Každý svazek NTFS v obrazu je níže složkou; stahují se jen části obrazu, které otevřete nebo obnovíte. Soubory se obnovují do jiné složky, s daty a (s volbou oprávnění) atributy; samotná oprávnění se z obrazu disku zatím neobnovují.",
   },
   el: {
     // Header
@@ -7248,6 +7280,10 @@ const translations = {
     snapshotTipMachineLinux: "Τα προσαρτημένα διαμερίσματα διαβάζονται μέσω στιγμιότυπου (elastio-snap) όταν είναι δυνατό· αλλιώς απευθείας.",
     snapshotTipOnLinux: "Τα αρχεία διαβάζονται από στιγμιότυπο του συστήματος αρχείων όπου ο τόμος το υποστηρίζει· αλλιώς απευθείας.",
     snapshotTipOffLinux: "Τα αρχεία διαβάζονται απευθείας: όσα αλλάζουν κατά τη δημιουργία αντιγράφου μπορεί να είναι ασυνεπή.",
+    inPlaceDiskImage: "τα αρχεία από είδωλο δίσκου πηγαίνουν σε άλλο φάκελο",
+    diskImageShort: "είδωλο δίσκου",
+    diskImageHint: "Αντίγραφο μηχανήματος: είδωλο δίσκου. Περιηγηθείτε για να επαναφέρετε αρχεία από τους τόμους NTFS του.",
+    diskImageBanner: "Αντίγραφο μηχανήματος (είδωλο δίσκου). Κάθε τόμος NTFS του ειδώλου είναι ένας φάκελος παρακάτω· κατεβαίνουν μόνο τα μέρη του ειδώλου που ανοίγετε ή επαναφέρετε. Τα αρχεία επαναφέρονται σε άλλο φάκελο, με τις ημερομηνίες τους και (με την επιλογή δικαιωμάτων) τα χαρακτηριστικά τους· τα ίδια τα δικαιώματα δεν επαναφέρονται ακόμη από είδωλο δίσκου.",
   },
   hu: {
     // Header
@@ -8052,6 +8088,10 @@ const translations = {
     snapshotTipMachineLinux: "A csatolt partíciók pillanatképen (elastio-snap) keresztül olvasódnak, ha készíthető; különben közvetlenül.",
     snapshotTipOnLinux: "A fájlok fájlrendszer-pillanatképből olvasódnak, ha a kötet támogatja; különben közvetlenül.",
     snapshotTipOffLinux: "A fájlok közvetlenül olvasódnak: a mentés közben változó fájlok következetlenek lehetnek.",
+    inPlaceDiskImage: "a lemezkép fájljai másik mappába kerülnek",
+    diskImageShort: "lemezkép",
+    diskImageHint: "Gépmentés: lemezkép. Böngéssze, hogy fájlokat állítson vissza az NTFS-köteteiről.",
+    diskImageBanner: "Gépmentés (lemezkép). A kép minden NTFS-kötete egy mappa alább; csak a kép azon részei töltődnek le, amelyeket megnyit vagy visszaállít. A fájlok másik mappába állnak vissza, dátumaikkal és (a jogosultságok opcióval) attribútumaikkal; magukat a jogosultságokat lemezképből még nem állítja vissza.",
   },
   lv: {
     // Header
@@ -8856,6 +8896,10 @@ const translations = {
     snapshotTipMachineLinux: "Montētie nodalījumi tiek lasīti caur momentuzņēmumu (elastio-snap), ja to var izveidot; citādi tieši.",
     snapshotTipOnLinux: "Faili tiek lasīti no failu sistēmas momentuzņēmuma, ja sējums to atbalsta; citādi tieši.",
     snapshotTipOffLinux: "Faili tiek lasīti tieši: faili, kas mainās dublēšanas laikā, var būt nekonsekventi.",
+    inPlaceDiskImage: "faili no diska attēla tiek ievietoti citā mapē",
+    diskImageShort: "diska attēls",
+    diskImageHint: "Datora dublējums: diska attēls. Pārlūkojiet to, lai atjaunotu failus no tā NTFS sējumiem.",
+    diskImageBanner: "Datora dublējums (diska attēls). Katrs attēla NTFS sējums ir mape zemāk; lejupielādē tikai tās attēla daļas, kuras atverat vai atjaunojat. Faili tiek atjaunoti citā mapē ar to datumiem un (ar atļauju opciju) atribūtiem; pašas atļaujas no diska attēla vēl netiek atjaunotas.",
   },
   lt: {
     // Header
@@ -9660,6 +9704,10 @@ const translations = {
     snapshotTipMachineLinux: "Prijungti skaidiniai skaitomi per momentinę kopiją (elastio-snap), kai ją galima sukurti; kitaip tiesiogiai.",
     snapshotTipOnLinux: "Failai skaitomi iš failų sistemos momentinės kopijos, jei tomas ją palaiko; kitaip tiesiogiai.",
     snapshotTipOffLinux: "Failai skaitomi tiesiogiai: kopijavimo metu kintantys failai gali būti nenuoseklūs.",
+    inPlaceDiskImage: "failai iš disko atvaizdo dedami į kitą aplanką",
+    diskImageShort: "disko atvaizdas",
+    diskImageHint: "Kompiuterio kopija: disko atvaizdas. Naršykite jį, kad atkurtumėte failus iš jo NTFS tomų.",
+    diskImageBanner: "Kompiuterio kopija (disko atvaizdas). Kiekvienas atvaizdo NTFS tomas yra aplankas žemiau; atsiunčiamos tik tos atvaizdo dalys, kurias atidarote ar atkuriate. Failai atkuriami į kitą aplanką su datomis ir (su leidimų parinktimi) atributais; patys leidimai iš disko atvaizdo dar neatkuriami.",
   },
   nl: {
     // Header
@@ -10464,6 +10512,10 @@ const translations = {
     snapshotTipMachineLinux: "Gekoppelde partities worden via een momentopname (elastio-snap) gelezen als dat kan; anders live.",
     snapshotTipOnLinux: "Bestanden worden uit een momentopname van het bestandssysteem gelezen als het volume dat ondersteunt; anders live.",
     snapshotTipOffLinux: "Bestanden worden live gelezen: bestanden die tijdens de back-up veranderen, kunnen inconsistent zijn.",
+    inPlaceDiskImage: "bestanden uit een schijfkopie gaan naar een andere map",
+    diskImageShort: "schijfkopie",
+    diskImageHint: "Machinebackup: een schijfkopie. Blader erdoor om bestanden uit de NTFS-volumes terug te zetten.",
+    diskImageBanner: "Machinebackup (schijfkopie). Elk NTFS-volume in de kopie is hieronder een map; alleen de delen die u opent of terugzet worden gedownload. Bestanden worden in een andere map teruggezet, met hun datums en (met de machtigingsoptie) kenmerken; de machtigingen zelf worden nog niet uit een schijfkopie teruggezet.",
   },
   pt: {
     // Header
@@ -11268,6 +11320,10 @@ const translations = {
     snapshotTipMachineLinux: "As partições montadas são lidas através de um instantâneo (elastio-snap) quando possível; caso contrário, diretamente.",
     snapshotTipOnLinux: "Os ficheiros são lidos de um instantâneo do sistema de ficheiros se o volume o suportar; caso contrário, diretamente.",
     snapshotTipOffLinux: "Os ficheiros são lidos diretamente: os que mudam durante a cópia podem ficar inconsistentes.",
+    inPlaceDiskImage: "os ficheiros de uma imagem de disco vão para outra pasta",
+    diskImageShort: "imagem de disco",
+    diskImageHint: "Backup da máquina: uma imagem de disco. Navegue nela para restaurar ficheiros dos seus volumes NTFS.",
+    diskImageBanner: "Backup da máquina (imagem de disco). Cada volume NTFS da imagem é uma pasta abaixo; só se transferem as partes da imagem que abre ou restaura. Os ficheiros são restaurados para outra pasta, com as datas e (com a opção de permissões) os atributos; as permissões em si ainda não são restauradas a partir de uma imagem de disco.",
   },
   ro: {
     // Header
@@ -12072,6 +12128,10 @@ const translations = {
     snapshotTipMachineLinux: "Partițiile montate sunt citite printr-un instantaneu (elastio-snap) când se poate; altfel direct.",
     snapshotTipOnLinux: "Fișierele sunt citite dintr-un instantaneu al sistemului de fișiere dacă volumul îl suportă; altfel direct.",
     snapshotTipOffLinux: "Fișierele sunt citite direct: cele care se schimbă în timpul backup-ului pot fi inconsecvente.",
+    inPlaceDiskImage: "fișierele dintr-o imagine de disc merg în alt dosar",
+    diskImageShort: "imagine de disc",
+    diskImageHint: "Backup de mașină: o imagine de disc. Răsfoiți-o pentru a restaura fișiere din volumele ei NTFS.",
+    diskImageBanner: "Backup de mașină (imagine de disc). Fiecare volum NTFS din imagine este un dosar mai jos; se descarcă doar părțile imaginii pe care le deschideți sau restaurați. Fișierele se restaurează în alt dosar, cu datele și (cu opțiunea de permisiuni) atributele lor; permisiunile în sine nu sunt încă restaurate dintr-o imagine de disc.",
   },
   sk: {
     // Header
@@ -12876,6 +12936,10 @@ const translations = {
     snapshotTipMachineLinux: "Pripojené oddiely sa čítajú cez snímku (elastio-snap), ak ju možno vytvoriť; inak sa čítajú priamo.",
     snapshotTipOnLinux: "Súbory sa čítajú zo snímky súborového systému, ak ju zväzok podporuje; inak priamo.",
     snapshotTipOffLinux: "Súbory sa čítajú priamo: súbory meniace sa počas zálohy môžu byť nekonzistentné.",
+    inPlaceDiskImage: "súbory z obrazu disku idú do iného priečinka",
+    diskImageShort: "obraz disku",
+    diskImageHint: "Záloha počítača: obraz disku. Prehliadajte ho a obnovte súbory z jeho zväzkov NTFS.",
+    diskImageBanner: "Záloha počítača (obraz disku). Každý zväzok NTFS v obraze je nižšie priečinkom; sťahujú sa len časti obrazu, ktoré otvoríte alebo obnovíte. Súbory sa obnovujú do iného priečinka, s dátumami a (s voľbou oprávnení) atribútmi; samotné oprávnenia sa z obrazu disku zatiaľ neobnovujú.",
   },
   tr: {
     // Header
@@ -13680,6 +13744,10 @@ const translations = {
     snapshotTipMachineLinux: "Bağlı bölümler, alınabildiğinde bir anlık görüntü (elastio-snap) üzerinden okunur; aksi halde doğrudan okunur.",
     snapshotTipOnLinux: "Dosyalar, birim destekliyorsa bir dosya sistemi anlık görüntüsünden okunur; aksi halde doğrudan.",
     snapshotTipOffLinux: "Dosyalar doğrudan okunur: yedekleme sırasında değişen dosyalar tutarsız olabilir.",
+    inPlaceDiskImage: "disk görüntüsündeki dosyalar başka bir klasöre gider",
+    diskImageShort: "disk görüntüsü",
+    diskImageHint: "Makine yedeği: bir disk görüntüsü. NTFS birimlerinden dosya geri yüklemek için göz atın.",
+    diskImageBanner: "Makine yedeği (disk görüntüsü). Görüntüdeki her NTFS birimi aşağıda bir klasördür; yalnızca açtığınız veya geri yüklediğiniz kısımlar indirilir. Dosyalar başka bir klasöre tarihleri ve (izinler seçeneğiyle) öznitelikleriyle geri yüklenir; izinlerin kendisi disk görüntüsünden henüz geri yüklenmez.",
   },
   uk: {
     // Header
@@ -14484,6 +14552,10 @@ const translations = {
     snapshotTipMachineLinux: "Змонтовані розділи читаються через знімок (elastio-snap), якщо його можна створити; інакше напряму.",
     snapshotTipOnLinux: "Файли читаються зі знімка файлової системи, якщо том його підтримує; інакше напряму.",
     snapshotTipOffLinux: "Файли читаються напряму: файли, що змінюються під час копіювання, можуть бути неузгоджені.",
+    inPlaceDiskImage: "файли з образу диска потрапляють до іншої теки",
+    diskImageShort: "образ диска",
+    diskImageHint: "Резервна копія машини: образ диска. Перегляньте його, щоб відновити файли з його томів NTFS.",
+    diskImageBanner: "Резервна копія машини (образ диска). Кожен том NTFS в образі є текою нижче; завантажуються лише ті частини образу, які ви відкриваєте чи відновлюєте. Файли відновлюються до іншої теки з датами та (з параметром дозволів) атрибутами; самі дозволи з образу диска поки не відновлюються.",
   }
 }
 

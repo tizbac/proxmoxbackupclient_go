@@ -38,6 +38,9 @@ func (p Partition) Label() string {
 	return fmt.Sprintf("Partition %d (%s, %s)", p.Number, fs, humanBytes(p.Size))
 }
 
+// HumanBytes formats a size in decimal units: "127.3 GB".
+func HumanBytes(n int64) string { return humanBytes(n) }
+
 func humanBytes(n int64) string {
 	const unit = 1000
 	if n < unit {

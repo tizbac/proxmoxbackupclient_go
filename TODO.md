@@ -597,7 +597,9 @@ Found 2026-10-08: datastore prune job `pbs-prune` (04:00, keep-daily 7, weekly 4
 
 Order: phase 0 now, then 1, 2, 3. Undelete is useful on its own after phase 2.
 
-### 💽 Restore files from a machine (disk image) backup (Mick, 2026-10-08)
+### 💽 Restore files from a machine (disk image) backup (Mick, 2026-10-08) - NTFS DONE 2026-10-11
+DONE: pbscommon.NewFIDXReaderAt (fixed index -> DIDXReaderAt), gui/imagefs (GPT/MBR, file system probe, NTFS listing by one MFT sweep, file data via go-ntfs incl. compressed/sparse, extents for read-ahead), restore_image.go (tree per NTFS volume, restore to another folder in MFT order then disk order with read-ahead over the files' clusters, times, attributes, verify), Restore page markers. Live on sarah-yoga510 vm/9000194 (Production): 566k entries, restore + verify OK in abs and flat modes.
+Still open from the list below: permissions from $Secure, ADS, FAT32/exFAT, ext4/XFS, BitLocker (raw partitions read without VSS are encrypted), a cached MFT index per snapshot (the tree is cached, record numbers are re-read for a restore after a restart), the PVE File Restore comparison.
 Today a machine backup (`drive-*.img.fidx`, host or vm) can only be restored whole: bare-metal restore with the ISO, or a VM restore in Proxmox VE. To get a few files back you need Linux (`proxmoxbackup-nbd` attaches the image read-only as `/dev/nbdN`, then mount and copy, see docs/manual/CLI.md) or PVE's File Restore on a `vm/<id>` snapshot (not yet tried on images this client writes). Goal: browse a disk image in the GUI's Restore page, tick files and folders, and restore them, like a folder backup, on Windows and Linux, with nothing mounted by the OS.
 - [ ] **Read the image on demand.** Random access over the fixed index (the restore code already fetches any chunk by index, with a chunk cache), so browsing touches only the chunks it needs, not the whole disk.
 - [ ] **Partitions.** Read MBR and GPT, list partitions with type, size and label, and pick the ones with a filesystem we can read. Skip MSR, EFI-only and recovery partitions by default but allow them.

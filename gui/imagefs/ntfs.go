@@ -37,6 +37,7 @@ func UnixSeconds(ft int64) int64 {
 type NTFS struct {
 	ctx        *parser.NTFSContext
 	recordSize int64
+	diskType   string     // the volume reader's type, as go-ntfs's DebugRuns names it
 	mu         sync.Mutex // go-ntfs keeps an MFT entry cache that is not safe for concurrent use
 }
 
@@ -54,7 +55,31 @@ func OpenNTFS(r io.ReaderAt) (v *NTFS, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("NTFS: %w", err)
 	}
-	return &NTFS{ctx: ctx, recordSize: ctx.GetRecordSize()}, nil
+	return &NTFS{ctx: ctx, recordSize: ctx.GetRecordSize(), diskType: fmt.Sprintf("%T", r)}, nil
+}
+
+// Label is the volume's name (what Explorer shows, e.g. "Windows"), "" if
+// it has none.
+func (v *NTFS) Label() (label string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	defer func() {
+		if recover() != nil {
+			label = ""
+		}
+	}()
+	e, err := v.ctx.GetMFT(3) // $Volume
+	if err != nil {
+		return ""
+	}
+	for _, a := range e.EnumerateAttributes(v.ctx) {
+		if a.Type().Value == 0x60 && a.IsResident() { // $VOLUME_NAME
+			b := make([]byte, a.Content_size())
+			n, _ := a.Data(v.ctx).ReadAt(b, 0)
+			return decodeUTF16(b[:n])
+		}
+	}
+	return ""
 }
 
 // mftSize is the length of the $MFT stream.
@@ -407,6 +432,36 @@ func (v *NTFS) Open(num uint64, size int64) (f *File, err error) {
 
 // Size is the file's length.
 func (f *File) Size() int64 { return f.size }
+
+// Extents are the byte ranges of the volume that hold the file's data,
+// [start, end), for read-ahead: sparse holes are left out, and a resident
+// or empty file has none. For a compressed file they over-cover a little,
+// which read-ahead does not mind.
+func (f *File) Extents() [][2]int64 {
+	rr, ok := f.r.(parser.RangeReaderAt)
+	if !ok {
+		return nil
+	}
+	f.v.mu.Lock()
+	defer f.v.mu.Unlock()
+	var out [][2]int64
+	// DebugRuns flattens go-ntfs's run mapping: a byte-level wrapper around
+	// cluster-level runs. The leaf runs whose delegate is the volume reader
+	// itself (not another go-ntfs reader, nor a resident file's bytes) are
+	// the data on disk
+	// (offsets and lengths in clusters). Compressed and sparse runs are skipped.
+	for _, r := range parser.DebugRuns(rr, 0) {
+		if r.Reader != f.v.diskType || r.IsSparse || r.Length <= 0 || r.CompressedLength != 0 {
+			continue
+		}
+		cs := r.ClusterSize
+		if cs <= 0 {
+			cs = 1
+		}
+		out = append(out, [2]int64{r.ToOffset * cs, (r.ToOffset + r.Length) * cs})
+	}
+	return out
+}
 
 // ReadAt reads the file's data (zeros in sparse ranges, decompressed if
 // NTFS-compressed).

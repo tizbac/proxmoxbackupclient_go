@@ -2448,9 +2448,17 @@ function App() {
     setExpandedDirs(dirs)
   }
 
+  // A machine backup: its only archives are disk images (.img.fidx). Its
+  // files are read out of the image's NTFS volumes and go to another folder.
+  const isDiskImageSnapshot = (snap) => {
+    const files = (snap && snap.files) || []
+    return files.some(f => f.endsWith('.img.fidx')) && !files.some(f => f.endsWith('.pxar.didx') || f.endsWith('.mpxar.didx'))
+  }
+
   // inPlaceBlocker returns a translation key (or null when in-place is OK).
   // Drives the disabled state of the in-place radio + its tooltip.
   const inPlaceBlocker = () => {
+    if (isDiskImageSnapshot(selectedSnapshot)) return 'inPlaceDiskImage'
     if (!snapshotMeta) return 'inPlaceNoMeta'
     if (!snapshotMeta.original_path) return 'inPlaceNoOriginalPath'
     if (systemInfo.os && snapshotMeta.os && systemInfo.os !== snapshotMeta.os) return 'inPlaceOsMismatch'
@@ -4876,7 +4884,9 @@ function App() {
                         <span style={{flex: '1 1 auto', color: '#718096', fontSize: '14px'}}>
                           {snap.backup_id}{snap.protected ? ' 🔒' : ''}
                         </span>
-                        <span style={{flex: '0 0 80px', color: '#718096', fontSize: '14px', textAlign: 'center'}}>{snap.backup_type || 'N/A'}</span>
+                        <span style={{flex: '0 0 80px', color: '#718096', fontSize: '14px', textAlign: 'center'}} title={isDiskImageSnapshot(snap) ? tl('diskImageHint', 'Machine backup: a disk image. Browse it to restore files from its NTFS volumes.') : undefined}>
+                          {snap.backup_type || 'N/A'}{isDiskImageSnapshot(snap) && <><br/><span style={{fontSize: '11px'}}>{tl('diskImageShort', 'disk image')}</span></>}
+                        </span>
                         <span style={{flex: '0 0 90px', color: '#718096', fontSize: '14px', textAlign: 'center'}}>{formatBytes(snap.size)}</span>
                         <button className="btn" style={{flex: '0 0 160px', padding: '4px 12px'}}>
                           {isActive ? `✓ ${t('snapshotSelected')}` : t('selectSnapshot')}
@@ -4904,7 +4914,7 @@ function App() {
                         <h3>{snap.time}</h3>
                         <p style={{color: '#718096', fontSize: '14px', marginTop: '5px'}}>
                           {snap.backup_id}{snap.protected ? ' 🔒' : ''}<br/>
-                          {t('typeLabel')}: {snap.backup_type || 'N/A'} · {formatBytes(snap.size)}
+                          {t('typeLabel')}: {snap.backup_type || 'N/A'}{isDiskImageSnapshot(snap) ? ` (${tl('diskImageShort', 'disk image')})` : ''} · {formatBytes(snap.size)}
                         </p>
                         <button className="btn" style={{marginTop: '10px', width: '100%'}}>
                           {isActive ? `✓ ${t('snapshotSelected')}` : t('selectSnapshot')}
@@ -4938,6 +4948,13 @@ function App() {
               <span>{snapshotMeta.hostname || '—'}{snapshotMeta.os ? ` (${snapshotMeta.os})` : ''}{snapshotMeta.vss_used ? ' · VSS' : ''}</span>
               <strong>{t('metaBackupTime') || 'Sauvegardé le'}</strong>
               <span>{snapshotMeta.backup_time || '—'}{snapshotMeta.client_version ? ` · client ${snapshotMeta.client_version}` : ''}</span>
+            </div>
+          )}
+
+          {/* A disk image: what the tree shows and what a restore brings back */}
+          {selectedSnapshot && isDiskImageSnapshot(selectedSnapshot) && (
+            <div style={{marginTop: '20px', padding: '10px 14px', border: '1px solid #c7d2fe', backgroundColor: '#eef2ff', borderRadius: '8px', fontSize: '13px', color: '#1e293b'}}>
+              💽 {tl('diskImageBanner', 'Machine backup (disk image). Each NTFS volume in the image is a folder below; only the parts of the image you open or restore are downloaded. Files are restored to another folder, with their dates and (with the permissions option) attributes; permissions themselves are not restored from a disk image yet.')}
             </div>
           )}
 
