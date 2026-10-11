@@ -49,6 +49,38 @@ func TestLiveImageRestore(t *testing.T) {
 		}
 	}
 	t.Logf("listed %d entries in %v", len(entries), time.Since(start).Round(time.Millisecond))
+	// PBS_IMG_PICK: restore that folder of the first volume instead of the
+	// Windows files (a data disk), in both modes, and check the verify.
+	if pick := os.Getenv("PBS_IMG_PICK"); pick != "" {
+		vol := ""
+		for _, e := range entries {
+			if e.IsDir && !strings.Contains(e.Path, "/") {
+				vol = e.Path
+				break
+			}
+		}
+		for _, mode := range []RestoreMode{RestoreModeAlternateAbs, RestoreModeAlternateFlat} {
+			opts := base
+			opts.DestPath = t.TempDir()
+			opts.Mode = mode
+			opts.VerifyAfterRestore = true
+			opts.RestoreACLs = true
+			opts.IncludePaths = []string{vol + "/" + pick}
+			var files, verified int
+			var bytes int64
+			opts.OnSummary = func(f, d int, b int64) { files, bytes = f, b }
+			opts.OnVerifySummary = func(v int, fails []string) { verified = v }
+			start := time.Now()
+			if err := RestoreSnapshotInline(opts); err != nil {
+				t.Fatalf("%s: %v", mode, err)
+			}
+			t.Logf("%s: %s: %d files, %d bytes, %d verified in %v", mode, pick, files, bytes, verified, time.Since(start).Round(time.Millisecond))
+			if files == 0 || verified != files {
+				t.Errorf("%s: verified %d of %d", mode, verified, files)
+			}
+		}
+		return
+	}
 	if winVol == "" {
 		t.Fatal("no Windows volume")
 	}

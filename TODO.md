@@ -555,6 +555,7 @@ type ScheduledJob struct {
 ### ✅ Machine backups skip free space (Windows, 2026-10-11)
 machinebackuplib/freespace_windows.go: FSCTL_GET_NTFS_VOLUME_DATA + FSCTL_GET_VOLUME_BITMAP on the shadow copy, pagefile/hiberfil/swapfile clusters freed via FSCTL_GET_RETRIEVAL_POINTERS (best effort), free 4 MiB windows not read, free clusters in read windows zeroed. Config.ReadFreeSpace = old behaviour. Live on winclient: 1 GB test volume, 840 MB not read, files identical, deleted 20 MB of random data absent from the image, image mounted as VHD and chkdsk clean.
 - [ ] Linux (stitched disk): ext4/XFS free-space maps, or `fstrim`-style discard info; not done.
+- [ ] Linux: the elastio-snap CoW file (`.pbs_snapshot_N.cow`, 10% of the filesystem, on the snapshotted filesystem itself) is captured INSIDE the machine image, so a restored disk has that stray file at the root of each filesystem (found 2026-10-11 on VM140: 154 MB in a 1.5 GB ext4). Fix: FIEMAP the CoW file and zero its extents in the stream (like pagefile/hiberfil on Windows), and remove its directory entry on restore, or keep the CoW file on another filesystem.
 - [ ] GUI option for a forensic (read everything) copy per machine set.
 - [ ] Volumes without a drive letter (EFI, recovery) are still read whole (small).
 
@@ -562,6 +563,7 @@ machinebackuplib/freespace_windows.go: FSCTL_GET_NTFS_VOLUME_DATA + FSCTL_GET_VO
 ScheduledJob.ImageFolders (default Desktop/Documents/Pictures/Music/Videos/Downloads); set_image.go maps each folder to "drive-sata<disk>.img.fidx@<partition offset>:<path>" (volumeDiskExtent, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS) and builds its file list from the image (folderEntries applies the live walk's exclusions); restoreImageSnapshot understands those keys. Live on sarah-yoga510: profile folder 30,726 entries in 9.1 s, preview 0 missing / 0 changed / 18 new / 27,362 unchanged, 5 files restored identical.
 - [ ] A changed partition layout since a snapshot (offset moved) fails that snapshot's list with a clear error; could fall back to matching the volume by its NTFS serial number.
 - [ ] Linux machine sets: needs ext4/XFS reading.
+- [ ] Roll back with "Back up the set first" on a machine set: the pre-backup is a whole-disk image, and the roll back card sits at 1% ("Backing up the set before the roll back...") until it ends; only the status line moves. Default is now OFF for machine sets with a hint; the card could follow the set run's own progress.
 
 ### 🗑️ Undelete and ⏪ Roll back: IMPLEMENTATION PLAN (ideas from BFW 2026-10-07, planned 2026-10-08)
 Undelete = files that are in a Backup Set's snapshots but gone from disk, ready to restore. Roll back = put a Backup Set's folders back as they were at a chosen date and time. Both are "compare a snapshot with the live folders, then restore a list of paths", so they share one engine. Folder sets only; machine sets keep bare-metal restore.

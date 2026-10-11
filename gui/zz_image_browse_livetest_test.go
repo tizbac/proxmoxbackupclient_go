@@ -128,7 +128,7 @@ func TestLiveImageBrowse(t *testing.T) {
 		n++
 		readOne(t, vol, e)
 	}
-	for _, e := range entries[len(entries)-200:] {
+	for _, e := range entries[max(0, len(entries)-200):] {
 		if !e.IsDir && e.Size > 0 && e.Size < 4096 {
 			readOne(t, vol, e)
 			break
