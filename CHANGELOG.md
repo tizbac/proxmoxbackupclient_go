@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Restoring permissions no longer fails on files whose owner cannot be set** ("This security ID may not be assigned as the owner of this object", seen on 4 files on deepthought). An elevated restore now uses the restore privilege, so any recorded owner comes back, even an account this computer does not know; without it the permissions are still restored and only the owner stays the restoring account (logged). Permissions that did not inherit from their folder at the source stay that way.
+
 ### Added
 - **A Backup Set can minimise the app to the tray when it finishes.** Alerts tab: "When the backup finishes, the app window: stays as it is / minimises to the tray / closes (the app exits)", one choice instead of the old "Exit after the backup" tick box. Turning the computer off stays a separate tick box and still comes last.
 - **Run now: quick or full read** for Metadata Backup Sets, in the card's More menu. Quick reuses unchanged files even when the set is due its "full read every N runs" (the full read stays due for the next run); full read reads every file now and restarts the count. The progress card says "Full read requested". Plain Run Now does what the schedule would.

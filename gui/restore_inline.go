@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +16,10 @@ import (
 
 	"pbscommon"
 )
+
+// errOwnerKept: a file's permissions were restored but not its recorded
+// owner, which stays the restoring account (applyNTFSMetadata on Windows).
+var errOwnerKept = errors.New("owner not restored")
 
 // RestoreMode picks where extracted files land on disk.
 //
@@ -1631,7 +1636,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			}
 		}
 		if len(items) > 0 {
-			applied, failed := 0, 0
+			applied, failed, ownerKept := 0, 0, 0
 			cApplied, cFailed := 0, 0
 			label := "Restoring ACLs and attributes"
 			if opts.RestoreACLs {
@@ -1658,7 +1663,13 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 					}
 				}
 				if opts.RestoreACLs {
-					if aerr := applyNTFSMetadata(it.path, it.entry, it.sddls); aerr != nil {
+					if aerr := applyNTFSMetadata(it.path, it.entry, it.sddls); errors.Is(aerr, errOwnerKept) {
+						applied++
+						ownerKept++
+						if ownerKept <= 50 {
+							writeBackupLog(fmt.Sprintf("Permissions restored on %s, but not its owner: %v", it.path, aerr))
+						}
+					} else if aerr != nil {
 						failed++
 						writeBackupLog(fmt.Sprintf("NTFS metadata apply failed for %s: %v", it.path, aerr))
 					} else {
@@ -1675,7 +1686,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 				writeBackupLog(fmt.Sprintf("Creation times: applied %d, failed %d", cApplied, cFailed))
 			}
 			if opts.RestoreACLs {
-				writeBackupLog(fmt.Sprintf("NTFS ACLs/attributes: applied %d, failed %d", applied, failed))
+				writeBackupLog(fmt.Sprintf("NTFS ACLs/attributes: applied %d (owner kept as the restoring account on %d), failed %d", applied, ownerKept, failed))
 			}
 		}
 	}
