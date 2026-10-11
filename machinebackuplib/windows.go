@@ -622,12 +622,14 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 						}
 						err = readResilient(src, srcOff+w, n, block, 4096, masked, maskedZeros, onBad)
 					} else if emitZeros(n) {
+						// Counted as it goes, so the progress card shows
+						// it growing instead of 0 B until the partition ends.
 						skipped += n
+						jp.FreeSkipped.Add(n)
 					} else {
 						err = errCopyStopped
 					}
 				}
-				jp.FreeSkipped.Add(skipped)
 				log.Printf("%s: %s of free space not read", name, BytesToString(int64(skipped)))
 			}
 			if err == errCopyStopped {

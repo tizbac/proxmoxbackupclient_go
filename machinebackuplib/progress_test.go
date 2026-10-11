@@ -1,6 +1,7 @@
 package machinebackuplib
 
 import (
+	"bytes"
 	"testing"
 
 	"pbscommon"
@@ -64,21 +65,58 @@ func TestJobProgressCountsAndNilSafety(t *testing.T) {
 }
 
 func TestZeroChunkDetector(t *testing.T) {
+	crypt, err := pbscommon.NewCryptConfig(bytes.Repeat([]byte{7}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Plain and encrypted digests differ; the shortcut must give the one
+	// the client itself would.
+	for _, client := range []*pbscommon.PBSClient{{}, {Crypt: crypt}} {
+		z := newZeroChunkDetector(client)
+		hashed := 0
+		hash := func(b []byte) [32]byte { hashed++; return client.ChunkDigest(b) }
+
+		blank := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
+		d, isBlank := z.digestOf(blank, hash)
+		if !isBlank || d != client.ChunkDigest(blank) || hashed != 0 {
+			t.Fatalf("crypt=%v: a 4 MiB chunk of zeros: blank=%v, digest right=%v, hashed %d times",
+				client.Crypt != nil, isBlank, d == client.ChunkDigest(blank), hashed)
+		}
+		for _, at := range []int{0, 12345, pbscommon.PBS_FIXED_CHUNK_SIZE - 1} {
+			data := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
+			data[at] = 1
+			if d, isBlank := z.digestOf(data, hash); isBlank || d != client.ChunkDigest(data) {
+				t.Fatalf("crypt=%v: a chunk with one byte set at %d is not blank", client.Crypt != nil, at)
+			}
+		}
+		short := make([]byte, 4096)
+		if d, isBlank := z.digestOf(short, hash); isBlank || d != client.ChunkDigest(short) {
+			t.Fatal("short chunks are hashed, not taken as blank")
+		}
+		if hashed != 4 {
+			t.Fatalf("hashed %d chunks, want the 4 that are not blank", hashed)
+		}
+	}
+}
+
+// BenchmarkBlankChunkDigest compares hashing 4 MiB of zeros with the
+// shortcut free space now takes.
+func BenchmarkBlankChunkDigest(b *testing.B) {
 	client := &pbscommon.PBSClient{}
 	z := newZeroChunkDetector(client)
 	blank := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
-	if !z.isBlank(blank, client.ChunkDigest(blank)) {
-		t.Fatal("a 4 MiB chunk of zeros is blank")
-	}
-	data := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
-	data[12345] = 1
-	if z.isBlank(data, client.ChunkDigest(data)) {
-		t.Fatal("a chunk with data is not blank")
-	}
-	short := make([]byte, 4096)
-	if z.isBlank(short, client.ChunkDigest(short)) {
-		t.Fatal("short chunks are not checked")
-	}
+	b.Run("hash", func(b *testing.B) {
+		b.SetBytes(int64(len(blank)))
+		for i := 0; i < b.N; i++ {
+			client.ChunkDigest(blank)
+		}
+	})
+	b.Run("shortcut", func(b *testing.B) {
+		b.SetBytes(int64(len(blank)))
+		for i := 0; i < b.N; i++ {
+			z.digestOf(blank, client.ChunkDigest)
+		}
+	})
 }
 
 func TestPartitionLabel(t *testing.T) {

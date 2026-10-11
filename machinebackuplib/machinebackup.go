@@ -164,8 +164,10 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 			// uses: plain sha256, or sha256(plaintext || id_key) when an
 			// encryption key is configured. This is the value the fixed index
 			// stores and the value the chunk store is keyed by, so it must be
-			// derived the same way on every restore.
-			chunkdigest := client.ChunkDigest(seg.Data)
+			// derived the same way on every restore. Blank chunks (free space
+			// above all) take the digest worked out once at the start: a zero
+			// check is over ten times quicker than hashing 4 MiB of zeros.
+			chunkdigest, blank := zero.digestOf(seg.Data, client.ChunkDigest)
 			shahash := hex.EncodeToString(chunkdigest[:])
 			//binary.Write(CS.chunkdigests, binary.LittleEndian, (CS.pos + uint64(nread)))
 
@@ -186,7 +188,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 				}
 				newchunk.Add(1)
 			}
-			jp.countChunk(len(seg.Data), zero.isBlank(seg.Data, chunkdigest), !exists)
+			jp.countChunk(len(seg.Data), blank, !exists)
 			assignment_mutex.Lock()
 			CS.assignments = append(CS.assignments, shahash)
 			CS.assignments_offset = append(CS.assignments_offset, seg.Pos)

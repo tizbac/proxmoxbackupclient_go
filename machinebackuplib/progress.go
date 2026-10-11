@@ -176,18 +176,27 @@ func blockMessage(dev string, pos, size uint64) string {
 	return fmt.Sprintf("%s: Block %d / %d", dev, n, Blocks(size))
 }
 
-// zeroChunkDetector tells whether a chunk is all zeros by its digest, which
-// the upload path computes anyway, so blank space costs no extra pass over
-// the data. Only full-size chunks are checked; a short tail chunk of zeros is
-// not worth a second digest.
+// zeroChunkDetector spots all-zero chunks (blank disk space) and hands them
+// the digest of a zero chunk, worked out once with the client's own digest
+// (so it holds for encrypted backups too), instead of hashing every one.
+// Comparing with zeros stops at the first nonzero byte, so chunks with data
+// pay next to nothing for it. Only full-size chunks are checked; a short tail
+// chunk is hashed as before.
 type zeroChunkDetector struct {
+	zeros  []byte
 	digest [32]byte
 }
 
 func newZeroChunkDetector(client *pbscommon.PBSClient) zeroChunkDetector {
-	return zeroChunkDetector{digest: client.ChunkDigest(make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE))}
+	zeros := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
+	return zeroChunkDetector{zeros: zeros, digest: client.ChunkDigest(zeros)}
 }
 
-func (z zeroChunkDetector) isBlank(data []byte, digest [32]byte) bool {
-	return len(data) == pbscommon.PBS_FIXED_CHUNK_SIZE && bytes.Equal(digest[:], z.digest[:])
+// digestOf returns data's digest and whether data is a blank chunk, calling
+// hash only for chunks that are not.
+func (z zeroChunkDetector) digestOf(data []byte, hash func([]byte) [32]byte) ([32]byte, bool) {
+	if len(data) == len(z.zeros) && bytes.Equal(data, z.zeros) {
+		return z.digest, true
+	}
+	return hash(data), false
 }
