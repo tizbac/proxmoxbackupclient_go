@@ -609,11 +609,21 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			return nil
 		}
 
+		// The reader's result goes into errCh BEFORE ch is closed: uploadWorker
+		// checks errCh with a non-blocking receive once ch is drained, so the
+		// other order let it miss a read error, close the index with a short
+		// chunk count and report PBS's "unexpected chunk count" instead of the
+		// real cause. uploadWorker is the only consumer of errCh; readErr keeps
+		// a copy for when the upload stopped first and never looked.
+		var readErr error
+		readerDone := make(chan struct{})
 		go func() {
 			var rerr error
 			defer func() {
-				close(ch)
+				readErr = rerr
 				errCh <- rerr
+				close(ch)
+				close(readerDone)
 			}()
 			for idx, P := range parts {
 				fmt.Printf("Partition: %d\n", idx)
@@ -633,8 +643,8 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			uploadErr = uploadWorker(client, fmt.Sprintf("drive-sata%d.img.fidx", index), uint64(total), ch, errCh)
 		}()
 
-		readErr := <-errCh
 		<-uploadDone
+		<-readerDone
 		if uploadErr != nil {
 			return uploadErr
 		}

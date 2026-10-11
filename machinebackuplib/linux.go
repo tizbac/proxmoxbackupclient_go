@@ -205,8 +205,10 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 
 	go func() {
 		err := writeSegments(dev, segments, total, ch, uploadDone, progressCallback)
-		close(ch)
+		// Error first, then close: uploadWorker's non-blocking check of
+		// errCh runs after ch is drained and must find the value there.
 		errCh <- err
+		close(ch)
 	}()
 
 	// uploadWorker is the sole consumer of errCh (it returns the reader error
