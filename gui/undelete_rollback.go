@@ -651,7 +651,7 @@ func (a *App) StartRollback(jobID string, snapshotUnix int64, policy string, bac
 			}
 			summary := fmt.Sprintf("Restored %d files, replaced %d, removed %d", len(manifest.Restored)-moved, moved, removed)
 			if len(manifest.MoveFailed) > 0 {
-				summary += fmt.Sprintf("; %d files in use were left as they are", len(manifest.MoveFailed))
+				summary += fmt.Sprintf("; %d files could not be set aside and were left as they are (first: %s)", len(manifest.MoveFailed), manifest.MoveFailed[0])
 			}
 			return summary + ". Previous versions kept in " + filepath.Dir(manifestPath)
 		},
@@ -727,7 +727,27 @@ func (a *App) applyRollbackMoves(ctx context.Context, p *rollbackPlan, policy st
 		if !found {
 			m.SafetyRoots = append(m.SafetyRoots, root)
 		}
-		work = append(work, folderWork{f: f, archive: archive, safety: filepath.Join(root, f.Base)})
+		// A machine set's base is an image key ("drive-sata1.img.fidx@<offset>:
+		// Documents"), not a folder name Windows accepts: use the live folder's
+		// own name there, numbered if two folders share it.
+		sub := f.Base
+		if isImageBase(sub) {
+			sub = safetyName(filepath.Base(f.Dir))
+			for n, name := 2, sub; ; n++ {
+				taken := false
+				for _, w := range work {
+					if w.safety == filepath.Join(root, name) {
+						taken = true
+					}
+				}
+				if !taken {
+					sub = name
+					break
+				}
+				name = fmt.Sprintf("%s (%d)", sub, n)
+			}
+		}
+		work = append(work, folderWork{f: f, archive: archive, safety: filepath.Join(root, sub)})
 	}
 	if manifestPath == "" {
 		return nil, "", nil, fmt.Errorf("none of the set's folders is in this snapshot")

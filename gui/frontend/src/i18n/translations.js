@@ -815,6 +815,7 @@ const translations = {
     setPickerMachineDefault: "votre Bureau, Documents, Images...",
     setPickerChooseAny: "Choisissez un jeu de sauvegarde...",
     setPickerNoneAny: "Il n'y a pas encore de jeu de sauvegarde. Créez-en un sur la page Sauvegarde.",
+    rollbackBackupFirstMachine: "Ce jeu sauvegarde des disques entiers : la sauvegarde préalable dure à peu près autant que sa sauvegarde habituelle.",
   },
   en: {
     // Header
@@ -1632,6 +1633,7 @@ const translations = {
     setPickerMachineDefault: "your Desktop, Documents, Pictures...",
     setPickerChooseAny: "Choose a Backup Set...",
     setPickerNoneAny: "There are no Backup Sets yet. Create one on the Backup page.",
+    rollbackBackupFirstMachine: "This set backs up whole disks: the backup first takes about as long as its usual backup.",
   },
   it: {
     // Header
@@ -2449,6 +2451,7 @@ const translations = {
     setPickerMachineDefault: "Desktop, Documenti, Immagini...",
     setPickerChooseAny: "Scegli un set di backup...",
     setPickerNoneAny: "Non ci sono ancora set di backup. Creane uno nella pagina Backup.",
+    rollbackBackupFirstMachine: "Questo set esegue il backup di dischi interi: il backup preliminare dura circa quanto il suo backup abituale.",
   },
   de: {
     // Header
@@ -3266,6 +3269,7 @@ const translations = {
     setPickerMachineDefault: "Ihr Desktop, Dokumente, Bilder...",
     setPickerChooseAny: "Sicherungssatz wählen...",
     setPickerNoneAny: "Es gibt noch keine Sicherungssätze. Legen Sie einen auf der Seite Sicherung an.",
+    rollbackBackupFirstMachine: "Dieser Satz sichert ganze Datenträger: die vorherige Sicherung dauert etwa so lange wie seine übliche Sicherung.",
   },
   pl: {
     // Header
@@ -4083,6 +4087,7 @@ const translations = {
     setPickerMachineDefault: "Pulpit, Dokumenty, Obrazy...",
     setPickerChooseAny: "Wybierz zestaw kopii...",
     setPickerNoneAny: "Nie ma jeszcze zestawów kopii. Utwórz zestaw na stronie Kopia.",
+    rollbackBackupFirstMachine: "Ten zestaw kopiuje całe dyski: kopia wykonywana najpierw trwa mniej więcej tyle, co jego zwykła kopia.",
   },
   es: {
     // Header
@@ -4902,6 +4907,7 @@ const translations = {
     setPickerMachineDefault: "su Escritorio, Documentos, Imágenes...",
     setPickerChooseAny: "Elija un conjunto de copia...",
     setPickerNoneAny: "Aún no hay conjuntos de copia. Cree uno en la página Copia de seguridad.",
+    rollbackBackupFirstMachine: "Este conjunto copia discos completos: la copia previa tarda más o menos lo mismo que su copia habitual.",
   },
   bg: {
     // Header
@@ -5717,6 +5723,7 @@ const translations = {
     setPickerMachineDefault: "Работен плот, Документи, Картини...",
     setPickerChooseAny: "Изберете комплект за архивиране...",
     setPickerNoneAny: "Все още няма комплекти за архивиране. Създайте един на страница Архивиране.",
+    rollbackBackupFirstMachine: "Този набор архивира цели дискове: предварителното архивиране отнема горе-долу колкото обичайното му архивиране.",
   },
   cs: {
     // Header
@@ -6532,6 +6539,7 @@ const translations = {
     setPickerMachineDefault: "Plocha, Dokumenty, Obrázky...",
     setPickerChooseAny: "Vyberte sadu záloh...",
     setPickerNoneAny: "Zatím nejsou žádné sady záloh. Vytvořte ji na stránce Záloha.",
+    rollbackBackupFirstMachine: "Tato sada zálohuje celé disky: předchozí záloha trvá přibližně stejně dlouho jako její obvyklá záloha.",
   },
   el: {
     // Header
@@ -7347,6 +7355,7 @@ const translations = {
     setPickerMachineDefault: "Επιφάνεια εργασίας, Έγγραφα, Εικόνες...",
     setPickerChooseAny: "Επιλέξτε σύνολο αντιγράφων...",
     setPickerNoneAny: "Δεν υπάρχουν ακόμη σύνολα αντιγράφων. Δημιουργήστε ένα στη σελίδα Αντίγραφο ασφαλείας.",
+    rollbackBackupFirstMachine: "Αυτό το σύνολο αντιγράφει ολόκληρους δίσκους: το προηγούμενο αντίγραφο διαρκεί περίπου όσο το συνηθισμένο του αντίγραφο.",
   },
   hu: {
     // Header
@@ -8162,6 +8171,7 @@ const translations = {
     setPickerMachineDefault: "Asztal, Dokumentumok, Képek...",
     setPickerChooseAny: "Válasszon mentési készletet...",
     setPickerNoneAny: "Még nincs mentési készlet. Hozzon létre egyet a Mentés oldalon.",
+    rollbackBackupFirstMachine: "Ez a készlet teljes lemezeket ment: az előzetes mentés nagyjából annyi ideig tart, mint a szokásos mentése.",
   },
   lv: {
     // Header
@@ -8977,6 +8987,7 @@ const translations = {
     setPickerMachineDefault: "Darbvirsma, Dokumenti, Attēli...",
     setPickerChooseAny: "Izvēlieties dublēšanas komplektu...",
     setPickerNoneAny: "Vēl nav dublēšanas komplektu. Izveidojiet to lapā Dublēšana.",
+    rollbackBackupFirstMachine: "Šī kopa dublē veselus diskus: iepriekšējā dublēšana ilgst aptuveni tikpat ilgi kā tās parastā dublēšana.",
   },
   lt: {
     // Header
@@ -9792,6 +9803,7 @@ const translations = {
     setPickerMachineDefault: "Darbalaukis, Dokumentai, Paveikslėliai...",
     setPickerChooseAny: "Pasirinkite kopijų rinkinį...",
     setPickerNoneAny: "Kopijų rinkinių dar nėra. Sukurkite jį puslapyje Kopijavimas.",
+    rollbackBackupFirstMachine: "Šis rinkinys kopijuoja visus diskus: išankstinė kopija trunka maždaug tiek pat, kiek įprasta jo kopija.",
   },
   nl: {
     // Header
@@ -10607,6 +10619,7 @@ const translations = {
     setPickerMachineDefault: "uw Bureaublad, Documenten, Afbeeldingen...",
     setPickerChooseAny: "Kies een back-upset...",
     setPickerNoneAny: "Er zijn nog geen back-upsets. Maak er een op de pagina Back-up.",
+    rollbackBackupFirstMachine: "Deze set maakt een back-up van hele schijven: de back-up vooraf duurt ongeveer even lang als de gewone back-up.",
   },
   pt: {
     // Header
@@ -11422,6 +11435,7 @@ const translations = {
     setPickerMachineDefault: "Ambiente de trabalho, Documentos, Imagens...",
     setPickerChooseAny: "Escolha um conjunto de backup...",
     setPickerNoneAny: "Ainda não há conjuntos de backup. Crie um na página Backup.",
+    rollbackBackupFirstMachine: "Este conjunto faz cópia de discos inteiros: a cópia prévia demora mais ou menos o mesmo que a sua cópia habitual.",
   },
   ro: {
     // Header
@@ -12237,6 +12251,7 @@ const translations = {
     setPickerMachineDefault: "Desktop, Documente, Imagini...",
     setPickerChooseAny: "Alegeți un set de backup...",
     setPickerNoneAny: "Nu există încă seturi de backup. Creați unul în pagina Backup.",
+    rollbackBackupFirstMachine: "Acest set face backup la discuri întregi: backupul prealabil durează cam cât backupul său obișnuit.",
   },
   sk: {
     // Header
@@ -13052,6 +13067,7 @@ const translations = {
     setPickerMachineDefault: "Pracovná plocha, Dokumenty, Obrázky...",
     setPickerChooseAny: "Vyberte sadu záloh...",
     setPickerNoneAny: "Zatiaľ nie sú žiadne sady záloh. Vytvorte ju na stránke Záloha.",
+    rollbackBackupFirstMachine: "Táto sada zálohuje celé disky: predchádzajúca záloha trvá približne rovnako dlho ako jej bežná záloha.",
   },
   tr: {
     // Header
@@ -13867,6 +13883,7 @@ const translations = {
     setPickerMachineDefault: "Masaüstü, Belgeler, Resimler...",
     setPickerChooseAny: "Bir yedekleme kümesi seçin...",
     setPickerNoneAny: "Henüz yedekleme kümesi yok. Yedekleme sayfasında bir tane oluşturun.",
+    rollbackBackupFirstMachine: "Bu küme tüm diskleri yedekler: önce yapılan yedekleme, olağan yedeklemesi kadar sürer.",
   },
   uk: {
     // Header
@@ -14682,6 +14699,7 @@ const translations = {
     setPickerMachineDefault: "Робочий стіл, Документи, Зображення...",
     setPickerChooseAny: "Виберіть набір резервних копій...",
     setPickerNoneAny: "Ще немає наборів резервних копій. Створіть його на сторінці Резервне копіювання.",
+    rollbackBackupFirstMachine: "Цей набір копіює цілі диски: попередня копія триває приблизно стільки ж, скільки його звичайна копія.",
   }
 }
 

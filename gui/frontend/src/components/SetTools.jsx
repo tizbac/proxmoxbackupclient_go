@@ -366,6 +366,7 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   const [busyRecord, setBusyRecord] = useState('')
   const [progressLine, setProgressLine, progressFraction] = useScanProgress(ui, !!previewing)
   const [, tick] = useState(0)
+  const isMachineSet = (jobs || []).some(j => j.id === jobId && j.backupType === 'machine')
 
   useEffect(() => {
     if (!loadingSnaps && !previewing) return undefined
@@ -379,6 +380,9 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   }
   useEffect(() => {
     setSnaps(null); setSnapUnix(0); setPreview(null); setError(''); setAtTime(''); setConfirmText('')
+    // A machine set's backup is a whole-disk image, far longer than the
+    // roll back itself, so it is not done first unless asked for.
+    setBackupFirst(!isMachineSet)
     loadRecords(jobId)
     if (!jobId) return
     let cancelled = false
@@ -567,12 +571,17 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
             <input type="checkbox" checked={backupFirst} onChange={(e) => setBackupFirst(e.target.checked)} style={{width: 'auto', margin: 0}} />
             {tl('rollbackBackupFirst', 'Back up the set first (keeps today\'s state as a backup too)')}
           </label>
+          {backupFirst && isMachineSet && (
+            <div style={{fontSize: '12px', color: '#718096', margin: '2px 0 6px 22px'}}>
+              {tl('rollbackBackupFirstMachine', 'This set backs up whole disks: the backup first takes about as long as its usual backup.')}
+            </div>
+          )}
           <label style={{display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal'}}>
             <input type="checkbox" checked={verify} onChange={(e) => setVerify(e.target.checked)} style={{width: 'auto', margin: 0}} />
             {tl('verifyAfterRestore', 'Verify after restore')}
           </label>
           <div className="info-box" style={{marginTop: '10px'}}>
-            🛟 {tl('rollbackSafetyNote', 'Before anything is replaced or removed it is moved to {folder} on the same disk, so Undo below can put it back. While the roll back runs, this set\'s scheduled backups wait.').replace('{folder}', (preview.safetyFolders || []).join(', '))}
+            ↩️ {tl('rollbackSafetyNote', 'Before anything is replaced or removed it is moved to {folder} on the same disk, so Undo below can put it back. While the roll back runs, this set\'s scheduled backups wait.').replace('{folder}', (preview.safetyFolders || []).join(', '))}
           </div>
           <div style={{marginTop: '12px'}}>
             <button className="btn" onClick={start} disabled={restoreLoading || nothingToDo || (policy === 'exact' && preview.newCount > 0 && !exactOk)}>
