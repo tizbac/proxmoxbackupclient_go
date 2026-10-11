@@ -133,6 +133,10 @@ mysqldump mydb | proxmoxbackup-directory -backupstream mydb.sql -backup-id db1 [
 
 Repeat `-backupdir`. Each folder becomes its own backup group, with the ID `<base>_<path>`, where `<base>` is `-backup-id` (or the computer name) and `<path>` is the folder path with `\`, `/`, `:` and spaces turned into safe characters. For example `-backup-id laptop -backupdir C:\Data -backupdir "D:\My Photos"` gives `laptop_C_Data` and `laptop_D_My-Photos`. One folder failing does not stop the others; the exit code reports the failure.
 
+### Permissions, attributes and dates
+
+Besides each file's contents and modification time, the tool records on Windows each file's and folder's permissions (owner, group and access list), attributes (read-only, hidden, system...) and creation time, and on Linux extended attributes and POSIX ACLs. They are stored with the snapshot, and a restore in the GUI puts them back (permissions only when **Restore permissions/ACLs** is ticked). Windows CLI backups made before v0.8.1 did not record them.
+
 ### What gets skipped
 
 These names are always skipped, at any depth: the folders `System Volume Information`, `$RECYCLE.BIN` and `Recovery`, and the files `pagefile.sys`, `hiberfil.sys`, `swapfile.sys` and `DumpStack.log.tmp`.
@@ -175,6 +179,7 @@ Points to know:
 | `-type <host\|vm>` | `host` | `vm` stores a Proxmox VE VM snapshot (numeric `-backup-id`), which Proxmox VE can restore as a VM |
 | `-backup-id <id>` | computer name | Backup ID. Must be numeric with `-type vm` |
 | `-keyfile`, `-keyfile-passphrase` | | Encryption ([section 7](#7-encryption)) |
+| `-readfreespace` | off | Windows: also read free space and the paging, hibernation and swap files (a forensic copy). By default they go into the image as zeros without being read |
 | `-systray` | off | Show a tray icon while running. Can cause problems when nobody is logged in |
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
 | `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`) |
@@ -185,6 +190,17 @@ Plus the connection flags in [section 2](#2-connecting-to-pbs).
 On Windows the tool takes a VSS snapshot of every mounted partition on the disk, then stores a bootable image of the whole disk. On Linux mounted partitions are snapshotted with `elastio-snap` or `dattobd`, which must be loaded, and the tool must run as root. See "Linux machine backup prerequisites" in the [README](../../README.md#linux-machine-backup-prerequisites-vss-equivalent).
 
 Later backups of the same disk to the same group only upload changed 4 MiB chunks.
+
+On Windows, free space is not read: each volume's cluster bitmap is read from its snapshot and empty stretches go into the image as zeros, so a half-empty disk takes about half the time. The image is still a complete, bootable disk. Use `-readfreespace` to read everything.
+
+If the disk cannot read a sector, that spot goes into the image as zeros and the backup carries on. The run then prints a warning saying where, keeps the snapshot and exits with code 3.
+
+The tool prints one progress line per percent, with the chunks uploaded and reused so far, and a summary at the end:
+
+```
+ 97%  \\.\PhysicalDrive1: Block 12416 / 12800  (new 101, reused 12314 (12235 blank), uploaded 404MB, free space not read 5GB)
+Done in 3m38s: 50GB read; new 102, reused 12698 (12619 blank), uploaded 408MB, free space not read 5GB
+```
 
 ### Examples
 
@@ -263,7 +279,7 @@ Template fields include `.Success`, `.Status`, `.NewChunks`, `.ReusedChunks`, `.
 | 0 | Success |
 | 1 | Failed: bad options, connection or login failure, key problem or backup error. For `proxmoxbackup-directory` also: the report email could not be sent |
 | 2 | Another backup job is already running on this computer |
-| 3 | `proxmoxbackup-directory` only: the snapshot was saved, but some files could not be read and are incomplete |
+| 3 | The snapshot was saved, but not everything could be read: `proxmoxbackup-directory`, some files are incomplete; `proxmoxbackup-machine` (v0.8.1 and later), some sectors are zeros in the image |
 
 On Windows, two cases show a message box instead of only printing: missing required options (the box lists the flags) and "another job is running". A message box waits for someone to click it, so test the command by hand before scheduling it, and do not let two scheduled backups overlap.
 

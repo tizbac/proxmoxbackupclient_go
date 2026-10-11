@@ -4,8 +4,7 @@ package pbscommon
 
 import "os"
 
-// XattrCollector is a no-op off Linux (Windows has its own collector in the
-// GUI package).
+// XattrCollector is a no-op off Linux (Windows uses NTFSMetaCollector).
 type XattrCollector struct{}
 
 func NewXattrCollector(root, hostname string) *XattrCollector { return &XattrCollector{} }

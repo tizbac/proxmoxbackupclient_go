@@ -543,12 +543,12 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		archive.Split = true
 	}
 
-	// Captures extended attributes incl. POSIX ACLs on Linux (no-op elsewhere);
-	// uploaded as the same side-car blob the GUI writes so a GUI restore can
-	// re-apply them.
+	// Captures NTFS ACLs, attributes and creation times on Windows, extended
+	// attributes incl. POSIX ACLs on Linux; uploaded as the same side-car blob
+	// the GUI writes so a GUI restore can re-apply them.
 	hostname, _ := os.Hostname()
-	xattrCollector := pbscommon.NewXattrCollector(backupdir, hostname)
-	archive.MetaCollector = xattrCollector
+	metaCollector := pbscommon.NewFileMetaCollector(backupdir, hostname)
+	archive.MetaCollector = metaCollector
 
 	// Same root-level meta file the GUI injects: lets the GUI offer "restore to
 	// original path" for CLI snapshots.
@@ -687,7 +687,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		return nil, err
 	}
 
-	if m, merr := xattrCollector.FinalizeRaw(); merr != nil {
+	if m, merr := metaCollector.FinalizeRaw(); merr != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to finalize file metadata: %v\n", merr)
 	} else if m != nil {
 		combined := &pbscommon.CombinedBackupFileMeta{
@@ -698,7 +698,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 				"backup": m, // archive base name, same key for classic and split archives
 			},
 		}
-		entries, _, metaErrs := xattrCollector.Stats()
+		entries, _, metaErrs := metaCollector.Stats()
 		if blob, serr := combined.Serialize(); serr != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to serialize file metadata: %v\n", serr)
 		} else if uerr := client.UploadBlob(pbscommon.FileMetaBlobName, blob); uerr != nil {
