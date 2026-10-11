@@ -10,3 +10,4 @@
 clonezilla-patch/* text eol=lf
 packaging/debian/pbsgo-gui-root text eol=lf
 packaging/debian/pbsgo-gui text eol=lf
+gui/imagefs/testdata/** -text

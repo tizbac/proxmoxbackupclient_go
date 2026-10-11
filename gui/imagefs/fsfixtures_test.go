@@ -76,6 +76,7 @@ func loadExpected(t *testing.T, name string) (map[string]wantEntry, map[string]s
 		t.Fatal(err)
 	}
 	for _, line := range strings.Split(strings.TrimSpace(string(s)), "\n") {
+		line = strings.TrimRight(line, "\r") // checked out with CRLF on Windows
 		if i := strings.Index(line, "  "); i > 0 {
 			sums[line[i+2:]] = line[:i]
 		}
@@ -166,11 +167,14 @@ func TestFileSystemFixtures(t *testing.T) {
 					}
 				}
 			}
+			checked := 0
 			for p, sum := range sums {
 				e, ok := got[p]
 				if !ok {
+					t.Errorf("%s: in the checksum list but not listed", p)
 					continue
 				}
+				checked++
 				f, err := vol.Open(e)
 				if err != nil {
 					t.Errorf("open %s: %v", p, err)
@@ -195,7 +199,10 @@ func TestFileSystemFixtures(t *testing.T) {
 					t.Errorf("sparse.bin maps %d of %d bytes; the hole should not be mapped", mapped, f.Size())
 				}
 			}
-			t.Logf("%s: %d entries, %d files checked", vol.FSName(), len(entries), len(sums))
+			if checked < 150 {
+				t.Errorf("only %d files checked", checked)
+			}
+			t.Logf("%s: %d entries, %d files checked", vol.FSName(), len(entries), checked)
 		})
 	}
 }
