@@ -35,9 +35,14 @@ var (
 	errUploadAborted = errors.New("upload aborted")
 )
 
-var defaultMailSubjectTemplate = "Backup {{.Status}}"
-var defaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}})
-Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while working, backup may be not completed.
+// DefaultMailSubjectTemplate and DefaultMailBodyTemplate are the
+// notification e-mail of a machine backup (proxmoxbackup-machine -mail-*),
+// filled from a clientcommon.MailCtx.
+var DefaultMailSubjectTemplate = "Backup {{.Status}}"
+var DefaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}})
+Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else if .Partial}}Backup complete ({{.FromattedDuration}}), but parts of the disk could not be read and are zeros in the image:
+{{range .ReadErrors}}  {{.}}
+{{end}}Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while working, backup may be not completed.
 Last error is: {{.ErrorStr}}{{end}}`
 
 var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}

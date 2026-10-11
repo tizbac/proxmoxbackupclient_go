@@ -224,22 +224,28 @@ type diskSegment struct {
 	end     uint64
 	snapDev string
 	cowFile string // the snapshot's copy-on-write file on this partition
+	rawFS   bool   // an unmounted ext/XFS partition, read raw with its free-space map
 }
 
 func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total uint64, parts []diskPartition, snapshots map[string]snapshot.SnapShot, progressCallback ProgressCallback, jp *JobProgress, readFree bool) error {
 	regions := make([]diskSegment, 0)
 	for _, p := range parts {
+		end := p.endByte
+		if end > total {
+			end = total
+		}
 		if p.mountpoint == "" {
+			// Not mounted, so nothing changes it while it is read: its own
+			// free-space map is safe to use.
+			if p.fstype == "ext2" || p.fstype == "ext3" || p.fstype == "ext4" || p.fstype == "xfs" {
+				regions = append(regions, diskSegment{start: p.startByte, end: end, rawFS: true})
+			}
 			continue
 		}
 		sn, ok := snapshots[p.mountpoint]
 		if !ok || !sn.Valid || sn.ObjectPath == "" || !isBlockDevice(sn.ObjectPath) {
 			log.Printf("Note: no snapshot for %s (%s), reading it raw (crash-consistent)", p.device, p.mountpoint)
 			continue
-		}
-		end := p.endByte
-		if end > total {
-			end = total
 		}
 		regions = append(regions, diskSegment{start: p.startByte, end: end, snapDev: sn.ObjectPath, cowFile: sn.CowFile})
 		log.Printf("Partition %s (%s) @ %s -> snapshot %s",
@@ -321,7 +327,7 @@ func assembleSegments(total uint64, regions []diskSegment) []diskSegment {
 			s = cursor
 		}
 		if r.end > s {
-			segments = append(segments, diskSegment{start: s, end: r.end, snapDev: r.snapDev, cowFile: r.cowFile})
+			segments = append(segments, diskSegment{start: s, end: r.end, snapDev: r.snapDev, cowFile: r.cowFile, rawFS: r.rawFS})
 			cursor = r.end
 		}
 	}
@@ -411,8 +417,11 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 			jp.noteUnreadable(dev, seg.start+(off-srcOff), n)
 		}
 		var used *usedMap
-		if seg.snapDev != "" {
+		switch {
+		case seg.snapDev != "":
 			used = segmentUsedMap(src, int64(length), seg.cowFile, readFree, name)
+		case seg.rawFS:
+			used = segmentUsedMap(io.NewSectionReader(src, int64(srcOff), int64(length)), int64(length), "", readFree, fmt.Sprintf("%s at %d", name, seg.start))
 		}
 		var err error
 		if used == nil {

@@ -185,6 +185,50 @@ func loadConfig() *machinebackuplib.Config {
 	return config
 }
 
+// sendResultMail sends the notification e-mail when -mail-* (or the config
+// file's smtp section) asks for one. A mail problem is reported on stderr
+// and never changes the backup's own exit code.
+func sendResultMail(cfg *machinebackuplib.Config, ctx clientcommon.MailCtx) {
+	if cfg.SMTP == nil || len(cfg.SMTP.Mails) == 0 {
+		return
+	}
+	build := func(custom, def string) string {
+		if custom != "" {
+			if s, err := ctx.BuildStr(custom); err == nil {
+				return s
+			} else {
+				fmt.Fprintln(os.Stderr, "Cannot use the custom mail template: "+err.Error())
+			}
+		}
+		s, _ := ctx.BuildStr(def)
+		return s
+	}
+	var subjT, bodyT string
+	if cfg.SMTP.Template != nil {
+		subjT, bodyT = cfg.SMTP.Template.Subject, cfg.SMTP.Template.Body
+	}
+	subject := build(subjT, machinebackuplib.DefaultMailSubjectTemplate)
+	body := build(bodyT, machinebackuplib.DefaultMailBodyTemplate)
+	client, err := clientcommon.SetupMailClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Cannot connect to the mail server: "+err.Error())
+		return
+	}
+	defer client.Quit()
+	for _, m := range cfg.SMTP.Mails {
+		if err := clientcommon.SendMail(m.From, m.To, subject, body, client); err != nil {
+			fmt.Fprintln(os.Stderr, "Cannot send the notification e-mail: "+err.Error())
+		} else {
+			fmt.Printf("Notification e-mail sent to %s\n", m.To)
+		}
+	}
+}
+
+func hostnameOrEmpty() string {
+	h, _ := os.Hostname()
+	return h
+}
+
 func fatalError(msg string, err error) {
 	fmt.Fprintf(os.Stderr, "Fatal error: %s: %v\n", msg, err)
 	os.Exit(1)
@@ -265,6 +309,16 @@ func main() {
 			fmt.Printf("%3d%%  %s  (%s)\n", p, message, counts())
 		}
 		return false
+	})
+	// The notification e-mail (-mail-*): sent for a failed run too, before
+	// the exit.
+	var readErrors []string
+	for _, r := range jp.Unreadable() {
+		readErrors = append(readErrors, fmt.Sprintf("%s at byte %d (%d bytes)", r.Disk, r.Offset, r.Length))
+	}
+	sendResultMail(cfg, clientcommon.MailCtx{
+		NewChunks: jp.NewChunks.Load(), ReusedChunks: jp.ReusedChunks.Load(), Datastore: cfg.Datastore,
+		Error: err, ReadErrors: readErrors, Hostname: hostnameOrEmpty(), StartTime: start, EndTime: time.Now(),
 	})
 	if err != nil {
 		fatalError("backup", err)
