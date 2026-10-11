@@ -204,6 +204,7 @@ func openImageVolumes(s *imageSession, opts RestoreOptions, list bool, cancel fu
 				if err != nil {
 					return nil, nil, fmt.Errorf("%s: %w", v.Display, err)
 				}
+				v.Entries = withoutSystemFolders(v.Entries)
 				writeBackupLog(fmt.Sprintf("Listed %s: %d entries in %v", v.Display, len(v.Entries), time.Since(start).Round(time.Millisecond)))
 			}
 			vols = append(vols, v)
@@ -217,6 +218,22 @@ func openImageVolumes(s *imageSession, opts RestoreOptions, list bool, cancel fu
 		return nil, nil, fmt.Errorf("this disk image has no NTFS volume to browse (found: %s)", strings.Join(skipped, "; "))
 	}
 	return vols, opened, nil
+}
+
+// withoutSystemFolders leaves out "System Volume Information" (shadow copy
+// storage, restore points: often gigabytes, never wanted back, and never in a
+// folder backup), keeping the entries' order.
+func withoutSystemFolders(entries []imagefs.Entry) []imagefs.Entry {
+	const svi = "system volume information"
+	out := entries[:0]
+	for _, e := range entries {
+		p := strings.ToLower(e.Path)
+		if p == svi || strings.HasPrefix(p, svi+"/") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // listImageSnapshot is assembleSnapshotTree for a disk-image snapshot.
