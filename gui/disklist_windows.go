@@ -17,11 +17,11 @@ import (
 // This function implements Windows disk listing using Windows API calls
 func listPhysicalDisks() ([]PhysicalDiskInfo, error) {
 	disks := make([]PhysicalDiskInfo, 0)
-	
+
 	// Enumerate physical disks using Windows API
 	// Get list of physical disks
 	diskPaths := make([]string, 0)
-	
+
 	// Get all physical drive paths
 	for i := 0; i < 100; i++ { // Arbitrary limit to prevent infinite loop
 		diskPath := fmt.Sprintf("\\\\.\\PhysicalDrive%d", i)
@@ -40,10 +40,10 @@ func listPhysicalDisks() ([]PhysicalDiskInfo, error) {
 			continue
 		}
 		windows.CloseHandle(handle)
-		
+
 		diskPaths = append(diskPaths, diskPath)
 	}
-	
+
 	// For each disk, get information
 	for _, diskPath := range diskPaths {
 		diskNumber, size, model, err := getDiskInfo(diskPath)
@@ -51,11 +51,11 @@ func listPhysicalDisks() ([]PhysicalDiskInfo, error) {
 			// Skip this disk if we can't get info
 			continue
 		}
-		
+
 		// Check if it's a boot disk (simplified - in real implementation, we'd check
 		// if it contains the system partition)
 		isBootDisk := false // Would be more sophisticated in real implementation
-		
+
 		diskInfo := PhysicalDiskInfo{
 			DiskNumber:   diskNumber,
 			Size:         size,
@@ -65,10 +65,10 @@ func listPhysicalDisks() ([]PhysicalDiskInfo, error) {
 			DeviceID:     fmt.Sprintf("PhysicalDrive%d", diskNumber),
 			DevicePath:   diskPath,
 		}
-		
+
 		disks = append(disks, diskInfo)
 	}
-	
+
 	return disks, nil
 }
 
@@ -88,13 +88,13 @@ func getDiskInfo(diskPath string) (int64, int64, string, error) {
 		return 0, 0, "", fmt.Errorf("failed to open disk %s: %w", diskPath, err)
 	}
 	defer windows.CloseHandle(handle)
-	
+
 	// Get disk size
 	var lengthInfo struct {
 		Length int64
 	}
 	var bytesReturned uint32
-	
+
 	err = windows.DeviceIoControl(
 		handle,
 		0x0007405C, // IOCTL_DISK_GET_LENGTH_INFO
@@ -108,14 +108,14 @@ func getDiskInfo(diskPath string) (int64, int64, string, error) {
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("failed to get disk size: %w", err)
 	}
-	
+
 	model := machinebackuplib.DiskModel(diskPath)
-	
+
 	diskNumber, err := extractDiskNumber(diskPath)
 	if err != nil {
 		diskNumber = 0
 	}
-	
+
 	return diskNumber, lengthInfo.Length, model, nil
 }
 

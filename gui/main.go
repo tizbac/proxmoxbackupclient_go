@@ -6,8 +6,8 @@ package main
 import (
 	"context"
 	"embed"
-	"flag"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -392,10 +392,10 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		// M-04: never hand the PBS token to the webview/frontend. Expose only
 		// whether one is stored; SaveConfig keeps the existing secret when the
 		// frontend submits an empty value, and TestConnection falls back to it.
-		"secret":           "",
-		"secret_set":       cfg.Secret != "",
-		"datastore":        cfg.Datastore,
-		"namespace":        cfg.Namespace,
+		"secret":     "",
+		"secret_set": cfg.Secret != "",
+		"datastore":  cfg.Datastore,
+		"namespace":  cfg.Namespace,
 		// Unlike Secret, the encryption key path is not a secret (only the path
 		// is stored; the unlocked key never leaves the backend), so it is handed
 		// to the frontend as-is. SaveConfig replaces the whole Config, so the
@@ -404,13 +404,13 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		"encryption_key_file": cfg.EncryptionKeyFile,
 		// Same pattern as secret/secret_set: only whether a passphrase is stored.
 		"encryption_key_passphrase_set": cfg.EncryptionKeyPassphrase != "",
-		"backupdir":        cfg.BackupDir,
-		"backup-id":        cfg.BackupID,
-		"usevss":           cfg.UseVSS,
-		"parallel_restore":     cfg.ParallelRestore,
-		"parallel_backup_read": cfg.ParallelBackupRead,
-		"backup_read_workers":  cfg.BackupReadWorkers,
-		"hostname":         hostname,
+		"backupdir":                     cfg.BackupDir,
+		"backup-id":                     cfg.BackupID,
+		"usevss":                        cfg.UseVSS,
+		"parallel_restore":              cfg.ParallelRestore,
+		"parallel_backup_read":          cfg.ParallelBackupRead,
+		"backup_read_workers":           cfg.BackupReadWorkers,
+		"hostname":                      hostname,
 		// Global SMTP account (Preferences > Advanced). Same M-04 pattern as
 		// the PBS secret above: never hand the real password to the webview,
 		// only whether one is stored — SetSMTPSettings keeps the existing
@@ -1052,7 +1052,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		// set unconditionally here since the machine-backup path never reads
 		// it (no PXARArchive involved). See Config.ParallelBackupRead's doc
 		// comment.
-		PrefetchWorkers: a.config.EffectivePrefetchWorkers(),
+		PrefetchWorkers:     a.config.EffectivePrefetchWorkers(),
 		ChangeDetectionMode: changeMode,
 		ScheduledFullRead:   scheduledFullRead,
 		FullReadRequested:   fullReadRequested,
@@ -1121,9 +1121,9 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnComplete] Emitting Wails event (GUI mode)")
 				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
-					"success":       success,
-					"message":       message,
-					"message_key":   msgKey,
+					"success":        success,
+					"message":        message,
+					"message_key":    msgKey,
 					"message_params": msgP,
 				})
 			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
@@ -1442,9 +1442,9 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnComplete] Emitting Wails event (GUI mode)")
 				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
-					"success":       success,
-					"message":       message,
-					"message_key":   msgKey,
+					"success":        success,
+					"message":        message,
+					"message_key":    msgKey,
 					"message_params": msgP,
 				})
 			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
@@ -1883,24 +1883,24 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 			histPaths = histPaths[:50]
 		}
 		if herr := a.appendJobHistory(JobHistory{
-			ID:              fmt.Sprintf("restore-%d", restoreStart.UnixNano()),
-			Name:            restoreLabel,
-			Timestamp:       time.Now().Format(time.RFC3339),
-			Status:          histStatus,
-			Message:         msg,
-			MessageKey:      msgKey,
-			MessageParams:   msgP,
-			BackupID:        backupID,
-			Kind:            "restore",
-			RestoreSnapshot: snapshotID,
-			RestoreDest:     histDest,
-			RestorePaths:    histPaths,
-			RestoreFiles:    restoredFiles,
-			RestoreBytes:    restoredBytes,
-			RestoreVerified: verifiedFiles,
+			ID:                  fmt.Sprintf("restore-%d", restoreStart.UnixNano()),
+			Name:                restoreLabel,
+			Timestamp:           time.Now().Format(time.RFC3339),
+			Status:              histStatus,
+			Message:             msg,
+			MessageKey:          msgKey,
+			MessageParams:       msgP,
+			BackupID:            backupID,
+			Kind:                "restore",
+			RestoreSnapshot:     snapshotID,
+			RestoreDest:         histDest,
+			RestorePaths:        histPaths,
+			RestoreFiles:        restoredFiles,
+			RestoreBytes:        restoredBytes,
+			RestoreVerified:     verifiedFiles,
 			RestoreVerifyFailed: len(verifyFailures),
 			RestoreVerifyRan:    verifyAfterRestore && (success || len(verifyFailures) > 0),
-			DurationSec:     int(time.Since(restoreStart).Seconds()),
+			DurationSec:         int(time.Since(restoreStart).Seconds()),
 		}); herr != nil {
 			writeDebugLog(fmt.Sprintf("Restore: failed to record Reports history: %v", herr))
 		}

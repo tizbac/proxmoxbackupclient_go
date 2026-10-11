@@ -28,14 +28,14 @@ type ScheduledJob struct {
 	// PBSServerID is which configured PBS server this set backs up to; ""
 	// means the app's current default server (same convention Restore's own
 	// server dropdown already uses).
-	PBSServerID string   `json:"pbsServerId,omitempty"`
-	UseVSS      bool     `json:"useVSS"`
-	BackupType  string   `json:"backupType"`
+	PBSServerID string `json:"pbsServerId,omitempty"`
+	UseVSS      bool   `json:"useVSS"`
+	BackupType  string `json:"backupType"`
 	// MachineAsVM stores a machine backup set as a Proxmox VE "vm" snapshot
 	// instead of a "host" one. BackupID must then be the
 	// numeric PBS ID, computed by the editor, so the same set always lands in
 	// the same vm/<id> group.
-	MachineAsVM bool     `json:"machineAsVm,omitempty"`
+	MachineAsVM bool `json:"machineAsVm,omitempty"`
 	// ChangeDetectionMode is the folder-backup format and change detection,
 	// as in the official client: "" or "legacy" (classic archive, every file
 	// read), "data" (split archive, every file read) or "metadata" (split
@@ -58,12 +58,12 @@ type ScheduledJob struct {
 	RequestedRead string `json:"-"`
 	// FullReadRequested: this run reads every file because Run now (full
 	// read) asked for it (the card says so instead of "scheduled").
-	FullReadRequested bool `json:"-"`
-	ExcludeList                []string `json:"excludeList"`
-	Compression string   `json:"compression"`       // "fastest", "default", "better", "best"
-	LastRun     string   `json:"lastRun,omitempty"` // ISO timestamp
-	NextRun     string   `json:"nextRun,omitempty"` // ISO timestamp
-	Enabled     bool     `json:"enabled"`
+	FullReadRequested bool     `json:"-"`
+	ExcludeList       []string `json:"excludeList"`
+	Compression       string   `json:"compression"`       // "fastest", "default", "better", "best"
+	LastRun           string   `json:"lastRun,omitempty"` // ISO timestamp
+	NextRun           string   `json:"nextRun,omitempty"` // ISO timestamp
+	Enabled           bool     `json:"enabled"`
 
 	// TriggerMode selects how ScheduleTime/the interval fields below are
 	// interpreted. "" (the zero value, matching every job saved before this
@@ -194,7 +194,7 @@ type JobHistory struct {
 	RestoreVerifyRan    bool `json:"restoreVerifyRan,omitempty"`
 	RestoreVerified     int  `json:"restoreVerified,omitempty"`
 	RestoreVerifyFailed int  `json:"restoreVerifyFailed,omitempty"`
-	DurationSec     int      `json:"durationSec,omitempty"`
+	DurationSec         int  `json:"durationSec,omitempty"`
 }
 
 func getScheduledJobsPath() (string, error) {

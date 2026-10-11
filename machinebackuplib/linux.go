@@ -402,4 +402,3 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 	}
 	return nil
 }
-

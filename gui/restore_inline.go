@@ -1756,7 +1756,7 @@ func finishExtraction(opts RestoreOptions, extracted []pbscommon.PXARExtractedFi
 	}
 
 	successCount := 0
-	skipCount := 0      // deliberate skips (e.g. already exists with overwrite off)
+	skipCount := 0 // deliberate skips (e.g. already exists with overwrite off)
 	dirCount := 0
 	var bytesRestored int64
 	for _, f := range extracted {

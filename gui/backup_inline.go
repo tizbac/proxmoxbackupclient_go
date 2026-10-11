@@ -103,8 +103,8 @@ type BackupOptions struct {
 	Comment string
 	// Crypt encrypts every chunk and signs the manifest. Nil means a plain
 	// snapshot. Populated from Config.Crypt (Config.EncryptionKeyFile).
-	Crypt *pbscommon.CryptConfig
-	OnProgress      func(percent float64, message string)
+	Crypt      *pbscommon.CryptConfig
+	OnProgress func(percent float64, message string)
 	// OnComplete's message is always plain, already-formatted English text
 	// (backward-compatible with every existing consumer). key/params are
 	// additive — see msgcodes.go's doc comment — and let a consumer that
