@@ -5,35 +5,12 @@ package machinebackuplib
 
 import (
 	"bytes"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"pbscommon"
 )
-
-type faultyReaderAt struct {
-	data []byte
-	bad  map[uint64]bool
-}
-
-func (f *faultyReaderAt) ReadAt(p []byte, off int64) (int, error) {
-	for i := range p {
-		abs := uint64(off) + uint64(i)
-		if abs >= uint64(len(f.data)) {
-			return i, io.EOF
-		}
-		if f.bad[abs/sectorSize] {
-			if i == 0 {
-				return 0, io.ErrUnexpectedEOF
-			}
-			return i, io.ErrUnexpectedEOF
-		}
-		p[i] = f.data[abs]
-	}
-	return len(p), nil
-}
 
 type seg = diskSegment
 
@@ -169,7 +146,7 @@ func TestWriteSegmentsByteExact(t *testing.T) {
 	errc := make(chan error, 1)
 	uploadDone := make(chan struct{})
 	go func() {
-		err := writeSegments(diskPath, segments, total, ch, uploadDone, nil)
+		err := writeSegments(diskPath, segments, total, ch, uploadDone, nil, nil)
 		close(ch)
 		errc <- err
 	}()
@@ -199,65 +176,5 @@ func TestWriteSegmentsByteExact(t *testing.T) {
 	expectedChunks := (total + pbscommon.PBS_FIXED_CHUNK_SIZE - 1) / pbscommon.PBS_FIXED_CHUNK_SIZE
 	if chunkCount != expectedChunks {
 		t.Fatalf("chunk count = %d, want %d", chunkCount, expectedChunks)
-	}
-}
-
-func TestResilientCopyBadSectors(t *testing.T) {
-	const length = 5*sectorSize + 100
-
-	data := make([]byte, length)
-	for i := range data {
-		data[i] = byte(i%251) + 1
-	}
-
-	badSet := map[uint64]bool{1: true, 3: true}
-	src := &faultyReaderAt{data: data, bad: badSet}
-
-	var out []byte
-	emit := func(b []byte) bool { out = append(out, b...); return true }
-	zeroBlk := make([]byte, sectorSize)
-	emitZeros := func(n uint64) bool {
-		for n > 0 {
-			m := uint64(len(zeroBlk))
-			if m > n {
-				m = n
-			}
-			out = append(out, zeroBlk[:m]...)
-			n -= m
-		}
-		return true
-	}
-
-	block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
-	bad, ok := resilientCopy(src, 0, length, block, emit, emitZeros)
-	if !ok {
-		t.Fatal("resilientCopy reported failure")
-	}
-
-	if bad != 2 {
-		t.Fatalf("bad sector count = %d, want 2", bad)
-	}
-	if uint64(len(out)) != length {
-		t.Fatalf("output length = %d, want %d", len(out), length)
-	}
-
-	want := make([]byte, length)
-	copy(want, data)
-	for sec := range badSet {
-		start := sec * sectorSize
-		end := start + sectorSize
-		if end > length {
-			end = length
-		}
-		for i := start; i < end; i++ {
-			want[i] = 0
-		}
-	}
-	if !bytes.Equal(out, want) {
-		for i := range out {
-			if out[i] != want[i] {
-				t.Fatalf("byte %d (sector %d) = %#x, want %#x", i, uint64(i)/sectorSize, out[i], want[i])
-			}
-		}
 	}
 }

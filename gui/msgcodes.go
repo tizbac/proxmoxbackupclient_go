@@ -50,6 +50,8 @@ const (
 	MsgMachineBackupCompleted MessageKey = "logMachineBackupCompleted" // {duration} (history rows before the counts)
 	// {duration}, {read}, {new}, {reused}, {blank}, {uploaded}
 	MsgMachineBackupCompletedStats MessageKey = "logMachineBackupCompletedStats"
+	// {duration}, {bad}, {where}, {read}, {new}, {reused}, {uploaded}
+	MsgMachineBackupUnreadable MessageKey = "logMachineBackupUnreadable"
 
 	// Scheduler (gui/scheduler.go).
 	MsgScheduledJobError      MessageKey = "logScheduledJobError"      // {error}

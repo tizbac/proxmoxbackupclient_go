@@ -517,90 +517,91 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			return true
 		}
 
+		// zeroBlk pads a shadow copy smaller than its partition.
+		zeroBlk := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
+		block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
+
+		// readPartition copies one partition (or a gap between partitions)
+		// into the image: through its VSS shadow copy when it has a drive
+		// letter, raw from the disk otherwise. Sectors the disk cannot read
+		// go in as zeros and are recorded (readResilient), instead of failing
+		// the whole image as one bad sector used to.
 		readPartition := func(P Partition) error {
 			pos := P.StartByte
 			jp.setPartition(P.label())
-			block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
-			if !P.RequiresVSS {
-				if _, err := F.Seek(int64(P.StartByte), io.SeekStart); err != nil {
-					return fmt.Errorf("seek to offset %d in %s: %w", P.StartByte, diskdev, err)
-				}
-				for pos < P.EndByte {
-					nbytes, rerr := F.Read(block[:min(uint64(len(block)), P.EndByte-pos)])
-					if nbytes > 0 {
-						if !push(block[:nbytes]) {
-							return errUploadAborted
-						}
-						pos += uint64(nbytes)
-					}
-					if report(pos) {
-						return errCancelled
-					}
-					if rerr == io.EOF {
-						break
-					}
-					if rerr != nil {
-						return fmt.Errorf("read %s at offset %d: %w", diskdev, pos, rerr)
-					}
-				}
-			} else {
+			length := P.EndByte - P.StartByte
+			var src io.ReaderAt = F
+			srcOff, name := P.StartByte, diskdev
+			if P.RequiresVSS {
 				snap, ok := snapshots[P.Letter+":\\"]
 				if !ok {
 					return fmt.Errorf("cannot find snapshot for letter %s", P.Letter)
 				}
-				snapshot_file, err := os.Open(strings.TrimRight(snap.ObjectPath, "\\"))
+				snapPath := strings.TrimRight(snap.ObjectPath, "\\")
+				snapshot_file, err := os.Open(snapPath)
 				if err != nil {
 					return err
 				}
 				defer snapshot_file.Close()
-
-				l, err := GetDiskLength(strings.TrimRight(snap.ObjectPath, "\\"))
+				l, err := GetDiskLength(snapPath)
 				if err != nil {
 					return err
 				}
-				if uint64(P.StartByte)+uint64(l) > P.EndByte {
+				// Read the shadow up to the partition end: a larger shadow is
+				// cut at the partition boundary, a smaller one (file system
+				// smaller than the partition) is padded with zeros below.
+				// Reads stay inside the shadow, so none runs off its end.
+				if uint64(l) > length {
 					log.Print("Harmless warning: VSS snapshot is larger than partition, will read only up to the partition end")
+				} else {
+					length = uint64(l)
 				}
+				src, srcOff, name = snapshot_file, 0, fmt.Sprintf("%s: (shadow copy %s)", P.Letter, snap.Id)
+			}
 
-				// Read the shadow up to the partition end. Clamping each read
-				// to P.EndByte-pos means pos never overshoots, so a shadow that
-				// is exactly the partition size ends cleanly on EOF, a smaller
-				// shadow leaves a positive pad, and a larger one is simply
-				// truncated at the partition boundary.
-				for pos < P.EndByte {
-					nbytes, rerr := snapshot_file.Read(block[:min(uint64(len(block)), P.EndByte-pos)])
-					if report(pos) {
-						return errCancelled
-					}
-					if nbytes > 0 {
-						if !push(block[:nbytes]) {
-							return errUploadAborted
-						}
-						pos += uint64(nbytes)
-					}
-					if rerr == io.EOF {
-						break
-					}
-					if rerr != nil {
-						return fmt.Errorf("read snapshot %s at offset %d: %w", snap.Id, pos, rerr)
-					}
+			stoppedByUser := false
+			emit := func(data []byte) bool {
+				if !push(data) {
+					return false
 				}
+				pos += uint64(len(data))
+				if report(pos) {
+					stoppedByUser = true
+					return false
+				}
+				return true
+			}
+			emitZeros := func(n uint64) bool {
+				for n > 0 {
+					m := min(uint64(len(zeroBlk)), n)
+					if !emit(zeroBlk[:m]) {
+						return false
+					}
+					n -= m
+				}
+				return true
+			}
+			onBad := func(off, n uint64) {
+				diskOff := P.StartByte + (off - srcOff)
+				log.Printf("Warning: %s unreadable at disk offset %d (%d bytes), written as zeros", name, diskOff, n)
+				jp.noteUnreadable(diskdev, diskOff, n)
+			}
 
-				// Pad with zeros for the bytes the shadow didn't cover (FS
-				// smaller than the partition). npad is computed from how much
-				// was actually read, avoiding the unsigned underflow the old
-				// pre-computed npad hit when the shadow was >= the partition.
-				npad := P.EndByte - pos
-				zeroBlk := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
-				for npad > 0 {
-					log.Printf("Padding %d", npad)
-					m := min(uint64(pbscommon.PBS_FIXED_CHUNK_SIZE), npad)
-					if !push(zeroBlk[:m]) {
-						return errUploadAborted
-					}
-					pos += m
-					npad -= m
+			err := readResilient(src, srcOff, length, block, 4096, emit, emitZeros, onBad)
+			if err == errCopyStopped {
+				if stoppedByUser {
+					return errCancelled
 				}
+				return errUploadAborted
+			}
+			if err != nil {
+				return fmt.Errorf("read %s at offset %d: %w", name, pos, err)
+			}
+			if pos < P.EndByte && !emitZeros(P.EndByte-pos) {
+				if stoppedByUser {
+					return errCancelled
+				}
+				return errUploadAborted
 			}
 			if pos != P.EndByte {
 				return fmt.Errorf("failed to read partition entirely %d/%d", pos, P.EndByte)

@@ -217,7 +217,7 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 	uploadDone := make(chan struct{})
 
 	go func() {
-		err := writeSegments(dev, segments, total, ch, uploadDone, progressCallback)
+		err := writeSegments(dev, segments, total, ch, uploadDone, progressCallback, jp)
 		// Error first, then close: uploadWorker's non-blocking check of
 		// errCh runs after ch is drained and must find the value there.
 		errCh <- err
@@ -276,7 +276,7 @@ func assembleSegments(total uint64, regions []diskSegment) []diskSegment {
 	return segments
 }
 
-func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []byte, uploadDone <-chan struct{}, progressCallback ProgressCallback) (retErr error) {
+func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []byte, uploadDone <-chan struct{}, progressCallback ProgressCallback, jp *JobProgress) (retErr error) {
 	buffer := make([]byte, 0, pbscommon.PBS_FIXED_CHUNK_SIZE*2)
 
 	var pos uint64 = 0
@@ -341,27 +341,30 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 	for _, seg := range segments {
 		length := seg.end - seg.start
 		var bad uint64
-		var ok bool
-		if seg.snapDev == "" {
-			bad, ok = resilientCopy(disk, seg.start, length, block, emit, emitZeros)
-			if bad > 0 {
-				log.Printf("\033[31;1mWarning: %s had %d unreadable sector(s) (~%s), zero-filled in the image\033[0m",
-					dev, bad, BytesToString(int64(bad*sectorSize)))
-			}
-		} else {
+		src, srcOff, name := io.ReaderAt(disk), seg.start, dev
+		if seg.snapDev != "" {
 			sf, err := os.Open(seg.snapDev)
 			if err != nil {
 				return err
 			}
-			bad, ok = resilientCopy(sf, 0, length, block, emit, emitZeros)
-			sf.Close()
-			if bad > 0 {
-				log.Printf("\033[31;1mWarning: snapshot %s had %d unreadable sector(s) (~%s), zero-filled in the image\033[0m",
-					seg.snapDev, bad, BytesToString(int64(bad*sectorSize)))
-			}
+			defer sf.Close()
+			src, srcOff, name = sf, 0, "snapshot "+seg.snapDev
 		}
-		if !ok {
+		// onBad gets offsets in src; the report wants them on the disk.
+		onBad := func(off, n uint64) {
+			bad += n
+			jp.noteUnreadable(dev, seg.start+(off-srcOff), n)
+		}
+		err := readResilient(src, srcOff, length, block, sectorSize, emit, emitZeros, onBad)
+		if bad > 0 {
+			log.Printf("[31;1mWarning: %s had %d unreadable sector(s) (~%s), zero-filled in the image[0m",
+				name, bad/sectorSize, BytesToString(int64(bad)))
+		}
+		if err == errCopyStopped {
 			return errCancelled
+		}
+		if err != nil {
+			return fmt.Errorf("read %s at segment %d: %w", name, seg.start, err)
 		}
 	}
 
@@ -380,68 +383,3 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 	return nil
 }
 
-func resilientCopy(src io.ReaderAt, srcOffset, length uint64, block []byte, emit func([]byte) bool, emitZeros func(uint64) bool) (uint64, bool) {
-	var badSectors uint64
-	var pos uint64
-	for pos < length {
-		want := uint64(len(block))
-		if want > length-pos {
-			want = length - pos
-		}
-		n, err := src.ReadAt(block[:want], int64(srcOffset+pos))
-		if n > 0 {
-			if !emit(block[:n]) {
-				return badSectors, false
-			}
-			pos += uint64(n)
-		}
-		if err == nil {
-			continue
-		}
-		if err == io.EOF {
-			if pos < length {
-				if !emitZeros(length - pos) {
-					return badSectors, false
-				}
-				pos = length
-			}
-			break
-		}
-
-		winEnd := pos + (want - uint64(n))
-		for pos < winEnd {
-			s := uint64(sectorSize)
-			if s > winEnd-pos {
-				s = winEnd - pos
-			}
-			m, serr := src.ReadAt(block[:s], int64(srcOffset+pos))
-			if m > 0 {
-				if !emit(block[:m]) {
-					return badSectors, false
-				}
-				pos += uint64(m)
-			}
-			if serr == nil {
-				continue
-			}
-			if serr == io.EOF {
-				if pos < length {
-					if !emitZeros(length - pos) {
-						return badSectors, false
-					}
-					pos = length
-				}
-				winEnd = pos
-				break
-			}
-			if rem := s - uint64(m); rem > 0 {
-				if !emitZeros(rem) {
-					return badSectors, false
-				}
-				pos += rem
-				badSectors++
-			}
-		}
-	}
-	return badSectors, true
-}

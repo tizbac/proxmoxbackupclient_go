@@ -795,6 +795,8 @@ const translations = {
     partitionNumber: "Partition {n}",
     processedBlank: "dont {n} d'espace vide",
     logMachineBackupCompletedStats: "Sauvegarde machine terminée en {duration} : {read} lus ({new} nouveaux, {reused} chunks réutilisés, dont {blank} d'espace vide ; {uploaded} envoyés)",
+    processedUnreadable: "{size} illisibles (zéros dans l'image)",
+    logMachineBackupUnreadable: "⚠️ Sauvegarde machine terminée en {duration}, mais {bad} du disque n'ont pas pu être lus et sont des zéros dans l'image ({where}). {read} lus ({new} nouveaux, {reused} chunks réutilisés ; {uploaded} envoyés)",
   },
   en: {
     // Header
@@ -1592,6 +1594,8 @@ const translations = {
     partitionNumber: "Partition {n}",
     processedBlank: "{n} of them blank space",
     logMachineBackupCompletedStats: "Machine backup completed in {duration}: {read} read ({new} new, {reused} reused chunks, {blank} of them blank space; {uploaded} uploaded)",
+    processedUnreadable: "{size} unreadable (zeros in the image)",
+    logMachineBackupUnreadable: "⚠️ Machine backup completed in {duration}, but {bad} of the disk could not be read and is zeros in the image ({where}). {read} read ({new} new, {reused} reused chunks; {uploaded} uploaded)",
   },
   it: {
     // Header
@@ -2389,6 +2393,8 @@ const translations = {
     partitionNumber: "Partizione {n}",
     processedBlank: "di cui {n} di spazio vuoto",
     logMachineBackupCompletedStats: "Backup macchina completato in {duration}: {read} letti ({new} nuovi, {reused} chunk riutilizzati, di cui {blank} di spazio vuoto; {uploaded} caricati)",
+    processedUnreadable: "{size} illeggibili (zeri nell'immagine)",
+    logMachineBackupUnreadable: "⚠️ Backup macchina completato in {duration}, ma {bad} del disco non si sono potuti leggere e sono zeri nell'immagine ({where}). {read} letti ({new} nuovi, {reused} chunk riutilizzati; {uploaded} caricati)",
   },
   de: {
     // Header
@@ -3186,6 +3192,8 @@ const translations = {
     partitionNumber: "Partition {n}",
     processedBlank: "davon {n} leerer Bereich",
     logMachineBackupCompletedStats: "Maschinensicherung abgeschlossen in {duration}: {read} gelesen ({new} neu, {reused} Chunks wiederverwendet, davon {blank} leerer Bereich; {uploaded} hochgeladen)",
+    processedUnreadable: "{size} nicht lesbar (Nullen im Abbild)",
+    logMachineBackupUnreadable: "⚠️ Maschinensicherung abgeschlossen in {duration}, aber {bad} des Datenträgers waren nicht lesbar und sind Nullen im Abbild ({where}). {read} gelesen ({new} neu, {reused} Chunks wiederverwendet; {uploaded} hochgeladen)",
   },
   pl: {
     // Header
@@ -3983,6 +3991,8 @@ const translations = {
     partitionNumber: "Partycja {n}",
     processedBlank: "w tym {n} pustego miejsca",
     logMachineBackupCompletedStats: "Kopia zapasowa maszyny zakończona w {duration}: odczytano {read} ({new} nowych, {reused} chunków użytych ponownie, w tym {blank} pustego miejsca; przesłano {uploaded})",
+    processedUnreadable: "{size} nieczytelne (zera w obrazie)",
+    logMachineBackupUnreadable: "⚠️ Kopia zapasowa maszyny zakończona w {duration}, ale {bad} dysku nie dało się odczytać i w obrazie są zera ({where}). Odczytano {read} ({new} nowych, {reused} chunków użytych ponownie; przesłano {uploaded})",
   },
   es: {
     // Header
@@ -4782,6 +4792,8 @@ const translations = {
     partitionNumber: "Partición {n}",
     processedBlank: "{n} de ellos espacio vacío",
     logMachineBackupCompletedStats: "Copia de seguridad de máquina completada en {duration}: {read} leídos ({new} nuevos, {reused} fragmentos reutilizados, {blank} de ellos espacio vacío; {uploaded} subidos)",
+    processedUnreadable: "{size} ilegibles (ceros en la imagen)",
+    logMachineBackupUnreadable: "⚠️ Copia de seguridad de máquina completada en {duration}, pero {bad} del disco no se pudieron leer y son ceros en la imagen ({where}). {read} leídos ({new} nuevos, {reused} fragmentos reutilizados; {uploaded} subidos)",
   },
   bg: {
     // Header
@@ -5577,6 +5589,8 @@ const translations = {
     partitionNumber: "Дял {n}",
     processedBlank: "от тях {n} празно пространство",
     logMachineBackupCompletedStats: "Архивирането на машината завърши за {duration}: прочетени {read} ({new} нови, {reused} повторно използвани чънка, от тях {blank} празно пространство; качени {uploaded})",
+    processedUnreadable: "{size} нечетими (нули в образа)",
+    logMachineBackupUnreadable: "⚠️ Архивирането на машината завърши за {duration}, но {bad} от диска не можаха да се прочетат и са нули в образа ({where}). Прочетени {read} ({new} нови, {reused} повторно използвани чънка; качени {uploaded})",
   },
   cs: {
     // Header
@@ -6372,6 +6386,8 @@ const translations = {
     partitionNumber: "Oddíl {n}",
     processedBlank: "z toho {n} prázdné místo",
     logMachineBackupCompletedStats: "Záloha počítače dokončena za {duration}: přečteno {read} ({new} nových, {reused} znovu použitých bloků, z toho {blank} prázdné místo; nahráno {uploaded})",
+    processedUnreadable: "{size} nečitelných (nuly v obrazu)",
+    logMachineBackupUnreadable: "⚠️ Záloha počítače dokončena za {duration}, ale {bad} disku nešlo přečíst a v obrazu jsou nuly ({where}). Přečteno {read} ({new} nových, {reused} znovu použitých bloků; nahráno {uploaded})",
   },
   el: {
     // Header
@@ -7167,6 +7183,8 @@ const translations = {
     partitionNumber: "Διαμέρισμα {n}",
     processedBlank: "{n} από αυτά κενός χώρος",
     logMachineBackupCompletedStats: "Το αντίγραφο ασφαλείας μηχανήματος ολοκληρώθηκε σε {duration}: διαβάστηκαν {read} ({new} νέα, {reused} επαναχρησιμοποιημένα τμήματα, {blank} από αυτά κενός χώρος· μεταφορτώθηκαν {uploaded})",
+    processedUnreadable: "{size} μη αναγνώσιμα (μηδενικά στο είδωλο)",
+    logMachineBackupUnreadable: "⚠️ Το αντίγραφο ασφαλείας μηχανήματος ολοκληρώθηκε σε {duration}, αλλά {bad} του δίσκου δεν διαβάστηκαν και είναι μηδενικά στο είδωλο ({where}). Διαβάστηκαν {read} ({new} νέα, {reused} επαναχρησιμοποιημένα τμήματα· μεταφορτώθηκαν {uploaded})",
   },
   hu: {
     // Header
@@ -7962,6 +7980,8 @@ const translations = {
     partitionNumber: "{n}. partíció",
     processedBlank: "ebből {n} üres terület",
     logMachineBackupCompletedStats: "A gép mentése befejeződött {duration} alatt: {read} beolvasva ({new} új, {reused} újrahasznosított chunk, ebből {blank} üres terület; {uploaded} feltöltve)",
+    processedUnreadable: "{size} olvashatatlan (nullák a képfájlban)",
+    logMachineBackupUnreadable: "⚠️ A gép mentése befejeződött {duration} alatt, de a lemez {bad} része nem volt olvasható, ez nullaként szerepel a képfájlban ({where}). {read} beolvasva ({new} új, {reused} újrahasznosított chunk; {uploaded} feltöltve)",
   },
   lv: {
     // Header
@@ -8757,6 +8777,8 @@ const translations = {
     partitionNumber: "Nodalījums {n}",
     processedBlank: "no tiem {n} tukša vieta",
     logMachineBackupCompletedStats: "Datora dublēšana pabeigta {duration} laikā: nolasīti {read} ({new} jaunas, {reused} atkārtoti izmantotas daļas, no tām {blank} tukša vieta; augšupielādēti {uploaded})",
+    processedUnreadable: "{size} nenolasāmi (nulles attēlā)",
+    logMachineBackupUnreadable: "⚠️ Datora dublēšana pabeigta {duration} laikā, bet {bad} diska nevarēja nolasīt, attēlā tur ir nulles ({where}). Nolasīti {read} ({new} jaunas, {reused} atkārtoti izmantotas daļas; augšupielādēti {uploaded})",
   },
   lt: {
     // Header
@@ -9552,6 +9574,8 @@ const translations = {
     partitionNumber: "Skaidinys {n}",
     processedBlank: "iš jų {n} tuščia vieta",
     logMachineBackupCompletedStats: "Kompiuterio atsarginė kopija baigta per {duration}: perskaityta {read} ({new} naujų, {reused} pakartotinai panaudotų fragmentų, iš jų {blank} tuščia vieta; įkelta {uploaded})",
+    processedUnreadable: "{size} neperskaitoma (nuliai atvaizde)",
+    logMachineBackupUnreadable: "⚠️ Kompiuterio atsarginė kopija baigta per {duration}, bet {bad} disko nepavyko perskaityti, atvaizde ten nuliai ({where}). Perskaityta {read} ({new} naujų, {reused} pakartotinai panaudotų fragmentų; įkelta {uploaded})",
   },
   nl: {
     // Header
@@ -10347,6 +10371,8 @@ const translations = {
     partitionNumber: "Partitie {n}",
     processedBlank: "waarvan {n} lege ruimte",
     logMachineBackupCompletedStats: "Machinebackup voltooid in {duration}: {read} gelezen ({new} nieuw, {reused} chunks hergebruikt, waarvan {blank} lege ruimte; {uploaded} geüpload)",
+    processedUnreadable: "{size} onleesbaar (nullen in de kopie)",
+    logMachineBackupUnreadable: "⚠️ Machinebackup voltooid in {duration}, maar {bad} van de schijf kon niet gelezen worden en is nullen in de kopie ({where}). {read} gelezen ({new} nieuw, {reused} chunks hergebruikt; {uploaded} geüpload)",
   },
   pt: {
     // Header
@@ -11142,6 +11168,8 @@ const translations = {
     partitionNumber: "Partição {n}",
     processedBlank: "{n} deles espaço vazio",
     logMachineBackupCompletedStats: "Backup da máquina concluído em {duration}: {read} lidos ({new} novos, {reused} blocos reutilizados, {blank} deles espaço vazio; {uploaded} carregados)",
+    processedUnreadable: "{size} ilegíveis (zeros na imagem)",
+    logMachineBackupUnreadable: "⚠️ Backup da máquina concluído em {duration}, mas {bad} do disco não puderam ser lidos e são zeros na imagem ({where}). {read} lidos ({new} novos, {reused} blocos reutilizados; {uploaded} carregados)",
   },
   ro: {
     // Header
@@ -11937,6 +11965,8 @@ const translations = {
     partitionNumber: "Partiția {n}",
     processedBlank: "dintre care {n} spațiu gol",
     logMachineBackupCompletedStats: "Backup-ul mașinii s-a finalizat în {duration}: {read} citiți ({new} noi, {reused} blocuri refolosite, dintre care {blank} spațiu gol; {uploaded} încărcați)",
+    processedUnreadable: "{size} ilizibili (zerouri în imagine)",
+    logMachineBackupUnreadable: "⚠️ Backup-ul mașinii s-a finalizat în {duration}, dar {bad} din disc nu au putut fi citiți și sunt zerouri în imagine ({where}). {read} citiți ({new} noi, {reused} blocuri refolosite; {uploaded} încărcați)",
   },
   sk: {
     // Header
@@ -12732,6 +12762,8 @@ const translations = {
     partitionNumber: "Oddiel {n}",
     processedBlank: "z toho {n} prázdne miesto",
     logMachineBackupCompletedStats: "Záloha počítača dokončená za {duration}: prečítané {read} ({new} nových, {reused} znovu použitých blokov, z toho {blank} prázdne miesto; nahraté {uploaded})",
+    processedUnreadable: "{size} nečitateľných (nuly v obraze)",
+    logMachineBackupUnreadable: "⚠️ Záloha počítača dokončená za {duration}, ale {bad} disku sa nedalo prečítať a v obraze sú nuly ({where}). Prečítané {read} ({new} nových, {reused} znovu použitých blokov; nahraté {uploaded})",
   },
   tr: {
     // Header
@@ -13527,6 +13559,8 @@ const translations = {
     partitionNumber: "Bölüm {n}",
     processedBlank: "bunların {n} tanesi boş alan",
     logMachineBackupCompletedStats: "Makine yedeklemesi {duration} içinde tamamlandı: {read} okundu ({new} yeni, {reused} yeniden kullanılan parça, bunların {blank} tanesi boş alan; {uploaded} yüklendi)",
+    processedUnreadable: "{size} okunamadı (görüntüde sıfır)",
+    logMachineBackupUnreadable: "⚠️ Makine yedeklemesi {duration} içinde tamamlandı, ancak diskin {bad} kadarı okunamadı ve görüntüde sıfır olarak yer alıyor ({where}). {read} okundu ({new} yeni, {reused} yeniden kullanılan parça; {uploaded} yüklendi)",
   },
   uk: {
     // Header
@@ -14322,6 +14356,8 @@ const translations = {
     partitionNumber: "Розділ {n}",
     processedBlank: "з них {n} порожнього простору",
     logMachineBackupCompletedStats: "Резервне копіювання машини завершено за {duration}: прочитано {read} ({new} нових, {reused} повторно використаних блоків, з них {blank} порожнього простору; вивантажено {uploaded})",
+    processedUnreadable: "{size} не прочитано (нулі в образі)",
+    logMachineBackupUnreadable: "⚠️ Резервне копіювання машини завершено за {duration}, але {bad} диска не вдалося прочитати, в образі там нулі ({where}). Прочитано {read} ({new} нових, {reused} повторно використаних блоків; вивантажено {uploaded})",
   }
 }
 

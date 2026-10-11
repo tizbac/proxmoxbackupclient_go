@@ -207,6 +207,8 @@ type BackupProgressStats struct {
 	DiskBytes   uint64 `json:"disk_bytes,omitempty"`
 	DiskDone    uint64 `json:"disk_done,omitempty"`
 	Partition   string `json:"partition,omitempty"`
+	// Unreadable is how much of the disk could not be read (zeros in the image).
+	Unreadable uint64 `json:"unreadable,omitempty"`
 }
 
 // event is the payload of the "backup:stats" Wails event.
@@ -234,5 +236,6 @@ func (s *BackupProgressStats) event() map[string]interface{} {
 		"diskBytes":     s.DiskBytes,
 		"diskDone":      s.DiskDone,
 		"partition":     s.Partition,
+		"unreadable":    s.Unreadable,
 	}
 }

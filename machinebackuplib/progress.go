@@ -23,8 +23,12 @@ type JobProgress struct {
 	UploadedBytes atomic.Uint64 // uncompressed size of the chunks uploaded
 	BytesDone     atomic.Uint64 // bytes of the whole job read so far
 	BytesTotal    atomic.Uint64 // size of every disk in the job
+	// UnreadableBytes is how much of the disks could not be read and went
+	// into the image as zeros (see Unreadable for where).
+	UnreadableBytes atomic.Uint64
 
 	mu        sync.Mutex
+	bad       []BadRange
 	phase     string
 	disk      string
 	diskNo    int // 1-based
@@ -94,6 +98,44 @@ func (p *JobProgress) Where() Location {
 	defer p.mu.Unlock()
 	return Location{Phase: p.phase, Disk: p.disk, DiskNo: p.diskNo, DiskCount: p.diskCount,
 		DiskSize: p.diskSize, DiskPos: p.diskPos, Partition: p.partition}
+}
+
+// BadRange is a stretch of a disk that could not be read (zeros in the image).
+type BadRange struct {
+	Disk   string
+	Offset uint64 // bytes from the start of the disk
+	Length uint64
+}
+
+// maxBadRanges caps the list kept for the report; UnreadableBytes still counts all.
+const maxBadRanges = 50
+
+// noteUnreadable records n unreadable bytes at off on disk, merging a range
+// that continues the previous one.
+func (p *JobProgress) noteUnreadable(disk string, off, n uint64) {
+	if p == nil || n == 0 {
+		return
+	}
+	p.UnreadableBytes.Add(n)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if k := len(p.bad); k > 0 && p.bad[k-1].Disk == disk && p.bad[k-1].Offset+p.bad[k-1].Length == off {
+		p.bad[k-1].Length += n
+		return
+	}
+	if len(p.bad) < maxBadRanges {
+		p.bad = append(p.bad, BadRange{Disk: disk, Offset: off, Length: n})
+	}
+}
+
+// Unreadable lists where the disks could not be read (at most 50 ranges).
+func (p *JobProgress) Unreadable() []BadRange {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]BadRange(nil), p.bad...)
 }
 
 // countChunk records one chunk of an image. blank is true for an all-zero

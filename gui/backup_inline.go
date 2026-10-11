@@ -1666,6 +1666,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 			DiskBytes:     w.DiskSize,
 			DiskDone:      w.DiskPos,
 			Partition:     w.Partition,
+			Unreadable:    jp.UnreadableBytes.Load(),
 		})
 	}
 	tickerDone := make(chan struct{})
@@ -1728,20 +1729,38 @@ func runMachineBackupInline(opts BackupOptions) error {
 	completionMsg := fmt.Sprintf("Machine backup completed in %s: %s read (%d new, %d reused chunks, %d of them blank space; %s uploaded)",
 		formatDuration(duration), read, newC, reusedC, blankC, uploaded)
 	completionParams := msgParams{"duration": formatDuration(duration), "read": read, "new": newC, "reused": reusedC, "blank": blankC, "uploaded": uploaded}
+	completionKey, outcome := MsgMachineBackupCompletedStats, OutcomeVerifiedSuccess
+
+	// Sectors the disk could not read are zeros in the image: the backup is
+	// usable but not whole, so say so and where, as a partial folder backup does.
+	if badBytes := jp.UnreadableBytes.Load(); badBytes > 0 {
+		var where []string
+		for _, r := range jp.Unreadable() {
+			where = append(where, fmt.Sprintf("%s at %s (%s)", r.Disk, formatByteSize(r.Offset), formatByteSize(r.Length)))
+		}
+		for _, w := range where {
+			writeBackupLog("Unreadable, zeros in the image: " + w)
+		}
+		completionMsg = fmt.Sprintf("⚠️ Machine backup completed in %s, but %s of the disk could not be read and is zeros in the image (%s). %s read (%d new, %d reused chunks; %s uploaded)",
+			formatDuration(duration), formatByteSize(badBytes), strings.Join(where, ", "), read, newC, reusedC, uploaded)
+		completionKey, outcome = MsgMachineBackupUnreadable, OutcomePartial
+		completionParams["bad"] = formatByteSize(badBytes)
+		completionParams["where"] = strings.Join(where, ", ")
+	}
 
 	if opts.OnComplete != nil {
-		opts.OnComplete(true, completionMsg, MsgMachineBackupCompletedStats, completionParams)
+		opts.OnComplete(true, completionMsg, completionKey, completionParams)
 	}
 	if opts.OnResult != nil {
 		opts.OnResult(&BackupStatus{
-			Outcome:       OutcomeVerifiedSuccess,
+			Outcome:       outcome,
 			BackupID:      opts.BackupID,
 			DurationSec:   duration.Seconds(),
 			NewChunks:     newC,
 			ReusedChunks:  reusedC,
 			TotalBytes:    jp.BytesTotal.Load(),
 			Message:       completionMsg,
-			MessageKey:    MsgMachineBackupCompletedStats,
+			MessageKey:    completionKey,
 			MessageParams: completionParams,
 		})
 	}

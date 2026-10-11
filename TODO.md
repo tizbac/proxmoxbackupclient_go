@@ -617,6 +617,21 @@ Pause button on the progress card; the run waits at its next safe point (between
 Seen on sarah-yoga510's first full machine backup (128 GB, half empty, ~13 min on 1 GbE, so much of it cannot have crossed the network): Upload sat at 0, nothing said what was reused, and the block line showed twice. Now `machinebackuplib.JobProgress` (Config.Progress) counts new / reused / blank (all-zero, by digest) chunks and uploaded bytes, and tracks phase, disk n of N, position and partition; `runMachineBackupInline` samples it every second into `OnStats` (Kind "machine"). Card rows: Blocks N / total, Disk, Partition, real Upload rate, "Processed (New, Reused, k of them blank space)"; stage line per phase. Log: one line per 1% with the counts, plus a `[RESULT]` line. Completion message / Reports: `logMachineBackupCompletedStats`. Progress messages say "Block N / M". 18 languages, CHANGELOG.
 - [ ] Disk model in the Disk row ("BIWIN SSD") and file system in the Partition row ("C: (NTFS)"): not passed yet.
 - [ ] Machine backups run by the service: no stats bridge (same as folder backups, service-mode progress item).
+- [x] Windows machine backup zero-fills unreadable sectors (4 KiB units, media errors only) and reports a partial backup with where (`readResilient` in machinebackuplib/resilient.go, shared with Linux). 2026-10-11, after new-laptop's BIWIN SSD.
+
+### 🗓️ Better scheduler: several schedules per Backup Set (Mick, 2026-10-11)
+Today a set has ONE trigger (`ScheduledJob.TriggerMode` in scheduler.go: "daily" at `ScheduleTime`, "interval" every `IntervalMinutes` in an optional daily window, or "manual") plus `DaysOfWeek`. A weekly backup means "daily" with 6 of 7 days unticked; monthly or yearly isn't possible. Goal: cron-like flexibility, still simple and obvious.
+- [ ] **Model:** `Schedules []Schedule` per set (old fields migrated into one entry on load, kept readable for older builds). A Schedule: Repeat every N {hours | days | weeks | months | years}, plus:
+  - hours: at minute :MM, optional time window (today's interval mode);
+  - days: at HH:MM, optional weekdays filter;
+  - weeks: on which weekdays (ticks) at HH:MM;
+  - months: on day D (1-31, or "last day") or "the 1st/2nd/3rd/4th/last Monday...", at HH:MM;
+  - years: on date (day + month) at HH:MM;
+  - optional start date (first run, so "every 2 weeks" has an anchor) and an enabled tick.
+- [ ] **UI:** Manual / Scheduled radio. Scheduled shows a list of schedules, each one line in plain words ("Every week on Mon, Fri at 18:00", "Every month on the last day at 02:00") with Edit / Delete, and **Add schedule**. Editor: "Repeat every [N] [hours/days/weeks/months/years]" then only the fields that unit needs, and a live "Next 3 runs: ..." preview. Card shows the next run from all schedules.
+- [ ] **Behaviour:** the set's next run = earliest across its schedules; two schedules due together run once; missed-while-off catch-up as today; "full read every N runs" counts runs, not schedules. Optional later: a per-schedule override (e.g. the monthly one does a full read, or targets another PBS server).
+- [ ] Service mode reads the same model; tests for next-run maths (month ends, 29 Feb, DST changes, "last Friday").
+- [ ] Translations (18), manual chapter, CHANGELOG.
 
 ### 🏷️ Backup set card: Snapshot ON/OFF badge (Mick, 2026-10-11) - ship with the next build
 Another badge beside the existing ones on each set card (App.jsx ~3613, backup type badge and next-run line), so you can see at a glance which sets will snapshot.

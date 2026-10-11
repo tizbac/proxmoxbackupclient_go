@@ -327,7 +327,8 @@ const EMPTY_BACKUP_STATS = {
   diskCount: 0,
   diskBytes: 0,
   diskDone: 0,
-  partition: ''
+  partition: '',
+  unreadable: 0
 }
 
 const EMPTY_RESTORE_STATS = { startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0, eta: null }
@@ -883,6 +884,7 @@ function App() {
           diskBytes: data.diskBytes || 0,
           diskDone: data.diskDone || 0,
           partition: data.partition || '',
+          unreadable: data.unreadable || 0,
           speed,
           filesRate: filesRate ?? prev.filesRate,
           uploadRate: uploadRate ?? prev.uploadRate,
@@ -3494,7 +3496,7 @@ function App() {
                 const processed = s.hasDetail || s.bytesDone > 0
                   ? <>
                       {tl('processedLabel', 'Processed:')} {formatBytesDual(s.bytesDone)} / {s.bytesTotal > 0 ? formatBytesDual(s.bytesTotal) : calc}
-                      {s.hasDetail && <> ({tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>})</>}
+                      {s.hasDetail && <> ({tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>})</>}
                     </>
                   : <>{tl('processedLabel', 'Processed:')} 0 B / {calc}</>
                 return (
