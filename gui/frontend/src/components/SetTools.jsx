@@ -54,9 +54,9 @@ function useScanProgress(ui, active) {
 
 export function SetPicker({ ui, jobs, value, onChange }) {
   const { tl } = ui
-  // Machine sets too (Windows): their folders for Undelete and Roll back
-  // are read from the disk images.
-  const sets = (jobs || []).filter(j => j.backupType !== 'machine' || ui.os !== 'linux')
+  // Machine sets too: their folders for Undelete and Roll back are read
+  // from the disk images (NTFS on Windows, ext4 or XFS on Linux).
+  const sets = jobs || []
   const describe = (j) => j.backupType === 'machine'
     ? `${tl('setPickerMachine', 'machine')}: ${(j.imageFolders && j.imageFolders.length > 0) ? j.imageFolders.join(', ') : tl('setPickerMachineDefault', 'your Desktop, Documents, Pictures...')}`
     : (j.backupDirs || []).join(', ')

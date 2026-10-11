@@ -11,7 +11,8 @@ import (
 )
 
 // Opt-in (PBS_IMG_URL set, plus PBS_SET_DISK, the machine set's disk number,
-// and PBS_SET_FOLDER, a folder on it): Undelete and Roll back for a machine
+// or on Linux PBS_SET_DEVICE, its device path, and PBS_SET_FOLDER, a folder
+// on it; PBS_SET_EXPECT_MISSING checks the Undelete count): Undelete and Roll back for a machine
 // set on THIS computer, whose disk images are on the server. Lists the set's
 // snapshots, loads the folder's file list from the newest image, runs an
 // Undelete scan and a Roll back PREVIEW (nothing on disk changes), then
@@ -29,6 +30,9 @@ func TestLiveImageUndelete(t *testing.T) {
 	job := ScheduledJob{ID: "live", Name: "live machine set", BackupType: "machine", BackupID: os.Getenv("PBS_IMG_ID"),
 		MachineAsVM: os.Getenv("PBS_IMG_TYPE") == "vm", DriveLetters: []string{`\\.\PhysicalDrive` + strconv.Itoa(disk)},
 		ImageFolders: []string{folder}}
+	if d := os.Getenv("PBS_SET_DEVICE"); d != "" {
+		job.DriveLetters = []string{d}
+	}
 
 	folders := setFoldersOf(job)
 	if len(folders) != 1 {
@@ -60,6 +64,9 @@ func TestLiveImageUndelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("Undelete: %d files in the backup but not on disk, %d unknown", len(scan.Files), scan.Unknown)
+	if want := os.Getenv("PBS_SET_EXPECT_MISSING"); want != "" && strconv.Itoa(len(scan.Files)) != want {
+		t.Errorf("Undelete found %d missing files, want %s", len(scan.Files), want)
+	}
 	for i, f := range scan.Files {
 		if i >= 10 {
 			break

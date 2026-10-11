@@ -3899,7 +3899,7 @@ function App() {
                                     <div className="set-more-sep" role="separator" />
                                   </>
                                 )}
-                                {(job.backupType !== 'machine' || systemInfo.os !== 'linux') && (
+                                {(
                                   <>
                                     <button role="menuitem" className="set-more-item" onClick={() => { setSetToolJobId(job.id); setActiveTab('undelete') }}>
                                       {tl('undeleteShortcut', 'Undelete...')}
@@ -4319,7 +4319,7 @@ function App() {
               )}
             </div>
           )}
-          {backupType === 'machine' && backupMode === 'scheduled' && systemInfo.os !== 'linux' && (
+          {backupType === 'machine' && backupMode === 'scheduled' && (
             <div className="form-group">
               <label htmlFor="imageFolders">{tl('imageFoldersLabel', 'Folders for Undelete and Roll back')}</label>
               <textarea
@@ -4327,7 +4327,9 @@ function App() {
                 value={imageFolders}
                 onChange={(e) => setImageFolders(e.target.value)}
                 rows="3"
-                placeholder={tl('imageFoldersPlaceholder', 'One per line, e.g. C:\\Users\\Name\\Documents')}
+                placeholder={systemInfo.os === 'linux'
+                  ? tl('imageFoldersPlaceholderLinux', 'One per line, e.g. /home/name/Documents')
+                  : tl('imageFoldersPlaceholder', 'One per line, e.g. C:\\Users\\Name\\Documents')}
               />
               <div style={{fontSize: '12px', color: '#64748b', marginTop: '4px', maxWidth: '560px'}}>
                 {tl('imageFoldersHint', 'Undelete and Roll back look at these folders, reading their files from the disk images. Empty: your Desktop, Documents, Pictures, Music, Videos and Downloads. Folders must be on the disks this set backs up.')}

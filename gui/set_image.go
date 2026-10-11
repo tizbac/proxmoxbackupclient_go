@@ -46,13 +46,6 @@ var physicalDriveRe = regexp.MustCompile(`(?i)PhysicalDrive(\d+)$`)
 // is also the "archive" name Undelete and Roll back key their lists by.
 // Folders on a disk the set does not back up are left out (logged).
 func imageSetFolders(job ScheduledJob) []setFolder {
-	disks := map[int]bool{}
-	for _, d := range job.DriveLetters {
-		if m := physicalDriveRe.FindStringSubmatch(d); m != nil {
-			n, _ := strconv.Atoi(m[1])
-			disks[n] = true
-		}
-	}
 	folders := job.ImageFolders
 	if len(folders) == 0 {
 		folders = defaultImageFolders()
@@ -63,17 +56,12 @@ func imageSetFolders(job ScheduledJob) []setFolder {
 		if dir == "" || dir == "." {
 			continue
 		}
-		disk, offset, err := volumeDiskExtent(dir)
+		base, err := imageFolderBase(job, dir)
 		if err != nil {
 			writeDebugLog(fmt.Sprintf("Machine set %q: %s left out: %v", job.Name, dir, err))
 			continue
 		}
-		if !disks[disk] {
-			writeDebugLog(fmt.Sprintf("Machine set %q: %s is on disk %d, which the set does not back up", job.Name, dir, disk))
-			continue
-		}
-		rel := strings.Trim(filepath.ToSlash(strings.TrimPrefix(dir, filepath.VolumeName(dir))), "/")
-		out = append(out, setFolder{Dir: dir, Base: fmt.Sprintf("drive-sata%d.img.fidx@%d:%s", disk, offset, rel)})
+		out = append(out, setFolder{Dir: dir, Base: base})
 	}
 	return out
 }
