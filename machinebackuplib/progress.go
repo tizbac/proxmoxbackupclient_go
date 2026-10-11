@@ -16,9 +16,9 @@ import (
 type JobProgress struct {
 	NewChunks    atomic.Uint64 // chunks uploaded to the server
 	ReusedChunks atomic.Uint64 // chunks the server already had (or this image already sent)
-	// BlankChunks counts the all-zero chunks (blank disk space). Each of them
-	// is also counted in NewChunks or ReusedChunks: the first one of a run is
-	// uploaded unless the server has it, the rest are reused.
+	// BlankChunks counts the reused all-zero chunks (blank disk space), a
+	// part of ReusedChunks, so "Reused: N, M of them blank" always holds. The
+	// one blank chunk uploaded when the server has none counts as New only.
 	BlankChunks   atomic.Uint64
 	UploadedBytes atomic.Uint64 // uncompressed size of the chunks uploaded
 	BytesDone     atomic.Uint64 // bytes of the whole job read so far
@@ -152,9 +152,9 @@ func (p *JobProgress) countChunk(size int, blank, uploaded bool) {
 		p.UploadedBytes.Add(uint64(size))
 	} else {
 		p.ReusedChunks.Add(1)
-	}
-	if blank {
-		p.BlankChunks.Add(1)
+		if blank {
+			p.BlankChunks.Add(1)
+		}
 	}
 }
 

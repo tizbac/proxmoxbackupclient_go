@@ -1620,16 +1620,26 @@ func runMachineBackupInline(opts BackupOptions) error {
 	// paused machine backup waits. The log gets a block line only once per
 	// whole percent (it used to get all ~30,000 of a 128 GB disk); other
 	// messages (snapshot, disk complete) are always logged.
+	// Block lines also reach OnProgress (a GUI event and a debug log line
+	// each) at most four times a second; the card's figures come from
+	// emitStats below.
 	lastLoggedPct := -1
+	var lastBlockEmit time.Time
 	progress := func(pct float64, msg string) bool {
-		if !strings.Contains(msg, ": Block ") {
+		block := strings.Contains(msg, ": Block ")
+		if !block {
 			writeBackupLog(fmt.Sprintf("Backup progress: %.1f%% - %s", pct*100, msg))
 		} else if p := int(pct * 100); p != lastLoggedPct {
 			lastLoggedPct = p
 			writeBackupLog(fmt.Sprintf("Backup progress: %d%% - %s - %s", p, msg, counts()))
 		}
-		if opts.OnProgress != nil {
-			opts.OnProgress(pct, msg)
+		if opts.OnProgress != nil && (!block || time.Since(lastBlockEmit) >= 250*time.Millisecond) {
+			if block {
+				lastBlockEmit = time.Now()
+			}
+			// 100% would take the progress card down while the image is
+			// still being closed; the completion event finishes it.
+			opts.OnProgress(min(pct, 0.99), msg)
 		}
 		if backupPause.Wait(opts.Ctx) != nil {
 			return true
@@ -1700,6 +1710,15 @@ func runMachineBackupInline(opts BackupOptions) error {
 	_, err := machinebackuplib.Backup(cfg, progress)
 	stopTicker()
 	writeBackupLog(fmt.Sprintf("[RESULT] machine backup: %s of %s read, %s", formatByteSize(jp.BytesDone.Load()), formatByteSize(jp.BytesTotal.Load()), counts()))
+	if err != nil && opts.Ctx != nil && opts.Ctx.Err() != nil {
+		// Stop is the user's choice, not a failure: reported as a folder
+		// backup's Stop is.
+		writeBackupLog("Cancellation requested: machine backup stopped, no snapshot kept")
+		if opts.OnComplete != nil {
+			opts.OnComplete(false, "Backup cancelled by user", MsgBackupCancelled, nil)
+		}
+		return fmt.Errorf("backup cancelled by user")
+	}
 	if err != nil {
 		// Handle error case
 		errMsg := fmt.Sprintf("Machine backup failed: %v", err)

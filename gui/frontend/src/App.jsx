@@ -3488,7 +3488,7 @@ function App() {
                   : machine ? (blocks > 0 ? <>{block.toLocaleString()} / {blocks.toLocaleString()}</> : calc)
                   : <>{s.filesDone.toLocaleString()} / {s.filesTotal > 0 ? s.filesTotal.toLocaleString() : calc}</>
                 const processing = s.speed > 0
-                  ? `${formatSpeed(s.speed)}${s.hasDetail && s.filesRate !== null ? ` · ${Math.round(s.filesRate).toLocaleString()} ${tl('filesPerSecond', 'files/s')}` : ''}`
+                  ? `${formatSpeed(s.speed)}${s.hasDetail && !machine && s.filesRate !== null ? ` ·${Math.round(s.filesRate).toLocaleString()} ${tl('filesPerSecond', 'files/s')}` : ''}`
                   : calc
                 const upload = !s.hasDetail ? na : (s.uploadRate !== null ? formatSpeed(s.uploadRate) : calc)
                 const folder = machine

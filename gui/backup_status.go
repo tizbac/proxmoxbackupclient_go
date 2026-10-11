@@ -200,7 +200,7 @@ type BackupProgressStats struct {
 	// Machine (disk image) backups: Kind is "machine", Phase adds "snapshot",
 	// and these say where the reader is. Blocks are 4 MiB fixed-index chunks.
 	Kind        string `json:"kind,omitempty"`
-	BlankChunks uint64 `json:"blank_chunks,omitempty"` // all-zero chunks, also counted in New or Reused
+	BlankChunks uint64 `json:"blank_chunks,omitempty"` // reused all-zero chunks, a part of Reused
 	Disk        string `json:"disk,omitempty"`
 	DiskNo      int    `json:"disk_no,omitempty"`
 	DiskCount   int    `json:"disk_count,omitempty"`

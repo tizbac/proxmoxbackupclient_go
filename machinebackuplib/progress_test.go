@@ -47,8 +47,8 @@ func TestJobProgressCountsAndNilSafety(t *testing.T) {
 	jp.countChunk(4, true, false)  // more blank space, reused
 	jp.countChunk(7, false, true)  // data, uploaded
 	jp.countChunk(7, false, false) // data, reused
-	if n, r, b, u := jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(), jp.UploadedBytes.Load(); n != 2 || r != 2 || b != 2 || u != 11 {
-		t.Fatalf("new=%d reused=%d blank=%d uploaded=%d, want 2 2 2 11", n, r, b, u)
+	if n, r, b, u := jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(), jp.UploadedBytes.Load(); n != 2 || r != 2 || b != 1 || u != 11 {
+		t.Fatalf("new=%d reused=%d blank=%d uploaded=%d, want 2 2 1 11", n, r, b, u)
 	}
 	jp.startDisk(`\\.\PhysicalDrive0`, 1, 2, 100)
 	jp.setPartition("C:")
