@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Standard (non-administrator) accounts can no longer read the settings or drive the service.** `C:\ProgramData\ProxmoxBackupClient` inherited ProgramData's defaults, so every local account could read `config.json` (the PBS API token secrets), the Backup Sets and the local API token, and use that token to have the background service, which runs as SYSTEM, back up or change anything. Any account could also create files there, so a token or a `config.json` could be planted before the service first ran. The service (and the GUI when it runs elevated) now gives the folder its own permissions: SYSTEM and Administrators full control, each local administrator account read and create (so a non-elevated GUI keeps working as before), nobody else. Anything in it owned by another account is handed to Administrators. The service also writes a new API token every time it starts. A standard user who opens the GUI now sees "This PC's backup settings are open to its administrators only" with Restart as administrator. On Linux the settings folder is now private to its owner (0700).
+
 ## [0.8.2] - 2026-10-11
 
 Machine backups get through blank disk space much faster.

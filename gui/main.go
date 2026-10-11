@@ -211,6 +211,18 @@ func (a *App) startup(ctx context.Context) {
 	passphrasePrompter = a.promptForPassphrase
 	writeDebugLog("App.startup() called")
 
+	// An elevated GUI (or any GUI on Linux, where the folder is the user's own)
+	// locks the settings folder down; see hardenConfigDir.
+	if stdruntime.GOOS != "windows" || isAdmin() {
+		go func() {
+			if dir, err := getConfigDir(); err == nil {
+				if err := hardenConfigDir(dir); err != nil {
+					writeDebugLog(fmt.Sprintf("[ConfigACL] %v", err))
+				}
+			}
+		}()
+	}
+
 	// Detect execution mode (Service vs Standalone)
 	detector := api.NewModeDetector(getAPITokenPath())
 	a.mode = detector.DetectMode()

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
+	"os"
 )
 
 // Scheduled-job protection.
@@ -38,6 +40,9 @@ type JobPolicy struct {
 	RequireAdmin bool `json:"require_admin"` // current setting (ON by default)
 	IsAdmin      bool `json:"is_admin"`      // this process is elevated
 	CanModify    bool `json:"can_modify"`    // jobs may be changed right now
+	// SettingsLocked: this account may not read the settings folder (a
+	// standard user on Windows once hardenConfigDir has run).
+	SettingsLocked bool `json:"settings_locked"`
 }
 
 // jobsChangeAllowed is the one decision rule, kept free of OS calls so it can
@@ -58,11 +63,27 @@ func (a *App) GetJobPolicy() JobPolicy {
 	}
 	admin := isAdmin()
 	return JobPolicy{
-		Supported:    supported,
-		RequireAdmin: req,
-		IsAdmin:      admin,
-		CanModify:    jobsChangeAllowed(supported, req, admin),
+		Supported:      supported,
+		RequireAdmin:   req,
+		IsAdmin:        admin,
+		CanModify:      jobsChangeAllowed(supported, req, admin),
+		SettingsLocked: settingsLocked(),
 	}
+}
+
+// settingsLocked reports whether config.json exists but this process may not
+// read it.
+func settingsLocked() bool {
+	p, err := getConfigPath()
+	if err != nil {
+		return false
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return errors.Is(err, fs.ErrPermission)
+	}
+	_ = f.Close()
+	return false
 }
 
 // SetRequireAdminForJobs switches the policy. It needs an elevated session; a

@@ -846,6 +846,14 @@ To actually close this gap for a future release:
       would remove the SmartScreen/Defender false-positive warning entirely instead of just
       explaining it away.
 
+### 📌 Agreed next (Mick, 2026-10-11, after checking upstream)
+Upstream (tizbac) is now 214 commits ahead of our master and we are 437 ahead of it; its 6-9 Oct rework (service/GUI API with token rotation, Running Jobs tab, Linux packaging, MSI, branding) rewrote the GUI files our work lives in. Decision: keep this fork as our own product, borrow ideas and files from upstream, never merge.
+- [ ] **Service API token check.** Whoever holds the local API token (127.0.0.1:18765) can drive the SYSTEM service, and a restore can write any file. Check the token file and `config.json` ACLs (admins and SYSTEM only); report before changing anything. Overlaps "Tighten the ACL on existing key files and on config.json" under Chiffrement.
+- [ ] **MSI installer.** Our WiX project exists (`installer/wix/Product.wxs`, plus `NimbusBackup.wxs`/`AcmeBackup.wxs` branded variants) but has never been built here: install WiX, check branding and service registration, borrow what helps from upstream's reworked `installer/wix` and `make msi`, test install/upgrade/uninstall on winclient. Supersedes the MSI line in "Release pipeline" below.
+- [ ] **Linux packages.** .deb (and .rpm if wanted) with a systemd unit for the service, from upstream's `packaging/` as a starting point; test on pbs-test and VM140, then rigel.
+- [ ] **Upstream PRs (small, separate, each on a fresh branch off upstream/master):** VSS shadow leak fix (94ba93b; go-vss's VSS_CTX_ALL is wrong, delete with 0xffffffff), blank-chunk digest shortcut (86cbf78). Our open #100 (single instance) and #101 (Windows build) predate the rework: redo or close.
+- [ ] **Machine backup: empty-block marker** (offered 2026-10-11, not agreed yet): skip the 4 MiB copy for blank chunks in `emitZeros`/`push`; about 3-4 min off mick-yoga's 27 min run.
+
 ### 🎨 GUI polish (this fork)
 
 #### Sidebar: subtle separator before Reports (Mick, 2026-10-11)

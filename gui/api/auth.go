@@ -24,12 +24,10 @@ const maxRequestBody = 1 << 20 // 1 MiB
 // a fresh random one (0600) if the file is missing or empty. Called by the
 // service before it starts the API server.
 //
-// NOTE: 0600 is best-effort; on Windows it inherits the directory ACL rather than
-// becoming owner-only. Restricting the token file by a proper Windows ACL (so
-// only the service account + the interactive user can read it, denying other
-// local processes) is the remaining hardening to fully close H-01 against a
-// hostile LOCAL process. The custom-header + Origin checks already close the
-// browser/CSRF vector regardless.
+// On Windows 0600 means nothing; the file inherits the settings folder's ACL,
+// which hardenConfigDir (gui/config_acl_windows.go) limits to SYSTEM,
+// Administrators and the local administrator accounts. The custom-header and
+// Origin checks close the browser/CSRF vector regardless.
 func EnsureToken(path string) (string, error) {
 	if b, err := os.ReadFile(path); err == nil {
 		if t := strings.TrimSpace(string(b)); t != "" {
@@ -43,6 +41,29 @@ func EnsureToken(path string) (string, error) {
 	t := hex.EncodeToString(buf)
 	if err := os.WriteFile(path, []byte(t), 0o600); err != nil {
 		return "", fmt.Errorf("write api token %q: %w", path, err)
+	}
+	return t, nil
+}
+
+// NewToken writes a fresh random token to path, replacing any token already
+// there, and returns it. The service calls it each time it starts, so a token
+// copied earlier, or a token file planted before the service first ran, stops
+// working at the next restart. The GUI reads the file on every request, so it
+// picks the new token up without a restart.
+func NewToken(path string) (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate api token: %w", err)
+	}
+	t := hex.EncodeToString(buf)
+	tmp := path + ".tmp"
+	_ = os.Remove(tmp)
+	if err := os.WriteFile(tmp, []byte(t), 0o600); err != nil {
+		return "", fmt.Errorf("write api token %q: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("replace api token %q: %w", path, err)
 	}
 	return t, nil
 }

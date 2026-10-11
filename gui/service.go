@@ -72,10 +72,17 @@ func (s *BackupService) run() {
 	// Start the scheduler
 	s.app.StartScheduler()
 
+	// Lock the settings folder down before writing the API token into it.
+	if dir, err := getConfigDir(); err == nil {
+		if err := hardenConfigDir(dir); err != nil {
+			writeDebugLog(fmt.Sprintf("[ConfigACL] %v", err))
+		}
+	}
+
 	// Start HTTP API server for GUI communication (token-authenticated — H-01).
 	// If token init fails the server keeps an empty token and rejects every
 	// request (fail closed) rather than exposing the privileged API unauthenticated.
-	apiToken, tokErr := api.EnsureToken(getAPITokenPath())
+	apiToken, tokErr := api.NewToken(getAPITokenPath())
 	if tokErr != nil {
 		writeDebugLog(fmt.Sprintf("API token init failed (API will reject all requests): %v", tokErr))
 	}

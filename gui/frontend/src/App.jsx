@@ -492,7 +492,7 @@ function App() {
   // Scheduled-job protection (Windows): when require_admin is on, changing
   // Backup Sets needs an elevated session. Defaults are the permissive "not
   // applicable" shape until the backend answers (and on platforms without it).
-  const [jobPolicy, setJobPolicy] = useState({ supported: false, require_admin: false, is_admin: true, can_modify: true })
+  const [jobPolicy, setJobPolicy] = useState({ supported: false, require_admin: false, is_admin: true, can_modify: true, settings_locked: false })
   // Backup Set change refused by the lock: a modal that must be acknowledged
   const [showJobsLock, setShowJobsLock] = useState(false)
   // Returns true when err was the lock refusal (and shows the modal for it)
@@ -2899,6 +2899,12 @@ function App() {
         </div>
 
       <div className="container">
+        {jobPolicy.settings_locked && (
+          <div className="info-box settings-locked-banner" style={{marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap'}}>
+            <span>🔒 {t('settingsLockedBanner')}</span>
+            <button className="btn btn-secondary" onClick={restartAsAdmin}>{t('jobsPolicyElevateBtn')}</button>
+          </div>
+        )}
         {/* PBS Configuration Tab */}
         {/* Preferences is a dialog (matching the mockup), not a sidebar tab —
             opened via the sidebar's Preferences button, Tools > Preferences,
