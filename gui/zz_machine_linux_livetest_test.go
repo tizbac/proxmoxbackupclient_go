@@ -83,8 +83,8 @@ func TestLiveLinuxMachineBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := prog.Where()
-	t.Logf("backup %s in %v: read %d MB of %d MB; chunks new %d, reused %d (%d blank), uploaded %d MB; unreadable %d bytes %+v; last location %+v",
-		backupID, time.Since(start).Round(time.Millisecond), prog.BytesDone.Load()>>20, prog.BytesTotal.Load()>>20,
+	t.Logf("backup %s in %v: read %d MB of %d MB (free space not read %d MB); chunks new %d, reused %d (%d blank), uploaded %d MB; unreadable %d bytes %+v; last location %+v",
+		backupID, time.Since(start).Round(time.Millisecond), prog.BytesDone.Load()>>20, prog.BytesTotal.Load()>>20, prog.FreeSkipped.Load()>>20,
 		prog.NewChunks.Load(), prog.ReusedChunks.Load(), prog.BlankChunks.Load(), prog.UploadedBytes.Load()>>20,
 		prog.UnreadableBytes.Load(), prog.Unreadable(), w)
 	for i, m := range msgs {
