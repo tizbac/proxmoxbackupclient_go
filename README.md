@@ -27,14 +27,13 @@ It is a **suite of tools** for backing up to PBS:
 | **[Bare-metal restore manual](docs/manual/BMR.md)** | The restore ISO, step by step; `vm` snapshots onto Proxmox VE; different hardware |
 | [Restore scenarios](docs/RESTORE_GUIDE.md) | Which restore to use when |
 
-## 💽 New in v0.8.0: files back from a whole-machine backup
+## 💽 New in v0.8.0: faster machine backups, files back from them, Pause/Resume
 
-A machine (disk image) backup is now as useful for getting files back as a folder backup, so one backup per laptop can do both:
-
-- **Restore** opens a machine backup like a folder backup: each NTFS volume in the image is a folder you can browse, search and tick. Nothing is mounted or downloaded first; only the file table and then the chosen files' data are read (a 127 GB laptop C: with 430,000 files lists in 4 to 15 seconds).
-- **Undelete and Roll back** work on machine Backup Sets (Windows), on the folders you choose for the set (by default Desktop, Documents, Pictures, Music, Videos and Downloads).
 - **Machine backups skip free space** (and the paging and hibernation files) on Windows, so a half-empty disk is read in about half the time, and a **bad sector** no longer stops the backup: it goes into the image as zeros and the run says where.
-- The machine backup progress card shows blocks of total, the disk and partition, New / Reused / blank chunks and the upload rate. Also new: **Pause and Resume** a running backup, a **VSS / Snapshot ON-OFF badge** on each set card, and Windows **creation times** backed up and restored.
+- The machine backup progress card shows blocks of total, the disk and partition, New / Reused / blank chunks and the upload rate.
+- **Restore files from a machine backup**: each NTFS volume in the image is a folder you can browse, search and tick. Nothing is mounted or downloaded first; only the file table and then the chosen files' data are read (a 127 GB laptop C: with 430,000 files lists in 4 to 15 seconds). So one machine backup per laptop covers both a bare-metal restore and "I need that file back".
+- **Undelete and Roll back** work on machine Backup Sets (Windows), on the folders you choose for the set (by default Desktop, Documents, Pictures, Music, Videos and Downloads).
+- **Pause and Resume** a running folder or machine backup, a **VSS / Snapshot ON-OFF badge** on each set card, and Windows **creation times** backed up and restored.
 
 See the [CHANGELOG](CHANGELOG.md).
 

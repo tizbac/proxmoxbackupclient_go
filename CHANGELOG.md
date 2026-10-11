@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.0] - 2026-10-11
 
-Files back from a whole-machine backup: Restore, Undelete and Roll back now read straight from a machine (disk image) backup, so one backup per laptop covers both bare-metal and file restores. Machine backups also skip free space, survive bad sectors and show what they are doing.
+Faster, sturdier machine backups and files back from them: Windows machine backups skip free space (about half the read time on a half-empty disk), survive bad sectors and show what they are doing; Restore, Undelete and Roll back read straight from a machine (disk image) backup, so one backup per laptop covers both bare-metal and file restores. Also Pause and Resume, a VSS/Snapshot badge per set, and Windows creation times.
 
 ### Added
 - **Restore files from a machine (disk image) backup.** In Restore, a machine backup's snapshot (host or vm type) now opens like a folder backup: each NTFS volume in the image is a folder ("Partition 3 - Windows (NTFS, 127.3 GB)"), with the usual tree, sizes, search, tick boxes, verify, progress card and Reports row. Nothing is mounted and the image is not downloaded: the partition table and the volume's master file table are read straight from the backup, then only the chunks holding the chosen files (a 127 GB laptop C: with 430,000 files lists in 4 to 15 seconds, depending on how busy the server is). Files go to another folder with their modification and creation times, and with the permissions option their read-only, hidden and system attributes; compressed, sparse and hard-linked files work. Permissions (ACLs), FAT32/EFI, BitLocker-encrypted and Linux volumes are not read yet.
