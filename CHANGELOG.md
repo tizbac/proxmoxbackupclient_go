@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Run now: quick or full read** for Metadata Backup Sets, in the card's More menu. Quick reuses unchanged files even when the set is due its "full read every N runs" (the full read stays due for the next run); full read reads every file now and restarts the count. The progress card says "Full read requested". Plain Run Now does what the schedule would.
+
 ### Changed
 - **The VSS / Snapshot badge on a Backup Set card turns amber when some folders cannot be snapshotted**: "VSS PARTLY" when some of the set's folders are network drives or shares (read live), "VSS N/A" when all are. The tooltip lists those folders. On Linux the badge reads "SNAPSHOT ...".
 - **Side menu: a thin divider above Reports** separates the tasks (Backup, Restore, Undelete, Roll back) from Reports and Message Log. It takes a muted shade of the theme colour, so it suits every theme and brand.

@@ -49,6 +49,38 @@ func changeDetectionForRun(job ScheduledJob) (mode string, nextCount int) {
 	}
 }
 
+// applyRequestedRead turns the schedule's choice for a metadata-mode set's
+// run (mode from changeDetectionForRun) into the run's mode, given the Run now
+// choice in job.RequestedRead, and says why every file is read, if it is:
+// scheduled (the "full read every N runs" setting) or requested (Run now,
+// full read). Other sets are unaffected.
+func applyRequestedRead(job ScheduledJob, mode string) (runMode string, scheduledFull, requestedFull bool) {
+	if job.BackupType == "machine" || job.ChangeDetectionMode != pbscommon.ChangeDetectionMetadata {
+		return mode, false, false
+	}
+	switch job.RequestedRead {
+	case "full":
+		return pbscommon.ChangeDetectionData, false, true
+	case "quick":
+		return pbscommon.ChangeDetectionMetadata, false, false
+	}
+	return mode, mode == pbscommon.ChangeDetectionData, false
+}
+
+// runFullReadRequested reports whether the run registered under
+// postActionsKey reads every file because Run now (full read) asked for it.
+func (a *App) runFullReadRequested(postActionsKey string) bool {
+	if postActionsKey == "" {
+		return false
+	}
+	v, ok := a.pendingPostActions.Load(postActionsKey)
+	if !ok {
+		return false
+	}
+	e := v.(*pendingPostActionsEntry)
+	return e.job != nil && e.job.FullReadRequested
+}
+
 // runChangeDetectionMode returns the change-detection mode registered for the
 // run under postActionsKey ("" for a one-off backup, which uses the classic
 // format).

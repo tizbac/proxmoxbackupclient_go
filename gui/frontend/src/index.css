@@ -865,3 +865,6 @@ body {
     padding: 9px 14px; font-size: 14px; color: #2d3748; cursor: pointer;
 }
 .set-more-item:hover, .set-more-item:focus-visible { background: #eef2f7; outline: none; }
+.set-more-item:disabled { color: #a0aec0; cursor: default; background: none; }
+.set-more-menu { white-space: nowrap; }
+.set-more-sep { border-top: 1px solid #e2e8f0; margin: 4px 0; }

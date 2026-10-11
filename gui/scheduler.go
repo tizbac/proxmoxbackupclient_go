@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
-	"pbscommon"
 )
 
 // runningJobs tracks currently executing jobs to prevent duplicates
@@ -54,6 +53,12 @@ type ScheduledJob struct {
 	// ScheduledFullRead is per-run state carried by the job copy a run is
 	// dispatched with, never stored: this run is the set's scheduled full read.
 	ScheduledFullRead bool `json:"-"`
+	// RequestedRead is per-run state too: "full" or "quick" when this run was
+	// started with Run now (full read) / Run now (quick), "" otherwise.
+	RequestedRead string `json:"-"`
+	// FullReadRequested: this run reads every file because Run now (full
+	// read) asked for it (the card says so instead of "scheduled").
+	FullReadRequested bool `json:"-"`
 	ExcludeList                []string `json:"excludeList"`
 	Compression string   `json:"compression"`       // "fastest", "default", "better", "best"
 	LastRun     string   `json:"lastRun,omitempty"` // ISO timestamp
@@ -466,6 +471,18 @@ func (a *App) DeleteScheduledJob(jobID string) error {
 // same executeScheduledJob path a real scheduled fire takes, so history and
 // LastRun/NextRun bookkeeping behave identically to an automatic run.
 func (a *App) RunScheduledJobNow(jobID string) error {
+	return a.RunScheduledJobNowRead(jobID, "")
+}
+
+// RunScheduledJobNowRead runs a Backup Set now. read only matters for a
+// metadata-mode set: "full" reads every file this time (a full read, which
+// resets the "full read every N runs" count), "quick" reuses unchanged files
+// even when the next run is due a full read (which then stays due), "" does
+// what the set's schedule would.
+func (a *App) RunScheduledJobNowRead(jobID, read string) error {
+	if read != "" && read != "full" && read != "quick" {
+		return fmt.Errorf("unknown read choice %q", read)
+	}
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
 		return fmt.Errorf("failed to load jobs: %w", err)
@@ -492,8 +509,10 @@ func (a *App) RunScheduledJobNow(jobID string) error {
 		return fmt.Errorf("backup set %q is being rolled back; run it when the roll back has finished", target.Name)
 	}
 
-	writeDebugLog(fmt.Sprintf("RunScheduledJobNow: manually triggering %s", target.Name))
-	go a.executeScheduledJob(*target, "manual")
+	writeDebugLog(fmt.Sprintf("RunScheduledJobNow: manually triggering %s (read %q)", target.Name, read))
+	run := *target
+	run.RequestedRead = read
+	go a.executeScheduledJob(run, "manual")
 	return nil
 }
 
@@ -1042,9 +1061,11 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	// completes (recordChangeDetectionOutcome), so a cancelled or failed run
 	// neither counts towards the next full read nor stands in for one.
 	runMode, _ := changeDetectionForRun(job)
-	if job.ChangeDetectionMode == pbscommon.ChangeDetectionMetadata && runMode == pbscommon.ChangeDetectionData {
+	runMode, job.ScheduledFullRead, job.FullReadRequested = applyRequestedRead(job, runMode)
+	if job.ScheduledFullRead {
 		writeDebugLog(fmt.Sprintf("Backup Set %s: full read run (every %d runs)", job.Name, job.FullReadEvery))
-		job.ScheduledFullRead = true
+	} else if job.FullReadRequested {
+		writeDebugLog(fmt.Sprintf("Backup Set %s: full read requested (Run now)", job.Name))
 	}
 	job.ChangeDetectionMode = runMode
 

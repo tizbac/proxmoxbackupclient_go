@@ -90,6 +90,9 @@ type BackupOptions struct {
 	// a full read by its "full read every N runs" setting, so the card can
 	// say why every file is being read.
 	ScheduledFullRead bool
+	// FullReadRequested: a metadata-mode set's run started with Run now
+	// (full read).
+	FullReadRequested bool
 	// Comment is sent as-is as the PBS snapshot's manifest comment (shows up
 	// next to the snapshot in PBS's own web UI). Callers set this to the
 	// triggering Backup Set's own name — see startBackupDirect/
@@ -1224,6 +1227,8 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		sharedCatalog := &sharedCatalogCoordinator{chunk: &catalogChunk}
 
 		switch {
+		case opts.FullReadRequested:
+			jobProg.readReason.Store("full_read_requested")
 		case opts.ScheduledFullRead:
 			jobProg.readReason.Store("full_read")
 		case opts.ChangeDetectionMode == pbscommon.ChangeDetectionData:

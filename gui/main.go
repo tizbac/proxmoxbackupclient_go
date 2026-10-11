@@ -997,10 +997,11 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	// A Backup Set's change detection for this run (scheduler.go); a one-off
 	// backup (no key) and a machine backup use neither.
 	changeMode := ""
-	scheduledFullRead := false
+	scheduledFullRead, fullReadRequested := false, false
 	if backupType == "directory" {
 		changeMode = a.runChangeDetectionMode(postActionsKey)
 		scheduledFullRead = a.runScheduledFullRead(postActionsKey)
+		fullReadRequested = a.runFullReadRequested(postActionsKey)
 	}
 
 	var targetDirs []string
@@ -1054,6 +1055,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		PrefetchWorkers: a.config.EffectivePrefetchWorkers(),
 		ChangeDetectionMode: changeMode,
 		ScheduledFullRead:   scheduledFullRead,
+		FullReadRequested:   fullReadRequested,
 		Crypt:               pbsCfg.Crypt,
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))

@@ -110,3 +110,42 @@ func TestParamUint(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyRequestedRead(t *testing.T) {
+	meta := ScheduledJob{ChangeDetectionMode: pbscommon.ChangeDetectionMetadata, FullReadEvery: 7}
+	due := meta
+	due.MetadataRunsSinceFullRead = 6
+	cases := []struct {
+		name          string
+		job           ScheduledJob
+		read          string
+		mode          string
+		sched, reqstd bool
+	}{
+		{"schedule: metadata run", meta, "", "metadata", false, false},
+		{"schedule: due full read", due, "", "data", true, false},
+		{"Run now full on a metadata run", meta, "full", "data", false, true},
+		{"Run now quick when a full read is due", due, "quick", "metadata", false, false},
+		{"Run now full when due anyway", due, "full", "data", false, true},
+		{"data set ignores quick", ScheduledJob{ChangeDetectionMode: "data"}, "quick", "data", false, false},
+		{"legacy set ignores full", ScheduledJob{}, "full", "", false, false},
+		{"machine set ignores full", ScheduledJob{BackupType: "machine", ChangeDetectionMode: "metadata"}, "full", "", false, false},
+	}
+	for _, c := range cases {
+		c.job.RequestedRead = c.read
+		m, _ := changeDetectionForRun(c.job)
+		got, s, r := applyRequestedRead(c.job, m)
+		if got != c.mode || s != c.sched || r != c.reqstd {
+			t.Errorf("%s: got (%q, %v, %v), want (%q, %v, %v)", c.name, got, s, r, c.mode, c.sched, c.reqstd)
+		}
+	}
+	// A quick run when due leaves the full read due for the next run.
+	if n := nextFullReadCount(due, true, false); n != 7 {
+		t.Errorf("count after a quick run when due = %d, want 7", n)
+	}
+	d2 := due
+	d2.MetadataRunsSinceFullRead = 7
+	if m, _ := changeDetectionForRun(d2); m != "data" {
+		t.Errorf("next run after a quick one should still be a full read, got %q", m)
+	}
+}

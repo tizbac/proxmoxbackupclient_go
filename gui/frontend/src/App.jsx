@@ -23,7 +23,7 @@ let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, 
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
 let SetParallelRestore, SetParallelBackupRead
-let GetJobPolicy, SetRequireAdminForJobs, RequestElevation, SnapshotSupport
+let GetJobPolicy, SetRequireAdminForJobs, RequestElevation, SnapshotSupport, RunScheduledJobNowRead
 let ExportSettings, ImportSettings
 let SetSMTPSettings, SendTestEmail
 let GetLogsFolder, OpenLogsFolder
@@ -80,6 +80,7 @@ if (window.go) {
   SetParallelRestore = window.go.main.App.SetParallelRestore
   GetJobPolicy = window.go.main.App.GetJobPolicy
   SnapshotSupport = window.go.main.App.SnapshotSupport
+  RunScheduledJobNowRead = window.go.main.App.RunScheduledJobNowRead
   SetRequireAdminForJobs = window.go.main.App.SetRequireAdminForJobs
   RequestElevation = window.go.main.App.RequestElevation
   SetParallelBackupRead = window.go.main.App.SetParallelBackupRead
@@ -494,6 +495,20 @@ function App() {
     setConfig(c => ({...c, 'backup-id': backupType === 'machine' ? hostname : suggestedBackupId(jobName)}))
   }, [backupType])
   // Which Backup Set card has its More menu open (null: none).
+  // Run a Backup Set now; read is '' (as scheduled), 'quick' or 'full'.
+  const runSetNow = async (job, read) => {
+    setRunningJobId(job.id)
+    try {
+      if (read && RunScheduledJobNowRead) await RunScheduledJobNowRead(job.id, read)
+      else await RunScheduledJobNow(job.id)
+      const how = read === 'full' ? ` (${tl('runNowFullShort', 'full read')})` : read === 'quick' ? ` (${tl('runNowQuickShort', 'quick')})` : ''
+      showStatus(`▶️ ${job.name}${how}`, 'success')
+    } catch (err) {
+      showStatus(`❌ ${t('runNowError').replace('{error}', err)}`, 'error')
+    } finally {
+      setRunningJobId(null)
+    }
+  }
   const [openSetMenu, setOpenSetMenu] = useState(null)
   useEffect(() => {
     if (!openSetMenu) return undefined
@@ -3491,6 +3506,7 @@ function App() {
                 } else if (s.phase === 'data') {
                   stage = {
                     full_read: tl('readReasonFullRead', 'Scheduled full read: reading every file'),
+                    full_read_requested: tl('readReasonRequested', 'Full read requested: reading every file'),
                     no_previous: tl('readReasonNoPrevious', 'No previous snapshot to compare with: reading every file'),
                     data: tl('readReasonData', 'Reading every file (change detection: data)'),
                   }[s.readReason] || (s.changeMode === 'metadata'
@@ -3791,17 +3807,7 @@ function App() {
                           <button
                             className="btn"
                             disabled={runningJobId === job.id}
-                            onClick={async () => {
-                              setRunningJobId(job.id)
-                              try {
-                                await RunScheduledJobNow(job.id)
-                                showStatus(`▶️ ${job.name}`, 'success')
-                              } catch (err) {
-                                showStatus(`❌ ${t('runNowError').replace('{error}', err)}`, 'error')
-                              } finally {
-                                setRunningJobId(null)
-                              }
-                            }}
+                            onClick={() => runSetNow(job, '')}
                           >
                             {runningJobId === job.id ? '…' : t('runNow')}
                           </button>
@@ -3857,6 +3863,20 @@ function App() {
                             </button>
                             {openSetMenu === job.id && (
                               <div role="menu" className="set-more-menu" onClick={() => setOpenSetMenu(null)}>
+                                {/* Metadata sets: choose this run's read. Quick reuses
+                                    unchanged files even when a full read is due (it stays
+                                    due); full read reads every file and resets the count. */}
+                                {job.backupType !== 'machine' && job.changeDetectionMode === 'metadata' && (
+                                  <>
+                                    <button role="menuitem" className="set-more-item" disabled={runningJobId === job.id} onClick={() => runSetNow(job, 'quick')}>
+                                      {tl('runNowQuick', 'Run now: quick (changed files only)')}
+                                    </button>
+                                    <button role="menuitem" className="set-more-item" disabled={runningJobId === job.id} onClick={() => runSetNow(job, 'full')}>
+                                      {tl('runNowFull', 'Run now: full read (every file)')}
+                                    </button>
+                                    <div className="set-more-sep" role="separator" />
+                                  </>
+                                )}
                                 {(job.backupType !== 'machine' || systemInfo.os !== 'linux') && (
                                   <>
                                     <button role="menuitem" className="set-more-item" onClick={() => { setSetToolJobId(job.id); setActiveTab('undelete') }}>
