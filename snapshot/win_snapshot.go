@@ -10,9 +10,11 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"syscall"
 
+	"github.com/go-ole/go-ole"
 	"github.com/st-matskevich/go-vss"
 )
 
@@ -86,10 +88,24 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 	// whole-machine backup of a disk with >= 2 mounted volumes fail. Each
 	// successful snapshot is held until the backup callback has consumed them,
 	// then released together.
+	//
+	// Releasing is not enough on its own: go-vss creates the snapshot in the
+	// auto-release backup context, yet the shadow copy outlives the release
+	// until the process exits (seen on Windows 10 and Server 2022). The GUI
+	// stays running between backups, so each shadow lingered for hours,
+	// kept copy-on-write going on the volume, and its storage showed up as
+	// used space in the next machine backup (27.8 GB on a laptop C:). So
+	// each of our shadows is also deleted by ID once the backup is done.
 	snapshotters := make([]*vss.Snapshotter, 0, len(paths))
+	var created []string
 	defer func() {
 		for _, s := range snapshotters {
-			s.Release()
+			if err := s.Release(); err != nil {
+				fmt.Printf("VSS release: %v\n", err)
+			}
+		}
+		for _, id := range created {
+			deleteShadow(id)
 		}
 	}()
 	snapshots := make(map[string]SnapShot)
@@ -177,8 +193,10 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 			return fmt.Errorf("VSS snapshot creation failed: no valid snapshot created")
 		}
 
-		// Snapshot is valid: track it so it is released after the backup callback.
+		// Snapshot is valid: track it so it is released and deleted after the
+		// backup callback.
 		snapshotters = append(snapshotters, sn)
+		created = append(created, snapshot.Id)
 
 		fmt.Printf("✓ Snapshot created: %s\n", snapshot.Id)
 		if hasWriterWarnings {
@@ -208,10 +226,9 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 // Best-effort by design: the worst case here is that an orphan remains until a
 // later run, which is far safer than wiping other applications' shadow copies.
 //
-// WINDOWS-VERIFY: the exact `vssadmin delete shadows /shadow={id}` form may
-// require `/for=<volume>` on some Windows versions; we do not persist the source
-// volume. The robust long-term path is the VSS API DeleteSnapshots(by ID). If the
-// invocation is rejected, the orphan simply remains (no collateral damage).
+// Deletion goes through the VSS API by ID (deleteShadow): vssadmin refuses
+// backup-context shadows, so the earlier vssadmin form never removed one. If a
+// delete fails, the orphan simply remains (no collateral damage).
 func VSSCleanup() error {
 	appData, err := getAppDataFolder()
 	if err != nil {
@@ -241,16 +258,12 @@ func VSSCleanup() error {
 		}
 
 		// Live symlink ⇒ the shadow still exists ⇒ a genuine orphan from a crash.
+		// (vssadmin cannot delete backup-context shadows; see deleteShadowVSS.)
 		fmt.Printf("VSS Cleanup: removing orphaned Proxmox Backup Client shadow %s...\n", id)
-		deleteCmd := exec.Command("vssadmin", "delete", "shadows", "/shadow={"+id+"}", "/quiet")
-		deleteCmd.SysProcAttr = hidden()
-		if out, derr := deleteCmd.CombinedOutput(); derr != nil {
-			// Keep the marker so a later run retries; never fall back to /all.
-			fmt.Printf("VSS Cleanup: could not delete shadow %s (best-effort, will retry): %v - %s\n", id, derr, string(out))
-			continue
+		if deleteShadow(id) {
+			// Keep the marker on failure so a later run retries; never /all.
+			_ = os.Remove(marker)
 		}
-		fmt.Printf("VSS Cleanup: removed Proxmox Backup Client shadow %s\n", id)
-		_ = os.Remove(marker)
 	}
 
 	// NOTE: we deliberately do NOT bounce the Windows VSS service here.
@@ -264,6 +277,55 @@ func VSSCleanup() error {
 	// it actually blocks us, by vssForceReset() on the next CreateSnapshot attempt
 	// — right before our own backup. See CreateVSSSnapshot.
 	return nil
+}
+
+// deleteShadow deletes one shadow copy this client created, by ID (never
+// all of them), and the symlink marker that VSSCleanup would otherwise find.
+// Best-effort: if it fails the marker stays, so VSSCleanup retries at the
+// next start. It reports whether the shadow is gone.
+func deleteShadow(id string) bool {
+	bare := normalizeShadowID(id)
+	if bare == "" {
+		return false
+	}
+	if err := deleteShadowVSS(bare); err != nil {
+		fmt.Printf("VSS: could not delete shadow %s (will retry at next start): %v\n", id, err)
+		return false
+	}
+	fmt.Printf("VSS: deleted shadow %s\n", id)
+	if appData, err := getAppDataFolder(); err == nil {
+		_ = os.Remove(filepath.Join(appData, "VSS", "{"+strings.ToUpper(bare)+"}"))
+		_ = os.Remove(filepath.Join(appData, "VSS", bare))
+	}
+	return true
+}
+
+// deleteShadowVSS deletes a shadow copy through the VSS API. vssadmin can't:
+// our shadows are made in the backup context, and vssadmin refuses those
+// ("Snapshots were found, but they were outside of your allowed context.
+// Try removing them with the backup application which created them").
+// COM state is per OS thread, so the whole call stays on one.
+func deleteShadowVSS(bare string) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ole.CoInitialize(0)
+	defer ole.CoUninitialize()
+	c, err := vss.LoadAndInitVSS()
+	if err != nil {
+		return err
+	}
+	defer c.Release()
+	// VSS_CTX_ALL is 0xffffffff in vss.h; go-vss numbers its contexts 0..6
+	// with iota, so only its VSS_CTX_BACKUP (0) is right.
+	if err := c.SetContext(vss.VssContext(0xffffffff)); err != nil {
+		return fmt.Errorf("set context: %w", err)
+	}
+	guid := ole.NewGUID("{" + bare + "}")
+	if guid == nil {
+		return fmt.Errorf("bad shadow id %s", bare)
+	}
+	_, _, err = c.DeleteSnapshots(*guid)
+	return err
 }
 
 // isShadowAlreadyInProgress detects the "shadow copy creation is already in
