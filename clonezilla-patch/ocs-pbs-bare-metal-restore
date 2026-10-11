@@ -562,9 +562,34 @@ fi
 # instead of ocs-onthefly's own generic "-p choose" prompt (which is right
 # for the manual ocs-pbs-nbd path, where an operator is already driving
 # Clonezilla's menus, but wrong here).
+# A Linux machine backup took its block snapshot with a copy-on-write store
+# (/.pbs_snapshot_N.cow) on each snapshotted file system. Its blocks are left
+# out of the image (zeros), but the file itself is still there, a tenth of
+# the file system's size: remove it from the restored partitions.
+remove_snapshot_stores() {
+  local part mnt
+  mnt="$(mktemp -d)"
+  partprobe "$TARGET" >/dev/null 2>&1
+  udevadm settle --timeout=10 >/dev/null 2>&1
+  for part in $(lsblk -lnpo NAME,TYPE "$TARGET" 2>/dev/null | awk '$2=="part"{print $1}'); do
+    case "$(blkid -o value -s TYPE "$part" 2>/dev/null)" in
+      ext2|ext3|ext4|xfs) ;;
+      *) continue ;;
+    esac
+    if mount "$part" "$mnt" >/dev/null 2>&1; then
+      for f in "$mnt"/.pbs_snapshot_*.cow; do
+        [ -f "$f" ] && rm -f "$f" && echo "  removed the backup's snapshot store $(basename "$f") from $part"
+      done
+      umount "$mnt" >/dev/null 2>&1
+    fi
+  done
+  rmdir "$mnt" 2>/dev/null
+}
+
 echo "> Starting restore: ${NBDDEV} -> ${TARGET} ..."
 ocs-onthefly -icds -k0 -sfsck -j2 -f "$NBDDEV" -d "$TARGET"
 RC=$?
+[ "$RC" = "0" ] && remove_snapshot_stores
 if [ "$RC" != "0" ]; then
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
   --msgbox "Restore finished with a non-zero exit code ($RC).\nCheck ${ocs_log_dir} for details.\n\n$msg_press_enter_to_continue" 0 0 $DIA_ESC

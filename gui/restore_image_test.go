@@ -17,13 +17,15 @@ func TestImageListingHelpers(t *testing.T) {
 		{Path: "System Volume Information/{3808876b}"},
 		{Path: "system volume information/tracking.log"},
 		{Path: "System Volume Informationx.txt"},
+		{Path: ".pbs_snapshot_0.cow"},
+		{Path: "home/.pbs_snapshot_0.cow"},
 	}
 	kept := withoutSystemFolders(append([]imagefs.Entry(nil), entries...))
 	var paths []string
 	for _, e := range kept {
 		paths = append(paths, e.Path)
 	}
-	want := []string{"Documents", "Documents/a.txt", "Documents/sub", "Documents/sub/b.txt", "DocumentsOld/c.txt", "System Volume Informationx.txt"}
+	want := []string{"Documents", "Documents/a.txt", "Documents/sub", "Documents/sub/b.txt", "DocumentsOld/c.txt", "System Volume Informationx.txt", "home/.pbs_snapshot_0.cow"}
 	if len(paths) != len(want) {
 		t.Fatalf("withoutSystemFolders = %v", paths)
 	}

@@ -16,69 +16,6 @@ const (
 	errorMoreData            = syscall.Errno(234)
 )
 
-// usedMap says which parts of an NTFS volume hold data: one bit per
-// cluster, set when the file system uses it. Free space is not read in a
-// machine backup; it goes into the image as zeros, which cost nothing to
-// store or send after the first such chunk.
-type usedMap struct {
-	clusterSize int64
-	bits        []byte
-	clusters    int64
-}
-
-// anyUsed reports whether any cluster in [off, off+n) of the volume is used.
-// Space past the clusters the bitmap covers counts as used (read as before).
-func (m *usedMap) anyUsed(off, n int64) bool {
-	first := off / m.clusterSize
-	last := (off + n - 1) / m.clusterSize
-	if last >= m.clusters {
-		return true
-	}
-	for c := first; c <= last; {
-		// Whole bytes at a time where possible.
-		if c%8 == 0 && c+8 <= last+1 {
-			if m.bits[c/8] != 0 {
-				return true
-			}
-			c += 8
-			continue
-		}
-		if m.bits[c/8]&(1<<(c%8)) != 0 {
-			return true
-		}
-		c++
-	}
-	return false
-}
-
-// zeroFree zeroes the bytes of data (read from volume offset off) that lie
-// in free clusters.
-func (m *usedMap) zeroFree(data []byte, off int64) {
-	end := off + int64(len(data))
-	for c := off / m.clusterSize; c*m.clusterSize < end && c < m.clusters; c++ {
-		if m.bits[c/8]&(1<<(c%8)) != 0 {
-			continue
-		}
-		from, to := c*m.clusterSize, (c+1)*m.clusterSize
-		if from < off {
-			from = off
-		}
-		if to > end {
-			to = end
-		}
-		clear(data[from-off : to-off])
-	}
-}
-
-// free clears the clusters [lcn, lcn+count): they are read as zeros.
-func (m *usedMap) free(lcn, count int64) {
-	for c := lcn; c < lcn+count && c < m.clusters; c++ {
-		if c >= 0 {
-			m.bits[c/8] &^= 1 << (c % 8)
-		}
-	}
-}
-
 // readUsedMap reads the cluster bitmap of the NTFS volume open in f (a
 // volume shadow copy), then marks the paging, hibernation and swap files'
 // clusters free as well: Windows rebuilds them, and they are often the

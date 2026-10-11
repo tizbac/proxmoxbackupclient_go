@@ -146,7 +146,7 @@ func TestWriteSegmentsByteExact(t *testing.T) {
 	errc := make(chan error, 1)
 	uploadDone := make(chan struct{})
 	go func() {
-		err := writeSegments(diskPath, segments, total, ch, uploadDone, nil, nil)
+		err := writeSegments(diskPath, segments, total, ch, uploadDone, nil, nil, false)
 		close(ch)
 		errc <- err
 	}()

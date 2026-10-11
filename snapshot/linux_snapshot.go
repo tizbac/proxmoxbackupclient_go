@@ -377,6 +377,7 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 			ObjectPath: ls.device,
 			Id:         strconv.Itoa(ls.minor),
 			Valid:      true,
+			CowFile:    ls.cowFile,
 		}
 		if needFiles {
 			sn.FullPath = filepath.Join(ls.mountpoint, subPath)

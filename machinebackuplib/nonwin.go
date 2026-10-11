@@ -6,8 +6,8 @@ package machinebackuplib
 import (
 	"fmt"
 	"io"
-	"pbscommon"
 	"os"
+	"pbscommon"
 )
 
 // GetDiskSize returns the size of a disk or file path

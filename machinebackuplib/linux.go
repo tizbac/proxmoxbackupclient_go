@@ -131,6 +131,40 @@ func enumeratePartitions(diskName string) ([]diskPartition, error) {
 	return parts, nil
 }
 
+// segmentUsedMap is the used map of a snapshotted partition: its file
+// system's free space (unless readFree) and the snapshot's own
+// copy-on-write file, which lives on the partition and must not go into
+// the image (a restored disk would carry a stale file of a tenth of the
+// file system). nil means read everything.
+func segmentUsedMap(src io.ReaderAt, length int64, cowFile string, readFree bool, name string) *usedMap {
+	var m *usedMap
+	if !readFree {
+		var err error
+		if m, err = LinuxFreeSpaceMap(src, length); err != nil {
+			log.Printf("%s: free space will be read (%v)", name, err)
+			m = nil
+		}
+	}
+	if cowFile == "" {
+		return m
+	}
+	ext, err := fileExtents(cowFile)
+	if err != nil || len(ext) == 0 {
+		log.Printf("%s: snapshot store %s not left out (%v)", name, cowFile, err)
+		return m
+	}
+	if m == nil {
+		m = newUsedMap(4096, (length+4095)/4096)
+	}
+	var n int64
+	for _, e := range ext {
+		m.FreeBytes(e[0], e[1])
+		n += e[1]
+	}
+	log.Printf("%s: snapshot store %s (%s) left out of the image", name, cowFile, BytesToString(n))
+	return m
+}
+
 func isBlockDevice(path string) bool {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -139,7 +173,7 @@ func isBlockDevice(path string) bool {
 	return fi.Mode()&os.ModeDevice != 0 && fi.Mode()&os.ModeCharDevice == 0
 }
 
-func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress) (bool, int64, error) {
+func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress, readFree bool) (bool, int64, error) {
 	if !strings.HasPrefix(dev, "/dev/") {
 		return false, 0, nil
 	}
@@ -177,7 +211,7 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progres
 	fidxName := fmt.Sprintf("drive-sata%d.img.fidx", index)
 
 	err = snapshot.CreateVSSSnapshot(mountpoints, false, func(snapshots map[string]snapshot.SnapShot) error {
-		return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback, jp)
+		return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback, jp, readFree)
 	})
 	if err != nil {
 		return true, 0, err
@@ -189,9 +223,10 @@ type diskSegment struct {
 	start   uint64
 	end     uint64
 	snapDev string
+	cowFile string // the snapshot's copy-on-write file on this partition
 }
 
-func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total uint64, parts []diskPartition, snapshots map[string]snapshot.SnapShot, progressCallback ProgressCallback, jp *JobProgress) error {
+func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total uint64, parts []diskPartition, snapshots map[string]snapshot.SnapShot, progressCallback ProgressCallback, jp *JobProgress, readFree bool) error {
 	regions := make([]diskSegment, 0)
 	for _, p := range parts {
 		if p.mountpoint == "" {
@@ -206,7 +241,7 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 		if end > total {
 			end = total
 		}
-		regions = append(regions, diskSegment{start: p.startByte, end: end, snapDev: sn.ObjectPath})
+		regions = append(regions, diskSegment{start: p.startByte, end: end, snapDev: sn.ObjectPath, cowFile: sn.CowFile})
 		log.Printf("Partition %s (%s) @ %s -> snapshot %s",
 			p.device, p.mountpoint, BytesToString(int64(p.startByte)), sn.ObjectPath)
 	}
@@ -231,7 +266,7 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 	uploadDone := make(chan struct{})
 
 	go func() {
-		err := writeSegments(dev, segments, total, ch, uploadDone, progressCallback, jp)
+		err := writeSegments(dev, segments, total, ch, uploadDone, progressCallback, jp, readFree)
 		// Error first, then close: uploadWorker's non-blocking check of
 		// errCh runs after ch is drained and must find the value there.
 		errCh <- err
@@ -286,7 +321,7 @@ func assembleSegments(total uint64, regions []diskSegment) []diskSegment {
 			s = cursor
 		}
 		if r.end > s {
-			segments = append(segments, diskSegment{start: s, end: r.end, snapDev: r.snapDev})
+			segments = append(segments, diskSegment{start: s, end: r.end, snapDev: r.snapDev, cowFile: r.cowFile})
 			cursor = r.end
 		}
 	}
@@ -296,7 +331,7 @@ func assembleSegments(total uint64, regions []diskSegment) []diskSegment {
 	return segments
 }
 
-func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []byte, uploadDone <-chan struct{}, progressCallback ProgressCallback, jp *JobProgress) (retErr error) {
+func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []byte, uploadDone <-chan struct{}, progressCallback ProgressCallback, jp *JobProgress, readFree bool) (retErr error) {
 	buffer := make([]byte, 0, pbscommon.PBS_FIXED_CHUNK_SIZE*2)
 
 	var pos uint64 = 0
@@ -375,7 +410,40 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 			bad += n
 			jp.noteUnreadable(dev, seg.start+(off-srcOff), n)
 		}
-		err := readResilient(src, srcOff, length, block, sectorSize, emit, emitZeros, onBad)
+		var used *usedMap
+		if seg.snapDev != "" {
+			used = segmentUsedMap(src, int64(length), seg.cowFile, readFree, name)
+		}
+		var err error
+		if used == nil {
+			err = readResilient(src, srcOff, length, block, sectorSize, emit, emitZeros, onBad)
+		} else {
+			// As on Windows: a 4 MiB window with no used block is zeros,
+			// the rest is read with its free blocks zeroed.
+			var skipped uint64
+			for w := uint64(0); w < length && err == nil; w += pbscommon.PBS_FIXED_CHUNK_SIZE {
+				n := min(uint64(pbscommon.PBS_FIXED_CHUNK_SIZE), length-w)
+				if used.anyUsed(int64(w), int64(n)) {
+					at := int64(w)
+					masked := func(data []byte) bool {
+						used.zeroFree(data, at)
+						at += int64(len(data))
+						return emit(data)
+					}
+					maskedZeros := func(k uint64) bool {
+						at += int64(k)
+						return emitZeros(k)
+					}
+					err = readResilient(src, srcOff+w, n, block, sectorSize, masked, maskedZeros, onBad)
+				} else if emitZeros(n) {
+					skipped += n
+					jp.FreeSkipped.Add(n)
+				} else {
+					err = errCopyStopped
+				}
+			}
+			log.Printf("%s: %s of free space not read", name, BytesToString(int64(skipped)))
+		}
 		if bad > 0 {
 			log.Printf("[31;1mWarning: %s had %d unreadable sector(s) (~%s), zero-filled in the image[0m",
 				name, bad/sectorSize, BytesToString(int64(bad)))

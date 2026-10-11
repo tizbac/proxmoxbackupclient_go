@@ -243,13 +243,18 @@ func openImageVolumes(s *imageSession, opts RestoreOptions, list bool, cancel fu
 
 // withoutSystemFolders leaves out "System Volume Information" (shadow copy
 // storage, restore points: often gigabytes, never wanted back, and never in a
-// folder backup), keeping the entries' order.
+// folder backup) and, on Linux volumes, the snapshot store a machine backup
+// kept at the root (.pbs_snapshot_N.cow; its blocks are left out of newer
+// images), keeping the entries' order.
 func withoutSystemFolders(entries []imagefs.Entry) []imagefs.Entry {
 	const svi = "system volume information"
 	out := entries[:0]
 	for _, e := range entries {
 		p := strings.ToLower(e.Path)
 		if p == svi || strings.HasPrefix(p, svi+"/") {
+			continue
+		}
+		if !e.IsDir && strings.HasPrefix(p, ".pbs_snapshot_") && strings.HasSuffix(p, ".cow") && !strings.Contains(p, "/") {
 			continue
 		}
 		out = append(out, e)

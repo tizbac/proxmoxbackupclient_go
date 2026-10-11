@@ -13,12 +13,12 @@ func TestUsedMap(t *testing.T) {
 		off, n int64
 		want   bool
 	}{
-		{0, 4096 * 3, false},           // clusters 0-2
-		{0, 4096*3 + 1, true},          // reaches cluster 3
-		{4096 * 4, 4096 * 36, false},   // 4-39
-		{4096 * 39, 4096 * 2, true},    // 39-40
-		{4096 * 48, 4096 * 16, false},  // 48-63
-		{4096 * 60, 4096 * 8, true},    // runs past the bitmap: read it
+		{0, 4096 * 3, false},            // clusters 0-2
+		{0, 4096*3 + 1, true},           // reaches cluster 3
+		{4096 * 4, 4096 * 36, false},    // 4-39
+		{4096 * 39, 4096 * 2, true},     // 39-40
+		{4096 * 48, 4096 * 16, false},   // 48-63
+		{4096 * 60, 4096 * 8, true},     // runs past the bitmap: read it
 		{4096*8 + 100, 4096 * 8, false}, // unaligned, clusters 8-16
 	}
 	for _, c := range cases {
