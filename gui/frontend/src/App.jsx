@@ -669,6 +669,8 @@ function App() {
   const [snapshotChildren, setSnapshotChildren] = useState(() => new Map()) // dir path ('' = root) -> sorted children, loaded lazily
   const [snapshotCount, setSnapshotCount] = useState(0)             // total entries in the open snapshot
   const [selectionBytes, setSelectionBytes] = useState(0)
+  const [selectionSizing, setSelectionSizing] = useState(false)
+  const [testEmailSending, setTestEmailSending] = useState(null)
   const [moreShown, setMoreShown] = useState(() => new Map())       // dir path -> how many children are rendered
   const snapshotCtxRef = useRef(null)                               // {pbsID, backupID, unix, gen} of the open snapshot
   const [expandedDirs, setExpandedDirs] = useState(new Set())     // expanded paths in tree
@@ -2667,12 +2669,15 @@ function App() {
       return
     }
     let cancelled = false
+    setSelectionSizing(true)
     const id = setTimeout(async () => {
       try {
         const n = await SnapshotSelectionBytes(ctx.pbsID, ctx.backupID, ctx.unix, Array.from(selectedPaths))
         if (!cancelled) setSelectionBytes(n || 0)
       } catch (_err) {
         // size is informational; leave the previous figure
+      } finally {
+        if (!cancelled) setSelectionSizing(false)
       }
     }, 150)
     return () => { cancelled = true; clearTimeout(id) }
@@ -3103,8 +3108,8 @@ function App() {
                                     {!status && t('untested')}
                                   </div>
                                 </div>
-                                <button className="btn" onClick={() => handleTestPBSConnection(server.id)} style={{padding: '6px 12px', fontSize: '12.5px'}}>
-                                  {t('testServer')}
+                                <button className="btn" onClick={() => handleTestPBSConnection(server.id)} disabled={status === 'testing'} style={{padding: '6px 12px', fontSize: '12.5px'}}>
+                                  {status === 'testing' ? `⏳ ${t('testing')}` : t('testServer')}
                                 </button>
                                 <button className="btn btn-secondary" onClick={() => handleEditServer(server)} style={{padding: '6px 12px', fontSize: '12.5px'}}>
                                   {t('editServer')}
@@ -3196,19 +3201,26 @@ function App() {
                         />
                         <button
                           className="btn btn-secondary"
+                          disabled={!!testEmailSending}
                           onClick={async () => {
                             if (!SendTestEmail) return
+                            setTestEmailSending(Date.now())
                             try {
                               await SendTestEmail(testEmailTo.trim())
                               showStatus(`✅ ${t('statusTestEmailSent')}`, 'success')
                             } catch (err) {
                               showStatus(`❌ ${err}`, 'error')
+                            } finally {
+                              setTestEmailSending(null)
                             }
                           }}
                         >
-                          {t('sendTestEmailBtn')}
+                          {testEmailSending ? `⏳ ${tl('sendingTestEmail', 'Sending...')}` : t('sendTestEmailBtn')}
                         </button>
                       </div>
+                      {testEmailSending && (
+                        <WaitBar label={tl('sendingTestEmailWait', 'Sending the test e-mail through your mail server...')} startedAt={testEmailSending} />
+                      )}
                       <div className="info-box" style={{marginTop: '10px'}}>
                         ℹ️ {t('emailNotificationsHint')}
                       </div>
@@ -5114,7 +5126,7 @@ function App() {
                   ? t('selectionEmptyNone')
                   : t('selectionCountSize')
                       .replace('{n}', selectedPaths.size)
-                      .replace('{size}', formatBytesDual(selectionBytes))}
+                      .replace('{size}', selectionSizing ? tl('calculating', 'Calculating...') : formatBytesDual(selectionBytes))}
               </p>
             </div>
           )}
