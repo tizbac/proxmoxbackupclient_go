@@ -17,6 +17,7 @@ require (
 	retry v0.0.0
 	security v0.0.0
 	snapshot v0.0.0
+	www.velocidex.com/golang/go-ntfs v0.2.1
 )
 
 require (
@@ -55,6 +56,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rodolfoag/gow32 v0.0.0-20230512144032-1e896a3c51aa // indirect
+	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/samber/lo v1.49.1 // indirect
 	github.com/st-matskevich/go-vss v0.3.3 // indirect
 	github.com/tawesoft/golib/v2 v2.16.0 // indirect
@@ -67,7 +69,6 @@ require (
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/term v0.43.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
-	www.velocidex.com/golang/go-ntfs v0.2.1 // indirect
 )
 
 // Local package replacements to use sibling directories
