@@ -1683,6 +1683,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 			Kind:          "machine",
 			BlankChunks:   jp.BlankChunks.Load(),
 			Disk:          w.Disk,
+			DiskModel:     w.DiskModel,
 			DiskNo:        w.DiskNo,
 			DiskCount:     w.DiskCount,
 			DiskBytes:     w.DiskSize,

@@ -51,14 +51,14 @@ func TestJobProgressCountsAndNilSafety(t *testing.T) {
 	if n, r, b, u := jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(), jp.UploadedBytes.Load(); n != 2 || r != 2 || b != 1 || u != 11 {
 		t.Fatalf("new=%d reused=%d blank=%d uploaded=%d, want 2 2 1 11", n, r, b, u)
 	}
-	jp.startDisk(`\\.\PhysicalDrive0`, 1, 2, 100)
+	jp.startDisk(`\\.\PhysicalDrive0`, "BIWIN SSD", 1, 2, 100)
 	jp.setPartition("C:")
 	jp.setDiskPos(40, 40)
 	w := jp.Where()
-	if w.Disk != `\\.\PhysicalDrive0` || w.DiskNo != 1 || w.DiskCount != 2 || w.DiskSize != 100 || w.DiskPos != 40 || w.Partition != "C:" {
+	if w.DiskModel != "BIWIN SSD" || w.Disk != `\\.\PhysicalDrive0` || w.DiskNo != 1 || w.DiskCount != 2 || w.DiskSize != 100 || w.DiskPos != 40 || w.Partition != "C:" {
 		t.Fatalf("Where = %+v", w)
 	}
-	jp.startDisk("d2", 2, 2, 50)
+	jp.startDisk("d2", "Test SSD", 2, 2, 50)
 	if w := jp.Where(); w.Partition != "" || w.DiskPos != 0 {
 		t.Fatalf("a new disk must clear the partition and position: %+v", w)
 	}

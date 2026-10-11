@@ -202,6 +202,7 @@ type BackupProgressStats struct {
 	Kind        string `json:"kind,omitempty"`
 	BlankChunks uint64 `json:"blank_chunks,omitempty"` // reused all-zero chunks, a part of Reused
 	Disk        string `json:"disk,omitempty"`
+	DiskModel   string `json:"disk_model,omitempty"` // "Samsung SSD 860 EVO 500GB"
 	DiskNo      int    `json:"disk_no,omitempty"`
 	DiskCount   int    `json:"disk_count,omitempty"`
 	DiskBytes   uint64 `json:"disk_bytes,omitempty"`
@@ -231,6 +232,7 @@ func (s *BackupProgressStats) event() map[string]interface{} {
 		"kind":          s.Kind,
 		"blankChunks":   s.BlankChunks,
 		"disk":          s.Disk,
+		"diskModel":     s.DiskModel,
 		"diskNo":        s.DiskNo,
 		"diskCount":     s.DiskCount,
 		"diskBytes":     s.DiskBytes,

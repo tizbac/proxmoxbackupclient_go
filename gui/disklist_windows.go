@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unsafe"
 
+	"machinebackuplib"
+
 	"golang.org/x/sys/windows"
 )
 
@@ -107,11 +109,7 @@ func getDiskInfo(diskPath string) (int64, int64, string, error) {
 		return 0, 0, "", fmt.Errorf("failed to get disk size: %w", err)
 	}
 	
-	// Get disk model (simplified implementation)
-	model := "Unknown"
-	
-	// For now, return default values - more sophisticated model retrieval would be needed
-	// In practice, this would involve more complex Windows API calls
+	model := machinebackuplib.DiskModel(diskPath)
 	
 	diskNumber, err := extractDiskNumber(diskPath)
 	if err != nil {

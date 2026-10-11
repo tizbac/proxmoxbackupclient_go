@@ -24,6 +24,7 @@ type diskPartition struct {
 	startByte  uint64
 	endByte    uint64
 	mountpoint string
+	fstype     string // "ext4", "xfs", "vfat"... ("" when unknown)
 }
 
 func unescapeOctal(s string) string {
@@ -44,14 +45,16 @@ func unescapeOctal(s string) string {
 	return b.String()
 }
 
-func mountForMajMin(majmin string) string {
+// mountForMajMin returns where a block device (major:minor) is mounted,
+// preferring a mount of its root, and that mount's file system type.
+func mountForMajMin(majmin string) (string, string) {
 	f, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	defer f.Close()
 
-	best := ""
+	best, bestFS := "", ""
 	bestIsRoot := false
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -63,12 +66,19 @@ func mountForMajMin(majmin string) string {
 		}
 		root := fields[3]
 		mp := unescapeOctal(fields[4])
+		fs := ""
+		for i := 5; i+1 < len(fields); i++ {
+			if fields[i] == "-" {
+				fs = fields[i+1]
+				break
+			}
+		}
 		if best == "" || (!bestIsRoot && root == "/") {
-			best = mp
+			best, bestFS = mp, fs
 			bestIsRoot = root == "/"
 		}
 	}
-	return best
+	return best, bestFS
 }
 
 func readUintFile(path string) (uint64, error) {
@@ -109,7 +119,11 @@ func enumeratePartitions(diskName string) ([]diskPartition, error) {
 			endByte:   (start + size) * sectorSize,
 		}
 		if data, err := os.ReadFile(filepath.Join(pdir, "dev")); err == nil {
-			p.mountpoint = mountForMajMin(strings.TrimSpace(string(data)))
+			majmin := strings.TrimSpace(string(data))
+			p.mountpoint, p.fstype = mountForMajMin(majmin)
+			if p.fstype == "" {
+				p.fstype = udevFileSystem(majmin)
+			}
 		}
 		parts = append(parts, p)
 	}
@@ -243,8 +257,14 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 func partitionLabelAt(parts []diskPartition, off uint64) string {
 	for _, p := range parts {
 		if off >= p.startByte && off < p.endByte {
-			if p.mountpoint != "" {
-				return p.device + " (" + p.mountpoint + ")"
+			var in []string
+			for _, s := range []string{p.mountpoint, p.fstype} {
+				if s != "" {
+					in = append(in, s)
+				}
+			}
+			if len(in) > 0 {
+				return p.device + " (" + strings.Join(in, ", ") + ")"
 			}
 			return p.device
 		}

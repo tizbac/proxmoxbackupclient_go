@@ -326,6 +326,7 @@ const EMPTY_BACKUP_STATS = {
   blankChunks: 0,
   disk: '',
   diskNo: 0,
+  diskModel: '',
   diskCount: 0,
   diskBytes: 0,
   diskDone: 0,
@@ -912,6 +913,7 @@ function App() {
           kind: data.kind || '',
           blankChunks: data.blankChunks || 0,
           disk: data.disk || '',
+          diskModel: data.diskModel || '',
           diskNo: data.diskNo || 0,
           diskCount: data.diskCount || 0,
           diskBytes: data.diskBytes || 0,
@@ -3497,7 +3499,7 @@ function App() {
                   stage = s.phase === 'data'
                     ? tl('stageReadingDisk', 'Reading disk {n} of {count}: {disk} ({size})')
                         .replace('{n}', s.diskNo).replace('{count}', s.diskCount)
-                        .replace('{disk}', s.disk).replace('{size}', formatBytes(s.diskBytes))
+                        .replace('{disk}', s.diskModel ? `${s.diskModel}, ${s.disk}` : s.disk).replace('{size}', formatBytes(s.diskBytes))
                     : s.phase === 'snapshot'
                       ? tl('stageSnapshotVolumes', 'Taking a snapshot of the volumes...')
                       : tl('stageConnecting', 'Connecting to the server...')
@@ -3531,7 +3533,7 @@ function App() {
                   : calc
                 const upload = !s.hasDetail ? na : (s.uploadRate !== null ? formatSpeed(s.uploadRate) : calc)
                 const folder = machine
-                  ? (s.disk ? `${s.disk} (${formatBytes(s.diskBytes)})` : calc)
+                  ? (s.disk ? `${s.diskModel ? s.diskModel + ', ' : ''}${s.disk} (${formatBytes(s.diskBytes)})` : calc)
                   : s.currentDir || (s.hasDetail ? calc : na)
                 let fileLine
                 if (machine) {

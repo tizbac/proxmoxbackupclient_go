@@ -62,13 +62,16 @@ type Partition struct {
 	RequiresVSS bool
 	Skip        bool
 	Letter      string
-	Number      int // partition number on the disk; 0 for the space between partitions
+	Number      int    // partition number on the disk; 0 for the space between partitions
+	FileSystem  string // "NTFS", "FAT32"... for a lettered volume, else ""
 }
 
-// label names a partition for the progress card: "C:", "partition 2" or
-// "unpartitioned space".
+// label names a partition for the progress card: "C: (NTFS)", "partition 2"
+// or "unpartitioned space".
 func (p Partition) label() string {
 	switch {
+	case p.Letter != "" && p.FileSystem != "":
+		return p.Letter + ": (" + p.FileSystem + ")"
 	case p.Letter != "":
 		return p.Letter + ":"
 	case p.Number > 0:
@@ -580,7 +583,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		// 0..1 read fraction and it maps to the fraction of the whole job.
 		baseSize := currentProcessedSize
 		devSize := sizes[i]
-		jp.startDisk(dev, i+1, len(cfg.BackupDevices), devSize)
+		jp.startDisk(dev, DiskModel(dev), i+1, len(cfg.BackupDevices), devSize)
 		deviceCallback := func(fraction float64, message string) bool {
 			// The snapshot step reports 0 with its own message; data comes after.
 			if fraction > 0 {

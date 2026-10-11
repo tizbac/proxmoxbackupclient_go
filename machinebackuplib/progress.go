@@ -34,6 +34,7 @@ type JobProgress struct {
 	bad       []BadRange
 	phase     string
 	disk      string
+	diskModel string
 	diskNo    int // 1-based
 	diskCount int
 	diskSize  uint64
@@ -46,6 +47,7 @@ type JobProgress struct {
 type Location struct {
 	Phase     string // "connecting", "snapshot", "data" or "finishing"
 	Disk      string
+	DiskModel string // "Samsung SSD 860 EVO 500GB", "" when unknown
 	DiskNo    int
 	DiskCount int
 	DiskSize  uint64
@@ -62,12 +64,12 @@ func (p *JobProgress) setPhase(phase string) {
 	p.mu.Unlock()
 }
 
-func (p *JobProgress) startDisk(disk string, no, count int, size uint64) {
+func (p *JobProgress) startDisk(disk, model string, no, count int, size uint64) {
 	if p == nil {
 		return
 	}
 	p.mu.Lock()
-	p.disk, p.diskNo, p.diskCount, p.diskSize = disk, no, count, size
+	p.disk, p.diskModel, p.diskNo, p.diskCount, p.diskSize = disk, model, no, count, size
 	p.diskPos = 0
 	p.partition = ""
 	p.mu.Unlock()
@@ -99,7 +101,7 @@ func (p *JobProgress) Where() Location {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return Location{Phase: p.phase, Disk: p.disk, DiskNo: p.diskNo, DiskCount: p.diskCount,
+	return Location{Phase: p.phase, Disk: p.disk, DiskModel: p.diskModel, DiskNo: p.diskNo, DiskCount: p.diskCount,
 		DiskSize: p.diskSize, DiskPos: p.diskPos, Partition: p.partition}
 }
 

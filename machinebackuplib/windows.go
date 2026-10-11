@@ -370,6 +370,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 					p.RequiresVSS = true
 					if p.Letter == "" {
 						p.Letter = string(mountPath[0])
+						p.FileSystem = volumeFileSystem(p.Letter)
 					}
 					break
 				}
