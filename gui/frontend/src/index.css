@@ -81,6 +81,17 @@ body {
     flex: 1 1 auto;
 }
 
+/* Divider between the tasks (Backup ... Roll back) and Reports / Message Log.
+   Tinted with the theme's accent so it suits every theme and brand; the plain
+   grey is the fallback where color-mix() is not supported. */
+.nav-sep {
+    flex: 0 0 auto;
+    margin: 8px 14px;
+    border-top: 2px solid #4a4a4a;
+    border-top-color: color-mix(in srgb, var(--accent) 45%, #3a3a3a);
+    border-radius: 1px;
+}
+
 .app-main {
     flex: 1 1 auto;
     display: flex;
@@ -558,6 +569,13 @@ body {
 
     .nav-spacer {
         display: none;
+    }
+
+    .nav-sep {
+        margin: 8px 4px;
+        border-top: none;
+        border-left: 2px solid #4a4a4a;
+        border-left-color: color-mix(in srgb, var(--accent) 45%, #3a3a3a);
     }
 
     .hero {

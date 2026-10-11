@@ -2874,6 +2874,7 @@ function App() {
         <button className={`nav-btn ${activeTab === 'rollback' ? 'active' : ''}`} onClick={() => setActiveTab('rollback')}>
           {tl('navRollback', 'Roll back')}
         </button>
+        <div className="nav-sep" role="separator" />
         <button className={`nav-btn ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>
           {t('navReports')}
         </button>
