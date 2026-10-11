@@ -2775,25 +2775,29 @@ function App() {
 
   // The restore progress card, shown on whichever restore page is open
   // (Restore, Undelete, Roll back): they all run through the same restore.
+  // A roll back that backs the set up first: until that backup ends the
+  // card follows its progress instead of sitting at 1%.
+  const backupFirstActive = restoreStage.stage === 'backupfirst' && backupRunning
+  const shownRestorePct = backupFirstActive ? progress : restoreProgress
   const restoreCard = restoreLoading ? (
     <div ref={restoreCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
       <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
         <strong style={{fontSize: '15px'}}>{t('restoring')}{activeRestoreName ? ` - ${activeRestoreName}` : ''}</strong>
-        <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{restoreProgress}%</span>
+        <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{shownRestorePct}%</span>
       </div>
 
       <div className="progress" style={{height: '30px', marginBottom: '12px'}}>
         <div
-          className="progress-bar"
+          className={'progress-bar' + (backupFirstActive ? ' progress-bar-backupfirst' : '')}
           style={{
-            width: `${restoreProgress}%`,
+            width: `${shownRestorePct}%`,
             fontSize: '14px',
             lineHeight: '30px',
             transition: 'width 0.3s ease',
             fontWeight: 'bold'
           }}
         >
-          {restoreProgress}%
+          {shownRestorePct}%
         </div>
       </div>
 
@@ -2816,7 +2820,9 @@ function App() {
               verifying: tl('restoreStageVerifying', 'Verifying restored files...'),
               acls: tl('restoreStageAcls', 'Restoring ACLs and attributes...'),
               created: tl('restoreStageCreated', 'Restoring creation times...'),
-            backupfirst: tl('restoreStageBackupFirst', 'Backing up the set before the roll back...'),
+            backupfirst: backupFirstActive
+              ? tl('restoreStageBackupFirstPct', 'Backing up the set before the roll back: {pct}% (the roll back starts when it is done)').replace('{pct}', progress)
+              : tl('restoreStageBackupFirst', 'Backing up the set before the roll back...'),
             comparing: tl('restoreStageComparing', 'Comparing the backup with the folders...'),
             safety: tl('restoreStageSafety', 'Moving the files to be replaced or removed aside (kept for Undo)...'),
             }[restoreStage.stage] || restoreStage.stage}{restoreStage.detail ? ` (${restoreStage.detail})` : ''}</>

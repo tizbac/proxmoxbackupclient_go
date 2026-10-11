@@ -81,6 +81,12 @@ body {
     flex: 1 1 auto;
 }
 
+/* Roll back card while the set is backed up first: striped, so it reads as
+   the backup's progress, not the roll back's. */
+.progress-bar.progress-bar-backupfirst {
+    background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.18) 0 10px, transparent 10px 20px);
+}
+
 /* Divider between the tasks (Backup ... Roll back) and Reports / Message Log.
    Tinted with the theme's accent so it suits every theme and brand; the plain
    grey is the fallback where color-mix() is not supported. */
