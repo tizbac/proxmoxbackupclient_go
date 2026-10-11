@@ -552,6 +552,11 @@ type ScheduledJob struct {
 
 ## 🟢 P2 - NICE TO HAVE (Backlog)
 
+### ✅ Undelete and Roll back for MACHINE sets (2026-10-11, Mick: "one method on these physical devices")
+ScheduledJob.ImageFolders (default Desktop/Documents/Pictures/Music/Videos/Downloads); set_image.go maps each folder to "drive-sata<disk>.img.fidx@<partition offset>:<path>" (volumeDiskExtent, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS) and builds its file list from the image (folderEntries applies the live walk's exclusions); restoreImageSnapshot understands those keys. Live on sarah-yoga510: profile folder 30,726 entries in 9.1 s, preview 0 missing / 0 changed / 18 new / 27,362 unchanged, 5 files restored identical.
+- [ ] A changed partition layout since a snapshot (offset moved) fails that snapshot's list with a clear error; could fall back to matching the volume by its NTFS serial number.
+- [ ] Linux machine sets: needs ext4/XFS reading.
+
 ### 🗑️ Undelete and ⏪ Roll back: IMPLEMENTATION PLAN (ideas from BFW 2026-10-07, planned 2026-10-08)
 Undelete = files that are in a Backup Set's snapshots but gone from disk, ready to restore. Roll back = put a Backup Set's folders back as they were at a chosen date and time. Both are "compare a snapshot with the live folders, then restore a list of paths", so they share one engine. Folder sets only; machine sets keep bare-metal restore.
 

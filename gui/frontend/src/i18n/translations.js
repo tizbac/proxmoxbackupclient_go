@@ -808,6 +808,13 @@ const translations = {
     diskImageShort: "image disque",
     diskImageHint: "Sauvegarde machine : une image disque. Parcourez-la pour restaurer des fichiers de ses volumes NTFS.",
     diskImageBanner: "Sauvegarde machine (image disque). Chaque volume NTFS de l'image est un dossier ci-dessous ; seules les parties de l'image que vous ouvrez ou restaurez sont téléchargées. Les fichiers sont restaurés dans un autre dossier, avec leurs dates et (avec l'option des autorisations) leurs attributs ; les autorisations elles-mêmes ne sont pas encore restaurées depuis une image disque.",
+    imageFoldersLabel: "Dossiers pour Restaurer les supprimés et Revenir en arrière",
+    imageFoldersPlaceholder: "Un par ligne, p. ex. C:\\Users\\Nom\\Documents",
+    imageFoldersHint: "Restaurer les supprimés et Revenir en arrière examinent ces dossiers, en lisant leurs fichiers dans les images disque. Vide : votre Bureau, Documents, Images, Musique, Vidéos et Téléchargements. Les dossiers doivent se trouver sur les disques que ce jeu sauvegarde.",
+    setPickerMachine: "machine",
+    setPickerMachineDefault: "votre Bureau, Documents, Images...",
+    setPickerChooseAny: "Choisissez un jeu de sauvegarde...",
+    setPickerNoneAny: "Il n'y a pas encore de jeu de sauvegarde. Créez-en un sur la page Sauvegarde.",
   },
   en: {
     // Header
@@ -1618,6 +1625,13 @@ const translations = {
     diskImageShort: "disk image",
     diskImageHint: "Machine backup: a disk image. Browse it to restore files from its NTFS volumes.",
     diskImageBanner: "Machine backup (disk image). Each NTFS volume in the image is a folder below; only the parts of the image you open or restore are downloaded. Files are restored to another folder, with their dates and (with the permissions option) attributes; permissions themselves are not restored from a disk image yet.",
+    imageFoldersLabel: "Folders for Undelete and Roll back",
+    imageFoldersPlaceholder: "One per line, e.g. C:\\Users\\Name\\Documents",
+    imageFoldersHint: "Undelete and Roll back look at these folders, reading their files from the disk images. Empty: your Desktop, Documents, Pictures, Music, Videos and Downloads. Folders must be on the disks this set backs up.",
+    setPickerMachine: "machine",
+    setPickerMachineDefault: "your Desktop, Documents, Pictures...",
+    setPickerChooseAny: "Choose a Backup Set...",
+    setPickerNoneAny: "There are no Backup Sets yet. Create one on the Backup page.",
   },
   it: {
     // Header
@@ -2428,6 +2442,13 @@ const translations = {
     diskImageShort: "immagine disco",
     diskImageHint: "Backup macchina: un'immagine disco. Sfogliala per ripristinare file dai suoi volumi NTFS.",
     diskImageBanner: "Backup macchina (immagine disco). Ogni volume NTFS dell'immagine è una cartella qui sotto; si scaricano solo le parti dell'immagine che apri o ripristini. I file vengono ripristinati in un'altra cartella, con le date e (con l'opzione dei permessi) gli attributi; i permessi stessi non vengono ancora ripristinati da un'immagine disco.",
+    imageFoldersLabel: "Cartelle per Annulla eliminazione e Ripristino",
+    imageFoldersPlaceholder: "Una per riga, ad es. C:\\Users\\Nome\\Documents",
+    imageFoldersHint: "Annulla eliminazione e Ripristino esaminano queste cartelle, leggendo i file dalle immagini disco. Vuoto: Desktop, Documenti, Immagini, Musica, Video e Download. Le cartelle devono trovarsi sui dischi salvati da questo set.",
+    setPickerMachine: "macchina",
+    setPickerMachineDefault: "Desktop, Documenti, Immagini...",
+    setPickerChooseAny: "Scegli un set di backup...",
+    setPickerNoneAny: "Non ci sono ancora set di backup. Creane uno nella pagina Backup.",
   },
   de: {
     // Header
@@ -3238,6 +3259,13 @@ const translations = {
     diskImageShort: "Datenträgerabbild",
     diskImageHint: "Maschinensicherung: ein Datenträgerabbild. Durchsuchen Sie es, um Dateien aus seinen NTFS-Volumes wiederherzustellen.",
     diskImageBanner: "Maschinensicherung (Datenträgerabbild). Jedes NTFS-Volume im Abbild ist unten ein Ordner; heruntergeladen werden nur die Teile des Abbilds, die Sie öffnen oder wiederherstellen. Dateien werden in einen anderen Ordner wiederhergestellt, mit ihren Zeitstempeln und (mit der Berechtigungsoption) Attributen; die Berechtigungen selbst werden aus einem Datenträgerabbild noch nicht wiederhergestellt.",
+    imageFoldersLabel: "Ordner für Wiederherstellen und Zurücksetzen",
+    imageFoldersPlaceholder: "Einer pro Zeile, z. B. C:\\Users\\Name\\Documents",
+    imageFoldersHint: "Wiederherstellen und Zurücksetzen prüfen diese Ordner und lesen ihre Dateien aus den Datenträgerabbildern. Leer: Ihr Desktop, Dokumente, Bilder, Musik, Videos und Downloads. Die Ordner müssen auf den Datenträgern liegen, die dieser Satz sichert.",
+    setPickerMachine: "Maschine",
+    setPickerMachineDefault: "Ihr Desktop, Dokumente, Bilder...",
+    setPickerChooseAny: "Sicherungssatz wählen...",
+    setPickerNoneAny: "Es gibt noch keine Sicherungssätze. Legen Sie einen auf der Seite Sicherung an.",
   },
   pl: {
     // Header
@@ -4048,6 +4076,13 @@ const translations = {
     diskImageShort: "obraz dysku",
     diskImageHint: "Kopia maszyny: obraz dysku. Przeglądaj go, aby przywrócić pliki z jego woluminów NTFS.",
     diskImageBanner: "Kopia maszyny (obraz dysku). Każdy wolumin NTFS obrazu to folder poniżej; pobierane są tylko części obrazu, które otwierasz lub przywracasz. Pliki są przywracane do innego folderu, z datami i (z opcją uprawnień) atrybutami; same uprawnienia nie są jeszcze przywracane z obrazu dysku.",
+    imageFoldersLabel: "Foldery dla Przywróć usunięte i Cofnij",
+    imageFoldersPlaceholder: "Jeden na wiersz, np. C:\\Users\\Nazwa\\Documents",
+    imageFoldersHint: "Przywróć usunięte i Cofnij sprawdzają te foldery, czytając pliki z obrazów dysku. Puste: Pulpit, Dokumenty, Obrazy, Muzyka, Wideo i Pobrane. Foldery muszą być na dyskach, które ten zestaw kopiuje.",
+    setPickerMachine: "maszyna",
+    setPickerMachineDefault: "Pulpit, Dokumenty, Obrazy...",
+    setPickerChooseAny: "Wybierz zestaw kopii...",
+    setPickerNoneAny: "Nie ma jeszcze zestawów kopii. Utwórz zestaw na stronie Kopia.",
   },
   es: {
     // Header
@@ -4860,6 +4895,13 @@ const translations = {
     diskImageShort: "imagen de disco",
     diskImageHint: "Copia de máquina: una imagen de disco. Explórela para restaurar archivos de sus volúmenes NTFS.",
     diskImageBanner: "Copia de máquina (imagen de disco). Cada volumen NTFS de la imagen es una carpeta abajo; solo se descargan las partes de la imagen que abre o restaura. Los archivos se restauran en otra carpeta, con sus fechas y (con la opción de permisos) sus atributos; los permisos en sí aún no se restauran desde una imagen de disco.",
+    imageFoldersLabel: "Carpetas para Recuperar y Revertir",
+    imageFoldersPlaceholder: "Una por línea, p. ej. C:\\Users\\Nombre\\Documents",
+    imageFoldersHint: "Recuperar y Revertir revisan estas carpetas y leen sus archivos de las imágenes de disco. Vacío: su Escritorio, Documentos, Imágenes, Música, Vídeos y Descargas. Las carpetas deben estar en los discos que copia este conjunto.",
+    setPickerMachine: "máquina",
+    setPickerMachineDefault: "su Escritorio, Documentos, Imágenes...",
+    setPickerChooseAny: "Elija un conjunto de copia...",
+    setPickerNoneAny: "Aún no hay conjuntos de copia. Cree uno en la página Copia de seguridad.",
   },
   bg: {
     // Header
@@ -5668,6 +5710,13 @@ const translations = {
     diskImageShort: "образ на диск",
     diskImageHint: "Архив на машина: образ на диск. Разгледайте го, за да възстановите файлове от NTFS томовете му.",
     diskImageBanner: "Архив на машина (образ на диск). Всеки NTFS том в образа е папка по-долу; изтеглят се само частите от образа, които отваряте или възстановявате. Файловете се възстановяват в друга папка, с датите си и (с опцията за права) атрибутите си; самите права още не се възстановяват от образ на диск.",
+    imageFoldersLabel: "Папки за Възстановяване на изтрити и Връщане",
+    imageFoldersPlaceholder: "По един на ред, напр. C:\\Users\\Име\\Documents",
+    imageFoldersHint: "Възстановяването на изтрити и Връщането преглеждат тези папки, като четат файловете им от образите на диска. Празно: вашите Работен плот, Документи, Картини, Музика, Видео и Изтегляния. Папките трябва да са на дисковете, които този комплект архивира.",
+    setPickerMachine: "машина",
+    setPickerMachineDefault: "Работен плот, Документи, Картини...",
+    setPickerChooseAny: "Изберете комплект за архивиране...",
+    setPickerNoneAny: "Все още няма комплекти за архивиране. Създайте един на страница Архивиране.",
   },
   cs: {
     // Header
@@ -6476,6 +6525,13 @@ const translations = {
     diskImageShort: "obraz disku",
     diskImageHint: "Záloha počítače: obraz disku. Procházejte jej a obnovte soubory z jeho svazků NTFS.",
     diskImageBanner: "Záloha počítače (obraz disku). Každý svazek NTFS v obrazu je níže složkou; stahují se jen části obrazu, které otevřete nebo obnovíte. Soubory se obnovují do jiné složky, s daty a (s volbou oprávnění) atributy; samotná oprávnění se z obrazu disku zatím neobnovují.",
+    imageFoldersLabel: "Složky pro Obnovení smazaných a Vrácení zpět",
+    imageFoldersPlaceholder: "Jedna na řádek, např. C:\\Users\\Jméno\\Documents",
+    imageFoldersHint: "Obnovení smazaných a Vrácení zpět procházejí tyto složky a čtou jejich soubory z obrazů disku. Prázdné: vaše Plocha, Dokumenty, Obrázky, Hudba, Videa a Stažené soubory. Složky musí být na discích, které tato sada zálohuje.",
+    setPickerMachine: "počítač",
+    setPickerMachineDefault: "Plocha, Dokumenty, Obrázky...",
+    setPickerChooseAny: "Vyberte sadu záloh...",
+    setPickerNoneAny: "Zatím nejsou žádné sady záloh. Vytvořte ji na stránce Záloha.",
   },
   el: {
     // Header
@@ -7284,6 +7340,13 @@ const translations = {
     diskImageShort: "είδωλο δίσκου",
     diskImageHint: "Αντίγραφο μηχανήματος: είδωλο δίσκου. Περιηγηθείτε για να επαναφέρετε αρχεία από τους τόμους NTFS του.",
     diskImageBanner: "Αντίγραφο μηχανήματος (είδωλο δίσκου). Κάθε τόμος NTFS του ειδώλου είναι ένας φάκελος παρακάτω· κατεβαίνουν μόνο τα μέρη του ειδώλου που ανοίγετε ή επαναφέρετε. Τα αρχεία επαναφέρονται σε άλλο φάκελο, με τις ημερομηνίες τους και (με την επιλογή δικαιωμάτων) τα χαρακτηριστικά τους· τα ίδια τα δικαιώματα δεν επαναφέρονται ακόμη από είδωλο δίσκου.",
+    imageFoldersLabel: "Φάκελοι για Αναίρεση διαγραφής και Επαναφορά",
+    imageFoldersPlaceholder: "Ένας ανά γραμμή, π.χ. C:\\Users\\Όνομα\\Documents",
+    imageFoldersHint: "Η Αναίρεση διαγραφής και η Επαναφορά εξετάζουν αυτούς τους φακέλους, διαβάζοντας τα αρχεία τους από τα είδωλα δίσκου. Κενό: Επιφάνεια εργασίας, Έγγραφα, Εικόνες, Μουσική, Βίντεο και Λήψεις. Οι φάκελοι πρέπει να βρίσκονται στους δίσκους που αποθηκεύει αυτό το σύνολο.",
+    setPickerMachine: "μηχάνημα",
+    setPickerMachineDefault: "Επιφάνεια εργασίας, Έγγραφα, Εικόνες...",
+    setPickerChooseAny: "Επιλέξτε σύνολο αντιγράφων...",
+    setPickerNoneAny: "Δεν υπάρχουν ακόμη σύνολα αντιγράφων. Δημιουργήστε ένα στη σελίδα Αντίγραφο ασφαλείας.",
   },
   hu: {
     // Header
@@ -8092,6 +8155,13 @@ const translations = {
     diskImageShort: "lemezkép",
     diskImageHint: "Gépmentés: lemezkép. Böngéssze, hogy fájlokat állítson vissza az NTFS-köteteiről.",
     diskImageBanner: "Gépmentés (lemezkép). A kép minden NTFS-kötete egy mappa alább; csak a kép azon részei töltődnek le, amelyeket megnyit vagy visszaállít. A fájlok másik mappába állnak vissza, dátumaikkal és (a jogosultságok opcióval) attribútumaikkal; magukat a jogosultságokat lemezképből még nem állítja vissza.",
+    imageFoldersLabel: "Mappák a Törlés visszavonásához és a Visszaállításhoz",
+    imageFoldersPlaceholder: "Soronként egy, pl. C:\\Users\\Név\\Documents",
+    imageFoldersHint: "A Törlés visszavonása és a Visszaállítás ezeket a mappákat vizsgálja, a fájlokat a lemezképekből olvasva. Üres: az Asztal, Dokumentumok, Képek, Zene, Videók és Letöltések. A mappáknak a készlet által mentett lemezeken kell lenniük.",
+    setPickerMachine: "gép",
+    setPickerMachineDefault: "Asztal, Dokumentumok, Képek...",
+    setPickerChooseAny: "Válasszon mentési készletet...",
+    setPickerNoneAny: "Még nincs mentési készlet. Hozzon létre egyet a Mentés oldalon.",
   },
   lv: {
     // Header
@@ -8900,6 +8970,13 @@ const translations = {
     diskImageShort: "diska attēls",
     diskImageHint: "Datora dublējums: diska attēls. Pārlūkojiet to, lai atjaunotu failus no tā NTFS sējumiem.",
     diskImageBanner: "Datora dublējums (diska attēls). Katrs attēla NTFS sējums ir mape zemāk; lejupielādē tikai tās attēla daļas, kuras atverat vai atjaunojat. Faili tiek atjaunoti citā mapē ar to datumiem un (ar atļauju opciju) atribūtiem; pašas atļaujas no diska attēla vēl netiek atjaunotas.",
+    imageFoldersLabel: "Mapes atjaunošanai un atritināšanai",
+    imageFoldersPlaceholder: "Pa vienai rindā, piem., C:\\Users\\Vārds\\Documents",
+    imageFoldersHint: "Atjaunošana un atritināšana skata šīs mapes, lasot to failus no diska attēliem. Tukšs: jūsu Darbvirsma, Dokumenti, Attēli, Mūzika, Video un Lejupielādes. Mapēm jābūt diskos, kurus šis komplekts dublē.",
+    setPickerMachine: "dators",
+    setPickerMachineDefault: "Darbvirsma, Dokumenti, Attēli...",
+    setPickerChooseAny: "Izvēlieties dublēšanas komplektu...",
+    setPickerNoneAny: "Vēl nav dublēšanas komplektu. Izveidojiet to lapā Dublēšana.",
   },
   lt: {
     // Header
@@ -9708,6 +9785,13 @@ const translations = {
     diskImageShort: "disko atvaizdas",
     diskImageHint: "Kompiuterio kopija: disko atvaizdas. Naršykite jį, kad atkurtumėte failus iš jo NTFS tomų.",
     diskImageBanner: "Kompiuterio kopija (disko atvaizdas). Kiekvienas atvaizdo NTFS tomas yra aplankas žemiau; atsiunčiamos tik tos atvaizdo dalys, kurias atidarote ar atkuriate. Failai atkuriami į kitą aplanką su datomis ir (su leidimų parinktimi) atributais; patys leidimai iš disko atvaizdo dar neatkuriami.",
+    imageFoldersLabel: "Aplankai atkūrimui ir atšaukimui",
+    imageFoldersPlaceholder: "Po vieną eilutėje, pvz., C:\\Users\\Vardas\\Documents",
+    imageFoldersHint: "Atkūrimas ir atšaukimas peržiūri šiuos aplankus, skaitydami failus iš disko atvaizdų. Tuščia: jūsų Darbalaukis, Dokumentai, Paveikslėliai, Muzika, Vaizdo įrašai ir Atsisiuntimai. Aplankai turi būti diskuose, kuriuos kopijuoja šis rinkinys.",
+    setPickerMachine: "kompiuteris",
+    setPickerMachineDefault: "Darbalaukis, Dokumentai, Paveikslėliai...",
+    setPickerChooseAny: "Pasirinkite kopijų rinkinį...",
+    setPickerNoneAny: "Kopijų rinkinių dar nėra. Sukurkite jį puslapyje Kopijavimas.",
   },
   nl: {
     // Header
@@ -10516,6 +10600,13 @@ const translations = {
     diskImageShort: "schijfkopie",
     diskImageHint: "Machinebackup: een schijfkopie. Blader erdoor om bestanden uit de NTFS-volumes terug te zetten.",
     diskImageBanner: "Machinebackup (schijfkopie). Elk NTFS-volume in de kopie is hieronder een map; alleen de delen die u opent of terugzet worden gedownload. Bestanden worden in een andere map teruggezet, met hun datums en (met de machtigingsoptie) kenmerken; de machtigingen zelf worden nog niet uit een schijfkopie teruggezet.",
+    imageFoldersLabel: "Mappen voor Herstellen en Terugdraaien",
+    imageFoldersPlaceholder: "Eén per regel, bv. C:\\Users\\Naam\\Documents",
+    imageFoldersHint: "Herstellen en Terugdraaien bekijken deze mappen en lezen hun bestanden uit de schijfkopieën. Leeg: uw Bureaublad, Documenten, Afbeeldingen, Muziek, Video's en Downloads. De mappen moeten op de schijven staan die deze set back-upt.",
+    setPickerMachine: "machine",
+    setPickerMachineDefault: "uw Bureaublad, Documenten, Afbeeldingen...",
+    setPickerChooseAny: "Kies een back-upset...",
+    setPickerNoneAny: "Er zijn nog geen back-upsets. Maak er een op de pagina Back-up.",
   },
   pt: {
     // Header
@@ -11324,6 +11415,13 @@ const translations = {
     diskImageShort: "imagem de disco",
     diskImageHint: "Backup da máquina: uma imagem de disco. Navegue nela para restaurar ficheiros dos seus volumes NTFS.",
     diskImageBanner: "Backup da máquina (imagem de disco). Cada volume NTFS da imagem é uma pasta abaixo; só se transferem as partes da imagem que abre ou restaura. Os ficheiros são restaurados para outra pasta, com as datas e (com a opção de permissões) os atributos; as permissões em si ainda não são restauradas a partir de uma imagem de disco.",
+    imageFoldersLabel: "Pastas para Recuperar e Reverter",
+    imageFoldersPlaceholder: "Uma por linha, p. ex. C:\\Users\\Nome\\Documents",
+    imageFoldersHint: "Recuperar e Reverter analisam estas pastas, lendo os ficheiros das imagens de disco. Vazio: o seu Ambiente de trabalho, Documentos, Imagens, Música, Vídeos e Transferências. As pastas têm de estar nos discos que este conjunto copia.",
+    setPickerMachine: "máquina",
+    setPickerMachineDefault: "Ambiente de trabalho, Documentos, Imagens...",
+    setPickerChooseAny: "Escolha um conjunto de backup...",
+    setPickerNoneAny: "Ainda não há conjuntos de backup. Crie um na página Backup.",
   },
   ro: {
     // Header
@@ -12132,6 +12230,13 @@ const translations = {
     diskImageShort: "imagine de disc",
     diskImageHint: "Backup de mașină: o imagine de disc. Răsfoiți-o pentru a restaura fișiere din volumele ei NTFS.",
     diskImageBanner: "Backup de mașină (imagine de disc). Fiecare volum NTFS din imagine este un dosar mai jos; se descarcă doar părțile imaginii pe care le deschideți sau restaurați. Fișierele se restaurează în alt dosar, cu datele și (cu opțiunea de permisiuni) atributele lor; permisiunile în sine nu sunt încă restaurate dintr-o imagine de disc.",
+    imageFoldersLabel: "Dosare pentru Recuperare și Revenire",
+    imageFoldersPlaceholder: "Câte unul pe linie, de ex. C:\\Users\\Nume\\Documents",
+    imageFoldersHint: "Recuperarea și Revenirea examinează aceste dosare, citind fișierele din imaginile de disc. Gol: Desktop, Documente, Imagini, Muzică, Videoclipuri și Descărcări. Dosarele trebuie să fie pe discurile salvate de acest set.",
+    setPickerMachine: "mașină",
+    setPickerMachineDefault: "Desktop, Documente, Imagini...",
+    setPickerChooseAny: "Alegeți un set de backup...",
+    setPickerNoneAny: "Nu există încă seturi de backup. Creați unul în pagina Backup.",
   },
   sk: {
     // Header
@@ -12940,6 +13045,13 @@ const translations = {
     diskImageShort: "obraz disku",
     diskImageHint: "Záloha počítača: obraz disku. Prehliadajte ho a obnovte súbory z jeho zväzkov NTFS.",
     diskImageBanner: "Záloha počítača (obraz disku). Každý zväzok NTFS v obraze je nižšie priečinkom; sťahujú sa len časti obrazu, ktoré otvoríte alebo obnovíte. Súbory sa obnovujú do iného priečinka, s dátumami a (s voľbou oprávnení) atribútmi; samotné oprávnenia sa z obrazu disku zatiaľ neobnovujú.",
+    imageFoldersLabel: "Priečinky pre Obnovenie zmazaných a Vrátenie späť",
+    imageFoldersPlaceholder: "Jeden na riadok, napr. C:\\Users\\Meno\\Documents",
+    imageFoldersHint: "Obnovenie zmazaných a Vrátenie späť prechádzajú tieto priečinky a čítajú ich súbory z obrazov disku. Prázdne: vaša Pracovná plocha, Dokumenty, Obrázky, Hudba, Videá a Stiahnuté súbory. Priečinky musia byť na diskoch, ktoré táto sada zálohuje.",
+    setPickerMachine: "počítač",
+    setPickerMachineDefault: "Pracovná plocha, Dokumenty, Obrázky...",
+    setPickerChooseAny: "Vyberte sadu záloh...",
+    setPickerNoneAny: "Zatiaľ nie sú žiadne sady záloh. Vytvorte ju na stránke Záloha.",
   },
   tr: {
     // Header
@@ -13748,6 +13860,13 @@ const translations = {
     diskImageShort: "disk görüntüsü",
     diskImageHint: "Makine yedeği: bir disk görüntüsü. NTFS birimlerinden dosya geri yüklemek için göz atın.",
     diskImageBanner: "Makine yedeği (disk görüntüsü). Görüntüdeki her NTFS birimi aşağıda bir klasördür; yalnızca açtığınız veya geri yüklediğiniz kısımlar indirilir. Dosyalar başka bir klasöre tarihleri ve (izinler seçeneğiyle) öznitelikleriyle geri yüklenir; izinlerin kendisi disk görüntüsünden henüz geri yüklenmez.",
+    imageFoldersLabel: "Silineni Geri Al ve Geri Döndür için klasörler",
+    imageFoldersPlaceholder: "Satır başına bir tane, ör. C:\\Users\\Ad\\Documents",
+    imageFoldersHint: "Silineni Geri Al ve Geri Döndür bu klasörlere bakar, dosyalarını disk görüntülerinden okur. Boş: Masaüstü, Belgeler, Resimler, Müzik, Videolar ve İndirilenler. Klasörler bu kümenin yedeklediği disklerde olmalıdır.",
+    setPickerMachine: "makine",
+    setPickerMachineDefault: "Masaüstü, Belgeler, Resimler...",
+    setPickerChooseAny: "Bir yedekleme kümesi seçin...",
+    setPickerNoneAny: "Henüz yedekleme kümesi yok. Yedekleme sayfasında bir tane oluşturun.",
   },
   uk: {
     // Header
@@ -14556,6 +14675,13 @@ const translations = {
     diskImageShort: "образ диска",
     diskImageHint: "Резервна копія машини: образ диска. Перегляньте його, щоб відновити файли з його томів NTFS.",
     diskImageBanner: "Резервна копія машини (образ диска). Кожен том NTFS в образі є текою нижче; завантажуються лише ті частини образу, які ви відкриваєте чи відновлюєте. Файли відновлюються до іншої теки з датами та (з параметром дозволів) атрибутами; самі дозволи з образу диска поки не відновлюються.",
+    imageFoldersLabel: "Теки для Відновлення видалених і Відкату",
+    imageFoldersPlaceholder: "По одній на рядок, напр. C:\\Users\\Ім'я\\Documents",
+    imageFoldersHint: "Відновлення видалених і Відкат переглядають ці теки, читаючи їхні файли з образів диска. Порожньо: ваші Робочий стіл, Документи, Зображення, Музика, Відео та Завантаження. Теки мають бути на дисках, які копіює цей набір.",
+    setPickerMachine: "машина",
+    setPickerMachineDefault: "Робочий стіл, Документи, Зображення...",
+    setPickerChooseAny: "Виберіть набір резервних копій...",
+    setPickerNoneAny: "Ще немає наборів резервних копій. Створіть його на сторінці Резервне копіювання.",
   }
 }
 

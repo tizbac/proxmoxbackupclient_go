@@ -29,6 +29,9 @@ type setFolder struct {
 }
 
 func setFoldersOf(job ScheduledJob) []setFolder {
+	if job.BackupType == "machine" {
+		return imageSetFolders(job)
+	}
 	used := map[string]int{}
 	var out []setFolder
 	for _, d := range job.BackupDirs {
@@ -57,8 +60,8 @@ func (a *App) loadSetJob(jobID string) (ScheduledJob, error) {
 	}
 	for _, j := range jobs {
 		if j.ID == jobID {
-			if j.BackupType == "machine" {
-				return ScheduledJob{}, fmt.Errorf("%q is a machine Backup Set: Undelete and Roll back work on folder sets", j.Name)
+			if j.BackupType == "machine" && len(setFoldersOf(j)) == 0 {
+				return ScheduledJob{}, fmt.Errorf("machine Backup Set %q: none of its folders for Undelete and Roll back is on a disk it backs up (edit the set to choose them)", j.Name)
 			}
 			if len(setFoldersOf(j)) == 0 {
 				return ScheduledJob{}, fmt.Errorf("Backup Set %q has no folders", j.Name)
@@ -101,15 +104,33 @@ func listSetSnapshots(cfg *Config, job ScheduledJob) ([]SetSnapshot, error) {
 	}
 	backupID := setBackupID(job)
 	bases := map[string]bool{}
-	for _, f := range setFoldersOf(job) {
+	folders := setFoldersOf(job)
+	for _, f := range folders {
 		bases[f.Base] = true
+	}
+	// A machine set's snapshots may be vm/ ones; its "archives" are its
+	// folders' bases, present when the snapshot has the folder's disk image.
+	wantType := "host"
+	if job.BackupType == "machine" {
+		wantType = machineSnapshotType(scheduledMachineBackupType(job))
 	}
 	var out []SetSnapshot
 	for _, m := range manifests {
-		if m.BackupType != "host" || m.BackupID != backupID {
+		if m.BackupType != wantType || m.BackupID != backupID {
 			continue
 		}
 		var archives []string
+		if job.BackupType == "machine" {
+			have := map[string]bool{}
+			for _, f := range m.Files {
+				have[f.Filename] = true
+			}
+			for _, f := range folders {
+				if ib, ok := parseImageBase(f.Base); ok && have[ib.archive] {
+					archives = append(archives, f.Base)
+				}
+			}
+		}
 		for _, f := range m.Files {
 			if isDataArchive(f.Filename) && bases[archiveBaseOf(f.Filename)] {
 				archives = append(archives, f.Filename)
@@ -155,7 +176,23 @@ func restoreOptsFor(cfg *Config, backupID string, unix int64) RestoreOptions {
 // from the local cache when it has it (a snapshot never changes), else from
 // the snapshot's catalog (a few MB even for hundreds of thousands of files),
 // else by walking each archive's metadata.
-func loadSnapshotIndex(cfg *Config, backupID string, snap SetSnapshot, cancel func() bool) (snapshotIndex, error) {
+func loadSnapshotIndex(cfg *Config, job ScheduledJob, snap SetSnapshot, cancel func() bool) (snapshotIndex, error) {
+	backupID := setBackupID(job)
+	if job.BackupType == "machine" {
+		// The list depends on the set's folders and exclusions as well.
+		cachePath := snapshotIndexCachePath(cfg, backupID+"|"+strings.Join(snap.Archives, "|")+"|"+strings.Join(job.ExcludeList, "|"), snap.Unix)
+		if idx, err := readIndexCache(cachePath); err == nil && hasArchives(idx, snap.Archives) {
+			return idx, nil
+		}
+		idx, err := imageSetIndex(cfg, job, snap, cancel)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeIndexCache(cachePath, idx); err != nil {
+			writeDebugLog(fmt.Sprintf("Index cache: could not save %s: %v", cachePath, err))
+		}
+		return idx, nil
+	}
 	cachePath := snapshotIndexCachePath(cfg, backupID, snap.Unix)
 	if idx, err := readIndexCache(cachePath); err == nil && hasArchives(idx, snap.Archives) {
 		return idx, nil

@@ -311,58 +311,124 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 		}
 	}
 
-	// What to restore, per volume. IncludePaths carry the volume name in
-	// front, as the tree shows them; ArchiveIncludes (Undelete) give it as
-	// the key. No selection means everything.
+	// What to restore, and where each item goes. Three kinds of selection:
+	//   - IncludePaths from the Restore tree: "<volume>/<path>", to another
+	//     folder through the usual rewriter (abs or flat);
+	//   - ArchiveIncludes keyed by a machine set's folder base ("drive-sata0
+	//     .img.fidx@<offset>:<folder>", Undelete and Roll back): paths
+	//     relative to that folder, back into it (ArchiveRoots, Mode original)
+	//     or to dest/<folder name>/...;
+	//   - ArchiveIncludes keyed by a volume name, like the tree.
+	// No selection means everything.
 	type pick struct {
 		vol   *imageVolume
 		entry imagefs.Entry
+		dest  string
 	}
 	var picks []pick
 	seen := map[string]bool{}
-	add := func(v *imageVolume, rel string) {
+	add := func(v *imageVolume, rel string, dest func(e imagefs.Entry) string) {
 		for _, e := range pickEntries(v.Entries, rel) {
 			if k := v.Display + "/" + e.Path; !seen[k] {
 				seen[k] = true
-				picks = append(picks, pick{v, e})
+				if d := dest(e); d != "" {
+					picks = append(picks, pick{v, e, d})
+				}
 			}
 		}
 	}
-	includes := pbscommon.NormalizeIncludes(opts.IncludePaths)
-	for i := range vols {
-		v := &vols[i]
-		switch {
-		case opts.ArchiveIncludes != nil:
-			for _, rel := range opts.ArchiveIncludes[v.Display] {
-				add(v, strings.Trim(strings.ReplaceAll(rel, "\\", "/"), "/"))
+	viaRewriter := func(v *imageVolume) func(imagefs.Entry) string {
+		return func(e imagefs.Entry) string {
+			if rewriter == nil {
+				return ""
 			}
-		case len(includes) == 0:
-			add(v, "")
-		default:
+			return rewriter(v.Display + "/" + e.Path)
+		}
+	}
+	volumeAt := func(archive string, offset int64) *imageVolume {
+		for i := range vols {
+			if vols[i].Archive == archive && vols[i].Start == offset {
+				return &vols[i]
+			}
+		}
+		return nil
+	}
+	includes := pbscommon.NormalizeIncludes(opts.IncludePaths)
+	switch {
+	case opts.ArchiveIncludes != nil:
+		for key, rels := range opts.ArchiveIncludes {
+			if ib, ok := parseImageBase(key); ok {
+				v := volumeAt(ib.archive, ib.offset)
+				if v == nil {
+					return fmt.Errorf("%s: no NTFS volume at %d in the disk image", ib.archive, ib.offset)
+				}
+				sub := exactCasePath(v.Entries, ib.sub)
+				root := opts.ArchiveRoots[key]
+				folderName := v.Display
+				if sub != "" {
+					folderName = sub[strings.LastIndexByte(sub, '/')+1:]
+				}
+				dest := func(e imagefs.Entry) string {
+					rel := e.Path
+					if sub != "" {
+						rel = strings.TrimPrefix(e.Path, sub+"/")
+					}
+					if mode == RestoreModeOriginal {
+						if root == "" {
+							return ""
+						}
+						return filepath.Join(filepath.Clean(root), filepath.FromSlash(rel))
+					}
+					return rewriter(folderName + "/" + rel)
+				}
+				for _, rel := range rels {
+					rel = strings.Trim(strings.ReplaceAll(rel, "\\", "/"), "/")
+					if sub != "" {
+						rel = sub + "/" + rel
+					}
+					add(v, rel, dest)
+				}
+				continue
+			}
+			for i := range vols {
+				if vols[i].Display != key {
+					continue
+				}
+				v := &vols[i]
+				dest := viaRewriter(v)
+				if mode == RestoreModeOriginal {
+					root := opts.ArchiveRoots[key]
+					dest = func(e imagefs.Entry) string {
+						if root == "" {
+							return ""
+						}
+						return filepath.Join(filepath.Clean(root), filepath.FromSlash(e.Path))
+					}
+				}
+				for _, rel := range rels {
+					add(v, strings.Trim(strings.ReplaceAll(rel, "\\", "/"), "/"), dest)
+				}
+			}
+		}
+	case len(includes) == 0:
+		for i := range vols {
+			add(&vols[i], "", viaRewriter(&vols[i]))
+		}
+	default:
+		for i := range vols {
+			v := &vols[i]
 			for _, inc := range includes {
 				inc = strings.ReplaceAll(inc, "\\", "/")
 				if inc == v.Display {
-					add(v, "")
+					add(v, "", viaRewriter(v))
 				} else if strings.HasPrefix(inc, v.Display+"/") {
-					add(v, strings.TrimPrefix(inc, v.Display+"/"))
+					add(v, strings.TrimPrefix(inc, v.Display+"/"), viaRewriter(v))
 				}
 			}
 		}
 	}
 	if len(picks) == 0 {
 		return fmt.Errorf("restore matched no files for the requested path(s): %s", strings.Join(opts.IncludePaths, ", "))
-	}
-
-	// Where each pick goes.
-	target := func(p pick) string {
-		if mode == RestoreModeOriginal {
-			root := opts.ArchiveRoots[p.vol.Display]
-			if root == "" {
-				return ""
-			}
-			return filepath.Join(filepath.Clean(root), filepath.FromSlash(p.entry.Path))
-		}
-		return rewriter(p.vol.Display + "/" + p.entry.Path)
 	}
 
 	// Open the files in MFT order (their records are read in sequence),
@@ -388,10 +454,7 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 		if cancelled() {
 			return fmt.Errorf("restore cancelled")
 		}
-		dest := target(p)
-		if dest == "" {
-			continue
-		}
+		dest := p.dest
 		if p.entry.IsDir {
 			dirs = append(dirs, job{pick: p, dest: dest})
 			continue
@@ -567,4 +630,20 @@ func (p *progressReader) Read(b []byte) (int, error) {
 		p.onRead(int64(n))
 	}
 	return n, err
+}
+
+// exactCasePath returns sub as the volume spells it (NTFS names are
+// case-insensitive; a folder typed in a set may differ in case), or sub
+// unchanged when the volume has no such folder.
+func exactCasePath(entries []imagefs.Entry, sub string) string {
+	if sub == "" {
+		return ""
+	}
+	want := strings.ToLower(sub)
+	for _, e := range entries {
+		if e.IsDir && len(e.Path) == len(sub) && strings.ToLower(e.Path) == want {
+			return e.Path
+		}
+	}
+	return sub
 }

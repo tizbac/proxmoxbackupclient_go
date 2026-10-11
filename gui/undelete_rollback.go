@@ -161,7 +161,7 @@ func (a *App) scanUndelete(cfg *Config, job ScheduledJob, snaps []SetSnapshot, c
 	// The newest file list first: it says roughly how many entries the walk
 	// of each folder will find, so the walk can show "x of about y".
 	a.scanProgress("index", snaps[0].ID, 0, len(snaps))
-	newest, err := loadSnapshotIndex(cfg, setBackupID(job), snaps[0], cancel)
+	newest, err := loadSnapshotIndex(cfg, job, snaps[0], cancel)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,6 @@ func (a *App) scanUndelete(cfg *Config, job ScheduledJob, snaps []SetSnapshot, c
 		return nil, err
 	}
 	folders := setFoldersOf(job)
-	backupID := setBackupID(job)
 	res := &UndeleteScan{NewestUnix: snaps[0].Unix, OldestUnix: snaps[len(snaps)-1].Unix}
 	for _, f := range folders {
 		for _, u := range live[f.Base].Unreadable {
@@ -187,7 +186,7 @@ func (a *App) scanUndelete(cfg *Config, job ScheduledJob, snaps []SetSnapshot, c
 		if si > 0 {
 			newest = nil // only one file list in memory at a time
 			a.scanProgress("index", snap.ID, si, len(snaps))
-			if idx, err = loadSnapshotIndex(cfg, backupID, snap, cancel); err != nil {
+			if idx, err = loadSnapshotIndex(cfg, job, snap, cancel); err != nil {
 				return nil, err
 			}
 		}
@@ -430,7 +429,7 @@ func (a *App) planRollbackFor(cfg *Config, job ScheduledJob, snapshotUnix int64,
 		return nil, fmt.Errorf("snapshot %s of %q not found", time.Unix(snapshotUnix, 0).UTC().Format(time.RFC3339), job.Name)
 	}
 	a.scanProgress("index", snap.ID, 0, 1)
-	idx, err := loadSnapshotIndex(cfg, setBackupID(job), *snap, cancel)
+	idx, err := loadSnapshotIndex(cfg, job, *snap, cancel)
 	if err != nil {
 		return nil, err
 	}

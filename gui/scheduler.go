@@ -84,6 +84,11 @@ type ScheduledJob struct {
 	// field existed, so this is also a safe no-migration default.
 	DaysOfWeek []string `json:"daysOfWeek,omitempty"`
 
+	// ImageFolders are the folders of a machine set's disks that Undelete and
+	// Roll back work on (read from the disk images). Empty means the user's
+	// Desktop, Documents, Pictures, Music, Videos and Downloads.
+	ImageFolders []string `json:"imageFolders,omitempty"`
+
 	// ==================== POST-BACKUP ACTIONS ====================
 	// Modelled on Backup for Workgroups' "Special Items" wizard step. All
 	// independent of each other and off by default — every field here is a

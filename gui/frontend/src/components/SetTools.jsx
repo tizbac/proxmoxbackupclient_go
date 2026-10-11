@@ -54,19 +54,24 @@ function useScanProgress(ui, active) {
 
 export function SetPicker({ ui, jobs, value, onChange }) {
   const { tl } = ui
-  const folderSets = (jobs || []).filter(j => j.backupType !== 'machine')
+  // Machine sets too (Windows): their folders for Undelete and Roll back
+  // are read from the disk images.
+  const sets = (jobs || []).filter(j => j.backupType !== 'machine' || ui.os !== 'linux')
+  const describe = (j) => j.backupType === 'machine'
+    ? `${tl('setPickerMachine', 'machine')}: ${(j.imageFolders && j.imageFolders.length > 0) ? j.imageFolders.join(', ') : tl('setPickerMachineDefault', 'your Desktop, Documents, Pictures...')}`
+    : (j.backupDirs || []).join(', ')
   return (
     <div className="form-group">
       <label htmlFor={`setpick-${ui.idSuffix || ''}`}>{tl('setPickerLabel', 'Backup Set')}</label>
       <select id={`setpick-${ui.idSuffix || ''}`} value={value || ''} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{tl('setPickerChoose', 'Choose a folder Backup Set...')}</option>
-        {folderSets.map(j => (
-          <option key={j.id} value={j.id}>{j.name} ({(j.backupDirs || []).join(', ')})</option>
+        <option value="">{tl('setPickerChooseAny', 'Choose a Backup Set...')}</option>
+        {sets.map(j => (
+          <option key={j.id} value={j.id}>{j.name} ({describe(j)})</option>
         ))}
       </select>
-      {folderSets.length === 0 && (
+      {sets.length === 0 && (
         <p style={{fontSize: '13px', color: '#718096', marginTop: '6px'}}>
-          {tl('setPickerNone', 'There are no folder Backup Sets yet. Create one on the Backup page; machine sets are restored with bare-metal restore.')}
+          {tl('setPickerNoneAny', 'There are no Backup Sets yet. Create one on the Backup page.')}
         </p>
       )}
     </div>

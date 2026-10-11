@@ -424,6 +424,9 @@ function App() {
   const [backupIdAuto, setBackupIdAuto] = useState(false)
   const [backupDirs, setBackupDirs] = useState('')
   const [selectedDrives, setSelectedDrives] = useState([])
+  // Machine sets: folders on their disks that Undelete and Roll back work on
+  // (one per line; empty = the user's Desktop, Documents, Pictures, ...).
+  const [imageFolders, setImageFolders] = useState('')
   const [physicalDisks, setPhysicalDisks] = useState([])
   const [excludeList, setExcludeList] = useState('')
   // Root-relative excludes the folder tree picker generates (unchecking a
@@ -2079,6 +2082,7 @@ function App() {
         machineAsVm: useVmType,
         excludeList: backupType === 'directory' ? getEffectiveExcludeList() : [],
         driveLetters: backupType === 'machine' ? selectedDrives : [],
+        imageFolders: backupType === 'machine' ? imageFolders.split('\n').map(d => d.trim()).filter(d => d) : [],
         pbsServerId: backupPBSID,
         emailOnSuccess: emailOnSuccess,
         emailOnSuccessTo: emailOnSuccess ? emailOnSuccessTo.trim() : '',
@@ -2111,7 +2115,7 @@ function App() {
         }
         // Reset form after save
         setJobName('')
-        setMachineAsVM(false); setVmIdNumber('')
+        setMachineAsVM(false); setVmIdNumber(''); setImageFolders('')
         setScheduleTime('02:00')
         setRunAtStartup(false)
         setTriggerMode('daily')
@@ -2847,6 +2851,7 @@ function App() {
     ListRollbacks, UndoRollback, DeleteRollbackCopies, OpenRestoreDestDialog,
     GetServiceStatus, InstallService, StartBackgroundService, StopBackgroundService, RemoveService,
     onStartFailed: (msg) => { setRestoreLoading(false); showStatus(`❌ ${msg}`, 'error') },
+    os: systemInfo.os,
   }
   const startSetRestore = () => {
     setRestoreLoading(true)
@@ -3589,7 +3594,7 @@ function App() {
                   onClick={() => {
                     setEditingJobId(null)
                     setJobName('')
-                    setMachineAsVM(false); setVmIdNumber('')
+                    setMachineAsVM(false); setVmIdNumber(''); setImageFolders('')
                     setBackupMode('scheduled')
                     setScheduleTime('02:00')
                     setRunAtStartup(false)
@@ -3790,6 +3795,7 @@ function App() {
                               // rename) to a machine-type backup set, since selectedDrives looks
                               // empty even though the job has real disks configured.
                               setSelectedDrives(job.driveLetters || [])
+                              setImageFolders((job.imageFolders || []).join('\n'))
                               setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                               setBackupIdAuto(false)
                               setBackupType(job.backupType)
@@ -3808,7 +3814,7 @@ function App() {
                             {t('editJob')}
                           </button>
                           {/* One menu for the less frequent actions, the same on every card
-                              (Undelete and Roll back only exist for folder sets). */}
+                              (a machine set's Undelete and Roll back read its disk images). */}
                           <div style={{position: 'relative'}}>
                             <button
                               className="btn btn-secondary"
@@ -3820,7 +3826,7 @@ function App() {
                             </button>
                             {openSetMenu === job.id && (
                               <div role="menu" className="set-more-menu" onClick={() => setOpenSetMenu(null)}>
-                                {job.backupType !== 'machine' && (
+                                {(job.backupType !== 'machine' || systemInfo.os !== 'linux') && (
                                   <>
                                     <button role="menuitem" className="set-more-item" onClick={() => { setSetToolJobId(job.id); setActiveTab('undelete') }}>
                                       {tl('undeleteShortcut', 'Undelete...')}
@@ -3852,6 +3858,7 @@ function App() {
                                     setDaysOfWeek(job.daysOfWeek && job.daysOfWeek.length > 0 ? job.daysOfWeek : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
                                     setBackupDirs(job.backupDirs.join('\n'))
                                     setSelectedDrives(job.driveLetters || [])
+                                    setImageFolders((job.imageFolders || []).join('\n'))
                                     {
                                       const cloneName = t('cloneNameSuffix').replace('{name}', job.name || '')
                                       const ownId = job.backupType === 'machine' ? job.backupId : suggestBackupId(cloneName, hostname, takenBackupIds(null))
@@ -4239,6 +4246,21 @@ function App() {
               )}
             </div>
           )}
+          {backupType === 'machine' && backupMode === 'scheduled' && systemInfo.os !== 'linux' && (
+            <div className="form-group">
+              <label htmlFor="imageFolders">{tl('imageFoldersLabel', 'Folders for Undelete and Roll back')}</label>
+              <textarea
+                id="imageFolders"
+                value={imageFolders}
+                onChange={(e) => setImageFolders(e.target.value)}
+                rows="3"
+                placeholder={tl('imageFoldersPlaceholder', 'One per line, e.g. C:\\Users\\Name\\Documents')}
+              />
+              <div style={{fontSize: '12px', color: '#64748b', marginTop: '4px', maxWidth: '560px'}}>
+                {tl('imageFoldersHint', 'Undelete and Roll back look at these folders, reading their files from the disk images. Empty: your Desktop, Documents, Pictures, Music, Videos and Downloads. Folders must be on the disks this set backs up.')}
+              </div>
+            </div>
+          )}
           </>
           )}
 
@@ -4493,7 +4515,7 @@ function App() {
             <button className="btn btn-secondary" onClick={() => {
               setEditingJobId(null)
               setJobName('')
-              setMachineAsVM(false); setVmIdNumber('')
+              setMachineAsVM(false); setVmIdNumber(''); setImageFolders('')
               setChangeDetectionMode('legacy'); setFullReadEvery(0)
               setScheduleTime('02:00')
               setRunAtStartup(false)
