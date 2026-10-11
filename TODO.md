@@ -633,12 +633,10 @@ Today a set has ONE trigger (`ScheduledJob.TriggerMode` in scheduler.go: "daily"
 - [ ] Service mode reads the same model; tests for next-run maths (month ends, 29 Feb, DST changes, "last Friday").
 - [ ] Translations (18), manual chapter, CHANGELOG.
 
-### 🏷️ Backup set card: Snapshot ON/OFF badge (Mick, 2026-10-11) - ship with the next build
-Another badge beside the existing ones on each set card (App.jsx ~3613, backup type badge and next-run line), so you can see at a glance which sets will snapshot.
-- [ ] Per set, from the set's OWN snapshot setting (the job's VSS flag that reaches `StartBackup`/`StartMachineBackup` as `useVSS`), not the global default.
-- [ ] Platform-specific wording and tooltip. Windows: "VSS ON" / "VSS OFF". Linux: "Snapshot ON" / "Snapshot OFF" for the method that set would use (LVM / filesystem snapshot for folders, elastio-snap for machine backups). Show nothing (or N/A) where the set type has no snapshot option. ⚠️ Exact Linux wording not confirmed by Mick: ask before shipping.
-- [ ] Decide whether OFF shows when the setting is ON but the path can't snapshot (e.g. `pathSupportsSnapshot` false for a network drive, backup_inline.go ~1794): probably an amber "VSS n/a" with the reason in the tooltip.
-- [ ] Strings in all 18 language files (translations.js), GUI manual note, CHANGELOG.
+### ~~🏷️ Backup set card: Snapshot ON/OFF badge~~ ✅ DONE (Mick, 2026-10-11)
+Third badge on each set card (after the trigger and type badges): "VSS ON"/"VSS OFF" on Windows, "SNAPSHOT ON/OFF" on Linux, from the set's own `useVSS` (folder sets); machine sets always show ON (every mounted volume is snapshotted). Platform-specific tooltips (network drives are read live; Linux: where the volume supports a snapshot / elastio-snap for machines). 18 languages.
+- [ ] ⚠️ Linux wording "Snapshot ON/OFF" is the suggestion, not confirmed by Mick.
+- [ ] Amber "n/a" when the set has it ON but a folder cannot be snapshotted (network drive, `pathSupportsSnapshot` false): needs the check exposed to the frontend per folder.
 
 ### ❔ Speed limit per Backup Set (TENTATIVE, Mick 2026-10-10: not sure)
 A MB/s cap per set (and maybe per server). Mick's doubt: a cap slows every run even when the bandwidth is free, and several machines may back up to the same PBS at once anyway, so letting the competing processes share whatever is available is usually better. Revisit only if a real case needs it (a slow site link, say); Pause covers the "PBS is busy right now" case.

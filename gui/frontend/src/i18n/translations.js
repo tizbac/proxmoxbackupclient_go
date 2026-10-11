@@ -797,6 +797,13 @@ const translations = {
     logMachineBackupCompletedStats: "Sauvegarde machine terminée en {duration} : {read} lus ({new} nouveaux, {reused} chunks réutilisés, dont {blank} d'espace vide ; {uploaded} envoyés)",
     processedUnreadable: "{size} illisibles (zéros dans l'image)",
     logMachineBackupUnreadable: "⚠️ Sauvegarde machine terminée en {duration}, mais {bad} du disque n'ont pas pu être lus et sont des zéros dans l'image ({where}). {read} lus ({new} nouveaux, {reused} chunks réutilisés ; {uploaded} envoyés)",
+    snapshotBadge: "Instantané",
+    vssTipMachine: "Les images disque lisent toujours les volumes via un cliché instantané (VSS).",
+    vssTipOn: "Les fichiers sont lus depuis un cliché instantané (VSS) : les fichiers ouverts dans d'autres programmes sont sauvegardés tels qu'ils étaient au début. Les lecteurs réseau ne peuvent pas avoir d'instantané et sont lus en direct.",
+    vssTipOff: "Les fichiers sont lus en direct : ceux ouverts dans d'autres programmes peuvent être ignorés ou incohérents.",
+    snapshotTipMachineLinux: "Les partitions montées sont lues via un instantané (elastio-snap) quand c'est possible ; sinon elles sont lues en direct.",
+    snapshotTipOnLinux: "Les fichiers sont lus depuis un instantané du système de fichiers si le volume le permet ; sinon en direct.",
+    snapshotTipOffLinux: "Les fichiers sont lus en direct : ceux qui changent pendant la sauvegarde peuvent être incohérents.",
   },
   en: {
     // Header
@@ -1596,6 +1603,13 @@ const translations = {
     logMachineBackupCompletedStats: "Machine backup completed in {duration}: {read} read ({new} new, {reused} reused chunks, {blank} of them blank space; {uploaded} uploaded)",
     processedUnreadable: "{size} unreadable (zeros in the image)",
     logMachineBackupUnreadable: "⚠️ Machine backup completed in {duration}, but {bad} of the disk could not be read and is zeros in the image ({where}). {read} read ({new} new, {reused} reused chunks; {uploaded} uploaded)",
+    snapshotBadge: "Snapshot",
+    vssTipMachine: "Disk images always read the volumes through a Volume Shadow Copy.",
+    vssTipOn: "Files are read from a Volume Shadow Copy, so files open in other programs are backed up as they were at the start. Network drives cannot be snapshotted and are read live.",
+    vssTipOff: "Files are read live: files open in other programs may be skipped or inconsistent.",
+    snapshotTipMachineLinux: "Mounted partitions are read through a snapshot (elastio-snap) when one can be taken; otherwise they are read live.",
+    snapshotTipOnLinux: "Files are read from a file system snapshot where the volume supports one; otherwise they are read live.",
+    snapshotTipOffLinux: "Files are read live: files that change during the backup may be inconsistent.",
   },
   it: {
     // Header
@@ -2395,6 +2409,13 @@ const translations = {
     logMachineBackupCompletedStats: "Backup macchina completato in {duration}: {read} letti ({new} nuovi, {reused} chunk riutilizzati, di cui {blank} di spazio vuoto; {uploaded} caricati)",
     processedUnreadable: "{size} illeggibili (zeri nell'immagine)",
     logMachineBackupUnreadable: "⚠️ Backup macchina completato in {duration}, ma {bad} del disco non si sono potuti leggere e sono zeri nell'immagine ({where}). {read} letti ({new} nuovi, {reused} chunk riutilizzati; {uploaded} caricati)",
+    snapshotBadge: "Snapshot",
+    vssTipMachine: "Le immagini disco leggono sempre i volumi tramite una copia shadow del volume (VSS).",
+    vssTipOn: "I file vengono letti da una copia shadow del volume (VSS): i file aperti in altri programmi vengono salvati com'erano all'inizio. Le unità di rete non supportano snapshot e vengono lette direttamente.",
+    vssTipOff: "I file vengono letti direttamente: quelli aperti in altri programmi possono essere saltati o incoerenti.",
+    snapshotTipMachineLinux: "Le partizioni montate vengono lette tramite uno snapshot (elastio-snap) quando possibile; altrimenti vengono lette direttamente.",
+    snapshotTipOnLinux: "I file vengono letti da uno snapshot del file system se il volume lo supporta; altrimenti direttamente.",
+    snapshotTipOffLinux: "I file vengono letti direttamente: quelli che cambiano durante il backup possono essere incoerenti.",
   },
   de: {
     // Header
@@ -3194,6 +3215,13 @@ const translations = {
     logMachineBackupCompletedStats: "Maschinensicherung abgeschlossen in {duration}: {read} gelesen ({new} neu, {reused} Chunks wiederverwendet, davon {blank} leerer Bereich; {uploaded} hochgeladen)",
     processedUnreadable: "{size} nicht lesbar (Nullen im Abbild)",
     logMachineBackupUnreadable: "⚠️ Maschinensicherung abgeschlossen in {duration}, aber {bad} des Datenträgers waren nicht lesbar und sind Nullen im Abbild ({where}). {read} gelesen ({new} neu, {reused} Chunks wiederverwendet; {uploaded} hochgeladen)",
+    snapshotBadge: "Snapshot",
+    vssTipMachine: "Datenträgerabbilder lesen die Volumes immer über eine Volumeschattenkopie (VSS).",
+    vssTipOn: "Dateien werden aus einer Volumeschattenkopie (VSS) gelesen, geöffnete Dateien werden also im Zustand vom Start gesichert. Netzlaufwerke unterstützen keine Snapshots und werden direkt gelesen.",
+    vssTipOff: "Dateien werden direkt gelesen: in anderen Programmen geöffnete Dateien können übersprungen werden oder inkonsistent sein.",
+    snapshotTipMachineLinux: "Eingehängte Partitionen werden über einen Snapshot (elastio-snap) gelesen, wenn einer möglich ist, sonst direkt.",
+    snapshotTipOnLinux: "Dateien werden aus einem Dateisystem-Snapshot gelesen, wenn das Volume das unterstützt, sonst direkt.",
+    snapshotTipOffLinux: "Dateien werden direkt gelesen: Dateien, die sich während der Sicherung ändern, können inkonsistent sein.",
   },
   pl: {
     // Header
@@ -3993,6 +4021,13 @@ const translations = {
     logMachineBackupCompletedStats: "Kopia zapasowa maszyny zakończona w {duration}: odczytano {read} ({new} nowych, {reused} chunków użytych ponownie, w tym {blank} pustego miejsca; przesłano {uploaded})",
     processedUnreadable: "{size} nieczytelne (zera w obrazie)",
     logMachineBackupUnreadable: "⚠️ Kopia zapasowa maszyny zakończona w {duration}, ale {bad} dysku nie dało się odczytać i w obrazie są zera ({where}). Odczytano {read} ({new} nowych, {reused} chunków użytych ponownie; przesłano {uploaded})",
+    snapshotBadge: "Migawka",
+    vssTipMachine: "Obrazy dysku zawsze czytają woluminy przez kopię w tle woluminu (VSS).",
+    vssTipOn: "Pliki są czytane z kopii w tle woluminu (VSS), więc pliki otwarte w innych programach są kopiowane w stanie z początku. Dyski sieciowe nie obsługują migawek i są czytane na żywo.",
+    vssTipOff: "Pliki są czytane na żywo: pliki otwarte w innych programach mogą zostać pominięte lub być niespójne.",
+    snapshotTipMachineLinux: "Zamontowane partycje są czytane przez migawkę (elastio-snap), gdy da się ją utworzyć; w przeciwnym razie na żywo.",
+    snapshotTipOnLinux: "Pliki są czytane z migawki systemu plików, jeśli wolumin ją obsługuje; w przeciwnym razie na żywo.",
+    snapshotTipOffLinux: "Pliki są czytane na żywo: pliki zmieniane w trakcie kopii mogą być niespójne.",
   },
   es: {
     // Header
@@ -4794,6 +4829,13 @@ const translations = {
     logMachineBackupCompletedStats: "Copia de seguridad de máquina completada en {duration}: {read} leídos ({new} nuevos, {reused} fragmentos reutilizados, {blank} de ellos espacio vacío; {uploaded} subidos)",
     processedUnreadable: "{size} ilegibles (ceros en la imagen)",
     logMachineBackupUnreadable: "⚠️ Copia de seguridad de máquina completada en {duration}, pero {bad} del disco no se pudieron leer y son ceros en la imagen ({where}). {read} leídos ({new} nuevos, {reused} fragmentos reutilizados; {uploaded} subidos)",
+    snapshotBadge: "Instantánea",
+    vssTipMachine: "Las imágenes de disco siempre leen los volúmenes mediante una instantánea de volumen (VSS).",
+    vssTipOn: "Los archivos se leen de una instantánea de volumen (VSS), así que los abiertos en otros programas se copian tal como estaban al empezar. Las unidades de red no admiten instantáneas y se leen en directo.",
+    vssTipOff: "Los archivos se leen en directo: los abiertos en otros programas pueden omitirse o quedar inconsistentes.",
+    snapshotTipMachineLinux: "Las particiones montadas se leen mediante una instantánea (elastio-snap) cuando se puede; si no, en directo.",
+    snapshotTipOnLinux: "Los archivos se leen de una instantánea del sistema de archivos si el volumen la admite; si no, en directo.",
+    snapshotTipOffLinux: "Los archivos se leen en directo: los que cambian durante la copia pueden quedar inconsistentes.",
   },
   bg: {
     // Header
@@ -5591,6 +5633,13 @@ const translations = {
     logMachineBackupCompletedStats: "Архивирането на машината завърши за {duration}: прочетени {read} ({new} нови, {reused} повторно използвани чънка, от тях {blank} празно пространство; качени {uploaded})",
     processedUnreadable: "{size} нечетими (нули в образа)",
     logMachineBackupUnreadable: "⚠️ Архивирането на машината завърши за {duration}, но {bad} от диска не можаха да се прочетат и са нули в образа ({where}). Прочетени {read} ({new} нови, {reused} повторно използвани чънка; качени {uploaded})",
+    snapshotBadge: "Снимка",
+    vssTipMachine: "Образите на диска винаги четат томовете чрез сенчесто копие на тома (VSS).",
+    vssTipOn: "Файловете се четат от сенчесто копие на тома (VSS), така че отворените в други програми файлове се архивират както са били в началото. Мрежовите устройства не поддържат снимки и се четат на живо.",
+    vssTipOff: "Файловете се четат на живо: отворените в други програми файлове може да бъдат пропуснати или непоследователни.",
+    snapshotTipMachineLinux: "Монтираните дялове се четат чрез снимка (elastio-snap), когато може да се направи; иначе се четат на живо.",
+    snapshotTipOnLinux: "Файловете се четат от снимка на файловата система, ако томът я поддържа; иначе на живо.",
+    snapshotTipOffLinux: "Файловете се четат на живо: променящите се по време на архивирането може да са непоследователни.",
   },
   cs: {
     // Header
@@ -6388,6 +6437,13 @@ const translations = {
     logMachineBackupCompletedStats: "Záloha počítače dokončena za {duration}: přečteno {read} ({new} nových, {reused} znovu použitých bloků, z toho {blank} prázdné místo; nahráno {uploaded})",
     processedUnreadable: "{size} nečitelných (nuly v obrazu)",
     logMachineBackupUnreadable: "⚠️ Záloha počítače dokončena za {duration}, ale {bad} disku nešlo přečíst a v obrazu jsou nuly ({where}). Přečteno {read} ({new} nových, {reused} znovu použitých bloků; nahráno {uploaded})",
+    snapshotBadge: "Snímek",
+    vssTipMachine: "Obrazy disku vždy čtou svazky přes stínovou kopii svazku (VSS).",
+    vssTipOn: "Soubory se čtou ze stínové kopie svazku (VSS), takže soubory otevřené v jiných programech se zálohují ve stavu na začátku. Síťové jednotky snímky nepodporují a čtou se přímo.",
+    vssTipOff: "Soubory se čtou přímo: soubory otevřené v jiných programech mohou být přeskočeny nebo nekonzistentní.",
+    snapshotTipMachineLinux: "Připojené oddíly se čtou přes snímek (elastio-snap), pokud jej lze vytvořit; jinak se čtou přímo.",
+    snapshotTipOnLinux: "Soubory se čtou ze snímku souborového systému, pokud jej svazek podporuje; jinak přímo.",
+    snapshotTipOffLinux: "Soubory se čtou přímo: soubory měněné během zálohy mohou být nekonzistentní.",
   },
   el: {
     // Header
@@ -7185,6 +7241,13 @@ const translations = {
     logMachineBackupCompletedStats: "Το αντίγραφο ασφαλείας μηχανήματος ολοκληρώθηκε σε {duration}: διαβάστηκαν {read} ({new} νέα, {reused} επαναχρησιμοποιημένα τμήματα, {blank} από αυτά κενός χώρος· μεταφορτώθηκαν {uploaded})",
     processedUnreadable: "{size} μη αναγνώσιμα (μηδενικά στο είδωλο)",
     logMachineBackupUnreadable: "⚠️ Το αντίγραφο ασφαλείας μηχανήματος ολοκληρώθηκε σε {duration}, αλλά {bad} του δίσκου δεν διαβάστηκαν και είναι μηδενικά στο είδωλο ({where}). Διαβάστηκαν {read} ({new} νέα, {reused} επαναχρησιμοποιημένα τμήματα· μεταφορτώθηκαν {uploaded})",
+    snapshotBadge: "Στιγμιότυπο",
+    vssTipMachine: "Τα είδωλα δίσκου διαβάζουν πάντα τους τόμους μέσω σκιώδους αντιγράφου τόμου (VSS).",
+    vssTipOn: "Τα αρχεία διαβάζονται από σκιώδες αντίγραφο τόμου (VSS), οπότε τα ανοιχτά σε άλλα προγράμματα αρχεία αποθηκεύονται όπως ήταν στην αρχή. Οι μονάδες δικτύου δεν υποστηρίζουν στιγμιότυπα και διαβάζονται απευθείας.",
+    vssTipOff: "Τα αρχεία διαβάζονται απευθείας: όσα είναι ανοιχτά σε άλλα προγράμματα μπορεί να παραλειφθούν ή να είναι ασυνεπή.",
+    snapshotTipMachineLinux: "Τα προσαρτημένα διαμερίσματα διαβάζονται μέσω στιγμιότυπου (elastio-snap) όταν είναι δυνατό· αλλιώς απευθείας.",
+    snapshotTipOnLinux: "Τα αρχεία διαβάζονται από στιγμιότυπο του συστήματος αρχείων όπου ο τόμος το υποστηρίζει· αλλιώς απευθείας.",
+    snapshotTipOffLinux: "Τα αρχεία διαβάζονται απευθείας: όσα αλλάζουν κατά τη δημιουργία αντιγράφου μπορεί να είναι ασυνεπή.",
   },
   hu: {
     // Header
@@ -7982,6 +8045,13 @@ const translations = {
     logMachineBackupCompletedStats: "A gép mentése befejeződött {duration} alatt: {read} beolvasva ({new} új, {reused} újrahasznosított chunk, ebből {blank} üres terület; {uploaded} feltöltve)",
     processedUnreadable: "{size} olvashatatlan (nullák a képfájlban)",
     logMachineBackupUnreadable: "⚠️ A gép mentése befejeződött {duration} alatt, de a lemez {bad} része nem volt olvasható, ez nullaként szerepel a képfájlban ({where}). {read} beolvasva ({new} új, {reused} újrahasznosított chunk; {uploaded} feltöltve)",
+    snapshotBadge: "Pillanatkép",
+    vssTipMachine: "A lemezképek a köteteket mindig kötet-árnyékmásolaton (VSS) keresztül olvassák.",
+    vssTipOn: "A fájlok kötet-árnyékmásolatból (VSS) olvasódnak, így a más programokban megnyitott fájlok a kezdeti állapotukban kerülnek mentésre. A hálózati meghajtókról nem készülhet pillanatkép, ezeket közvetlenül olvassa.",
+    vssTipOff: "A fájlok közvetlenül olvasódnak: a más programokban megnyitott fájlok kimaradhatnak vagy következetlenek lehetnek.",
+    snapshotTipMachineLinux: "A csatolt partíciók pillanatképen (elastio-snap) keresztül olvasódnak, ha készíthető; különben közvetlenül.",
+    snapshotTipOnLinux: "A fájlok fájlrendszer-pillanatképből olvasódnak, ha a kötet támogatja; különben közvetlenül.",
+    snapshotTipOffLinux: "A fájlok közvetlenül olvasódnak: a mentés közben változó fájlok következetlenek lehetnek.",
   },
   lv: {
     // Header
@@ -8779,6 +8849,13 @@ const translations = {
     logMachineBackupCompletedStats: "Datora dublēšana pabeigta {duration} laikā: nolasīti {read} ({new} jaunas, {reused} atkārtoti izmantotas daļas, no tām {blank} tukša vieta; augšupielādēti {uploaded})",
     processedUnreadable: "{size} nenolasāmi (nulles attēlā)",
     logMachineBackupUnreadable: "⚠️ Datora dublēšana pabeigta {duration} laikā, bet {bad} diska nevarēja nolasīt, attēlā tur ir nulles ({where}). Nolasīti {read} ({new} jaunas, {reused} atkārtoti izmantotas daļas; augšupielādēti {uploaded})",
+    snapshotBadge: "Momentuzņēmums",
+    vssTipMachine: "Diska attēli sējumus vienmēr lasa caur sējuma ēnkopiju (VSS).",
+    vssTipOn: "Faili tiek lasīti no sējuma ēnkopijas (VSS), tāpēc citās programmās atvērtie faili tiek dublēti tādi, kādi bija sākumā. Tīkla diskiem momentuzņēmumus nevar veidot, tie tiek lasīti tieši.",
+    vssTipOff: "Faili tiek lasīti tieši: citās programmās atvērtie faili var tikt izlaisti vai būt nekonsekventi.",
+    snapshotTipMachineLinux: "Montētie nodalījumi tiek lasīti caur momentuzņēmumu (elastio-snap), ja to var izveidot; citādi tieši.",
+    snapshotTipOnLinux: "Faili tiek lasīti no failu sistēmas momentuzņēmuma, ja sējums to atbalsta; citādi tieši.",
+    snapshotTipOffLinux: "Faili tiek lasīti tieši: faili, kas mainās dublēšanas laikā, var būt nekonsekventi.",
   },
   lt: {
     // Header
@@ -9576,6 +9653,13 @@ const translations = {
     logMachineBackupCompletedStats: "Kompiuterio atsarginė kopija baigta per {duration}: perskaityta {read} ({new} naujų, {reused} pakartotinai panaudotų fragmentų, iš jų {blank} tuščia vieta; įkelta {uploaded})",
     processedUnreadable: "{size} neperskaitoma (nuliai atvaizde)",
     logMachineBackupUnreadable: "⚠️ Kompiuterio atsarginė kopija baigta per {duration}, bet {bad} disko nepavyko perskaityti, atvaizde ten nuliai ({where}). Perskaityta {read} ({new} naujų, {reused} pakartotinai panaudotų fragmentų; įkelta {uploaded})",
+    snapshotBadge: "Momentinė kopija",
+    vssTipMachine: "Disko atvaizdai tomus visada skaito per tomo šešėlinę kopiją (VSS).",
+    vssTipOn: "Failai skaitomi iš tomo šešėlinės kopijos (VSS), todėl kitose programose atidaryti failai kopijuojami tokie, kokie buvo pradžioje. Tinklo diskams momentinių kopijų daryti negalima, jie skaitomi tiesiogiai.",
+    vssTipOff: "Failai skaitomi tiesiogiai: kitose programose atidaryti failai gali būti praleisti arba nenuoseklūs.",
+    snapshotTipMachineLinux: "Prijungti skaidiniai skaitomi per momentinę kopiją (elastio-snap), kai ją galima sukurti; kitaip tiesiogiai.",
+    snapshotTipOnLinux: "Failai skaitomi iš failų sistemos momentinės kopijos, jei tomas ją palaiko; kitaip tiesiogiai.",
+    snapshotTipOffLinux: "Failai skaitomi tiesiogiai: kopijavimo metu kintantys failai gali būti nenuoseklūs.",
   },
   nl: {
     // Header
@@ -10373,6 +10457,13 @@ const translations = {
     logMachineBackupCompletedStats: "Machinebackup voltooid in {duration}: {read} gelezen ({new} nieuw, {reused} chunks hergebruikt, waarvan {blank} lege ruimte; {uploaded} geüpload)",
     processedUnreadable: "{size} onleesbaar (nullen in de kopie)",
     logMachineBackupUnreadable: "⚠️ Machinebackup voltooid in {duration}, maar {bad} van de schijf kon niet gelezen worden en is nullen in de kopie ({where}). {read} gelezen ({new} nieuw, {reused} chunks hergebruikt; {uploaded} geüpload)",
+    snapshotBadge: "Momentopname",
+    vssTipMachine: "Schijfkopieën lezen de volumes altijd via een schaduwkopie van het volume (VSS).",
+    vssTipOn: "Bestanden worden uit een schaduwkopie van het volume (VSS) gelezen, dus bestanden die in andere programma's open zijn, worden geback-upt zoals ze bij de start waren. Netwerkstations ondersteunen geen momentopnamen en worden live gelezen.",
+    vssTipOff: "Bestanden worden live gelezen: bestanden die in andere programma's open zijn, kunnen worden overgeslagen of inconsistent zijn.",
+    snapshotTipMachineLinux: "Gekoppelde partities worden via een momentopname (elastio-snap) gelezen als dat kan; anders live.",
+    snapshotTipOnLinux: "Bestanden worden uit een momentopname van het bestandssysteem gelezen als het volume dat ondersteunt; anders live.",
+    snapshotTipOffLinux: "Bestanden worden live gelezen: bestanden die tijdens de back-up veranderen, kunnen inconsistent zijn.",
   },
   pt: {
     // Header
@@ -11170,6 +11261,13 @@ const translations = {
     logMachineBackupCompletedStats: "Backup da máquina concluído em {duration}: {read} lidos ({new} novos, {reused} blocos reutilizados, {blank} deles espaço vazio; {uploaded} carregados)",
     processedUnreadable: "{size} ilegíveis (zeros na imagem)",
     logMachineBackupUnreadable: "⚠️ Backup da máquina concluído em {duration}, mas {bad} do disco não puderam ser lidos e são zeros na imagem ({where}). {read} lidos ({new} novos, {reused} blocos reutilizados; {uploaded} carregados)",
+    snapshotBadge: "Instantâneo",
+    vssTipMachine: "As imagens de disco leem sempre os volumes através de uma cópia sombra do volume (VSS).",
+    vssTipOn: "Os ficheiros são lidos de uma cópia sombra do volume (VSS), por isso os abertos noutros programas são copiados como estavam no início. As unidades de rede não suportam instantâneos e são lidas diretamente.",
+    vssTipOff: "Os ficheiros são lidos diretamente: os abertos noutros programas podem ser ignorados ou ficar inconsistentes.",
+    snapshotTipMachineLinux: "As partições montadas são lidas através de um instantâneo (elastio-snap) quando possível; caso contrário, diretamente.",
+    snapshotTipOnLinux: "Os ficheiros são lidos de um instantâneo do sistema de ficheiros se o volume o suportar; caso contrário, diretamente.",
+    snapshotTipOffLinux: "Os ficheiros são lidos diretamente: os que mudam durante a cópia podem ficar inconsistentes.",
   },
   ro: {
     // Header
@@ -11967,6 +12065,13 @@ const translations = {
     logMachineBackupCompletedStats: "Backup-ul mașinii s-a finalizat în {duration}: {read} citiți ({new} noi, {reused} blocuri refolosite, dintre care {blank} spațiu gol; {uploaded} încărcați)",
     processedUnreadable: "{size} ilizibili (zerouri în imagine)",
     logMachineBackupUnreadable: "⚠️ Backup-ul mașinii s-a finalizat în {duration}, dar {bad} din disc nu au putut fi citiți și sunt zerouri în imagine ({where}). {read} citiți ({new} noi, {reused} blocuri refolosite; {uploaded} încărcați)",
+    snapshotBadge: "Instantaneu",
+    vssTipMachine: "Imaginile de disc citesc întotdeauna volumele printr-o copie umbră a volumului (VSS).",
+    vssTipOn: "Fișierele sunt citite dintr-o copie umbră a volumului (VSS), deci fișierele deschise în alte programe sunt salvate așa cum erau la început. Unitățile de rețea nu suportă instantanee și sunt citite direct.",
+    vssTipOff: "Fișierele sunt citite direct: cele deschise în alte programe pot fi omise sau inconsecvente.",
+    snapshotTipMachineLinux: "Partițiile montate sunt citite printr-un instantaneu (elastio-snap) când se poate; altfel direct.",
+    snapshotTipOnLinux: "Fișierele sunt citite dintr-un instantaneu al sistemului de fișiere dacă volumul îl suportă; altfel direct.",
+    snapshotTipOffLinux: "Fișierele sunt citite direct: cele care se schimbă în timpul backup-ului pot fi inconsecvente.",
   },
   sk: {
     // Header
@@ -12764,6 +12869,13 @@ const translations = {
     logMachineBackupCompletedStats: "Záloha počítača dokončená za {duration}: prečítané {read} ({new} nových, {reused} znovu použitých blokov, z toho {blank} prázdne miesto; nahraté {uploaded})",
     processedUnreadable: "{size} nečitateľných (nuly v obraze)",
     logMachineBackupUnreadable: "⚠️ Záloha počítača dokončená za {duration}, ale {bad} disku sa nedalo prečítať a v obraze sú nuly ({where}). Prečítané {read} ({new} nových, {reused} znovu použitých blokov; nahraté {uploaded})",
+    snapshotBadge: "Snímka",
+    vssTipMachine: "Obrazy disku vždy čítajú zväzky cez tieňovú kópiu zväzku (VSS).",
+    vssTipOn: "Súbory sa čítajú z tieňovej kópie zväzku (VSS), takže súbory otvorené v iných programoch sa zálohujú v stave na začiatku. Sieťové jednotky snímky nepodporujú a čítajú sa priamo.",
+    vssTipOff: "Súbory sa čítajú priamo: súbory otvorené v iných programoch môžu byť preskočené alebo nekonzistentné.",
+    snapshotTipMachineLinux: "Pripojené oddiely sa čítajú cez snímku (elastio-snap), ak ju možno vytvoriť; inak sa čítajú priamo.",
+    snapshotTipOnLinux: "Súbory sa čítajú zo snímky súborového systému, ak ju zväzok podporuje; inak priamo.",
+    snapshotTipOffLinux: "Súbory sa čítajú priamo: súbory meniace sa počas zálohy môžu byť nekonzistentné.",
   },
   tr: {
     // Header
@@ -13561,6 +13673,13 @@ const translations = {
     logMachineBackupCompletedStats: "Makine yedeklemesi {duration} içinde tamamlandı: {read} okundu ({new} yeni, {reused} yeniden kullanılan parça, bunların {blank} tanesi boş alan; {uploaded} yüklendi)",
     processedUnreadable: "{size} okunamadı (görüntüde sıfır)",
     logMachineBackupUnreadable: "⚠️ Makine yedeklemesi {duration} içinde tamamlandı, ancak diskin {bad} kadarı okunamadı ve görüntüde sıfır olarak yer alıyor ({where}). {read} okundu ({new} yeni, {reused} yeniden kullanılan parça; {uploaded} yüklendi)",
+    snapshotBadge: "Anlık görüntü",
+    vssTipMachine: "Disk görüntüleri birimleri her zaman bir Birim Gölge Kopyası (VSS) üzerinden okur.",
+    vssTipOn: "Dosyalar bir Birim Gölge Kopyasından (VSS) okunur; başka programlarda açık dosyalar başlangıçtaki halleriyle yedeklenir. Ağ sürücülerinin anlık görüntüsü alınamaz, doğrudan okunur.",
+    vssTipOff: "Dosyalar doğrudan okunur: başka programlarda açık dosyalar atlanabilir veya tutarsız olabilir.",
+    snapshotTipMachineLinux: "Bağlı bölümler, alınabildiğinde bir anlık görüntü (elastio-snap) üzerinden okunur; aksi halde doğrudan okunur.",
+    snapshotTipOnLinux: "Dosyalar, birim destekliyorsa bir dosya sistemi anlık görüntüsünden okunur; aksi halde doğrudan.",
+    snapshotTipOffLinux: "Dosyalar doğrudan okunur: yedekleme sırasında değişen dosyalar tutarsız olabilir.",
   },
   uk: {
     // Header
@@ -14358,6 +14477,13 @@ const translations = {
     logMachineBackupCompletedStats: "Резервне копіювання машини завершено за {duration}: прочитано {read} ({new} нових, {reused} повторно використаних блоків, з них {blank} порожнього простору; вивантажено {uploaded})",
     processedUnreadable: "{size} не прочитано (нулі в образі)",
     logMachineBackupUnreadable: "⚠️ Резервне копіювання машини завершено за {duration}, але {bad} диска не вдалося прочитати, в образі там нулі ({where}). Прочитано {read} ({new} нових, {reused} повторно використаних блоків; вивантажено {uploaded})",
+    snapshotBadge: "Знімок",
+    vssTipMachine: "Образи диска завжди читають томи через тіньову копію тому (VSS).",
+    vssTipOn: "Файли читаються з тіньової копії тому (VSS), тож відкриті в інших програмах файли копіюються такими, якими були на початку. Мережеві диски не підтримують знімки й читаються напряму.",
+    vssTipOff: "Файли читаються напряму: відкриті в інших програмах файли можуть бути пропущені або неузгоджені.",
+    snapshotTipMachineLinux: "Змонтовані розділи читаються через знімок (elastio-snap), якщо його можна створити; інакше напряму.",
+    snapshotTipOnLinux: "Файли читаються зі знімка файлової системи, якщо том його підтримує; інакше напряму.",
+    snapshotTipOffLinux: "Файли читаються напряму: файли, що змінюються під час копіювання, можуть бути неузгоджені.",
   }
 }
 

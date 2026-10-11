@@ -3665,6 +3665,32 @@ function App() {
                               }}>
                                 {(job.backupType === 'machine' ? t('backupTypeMachine') : t('backupTypeDirectory')).split(' ')[0].toUpperCase()}{job.machineAsVm ? ' (VM)' : ''}
                               </span>
+                              {/* Snapshot badge: whether this set reads through a
+                                  snapshot, from the set's own setting (folder sets) or
+                                  always (machine sets snapshot every mounted volume).
+                                  "VSS" on Windows, "Snapshot" on Linux. */}
+                              {(() => {
+                                const linux = systemInfo.os === 'linux'
+                                const on = job.backupType === 'machine' || !!job.useVSS
+                                const tip = job.backupType === 'machine'
+                                  ? (linux ? tl('snapshotTipMachineLinux', 'Mounted partitions are read through a snapshot (elastio-snap) when one can be taken; otherwise they are read live.')
+                                           : tl('vssTipMachine', 'Disk images always read the volumes through a Volume Shadow Copy.'))
+                                  : on
+                                    ? (linux ? tl('snapshotTipOnLinux', 'Files are read from a file system snapshot where the volume supports one; otherwise they are read live.')
+                                             : tl('vssTipOn', 'Files are read from a Volume Shadow Copy, so files open in other programs are backed up as they were at the start. Network drives cannot be snapshotted and are read live.'))
+                                    : (linux ? tl('snapshotTipOffLinux', 'Files are read live: files that change during the backup may be inconsistent.')
+                                             : tl('vssTipOff', 'Files are read live: files open in other programs may be skipped or inconsistent.'))
+                                return (
+                                  <span title={tip} style={{
+                                    display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
+                                    padding: '2px 7px', borderRadius: '3px', verticalAlign: 'middle', marginRight: '6px', cursor: 'help',
+                                    background: on ? '#eaf4fb' : '#f4f4f4', color: on ? '#1f6f9f' : '#777',
+                                    border: '1px solid ' + (on ? '#c4dfef' : '#ddd'),
+                                  }}>
+                                    {(linux ? tl('snapshotBadge', 'Snapshot') : 'VSS').toUpperCase()} {(on ? t('vssOn') : t('vssOff')).toUpperCase()}
+                                  </span>
+                                )
+                              })()}
                               {/* Schedule and next run as two tightly spaced lines beside the
                                   badges, so the card gains no height. nextRun is the ISO time the
                                   scheduler keeps on the job; manual sets have none. */}
