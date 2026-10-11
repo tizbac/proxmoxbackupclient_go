@@ -26,6 +26,9 @@ type JobProgress struct {
 	// UnreadableBytes is how much of the disks could not be read and went
 	// into the image as zeros (see Unreadable for where).
 	UnreadableBytes atomic.Uint64
+	// FreeSkipped is the free space (and paging/hibernation files) not read
+	// but sent as zeros.
+	FreeSkipped atomic.Uint64
 
 	mu        sync.Mutex
 	bad       []BadRange

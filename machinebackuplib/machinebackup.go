@@ -590,7 +590,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 
 			isGPT := diskHasGPT(dev)
 			jp.setPhase("snapshot")
-			size, err := BackupWindowsDisk(client, int(idx), deviceCallback, jp)
+			size, err := BackupWindowsDisk(client, int(idx), deviceCallback, jp, cfg.ReadFreeSpace)
 			if err != nil {
 				return nil, fmt.Errorf("backup disk %s %v", dev, err)
 			}

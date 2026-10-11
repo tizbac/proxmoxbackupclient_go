@@ -1610,8 +1610,8 @@ func runMachineBackupInline(opts BackupOptions) error {
 
 	// counts is the "New / Reused / blank / uploaded" part of the log lines.
 	counts := func() string {
-		return fmt.Sprintf("new %d, reused %d (%d blank), uploaded %s",
-			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(), formatByteSize(jp.UploadedBytes.Load()))
+		return fmt.Sprintf("new %d, reused %d (%d blank), uploaded %s, free space not read %s",
+			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(), formatByteSize(jp.UploadedBytes.Load()), formatByteSize(jp.FreeSkipped.Load()))
 	}
 
 	// Progress callback wrapper. Returning true (user pressed Stop, which

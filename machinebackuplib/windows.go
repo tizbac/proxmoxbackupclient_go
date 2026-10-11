@@ -269,7 +269,10 @@ func GetDiskSize(path string) (int64, error) {
 	return GetDiskLength(path)
 }
 
-func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback ProgressCallback, jp *JobProgress) (int64, error) {
+// BackupWindowsDisk images \\.\PhysicalDrive<index>. With readFree false,
+// the free clusters of each snapshotted NTFS volume are not read but sent as
+// zeros (see usedMap).
+func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback ProgressCallback, jp *JobProgress, readFree bool) (int64, error) {
 	parts := make([]Partition, 0)
 	ch := make(chan []byte)
 	diskdev := fmt.Sprintf("\\\\.\\PhysicalDrive%d", index)
@@ -532,6 +535,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			length := P.EndByte - P.StartByte
 			var src io.ReaderAt = F
 			srcOff, name := P.StartByte, diskdev
+			var used *usedMap
 			if P.RequiresVSS {
 				snap, ok := snapshots[P.Letter+":\\"]
 				if !ok {
@@ -557,6 +561,13 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 					length = uint64(l)
 				}
 				src, srcOff, name = snapshot_file, 0, fmt.Sprintf("%s: (shadow copy %s)", P.Letter, snap.Id)
+				if !readFree {
+					if m, err := readUsedMap(snapshot_file, snapPath); err != nil {
+						log.Printf("Reading all of %s, free space included: %v", name, err)
+					} else {
+						used = m
+					}
+				}
 			}
 
 			stoppedByUser := false
@@ -587,7 +598,38 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 				jp.noteUnreadable(diskdev, diskOff, n)
 			}
 
-			err := readResilient(src, srcOff, length, block, 4096, emit, emitZeros, onBad)
+			var err error
+			if used == nil {
+				err = readResilient(src, srcOff, length, block, 4096, emit, emitZeros, onBad)
+			} else {
+				// 4 MiB at a time: a window with no used cluster is zeros,
+				// the rest is read (whole windows keep the reads large), and
+				// the free clusters in it are zeroed before they go out, so
+				// deleted data never reaches the backup and blank space dedupes.
+				var skipped uint64
+				for w := uint64(0); w < length && err == nil; w += pbscommon.PBS_FIXED_CHUNK_SIZE {
+					n := min(uint64(pbscommon.PBS_FIXED_CHUNK_SIZE), length-w)
+					if used.anyUsed(int64(w), int64(n)) {
+						at := int64(w)
+						masked := func(data []byte) bool {
+							used.zeroFree(data, at)
+							at += int64(len(data))
+							return emit(data)
+						}
+						maskedZeros := func(k uint64) bool {
+							at += int64(k)
+							return emitZeros(k)
+						}
+						err = readResilient(src, srcOff+w, n, block, 4096, masked, maskedZeros, onBad)
+					} else if emitZeros(n) {
+						skipped += n
+					} else {
+						err = errCopyStopped
+					}
+				}
+				jp.FreeSkipped.Add(skipped)
+				log.Printf("%s: %s of free space not read", name, BytesToString(int64(skipped)))
+			}
 			if err == errCopyStopped {
 				if stoppedByUser {
 					return errCancelled

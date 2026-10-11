@@ -552,6 +552,12 @@ type ScheduledJob struct {
 
 ## 🟢 P2 - NICE TO HAVE (Backlog)
 
+### ✅ Machine backups skip free space (Windows, 2026-10-11)
+machinebackuplib/freespace_windows.go: FSCTL_GET_NTFS_VOLUME_DATA + FSCTL_GET_VOLUME_BITMAP on the shadow copy, pagefile/hiberfil/swapfile clusters freed via FSCTL_GET_RETRIEVAL_POINTERS (best effort), free 4 MiB windows not read, free clusters in read windows zeroed. Config.ReadFreeSpace = old behaviour. Live on winclient: 1 GB test volume, 840 MB not read, files identical, deleted 20 MB of random data absent from the image, image mounted as VHD and chkdsk clean.
+- [ ] Linux (stitched disk): ext4/XFS free-space maps, or `fstrim`-style discard info; not done.
+- [ ] GUI option for a forensic (read everything) copy per machine set.
+- [ ] Volumes without a drive letter (EFI, recovery) are still read whole (small).
+
 ### ✅ Undelete and Roll back for MACHINE sets (2026-10-11, Mick: "one method on these physical devices")
 ScheduledJob.ImageFolders (default Desktop/Documents/Pictures/Music/Videos/Downloads); set_image.go maps each folder to "drive-sata<disk>.img.fidx@<partition offset>:<path>" (volumeDiskExtent, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS) and builds its file list from the image (folderEntries applies the live walk's exclusions); restoreImageSnapshot understands those keys. Live on sarah-yoga510: profile folder 30,726 entries in 9.1 s, preview 0 missing / 0 changed / 18 new / 27,362 unchanged, 5 files restored identical.
 - [ ] A changed partition layout since a snapshot (offset moved) fails that snapshot's list with a clear error; could fall back to matching the volume by its NTFS serial number.

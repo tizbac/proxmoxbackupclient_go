@@ -61,6 +61,12 @@ type Config struct {
 	// reused and blank, bytes uploaded, current disk and partition) for a
 	// caller to sample on its own timer. Nil for the CLI.
 	Progress *JobProgress `json:"-"`
+
+	// ReadFreeSpace reads every sector of the disk, free space included (a
+	// forensic copy). By default the free clusters of each snapshotted NTFS
+	// volume, and its paging, hibernation and swap files, are sent as zeros
+	// without being read.
+	ReadFreeSpace bool `json:"readfreespace,omitempty"`
 }
 
 func (c *Config) Valid() bool {
