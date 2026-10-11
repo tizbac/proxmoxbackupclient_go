@@ -125,7 +125,7 @@ func isBlockDevice(path string) bool {
 	return fi.Mode()&os.ModeDevice != 0 && fi.Mode()&os.ModeCharDevice == 0
 }
 
-func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback) (bool, int64, error) {
+func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress) (bool, int64, error) {
 	if !strings.HasPrefix(dev, "/dev/") {
 		return false, 0, nil
 	}
@@ -163,7 +163,7 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progres
 	fidxName := fmt.Sprintf("drive-sata%d.img.fidx", index)
 
 	err = snapshot.CreateVSSSnapshot(mountpoints, false, func(snapshots map[string]snapshot.SnapShot) error {
-		return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback)
+		return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback, jp)
 	})
 	if err != nil {
 		return true, 0, err
@@ -177,7 +177,7 @@ type diskSegment struct {
 	snapDev string
 }
 
-func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total uint64, parts []diskPartition, snapshots map[string]snapshot.SnapShot, progressCallback ProgressCallback) error {
+func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total uint64, parts []diskPartition, snapshots map[string]snapshot.SnapShot, progressCallback ProgressCallback, jp *JobProgress) error {
 	regions := make([]diskSegment, 0)
 	for _, p := range parts {
 		if p.mountpoint == "" {
@@ -199,6 +199,19 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 
 	segments := assembleSegments(total, regions)
 
+	// The progress card names the partition being read; the reader only
+	// reports a fraction of the disk, so look the offset up here.
+	if jp != nil {
+		inner := progressCallback
+		progressCallback = func(fraction float64, message string) bool {
+			jp.setPartition(partitionLabelAt(parts, uint64(fraction*float64(total))))
+			if inner == nil {
+				return false
+			}
+			return inner(fraction, message)
+		}
+	}
+
 	ch := make(chan []byte)
 	errCh := make(chan error, 1)
 	uploadDone := make(chan struct{})
@@ -218,11 +231,25 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 	var uploadErr error
 	go func() {
 		defer close(uploadDone)
-		uploadErr = uploadWorker(client, fidxName, total, ch, errCh)
+		uploadErr = uploadWorker(client, fidxName, total, ch, errCh, jp)
 	}()
 
 	<-uploadDone
 	return uploadErr
+}
+
+// partitionLabelAt names the partition holding byte off of the disk:
+// "/dev/sda2 (/home)", "/dev/sda1", or "unpartitioned space".
+func partitionLabelAt(parts []diskPartition, off uint64) string {
+	for _, p := range parts {
+		if off >= p.startByte && off < p.endByte {
+			if p.mountpoint != "" {
+				return p.device + " (" + p.mountpoint + ")"
+			}
+			return p.device
+		}
+	}
+	return "unpartitioned space"
 }
 
 func assembleSegments(total uint64, regions []diskSegment) []diskSegment {
@@ -253,13 +280,12 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 	buffer := make([]byte, 0, pbscommon.PBS_FIXED_CHUNK_SIZE*2)
 
 	var pos uint64 = 0
-	var b int64 = 0
 
 	report := func() bool {
 		if progressCallback == nil {
 			return false
 		}
-		return progressCallback(float64(pos)/float64(total), fmt.Sprintf("%s: Block %d", dev, b))
+		return progressCallback(float64(pos)/float64(total), blockMessage(dev, pos, total))
 	}
 
 	sendChunk := func(chunk []byte) bool {
@@ -272,7 +298,6 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 			return false // uploader stopped; drop the data
 		}
 		pos += uint64(len(chunk))
-		b++
 		return true
 	}
 

@@ -196,4 +196,43 @@ type BackupProgressStats struct {
 	ReadReason string `json:"read_reason,omitempty"`
 	// ChangeMode is the run's change-detection mode ("" for the classic format).
 	ChangeMode string `json:"change_mode,omitempty"`
+
+	// Machine (disk image) backups: Kind is "machine", Phase adds "snapshot",
+	// and these say where the reader is. Blocks are 4 MiB fixed-index chunks.
+	Kind        string `json:"kind,omitempty"`
+	BlankChunks uint64 `json:"blank_chunks,omitempty"` // all-zero chunks, also counted in New or Reused
+	Disk        string `json:"disk,omitempty"`
+	DiskNo      int    `json:"disk_no,omitempty"`
+	DiskCount   int    `json:"disk_count,omitempty"`
+	DiskBytes   uint64 `json:"disk_bytes,omitempty"`
+	DiskDone    uint64 `json:"disk_done,omitempty"`
+	Partition   string `json:"partition,omitempty"`
+}
+
+// event is the payload of the "backup:stats" Wails event.
+func (s *BackupProgressStats) event() map[string]interface{} {
+	return map[string]interface{}{
+		"percent":       s.Percent * 100,
+		"bytesDone":     s.BytesDone,
+		"bytesTotal":    s.BytesTotal,
+		"newChunks":     s.NewChunks,
+		"reusedChunks":  s.ReusedChunks,
+		"failedChunks":  s.FailedChunks,
+		"currentDir":    s.CurrentDir,
+		"message":       s.Message,
+		"filesDone":     s.FilesDone,
+		"filesTotal":    s.FilesTotal,
+		"uploadedBytes": s.UploadedBytes,
+		"phase":         s.Phase,
+		"readReason":    s.ReadReason,
+		"changeMode":    s.ChangeMode,
+		"kind":          s.Kind,
+		"blankChunks":   s.BlankChunks,
+		"disk":          s.Disk,
+		"diskNo":        s.DiskNo,
+		"diskCount":     s.DiskCount,
+		"diskBytes":     s.DiskBytes,
+		"diskDone":      s.DiskDone,
+		"partition":     s.Partition,
+	}
 }

@@ -1604,14 +1604,30 @@ func runMachineBackupInline(opts BackupOptions) error {
 		BackupDevices:   opts.BackupObjects,
 		Comment:         opts.Comment,
 		Crypt:           opts.Crypt,
+		Progress:        &machinebackuplib.JobProgress{},
+	}
+	jp := cfg.Progress
+
+	// counts is the "New / Reused / blank / uploaded" part of the log lines.
+	counts := func() string {
+		return fmt.Sprintf("new %d, reused %d (%d blank), uploaded %s",
+			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(), formatByteSize(jp.UploadedBytes.Load()))
 	}
 
 	// Progress callback wrapper. Returning true (user pressed Stop, which
 	// cancels opts.Ctx) makes the backup abort without committing the index.
 	// The disk reader calls it after every block, so it is also where a
-	// paused machine backup waits.
+	// paused machine backup waits. The log gets a block line only once per
+	// whole percent (it used to get all ~30,000 of a 128 GB disk); other
+	// messages (snapshot, disk complete) are always logged.
+	lastLoggedPct := -1
 	progress := func(pct float64, msg string) bool {
-		writeBackupLog(fmt.Sprintf("Backup progress: %.1f%% - %s", pct*100, msg))
+		if !strings.Contains(msg, ": Block ") {
+			writeBackupLog(fmt.Sprintf("Backup progress: %.1f%% - %s", pct*100, msg))
+		} else if p := int(pct * 100); p != lastLoggedPct {
+			lastLoggedPct = p
+			writeBackupLog(fmt.Sprintf("Backup progress: %d%% - %s - %s", p, msg, counts()))
+		}
 		if opts.OnProgress != nil {
 			opts.OnProgress(pct, msg)
 		}
@@ -1621,8 +1637,68 @@ func runMachineBackupInline(opts BackupOptions) error {
 		return opts.Ctx != nil && opts.Ctx.Err() != nil
 	}
 
+	// emitStats sends the card's live figures on a timer, as folder backups
+	// do, so speeds are measured over a steady cadence.
+	emitStats := func() {
+		if opts.OnStats == nil {
+			return
+		}
+		w := jp.Where()
+		total := jp.BytesTotal.Load()
+		done := jp.BytesDone.Load()
+		pct := 0.0
+		if total > 0 {
+			pct = float64(done) / float64(total)
+		}
+		opts.OnStats(&BackupProgressStats{
+			Percent:       pct,
+			BytesDone:     done,
+			BytesTotal:    total,
+			NewChunks:     jp.NewChunks.Load(),
+			ReusedChunks:  jp.ReusedChunks.Load(),
+			UploadedBytes: jp.UploadedBytes.Load(),
+			Phase:         w.Phase,
+			Kind:          "machine",
+			BlankChunks:   jp.BlankChunks.Load(),
+			Disk:          w.Disk,
+			DiskNo:        w.DiskNo,
+			DiskCount:     w.DiskCount,
+			DiskBytes:     w.DiskSize,
+			DiskDone:      w.DiskPos,
+			Partition:     w.Partition,
+		})
+	}
+	tickerDone := make(chan struct{})
+	tickerExited := make(chan struct{})
+	go func() {
+		defer close(tickerExited)
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-tickerDone:
+				return
+			case <-t.C:
+				emitStats()
+			}
+		}
+	}()
+	// The ticker must be silent before the run is reported complete, or a
+	// late tick lands on the card of the next queued backup.
+	stopTicker := func() {
+		select {
+		case <-tickerDone:
+		default:
+			close(tickerDone)
+		}
+		<-tickerExited
+	}
+	defer stopTicker()
+
 	// Perform machine backup
 	_, err := machinebackuplib.Backup(cfg, progress)
+	stopTicker()
+	writeBackupLog(fmt.Sprintf("[RESULT] machine backup: %s of %s read, %s", formatByteSize(jp.BytesDone.Load()), formatByteSize(jp.BytesTotal.Load()), counts()))
 	if err != nil {
 		// Handle error case
 		errMsg := fmt.Sprintf("Machine backup failed: %v", err)
@@ -1647,19 +1723,25 @@ func runMachineBackupInline(opts BackupOptions) error {
 
 	// Success case
 	duration := time.Since(startTime)
-	completionMsg := fmt.Sprintf("Machine backup completed in %s", formatDuration(duration))
-	completionParams := msgParams{"duration": formatDuration(duration)}
+	newC, reusedC, blankC := jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load()
+	read, uploaded := formatByteSize(jp.BytesTotal.Load()), formatByteSize(jp.UploadedBytes.Load())
+	completionMsg := fmt.Sprintf("Machine backup completed in %s: %s read (%d new, %d reused chunks, %d of them blank space; %s uploaded)",
+		formatDuration(duration), read, newC, reusedC, blankC, uploaded)
+	completionParams := msgParams{"duration": formatDuration(duration), "read": read, "new": newC, "reused": reusedC, "blank": blankC, "uploaded": uploaded}
 
 	if opts.OnComplete != nil {
-		opts.OnComplete(true, completionMsg, MsgMachineBackupCompleted, completionParams)
+		opts.OnComplete(true, completionMsg, MsgMachineBackupCompletedStats, completionParams)
 	}
 	if opts.OnResult != nil {
 		opts.OnResult(&BackupStatus{
 			Outcome:       OutcomeVerifiedSuccess,
 			BackupID:      opts.BackupID,
 			DurationSec:   duration.Seconds(),
+			NewChunks:     newC,
+			ReusedChunks:  reusedC,
+			TotalBytes:    jp.BytesTotal.Load(),
 			Message:       completionMsg,
-			MessageKey:    MsgMachineBackupCompleted,
+			MessageKey:    MsgMachineBackupCompletedStats,
 			MessageParams: completionParams,
 		})
 	}

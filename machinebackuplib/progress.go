@@ -1,0 +1,148 @@
+package machinebackuplib
+
+import (
+	"bytes"
+	"fmt"
+	"sync"
+	"sync/atomic"
+
+	"pbscommon"
+)
+
+// JobProgress holds the running figures of one machine backup job, shared by
+// every disk in it, for a GUI to sample on its own timer. Pass one in
+// Config.Progress; every method is safe on a nil *JobProgress, so the CLI and
+// the tests can leave it out.
+type JobProgress struct {
+	NewChunks    atomic.Uint64 // chunks uploaded to the server
+	ReusedChunks atomic.Uint64 // chunks the server already had (or this image already sent)
+	// BlankChunks counts the all-zero chunks (blank disk space). Each of them
+	// is also counted in NewChunks or ReusedChunks: the first one of a run is
+	// uploaded unless the server has it, the rest are reused.
+	BlankChunks   atomic.Uint64
+	UploadedBytes atomic.Uint64 // uncompressed size of the chunks uploaded
+	BytesDone     atomic.Uint64 // bytes of the whole job read so far
+	BytesTotal    atomic.Uint64 // size of every disk in the job
+
+	mu        sync.Mutex
+	phase     string
+	disk      string
+	diskNo    int // 1-based
+	diskCount int
+	diskSize  uint64
+	diskPos   uint64
+	partition string
+}
+
+// Location is where the reader is: which disk of how many, how far into it,
+// and the partition at that point ("" when unknown).
+type Location struct {
+	Phase     string // "connecting", "snapshot", "data" or "finishing"
+	Disk      string
+	DiskNo    int
+	DiskCount int
+	DiskSize  uint64
+	DiskPos   uint64
+	Partition string
+}
+
+func (p *JobProgress) setPhase(phase string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.phase = phase
+	p.mu.Unlock()
+}
+
+func (p *JobProgress) startDisk(disk string, no, count int, size uint64) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.disk, p.diskNo, p.diskCount, p.diskSize = disk, no, count, size
+	p.diskPos = 0
+	p.partition = ""
+	p.mu.Unlock()
+}
+
+func (p *JobProgress) setDiskPos(pos uint64, jobDone uint64) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.diskPos = pos
+	p.mu.Unlock()
+	p.BytesDone.Store(jobDone)
+}
+
+func (p *JobProgress) setPartition(name string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.partition = name
+	p.mu.Unlock()
+}
+
+// Where returns the reader's current location.
+func (p *JobProgress) Where() Location {
+	if p == nil {
+		return Location{}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return Location{Phase: p.phase, Disk: p.disk, DiskNo: p.diskNo, DiskCount: p.diskCount,
+		DiskSize: p.diskSize, DiskPos: p.diskPos, Partition: p.partition}
+}
+
+// countChunk records one chunk of an image. blank is true for an all-zero
+// chunk, uploaded for one sent to the server rather than reused.
+func (p *JobProgress) countChunk(size int, blank, uploaded bool) {
+	if p == nil {
+		return
+	}
+	if uploaded {
+		p.NewChunks.Add(1)
+		p.UploadedBytes.Add(uint64(size))
+	} else {
+		p.ReusedChunks.Add(1)
+	}
+	if blank {
+		p.BlankChunks.Add(1)
+	}
+}
+
+// Blocks is how many 4 MiB blocks (fixed-index chunks) a disk of size bytes
+// has; block numbers in the progress messages run 1..Blocks(size).
+func Blocks(size uint64) uint64 {
+	return (size + pbscommon.PBS_FIXED_CHUNK_SIZE - 1) / pbscommon.PBS_FIXED_CHUNK_SIZE
+}
+
+// blockMessage is the progress line for a disk read up to pos: "Block N / M".
+func blockMessage(dev string, pos, size uint64) string {
+	n := pos / pbscommon.PBS_FIXED_CHUNK_SIZE
+	if pos%pbscommon.PBS_FIXED_CHUNK_SIZE != 0 || n == 0 {
+		n++
+	}
+	if m := Blocks(size); n > m {
+		n = m
+	}
+	return fmt.Sprintf("%s: Block %d / %d", dev, n, Blocks(size))
+}
+
+// zeroChunkDetector tells whether a chunk is all zeros by its digest, which
+// the upload path computes anyway, so blank space costs no extra pass over
+// the data. Only full-size chunks are checked; a short tail chunk of zeros is
+// not worth a second digest.
+type zeroChunkDetector struct {
+	digest [32]byte
+}
+
+func newZeroChunkDetector(client *pbscommon.PBSClient) zeroChunkDetector {
+	return zeroChunkDetector{digest: client.ChunkDigest(make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE))}
+}
+
+func (z zeroChunkDetector) isBlank(data []byte, digest [32]byte) bool {
+	return len(data) == pbscommon.PBS_FIXED_CHUNK_SIZE && bytes.Equal(digest[:], z.digest[:])
+}

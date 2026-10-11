@@ -1223,22 +1223,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		if a.isServiceProcess || a.ctx == nil {
 			return
 		}
-		runtime.EventsEmit(a.ctx, "backup:stats", map[string]interface{}{
-			"percent":       stats.Percent * 100,
-			"bytesDone":     stats.BytesDone,
-			"bytesTotal":    stats.BytesTotal,
-			"newChunks":     stats.NewChunks,
-			"reusedChunks":  stats.ReusedChunks,
-			"failedChunks":  stats.FailedChunks,
-			"currentDir":    stats.CurrentDir,
-			"message":       stats.Message,
-			"filesDone":     stats.FilesDone,
-			"filesTotal":    stats.FilesTotal,
-			"uploadedBytes": stats.UploadedBytes,
-			"phase":         stats.Phase,
-			"readReason":    stats.ReadReason,
-			"changeMode":    stats.ChangeMode,
-		})
+		runtime.EventsEmit(a.ctx, "backup:stats", stats.event())
 	}
 	opts.OnResult = func(status *BackupStatus) {
 		if a.isServiceProcess || a.ctx == nil {
@@ -1355,29 +1340,6 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		return err
 	}
 
-	// Total size of the selected device(s), for the "X of Y" / speed / ETA
-	// display — added 2026-09-24. Machine backups only ever reported a bare
-	// percentage ("Block N"), unlike directory backups which already have
-	// this via BackupProgressStats/backup:stats. bytesDone below is derived
-	// from percent × this total, which is approximate (block progress isn't
-	// perfectly linear with bytes actually transferred to PBS — dedup can
-	// skip work), but reuses the SAME backup:stats event the frontend
-	// already knows how to turn into speed/ETA for directory backups, so no
-	// frontend change is needed to show it for machine backups too.
-	var machineTotalBytes uint64
-	if disks, dErr := listPhysicalDisks(); dErr == nil {
-		for _, dev := range backupDevices {
-			for _, d := range disks {
-				if d.DevicePath == dev {
-					machineTotalBytes += uint64(d.Size)
-					break
-				}
-			}
-		}
-	} else {
-		writeDebugLog(fmt.Sprintf("[Machine Backup] Could not list physical disks for size lookup: %v", dErr))
-	}
-
 	// Prepare backup options
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
@@ -1428,14 +1390,6 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 					"message": message,
 					"name":    comment,
 				})
-				if machineTotalBytes > 0 {
-					runtime.EventsEmit(a.ctx, "backup:stats", map[string]interface{}{
-						"percent":    percent * 100,
-						"bytesDone":  uint64(percent * float64(machineTotalBytes)),
-						"bytesTotal": machineTotalBytes,
-						"message":    message,
-					})
-				}
 			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
 				writeDebugLog("[OnProgress] No callbacks/context (service or headless mode)")
 			}
@@ -1549,22 +1503,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		if a.isServiceProcess || a.ctx == nil {
 			return
 		}
-		runtime.EventsEmit(a.ctx, "backup:stats", map[string]interface{}{
-			"percent":       stats.Percent * 100,
-			"bytesDone":     stats.BytesDone,
-			"bytesTotal":    stats.BytesTotal,
-			"newChunks":     stats.NewChunks,
-			"reusedChunks":  stats.ReusedChunks,
-			"failedChunks":  stats.FailedChunks,
-			"currentDir":    stats.CurrentDir,
-			"message":       stats.Message,
-			"filesDone":     stats.FilesDone,
-			"filesTotal":    stats.FilesTotal,
-			"uploadedBytes": stats.UploadedBytes,
-			"phase":         stats.Phase,
-			"readReason":    stats.ReadReason,
-			"changeMode":    stats.ChangeMode,
-		})
+		runtime.EventsEmit(a.ctx, "backup:stats", stats.event())
 	}
 	opts.OnResult = func(status *BackupStatus) {
 		if a.isServiceProcess || a.ctx == nil {

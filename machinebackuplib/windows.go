@@ -269,7 +269,7 @@ func GetDiskSize(path string) (int64, error) {
 	return GetDiskLength(path)
 }
 
-func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback ProgressCallback) (int64, error) {
+func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback ProgressCallback, jp *JobProgress) (int64, error) {
 	parts := make([]Partition, 0)
 	ch := make(chan []byte)
 	diskdev := fmt.Sprintf("\\\\.\\PhysicalDrive%d", index)
@@ -342,6 +342,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			StartByte: uint64(E.StartingOffset),
 			EndByte:   uint64(E.StartingOffset + E.PartitionLength),
 			Skip:      false,
+			Number:    int(E.PartitionNumber),
 		}
 		// An active volume (one with a drive letter) that overlaps this
 		// partition MUST be read through a VSS snapshot: reading the raw disk
@@ -461,7 +462,6 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 		}
 		defer F.Close()
 
-		var b int64 = 0
 		buffer := make([]byte, 0)
 
 		errCh := make(chan error, 1)
@@ -473,7 +473,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			if progressCallback == nil {
 				return false
 			}
-			return progressCallback(float64(pos)/float64(total), fmt.Sprintf("%s: Block %d", diskdev, b))
+			return progressCallback(float64(pos)/float64(total), blockMessage(diskdev, pos, uint64(total)))
 		}
 
 		sendChunk := func(p []byte) bool {
@@ -519,6 +519,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 
 		readPartition := func(P Partition) error {
 			pos := P.StartByte
+			jp.setPartition(P.label())
 			block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
 			if !P.RequiresVSS {
 				if _, err := F.Seek(int64(P.StartByte), io.SeekStart); err != nil {
@@ -535,7 +536,6 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 					if report(pos) {
 						return errCancelled
 					}
-					b++
 					if rerr == io.EOF {
 						break
 					}
@@ -572,7 +572,6 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 					if report(pos) {
 						return errCancelled
 					}
-					b++
 					if nbytes > 0 {
 						if !push(block[:nbytes]) {
 							return errUploadAborted
@@ -640,7 +639,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 		var uploadErr error
 		go func() {
 			defer close(uploadDone)
-			uploadErr = uploadWorker(client, fmt.Sprintf("drive-sata%d.img.fidx", index), uint64(total), ch, errCh)
+			uploadErr = uploadWorker(client, fmt.Sprintf("drive-sata%d.img.fidx", index), uint64(total), ch, errCh, jp)
 		}()
 
 		<-uploadDone
@@ -658,6 +657,6 @@ func SysTraySetup() {
 
 // backupWholeDisk is Linux-only (see linux.go). On Windows whole disks are
 // handled through the \\\\.\\PhysicalDriveN path, so this reports "not handled".
-func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback) (bool, int64, error) {
+func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress) (bool, int64, error) {
 	return false, 0, nil
 }

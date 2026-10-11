@@ -613,6 +613,18 @@ Pause button on the progress card; the run waits at its next safe point (between
 - [ ] Pause, Resume and Stop for a backup the service runs (needs API endpoints on the service and the GUI to call them).
 - [ ] Maybe: Pause from the tray menu, and a "resume at" time.
 
+### ~~📊 Machine (disk image) backups: show New / Reused / Uploaded on the progress card and in Reports~~ ✅ DONE (Mick, 2026-10-11)
+Seen on sarah-yoga510's first full machine backup (128 GB, half empty, ~13 min on 1 GbE, so much of it cannot have crossed the network): Upload sat at 0, nothing said what was reused, and the block line showed twice. Now `machinebackuplib.JobProgress` (Config.Progress) counts new / reused / blank (all-zero, by digest) chunks and uploaded bytes, and tracks phase, disk n of N, position and partition; `runMachineBackupInline` samples it every second into `OnStats` (Kind "machine"). Card rows: Blocks N / total, Disk, Partition, real Upload rate, "Processed (New, Reused, k of them blank space)"; stage line per phase. Log: one line per 1% with the counts, plus a `[RESULT]` line. Completion message / Reports: `logMachineBackupCompletedStats`. Progress messages say "Block N / M". 18 languages, CHANGELOG.
+- [ ] Disk model in the Disk row ("BIWIN SSD") and file system in the Partition row ("C: (NTFS)"): not passed yet.
+- [ ] Machine backups run by the service: no stats bridge (same as folder backups, service-mode progress item).
+
+### 🏷️ Backup set card: Snapshot ON/OFF badge (Mick, 2026-10-11) - ship with the next build
+Another badge beside the existing ones on each set card (App.jsx ~3613, backup type badge and next-run line), so you can see at a glance which sets will snapshot.
+- [ ] Per set, from the set's OWN snapshot setting (the job's VSS flag that reaches `StartBackup`/`StartMachineBackup` as `useVSS`), not the global default.
+- [ ] Platform-specific wording and tooltip. Windows: "VSS ON" / "VSS OFF". Linux: "Snapshot ON" / "Snapshot OFF" for the method that set would use (LVM / filesystem snapshot for folders, elastio-snap for machine backups). Show nothing (or N/A) where the set type has no snapshot option. ⚠️ Exact Linux wording not confirmed by Mick: ask before shipping.
+- [ ] Decide whether OFF shows when the setting is ON but the path can't snapshot (e.g. `pathSupportsSnapshot` false for a network drive, backup_inline.go ~1794): probably an amber "VSS n/a" with the reason in the tooltip.
+- [ ] Strings in all 18 language files (translations.js), GUI manual note, CHANGELOG.
+
 ### ❔ Speed limit per Backup Set (TENTATIVE, Mick 2026-10-10: not sure)
 A MB/s cap per set (and maybe per server). Mick's doubt: a cap slows every run even when the bandwidth is free, and several machines may back up to the same PBS at once anyway, so letting the competing processes share whatever is available is usually better. Revisit only if a real case needs it (a slow site link, say); Pause covers the "PBS is busy right now" case.
 

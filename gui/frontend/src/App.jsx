@@ -316,9 +316,18 @@ const EMPTY_BACKUP_STATS = {
   phase: '',
   readReason: '',
   changeMode: '',
-  // hasDetail: the run sends file and upload figures (directory backups);
-  // machine backups only send bytes, so those rows read "Not available".
-  hasDetail: false
+  // hasDetail: the run sends chunk and upload figures (every backup run by
+  // this build; a service run sends percent only, so rows read "Not available").
+  hasDetail: false,
+  // Machine (disk image) backups: kind 'machine', and where the reader is.
+  kind: '',
+  blankChunks: 0,
+  disk: '',
+  diskNo: 0,
+  diskCount: 0,
+  diskBytes: 0,
+  diskDone: 0,
+  partition: ''
 }
 
 const EMPTY_RESTORE_STATS = { startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0, eta: null }
@@ -807,8 +816,8 @@ function App() {
       GetBackupPauseState().then(st => st && setBackupPause({ paused: !!st.paused, since: st.since || 0 })).catch(() => {})
     }
 
-    // Structured live statistics, every 200 ms while a directory backup runs
-    // (machine backups send bytes only, with each progress tick).
+    // Structured live statistics, on a timer while a backup runs (directory
+    // and machine backups both; machine ones add kind 'machine' and the disk).
     const unsubStats = EventsOn('backup:stats', (data) => {
       const now = Date.now()
       const samples = backupSamplesRef.current
@@ -866,6 +875,14 @@ function App() {
           readReason: data.readReason || '',
           changeMode: data.changeMode || '',
           hasDetail: data.phase !== undefined,
+          kind: data.kind || '',
+          blankChunks: data.blankChunks || 0,
+          disk: data.disk || '',
+          diskNo: data.diskNo || 0,
+          diskCount: data.diskCount || 0,
+          diskBytes: data.diskBytes || 0,
+          diskDone: data.diskDone || 0,
+          partition: data.partition || '',
           speed,
           filesRate: filesRate ?? prev.filesRate,
           uploadRate: uploadRate ?? prev.uploadRate,
@@ -3411,11 +3428,28 @@ function App() {
                 // What the run is doing, and why it is reading every file
                 // when it is.
                 const paused = backupPause.paused
+                // Machine (disk image) backups: blocks of the current disk,
+                // the disk itself and the partition stand in for the files,
+                // folder and current file rows.
+                const machine = s.kind === 'machine'
+                const BLOCK = 4 * 1024 * 1024
+                const blocks = Math.ceil(s.diskBytes / BLOCK)
+                const block = Math.min(blocks, Math.max(1, Math.ceil(s.diskDone / BLOCK)))
                 let stage
                 if (backupStopRequested) {
                   stage = tl('stageStopping', 'Stopping after the current file...')
                 } else if (paused) {
                   stage = `⏸ ${tl('stagePaused', 'Paused for {duration}. The connection to the server stays open: Resume carries on from here.').replace('{duration}', formatDuration(Math.max(0, (now - backupPause.since) / 1000)))}`
+                } else if (machine && s.phase !== 'finishing') {
+                  stage = s.phase === 'data'
+                    ? tl('stageReadingDisk', 'Reading disk {n} of {count}: {disk} ({size})')
+                        .replace('{n}', s.diskNo).replace('{count}', s.diskCount)
+                        .replace('{disk}', s.disk).replace('{size}', formatBytes(s.diskBytes))
+                    : s.phase === 'snapshot'
+                      ? tl('stageSnapshotVolumes', 'Taking a snapshot of the volumes...')
+                      : tl('stageConnecting', 'Connecting to the server...')
+                } else if (machine) {
+                  stage = tl('stageFinishingImage', 'Finishing: closing the disk image and uploading the manifest...')
                 } else if (s.phase === 'finishing') {
                   stage = tl('stageFinishing', 'Finishing: closing the catalog and uploading the manifest...')
                 } else if (s.phase === 'data') {
@@ -3436,14 +3470,21 @@ function App() {
                 const pausedText = <span className="pending-value">{tl('pausedShort', 'Paused')}</span>
                 const forecast = s.eta !== null && !finishingNow ? formatClock(now + s.eta * 1000) : null
                 const filesValue = !s.hasDetail ? na
+                  : machine ? (blocks > 0 ? <>{block.toLocaleString()} / {blocks.toLocaleString()}</> : calc)
                   : <>{s.filesDone.toLocaleString()} / {s.filesTotal > 0 ? s.filesTotal.toLocaleString() : calc}</>
                 const processing = s.speed > 0
                   ? `${formatSpeed(s.speed)}${s.hasDetail && s.filesRate !== null ? ` · ${Math.round(s.filesRate).toLocaleString()} ${tl('filesPerSecond', 'files/s')}` : ''}`
                   : calc
                 const upload = !s.hasDetail ? na : (s.uploadRate !== null ? formatSpeed(s.uploadRate) : calc)
-                const folder = s.currentDir || (s.hasDetail ? calc : na)
+                const folder = machine
+                  ? (s.disk ? `${s.disk} (${formatBytes(s.diskBytes)})` : calc)
+                  : s.currentDir || (s.hasDetail ? calc : na)
                 let fileLine
-                if (backupFile) {
+                if (machine) {
+                  fileLine = s.partition
+                    ? (s.partition === 'unpartitioned space' ? tl('partitionUnpartitioned', 'Unpartitioned space') : s.partition.replace(/^partition (\d+)$/, tl('partitionNumber', 'Partition {n}').replace('{n}', '$1')))
+                    : <span className="pending-value">{s.phase === 'data' ? calc : tl('waiting', 'Waiting...')}</span>
+                } else if (backupFile) {
                   fileLine = <FitPath path={backupFile} />
                 } else if (!s.hasDetail && s.phase === '' && s.bytesTotal > 0) {
                   fileLine = na
@@ -3453,7 +3494,7 @@ function App() {
                 const processed = s.hasDetail || s.bytesDone > 0
                   ? <>
                       {tl('processedLabel', 'Processed:')} {formatBytesDual(s.bytesDone)} / {s.bytesTotal > 0 ? formatBytesDual(s.bytesTotal) : calc}
-                      {s.hasDetail && <> ({tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>})</>}
+                      {s.hasDetail && <> ({tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>})</>}
                     </>
                   : <>{tl('processedLabel', 'Processed:')} 0 B / {calc}</>
                 return (
@@ -3466,12 +3507,12 @@ function App() {
                       {row(tl('forecastFinishLabel', 'Forecast finish:'), paused ? pausedText : (forecast || (finishingNow ? finishingText : calc)))}
                       {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
                       {row(t('timeRemaining'), paused ? pausedText : (finishingNow ? finishingText : (s.eta !== null ? formatDuration(s.eta) : calc)))}
-                      {row(tl('filesLabel', 'Files:'), filesValue)}
+                      {row(machine ? tl('blocksLabel', 'Blocks:') : tl('filesLabel', 'Files:'), filesValue)}
                       {row(tl('processingLabel', 'Processing:'), processing)}
-                      {row(t('currentDirLabel'), folder)}
+                      {row(machine ? tl('diskLabel', 'Disk:') : t('currentDirLabel'), folder)}
                       {row(tl('uploadLabel', 'Upload:'), upload)}
                       <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
-                        <strong style={{flex: '0 0 auto'}}>{tl('currentFileLabel', 'Current file:')}</strong> {fileLine}
+                        <strong style={{flex: '0 0 auto'}}>{machine ? tl('partitionLabel', 'Partition:') : tl('currentFileLabel', 'Current file:')}</strong> {fileLine}
                       </div>
                     </div>
                     <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef', minHeight: '18px'}}>

@@ -47,7 +47,9 @@ const (
 
 	// Machine (raw-disk) backup (gui/backup_inline.go, runMachineBackupInline).
 	MsgMachineBackupFailed    MessageKey = "logMachineBackupFailed"    // {error}
-	MsgMachineBackupCompleted MessageKey = "logMachineBackupCompleted" // {duration}
+	MsgMachineBackupCompleted MessageKey = "logMachineBackupCompleted" // {duration} (history rows before the counts)
+	// {duration}, {read}, {new}, {reused}, {blank}, {uploaded}
+	MsgMachineBackupCompletedStats MessageKey = "logMachineBackupCompletedStats"
 
 	// Scheduler (gui/scheduler.go).
 	MsgScheduledJobError      MessageKey = "logScheduledJobError"      // {error}

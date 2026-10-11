@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Pause and Resume a running backup.** A Pause button on the progress card holds a folder or machine backup at its next safe point: between files, between 64 KiB blocks of a large file, or between disk-image blocks. The PBS session stays open (the connection is kept alive with HTTP/2 pings), so Resume carries on where it stopped instead of reading everything again. Stop works while paused. The card shows how long it has been paused, and the log records the pause and its length. Tested against PBS with the backup held part way through a 400 MB file, restored byte for byte afterwards.
+- **Machine (disk image) backups show what they are doing.** The progress card now has the same rows as a folder backup, with labels for a disk: Blocks "27,221 / 30,527" (4 MiB blocks of the current disk), Disk (device and size), Partition (C:, partition 2, unpartitioned space), the real upload rate, and "Processed: x / y (New: n, Reused: m chunks, k of them blank space)". The line under the bar says which step it is on (snapshot, reading disk 1 of 2, finishing) instead of repeating the block message. The completion message and the Reports row give the same counts, and the backup log gets one progress line per 1% (with the counts) instead of one per block, about 30,000 lines for a 128 GB disk.
 - **Creation times are backed up and restored (Windows).** Each file's and folder's creation time (Explorer's "Date created") is recorded with the backup, to the 100 ns, alongside the permissions and attributes, and every restore on Windows puts it back, Undelete and Roll back included, whether or not permissions are restored. Backups made before this version did not record it; their restores keep the restore time as before. Linux has no settable creation time.
+
+### Fixed
+- **A disk read error during a machine backup is reported as such.** A disk the backup could not read (seen on a laptop SSD with bad sectors) ended with "PBS close fixed index failed: unexpected chunk count (30527 != 734)", because the upload sometimes finished before it saw the reader's error and closed a part-written image. The reader's error now always reaches the upload first, so the run fails with the real cause.
+- **Machine backup upload errors no longer leave goroutines behind** (an upload failure, or a disk larger than its declared size, made the other upload workers block forever), and a failed upload no longer races the others on one shared error value.
 
 ## [0.7.0] - 2026-10-08
 

@@ -56,6 +56,11 @@ type Config struct {
 	// passphrase prompt stays with whoever owns the console. It is never
 	// serialized: a -config file carries KeyFile, not the unlocked key.
 	Crypt *pbscommon.CryptConfig `json:"-"`
+
+	// Progress, when set, receives the job's running figures (chunks new,
+	// reused and blank, bytes uploaded, current disk and partition) for a
+	// caller to sample on its own timer. Nil for the CLI.
+	Progress *JobProgress `json:"-"`
 }
 
 func (c *Config) Valid() bool {
