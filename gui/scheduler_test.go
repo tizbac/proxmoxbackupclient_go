@@ -626,3 +626,98 @@ func TestCalculateNextRun(t *testing.T) {
 		t.Errorf("next run %s is not at 02:30", next)
 	}
 }
+
+// fakeJobReporter stands in for the API server's progress map: it records
+// what runScheduledBackup publishes, so the "scheduled runs must show up in
+// the Running Jobs tab" wiring is covered without an HTTP server.
+type fakeJobReporter struct {
+	mu         sync.Mutex
+	titles     []string
+	progresses []inlineProgress
+	completes  []inlineComplete
+}
+
+type inlineProgress struct {
+	id      string
+	frac    float64
+	message string
+}
+
+type inlineComplete struct {
+	id      string
+	success bool
+	message string
+}
+
+func (f *fakeJobReporter) RegisterInlineJob(title string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.titles = append(f.titles, title)
+	return fmt.Sprintf("inline-%d", len(f.titles))
+}
+
+func (f *fakeJobReporter) ReportInlineJobProgress(id string, frac float64, message string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.progresses = append(f.progresses, inlineProgress{id, frac, message})
+}
+
+func (f *fakeJobReporter) ReportInlineJobComplete(id string, success bool, message string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.completes = append(f.completes, inlineComplete{id, success, message})
+}
+
+// A scheduled run must be published to the job reporter: registered before the
+// backup, fed with live progress while it runs, and closed with the run's
+// outcome. That is the whole mechanism that puts a service-side scheduled run
+// (a machine backup in particular) into GET /backup/jobs — the list behind the
+// GUI's Running Jobs tab, which used to stay empty while the backup ran.
+func TestRunScheduledBackupPublishesToJobReporter(t *testing.T) {
+	a := newSchedulerTestApp(t)
+	rep := &fakeJobReporter{}
+	a.SetJobReporter(rep)
+	job := sampleJob()
+
+	// Success: the seam stands in for StartBackup/StartMachineBackup and, like
+	// their OnProgress callbacks, dispatches live progress.
+	a.scheduledBackupFn = func(j ScheduledJob) error {
+		a.dispatchProgress(0.42, "sending data")
+		return nil
+	}
+	if err := a.runScheduledBackup(job); err != nil {
+		t.Fatalf("runScheduledBackup() error = %v", err)
+	}
+
+	if len(rep.titles) != 1 || !strings.Contains(rep.titles[0], job.Name) {
+		t.Fatalf("registered titles = %v, want one containing %q", rep.titles, job.Name)
+	}
+	if len(rep.progresses) != 1 || rep.progresses[0].id != "inline-1" ||
+		rep.progresses[0].frac != 0.42 || rep.progresses[0].message != "sending data" {
+		t.Errorf("progresses = %+v, want [inline-1 0.42 sending data]", rep.progresses)
+	}
+	if len(rep.completes) != 1 || !rep.completes[0].success {
+		t.Errorf("completes = %+v, want a single success entry", rep.completes)
+	}
+
+	// Failure: the entry must close too — a run that dies before its own
+	// OnComplete (PBS resolve error, missing config) would otherwise sit at
+	// "running" in the jobs list forever.
+	rep2 := &fakeJobReporter{}
+	a.SetJobReporter(rep2)
+	a.scheduledBackupFn = func(ScheduledJob) error {
+		return fmt.Errorf("pbs refused the snapshot")
+	}
+	if err := a.runScheduledBackup(job); err == nil {
+		t.Fatal("runScheduledBackup() error = nil, want the seam's error")
+	}
+	if len(rep2.completes) != 1 || rep2.completes[0].success ||
+		!strings.Contains(rep2.completes[0].message, "pbs refused the snapshot") {
+		t.Errorf("completes = %+v, want one failure mentioning the cause", rep2.completes)
+	}
+
+	// The inline entry must not leak into whatever runs next.
+	if id := a.currentInlineJobID(); id != "" {
+		t.Errorf("currentInlineJobID() = %q after the run, want empty", id)
+	}
+}

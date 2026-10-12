@@ -638,12 +638,37 @@ func releaseJob(jobID string) {
 	delete(runningJobs, jobID)
 }
 
-// runScheduledBackup performs the backup of a scheduled job: it goes through
-// the test seam App.scheduledBackupFn when one is installed, otherwise it
-// dispatches on the job type - machine jobs through StartMachineBackup
-// (the only path that carries the job's host/vm BackupKind), directory jobs
-// through StartBackup.
-func (a *App) runScheduledBackup(job ScheduledJob) error {
+// runScheduledBackup performs the backup of a scheduled job.
+//
+// In service mode the run is first published to the API server's progress map
+// (SetJobReporter): GET /backup/jobs — the list behind the GUI's Running Jobs
+// tab — only ever knew about backups started inside an HTTP handler, so a
+// scheduled run executed by the service (a machine backup in particular) ran
+// invisibly. The entry is registered before the test seam so this wiring is
+// covered without an API server.
+//
+// The backup itself goes through the test seam App.scheduledBackupFn when one
+// is installed, otherwise it dispatches on the job type: machine jobs through
+// StartMachineBackup (the only path that carries the job's host/vm
+// BackupKind), directory jobs through StartBackup.
+func (a *App) runScheduledBackup(job ScheduledJob) (err error) {
+	if a.jobReporter != nil {
+		rep := a.jobReporter
+		jobID := rep.RegisterInlineJob(fmt.Sprintf("Scheduled: %s", job.Name))
+		a.setInlineJobID(jobID)
+		defer func() {
+			a.clearInlineJobID()
+			// The only closing path for the inline entry: dispatchComplete
+			// only reaches HTTP-handler-registered callbacks. Idempotent, so
+			// it is safe whether or not the backup's own OnComplete fired.
+			if err != nil {
+				rep.ReportInlineJobComplete(jobID, false, fmt.Sprintf("Scheduled backup failed: %v", err))
+			} else {
+				rep.ReportInlineJobComplete(jobID, true, "Scheduled backup completed successfully")
+			}
+		}()
+	}
+
 	if a.scheduledBackupFn != nil {
 		return a.scheduledBackupFn(job)
 	}

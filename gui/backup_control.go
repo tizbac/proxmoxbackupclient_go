@@ -25,6 +25,46 @@ func (a *App) SetProgressCallbacks(jobID string, onProgress func(string, float64
 	a.callbacksMutex.Unlock()
 }
 
+// JobReporter is the slice of the API server the App needs to publish a
+// backup that did NOT start through an HTTP handler: the service wires its
+// *api.Server here (SetJobReporter) so scheduled runs and "Run now" appear in
+// GET /backup/jobs — what the GUI's Running Jobs tab lists. The GUI build
+// leaves it nil (the frontend shows local runs via Wails events, and
+// handler-started runs register their own callbacks); tests install a fake.
+type JobReporter interface {
+	RegisterInlineJob(title string) string
+	ReportInlineJobProgress(jobID string, frac float64, message string)
+	ReportInlineJobComplete(jobID string, success bool, message string)
+}
+
+// SetJobReporter installs the progress sink for runs that bypass the HTTP
+// handlers. Called by both service entry points right after the API server is
+// built and before the scheduler starts.
+func (a *App) SetJobReporter(r JobReporter) {
+	a.jobReporter = r
+}
+
+// setInlineJobID/currentInlineJobID/clearInlineJobID track the reporter entry
+// of the scheduled run currently executing (runScheduledBackup sets it for the
+// duration of the run so dispatchProgress can feed the right entry).
+func (a *App) setInlineJobID(id string) {
+	a.inlineJobMu.Lock()
+	a.inlineJobID = id
+	a.inlineJobMu.Unlock()
+}
+
+func (a *App) currentInlineJobID() string {
+	a.inlineJobMu.Lock()
+	defer a.inlineJobMu.Unlock()
+	return a.inlineJobID
+}
+
+func (a *App) clearInlineJobID() {
+	a.inlineJobMu.Lock()
+	a.inlineJobID = ""
+	a.inlineJobMu.Unlock()
+}
+
 // SetBackupContext sets the context and cancel function for the currently
 // running backup. Called by the API handler so CancelBackup can stop the backup.
 func (a *App) SetBackupContext(ctx context.Context, cancel context.CancelFunc) {
@@ -66,22 +106,34 @@ func (a *App) RegisterBackupCancel(jobID string, cancel context.CancelFunc) {
 }
 
 // dispatchProgress forwards a live-progress update (fraction, 0.0-1.0) to every
-// job callback registered via SetProgressCallbacks. It reports whether at least
-// one callback consumed the update, so the GUI build can fall back to emitting
-// a Wails event in standalone mode.
+// job callback registered via SetProgressCallbacks, and to the inline job
+// registered by runScheduledBackup (scheduled runs have no HTTP-handler
+// callbacks of their own). It reports whether at least one consumer took the
+// update, so the GUI build can fall back to emitting a Wails event in
+// standalone mode.
 func (a *App) dispatchProgress(percent float64, message string) bool {
-	a.callbacksMutex.RLock()
-	defer a.callbacksMutex.RUnlock()
+	consumed := false
 
-	if len(a.callbacksMap) == 0 {
-		return false
-	}
+	a.callbacksMutex.RLock()
 	for jobID, callbacks := range a.callbacksMap {
 		if callbacks != nil && callbacks.onProgress != nil {
 			callbacks.onProgress(jobID, percent, message)
+			consumed = true
 		}
 	}
-	return true
+	a.callbacksMutex.RUnlock()
+
+	// A scheduled run (see runScheduledBackup) registers its own reporter
+	// entry instead of callbacksMap ones — feed it too, or the GUI's Running
+	// Jobs tab would show the job stuck at 0% for the whole backup.
+	if a.jobReporter != nil {
+		if id := a.currentInlineJobID(); id != "" {
+			a.jobReporter.ReportInlineJobProgress(id, percent, message)
+			consumed = true
+		}
+	}
+
+	return consumed
 }
 
 // dispatchComplete forwards the terminal update to every registered callback and

@@ -6,6 +6,7 @@ package api
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"golang.org/x/sys/windows"
@@ -52,36 +53,55 @@ func EnsureToken(path string) (string, error) {
 func canReadTokenFile(string) bool { return true }
 
 // setTokenFileACL sets the DACL on the token file to allow only
-// Administrators and SYSTEM (the service account) to read it.
+// Administrators and SYSTEM to read it.
 // This ensures only elevated processes can read the token and call the API.
+//
+// The trustees are built from SIDs, not from account names: on a localized
+// (non-English) Windows "NT AUTHORITY\SYSTEM" / "BUILTIN\Administrators" do
+// not resolve, SetEntriesInAcl fails and the file keeps whatever DACL it
+// already had — the same locale bug that, in the icacls-based
+// hardenWindowsACLs, used to leave files with an empty DACL that nobody
+// (SYSTEM included) could read. S-1-5-18 = SYSTEM, S-1-5-32-544 =
+// BUILTIN\Administrators; both are locale-independent.
 func setTokenFileACL(path string) error {
-	// Build a fresh DACL from scratch (nil merged ACL): only SYSTEM and
-	// Administrators get access. Windows resolves the well-known names to
-	// SIDs during SetEntriesInAcl.
+	sysSID, err := windows.StringToSid("S-1-5-18")
+	if err != nil {
+		return fmt.Errorf("system SID: %w", err)
+	}
+	admSID, err := windows.StringToSid("S-1-5-32-544")
+	if err != nil {
+		return fmt.Errorf("administrators SID: %w", err)
+	}
+
+	trustee := func(sid *windows.SID) windows.TRUSTEE {
+		return windows.TRUSTEE{
+			TrusteeForm:  windows.TRUSTEE_IS_SID,
+			TrusteeType:  windows.TRUSTEE_IS_UNKNOWN,
+			TrusteeValue: windows.TrusteeValueFromSID(sid),
+		}
+	}
+
 	newAcl, err := windows.ACLFromEntries(
 		[]windows.EXPLICIT_ACCESS{
 			{
-				Trustee: windows.TRUSTEE{
-					TrusteeForm:  windows.TRUSTEE_IS_NAME,
-					TrusteeType:  windows.TRUSTEE_IS_UNKNOWN,
-					TrusteeValue: windows.TrusteeValueFromString(`NT AUTHORITY\SYSTEM`),
-				},
-				AccessPermissions: windows.GENERIC_READ | windows.GENERIC_WRITE,
+				Trustee:           trustee(sysSID),
+				AccessPermissions: windows.FILE_GENERIC_READ | windows.FILE_GENERIC_WRITE,
 				AccessMode:        windows.SET_ACCESS,
 				Inheritance:       windows.NO_INHERITANCE,
 			},
 			{
-				Trustee: windows.TRUSTEE{
-					TrusteeForm:  windows.TRUSTEE_IS_NAME,
-					TrusteeType:  windows.TRUSTEE_IS_UNKNOWN,
-					TrusteeValue: windows.TrusteeValueFromString(`BUILTIN\Administrators`),
-				},
-				AccessPermissions: windows.GENERIC_READ | windows.GENERIC_WRITE,
+				Trustee:           trustee(admSID),
+				AccessPermissions: windows.FILE_GENERIC_READ | windows.FILE_GENERIC_WRITE,
 				AccessMode:        windows.SET_ACCESS,
 				Inheritance:       windows.NO_INHERITANCE,
 			},
 		},
 		nil)
+	// The Trustee values hold raw pointers to the SIDs; SetEntriesInAcl (in
+	// ACLFromEntries above) is what dereferences them, so keep them alive
+	// until it has returned.
+	runtime.KeepAlive(sysSID)
+	runtime.KeepAlive(admSID)
 	if err != nil {
 		return fmt.Errorf("create ACL: %w", err)
 	}

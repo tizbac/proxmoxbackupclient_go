@@ -71,9 +71,6 @@ func (s *BackupService) run() {
 	// Recalculate stale nextRun values (e.g. after restart or missed window)
 	s.app.RecalculateNextRuns()
 
-	// Start the scheduler
-	s.app.StartScheduler()
-
 	// Start HTTP API server for GUI communication (token-authenticated — H-01).
 	// If token init fails the server keeps an empty token and rejects every
 	// request (fail closed) rather than exposing the privileged API unauthenticated.
@@ -83,6 +80,13 @@ func (s *BackupService) run() {
 	}
 	s.apiServer = api.NewServer("127.0.0.1:18765", s.app, apiToken, appVersion)
 	writeDebugLog("Starting HTTP API server on 127.0.0.1:18765")
+
+	// Hand the API server to the App as the progress sink for backups that do
+	// NOT start through an HTTP handler — scheduled runs and "Run now". The
+	// GUI's Running Jobs tab lists GET /backup/jobs, and without this the
+	// service executed scheduled backups that never appeared anywhere in the
+	// GUI (see main.runScheduledBackup).
+	s.app.SetJobReporter(s.apiServer)
 
 	// Regenerate the token on a schedule (default 24h, PBSGO_TOKEN_ROTATION to
 	// change, =0 to disable): a secret that lives forever in user sessions
@@ -99,6 +103,12 @@ func (s *BackupService) run() {
 			writeDebugLog(fmt.Sprintf("API server error: %v", err))
 		}
 	}()
+
+	// Start the scheduler LAST, once the reporter above is installed: a job
+	// flagged "run at startup" fires synchronously from here, and startup is
+	// exactly when the user opens the GUI to watch it — by then its run must
+	// already be visible in the jobs list.
+	s.app.StartScheduler()
 
 	// Keep the service running (scheduler and API server run in background
 	// goroutines). systemd (Type=simple) signals SIGTERM on stop; kardianos

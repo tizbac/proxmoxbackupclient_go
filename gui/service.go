@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"pbscommon"
@@ -87,9 +88,6 @@ func (s *BackupService) run() {
 	// Recalculate stale nextRun values (e.g. after service restart or missed window)
 	s.app.RecalculateNextRuns()
 
-	// Start the scheduler
-	s.app.StartScheduler()
-
 	// Start HTTP API server for GUI communication (token-authenticated — H-01).
 	// If token init fails the server keeps an empty token and rejects every
 	// request (fail closed) rather than exposing the privileged API unauthenticated.
@@ -105,6 +103,13 @@ func (s *BackupService) run() {
 	s.apiServer = api.NewServer("127.0.0.1:18765", s.app, apiToken, appVersion)
 	writeDebugLog("Starting HTTP API server on 127.0.0.1:18765")
 
+	// Hand the API server to the App as the progress sink for backups that do
+	// NOT start through an HTTP handler — scheduled runs and "Run now". The
+	// GUI's Running Jobs tab lists GET /backup/jobs, and without this the
+	// service executed scheduled machine backups that never appeared anywhere
+	// in the GUI.
+	s.app.SetJobReporter(s.apiServer)
+
 	// Periodic token regeneration (default 24h, PBSGO_TOKEN_ROTATION/GRACE to
 	// tune, rotation=0 to disable): the replaced token keeps authenticating
 	// for the grace window, and a GUI that outlives it gets a 401 and repeats
@@ -118,6 +123,12 @@ func (s *BackupService) run() {
 			writeDebugLog(fmt.Sprintf("API server error: %v", err))
 		}
 	}()
+
+	// Start the scheduler LAST, once the reporter above is installed: a job
+	// flagged "run at startup" fires synchronously from here, and startup is
+	// exactly when the user opens the GUI to watch it — by then its run must
+	// already be visible in the jobs list.
+	s.app.StartScheduler()
 
 	// Keep the service running (scheduler and API server run in background goroutines)
 	writeDebugLog("Service main loop started, waiting for stop signal")
@@ -193,10 +204,28 @@ func IsServiceMode() bool {
 	return false
 }
 
-// hardenWindowsACLs applies restrictive ACLs to the service state directory:
-// - api-token: readable by SYSTEM and BUILTIN\Administrators (for elevated GUI fetch)
-// - config.json, scheduled_jobs.json, job_history.json: SYSTEM-only
-// Best-effort: if icacls.exe is missing or fails, we log and continue.
+// hardenWindowsACLs applies restrictive DACLs to the service state directory:
+//   - api-token: SYSTEM (F) + BUILTIN\Administrators (R) — a user session only
+//     reads it through an elevated (UAC) fetch, see api.EnsureToken;
+//   - config.json, scheduled_jobs.json, job_history.json: SYSTEM-only (every
+//     GUI access goes through the service API).
+//
+// Two details are load-bearing, both learned from a production lockout:
+//
+//   - Trustees are referenced by SID (*S-1-5-18 = NT AUTHORITY\SYSTEM,
+//     *S-1-5-32-544 = BUILTIN\Administrators), never by the English account
+//     names: on a localized (non-English) Windows those names do not resolve,
+//     the /grant:r fails — and with /inheritance:r in the same command line
+//     the file was left with an EMPTY DACL. No user could read or write it,
+//     not even SYSTEM itself: the owner keeps WRITE_DAC (to repair the DACL)
+//     but gets no file access at all, which locked the GUI out of the token
+//     and every JSON config.
+//   - The grant runs in its own icacls invocation BEFORE the inheritance
+//     strip, so a failure can only leave the file MORE permissive than
+//     intended (the inherited ACL), never unreachable.
+//
+// Best-effort: if icacls.exe is missing or a file is not there yet, we log
+// and continue — service startup must never depend on it.
 func hardenWindowsACLs(stateDir string) {
 	icacls, err := exec.LookPath("icacls.exe")
 	if err != nil {
@@ -204,30 +233,39 @@ func hardenWindowsACLs(stateDir string) {
 		return
 	}
 
-	tokenPath := filepath.Join(stateDir, "api-token")
-	configFiles := []string{
-		filepath.Join(stateDir, "config.json"),
-		filepath.Join(stateDir, "scheduled_jobs.json"),
-		filepath.Join(stateDir, "job_history.json"),
-	}
-
-	// api-token: SYSTEM:(OI)(CI)F + BUILTIN\Administrators:(OI)(CI)R
-	// (OI)(CI) = Object Inherit + Container Inherit (for future files)
-	if _, err := exec.Command(icacls, tokenPath,
-		"/inheritance:r", // remove inherited ACEs
-		"/grant:r", "SYSTEM:(OI)(CI)F",
-		"/grant:r", "BUILTIN\\Administrators:(OI)(CI)R",
-	).CombinedOutput(); err != nil {
-		writeDebugLog(fmt.Sprintf("icacls on api-token failed (non-fatal): %v", err))
-	}
-
-	// Config files: SYSTEM-only (F = full control)
-	for _, f := range configFiles {
-		if _, err := exec.Command(icacls, f,
-			"/inheritance:r",
-			"/grant:r", "SYSTEM:(OI)(CI)F",
-		).CombinedOutput(); err != nil {
-			writeDebugLog(fmt.Sprintf("icacls on %s failed (non-fatal): %v", f, err))
+	run := func(target string, args ...string) {
+		out, err := exec.Command(icacls, append([]string{target}, args...)...).CombinedOutput()
+		if err != nil {
+			// Keep icacls' own output: without it a failing grant is
+			// indistinguishable from a missing file and the empty-DACL
+			// lockout above would be undebuggable.
+			writeDebugLog(fmt.Sprintf("icacls on %s failed (non-fatal): %v: %s",
+				target, err, strings.TrimSpace(string(out))))
 		}
+	}
+
+	targets := []struct {
+		path string
+		// extra trustees granted before inheritance is stripped; "" = SYSTEM only
+		grant string
+	}{
+		{filepath.Join(stateDir, "api-token"), "*S-1-5-32-544:R"},
+		{filepath.Join(stateDir, "config.json"), ""},
+		{filepath.Join(stateDir, "scheduled_jobs.json"), ""},
+		{filepath.Join(stateDir, "job_history.json"), ""},
+	}
+
+	for _, t := range targets {
+		if _, err := os.Stat(t.path); err != nil {
+			writeDebugLog(fmt.Sprintf("ACL hardening: %s not present, skipped", t.path))
+			continue
+		}
+		// Grant first (SYSTEM must always keep access), strip inherited ACEs
+		// only after every grant succeeded — see the comment above.
+		run(t.path, "/grant:r", "*S-1-5-18:F")
+		if t.grant != "" {
+			run(t.path, "/grant:r", t.grant)
+		}
+		run(t.path, "/inheritance:r")
 	}
 }

@@ -30,20 +30,31 @@ type App struct {
 
 	// cancelFuncs tracks cancellation functions for running backup jobs.
 	// Key is jobID, value is the cancel function to call for graceful stop.
-	cancelFuncs     map[string]context.CancelFunc
-	cancelFuncsMu   sync.Mutex
+	cancelFuncs   map[string]context.CancelFunc
+	cancelFuncsMu sync.Mutex
 
 	// backupCtx is the context for the currently running backup (set by API handler
 	// for service mode to enable cancellation). Protected by backupCtxMu.
-	backupCtx     context.Context
-	backupCancel  context.CancelFunc
-	backupCtxMu   sync.RWMutex
+	backupCtx    context.Context
+	backupCancel context.CancelFunc
+	backupCtxMu  sync.RWMutex
 
 	// delegatedJobID is the service job the GUI is currently polling. The Stop
 	// button calls CancelBackup with no id, so the GUI has to remember which
 	// service-side job to cancel.
 	delegatedJobID   string
 	delegatedJobIDMu sync.Mutex
+
+	// jobReporter, when set (the service builds wire their API server here via
+	// SetJobReporter), publishes backups that start OUTSIDE an HTTP handler —
+	// scheduled runs and "Run now" — into the API server's progress map, which
+	// is what the GUI's Running Jobs tab lists. nil in the GUI build; tests
+	// install a fake to cover the wiring.
+	jobReporter JobReporter
+	// inlineJobID is the reporter entry of the scheduled run currently
+	// executing (guarded by inlineJobMu). Empty when no such run is active.
+	inlineJobID string
+	inlineJobMu sync.Mutex
 }
 
 // isDelegatedToService reports whether this (non-service) GUI process is
