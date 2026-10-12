@@ -56,7 +56,7 @@ var brandCatalog = map[string]Brand{
 		Accent:         "#22c55e",
 		AccentHover:    "#16a34a",
 		BrandURL:       "https://nimbus.example/",
-		BuyStorageURL:  "https://store.nimbus.example/backup",
+		BuyStorageURL:  "https://nimbus.rdem-systems.com/en/",
 		BuyStorageText: "Get Nimbus storage",
 		Urls: map[string]string{
 			"about":   "https://nimbus.example/",
