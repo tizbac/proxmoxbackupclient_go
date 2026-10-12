@@ -329,6 +329,7 @@ func main() {
 					Datastore:       ns[0],
 					Namespace:       strings.Join(ns[1:], "/"),
 					Insecure:        true,
+					Crypt:           crypt, // -keyfile: the TUI restores encrypted snapshots too
 				}
 				if err := client.ObtainTicket(); err != nil {
 					error_modal.SetText("ticket login failed: " + err.Error())
@@ -344,6 +345,7 @@ func main() {
 					Datastore:       ns[0],
 					Namespace:       strings.Join(ns[1:], "/"),
 					Insecure:        true,
+					Crypt:           crypt, // -keyfile: the TUI restores encrypted snapshots too
 				}
 			}
 

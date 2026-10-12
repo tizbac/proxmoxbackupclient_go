@@ -9,9 +9,7 @@ import (
 
 	"machinebackuplib"
 
-	"github.com/tawesoft/golib/v2/dialog"
 	"os"
-	"runtime"
 	"strings"
 	"time"
 
@@ -238,18 +236,12 @@ func main() {
 
 	cfg := loadConfig()
 
+	// Errors go to stderr with a non-zero exit, never a message box: a box
+	// waits for a click that an unattended scheduled run never gets.
 	if ok := cfg.Valid(); !ok {
-		if runtime.GOOS == "windows" {
-			usage := "All options are mandatory:\n"
-			flag.VisitAll(func(f *flag.Flag) {
-				usage += "-" + f.Name + " " + f.Usage + "\n"
-			})
-			dialog.Error(usage)
-		} else {
-			fmt.Println("All options are mandatory")
-
-			flag.PrintDefaults()
-		}
+		fmt.Fprintln(os.Stderr, "Missing or invalid options. Options:")
+		flag.CommandLine.SetOutput(os.Stderr)
+		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
@@ -274,7 +266,7 @@ func main() {
 	lock_ok := L.AcquireProcessLock()
 	if !lock_ok {
 
-		dialog.Error("Backup jobs need to run exclusively, please wait until the previous job has finished")
+		fmt.Fprintln(os.Stderr, "Another backup job is running; backup jobs run one at a time. Try again when it has finished.")
 		os.Exit(2)
 	}
 	defer L.ReleaseProcessLock()

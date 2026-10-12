@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The command-line tools no longer show message boxes** for bad options or when another backup is running (a box blocks an unattended scheduled run, and `proxmoxbackup-directory` used to carry on after it): the message goes to stderr and they exit 1 or 2. `proxmoxbackup-nbd`'s interactive mode now uses `-keyfile`, so it opens encrypted images too.
 - **`proxmoxbackup-machine` sends its notification e-mail.** It accepted the `-mail-*` options but never sent anything; now every run, failed ones included, sends it (a run with unreadable sectors reports "Partial" and where).
 - **Files and folders dated exactly 1 January 1970 00:00 UTC get that date back on restore** instead of the restore time (the zero time was taken for "no date").
 - **Parallel restores no longer download some chunks twice.** The extraction workers each read ahead far enough to push each other's chunks out of the shared cache (124 extra chunks in a 3,620-chunk restore on deepthought); they now share the read-ahead out. The restore log says how many chunks were fetched again.
