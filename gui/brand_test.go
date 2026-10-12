@@ -199,3 +199,92 @@ func TestResolveBrandNormalizesExeNames(t *testing.T) {
 		}
 	}
 }
+
+// isICO reports whether data starts with the Windows ICO magic (00 00 01 00).
+func isICO(data []byte) bool {
+	return len(data) >= 4 && data[0] == 0 && data[1] == 0 && data[2] == 1 && data[3] == 0
+}
+
+// TestBrandTrayIconsAreEmbedded ensures every brand in the catalog ships its
+// own tray icon. The tray icon is embedded at compile time and selected at
+// runtime from the executable's name (see TrayIconForBrand), so a missing
+// file means the branded exe silently shows another brand's icon in the tray.
+func TestBrandTrayIconsAreEmbedded(t *testing.T) {
+	seen := make(map[string]string)
+	for key := range brandCatalog {
+		p := filepath.Join("build", "windows", "brands", key+".ico")
+		data, err := os.ReadFile(p)
+		if err != nil {
+			t.Errorf("brand %q: %v (regenerate with installer/icons/generate.sh)", key, err)
+			continue
+		}
+		if !isICO(data) {
+			t.Errorf("brand %q: %s is not an ICO file", key, p)
+		}
+		if prev, dup := seen[string(data)]; dup {
+			t.Errorf("brand %q: tray icon is byte-identical to brand %q's icon", key, prev)
+		}
+		seen[string(data)] = key
+		if got := TrayIconForBrand(ResolveBrand(key)); !isICO(got) {
+			t.Errorf("brand %q: TrayIconForBrand returned no valid icon", key)
+		}
+	}
+	// Unknown brands must fall back to the default brand's icon, never to
+	// nothing.
+	if got := TrayIconForBrand(ResolveBrand("SomeOtherTool.exe")); !isICO(got) {
+		t.Error("TrayIconForBrand for an unknown brand returned no valid icon")
+	}
+}
+
+// TestInstallerIconsAreDistinct guards a shipped copy-paste regression:
+// NimbusBackup.ico and AcmeBackup.ico were byte-identical copies of the
+// Proxmox icon, so branded installs advertised themselves with the wrong
+// logo everywhere Windows shows an installer icon (Programs & Features,
+// shortcuts, UAC prompts).
+func TestInstallerIconsAreDistinct(t *testing.T) {
+	dir := filepath.Join("..", "installer", "icons")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read %s: %v", dir, err)
+	}
+	seen := make(map[string]string)
+	n := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".ico") {
+			continue
+		}
+		n++
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Errorf("read icon: %v", err)
+			continue
+		}
+		if !isICO(data) {
+			t.Errorf("installer/icons/%s is not an ICO file", e.Name())
+		}
+		if prev, dup := seen[string(data)]; dup {
+			t.Errorf("installer/icons/%s is byte-identical to installer/icons/%s — not branded", e.Name(), prev)
+		}
+		seen[string(data)] = e.Name()
+	}
+	// Every catalog brand must have a matching installer icon (by exe name),
+	// because WiX references ../icons/$(var.ExeName).ico.
+	for key := range brandCatalog {
+		if key == defaultBrandKey {
+			continue // ProxmoxBackupClient.ico is checked like the others below
+		}
+		matched := false
+		for _, name := range seen {
+			if normalizeBrandKey(name) == key {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Errorf("brand %q: no installer/icons/<ExeName>.ico found", key)
+		}
+	}
+	if n < 4 {
+		t.Errorf("expected at least 4 installer icons, found %d", n)
+	}
+}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Nimbus Backup">
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <g transform="translate(32 32) scale(0.95) translate(-69 -32)">
+    <path d="M52 40a10 10 0 0 1 1-19.9A14 14 0 0 1 80 16a12 12 0 0 1 11 17.5A9 9 0 0 1 84 48H58a10 10 0 0 1-6-8z" fill="#22c55e"/>
+  </g>
+</svg>

@@ -42,20 +42,24 @@ func (a *App) SetupSystemTray() {
 
 func onReady(a *App) func() {
 	return func() {
-		// Set tray icon from embedded PNG data (icon.go)
-		systray.SetIcon(TrayIconData)
-		systray.SetTitle("Proxmox Backup Client")
-		systray.SetTooltip("Proxmox Backup Client - Scheduled backups active")
+		brand := BrandFromExecutable()
+
+		// Set the tray icon and labels from the runtime-resolved brand, so a
+		// branded exe (NimbusBackup.exe, ...) shows its own identity in the
+		// tray instead of the default one.
+		systray.SetIcon(TrayIconForBrand(brand))
+		systray.SetTitle(brand.Title)
+		systray.SetTooltip(brand.Title + " - Scheduled backups active")
 
 		// Add menu items
-		menuShow = systray.AddMenuItem("🖥️ Show window", "Open the Proxmox Backup Client interface")
+		menuShow = systray.AddMenuItem("🖥️ Show window", "Open the "+brand.Title+" interface")
 		systray.AddSeparator()
 
 		menuStatus := systray.AddMenuItem("📊 Backup status", "See scheduled backup status")
 		menuStatus.Disable() // For display only
 
 		systray.AddSeparator()
-		menuQuit = systray.AddMenuItem("❌ Quit", "Close Proxmox Backup Client")
+		menuQuit = systray.AddMenuItem("❌ Quit", "Close "+brand.Title)
 
 		// Handle menu item clicks
 		go func() {
@@ -108,5 +112,5 @@ func (a *App) UpdateTrayTooltip(message string) {
 	if !trayInitialized {
 		return
 	}
-	systray.SetTooltip(fmt.Sprintf("Proxmox Backup Client - %s", message))
+	systray.SetTooltip(fmt.Sprintf("%s - %s", BrandFromExecutable().Title, message))
 }

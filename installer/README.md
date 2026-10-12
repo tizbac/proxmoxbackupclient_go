@@ -110,6 +110,13 @@ L'`UpgradeCode` doit rester constant entre versions pour permettre les mises à 
 <File Id="Config" Source="config.json" />
 ```
 
+### Icônes de marque
+Chaque marque possède deux icônes :
+- `installer/icons/<ExeName>.ico` — icône de l'installateur (raccourcis, Programs & Features / ARP), référencée par WiX via `../icons/$(var.ExeName).ico`.
+- `gui/build/windows/brands/<brandkey>.ico` — icône de la zone de notification (tray) du GUI. Elle est compilée dans l'exe et choisie **au runtime** selon le nom de l'exe (le MSI livre le même binaire renommé par marque). Le titre/infobulle du tray suit aussi la marque.
+
+Les deux sont régénérés par `installer/icons/generate.sh` (sources SVG dans `installer/icons/src/`). Les fichiers de `gui/build/windows/` sont ignorés par `.gitignore` (`build/`) mais **forcés** dans le dépôt (`git add -f`) car le binaire les embarque via `go:embed`. Un test (`TestInstallerIconsAreDistinct`, `TestBrandTrayIconsAreEmbedded` dans `gui/brand_test.go`) empêche qu'une icône soit recopiée d'une marque à l'autre.
+
 ## Mise à jour du code pour le service
 
 Le fichier `gui/main.go` doit supporter le flag `--service` :
