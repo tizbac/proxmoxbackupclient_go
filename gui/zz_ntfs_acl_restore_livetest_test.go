@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,7 +37,20 @@ func TestNTFSACLRestoreLive(t *testing.T) {
 	}
 
 	srcDir := t.TempDir()
-	srcFile := filepath.Join(srcDir, "acl-test.txt")
+	// PBS_LIVE_LONG=1: the file sits more than 300 characters deep, past
+	// MAX_PATH. Go marks its processes long-path aware, so the Win32 calls
+	// (security descriptors, attributes, times) work there too, also where
+	// LongPathsEnabled is 0 (verified on winclient 2026-10-12).
+	fileDir := srcDir
+	if os.Getenv("PBS_LIVE_LONG") == "1" {
+		for i := 0; i < 4; i++ {
+			fileDir = filepath.Join(fileDir, strings.Repeat(string(rune('a'+i)), 80))
+		}
+		if err := os.MkdirAll(fileDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	srcFile := filepath.Join(fileDir, "acl-test.txt")
 	if err := os.WriteFile(srcFile, []byte("ntfs acl/attrs restore round-trip test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
