@@ -66,4 +66,25 @@ type BackupProgress struct {
 	Complete  bool    `json:"complete"`
 	Error     string  `json:"error,omitempty"`
 	StartTime string  `json:"start_time,omitempty"`
+	// Name is the Backup Set's name for a run the service started on its own
+	// schedule (empty for a run the GUI asked for: the GUI knows its name).
+	Name string `json:"name,omitempty"`
+	// Scheduled marks a run the service started itself.
+	Scheduled bool `json:"scheduled,omitempty"`
+	// Paused and PausedSince (Unix ms) while the run waits at a pause.
+	Paused      bool  `json:"paused,omitempty"`
+	PausedSince int64 `json:"paused_since,omitempty"`
+}
+
+// RunsResponse lists the service's runs: those in progress and those that
+// finished in the last few minutes (their final state).
+type RunsResponse struct {
+	Runs []BackupProgress `json:"runs"`
+}
+
+// RunControlResponse answers Pause, Resume and Stop: the pause state after
+// the request.
+type RunControlResponse struct {
+	Paused      bool  `json:"paused"`
+	PausedSince int64 `json:"paused_since,omitempty"`
 }

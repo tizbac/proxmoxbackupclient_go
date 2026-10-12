@@ -1050,6 +1050,16 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	// them outright instead of just moving where a shared value gets read.
 	postActionsKey := a.registerPendingPostActions(job, trigger)
 
+	// In the service, the run gets an entry on the local API like a run a
+	// GUI asked for, so an open window shows it and can pause or stop it.
+	runID := ""
+	if a.isServiceProcess && a.runReporter != nil {
+		runID = a.runReporter.BeginRun(job.Name)
+		if v, ok := a.pendingPostActions.Load(postActionsKey); ok {
+			v.(*pendingPostActionsEntry).runID = runID
+		}
+	}
+
 	var err error
 	if job.BackupType == "machine" {
 		err = a.StartMachineBackup(
@@ -1075,6 +1085,15 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			job.Name,
 			postActionsKey,
 		)
+	}
+	// Close the API entry if the backup ended before its own completion
+	// reported (a failure before it started); otherwise this changes nothing.
+	if runID != "" {
+		if err != nil {
+			a.finishRun(runID, false, fmt.Sprintf("Backup failed: %v", err))
+		} else {
+			a.finishRun(runID, true, "Backup completed")
+		}
 	}
 
 	// Add history entry derived from the REAL outcome, service mode only.

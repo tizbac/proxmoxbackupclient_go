@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,6 +34,27 @@ type Server struct {
 // StartBackup's postActionsKey.
 type RunOptionsRegistrar interface {
 	RegisterRunOptions(backupType, changeDetectionMode string) string
+}
+
+// RunTracker is optionally implemented by the BackupHandler: it registers a
+// run the GUI asked for under its progress entry jobID, with the run's
+// options, and returns the key to pass as StartBackup's postActionsKey. The
+// backup then reports its progress and outcome to the entry (ReportProgress,
+// FinishRun).
+type RunTracker interface {
+	TrackRequestRun(jobID, backupType, changeDetectionMode string) string
+}
+
+// RunController is optionally implemented by the BackupHandler: Pause,
+// Resume and Stop for the backup the service is running, so a GUI can
+// control a run it did not start (a scheduled one) as well as its own.
+type RunController interface {
+	PauseRun() error
+	ResumeRun() error
+	StopRun() error
+	// RunPauseState reports whether the running backup is paused, and since
+	// when (Unix ms).
+	RunPauseState() (paused bool, sinceUnixMs int64)
 }
 
 // BackupHandler interface that the service must implement
@@ -70,12 +92,22 @@ func NewServer(addr string, handler BackupHandler, token, version string) *Serve
 func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/status", s.handleStatus)
 	s.mux.HandleFunc("/backup", s.handleBackup)
+	s.mux.HandleFunc("/backup/machine", s.handleMachineBackup)
 	s.mux.HandleFunc("/backup/status/", s.handleBackupStatus)
 	s.mux.HandleFunc("/jobs", s.handleJobs)
 	s.mux.HandleFunc("/jobs/create", s.handleJobCreate)
 	s.mux.HandleFunc("/jobs/update", s.handleJobUpdate)
 	s.mux.HandleFunc("/jobs/delete/", s.handleJobDelete)
 	s.mux.HandleFunc("/pbs/fingerprint", s.handlePinFingerprint)
+	s.mux.HandleFunc("/backup/runs", s.handleRuns)
+	s.mux.HandleFunc("/backup/pause", s.handleRunControl)
+	s.mux.HandleFunc("/backup/resume", s.handleRunControl)
+	s.mux.HandleFunc("/backup/stop", s.handleRunControl)
+}
+
+// Handler is the API with its token check, as Start serves it (tests).
+func (s *Server) Handler() http.Handler {
+	return s.authMiddleware(s.mux)
 }
 
 // Start starts the HTTP server
@@ -112,6 +144,16 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
+	s.startRun(w, r, false)
+}
+
+// handleMachineBackup serves POST /backup/machine: a disk image backup of
+// the disks in drive_letters (api.Client.StartMachineBackup).
+func (s *Server) handleMachineBackup(w http.ResponseWriter, r *http.Request) {
+	s.startRun(w, r, true)
+}
+
+func (s *Server) startRun(w http.ResponseWriter, r *http.Request, machine bool) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -154,46 +196,6 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		log.Printf("[API] Starting async backup: %s", jobID)
 
-		// Set up progress callbacks to update the progress map
-		handler, ok := s.app.(interface {
-			SetProgressCallbacks(jobID string, onProgress func(string, float64, string), onComplete func(string, bool, string))
-		})
-		if ok {
-			log.Printf("[API] SetProgressCallbacks interface found, registering callbacks for %s", jobID)
-			handler.SetProgressCallbacks(
-				jobID,
-				func(jid string, percent float64, message string) {
-					s.progressMutex.Lock()
-					if progress, exists := s.backupProgress[jid]; exists {
-						progress.Progress = percent
-						progress.Message = message
-						log.Printf("[API] Progress update %s: %.1f%% - %s", jid, percent, message)
-					} else {
-						log.Printf("[API] WARNING: Progress update for unknown job %s", jid)
-					}
-					s.progressMutex.Unlock()
-				},
-				func(jid string, success bool, message string) {
-					s.progressMutex.Lock()
-					if progress, exists := s.backupProgress[jid]; exists {
-						progress.Running = false
-						progress.Complete = true
-						progress.Success = success
-						progress.Message = message
-						if !success {
-							progress.Error = message
-						}
-						log.Printf("[API] Backup %s complete: success=%v, %s", jid, success, message)
-					} else {
-						log.Printf("[API] WARNING: Completion update for unknown job %s", jid)
-					}
-					s.progressMutex.Unlock()
-				},
-			)
-		} else {
-			log.Printf("[API] WARNING: SetProgressCallbacks interface not implemented by handler")
-		}
-
 		// Call StartBackup (service App is in standalone mode to execute directly)
 		// Default to "fastest" if compression not specified
 		compression := req.Compression
@@ -202,26 +204,43 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// postActionsKey never crosses the HTTP boundary — service mode fires
-		// post-actions from scheduler.go's own local job variable. A request
-		// carrying run options (a Backup Set's change detection) gets a local
-		// key holding them instead.
+		// post-actions from scheduler.go's own local job variable. The run gets
+		// a local key instead, holding its progress entry (so the backup's
+		// progress reaches it) and any run options (a Backup Set's change
+		// detection).
 		runKey := ""
-		if r, ok := s.app.(RunOptionsRegistrar); ok && req.ChangeDetectionMode != "" {
+		if t, ok := s.app.(RunTracker); ok {
+			runKey = t.TrackRequestRun(jobID, req.BackupType, req.ChangeDetectionMode)
+		} else if r, ok := s.app.(RunOptionsRegistrar); ok && req.ChangeDetectionMode != "" {
 			runKey = r.RegisterRunOptions(req.BackupType, req.ChangeDetectionMode)
 		}
 
-		err := s.app.StartBackup(
-			req.BackupType,
-			req.BackupDirs,
-			req.DriveLetters,
-			req.ExcludeList,
-			req.BackupID,
-			req.UseVSS,
-			compression,
-			req.PBSServerID,
-			req.Comment,
-			runKey,
-		)
+		var err error
+		if machine {
+			err = s.app.StartMachineBackup(
+				req.BackupType,
+				req.DriveLetters, // the GUI sends the disks here
+				req.BackupID,
+				req.UseVSS,
+				compression,
+				req.PBSServerID,
+				req.Comment,
+				runKey,
+			)
+		} else {
+			err = s.app.StartBackup(
+				req.BackupType,
+				req.BackupDirs,
+				req.DriveLetters,
+				req.ExcludeList,
+				req.BackupID,
+				req.UseVSS,
+				compression,
+				req.PBSServerID,
+				req.Comment,
+				runKey,
+			)
+		}
 
 		// Update final status if callbacks didn't fire
 		s.progressMutex.Lock()
@@ -256,6 +275,128 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.writeJSON(w, resp, http.StatusOK)
+}
+
+// ReportProgress records a run's progress (percent 0-100).
+func (s *Server) ReportProgress(jobID string, percent float64, message string) {
+	s.progressMutex.Lock()
+	defer s.progressMutex.Unlock()
+	if progress, exists := s.backupProgress[jobID]; exists && !progress.Complete {
+		progress.Progress = percent
+		progress.Message = message
+	}
+}
+
+// completeRun records a run's outcome, once: later calls for the same run
+// change nothing.
+func (s *Server) completeRun(jobID string, success bool, message string) {
+	s.progressMutex.Lock()
+	defer s.progressMutex.Unlock()
+	progress, exists := s.backupProgress[jobID]
+	if !exists || progress.Complete {
+		return
+	}
+	progress.Running = false
+	progress.Complete = true
+	progress.Success = success
+	progress.Message = message
+	if success {
+		progress.Progress = 100
+	} else {
+		progress.Error = message
+	}
+	log.Printf("[API] Backup %s complete: success=%v, %s", jobID, success, message)
+}
+
+// BeginRun registers a run the service starts on its own (a Backup Set's
+// schedule), so a GUI lists it and can pause or stop it like a run it asked
+// for. name is the Backup Set's name. Report with ReportProgress, end with
+// FinishRun.
+func (s *Server) BeginRun(name string) string {
+	jobID := fmt.Sprintf("scheduled-%d-%d", time.Now().Unix(), jobIDSeq.Add(1))
+	s.progressMutex.Lock()
+	s.backupProgress[jobID] = &BackupProgress{
+		JobID:     jobID,
+		Running:   true,
+		Message:   "Starting backup...",
+		StartTime: time.Now().Format(time.RFC3339),
+		Name:      name,
+		Scheduled: true,
+	}
+	s.progressMutex.Unlock()
+	return jobID
+}
+
+// FinishRun records the outcome of a run started with BeginRun (only if the
+// backup's own completion did not already) and drops it after a while.
+func (s *Server) FinishRun(jobID string, success bool, message string) {
+	s.completeRun(jobID, success, message)
+	s.scheduleEviction(jobID)
+}
+
+// withPause copies a progress entry, adding the pause state to a running one.
+func (s *Server) withPause(p BackupProgress) BackupProgress {
+	if c, ok := s.app.(RunController); ok && p.Running {
+		p.Paused, p.PausedSince = c.RunPauseState()
+	}
+	return p
+}
+
+// handleRuns lists the runs in progress and those finished in the last ten
+// minutes, oldest first.
+func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.progressMutex.RLock()
+	runs := make([]BackupProgress, 0, len(s.backupProgress))
+	for _, p := range s.backupProgress {
+		runs = append(runs, *p)
+	}
+	s.progressMutex.RUnlock()
+	sort.Slice(runs, func(i, j int) bool {
+		if runs[i].StartTime != runs[j].StartTime {
+			return runs[i].StartTime < runs[j].StartTime
+		}
+		return runs[i].JobID < runs[j].JobID
+	})
+	for i := range runs {
+		runs[i] = s.withPause(runs[i])
+	}
+	s.writeJSON(w, RunsResponse{Runs: runs}, http.StatusOK)
+}
+
+// handleRunControl serves POST /backup/pause, /backup/resume and
+// /backup/stop for the backup the service is running.
+func (s *Server) handleRunControl(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	c, ok := s.app.(RunController)
+	if !ok {
+		s.writeError(w, "This service cannot pause or stop backups", http.StatusNotImplemented)
+		return
+	}
+	var err error
+	switch strings.TrimPrefix(r.URL.Path, "/backup/") {
+	case "pause":
+		err = c.PauseRun()
+	case "resume":
+		err = c.ResumeRun()
+	case "stop":
+		err = c.StopRun()
+	default:
+		s.writeError(w, "Not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.writeError(w, err.Error(), http.StatusConflict)
+		return
+	}
+	paused, since := c.RunPauseState()
+	s.writeJSON(w, RunControlResponse{Paused: paused, PausedSince: since}, http.StatusOK)
 }
 
 // scheduleEviction removes a finished job's progress entry after a grace period,
@@ -309,6 +450,7 @@ func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	snapshot = s.withPause(snapshot)
 	s.writeJSON(w, &snapshot, http.StatusOK)
 }
 

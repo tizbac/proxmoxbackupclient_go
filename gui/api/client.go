@@ -32,6 +32,13 @@ func NewClient(tokenPath string) *Client {
 	}
 }
 
+// NewClientAt is NewClient for a service listening at baseURL (tests).
+func NewClientAt(baseURL, tokenPath string) *Client {
+	c := NewClient(tokenPath)
+	c.baseURL = baseURL
+	return c
+}
+
 // IsServiceAvailable checks if the local service is running
 func (c *Client) IsServiceAvailable() bool {
 	client := &http.Client{
@@ -263,6 +270,45 @@ func (c *Client) UpdateJob(job map[string]interface{}) error {
 	}
 
 	return nil
+}
+
+// GetRuns lists the service's runs: in progress and recently finished.
+func (c *Client) GetRuns() (*RunsResponse, error) {
+	resp, err := c.httpClient.Get(c.baseURL + "/backup/runs")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get runs: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("service returned error: %d", resp.StatusCode)
+	}
+	var runs RunsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&runs); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return &runs, nil
+}
+
+// ControlRun asks the service to "pause", "resume" or "stop" the backup it
+// is running, and returns the pause state afterwards.
+func (c *Client) ControlRun(action string) (*RunControlResponse, error) {
+	resp, err := c.httpClient.Post(c.baseURL+"/backup/"+action, "application/json", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reach the service: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		var e ErrorResponse
+		if json.NewDecoder(resp.Body).Decode(&e) == nil && e.Error != "" {
+			return nil, fmt.Errorf("%s", e.Error)
+		}
+		return nil, fmt.Errorf("service returned error: %d", resp.StatusCode)
+	}
+	var st RunControlResponse
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return &st, nil
 }
 
 // DeleteJob deletes a scheduled job by ID

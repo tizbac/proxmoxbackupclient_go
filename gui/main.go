@@ -256,6 +256,11 @@ func (a *App) startup(ctx context.Context) {
 	} else {
 		writeDebugLog("Service mode detected - scheduler runs in service")
 	}
+	// Show the service's own runs (scheduled ones) with Pause and Stop; idle
+	// while this app runs the schedules itself.
+	if !a.headless {
+		go a.watchServiceRuns()
+	}
 
 	// Execute startup jobs (jobs with runAtStartup=true)
 	// Note: In service mode, these will be sent via API
@@ -884,6 +889,10 @@ func (a *App) pollBackupProgress(jobID string) {
 	writeDebugLog(fmt.Sprintf("[Service Mode] Starting progress polling for job: %s", jobID))
 	ticker := time.NewTicker(3 * time.Second) // Poll every 3 seconds
 	defer ticker.Stop()
+	// watchServiceRuns leaves this run to us.
+	polledRuns.Store(jobID, struct{}{})
+	defer polledRuns.Delete(jobID)
+	lastPaused := false
 
 	// Without a bound, a permanently-404ing job (evicted/collided entry, or a
 	// service restart that dropped the progress map) would poll forever. Give up
@@ -916,10 +925,17 @@ func (a *App) pollBackupProgress(jobID string) {
 				"percent": progress.Progress,
 				"message": progress.Message,
 			})
+			if progress.Paused != lastPaused {
+				lastPaused = progress.Paused
+				a.emitPause(BackupPauseState{Paused: progress.Paused, Since: progress.PausedSince})
+			}
 		}
 
 		// If backup completed, emit final event and stop polling
 		if progress.Complete {
+			if lastPaused {
+				a.emitPause(BackupPauseState{})
+			}
 			writeDebugLog(fmt.Sprintf("[Service Mode] Backup completed: success=%v", progress.Success))
 			if a.ctx != nil {
 				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{

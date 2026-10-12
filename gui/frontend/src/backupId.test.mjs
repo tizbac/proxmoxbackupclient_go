@@ -1,6 +1,6 @@
 // node src/backupId.test.mjs
 import assert from 'node:assert/strict'
-import { suggestBackupId, slugId } from './backupId.js'
+import { suggestBackupId, slugId, setsSharingGroup } from './backupId.js'
 
 const cases = [
   ['Deepthought - Data', 'DEEPTHOUGHT', [], 'deepthought-data'],
@@ -31,4 +31,26 @@ for (const [name, host, taken, want] of cases) {
 assert.equal(slugId('  --A__b..c--  '), 'a-b-c')
 const long = suggestBackupId('x'.repeat(100), 'host')
 assert.ok(long.length <= 60 && /^[a-z0-9][a-z0-9-]*$/.test(long), long)
-console.log(`backupId: ${cases.length + 2} checks passed`)
+// Sets that write into one PBS group (server + type + ID).
+const sets = [
+  { id: 'a', name: 'Data', backupId: 'deepthought', pbsServerId: '' },
+  { id: 'b', name: 'Beeby Property', backupId: 'deepthought', pbsServerId: 'pbs1' },
+  { id: 'c', name: 'Trading', backupId: 'deepthought', pbsServerId: 'pbs2' },
+  { id: 'd', name: 'Machine', backupId: '', backupType: 'machine' },
+  { id: 'e', name: 'Machine as VM', backupId: 'deepthought', backupType: 'machine', machineAsVm: true },
+  { id: 'f', name: 'Case', backupId: 'DeepThought' },
+  { id: 'g', name: 'Own', backupId: 'deepthought-own' },
+]
+const sharing = (id) => setsSharingGroup(sets.find(s => s.id === id), sets, 'pbs1', 'deepthought').map(s => s.id)
+// a uses the default server (pbs1), so it meets b; the machine set's empty ID
+// is the computer's name, the same group too
+assert.deepEqual(sharing('a'), ['b', 'd'])
+assert.deepEqual(sharing('b'), ['a', 'd'])
+assert.deepEqual(sharing('d'), ['a', 'b'])
+assert.deepEqual(sharing('c'), [], 'another server')
+assert.deepEqual(sharing('e'), [], 'vm group, not host')
+assert.deepEqual(sharing('f'), [], 'PBS IDs are case sensitive')
+assert.deepEqual(sharing('g'), [])
+// a set being created (no id yet) is compared with all of them
+assert.deepEqual(setsSharingGroup({ backupId: 'deepthought-own' }, sets, 'pbs1', 'deepthought').map(s => s.id), ['g'])
+console.log(`backupId: ${cases.length + 2 + 8} checks passed`)

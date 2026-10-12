@@ -14,7 +14,7 @@ import ConfirmHost, { askConfirm } from './components/ConfirmDialog'
 import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
 import EncryptionKeyField from './components/EncryptionKeyField'
 import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTools'
-import { suggestBackupId } from './backupId'
+import { suggestBackupId, setsSharingGroup } from './backupId'
 // Wails runtime imports (will be available when built with Wails)
 let OpenSnapshotTree, ListSnapshotChildren, SnapshotSelectionBytes
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
@@ -3773,6 +3773,21 @@ function App() {
                                   </span>
                                 )
                               })()}
+                              {/* Another set writes into the same PBS group (server + ID). */}
+                              {(() => {
+                                const others = setsSharingGroup(job, scheduledJobs, defaultPBSID, hostname)
+                                if (others.length === 0) return null
+                                return (
+                                  <span className="shared-id-badge" style={{
+                                    display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
+                                    padding: '2px 7px', borderRadius: '3px', verticalAlign: 'middle', marginRight: '6px', cursor: 'help',
+                                    background: '#fff4e0', color: '#9a5b00', border: '1px solid #f0cf96',
+                                  }} title={tl('backupIdSharedTip', 'Backup ID {id} is also used on the same server by {names}. Edit the set to give it its own ID.')
+                                    .replace('{id}', job.backupId || hostname).replace('{names}', others.map(j => `"${j.name}"`).join(', '))}>
+                                    {tl('backupIdSharedBadge', 'Shared ID').toUpperCase()}
+                                  </span>
+                                )
+                              })()}
                               {/* Schedule and next run as two tightly spaced lines beside the
                                   badges, so the card gains no height. nextRun is the ISO time the
                                   scheduler keeps on the job; manual sets have none. */}
@@ -4390,12 +4405,33 @@ function App() {
               }
               const suggestion = suggestedBackupId(jobName)
               if (!editingJobId || !jobName.trim() || suggestion === (config['backup-id'] || '')) return null
+              // The shared-ID warning below offers the same suggestion.
+              if (setsSharingGroup({ id: editingJobId, pbsServerId: backupPBSID, backupType, machineAsVm: machineAsVM, backupId: config['backup-id'] },
+                scheduledJobs, defaultPBSID, hostname).length > 0) return null
               return <div style={{fontSize: '12px', color: '#4a5568', marginTop: '4px'}}>
                 <button type="button" className="link-button" onClick={() => setConfig({...config, 'backup-id': suggestion})}
                   style={{background: 'none', border: 'none', padding: 0, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px'}}>
                   {tl('backupIdUseSuggested', 'Use {id}').replace('{id}', suggestion)}
                 </button>{' '}
                 {tl('backupIdChangeNote', '(a new ID starts a new group on PBS: its first incremental run reads every file, and earlier backups stay under the old ID)')}
+              </div>
+            })()}
+            {/* Another set writing into the same PBS group: warn, never block. */}
+            {backupMode === 'scheduled' && (() => {
+              const others = setsSharingGroup({ id: editingJobId, pbsServerId: backupPBSID, backupType, machineAsVm: machineAsVM, backupId: config['backup-id'] },
+                scheduledJobs, defaultPBSID, hostname)
+              if (others.length === 0) return null
+              const suggestion = backupType === 'machine' ? '' : suggestedBackupId(jobName)
+              return <div className="backup-id-shared" style={{fontSize: '12px', marginTop: '6px', padding: '6px 10px', borderRadius: '4px',
+                background: '#fff4e0', color: '#9a5b00', border: '1px solid #f0cf96'}}>
+                {tl('backupIdSharedWarn', 'Also used by {names} on this server. Both sets then share one group on PBS: an incremental (metadata) run compares with the newest snapshot of either set and can end up reading every file, and Undelete and Roll back list both sets\' snapshots.')
+                  .replace('{names}', others.map(j => `"${j.name}"`).join(', '))}
+                {suggestion && suggestion !== (config['backup-id'] || '') && <>{' '}
+                  <button type="button" className="link-button" onClick={() => { setConfig({...config, 'backup-id': suggestion}); setBackupIdAuto(false) }}
+                    style={{background: 'none', border: 'none', padding: 0, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px'}}>
+                    {tl('backupIdUseSuggested', 'Use {id}').replace('{id}', suggestion)}
+                  </button>
+                </>}
               </div>
             })()}
           </div>

@@ -167,6 +167,11 @@ var (
 // CancelBackup requests a graceful stop of the currently running backup.
 // It is exported to the GUI and returns false if no backup is running.
 func (a *App) CancelBackup() error {
+	// A backup the background service runs is stopped there.
+	if !localBackupRunning() && a.serviceRunsBackups() {
+		_, err := a.controlServiceRun("stop")
+		return err
+	}
 	currentBackupCancelMutex.Lock()
 	defer currentBackupCancelMutex.Unlock()
 	if currentBackupCancel != nil {

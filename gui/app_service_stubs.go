@@ -72,6 +72,8 @@ func (a *App) ReloadConfig() {
 // change-detection mode in, and its structured result back out.
 func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	writeDebugLog(fmt.Sprintf("[Service] StartBackup called: type=%s, dirs=%v, id=%s, vss=%v, compression=%s, pbsServerID=%s", backupType, backupDirs, backupID, useVSS, compression, pbsServerID))
+	// The run's entry on the service API, where a GUI follows it.
+	runID := a.runIDFor(postActionsKey)
 
 	// Re-read config from disk so this run uses the current token / default PBS /
 	// pinned fingerprint rather than the snapshot loaded when the service started.
@@ -176,7 +178,8 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		// the mode a GUI request carried (api server); "" for one-off runs.
 		ChangeDetectionMode: a.runChangeDetectionMode(postActionsKey),
 		OnProgress: func(percent float64, message string) {
-			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent, message))
+			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent*100, message))
+			a.reportRun(runID, percent, message)
 		},
 		OnComplete: func(success bool, message string, _ MessageKey, _ msgParams) {
 			if success {
@@ -184,6 +187,7 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 			} else {
 				writeDebugLog(fmt.Sprintf("[Backup Complete] FAILED - %s", message))
 			}
+			a.finishRun(runID, success, message)
 		},
 		OnResult: func(status *BackupStatus) { a.setRunResult(postActionsKey, status) },
 	}
@@ -202,6 +206,7 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 	// manual restore run from a separate GUI process isn't covered here).
 	release := acquireOperationSlot(comment, func(heldBy string) {
 		writeDebugLog(fmt.Sprintf("[Service] Queued: %s — waiting for %s to finish", comment, heldBy))
+		a.reportRun(runID, 0, fmt.Sprintf("Queued: %s — waiting for %s to finish...", comment, heldBy))
 	})
 	defer release()
 
@@ -216,6 +221,11 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 // postActionsKey: see StartBackup's own doc comment above.
 func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	writeDebugLog(fmt.Sprintf("[Service] StartMachineBackup called: type=%s, devices=%v, id=%s, vss=%v, compression=%s, pbsServerID=%s", backupType, backupDevices, backupID, useVSS, compression, pbsServerID))
+	runID := a.runIDFor(postActionsKey)
+	// A key registered for a GUI request has no scheduler run to consume it.
+	if v, ok := a.pendingPostActions.Load(postActionsKey); ok && v.(*pendingPostActionsEntry).job.ID == "service-request" {
+		defer a.takePendingPostActions(postActionsKey)
+	}
 
 	a.ReloadConfig()
 	if a.config == nil {
@@ -238,6 +248,12 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 
 	pbsCfg, err := a.resolvePBS(pbsServerID)
 	if err != nil {
+		return err
+	}
+	// Unlock the configured encryption key, as StartBackup above does: without
+	// it a machine backup run by the service went up unencrypted although a
+	// key is configured.
+	if err := pbsCfg.loadCryptConfig(); err != nil {
 		return err
 	}
 
@@ -268,8 +284,10 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		ExcludeList:    []string{},
 		DisableSplit:   pbsCfg.DisableSplit,
 		SplitSizeBytes: pbsCfg.SplitSizeBytes(),
+		Crypt:          pbsCfg.Crypt,
 		OnProgress: func(percent float64, message string) {
-			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent, message))
+			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent*100, message))
+			a.reportRun(runID, percent, message)
 		},
 		OnComplete: func(success bool, message string, _ MessageKey, _ msgParams) {
 			if success {
@@ -277,11 +295,13 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 			} else {
 				writeDebugLog(fmt.Sprintf("[Machine Backup Complete] FAILED - %s", message))
 			}
+			a.finishRun(runID, success, message)
 		},
 	}
 
 	release := acquireOperationSlot(comment, func(heldBy string) {
 		writeDebugLog(fmt.Sprintf("[Service] Queued: %s — waiting for %s to finish", comment, heldBy))
+		a.reportRun(runID, 0, fmt.Sprintf("Queued: %s — waiting for %s to finish...", comment, heldBy))
 	})
 	defer release()
 

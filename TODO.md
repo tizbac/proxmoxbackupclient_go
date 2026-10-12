@@ -626,13 +626,13 @@ Today a machine backup (`drive-*.img.fidx`, host or vm) can only be restored who
 
 ### ~~⏸️ Pause and Resume a running backup~~ ✅ DONE (Mick, 2026-10-10)
 Pause button on the progress card; the run waits at its next safe point (between files, 64 KiB blocks of a large file, disk-image blocks) with the PBS session kept open, and Resume carries on. Stop works while paused. `pbscommon/pause.go` (PauseGate), `gui/backup_pause.go`, live test `zz_backup_pause_livetest_test.go` (PBS_PAUSE=1, PBS_PAUSE_SECS). Not available for backups run by the service (nor is Stop): see the next item.
-- [ ] Pause, Resume and Stop for a backup the service runs (needs API endpoints on the service and the GUI to call them).
+- [x] (branch set-id-warn-service-control, 2026-10-12) Pause, Resume and Stop for a backup the service runs: API /backup/runs, /backup/pause|resume|stop; the service's scheduled runs get an API entry, and an open window shows their card (watchServiceRuns). Live on winclient: scheduled machine run paused, resumed and stopped from the real window.
 - [ ] Maybe: Pause from the tray menu, and a "resume at" time.
 
 ### ~~📊 Machine (disk image) backups: show New / Reused / Uploaded on the progress card and in Reports~~ ✅ DONE (Mick, 2026-10-11)
 Seen on sarah-yoga510's first full machine backup (128 GB, half empty, ~13 min on 1 GbE, so much of it cannot have crossed the network): Upload sat at 0, nothing said what was reused, and the block line showed twice. Now `machinebackuplib.JobProgress` (Config.Progress) counts new / reused / blank (all-zero, by digest) chunks and uploaded bytes, and tracks phase, disk n of N, position and partition; `runMachineBackupInline` samples it every second into `OnStats` (Kind "machine"). Card rows: Blocks N / total, Disk, Partition, real Upload rate, "Processed (New, Reused, k of them blank space)"; stage line per phase. Log: one line per 1% with the counts, plus a `[RESULT]` line. Completion message / Reports: `logMachineBackupCompletedStats`. Progress messages say "Block N / M". 18 languages, CHANGELOG.
 - [x] (ux-batch a7e38ff) Disk model in the Disk row ("BIWIN SSD") and file system in the Partition row ("C: (NTFS)"); the Windows disk picker shows real models too.
-- [ ] Machine backups run by the service: no stats bridge (same as folder backups, service-mode progress item).
+- [~] Machine backups run by the service: percentage and stage line now reach the window (the service build only logged them, so the card sat at "Starting backup..."); the stats rows (Files, Processing, Upload, New/Reused) still are not bridged.
 - [x] Windows machine backup zero-fills unreadable sectors (4 KiB units, media errors only) and reports a partial backup with where (`readResilient` in machinebackuplib/resilient.go, shared with Linux). 2026-10-11, after new-laptop's BIWIN SSD.
 
 ### 🗓️ Better scheduler: several schedules per Backup Set (Mick, 2026-10-11)
@@ -659,7 +659,7 @@ A MB/s cap per set (and maybe per server). Mick's doubt: a cap slows every run e
 
 ### ⚠️ Warn when a Metadata Backup Set shares its backup ID with another set (2026-10-07)
 Metadata change detection compares with the NEWEST snapshot in the backup group. On deepthought the production sets "Beeby Property", "Beeby Trading" and "Data" all used backup ID `deepthought`, so any other set running between two Data runs would have forced a full 448 GB read; fixed by giving Data its own ID `deepthought-data`.
-- [ ] Backup Set editor: warn (not block) when a Data/Metadata set has the same server + backup ID as another set, and suggest a unique ID.
+- [x] (branch set-id-warn-service-control, 2026-10-12) Backup Set editor: warn (not block) when a set has the same server + type + backup ID as another set, with "Use <suggestion>"; amber SHARED ID badge on the cards. Any set type, not only Data/Metadata: a shared group mixes Undelete and Roll back too.
 - [x] Possibly default new sets to `<hostname>-<set name>` style IDs. Done 2026-10-08: suggested Backup ID (`deepthought-data`), tolerant of a typo in the computer's name, unique among the sets.
 
 ### \U0001F41B Selective restore from a SPLIT (metadata-mode) snapshot downloads most of the data between the selected folders (2026-10-07)

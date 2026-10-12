@@ -65,12 +65,6 @@ func (s *BackupService) run() {
 		writeDebugLog(fmt.Sprintf("VSS cleanup at startup reported error: %v", err))
 	}
 
-	// Recalculate stale nextRun values (e.g. after service restart or missed window)
-	s.app.RecalculateNextRuns()
-
-	// Start the scheduler
-	s.app.StartScheduler()
-
 	// Lock the settings folder down before writing the API token into it.
 	if dir, err := getConfigDir(); err == nil {
 		if err := hardenConfigDir(dir); err != nil {
@@ -89,6 +83,8 @@ func (s *BackupService) run() {
 	// folder ACL on Windows).
 	shareConfigFile(getAPITokenPath())
 	s.apiServer = api.NewServer("127.0.0.1:18765", s.app, apiToken, appVersion)
+	// Every run reports to its entry on the API, scheduled ones included.
+	s.app.runReporter = s.apiServer
 	writeDebugLog("Starting HTTP API server on 127.0.0.1:18765")
 
 	go func() {
@@ -96,6 +92,12 @@ func (s *BackupService) run() {
 			writeDebugLog(fmt.Sprintf("API server error: %v", err))
 		}
 	}()
+
+	// The scheduler starts last, so a run at startup already has the API to
+	// report to.
+	// Recalculate stale nextRun values (e.g. after service restart or missed window)
+	s.app.RecalculateNextRuns()
+	s.app.StartScheduler()
 
 	// Keep the service running (scheduler and API server run in background goroutines)
 	writeDebugLog("Service main loop started, waiting for stop signal")

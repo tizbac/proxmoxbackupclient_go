@@ -86,6 +86,18 @@ type App struct {
 	// single value for concurrent goroutines to race on — the interface gap
 	// (a plain string) stays exactly as small as comment's already is.
 	pendingPostActions sync.Map // key string -> *pendingPostActionsEntry
+
+	// runReporter is the service's API server, in the service process only:
+	// each run reports its progress and outcome to its entry there, so a GUI
+	// can show and control it (service.go).
+	runReporter serviceRunReporter
+}
+
+// serviceRunReporter is the part of api.Server a service run reports to.
+type serviceRunReporter interface {
+	BeginRun(name string) string
+	ReportProgress(jobID string, percent float64, message string)
+	FinishRun(jobID string, success bool, message string)
 }
 
 // pendingPostActionsEntry is what pendingPostActions actually stores — see
@@ -96,6 +108,44 @@ type pendingPostActionsEntry struct {
 	// result is the run's structured outcome, set by the service build's
 	// OnResult so the scheduler's history write can include it.
 	result atomic.Pointer[BackupStatus]
+	// runID is the run's entry on the service's API (service process only).
+	runID string
+}
+
+// runIDFor returns the API entry of the service run under key ("" if none).
+func (a *App) runIDFor(key string) string {
+	if key == "" {
+		return ""
+	}
+	if v, ok := a.pendingPostActions.Load(key); ok {
+		return v.(*pendingPostActionsEntry).runID
+	}
+	return ""
+}
+
+// TrackRequestRun registers a run the GUI asked the service for, under its
+// API entry jobID (api.RunTracker). Like RegisterRunOptions it carries the
+// run's change detection; the backup's own completion removes it.
+func (a *App) TrackRequestRun(jobID, backupType, changeDetectionMode string) string {
+	key := a.RegisterRunOptions(backupType, changeDetectionMode)
+	if v, ok := a.pendingPostActions.Load(key); ok {
+		v.(*pendingPostActionsEntry).runID = jobID
+	}
+	return key
+}
+
+// reportRun sends a service run's progress (fraction 0-1) to its API entry.
+func (a *App) reportRun(runID string, fraction float64, message string) {
+	if runID != "" && a.runReporter != nil {
+		a.runReporter.ReportProgress(runID, fraction*100, message)
+	}
+}
+
+// finishRun records a service run's outcome on its API entry.
+func (a *App) finishRun(runID string, success bool, message string) {
+	if runID != "" && a.runReporter != nil {
+		a.runReporter.FinishRun(runID, success, message)
+	}
 }
 
 // setRunResult stores status for the run under key, if it is registered.

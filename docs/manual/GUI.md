@@ -250,6 +250,8 @@ Schedules run while the GUI is running (in the tray is fine) or in the installed
 
 **Give every Backup Set its own Backup ID.** All snapshots with the same type and ID form one group in PBS. Metadata mode compares with the newest snapshot in the group, and Legacy mode reuses chunks from it. If two sets share an ID, each run compares with the other set's snapshot and reads every file. A good pattern is `<computer>-<set>`, for example `deepthought-data`. The editor does this for you: a new folder set's Backup ID follows its name as you type it, the computer's name first and then the set's name without it. On `deepthought`, "Deepthought - Data" becomes `deepthought-data` and "Beeby Property" becomes `deepthought-beeby-property`, so every set of one computer sits together in PBS's list. An ID another set already uses gets `-2`, `-3` and so on, and typing your own ID stops the suggestion. A clone gets its own ID from the copy's name. Editing an existing set whose ID differs from the suggestion offers **Use <suggestion>**: a new ID starts a new group on PBS, so its first incremental run reads every file and its earlier backups stay under the old ID.
 
+**Sets that share a group are flagged.** When another Backup Set writes to the same PBS server with the same type and Backup ID, the editor shows an amber note under the Backup ID naming that set, with **Use <suggestion>** for a folder set, and both sets' cards carry an amber **SHARED ID** badge (hover it for the other set's name). An empty Backup ID counts as the computer's name, and a set with no server chosen counts as on the default server. It is a warning only: saving is still allowed, for the rare case where sharing a group is what you want.
+
 ### 6.5 Alerts tab
 
 | Setting | Notes |
@@ -374,7 +376,7 @@ The box underneath shows **Processed:** data done / total, in GB with GiB in bra
 - if the connection to PBS drops (the server restarts, the network goes down) the backup fails as it would while running, and has to be run again;
 - Forecast finish and Time remaining show **Paused**, and pick up again from fresh measurements after Resume.
 
-Pause is available for folder and machine backups run by the app. A backup run by the background service cannot be paused or stopped from the app.
+Pause works for folder and machine backups, whether the app or the background service runs them. With **Run as Service** on ([section 15](#15-background-service-tray-and-closing-the-window)), a Backup Set the service starts on its schedule shows the same card in an open app window, with its set's name, within a few seconds, and Pause, Resume and Stop act on the service's run. The card of a service run shows the stage line and the percentage; the Files, Processing, Folder and Upload rows stay empty, as the service does not pass those figures on.
 
 **Stop** ends the run after the current file, and also works while paused. Reports record it as cancelled (⏹️), not failed.
 

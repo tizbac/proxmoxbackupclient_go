@@ -68,3 +68,23 @@ export function suggestBackupId(setName, hostname, taken = []) {
   for (let n = 2; used.has(candidate); n++) candidate = `${id}-${n}`
   return candidate
 }
+
+// backupGroupKey is the PBS backup group a Backup Set writes into: its server
+// (none = the default server), the group type (vm for a machine set backed up
+// as a VM, host otherwise) and the backup ID (empty = the computer's name, as
+// the backup itself does). PBS IDs are case sensitive, so the ID is kept as is.
+export function backupGroupKey(job, defaultServerId, hostname) {
+  const server = job.pbsServerId || defaultServerId || ''
+  const type = job.backupType === 'machine' && job.machineAsVm ? 'vm' : 'host'
+  const id = (job.backupId || '').trim() || hostname || ''
+  return `${server}\n${type}/${id}`
+}
+
+// setsSharingGroup returns the other Backup Sets that write into the same
+// PBS group as job. Sharing is allowed but rarely meant: an incremental
+// (metadata) run compares with the newest snapshot in the group, which may be
+// the other set's, and Undelete and Roll back list both sets' snapshots.
+export function setsSharingGroup(job, jobs, defaultServerId, hostname) {
+  const key = backupGroupKey(job, defaultServerId, hostname)
+  return (jobs || []).filter(j => j.id !== job.id && backupGroupKey(j, defaultServerId, hostname) === key)
+}
