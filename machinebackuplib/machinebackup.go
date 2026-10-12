@@ -206,6 +206,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 
 	ch2 := make(chan PosSeg)
 
+	zero := newZeroChunkDetector(client)
 	workerfn := func() {
 		for seg := range ch2 {
 			// Digest of the *plaintext*, in whichever scheme this snapshot
@@ -213,7 +214,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 			// encryption key is configured. This is the value the fixed index
 			// stores and the value the chunk store is keyed by, so it must be
 			// derived the same way on every restore.
-			chunkdigest := client.ChunkDigest(seg.Data)
+			chunkdigest := zero.digestOf(seg.Data, client.ChunkDigest)
 			shahash := hex.EncodeToString(chunkdigest[:])
 			//binary.Write(CS.chunkdigests, binary.LittleEndian, (CS.pos + uint64(nread)))
 
