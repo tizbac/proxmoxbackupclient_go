@@ -10,10 +10,12 @@
 #      from the executable's name, so one binary ships every brand)
 #
 # Sources:
+#   installer/icons/src/proxmox_mark.svg — official Proxmox orange mark, as
+#                                 published on www.proxmox.com (favicon.svg)
 #   installer/icons/src/*.svg   — glyph-only square tiles for brands whose
 #                                 logo is a wide banner (drawn from
 #                                 gui/frontend/public/brands/*.svg)
-#   installer/icons/ProxmoxBackupClient.ico, EtitechBackup.ico — used as-is
+#   installer/icons/EtitechBackup.ico — used as-is
 #
 # Requires: rsvg-convert (librsvg2-bin), ImageMagick 7 (magick)
 set -euo pipefail
@@ -30,11 +32,16 @@ for b in "${!EXE[@]}"; do
   cp "$Camel.ico" "$BRANDS/$b.ico"
 done
 
-# Proxmox tray tile: center the existing wide scene on a black square. Its
-# corners are opaque black, so the padding is seamless.
-magick ProxmoxBackupClient.ico -background black -gravity center \
-  -extent 256x256 -define icon:auto-resize=256,128,64,48,32,16 \
-  "$BRANDS/proxmoxbackupclient.ico"
+# Proxmox tile: the official orange mark from www.proxmox.com centered on the
+# shared dark tile (same style as the Nimbus/Acme tiles).
+rsvg-convert -w 512 -h 512 src/proxmox_mark.svg -o /tmp/proxmox_mark.png
+magick -size 512x512 xc:none -fill '#0f172a' -draw 'roundrectangle 0,0 511,511 72,72' \
+  \( /tmp/proxmox_mark.png -resize 300x300 \) -gravity center -composite \
+  -define icon:auto-resize=256,128,64,48,32,16 ProxmoxBackupClient.ico
+cp ProxmoxBackupClient.ico "$BRANDS/proxmoxbackupclient.ico"
+# Also the exe's resource icon (window/taskbar/Alt-Tab), shared by every
+# branded rename of the binary — better than Wails' placeholder icon.
+cp ProxmoxBackupClient.ico ../../gui/build/windows/icon.ico
 
 # Etitech: tray tile is the same artwork as the installer icon.
 cp EtitechBackup.ico "$BRANDS/etitechbackup.ico"
