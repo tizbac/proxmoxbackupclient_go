@@ -98,6 +98,34 @@ Al respaldar un disco completo (p. ej., `D:\`), Proxmox Backup Client excluye au
 4. Seleccione las carpetas a respaldar
 5. Inicie la copia de seguridad
 
+### 🪟 Instalación silenciosa / no interactiva (MSI)
+
+El MSI admite el interruptor de instalación silenciosa de Windows Installer y propiedades públicas para cada valor predeterminado:
+
+```powershell
+# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Install the service but do NOT enable/autostart it (Manual + stopped),
+# and skip the GUI autostart entry too
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Custom directory + verbose install log
+msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+| Propiedad | Predeterminado | Efecto |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = sin autoinicio de la GUI al iniciar sesión |
+| `SERVICEAUTOSTART` | `1` | `0` = servicio **Manual**, **detenido** — instalado, pero nunca activado ni autoiniciado |
+| `KEEP_CONFIG` | `1` | Solo desinstalación: `0` = elimina también `%ProgramData%\<ExeName>` |
+| `INSTALLFOLDER` | `Program Files` | Directorio de instalación (también editable en la interfaz) |
+
+Requiere privilegios de administrador; códigos de salida `0` = éxito, `3010` = éxito + reinicio requerido. Los MSI de marca (`NimbusBackup.msi`, `AcmeBackup.msi`, `EtitechBackup.msi`) aceptan las mismas propiedades.
+
 ## 📋 Requisitos
 
 - Windows 10/11 (64 bits)

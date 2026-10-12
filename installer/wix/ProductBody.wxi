@@ -129,8 +129,46 @@
     <!-- License -->
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
 
-    <!-- ==================== AUTO-START CONFIGURATION ==================== -->
+    <!-- ==================== INSTALL OPTIONS (public MSI properties) ==========
+         Public (UPPERCASE) properties can be set on the msiexec command line,
+         which is what makes unattended installs possible. Silent install needs
+         no extra property — msiexec's own /quiet does it — e.g.:
+
+           msiexec /i NimbusBackup.msi /quiet
+           msiexec /i NimbusBackup.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+           msiexec /x NimbusBackup.msi /quiet KEEP_CONFIG=0
+
+         AUTOSTART         1 (default) | 0 — create the per-user logon entry
+                           (HKCU Run) that starts the GUI minimized. 0 = no
+                           GUI autostart.
+         SERVICEAUTOSTART  1 (default) | 0 — service startup type: 1 = Auto
+                           (starts with Windows, and is started by the
+                           installer); 0 = installed as Manual and left
+                           STOPPED after the install (SetServiceDemandStart
+                           below), i.e. the service exists but nothing
+                           enables or autostarts it.
+         KEEP_CONFIG       1 (default) | 0 — on uninstall, keep (1) or delete
+                           (0) %ProgramData%\<ExeName>.
+         INSTALLFOLDER     Absolute path — installation directory (also the
+                           dir the UI's install-dir dialog edits).
+         Silent logging:   msiexec /i <msi> /quiet /L*v "C:\Temp\install.log"
+         Exit codes:       0 = success, 3010 = success, reboot required.
+    ======================================================================== -->
     <Property Id="AUTOSTART" Value="1" />
+    <Property Id="SERVICEAUTOSTART" Value="1" />
+
+    <!-- SERVICEAUTOSTART=0: WiX's ServiceInstall/@Start is an enum, not a
+         formatted field, so the start type cannot be a property. Instead the
+         service is always authored as auto, and this deferred action flips it
+         to Manual and stops it right after StartServices started it — final
+         state: installed, Manual, stopped. Return=ignore: a service that is
+         not running (sc stop fails) must not fail the install. -->
+    <CustomAction Id="SetServiceDemandStart"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='cmd.exe /c "sc.exe config $(var.ServiceExeName) start= demand &amp; sc.exe stop $(var.ServiceExeName) &amp; exit /b 0"'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
 
     <!-- ==================== UNINSTALL CONFIGURATION CLEANUP ==================== -->
     <Property Id="KEEP_CONFIG" Value="1" />
@@ -158,6 +196,9 @@
     <InstallExecuteSequence>
       <Custom Action="KillGUIProcesses" Before="StopServices">
         UPGRADINGPRODUCTCODE
+      </Custom>
+      <Custom Action="SetServiceDemandStart" After="StartServices">
+        SERVICEAUTOSTART = "0"
       </Custom>
       <Custom Action="DeleteConfigFolder" Before="RemoveFiles">
         (REMOVE="ALL") AND NOT UPGRADINGPRODUCTCODE AND (KEEP_CONFIG="0")

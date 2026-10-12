@@ -97,6 +97,34 @@ Quando si esegue il backup di un intero drive (es. `D:\`), la GUI esclude automa
 4. Seleziona le cartelle da salvare
 5. Avvia il backup
 
+### 🪟 Installazione silenziosa / non interattiva (MSI)
+
+Il MSI supporta il comando standard di installazione silenziosa di Windows Installer e le proprietà pubbliche per ogni impostazione predefinita:
+
+```powershell
+# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Install the service but do NOT enable/autostart it (Manual + stopped),
+# and skip the GUI autostart entry too
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Custom directory + verbose install log
+msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+| Proprietà | Predefinito | Effetto |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = nessun avvio automatico della GUI al login |
+| `SERVICEAUTOSTART` | `1` | `0` = servizio **Manuale**, lasciato **fermo** — installato, ma mai attivato o avviato automaticamente |
+| `KEEP_CONFIG` | `1` | Solo disinstallazione: `0` = elimina anche `%ProgramData%\<ExeName>` |
+| `INSTALLFOLDER` | `Program Files` | Cartella di installazione (modificabile anche dall'interfaccia) |
+
+Richiede l'elevazione a amministratore; codici di uscita `0` = successo, `3010` = successo + riavvio richiesto. Anche gli MSI con brand (`NimbusBackup.msi`, `AcmeBackup.msi`, `EtitechBackup.msi`) accettano le stesse proprietà.
+
 ## NUOVO! — Backup live completo della macchina
 
 È stata aggiunta una nuova funzionalità che consente di eseguire il backup di un intero sistema Windows 10/11 e delle rispettive versioni server senza alcuna interruzione.

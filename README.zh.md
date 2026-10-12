@@ -98,6 +98,34 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 4. 选择要备份的文件夹
 5. 开始备份
 
+### 🪟 静默/无人值守安装（MSI）
+
+MSI 支持 Windows Installer 的标准静默参数，并可通过公开属性覆盖所有默认值：
+
+```powershell
+# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Install the service but do NOT enable/autostart it (Manual + stopped),
+# and skip the GUI autostart entry too
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Custom directory + verbose install log
+msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+| 属性 | 默认值 | 说明 |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = 不创建登录时的 GUI 自动启动 |
+| `SERVICEAUTOSTART` | `1` | `0` = 服务以“手动”安装并保持**停止** — 已安装，但不会启用或自动启动 |
+| `KEEP_CONFIG` | `1` | 仅卸载时：`0` = 同时删除 `%ProgramData%\<ExeName>` |
+| `INSTALLFOLDER` | `Program Files` | 安装目录（也可在界面中修改） |
+
+需要管理员权限；退出码 `0` = 成功，`3010` = 成功但需要重启。品牌版 MSI（`NimbusBackup.msi`、`AcmeBackup.msi`、`EtitechBackup.msi`）接受相同的属性。
+
 ## 📋 环境要求
 
 - Windows 10/11（64 位）

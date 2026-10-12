@@ -98,6 +98,34 @@ Vid backup av en hel enhet (t.ex. `D:\`) exkluderar Proxmox Backup Client automa
 4. Välj vilka mappar som ska säkerhetskopieras
 5. Starta backupen
 
+### 🪟 Tyst / obemannad installation (MSI)
+
+MSI stödjer Windows Installers standardflagga för tyst installation samt publika egenskaper för alla standardvärden:
+
+```powershell
+# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Install the service but do NOT enable/autostart it (Manual + stopped),
+# and skip the GUI autostart entry too
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Custom directory + verbose install log
+msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+| Egenskap | Standard | Verkning |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = ingen GUI-autostart vid inloggning |
+| `SERVICEAUTOSTART` | `1` | `0` = tjänsten installeras som **Manuell** och lämnas **stoppad** — installerad, men aldrig aktiverad eller autostartad |
+| `KEEP_CONFIG` | `1` | Endast vid avinstallation: `0` = tar också bort `%ProgramData%\<ExeName>` |
+| `INSTALLFOLDER` | `Program Files` | Installationskatalog (kan även ändras i gränssnittet) |
+
+Kräver administratörsrättigheter; utdatakoder `0` = succé, `3010` = succé + omstart krävs. Varumärkes-MSI:na (`NimbusBackup.msi`, `AcmeBackup.msi`, `EtitechBackup.msi`) accepterar samma egenskaper.
+
 ## 📋 Förutsättningar
 
 - Windows 10/11 (64-bitars)

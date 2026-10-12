@@ -98,6 +98,34 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 4. حدد المجلدات المراد نسخها
 5. ابدأ النسخ الاحتياطي
 
+### 🪟 التثبيت الصامت / غير التفاعلي (MSI)
+
+يدعم ملف MSI مفتاح التثبيت الصامت القياسي في Windows Installer، إضافة إلى خصائص عامة لكل قيمة افتراضية:
+
+```powershell
+# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Install the service but do NOT enable/autostart it (Manual + stopped),
+# and skip the GUI autostart entry too
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Custom directory + verbose install log
+msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+| الخاصية | الافتراضي | التأثير |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = لا تشغيل تلقائي لواجهة GUI عند تسجيل الدخول |
+| `SERVICEAUTOSTART` | `1` | `0` = تُثبَّت الخدمة **يدويًا** وتبقى **متوقفة** — مثبَّتة، لكن لا تُفعَّل ولا تبدأ تلقائيًا |
+| `KEEP_CONFIG` | `1` | عند إلغاء التثبيت فقط: `0` = يحذف أيضًا `%ProgramData%\<ExeName>` |
+| `INSTALLFOLDER` | `Program Files` | مجلد التثبيت (يمكن تغييره أيضًا من الواجهة) |
+
+يتطلب صلاحيات المسؤول؛ رموز الخروج `0` = نجاح، `3010` = نجاح مع الحاجة إلى إعادة التشغيل. ملفات MSI ذات العلامة التجارية (`NimbusBackup.msi` و`AcmeBackup.msi` و`EtitechBackup.msi`) تقبل الخصائص نفسها.
+
 ## 📋 المتطلبات
 
 - ويندوز 10/11 (64 بت)

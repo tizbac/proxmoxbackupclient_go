@@ -98,6 +98,34 @@ La backupul unui disc întreg (ex. `D:\`), Proxmox Backup Client exclude automat
 4. Selectați dosarele de backup
 5. Porniți backupul
 
+### 🪟 Instalare silențioasă / neasistată (MSI)
+
+MSI acceptă comutatorul standard de instalare silențioasă din Windows Installer, plus proprietăți publice pentru fiecare valoare implicită:
+
+```powershell
+# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Install the service but do NOT enable/autostart it (Manual + stopped),
+# and skip the GUI autostart entry too
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Custom directory + verbose install log
+msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+| Proprietate | Implicit | Efect |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = fără pornire automată a GUI la autentificare |
+| `SERVICEAUTOSTART` | `1` | `0` = serviciu **Manual**, lăsat **oprit** — instalat, dar niciodată activat sau pornit automat |
+| `KEEP_CONFIG` | `1` | Doar la dezinstalare: `0` = șterge și `%ProgramData%\<ExeName>` |
+| `INSTALLFOLDER` | `Program Files` | Directorul de instalare (editabil și din interfață) |
+
+Necesită drepturi de administrator; coduri de ieșire `0` = succes, `3010` = succes + repornire necesară. MSI-urile de brand (`NimbusBackup.msi`, `AcmeBackup.msi`, `EtitechBackup.msi`) acceptă aceleași proprietăți.
+
 ## 📋 Cerințe
 
 - Windows 10/11 (64 biți)

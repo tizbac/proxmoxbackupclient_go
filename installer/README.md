@@ -64,8 +64,32 @@ Le service Windows créé par le MSI :
 - **Nom** : ProxmoxBackupClient
 - **Nom d'affichage** : Proxmox Backup Client Service
 - **Compte** : LocalSystem (privilèges admin)
-- **Démarrage** : Automatique
+- **Démarrage** : Automatique (ou Manuel + arrêté si installé avec `SERVICEAUTOSTART=0`, cf. ci-dessous)
 - **Argument** : `--service` (mode service)
+
+## Installation silencieuse (paramètres MSI)
+
+Le MSI supporte le mode silencieux standard de Windows Installer (`/quiet` ou `/qn`, sans propriété dédiée) et ces propriétés publiques (en MAJUSCULES) :
+
+| Propriété | Défaut | Effet |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = pas d'entrée d'autodémarrage de la GUI à la connexion |
+| `SERVICEAUTOSTART` | `1` | `0` = service installé en **Manuel** et laissé **arrêté** — installé, mais jamais activé ni autodémarré |
+| `KEEP_CONFIG` | `1` | Uniquement à la désinstallation : `0` = supprime aussi `%ProgramData%\<ExeName>` |
+| `INSTALLFOLDER` | `Program Files` | Répertoire d'installation |
+
+```powershell
+# Installation silencieuse, réglages par défaut
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Installer le service SANS l'activer ni l'autodémarrer
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Désinstallation silencieuse qui purge la configuration
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+Codes de sortie : `0` = succès, `3010` = succès + redémarrage requis. Voir aussi `DEPLOYMENT.md` (déploiement GPO/Intune/PowerShell).
 
 ## Personnalisation
 

@@ -98,6 +98,34 @@ Beim Sichern eines ganzen Laufwerks (z. B. `D:\`) schließt Proxmox Backup Clien
 4. Wählen Sie die zu sichernden Ordner aus
 5. Starten Sie das Backup
 
+### 🪟 Stille / unbeaufsichtigte Installation (MSI)
+
+Der MSI unterstützt den Standard-Schalter für stille Installationen von Windows Installer sowie öffentliche Eigenschaften für alle Standardwerte:
+
+```powershell
+# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Install the service but do NOT enable/autostart it (Manual + stopped),
+# and skip the GUI autostart entry too
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Custom directory + verbose install log
+msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+| Eigenschaft | Standard | Bedeutung |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = kein GUI-Autostart bei der Anmeldung |
+| `SERVICEAUTOSTART` | `1` | `0` = Dienst als **Manuell** installiert, bleibt **gestoppt** — installiert, aber nie aktiviert oder autogestartet |
+| `KEEP_CONFIG` | `1` | Nur bei Deinstallation: `0` = löscht auch `%ProgramData%\<ExeName>` |
+| `INSTALLFOLDER` | `Program Files` | Installationsverzeichnis (auch in der Oberfläche änderbar) |
+
+Adminrechte erforderlich; Exit-Codes `0` = Erfolg, `3010` = Erfolg + Neustart erforderlich. Die Marken-MSIs (`NimbusBackup.msi`, `AcmeBackup.msi`, `EtitechBackup.msi`) akzeptieren dieselben Eigenschaften.
+
 ## 📋 Voraussetzungen
 
 - Windows 10/11 (64 Bit)

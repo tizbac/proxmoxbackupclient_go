@@ -98,6 +98,34 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 4. پوشه‌هایی را که می‌خواهید پشتیبان بگیرید انتخاب کنید
 5. پشتیبان‌گیری را شروع کنید
 
+### 🪟 نصب بی‌صدا / غیرتعاملی (MSI)
+
+فایل MSI از سویچ استاندارد نصب بی‌صدا در Windows Installer پشتیبانی می‌کند و برای هر مقدار پیش‌فرض، ویژگی‌های عمومی دارد:
+
+```powershell
+# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Install the service but do NOT enable/autostart it (Manual + stopped),
+# and skip the GUI autostart entry too
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Custom directory + verbose install log
+msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+| ویژگی | پیش‌فرض | اثر |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = بدون شروع خودکار GUI هنگام ورود |
+| `SERVICEAUTOSTART` | `1` | `0` = سرویس به‌صورت **دستی** نصب و **متوقف** باقی می‌ماند — نصب می‌شود اما هرگز فعال یا خودکار نمی‌شود |
+| `KEEP_CONFIG` | `1` | فقط هنگام حذف: `0` = `%ProgramData%\<ExeName>` هم حذف شود |
+| `INSTALLFOLDER` | `Program Files` | پوشه نصب (از رابط کاربری هم قابل تغییر است) |
+
+نیازمند دسترسی مدیر؛ کدهای خروج `0` = موفقیت، `3010` = موفقیت با نیاز به راه‌اندازی مجدد. فایل‌های MSI برند (`NimbusBackup.msi`، `AcmeBackup.msi`، `EtitechBackup.msi`) همان ویژگی‌ها را می‌پذیرند.
+
 ## 📋 پیش‌نیازها
 
 - ویندوز 10/11 (۶۴ بیتی)

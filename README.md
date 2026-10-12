@@ -98,6 +98,34 @@ When backing up an entire drive (e.g. `D:\`), the GUI automatically excludes:
 4. Select the folders to back up
 5. Start the backup
 
+### 🪟 Unattended / silent install (MSI)
+
+The MSI honours Windows Installer's standard silent switch, plus public properties for every default:
+
+```powershell
+# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Silent install that installs the service but does NOT enable/autostart it
+# (created as Manual and left stopped) and skips the GUI autostart entry too
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Custom directory + verbose install log
+msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+| Property | Default | Meaning |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = no GUI autostart entry at logon |
+| `SERVICEAUTOSTART` | `1` | `0` = service installed as **Manual** and left **stopped** — installed, but never enabled or autostarted |
+| `KEEP_CONFIG` | `1` | Uninstall only: `0` = also delete the `%ProgramData%\<name>` state directory |
+| `INSTALLFOLDER` | `Program Files` | Installation directory (also editable in the UI) |
+
+Run elevated (admin); exit code `0` = success, `3010` = success + reboot required. The branded MSIs (`NimbusBackup.msi`, `AcmeBackup.msi`, `EtitechBackup.msi`) take exactly the same switches.
+
 ## NEW! — Full machine live backup
 
 New functionality has been added that now allows backing up a complete Windows 10/11 system, or Linux machine, and their respective server versions without any downtime.

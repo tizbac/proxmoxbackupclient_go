@@ -98,6 +98,34 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 4. Выберите папки для резервного копирования
 5. Запустите резервное копирование
 
+### 🪟 Тихая / неинтерактивная установка (MSI)
+
+MSI поддерживает стандартный ключ тихой установки Windows Installer и публичные свойства для всех значений по умолчанию:
+
+```powershell
+# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Install the service but do NOT enable/autostart it (Manual + stopped),
+# and skip the GUI autostart entry too
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Custom directory + verbose install log
+msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+| Свойство | По умолчанию | Действие |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = без автозапуска GUI при входе |
+| `SERVICEAUTOSTART` | `1` | `0` = служба «**Вручную**», остаётся **остановленной** — установлена, но не включается и не запускается автоматически |
+| `KEEP_CONFIG` | `1` | Только при удалении: `0` = удалить также `%ProgramData%\<ExeName>` |
+| `INSTALLFOLDER` | `Program Files` | Каталог установки (также меняется в интерфейсе) |
+
+Требуются права администратора; коды выхода `0` = успех, `3010` = успех, требуется перезагрузка. Фирменные MSI (`NimbusBackup.msi`, `AcmeBackup.msi`, `EtitechBackup.msi`) принимают те же свойства.
+
 ## 📋 Требования
 
 - Windows 10/11 (64 бита)

@@ -98,6 +98,34 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 4. バックアップするフォルダーを選択
 5. バックアップを開始
 
+### 🪟 サイレント／無人インストール（MSI）
+
+MSI は Windows Installer の標準的なサイレント スイッチに加え、すべての既定値を変更できる公開プロパティに対応しています：
+
+```powershell
+# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+msiexec /i ProxmoxBackupClient.msi /quiet
+
+# Install the service but do NOT enable/autostart it (Manual + stopped),
+# and skip the GUI autostart entry too
+msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+
+# Custom directory + verbose install log
+msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
+msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
+```
+
+| プロパティ | 既定値 | 効果 |
+| --- | --- | --- |
+| `AUTOSTART` | `1` | `0` = ログオン時の GUI 自動起動を作成しない |
+| `SERVICEAUTOSTART` | `1` | `0` = サービスを「手動」でインストールし**停止したまま**にする — インストールされますが有効化・自動起動はされません |
+| `KEEP_CONFIG` | `1` | アンインストール時のみ: `0` = `%ProgramData%\<ExeName>` も削除 |
+| `INSTALLFOLDER` | `Program Files` | インストール先ディレクトリ（UI からも変更可能） |
+
+管理者特権が必要です。終了コード `0` = 成功、`3010` = 成功（再起動が必要）。ブランド別 MSI（`NimbusBackup.msi`、`AcmeBackup.msi`、`EtitechBackup.msi`）も同じプロパティを受け付けます。
+
 ## 📋 前提条件
 
 - Windows 10/11（64 ビット）
