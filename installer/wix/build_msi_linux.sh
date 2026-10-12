@@ -5,13 +5,15 @@
 # Usage: installer/wix/build_msi_linux.sh [output-dir] (default: dist/)
 #
 # Prerequisites:
-#   - Docker
+#   - Docker (everything else - GUI/SVC compilation AND wine/WiX - runs in
+#     containers; the host needs neither Go, Node, nor a working wine prefix)
 #   - The full repo mounted (gui/go.mod has replace directives to sibling dirs)
 #
 # Flow per brand:
 #   1. GUI via `wails build -clean -platform windows/amd64` (built ONCE, copied/renamed per brand)
 #   2. SVC via `go build -tags service -trimpath -buildmode=pie -ldflags "-s -w -X main.appVersion=$V" -o ProxmoxBackupClientSVC.exe`
-#   3. WiX stage: wine + wix314-binaries.zip (candle + light)
+#   3. WiX stage: candle + light from wix314-binaries, run under Wine INSIDE
+#      Docker (installer/wix/Dockerfile.wine: Debian + wine + wine-mono + WiX)
 #
 # Brand resolution: the GUI exe name determines the brand at runtime (see gui/brand.go).
 # The SVC exe is the SAME for all brands (ProxmoxBackupClientSVC.exe).
@@ -21,9 +23,10 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 OUT_DIR=${1:-$ROOT/dist}
-# Absolutize: wine maps Z: to the unix root, so a relative OUT_DIR (e.g. the
-# Makefile passing "dist") would be written relative to wine's cwd inside the
-# temp work dir - silently lost when the work dir is cleaned up.
+# Absolutize: the output dir is bind-mounted into the wine container and wine
+# addresses it as Z:/out/...; docker also rejects relative -v sources. A
+# relative OUT_DIR (e.g. the Makefile passing "dist") must therefore be turned
+# into an absolute path before anything runs.
 mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
 
@@ -69,12 +72,24 @@ msi_product_version() {
 PRODUCT_VERSION=$(msi_product_version "$VERSION")
 echo "==> Version: $VERSION (MSI ProductVersion: $PRODUCT_VERSION)"
 
-# WiX toolset URL (v3.14.1 - last stable v3 release)
-WIX_URL="https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip"
-WIX_SHA256="7e8a7b0c9b7f5e4c2a3f9d8e6b1c4a7f9e2d5c8b1a4e7f0c3d6a9b2e5f8c1d4a" # verify if needed
+# Toolchain image: Debian + wine + wine-mono + WiX 3.14 (see Dockerfile.wine).
+# candle/light are .NET exes; running them with the HOST wine used to fail on
+# machines without a working prefix ("wine: could not load kernel32.dll,
+# status c0000135"), so wine only ever runs inside this image.
+WINE_IMAGE="proxmoxbackup-msi-wine:1"
 
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT INT TERM
+
+cleanup() {
+    # The wine container runs as root, so a build that dies mid-way can leave
+    # root-owned files in $WORK which the invoking user could not delete.
+    if [ -d "${WORK:-}" ]; then
+        docker run --rm -v "$WORK:/work" --entrypoint chown "$WINE_IMAGE" \
+            -R "$(id -u):$(id -g)" /work >/dev/null 2>&1 || true
+        rm -rf "$WORK" || true
+    fi
+}
+trap cleanup EXIT INT TERM
 
 echo "==> Preparing build artifacts in $WORK"
 
@@ -203,13 +218,11 @@ fi
 echo "    GUI: $GUI_EXE"
 echo "    SVC: $SVC_EXE"
 
-# ---- 2. Prepare WiX binaries ----
-echo "==> Downloading WiX toolset..."
-cd "$WORK"
-curl -fsSL -o wix314-binaries.zip "$WIX_URL"
-# Optionally verify checksum: echo "$WIX_SHA256  wix314-binaries.zip" | sha256sum -c -
-unzip -q wix314-binaries.zip -d wix
-WIX_BIN="$WORK/wix"
+# ---- 2. Build the WiX/Wine toolchain image ----
+# All tools (wine, wine-mono, candle/light) live in this image; repeated builds
+# hit the docker cache and only re-run a layer when the Dockerfile changes.
+echo "==> Building toolchain image $WINE_IMAGE..."
+docker build -t "$WINE_IMAGE" -f "$ROOT/installer/wix/Dockerfile.wine" "$ROOT/installer/wix"
 
 # ---- 3. Copy WiX source files ----
 # Mirror the repo layout inside $WORK (installer/wix, installer/icons, gui/...):
@@ -250,12 +263,21 @@ mkdir -p "$WORK/installer/icons"
 cp "$ROOT/installer/icons/"*.ico "$WORK/installer/icons/" 2>/dev/null || true
 cp "$ROOT/installer/wix/License.rtf" "$WIXSRC/" 2>/dev/null || true
 
-# ---- 5. Build MSIs with Wine + candle + light ----
+# ---- 5. Build MSIs with Wine + candle + light (inside Docker) ----
 echo "==> Building MSIs with WiX..."
 cd "$WIXSRC"
-WINE_WIX_BIN="Z:$WIX_BIN"
-WINE_OUT_DIR="Z:$OUT_DIR"
-WINE_WORK_WIXSRC="Z:$WIXSRC"
+
+# run_wine <cmd...> - run the toolchain container. $WORK is mounted at /work,
+# the output dir at /out; wine maps Z: to the container root, so Z:/work/...
+# addresses the sources staged in steps 3 and 4. Nothing depends on the
+# host's wine installation or prefix.
+run_wine() {
+    docker run --rm \
+        -v "$WORK:/work" \
+        -v "$OUT_DIR:/out" \
+        -w /work/installer/wix \
+        "$WINE_IMAGE" "$@"
+}
 
 for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup EtitechBackup; do
     WXS_FILE="${BRAND}.wxs"
@@ -266,23 +288,30 @@ for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup EtitechBackup; do
 
     echo "    Building $BRAND.msi..."
     # candle: compile .wxs to .wixobj
-    wine "$WINE_WIX_BIN/candle.exe" \
+    run_wine wine Z:/opt/wix/candle.exe \
         -dProductVersion="$PRODUCT_VERSION" \
         -ext WixUIExtension \
         -ext WixUtilExtension \
-        "$WXS_FILE" \
-        -out "$WINE_WORK_WIXSRC/${BRAND}.wixobj"
+        "Z:/work/installer/wix/$WXS_FILE" \
+        -out "Z:/work/installer/wix/${BRAND}.wixobj"
 
-    # light: link .wixobj to .msi
-    wine "$WINE_WIX_BIN/light.exe" \
+    # light: link .wixobj to .msi. It resolves ProductBody.wxi's relative
+    # Source paths (../../gui/build/bin/..., ../icons/...) against
+    # Z:\work\installer\wix - i.e. into the mounted $WORK.
+    run_wine wine Z:/opt/wix/light.exe \
         -ext WixUIExtension \
         -ext WixUtilExtension \
         -sval \
-        -out "$WINE_OUT_DIR/${BRAND}-${VERSION}.msi" \
-        "$WINE_WORK_WIXSRC/${BRAND}.wixobj"
+        -out "Z:/out/${BRAND}-${VERSION}.msi" \
+        "Z:/work/installer/wix/${BRAND}.wixobj"
 
     echo "    ✅ $OUT_DIR/${BRAND}-${VERSION}.msi"
 done
+
+# The wine containers run as root; hand the results back to the invoking user
+# (same pattern as the GUI/SVC build above).
+docker run --rm -v "$WORK:/work" -v "$OUT_DIR:/out" --entrypoint chown \
+    "$WINE_IMAGE" -R "$(id -u):$(id -g)" /work /out || true
 
 echo "==> All MSIs built in $OUT_DIR"
 ls -la "$OUT_DIR"/*.msi

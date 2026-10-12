@@ -1,0 +1,62 @@
+# Toolchain image for build_msi_linux.sh: WiX 3.14 (candle/light) under Wine.
+#
+# candle.exe/light.exe are .NET Framework assemblies, so Wine alone is not
+# enough - wine-mono must be installed into the prefix. Baking wine, wine-mono
+# and the WiX binaries into an image means:
+#   - the host's wine installation/prefix is never touched (a broken or
+#     missing host prefix used to abort the build with
+#     "wine: could not load kernel32.dll, status c0000135"), and
+#   - every machine builds the MSI with the exact same tool versions.
+#
+# Build: docker build -t proxmoxbackup-msi-wine:1 installer/wix -f installer/wix/Dockerfile.wine
+# Used by: installer/wix/build_msi_linux.sh (step 5).
+
+FROM debian:trixie-slim
+
+# WiX 3.14.1 - last stable WiX v3 release (same URL the script used before).
+ARG WIX_URL=https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip
+# wine-mono provides the .NET Framework runtime for Wine.
+ARG WINE_MONO_VERSION=11.3.0
+# sha256 of wine-mono-11.3.0-x86.msi (from the GitHub release asset digest)
+ARG WINE_MONO_SHA256=df2dfc1665c2511882e7cabd56eafd0c0a3d94e5a7e86f969277f6c189d418d3
+
+# Wine (both word sizes: the WiX tools are PE32/AnyCPU managed exes and may
+# be loaded as 32-bit processes).
+RUN dpkg --add-architecture i386 \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        unzip \
+        wine \
+        wine32 \
+        wine64 \
+ && rm -rf /var/lib/apt/lists/*
+
+# WiX binaries -> /opt/wix (candle.exe resolves -ext WixUIExtension against
+# its own directory, so the extensions sit next to the tools).
+RUN curl -fsSL -o /tmp/wix.zip "$WIX_URL" \
+ && mkdir -p /opt/wix \
+ && unzip -q /tmp/wix.zip -d /opt/wix \
+ && rm /tmp/wix.zip
+
+# Initialise a wine prefix and install wine-mono into it (headless: no X
+# server in the container, /qn keeps msiexec UI-free).
+RUN export WINEPREFIX=/wine WINEDEBUG=-all \
+ && wineboot --init \
+ && curl -fsSL -o /tmp/wine-mono.msi \
+      "https://github.com/wine-mono/wine-mono/releases/download/wine-mono-${WINE_MONO_VERSION}/wine-mono-${WINE_MONO_VERSION}-x86.msi" \
+ && echo "${WINE_MONO_SHA256}  /tmp/wine-mono.msi" | sha256sum -c - \
+ && wine msiexec /qn /i 'Z:\tmp\wine-mono.msi' \
+ && wineserver -w \
+ && rm /tmp/wine-mono.msi
+
+# A valid XDG runtime dir keeps wine from logging
+# "XDG_RUNTIME_DIR is invalid or not set" on every invocation.
+RUN mkdir -p /run/user/0 && chmod 700 /run/user/0
+
+ENV WINEPREFIX=/wine \
+    WINEDEBUG=-all \
+    XDG_RUNTIME_DIR=/run/user/0
+
+WORKDIR /work
