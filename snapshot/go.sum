@@ -1,5 +1,7 @@
 github.com/go-ole/go-ole v1.3.0 h1:Dt6ye7+vXGIKZ7Xtk4s6/xVdGDQynvom7xCFEdWr6uE=
+github.com/go-ole/go-ole v1.3.0/go.mod h1:5LS6F96DhAwUc7C+1HLexzMXY1xGRSryjyPPKW6zv78=
 github.com/st-matskevich/go-vss v0.3.3 h1:EW9Mgx94QptfGLWX5Wc8UM04ZYIevHCX9fcGC8iXLXA=
 github.com/st-matskevich/go-vss v0.3.3/go.mod h1:9nvSSU+TrCfktDTgzrdYk+V3WdqR8Cc2dzi6v3X0XPc=
 golang.org/x/sys v0.1.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.44.0 h1:ildZl3J4uzeKP07r2F++Op7E9B29JRUy+a27EibtBTQ=
+golang.org/x/sys v0.44.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
