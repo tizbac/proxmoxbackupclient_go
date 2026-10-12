@@ -2,7 +2,7 @@
 # build_msi_linux.sh - Build Windows MSI installers on Linux using Docker + Wine + WiX
 # This replicates the CI's exact flow (proven: MSI ships WITHOUT webview2loader.dll and works)
 #
-# Usage: packaging/wix/build_msi_linux.sh [output-dir] (default: dist/)
+# Usage: installer/wix/build_msi_linux.sh [output-dir] (default: dist/)
 #
 # Prerequisites:
 #   - Docker
@@ -212,17 +212,27 @@ unzip -q wix314-binaries.zip -d wix
 WIX_BIN="$WORK/wix"
 
 # ---- 3. Copy WiX source files ----
-cp -r "$ROOT/installer/wix" "$WORK/wixsrc"
+# Mirror the repo layout inside $WORK (installer/wix, installer/icons, gui/...):
+# WiX resolves every File/@Source and Icon/@SourceFile path relative to the
+# .wxs/.wxi that references it (../../gui/build/bin/..., ../icons/...), so
+# keeping the same relative structure makes those paths land inside $WORK,
+# which the trap above cleans up - and which concurrent builds cannot share.
+# The old scheme staged the binaries OUTSIDE $WORK (in the parent of $WORK,
+# i.e. a shared /tmp location) and symlinked them in: the "mkdir -p" there
+# created a REAL directory first, so "ln -sfn" placed the symlink *inside* it
+# (/tmp/gui/build/bin/bin) instead of replacing it, and light.exe failed with
+# LGHT0103 "cannot find ../../gui/build/bin/*.exe".
+mkdir -p "$WORK/installer"
+cp -r "$ROOT/installer/wix" "$WORK/installer/wix"
+WIXSRC="$WORK/installer/wix"
 
 # ---- 4. Stage binaries per brand (ExeName / ServiceExeName per ProductBody.wxi) ----
 # ProductBody.wxi expects:
-#   GUI: ../../gui/build/bin/$(var.ExeName).exe
+#   GUI: ../../gui/build/bin/$(var.ExeName).exe   -> $WIXSRC/../../gui/build/bin
 #   SVC: ../../gui/build/bin/$(var.ServiceExeName).exe
-# Our built exes are at $GUI_EXE and $SVC_EXE. We need to copy them to the
-# relative paths expected by the .wxs files.
-mkdir -p "$WORK/wixsrc/../../gui/build/bin" 2>/dev/null || true
-# We'll copy to a temp staging area that matches the relative paths
-STAGE_BIN="$WORK/stage/gui/build/bin"
+# Our built exes are at $GUI_EXE and $SVC_EXE. We copy them to the relative
+# paths the .wxs files expect.
+STAGE_BIN="$WORK/gui/build/bin"
 mkdir -p "$STAGE_BIN"
 
 # Brands from ProductBody.wxi: ProxmoxBackupClient, AcmeBackup, NimbusBackup, EtitechBackup
@@ -233,20 +243,19 @@ for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup EtitechBackup; do
     cp "$SVC_EXE" "$STAGE_BIN/${BRAND}SVC.exe"
 done
 
-# Symlink the stage into wixsrc's expected location
-ln -sfn "$STAGE_BIN" "$WORK/wixsrc/../../gui/build/bin"
-
-# Copy icons and License.rtf to expected locations
-mkdir -p "$WORK/wixsrc/../icons"
-cp "$ROOT/installer/icons/"*.ico "$WORK/wixsrc/../icons/" 2>/dev/null || true
-cp "$ROOT/installer/wix/License.rtf" "$WORK/wixsrc/" 2>/dev/null || true
+# Copy icons and License.rtf to expected locations:
+#   ../icons/*.ico  -> $WIXSRC/../icons (Icon/@SourceFile in ProductBody.wxi)
+#   License.rtf     -> $WIXSRC (WixUILicenseRtf)
+mkdir -p "$WORK/installer/icons"
+cp "$ROOT/installer/icons/"*.ico "$WORK/installer/icons/" 2>/dev/null || true
+cp "$ROOT/installer/wix/License.rtf" "$WIXSRC/" 2>/dev/null || true
 
 # ---- 5. Build MSIs with Wine + candle + light ----
 echo "==> Building MSIs with WiX..."
-cd "$WORK/wixsrc"
+cd "$WIXSRC"
 WINE_WIX_BIN="Z:$WIX_BIN"
 WINE_OUT_DIR="Z:$OUT_DIR"
-WINE_WORK_WIXSRC="Z:$WORK/wixsrc"
+WINE_WORK_WIXSRC="Z:$WIXSRC"
 
 for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup EtitechBackup; do
     WXS_FILE="${BRAND}.wxs"
