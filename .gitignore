@@ -59,3 +59,7 @@ Thumbs.db
 *.log
 # Idées/notes locales (pas dans git)
 GEMINI_IDEAS.md
+installer/wix/out/
+installer/wix/*.wixobj
+installer/wix/*.wixpdb
+installer/wix/*.msi

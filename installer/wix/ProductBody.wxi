@@ -7,12 +7,12 @@
      The exe is installed under the SAME name as the installer (ExeName); the
      GUI resolves its brand from the exe base name at runtime (gui/brand.go),
      so the installed exe name == installer name == brand key. -->
+<Include>
   <Product Id="*"
            Name="$(var.ProductName)"
            Language="1033"
            Version="$(var.ProductVersion)"
            Manufacturer="$(var.Manufacturer)"
-           Icon="AppIcon"
            UpgradeCode="$(var.UpgradeCode)">
 
     <Package InstallerVersion="200"
@@ -30,6 +30,8 @@
 
     <!-- Application icon, selected from installer/icons/ by the ExeName -->
     <Icon Id="AppIcon" SourceFile="../icons/$(var.ExeName).ico" />
+    <!-- The icon Programs and Features shows -->
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
 
     <!-- Installation directory -->
     <Directory Id="TARGETDIR" Name="SourceDir">
@@ -150,7 +152,7 @@
     <CustomAction Id="KillGUIProcesses"
                   Directory="TARGETDIR"
                   ExeCommand='cmd.exe /c "taskkill /F /IM $(var.ExeName).exe /T 2&gt;nul || exit 0"'
-                  Execute="immediate"
+                  Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
 
@@ -184,13 +186,7 @@
         </Control>
 
         <Control Id="ConfigInfo" Type="Text" X="25" Y="60" Width="320" Height="60" Transparent="yes" NoPrefix="yes">
-          <Text>The configuration is stored in:\nC:\ProgramData\$(var.ExeName)\
-
-This includes:
-• config.json (PBS servers, credentials)
-• jobs.json (scheduled jobs)
-• debug-gui.log and debug-service.log
-          </Text>
+          <Text>The settings are kept in C:\ProgramData\$(var.ExeName): the PBS servers and their tokens, the Backup Sets, encryption keys, reports and logs. Keep them to reinstall later with everything as it was.</Text>
         </Control>
 
         <Control Id="KeepConfigRadio" Type="RadioButtonGroup" X="25" Y="130" Width="320" Height="50" Property="KEEP_CONFIG">
@@ -221,3 +217,4 @@ This includes:
     </UI>
 
   </Product>
+</Include>

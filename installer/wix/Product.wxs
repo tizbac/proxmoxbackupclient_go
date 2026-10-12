@@ -16,17 +16,19 @@
 <?define ServiceExeName = "ProxmoxBackupClientSVC" ?>
 <?define VendorKey = "Proxmox Backup Client" ?>
 <?define Manufacturer = "Proxmox Backup Client" ?>
-<?define UpgradeCode = "12345678-1234-1234-1234-123456789012" ?>
-<?define ArpUrlAbout = "https://www.proxmox.com/" ?>
-<?define ArpHelpLink = "https://forum.proxmox.com/" ?>
-<?define ArpUrlUpdateInfo = "https://github.com/tizbac/proxmoxbackupclient_go/releases" ?>
-<?define ArpContact = "https://github.com/tizbac/proxmoxbackupclient_go" ?>
+<!-- Fixed for this product line: every version upgrades the one before.
+     Never change it, or an upgrade installs beside the old version. -->
+<?define UpgradeCode = "F15C307F-1053-46B7-BCB0-2FAAC3627ED6" ?>
+<?define ArpUrlAbout = "https://github.com/mjb-is/proxmoxbackupclient_go" ?>
+<?define ArpHelpLink = "https://github.com/mjb-is/proxmoxbackupclient_go/tree/master/docs/manual" ?>
+<?define ArpUrlUpdateInfo = "https://github.com/mjb-is/proxmoxbackupclient_go/releases" ?>
+<?define ArpContact = "https://github.com/mjb-is/proxmoxbackupclient_go/issues" ?>
 
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <!-- ProductVersion is passed from CI via candle -dProductVersion=x.y.z;
-       this is the local-dev fallback. Keep in sync with gui/wails.json. -->
+  <!-- ProductVersion comes from build-msi.ps1 (candle -dProductVersion=x.y.z,
+       read from gui/wails.json); this is only a fallback. -->
   <?ifndef ProductVersion ?>
-    <?define ProductVersion = "0.2.72" ?>
+    <?define ProductVersion = "0.0.1" ?>
   <?endif ?>
 
   <?include ProductBody.wxi ?>
