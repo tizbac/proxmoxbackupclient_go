@@ -1,5 +1,5 @@
 #!/bin/sh
-# build-rpm.sh - build the pbsgo RPM inside a Fedora Docker container.
+# build-rpm.sh - build the proxmoxbackupclient RPM inside a Fedora Docker container.
 #
 # Usage: packaging/fedora/build-rpm.sh [output-dir]     (default: dist/)
 #
@@ -7,7 +7,7 @@
 # Go module downloads). The host only needs git and docker; Go, GTK and
 # WebKit are installed inside the container.
 #
-# The container image can be overridden with $PBSGO_FEDORA_IMAGE
+# The container image can be overridden with $PBS_FEDORA_IMAGE
 # (default: fedora:44).
 set -eu
 
@@ -19,9 +19,10 @@ case "$OUT_DIR" in
   /*) : ;;
   *) OUT_DIR="$PWD/$OUT_DIR" ;;
 esac
-IMAGE=${PBSGO_FEDORA_IMAGE:-fedora:44}
+IMAGE=${PBS_FEDORA_IMAGE:-fedora:44}
 
-VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/gui/wails.json")
+VERSION=${PBS_VERSION:-}
+[ -n "$VERSION" ] || VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/gui/wails.json")
 [ -n "$VERSION" ] || { echo "error: cannot read productVersion from gui/wails.json" >&2; exit 1; }
 
 WORK=$(mktemp -d)
@@ -31,17 +32,17 @@ echo "==> staging source tree ($VERSION)"
 mkdir -p "$WORK/stage"
 git -C "$ROOT" archive --format=tar HEAD | tar -x -C "$WORK/stage"
 mkdir -p "$WORK/src"
-mv "$WORK/stage" "$WORK/src/pbsgo-$VERSION"
-tar -C "$WORK/src" -czf "$WORK/pbsgo-$VERSION.tar.gz" "pbsgo-$VERSION"
+mv "$WORK/stage" "$WORK/src/proxmoxbackupclient-$VERSION"
+tar -C "$WORK/src" -czf "$WORK/proxmoxbackupclient-$VERSION.tar.gz" "proxmoxbackupclient-$VERSION"
 rmdir "$WORK/src" "$WORK/stage" 2>/dev/null || true
 
 echo "==> preparing rpmbuild tree"
 RPM=$WORK/rpmbuild
 mkdir -p "$RPM"/BUILD "$RPM"/BUILDROOT "$RPM"/RPMS "$RPM"/SOURCES \
          "$RPM"/SPECS "$RPM"/SRPMS
-cp "$WORK/pbsgo-$VERSION.tar.gz" "$RPM/SOURCES/"
-sed "s/^Version:.*$/Version:       $VERSION/" "$SCRIPT_DIR/pbsgo.spec" \
-    > "$RPM/SPECS/pbsgo.spec"
+cp "$WORK/proxmoxbackupclient-$VERSION.tar.gz" "$RPM/SOURCES/"
+sed "s/^Version:.*$/Version:       $VERSION/" "$SCRIPT_DIR/proxmoxbackupclient.spec" \
+    > "$RPM/SPECS/proxmoxbackupclient.spec"
 
 echo "==> building in container ($IMAGE)"
 docker run --rm -i \
@@ -53,11 +54,11 @@ set -eux
 dnf -y install golang gcc gtk3-devel webkit2gtk4.1-devel tar rpm-build
 export HOME=/root
 cp -r /src /root/rpmbuild
-rpmbuild --define "_topdir /root/rpmbuild" -ba /root/rpmbuild/SPECS/pbsgo.spec
+rpmbuild --define "_topdir /root/rpmbuild" -ba /root/rpmbuild/SPECS/proxmoxbackupclient.spec
 mkdir -p /out
 cp -v /root/rpmbuild/RPMS/*/*.rpm /out/
 cp -v /root/rpmbuild/SRPMS/*.src.rpm /out/
 DOCKER
 
 echo "==> done:"
-ls -la "$OUT_DIR"/pbsgo-*.rpm
+ls -la "$OUT_DIR"/proxmoxbackupclient-*.rpm

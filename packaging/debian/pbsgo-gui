@@ -1,6 +1,0 @@
-#!/bin/sh
-# pbsgo-gui: launch the Proxmox Backup Client GUI as the current user.
-#
-# Note: machine (whole-disk) backup needs root privileges. To run the
-# GUI elevated, use pbsgo-gui-root instead.
-exec /usr/lib/pbsgo/pbsgo-gui "$@"

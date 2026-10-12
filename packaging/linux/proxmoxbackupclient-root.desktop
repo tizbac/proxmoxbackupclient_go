@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Proxmox Backup Client (administrator)
+Comment=Start as root, for machine (whole-disk) backups and snapshots
+Exec=proxmoxbackupclient-root
+Icon=proxmoxbackupclient
+Terminal=false
+Categories=Utility;Archiving;
+Keywords=backup;restore;proxmox;pbs;root;

@@ -1,37 +1,48 @@
-# Debian packaging (pbsgo)
+# Linux packages
 
-Builds `pbsgo_<version>_<arch>.deb` with `dpkg-deb`. The version is taken
-from `gui/wails.json` (`productVersion`).
+`packaging/debian/build-deb.sh` builds `proxmoxbackupclient_<version>_<arch>.deb`
+(Debian, Ubuntu, Mint); `packaging/fedora/build-rpm.sh` builds the RPM in a
+Fedora container. The version comes from `gui/wails.json` (`productVersion`),
+or `PBS_VERSION`. Both use the launchers and menu entries in `packaging/linux/`.
 
-## Build host requirements
+## .deb build host
 
 - Go toolchain
-- `dpkg-dev` (dpkg-deb, dpkg-shlibdeps)
-- `libwebkit2gtk-4.1-dev` (cgo headers to link the GUI)
-- built GUI frontend in `gui/frontend/dist`
-  (`cd gui/frontend && npm install && npm run build`)
-
-## Build
+- `dpkg-dev` (dpkg-deb, dpkg-architecture)
+- GTK3 and WebKitGTK headers: `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`
+  (4.0 is used when 4.1 is not installed)
+- the frontend in `gui/frontend/dist` (committed)
 
 ```sh
-packaging/debian/build-deb.sh [output-dir]     # default output dir: dist/
-# or
-make deb
+packaging/debian/build-deb.sh [output-dir]      # default: dist/
 ```
 
-## Package contents
+## .rpm
 
-| Path | Description |
-| ---- | ----------- |
-| `/usr/bin/pbsgo` | directory/stream backup CLI |
-| `/usr/bin/pbsgo-machine` | whole-machine (raw disk) backup CLI |
-| `/usr/bin/pbsgo-nbd` | fidx-to-NBD restore tool (run as root) |
-| `/usr/bin/pbsgo-gui` | GUI launcher (current user) |
-| `/usr/bin/pbsgo-gui-root` | GUI launcher via sudo/pkexec (needed for machine backup) |
-| `/usr/lib/pbsgo/pbsgo-gui` | GUI application binary (frontend embedded) |
-| `/usr/share/applications/pbsgo-gui.desktop` | desktop entry |
-| `/usr/share/icons/hicolor/256x256/apps/pbsgo.png` | icon |
+Needs only git and docker on the host; Go, GTK and WebKit are installed in
+the container (`fedora:44`, or `PBS_FEDORA_IMAGE`).
 
-Runtime dependencies of the GUI are computed with `dpkg-shlibdeps`; when
-that is not possible the script falls back to
-`libwebkit2gtk-4.1-0, libgtk-3-0t64 | libgtk-3-0`.
+```sh
+packaging/fedora/build-rpm.sh [output-dir]      # default: dist/
+```
+
+## What is installed
+
+| Path | |
+| ---- | --- |
+| `/usr/bin/proxmoxbackupclient` | the app, as the current user (folder backups of your files; with `-list-sets`, `-undelete` or `-rollback`, those commands without a window) |
+| `/usr/bin/proxmoxbackupclient-root` | the app as root, for machine (whole-disk) backups and snapshots, with your own settings; asks for the password with pkexec (sudo from a terminal) |
+| `/usr/bin/proxmoxbackup-directory` | folder backups from the command line |
+| `/usr/bin/proxmoxbackup-machine` | whole-disk backups from the command line |
+| `/usr/bin/proxmoxbackup-nbd` | attach a disk image from the server as `/dev/nbdN` (root) |
+| `/usr/lib/proxmoxbackupclient/ProxmoxBackupClient` | the app itself |
+| `/usr/share/applications/proxmoxbackupclient.desktop`, `proxmoxbackupclient-root.desktop` | menu entries |
+
+Scheduled backups run while the app is open (it can sit in the tray). There
+is no background system service on Linux yet: a root service would need to
+use each user's own settings without handing the user root, which is not
+designed yet.
+
+Snapshots of mounted file systems need the elastio-snap kernel module
+(`elastio-snap-dkms`, see the main README); without it partitions are read
+live.

@@ -35,7 +35,7 @@ help:
 	@echo "  cli          - Build all CLI tools"
 	@echo "  gui          - Build GUI application"
 	@echo "  service      - Build Windows Service (NimbusBackupSVC.exe)"
-	@echo "  deb          - Build the Debian package (pbsgo, Linux)"
+	@echo "  deb          - Build the Debian package (proxmoxbackupclient, Debian/Ubuntu)"
 	@echo "  pkgarch      - Build the Arch package (pbsgo, on Arch)"
 	@echo "  pkgfedora    - Build the Fedora RPM (docker fedora:44)"
 	@echo "  test         - Run all tests"

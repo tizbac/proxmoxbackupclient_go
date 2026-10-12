@@ -1,18 +1,22 @@
-Package: pbsgo
+Package: proxmoxbackupclient
 Version: @VERSION@
 Architecture: @ARCH@
-Maintainer: Proxmox Backup Client contributors
-Homepage: https://github.com/tizbac/proxmoxbackupclient_go
+Maintainer: proxmoxbackupclient_go (mjb-is fork) <noreply@github.com>
+Homepage: https://github.com/mjb-is/proxmoxbackupclient_go
 Section: admin
 Priority: optional
+Installed-Size: @SIZE@
 Depends: @DEPENDS@
-Description: Backup client for Proxmox Backup Server (CLI + GUI)
- Go-based backup client for Proxmox Backup Server:
-  - pbsgo: directory and stream backup with deduplication
-  - pbsgo-machine: whole-machine (raw disk) backup, using VSS on
-    Windows and block-level snapshotting on Linux
-  - pbsgo-nbd: mount fidx images as read-only NBD block devices
-  - pbsgo-gui: graphical interface; machine (whole-disk) backup
-    requires root, use the pbsgo-gui-root launcher for that
- The GUI frontend is embedded in the binary, no Node.js is needed at
- runtime.
+Recommends: pkexec | policykit-1
+Suggests: elastio-snap-dkms
+Description: Backup client for Proxmox Backup Server (app and command line)
+ Backs folders and whole disks up to a Proxmox Backup Server and restores
+ them, with deduplication, encryption, change detection, Undelete and
+ Roll back:
+  - proxmoxbackupclient: the app (folder backups as the current user);
+    proxmoxbackupclient-root starts it as root for machine (whole-disk)
+    backups and block snapshots
+  - proxmoxbackup-directory: folder backups from the command line
+  - proxmoxbackup-machine: whole-disk backups from the command line
+  - proxmoxbackup-nbd: attach a disk image from the server as /dev/nbdN
+ Snapshots of mounted file systems use elastio-snap when it is installed.

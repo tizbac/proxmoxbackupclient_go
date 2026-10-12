@@ -1,0 +1,33 @@
+#!/bin/sh
+# proxmoxbackupclient-root: start the Proxmox Backup Client as root, which
+# machine (whole-disk) backups and block snapshots need, with the invoking
+# user's own settings.
+#
+# - HOME is passed through, so the elevated program finds the user's settings
+#   (~/.proxmox-backup-guardian) rather than root's.
+# - Anything it writes there would then belong to root and be unreadable to
+#   the user's next normal start, so ownership is handed back when it closes.
+#   The program and the hand-back run as ONE elevated command (an exec
+#   replaces this script, so nothing after it would run).
+# - From the desktop (no terminal) the password is asked with pkexec, which
+#   shows a graphical prompt; sudo is used only from a terminal.
+# - DISPLAY/XAUTHORITY (X11) and WAYLAND_DISPLAY/XDG_RUNTIME_DIR (Wayland) are
+#   passed so the window can open on the user's session.
+BIN=/usr/lib/proxmoxbackupclient/ProxmoxBackupClient
+
+if [ "$(id -u)" = "0" ]; then
+    exec "$BIN" "$@"
+fi
+
+OWNER="$(id -u):$(id -g)"
+RUN='"$0" "$@"; rc=$?; [ -d "$HOME/.proxmox-backup-guardian" ] && chown -R '"$OWNER"' "$HOME/.proxmox-backup-guardian"; exit $rc'
+
+set -- env "HOME=$HOME" \
+    "DISPLAY=${DISPLAY:-}" "XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}" \
+    "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}" "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-}" \
+    sh -c "$RUN" "$BIN" "$@"
+
+if [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
+    exec sudo "$@"
+fi
+exec pkexec "$@"
