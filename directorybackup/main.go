@@ -529,6 +529,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	split := pbscommon.SplitArchiveMode(changeDetectionMode)
 	archive := &pbscommon.PXARArchive{}
 	archive.ArchiveName = "backup.pxar.didx"
+	archive.ExcludeRoot = originalPath // the folder as named, also when read through a shadow copy
 	archive.OnNotice = func(msg string) { fmt.Println(msg) }
 	if split {
 		// Metadata stream; the payload stream is backup.ppxar.didx.

@@ -209,7 +209,7 @@ func folderEntries(all []imagefs.Entry, sub, root string, excludes []string, cas
 			}
 			name := rel[strings.LastIndexByte(rel, '/')+1:]
 			excluded := (len(excludes) > 0 && pbscommon.IsExcludedByPatterns(rel, name, root, excludes)) ||
-				(e.IsDir && pbscommon.IsAutoExcludedFolder(name)) ||
+				(e.IsDir && pbscommon.IsAutoExcludedFolderAt(name, !strings.Contains(e.Path, "/"))) ||
 				(!e.IsDir && pbscommon.IsAutoExcludedFile(name))
 			if excluded || under(rel) {
 				if e.IsDir {

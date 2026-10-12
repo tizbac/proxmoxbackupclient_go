@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A folder called "Recovery" is backed up unless it sits at the root of a drive.** Only Windows' own C:\Recovery is left out now; before, any folder of that name, at any depth, was silently skipped.
 - **The command-line tools no longer show message boxes** for bad options or when another backup is running (a box blocks an unattended scheduled run, and `proxmoxbackup-directory` used to carry on after it): the message goes to stderr and they exit 1 or 2. `proxmoxbackup-nbd`'s interactive mode now uses `-keyfile`, so it opens encrypted images too.
 - **`proxmoxbackup-machine` sends its notification e-mail.** It accepted the `-mail-*` options but never sent anything; now every run, failed ones included, sends it (a run with unreadable sectors reports "Partial" and where).
 - **Files and folders dated exactly 1 January 1970 00:00 UTC get that date back on restore** instead of the restore time (the zero time was taken for "no date").

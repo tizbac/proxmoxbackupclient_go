@@ -139,7 +139,7 @@ func walkLiveFolder(root string, excludes []string, cancel func() bool, progress
 				continue
 			}
 			if it.IsDir() || (info.Mode()&os.ModeSymlink != 0 && isDirLink(childPath)) {
-				if pbscommon.IsAutoExcludedFolder(name) {
+				if pbscommon.IsAutoExcludedFolderAt(name, rel == "" && pbscommon.IsVolumeRoot(root)) {
 					continue
 				}
 				if info.Mode()&os.ModeSymlink != 0 {
