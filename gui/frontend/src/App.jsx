@@ -74,9 +74,11 @@ function App() {
   const [hostname, setHostname] = useState('')
   const [appVersion, setAppVersion] = useState('dev')
   const [brand, setBrand] = useState({ name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', logo: '', accent: '#e87003', accent_hover: '#d46100', buy_storage_url: '', buy_storage_text: '', is_default: true })
-  // Buy-storage CTA: brand-specific when provided, otherwise the PBS download page.
+  // Buy-storage CTA: brand-specific when provided, otherwise the PBS download
+  // page (the /en/downloads.php URL 404s — this is the live one, and the same
+  // fallback the welcome box uses).
   const buyStorage = {
-    url: brand.buy_storage_url || 'https://www.proxmox.com/en/downloads.php#download-proxmox-backup-server',
+    url: brand.buy_storage_url || 'https://www.proxmox.com/en/downloads/proxmox-backup-server',
     text: brand.buy_storage_text || t('orderStorageCTA')
   }
   const [systemInfo, setSystemInfo] = useState({ mode: 'Standalone', is_admin: false, service_available: false, os: '' })
@@ -3019,7 +3021,17 @@ function App() {
             src={brand.logo || logo}
             alt={brand.title}
             className="logo"
-            onError={(e) => e.target.style.display = 'none'}
+            onError={(e) => {
+              // A brand asset that fails to load must not leave the About tab
+              // with no icon at all: fall back to the bundled default logo,
+              // and hide the image only if even that one is gone.
+              if (!e.target.dataset.logoFallback) {
+                e.target.dataset.logoFallback = '1'
+                e.target.src = logo
+              } else {
+                e.target.style.display = 'none'
+              }
+            }}
           />
 
           <div style={{textAlign: 'center', marginTop: '30px'}}>
