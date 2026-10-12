@@ -246,6 +246,10 @@ export function SetDefaultPBSServer(arg1) {
   return window['go']['main']['App']['SetDefaultPBSServer'](arg1);
 }
 
+export function SetJobReporter(arg1) {
+  return window['go']['main']['App']['SetJobReporter'](arg1);
+}
+
 export function SetProgressCallbacks(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetProgressCallbacks'](arg1, arg2, arg3);
 }

@@ -126,6 +126,8 @@ export function SetBackupContext(arg1:context.Context,arg2:context.CancelFunc):P
 
 export function SetDefaultPBSServer(arg1:string):Promise<void>;
 
+export function SetJobReporter(arg1:main.JobReporter):Promise<void>;
+
 export function SetProgressCallbacks(arg1:string,arg2:any,arg3:any):Promise<void>;
 
 export function SetupSystemTray():Promise<void>;
