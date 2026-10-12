@@ -1175,6 +1175,13 @@ function App() {
     }
   }
 
+  // VM-kind machine backups need a numeric backup ID (Proxmox VM ID, e.g. 100).
+  // Computed here so the same rule can gate the Start/Save button, show the
+  // inline hint under the Backup ID field, and block handleStartBackup.
+  const vmBackupIdInvalid = backupType === 'machine'
+    && machineBackupKind === 'vm'
+    && !/^\d+$/.test((config['backup-id'] || '').trim())
+
   const handleStartBackup = async () => {
     if (!StartBackup) {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
@@ -1191,6 +1198,16 @@ function App() {
 
     if (backupType === 'machine' && selectedDrives.length === 0) {
       showStatus(t('atLeastOneDisk'), 'error')
+      return
+    }
+
+    // A "vm" machine backup is a P2V snapshot: Proxmox VE requires a numeric
+    // VM ID (e.g. 100), so a hostname-style ID would only fail on the PBS/
+    // Proxmox side. This guard sits BEFORE the scheduled/oneshot split below,
+    // so the same rule blocks both starting a one-shot backup and saving or
+    // updating a scheduled job.
+    if (vmBackupIdInvalid) {
+      showStatus(`❌ ${t('vmBackupIdNumeric')}`, 'error')
       return
     }
 
@@ -2097,6 +2114,11 @@ function App() {
               onChange={(e) => setConfig({...config, 'backup-id': e.target.value})}
               placeholder={t('backupIDPlaceholder')}
             />
+            {vmBackupIdInvalid && (
+              <div style={{marginTop: '6px', fontSize: '13px', color: '#dc3545'}}>
+                ⚠️ {t('vmBackupIdNumeric')}
+              </div>
+            )}
           </div>
 
           <div className="form-group">
@@ -2205,7 +2227,7 @@ function App() {
             </div>
           )}
 
-          <button className="btn" onClick={handleStartBackup} disabled={backupRunning || (progress > 0 && progress < 100)}>
+          <button className="btn" onClick={handleStartBackup} disabled={backupRunning || (progress > 0 && progress < 100) || vmBackupIdInvalid}>
             {backupMode === 'oneshot'
               ? (backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `🚀 ${t('startBackup')}`)
               : (editingJobId ? `✏️ ${t('updateSchedule')}` : `💾 ${t('saveSchedule')}`)
@@ -2250,7 +2272,9 @@ function App() {
                         ⏰ {job.scheduleTime} {job.runAtStartup && '• 🚀 Au démarrage'}
                       </div>
                       <div style={{fontSize: '13px', color: '#6c757d', marginTop: '3px'}}>
-                        📁 {(job.backupDirs || []).join(', ')}
+                        {job.backupType === 'machine'
+                          ? `💾 ${(job.driveLetters || []).join(', ')}${job.backup_kind ? ` • ${job.backup_kind}` : ''}`
+                          : `📁 ${(job.backupDirs || []).join(', ')}`}
                       </div>
                     </div>
                     <div style={{display: 'flex', gap: '10px'}}>

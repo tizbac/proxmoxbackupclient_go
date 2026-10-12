@@ -26,11 +26,11 @@ type ScheduledJob struct {
 	UseVSS       bool     `json:"useVSS"`
 	BackupType   string   `json:"backupType"`
 	ExcludeList  []string `json:"excludeList"`
-	Compression  string   `json:"compression"`       // "fastest", "default", "better", "best"
-	PBSID        string   `json:"pbs_id,omitempty"`  // PBS server ID to use (empty = default)
+	Compression  string   `json:"compression"`           // "fastest", "default", "better", "best"
+	PBSID        string   `json:"pbs_id,omitempty"`      // PBS server ID to use (empty = default)
 	BackupKind   string   `json:"backup_kind,omitempty"` // "host" or "vm" for machine backups
-	LastRun      string   `json:"lastRun,omitempty"` // ISO timestamp
-	NextRun      string   `json:"nextRun,omitempty"` // ISO timestamp
+	LastRun      string   `json:"lastRun,omitempty"`     // ISO timestamp
+	NextRun      string   `json:"nextRun,omitempty"`     // ISO timestamp
 	Enabled      bool     `json:"enabled"`
 }
 
@@ -639,8 +639,10 @@ func releaseJob(jobID string) {
 }
 
 // runScheduledBackup performs the backup of a scheduled job: it goes through
-// the test seam App.scheduledBackupFn when one is installed, otherwise through
-// StartBackup (which routes through mode detection: service or direct).
+// the test seam App.scheduledBackupFn when one is installed, otherwise it
+// dispatches on the job type - machine jobs through StartMachineBackup
+// (the only path that carries the job's host/vm BackupKind), directory jobs
+// through StartBackup.
 func (a *App) runScheduledBackup(job ScheduledJob) error {
 	if a.scheduledBackupFn != nil {
 		return a.scheduledBackupFn(job)
@@ -658,6 +660,29 @@ func (a *App) runScheduledBackup(job ScheduledJob) error {
 	driveLetters := job.DriveLetters
 	if len(driveLetters) == 0 {
 		driveLetters = []string{}
+	}
+
+	// Machine jobs: StartBackup has no parameter for the job's host/vm kind, so
+	// routing them through it dropped the user's selection - the service build
+	// hardcoded BackupType "vm" (a host-kind job attempted a P2V/VM snapshot)
+	// and the standalone path fell back to the directory branch. StartMachineBackup
+	// is the path the GUI's one-shot machine backups take and takes backupKind
+	// explicitly. "" = jobs saved before backup_kind existed; the GUI's default
+	// selection is "host".
+	if job.BackupType == "machine" {
+		kind := job.BackupKind
+		if kind == "" {
+			kind = "host"
+		}
+		return a.StartMachineBackup(
+			job.BackupType,
+			driveLetters,
+			job.BackupID,
+			job.UseVSS,
+			compression,
+			job.PBSID,
+			kind,
+		)
 	}
 
 	// StartBackup routes through mode detection (service or direct).
@@ -861,10 +886,17 @@ func apiJobsToSlice(apiJobs []map[string]interface{}) []ScheduledJob {
 			UseVSS:       firstBool(m, "useVSS", "use_vss"),
 			BackupType:   firstStr(m, "backupType", "backup_type"),
 			ExcludeList:  firstStrSlice(m, "excludeList", "exclude_list"),
-			Compression:  firstStr(m, "compression"),
-			LastRun:      firstStr(m, "lastRun", "last_run"),
-			NextRun:      firstStr(m, "nextRun", "next_run"),
-			Enabled:      firstBool(m, "enabled"),
+			// jobToMap's JSON round-trip emits backup_kind and pbs_id under
+			// their canonical json tags. Not reading them here stripped the
+			// host/vm kind AND the selected PBS server off a job on its way
+			// from the service to the GUI, so the run used the default PBS
+			// and the wrong backup type.
+			PBSID:       firstStr(m, "pbs_id", "pbsID"),
+			BackupKind:  firstStr(m, "backup_kind", "backupKind"),
+			Compression: firstStr(m, "compression"),
+			LastRun:     firstStr(m, "lastRun", "last_run"),
+			NextRun:     firstStr(m, "nextRun", "next_run"),
+			Enabled:     firstBool(m, "enabled"),
 		}
 		out = append(out, j)
 	}

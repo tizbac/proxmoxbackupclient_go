@@ -181,7 +181,14 @@ func TestJobWireMapDecodesBackIntoEveryField(t *testing.T) {
 // expose the historical snake_case aliases older GUI builds read.
 func TestGetScheduledJobsForAPIRoundTrip(t *testing.T) {
 	a := newSchedulerTestApp(t)
-	if err := a.SaveScheduledJob(sampleJob()); err != nil {
+	// backup_kind and pbs_id are how a machine job remembers the host/vm
+	// selection and the target PBS server; the API round-trip used to drop
+	// both (apiJobsToSlice did not read them), so a scheduled machine run
+	// silently executed with the wrong backup type on the default PBS.
+	job := sampleJob()
+	job.BackupKind = "vm"
+	job.PBSID = "site-b"
+	if err := a.SaveScheduledJob(job); err != nil {
 		t.Fatalf("SaveScheduledJob() error = %v", err)
 	}
 
