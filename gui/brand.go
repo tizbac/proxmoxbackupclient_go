@@ -55,14 +55,14 @@ var brandCatalog = map[string]Brand{
 		Logo:           "/brands/nimbus.svg",
 		Accent:         "#22c55e",
 		AccentHover:    "#16a34a",
-		BrandURL:       "https://nimbus.example/",
+		BrandURL:       "https://nimbus.rdem-systems.com/en/",
 		BuyStorageURL:  "https://nimbus.rdem-systems.com/en/",
 		BuyStorageText: "Get Nimbus storage",
 		Urls: map[string]string{
-			"about":   "https://nimbus.example/",
-			"help":    "https://nimbus.example/help",
-			"updates": "https://nimbus.example/releases",
-			"contact": "https://nimbus.example/contact",
+			"about":   "https://nimbus.rdem-systems.com/en/",
+			"help":    "https://nimbus.rdem-systems.com/en/proxmox-backup-server/",
+			"updates": "https://nimbus.rdem-systems.com/en/blog/",
+			"contact": "https://nimbus.rdem-systems.com/en/contact/",
 		},
 	},
 	"acmebackup": {
@@ -88,7 +88,7 @@ var brandCatalog = map[string]Brand{
 		Accent:         "#4CC1CE",
 		AccentHover:    "#3aaab6",
 		BrandURL:       "https://www.etitech.net/",
-		BuyStorageURL:  "",
+		BuyStorageURL:  "https://www.etitech.net/servizi.php",
 		BuyStorageText: "",
 		Urls: map[string]string{
 			"about":   "https://www.etitech.net/about.php",
