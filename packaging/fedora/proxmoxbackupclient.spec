@@ -26,6 +26,9 @@ Roll back:
  - proxmoxbackup-directory: folder backups from the command line
  - proxmoxbackup-machine: whole-disk backups from the command line
  - proxmoxbackup-nbd: attach a disk image from the server as /dev/nbdN
+ - proxmoxbackupclient.service: the background service that runs
+   scheduled Backup Sets as root (installed, not enabled; turn it on in
+   the app, Preferences > Advanced > Run as Service)
 Snapshots of mounted file systems use elastio-snap when it is installed.
 
 %prep
@@ -45,18 +48,23 @@ go build -trimpath -ldflags "-s -w -X main.version=%{version}" -o nbd/proxmoxbac
 export CGO_ENABLED=1
 ( cd gui && go build -trimpath -tags production,webkit2_41 \
     -ldflags "-s -w -X main.appVersion=%{version}" -o ProxmoxBackupClient . )
+( cd gui && CGO_ENABLED=0 go build -trimpath -tags service \
+    -ldflags "-s -w -X main.appVersion=%{version}" -o ProxmoxBackupClientSVC . )
 
 %install
 rm -rf %{buildroot}
 install -d -m 0755 %{buildroot}%{_prefix}/lib/proxmoxbackupclient \
                   %{buildroot}%{_bindir} \
                   %{buildroot}%{_datadir}/applications \
-                  %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
+                  %{buildroot}%{_datadir}/icons/hicolor/256x256/apps \
+                  %{buildroot}%{_prefix}/lib/systemd/system
 
 install -m 0755 directorybackup/proxmoxbackup-directory %{buildroot}%{_bindir}/
 install -m 0755 machinebackup/proxmoxbackup-machine %{buildroot}%{_bindir}/
 install -m 0755 nbd/proxmoxbackup-nbd %{buildroot}%{_bindir}/
 install -m 0755 gui/ProxmoxBackupClient %{buildroot}%{_prefix}/lib/proxmoxbackupclient/
+install -m 0755 gui/ProxmoxBackupClientSVC %{buildroot}%{_prefix}/lib/proxmoxbackupclient/
+install -m 0644 packaging/linux/proxmoxbackupclient.service %{buildroot}%{_prefix}/lib/systemd/system/
 install -m 0755 packaging/linux/proxmoxbackupclient %{buildroot}%{_bindir}/
 install -m 0755 packaging/linux/proxmoxbackupclient-root %{buildroot}%{_bindir}/
 install -m 0644 packaging/linux/proxmoxbackupclient.desktop %{buildroot}%{_datadir}/applications/
@@ -72,9 +80,30 @@ install -m 0644 gui/Icon.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/
 %{_bindir}/proxmoxbackupclient
 %{_bindir}/proxmoxbackupclient-root
 %{_prefix}/lib/proxmoxbackupclient/ProxmoxBackupClient
+%{_prefix}/lib/proxmoxbackupclient/ProxmoxBackupClientSVC
+%{_prefix}/lib/systemd/system/proxmoxbackupclient.service
 %{_datadir}/applications/proxmoxbackupclient.desktop
 %{_datadir}/applications/proxmoxbackupclient-root.desktop
 %{_datadir}/icons/hicolor/256x256/apps/proxmoxbackupclient.png
+
+# The service is installed but not enabled (the app turns it on). An upgrade
+# restarts a running service; removal stops and disables it. The settings in
+# /var/lib/proxmoxbackupclient are kept.
+%post
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || :
+    [ "$1" -gt 1 ] && systemctl try-restart proxmoxbackupclient.service || :
+fi
+
+%preun
+if [ "$1" -eq 0 ] && [ -d /run/systemd/system ]; then
+    systemctl disable --now proxmoxbackupclient.service >/dev/null 2>&1 || :
+fi
+
+%postun
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || :
+fi
 
 %changelog
 * Mon Oct 12 2026 proxmoxbackupclient_go (mjb-is fork) <noreply@github.com> - 0.0.1-1

@@ -8,7 +8,10 @@
 # - Anything it writes there would then belong to root and be unreadable to
 #   the user's next normal start, so ownership is handed back when it closes.
 #   The program and the hand-back run as ONE elevated command (an exec
-#   replaces this script, so nothing after it would run).
+#   replaces this script, so nothing after it would run). The same goes for
+#   its log folder (~/.local/state/proxmoxbackupclient). With the background
+#   service installed the settings are in /var/lib/proxmoxbackupclient
+#   instead, which stays root's.
 # - From the desktop (no terminal) the password is asked with pkexec, which
 #   shows a graphical prompt; sudo is used only from a terminal.
 # - DISPLAY/XAUTHORITY (X11) and WAYLAND_DISPLAY/XDG_RUNTIME_DIR (Wayland) are
@@ -20,7 +23,7 @@ if [ "$(id -u)" = "0" ]; then
 fi
 
 OWNER="$(id -u):$(id -g)"
-RUN='"$0" "$@"; rc=$?; [ -d "$HOME/.proxmox-backup-guardian" ] && chown -R '"$OWNER"' "$HOME/.proxmox-backup-guardian"; exit $rc'
+RUN='"$0" "$@"; rc=$?; for d in "$HOME/.proxmox-backup-guardian" "$HOME/.local/state/proxmoxbackupclient"; do [ -d "$d" ] && chown -R '"$OWNER"' "$d"; done; exit $rc'
 
 set -- env "HOME=$HOME" \
     "DISPLAY=${DISPLAY:-}" "XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}" \

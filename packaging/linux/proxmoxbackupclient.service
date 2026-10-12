@@ -1,0 +1,15 @@
+[Unit]
+Description=Proxmox Backup Client service (scheduled backups)
+Documentation=file:///usr/share/doc/proxmoxbackupclient/manual/GUI.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

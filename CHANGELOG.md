@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Linux background service)
+- **Scheduled Backup Sets run in the background on Linux too**, as root, also when nobody is logged in and the app is closed. The .deb and .rpm install the service (`proxmoxbackupclient.service`) without turning it on; **Preferences > Advanced > Run as Service** installs, starts, stops and removes it, as on Windows. Installing copies your Backup Sets, servers, keys and history to `/var/lib/proxmoxbackupclient`, which the service and the app then share (your own `~/.proxmox-backup-guardian` is left as it was). Like `C:\ProgramData\ProxmoxBackupClient`, root owns the folder and members of the sudo or wheel group can read it: their app, started normally, sees the Backup Sets, runs them through the service and shows history, while adding, editing or deleting sets needs **Restart as administrator** (now available on Linux, through pkexec). An upgrade restarts a running service; removing the package stops and disables it and keeps the settings.
+
 ### Fixed
+- **Linux: "Proxmox Backup Client (administrator)" hands its log folder back to you** when it closes, as it already did the settings folder (the root GUI wrote `~/.local/state/proxmoxbackupclient` as root). The .deb no longer contains group-writable programs when built under a umask of 002.
 - **A folder called "Recovery" is backed up unless it sits at the root of a drive.** Only Windows' own C:\Recovery is left out now; before, any folder of that name, at any depth, was silently skipped.
 - **The command-line tools no longer show message boxes** for bad options or when another backup is running (a box blocks an unattended scheduled run, and `proxmoxbackup-directory` used to carry on after it): the message goes to stderr and they exit 1 or 2. `proxmoxbackup-nbd`'s interactive mode now uses `-keyfile`, so it opens encrypted images too.
 - **`proxmoxbackup-machine` sends its notification e-mail.** It accepted the `-mail-*` options but never sent anything; now every run, failed ones included, sends it (a run with unreadable sectors reports "Partial" and where).

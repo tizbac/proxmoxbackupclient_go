@@ -17,6 +17,8 @@
 #   /usr/bin/proxmoxbackupclient       the app, as the current user
 #   /usr/bin/proxmoxbackupclient-root  the app as root (machine backups)
 #   /usr/lib/proxmoxbackupclient/ProxmoxBackupClient
+#   /usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC  the background service
+#   /usr/lib/systemd/system/proxmoxbackupclient.service  (installed, not enabled)
 #   /usr/share/applications/proxmoxbackupclient{,-root}.desktop
 #   /usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png
 #   /usr/share/doc/proxmoxbackupclient/{copyright,README.md,CHANGELOG.md.gz,manual/}
@@ -80,11 +82,16 @@ if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists webkit2gtk-4.1 2
 fi
 (cd "$ROOT/gui" && go build -trimpath -tags "$GO_TAGS" -ldflags "-s -w -X main.appVersion=$VERSION" -o "$STAGE/usr/lib/$PKG/$GUI_OUTPUT" .)
 
+echo "==> building the background service"
+(cd "$ROOT/gui" && CGO_ENABLED=0 go build -trimpath -tags service -ldflags "-s -w -X main.appVersion=$VERSION" -o "$STAGE/usr/lib/$PKG/ProxmoxBackupClientSVC" .)
+
 echo "==> installing launchers, menu entries and docs"
 install -m 0755 "$LIN/proxmoxbackupclient" "$STAGE/usr/bin/proxmoxbackupclient"
 install -m 0755 "$LIN/proxmoxbackupclient-root" "$STAGE/usr/bin/proxmoxbackupclient-root"
 install -m 0644 "$LIN/proxmoxbackupclient.desktop" "$STAGE/usr/share/applications/"
 install -m 0644 "$LIN/proxmoxbackupclient-root.desktop" "$STAGE/usr/share/applications/"
+mkdir -p "$STAGE/usr/lib/systemd/system"
+install -m 0644 "$LIN/proxmoxbackupclient.service" "$STAGE/usr/lib/systemd/system/"
 if [ -f "$ROOT/gui/build/appicon.png" ]; then
     install -m 0644 "$ROOT/gui/build/appicon.png" "$STAGE/usr/share/icons/hicolor/256x256/apps/$PKG.png"
 else
@@ -171,7 +178,40 @@ function rep(s, ph, val,    i) {
     print line
 }' "$SCRIPT_DIR/control.in" > "$STAGE/DEBIAN/control"
 
+# The service unit is installed but not enabled: the app turns it on
+# (Preferences > Advanced > Run as Service). An upgrade restarts a running
+# service; removal stops and disables it. /var/lib/proxmoxbackupclient (the
+# Backup Sets and keys) is kept, also on purge.
+cat > "$STAGE/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+if [ "$1" = configure ] && [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+    systemctl try-restart proxmoxbackupclient.service || true
+fi
+exit 0
+EOF
+cat > "$STAGE/DEBIAN/prerm" <<'EOF'
+#!/bin/sh
+set -e
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+    systemctl disable --now proxmoxbackupclient.service >/dev/null 2>&1 || true
+fi
+exit 0
+EOF
+cat > "$STAGE/DEBIAN/postrm" <<'EOF'
+#!/bin/sh
+set -e
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+fi
+exit 0
+EOF
+chmod 0755 "$STAGE/DEBIAN/postinst" "$STAGE/DEBIAN/prerm" "$STAGE/DEBIAN/postrm"
+
 echo "==> building the package"
+# Nothing group- or world-writable, whatever the build user's umask.
+chmod -R go-w "$STAGE"
 mkdir -p "$OUT_DIR"
 DEB_PATH="$OUT_DIR/${PKG}_${VERSION}_${DEBARCH}.deb"
 rm -f "$DEB_PATH"
