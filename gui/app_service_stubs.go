@@ -46,6 +46,11 @@ func (a *App) emitAnalysisProgress(done, total int, scannedBytes uint64) {}
 // build, so a stub is needed here even though there's nothing to refresh.
 func (a *App) RefreshIdleTooltip() {}
 
+// The service has no tray or window: these are no-ops there.
+func (a *App) MinimizeToTray()                                           {}
+func (a *App) UpdateTrayTooltip(message string)                          {}
+func (a *App) ShowToastNotification(title, message string, isError bool) {}
+
 // ReloadConfig reloads configuration from disk. The long-running service loads
 // config once at startup (service.go), so without this it never sees changes
 // made afterwards — a rotated PBS token, a new default PBS, or a fingerprint

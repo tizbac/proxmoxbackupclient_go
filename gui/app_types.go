@@ -22,6 +22,12 @@ type App struct {
 	callbacksMutex   sync.RWMutex
 	isServiceProcess bool // True if running as Windows Service (never re-detect mode)
 
+	// Command-line Undelete / Roll back (set_cli.go): no window, no toasts;
+	// progress lines and the result go to the console.
+	headless    bool
+	cliProgress func(pct float64, msg string)
+	cliDone     chan setOpResult
+
 	// currentScheduledJobName lets executeScheduledJob (scheduler.go) tell
 	// startBackupDirect/startMachineBackupDirect's OnComplete history-writing
 	// (main.go) which scheduled job's real name to use instead of the generic

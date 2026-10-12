@@ -15,6 +15,7 @@ This manual covers the command line tools. It applies to v0.6.0. For the graphic
 9. [Exit codes](#9-exit-codes)
 10. [Scheduling](#10-scheduling)
 11. [Compatibility with the official Proxmox client](#11-compatibility-with-the-official-proxmox-client)
+12. [Undelete and Roll back for a Backup Set](#12-undelete-and-roll-back-for-a-backup-set)
 
 ## 1. The tools
 
@@ -31,7 +32,7 @@ The command line tools are in separate downloads on the [releases page](https://
 | `proxmoxbackup-machine` | Backs up whole disks as images, as a `host` or `vm` snapshot |
 | `proxmoxbackup-nbd` | Linux only. Attaches a disk image from PBS as a read-only `/dev/nbdN` block device. The bare-metal restore ISO uses it as `pbsnbd` |
 
-There is no command line restore tool for folder backups. Restore them with the GUI, or with the official `proxmox-backup-client` ([section 11](#11-compatibility-with-the-official-proxmox-client)).
+There is no command line restore tool for folder backups. Restore them with the GUI, or with the official `proxmox-backup-client` ([section 11](#11-compatibility-with-the-official-proxmox-client)). For a Backup Set defined in the GUI, Undelete and Roll back also run from the command line ([section 12](#12-undelete-and-roll-back-for-a-backup-set)).
 
 The tools are static builds and need no installation. Run the backup tools as administrator (Windows) for VSS, or as root (Linux) for snapshots and disk access.
 
@@ -260,7 +261,7 @@ Without the key an encrypted snapshot cannot be restored. Keep a copy away from 
 
 ## 8. Email reports
 
-`proxmoxbackup-directory` can email a report at the end of every run. (`proxmoxbackup-machine` accepts the same flags and checks them, but does not send email in v0.6.0.)
+`proxmoxbackup-directory` and `proxmoxbackup-machine` can email a report at the end of every run, failed runs included. (Before v0.9.0 `proxmoxbackup-machine` checked the flags but sent nothing.) A machine backup with unreadable sectors reports `Partial` and lists where they are.
 
 | Flag | Meaning |
 |---|---|
@@ -281,7 +282,7 @@ Template fields include `.Success`, `.Status`, `.NewChunks`, `.ReusedChunks`, `.
 | 2 | Another backup job is already running on this computer |
 | 3 | The snapshot was saved, but not everything could be read: `proxmoxbackup-directory`, some files are incomplete; `proxmoxbackup-machine` (v0.8.1 and later), some sectors are zeros in the image |
 
-On Windows, two cases show a message box instead of only printing: missing required options (the box lists the flags) and "another job is running". A message box waits for someone to click it, so test the command by hand before scheduling it, and do not let two scheduled backups overlap.
+Errors go to standard error. (Before v0.9.0, on Windows, missing options and "another job is running" showed a message box, which waits for a click an unattended run never gets; `proxmoxbackup-directory` even carried on after the box.)
 
 ## 10. Scheduling
 
@@ -330,3 +331,27 @@ proxmox-backup-client restore "host/laptop-documents/2026-10-07T20:45:51Z" <arch
 ```
 
 Give the archive name without `.didx`: a snapshot from `proxmoxbackup-directory` holds `backup.pxar.didx` (legacy) or `backup.mpxar.didx` plus `backup.ppxar.didx` (data, metadata), so restore `backup.pxar` or `backup.mpxar`. The GUI names one archive per folder (for example `f__data.mpxar` for F:\Data), so check `snapshot files` first. Add `--keyfile` for an encrypted snapshot. The restored tree contains one extra file, `.proxmox_backup_client_meta.json`, which this client adds to record the original path.
+
+## 12. Undelete and Roll back for a Backup Set
+
+The service program that comes with the GUI, `ProxmoxBackupClientSVC.exe` on Windows (the Linux GUI program `ProxmoxBackupClient` takes the same options), runs the GUI's Undelete and Roll back for a Backup Set defined in the GUI: the same servers, folders, exclusions and safety folder. Run it as administrator (Windows) or root (Linux), as the backups run.
+
+```
+ProxmoxBackupClientSVC.exe -list-sets
+ProxmoxBackupClientSVC.exe -undelete "Documents" [-days 7] [-to D:\Recovered] [-dry-run] [-no-verify]
+ProxmoxBackupClientSVC.exe -rollback "Documents" [-at "2026-10-10 14:30"] [-policy replace|missing|exact]
+                           [-backup-first] [-dry-run] [-yes] [-no-verify]
+```
+
+| Option | Meaning |
+|---|---|
+| `-list-sets` | Lists the Backup Sets: name, id and folders (or disks) |
+| `-undelete <set>` | Lists the set's files that are in its newest backup but not on disk, then restores them where they were (never over a file that has come back) or under `-to`. Files that look moved (same name, size and time elsewhere) are listed, not restored |
+| `-days N` | Undelete: also looks in the backups of the last N days; each file comes from the newest backup that has it |
+| `-rollback <set>` | Puts the set's folders back as the newest backup (or the one at or before `-at`) has them. Shows the counts first; asks for `yes` unless `-yes`. Everything replaced or removed is moved to the safety folder first, so the GUI's Undo can put it back |
+| `-policy` | `replace` (default: restore missing and changed files, keep files added since), `missing` (missing files only) or `exact` (also remove files added since) |
+| `-backup-first` | Roll back: back the set up before changing anything |
+| `-dry-run` | Only show what would be done |
+| `-no-verify` | Do not check the restored files against the backup |
+
+A set is named by its name (any case) or its id. The exit code is 0 when it worked, 1 on any failure (or when a roll back was not confirmed), 2 for bad options. Machine sets work too: their folders are read from the disk images.

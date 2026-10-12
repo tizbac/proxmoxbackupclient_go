@@ -1,5 +1,3 @@
-//go:build !service
-
 package main
 
 // Undelete (bring back files that are in a Backup Set's snapshots but gone
@@ -23,8 +21,6 @@ import (
 	"time"
 
 	"pbscommon"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // ---- scan progress and cancel ---------------------------------------------
@@ -38,7 +34,7 @@ func (a *App) scanProgress(phase, detail string, done, total int) {
 	if a.ctx == nil || a.isServiceProcess {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "setscan:progress", map[string]interface{}{
+	a.emitEvent("setscan:progress", map[string]interface{}{
 		"phase": phase, "detail": detail, "done": done, "total": total,
 	})
 }
@@ -1144,17 +1140,20 @@ type setRestoreOp struct {
 func (a *App) runSetRestore(op setRestoreOp) {
 	emit := func(percent float64, message string) {
 		markRestoreProgress()
+		if a.cliProgress != nil {
+			a.cliProgress(percent, message)
+		}
 		if a.ctx == nil {
 			return
 		}
-		runtime.EventsEmit(a.ctx, "restore:progress", map[string]interface{}{
+		a.emitEvent("restore:progress", map[string]interface{}{
 			"percent": percent, "message": message, "name": op.Label,
 		})
 	}
 	stage := func(name, detail string) {
 		markRestoreProgress()
 		if a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "restore:stage", map[string]interface{}{"stage": name, "detail": detail})
+			a.emitEvent("restore:stage", map[string]interface{}{"stage": name, "detail": detail})
 		}
 	}
 	a.UpdateTrayTooltip(op.Label)
@@ -1242,13 +1241,13 @@ func (a *App) runSetRestore(op setRestoreOp) {
 					lastFile = time.Now()
 					fileMu.Unlock()
 					if a.ctx != nil {
-						runtime.EventsEmit(a.ctx, "restore:file", map[string]interface{}{"path": path})
+						a.emitEvent("restore:file", map[string]interface{}{"path": path})
 					}
 				}
 				o.OnStats = func(s *RestoreProgressStats) {
 					markRestoreProgress()
 					if a.ctx != nil {
-						runtime.EventsEmit(a.ctx, "restore:stats", map[string]interface{}{
+						a.emitEvent("restore:stats", map[string]interface{}{
 							"bytesDone": s.BytesDone, "bytesTotal": s.BytesTotal, "currentArchive": s.CurrentArchive,
 						})
 					}
@@ -1308,7 +1307,7 @@ func (a *App) runSetRestore(op setRestoreOp) {
 			writeDebugLog(fmt.Sprintf("%s: failed to record Reports history: %v", what, herr))
 		}
 		if a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "restore:complete", map[string]interface{}{
+			a.emitEvent("restore:complete", map[string]interface{}{
 				"success":       success,
 				"message":       msg,
 				"verify_ran":    op.Verify,
@@ -1316,6 +1315,10 @@ func (a *App) runSetRestore(op setRestoreOp) {
 				"verify_failed": len(verifyFails),
 				"kind":          op.Kind,
 			})
+		}
+		if a.cliDone != nil {
+			a.cliDone <- setOpResult{success: success, message: msg}
+			return
 		}
 		if success {
 			a.ShowToastNotification(what+" complete", op.Label, false)

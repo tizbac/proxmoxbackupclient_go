@@ -7,11 +7,16 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/kardianos/service"
 )
 
 func main() {
+	// -list-sets, -undelete, -rollback: a command-line run, not the service.
+	if runSetCLI(os.Args[1:]) {
+		return
+	}
 	writeDebugLog("ProxmoxBackupClientSVC starting...")
 	startStallWatchdog()
 

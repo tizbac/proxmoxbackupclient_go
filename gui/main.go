@@ -61,6 +61,11 @@ func init() {
 }
 
 func main() {
+	// -list-sets, -undelete, -rollback (set_cli.go). On Windows the GUI has
+	// no console; the service program takes them there.
+	if stdruntime.GOOS != "windows" && runSetCLI(os.Args[1:]) {
+		return
+	}
 	// Parse command line flags
 	minimized := flag.Bool("minimized", false, "Start minimized to system tray")
 	flag.Parse()
