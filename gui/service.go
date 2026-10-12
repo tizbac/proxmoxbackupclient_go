@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 package main
 
 import (
@@ -16,7 +13,8 @@ import (
 	"snapshot"
 )
 
-// BackupService wraps the application for Windows Service execution
+// BackupService wraps the application for the background service: a Windows
+// service running as Local System, or a systemd service running as root.
 type BackupService struct {
 	app       *App
 	apiServer *api.Server
@@ -87,6 +85,9 @@ func (s *BackupService) run() {
 	if tokErr != nil {
 		writeDebugLog(fmt.Sprintf("API token init failed (API will reject all requests): %v", tokErr))
 	}
+	// Linux: administrators' apps read the token (group-readable, like the
+	// folder ACL on Windows).
+	shareConfigFile(getAPITokenPath())
 	s.apiServer = api.NewServer("127.0.0.1:18765", s.app, apiToken, appVersion)
 	writeDebugLog("Starting HTTP API server on 127.0.0.1:18765")
 
@@ -128,9 +129,9 @@ func (s *BackupService) Stop(svc service.Service) error {
 	return nil
 }
 
-// RunAsService starts the application as a Windows Service
+// RunAsService starts the application as a background service
 func RunAsService() {
-	writeDebugLog("Attempting to run as Windows Service")
+	writeDebugLog("Attempting to run as a background service")
 
 	svcConfig := &service.Config{
 		Name:        "ProxmoxBackupClient",

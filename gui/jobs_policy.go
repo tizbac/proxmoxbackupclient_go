@@ -43,6 +43,9 @@ type JobPolicy struct {
 	// SettingsLocked: this account may not read the settings folder (a
 	// standard user on Windows once hardenConfigDir has run).
 	SettingsLocked bool `json:"settings_locked"`
+	// Fixed: the operating system enforces the policy (Linux: the shared
+	// settings are root's), so Preferences shows no switch for it.
+	Fixed bool `json:"fixed"`
 }
 
 // jobsChangeAllowed is the one decision rule, kept free of OS calls so it can
@@ -61,13 +64,14 @@ func (a *App) GetJobPolicy() JobPolicy {
 	if supported {
 		req = readRequireAdminForJobs()
 	}
-	admin := isAdmin()
+	admin := jobsAdmin()
 	return JobPolicy{
 		Supported:      supported,
 		RequireAdmin:   req,
 		IsAdmin:        admin,
 		CanModify:      jobsChangeAllowed(supported, req, admin),
 		SettingsLocked: settingsLocked(),
+		Fixed:          jobPolicyFixed(),
 	}
 }
 
@@ -93,7 +97,7 @@ func (a *App) SetRequireAdminForJobs(require bool) error {
 	if !jobPolicySupported() {
 		return fmt.Errorf("scheduled job protection is not available on this platform")
 	}
-	if !isAdmin() {
+	if !jobsAdmin() {
 		return errJobsAdminRequired
 	}
 	if err := writeRequireAdminForJobs(require); err != nil {
@@ -105,7 +109,7 @@ func (a *App) SetRequireAdminForJobs(require bool) error {
 
 // checkJobsChangeAllowed gates the GUI's own job add/update/delete.
 func (a *App) checkJobsChangeAllowed() error {
-	if jobsChangeAllowed(jobPolicySupported(), readRequireAdminForJobsOrDefault(), isAdmin()) {
+	if jobsChangeAllowed(jobPolicySupported(), readRequireAdminForJobsOrDefault(), jobsAdmin()) {
 		return nil
 	}
 	return errJobsAdminRequired

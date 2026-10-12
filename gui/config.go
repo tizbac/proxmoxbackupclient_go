@@ -204,7 +204,7 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		_ = tmp.Close()
 		return err
 	}
-	if err := tmp.Chmod(perm); err != nil {
+	if err := tmp.Chmod(sharedFileMode(path, perm)); err != nil {
 		_ = tmp.Close()
 		return err
 	}
@@ -230,7 +230,8 @@ func getAPITokenPath() string {
 
 // getConfigDir returns the application's data directory, creating it if needed.
 // On Windows it lives under ProgramData (shared GUI/Service); on Unix it's
-// ~/.proxmox-backup-guardian. Used as the parent for config.json, the restore
+// ~/.proxmox-backup-guardian, or /var/lib/proxmoxbackupclient once the
+// background service is installed. Used as the parent for config.json, the restore
 // cache, and any other persistent state.
 func getConfigDir() (string, error) {
 	var configDir string
@@ -243,11 +244,13 @@ func getConfigDir() (string, error) {
 		// This ensures service config is accessible even if env var is missing
 		configDir = filepath.Join(systemDrive, "ProgramData", "ProxmoxBackupClient")
 	} else {
-		homeDir, err := os.UserHomeDir()
+		// Linux: ~/.proxmox-backup-guardian, or the service's shared
+		// /var/lib/proxmoxbackupclient once it is installed.
+		dir, err := unixConfigDir()
 		if err != nil {
 			return "", err
 		}
-		configDir = filepath.Join(homeDir, ".proxmox-backup-guardian")
+		configDir = dir
 	}
 
 	// #nosec G703 -- ProgramData is a trusted Windows system environment variable, not user input
@@ -293,17 +296,17 @@ func LoadConfig() *Config {
 	if config.BaseURL != "" && len(config.PBSServers) == 0 {
 		// Create default PBS server from legacy config
 		defaultPBS := &PBSServer{
-			ID:              "default",
-			Name:            "Main PBS Server",
-			BaseURL:         config.BaseURL,
-			CertFingerprint: config.CertFingerprint,
-			AuthID:          config.AuthID,
-			Secret:          config.Secret,
-			EncryptionKeyFile: config.EncryptionKeyFile,
+			ID:                      "default",
+			Name:                    "Main PBS Server",
+			BaseURL:                 config.BaseURL,
+			CertFingerprint:         config.CertFingerprint,
+			AuthID:                  config.AuthID,
+			Secret:                  config.Secret,
+			EncryptionKeyFile:       config.EncryptionKeyFile,
 			EncryptionKeyPassphrase: config.EncryptionKeyPassphrase,
-			Datastore:       config.Datastore,
-			Namespace:       config.Namespace,
-			Description:     "Default PBS server (migrated from old config)",
+			Datastore:               config.Datastore,
+			Namespace:               config.Namespace,
+			Description:             "Default PBS server (migrated from old config)",
 		}
 
 		// Initialize PBSServers map if nil

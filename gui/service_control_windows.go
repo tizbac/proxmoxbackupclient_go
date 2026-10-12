@@ -23,6 +23,7 @@ import (
 // ServiceStatus describes the background service for Preferences.
 type ServiceStatus struct {
 	Supported    bool   `json:"supported"`
+	Platform     string `json:"platform"`
 	Installed    bool   `json:"installed"`
 	Name         string `json:"name"`         // service name (installed, or the one Install would use)
 	State        string `json:"state"`        // running, stopped, starting, stopping, paused, unknown
@@ -114,7 +115,7 @@ func openServiceRead(m *mgr.Mgr, name string) (*mgr.Service, error) {
 // running, and whether this app is handing its work to it.
 func (a *App) GetServiceStatus() ServiceStatus {
 	preferred, names, expected := serviceNames()
-	st := ServiceStatus{Supported: true, Name: preferred, ExpectedExe: expected, IsAdmin: isAdmin(), ServiceMode: a.mode == api.ModeService}
+	st := ServiceStatus{Supported: true, Platform: "windows", Name: preferred, ExpectedExe: expected, IsAdmin: isAdmin(), ServiceMode: a.mode == api.ModeService}
 	if _, err := os.Stat(expected); err == nil {
 		st.ExeAvailable = true
 	}
@@ -224,33 +225,6 @@ func (a *App) InstallService() (ServiceStatus, error) {
 	return a.GetServiceStatus(), nil
 }
 
-// switchToServiceMode waits for the service's local API and then lets it run
-// the schedules: this app stops its own scheduler so nothing runs twice.
-func (a *App) switchToServiceMode() {
-	detector := api.NewModeDetector(getAPITokenPath())
-	for i := 0; i < 40; i++ {
-		if detector.DetectMode() == api.ModeService {
-			a.mode = api.ModeService
-			a.StopScheduler()
-			writeDebugLog("[Mode] Service is running: schedules and backups now go to the service")
-			return
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	writeDebugLog("[Mode] Service started but its API did not answer within 20s; staying standalone for now")
-}
-
-// switchToStandalone takes scheduling back after the service has gone.
-func (a *App) switchToStandalone() {
-	if a.mode == api.ModeStandalone {
-		return
-	}
-	a.mode = api.ModeStandalone
-	a.RecalculateNextRuns()
-	a.StartScheduler()
-	writeDebugLog("[Mode] Service stopped or removed: this app runs the schedules again")
-}
-
 // StartBackgroundService starts the installed service.
 func (a *App) StartBackgroundService() (ServiceStatus, error) {
 	if err := needAdmin(); err != nil {
@@ -295,18 +269,6 @@ func (a *App) stopService(s *mgr.Service) error {
 		return err
 	}
 	return waitState(s, svc.Stopped, 60*time.Second)
-}
-
-// serviceBusy asks the service whether it is running a backup.
-func (a *App) serviceBusy() (bool, string) {
-	st, err := a.apiClient.GetStatus()
-	if err != nil || st == nil {
-		return false, ""
-	}
-	if st.ActiveJobs > 0 {
-		return true, fmt.Sprintf("%d backup(s)", st.ActiveJobs)
-	}
-	return false, ""
 }
 
 // StopBackgroundService stops the service; this app runs the schedules again.

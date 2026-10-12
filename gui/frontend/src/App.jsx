@@ -3234,7 +3234,7 @@ function App() {
                     {jobPolicy.supported && (
                       <div className="form-group" style={{marginTop: '20px'}}>
                         <h3 style={{marginBottom: '8px'}}>{t('jobsPolicyTitle')}</h3>
-                        <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px', opacity: jobPolicy.is_admin ? 1 : 0.7}}>
+                        {!jobPolicy.fixed && <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px', opacity: jobPolicy.is_admin ? 1 : 0.7}}>
                           <input
                             type="checkbox"
                             checked={!!jobPolicy.require_admin}
@@ -3251,9 +3251,9 @@ function App() {
                             }}
                           />
                           <span>{t('jobsPolicyLabel')}</span>
-                        </label>
+                        </label>}
                         <div className="info-box" style={{marginTop: '10px'}}>
-                          ℹ️ {t('jobsPolicyHint')}
+                          ℹ️ {jobPolicy.fixed ? t('jobsPolicyHintLinux') : t('jobsPolicyHint')}
                         </div>
                         <div style={{marginTop: '10px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap'}}>
                           {jobPolicy.is_admin ? (

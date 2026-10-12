@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 
 	"github.com/kardianos/service"
 )
@@ -24,11 +25,17 @@ func main() {
 	svcFlag := flag.String("service", "", "Control the system service: install, uninstall, start, stop, restart")
 	flag.Parse()
 
-	// Service configuration
+	// Service configuration. On Linux the name matches the packaged unit
+	// (proxmoxbackupclient.service), so "-service install" does not make a
+	// second one.
 	svcConfig := &service.Config{
 		Name:        "ProxmoxBackupClient",
 		DisplayName: "Proxmox Backup Client SVC",
 		Description: "Executes scheduled backups to Proxmox Backup Server with VSS support",
+	}
+	if runtime.GOOS == "linux" {
+		svcConfig.Name = linuxServiceUnit
+		svcConfig.Description = "Runs scheduled backups to Proxmox Backup Server"
 	}
 
 	backupSvc := &BackupService{}

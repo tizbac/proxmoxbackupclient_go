@@ -643,6 +643,10 @@ export function ServiceControl({ ui }) {
     starting: tl('serviceStarting', 'starting'), stopping: tl('serviceStopping', 'stopping'),
     paused: tl('servicePaused', 'paused'),
   }[st.state] || st.state
+  const linux = st.platform === 'linux'
+  const startTypeText = (t) => t === 'automatic' ? tl('serviceStart_automatic', 'starts with Windows')
+    : t === 'boot' ? tl('serviceStart_boot', 'starts with the computer')
+    : tl('serviceStart_' + t, t)
   return (
     <div className="form-group" style={{marginTop: '24px'}}>
       <h3 style={{marginBottom: '8px'}}>{tl('serviceTitle', 'Run as Service')}</h3>
@@ -651,12 +655,17 @@ export function ServiceControl({ ui }) {
       ) : (
         <>
           <p style={{fontSize: '13px', color: '#4a5568', marginTop: 0}}>
-            {tl('serviceIntro', 'With the service installed, scheduled Backup Sets run in the background as Local System, also when nobody is signed in and this app is closed. Without it, they run only while this app is open.')}
+            {linux
+              ? tl('serviceIntroLinux', 'With the service installed, scheduled Backup Sets run in the background as root, also when nobody is logged in and this app is closed. Without it, they run only while this app is open.')
+              : tl('serviceIntro', 'With the service installed, scheduled Backup Sets run in the background as Local System, also when nobody is signed in and this app is closed. Without it, they run only while this app is open.')}
           </p>
+          {linux && !st.installed && (
+            <div className="info-box" style={{marginBottom: '8px'}}>ℹ️ {tl('serviceLinuxSettings', 'Installing copies your Backup Sets and settings to {dir}, which the service and this app then share. Administrators (the sudo or wheel group) can read them there and run backups; changing them needs Restart as administrator. Your own copy is left as it was.').replace('{dir}', st.settingsDir || '/var/lib/proxmoxbackupclient')}</div>
+          )}
           <div style={{fontSize: '14px', marginBottom: '8px'}}>
             <strong>{tl('serviceStatusLabel', 'Status:')}</strong>{' '}
             {st.installed
-              ? <>{tl('serviceInstalled', 'Installed')} ({st.name}), {stateText}{st.startType ? `, ${tl('serviceStart_' + st.startType, st.startType === 'automatic' ? 'starts with Windows' : st.startType)}` : ''}</>
+              ? <>{tl('serviceInstalled', 'Installed')} ({st.name}), {stateText}{st.startType ? `, ${startTypeText(st.startType)}` : ''}</>
               : tl('serviceNotInstalled', 'Not installed')}
           </div>
           {st.installed && (
@@ -670,7 +679,9 @@ export function ServiceControl({ ui }) {
             <div className="info-box" style={{marginBottom: '8px'}}>⚠️ {tl('serviceOtherExe', 'The installed service runs {path}, not the copy beside this app.').replace('{path}', st.exePath)}</div>
           )}
           {!st.installed && !st.exeAvailable && (
-            <div className="info-box" style={{marginBottom: '8px'}}>ℹ️ {tl('serviceNoExe', '{file} is not in this app\'s folder. It comes in the download; put it beside the app to install the service.').replace('{file}', st.expectedExe)}</div>
+            <div className="info-box" style={{marginBottom: '8px'}}>ℹ️ {linux
+              ? tl('serviceNoExeLinux', '{file} is missing. It comes with the .deb and .rpm packages.').replace('{file}', st.expectedExe)
+              : tl('serviceNoExe', '{file} is not in this app\'s folder. It comes in the download; put it beside the app to install the service.').replace('{file}', st.expectedExe)}</div>
           )}
           {!st.isAdmin && (
             <div style={{display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap'}}>
@@ -700,6 +711,7 @@ export function ServiceControl({ ui }) {
               }}>{busy === 'remove' ? '…' : tl('serviceRemove', 'Remove')}</button>
             )}
           </div>
+          {st.message && !error && <div className="info-box" style={{marginTop: '10px'}}>⚠️ {st.message}</div>}
           {error && <div className="info-box" style={{borderColor: '#e53e3e', color: '#c53030', marginTop: '10px'}}>❌ {error}</div>}
         </>
       )}

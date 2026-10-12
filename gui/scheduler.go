@@ -198,57 +198,19 @@ type JobHistory struct {
 }
 
 func getScheduledJobsPath() (string, error) {
-	// Use ProgramData on Windows (shared between GUI and Service)
-	var configDir string
-
-	if programData := os.Getenv("ProgramData"); programData != "" {
-		// Windows: C:\ProgramData\ProxmoxBackupClient
-		configDir = filepath.Join(programData, "ProxmoxBackupClient")
-	} else if systemDrive := os.Getenv("SystemDrive"); systemDrive != "" {
-		// Windows fallback: if ProgramData not set, use C:\ProgramData hardcoded
-		configDir = filepath.Join(systemDrive, "ProgramData", "ProxmoxBackupClient")
-	} else {
-		// Unix-like: use ~/.proxmox-backup-guardian
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		configDir = filepath.Join(homeDir, ".proxmox-backup-guardian")
-	}
-
-	// #nosec G703 -- ProgramData is a trusted Windows system environment variable, not user input
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	dir, err := getConfigDir()
+	if err != nil {
 		return "", err
 	}
-
-	return filepath.Join(configDir, "scheduled_jobs.json"), nil
+	return filepath.Join(dir, "scheduled_jobs.json"), nil
 }
 
 func getJobHistoryPath() (string, error) {
-	// Use ProgramData on Windows (shared between GUI and Service)
-	var configDir string
-
-	if programData := os.Getenv("ProgramData"); programData != "" {
-		// Windows: C:\ProgramData\ProxmoxBackupClient
-		configDir = filepath.Join(programData, "ProxmoxBackupClient")
-	} else if systemDrive := os.Getenv("SystemDrive"); systemDrive != "" {
-		// Windows fallback: if ProgramData not set, use C:\ProgramData hardcoded
-		configDir = filepath.Join(systemDrive, "ProgramData", "ProxmoxBackupClient")
-	} else {
-		// Unix-like: use ~/.proxmox-backup-guardian
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		configDir = filepath.Join(homeDir, ".proxmox-backup-guardian")
-	}
-
-	// #nosec G703 -- ProgramData is a trusted Windows system environment variable, not user input
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	dir, err := getConfigDir()
+	if err != nil {
 		return "", err
 	}
-
-	return filepath.Join(configDir, "job_history.json"), nil
+	return filepath.Join(dir, "job_history.json"), nil
 }
 
 // SaveScheduledJob saves a new scheduled job

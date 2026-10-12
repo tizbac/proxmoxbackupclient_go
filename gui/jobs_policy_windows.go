@@ -26,6 +26,12 @@ const elevatedRestartFlag = "--" + elevatedRestartFlagName
 
 func jobPolicySupported() bool { return true }
 
+// jobPolicyFixed: on Windows the policy is a switch in Preferences.
+func jobPolicyFixed() bool { return false }
+
+// jobsAdmin: may this process change the Backup Sets? (an elevated process)
+func jobsAdmin() bool { return isAdmin() }
+
 // readRequireAdminForJobs: missing value = ON; any read problem = ON.
 func readRequireAdminForJobs() bool {
 	k, err := registry.OpenKey(jobPolicyRoot, jobPolicyPath, registry.QUERY_VALUE)
