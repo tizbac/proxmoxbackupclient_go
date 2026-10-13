@@ -287,6 +287,25 @@ func (s *Server) ReportProgress(jobID string, percent float64, message string) {
 	}
 }
 
+// ReportStats records a run's latest live statistics. stats is kept as given
+// and must not be changed afterwards (each report is a fresh map).
+func (s *Server) ReportStats(jobID string, stats map[string]interface{}) {
+	s.progressMutex.Lock()
+	defer s.progressMutex.Unlock()
+	if progress, exists := s.backupProgress[jobID]; exists && !progress.Complete {
+		progress.Stats = stats
+	}
+}
+
+// ReportFile records the file a run is reading.
+func (s *Server) ReportFile(jobID string, path string) {
+	s.progressMutex.Lock()
+	defer s.progressMutex.Unlock()
+	if progress, exists := s.backupProgress[jobID]; exists && !progress.Complete {
+		progress.File = path
+	}
+}
+
 // completeRun records a run's outcome, once: later calls for the same run
 // change nothing.
 func (s *Server) completeRun(jobID string, success bool, message string) {

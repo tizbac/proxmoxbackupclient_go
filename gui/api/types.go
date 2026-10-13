@@ -74,6 +74,12 @@ type BackupProgress struct {
 	// Paused and PausedSince (Unix ms) while the run waits at a pause.
 	Paused      bool  `json:"paused,omitempty"`
 	PausedSince int64 `json:"paused_since,omitempty"`
+	// Stats is the run's latest live statistics, in the form of the app's
+	// "backup:stats" event (files, bytes, upload, new and reused chunks, the
+	// disk of a machine backup); File is the file being read. A GUI following
+	// the run passes both on as its own run's events.
+	Stats map[string]interface{} `json:"stats,omitempty"`
+	File  string                 `json:"file,omitempty"`
 }
 
 // RunsResponse lists the service's runs: those in progress and those that

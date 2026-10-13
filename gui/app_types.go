@@ -97,6 +97,8 @@ type App struct {
 type serviceRunReporter interface {
 	BeginRun(name string) string
 	ReportProgress(jobID string, percent float64, message string)
+	ReportStats(jobID string, stats map[string]interface{})
+	ReportFile(jobID string, path string)
 	FinishRun(jobID string, success bool, message string)
 }
 
@@ -138,6 +140,20 @@ func (a *App) TrackRequestRun(jobID, backupType, changeDetectionMode string) str
 func (a *App) reportRun(runID string, fraction float64, message string) {
 	if runID != "" && a.runReporter != nil {
 		a.runReporter.ReportProgress(runID, fraction*100, message)
+	}
+}
+
+// reportRunStats sends a service run's live statistics to its API entry.
+func (a *App) reportRunStats(runID string, stats *BackupProgressStats) {
+	if runID != "" && a.runReporter != nil && stats != nil {
+		a.runReporter.ReportStats(runID, stats.event())
+	}
+}
+
+// reportRunFile sends the file a service run is reading to its API entry.
+func (a *App) reportRunFile(runID string, path string) {
+	if runID != "" && a.runReporter != nil {
+		a.runReporter.ReportFile(runID, path)
 	}
 }
 

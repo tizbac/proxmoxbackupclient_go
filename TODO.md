@@ -18,7 +18,6 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 
 ## Background service
 
-- [ ] **Stats rows for runs the service does**: Files, Processing, Upload and New/Reused stay empty on the card for a run handed to the service or started by its schedule. The percentage and stage line already arrive (`/backup/runs`); add the stats to the API's run entry and have `watchServiceRuns` emit them as the app's own runs do.
 - [ ] **Live test: the encryption key on machine backups the service runs** (fixed in 2f46844, not tried with a key configured).
 - [ ] **Live test on Linux: Restart as administrator** (pkexec) from a desktop session, and clicking Install in the root app.
 - [ ] Maybe: Pause from the tray menu, and a "resume at" time.

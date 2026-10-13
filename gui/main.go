@@ -893,6 +893,7 @@ func (a *App) pollBackupProgress(jobID string) {
 	polledRuns.Store(jobID, struct{}{})
 	defer polledRuns.Delete(jobID)
 	lastPaused := false
+	lastFile := ""
 
 	// Without a bound, a permanently-404ing job (evicted/collided entry, or a
 	// service restart that dropped the progress map) would poll forever. Give up
@@ -925,6 +926,7 @@ func (a *App) pollBackupProgress(jobID string) {
 				"percent": progress.Progress,
 				"message": progress.Message,
 			})
+			a.emitRunDetail(progress, &lastFile)
 			if progress.Paused != lastPaused {
 				lastPaused = progress.Paused
 				a.emitPause(BackupPauseState{Paused: progress.Paused, Since: progress.PausedSince})

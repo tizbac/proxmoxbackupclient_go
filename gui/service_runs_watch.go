@@ -24,6 +24,7 @@ func (a *App) watchServiceRuns() {
 	defer ticker.Stop()
 	following := ""
 	lastPaused := false
+	lastFile := ""
 	for range ticker.C {
 		if a.ctx == nil || a.mode != api.ModeService {
 			following = ""
@@ -52,7 +53,7 @@ func (a *App) watchServiceRuns() {
 			for i := range resp.Runs {
 				r := &resp.Runs[i]
 				if _, mine := polledRuns.Load(r.JobID); r.Running && !mine {
-					run, following, lastPaused = r, r.JobID, false
+					run, following, lastPaused, lastFile = r, r.JobID, false, ""
 					writeDebugLog("[Service Mode] Showing the service's run " + r.JobID + " (" + r.Name + ")")
 					break
 				}
@@ -75,9 +76,24 @@ func (a *App) watchServiceRuns() {
 		runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
 			"percent": run.Progress, "message": run.Message, "name": run.Name,
 		})
+		a.emitRunDetail(run, &lastFile)
 		if run.Paused != lastPaused {
 			lastPaused = run.Paused
 			a.emitPause(BackupPauseState{Paused: run.Paused, Since: run.PausedSince})
 		}
+	}
+}
+
+// emitRunDetail passes a service run's live statistics and current file on
+// as this window's own "backup:stats" and "backup:file" events, so the card's
+// Files, Processing, Upload and New/Reused rows fill in as for a run of its
+// own. lastFile holds the file last sent, so an unchanged one is not resent.
+func (a *App) emitRunDetail(run *api.BackupProgress, lastFile *string) {
+	if run.Stats != nil {
+		runtime.EventsEmit(a.ctx, "backup:stats", run.Stats)
+	}
+	if run.File != "" && run.File != *lastFile {
+		*lastFile = run.File
+		runtime.EventsEmit(a.ctx, "backup:file", map[string]interface{}{"path": run.File})
 	}
 }

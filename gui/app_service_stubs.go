@@ -190,6 +190,8 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 			a.finishRun(runID, success, message)
 		},
 		OnResult: func(status *BackupStatus) { a.setRunResult(postActionsKey, status) },
+		OnStats:  func(stats *BackupProgressStats) { a.reportRunStats(runID, stats) },
+		OnFile:   func(path string) { a.reportRunFile(runID, path) },
 	}
 	if kind == "machine" {
 		opts.ChangeDetectionMode = ""
@@ -297,6 +299,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 			}
 			a.finishRun(runID, success, message)
 		},
+		OnStats: func(stats *BackupProgressStats) { a.reportRunStats(runID, stats) },
 	}
 
 	release := acquireOperationSlot(comment, func(heldBy string) {

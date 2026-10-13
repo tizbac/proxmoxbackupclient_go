@@ -126,6 +126,30 @@ func TestScheduledRunListedAndFinishedOnce(t *testing.T) {
 	}
 }
 
+// A run's live statistics and current file reach a GUI through both the run
+// list and the run's status, and stop changing once it is complete.
+func TestRunStatsListed(t *testing.T) {
+	s, c := newTestService(t, &fakeHandler{})
+	id := s.BeginRun("Set")
+	s.ReportStats(id, map[string]interface{}{"filesDone": 1200, "newChunks": 7, "phase": "data"})
+	s.ReportFile(id, `F:\Data\a.txt`)
+
+	r := findRun(t, c, id)
+	if r.Stats["filesDone"] != float64(1200) || r.Stats["newChunks"] != float64(7) || r.Stats["phase"] != "data" || r.File != `F:\Data\a.txt` {
+		t.Fatalf("listed as stats %v, file %q", r.Stats, r.File)
+	}
+	p, err := c.GetBackupStatus(id)
+	if err != nil || p.Stats["filesDone"] != float64(1200) || p.File != `F:\Data\a.txt` {
+		t.Fatalf("status = %+v, %v", p, err)
+	}
+
+	s.FinishRun(id, true, "done")
+	s.ReportStats(id, map[string]interface{}{"filesDone": 1})
+	if r = findRun(t, c, id); r.Stats["filesDone"] != float64(1200) {
+		t.Fatalf("stats changed after completion: %v", r.Stats)
+	}
+}
+
 // Pause, Resume and Stop reach the service's App; the pause shows on the
 // running run, and an App error comes back as the client's error.
 func TestRunControl(t *testing.T) {
