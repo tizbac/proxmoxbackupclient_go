@@ -193,7 +193,7 @@ The first three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapsh
 <td width="33%">
 
 [<img src="docs/screenshots/gui-backup-sets.png" width="280">](docs/screenshots/gui-backup-sets.png)
-**Backup Sets**: named jobs with a repeat/manual trigger badge and a directory/machine type badge, Run Now on each
+**Backup Sets**: named jobs with a badge for the schedule that runs next (DAILY, WEEKLY, MONTHLY, +N for the others) and a directory/machine type badge, Run Now on each
 
 </td>
 <td width="33%">
@@ -206,6 +206,14 @@ The first three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapsh
 
 [<img src="docs/screenshots/gui-restore.png" width="280">](docs/screenshots/gui-restore.png)
 **Restore**: pick a PBS server and backup ID, list snapshots or search across them by filename
+
+</td>
+</tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-schedule-tab.png" width="280">](docs/screenshots/gui-schedule-tab.png)
+**Schedules**: several per set, from every few minutes to once a year ("every month on the last day", "the 2nd Tuesday"), with the next 3 runs
 
 </td>
 </tr>

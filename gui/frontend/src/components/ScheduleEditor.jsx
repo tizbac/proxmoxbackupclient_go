@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from '../i18n/i18nContext'
 import {
   WEEK, UNITS, MIN_REPEAT_MINUTES, newSchedule, nextScheduleId, describe, nextRuns,
-  nextSetRun, scheduleProblem, weekdayName, monthName, tp,
+  nextSetRun, scheduleProblem, weekdayName, monthName, tp, nthWord,
 } from './schedules'
 
 // The Schedule tab of the Backup Set editor: "On a schedule" with a list of
@@ -149,7 +149,7 @@ export default function ScheduleEditor({ scheduleMode, setScheduleMode, schedule
                 </label>
                 <select id="sched-nth" value={s.nth || 1} disabled={s.monthMode !== 'nth'} style={input} aria-label={t('schedWhich')}
                   onChange={e => update(s.id, { nth: Number(e.target.value) })}>
-                  {[1, 2, 3, 4, -1].map(n => <option key={n} value={n}>{t(`schedNth${n === -1 ? 'Last' : n}`)}</option>)}
+                  {[1, 2, 3, 4, -1].map(n => <option key={n} value={n}>{nthWord(t, n, s.nthWeekday || 'Sun')}</option>)}
                 </select>
                 <select id="sched-nthwd" value={s.nthWeekday || 'Sun'} disabled={s.monthMode !== 'nth'} style={input} aria-label={t('daysOfWeekLabel')}
                   onChange={e => update(s.id, { nthWeekday: e.target.value })}>

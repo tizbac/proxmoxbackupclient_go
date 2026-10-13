@@ -3847,7 +3847,7 @@ function App() {
                                     : sameDay
                                     ? when.toLocaleTimeString([], hm)
                                     : when.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', ...hm })
-                                  return <div>{tl('nextRunAt', 'Next run')}: {text}</div>
+                                  return <div>{t('schedSetNext', { time: text })}</div>
                                 })()}
                               </div>
                             </div>

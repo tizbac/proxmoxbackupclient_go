@@ -24,11 +24,7 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 
 ## Backing up
 
-- [ ] **Several schedules per Backup Set** (Mick, 2026-10-11). Today a set has one trigger (daily at a time, every N minutes in a window, or manual) plus weekdays, so monthly or yearly is impossible.
-  - Model: `Schedules []Schedule` per set, the old fields migrated into one entry on load. A schedule repeats every N hours (at minute :MM, optional window), days (at HH:MM, optional weekdays), weeks (which weekdays, at HH:MM), months (day D, "last day", or "the 2nd Tuesday", at HH:MM) or years (date and time), with an optional start date and an enabled tick.
-  - UI: Manual / Scheduled radio; a list of schedules in plain words ("Every month on the last day at 02:00") with Edit, Delete and Add schedule; the editor shows only the fields the unit needs and a live "Next 3 runs" preview. The card shows the earliest next run.
-  - Behaviour: earliest across schedules; two due together run once; catch-up as today; "full read every N runs" counts runs. Later maybe a per-schedule override (the monthly one does a full read, or goes to another server).
-  - The service reads the same model. Tests for month ends, 29 February, DST changes, "last Friday". 18 languages, manual, CHANGELOG.
+- [ ] Maybe: options per schedule (the monthly one does a full read, or goes to another server). Several schedules per set were built on 2026-10-13; Mick put this off.
 - [ ] **Retention per Backup Set in the client** (keep last N / hourly / daily / weekly / monthly), applied by a group prune after each good run, so Undelete and Roll back keep more restore points. Only works where the datastore's own prune job leaves that group alone (own namespace, or looser datastore rules). Show "Rollback points kept: ..." on the card. (The PBS-side `keep-hourly 48` is already in place.)
 - [ ] **Alternate data streams in folder backups** (Zone.Identifier and the like) are not captured, so they cannot come back; machine-image restores already put them back. Needs a field in `FileMetaEntry`, a collector, and the restore step; the "Restore alternate data streams" option is still reserved (`RestoreADS`).
 - [ ] **Very large folders in split backups** are split one level deep only (`gui/backup_analysis.go`): a 700 GB subfolder becomes one 700 GB part. Recursive splitting down to a size limit was planned; less pressing since change detection reuses unchanged files. Decide whether it is still wanted.

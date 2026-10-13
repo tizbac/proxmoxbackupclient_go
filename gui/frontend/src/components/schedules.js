@@ -48,14 +48,16 @@ export function nextScheduleId(list) {
   for (let n = 1; ; n++) if (!used.has(`s${n}`)) return `s${n}`
 }
 
-// tp picks the plural form of key for n in the app's language
-// (key_one, key_few, key_many, key_other), falling back to key_other.
+// tp picks the form of key for n in the app's language: key_1 for exactly
+// one where there is one ("Every day", no number), else the plural category
+// (key_zero, key_one, key_few, key_many, key_other; in some languages "one"
+// also covers 21, 31...), falling back to key_other.
 export function tp(t, language, key, n, params = {}) {
+  const tryKey = k => { const v = t(k, { n, ...params }); return v !== k ? v : null }
+  if (n === 1) { const v = tryKey(`${key}_1`); if (v) return v }
   let cat = 'other'
   try { cat = new Intl.PluralRules(language).select(n) } catch { /* unknown language: other */ }
-  const full = `${key}_${cat}`
-  const v = t(full, { n, ...params })
-  return v !== full ? v : t(`${key}_other`, { n, ...params })
+  return tryKey(`${key}_${cat}`) || t(`${key}_other`, { n, ...params })
 }
 
 // Weekday and month names in the app's language, from the browser.
@@ -69,6 +71,22 @@ export const monthName = (language, m) => {
 }
 const dayMonth = (language, m, d) => {
   try { return new Date(2024, m - 1, d).toLocaleDateString(language, { day: 'numeric', month: 'long' }) } catch { return `${d}/${m}` }
+}
+
+// nthWord is "2nd", "last"... for a weekday of the month. Where ordinals agree
+// with the weekday's gender, a language gives each weekday a gender
+// (schedGender_Tue: "f" or "n") and the forms schedNth2_f, schedNthLast_n...;
+// the plain schedNth2 is the masculine/default form.
+export function nthWord(t, n, weekday) {
+  const base = `schedNth${n === -1 ? 'Last' : n}`
+  const gk = `schedGender_${weekday}`
+  const g = t(gk)
+  if (g && g !== gk && g !== 'm') {
+    const k = `${base}_${g}`
+    const v = t(k)
+    if (v !== k) return v
+  }
+  return t(base)
 }
 
 // daysText names a list of weekdays ("Mon to Fri", "weekends", "Mon, Wed").
@@ -99,7 +117,7 @@ export function describe(t, language, s) {
       return t('schedDescWeeks', { every, days: daysText(t, language, s.weekdays) || t('everyDay'), time: s.at })
     case 'months':
       if (s.monthMode === 'last') return t('schedDescMonthLast', { every, time: s.at })
-      if (s.monthMode === 'nth') return t('schedDescMonthNth', { every, nth: t(`schedNth${s.nth === -1 ? 'Last' : s.nth}`), weekday: weekdayName(language, s.nthWeekday), time: s.at })
+      if (s.monthMode === 'nth') return t('schedDescMonthNth', { every, nth: nthWord(t, s.nth, s.nthWeekday), weekday: weekdayName(language, s.nthWeekday), time: s.at })
       return t('schedDescMonthDay', { every, d: s.monthDay, time: s.at })
     case 'years':
       return t('schedDescYear', { every, date: dayMonth(language, s.yearMonth, s.yearDay), time: s.at })

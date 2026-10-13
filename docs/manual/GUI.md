@@ -213,11 +213,11 @@ Some names are always skipped: the folders `System Volume Information`, `$RECYCL
 
 ## 6. Backup Sets
 
-A Backup Set is a saved backup with a name, a schedule and options. The **Backup** page lists them under **Your backup sets**. Each card shows the set's name, badges, its schedule and **Next run** (for scheduled sets), and **Last run**.
+A Backup Set is a saved backup with a name, its schedules and options. The **Backup** page lists them under **Your backup sets**. Each card shows the set's name, badges, the schedule that gives the next run and **Next run** (for scheduled sets), and **Last run**.
 
 | Badge | Meaning |
 |---|---|
-| DAILY, REPEAT, MANUAL | The schedule type |
+| DAILY, REPEAT, WEEKLY, MONTHLY, YEARLY, MANUAL | The kind of schedule that gives the next run, with +1, +2... for the set's other schedules that are on. MANUAL: the set only runs on Run Now, or none of its schedules is on |
 | DIRECTORY, MACHINE, MACHINE (VM) | The backup type; (VM) for a machine set stored as a Proxmox VE VM |
 | VSS ON, VSS OFF (Linux: SNAPSHOT ON, SNAPSHOT OFF) | Whether the set reads through a snapshot. Machine sets always show ON |
 | VSS PARTLY, VSS N/A (amber) | The set asks for a snapshot, but some (PARTLY) or all (N/A) of its folders are network drives or shares, which cannot be snapshotted and are read live. Hover the badge for the list |
@@ -252,16 +252,29 @@ A machine set also has **Folders for Undelete and Roll back**, one per line. Und
 
 ### 6.3 Schedule tab
 
+**When does this set run?** **On a schedule**, or **Only when I click Run Now**. A set that only runs on Run Now keeps its schedules, so you can switch back later.
+
+A set can have several schedules. It runs at the earliest time any of them gives; two due at the same minute give one run. The list shows each schedule in words ("Every month on the last day at 03:30") with a tick to switch it on or off, **Edit** and **Delete**. **Add schedule** adds one that runs every day at 02:00; **Weekly**, **Monthly** and **Yearly** start from those. A new set starts with every day at 02:00.
+
+**Edit** opens the schedule under the list. **Repeat every** takes a number and a unit; the fields below it depend on the unit:
+
+| Unit | Fields |
+|---|---|
+| minutes, hours | **All day**, or **Between** two times. Hours, all day: **At minute** past the hour. **Only on**: the days it runs (none picked means every day). The shortest repeat is 5 minutes |
+| days | **At** a time. **Only on**: the days it runs |
+| weeks | **On**: one or more days. **At** a time |
+| months | **On** a day of the month, **the last day**, or **the** 1st, 2nd, 3rd, 4th or last weekday ("the 2nd Tuesday"). **At** a time |
+| years | **On** a day and month. **At** a time |
+
+Repeats run on the clock: every 2 hours between 08:00 and 18:00 runs at 08:00, 10:00 and so on to 18:00, however long each run takes. With a number above 1 for days, weeks, months or years, **Starting** sets the day the count runs from (every 2 weeks from this Monday). A day that a month or year does not have (the 31st, 29 February) runs on the nearest earlier day, and the editor says so. **Next 3 runs** lists when the schedule will run.
+
+A schedule that cannot run is named in the list and the set is not saved: a repeat under 5 minutes, a time window that ends before it starts, or a weekly schedule with no day.
+
 | Setting | Notes |
 |---|---|
-| Also run at machine startup | Daily and Repeat. Runs the set when the computer starts |
-| Schedule type | **Daily**, **Repeat** or **Manual** |
-| Daily execution time | Daily only. New sets start at 02:00 |
-| Repeat every (minutes) | Repeat only. New sets start at 120 |
-| All day / Between ... and ... | Repeat only. Limits repeats to a time window (default 09:00 to 17:00 when you untick All day) |
-| Active days | Daily and Repeat. Mon to Sun, all on by default |
+| Also run at machine startup | Under the list. Runs the set when the computer starts as well |
 
-A summary under the settings says in words when the set will run. A **Manual** set never runs on its own; use **Run Now**.
+A summary under the settings gives the set's next run and which schedule it comes from. If the computer is off or asleep at a run time, the set runs once when it is back, however many times it missed.
 
 Schedules run while the GUI is running (in the tray is fine) or in the installed background service ([section 15](#15-background-service-tray-and-closing-the-window)).
 
