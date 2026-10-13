@@ -43,7 +43,26 @@ func readStreamsAndEAs(path string, budget *int64) ([]StreamEntry, []EAEntry, er
 		return nil, nil, err
 	}
 	defer windows.CloseHandle(h)
+	streams, eas := streamsAndEAsOf(h, path, budget)
+	return streams, eas, nil
+}
 
+// openMetaHandle opens path for its security descriptor, attributes, stream
+// list and extended attributes, without access to its data (so files open in
+// other programs open too). The caller closes the handle.
+func openMetaHandle(path string) (windows.Handle, error) {
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return 0, err
+	}
+	return windows.CreateFile(p, windows.READ_CONTROL|windows.FILE_READ_EA|windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING,
+		windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+}
+
+// streamsAndEAsOf lists the streams (reading their content from path as far
+// as budget allows) and extended attributes of an open file.
+func streamsAndEAsOf(h windows.Handle, path string, budget *int64) ([]StreamEntry, []EAEntry) {
 	var streams []StreamEntry
 	for _, s := range streamNames(h) {
 		e := StreamEntry{Name: s.name, Size: s.size}
@@ -63,7 +82,7 @@ func readStreamsAndEAs(path string, budget *int64) ([]StreamEntry, []EAEntry, er
 		}
 		streams = append(streams, e)
 	}
-	return streams, queryEAs(h), nil
+	return streams, queryEAs(h)
 }
 
 // ReadStreamsAndEAs lists a file's alternate data streams (with content, up
