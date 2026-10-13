@@ -61,7 +61,7 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 
 ## Languages and docs
 
-- [ ] Native-speaker review of the machine-translated strings (the 17 languages other than English and French), the encryption texts first.
+- [ ] Native speakers to look over the app's strings in the languages its users actually use. All 17 were reviewed against the English on 2026-10-13 (meaning, one term per concept, menu names, plurals, quotation marks); a native ear still catches what is correct but unidiomatic. The feature lists on the About page (`featuresList`, `techList`) were not part of that review.
 - [ ] The 12 translated READMEs were regenerated from the English one on 2026-10-13 (condensed, machine-translated): keep them in step when the English README changes, and have native speakers look them over.
 
 ## Command-line tools

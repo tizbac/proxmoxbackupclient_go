@@ -125,13 +125,18 @@ if (window.runtime) {
 // since a hardcoded "always ÷1048576, always MB/s" badly misrepresents both
 // small rates (reads as a tiny fraction) and large ones (a burst of reused
 // chunks landing in one event previously showed 1874.7 MB/s).
+// A number with d decimals in the app's language ("44,4" in French).
+function fixed(v, d) {
+  return v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })
+}
+
 function formatSpeed(bytesPerSec) {
   if (!bytesPerSec || bytesPerSec <= 0) return '0 KB/s'
   const scale = (value, base, units) => {
     let v = value
     let u = 0
     while (v >= base && u < units.length - 1) { v /= base; u++ }
-    return `${v.toFixed(u === 0 ? 0 : 1)} ${units[u]}/s`
+    return `${fixed(v, u === 0 ? 0 : 1)} ${units[u]}/s`
   }
   const dec = scale(bytesPerSec, 1000, ['B', 'KB', 'MB', 'GB', 'TB'])
   const bin = scale(bytesPerSec, 1024, ['B', 'KiB', 'MiB', 'GiB', 'TiB'])
@@ -178,7 +183,7 @@ function formatBytesDual(bytes) {
     let v = bytes
     let u = 0
     while (v >= base && u < units.length - 1) { v /= base; u++ }
-    return `${v.toFixed(1)} ${units[u]}`
+    return `${fixed(v, 1)} ${units[u]}`
   }
   return `${scale(1000, ['B', 'KB', 'MB', 'GB', 'TB'])} (${scale(1024, ['B', 'KiB', 'MiB', 'GiB', 'TiB'])})`
 }
@@ -1089,7 +1094,7 @@ function App() {
       restoreSamplesRef.current = []
       let localizedMsg = renderLocalizedMessage(data, t, language).text
       if (data.success && data.verify_ran) {
-        localizedMsg += ' - ' + tl('restoreVerifiedSuffix', '{n} files verified against the snapshot').replace('{n}', data.verified || 0)
+        localizedMsg += ' (' + t('restoreVerifiedSuffix', { n: (data.verified || 0).toLocaleString(language) }) + ')'
       }
       showStatus(data.success ? `✅ ${localizedMsg}` : `❌ ${localizedMsg}`, data.success ? 'success' : 'error')
       if (GetJobHistory) GetJobHistory().then(h => setJobHistory(h || []))
@@ -1160,7 +1165,7 @@ function App() {
     const unsub = EventsOn('analysis:progress', (data) => {
       const done = data.done || 0
       const total = data.total || 0
-      const gb = ((data.bytes || 0) / (1024 * 1024 * 1024)).toFixed(1)
+      const gb = fixed((data.bytes || 0) / (1024 * 1024 * 1024), 1)
       showStatus(`${t('splitAnalyzing')} ${done}/${total} (${gb} GB)`, 'info')
     })
     return () => { if (unsub) unsub() }
@@ -2415,7 +2420,7 @@ function App() {
       // still functionally "everything" by default, just no longer relying
       // on emptiness to mean that.
       setSelectedPaths(new Set(root.map(e => e.path)))
-      showStatus(`✅ ${(opened?.count || 0).toLocaleString()} ${t('entriesLoaded')}`, 'success')
+      showStatus(`✅ ${t('entriesLoadedCount', { n: (opened?.count || 0).toLocaleString(language) })}`, 'success')
     } catch (err) {
       showStatus(`❌ ${err}`, 'error')
     } finally {
@@ -2684,7 +2689,7 @@ function App() {
     let n = bytes / 1024
     let i = 0
     while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
-    return `${n.toFixed(1)} ${units[i]}`
+    return `${fixed(n, 1)} ${units[i]}`
   }
 
   // Reconstruct the absolute on-disk location a file came from, by joining the
@@ -3031,7 +3036,8 @@ function App() {
                 </button>
               </div>
 
-              <div style={{background: '#fff', borderBottom: '1px solid #ddd', display: 'flex', padding: '0 10px', flex: '0 0 auto'}}>
+              {/* Wraps to a second row when a language's tab names do not fit. */}
+              <div style={{background: '#fff', borderBottom: '1px solid #ddd', display: 'flex', flexWrap: 'wrap', padding: '0 10px', flex: '0 0 auto'}}>
                 <button className={`tabhead ${prefsTab === 'account' ? 'active' : ''}`} onClick={() => setPrefsTab('account')}>
                   {t('prefsAccountInfo')}
                 </button>
@@ -4272,7 +4278,7 @@ function App() {
                     {triggerMode === 'daily'
                       ? <>{t('schedulingInfo')} <strong>{scheduleTime}</strong></>
                       : <>{t('schedulingInfoInterval').replace('{n}', intervalMinutes)}
-                          {!windowAllDay && ` ${t('windowBetween')} ${windowStart} ${t('windowAnd')} ${windowEnd}`}</>}
+                          {!windowAllDay && ` ${t('windowRange', { start: windowStart, end: windowEnd })}`}</>}
                     <br/>{t('schedulingInfoDays')} {daysOfWeek.length === 0 || daysOfWeek.length === 7
                       ? t('everyDay')
                       : daysOfWeek.map(d => t(`day${d}`)).join(', ')}
@@ -5131,11 +5137,11 @@ function App() {
               columnGap: '12px',
               rowGap: '4px'
             }}>
-              <strong>{t('metaOriginalPath') || 'Source d\'origine'}</strong>
+              <strong>{t('metaOriginalPath')}</strong>
               <span style={{fontFamily: 'monospace'}}>{snapshotMeta.original_path || '—'}</span>
-              <strong>{t('metaHostname') || 'Machine'}</strong>
+              <strong>{t('metaHostname')}</strong>
               <span>{snapshotMeta.hostname || '—'}{snapshotMeta.os ? ` (${snapshotMeta.os})` : ''}{snapshotMeta.vss_used ? ' · VSS' : ''}</span>
-              <strong>{t('metaBackupTime') || 'Sauvegardé le'}</strong>
+              <strong>{t('metaBackupTime')}</strong>
               <span>{snapshotMeta.backup_time || '—'}{snapshotMeta.client_version ? ` · client ${snapshotMeta.client_version}` : ''}</span>
             </div>
           )}
@@ -5156,10 +5162,10 @@ function App() {
                   className="btn"
                   type="button"
                   onClick={handleReloadSnapshot}
-                  title={t('reloadTreeHint') || 'Bypass local cache and re-download the snapshot tree'}
+                  title={t('reloadTreeHint')}
                   style={{padding: '4px 10px', fontSize: '13px'}}
                 >
-                  {t('reloadTree') || 'Recharger'}
+                  {t('reloadTree')}
                 </button>
                 <button
                   className="btn btn-secondary"
@@ -5248,7 +5254,7 @@ function App() {
                       disabled={!!blocker}
                       onChange={() => setRestoreMode('original')}
                     />
-                    <strong>{t('restoreModeInPlace') || 'Restaurer in-place'}</strong>
+                    <strong>{t('restoreModeInPlace')}</strong>
                     {blocker && <span style={{fontSize: '11px', color: '#dc2626'}}> ({blockerTooltip})</span>}
                   </label>
                   <label style={{display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer'}}>
@@ -5259,7 +5265,7 @@ function App() {
                       checked={restoreMode !== 'original'}
                       onChange={() => setRestoreMode('alternate_abs')}
                     />
-                    <strong>{t('restoreModeAlternate') || 'Restaurer vers un autre emplacement'}</strong>
+                    <strong>{t('restoreModeAlternate')}</strong>
                   </label>
                 </div>
 
@@ -5325,7 +5331,7 @@ function App() {
 
                 <div style={{display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '12px'}}>
                   <label style={{display: 'flex', alignItems: 'center', gap: '6px', opacity: isInPlace ? 0.5 : 1}}
-                         title={isInPlace ? (t('overwriteForcedInPlace') || '') : ''}>
+                         title={isInPlace ? (t('overwriteForcedInPlace')) : ''}>
                     <input
                       type="checkbox"
                       checked={isInPlace ? true : restoreOptions.overwrite}

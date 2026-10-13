@@ -3,6 +3,26 @@ import translations from './translations'
 
 const I18nContext = createContext()
 
+// Dates and numbers follow the app's language, not the computer's: a
+// toLocaleString / toLocaleDateString / toLocaleTimeString call with no
+// locale (or []) uses appLocale. When the app language is the computer's own
+// language, the computer's locale is kept (en-GB dates on a British PC).
+let appLocale
+const withAppLocale = (orig) => function (locales, options) {
+  const none = locales === undefined || (Array.isArray(locales) && locales.length === 0)
+  return orig.call(this, none && appLocale ? appLocale : locales, options)
+}
+for (const [proto, names] of [
+  [Date.prototype, ['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString']],
+  [Number.prototype, ['toLocaleString']],
+]) {
+  for (const n of names) proto[n] = withAppLocale(proto[n])
+}
+function localeFor(language) {
+  const os = navigator.language || ''
+  return os.split('-')[0] === language ? os : language
+}
+
 export function I18nProvider({ children }) {
   const [language, setLanguage] = useState(() => {
     // Check if language is already stored in localStorage
@@ -24,6 +44,9 @@ export function I18nProvider({ children }) {
     // Default to English if no translation found
     return 'en'
   })
+
+  // Set while rendering, so the children rendered below already use it.
+  appLocale = localeFor(language)
 
   useEffect(() => {
     localStorage.setItem('language', language)

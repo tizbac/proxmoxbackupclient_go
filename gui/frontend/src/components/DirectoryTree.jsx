@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { Tree, TreeItem, TreeItemLayout, Spinner } from '@fluentui/react-components'
 import { Folder20Regular, Document20Regular } from '@fluentui/react-icons'
 import { normPath, isUnder, checkState, computeReincludeExcludes } from './treeSelection'
+import { useTranslation } from '../i18n/i18nContext'
 
 let ListDirectoryFn = null
 if (window.go) {
@@ -24,6 +25,7 @@ if (window.go) {
 //     construction, since the tree has to be expanded that far for the
 //     checkbox to be clickable at all.
 export default function DirectoryTree({ roots, excludes, onChange }) {
+  const { t } = useTranslation()
   // path -> DirEntry[] | 'loading' | 'error'
   const [childrenByPath, setChildrenByPath] = useState({})
   const [openItems, setOpenItems] = useState(() => new Set())
@@ -157,18 +159,18 @@ export default function DirectoryTree({ roots, excludes, onChange }) {
             {kids === 'loading' && (
               <TreeItem value={node.path + '\u0000loading'} itemType="leaf">
                 <TreeItemLayout>
-                  <Spinner size="tiny" label="Loading..." />
+                  <Spinner size="tiny" label={t('dirTreeLoading')} />
                 </TreeItemLayout>
               </TreeItem>
             )}
             {kids === 'error' && (
               <TreeItem value={node.path + '\u0000error'} itemType="leaf">
-                <TreeItemLayout>Unable to read this folder</TreeItemLayout>
+                <TreeItemLayout>{t('dirTreeUnreadable')}</TreeItemLayout>
               </TreeItem>
             )}
             {Array.isArray(kids) && kids.length === 0 && (
               <TreeItem value={node.path + '\u0000empty'} itemType="leaf">
-                <TreeItemLayout>(empty)</TreeItemLayout>
+                <TreeItemLayout>{t('dirTreeEmpty')}</TreeItemLayout>
               </TreeItem>
             )}
             {Array.isArray(kids) && kids.map((child) => renderNode(child))}
@@ -211,19 +213,19 @@ export default function DirectoryTree({ roots, excludes, onChange }) {
           fontSize: '13px', color: '#555', cursor: 'pointer',
         }}>
           <input ref={selectAllRef} type="checkbox" checked={allChecked} onChange={handleSelectAll} />
-          Select All
+          {t('selectAllEntries')}
         </label>
       )}
       <div style={{ maxHeight: 290, overflow: 'auto', padding: '4px 0' }}>
         {rootEntries === 'loading' && (
           <div style={{ padding: 12 }}>
-            <Spinner size="tiny" label="Loading drives..." />
+            <Spinner size="tiny" label={t('dirTreeLoadingDrives')} />
           </div>
         )}
-        {rootEntries === 'error' && <div style={{ padding: 12, color: '#b91c1c' }}>Unable to list drives</div>}
+        {rootEntries === 'error' && <div style={{ padding: 12, color: '#b91c1c' }}>{t('dirTreeDrivesError')}</div>}
         {treeRoots.length > 0 && (
           <Tree
-            aria-label="Backup folder picker"
+            aria-label={t('dirTreeAria')}
             selectionMode="multiselect"
             openItems={openItems}
             onOpenChange={handleOpenChange}
