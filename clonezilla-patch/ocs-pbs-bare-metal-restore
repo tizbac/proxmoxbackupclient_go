@@ -502,17 +502,34 @@ udevadm settle --timeout=10 >/dev/null 2>&1
 # still holds when the live system was copied to RAM (toram) and the medium
 # is no longer mounted.
 BOOT_DISKS=" "
+VENTOY_DISKS=" "
 add_boot_disk() { case "$BOOT_DISKS" in *" $1 "*) ;; *) BOOT_DISKS+="$1 " ;; esac; }
-for src in $(findmnt -nro SOURCE /run/live/medium 2>/dev/null) /dev/mapper/ventoy; do
+disks_under() { lsblk -nsrpo NAME,TYPE "$1" 2>/dev/null | awk '$2=="disk"{print $1}'; }
+disk_size() { LC_ALL=C parted -s "$1" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//'; }
+for src in $(findmnt -nro SOURCE /run/live/medium 2>/dev/null); do
   [ -b "$src" ] || continue
-  for d in $(lsblk -nsrpo NAME,TYPE "$src" 2>/dev/null | awk '$2=="disk"{print $1}'); do
-    add_boot_disk "$d"
-  done
+  for d in $(disks_under "$src"); do add_boot_disk "$d"; done
 done
-for d in $(lsblk -nrpo NAME,PKNAME,LABEL 2>/dev/null | awk '$3=="VTOYEFI" && $2!=""{print $2}'); do
+for d in $([ -b /dev/mapper/ventoy ] && disks_under /dev/mapper/ventoy) \
+         $(lsblk -nrpo NAME,PKNAME,LABEL 2>/dev/null | awk '$3=="VTOYEFI" && $2!=""{print $2}'); do
   add_boot_disk "$d"
+  VENTOY_DISKS+="$d "
 done
-[ "$BOOT_DISKS" != " " ] && echo "Boot disk(s), not offered as target:${BOOT_DISKS% }"
+
+# The boot disk(s) are named in the dialogs below, so it is clear why the
+# stick is not offered: "Not eligible as target: /dev/sdb (0.5GB) boot disk".
+NOT_ELIGIBLE=""
+for d in $BOOT_DISKS; do
+  what="boot disk"
+  case "$VENTOY_DISKS" in *" $d "*) what="boot disk (Ventoy)" ;; esac
+  sz="$(disk_size "$d")"
+  NOT_ELIGIBLE+="\n  $d  (${sz:-unknown size})  $what"
+done
+NOT_ELIGIBLE_BLOCK=""
+if [ -n "$NOT_ELIGIBLE" ]; then
+  NOT_ELIGIBLE_BLOCK="\n\nNot eligible as target:$NOT_ELIGIBLE"
+  echo -e "Not eligible as target:$NOT_ELIGIBLE"
+fi
 
 declare -a CANDIDATES
 for bd in /sys/block/*; do
@@ -527,7 +544,7 @@ done
 
 if [ "${#CANDIDATES[@]}" -eq 0 ]; then
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --msgbox "No local target disk found (only the boot stick and removable/optical/loop devices detected).\n\n$msg_program_stop" 0 0 $DIA_ESC
+  --msgbox "No local target disk found.${NOT_ELIGIBLE_BLOCK}\n\nCheck that the machine's own disk is connected and enabled in the firmware setup.\n\n$msg_program_stop" 0 0 $DIA_ESC
   exit 1
 elif [ "${#CANDIDATES[@]}" -eq 1 ]; then
   TARGET="${CANDIDATES[0]}"
@@ -535,12 +552,12 @@ else
   declare -a MENUT
   i=1
   for c in "${CANDIDATES[@]}"; do
-    sz="$(LC_ALL=C parted -s "$c" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
+    sz="$(disk_size "$c")"
     MENUT+=("$i" "$c  (${sz:-unknown size})")
     i=$((i+1))
   done
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --menu "Multiple local disks found -- select the RESTORE TARGET (will be COMPLETELY OVERWRITTEN):" 0 0 15 \
+  --menu "Multiple local disks found -- select the RESTORE TARGET (will be COMPLETELY OVERWRITTEN):${NOT_ELIGIBLE_BLOCK}" 0 0 15 \
   "${MENUT[@]}" $DIA_ESC \
   2> "$DIA_TMP"
   CHOICET="$(cat "$DIA_TMP")"
@@ -552,8 +569,8 @@ else
 fi
 echo "Target disk        : $TARGET"
 
-SRC_SIZE="$(LC_ALL=C parted -s "$NBDDEV" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
-TGT_SIZE="$(LC_ALL=C parted -s "$TARGET" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//')"
+SRC_SIZE="$(disk_size "$NBDDEV")"
+TGT_SIZE="$(disk_size "$TARGET")"
 
 # 9. confirmation before the destructive write: shows source+target+sizes.
 # Deliberately just the one dialog here, not also a typed device-name
@@ -564,7 +581,7 @@ TGT_SIZE="$(LC_ALL=C parted -s "$TARGET" unit GB print 2>/dev/null | grep -m1 '^
 # real timed run: this was the slowest manual step other than the
 # mandatory PBS server details.
 $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore - CONFIRM" \
---yesno "Source (PBS snapshot) : ${NBDDEV}  (${SRC_SIZE:-unknown size})\nTarget (THIS MACHINE)  : ${TARGET}  (${TGT_SIZE:-unknown size})\n\nEVERYTHING on ${TARGET} will be PERMANENTLY OVERWRITTEN.\n\nContinue?" 0 0
+--yesno "Source (PBS snapshot) : ${NBDDEV}  (${SRC_SIZE:-unknown size})\nTarget (THIS MACHINE)  : ${TARGET}  (${TGT_SIZE:-unknown size})${NOT_ELIGIBLE_BLOCK}\n\nEVERYTHING on ${TARGET} will be PERMANENTLY OVERWRITTEN.\n\nContinue?" 0 0
 if [ "$?" != "0" ]; then
   echo "$msg_program_stop!"
   exit 1

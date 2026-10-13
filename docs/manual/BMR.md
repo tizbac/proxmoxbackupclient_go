@@ -112,7 +112,7 @@ The chosen image is attached as `/dev/nbd0`. If it cannot be attached (wrong key
 
 ### 4.6 Pick and confirm the target disk
 
-The target is a local disk that is not marked removable, is not the stick the restore booted from (a Ventoy stick or a USB SSD included), and is not optical, a loop device or the attached image. With exactly one such disk it is chosen for you. With several, a menu asks, showing each size. The target should be at least as large as the original disk.
+The target is a local disk that is not marked removable, is not the stick the restore booted from (a Ventoy stick or a USB SSD included), and is not optical, a loop device or the attached image. With exactly one such disk it is chosen for you. With several, a menu asks, showing each size. The confirmation (or the menu) lists the boot stick under "Not eligible as target", with its size, so you can see it was recognised. The target should be at least as large as the original disk.
 
 A confirmation screen shows the source and target with their sizes:
 
