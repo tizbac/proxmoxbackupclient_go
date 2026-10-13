@@ -26,7 +26,7 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 
 - [ ] Maybe: options per schedule (the monthly one does a full read, or goes to another server). Several schedules per set were built on 2026-10-13; Mick put this off.
 - [ ] **Retention per Backup Set in the client** (keep last N / hourly / daily / weekly / monthly), applied by a group prune after each good run, so Undelete and Roll back keep more restore points. Only works where the datastore's own prune job leaves that group alone (own namespace, or looser datastore rules). Show "Rollback points kept: ..." on the card. (The PBS-side `keep-hourly 48` is already in place.)
-- [ ] **Alternate data streams in folder backups** (Zone.Identifier and the like) are not captured, so they cannot come back; machine-image restores already put them back. Needs a field in `FileMetaEntry`, a collector, and the restore step; the "Restore alternate data streams" option is still reserved (`RestoreADS`).
+- [ ] Maybe: NTFS extended attributes in files restored from a machine (disk image) backup (the image reader does not read `$EA`; folder backups record them since v0.9.0, and a bare-metal restore keeps them).
 - [ ] **Very large folders in split backups** are split one level deep only (`gui/backup_analysis.go`): a 700 GB subfolder becomes one 700 GB part. Recursive splitting down to a size limit was planned; less pressing since change detection reuses unchanged files. Decide whether it is still wanted.
 - [ ] Machine backups: a GUI option for a forensic copy (read free space too; the CLI has `-readfreespace`).
 - [ ] Machine backups: volumes without a drive letter (EFI, recovery) are still read whole (small).

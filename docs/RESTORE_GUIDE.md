@@ -34,7 +34,8 @@ From a folder backup:
 * File contents, verified against the snapshot if you tick **Verify after restore**.
 * Modification times of files and folders, and on Windows creation times (backups from v0.8.0 on).
 * With **Restore permissions/ACLs**: on Windows owner, group, permissions (DACL) and the Hidden, System, Archive and ReadOnly attributes (run as administrator so any recorded owner can be set); on Linux POSIX ACLs and extended attributes, plus owner and mode when restoring as root.
-* Not yet: Alternate Data Streams and legacy NTFS extended attributes. Where a file has two names (a hard link), only one is restored.
+* With **Restore alternate data streams and extended attributes** (Windows, on by default): the data attached to files and folders, such as Zone.Identifier, up to 1 MB per stream, and NTFS extended attributes. Folder backups record them from v0.9.0 on.
+* Where a file has two names (a hard link), only one is restored.
 
 From a machine backup the files always go to another folder; the GUI manual lists what comes back ([section 9.6](manual/GUI.md#96-files-from-a-machine-backup)).
 

@@ -435,7 +435,7 @@ Anything waiting behind the run is listed under the card.
 
 ## 9. Restore
 
-Open the **Restore** page. The box at the top lists what restore supports: files and folders (full tree), selective restore, modification times, creation times (Windows), several PBS servers, and NTFS ACLs (Windows) or POSIX ACLs (Linux). Alternate Data Streams (ADS) and legacy NTFS extended attributes are not restored from folder backups yet.
+Open the **Restore** page. The box at the top lists what restore supports: files and folders (full tree), selective restore, modification times, creation times (Windows), several PBS servers, NTFS ACLs (Windows) or POSIX ACLs (Linux), and alternate data streams and NTFS extended attributes (Windows; folder backups record them from v0.9.0 on).
 
 ### 9.1 Find the snapshot
 
@@ -480,7 +480,7 @@ Selective restore reads only the chunks that hold the ticked files, so restoring
 | Restore modification times | Sets file and folder modification times as they were in the backup. Untick it to leave restored files with the time of the restore. Creation times (Windows) are put back either way. Undelete and Roll back always put the times back |
 | Verify after restore | Reads every restored file back and compares it with the snapshot. Mismatches are reported; nothing is deleted |
 | Restore permissions/ACLs | Windows: owner, group, permissions (DACL) and Hidden/System/Archive/ReadOnly attributes. Linux: POSIX ACLs and extended attributes. Run as administrator (or root) for this |
-| Restore Alternate Data Streams (ADS) | Greyed out (coming soon) |
+| Restore alternate data streams and extended attributes | Windows, on by default. Puts back the data attached to files and folders, such as the "downloaded from the internet" mark (Zone.Identifier), and NTFS extended attributes (WSL keeps Linux owners and permissions in them). Streams over 1 MB are recorded by name only and are not restored (the restore log says how many). Backups made before v0.9.0 did not record them. Not shown on Linux |
 
 On Windows the **creation time** (Explorer's "Date created") of every file and folder is put back too, whether or not permissions are restored, for backups made with v0.8.0 or later; older backups did not record it.
 

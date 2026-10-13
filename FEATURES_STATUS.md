@@ -56,6 +56,7 @@
 | Permissions and folder times put back; optional verify after restore | 0.5.0 | |
 | Files from a machine backup: NTFS | 0.8.0 | Nothing is mounted or downloaded first |
 | Files from a machine backup: FAT12/16/32, exFAT, ext2/3/4, XFS; NTFS permissions and alternate data streams | Unreleased | BitLocker volumes cannot be browsed |
+| Folder backups record alternate data streams (up to 1 MB each) and NTFS extended attributes; a restore puts them back | Unreleased | Windows; verified live (classic and metadata change detection) |
 
 ### Undelete and Roll back
 | Feature | Since | Notes |
@@ -116,7 +117,6 @@
 
 - **Linux Restart as administrator** (pkexec) from a desktop session: not live-tested.
 - **Encryption key on machine backups the service runs**: fixed, not tried with a key configured.
-- **Alternate data streams in folder backups**: not recorded, so they cannot come back (machine-image restores do put them back).
 - **System tray and toast notifications**: Windows only.
 
 ## Not done

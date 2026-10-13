@@ -139,7 +139,7 @@ Repeat `-backupdir`. Each folder becomes its own backup group, with the ID `<bas
 
 ### Permissions, attributes and dates
 
-Besides each file's contents and modification time, the tool records on Windows each file's and folder's permissions (owner, group and access list), attributes (read-only, hidden, system...) and creation time, and on Linux extended attributes and POSIX ACLs. They are stored with the snapshot, and a restore in the GUI puts them back (permissions only when **Restore permissions/ACLs** is ticked). Windows CLI backups made before v0.8.1 did not record them.
+Besides each file's contents and modification time, the tool records on Windows each file's and folder's permissions (owner, group and access list), attributes (read-only, hidden, system...), creation time, alternate data streams (up to 1 MB each) and NTFS extended attributes (from v0.9.0), and on Linux extended attributes and POSIX ACLs. They are stored with the snapshot, and a restore in the GUI puts them back (permissions only when **Restore permissions/ACLs** is ticked). Windows CLI backups made before v0.8.1 did not record them.
 
 ### What gets skipped
 

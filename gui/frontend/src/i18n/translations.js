@@ -40,9 +40,6 @@ const translations = {
     navReports: "Rapports",
     navMessageLog: "Journal des messages",
     knownLimitations: "Limitations connues",
-    knownLimitationsIntro: "Ceci est une version de développement active. Certains éléments sont encore en cours de finalisation :",
-    limitationNtfsAcl: "Les sauvegardes de dossiers n'enregistrent pas les flux de données alternatifs (ADS) ni les attributs étendus NTFS hérités, donc une restauration de dossiers ne peut pas les remettre. Les fichiers restaurés depuis une sauvegarde machine Windows retrouvent leurs ADS.",
-    limitationNtfsAclNote: "Cela n'affecte pas les permissions NTFS/ACL (Windows) ni les ACL POSIX (Linux), qui sont déjà restaurées.",
     devBuildBadge: "Version de développement",
     messageLogEmpty: "Aucun message pour le moment.",
     msgColDateTime: "Date / Heure",
@@ -524,9 +521,6 @@ const translations = {
       reportsVerification: "Vérification",
       reportsVerifyOk: "Les {n} fichiers correspondent",
       reportsVerifyFailed: "{n} fichier(s) ne correspondent pas",
-      optionADS: "Restaurer les flux alternatifs (ADS)",
-      optionComingSoon: "Les sauvegardes de dossiers n'enregistrent pas encore les flux de données alternatifs",
-      comingSoon: "à venir",
       restoring: "Restauration en cours...",
       selectSnapshotFirst: "Sélectionnez d'abord un instantané",
       destinationRequired: "Dossier de destination requis",
@@ -537,7 +531,6 @@ const translations = {
       restoreBetaTimestamps: "Restauration des dates de modification",
       restoreBetaMultiServer: "Sélection parmi plusieurs serveurs PBS",
       restoreBetaACLsDone: "Permissions NTFS/ACL (Windows) et ACL POSIX (Linux)",
-      restoreBetaACLs: "Flux de données alternatifs (ADS) et attributs étendus NTFS hérités, pour les sauvegardes de dossiers",
 
       // About
       aboutTitle: "À propos",
@@ -962,6 +955,11 @@ const translations = {
     schedCatchUp: "Si l'ordinateur est éteint à l'heure prévue, l'ensemble s'exécute une fois à son redémarrage.",
     schedNoneOn: "Aucune planification n'est active, donc cet ensemble ne s'exécute pas tout seul. Utilisez « Exécuter maintenant » ou activez une planification.",
     schedNoneOnShort: "Aucune planification active",
+    optionStreams: "Restaurer les flux de données alternatifs et les attributs étendus",
+    optionStreamsHint: "Windows : remet les données attachées aux fichiers, comme la marque « téléchargé depuis Internet », ainsi que les attributs étendus NTFS. Les sauvegardes antérieures à la version 0.9.0 ne les contiennent pas.",
+    restoreSupportsStreams: "Flux de données alternatifs et attributs étendus NTFS (Windows)",
+    knownLimitationsNone: "Aucune limitation connue pour le moment.",
+    knownLimitationsOlderBackups: "Les sauvegardes antérieures à la version 0.9.0 ne contiennent ni flux de données alternatifs ni attributs étendus NTFS : une restauration depuis ces sauvegardes ne peut donc pas les remettre.",
   },
   en: {
     // Header
@@ -1004,9 +1002,6 @@ const translations = {
     navReports: "Reports",
     navMessageLog: "Message Log",
     knownLimitations: "Known Limitations",
-    knownLimitationsIntro: "This is an active development build. A few things are still being finished:",
-    limitationNtfsAcl: "Folder backups do not record Alternate Data Streams (ADS) or legacy NTFS extended attributes, so a folder restore cannot put them back. Files restored from a Windows machine backup get their ADS back.",
-    limitationNtfsAclNote: "This doesn't affect NTFS/ACL permissions (Windows) or POSIX ACLs (Linux): those are already restored.",
     devBuildBadge: "Development build",
     messageLogEmpty: "No messages yet.",
     msgColDateTime: "Date / Time",
@@ -1488,9 +1483,6 @@ const translations = {
       reportsVerification: "Verification",
       reportsVerifyOk: "All {n} files match",
       reportsVerifyFailed: "{n} file(s) did not match",
-      optionADS: "Restore Alternate Data Streams (ADS)",
-      optionComingSoon: "Folder backups do not record alternate data streams yet",
-      comingSoon: "coming soon",
       restoring: "Restoring...",
       selectSnapshotFirst: "Select a snapshot first",
       destinationRequired: "Destination folder required",
@@ -1501,7 +1493,6 @@ const translations = {
       restoreBetaTimestamps: "Modification time restore",
       restoreBetaMultiServer: "Select from multiple PBS Servers",
       restoreBetaACLsDone: "NTFS/ACL permissions (Windows) and POSIX ACLs (Linux)",
-      restoreBetaACLs: "Alternate Data Streams (ADS) and legacy NTFS extended attributes from folder backups",
 
       // About
       aboutTitle: "About",
@@ -1916,6 +1907,11 @@ const translations = {
     schedCatchUp: "If the computer is off at a run time, the set runs once when it is back.",
     schedNoneOn: "No schedule is on, so this set does not run on its own. Use \"Run Now\", or switch a schedule on.",
     schedNoneOnShort: "No schedule on",
+    optionStreams: "Restore alternate data streams and extended attributes",
+    optionStreamsHint: "Windows: puts back data attached to files, such as the \"downloaded from the internet\" mark, and NTFS extended attributes. Backups made before version 0.9.0 do not include them.",
+    restoreSupportsStreams: "Alternate data streams and NTFS extended attributes (Windows)",
+    knownLimitationsNone: "There are no known limitations at the moment.",
+    knownLimitationsOlderBackups: "Backups made before version 0.9.0 do not include alternate data streams or NTFS extended attributes, so a restore from them cannot put those back.",
   },
   it: {
     // Header
@@ -1958,9 +1954,6 @@ const translations = {
     navReports: "Report",
     navMessageLog: "Registro messaggi",
     knownLimitations: "Limitazioni note",
-    knownLimitationsIntro: "Questa è una versione di sviluppo attiva. Alcune funzioni sono ancora in fase di completamento:",
-    limitationNtfsAcl: "I backup di cartelle non registrano gli stream di dati alternativi (ADS) né gli attributi estesi NTFS legacy, quindi un ripristino di cartelle non può rimetterli. I file ripristinati da un backup macchina Windows riavranno i loro ADS.",
-    limitationNtfsAclNote: "Questo non riguarda i permessi NTFS/ACL (Windows) né le ACL POSIX (Linux), che sono già ripristinati.",
     devBuildBadge: "Versione di sviluppo",
     messageLogEmpty: "Nessun messaggio per ora.",
     msgColDateTime: "Data / Ora",
@@ -2442,9 +2435,6 @@ const translations = {
       reportsVerification: "Verifica",
       reportsVerifyOk: "Tutti i {n} file corrispondono",
       reportsVerifyFailed: "{n} file non corrispondono",
-      optionADS: "Ripristina Stream Dati Alternativi (ADS)",
-      optionComingSoon: "I backup di cartelle non registrano ancora i flussi di dati alternativi",
-      comingSoon: "in arrivo",
       restoring: "Ripristino in corso...",
       selectSnapshotFirst: "Seleziona prima uno snapshot",
       destinationRequired: "Cartella di destinazione richiesta",
@@ -2455,7 +2445,6 @@ const translations = {
       restoreBetaTimestamps: "Ripristino orari di modifica",
       restoreBetaMultiServer: "Selezione tra più server PBS",
       restoreBetaACLsDone: "Permessi NTFS/ACL (Windows) e ACL POSIX (Linux)",
-      restoreBetaACLs: "Stream di dati alternativi (ADS) e attributi estesi NTFS legacy dai backup di cartelle",
 
       // About
       aboutTitle: "Informazioni",
@@ -2892,6 +2881,11 @@ const translations = {
     schedCatchUp: "Se il computer è spento all'orario previsto, il set viene eseguito una volta alla riaccensione.",
     schedNoneOn: "Nessuna pianificazione è attiva, quindi questo set non viene eseguito da solo. Usa \"Esegui ora\" oppure attiva una pianificazione.",
     schedNoneOnShort: "Nessuna pianificazione attiva",
+    optionStreams: "Ripristina stream di dati alternativi e attributi estesi",
+    optionStreamsHint: "Windows: ripristina i dati associati ai file, come il contrassegno \"scaricato da Internet\", e gli attributi estesi NTFS. I backup creati prima della versione 0.9.0 non li contengono.",
+    restoreSupportsStreams: "Stream di dati alternativi e attributi estesi NTFS (Windows)",
+    knownLimitationsNone: "Al momento non ci sono limitazioni note.",
+    knownLimitationsOlderBackups: "I backup creati prima della versione 0.9.0 non contengono stream di dati alternativi né attributi estesi NTFS, quindi un ripristino da questi backup non può ripristinarli.",
   },
   de: {
     // Header
@@ -2934,9 +2928,6 @@ const translations = {
     navReports: "Berichte",
     navMessageLog: "Meldungsprotokoll",
     knownLimitations: "Bekannte Einschränkungen",
-    knownLimitationsIntro: "Dies ist eine aktive Entwicklungsversion. Einige Dinge werden noch fertiggestellt:",
-    limitationNtfsAcl: "Ordnersicherungen erfassen keine alternativen Datenströme (ADS) und keine veralteten erweiterten NTFS-Attribute, daher kann eine Ordnerwiederherstellung sie nicht zurückschreiben. Dateien, die aus einer Windows-Maschinensicherung wiederhergestellt werden, erhalten ihre ADS zurück.",
-    limitationNtfsAclNote: "Dies betrifft nicht die NTFS-/ACL-Berechtigungen (Windows) oder POSIX-ACLs (Linux): Diese werden bereits wiederhergestellt.",
     devBuildBadge: "Entwicklungsversion",
     messageLogEmpty: "Noch keine Meldungen.",
     msgColDateTime: "Datum / Uhrzeit",
@@ -3418,9 +3409,6 @@ const translations = {
       reportsVerification: "Prüfung",
       reportsVerifyOk: "Alle {n} Dateien stimmen überein",
       reportsVerifyFailed: "{n} Datei(en) stimmen nicht überein",
-      optionADS: "Alternative Datenströme (ADS) wiederherstellen",
-      optionComingSoon: "Ordnersicherungen erfassen alternative Datenströme noch nicht",
-      comingSoon: "in Kürze",
       restoring: "Wiederherstellung läuft...",
       selectSnapshotFirst: "Wählen Sie zuerst einen Snapshot",
       destinationRequired: "Zielordner erforderlich",
@@ -3431,7 +3419,6 @@ const translations = {
       restoreBetaTimestamps: "Änderungszeiten wiederherstellen",
       restoreBetaMultiServer: "Auswahl aus mehreren PBS-Servern",
       restoreBetaACLsDone: "NTFS-/ACL-Berechtigungen (Windows) und POSIX-ACLs (Linux)",
-      restoreBetaACLs: "Alternative Datenströme (ADS) und veraltete erweiterte NTFS-Attribute aus Ordnersicherungen",
 
       // About
       aboutTitle: "Über",
@@ -3856,6 +3843,11 @@ const translations = {
     schedCatchUp: "Ist der Computer zu einer geplanten Zeit ausgeschaltet, läuft der Sicherungssatz einmal, sobald der Computer wieder läuft.",
     schedNoneOn: "Kein Zeitplan ist aktiv, daher läuft dieser Sicherungssatz nicht von selbst. Verwenden Sie „Jetzt ausführen“ oder schalten Sie einen Zeitplan ein.",
     schedNoneOnShort: "Kein Zeitplan aktiv",
+    optionStreams: "Alternative Datenströme und erweiterte Attribute wiederherstellen",
+    optionStreamsHint: "Windows: stellt an Dateien angehängte Daten wieder her, etwa die Markierung „aus dem Internet heruntergeladen“, sowie erweiterte NTFS-Attribute. Sicherungen von vor Version 0.9.0 enthalten sie nicht.",
+    restoreSupportsStreams: "Alternative Datenströme und erweiterte NTFS-Attribute (Windows)",
+    knownLimitationsNone: "Derzeit sind keine Einschränkungen bekannt.",
+    knownLimitationsOlderBackups: "Sicherungen von vor Version 0.9.0 enthalten keine alternativen Datenströme und keine erweiterten NTFS-Attribute, daher kann eine Wiederherstellung aus ihnen diese nicht zurückschreiben.",
   },
   pl: {
     // Header
@@ -3898,9 +3890,6 @@ const translations = {
     navReports: "Raporty",
     navMessageLog: "Dziennik komunikatów",
     knownLimitations: "Znane ograniczenia",
-    knownLimitationsIntro: "To jest aktywna wersja rozwojowa. Kilka elementów jest wciąż dopracowywanych:",
-    limitationNtfsAcl: "Kopie folderów nie zapisują alternatywnych strumieni danych (ADS) ani przestarzałych rozszerzonych atrybutów NTFS, więc przywracanie folderów nie może ich odtworzyć. Pliki przywracane z kopii maszyny Windows odzyskują swoje ADS.",
-    limitationNtfsAclNote: "Nie dotyczy to uprawnień NTFS/ACL (Windows) ani ACL POSIX (Linux): te są już przywracane.",
     devBuildBadge: "Wersja rozwojowa",
     messageLogEmpty: "Brak komunikatów.",
     msgColDateTime: "Data / godzina",
@@ -4382,9 +4371,6 @@ const translations = {
       reportsVerification: "Weryfikacja",
       reportsVerifyOk: "Wszystkie pliki ({n}) są zgodne",
       reportsVerifyFailed: "Niezgodne pliki: {n}",
-      optionADS: "Przywróć alternatywne strumienie danych (ADS)",
-      optionComingSoon: "Kopie folderów nie zapisują jeszcze alternatywnych strumieni danych",
-      comingSoon: "wkrótce",
       restoring: "Przywracanie...",
       selectSnapshotFirst: "Najpierw wybierz snapshot",
       destinationRequired: "Wymagany folder docelowy",
@@ -4395,7 +4381,6 @@ const translations = {
       restoreBetaTimestamps: "Przywracanie czasów modyfikacji",
       restoreBetaMultiServer: "Wybór spośród wielu serwerów PBS",
       restoreBetaACLsDone: "Uprawnienia NTFS/ACL (Windows) i ACL POSIX (Linux)",
-      restoreBetaACLs: "Alternatywne strumienie danych (ADS) i przestarzałe rozszerzone atrybuty NTFS z kopii folderów",
 
       // About
       aboutTitle: "O programie",
@@ -4854,6 +4839,11 @@ const translations = {
     schedCatchUp: "Jeśli komputer jest wyłączony w chwili zaplanowanego uruchomienia, zestaw uruchomi się raz po jego włączeniu.",
     schedNoneOn: "Żaden harmonogram nie jest włączony, więc ten zestaw nie uruchamia się sam. Użyj „Uruchom teraz” albo włącz harmonogram.",
     schedNoneOnShort: "Harmonogramy wyłączone",
+    optionStreams: "Przywróć alternatywne strumienie danych i rozszerzone atrybuty",
+    optionStreamsHint: "Windows: przywraca dane dołączone do plików, takie jak znacznik „pobrano z internetu”, oraz rozszerzone atrybuty NTFS. Kopie utworzone przed wersją 0.9.0 ich nie zawierają.",
+    restoreSupportsStreams: "Alternatywne strumienie danych i rozszerzone atrybuty NTFS (Windows)",
+    knownLimitationsNone: "Obecnie nie ma znanych ograniczeń.",
+    knownLimitationsOlderBackups: "Kopie utworzone przed wersją 0.9.0 nie zawierają alternatywnych strumieni danych ani rozszerzonych atrybutów NTFS, więc przywracanie z nich nie może ich odtworzyć.",
   },
   es: {
     // Header
@@ -4896,9 +4886,6 @@ const translations = {
     navReports: "Informes",
     navMessageLog: "Registro de mensajes",
     knownLimitations: "Limitaciones conocidas",
-    knownLimitationsIntro: "Esta es una versión de desarrollo activa. Algunas cosas todavía se están terminando:",
-    limitationNtfsAcl: "Las copias de carpetas no registran los flujos de datos alternativos (ADS) ni los atributos extendidos NTFS heredados, así que una restauración de carpetas no puede devolverlos. Los archivos restaurados desde una copia de máquina Windows recuperan sus ADS.",
-    limitationNtfsAclNote: "Esto no afecta a los permisos NTFS/ACL (Windows) ni a las ACL POSIX (Linux), que ya se restauran.",
     devBuildBadge: "Versión de desarrollo",
     messageLogEmpty: "Aún no hay mensajes.",
     msgColDateTime: "Fecha / Hora",
@@ -5382,9 +5369,6 @@ const translations = {
       reportsVerification: "Verificación",
       reportsVerifyOk: "Los {n} archivos coinciden",
       reportsVerifyFailed: "{n} archivo(s) no coinciden",
-      optionADS: "Restaurar flujos de datos alternativos (ADS)",
-      optionComingSoon: "Las copias de carpetas aún no registran los flujos de datos alternativos",
-      comingSoon: "próximamente",
       restoring: "Restaurando...",
       selectSnapshotFirst: "Seleccione primero una instantánea",
       destinationRequired: "Se requiere una carpeta de destino",
@@ -5395,7 +5379,6 @@ const translations = {
       restoreBetaTimestamps: "Restauración de la hora de modificación",
       restoreBetaMultiServer: "Selección entre varios servidores PBS",
       restoreBetaACLsDone: "Permisos NTFS/ACL (Windows) y ACL POSIX (Linux)",
-      restoreBetaACLs: "Flujos de datos alternativos (ADS) y atributos extendidos NTFS heredados, en copias de carpetas",
 
       // About
       aboutTitle: "Acerca de",
@@ -5820,6 +5803,11 @@ const translations = {
     schedCatchUp: "Si el equipo está apagado a la hora prevista, el conjunto se ejecuta una vez cuando vuelva a encenderse.",
     schedNoneOn: "Ninguna programación está activada, así que este conjunto no se ejecuta por sí solo. Use \"Ejecutar ahora\" o active una programación.",
     schedNoneOnShort: "Ninguna programación activada",
+    optionStreams: "Restaurar flujos de datos alternativos y atributos extendidos",
+    optionStreamsHint: "Windows: restaura los datos asociados a los archivos, como la marca \"descargado de Internet\", y los atributos extendidos NTFS. Las copias creadas antes de la versión 0.9.0 no los incluyen.",
+    restoreSupportsStreams: "Flujos de datos alternativos y atributos extendidos NTFS (Windows)",
+    knownLimitationsNone: "No hay limitaciones conocidas por ahora.",
+    knownLimitationsOlderBackups: "Las copias creadas antes de la versión 0.9.0 no incluyen flujos de datos alternativos ni atributos extendidos NTFS, por lo que una restauración desde ellas no puede devolverlos.",
   },
   bg: {
     // Header
@@ -5862,9 +5850,6 @@ const translations = {
     navReports: "Отчети",
     navMessageLog: "Дневник на съобщенията",
     knownLimitations: "Известни ограничения",
-    knownLimitationsIntro: "Това е версия в активна разработка. Някои неща все още се довършват:",
-    limitationNtfsAcl: "Архивите на папки не записват алтернативни потоци от данни (ADS) и старите разширени атрибути на NTFS, затова възстановяване на папки не може да ги върне. Файловете, възстановени от архив на Windows машина, получават обратно своите ADS.",
-    limitationNtfsAclNote: "Това не засяга NTFS/ACL правата (Windows) или POSIX ACL (Linux): те вече се възстановяват.",
     devBuildBadge: "Версия в разработка",
     messageLogEmpty: "Все още няма съобщения.",
     msgColDateTime: "Дата / Час",
@@ -6344,9 +6329,6 @@ const translations = {
       reportsVerification: "Проверка",
       reportsVerifyOk: "Всички {n} файла съвпадат",
       reportsVerifyFailed: "{n} файла не съвпадат",
-      optionADS: "Възстанови алтернативни потоци от данни (ADS)",
-      optionComingSoon: "Архивите на папки все още не записват алтернативните потоци от данни",
-      comingSoon: "предстои",
       restoring: "Възстановяване...",
       selectSnapshotFirst: "Първо изберете снапшот",
       destinationRequired: "Изисква се целева папка",
@@ -6357,7 +6339,6 @@ const translations = {
       restoreBetaTimestamps: "Възстановяване на времето на промяна",
       restoreBetaMultiServer: "Избор от няколко PBS сървъра",
       restoreBetaACLsDone: "NTFS/ACL права (Windows) и POSIX ACL (Linux)",
-      restoreBetaACLs: "Алтернативни потоци от данни (ADS) и стари разширени атрибути на NTFS от архиви на папки",
 
       // About
       aboutTitle: "За програмата",
@@ -6782,6 +6763,11 @@ const translations = {
     schedCatchUp: "Ако компютърът е изключен в часа за изпълнение, наборът се изпълнява веднъж, когато компютърът бъде включен отново.",
     schedNoneOn: "Няма включен график, така че този набор не се изпълнява сам. Използвайте „Стартирай сега“ или включете график.",
     schedNoneOnShort: "Няма включен график",
+    optionStreams: "Възстанови алтернативните потоци от данни и разширените атрибути",
+    optionStreamsHint: "Windows: връща данните, прикачени към файловете, например отметката „изтеглено от интернет“, както и разширените атрибути на NTFS. Архивите отпреди версия 0.9.0 не ги съдържат.",
+    restoreSupportsStreams: "Алтернативни потоци от данни и разширени атрибути на NTFS (Windows)",
+    knownLimitationsNone: "В момента няма известни ограничения.",
+    knownLimitationsOlderBackups: "Архивите отпреди версия 0.9.0 не съдържат алтернативни потоци от данни и разширени атрибути на NTFS, затова възстановяване от тях не може да ги върне.",
   },
   cs: {
     // Header
@@ -6824,9 +6810,6 @@ const translations = {
     navReports: "Přehledy",
     navMessageLog: "Protokol zpráv",
     knownLimitations: "Známá omezení",
-    knownLimitationsIntro: "Toto je aktivně vyvíjená verze. Několik věcí se ještě dokončuje:",
-    limitationNtfsAcl: "Zálohy složek nezaznamenávají alternativní datové proudy (ADS) ani starší rozšířené atributy NTFS, takže je obnova složek nemůže vrátit. Soubory obnovené ze zálohy počítače s Windows své ADS dostanou zpět.",
-    limitationNtfsAclNote: "Netýká se to oprávnění NTFS/ACL (Windows) ani POSIX ACL (Linux): ty se již obnovují.",
     devBuildBadge: "Vývojová verze",
     messageLogEmpty: "Zatím žádné zprávy.",
     msgColDateTime: "Datum / Čas",
@@ -7306,9 +7289,6 @@ const translations = {
       reportsVerification: "Ověření",
       reportsVerifyOk: "Všechny soubory se shodují ({n})",
       reportsVerifyFailed: "Neshodné soubory: {n}",
-      optionADS: "Obnovit alternativní datové proudy (ADS)",
-      optionComingSoon: "Zálohy složek zatím alternativní datové proudy neukládají",
-      comingSoon: "již brzy",
       restoring: "Probíhá obnova...",
       selectSnapshotFirst: "Nejprve vyberte snímek",
       destinationRequired: "Je vyžadována cílová složka",
@@ -7319,7 +7299,6 @@ const translations = {
       restoreBetaTimestamps: "Obnova času úprav",
       restoreBetaMultiServer: "Výběr z více PBS serverů",
       restoreBetaACLsDone: "Oprávnění NTFS/ACL (Windows) a POSIX ACL (Linux)",
-      restoreBetaACLs: "Alternativní datové proudy (ADS) a starší rozšířené atributy NTFS ze záloh složek",
 
       // About
       aboutTitle: "O aplikaci",
@@ -7755,6 +7734,11 @@ const translations = {
     schedCatchUp: "Pokud je počítač v době spuštění vypnutý, sada se spustí jednou, jakmile bude znovu zapnutý.",
     schedNoneOn: "Žádný plán není zapnutý, takže se tato sada nespouští sama. Použijte „Spustit nyní“ nebo některý plán zapněte.",
     schedNoneOnShort: "Žádný zapnutý plán",
+    optionStreams: "Obnovit alternativní datové proudy a rozšířené atributy",
+    optionStreamsHint: "Windows: vrátí data připojená k souborům, například značku „staženo z internetu“, a rozšířené atributy NTFS. Zálohy vytvořené před verzí 0.9.0 je neobsahují.",
+    restoreSupportsStreams: "Alternativní datové proudy a rozšířené atributy NTFS (Windows)",
+    knownLimitationsNone: "Momentálně nejsou známá žádná omezení.",
+    knownLimitationsOlderBackups: "Zálohy vytvořené před verzí 0.9.0 neobsahují alternativní datové proudy ani rozšířené atributy NTFS, obnova z nich je proto vrátit nemůže.",
   },
   el: {
     // Header
@@ -7797,9 +7781,6 @@ const translations = {
     navReports: "Αναφορές",
     navMessageLog: "Αρχείο καταγραφής μηνυμάτων",
     knownLimitations: "Γνωστοί περιορισμοί",
-    knownLimitationsIntro: "Αυτή είναι μια έκδοση σε ενεργή ανάπτυξη. Μερικά πράγματα ακόμα ολοκληρώνονται:",
-    limitationNtfsAcl: "Τα αντίγραφα φακέλων δεν καταγράφουν εναλλακτικές ροές δεδομένων (ADS) ούτε παλαιά εκτεταμένα χαρακτηριστικά NTFS, οπότε η επαναφορά φακέλων δεν μπορεί να τα επαναφέρει. Τα αρχεία που επαναφέρονται από αντίγραφο μηχανήματος Windows παίρνουν πίσω τα ADS τους.",
-    limitationNtfsAclNote: "Αυτό δεν επηρεάζει τα δικαιώματα NTFS/ACL (Windows) ή τα POSIX ACL (Linux): αυτά ήδη επαναφέρονται.",
     devBuildBadge: "Έκδοση ανάπτυξης",
     messageLogEmpty: "Δεν υπάρχουν ακόμη μηνύματα.",
     msgColDateTime: "Ημερομηνία / Ώρα",
@@ -8279,9 +8260,6 @@ const translations = {
       reportsVerification: "Επαλήθευση",
       reportsVerifyOk: "Και τα {n} αρχεία ταιριάζουν",
       reportsVerifyFailed: "{n} αρχεία δεν ταιριάζουν",
-      optionADS: "Επαναφορά εναλλακτικών ροών δεδομένων (ADS)",
-      optionComingSoon: "Τα αντίγραφα φακέλων δεν καταγράφουν ακόμη τις εναλλακτικές ροές δεδομένων",
-      comingSoon: "σύντομα",
       restoring: "Επαναφορά σε εξέλιξη...",
       selectSnapshotFirst: "Επιλέξτε πρώτα ένα στιγμιότυπο",
       destinationRequired: "Απαιτείται φάκελος προορισμού",
@@ -8292,7 +8270,6 @@ const translations = {
       restoreBetaTimestamps: "Επαναφορά χρόνου τροποποίησης",
       restoreBetaMultiServer: "Επιλογή από πολλούς διακομιστές PBS",
       restoreBetaACLsDone: "Δικαιώματα NTFS/ACL (Windows) και POSIX ACL (Linux)",
-      restoreBetaACLs: "Εναλλακτικές ροές δεδομένων (ADS) και παλαιά εκτεταμένα χαρακτηριστικά NTFS από αντίγραφα φακέλων",
 
       // About
       aboutTitle: "Σχετικά",
@@ -8734,6 +8711,11 @@ const translations = {
     schedCatchUp: "Αν ο υπολογιστής είναι κλειστός την ώρα μιας εκτέλεσης, το σύνολο αντιγράφων ασφαλείας εκτελείται μία φορά μόλις ανοίξει ξανά.",
     schedNoneOn: "Κανένα πρόγραμμα δεν είναι ενεργό, οπότε αυτό το σύνολο αντιγράφων ασφαλείας δεν εκτελείται αυτόματα. Χρησιμοποιήστε «Εκτέλεση τώρα» ή ενεργοποιήστε ένα πρόγραμμα.",
     schedNoneOnShort: "Κανένα ενεργό πρόγραμμα",
+    optionStreams: "Επαναφορά εναλλακτικών ροών δεδομένων και εκτεταμένων χαρακτηριστικών",
+    optionStreamsHint: "Windows: επαναφέρει δεδομένα συνδεδεμένα με τα αρχεία, όπως την ένδειξη «λήψη από το διαδίκτυο», καθώς και τα εκτεταμένα χαρακτηριστικά NTFS. Τα αντίγραφα που δημιουργήθηκαν πριν από την έκδοση 0.9.0 δεν τα περιέχουν.",
+    restoreSupportsStreams: "Εναλλακτικές ροές δεδομένων και εκτεταμένα χαρακτηριστικά NTFS (Windows)",
+    knownLimitationsNone: "Προς το παρόν δεν υπάρχουν γνωστοί περιορισμοί.",
+    knownLimitationsOlderBackups: "Τα αντίγραφα που δημιουργήθηκαν πριν από την έκδοση 0.9.0 δεν περιέχουν εναλλακτικές ροές δεδομένων ούτε εκτεταμένα χαρακτηριστικά NTFS, οπότε μια επαναφορά από αυτά δεν μπορεί να τα επαναφέρει.",
   },
   hu: {
     // Header
@@ -8776,9 +8758,6 @@ const translations = {
     navReports: "Jelentések",
     navMessageLog: "Üzenetnapló",
     knownLimitations: "Ismert korlátozások",
-    knownLimitationsIntro: "Ez egy aktívan fejlesztett verzió. Néhány dolog még befejezésre vár:",
-    limitationNtfsAcl: "A mappamentések nem rögzítik az alternatív adatfolyamokat (ADS) és a régi NTFS kiterjesztett attribútumokat, így a mappák visszaállítása nem tudja visszaadni őket. A Windows gépmentésből visszaállított fájlok visszakapják az ADS-eiket.",
-    limitationNtfsAclNote: "Ez nem érinti az NTFS/ACL jogosultságokat (Windows) vagy a POSIX ACL-eket (Linux): ezek már visszaállításra kerülnek.",
     devBuildBadge: "Fejlesztői build",
     messageLogEmpty: "Még nincsenek üzenetek.",
     msgColDateTime: "Dátum / Idő",
@@ -9258,9 +9237,6 @@ const translations = {
       reportsVerification: "Ellenőrzés",
       reportsVerifyOk: "Mind a(z) {n} fájl egyezik",
       reportsVerifyFailed: "{n} fájl nem egyezik",
-      optionADS: "Alternatív adatfolyamok (ADS) visszaállítása",
-      optionComingSoon: "A mappamentések még nem rögzítik az alternatív adatfolyamokat",
-      comingSoon: "hamarosan",
       restoring: "Visszaállítás folyamatban...",
       selectSnapshotFirst: "Először válasszon egy pillanatképet",
       destinationRequired: "Cél mappa szükséges",
@@ -9271,7 +9247,6 @@ const translations = {
       restoreBetaTimestamps: "Módosítási idő visszaállítása",
       restoreBetaMultiServer: "Kiválasztás több PBS szerverből",
       restoreBetaACLsDone: "NTFS/ACL jogosultságok (Windows) és POSIX ACL-ek (Linux)",
-      restoreBetaACLs: "Alternatív adatfolyamok (ADS) és régi NTFS kiterjesztett attribútumok mappamentésekből",
 
       // About
       aboutTitle: "Névjegy",
@@ -9696,6 +9671,11 @@ const translations = {
     schedCatchUp: "Ha a számítógép egy futtatási időpontban ki van kapcsolva, a mentési készlet egyszer lefut, amikor a gép újra bekapcsol.",
     schedNoneOn: "Egy ütemezés sincs bekapcsolva, ezért ez a mentési készlet nem fut magától. Használja a „Futtatás most” gombot, vagy kapcsoljon be egy ütemezést.",
     schedNoneOnShort: "Nincs bekapcsolt ütemezés",
+    optionStreams: "Alternatív adatfolyamok és kiterjesztett attribútumok visszaállítása",
+    optionStreamsHint: "Windows: visszaállítja a fájlokhoz csatolt adatokat, például az „internetről letöltve” jelölést, valamint az NTFS kiterjesztett attribútumokat. A 0.9.0-s verzió előtt készült mentések nem tartalmazzák őket.",
+    restoreSupportsStreams: "Alternatív adatfolyamok és NTFS kiterjesztett attribútumok (Windows)",
+    knownLimitationsNone: "Jelenleg nincsenek ismert korlátozások.",
+    knownLimitationsOlderBackups: "A 0.9.0-s verzió előtt készült mentések nem tartalmaznak alternatív adatfolyamokat és NTFS kiterjesztett attribútumokat, ezért az ezekből történő visszaállítás nem tudja visszaállítani őket.",
   },
   lv: {
     // Header
@@ -9738,9 +9718,6 @@ const translations = {
     navReports: "Atskaites",
     navMessageLog: "Ziņojumu žurnāls",
     knownLimitations: "Zināmie ierobežojumi",
-    knownLimitationsIntro: "Šī ir aktīvi izstrādāta versija. Vairākas lietas vēl tiek pabeigtas:",
-    limitationNtfsAcl: "Mapju dublējumi nesaglabā alternatīvās datu plūsmas (ADS) un vecos NTFS papildu atribūtus, tāpēc mapju atjaunošana tos nevar atgriezt. Faili, kas atjaunoti no Windows datora dublējuma, atgūst savas ADS.",
-    limitationNtfsAclNote: "Tas neietekmē NTFS/ACL tiesības (Windows) vai POSIX ACL (Linux): tās jau tiek atjaunotas.",
     devBuildBadge: "Izstrādes versija",
     messageLogEmpty: "Vēl nav ziņojumu.",
     msgColDateTime: "Datums / Laiks",
@@ -10220,9 +10197,6 @@ const translations = {
       reportsVerification: "Pārbaude",
       reportsVerifyOk: "Visi {n} faili sakrīt",
       reportsVerifyFailed: "Nesakrītoši faili: {n}",
-      optionADS: "Atjaunot alternatīvās datu plūsmas (ADS)",
-      optionComingSoon: "Mapju dublējumi vēl neieraksta alternatīvās datu plūsmas",
-      comingSoon: "gaidāms",
       restoring: "Notiek atjaunošana...",
       selectSnapshotFirst: "Vispirms izvēlieties momentuzņēmumu",
       destinationRequired: "Nepieciešama mērķa mape",
@@ -10233,7 +10207,6 @@ const translations = {
       restoreBetaTimestamps: "Modifikācijas laika atjaunošanu",
       restoreBetaMultiServer: "Izvēli no vairākiem PBS serveriem",
       restoreBetaACLsDone: "NTFS/ACL tiesības (Windows) un POSIX ACL (Linux)",
-      restoreBetaACLs: "Alternatīvās datu plūsmas (ADS) un vecie NTFS papildu atribūti no mapju dublējumiem",
 
       // About
       aboutTitle: "Par programmu",
@@ -10669,6 +10642,11 @@ const translations = {
     schedCatchUp: "Ja palaišanas laikā dators ir izslēgts, kopa tiek palaista vienreiz, kad dators atkal ir ieslēgts.",
     schedNoneOn: "Neviens grafiks nav ieslēgts, tāpēc šī kopa netiek palaista automātiski. Izmantojiet „Palaist tagad” vai ieslēdziet kādu grafiku.",
     schedNoneOnShort: "Nav ieslēgta grafika",
+    optionStreams: "Atjaunot alternatīvās datu plūsmas un paplašinātos atribūtus",
+    optionStreamsHint: "Windows: atjauno failiem pievienotos datus, piemēram, atzīmi “lejupielādēts no interneta”, un NTFS paplašinātos atribūtus. Dublējumos, kas izveidoti pirms versijas 0.9.0, to nav.",
+    restoreSupportsStreams: "Alternatīvās datu plūsmas un NTFS paplašinātie atribūti (Windows)",
+    knownLimitationsNone: "Pašlaik nav zināmu ierobežojumu.",
+    knownLimitationsOlderBackups: "Dublējumos, kas izveidoti pirms versijas 0.9.0, nav alternatīvo datu plūsmu un NTFS paplašināto atribūtu, tāpēc atjaunošana no tiem tos nevar atgriezt.",
   },
   lt: {
     // Header
@@ -10711,9 +10689,6 @@ const translations = {
     navReports: "Ataskaitos",
     navMessageLog: "Pranešimų žurnalas",
     knownLimitations: "Žinomi apribojimai",
-    knownLimitationsIntro: "Ši versija yra aktyviai kuriama. Kai kurie dalykai vis dar baigiami:",
-    limitationNtfsAcl: "Aplankų kopijos neįrašo alternatyvių duomenų srautų (ADS) ir senų NTFS papildomų atributų, todėl aplankų atkūrimas negali jų grąžinti. Failai, atkurti iš Windows kompiuterio kopijos, atgauna savo ADS.",
-    limitationNtfsAclNote: "Tai nepaveikia NTFS/ACL leidimų (Windows) ar POSIX ACL (Linux): jie jau atkuriami.",
     devBuildBadge: "Kuriama versija",
     messageLogEmpty: "Kol kas pranešimų nėra.",
     msgColDateTime: "Data / Laikas",
@@ -11193,9 +11168,6 @@ const translations = {
       reportsVerification: "Patikra",
       reportsVerifyOk: "Visi {n} failai sutampa",
       reportsVerifyFailed: "Nesutampančių failų: {n}",
-      optionADS: "Atkurti alternatyvius duomenų srautus (ADS)",
-      optionComingSoon: "Aplankų atsarginės kopijos kol kas neįrašo alternatyvių duomenų srautų",
-      comingSoon: "greitai",
       restoring: "Vyksta atkūrimas...",
       selectSnapshotFirst: "Pirma pasirinkite momentinę kopiją",
       destinationRequired: "Reikalingas tikslo aplankas",
@@ -11206,7 +11178,6 @@ const translations = {
       restoreBetaTimestamps: "Pakeitimo laiko atkūrimą",
       restoreBetaMultiServer: "Pasirinkimą iš kelių PBS serverių",
       restoreBetaACLsDone: "NTFS/ACL leidimus (Windows) ir POSIX ACL (Linux)",
-      restoreBetaACLs: "Alternatyvūs duomenų srautai (ADS) ir seni NTFS papildomi atributai iš aplankų kopijų",
 
       // About
       aboutTitle: "Apie",
@@ -11642,6 +11613,11 @@ const translations = {
     schedCatchUp: "Jei vykdymo metu kompiuteris išjungtas, rinkinys bus įvykdytas vieną kartą, kai kompiuteris vėl įsijungs.",
     schedNoneOn: "Neįjungtas nė vienas grafikas, todėl šis rinkinys savaime nevykdomas. Naudokite „Vykdyti dabar“ arba įjunkite grafiką.",
     schedNoneOnShort: "Nėra įjungtų grafikų",
+    optionStreams: "Atkurti alternatyvius duomenų srautus ir išplėstinius atributus",
+    optionStreamsHint: "Windows: atkuria prie failų prijungtus duomenis, pavyzdžiui, žymą „atsisiųsta iš interneto“, ir NTFS išplėstinius atributus. Kopijose, sukurtose prieš 0.9.0 versiją, jų nėra.",
+    restoreSupportsStreams: "Alternatyvūs duomenų srautai ir NTFS išplėstiniai atributai (Windows)",
+    knownLimitationsNone: "Šiuo metu žinomų apribojimų nėra.",
+    knownLimitationsOlderBackups: "Kopijose, sukurtose prieš 0.9.0 versiją, nėra alternatyvių duomenų srautų ir NTFS išplėstinių atributų, todėl atkuriant iš jų šių duomenų grąžinti negalima.",
   },
   nl: {
     // Header
@@ -11684,9 +11660,6 @@ const translations = {
     navReports: "Rapporten",
     navMessageLog: "Berichtenlogboek",
     knownLimitations: "Bekende beperkingen",
-    knownLimitationsIntro: "Dit is een versie die nog actief wordt ontwikkeld. Enkele zaken worden nog afgerond:",
-    limitationNtfsAcl: "Mapbackups leggen geen alternate data streams (ADS) of verouderde uitgebreide NTFS-attributen vast, dus bij het herstellen van een map kunnen ze niet worden teruggezet. Bestanden die uit een Windows-machinebackup worden hersteld, krijgen hun ADS terug.",
-    limitationNtfsAclNote: "Dit heeft geen invloed op NTFS/ACL-rechten (Windows) of POSIX ACL's (Linux): die worden al hersteld.",
     devBuildBadge: "Ontwikkelversie",
     messageLogEmpty: "Nog geen berichten.",
     msgColDateTime: "Datum / Tijd",
@@ -12166,9 +12139,6 @@ const translations = {
       reportsVerification: "Controle",
       reportsVerifyOk: "Alle {n} bestanden komen overeen",
       reportsVerifyFailed: "Bestanden die niet overeenkomen: {n}",
-      optionADS: "Alternate data streams (ADS) herstellen",
-      optionComingSoon: "Mapbackups slaan alternate data streams nog niet op",
-      comingSoon: "binnenkort",
       restoring: "Herstel wordt uitgevoerd...",
       selectSnapshotFirst: "Selecteer eerst een snapshot",
       destinationRequired: "Doelmap vereist",
@@ -12179,7 +12149,6 @@ const translations = {
       restoreBetaTimestamps: "Herstel van wijzigingstijd",
       restoreBetaMultiServer: "Selecteren uit meerdere PBS-servers",
       restoreBetaACLsDone: "NTFS/ACL-rechten (Windows) en POSIX ACL's (Linux)",
-      restoreBetaACLs: "Alternate data streams (ADS) en verouderde uitgebreide NTFS-attributen uit mapbackups",
 
       // About
       aboutTitle: "Over",
@@ -12604,6 +12573,11 @@ const translations = {
     schedCatchUp: "Als de computer op een geplande tijd uit staat, wordt de backupset één keer uitgevoerd zodra de computer weer aan is.",
     schedNoneOn: "Er staat geen planning aan, dus deze backupset wordt niet vanzelf uitgevoerd. Gebruik „Nu uitvoeren” of zet een planning aan.",
     schedNoneOnShort: "Geen planning aan",
+    optionStreams: "Alternate data streams en uitgebreide attributen herstellen",
+    optionStreamsHint: "Windows: zet gegevens terug die aan bestanden hangen, zoals de markering „gedownload van internet”, en uitgebreide NTFS-attributen. Backups van vóór versie 0.9.0 bevatten ze niet.",
+    restoreSupportsStreams: "Alternate data streams en uitgebreide NTFS-attributen (Windows)",
+    knownLimitationsNone: "Er zijn op dit moment geen bekende beperkingen.",
+    knownLimitationsOlderBackups: "Backups van vóór versie 0.9.0 bevatten geen alternate data streams of uitgebreide NTFS-attributen, dus een herstel daaruit kan die niet terugzetten.",
   },
   pt: {
     // Header
@@ -12646,9 +12620,6 @@ const translations = {
     navReports: "Relatórios",
     navMessageLog: "Registo de mensagens",
     knownLimitations: "Limitações conhecidas",
-    knownLimitationsIntro: "Esta é uma versão em desenvolvimento ativo. Algumas coisas ainda estão a ser concluídas:",
-    limitationNtfsAcl: "Os backups de pastas não registam fluxos de dados alternativos (ADS) nem atributos estendidos NTFS antigos, por isso uma restauração de pastas não os pode repor. Os ficheiros restaurados a partir de um backup da máquina Windows recuperam os seus ADS.",
-    limitationNtfsAclNote: "Isto não afeta as permissões NTFS/ACL (Windows) nem as ACLs POSIX (Linux): essas já são restauradas.",
     devBuildBadge: "Compilação de desenvolvimento",
     messageLogEmpty: "Ainda não há mensagens.",
     msgColDateTime: "Data / Hora",
@@ -13128,9 +13099,6 @@ const translations = {
       reportsVerification: "Verificação",
       reportsVerifyOk: "Todos os {n} ficheiros coincidem",
       reportsVerifyFailed: "{n} ficheiro(s) não coincidem",
-      optionADS: "Restaurar fluxos de dados alternativos (ADS)",
-      optionComingSoon: "Os backups de pastas ainda não registam os fluxos de dados alternativos",
-      comingSoon: "brevemente",
       restoring: "A restaurar...",
       selectSnapshotFirst: "Selecione primeiro um snapshot",
       destinationRequired: "É necessária uma pasta de destino",
@@ -13141,7 +13109,6 @@ const translations = {
       restoreBetaTimestamps: "Restauração da hora de modificação",
       restoreBetaMultiServer: "Selecionar entre vários servidores PBS",
       restoreBetaACLsDone: "Permissões NTFS/ACL (Windows) e ACLs POSIX (Linux)",
-      restoreBetaACLs: "Fluxos de dados alternativos (ADS) e atributos estendidos NTFS antigos de backups de pastas",
 
       // About
       aboutTitle: "Acerca",
@@ -13578,6 +13545,11 @@ const translations = {
     schedCatchUp: "Se o computador estiver desligado à hora prevista, o Conjunto de Backup é executado uma vez quando voltar a ser ligado.",
     schedNoneOn: "Nenhum agendamento está ativo, por isso este Conjunto de Backup não é executado por si próprio. Utilize «Executar agora» ou ative um agendamento.",
     schedNoneOnShort: "Nenhum agendamento ativo",
+    optionStreams: "Restaurar fluxos de dados alternativos e atributos estendidos",
+    optionStreamsHint: "Windows: repõe os dados associados aos ficheiros, como a marca «transferido da Internet», e os atributos estendidos NTFS. Os backups criados antes da versão 0.9.0 não os incluem.",
+    restoreSupportsStreams: "Fluxos de dados alternativos e atributos estendidos NTFS (Windows)",
+    knownLimitationsNone: "De momento não há limitações conhecidas.",
+    knownLimitationsOlderBackups: "Os backups criados antes da versão 0.9.0 não incluem fluxos de dados alternativos nem atributos estendidos NTFS, pelo que um restauro a partir deles não os pode repor.",
   },
   ro: {
     // Header
@@ -13620,9 +13592,6 @@ const translations = {
     navReports: "Rapoarte",
     navMessageLog: "Jurnal de mesaje",
     knownLimitations: "Limitări cunoscute",
-    knownLimitationsIntro: "Aceasta este o versiune în dezvoltare activă. Câteva lucruri sunt încă în curs de finalizare:",
-    limitationNtfsAcl: "Backup-urile de foldere nu înregistrează fluxurile de date alternative (ADS) și nici atributele extinse NTFS vechi, deci o restaurare de foldere nu le poate readuce. Fișierele restaurate dintr-un backup de mașină Windows își recapătă ADS-urile.",
-    limitationNtfsAclNote: "Acest lucru nu afectează permisiunile NTFS/ACL (Windows) sau ACL-urile POSIX (Linux): acestea sunt deja restaurate.",
     devBuildBadge: "Versiune de dezvoltare",
     messageLogEmpty: "Încă nu există mesaje.",
     msgColDateTime: "Dată / Oră",
@@ -14102,9 +14071,6 @@ const translations = {
       reportsVerification: "Verificare",
       reportsVerifyOk: "Toate cele {n} fișiere se potrivesc",
       reportsVerifyFailed: "Fișiere care nu se potrivesc: {n}",
-      optionADS: "Restaurează fluxurile de date alternative (ADS)",
-      optionComingSoon: "Backupurile de foldere nu înregistrează încă fluxurile de date alternative",
-      comingSoon: "în curând",
       restoring: "Se restaurează...",
       selectSnapshotFirst: "Selectați mai întâi un instantaneu",
       destinationRequired: "Este necesar un folder destinație",
@@ -14115,7 +14081,6 @@ const translations = {
       restoreBetaTimestamps: "Restaurarea orei de modificare",
       restoreBetaMultiServer: "Selectare din mai multe servere PBS",
       restoreBetaACLsDone: "Permisiuni NTFS/ACL (Windows) și ACL-uri POSIX (Linux)",
-      restoreBetaACLs: "Fluxuri de date alternative (ADS) și atribute extinse NTFS vechi din backup-uri de foldere",
 
       // About
       aboutTitle: "Despre",
@@ -14551,6 +14516,11 @@ const translations = {
     schedCatchUp: "Dacă computerul este oprit la ora programată, setul se execută o dată când este pornit din nou.",
     schedNoneOn: "Nicio programare nu este activă, deci acest set nu se execută de la sine. Utilizați „Execută acum” sau activați o programare.",
     schedNoneOnShort: "Nicio programare activă",
+    optionStreams: "Restaurează fluxurile de date alternative și atributele extinse",
+    optionStreamsHint: "Windows: pune la loc datele atașate fișierelor, cum ar fi marcajul „descărcat de pe internet”, precum și atributele extinse NTFS. Backup-urile făcute înainte de versiunea 0.9.0 nu le conțin.",
+    restoreSupportsStreams: "Fluxuri de date alternative și atribute extinse NTFS (Windows)",
+    knownLimitationsNone: "Momentan nu există limitări cunoscute.",
+    knownLimitationsOlderBackups: "Backup-urile făcute înainte de versiunea 0.9.0 nu conțin fluxuri de date alternative sau atribute extinse NTFS, așa că o restaurare din ele nu le poate pune la loc.",
   },
   sk: {
     // Header
@@ -14593,9 +14563,6 @@ const translations = {
     navReports: "Prehľady",
     navMessageLog: "Denník správ",
     knownLimitations: "Známe obmedzenia",
-    knownLimitationsIntro: "Toto je aktívne vyvíjaná verzia. Niekoľko vecí sa ešte dokončuje:",
-    limitationNtfsAcl: "Zálohy priečinkov nezaznamenávajú alternatívne dátové toky (ADS) ani staršie rozšírené atribúty NTFS, takže ich obnova priečinkov nemôže vrátiť. Súbory obnovené zo zálohy počítača s Windows svoje ADS dostanú späť.",
-    limitationNtfsAclNote: "Netýka sa to oprávnení NTFS/ACL (Windows) ani POSIX ACL (Linux): tie sa už obnovujú.",
     devBuildBadge: "Vývojová verzia",
     messageLogEmpty: "Zatiaľ žiadne správy.",
     msgColDateTime: "Dátum / Čas",
@@ -15075,9 +15042,6 @@ const translations = {
       reportsVerification: "Overenie",
       reportsVerifyOk: "Všetky súbory sa zhodujú ({n})",
       reportsVerifyFailed: "Nezhodné súbory: {n}",
-      optionADS: "Obnoviť alternatívne dátové toky (ADS)",
-      optionComingSoon: "Zálohy priečinkov zatiaľ neukladajú alternatívne dátové toky",
-      comingSoon: "už brzy",
       restoring: "Prebieha obnovenie...",
       selectSnapshotFirst: "Najprv vyberte snímku",
       destinationRequired: "Je vyžadovaný cieľový priečinok",
@@ -15088,7 +15052,6 @@ const translations = {
       restoreBetaTimestamps: "Obnovenie času úpravy",
       restoreBetaMultiServer: "Výber z viacerých PBS serverov",
       restoreBetaACLsDone: "Oprávnenia NTFS/ACL (Windows) a POSIX ACL (Linux)",
-      restoreBetaACLs: "Alternatívne dátové toky (ADS) a staršie rozšírené atribúty NTFS zo záloh priečinkov",
 
       // About
       aboutTitle: "O aplikácii",
@@ -15536,6 +15499,11 @@ const translations = {
     schedCatchUp: "Ak je počítač v čase spustenia vypnutý, sada sa spustí raz, keď bude znova zapnutý.",
     schedNoneOn: "Žiadny plán nie je zapnutý, takže sa táto sada nespúšťa sama. Použite „Spustiť teraz“ alebo niektorý plán zapnite.",
     schedNoneOnShort: "Žiadny zapnutý plán",
+    optionStreams: "Obnoviť alternatívne dátové toky a rozšírené atribúty",
+    optionStreamsHint: "Windows: vráti údaje pripojené k súborom, napríklad značku „stiahnuté z internetu“, a rozšírené atribúty NTFS. Zálohy vytvorené pred verziou 0.9.0 ich neobsahujú.",
+    restoreSupportsStreams: "Alternatívne dátové toky a rozšírené atribúty NTFS (Windows)",
+    knownLimitationsNone: "Momentálne nie sú známe žiadne obmedzenia.",
+    knownLimitationsOlderBackups: "Zálohy vytvorené pred verziou 0.9.0 neobsahujú alternatívne dátové toky ani rozšírené atribúty NTFS, obnova z nich ich preto nemôže vrátiť.",
   },
   tr: {
     // Header
@@ -15578,9 +15546,6 @@ const translations = {
     navReports: "Raporlar",
     navMessageLog: "Mesaj Günlüğü",
     knownLimitations: "Bilinen Sınırlamalar",
-    knownLimitationsIntro: "Bu, aktif olarak geliştirilen bir sürümdür. Birkaç şey hâlâ tamamlanıyor:",
-    limitationNtfsAcl: "Klasör yedekleri alternatif veri akışlarını (ADS) ve eski NTFS genişletilmiş özniteliklerini kaydetmez, bu yüzden klasör geri yüklemesi bunları geri getiremez. Windows makine yedeğinden geri yüklenen dosyalar ADS'lerini geri alır.",
-    limitationNtfsAclNote: "Bu, NTFS/ACL izinlerini (Windows) veya POSIX ACL'lerini (Linux) etkilemez: bunlar zaten geri yükleniyor.",
     devBuildBadge: "Geliştirme sürümü",
     messageLogEmpty: "Henüz mesaj yok.",
     msgColDateTime: "Tarih / Saat",
@@ -16060,9 +16025,6 @@ const translations = {
       reportsVerification: "Doğrulama",
       reportsVerifyOk: "{n} dosyanın tümü eşleşiyor",
       reportsVerifyFailed: "{n} dosya eşleşmedi",
-      optionADS: "Alternatif veri akışlarını (ADS) geri yükle",
-      optionComingSoon: "Klasör yedekleri alternatif veri akışlarını henüz kaydetmiyor",
-      comingSoon: "yakında",
       restoring: "Geri yükleme devam ediyor...",
       selectSnapshotFirst: "Önce bir anlık görüntü seçin",
       destinationRequired: "Hedef klasör gerekli",
@@ -16073,7 +16035,6 @@ const translations = {
       restoreBetaTimestamps: "Değişiklik zamanı geri yükleme",
       restoreBetaMultiServer: "Birden fazla PBS sunucusundan seçim",
       restoreBetaACLsDone: "NTFS/ACL izinleri (Windows) ve POSIX ACL'leri (Linux)",
-      restoreBetaACLs: "Klasör yedeklerinden alternatif veri akışları (ADS) ve eski NTFS genişletilmiş öznitelikleri",
 
       // About
       aboutTitle: "Hakkında",
@@ -16498,6 +16459,11 @@ const translations = {
     schedCatchUp: "Planlanan bir zamanda bilgisayar kapalıysa, yedekleme seti bilgisayar yeniden açıldığında bir kez çalışır.",
     schedNoneOn: "Açık zamanlama yok, bu nedenle bu yedekleme seti kendiliğinden çalışmaz. “Şimdi Çalıştır”ı kullanın veya bir zamanlamayı açın.",
     schedNoneOnShort: "Açık zamanlama yok",
+    optionStreams: "Alternatif veri akışlarını ve genişletilmiş öznitelikleri geri yükle",
+    optionStreamsHint: "Windows: dosyalara iliştirilmiş verileri, örneğin “internetten indirildi” işaretini, ve NTFS genişletilmiş özniteliklerini geri yükler. 0.9.0 sürümünden önce alınan yedekler bunları içermez.",
+    restoreSupportsStreams: "Alternatif veri akışları ve NTFS genişletilmiş öznitelikleri (Windows)",
+    knownLimitationsNone: "Şu anda bilinen bir sınırlama yok.",
+    knownLimitationsOlderBackups: "0.9.0 sürümünden önce alınan yedekler alternatif veri akışlarını ve NTFS genişletilmiş özniteliklerini içermez, bu yüzden bu yedeklerden yapılan geri yükleme bunları geri getiremez.",
   },
   uk: {
     // Header
@@ -16540,9 +16506,6 @@ const translations = {
     navReports: "Звіти",
     navMessageLog: "Журнал повідомлень",
     knownLimitations: "Відомі обмеження",
-    knownLimitationsIntro: "Це версія в активній розробці. Деякі речі ще доопрацьовуються:",
-    limitationNtfsAcl: "Резервні копії папок не записують альтернативні потоки даних (ADS) і застарілі розширені атрибути NTFS, тому відновлення папок не може їх повернути. Файли, відновлені з резервної копії машини Windows, отримують свої ADS назад.",
-    limitationNtfsAclNote: "Це не стосується прав NTFS/ACL (Windows) чи POSIX ACL (Linux): вони вже відновлюються.",
     devBuildBadge: "Версія розробки",
     messageLogEmpty: "Повідомлень ще немає.",
     msgColDateTime: "Дата / Час",
@@ -17022,9 +16985,6 @@ const translations = {
       reportsVerification: "Перевірка",
       reportsVerifyOk: "Усі файли збігаються ({n})",
       reportsVerifyFailed: "Файлів, що не збігаються: {n}",
-      optionADS: "Відновити альтернативні потоки даних (ADS)",
-      optionComingSoon: "Резервні копії папок поки не зберігають альтернативні потоки даних",
-      comingSoon: "незабаром",
       restoring: "Відновлення триває...",
       selectSnapshotFirst: "Спочатку виберіть знімок",
       destinationRequired: "Потрібна папка призначення",
@@ -17035,7 +16995,6 @@ const translations = {
       restoreBetaTimestamps: "Відновлення часу модифікації",
       restoreBetaMultiServer: "Вибір з кількох серверів PBS",
       restoreBetaACLsDone: "Права NTFS/ACL (Windows) та POSIX ACL (Linux)",
-      restoreBetaACLs: "Альтернативні потоки даних (ADS) та застарілі розширені атрибути NTFS із резервних копій папок",
 
       // About
       aboutTitle: "Про програму",
@@ -17494,6 +17453,11 @@ const translations = {
     schedCatchUp: "Якщо в час запуску комп'ютер вимкнений, набір запуститься один раз, коли комп'ютер знову ввімкнуть.",
     schedNoneOn: "Жоден розклад не ввімкнено, тому цей набір не запускається сам. Скористайтеся кнопкою «Запустити зараз» або ввімкніть розклад.",
     schedNoneOnShort: "Розклади вимкнено",
+    optionStreams: "Відновити альтернативні потоки даних і розширені атрибути",
+    optionStreamsHint: "Windows: повертає дані, прикріплені до файлів, наприклад позначку «завантажено з інтернету», а також розширені атрибути NTFS. Резервні копії, створені до версії 0.9.0, їх не містять.",
+    restoreSupportsStreams: "Альтернативні потоки даних і розширені атрибути NTFS (Windows)",
+    knownLimitationsNone: "Наразі відомих обмежень немає.",
+    knownLimitationsOlderBackups: "Резервні копії, створені до версії 0.9.0, не містять альтернативних потоків даних і розширених атрибутів NTFS, тому відновлення з них не може їх повернути.",
   }
 }
 

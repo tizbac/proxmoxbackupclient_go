@@ -17,15 +17,12 @@ export default function KnownLimitationsModal({ onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <h3 style={{ margin: 0 }}>⚠️ {t('knownLimitations')}</h3>
+          <h3 style={{ margin: 0 }}>{t('knownLimitations')}</h3>
           <button className="btn btn-secondary" onClick={onClose} style={{ padding: '4px 10px' }}>✕</button>
         </div>
-        <p style={{ marginBottom: '14px' }}>{t('knownLimitationsIntro')}</p>
-        <ul style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <li>{t('limitationNtfsAcl')}</li>
-        </ul>
-        <p style={{ marginTop: '12px', marginBottom: 0, fontSize: '13px', color: '#4a5568' }}>
-          ✅ {t('limitationNtfsAclNote')}
+        <p style={{ marginBottom: '10px' }}>{t('knownLimitationsNone')}</p>
+        <p style={{ marginTop: 0, marginBottom: 0, fontSize: '13px', color: '#4a5568' }}>
+          {t('knownLimitationsOlderBackups')}
         </p>
       </div>
     </div>

@@ -733,7 +733,7 @@ function App() {
     timestamps: true,
     verify: false, // re-read restored files and compare with the snapshot
     acls: false, // opt-in — off by default even though the NTFS sidecar now exists
-    ads: false   // still disabled in UI: no ADS capture/restore sidecar exists yet
+    ads: true    // alternate data streams and NTFS extended attributes (Windows), recorded since 0.9.0
   })
   const [restoreLoading, setRestoreLoading] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
@@ -4593,9 +4593,7 @@ function App() {
               <span>✅ {tl('restoreSupportsCreated', 'Creation times (Windows)')}</span>
               <span>✅ {t('restoreBetaMultiServer')}</span>
               <span>✅ {t('restoreBetaACLsDone')}</span>
-            </div>
-            <div style={{fontSize: '13px', marginTop: '6px'}}>
-              ❌ {t('restoreBetaACLs')}
+              <span>✅ {t('restoreSupportsStreams')}</span>
             </div>
           </div>
 
@@ -5197,10 +5195,16 @@ function App() {
                     />
                     {t('optionACLs')}
                   </label>
-                  <label style={{display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.5}} title={t('optionComingSoon')}>
-                    <input type="checkbox" disabled checked={false} />
-                    {t('optionADS')} <span style={{fontSize: '11px'}}>({t('comingSoon')})</span>
-                  </label>
+                  {systemInfo.os !== 'linux' && (
+                    <label style={{display: 'flex', alignItems: 'center', gap: '6px'}} title={t('optionStreamsHint')}>
+                      <input
+                        type="checkbox"
+                        checked={restoreOptions.ads}
+                        onChange={(e) => setRestoreOptions(o => ({...o, ads: e.target.checked}))}
+                      />
+                      {t('optionStreams')}
+                    </label>
+                  )}
                 </div>
 
                 <button
@@ -5528,7 +5532,7 @@ function App() {
               ("dev" or "dev-<commit>") says so. */}
           <span>{isDevBuild ? `${t('devBuildBadge')} ${appVersion}` : `${t('version')} ${versionLabel}`}</span>
           <button className="statusbar-link" onClick={() => setShowLimitations(true)}>
-            ⚠️ {t('knownLimitations')}
+            ℹ️ {t('knownLimitations')}
           </button>
         </div>
       </div>
