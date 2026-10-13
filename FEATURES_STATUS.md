@@ -1,343 +1,137 @@
-# Proxmox Backup Client - État des Features (2026-03-23)
+# Proxmox Backup Client: feature status (2026-10-13)
 
-## 📊 Vue d'ensemble
+## Overview
 
-**Version actuelle:** v0.1.93
-**Dernière release publique:** [GitHub Releases](https://github.com/tizbac/proxmoxbackupclient_go/releases)
-**Statut général:** 🟢 Production-ready (GUI) | 🟢 Service Windows stable
-**Dernière mise à jour:** 2026-03-23
+**Latest release:** v0.8.1 ([releases](https://github.com/mjb-is/proxmoxbackupclient_go/releases)). v0.8.2 is tagged; master also holds the items under [Unreleased] in the [CHANGELOG](CHANGELOG.md).
+**Platforms:** Windows 10/11 and Windows Server (GUI, service, CLI); Linux (GUI, service, CLI, .deb and .rpm packages).
+**Open work:** [TODO.md](TODO.md).
 
----
-
-## ✅ FEATURES IMPLÉMENTÉES & TESTÉES
-
-### 🎨 Interface GUI (Wails v2 + React)
-| Feature | Statut | Version | Notes |
-|---------|--------|---------|-------|
-| Interface graphique moderne | ✅ STABLE | v0.1.0 | Wails v2, React, Tailwind |
-| Configuration PBS (URL, auth, datastore) | ✅ STABLE | v0.1.0 | Validation complète |
-| Test de connexion PBS | ✅ STABLE | v0.1.0 | Auth réelle avant backup |
-| Détection automatique hostname | ✅ STABLE | v0.1.0 | Pour backup-id |
-| Onglet "À propos" avec version | ✅ STABLE | v0.1.23+ | Version dynamique |
-| Liens upsell Proxmox Backup Client | ✅ STABLE | v0.1.31 | Tracking UTM |
-
-### 💾 Backup - Directories
-| Feature | Statut | Version | Notes |
-|---------|--------|---------|-------|
-| Backup multi-dossiers | ✅ STABLE | v0.1.0 | Sélection multiple |
-| Calcul taille en arrière-plan | ✅ STABLE | v0.1.0 | Scan async pour ETA précis |
-| Progression en temps réel | ✅ STABLE | v0.1.0 | % + vitesse + ETA |
-| Barre de progression granulaire | ✅ STABLE | v0.1.0 | Mise à jour tous les 10 MB |
-| Support VSS (Volume Shadow Copy) | ✅ STABLE | v0.1.0 | Détection privilèges admin |
-| Exclusions personnalisées | ✅ STABLE | v0.1.0 | Patterns wildcards |
-| Sauvegarde derniers chemins | ✅ STABLE | v0.1.29 | Auto-fill GUI |
-| Junction points skip | ✅ STABLE | v0.1.26 | Évite erreurs "access denied" |
-| Fichiers verrouillés skip | ✅ STABLE | v0.1.28 | Graceful skip + rapport |
-| Rapport fichiers ignorés | ✅ STABLE | v0.1.28 | ⚠️ N fichiers/dossiers ignorés |
-
-### 🖥️ Backup - Machine (Disques complets)
-| Feature | Statut | Version | Notes |
-|---------|--------|---------|-------|
-| Machine backup (PhysicalDrive) | ❌ DÉSACTIVÉ | N/A | **Windows Defender faux-positif** |
-| Code signing requis | ⏳ BLOQUÉ | N/A | Besoin certificat Authenticode |
-
-### 📦 Restauration
-| Feature | Statut | Version | Notes |
-|---------|--------|---------|-------|
-| Liste des snapshots | ❌ RETIRÉ | N/A | **Non inclus (portail web PBS)** |
-| Restauration fichiers/dossiers | ❌ RETIRÉ | N/A | **Non inclus (portail web PBS)** |
-| Parcourir catalog PBS | ❌ RETIRÉ | N/A | **Non inclus (portail web PBS)** |
-
-**Note:** La restauration n'est **pas implémentée** dans le client desktop. Les clients se restaurent via l'interface PBS hébergée.
-
-### 🔐 Sécurité & Qualité
-| Feature | Statut | Version | Notes |
-|---------|--------|---------|-------|
-| Validation inputs | ✅ STABLE | v0.1.2 | URL, BackupID, Datastore, AuthID |
-| Sanitization credentials | ✅ STABLE | v0.1.2 | Logs sécurisés (secrets masqués) |
-| Path traversal prevention | ✅ STABLE | v0.1.2 | ValidatePath() |
-| Retry logic exponential backoff | ✅ STABLE | v0.1.1 | Chunk uploads, index |
-| Error handling complet | ✅ STABLE | v0.1.0 | Pas de panic(), tous wrappés |
-| Structured logging (slog) | ✅ STABLE | v0.1.0 | JSON logs |
-| 100% lint compliance | ✅ STABLE | v0.1.17 | golangci-lint v1.64 |
-
-### 📝 Logging & Debug
-| Feature | Statut | Version | Notes |
-|---------|--------|---------|-------|
-| Debug log `debug-gui.log` | ✅ STABLE | v0.1.0 | `C:\ProgramData\ProxmoxBackupClient\` |
-| Debug log `debug-service.log` | ✅ STABLE | v0.1.78+ | Séparé du GUI |
-| Crash reports | ✅ STABLE | v0.1.0 | `crash_report.txt` |
-| Progression stable sans clignotement | ✅ STABLE | v0.1.29 | Printf retiré de pxar.go |
-| Progression monotone | ✅ STABLE | v0.1.29 | Ne recule plus |
-
-### 🪟 Windows Service
-| Feature | Statut | Version | Notes |
-|---------|--------|---------|-------|
-| Service Windows fonctionnel | ✅ STABLE | v0.1.78+ | `ProxmoxBackupClientService` |
-| API HTTP locale (localhost:18765) | ✅ STABLE | v0.1.78+ | Communication GUI ↔ Service |
-| Exécution backups via Service | ✅ STABLE | v0.1.78+ | VSS sans UAC prompt |
-| ReloadConfig avant backup | ✅ STABLE | v0.1.81 | Config fraîche à chaque backup |
-| Logs séparés GUI/Service | ✅ STABLE | v0.1.78+ | Évite collisions |
-| **VSS Cleanup au démarrage** | ✅ STABLE | **v0.2.0** | **Nettoie snapshots orphelins** |
-
-### 📅 Scheduled Backups (Planification)
-| Feature | Statut | Version | Notes |
-|---------|--------|---------|-------|
-| Création jobs planifiés | ✅ STABLE | v0.1.85+ | Cron + interface GUI |
-| Stockage jobs (`jobs.json`) | ✅ STABLE | v0.1.85+ | `C:\ProgramData\ProxmoxBackupClient\` |
-| Service exécute jobs | ✅ STABLE | v0.1.85+ | Check toutes les minutes |
-| Historique jobs | ✅ STABLE | v0.1.85+ | Succès/échecs trackés |
-| Édition/suppression jobs | ✅ STABLE | v0.1.85+ | CRUD complet |
-| Cleanup abandoned jobs | ✅ STABLE | v0.1.85+ | Détection processus fantômes |
-| Run at startup | ✅ STABLE | v0.1.85+ | Jobs "at startup" supportés |
-
-### 🔧 MSI Installer
-| Feature | Statut | Version | Notes |
-|---------|--------|---------|-------|
-| MSI fonctionnel | ✅ STABLE | v0.1.70+ | WiX Toolset |
-| Installation Service Windows | ✅ STABLE | v0.1.70+ | Auto-start enabled |
-| Upgrade propre | ✅ STABLE | v0.1.92 | Stop service avant upgrade |
-| ProgramData créé | ✅ STABLE | v0.1.70+ | `C:\ProgramData\ProxmoxBackupClient\` |
-| **Dialog désinstallation** | ✅ IMPLÉMENTÉ | **v0.2.0** | **Garder/supprimer config** |
-| Code signing | ❌ MANQUANT | N/A | Certificat non acquis |
-
-### 🎯 System Tray
-| Feature | Statut | Version | Notes |
-|---------|--------|---------|-------|
-| Icône tray | ✅ STABLE | v0.1.80+ | Windows uniquement |
-| Démarrage minimisé `--minimized` | ✅ STABLE | v0.1.80+ | Lancé par Task Scheduler |
-| Menu contextuel tray | ✅ STABLE | v0.1.80+ | Show/Hide/Quit |
-| Tooltip dynamique | ✅ STABLE | v0.1.80+ | Affiche dernier backup |
-
-### 🔬 CI/CD & Tests
-| Feature | Statut | Version | Notes |
-|---------|--------|---------|-------|
-| GitHub Actions complète | ✅ STABLE | v0.1.6+ | Build + Test + Lint + Security |
-| Tests unitaires chunking | ✅ STABLE | v0.1.2 | 15+ test cases |
-| Tests snapshots VSS | ✅ STABLE | v0.1.2 | Windows-specific |
-| Gosec security scanning | ✅ STABLE | v0.1.7 | Zero issues |
-| Golangci-lint | ✅ STABLE | v0.1.17 | v1.64, 100% compliance |
-| Multi-platform builds | ✅ STABLE | v0.1.4+ | Windows/Linux/macOS |
+"Since" is the first version with the feature. "Unreleased" means it is on master and not yet in a release.
 
 ---
 
-## 🟡 FEATURES IMPLÉMENTÉES MAIS NON TESTÉES
+## Done
 
-### 🌐 API HTTP Remote (Provisioning)
-| Feature | Statut | Fichier | Notes |
-|---------|--------|---------|-------|
-| API Server HTTP | 🟡 CODE PRÉSENT | `gui/api/server.go` | **Non activée par défaut** |
-| Endpoints CRUD jobs | 🟡 CODE PRÉSENT | `gui/api/server.go` | **Jamais testée** |
-| Auth Bearer token | 🟡 CODE PRÉSENT | `gui/api/server.go` | **Pas de génération token** |
-| TLS optionnel | 🟡 CODE PRÉSENT | `gui/api/server.go` | **Pas de cert auto-signé** |
+### GUI (Wails v2 + React)
+| Feature | Since | Notes |
+|---|---|---|
+| Menu bar and side menu (Backup, Restore, Undelete, Roll back, Reports, Message Log, Preferences, About) | before 0.5.0 | |
+| 18 interface languages | 0.5.0 | Most are machine-translated; see TODO.md |
+| Five colour themes plus a custom colour | before 0.5.0 | |
+| Reports (backup and restore history) and Message Log | before 0.5.0 | |
+| Progress card: forecast finish, files, processing and upload rates, current file, New/Reused chunks | 0.6.0 | Machine backups get disk rows from 0.8.0 |
+| In-app confirmation dialogs | 0.7.0 | |
+| Settings export and import | 0.5.0 | |
 
-**⚠️ RISQUE:** Cette feature existe dans le code mais n'a jamais été activée ni testée. Elle pourrait ne pas fonctionner.
+### Folder backups
+| Feature | Since | Notes |
+|---|---|---|
+| Several folders per backup, exclusion patterns, automatic system exclusions | before 0.5.0 | "Recovery" is left out only at the root of a drive (Unreleased) |
+| VSS (Windows) and elastio-snap/dattobd snapshots (Linux) | before 0.5.0 | Network shares are read live |
+| Change detection: Legacy, Data, Metadata (split pxar, as the official client) | 0.6.0 | Metadata reuses unchanged files without reading them; optional full read every N runs |
+| Run now: quick or full read | Unreleased | |
+| A disk dropping out: wait up to 2 minutes and carry on; unreadable files zero-padded and reported | 0.6.0 | |
+| NTFS permissions and attributes (Windows), mode, owner, symlinks, POSIX ACLs and xattrs (Linux) | 0.5.0 | |
+| Creation times (Windows) | 0.8.0 | |
+| Pause and Resume | 0.8.0 | Also for runs the service does (Unreleased) |
+| Auto-split of a large first backup into smaller parts | before 0.5.0 | One level deep only |
+| Optional multi-threaded read-ahead | 0.5.0 | Experimental |
 
-**📋 Pour activer:**
-1. Générer token auth sécurisé
-2. Configurer bind address (défaut: localhost:18765 déjà pris par Service API)
-3. Tester tous les endpoints CRUD
-4. Ajouter whitelist IPs
-5. Documenter API (OpenAPI/Swagger)
+### Machine (disk image) backups
+| Feature | Since | Notes |
+|---|---|---|
+| Whole-disk image (fidx), Windows with VSS, Linux with elastio-snap/dattobd | before 0.5.0 | Linux needs root and a loaded elastio-snap or dattobd module, or the backup refuses to run |
+| Store as `host/<id>` or as a Proxmox VE `vm/<number>` | 0.5.0 | |
+| Skip free space and the paging, hibernation and swap files (Windows) | 0.8.0 | |
+| Skip free space (Linux: ext2/3/4 and XFS) and leave out the snapshot store | Unreleased | |
+| Blank blocks recognised without hashing | 0.8.2 | |
+| Bad sectors written as zeros, run reported as partial | 0.8.0 | |
+| VSS / Snapshot badge on each Backup Set card | 0.8.0 | Amber "PARTLY" or "N/A" for network folders (Unreleased) |
 
----
+### Restore
+| Feature | Since | Notes |
+|---|---|---|
+| List snapshots, browse, search (wildcards, regular expression, full path), selective restore | before 0.5.0 | |
+| Split (Data/Metadata) archives, including the official client's | 0.6.0 | |
+| Permissions and folder times put back; optional verify after restore | 0.5.0 | |
+| Files from a machine backup: NTFS | 0.8.0 | Nothing is mounted or downloaded first |
+| Files from a machine backup: FAT12/16/32, exFAT, ext2/3/4, XFS; NTFS permissions and alternate data streams | Unreleased | BitLocker volumes cannot be browsed |
 
-## 🟡 FEATURES PARTIELLEMENT IMPLÉMENTÉES
+### Undelete and Roll back
+| Feature | Since | Notes |
+|---|---|---|
+| Undelete and Roll back for folder Backup Sets, with preview and Undo | 0.7.0 | |
+| For Windows machine Backup Sets | 0.8.0 | |
+| For Linux machine Backup Sets (ext4, XFS) | Unreleased | |
+| From the command line: `-list-sets`, `-undelete`, `-rollback` | Unreleased | `ProxmoxBackupClientSVC` on Windows, `proxmoxbackupclient` on Linux |
 
-### Multi-PBS Architecture
-**Statut:** ✅ **Backend complet** (v0.2.0) | ⏳ Frontend à développer
+### Backup Sets and scheduling
+| Feature | Since | Notes |
+|---|---|---|
+| Daily, interval and manual triggers, weekdays, run at startup | before 0.5.0 | One trigger per set |
+| Clone, unique names, suggested Backup ID, Next run line | 0.7.0 | |
+| Warning and SHARED ID badge when two sets share a backup group | Unreleased | |
+| Email notifications and post-backup actions | 0.5.0 | Minimise to tray when finished (Unreleased) |
+| Administrator protection for changing Backup Sets (Windows) | 0.6.0 | |
 
-**Objectif:** Permettre backups vers plusieurs serveurs PBS différents
+### Background service
+| Feature | Since | Notes |
+|---|---|---|
+| Windows service (`ProxmoxBackupClientSVC`, LocalSystem), Run as Service in Preferences | 0.7.0 | Local API on 127.0.0.1:18765 with a token |
+| Linux service (`proxmoxbackupclient.service`, root), shared `/var/lib/proxmoxbackupclient` | Unreleased | Restart as administrator through pkexec |
+| Progress, Pause, Resume and Stop for runs the service does | Unreleased | Files, rates and chunk counts are not shown yet for those runs |
+| Settings folder open to administrators only (Windows); 0700 (Linux) | Unreleased | |
+| Orphaned VSS shadow copies cleared at start | before 0.5.0 | |
 
-**✅ Implémenté (Backend):**
-- Structure `PBSServer` avec ID unique
-- `Config.PBSServers` map de serveurs
-- Migration automatique legacy → multi-PBS
-- Jobs référencent PBS par ID (`Job.PBSID`)
-- CRUD API complète (Add/Update/Delete/List/SetDefault)
-- Documentation complète (`MULTI_PBS_GUIDE.md`)
-- Méthodes App exposées au frontend :
-  - `ListPBSServers()`
-  - `GetPBSServer(id)`
-  - `AddPBSServer(pbs)`
-  - `UpdatePBSServer(pbs)`
-  - `DeletePBSServer(id)`
-  - `SetDefaultPBSServer(id)`
-  - `TestPBSConnection(id)`
+### Servers and encryption
+| Feature | Since | Notes |
+|---|---|---|
+| Several PBS servers, a default, a server per Backup Set and per one-off backup | before 0.5.0 | See [MULTI_PBS_USER_GUIDE.md](MULTI_PBS_USER_GUIDE.md) |
+| API token or user/password login; certificate fingerprint pinning (trust on first use) | before 0.5.0 | |
+| Client-side encryption with a PBS key file, passphrase Ask or Remember | 0.5.0 | Same key format as `proxmox-backup-client` |
 
-**⏳ À développer (Frontend React):**
-- Page "Serveurs PBS" avec liste + CRUD
-- Dropdown sélection PBS dans formulaire backup
-- Indicateur statut connexion (🟢 Online / 🔴 Offline)
-- Migration GUI jobs legacy vers PBSID
+### Install and packaging
+| Feature | Since | Notes |
+|---|---|---|
+| Zip (Windows) and tar.gz (Linux) downloads with SHA256SUMS | before 0.5.0 | |
+| Windows installer (MSI) with the service, Start menu entry, keep or delete settings on removal | Unreleased | |
+| .deb and .rpm packages with the service and two menu entries | Unreleased | |
 
-**Temps restant:** 2-3 jours frontend
+### Command line and bare-metal restore
+| Feature | Since | Notes |
+|---|---|---|
+| `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd` | before 0.5.0 | See [docs/manual/CLI.md](docs/manual/CLI.md) |
+| Errors on stderr instead of message boxes; `proxmoxbackup-machine` sends its e-mail | Unreleased | |
+| Clonezilla ISO with an automated PBS Bare Metal Restore entry, encrypted backups included | 0.5.0 | See [docs/manual/BMR.md](docs/manual/BMR.md) |
 
----
-
-## ❌ FEATURES NON IMPLÉMENTÉES (Roadmap)
-
-### 🔴 P0 - CRITIQUE
-
-#### (Aucune - P0 complétée !)
-
----
-
-### 🟠 P1 - IMPORTANT
-
-#### Code Signing
-**Statut:** ❌ Non démarré (bloqueur externe)
-
-**Requis pour:**
-- Éviter warning Windows Defender
-- Activer Machine Backup (PhysicalDrive)
-- Distribution professionnelle
-
-**Coût:** ~300€/an (DigiCert/Sectigo)
-**Priorité:** Critique si lancement commercial
-
-#### Installation Silencieuse MSI
-**Statut:** 🟡 Spécifié, pas implémenté
-
-**Objectif:** Déploiement GPO/Intune avec config pré-configurée
-
-```powershell
-msiexec /i ProxmoxBackupClient.msi /qn CONFIGFILE="\\ad-server\deploy\config.json"
-```
-
-**Bloqueurs:** Besoin CustomAction WiX + validation JSON
-**Temps estimé:** 3-5 jours
-
-#### VSS Cleanup au démarrage
-**Statut:** ❌ Non implémenté
-
-**Problème:** Snapshots VSS orphelins après crash
-**Solution:** `vssadmin delete shadows /all /quiet` au démarrage service
-
-**Temps estimé:** 2-3 heures
-
----
-
-### 🟢 P2 - NICE TO HAVE
-
-#### Chiffrement Client-Side
-**Statut:** ✅ Implémenté (fork, 2026-10-05)
-
-**Livré:** fichier de clé PBS par serveur (AES-256-GCM, manifeste signé, format `proxmox-backup-client key create`), clés protégées par phrase secrète (Ask / Remember), `-keyfile` sur les outils CLI, onglet Chiffrement dans la GUI, sélection de clé dans Clonezilla BMR, ACL protégée sur les clés générées (Windows).
-**Reste:** stockage DPAPI/Credential Manager, ACL sur les clés et `config.json` existants, test BMR avec clé protégée, relecture native des traductions.
-
-#### Multi-core Compression
-**Statut:** ❌ Non démarré
-
-**Objectif:** Paralléliser chunking ZSTD
-**Temps estimé:** 2-3 semaines
-
-#### Bandwidth Limiting
-**Statut:** ❌ Non démarré
-
-**Objectif:** Throttling upload pour ne pas saturer réseau
-**Temps estimé:** 1 semaine
-
-#### Windows Toast Notifications
-**Statut:** ❌ Non démarré
-
-**Objectif:** Notifs Windows 10/11 natives
-**Temps estimé:** 3-5 jours
-
-#### English Translation
-**Statut:** ❌ Non démarré
-
-**Objectif:** i18n complet (actuellement 100% français)
-**Temps estimé:** 1 semaine
+### Compatibility and tests
+| Feature | Since | Notes |
+|---|---|---|
+| Snapshots restore byte-identically with the official client, both ways (tested with 3.4.9, PBS 4.2) | 0.6.0 | |
+| Unit tests per module (`make test`), opt-in live tests, end-to-end tests against PBS in Docker (`make test-e2e`) | | |
 
 ---
 
-## 🗑️ DROPPED (Ne seront pas implémentées)
+## Partial or not yet tested
 
-- ❌ UUID machine (hostname suffit)
-- ❌ Heartbeat vers API distante (overkill, pas de SaaS backend)
-- ❌ go-msi (WiX fonctionne parfaitement)
-- ❌ Mount FUSE/WinFSP (restauration web PBS suffit)
+- **Linux Restart as administrator** (pkexec) from a desktop session: not live-tested.
+- **Encryption key on machine backups the service runs**: fixed, not tried with a key configured.
+- **Alternate data streams in folder backups**: not recorded, so they cannot come back (machine-image restores do put them back).
+- **System tray and toast notifications**: Windows only.
 
----
+## Not done
 
-## 📅 ROADMAP MISE À JOUR
+- **Code signing** of the exe files and the MSI.
+- **Release builds in CI** with build provenance; releases are built by hand.
+- **Silent MSI install with a ready-made config** (no `CONFIGFILE` property).
+- **Secrets encrypted at rest** (DPAPI or similar): tokens, passwords and remembered passphrases are plain text in `config.json`, inside a folder only administrators can read.
+- **Several schedules per Backup Set**, and **retention (prune) per Backup Set** in the client.
+- **Bandwidth limiting.**
 
-### Q1-Q2 2026 (En cours)
-- [x] Service Windows stable ✅ (v0.1.78+)
-- [x] Scheduled backups ✅ (v0.1.85+)
-- [x] System tray ✅ (v0.1.80+)
-- [x] MSI installer ✅ (v0.1.70+)
-- [ ] **Code signing** ⏳ (bloqué: budget certificat)
-- [ ] **Multi-PBS** 🔴 (P0, jamais commencé)
+See [TODO.md](TODO.md) for the full list.
 
-### Q3 2026
-- [ ] Installation silencieuse MSI
-- [ ] VSS cleanup automatique
-- [ ] Logs rotation (max 10 MB)
-- [ ] API Remote testée et activable
-- [ ] Bandwidth limiting
+## Dropped
 
-### Q4 2026 / Q1 2027
-- [x] Chiffrement client-side (fait, voir README)
-- [ ] Multi-core compression
-- [ ] English translation
-- [ ] Windows toast notifications
-
-### v1.0.0 Production
-**Critères:**
-- ✅ Service Windows stable (FAIT)
-- ✅ Scheduled backups (FAIT)
-- ✅ MSI installer (FAIT)
-- ⏳ Code signing (BLOQUÉ budget)
-- ✅ Chiffrement client-side (FAIT, quelques suivis ouverts)
-- 📝 Documentation complète (partielle)
-
----
-
-## 🐛 BUGS CONNUS
-
-### Résolus récemment
-- ✅ Progression qui recule (v0.1.29)
-- ✅ Clignotement GUI (v0.1.29)
-- ✅ Junction points crash (v0.1.26)
-- ✅ HTTP/2 connection reuse (v0.1.27-28)
-- ✅ Version hardcodée (v0.1.23-25)
-- ✅ Service config reload (v0.1.81)
-
-### Actuels
-- 🐛 **Désinstallation MSI ne propose pas de garder config** (comportement par défaut = garde tout)
-- 🐛 **API Remote jamais testée** (peut ne pas marcher)
-
----
-
-## 🎯 RECOMMANDATIONS PRIORITAIRES
-
-### Court terme (1-2 semaines)
-1. ✅ ~~Implémenter VSS cleanup~~ **FAIT** (v0.2.0)
-2. ✅ ~~Améliorer désinstallation MSI~~ **FAIT** (v0.2.0)
-3. ✅ ~~Backend Multi-PBS~~ **FAIT** (v0.2.0)
-4. **Frontend Multi-PBS** (2-3 jours) - page serveurs + dropdown
-5. **Tester MSI uninstall dialog** sur Windows
-6. **Documenter installation silencieuse MSI**
-
-### Moyen terme (1-2 mois)
-1. **Acquérir certificat code signing** (~300€) → débloque Machine Backup
-2. **Tester API Remote** ou la retirer du code si inutilisée
-3. **Bandwidth limiting** (feature demandée)
-
-### Long terme (3-6 mois)
-1. ~~Chiffrement client-side~~ (fait)
-2. **Multi-core compression** (perf boost)
-3. **English translation** (marché international)
-
-### Hors scope (délégué au portail web)
-- ❌ **Restauration locale** → Restauration via le portail web PBS
-- ❌ **Browse snapshots GUI** → Portail web PBS suffit
-- ❌ **Selective file restore** → Portail web PBS suffit
-
----
-
-**Dernière mise à jour:** 2026-03-23
-**Mainteneur:** Proxmox Backup Client GO contributors
-**Contact:** https://github.com/tizbac/proxmoxbackupclient_go
+- Machine UUID (the hostname is enough).
+- Heartbeat to a remote API (no SaaS backend).
+- go-msi (WiX does the job).

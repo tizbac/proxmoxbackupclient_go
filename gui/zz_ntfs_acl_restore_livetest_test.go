@@ -15,7 +15,7 @@ import (
 )
 
 // TestNTFSACLRestoreLive is a manual, opt-in live-integration test proving
-// the restore-side half of NTFS ACL/attribute fidelity (see TODO.md
+// the restore-side half of NTFS ACL/attribute fidelity (see docs/TODO-HISTORY.md
 // "Backup Metadata & NTFS Fidelity"): capture already existed
 // (gui/backup_meta_windows.go), this test exercises the new restore-side
 // application (gui/restore_meta_windows.go + the wiring in

@@ -5,55 +5,59 @@ This file provides essential context for agents working in this repository to av
 ## Project Structure
 
 This is a Go-based backup client for Proxmox Backup Server with multiple binaries:
-- `proxmoxbackup-directory` - Directory backup CLI tool
-- `proxmoxbackup-machine` - Machine backup CLI tool (Windows)
-- `proxmoxbackup-nbd` - NBD server CLI tool (Linux-only)
-- `ProxmoxBackupClient` - GUI application (Wails-based)
+- `proxmoxbackup-directory` - Directory (pxar) backup CLI tool, from `directorybackup/`
+- `proxmoxbackup-machine` - Machine (whole-disk image) backup CLI tool, Windows (VSS) and Linux (elastio-snap/dattobd), from `machinebackup/`
+- `proxmoxbackup-nbd` - NBD server CLI tool (Linux-only), from `nbd/`
+- `ProxmoxBackupClient` - GUI application (Wails v2 + React), from `gui/`
+- `ProxmoxBackupClientSVC` - the background service: the same `gui/` package built with `-tags service`. It also runs `-list-sets`, `-undelete` and `-rollback` from the command line (on Linux the GUI binary takes these too)
+
+Shared code: `pbscommon` (PBS protocol, pxar, chunking, encryption), `clientcommon`, `machinebackuplib`, `snapshot` (VSS, elastio-snap/dattobd), `pkg/retry`, `pkg/security`. Packaging lives in `installer/wix/` (MSI) and `packaging/` (.deb, .rpm, Arch, Linux launchers and the systemd unit). User manuals are in `docs/manual/`.
 
 ## Build System
 
-- Uses Makefile for building all components
-- Build artifacts are placed in `dist/` directory
-- Cross-compilation is supported for Windows, Linux, and macOS
-- GUI uses Wails framework with React frontend
-- Uses `wails build` for GUI builds
+- `go.work` covers `gui`, `pbscommon`, `clientcommon`, `machinebackuplib`, `machinebackup`, `snapshot` and `nbd`. `directorybackup`, `pkg/retry` and `pkg/security` are standalone modules: build `directorybackup` with a temporary work file that adds it, or test them with `GOWORK=off`
+- GUI: `wails build` in `gui/` (Wails v2.13.0). The built frontend in `gui/frontend/dist` is committed, so Node.js is only needed to change the frontend
+- Service: `go build -tags service` in `gui/`
+- MSI: `installer/wix/build-msi.ps1` (WiX 3) after building the app and the service into `gui/build/bin`
+- Linux packages: `packaging/debian/build-deb.sh` and `packaging/fedora/build-rpm.sh`
+- The version comes from `gui/wails.json` (`productVersion`) and is passed in with `-ldflags "-X main.appVersion=..."`
+- See [BUILD.md](BUILD.md) for the exact commands
 
 ## Key Commands
 
-- `make` or `make all` - Build everything (CLI + GUI + Service)
-- `make cli` - Build all CLI tools
-- `make gui` - Build GUI application
-- `make service` - Build Windows Service
-- `make test` - Run all tests with race detector
+- `make test` - Run all tests with race detector, module by module
+- `make test-e2e` - End-to-end tests against a real PBS in Docker (see `testing/e2e/README.md`)
+- `make deb`, `make pkgfedora` - Build the .deb or the .rpm
 - `make lint` - Run golangci-lint
 - `make security-check` - Run security checks with gosec
-- `make release` - Prepare release packages
+- `make cli` - Build the CLI tools (`cli-directory` runs `go mod tidy`, which can change `go.mod`)
+
+The Makefile's `all`, `gui`, `service`, `cross-gui-windows` and `release` targets still use the old Nimbus Backup names and a `cmd/service` folder that does not exist; they do not work as they stand. The root `build.bat`, `build_cli.bat`, `build_gui.bat`, `build_gui.sh` and `build.sh` are also out of date.
 
 ## Important Notes
 
-- The GUI requires Node.js for frontend build (npm install)
-- GUI build requires `wails` CLI tool (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
-- Build process uses security hardening flags
-- Windows service requires admin privileges
+- GUI build requires `wails` CLI tool (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0`) on Windows; the Linux packages build the GUI with plain `go build -tags production`
+- Build process uses security hardening flags (`-trimpath`, `-s -w`)
+- Settings live in `C:\ProgramData\ProxmoxBackupClient\` on Windows; on Linux in `~/.proxmox-backup-guardian/`, or `/var/lib/proxmoxbackupclient/` once the service is installed
 - Cross-compilation uses GOOS and GOARCH environment variables
-- CLI tools are built from respective directories: `directorybackup/`, `machinebackup/`, `nbd/`
-- GUI is built from `gui/` directory using wails build
+- Live tests are the `gui/zz_*_livetest*_test.go` files; each is skipped unless its environment variables are set (for example `PBS_LIVE_TEST=1`; the skip message names them), and most need a real PBS
 
 ## Testing
 
-- Tests are run with `go test -v -race -coverprofile=coverage.out ./...`
+- `make test` runs `go test -race -covermode=atomic -coverprofile=coverage.out ./...` in each module
 - Coverage report generation: `go tool cover -html=coverage.out -o coverage.html`
-- Test coverage is collected in `coverage.out` file
+- Test coverage is collected in a `coverage.out` file per module
 
 ## Development Setup
 
-- Run `make dev-setup` to install dependencies and set up dev environment
 - Install frontend dependencies with `npm install` in `gui/frontend/`
-- GUI development mode: `make gui-dev` or `wails dev` in gui directory
+- GUI development mode: `wails dev` in `gui/` (or `make gui-dev`)
 
 ## Platform-Specific Considerations
 
 - NBD tool is Linux-only (uses Linux ioctl)
-- Machine backup is Windows-only
-- GUI requires Windows admin privileges for manifest settings
+- Machine backup works on Windows (VSS) and Linux; on Linux it refuses to run without root and a loaded elastio-snap or dattobd kernel module
+- The system tray and toast notifications are Windows-only
+- On Windows, VSS, machine backups and changing Backup Sets (job protection) need an elevated GUI; it offers Restart as administrator (pkexec on Linux)
+- The background service runs as LocalSystem on Windows (`ProxmoxBackupClientSVC`) and as root under systemd on Linux (`proxmoxbackupclient.service`); it listens on `127.0.0.1:18765` for the GUI
 - Cross-compilation to Windows requires `GOOS=windows` environment variable

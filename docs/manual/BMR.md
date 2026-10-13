@@ -1,6 +1,8 @@
 # Bare-metal restore: user manual
 
-This manual covers restoring a whole machine from a machine (full disk) backup. It applies to v0.6.0. For file and folder restores use the GUI's Restore page ([GUI.md](GUI.md#9-restore)).
+This manual covers restoring a whole machine from a machine (full disk) backup. It applies to the version after v0.8.2. For file and folder restores use the GUI's Restore page ([GUI.md](GUI.md#9-restore)).
+
+The restore copies the disk image block for block, so it works the same whatever the operating system on the disk: Windows, Linux or another.
 
 ## Contents
 
@@ -37,7 +39,7 @@ A bare-metal restore needs a **machine** backup: a Backup Set or one-off backup 
 
 The ISO is a Clonezilla Live image with this project's restore tools added.
 
-1. Download `ProxmoxBackupClient-GO-BMR-Restore-<version>.iso` from the [releases page](https://github.com/mjb-is/proxmoxbackupclient_go/releases). In the GUI, **Tools > Download Bare Metal Restore ISO…** opens that page. A release that did not change the ISO links to the one from an earlier release.
+1. Download `ProxmoxBackupClient-GO-BMR-Restore-<version>.iso` from the [releases page](https://github.com/mjb-is/proxmoxbackupclient_go/releases). In the GUI, **Tools > Download Bare Metal Restore ISO…** opens that page. A release that did not change the ISO links to the one from an earlier release (up to v0.8.1, the v0.5.0 ISO).
 2. Check it against that release's `SHA256SUMS.txt`.
 3. Write it to a USB stick (everything on the stick is erased):
    * Linux: `sudo dd if=ProxmoxBackupClient-GO-BMR-Restore-<version>.iso of=/dev/sdX bs=4M conv=fsync status=progress`
@@ -55,7 +57,7 @@ Writing the ISO as above gives the whole stick to one image. [Ventoy](https://ww
 
 Ventoy starts on legacy BIOS and UEFI machines. With Secure Boot on, its first start asks you to enrol Ventoy's key once (follow its on-screen steps), or turn Secure Boot off for the restore.
 
-**Check the target disk.** Booted from a Ventoy stick (or a USB SSD that reports itself as a fixed disk), the restore can list the stick next to the machine's own disk and ask which to restore to. Pick the machine's disk; the confirmation screen shows each disk's size before anything is written. Test the stick once on a spare machine or VM, as with any boot media.
+**Check the target disk.** Booted from a Ventoy stick (or a USB SSD that reports itself as a fixed disk), the restore can list the stick next to the machine's own disk and ask which to restore to. Pick the machine's disk; the confirmation screen shows each disk's size before anything is written. If the machine's own disk is not seen at all, the boot drive can even be the only candidate and be chosen for you, so always read the confirmation screen. Test the stick once on a spare machine or VM, as with any boot media.
 
 The ISO boots on both legacy BIOS and UEFI machines. It can also be network-booted like any Clonezilla Live image; setting that up is not covered here.
 
@@ -80,8 +82,8 @@ Four screens, each checked before moving on:
 | Screen | Example | Rule |
 |---|---|---|
 | PBS server URL | `https://pbs.example.com:8007` | Must start with `https://` (already filled in) |
-| PBS username | `restore@pbs` | Must include the realm (`@pam`, `@pbs`) |
-| Password | | Must not be empty |
+| PBS username | `restore@pbs` | Must include the realm (`@pam`, `@pbs`). `root@pam` is filled in. A user, not an API token |
+| Password | | The user's password. Must not be empty |
 | PBS datastore | `backup` or `backup/clients` | Text after the first `/` is the namespace |
 
 These are remembered for the rest of the boot session (in `/tmp/pbsnbd-credentials`, readable by root only), so a second attempt starts with them filled in.
@@ -96,21 +98,21 @@ These are remembered for the rest of the boot session (in `/tmp/pbsnbd-credentia
 | Yes, the key file is on a USB stick or other disk | Pick the partition. It is mounted read-only, the `*.json` files on it are listed (or the only one is used), the key is copied to `/tmp`, and the stick is unmounted. You can unplug it |
 | Yes, I will type the path of the key file | Type the full path |
 
-For a passphrase-protected key a hidden box asks for the passphrase. A wrong passphrase is asked for again, up to 3 attempts. The key is never written to the ISO or the target disk.
+For a passphrase-protected key a hidden box asks for the passphrase. The passphrase is checked when the backups are listed: a wrong one is asked for again, up to 3 attempts. The key is never written to the ISO or the target disk.
 
 ### 4.5 Pick the snapshot
 
 Up to three menus; a menu with only one choice is skipped:
 
 1. **Which machine**: `host/<id>` or `vm/<id>`, with the PBS comment (the Backup Set name) if there is one.
-2. **Which date**: the backups of that machine, newest first.
+2. **Which date**: the backups of that machine, with the number of files in each.
 3. **Which disk image**: for a backup of more than one disk, for example `drive-sata0.img.fidx`.
 
 The chosen image is attached as `/dev/nbd0`. If it cannot be attached (wrong key, server unreachable), a message shows the last lines of the attach log and the flow stops.
 
 ### 4.6 Pick and confirm the target disk
 
-The target is the one local disk that is not removable, not optical and not the attached image. With exactly one such disk it is chosen for you. With several, a menu asks, showing each size. The target should be at least as large as the original disk.
+The target is a local disk that is not marked removable and is not optical, a loop device or the attached image. With exactly one such disk it is chosen for you. The boot drive is not left out on purpose: a Ventoy stick or USB SSD that reports itself as a fixed disk is a candidate too ([section 3](#3-get-the-iso-and-make-the-boot-media)). With several, a menu asks, showing each size. The target should be at least as large as the original disk.
 
 A confirmation screen shows the source and target with their sizes:
 
@@ -122,6 +124,8 @@ Clonezilla then asks twice more before it writes. Answer `y` to each.
 
 Clonezilla copies the partition table, every partition and the data between the partition table and the first partition. That last part matters on legacy BIOS disks, where GRUB keeps part of itself there; without it the disk would stop at a bare `GRUB` prompt. UEFI (GPT) disks restore their EFI system partition like any other partition.
 
+A Linux machine backup carries the block snapshot's copy-on-write file (`.pbs_snapshot_N.cow`, about a tenth of each snapshotted file system). Backups made with this version leave its contents out of the image, but the file itself is still there. After a successful restore the ISO deletes it from each ext2/3/4 and XFS partition. An ISO built before this version (v0.5.0 and earlier) does not: delete `/.pbs_snapshot_*.cow` (and the same name at the top of any other snapshotted file system, such as `/home`) yourself after the first start.
+
 Restores of 32 to 40 GiB Windows and Linux test machines took 8 to 11 minutes from power-on to the login prompt on a local network. Time depends on disk size, network and PBS speed.
 
 ### 4.8 Finish
@@ -131,13 +135,15 @@ Restores of 32 to 40 GiB Windows and Linux test machines took 8 to 11 minutes fr
 
 ### After the restore
 
-* The restored system is exactly as it was at the snapshot: files, settings and permissions.
-* If Windows does not start, boot a Windows installation USB and use **Repair your computer > Troubleshoot > Startup Repair**. This is more likely if the disk controller or boot mode (UEFI or BIOS) differs from the original machine.
+* The restored system is exactly as it was at the snapshot: files, settings and permissions, whatever the operating system.
+* If it does not start, repair its boot loader with the operating system's own tools. This is more likely if the disk controller or boot mode (UEFI or BIOS) differs from the original machine.
+  * Windows: boot a Windows installation USB and use **Repair your computer > Troubleshoot > Startup Repair**.
+  * Linux: boot a live Linux system and reinstall the boot loader (usually GRUB) the way your distribution describes.
 * Open the GUI and check that the Backup Sets run again.
 
 ## 5. The manual pbs-nbd entry
 
-Clonezilla's own main menu (reached by choosing the normal Clonezilla entries at boot) has an extra mode, **pbs-nbd**. It asks for the same PBS details, key and snapshot as section 4, attaches the image to `/dev/nbd0` in the background, and returns you to Clonezilla. Then either:
+Clonezilla's own main menu (reached by choosing the normal Clonezilla entries at boot) has an extra mode, **pbs-nbd**. It asks for the same PBS details, key and snapshot as section 4 (the network comes from Clonezilla's own setup, and a wrong key passphrase stops it at once instead of asking again), attaches the image to `/dev/nbd0` in the background, and returns you to Clonezilla. Then either:
 
 * use Clonezilla's own device-to-device wizard with `nbd0` as the source, for a restore where you choose every option yourself, or
 * open a shell, `mount -o ro /dev/nbd0p1 /mnt` (after `partprobe /dev/nbd0`), and copy files out.
@@ -180,4 +186,5 @@ A disk image carries the drivers of the machine it came from.
 | Several disks and unsure which is the target | Compare sizes in the menu; if still unsure, check disk models and serials in the firmware setup first, or disconnect the others |
 | Clonezilla reports the target is too small | Use a disk at least as large as the original |
 | Stops at a `GRUB` prompt after restore | Should not happen with this ISO (it restores the area GRUB uses). Make sure you used the "PBS Bare Metal Restore" entry, not a hand-run restore without Clonezilla's `-j2` option |
-| Windows will not start after restore | Startup Repair from Windows installation media (see "After the restore") |
+| The restored system will not start | Repair the boot loader: Startup Repair from Windows installation media, or the distribution's GRUB repair on Linux (see "After the restore") |
+| A large `.pbs_snapshot_N.cow` file on a restored Linux system | Restored with an ISO from v0.5.0 or earlier; delete the file (see [4.7](#47-the-restore)) |

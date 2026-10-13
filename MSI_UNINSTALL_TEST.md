@@ -1,175 +1,106 @@
-# MSI Uninstall - Test de la dialog de configuration
+# MSI removal: keep or delete the settings (test plan)
 
-## 🎯 Fonctionnalité
+When the MSI is removed, the settings folder `C:\ProgramData\ProxmoxBackupClient` is kept
+unless the property `KEEP_CONFIG` is `0`. This note describes how that works and how to
+test it. The installer itself is described in [installer/README.md](installer/README.md).
 
-Lors de la désinstallation de Proxmox Backup Client, l'utilisateur peut choisir :
-- ✅ **Conserver la configuration** (par défaut) - garde `C:\ProgramData\ProxmoxBackupClient`
-- ❌ **Supprimer la configuration** - efface complètement le dossier
-
-## 📁 Fichiers concernés
+## What is in the settings folder
 
 ```
 C:\ProgramData\ProxmoxBackupClient\
-├── config.json              # Configuration PBS, identifiants
-├── jobs.json                # Tâches planifiées
-├── debug-gui.log            # Logs interface
-├── debug-service.log        # Logs service Windows
-└── (autres fichiers)
+  config.json           PBS servers, API tokens, remembered passphrases, preferences
+  scheduled_jobs.json   Backup Sets
+  job_history.json      Reports
+  message_log.json      Message Log
+  keys\                 encryption keys made by the app
+  api-token             local API token (the service writes a new one at each start)
+  *.log, *.log.gz       logs (service-*.log, backup-*.log, one per backup run)
 ```
 
-## 🔧 Modifications apportées
+## How it works (installer/wix/ProductBody.wxi)
 
-### Product.wxs
+- Property `KEEP_CONFIG`, default `1` (keep).
+- Custom action `DeleteConfigFolder`: `cmd.exe /c rmdir /s /q "%ProgramData%\<ExeName>"`,
+  deferred, run as SYSTEM (`Impersonate="no"`), errors ignored.
+  It runs before RemoveFiles when `(REMOVE="ALL") AND NOT UPGRADINGPRODUCTCODE AND (KEEP_CONFIG="0")`,
+  so never during an upgrade.
+- Dialog `UninstallDlg` ("Do you want to keep your configuration and logs?") with two radio
+  buttons, "Keep configuration" (1) and "Delete configuration" (0). It is in the
+  InstallUISequence, shown when `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`, so only during a
+  removal with the full installer UI.
 
-1. **Propriété KEEP_CONFIG**
-   ```xml
-   <Property Id="KEEP_CONFIG" Value="1" />  <!-- 1 = garder (défaut) -->
-   ```
+Programs and Features shows only "Uninstall" for this product (the WixUI_InstallDir set
+sets `ARPNOMODIFY=1`). That runs the removal without the installer's own dialogs, so
+`UninstallDlg` is expected not to appear there and the settings are kept. To see the
+dialog, run `msiexec /i <the same msi>` on a computer where it is installed and choose Remove.
 
-2. **Custom Action de suppression**
-   ```xml
-   <CustomAction Id="DeleteConfigFolder"
-                 ExeCommand='cmd.exe /c "if exist ... rmdir /s /q ..."'
-                 Execute="deferred" />
-   ```
+## Status
 
-3. **Dialog personnalisé**
-   - Titre : "Désinstallation de [ProductName]"
-   - Question : "Souhaitez-vous conserver votre configuration ?"
-   - 2 options radio :
-     - ⭕ Conserver la configuration (KEEP_CONFIG=1)
-     - ⭕ Supprimer la configuration (KEEP_CONFIG=0)
+Tested on winclient with 0.8.99 and 0.8.100 (commit 5a9b779, 12 October 2026): silent
+install, silent upgrade, and silent removal with the settings kept. The dialog and the
+delete path have not been tested yet.
 
-4. **Condition d'exécution**
-   ```xml
-   (REMOVE="ALL") AND NOT UPGRADINGPRODUCTCODE AND (KEEP_CONFIG="0")
-   ```
-   - `REMOVE="ALL"` : Vraie désinstallation (pas une mise à jour)
-   - `NOT UPGRADINGPRODUCTCODE` : Pas un upgrade MSI
-   - `KEEP_CONFIG="0"` : Utilisateur a choisi "Supprimer"
+## Tests
 
-## 🧪 Plan de test
+Before each test: install the MSI, start the app, add a PBS server and one or two Backup
+Sets, so the folder holds `config.json` and `scheduled_jobs.json`.
 
-### Test 1 : Désinstallation avec conservation (défaut)
+### 1. Silent removal keeps the settings (passed)
 
-1. Installer Proxmox Backup Client v0.1.92
-2. Configurer un serveur PBS
-3. Créer 1-2 jobs planifiés
-4. Lancer une désinstallation depuis "Programmes et fonctionnalités"
-5. **Vérifier** : Dialog s'affiche avec 2 options
-6. **Sélectionner** : ⭕ Conserver la configuration (par défaut)
-7. Cliquer "Désinstaller"
-8. **Vérifier après désinstallation** :
-   - ✅ `C:\Program Files\Proxmox Backup Client` supprimé
-   - ✅ `C:\ProgramData\ProxmoxBackupClient` **EXISTE ENCORE**
-   - ✅ `config.json` et `jobs.json` présents
-   - ✅ Service Windows désinstallé
-   - ✅ Menu démarrer supprimé
+`msiexec /x <msi> /qn`
 
-### Test 2 : Désinstallation avec suppression
+- `C:\Program Files\ProxmoxBackupClient` gone, service `ProxmoxBackupClientSVC` gone,
+  Start menu entry gone, Programs and Features entry gone.
+- `C:\ProgramData\ProxmoxBackupClient` still there with `config.json` and `scheduled_jobs.json`.
 
-1. Installer Proxmox Backup Client v0.1.92
-2. Configurer un serveur PBS
-3. Créer 1-2 jobs planifiés
-4. Lancer une désinstallation depuis "Programmes et fonctionnalités"
-5. **Vérifier** : Dialog s'affiche avec 2 options
-6. **Sélectionner** : ⭕ Supprimer la configuration
-7. Cliquer "Désinstaller"
-8. **Vérifier après désinstallation** :
-   - ✅ `C:\Program Files\Proxmox Backup Client` supprimé
-   - ✅ `C:\ProgramData\ProxmoxBackupClient` **SUPPRIMÉ COMPLÈTEMENT**
-   - ✅ Aucun fichier config.json ou jobs.json
-   - ✅ Service Windows désinstallé
-   - ✅ Menu démarrer supprimé
+### 2. Silent removal with KEEP_CONFIG=0
 
-### Test 3 : Upgrade (pas de dialog)
+`msiexec /x <msi> /qn KEEP_CONFIG=0 /l*v uninstall.log`
 
-1. Installer Proxmox Backup Client v0.1.92
-2. Configurer un serveur PBS
-3. Installer Proxmox Backup Client v0.1.93 (upgrade)
-4. **Vérifier** : Pas de dialog de désinstallation
-5. **Vérifier après upgrade** :
-   - ✅ `C:\ProgramData\ProxmoxBackupClient` **PRÉSERVÉ**
-   - ✅ config.json et jobs.json **INTACTS**
-   - ✅ Application mise à jour
+- Programs, service and entries gone as in test 1.
+- `C:\ProgramData\ProxmoxBackupClient` gone.
+- `uninstall.log` shows `DeleteConfigFolder` running.
 
-### Test 4 : Annulation
+### 3. Programs and Features > Uninstall
 
-1. Installer Proxmox Backup Client v0.1.92
-2. Lancer une désinstallation
-3. Dialog s'affiche
-4. Cliquer "Annuler"
-5. **Vérifier** :
-   - ✅ Application toujours installée
-   - ✅ Service toujours actif
-   - ✅ Config intacte
+- Expected: no keep or delete question; programs gone; settings kept.
 
-## 📝 Checklist de validation
+### 4. Full UI removal, keep
 
-Avant release :
-- [ ] Build MSI avec modifications WiX
-- [ ] Test 1 : Désinstall + Conserver config ✅
-- [ ] Test 2 : Désinstall + Supprimer config ✅
-- [ ] Test 3 : Upgrade sans prompt ✅
-- [ ] Test 4 : Annulation ✅
-- [ ] Vérifier logs Windows Event Viewer (pas d'erreurs)
-- [ ] Vérifier registre Windows (clés supprimées proprement)
+`msiexec /i <msi>`, then Remove, then on `UninstallDlg` leave "Keep configuration".
 
-## 🔨 Build du MSI
+- The dialog appears. Afterwards the settings are kept, as in test 1.
 
-```bash
-cd installer/wix
+### 5. Full UI removal, delete
 
-# Build avec WiX Toolset
-candle.exe Product.wxs
-light.exe -ext WixUIExtension Product.wixobj -out ProxmoxBackupClient.msi
+As test 4, but choose "Delete configuration".
 
-# Ou via script automatisé (si existant)
-./build-msi.bat
-```
+- The settings folder is gone, as in test 2.
 
-## 🐛 Troubleshooting
+### 6. Upgrade (passed)
 
-### Dialog ne s'affiche pas
-- **Cause** : Condition `REMOVE="ALL"` pas satisfaite
-- **Solution** : Vérifier qu'on désinstalle (pas un upgrade)
-- **Log** : Activer logging MSI :
-  ```cmd
-  msiexec /x ProxmoxBackupClient.msi /L*V uninstall.log
-  ```
+Install a newer build over the installed one.
 
-### Config pas supprimée malgré KEEP_CONFIG=0
-- **Cause** : CustomAction pas exécutée
-- **Solution** : Vérifier séquence `InstallExecuteSequence`
-- **Debug** : Chercher "DeleteConfigFolder" dans uninstall.log
+- No keep or delete question. One Programs and Features entry, with the new version.
+- Service running. Settings unchanged.
 
-### Erreur "Access Denied" sur C:\ProgramData
-- **Cause** : CustomAction `Impersonate="yes"` (droits utilisateur)
-- **Solution** : Déjà fixé avec `Impersonate="no"` (droits system)
+### 7. Cancel
 
-## 📊 Statistiques attendues
+Start a full UI removal (test 4) and press Cancel on `UninstallDlg`.
 
-Après déploiement :
-- **80% utilisateurs** : Gardent config (réinstallation, tests, upgrades)
-- **20% utilisateurs** : Supprimeraient tout (désinstallation définitive)
+- App, service and settings all still there.
 
-## 🎨 Améliorations futures
+## If something goes wrong
 
-1. **Warning visuel** si "Supprimer" sélectionné
-   - Texte rouge : "⚠️ Cette action est irréversible"
-   - Checkbox confirmation : "Je confirme vouloir supprimer mes données"
+- Make a verbose log: `msiexec /x <msi> /l*v uninstall.log`, then search it for
+  `DeleteConfigFolder` and `KEEP_CONFIG`.
+- If the folder is not deleted with `KEEP_CONFIG=0`, check that the app or another
+  program does not hold a file open in it (the action ignores errors).
 
-2. **Export config avant suppression**
-   - Bouton "Exporter config.json avant suppression"
-   - Sauvegarde dans `C:\Users\%USERNAME%\Downloads\proxmoxbackupclient-config.json`
+## Known issue: branded builds
 
-3. **Statistiques télémétrie** (opt-in)
-   - Tracker % utilisateurs qui gardent vs suppriment
-   - Améliorer UX selon données
-
----
-
-**Status:** ✅ Implémenté | ⏳ Tests à faire
-**Version:** 0.2.0+
-**Mainteneur:** Proxmox Backup Client GO contributors
-**Date:** 2026-03-23
+`DeleteConfigFolder` and the dialog text use `%ProgramData%\<ExeName>`. The app always
+keeps its settings in `C:\ProgramData\ProxmoxBackupClient` (`gui/config.go`), whatever
+the brand. For the default brand the two match. For a branded MSI (for example
+`NimbusBackup`), `KEEP_CONFIG=0` would try to delete `C:\ProgramData\NimbusBackup` and
+leave the real settings behind.

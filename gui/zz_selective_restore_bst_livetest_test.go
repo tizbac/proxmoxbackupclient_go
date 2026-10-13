@@ -20,7 +20,7 @@ import (
 // previous linear-scan-only walk() fetching a fresh ~4MB chunk for
 // essentially every step forward through the archive, REGARDLESS of whether
 // that span belonged to the selected folder or a skipped sibling — see
-// TODO.md's "selective restore from a big combined archive" entry.
+// docs/TODO-HISTORY.md's "selective restore from a big combined archive" entry.
 //
 // Backs up a tree with one deliberately large sibling folder and one small
 // target folder, restores with IncludePaths naming only the small target,

@@ -16,7 +16,7 @@ import (
 )
 
 // TestPosixACLRestoreLive is a manual, opt-in live-integration test proving
-// Linux extended-attribute/POSIX-ACL fidelity end to end (see TODO.md
+// Linux extended-attribute/POSIX-ACL fidelity end to end (see docs/TODO-HISTORY.md
 // "Linux side has no equivalent at all"): creates a real file, gives it a
 // non-default POSIX ACL via the real `setfacl` tool (so the test doesn't
 // just check that Go can read back what Go itself wrote) plus a generic

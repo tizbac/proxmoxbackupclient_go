@@ -2,9 +2,9 @@
 
 This documents how [`patch-clonezilla.sh`](./patch-clonezilla.sh) injects extra
 binaries into a stock Clonezilla Live ISO **without breaking boot**, so the
-resulting ISO boots from CD, USB (`dd`) and UEFI exactly like the original —
-just with our ticket-enabled `pbsnbd` / `machinebackup` binaries shipped inside
-the live rootfs.
+resulting ISO boots from CD, USB (`dd`) and UEFI exactly like the original,
+just with our ticket-enabled `pbsnbd` / `machinebackup` binaries and the two
+restore helper scripts shipped inside the live rootfs.
 
 ## Why a full rebuild (and not an in-place patch)
 
@@ -38,10 +38,12 @@ removed on exit):
 1. **Extract** the whole ISO filesystem to a directory tree (`7z`).
 2. **Detect** the squashfs compression + block size (`unsquashfs -s`) so the
    rebuilt image is byte-compatible.
-3. **Expand** the rootfs (`unsquashfs`), `install` each input file into
-   `usr/local/sbin/`, and **rebuild** the squashfs with matching parameters
-   (`mksquashfs -all-root -b <block> -comp xz -Xbcj x86`). Swap it back into the
-   tree at `/live/filesystem.squashfs`.
+3. **Expand** the rootfs (`unsquashfs`, under `fakeroot`), `install` each
+   input file into `usr/local/sbin/`, apply the menu patches (see below), and
+   **rebuild** the squashfs with matching parameters
+   (`mksquashfs -all-root -b <block> -comp <same compressor>`, plus
+   `-Xbcj x86` for xz). Swap it back into the tree at
+   `/live/filesystem.squashfs`.
 4. **Rebuild the ISO** from the tree with `xorriso -as mkisofs`, preserving:
    - the volume id (auto-read from the source ISO),
    - the isohybrid MBR (embedded from `isohdpfx.bin`),
@@ -55,8 +57,9 @@ removed on exit):
 ## Prerequisites
 
 - `xorriso` (>= 1.5), `unsquashfs`/`mksquashfs` (squashfs-tools), `7z`
-  (7-zip), `isoinfo` (genisoimage) — for reading the volume id.
-- `patch` — to apply the unified-diff menu patches.
+  (7-zip), `fakeroot`, `xxd`, and `isoinfo` (genisoimage) for reading the
+  volume id.
+- `patch`, to apply the unified-diff menu patches.
 - An isohybrid MBR prefix, normally
   `/usr/lib/ISOLINUX/isohdpfx.bin` (from the `syslinux`/`isolinux` packages).
 
@@ -66,15 +69,18 @@ removed on exit):
 ./patch-clonezilla.sh -o OUTPUT_ISO INPUT_ISO [FILE]...
 ```
 
-Example — add the two ticket-enabled binaries plus the PBS-NBD helper (menu
-entry for it is applied as a unified diff from `clonezilla-patch/patches/`):
+Example: add the two ticket-enabled binaries plus both helpers (their menu
+entries are applied as unified diffs from `clonezilla-patch/patches/`). `pbsnbd`
+is `proxmoxbackup-nbd` built from `nbd/`, under the name the helpers call.
+Include `ocs-pbs-bare-metal-restore` whenever the default patch directory is
+used: patches 0003 and 0004 add a boot entry that runs it.
 
 ```
 ./patch-clonezilla.sh \
   -o clonezilla-live-patched.iso \
   clonezilla-live-3.3.3-15-amd64.iso \
   ./build/pbsnbd ./build/machinebackup \
-  ./clonezilla-patch/ocs-pbs-nbd
+  ./clonezilla-patch/ocs-pbs-nbd ./clonezilla-patch/ocs-pbs-bare-metal-restore
 ```
 
 To point the diff-based patching at another patch directory, pass `-p PATCH_DIR`
@@ -89,7 +95,7 @@ case needs no overrides.
 ## Unified-diff menu patching (diff-based, never replace)
 
 Besides injecting files, the patcher applies **unified diffs** to the extracted
-filesystem with the `patch` command — upstream files are modified in place and
+filesystem with the `patch` command: upstream files are modified in place and
 never wholesale-replaced, so a stock ISO whose files drifted from the reference
 version fails loudly instead of being silently overwritten.
 
@@ -113,7 +119,7 @@ key file that is passphrase protected (`kdf` set) makes the helper ask for the
 passphrase in a hidden box. The key is handed to `pbsnbd` as
 `-keyfile` / `-keyfile-passphrase`. `pbsnbd` reads the first chunk of the
 image before it touches the NBD device, so a missing or wrong key fails
-immediately with a clear message instead of leaving a dead `/dev/nbdN`. A mistyped passphrase is asked for again, three attempts in total, before the helper stops.
+immediately with a clear message instead of leaving a dead `/dev/nbdN`. In the automated bare-metal restore a mistyped passphrase is asked for again, three attempts in total, before the helper stops; `ocs-pbs-nbd` stops at the first wrong passphrase.
 The key is never written to the ISO.
 
 Restoring an encrypted snapshot has been tested live with an unprotected key file and with a passphrase-protected (scrypt) key. For the passphrase-protected case a Linux machine backup was restored onto a blank BIOS virtual machine, the key being read from a USB stick and the passphrase typed into the hidden box, and the restored system booted. A wrong passphrase is retried up to three times, and three wrong attempts stop the restore.
@@ -130,7 +136,7 @@ When the user picks it, the helper:
 
 1. Starts the network exactly like a remote share (sshfs/nfs/samba) does:
    `network_config_if_necessary`, using the Clonezilla `$DIA` (dialog/whiptail)
-   TUI — the usual `ocs-live-netcfg` wizard runs if no NIC is configured.
+   TUI; the usual `ocs-live-netcfg` wizard runs if no NIC is configured.
 2. If a previous `pbsnbd` instance is still running, warns the user with a
    dialog ("already running, it will be stopped") and stops it (SIGINT first
    for a clean NBD disconnect, SIGKILL if it does not go away), so re-running
@@ -140,7 +146,7 @@ When the user picks it, the helper:
 3. `modprobe nbd max_part=0` (so the kernel does not probe partitions on the
    remote `.fidx` image).
 4. Asks, via `$DIA` input-boxes, for:
-   - PBS server URL — the `https://` prefix is pre-filled in the box;
+   - PBS server URL (the `https://` prefix is pre-filled in the box);
    - username (a realm must be present, e.g. `root@pam` or `root@pbs`) and
      password;
    - datastore. A namespace may be appended after a slash:
@@ -149,11 +155,12 @@ When the user picks it, the helper:
    The last used server/username/password/datastore are kept in
    `/tmp/pbsnbd-credentials` (mode 600) and pre-fill the boxes on the next run.
    After the datastore, a menu asks whether the backups were made with an
-   **encryption key** (see "Encrypted backups" below): none, a key file on a
+   **encryption key** (see "Encrypted backups" above): none, a key file on a
    USB stick or other disk, or a typed path.
 5. Runs `/usr/local/sbin/pbsnbd -list`, which prints the available backups as
-   `type/id/time/file.fidx[#comment]` lines sorted by date, **newest first**
-   (the trailing `#comment`, if the snapshot has one, is included) and presents
+   `type/id/time/file.fidx[#comment]` lines, in the order the server lists the
+   snapshots (the trailing `#comment`, if the snapshot has one, is included),
+   and presents
    a **three-level** `$DIA` menu:
    (a) the `<kind>/<backupid>` (e.g. `vm/100`, `ct/50`; the snapshot comment,
    if any, is shown next to it), (b) the backup by date (with file count),
@@ -169,16 +176,16 @@ When the user picks it, the helper:
 
 Where `ocs-pbs-nbd` above hands off to Clonezilla's own generic device-image/
 device-device wizard once the snapshot is attached, this is a separate,
-first-position, default-on-timeout **boot menu entry** — not a Clonezilla
-main-menu option — that skips Clonezilla's language/keyboard prompts and its
+first-position, default-on-timeout **boot menu entry** (not a Clonezilla
+main-menu option) that skips Clonezilla's language/keyboard prompts and its
 own wizard entirely, walking straight from PBS credentials to a completed,
 auto-rebooted restore.
 
 - Helper `/usr/local/sbin/ocs-pbs-bare-metal-restore`
   (`clonezilla-patch/ocs-pbs-bare-metal-restore`) is injected into the live
   rootfs, deliberately **not** sharing code with `ocs-pbs-nbd` (some
-  duplication of the network/credentials/snapshot-picker/NBD-attach steps) —
-  each script can then be modified without risking the other's already-proven
+  duplication of the network/credentials/snapshot-picker/NBD-attach steps),
+  so each script can then be modified without risking the other's already-proven
   behaviour.
 - Patches `0003-first-boot-bare-metal-restore-menu-grub.patch` and
   `0004-first-boot-bare-metal-restore-menu-syslinux.patch` add a new
@@ -186,14 +193,14 @@ auto-rebooted restore.
   default-on-timeout item in both `boot/grub/grub.cfg` and
   `syslinux/syslinux.cfg`, booted via
   `locales=en_US.UTF-8 keyboard-layouts=gb
-  ocs_live_run="/usr/local/sbin/ocs-pbs-bare-metal-restore"` — those boot
+  ocs_live_run="/usr/local/sbin/ocs-pbs-bare-metal-restore"`. Those boot
   parameters are what actually skip Clonezilla's language/keyboard prompts
   and its own `ocs-live-general` main-menu launcher.
 - Patch `0002-ocs-functions-partition-detect-race.patch` fixes a real,
   100%-reproducible bug found while testing this flow: a source disk
   attached moments earlier in the same live session (here, the NBD device)
   could make Clonezilla's own `is_disk_without_part_and_fs()` report zero
-  partitions on the first restore pass — `lsblk` reads udev's device
+  partitions on the first restore pass. `lsblk` reads udev's device
   database, not just the kernel's raw partition table, so a just-created
   source can transiently look empty even though its on-disk table is
   already correct. A rerun always then passed, the classic signature of
@@ -202,56 +209,67 @@ auto-rebooted restore.
 
 When the automated flow runs:
 
-1. Attempts DHCP on every detected NIC first (`dhcpcd -t 15`), silently —
+1. Attempts DHCP on every detected NIC first (`dhcpcd -t 15`), silently.
    Clonezilla's own interactive `ocs-live-netcfg` wizard (DHCP-or-static
    choice, plus its own internal time-sync prompt) only ever runs as a
    fallback if no IP came up on its own. Time syncs automatically via
    `ocs-live-time-sync -b -i`, no prompt either way.
 2. Asks for the PBS server URL, username (with realm), password and
-   datastore (optionally `datastore/namespace`) — the same shape of prompts
+   datastore (optionally `datastore/namespace`): the same shape of prompts
    as `ocs-pbs-nbd`, with basic validation and a retry loop, but as four
    separate screens (a combined single-form attempt was tried and reverted;
    see the fork's own history if picking that back up).
    After the datastore, the same encryption-key menu as `ocs-pbs-nbd` is shown
-   (see "Encrypted backups" below).
+   (see "Encrypted backups" above). The PBS login is a username and password
+   only (`pbsnbd -username -password`); API tokens are not offered.
 3. Lists and lets the user pick a snapshot via the same three-level
    kind/date/file menu `ocs-pbs-nbd` uses, then attaches it via `pbsnbd`
-   in the **foreground** this time (the automated flow needs the device up
-   before continuing, unlike `ocs-pbs-nbd`'s fork-and-return-to-menu
-   design).
-4. Auto-detects the restore target: the one local block device that is not
-   `nbd*`/`loop*`/`sr*`/`ram*` and not marked removable. Zero or more than
-   one candidate means asking, never guessing, on what is an irreversible
-   whole-disk overwrite.
+   and waits for the device to report a size before continuing (the
+   automated flow needs the device up, unlike `ocs-pbs-nbd`'s
+   fork-and-return-to-menu design). If it does not attach within about 20
+   seconds, or `pbsnbd` exits (wrong key, server not answering), the last
+   lines of the attach log are shown and the flow stops.
+4. Auto-detects the restore target: a local block device that is not
+   `nbd*`/`loop*`/`sr*`/`ram*` and not marked removable. With exactly one
+   candidate it is used; with several the user picks one (sizes shown); with
+   none the flow stops. The boot medium is not excluded as such: a Ventoy
+   stick or USB SSD that reports itself as non-removable is a candidate, and
+   is the only one if the internal disk is not seen. The confirmation below
+   is the safeguard.
 5. Shows one confirmation (source/target/sizes, from `parted ... unit GB`)
-   before the write — deliberately just the one dialog, since
+   before the write, deliberately just the one dialog, since
    `ocs-onthefly` itself still asks its own two separate confirmations
    before actually wiping the destination.
 6. Runs `ocs-onthefly -icds -k0 -sfsck -j2 -f <nbd-device> -d <target>` directly
    (`-j2` restores the data between the MBR and the first partition, where GRUB
-   keeps its core image on a BIOS/MBR disk), with no `-p` postaction — success
-   shows a plain-language completion
-   message and reboots on its own; failure shows the exit code and where to
-   find the logs, no reboot.
+   keeps its core image on a BIOS/MBR disk), with no `-p` postaction. After
+   a successful copy it mounts each ext2/3/4 and XFS partition of the target
+   and deletes the block snapshot's copy-on-write file
+   (`.pbs_snapshot_N.cow`) that a Linux machine backup leaves there. Success
+   shows a plain-language completion message and reboots on its own; failure
+   shows the exit code and where to find the logs, no reboot.
 
 **English/UK-only, by design, for now:** `locales=en_US.UTF-8 keyboard-layouts=gb` is hardcoded
 in both menu patches, so this entry skips Clonezilla's language/keyboard prompt entirely rather
-than defaulting to English within it — the whole point of this entry is skipping every avoidable
+than defaulting to English within it. The whole point of this entry is skipping every avoidable
 prompt during a bare-metal recovery, and that one is no exception. Clonezilla's own native
 prompts (the `$msg_*` strings this script already calls) would very likely localize correctly if
-`locales=` pointed elsewhere, since Clonezilla ships real translations — but nearly everything
+`locales=` pointed elsewhere, since Clonezilla ships real translations, but nearly everything
 this script actually shows (every PBS prompt, every dialog title, the completion message) is our
 own hardcoded English text with no translation table behind it yet, so changing just `locales=`
 would produce a broken-looking mix rather than a real translation. Offering a language choice
 here properly would mean building that string table and accepting one more prompt back into a
-flow designed to have as few as possible — a real but separate piece of work, not a quick fix.
+flow designed to have as few as possible: a real but separate piece of work, not a quick fix.
 
 **Tested repeatedly on isolated VMs** (Windows and Linux Mint sources,
 32-40 GiB disks), consistently 8-11 minutes from power-on to a working
-login prompt — **not yet tested on physical hardware.** A pre-built ISO
+login prompt, and once on physical hardware (a Linux thin client booted over
+PXE, September 2026), which started its own system again. A pre-built ISO
 (includes both this entry and `ocs-pbs-nbd`) is available from
 [this fork's releases](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
-if you'd rather try it before building your own.
+if you'd rather try it before building your own. The newest pre-built ISO
+so far is the v0.5.0 one, which predates the copy-on-write file removal in
+step 6.
 
 ## Generated ISO build (for reference)
 
@@ -273,7 +291,7 @@ xorriso -as mkisofs -o OUT \
 
 Note the option-name quirks for xorriso 1.5 `-as mkisofs`:
 - partition options use underscores (`-partition_offset`, `-iso_mbr_part_type`),
-- there is **no** `-mbr_force_bootable` standalone option — the bootable flag
+- there is **no** `-mbr_force_bootable` standalone option: the bootable flag
   comes from the embedded `isohdpfx.bin` MBR, so do not pass it.
 
 ## Verifying the result

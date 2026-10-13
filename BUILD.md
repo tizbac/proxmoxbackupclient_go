@@ -1,49 +1,88 @@
 # Build Instructions
 
-## Install Chocolatey <https://chocolatey.org/install>
+This builds the GUI, the background service, the command-line tools, the Windows installer (MSI) and the Linux packages (.deb, .rpm).
 
-- put this in an elevated "admin" powershell
+## Tools
 
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-```
+| Tool | Version | Needed for |
+|---|---|---|
+| Go | 1.25 or later (the modules say `go 1.25`) | everything |
+| Wails CLI | v2.13.0 (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0`) | the GUI on Windows |
+| Node.js and npm | a current LTS | only to rebuild the frontend; the built frontend in `gui/frontend/dist` is committed |
+| C compiler | MinGW-w64 gcc on Windows, gcc on Linux | the GUI (cgo) |
+| GTK3 and WebKitGTK dev packages | `libgtk-3-dev`, `libwebkit2gtk-4.1-dev` (4.0 also works) | the GUI on Linux |
+| WiX Toolset 3 | 3.14 (`wix314-binaries.zip` is enough) | the MSI |
+| `dpkg-dev` | | the .deb |
+| Docker | | the .rpm, and the optional Docker build of the Windows GUI |
 
-- close the powershell
-- open an elevated "admin" powershell or cmd
+On Windows, Go and MinGW can come from Chocolatey (in an elevated PowerShell):
 
 ```powershell
 choco install go
 choco install mingw
 ```
 
-## Test go / gcc
+Then open a new, non-elevated shell and check `go version` and `gcc --version`.
 
-- close the powershell
-- open a non elevated powershell or cmd
+## The workspace
 
-```cmd
-C:\>go version
-go version go1.22.2 windows/amd64
+`go.work` lists `gui`, `pbscommon`, `clientcommon`, `machinebackuplib`, `machinebackup`, `snapshot` and `nbd`. `directorybackup`, `pkg/retry` and `pkg/security` are separate modules and are not in it. To build `directorybackup` from the repository root, use a temporary work file that adds it (the packaging scripts do the same):
 
-C:\>gcc --version
-gcc (x86_64-posix-seh-rev0, Built by MinGW-Builds project) 13.2.0
-Copyright (C) 2023 Free Software Foundation, Inc.
-This is free software; see the source for copying conditions.  There is NO
-warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+```sh
+{ cat go.work; printf '\nuse ./directorybackup\n'; } > go.tmpwork
+GOWORK=$PWD/go.tmpwork CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o dist/proxmoxbackup-directory ./directorybackup
+rm go.tmpwork go.tmpwork.sum
 ```
 
-## Build
+## GUI and service (Windows)
 
-- open a non elevated powershell or cmd
+From `gui/`:
 
-GUI version
-
-```cmd
-build.bat
+```powershell
+wails build -clean -ldflags "-X main.appVersion=0.8.2"
+go build -tags service -trimpath -ldflags "-s -w -X main.appVersion=0.8.2" -o build\bin\ProxmoxBackupClientSVC.exe
 ```
 
-CLI version
+This gives `gui\build\bin\ProxmoxBackupClient.exe` (the app) and `gui\build\bin\ProxmoxBackupClientSVC.exe` (the background service, which also takes `-list-sets`, `-undelete` and `-rollback`). Keep them in the same folder. Use the version from `gui/wails.json` (`productVersion`).
 
-```cmd
-build_cli.bat
+To build the Windows GUI on Linux, `./build_gui_windows_docker.sh` runs `wails build` in a `golang:1.25` container and writes `ProxmoxBackupClientGO.exe`. It does not build the service.
+
+## Command-line tools
+
+From the repository root, with `GOOS` set to `windows` or `linux`:
+
+```sh
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o dist/proxmoxbackup-machine ./machinebackup
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o dist/proxmoxbackup-nbd ./nbd        # Linux only
 ```
+
+and `proxmoxbackup-directory` as shown under [The workspace](#the-workspace). Add `.exe` to the names on Windows.
+
+## Windows installer (MSI)
+
+Build the app and the service first (above), then:
+
+```powershell
+cd installer\wix
+.\build-msi.ps1                       # version from gui\wails.json
+.\build-msi.ps1 -Version 0.9.0 -WixDir C:\Dev\tools\wix314
+```
+
+The result is `installer\wix\out\ProxmoxBackupClient-<version>-x64.msi`. The version must be three numbers (`x.y.z`). WiX is looked for in `-WixDir`, then on `PATH`.
+
+## Linux packages
+
+```sh
+packaging/debian/build-deb.sh [output-dir]     # .deb, on Debian, Ubuntu or Mint; default output dist/
+packaging/fedora/build-rpm.sh [output-dir]     # .rpm, in a fedora:44 Docker container
+```
+
+Both take the version from `gui/wails.json`, or from `PBS_VERSION`. The .deb build host needs Go, `dpkg-dev` and the GTK3 and WebKitGTK dev packages; the .rpm build host needs only git and Docker. See [packaging/debian/README.md](packaging/debian/README.md) for what the packages install. `make deb` and `make pkgfedora` call the same scripts.
+
+## Tests
+
+`make test` runs `go test -race` in every module (the separate modules with `GOWORK=off`). `make test-e2e` backs up with the CLIs against a real PBS in Docker and restores with the official client; see `testing/e2e/README.md`.
+
+## Older build files
+
+Several files in the repository root predate the current layout and do not build the current GUI: `build.bat` (there is no Go package in the root), `build_cli.bat` (`directorybackup` is not in `go.work`), `build_gui.bat` and `build_gui.sh` (they refer to an older Fyne GUI), `build.sh`, and the Makefile's `gui`, `service`, `cross-gui-windows` and `release` targets (they use the old Nimbus Backup names and a `cmd/service` folder that does not exist). Use the commands above instead.

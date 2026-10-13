@@ -1,161 +1,95 @@
-# Proxmox Backup Client - Installateur MSI
+# Proxmox Backup Client: Windows installer (MSI)
 
-Ce dossier contient les fichiers nécessaires pour créer l'installateur MSI de Proxmox Backup Client avec support du service Windows.
+This folder builds the Windows installer, `ProxmoxBackupClient-<version>-x64.msi`.
+It uses WiX Toolset 3 (tested with 3.14).
 
-## Prérequis
+For step-by-step build and test instructions see [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md).
+For silent installs on many computers see [DEPLOYMENT.md](DEPLOYMENT.md).
 
-- **WiX Toolset 3.x ou 4.x** : https://wixtoolset.org/
-- **Visual Studio Build Tools** (optionnel mais recommandé)
-- **ProxmoxBackupClient.exe compilé** dans `gui/build/bin/`
+## Files
 
-## Installation WiX Toolset
+| File | What it is |
+| ---- | ---------- |
+| `wix/build-msi.ps1` | The build script. Use this one. |
+| `wix/Product.wxs` | The default brand ("Proxmox Backup Client"): name, exe names, UpgradeCode and Programs and Features links. |
+| `wix/ProductBody.wxi` | The installer itself, shared by every brand: files, service, shortcut, dialogs, uninstall actions. |
+| `wix/NimbusBackup.wxs`, `wix/AcmeBackup.wxs` | Example brand files (placeholder URLs). Not built by `build-msi.ps1`. |
+| `wix/License.rtf` | The licence page shown during install. |
+| `icons/<ExeName>.ico` | The icon for each brand, picked by the brand's `ExeName`. |
+| `wix/build.bat` | Old script from before the fork. It does not pass a version and names the output `NimbusBackup.msi`. Do not use it. |
+| `config.example.json` | Old example in a format the app no longer reads. Nothing uses it. |
 
-### Option 1: Via winget (Windows 11/10)
-```powershell
-winget install --id WiXToolset.WiX
-```
+## What the MSI installs
 
-### Option 2: Téléchargement direct
-1. Télécharger depuis https://github.com/wixtoolset/wix3/releases
-2. Installer le fichier `.exe`
-3. Ajouter `C:\Program Files (x86)\WiX Toolset v3.x\bin` au PATH
+- `C:\Program Files\ProxmoxBackupClient\ProxmoxBackupClient.exe` (the app) and
+  `ProxmoxBackupClientSVC.exe` (the background service). The folder can be changed
+  on the "Destination Folder" page.
+- The Windows service `ProxmoxBackupClientSVC`, display name "Proxmox Backup Client Service".
+  It runs as LocalSystem, starts automatically at boot and is started at the end of the install.
+  The app finds it and hands it backups and schedules ("Run as Service" shows as on).
+- A Start menu entry "Proxmox Backup Client".
+- One entry in Programs and Features, with this fork's links (about, help, updates, issues).
+- When `AUTOSTART=1` (the default): a `Run` entry under HKCU for the account that ran
+  the install, which starts the app minimised to the tray at sign-in (`--minimized`).
 
-## Structure du MSI
+The settings are not part of the MSI. The app and the service keep them in
+`C:\ProgramData\ProxmoxBackupClient` (servers and tokens, Backup Sets, keys, reports, logs).
+The service gives that folder its own permissions when it starts: SYSTEM and Administrators
+full control, local administrator accounts read and create, nobody else.
 
-```
-ProxmoxBackupClient.msi
-├── Service Windows "ProxmoxBackupClient"
-│   ├── Démarre automatiquement au boot
-│   ├── Tourne avec privilèges LocalSystem (admin)
-│   ├── Exécute les backups planifiés
-│   └── Support VSS garanti
-├── Raccourci Menu Démarrer
-└── Désinstallation propre
-```
+## Upgrade
 
-## Build du MSI
+Installing a newer MSI replaces the installed one in place (MajorUpgrade, same UpgradeCode).
+A rebuilt MSI of the same version also replaces it. The installer stops the service and
+closes any running copy of the app first, then starts the new service. The settings in
+ProgramData are not touched. Installing an older version over a newer one is refused.
 
-### Méthode 1: Script automatique
-```batch
-cd installer/wix
-build.bat
-```
+## Removal and the settings
 
-### Méthode 2: Manuel
-```batch
-cd installer/wix
+On removal the service is stopped and deleted, and the programs and the Start menu entry go.
+`C:\ProgramData\ProxmoxBackupClient` is kept unless the property `KEEP_CONFIG` is `0`.
 
-# Compilation
-candle.exe Product.wxs -ext WixUIExtension -ext WixUtilExtension
+- A full-UI removal (run the MSI again, choose Remove) shows a page that asks
+  "Keep configuration" or "Delete configuration". Keep is the default.
+- Programs and Features offers only "Uninstall" (the MSI sets `ARPNOMODIFY`). That runs
+  without the installer's own pages, so the question is not asked and the settings are kept.
+- Silent: `msiexec /x <msi> /qn` keeps the settings; add `KEEP_CONFIG=0` to delete them.
 
-# Création du MSI
-light.exe Product.wixobj -ext WixUIExtension -ext WixUtilExtension -out ProxmoxBackupClient.msi
-```
+Only the silent paths have been tested so far (see [../MSI_UNINSTALL_TEST.md](../MSI_UNINSTALL_TEST.md)).
 
-## Fichiers générés
+## Public properties
 
-- `ProxmoxBackupClient.msi` : Installateur final (à distribuer)
-- `*.wixobj` : Fichiers objets intermédiaires (à ignorer)
-- `*.wixpdb` : Symboles de debug (à ignorer)
+| Property | Default | Effect |
+| -------- | ------- | ------ |
+| `INSTALLFOLDER` | `C:\Program Files\ProxmoxBackupClient` | Where the two programs go. |
+| `AUTOSTART` | `1` | `0` leaves out the sign-in Run entry. |
+| `KEEP_CONFIG` | `1` | On removal, `0` deletes `C:\ProgramData\ProxmoxBackupClient`. |
 
-## Configuration du service
+There is no property that loads settings (no `CONFIGFILE` or similar). Servers and Backup
+Sets are added in the app after the install.
 
-Le service Windows créé par le MSI :
-- **Nom** : ProxmoxBackupClient
-- **Nom d'affichage** : Proxmox Backup Client Service
-- **Compte** : LocalSystem (privilèges admin)
-- **Démarrage** : Automatique
-- **Argument** : `--service` (mode service)
+## Branded builds
 
-## Personnalisation
+A brand is one `.wxs` file that sets `ProductName`, `ExeName`, `ServiceExeName`,
+`VendorKey`, `Manufacturer`, `UpgradeCode` and the four Programs and Features links, then
+includes `ProductBody.wxi`. The programs are installed under the brand's exe names, and
+the app picks its brand from its own exe name at run time (`gui/brand.go`).
 
-### Changer la version
-Modifier dans `Product.wxs` :
-```xml
-<?define ProductVersion = "0.1.44" ?>
-```
+To make one: copy `Product.wxs`, give it a new UpgradeCode, add `icons/<ExeName>.ico`,
+build the two programs under the brand's names, and run candle and light on the new file
+the way `build-msi.ps1` does (it only builds `Product.wxs`).
 
-### Changer l'UUID
-L'`UpgradeCode` doit rester constant entre versions pour permettre les mises à jour :
-```xml
-<?define UpgradeCode = "12345678-1234-1234-1234-123456789012" ?>
-```
-
-### Ajouter des fichiers
-```xml
-<File Id="Config" Source="config.json" />
-```
-
-## Mise à jour du code pour le service
-
-Le fichier `gui/main.go` doit supporter le flag `--service` :
-
-```go
-func main() {
-    isService := false
-    for _, arg := range os.Args {
-        if arg == "--service" {
-            isService = true
-            break
-        }
-    }
-
-    if isService {
-        // Mode service Windows
-        runAsService()
-    } else {
-        // Mode GUI normal
-        runGUI()
-    }
-}
-```
-
-## Test du MSI
-
-1. **Build** : `build.bat`
-2. **Installation** : Double-clic sur `ProxmoxBackupClient.msi` (nécessite admin)
-3. **Vérification service** :
-   ```powershell
-   Get-Service ProxmoxBackupClient
-   ```
-4. **Logs** : Vérifier dans Event Viewer → Application
-5. **Désinstallation** : Panneau de configuration → Programmes
-
-## Distribution
-
-### GitHub Release
-Le workflow GitHub doit être modifié pour inclure le MSI :
-
-```yaml
-- name: Build MSI
-  working-directory: installer/wix
-  run: build.bat
-
-- name: Upload MSI
-  uses: actions/upload-artifact@v4
-  with:
-    name: ProxmoxBackupClient-MSI
-    path: installer/wix/ProxmoxBackupClient.msi
-```
+Never change the UpgradeCode of an existing brand: an upgrade would then install beside the
+old version instead of replacing it.
 
 ## Troubleshooting
 
-### Erreur "candle.exe not found"
-→ WiX Toolset n'est pas dans le PATH. Réinstaller ou ajouter manuellement.
-
-### Erreur "Access denied" lors de l'installation
-→ Exécuter l'installateur en tant qu'administrateur.
-
-### Le service ne démarre pas
-→ Vérifier que l'exe supporte le flag `--service`
-→ Consulter Event Viewer pour les erreurs
-
-### Conflit de version
-→ Désinstaller l'ancienne version d'abord
-→ Vérifier que UpgradeCode est correct
-
-## Ressources
-
-- **WiX Documentation** : https://wixtoolset.org/docs/
-- **Service Windows en Go** : https://github.com/kardianos/service
-- **MSI Best Practices** : https://learn.microsoft.com/en-us/windows/win32/msi/
+- **"version '...' must be x.y.z"**: MSI versions are three numbers. Pass `-Version 0.9.0`
+  for a `-rc1` or `dev-...` build.
+- **"gui\build\bin\... is missing"**: build both programs first (see BUILD_INSTRUCTIONS.md).
+- **candle.exe not found**: unpack WiX 3.14 to `C:\Dev\tools\wix314`, pass `-WixDir`, or
+  put it on PATH.
+- **The service does not start**: look at `C:\ProgramData\ProxmoxBackupClient\service-service.log`.
+  Check that `ProxmoxBackupClientSVC.exe` came from the service build (`-tags service`), not
+  a copy of the app.
+- **Install log**: `msiexec /i <msi> /l*v install.log`.

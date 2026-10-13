@@ -5,9 +5,9 @@ Client GUI and auto-launches it at start.
 
 ## Requirements (Linux host)
 
-- `p7zip-full`  — ISO extraction
-- `wimtools`    — `wimlib-imagex` WIM read/modify
-- `xorriso`     — bootable ISO rebuild
+- `p7zip-full`: ISO extraction
+- `wimtools`: `wimlib-imagex` WIM read/modify
+- `xorriso`: bootable ISO rebuild
 
 ## Building the GUI exe first
 
@@ -49,8 +49,11 @@ curl -C - -o WinPE_base.iso \
    UEFI (`efisys.bin`) boot images.
 4. Rebuilds the ISO with `xorriso -as mkisofs`, preserving both boot records.
 
-At boot, WinPE runs `wpeinit`, then our `startnet.cmd` finds `Start.cmd` on
-the boot media, copies the exe to the RAM drive and launches it.
+At boot, WinPE runs `wpeinit`, then our `startnet.cmd` runs the first
+`Start.cmd` it finds at the root of drives `C:` to `W:` (so one on a USB stick
+overrides the built-in one), or else `X:\Start.cmd` from the image. The default
+`Start.cmd` copies the exe to `X:\ProxmoxBackup` on the RAM drive, launches it
+and leaves a command prompt open.
 
 ## Test
 
@@ -62,7 +65,10 @@ qemu-system-x86_64 -cdrom ProxmoxBackupClient-WinPE.iso -m 2048 -boot d
 
 - The Wails GUI (`ProxmoxBackupClientGO.exe`) needs a desktop session and
   WebView2 runtime, both of which a bare WinPE lacks. The GUI may therefore
-  fail to launch in a plain WinPE shell; `Start.cmd` drops to a rescue shell
-  if that happens. Customize `Start.cmd` (`-a`) for your environment needs.
+  fail to launch in a plain WinPE shell; the default `Start.cmd` always leaves
+  a rescue command prompt open beside it. Customize `Start.cmd` (`-a`) for your
+  environment needs.
+- This ISO does not do a bare-metal restore. For that use the Clonezilla based
+  restore ISO ([docs/manual/BMR.md](../docs/manual/BMR.md)).
 - The built ISO is ~620 MB and is not tracked by git (only `build_winpe_iso.sh`
   and this README are committed).

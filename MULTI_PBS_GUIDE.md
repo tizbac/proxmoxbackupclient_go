@@ -1,355 +1,159 @@
-# Multi-PBS Architecture - Guide d'implémentation
+# Multi-PBS: implementation guide
 
-## 🎯 Vue d'ensemble
+## Overview
 
-Proxmox Backup Client supporte maintenant **plusieurs serveurs PBS** pour un même client. Cela permet des cas d'usage comme :
-- Backup `C:\` vers PBS big-data (gros volumes, lent)
-- Backup `C:\Users` vers PBS SSD (petit volume, rapide)
-- Backup vers PBS production + PBS DR (disaster recovery)
+The GUI and the background service can hold **several PBS servers**. Each Backup Set and each one-off backup names the server it goes to, and Restore picks a source server. Typical uses:
+- `D:\` to a large, slow PBS, weekly
+- `C:\Users` to a small, fast PBS, daily
+- the same folders to a production PBS and to a disaster recovery PBS (two Backup Sets)
 
-## 🏗️ Architecture
+User-facing steps are in [MULTI_PBS_USER_GUIDE.md](MULTI_PBS_USER_GUIDE.md) and section 4 of the [GUI manual](docs/manual/GUI.md#4-adding-a-pbs-server).
 
-### Structure de données
+## Data model
+
+### Config (`gui/config.go`)
 
 ```go
-// Config globale (gui/config.go)
 type Config struct {
-    // Nouveau: Map de serveurs PBS (clé = ID serveur)
-    PBSServers map[string]*PBSServer `json:"pbs_servers"`
+    // Servers, keyed by server ID
+    PBSServers map[string]*PBSServer `json:"pbs_servers,omitempty"`
+    // ID of the default server
+    DefaultPBSID string `json:"default_pbs_id,omitempty"`
 
-    // ID du serveur PBS par défaut
-    DefaultPBSID string `json:"default_pbs_id"`
-
-    // Legacy: anciens champs (rétrocompatibilité)
-    BaseURL string `json:"baseurl,omitempty"` // Deprecated
-    // ...
+    // Legacy single-server fields, kept so an old config.json loads.
+    // Migrated into PBSServers["default"] on load (see below).
+    BaseURL         string `json:"baseurl,omitempty"`
+    CertFingerprint string `json:"certfingerprint,omitempty"`
+    AuthID          string `json:"authid,omitempty"`
+    Secret          string `json:"secret,omitempty"`
+    Datastore       string `json:"datastore,omitempty"`
+    Namespace       string `json:"namespace,omitempty"`
+    // ... encryption key, backup, restore, e-mail and theme settings
 }
+```
 
-// Serveur PBS individuel (gui/pbs_server.go)
+### PBSServer (`gui/pbs_server.go`)
+
+```go
 type PBSServer struct {
-    ID              string `json:"id"`          // "default", "pbs-ssd", "pbs-bigdata"
-    Name            string `json:"name"`        // "SSD Rapide", "Stockage Big Data"
+    ID              string `json:"id"`   // "default", "pbs-ssd", ...
+    Name            string `json:"name"` // "Fast SSD"
     BaseURL         string `json:"baseurl"`
     CertFingerprint string `json:"certfingerprint"`
-    AuthID          string `json:"authid"`
+    AuthID          string `json:"authid"` // API token: AuthID + Secret
     Secret          string `json:"secret"`
-    Datastore       string `json:"datastore"`
-    Namespace       string `json:"namespace"`
-    Description     string `json:"description,omitempty"`
-    IsOnline        bool   `json:"is_online,omitempty"` // Statut connexion
+    Username        string `json:"username,omitempty"` // or user + password
+    Password        string `json:"password,omitempty"`
 
-    // Chiffrement côté client (optionnel, par serveur)
-    EncryptionKeyFile          string `json:"encryption_key_file,omitempty"`       // clé PBS (JSON)
-    EncryptionKeyPassphrase    string `json:"encryption_key_passphrase,omitempty"` // seulement si "Remember"
-    EncryptionKeyPassphraseSet bool   `json:"encryption_key_passphrase_set,omitempty"` // renvoyé à la GUI à la place du secret
+    // Client-side encryption, per server
+    EncryptionKeyFile            string `json:"encryption_key_file,omitempty"`
+    EncryptionKeyPassphrase      string `json:"encryption_key_passphrase,omitempty"` // only with "Remember"
+    EncryptionKeyPassphraseSet   bool   `json:"encryption_key_passphrase_set,omitempty"`
+    ClearEncryptionKeyPassphrase bool   `json:"clear_encryption_key_passphrase,omitempty"`
+
+    Datastore   string `json:"datastore"`
+    Namespace   string `json:"namespace"`
+    Description string `json:"description,omitempty"`
+    IsOnline    bool   `json:"is_online,omitempty"`
+    SecretSet   bool   `json:"secret_set,omitempty"`   // set on copies sent to the frontend
+    PasswordSet bool   `json:"password_set,omitempty"`
 }
+```
 
-Une clé de chiffrement est donc propre à chaque serveur PBS. Une clé protégée par phrase secrète est soit demandée une fois par session ("Ask"), soit mémorisée dans la config ("Remember", requis pour les jobs planifiés et le service Windows). Voir la section « Client-side encryption » du README.
+A server uses **either** an API token (AuthID and Secret) **or** a username and password; adding or updating a server with a token clears the username and password. With a username, a fresh PBS ticket is obtained for every operation; tickets are never stored.
 
-// Job (gui/jobs.go)
-type Job struct {
-    // Nouveau: référence PBS par ID
-    PBSID string `json:"pbs_id,omitempty"` // "pbs-ssd", "pbs-bigdata"
+`sanitized()` strips the secret, the password and the stored passphrase before a server is handed to the frontend, and sets `SecretSet`, `PasswordSet` and `EncryptionKeyPassphraseSet` instead. On update, an empty secret or password means "keep the stored one".
 
-    // Legacy: config PBS embarquée (rétrocompatibilité)
-    PBSConfig Config `json:"pbs_config,omitempty"` // Deprecated
+The encryption key is per server. A passphrase-protected key is either asked for once per app session ("Ask") or stored in the config ("Remember", needed for scheduled backups and the service). See "Client-side encryption" in the [README](README.md#-client-side-encryption).
 
+### Backup Sets (`gui/scheduler.go`)
+
+```go
+type ScheduledJob struct {
+    // ...
+    BackupID string `json:"backupId"`
+    // Which configured server this set backs up to; "" means the default
+    // server at the time the set runs.
+    PBSServerID string `json:"pbsServerId,omitempty"`
     // ...
 }
 ```
 
-## 🔄 Migration automatique
+One-off backups and restores pass a server ID in the same way.
 
-### Ancienne config (single PBS)
+## Resolving a server
+
+`App.resolvePBS(pbsID)` in `gui/pbs_server.go` is used by backups and restores, in the GUI build and the service build alike:
+
+1. A non-empty `pbsID` is looked up in `PBSServers`; an unknown ID is an error (`serveur PBS '<id>' introuvable`).
+2. An empty `pbsID` uses `EffectivePBS()`: the legacy top-level fields if `BaseURL` is set, otherwise the default server (`GetPBSServer("")`). With no default and exactly one server, that server is used; with no default and several servers, the error is `no PBS server specified and no default server`.
+3. The result is a `*Config` with authentication filled in (`withAuth`). Restores then unlock the server's key (`resolveRestorePBS`).
+
+## Migration from a single-server config
+
+`LoadConfig()` converts an old config on first load. When `baseurl` is set and `pbs_servers` is empty:
 
 ```json
 {
   "baseurl": "https://pbs.example.com:8007",
-  "authid": "backup@pbs",
+  "authid": "backup@pbs!client",
   "secret": "xxx",
   "datastore": "backup",
   "namespace": "clients"
 }
 ```
 
-### Nouvelle config (multi-PBS)
-
-Au premier chargement, **migration automatique** :
+becomes, and is saved at once:
 
 ```json
 {
   "pbs_servers": {
     "default": {
       "id": "default",
-      "name": "Serveur PBS Principal",
+      "name": "Main PBS Server",
       "baseurl": "https://pbs.example.com:8007",
-      "authid": "backup@pbs",
+      "authid": "backup@pbs!client",
       "secret": "xxx",
       "datastore": "backup",
       "namespace": "clients",
-      "description": "Serveur PBS par défaut (migré depuis ancienne config)"
+      "description": "Default PBS server (migrated from old config)"
     }
   },
   "default_pbs_id": "default",
-
-  "baseurl": "https://pbs.example.com:8007",  // Gardé pour compatibilité
-  "authid": "backup@pbs",  // Mais ne sera plus utilisé
-  // ...
+  "baseurl": "https://pbs.example.com:8007"
 }
 ```
 
-## 📝 Utilisation backend (Go)
+The legacy fields stay in the file. A config that already has `pbs_servers` is loaded as it is.
 
-### Ajouter un serveur PBS
+## Server rules (`gui/config.go`)
 
-```go
-app := NewApp()
+- `AddPBSServer` validates the server (`PBSServer.Validate`: ID, name, URL, a token or a username, datastore, fingerprint format, a usable key file), refuses a duplicate ID, and makes the first server the default.
+- `UpdatePBSServer` validates and replaces an existing server.
+- `DeletePBSServer` removes a server; if it was the default, another remaining server becomes the default (or none, if it was the last). Backup Sets that name it fail until they are given another server.
+- `SetDefaultPBS` sets `DefaultPBSID`.
 
-newPBS := &PBSServer{
-    ID:          "pbs-ssd",
-    Name:        "SSD Rapide",
-    BaseURL:     "https://pbs-ssd.example.com:8007",
-    AuthID:      "backup@pbs",
-    Secret:      "yyy",
-    Datastore:   "ssd-fast",
-    Namespace:   "clients",
-    Description: "Stockage SSD pour backups critiques",
-}
+## Methods exposed to the frontend (`gui/main.go`)
 
-err := app.AddPBSServer(newPBS)
-```
+| Method | What it does | Returns |
+|---|---|---|
+| `ListPBSServers()` | All servers, sanitized | `[]*PBSServer` |
+| `GetPBSServer(id)` | One server, sanitized; `""` gives the default | `*PBSServer, error` |
+| `AddPBSServer(pbs)` | Adds a server | `error` |
+| `UpdatePBSServer(pbs)` | Updates a server, keeping stored secrets that come back empty | `error` |
+| `DeletePBSServer(id)` | Deletes a server | `error` |
+| `SetDefaultPBSServer(id)` | Sets the default | `error` |
+| `GetDefaultPBSID()` | The default server's ID | `string` |
+| `TestPBSConnection(id)` | Connects and authenticates | `error` |
+| `GetServerFingerprint(url)` | The certificate fingerprint the server presents, for trust on first use | `string, error` |
+| `PinPBSServerFingerprint(id, fp)` | Stores a confirmed fingerprint on a server | `error` |
 
-### Lister les serveurs PBS
+With the background service running, the GUI may not be allowed to write `config.json`; fingerprint pinning then goes through the service's local API (`/pbs/fingerprint`).
 
-```go
-servers := app.ListPBSServers()
-for _, pbs := range servers {
-    fmt.Printf("PBS %s: %s (%s)\n", pbs.ID, pbs.Name, pbs.BaseURL)
-}
-```
+## Frontend
 
-### Créer un job avec PBS spécifique
+The server list and editor are in Preferences > Account Information (`gui/frontend/src/App.jsx`). The Backup Set editor's Destination tab and the one-off form have a **Destination PBS server** picker (`backupPBSID`, saved as `pbsServerId`); Restore has a **Source PBS server** picker. The shared Backup ID warning compares server, backup type and Backup ID, so two sets with the same ID on different servers do not warn.
 
-```go
-job := &Job{
-    Name:        "Backup SSD",
-    PBSID:       "pbs-ssd",  // Référence le serveur SSD
-    Folders:     []string{"C:\\Users", "C:\\Projects"},
-    Schedule:    "daily",
-    ScheduleCron: "0 2 * * *",
-}
+## Tests
 
-app.SaveScheduledJob(job)
-```
-
-### Résoudre la config PBS d'un job
-
-```go
-globalConfig := LoadConfig()
-
-// Job peut référencer PBS par ID ou avoir config embarquée (legacy)
-pbsConfig, err := job.GetPBSConfig(globalConfig)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Utiliser pbsConfig pour le backup
-client := pbscommon.NewPBSClient(pbsConfig.BaseURL, ...)
-```
-
-## 🎨 Utilisation frontend (à implémenter)
-
-### Liste des serveurs PBS
-
-```javascript
-// Récupérer tous les serveurs PBS
-const servers = await window.go.main.App.ListPBSServers();
-
-// Afficher dans un dropdown
-<select name="pbs-server">
-  {servers.map(pbs => (
-    <option value={pbs.id}>
-      {pbs.name} ({pbs.datastore})
-    </option>
-  ))}
-</select>
-```
-
-### Ajouter un serveur PBS
-
-```javascript
-const newServer = {
-  id: "pbs-dr",
-  name: "Disaster Recovery",
-  baseurl: "https://pbs-dr.example.com:8007",
-  authid: "backup@pbs",
-  secret: "zzz",
-  datastore: "disaster-recovery",
-  namespace: "clients",
-  description: "Serveur de secours"
-};
-
-await window.go.main.App.AddPBSServer(newServer);
-```
-
-### Tester connexion PBS
-
-```javascript
-try {
-  await window.go.main.App.TestPBSConnection("pbs-dr");
-  alert("✅ Connexion PBS réussie !");
-} catch (err) {
-  alert("❌ Erreur: " + err);
-}
-```
-
-### Créer un job avec PBS spécifique
-
-```javascript
-const job = {
-  name: "Backup critique",
-  pbs_id: "pbs-ssd",  // Serveur SSD rapide
-  folders: ["C:\\Users", "C:\\Documents"],
-  schedule: "daily",
-  schedule_cron: "0 3 * * *"
-};
-
-await window.go.main.App.SaveScheduledJob(job);
-```
-
-## 🔧 API Methods (exposées au frontend)
-
-| Méthode | Description | Params | Return |
-|---------|-------------|--------|--------|
-| `ListPBSServers()` | Liste tous les serveurs PBS | - | `[]*PBSServer` |
-| `GetPBSServer(id)` | Récupère un serveur par ID | `id: string` | `*PBSServer` |
-| `AddPBSServer(pbs)` | Ajoute un nouveau serveur | `pbs: PBSServer` | `error` |
-| `UpdatePBSServer(pbs)` | Met à jour un serveur | `pbs: PBSServer` | `error` |
-| `DeletePBSServer(id)` | Supprime un serveur | `id: string` | `error` |
-| `SetDefaultPBSServer(id)` | Définit le PBS par défaut | `id: string` | `error` |
-| `GetDefaultPBSID()` | ID du PBS par défaut | - | `string` |
-| `TestPBSConnection(id)` | Teste connexion PBS | `id: string` | `error` |
-
-## 🛡️ Rétrocompatibilité
-
-### Jobs existants (legacy)
-
-Les jobs créés avant Multi-PBS ont une config PBS **embarquée** :
-
-```json
-{
-  "id": "job_123",
-  "name": "Old Job",
-  "pbs_config": {  // Config embarquée (deprecated)
-    "baseurl": "https://pbs.example.com:8007",
-    "authid": "backup@pbs",
-    // ...
-  }
-}
-```
-
-**Résolution automatique** :
-1. Si `pbs_id` présent → utilise serveur référencé
-2. Sinon si `pbs_config.baseurl` présent → utilise config embarquée
-3. Sinon → utilise serveur par défaut (`default_pbs_id`)
-
-### Migration des jobs legacy (optionnel)
-
-```go
-// Migrer un job vers PBSID
-job.MigrateToPBSID("default")
-// Efface job.PBSConfig et définit job.PBSID = "default"
-```
-
-## 📊 Exemple complet : Use case multi-datastore
-
-```go
-// Setup 1: Ajouter 2 serveurs PBS
-pbsBigData := &PBSServer{
-    ID: "pbs-bigdata",
-    Name: "Big Data Storage",
-    BaseURL: "https://pbs-bigdata.local:8007",
-    Datastore: "bigdata-slow",
-}
-app.AddPBSServer(pbsBigData)
-
-pbsSSD := &PBSServer{
-    ID: "pbs-ssd",
-    Name: "SSD Fast",
-    BaseURL: "https://pbs-ssd.local:8007",
-    Datastore: "ssd-fast",
-}
-app.AddPBSServer(pbsSSD)
-
-// Setup 2: Créer jobs différents
-jobBigData := &Job{
-    Name: "Backup gros volumes",
-    PBSID: "pbs-bigdata",
-    Folders: []string{"C:\\", "D:\\"},
-    Schedule: "weekly",
-}
-
-jobCritical := &Job{
-    Name: "Backup critique quotidien",
-    PBSID: "pbs-ssd",
-    Folders: []string{"C:\\Users", "C:\\Projects"},
-    Schedule: "daily",
-}
-```
-
-Résultat :
-- **C:\\ + D:\\** → PBS big-data (lent, gros espace) → 1x/semaine
-- **C:\\Users** → PBS SSD (rapide, petit) → 1x/jour
-
-## ✅ Tests de migration
-
-### Test 1 : Config vierge
-```bash
-# Aucune config existante
-config := LoadConfig()
-# → config.PBSServers = {} (vide)
-# → config.DefaultPBSID = "" (vide)
-```
-
-### Test 2 : Migration depuis legacy
-```bash
-# Ancienne config avec baseurl="https://pbs.local:8007"
-config := LoadConfig()
-# → Auto-migration activée
-# → config.PBSServers["default"] créé
-# → config.DefaultPBSID = "default"
-# → Sauvegarde automatique
-```
-
-### Test 3 : Config déjà migrée
-```bash
-# Config avec pbs_servers existant
-config := LoadConfig()
-# → Pas de migration (pbs_servers déjà présent)
-# → Load normal
-```
-
-## 🚀 Prochaines étapes (Frontend)
-
-Pour finaliser Multi-PBS, il faut créer l'UI :
-
-1. **Page "Serveurs PBS"**
-   - Liste des serveurs avec statut (🟢 Online / 🔴 Offline)
-   - Boutons : Ajouter, Modifier, Supprimer, Tester
-   - Indicateur serveur par défaut (⭐)
-
-2. **Formulaire job modifié**
-   - Dropdown "Serveur PBS" (au lieu de champs manuels)
-   - Pré-sélection du serveur par défaut
-   - Affichage datastore/namespace du serveur sélectionné
-
-3. **Page Config simplifiée**
-   - Si Multi-PBS activé → rediriger vers "Serveurs PBS"
-   - Sinon → formulaire legacy (rétrocompat)
-
----
-
-**Status:** ✅ Backend complet | ⏳ Frontend à développer
-**Version:** 0.2.0+
-**Mainteneur:** Proxmox Backup Client GO contributors
-**Date:** 2026-03-23
+`gui/crypt_test.go` covers the per-server encryption key (`TestPBSServerToConfigCarriesTheEncryptionKey`, `TestPBSServerValidateRejectsUnusableKey`, `TestPBSServerSanitizedKeepsTheKeyPath`). `gui/config_test.go` covers saving and loading a config. There are no unit tests yet for the migration from a single-server config or for the add, delete and default rules.

@@ -1,201 +1,93 @@
-# Proxmox Backup Client - Silent Installation Guide (Enterprise)
+# Deploying the MSI to many computers
 
-## 📋 Vue d'ensemble
+This covers silent installs through Group Policy, Intune or a script. Everything here
+uses standard `msiexec` options and the MSI's own properties. See [README.md](README.md)
+for what the MSI installs.
 
-Ce guide explique comment déployer Proxmox Backup Client en masse via GPO, Intune, ou scripts de déploiement.
+## What a silent install does and does not do
 
-## 🔧 Préparation
+It does:
 
-### 1. Créer la configuration centralisée
+- install the app and the service in `C:\Program Files\ProxmoxBackupClient`;
+- install and start the service `ProxmoxBackupClientSVC` (LocalSystem, automatic);
+- add the Start menu entry and the Programs and Features entry;
+- upgrade an older version in place.
 
-Copiez `config.example.json` et personnalisez-le pour votre environnement:
+It does not configure anything. There is no `CONFIGFILE` property or other way to pass
+settings to the MSI. After the install, each computer needs its PBS server, token and
+Backup Sets added in the app, by an administrator (adding or changing Backup Sets needs an
+elevated app while job protection is on, which is the default).
 
-```json
-{
-  "pbs_url": "https://pbs.mycompany.local:8007",
-  "auth_id": "windows-backups@pbs",
-  "secret": "xxxx-xxxx-xxxx-xxxx",
-  "datastore": "windows-clients",
-  "namespace": "workstations",
-  "backup_id": "",
-  "backup_dirs": ["C:\\Users", "C:\\ProgramData\\AppData"],
-  "exclusions": ["*.tmp", "*.log", "Temp\\*"],
-  "schedule": {
-    "enabled": true,
-    "time": "02:00",
-    "days": ["monday", "wednesday", "friday"]
-  },
-  "vss_enabled": true
-}
-```
+## Commands
 
-**Important:**
-- `backup_id` vide = utilise le hostname de la machine
-- Chemins Windows: utilisez `\\` pour échapper les backslashes
-
-### 2. Placer le fichier config
+Run as an administrator, or as SYSTEM (GPO, Intune).
 
 ```powershell
-# Sur un partage réseau accessible
-\\ad-server\NETLOGON\proxmoxbackupclient\config.json
-# OU
-\\fileserver\Deployments\ProxmoxBackupClient\config.json
+# Install or upgrade
+msiexec /i ProxmoxBackupClient-0.9.0-x64.msi /qn /norestart /l*v C:\Windows\Temp\pbc-install.log
+
+# Without the sign-in Run entry
+msiexec /i ProxmoxBackupClient-0.9.0-x64.msi /qn AUTOSTART=0
+
+# Other install folder
+msiexec /i ProxmoxBackupClient-0.9.0-x64.msi /qn INSTALLFOLDER="D:\Apps\ProxmoxBackupClient"
+
+# Remove, keeping C:\ProgramData\ProxmoxBackupClient
+msiexec /x ProxmoxBackupClient-0.9.0-x64.msi /qn
+
+# Remove and delete the settings
+msiexec /x ProxmoxBackupClient-0.9.0-x64.msi /qn KEEP_CONFIG=0
 ```
 
-**Permissions requises:** Lecture pour "Domain Computers"
+`AUTOSTART=1` (the default) writes the Run entry under HKCU of the account that runs the
+install. Under GPO or Intune that is SYSTEM, so the entry does nothing useful for the
+signed-in user. Use `AUTOSTART=0` there.
 
-## 🚀 Déploiement
+Install exit code 0 means success; 3010 means success with a restart needed.
 
-### Option A - GPO (Group Policy)
+## Group Policy
 
-1. **Créer une GPO** dans `Computer Configuration > Policies > Software Settings > Software Installation`
+Computer Configuration > Policies > Software Settings > Software Installation, new
+package, "Assigned", pointing at the MSI on a share that Domain Computers can read. To set
+`AUTOSTART=0`, use a transform (.mst) made with Orca or a similar tool.
 
-2. **Ajouter le package MSI** avec options avancées:
-   ```
-   Package: \\server\share\ProxmoxBackupClient.msi
-   Deployment method: Assigned
-   ```
+## Intune
 
-3. **Paramètres d'installation**:
-   - Dans "Modifications", ajouter une transformation (.mst) OU
-   - Utiliser la ligne de commande avancée:
-     ```
-     CONFIGFILE="\\ad-server\NETLOGON\proxmoxbackupclient\config.json"
-     ```
+Add it as a Line-of-business app (the MSI as is) or as a Win32 app (packed with the
+Win32 Content Prep Tool), with:
 
-4. **Appliquer la GPO** au bon OU (ex: `Computers/Workstations`)
+- Install: `msiexec /i ProxmoxBackupClient-0.9.0-x64.msi /qn AUTOSTART=0`
+- Uninstall: `msiexec /x {ProductCode} /qn`
+- Detection: the MSI product code, or the file
+  `C:\Program Files\ProxmoxBackupClient\ProxmoxBackupClientSVC.exe`.
 
-### Option B - Intune (Microsoft Endpoint Manager)
+The product code changes with every build (`Product Id="*"`). The UpgradeCode
+`F15C307F-1053-46B7-BCB0-2FAAC3627ED6` stays the same for all versions.
 
-1. **Créer une application Win32**
-   - Fichier source: `ProxmoxBackupClient.msi`
-   - Format: Win32 app (.intunewin)
-
-2. **Commande d'installation**:
-   ```powershell
-   msiexec /i ProxmoxBackupClient.msi /qn CONFIGFILE="C:\Windows\Temp\proxmoxbackupclient-config.json"
-   ```
-
-3. **Script de pré-requis**:
-   ```powershell
-   # Télécharger config depuis Azure Storage ou créer localement
-   $config = Invoke-RestMethod "https://yourblob.blob.core.windows.net/configs/proxmoxbackupclient.json"
-   $config | Out-File "C:\Windows\Temp\proxmoxbackupclient-config.json"
-   ```
-
-4. **Détection**:
-   - Fichier: `C:\Program Files\Proxmox Backup Client\bin\proxmoxbackupclient-service.exe`
-   - Service: `ProxmoxBackupClientService` (Running)
-
-### Option C - Script PowerShell
+## Checking a computer
 
 ```powershell
-# deploy-proxmoxbackupclient.ps1
-$msiPath = "\\server\deploy\ProxmoxBackupClient.msi"
-$configPath = "\\server\deploy\proxmoxbackupclient-config.json"
-
-# Installation silencieuse avec config
-Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /qn CONFIGFILE=`"$configPath`"" -Wait
-
-# Vérifier le service
-if (Get-Service -Name "ProxmoxBackupClientService" -ErrorAction SilentlyContinue) {
-    Write-Host "✅ Proxmox Backup Client installed successfully"
-    Start-Service -Name "ProxmoxBackupClientService"
-} else {
-    Write-Error "❌ Installation failed"
-    exit 1
-}
+Get-Service ProxmoxBackupClientSVC                     # Running, Automatic
+Test-Path "C:\Program Files\ProxmoxBackupClient\ProxmoxBackupClient.exe"
+Get-Content C:\ProgramData\ProxmoxBackupClient\service-service.log -Tail 50
 ```
 
-## 🔍 Vérification
+`service-service.log` and `backup-service.log` are the service's logs. Each backup also
+gets its own `backup-<time>-<id>.log`. These files are readable only by administrators.
 
-### Vérifier l'installation
+## Security notes
 
-```powershell
-# Service installé et démarré
-Get-Service ProxmoxBackupClientService
+- `C:\ProgramData\ProxmoxBackupClient\config.json` holds the PBS API token secrets. The
+  service restricts the folder to SYSTEM, Administrators and local administrator accounts
+  (read and create) every time it starts. A standard user who opens the app is told the
+  settings are open to administrators only.
+- The service's local API listens on 127.0.0.1:18765 only and needs the token in
+  `C:\ProgramData\ProxmoxBackupClient\api-token`, which the service replaces each time it
+  starts. See [../gui/api/INTEGRATION.md](../gui/api/INTEGRATION.md).
+- The programs are not code signed. SmartScreen or Defender may warn. Check the SHA-256
+  that `build-msi.ps1` prints, or the release's checksums.
 
-# Config présente
-Test-Path "C:\ProgramData\ProxmoxBackupClient\config.json"
+## Monitoring
 
-# Premier backup dans les logs
-Get-Content "C:\ProgramData\ProxmoxBackupClient\logs\service.log" -Tail 50
-```
-
-### Logs d'installation MSI
-
-En cas d'échec, générer un log détaillé:
-```powershell
-msiexec /i ProxmoxBackupClient.msi /qn CONFIGFILE="config.json" /l*v install.log
-```
-
-Chercher les erreurs:
-```powershell
-Select-String -Path install.log -Pattern "error|failed" -Context 2,2
-```
-
-## 🛡️ Sécurité
-
-### Protection du Token API
-
-Le fichier `config.json` contient le secret PBS. **Bonnes pratiques:**
-
-1. **Permissions NTFS strictes** sur le partage:
-   - `Domain Computers`: Lecture seule
-   - `Domain Admins`: Contrôle total
-   - Refuser: `Domain Users`
-
-2. **Chiffrement au repos** (optionnel):
-   ```powershell
-   # Chiffrer avec DPAPI (machine-level)
-   # À implémenter dans une future version
-   ```
-
-3. **Rotation du token**: Prévoir un script pour mettre à jour `config.json` et redémarrer les services.
-
-## 📊 Monitoring
-
-### Dashboard centralisé
-
-Utilisez l'API du service pour monitorer l'état des backups:
-```powershell
-# Script de monitoring (à planifier quotidiennement)
-$machines = Get-ADComputer -Filter * -SearchBase "OU=Workstations,DC=domain,DC=com"
-foreach ($machine in $machines) {
-    # Check last backup via l'API du service
-    # Send alert if > 24h
-}
-```
-
-## 🆘 Dépannage
-
-### Le service ne démarre pas
-
-1. Vérifier les Event Logs:
-   ```powershell
-   Get-EventLog -LogName Application -Source "ProxmoxBackupClientService" -Newest 10
-   ```
-
-2. Tester manuellement:
-   ```powershell
-   cd "C:\Program Files\Proxmox Backup Client\bin"
-   .\proxmoxbackupclient-service.exe --service
-   ```
-
-### Config non prise en compte
-
-```powershell
-# Vérifier le contenu
-Get-Content "C:\ProgramData\ProxmoxBackupClient\config.json" | ConvertFrom-Json | Format-List
-```
-
-## 📞 Support
-
-**Proxmox Backup Client GO contributors**
-- Web: https://github.com/tizbac/proxmoxbackupclient_go
-- Doc: https://github.com/tizbac/proxmoxbackupclient_go
-
----
-
-**Version:** 0.2.0
-**Dernière mise à jour:** 2026-03-19
+There is no central dashboard. Each computer's Reports page and its notification e-mails
+(set per Backup Set) show the results of its backups.

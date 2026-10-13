@@ -319,9 +319,10 @@ func pickEntries(entries []imagefs.Entry, rel string) []imagefs.Entry {
 // Files go to another folder (abs: dest/<volume>/<path>; flat: below the
 // selection's common folder), or, for a caller that gives each volume a root
 // (ArchiveRoots keyed by volume name, Mode original), under that root.
-// Modification and creation times are restored; with RestoreACLs the
-// read-only, hidden, system and archive attributes too. Permissions (ACLs)
-// are not read from the image yet.
+// Modification and creation times are restored, on Windows the files'
+// alternate data streams, and on Linux a Linux volume's modes (and owners as
+// root); with RestoreACLs the read-only, hidden, system and archive
+// attributes and the NTFS permissions from $Secure too.
 func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(float64, string), stage func(string, string)) error {
 	if mode == RestoreModeOriginal && opts.ArchiveRoots == nil {
 		return fmt.Errorf("files from a disk image are restored to another folder: choose \"alternate location\"")

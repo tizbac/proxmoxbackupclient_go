@@ -1,373 +1,348 @@
-# Proxmox Backup Client — Client Windows per Proxmox Backup Server
+# Proxmox Backup Client: client Windows e Linux per Proxmox Backup Server
 
 [🇬🇧 English](README.md) · [🇫🇷 Français](README.fr.md) · [🇮🇹 Italiano](README.it.md) · [🇩🇪 Deutsch](README.de.md) · [🇪🇸 Español](README.es.md) · [🇷🇺 Русский](README.ru.md) · [🇨🇳 中文](README.zh.md) · [🇯🇵 日本語](README.ja.md) · [🇬🇷 Ελληνικά](README.el.md) · [🇷🇴 Română](README.ro.md) · [🇸🇪 Svenska](README.sv.md) · [🇸🇦 العربية](README.ar.md) · [🇮🇷 فارسی](README.fa.md)
 
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
-[![Documentation](https://img.shields.io/badge/docs-github-orange)](https://github.com/tizbac/proxmoxbackupclient_go)
+[![Release](https://img.shields.io/github/v/release/mjb-is/proxmoxbackupclient_go)](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
+[![Documentation](https://img.shields.io/badge/docs-manuals-orange)](docs/manual/README.md)
 
-**Proxmox Backup Client è un client di backup open-source (GPL-3.0) per Proxmox Backup Server (PBS), funzionante su Windows e Linux.**
+**Proxmox Backup Client è un client di backup open source (GPL-3.0) per Proxmox Backup Server (PBS), per Windows e Linux.** È una **suite di strumenti**:
 
-È una **suite di strumenti** per eseguire il backup verso PBS:
+- **Proxmox Backup Client GUI** (basata sulla GUI Nimbus Backup di RDEM Systems): client grafico per Windows e Linux, con snapshot coerenti (VSS su Windows, elastio-snap/dattobd su Linux), set di backup pianificati, backup di cartelle e di dischi interi, ripristino, Recupero (Undelete) e Rollback, più server PBS e un servizio in background.
+- **`proxmoxbackup-directory`**: backup di cartelle (pxar) da riga di comando, con deduplicazione e rilevamento delle modifiche.
+- **`proxmoxbackup-machine`**: backup a caldo di dischi interi (fidx) di macchine Windows (VSS) e Linux (elastio-snap/dattobd); l'immagine è avviabile dopo un ripristino bare-metal.
+- **`proxmoxbackup-nbd`**: collega un backup di disco come dispositivo NBD per il ripristino (Linux).
+- Una **ISO di ripristino bare-metal** basata su Clonezilla Live.
 
-- **Proxmox Backup Client GUI** (basata sulla GUI Nimbus Backup di RDEM Systems) — interfaccia grafica moderna per eseguire il backup di server e workstation Windows verso PBS: snapshot coerenti via VSS, job pianificati, modalità file e disco, navigazione/ripristino degli snapshot, supporto multi-PBS e modalità servizio Windows.
-- **`proxmoxbackup-directory`** — strumento a riga di comando per backup di directory (PXAR) con deduplicazione.
-- **`proxmoxbackup-machine`** — strumento a riga di comando per backup live completi del sistema Windows (FIDX, VSS, incrementale).
-- **`proxmoxbackup-nbd`** — server NBD per ripristinare backup disco (Linux).
+> ⚠️ **Avvertenza:** questo progetto **non è in alcun modo affiliato** a **Proxmox Server Solutions GmbH**. "Proxmox", il logo Proxmox e i nomi correlati appartengono ai rispettivi proprietari; qui servono **solo** a indicare la compatibilità. Vedere [proxmox.com](https://www.proxmox.com/).
 
-> Parole chiave: client proxmox backup windows · client PBS · backup Windows VSS · backup remoto immutabile · interfaccia Proxmox Backup Server.
+> ℹ️ **Questa pagina è un riassunto tradotto.** Il riferimento è il [README.md inglese](README.md), che contiene tutti i dettagli. I manuali sono in inglese.
 
-> ⚠️ **Disclaimer:** Questo progetto **non è affiliato in alcun modo** con **Proxmox Server Solutions GmbH**. "Proxmox", il logo Proxmox e i relativi nomi sono di proprietà dei rispettivi titolari; qui vengono usati **solo** per dichiarare la compatibilità. Vedi [proxmox.com](https://www.proxmox.com/) per i loro prodotti.
+## 📖 Manuali utente
 
-## 📦 Download
+| Manuale | Contenuto |
+|---|---|
+| **[Manuale della GUI](docs/manual/GUI.md)** | Installazione, server PBS, set di backup, backup incrementali, ripristino, Recupero, Rollback, Report, Preferenze, servizio, risoluzione dei problemi |
+| **[Manuale della riga di comando](docs/manual/CLI.md)** | I tre strumenti: opzioni, file di configurazione, codici di uscita, pianificazione; Recupero e Rollback da riga di comando |
+| **[Manuale del ripristino bare-metal](docs/manual/BMR.md)** | La ISO di ripristino passo per passo; snapshot `vm` su Proxmox VE; hardware diverso |
 
-👉 **[Scarica l'ultima release](https://github.com/tizbac/proxmoxbackupclient_go/releases)**
+Vedere anche gli [scenari di ripristino](docs/RESTORE_GUIDE.md) e l'[indice dei manuali](docs/manual/README.md).
 
-> ⚠️ **Windows segnala « virus rilevato » (es. `Trojan:Win32/Sabsik.FL.A!ml`) o un avviso SmartScreen?**
-> Si tratta di un **falso positivo** noto per le applicazioni Go/Wails — *non* è un virus. Il suffisso `!ml` indica una rilevazione da parte di un modello di machine learning che segnala eseguibili *non firmati e poco diffusi*.
-> Scopri [perché accade e come verificare il download](https://github.com/tizbac/proxmoxbackupclient_go).
+## 🆕 Su master, per la prossima release
 
-### 🔎 Verifica di qualsiasi download
+Nel [CHANGELOG](CHANGELOG.md) sotto [Unreleased], non ancora rilasciato:
 
-Ogni release fornisce checksum SHA-256 e una **attestazione di provenienza firmata** (prova crittografica che il binario è stato prodotto dalla CI di questo repository, a partire da un commit preciso):
+- **Installer**: **MSI per Windows** (app e servizio in Program Files, menu Start, aggiornamento sul posto, impostazioni mantenute o eliminate alla rimozione) e **pacchetti Linux** `.deb` (Debian, Ubuntu, Mint) e `.rpm` (Fedora).
+- **Servizio in background su Linux** (`proxmoxbackupclient.service`): i set pianificati girano come root anche senza utenti collegati (Preferenze > Avanzate > Esegui come servizio). **Riavvia come amministratore** funziona anche su Linux (tramite pkexec).
+- **Pausa, Riprendi e Ferma** per i backup eseguiti dal servizio.
+- Avviso e badge **ID condiviso** quando due set condividono un gruppo di backup (stesso server, tipo e ID Backup).
+- **Impostazioni protette**: `C:\ProgramData\ProxmoxBackupClient` solo per gli amministratori su Windows; cartella privata del proprietario su Linux.
+- **File ripristinabili dai backup macchina** anche da FAT, exFAT, ext2/3/4 e XFS oltre a NTFS; le immagini Windows rimettono anche permessi e stream di dati alternativi.
+- I backup macchina Linux saltano lo spazio libero (ext2/3/4, XFS).
+- Recupero e Rollback per i set macchina Linux, e **da riga di comando**: `-list-sets`, `-undelete`, `-rollback`.
+- Gli strumenti a riga di comando scrivono gli errori su stderr, e `proxmoxbackup-machine` invia la sua e-mail di notifica.
+
+## 💽 Novità della v0.8.0
+
+- **I backup macchina Windows saltano lo spazio libero** (e i file di paging e ibernazione): un disco mezzo vuoto si legge in circa metà del tempo. Un **settore danneggiato** non ferma più il backup (viene scritto come zeri e segnalato).
+- **Ripristino di file da un backup macchina**: ogni volume NTFS dell'immagine è una cartella da sfogliare, cercare e selezionare, senza montare né scaricare nulla (127 GB e 430.000 file elencati in 4-15 secondi). Un solo backup macchina copre così sia il ripristino bare-metal sia il file perso.
+- **Recupero e Rollback** sui set macchina (Windows), per le cartelle scelte (di default Desktop, Documents, Pictures, Music, Videos e Downloads).
+- **Pausa e Riprendi**, badge **VSS / Snapshot ON-OFF**, date di creazione Windows salvate e ripristinate.
+- **v0.8.2:** lo spazio vuoto non viene più sottoposto a hash blocco per blocco (disco di prova da 50 GB: da 3m36s a 1m15s).
+
+## 🗑️ Novità della v0.7.0: Recupero e Rollback
+
+- **Recupero** trova i file presenti nei backup di un set ma non più sul disco (ultimo backup, oppure ultimi 7 o 30 giorni), li mostra in un albero con il momento della scomparsa e ripristina quelli selezionati. Dopo aver cancellato 39 GB da una condivisione di 761.000 file, la ricerca su 7 giorni li ha ritrovati in circa un minuto.
+- **Rollback** riporta le cartelle di un set allo stato di un backup scelto, dopo un'anteprima. Ogni file sostituito o rimosso viene prima spostato da parte sullo stesso disco, quindi **Annulla** rimette tutto com'era.
+
+Inoltre: finestre di conferma, prossima esecuzione su ogni scheda, ID Backup suggerito, servizio incluso nel download per Windows. Vedere il [manuale della GUI](docs/manual/GUI.md#10-undelete).
+
+## ⚡ Novità della v0.6.0: backup incrementali di cartelle
+
+Con lo stesso **rilevamento delle modifiche** del `proxmox-backup-client` ufficiale, la modalità **Metadati** confronta dimensione, data di modifica (al nanosecondo), modo e proprietario di ogni file con lo snapshot precedente; i file invariati non vengono aperti e i loro chunk vengono riutilizzati. Su un server da 480,9 GB e 761.866 file la prima esecuzione richiede 4 h 17 min, le successive circa 10-15 minuti (da 4 a 40 chunk nuovi). Il traffico verso un PBS remoto si riduce di conseguenza. Vedere il [manuale della GUI](docs/manual/GUI.md#7-incremental-folder-backups-change-detection).
+
+## 🤝 Compatibile con il client Proxmox ufficiale
+
+Verificato con `proxmox-backup-client` 3.4.9 e PBS 4.2, in entrambe le direzioni:
+
+- Gli snapshot Legacy, Data e Metadata di questo client (Windows o Linux) si ripristinano **byte per byte** con il client ufficiale, e il file browser di PBS 4.2 li apre; quelli del client ufficiale si ripristinano byte per byte con questo client.
+- Stesso formato di archivio diviso (pxar versione 2), stesse modalità di rilevamento, stesso formato del file di chiave (`proxmox-backup-client key create`), stesse variabili d'ambiente `PBS_REPOSITORY`.
+
+I vostri backup non sono quindi mai legati a questo client. Unica aggiunta: un piccolo file `.proxmox_backup_client_meta.json` alla radice degli snapshot di cartelle, che il client ufficiale ripristina come un normale file.
+
+## 📦 Download e installazione
+
+👉 **[Scarica l'ultima release](https://github.com/mjb-is/proxmoxbackupclient_go/releases)**
+
+| Se hai | Usa |
+|---|---|
+| Windows | L'**installer MSI** (`ProxmoxBackupClient-<version>-x64.msi`), oppure lo zip `ProxmoxBackupClient-v<version>-windows-amd64.zip` (app e `ProxmoxBackupClientSVC.exe` nella stessa cartella) |
+| Debian, Ubuntu, Mint | `sudo apt install ./proxmoxbackupclient_<version>_amd64.deb` |
+| Fedora | `sudo dnf install ./proxmoxbackupclient-<version>-1.fc44.x86_64.rpm` |
+| Altro Linux | `ProxmoxBackupClient-v<version>-linux-amd64.tar.gz` (richiede il runtime WebKitGTK) |
+| Solo riga di comando | `ProxmoxBackupClient-CLI-v<version>-windows-amd64.zip` oppure `-linux-amd64.tar.gz` |
+
+MSI, `.deb` e `.rpm` sono novità di master (fino alla v0.8.1 solo zip e tar.gz); nel frattempo vedere [BUILD.md](BUILD.md). Su Linux la voce di menu **Proxmox Backup Client (administrator)** avvia l'app come root tramite polkit, per i backup macchina; il servizio è installato ma non attivato ([packaging/debian/README.md](packaging/debian/README.md)).
+
+**Requisiti:** Windows 10/11 o Windows Server a 64 bit (diritti di amministratore per VSS e backup macchina), oppure Linux con WebKitGTK (e root più elastio-snap o dattobd per i backup macchina); accesso di rete a un Proxmox Backup Server.
+
+> ⚠️ **Windows segnala un virus (`Trojan:Win32/Sabsik.FL.A!ml`) o SmartScreen avvisa?** È un **falso positivo noto** delle applicazioni Go/Wails non firmate. Dettagli nel [progetto originale](https://github.com/tizbac/proxmoxbackupclient_go).
+
+### 🔎 Verificare un download
+
+Ogni release di questo fork include un `SHA256SUMS.txt`:
 
 ```powershell
-Get-FileHash .\ProxmoxBackupClient.exe -Algorithm SHA256   # confrontare con SHA256SUMS.txt
-gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclient_go
+Get-FileHash .\ProxmoxBackupClient-v0.8.1-windows-amd64.zip -Algorithm SHA256   # compare with SHA256SUMS.txt
 ```
 
-**VirusTotal — 0 rilevamenti.** Report multi-motore indipendenti dei recenti installer MSI:
-[0.2.108](https://www.virustotal.com/gui/file/6e8fb7ce9af740d470e947addb8daba4331c0b88e8bfdec9e0697ea8f7f29e9e/detection) ·
-[0.2.107](https://www.virustotal.com/gui/file/6fd6c6fa77e0305c129ef882a3745100aa6033187a6d52a4af94149ab6b666d2/detection) ·
-[0.2.106](https://www.virustotal.com/gui/file/ad6e56700ed9df8e088906e38cee2e2882fc7045f4e39269de0e379a01784ad7/detection)
-
-> ℹ️ **Firma del codice:** i binari Windows **non sono ancora firmati Authenticode** (un certificato OSS tramite [SignPath Foundation](https://signpath.org) è in attesa). Nel frattempo la provenienza è stabilita tramite l'attestazione e i checksum sopra.
+Su Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`. Non ci sono ancora firma del codice né attestazione da CI (vedere [TODO.md](TODO.md)).
 
 ## ✨ Funzionalità
 
-### GUI — Proxmox Backup Client GUI (consigliata)
-- **🌍 Multilingue** — interfacce in francese, inglese, italiano, tedesco e polacco
-- Configurazione intuitiva con test di connessione
-- Avanzamento del backup in tempo reale con velocità e tempo rimanente
-- Supporto VSS (Volume Shadow Copy) per backup coerenti
-- Backup multi-cartella, modalità file e disco
-- Navigazione negli snapshot, ricerca file (jolly) e ripristino
-- Supporto multi-servers PBS con pinning dell'impronta del certificato (TOFU)
-- Modalità servizio Windows + backup pianificati
-- Annullamento del backup, cronologia (ultime 6) e riesecuzione
-- Registrazione di debug per la diagnostica
+### GUI (consigliata)
+- **18 lingue dell'interfaccia**, tra cui italiano, francese e tedesco
+- Menu laterale: Backup, Ripristino, Recupero, Rollback, Report, Registro messaggi, Preferenze, Informazioni
+- **Set di backup** pianificati (giornaliero, a intervalli, manuale) con "Esegui ora", badge del tipo e VSS / Snapshot; **backup una tantum**
+- **Backup incrementali di cartelle** (Metadati) con rilettura completa ogni N esecuzioni
+- **Backup macchina** Windows e Linux, come `host` o come snapshot `vm` di Proxmox VE
+- **Ripristino** selettivo con ricerca, ACL NTFS/POSIX, date e verifica facoltativa; file dai backup macchina
+- **Pausa, Riprendi, Ferma**; **Esegui come servizio** (Preferenze > Avanzate)
+- Report, notifiche e-mail, azioni dopo il backup, esportazione e importazione delle impostazioni, cinque temi di colore
+- Più server PBS, pinning del certificato, token API o utente/password; **cifratura lato client**
 
-### Strumenti CLI
-- `proxmoxbackup-directory` — backup di directory (PXAR) con deduplicazione
-- `proxmoxbackup-machine` — backup live completo del sistema Windows (FIDX, VSS, incrementale)
-- `proxmoxbackup-nbd` — server NBD per ripristinare backup disco (Linux)
+### Strumenti a riga di comando
+- `proxmoxbackup-directory`: cartelle (pxar), `-change-detection-mode legacy|data|metadata`
+- `proxmoxbackup-machine`: dischi interi (fidx, incrementale, spazio libero saltato salvo `-readfreespace`)
+- `proxmoxbackup-nbd`: server NBD per ripristinare backup di disco (Linux)
+- `ProxmoxBackupClientSVC` (Windows) e `proxmoxbackupclient` (Linux): `-list-sets`, `-undelete`, `-rollback` (su master)
 
-### 📸 Schermate
+### 📸 Screenshot
 
-![Configurazione dei server](docs/screenshots/nimbus-gui-liste-servers.png)
-*Gestione multi-server PBS con indicatori di stato*
+<table>
+<tr>
+<td width="33%">
 
-![Modulo di aggiunta server](docs/screenshots/nimbus-gui-add-server-form.png)
-*Configurazione semplice del server con test di connessione*
+[<img src="docs/screenshots/gui-backup-sets.png" width="280">](docs/screenshots/gui-backup-sets.png)
+**Set di backup**: badge ed "Esegui ora"
 
-![Backup immediato](docs/screenshots/nimbus-gui-one-shot-backup.png)
-*Avanzamento del backup in tempo reale con ETA e velocità*
+</td>
+<td width="33%">
 
-### Esclusioni di sistema intelligenti (modalità file)
-Quando si esegue il backup di un intero drive (es. `D:\`), la GUI esclude automaticamente:
+[<img src="docs/screenshots/gui-backup-progress.png" width="280">](docs/screenshots/gui-backup-progress.png)
+**Avanzamento in tempo reale**: velocità, tempo stimato, chunk
 
-**Cartelle di sistema:** `System Volume Information` (archivio VSS, può raggiungere 100+ GB), `$RECYCLE.BIN`, `Recovery`.
-**File di sistema:** `pagefile.sys`, `hiberfil.sys`, `swapfile.sys`.
+</td>
+<td width="33%">
 
-**Perché è importante:** un disco può mostrare 1,03 TB utilizzati mentre i file reali sono ~141 GB. Senza esclusioni il backup includerebbe gli snapshot VSS (spazio e tempo sprecati); con esse, la dimensione corrisponde ai dati reali.
+[<img src="docs/screenshots/gui-restore.png" width="280">](docs/screenshots/gui-restore.png)
+**Ripristino**: elencare gli snapshot o cercarvi un file
 
-**Raccomandazione:** usa la **modalità file** (predefinita) con auto-esclusioni per i backup a livello di file; usa la **modalità disco** in un job separato per il ripristino bare-metal (include tutto).
+</td>
+</tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/backup-sets-vm-badge.png" width="280">](docs/screenshots/backup-sets-vm-badge.png)
+**Set come VM Proxmox VE**: badge `MACHINE (VM)`
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-reports.png" width="280">](docs/screenshots/gui-reports.png)
+**Report**: cronologia completa con dettagli
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-lang-italian.png" width="280">](docs/screenshots/gui-lang-italian.png)
+**In italiano**: la pagina Report
+
+</td>
+</tr>
+</table>
+
+Tutti gli screenshot sono nel [README inglese](README.md).
+
+### Esclusioni di sistema intelligenti
+I backup di cartelle saltano `System Volume Information`, `$RECYCLE.BIN`, `Recovery` (alla radice di un'unità), `.pbs-rollback`, `pagefile.sys`, `hiberfil.sys`, `swapfile.sys` e `DumpStack.log.tmp`. Un'unità che mostra 1,03 TB occupati può contenere solo 141 GB di file reali. Consiglio: backup di **cartelle** per i file, backup **macchina** in un set separato per il ripristino bare-metal.
 
 ### Sicurezza e qualità
-- Validazione degli input e pulizia delle credenziali
-- Prevenzione delle path traversal
-- Logica di retry con backoff esponenziale
-- Gestione completa degli errori e test, conformità lint al 100%
+Cifratura facoltativa con manifest firmato; API locale del servizio solo su 127.0.0.1, con token; validazione degli input, prevenzione del path traversal, nuovi tentativi con backoff esponenziale; unit test e test end-to-end.
+
+## 🔐 Cifratura lato client
+
+Ogni chunk viene cifrato con AES-256-GCM prima di lasciare la macchina, con un file di chiave PBS (intercambiabile con il client ufficiale); il manifest è firmato e il server non vede mai la chiave.
+
+**GUI:** **Preferenze > Informazioni account**, modificare un server, scheda **Cifratura**: scegliere una chiave oppure **Genera...**. Per una chiave protetta: **Chiedimela** (una volta per sessione) oppure **Ricorda su questo computer** (necessario per il servizio e i job non presidiati). **Senza il file di chiave nessun ripristino è possibile: conservatene una copia fuori dalla macchina.**
+
+**CLI:**
+```shell
+proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -keyfile "C:\keys\pbs-key.json" -keyfile-passphrase "..."
+```
+`-keyfile-passphrase` serve solo per una chiave protetta (viene chiesto se manca); `proxmoxbackup-machine` e `proxmoxbackup-nbd` accettano le stesse opzioni. La ISO Clonezilla chiede la chiave e la passphrase, senza mai scrivere la chiave nella ISO.
+
+**Limiti:** `config.json` contiene in chiaro token, password e passphrase memorizzate (su master la sua cartella è protetta; fino alla v0.8.2 era leggibile dagli utenti locali su Windows). Una chiave persa non si recupera.
+
+## Backup di cartelle più veloci: rilevamento delle modifiche
+
+| Modalità | Legge | Salvato come |
+|---|---|---|
+| **Classico** (`legacy`, predefinita) | tutti i file | un `<name>.pxar.didx` per cartella |
+| **Dati** (`data`) | tutti i file | archivio diviso: `<name>.mpxar.didx` + `<name>.ppxar.didx` |
+| **Metadati** (`metadata`) | solo i file nuovi e modificati | lo stesso archivio diviso; i file invariati vengono ripresi dal backup precedente senza essere letti |
+
+**GUI:** modificare un set, scheda **Destinazione**, **Rilevamento modifiche** (solo set di cartelle; i backup macchina non cambiano). Impostare **Rileggi tutti i file ogni N esecuzioni** per cogliere le rare modifiche che lasciano invariate dimensione e data. Dare a ogni set **il proprio ID Backup**: due set con lo stesso ID si confrontano l'uno con l'altro e rileggono tutto.
+
+**CLI:** `-change-detection-mode legacy|data|metadata`; non esiste un'opzione "ogni N esecuzioni", pianificare ogni tanto un `-change-detection-mode data`. Prima di passare a Dati o Metadati, aggiornare alla v0.6.0 o successiva ogni macchina che ripristina: le versioni precedenti non leggono gli archivi divisi.
 
 ## 🚀 Avvio rapido (GUI)
 
-1. Scarica `ProxmoxBackupClient.exe` (o il `.msi`) dalle release
-2. Avvialo con diritti di amministratore (necessari per VSS)
-3. Configura la connessione PBS e testala
-4. Seleziona le cartelle da salvare
-5. Avvia il backup
+1. Installare l'MSI, il `.deb` o l'`.rpm` (oppure estrarre lo zip / tar.gz)
+2. Su Windows, **Esegui come amministratore** per VSS e backup macchina; su Linux, **Proxmox Backup Client (administrator)** per i backup macchina
+3. Aggiungere il server PBS in **Preferenze > Informazioni account** e premere **Test**
+4. Creare un set di backup (o un backup una tantum) e scegliere cartelle o dischi
+5. Eseguirlo; perché le pianificazioni girino senza utenti collegati, attivare **Preferenze > Avanzate > Esegui come servizio**
 
-## NUOVO! — Backup live completo della macchina
+Il [manuale della GUI](docs/manual/GUI.md) descrive ogni passaggio.
 
-È stata aggiunta una nuova funzionalità che consente di eseguire il backup di un intero sistema Windows 10/11 e delle rispettive versioni server senza alcuna interruzione.
+## Backup completo a caldo della macchina
 
-La sintassi del comando è quasi la stessa, tranne che per `-backupdir string`.
+Stessa sintassi dei backup di cartelle, con `-backupdev` al posto di `-backupdir`:
 
-Nel caso dell'eseguibile di machine backup al posto di backupdir c'è `-backupdev`.
-Ad esempio un'invocazione potrebbe essere:
+`proxmoxbackup-machine.exe -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
 
-`machinebackup.exe -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
+Il comando fa uno snapshot VSS delle partizioni del disco 0 e crea un'immagine avviabile dell'intero disco (fidx). Lo spazio libero entra come zeri senza essere letto (`-readfreespace` per leggere tutto). I backup successivi sono incrementali.
 
-Il comando sopra esaminerà il Disco 0, rileverà tutte le partizioni montate, creerà uno snapshot VSS di queste e infine genererà un'immagine di backup avviabile dell'intero disco in formato FIDX.
+### Requisiti per il backup macchina su Linux
 
-Il backup successivo sarà incrementale; l'hashing è stato parallelizzato, quindi è facile raggiungere velocità di 1 GB/sec.
+Linux non ha VSS: il progetto usa il modulo kernel `elastio-snap` (un fork di `dattobd`); installare la versione mantenuta [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap) (va bene anche `dattobd` già caricato). Servono due condizioni:
 
-### Ripristino dei file — NUOVO!
+1. **Il modulo kernel deve essere installato e caricato.** Il pacchetto di repository documentato punta a un URL non valido (almeno per Ubuntu 22.04); la compilazione dai sorgenti funziona:
+   ```bash
+   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
+   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
+   cd elastio-snap
+   sudo make
+   sudo make install
+   sudo depmod -a     # required - `make install` only copies the .ko, it never
+                       # runs depmod, so a bare `modprobe elastio-snap` right
+                       # after a fresh install fails with "not found in
+                       # directory" even though the file is right there
+                       # (confirmed live 2026-09-24)
+   sudo modprobe elastio-snap
+   lsmod | grep elastio-snap   # confirms it loaded
+   ```
+   Il modulo resta caricato solo fino al riavvio (vedere `/etc/modules-load.d/` per caricarlo a ogni avvio).
 
-Il ripristino dei file è possibile usando lo strumento nbd.
+2. **Il backup deve girare come root (EUID 0).** Il gruppo `disk` non basta: usare la voce **Proxmox Backup Client (administrator)**, il servizio in background oppure `sudo`. Un backup di cartelle non ha questo requisito.
 
-Per usare nbd esegui prima `modprobe nbd max_part=0`.
+### Ripristino di file da un backup di disco
 
-Per motivi sconosciuti, l'uso di `max_part != 0` causa un loop infinito nel probing delle partizioni.
+La pagina Ripristino apre un backup macchina come una cartella, senza montare nulla. Su Linux lo si può anche collegare via NBD (dopo `modprobe nbd max_part=0`):
 
-Lo strumento NBD collegherà qualsiasi backup di disco fisso, indipendentemente dal fatto che sia un backup di VM o di host (funziona anche per i backup PVE).
+`./proxmoxbackup-nbd -authid 'apikey' -baseurl https://yourpbs:8007 -secret 'yoursecret' -certfingerprint 'aa:...:xx' -datastore test -namespace test1 -path "vm/107/2025-08-02T23:13:01Z/drive-virtio0.img.fidx"`
 
-Per usarlo usa una riga di comando simile a questa:
-`./pbsnbd -authid 'apikey' -baseurl https://yourpbs:8007 -secret 'yoursecret' -certfingerprint 'aa:...:xx' -datastore test -namespace test1 -path "vm/107/2025-08-02T23:13:01Z/drive-virtio0.img.fidx"`
+Senza `-path` compare un'interfaccia testuale per scegliere. Da evitare su macchine importanti; smontare tutto prima di fermarlo, altrimenti `nbd-client -d /dev/nbd0`.
 
-Se ometti `-path`, apparirà un'interfaccia a terminale che ti permetterà di selezionare il file fidx.
+### Ripristino su una macchina fisica
 
-> Attenzione a non usarlo su una macchina con dati importanti (un filesystem corrotto può potenzialmente mandare in crash il sistema operativo, ecco perché Proxmox VE usa un'istanza QEMU per questo).
+La ISO Clonezilla modificata offre una voce completamente automatica **"PBS Bare Metal Restore"**: dati PBS, scelta dello snapshot, conferma del disco, poi rete, ripristino e riavvio senza altri interventi. Resta disponibile anche la voce semi-manuale "pbs-nbd". Vedere il [manuale BMR](docs/manual/BMR.md).
 
-Assicurati inoltre di aver smontato tutto dal disco nbd prima di fermare pbsnbd, altrimenti probabilmente ti ritroverai con una partizione occupata e non smontabile. Se qualcuno sa come risolvere, faccelo sapere.
+## Uso: backup di cartelle
 
-Se ricevi un errore `Device or resource busy`, devi forzare la disconnessione eseguendo `nbd-client -d /dev/nbd0` o semplicemente riavviare.
-
-### Ripristino su macchina fisica
-
-Verrà rilasciato un sistema live CD / avvio PXE che permetterà di accedere a un server PBS, selezionare il backup e avviare clonezilla. Per ora il metodo migliore è avviare una clonezilla live e copiarvi l'eseguibile del server nbd; prima di procedere con clonezilla, su un altro tty, avvia `pbsnbd`.
-
-Suggerisco anche di copiare i parametri della riga di comando come authid, baseurl, fingerprint ecc., sono una scocciatura da digitare a mano!
-
-Una volta avviato pbsnbd, puoi usare l'opzione disco-a-disco-locale di clonezilla.
-
-## Utilizzo — Backup di directory
-
-Un comando tipico sarebbe simile a:
+Riferimento completo nel **[manuale della riga di comando](docs/manual/CLI.md)**. Un comando tipico:
 
 ```shell
-proxmoxbackupgo.exe -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -backupdir "C:\path\to\backup" -datastore "datastorename"
+proxmoxbackup-directory.exe -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -backupdir "C:\path\to\backup" -datastore "datastorename"
 ```
 
 ```
-proxmoxbackupgo.exe
-  -authid string
-        Authentication ID (PBS Api token)
-  -secret string
-        Secret for authentication
-  -backupdir string
-        Backup source directory, must not be symlink
-  -baseurl string
-        Base URL for the proxmox backup server, example: https://192.168.1.10:8007
-  -certfingerprint string
-        Certificate fingerprint for SSL connection, example: ea:7d:06:f9...
-  -datastore string
-        Datastore name
-  -namespace string
-        Namespace (optional)
-  -backup-id string
-        Backup ID (optional - if not specified, the hostname is used as the default for host-type backups)
-  -pxarout string
-        Output PXAR archive for debug purposes (optional)
-  -backupstream string  ***NEW***
-        Filename for stream backup
-  -mail-host string
-        mail notification system: mail server host(optional)
-  -mail-port string
-        mail notification system: mail server port(optional)
-  -mail-username string
-        mail notification system: mail server username(optional)
-  -mail-password string
-        mail notification system: mail server password(optional)
-  -mail-insecure bool
-        mail notification system: allow insecure communications(optional)
-  -mail-from string
-        mail notification system: sender mail(optional)
-  -mail-to string
-        mail notification system: receiver mail(optional)
-
-  -mail-subject-template string
-        mail notification system: mail subject template(optional)
-  -mail-body-template string
-        mail notification system: mail body template(optional)
-
-  -config string
-        Path to JSON config file. If this flag is provided all the others will override the loaded config file
+proxmoxbackup-directory
+  -baseurl string            PBS URL, example: https://192.168.1.10:8007
+  -certfingerprint string    Certificate fingerprint (asked for interactively when omitted)
+  -authid string             API token ID (user@realm!token)
+  -secret string             API token secret
+  -pbsusername string        PBS user for ticket login (with -pbspassword; overrides -authid/-secret)
+  -pbspassword string        Password for -pbsusername (asked for when omitted)
+  -datastore string          Datastore name
+  -namespace string          Namespace (optional)
+  -backup-id string          Backup ID (default: the hostname)
+  -backupdir string          Source directory; repeat for several (each becomes group <id>_<path>)
+  -change-detection-mode     legacy (default), data or metadata
+  -novss                     Do not snapshot the source (VSS on Windows, elastio-snap/dattobd on Linux)
+  -keyfile string            PBS encryption key file
+  -keyfile-passphrase string Passphrase for a protected key (asked for when omitted)
+  -backupstream string       Back up standard input as <name>.didx instead of a directory
+  -pxarout string            Also write the archive to a local file (debugging)
+  -mail-host, -mail-port, -mail-username, -mail-password, -mail-insecure,
+  -mail-from, -mail-to, -mail-subject-template, -mail-body-template
+                             Email report (optional)
+  -config string             JSON config file; flags given on the command line override it
 ```
 
-Per la configurazione JSON viene fornito un esempio JSON, compila solo i campi necessari.
+Vengono lette anche le variabili d'ambiente `PBS_REPOSITORY` e simili del client ufficiale.
 
-Nota sul templating delle mail:
-Viene usato il [motore di templating di Go](https://pkg.go.dev/text/template) per oggetto e corpo delle mail, fai riferimento alla documentazione per la sintassi.
-Le seguenti variabili sono disponibili per il templating:
+## 🔨 Compilare dai sorgenti
 
-- `.NewChunks`: numero di nuovi chunk creati
-- `.ReusedChunks`: numero di chunk riutilizzati
-- `.Datastore`: nome del datastore
-- `.Error`: messaggio di errore se presente
-- `.Hostname`: hostname della macchina
-- `.StartTime`: ora di inizio del backup
-- `.EndTime`: ora di fine del backup
-- `.Duration`: durata del backup
-- `.FromattedDuration`: durata formattata del backup
-- `.Success`: booleano che indica se il backup è riuscito
-- `.Status`: rappresentazione testuale dello stato del backup [SUCCESS, FAILURE]
+Tutto è in **[BUILD.md](BUILD.md)** (GUI, servizio, strumenti CLI, MSI, pacchetti Linux). In breve, con Go 1.25 o successivo e Wails CLI v2.13:
 
-## Stream Backup
-
-Questo consente di eseguire il backup di uno stream invece di un PXAR, aprendo infinite possibilità. Ad esempio puoi invocare:
-
-```
-mysqldump yourdatabase | ./proxmoxbackupgo -backupstream yourdatabase.sql [other options]
-```
-
-Ciò consente di sfruttare buzhash per la deduplicazione anche quando si usa tar, ad esempio, o il dump sql stesso. E se qualcuno volesse provarci, dovrebbe essere possibile con qualche hack convogliare il comando DISM per generare un'immagine WIM e ottenere un backup completo dell'host.
-
-## Problemi noti
-
-L'antimalware Windows Defender attivo rallenta il backup fino al 25% della velocità raggiungibile.
-
-~~Al momento non esiste alcun meccanismo per impedire l'avvio di due istanze contemporaneamente, il che compromette VSS e il backup~~
-Se usi l'utilità di pianificazione di Windows, teoricamente dovrebbe impedire che due istanze partano contemporaneamente quando originate dallo stesso job.
-
-## 📋 Prerequisiti
-
-- Windows 10/11 (64 bit)
-- Diritti di amministratore (per gli snapshot VSS)
-- Accesso di rete a un server Proxmox Backup Server
-- Linux funziona anche, soprattutto per lo sviluppo
-
-## 🔨 Compilazione dai sorgenti
-
-### Prerequisiti
-- Go 1.22 o successivo
-- Node.js 20 o successivo
-- Wails CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
-
-### GUI
 ```bash
 cd gui
-npm install --prefix frontend
-wails build      # oppure: wails dev  (hot reload)
+wails build                                    # the app, in gui/build/bin
+go build -tags service -o build/bin/ProxmoxBackupClientSVC.exe   # the background service
 ```
 
-### Progetto completo (Makefile)
-```bash
-make install-deps   # installa Wails CLI + dipendenze frontend
-make                # compila tutto (CLI + GUI + Service)
-```
+Il frontend compilato è nel repository: Node.js serve solo per modificarlo. Test: `make test`.
 
-Gli artefatti vengono collocati nella directory `dist/`. Vedi `make help` per tutti i target (`cli`, `gui`, `service`, `test`, `lint`, `security-check`, `release`...).
+## 🔧 Uso avanzato e guide
 
-## 🔧 Utilizzo avanzato e guide
-
-### Multi-PBS (più server PBS)
-
-Configura più server PBS e scegli la destinazione per ogni backup (es. `C:\Users` → PBS SSD veloce, quotidiano; `C:\` → PBS big-data, settimanale; più un server DR).
-
-- **[Guida utente](MULTI_PBS_USER_GUIDE.md)** — aggiunta/test dei server, server predefinito, FAQ e risoluzione dei problemi.
-- **[Guida all'implementazione](MULTI_PBS_GUIDE.md)** — modello dei dati, migrazione automatica dalla config mono-PBS, metodi API backend.
-
-La configurazione mono-PBS esistente viene migrata automaticamente verso un server `default` al primo caricamento.
-
-### ISO Clonezilla (ripristino bare-metal)
-
-Il flusso di soccorso viene costruito patchando un'ISO Clonezilla Live con i binari `pbsnbd` / `machinebackup` e una voce **pbs-nbd** nel menu principale di Clonezilla (avvio da CD, USB via `dd` e UEFI):
+- **Multi-PBS** (più server, destinazione scelta per set): [guida utente](MULTI_PBS_USER_GUIDE.md) e [guida all'implementazione](MULTI_PBS_GUIDE.md).
+- **ISO Clonezilla per il ripristino bare-metal**: si ottiene modificando una ISO Clonezilla Live, dettagli in [PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md):
 
 ```bash
 ./patch-clonezilla.sh \
   -o clonezilla-live-patched.iso \
   clonezilla-live-3.3.3-15-amd64.iso \
   ./build/pbsnbd ./build/machinebackup \
-  ./clonezilla-patch/ocs-pbs-nbd
+  ./clonezilla-patch/ocs-pbs-nbd ./clonezilla-patch/ocs-pbs-bare-metal-restore
 ```
 
-Dettagli completi (perché una ricostruzione completa invece di una sostituzione in-place, prerequisiti, flusso del menu, verifica) in **[PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md)**.
-
-### Compilazione della GUI Windows
-
-**Docker (consigliato, soprattutto quando si compila su Linux).** Lo script in un comando produce un `ProxmoxBackupClientGO.exe` con il corretto supporto WebView2, tramite un contenitore `golang` usa e getta (installazione di mingw + Wails, build del frontend, esecuzione di `wails build`) :
-
-```bash
-./build_gui_windows_docker.sh
-```
-
-**Windows nativo (Chocolatey).** Vedi **[BUILD.md](BUILD.md)** per la configurazione completa della toolchain Windows:
-
-```powershell
-choco install go
-choco install mingw
-# poi, in una shell non elevata:
-build.bat          # GUI
-build_cli.bat      # CLI
-```
-
-### Stato delle funzionalità, changelog e documenti interni
-
-- **[FEATURES_STATUS.md](FEATURES_STATUS.md)** — matrice dello stato per funzionalità (implementato / testato / roadmap).
-- **[CHANGELOG.md](CHANGELOG.md)** — cronologia delle modifiche per versione.
-- **[TODO.md](TODO.md)** — roadmap e idee aperte.
-- **[RELEASE_NOTES.md](RELEASE_NOTES.md)** — stato stabile del prodotto e build disponibili.
-- **[MSI_UNINSTALL_TEST.md](MSI_UNINSTALL_TEST.md)** — dialogo di disinstallazione MSI (conserva/elimina configurazione) e relativo piano di test.
-- **[FIXES_SUMMARY.md](FIXES_SUMMARY.md)** — note di fix della GUI (passaggio da modalità directory a macchina).
+- [FEATURES_STATUS.md](FEATURES_STATUS.md): cosa è fatto o no, e da quale versione; [CHANGELOG.md](CHANGELOG.md): cronologia per versione; [TODO.md](TODO.md): roadmap; [RELEASE_NOTES.md](RELEASE_NOTES.md); [AGENTS.md](AGENTS.md): struttura del repository.
 
 ## 🌐 Supporto tecnico in Italia
 
-Premesso che il progetto e **TUTTI** i suoi contributi resteranno per sempre pubblici e licenziati sotto licenza GPLv3, lo sponsor principale di questo progetto e anche delle più recenti funzionalità di machine backup, E.T.I. Srl ( https://etitech.net ), può fornire a chi ne ha bisogno supporto per le implementazioni Proxmox in generale e specificamente per gli strumenti di backup Windows.
-
-Non ci sarà mai un'edizione «community» e una «enterprise» separate: il supporto tecnico sarà esclusivamente un servizio indipendente.
-Qualsiasi personalizzazione richiesta, anche se lo sviluppo dovesse essere a pagamento, verrà rilasciata sotto GPLv3 come l'intero progetto.
+Il progetto e **tutti** i suoi contributi resteranno per sempre pubblici e in GPLv3. E.T.I. Srl ( https://etitech.net ), sponsor principale del progetto e delle ultime funzioni di backup macchina, offre a chi ne ha bisogno supporto per i deployment Proxmox e per gli strumenti di backup Windows. Non ci sarà mai un'edizione "community" separata da una "enterprise": il supporto è un servizio indipendente, e ogni personalizzazione richiesta, anche se a pagamento, sarà rilasciata in GPLv3.
 
 ## 🖥️ Attribuzione della GUI
 
-La **Proxmox Backup Client GUI** è basata sulla **[GUI Nimbus Backup](https://nimbus.rdem-systems.com)**, sviluppata e mantenuta da **[RDEM Systems](https://www.rdem-systems.com/)**.
-
-La GUI (originariamente un fork di questo progetto) è stata integrata in questo repository: l'intero codebase, inclusa la GUI e tutte le sue funzionalità, rimane open-source sotto licenza GPLv3. RDEM Systems sponsorizza lo sviluppo della GUI e ne offre il supporto commerciale.
+La GUI è basata sulla **[GUI Nimbus Backup](https://nimbus.rdem-systems.com)** di **[RDEM Systems](https://www.rdem-systems.com/)**, che ne sponsorizza lo sviluppo e fornisce il supporto commerciale. Tutto il codice resta in GPLv3.
 
 ## ⚠️ Avvertenza
 
-Questo software è fornito «così com'è». Anche se miriamo all'affidabilità, decliniamo ogni responsabilità per perdita o danneggiamento dei dati. Testa sempre i tuoi backup e verifica il ripristino prima di affidarti ad essi in produzione.
-
-Il software è ancora di qualità alpha e non ci assumiamo alcuna responsabilità per qualsiasi tipo di danno o perdita di dati, anche dei file sorgente.
+Software fornito "così com'è", ancora di qualità alpha; decliniamo ogni responsabilità per la perdita di dati. Testare backup e ripristini prima dell'uso in produzione.
 
 ## 📄 Licenza
 
-GPLv3 — vedi il file [LICENSE](LICENSE).
+GPLv3: vedere [LICENSE](LICENSE).
 
 ## 🏷️ Branding
 
-Ogni contributore che abbia contribuito con **almeno 5 commit** che aggiungono funzionalità o correzioni, ha il diritto di far aggiungere i propri dati di branding per uso commerciale.
+Ogni contributore con almeno **5 commit** di funzionalità o correzioni può far aggiungere il proprio branding per uso commerciale, a condizione che l'azienda non sia coinvolta in campagne di malware, promozione della guerra (in qualsiasi paese), truffe, furto di dati, traffico di minori, violenza, discriminazione, droga o altre attività illegali. In caso di reclamo senza una spiegazione valida, il beneficio viene revocato immediatamente. La licenza GPLv3 resta in vigore: si è sempre liberi di fare un fork del progetto.
 
-Le uniche condizioni sono che l'azienda verso cui il branding punta **non** stia conducendo alcuna delle seguenti attività:
+## 🤝 Contribuire
 
-- Campagne di malware
-- Aziende che promuovono la guerra (questo si applica a qualsiasi paese, inclusi quelli occidentali)
-- Truffe
-- Furto di dati
-- Traffico di esseri umani/minori
-- Violenza
-- Discriminazione
-- Droghe
-- Qualsiasi attività generalmente riconosciuta come illegale
+Contributi benvenuti, in particolare:
 
-Se dovesse emergere qualche reclamo nei confronti di uno dei contributori, cercheremo di metterci in contatto; se non viene fornita una spiegazione valida, **termineremo immediatamente** quel beneficio.
+1. Cifratura: revisione da madrelingua dei testi tradotti automaticamente, gestione delle chiavi oltre il file (ad esempio DPAPI di Windows)
+2. Migrazione da fisico a virtuale (P2V): le basi funzionano con il tipo `vm`; mancano scheda di rete, TPM, driver virtio, CPU/RAM reali, bus diversi da SATA
+3. Upload asincrono / multicore dei chunk
+4. Descrittori di sicurezza Windows nel formato pxar (patch lato Proxmox)
+5. Link simbolici Windows
 
-La **licenza GPLv3 rimane attiva**, e sarai comunque libero di creare un fork del progetto e compilare i tuoi eseguibili.
+## Informazioni
 
-## 🤝 Contribuisci
-
-La GUI è ora completamente implementata, ma i contributi sono ancora benvenuti, in particolare:
-
-1. Supporto alla crittografia (ancora mancante)
-2. Migrazione fisico-virtuale (P2V), ripristino di un backup bare-metal in una macchina virtuale (ancora incompleta)
-3. Upload asincrono / upload multicore dei chunk (la compressione multicore è già implementata per il machine backup)
-4. Patch lato Proxmox per aggiungere un altro tipo di voce al formato pxar con i descrittori di sicurezza Windows
-5. Supporto per i symlink Windows
-6. Qualsiasi cosa interessante ti venga in mente :)
-
-## Informazioni sui contributori di Proxmox Backup Client GO
-
-I contributori di Proxmox Backup Client GO sviluppano e mantengono questo progetto. Il software si basa sull'infrastruttura NTP/NTS e gli [11 server NTS pubblici](https://github.com/jauderho/nts-servers) elencati nel riferimento della community.
+I contributori di Proxmox Backup Client GO sviluppano e mantengono questo progetto, che si basa sull'infrastruttura NTP/NTS e sugli [11 server NTS pubblici](https://github.com/jauderho/nts-servers).
 
 ---
 

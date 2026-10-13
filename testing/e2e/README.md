@@ -23,8 +23,8 @@ From GitHub Actions, see [`../../.github/workflows/e2e.yml`](../../.github/workf
 |---|---|
 | Docker | A PBS container is started for the duration of the run. |
 | `python3` | Used to build fixtures and to assert on JSON. |
-| `proxmox-backup-client` | The official client. If it is not on `PATH`, the suite automatically falls back to the `fdrake/proxmox-backup-client` container image. |
-| `make`, Go | Used to build `dist/proxmoxbackup-directory` and `dist/proxmoxbackup-machine` (skip with `E2E_SKIP_BUILD=1`). |
+| `proxmox-backup-client` | The official client. By default the suite builds it in a container from Proxmox's own Debian repository ([`official-client/Dockerfile`](official-client/Dockerfile)), so it is always current. Set `PBC_BIN` to use a local binary instead. |
+| `make`, Go | `make cli` builds `dist/proxmoxbackup-directory` and `dist/proxmoxbackup-machine` (and `proxmoxbackup-nbd` on Linux). Skip with `E2E_SKIP_BUILD=1`. |
 
 ### Configuration
 
@@ -32,13 +32,14 @@ Every setting is an environment variable with a sensible default:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PBS_IMAGE` | `ayufan/proxmox-backup-server:latest` | PBS container image. **There is no official Proxmox PBS image** — PBS deliberately ships none — so we use the community image Proxmox staff point at on their forum. |
+| `PBS_IMAGE` | `ayufan/proxmox-backup-server:latest` | PBS container image. **There is no official Proxmox PBS image** (PBS deliberately ships none), so we use the community image Proxmox staff point at on their forum. |
 | `PBS_CONTAINER` | `pbs-e2e` | Container name (removed on exit). |
 | `PBS_PORT` | `8007` | Host port, bound to `127.0.0.1` only. |
 | `PBS_DATASTORE` | `e2e` | Datastore created inside PBS. |
 | `PBS_USER` / `PBS_TOKEN_NAME` | `e2e@pbs` / `e2etoken` | API user and token. A dedicated token is generated per run; no admin password is needed. |
-| `PBC_BIN` | `proxmox-backup-client` | Path to the official client. |
-| `PBC_IMAGE` | `fdrake/proxmox-backup-client:latest` | Fallback official-client image. |
+| `PBS_NAMESPACE` | `e2e` | Namespace for the namespace round-trip test (test 8). Empty skips that test. |
+| `PBC_BIN` | unset | Path to a local official client. Unset, the suite builds and uses `PBC_IMAGE`. |
+| `PBC_IMAGE` | `proxmoxbackupclient-e2e-client:latest` | Tag of the official-client image built from `official-client/Dockerfile`. |
 | `E2E_SKIP_OFFICIAL` | `0` | Set to `1` to skip every official-client assertion (useful for a quick smoke run). |
 | `E2E_SKIP_BUILD` | `0` | Set to `1` to reuse the binaries already in `dist/`. |
 | `E2E_KEEP` | `0` | Set to `1` to keep the workdir and container. |
@@ -55,6 +56,7 @@ Every setting is an environment variable with a sensible default:
 | 5 | Manifest interop | The official client lists our snapshots, restores our `index.json.blob`, and the manifest has a valid signature, a `key-fingerprint`, `crypt-mode: encrypt` on every archive, and exactly the key set that proxmox-backup declares. |
 | 6 | PBS server-side verify | `proxmox-backup-manager verify` reads every chunk and archive back and reports `TASK OK`. |
 | 7 | Dedup | A second identical backup reports chunk reuse. |
+| 8 | Namespace round-trip | A backup made with `-namespace` is listed and restored by the official client with `--ns`, and does not appear in the root namespace. |
 
 Tests 3 and 4 use a key file created by the **official** client, which doubles
 as an assertion that our key-file parser is compatible.
@@ -70,16 +72,18 @@ knowing before changing anything in `pbscommon`:
    `proxmox-backup-manager cert info` inside the container; the certificate is
    regenerated for every container, so it must never be hard-coded.
 
-2. **PBS ≥ 3.0 has no namespaces.** The HTTP/2 upgrade handshake schema does
-   not accept an `ns` parameter; sending one makes PBS return `404 namespace not
-   found`. `pbsapi.go` probes `GET /api2/json/version` and only sends `ns` to
-   version-2 servers.
+2. **Namespaces must exist before a backup names them.** A missing namespace
+   comes back as `404 namespace not found` on the HTTP/2 upgrade handshake,
+   which reads like a login failure; `pbsapi.go` turns it into
+   `NamespaceNotFoundErr` with a clear message. An earlier version probe that
+   sent `ns` only to PBS 2.x servers silently wrote namespaced backups into the
+   root namespace; test 8 guards against that.
 
 3. **PBS rewrites the manifest.** At `/finish` PBS parses `index.json.blob`
    into its *own* `BackupManifest` struct and re-serialises it, dropping every
    key that struct does not declare. Because the official client verifies the
    signature against that stored copy, **our manifest must contain exactly the
-   keys proxmox-backup declares** — no more. Adding e.g. a `comment` field
+   keys proxmox-backup declares**, no more. Adding e.g. a `comment` field
    silently breaks every encrypted restore with `wrong signature in manifest`.
 
 4. **The manifest blob is never encrypted**, only signed, and it is not part of
@@ -92,14 +96,15 @@ knowing before changing anything in `pbscommon`:
 
 ## Known gaps
 
-* **Symlinks are not restored.** The pxar writer skips them
-  (`pbscommon/pxar_reader.go`, `walk()`), so the fixtures deliberately contain
-  none.
-* **No restore CLI exists in this project.** Restore is GUI-only
-  (`gui/restore_inline.go`) or delegated to `proxmoxbackup-nbd` for block
+* **Symlinks are not tested.** A Linux backup stores them as links
+  (`writeSymlink` in `pbscommon/pxar.go`; on Windows they are skipped), but the
+  fixtures contain none yet.
+* **No restore CLI exists in this project.** Restore is in the GUI
+  (`gui/restore_inline.go`, plus the Undelete and Roll back command line of
+  the GUI's service program, which needs a GUI Backup Set) or delegated to `proxmoxbackup-nbd` for block
   devices. That is why every restore assertion here goes through the official
-  client; `docs/RESTORE_GUIDE.md` lists the planned `proxmoxbackupclient-restore`
-  binary as "À DÉVELOPPER".
+  client. (`docs/RESTORE_GUIDE.md` notes that the once-planned
+  `proxmoxbackupclient-restore` tool was never built.)
 * **`-novss` is mandatory for the directory backup on Linux**; the default
   consistent-snapshot path requires root.
 * **Restore is only asserted through the official client**, because this project

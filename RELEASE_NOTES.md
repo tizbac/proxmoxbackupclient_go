@@ -1,37 +1,32 @@
-# Proxmox Backup Client — Status & notes
+# Proxmox Backup Client: release notes
 
-> Per-version changes are listed in the “Changes since…” section of each release (above) and in [CHANGELOG.md](CHANGELOG.md). This page describes the **stable** state of the product.
+What changed in each version, and what is new on master since the last release, is in **[CHANGELOG.md](CHANGELOG.md)**. This page only lists what a release contains and where to read more.
 
-## 📦 Available builds
+## What a release contains
 
-### ProxmoxBackupClient.msi (installer — recommended for production)
-- ✅ **Windows service**: starts automatically at system boot
-- ✅ **Persistent admin privileges**: the service runs as LocalSystem (VSS guaranteed)
-- ✅ **Scheduled backups**: run automatically, even after a reboot
-- ✅ **Clean uninstall**: full cleanup via Control Panel
+Every release on the [releases page](https://github.com/mjb-is/proxmoxbackupclient_go/releases) has a `SHA256SUMS.txt`. Up to v0.8.1 a release has:
 
-### ProxmoxBackupClient.exe (standalone)
-- ✅ **Manual and scheduled backups**: work as long as the app is running
-- ❌ **No persistence across reboots**: no service → prefer the MSI in production
-- 💡 **Use case**: one-off backups or testing
+| File | Contents |
+|---|---|
+| `ProxmoxBackupClient-v<version>-windows-amd64.zip` | The GUI and `ProxmoxBackupClientSVC.exe`, the background service. Keep both in the same folder |
+| `ProxmoxBackupClient-v<version>-linux-amd64.tar.gz` | The GUI for Linux |
+| `ProxmoxBackupClient-CLI-v<version>-windows-amd64.zip` | `proxmoxbackup-directory.exe`, `proxmoxbackup-machine.exe` |
+| `ProxmoxBackupClient-CLI-v<version>-linux-amd64.tar.gz` | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd` |
 
-## ✅ Features
+The bare-metal restore ISO is attached to the release that last changed it (v0.5.0 at the time of writing).
 
-### Backup & restore
-- One-shot (immediate) and scheduled (configurable time) backups
-- **Auto-split of large backups** (>100 GB) into balanced jobs (~100 GB) with per-job retry
-- **VSS** (Volume Shadow Copy) for consistent backups
-- File/folder exclusions + **automatic exclusion of Windows system folders** (System Volume Information, $RECYCLE.BIN, pagefile.sys…)
-- Snapshot restore and browsing (**fast catalog reads**)
-- Robust long-running backups (**30 s keep-alive**, validated on 11 h+ backups)
-- **Multi-server PBS support**
+New since v0.8.2 and not yet in a release (see [Unreleased] in the CHANGELOG):
 
-### Interface & configuration
-- Wails GUI (Go + React), **in English and French**
-- Backup history and re-run of failed jobs
-- Progress bar with statistics, minimize to tray
-- PBS configuration with connection test, **certificate fingerprint pinning (TOFU)** and namespaces
+| File | Contents |
+|---|---|
+| `ProxmoxBackupClient-<version>-x64.msi` | Windows installer: the app and the background service under Program Files, a Start menu entry, in-place upgrades, and a keep or delete settings choice on removal. Built with `installer/wix/build-msi.ps1` |
+| `proxmoxbackupclient_<version>_<arch>.deb` | Debian, Ubuntu, Mint: the app, the three command-line tools, the manuals, two menu entries and the systemd service (installed, not enabled). Built with `packaging/debian/build-deb.sh` |
+| `proxmoxbackupclient-<version>-1.fc44.x86_64.rpm` | Fedora: the same contents. Built with `packaging/fedora/build-rpm.sh` |
 
-## 📌 Known issues
-- ⚠️ The **standalone .exe** does not persist across reboots → use the **MSI** in production.
-- ⚠️ The exclusion format is not validated on input.
+Builds are made by hand and are not code signed. Check them against `SHA256SUMS.txt`.
+
+## Where to read more
+
+- [README.md](README.md): features, install, quick start
+- [docs/manual/GUI.md](docs/manual/GUI.md), [docs/manual/CLI.md](docs/manual/CLI.md), [docs/manual/BMR.md](docs/manual/BMR.md): the manuals
+- [FEATURES_STATUS.md](FEATURES_STATUS.md): what works, what is partial, what is not done
