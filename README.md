@@ -272,7 +272,7 @@ The first three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapsh
 <td width="33%">
 
 [<img src="docs/screenshots/gui-preferences-advanced.png" width="280">](docs/screenshots/gui-preferences-advanced.png)
-**Advanced options**: explained honestly: parallel restore extraction is experimental and measured *slower* on our own test hardware
+**Backup options**: explained honestly: parallel restore extraction is experimental and measured *slower* on our own test hardware
 
 </td>
 </tr>
