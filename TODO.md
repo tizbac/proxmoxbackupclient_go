@@ -45,7 +45,7 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 
 ## Bare-metal restore ISO
 
-- [ ] Rebuild the ISO with the boot-stick exclusion (done in the wizard 2026-10-13 and checked on VM140 with loop-device sticks, a fake `/dev/mapper/ventoy` and a `VTOYEFI` partition; not yet booted) (`patch-clonezilla.sh` on VM140) and test from a dd-written stick, a Ventoy stick (BIOS and UEFI) and a USB SSD, on a VM with one and with two internal disks. Check the key-file step lists the Ventoy data partition (exFAT) so the key can live on the same stick.
+- [ ] Boot-stick exclusion: the 2026-10-13 test ISO, booted as a fixed SATA disk on a UEFI VM, left that disk out and named it under "Not eligible as target" (Mick). Still to try: a real Ventoy stick (BIOS and UEFI) and a BIOS VM with two internal disks (`patch-clonezilla.sh` on VM140) and test from a dd-written stick, a Ventoy stick (BIOS and UEFI) and a USB SSD, on a VM with one and with two internal disks. Check the key-file step lists the Ventoy data partition (exFAT) so the key can live on the same stick.
 - [ ] Test a bare-metal boot with a passphrase-protected key.
 - [ ] **Publish a new ISO.** The only published one (v0.5.0) predates the removal of the Linux snapshot store file (`.pbs_snapshot_N.cow`) after a restore; BMR.md tells its users to delete it by hand.
 
