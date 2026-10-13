@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -376,11 +377,11 @@ func TestDIDXReaderAtCancelBetweenChunks(t *testing.T) {
 		t.Fatalf("NewDIDXReaderAt: %v", err)
 	}
 
-	calls := 0
+	// The check also runs on the prefetch goroutines, so the count is atomic.
+	var calls atomic.Int32
 	r.SetCancelCheck(func() bool {
-		calls++
 		// Let the first couple of chunk fetches through, then abort.
-		return calls > 4
+		return calls.Add(1) > 4
 	})
 
 	// One read spanning every chunk.
