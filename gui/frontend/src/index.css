@@ -238,6 +238,9 @@ body {
     background: #f8fafc;
 }
 
+/* .form-group label (display: block) would otherwise win and run the
+   device, size and model together. */
+.form-group label.drive-item,
 .drive-item {
     margin-bottom: 0;
     padding: 10px 12px;

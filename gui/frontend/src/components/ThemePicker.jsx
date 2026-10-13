@@ -206,7 +206,7 @@ export default function ThemePicker() {
           background: gradientFor(activeColors), color: '#fff', borderRadius: '6px',
           padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <div style={{ fontSize: '16px', fontWeight: 700, fontStyle: 'italic' }}>Proxmox Backup Client — GO</div>
+          <div style={{ fontSize: '16px', fontWeight: 700, fontStyle: 'italic' }}>{t('appTitle')}</div>
           <div style={{ fontSize: '14px', fontWeight: 700 }}>{t('tabBackup').toUpperCase()}</div>
         </div>
       </div>

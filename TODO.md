@@ -63,8 +63,6 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 
 - [ ] Native-speaker review of the machine-translated strings (the 17 languages other than English and French), the encryption texts first.
 - [ ] The 12 translated READMEs were regenerated from the English one on 2026-10-13 (condensed, machine-translated): keep them in step when the English README changes, and have native speakers look them over.
-- [ ] `MachineBackupConfig` (machine backup settings) has hard-coded English labels; move them to the translations.
-- [ ] App text seen while retaking the screenshots (2026-10-13): Reports shows the status as raw "success" in every language; restore reports are named "Restore of ..." in English; report numbers have no thousands separators ("181912"); the disk picker runs path, size and model together and is English only; the server test message names the server's ID, not its name; the server description box uses a monospace font; some English help texts (the parallel restore and read-ahead options, the theme preview) contain dashes.
 
 ## Command-line tools
 

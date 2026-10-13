@@ -174,6 +174,12 @@ type JobHistory struct {
 	MessageKey    MessageKey `json:"message_key,omitempty"`
 	MessageParams msgParams  `json:"message_params,omitempty"`
 
+	// NameKey/NameParams let Reports show a restore's Name ("Restore of ...",
+	// "Undelete: ...", "Roll back: ...") in the user's language. Name stays
+	// the English text for older readers.
+	NameKey    string    `json:"name_key,omitempty"`
+	NameParams msgParams `json:"name_params,omitempty"`
+
 	// Kind is "restore" for a restore run; empty means a backup (every entry
 	// written before restores were recorded). Status for a restore is
 	// "success", "failed" or "cancelled" (the user pressed Stop).

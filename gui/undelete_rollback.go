@@ -304,13 +304,15 @@ func (a *App) StartUndelete(jobID string, items []UndeleteItem, dest string, ver
 		histDest = "(original location)"
 	}
 	a.runSetRestore(setRestoreOp{
-		Label:    fmt.Sprintf("Undelete: %s (%d files)", job.Name, len(items)),
-		Kind:     "undelete",
-		BackupID: setBackupID(job),
-		Snapshot: time.Unix(unixes[0], 0).UTC().Format("2006-01-02T15:04:05Z"),
-		Dest:     histDest,
-		Verify:   verify,
-		Runs:     runs,
+		Label:      fmt.Sprintf("Undelete: %s (%d files)", job.Name, len(items)),
+		NameKey:    "reportNameUndelete",
+		NameParams: msgParams{"set": job.Name, "files": len(items)},
+		Kind:       "undelete",
+		BackupID:   setBackupID(job),
+		Snapshot:   time.Unix(unixes[0], 0).UTC().Format("2006-01-02T15:04:05Z"),
+		Dest:       histDest,
+		Verify:     verify,
+		Runs:       runs,
 	})
 	return nil
 }
@@ -581,12 +583,14 @@ func (a *App) StartRollback(jobID string, snapshotUnix int64, policy string, bac
 	var manifest *rollbackManifest
 	var manifestPath string
 	a.runSetRestore(setRestoreOp{
-		Label:    label,
-		Kind:     "rollback",
-		BackupID: setBackupID(job),
-		Snapshot: snapID,
-		Dest:     "(original location)",
-		Verify:   verify,
+		Label:      label,
+		NameKey:    "reportNameRollback",
+		NameParams: msgParams{"set": job.Name, "at": time.Unix(snapshotUnix, 0).Format("2006-01-02 15:04")},
+		Kind:       "rollback",
+		BackupID:   setBackupID(job),
+		Snapshot:   snapID,
+		Dest:       "(original location)",
+		Verify:     verify,
 		BeforeSlot: func(ctx context.Context, emit func(float64, string), stage func(string, string)) error {
 			if !backupFirst {
 				return nil
@@ -1117,13 +1121,16 @@ func (a *App) DeleteRollbackCopies(manifestPath string) error {
 // ---- one operation, several restores ------------------------------------------
 
 type setRestoreOp struct {
-	Label    string
-	Kind     string // "undelete" or "rollback"
-	BackupID string
-	Snapshot string
-	Dest     string
-	Verify   bool
-	Runs     []RestoreOptions
+	Label string
+	// NameKey/NameParams: Label for Reports in the user's language.
+	NameKey    string
+	NameParams msgParams
+	Kind       string // "undelete" or "rollback"
+	BackupID   string
+	Snapshot   string
+	Dest       string
+	Verify     bool
+	Runs       []RestoreOptions
 	// BeforeSlot runs before the operation slot is taken (Roll back waits
 	// there for the backup it started, which needs the slot itself). Stop
 	// cancels its ctx.
@@ -1289,6 +1296,8 @@ func (a *App) runSetRestore(op setRestoreOp) {
 		if herr := a.appendJobHistory(JobHistory{
 			ID:                  fmt.Sprintf("%s-%d", op.Kind, start.UnixNano()),
 			Name:                op.Label,
+			NameKey:             op.NameKey,
+			NameParams:          op.NameParams,
 			Timestamp:           time.Now().Format(time.RFC3339),
 			Status:              status,
 			Message:             msg,

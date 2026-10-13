@@ -1907,6 +1907,8 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		if herr := a.appendJobHistory(JobHistory{
 			ID:                  fmt.Sprintf("restore-%d", restoreStart.UnixNano()),
 			Name:                restoreLabel,
+			NameKey:             "reportNameRestore",
+			NameParams:          msgParams{"id": backupID, "snapshot": snapshotID},
 			Timestamp:           time.Now().Format(time.RFC3339),
 			Status:              histStatus,
 			Message:             msg,

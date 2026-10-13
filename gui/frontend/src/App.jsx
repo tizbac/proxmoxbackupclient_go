@@ -281,13 +281,20 @@ function WaitBar({ label, startedAt, slowHint, fraction }) {
 // a simple "did the output change" check isn't reliable, because an English
 // viewer's translated text can legitimately be byte-identical to the stored
 // English fallback.
-function renderLocalizedMessage(entry, t) {
+function renderLocalizedMessage(entry, t, lang) {
   const key = entry.message_key
   if (key) {
     const params = entry.message_params || {}
     const withNote = { ...params }
+    for (const [k, v] of Object.entries(params)) {
+      if (Number.isInteger(v)) withNote[k] = fmtNum(v, lang)
+    }
+    // Sizes come pre-formatted ("1284.6"); give them the language's separators.
+    if (typeof params.mb === 'string' && /^\d+(\.\d+)?$/.test(params.mb)) {
+      try { withNote.mb = Number(params.mb).toLocaleString(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) } catch { /* keep as sent */ }
+    }
     if (typeof params.skipped === 'number') {
-      withNote.skippedNote = params.skipped > 0 ? t('logSkippedFilesNote', { count: params.skipped }) : ''
+      withNote.skippedNote = params.skipped > 0 ? t('logSkippedFilesNote', { count: fmtNum(params.skipped, lang) }) : ''
     }
     const translated = t(key, withNote)
     if (translated !== key) {
@@ -295,6 +302,36 @@ function renderLocalizedMessage(entry, t) {
     }
   }
   return { text: entry.message, usedKey: false }
+}
+
+// A whole number with the language's thousands separators ("181,912").
+function fmtNum(n, lang) {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return String(n ?? '')
+  try { return v.toLocaleString(lang) } catch { return v.toLocaleString() }
+}
+
+// A Reports entry's name in the user's language. Restores recorded before
+// name_key existed are recognised by their English names.
+const OLD_RESTORE_NAMES = [
+  [/^Restore of (.+) @ (.+)$/, m => ['reportNameRestore', { id: m[1], snapshot: m[2] }]],
+  [/^Undelete: (.+) \((\d+) files\)$/, m => ['reportNameUndelete', { set: m[1], files: Number(m[2]) }]],
+  [/^Roll back: (.+) to (\d{4}-\d\d-\d\d \d\d:\d\d)$/, m => ['reportNameRollback', { set: m[1], at: m[2] }]],
+]
+function historyName(entry, t, lang) {
+  let key = entry.name_key
+  let params = entry.name_params
+  if (!key && entry.kind === 'restore') {
+    for (const [re, toKey] of OLD_RESTORE_NAMES) {
+      const m = (entry.name || '').match(re)
+      if (m) { [key, params] = toKey(m); break }
+    }
+  }
+  if (!key) return entry.name
+  const p = { ...params }
+  if (typeof p.files === 'number') p.files = fmtNum(p.files, lang)
+  const text = t(key, p)
+  return text === key ? entry.name : text
 }
 
 const EMPTY_BACKUP_STATS = {
@@ -337,8 +374,12 @@ const EMPTY_BACKUP_STATS = {
 const EMPTY_RESTORE_STATS = { startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0, eta: null }
 
 function App() {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const tl = (key, fallback) => { const v = t(key); return v === key ? fallback : v }
+  const statusLabel = (s) => ({
+    success: t('reportStatusSuccess'), failed: t('reportStatusFailed'),
+    cancelled: t('reportStatusCancelled'), running: t('reportStatusRunning'),
+  }[s] || s)
   // Backup ID for the "vm" machine backup: a numeric PBS vm/<id>.
   // 'range' offsets into a high block so it cannot collide with a real VM's ID.
   const computeVmBackupId = (n, style) => {
@@ -940,7 +981,7 @@ function App() {
       backupSamplesRef.current = []
       setBackupStopRequested(false)
       setBackupPause({ paused: false, since: 0 })
-      const localizedMsg = renderLocalizedMessage(data, t).text
+      const localizedMsg = renderLocalizedMessage(data, t, language).text
       showStatus(data.success ? '✅ ' + localizedMsg : '❌ ' + localizedMsg, data.success ? 'success' : 'error')
 
       // Add to job history
@@ -1046,7 +1087,7 @@ function App() {
       setRestoreProgress(data.success ? 100 : 0)
       setRestoreStats(EMPTY_RESTORE_STATS)
       restoreSamplesRef.current = []
-      let localizedMsg = renderLocalizedMessage(data, t).text
+      let localizedMsg = renderLocalizedMessage(data, t, language).text
       if (data.success && data.verify_ran) {
         localizedMsg += ' - ' + tl('restoreVerifiedSuffix', '{n} files verified against the snapshot').replace('{n}', data.verified || 0)
       }
@@ -1478,6 +1519,9 @@ function App() {
     }
   }
 
+  // A server's name for messages (its ID only if it has no name).
+  const serverLabel = (id) => (pbsServers.find(s => s.id === id) || {}).name || id
+
   const handleSetDefaultPBS = async (id) => {
     if (!SetDefaultPBSServer) {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
@@ -1487,7 +1531,7 @@ function App() {
     try {
       await SetDefaultPBSServer(id)
       setDefaultPBSID(id)
-      showStatus(`✅ ${t('statusServerSetDefault').replace('{id}', id)}`, 'success')
+      showStatus(`✅ ${t('statusServerSetDefault').replace('{id}', serverLabel(id))}`, 'success')
     } catch (err) {
       showStatus(`❌ ${t('statusError')} ${err}`, 'error')
     }
@@ -1508,7 +1552,7 @@ function App() {
       setServerStatus(prev => ({ ...prev, [id]: 'testing' }))
       await TestPBSConnection(id)
       setServerStatus(prev => ({ ...prev, [id]: 'online' }))
-      showStatus(`✅ ${t('statusConnectionSuccess').replace('{id}', id)}`, 'success')
+      showStatus(`✅ ${t('statusConnectionSuccess').replace('{id}', serverLabel(id))}`, 'success')
     } catch (err) {
       const server = pbsServers.find(s => s.id === id)
       // Self-signed cert + no fingerprint yet: offer to discover and pin it (TOFU).
@@ -1671,7 +1715,7 @@ function App() {
             </div>
             <div className="form-group">
               <label>{t('description')}</label>
-              <textarea value={serverFormData.description} onChange={(e) => setServerFormData({...serverFormData, description: e.target.value})} placeholder={t('descriptionPlaceholder')} rows="2" />
+              <textarea value={serverFormData.description} onChange={(e) => setServerFormData({...serverFormData, description: e.target.value})} placeholder={t('descriptionPlaceholder')} rows="2" style={{fontFamily: 'inherit'}} />
             </div>
           </>
         )}
@@ -2003,7 +2047,7 @@ function App() {
           succeeded++
           showStatus(`✅ ${t('backupPartDone', { n: job.index, total: job.total_jobs })}`, 'success')
         } else {
-          const resultMsg = renderLocalizedMessage(result, t).text || ''
+          const resultMsg = renderLocalizedMessage(result, t, language).text || ''
           showStatus(
             `❌ ${t('backupPartFailed', { n: job.index, total: job.total_jobs, msg: resultMsg })}`,
             'error'
@@ -5107,7 +5151,7 @@ function App() {
           {selectedSnapshot && (
             <div style={{marginTop: '24px'}}>
               <div style={{display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'}}>
-                <h3 style={{margin: 0}}>{t('snapshotContents')} — {selectedSnapshot.time}</h3>
+                <h3 style={{margin: 0}}>{t('snapshotContents')}: {selectedSnapshot.time}</h3>
                 <button
                   className="btn"
                   type="button"
@@ -5271,11 +5315,9 @@ function App() {
                         checked={restoreKeepTree}
                         onChange={(e) => setRestoreKeepTree(e.target.checked)}
                       />
-                      {t('keepTreeLabel') || 'Conserver l\'arborescence d\'origine'}
+                      {t('keepTreeLabel')}
                       <span style={{fontSize: '12px', color: '#64748b'}}>
-                        {restoreKeepTree
-                          ? (t('keepTreeOnHint') || '(dest/Users/alice/doc.txt)')
-                          : (t('keepTreeOffHint') || '(dest/doc.txt — recommandé pour un fichier seul)')}
+                        {restoreKeepTree ? t('keepTreeOnHint') : t('keepTreeOffHint')}
                       </span>
                     </label>
                   </>
@@ -5421,7 +5463,7 @@ function App() {
           <div className="info-box" style={{marginTop: '20px', fontSize: '12px', lineHeight: 1.7}}>
             <div>{t('legalCredit')}</div>
             <div style={{marginTop: '6px'}}>
-              {t('copyright')} &mdash; <a href="https://github.com/mjb-is/proxmoxbackupclient_go/graphs/contributors" style={{color: 'var(--accent)'}} target="_blank" rel="noopener noreferrer">view contributors</a>
+              {t('copyright')} · <a href="https://github.com/mjb-is/proxmoxbackupclient_go/graphs/contributors" style={{color: 'var(--accent)'}} target="_blank" rel="noopener noreferrer">{t('viewContributors')}</a>
             </div>
             <div style={{marginTop: '6px'}}>{t('legalLicense')}</div>
             <div style={{marginTop: '6px', color: '#718096'}}>{t('legalDisclaimer')}</div>
@@ -5452,7 +5494,7 @@ function App() {
                       >
                         <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
                           <span>{job.status === 'success' ? '✅' : job.status === 'failed' ? '❌' : job.status === 'cancelled' ? '⏹️' : '⏳'}</span>
-                          <strong style={{fontSize: '14px'}}>{job.name}</strong>
+                          <strong style={{fontSize: '14px'}}>{historyName(job, t, language)}</strong>
                         </div>
                         <div style={{fontSize: '12px', color: '#718096', marginTop: '4px'}}>
                           {new Date(job.timestamp).toLocaleString()}
@@ -5463,7 +5505,7 @@ function App() {
                           )}
                           {job.changeDetection === 'metadata' && (
                             <span style={{marginLeft: '8px', color: '#2b6cb0'}}>
-                              {job.reusedFiles ? t('reportsReusedShort', {files: job.reusedFiles}) : t('changeDetectionShortMetadata')}
+                              {job.reusedFiles ? t('reportsReusedShort', {files: fmtNum(job.reusedFiles, language)}) : t('changeDetectionShortMetadata')}
                             </span>
                           )}
                         </div>
@@ -5479,13 +5521,13 @@ function App() {
                   if (!selected) return <p style={{color: '#718096'}}>{t('reportsSelectPrompt')}</p>
                   return (
                     <div className="card">
-                      <h3 style={{marginTop: 0}}>{selected.name}</h3>
+                      <h3 style={{marginTop: 0}}>{historyName(selected, t, language)}</h3>
                       <div style={{
                         display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '14px', rowGap: '8px',
                         fontSize: '14px',
                       }}>
                         <strong>{t('status')}</strong>
-                        <span>{selected.status === 'success' ? '✅' : selected.status === 'failed' ? '❌' : selected.status === 'cancelled' ? '⏹️' : '⏳'} {selected.status}</span>
+                        <span>{selected.status === 'success' ? '✅' : selected.status === 'failed' ? '❌' : selected.status === 'cancelled' ? '⏹️' : '⏳'} {statusLabel(selected.status)}</span>
                         <strong>{t('msgColDateTime')}</strong>
                         <span>{new Date(selected.timestamp).toLocaleString()}</span>
                         {selected.trigger && (
@@ -5511,10 +5553,10 @@ function App() {
                             <strong>{tl('reportsPaths', 'Paths')}</strong>
                             <span>{selected.restorePaths && selected.restorePaths.length > 0 ? selected.restorePaths.join(', ') : tl('reportsWholeSnapshot', 'Whole snapshot')}</span>
                             <strong>{tl('reportsFiles', 'Files')}</strong>
-                            <span>{selected.restoreFiles || 0}</span>
+                            <span>{fmtNum(selected.restoreFiles || 0, language)}</span>
                             <strong>{tl('reportsSize', 'Size')}</strong>
                             <span>{formatBytes(selected.restoreBytes || 0)}</span>
-                            {selected.restoreVerifyRan && (<><strong>{tl('reportsVerification', 'Verification')}</strong><span style={selected.restoreVerifyFailed > 0 ? {color: '#c0392b', fontWeight: 'bold'} : undefined}>{selected.restoreVerifyFailed > 0 ? tl('reportsVerifyFailed', '{n} file(s) did not match').replace('{n}', selected.restoreVerifyFailed) : tl('reportsVerifyOk', 'All {n} files match').replace('{n}', selected.restoreVerified || 0)}</span></>)}
+                            {selected.restoreVerifyRan && (<><strong>{tl('reportsVerification', 'Verification')}</strong><span style={selected.restoreVerifyFailed > 0 ? {color: '#c0392b', fontWeight: 'bold'} : undefined}>{selected.restoreVerifyFailed > 0 ? tl('reportsVerifyFailed', '{n} file(s) did not match').replace('{n}', fmtNum(selected.restoreVerifyFailed, language)) : tl('reportsVerifyOk', 'All {n} files match').replace('{n}', fmtNum(selected.restoreVerified || 0, language))}</span></>)}
                             <strong>{tl('reportsDuration', 'Duration')}</strong>
                             <span>{formatDuration(selected.durationSec || 0)}</span>
                           </>
@@ -5540,14 +5582,14 @@ function App() {
                               {selected.changeDetection === 'metadata' ? t('changeDetectionShortMetadata')
                                 : selected.changeDetection === 'data' ? t('changeDetectionShortData')
                                 : t('changeDetectionShortLegacy')}
-                              {selected.reusedFiles ? ' (' + t('reportsReusedFiles', {files: selected.reusedFiles, size: formatBytes(selected.reusedBytes || 0)}) + ')' : ''}
+                              {selected.reusedFiles ? ' (' + t('reportsReusedFiles', {files: fmtNum(selected.reusedFiles, language), size: formatBytes(selected.reusedBytes || 0)}) + ')' : ''}
                             </span>
                           </>
                         )}
                         {selected.message && (
                           <>
                             <strong>{t('msgColMessage')}</strong>
-                            <span style={{whiteSpace: 'pre-wrap'}}>{renderLocalizedMessage(selected, t).text}</span>
+                            <span style={{whiteSpace: 'pre-wrap'}}>{renderLocalizedMessage(selected, t, language).text}</span>
                           </>
                         )}
                         {selected.backupId && (
@@ -5629,7 +5671,7 @@ function App() {
                     <span style={{flex: '1 1 auto'}}>
                       {entry.level === 'error' ? '❌ ' : entry.level === 'warning' ? '⚠️ ' : 'ℹ️ '}
                       {(() => {
-                        const { text, usedKey } = renderLocalizedMessage(entry, t)
+                        const { text, usedKey } = renderLocalizedMessage(entry, t, language)
                         return (usedKey && entry.job_name ? `${entry.job_name}: ` : '') + text
                       })()}
                     </span>
