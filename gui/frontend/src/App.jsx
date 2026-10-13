@@ -15,6 +15,8 @@ import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/Them
 import EncryptionKeyField from './components/EncryptionKeyField'
 import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTools'
 import { suggestBackupId, setsSharingGroup } from './backupId'
+import ScheduleEditor from './components/ScheduleEditor'
+import { newSchedule, describe as describeSchedule, badgeKey, scheduleProblem, jobScheduling } from './components/schedules'
 // Wails runtime imports (will be available when built with Wails)
 let OpenSnapshotTree, ListSnapshotChildren, SnapshotSelectionBytes
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
@@ -378,6 +380,15 @@ const EMPTY_BACKUP_STATS = {
 
 const EMPTY_RESTORE_STATS = { startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0, eta: null }
 
+// cardSchedule picks the schedule a set card shows: the one that gives the
+// next run (nextRunBy), else the first one on; `on` counts those on.
+function cardSchedule(job) {
+  const js = jobScheduling(job)
+  if (js.mode === 'manual') return { manual: true, sch: null, on: 0 }
+  const on = js.schedules.filter(sc => sc.enabled)
+  return { manual: false, sch: on.find(sc => sc.id === job.nextRunBy) || on[0] || null, on: on.length }
+}
+
 function App() {
   const { t, language } = useTranslation()
   const tl = (key, fallback) => { const v = t(key); return v === key ? fallback : v }
@@ -500,21 +511,11 @@ function App() {
 
   // Scheduling states
   const [backupMode, setBackupMode] = useState('oneshot') // 'oneshot' or 'scheduled'
-  const [scheduleTime, setScheduleTime] = useState('02:00')
   const [runAtStartup, setRunAtStartup] = useState(false)
-  // BFW-style scheduling depth (matches ScheduledJob's TriggerMode/interval
-  // fields in scheduler.go): 'daily' = once a day at scheduleTime (the
-  // original, only mode). 'interval' = repeat every intervalMinutes,
-  // optionally restricted to a daily time window.
-  const [triggerMode, setTriggerMode] = useState('daily')
-  const [intervalMinutes, setIntervalMinutes] = useState(120)
-  const [windowAllDay, setWindowAllDay] = useState(true)
-  const [windowStart, setWindowStart] = useState('09:00')
-  const [windowEnd, setWindowEnd] = useState('17:00')
-  // All 7 selected by default = "every day", matching the backend's own
-  // "empty/nil DaysOfWeek means every day" convention (sending the full list
-  // is equivalent and simpler than special-casing "all checked -> empty").
-  const [daysOfWeek, setDaysOfWeek] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+  // The set's schedules (gui/schedules.go): 'scheduled' runs on the list,
+  // 'manual' only on Run Now (the list is kept).
+  const [scheduleMode, setScheduleMode] = useState('scheduled')
+  const [schedules, setSchedules] = useState(() => [newSchedule('days', 's1')])
   const [scheduledJobs, setScheduledJobs] = useState([])
   // path -> whether it can be read through a snapshot (false = network drive,
   // read live); filled for the folders of sets that ask for a snapshot.
@@ -2145,19 +2146,23 @@ function App() {
         return
       }
 
+      // A schedule that cannot be saved (repeat under 5 minutes, a window that ends
+      // before it starts, a weekly one with no day) is named on the Schedule tab.
+      const badSchedule = scheduleMode === 'manual' ? null : schedules.find(sc => scheduleProblem(sc))
+      if (badSchedule) {
+        showStatus(`❌ ${describeSchedule(t, language, badSchedule)}: ${t(scheduleProblem(badSchedule), { n: 5 })}`, 'error')
+        setBackupFormTab('schedule')
+        return
+      }
+
       // For machine backups, we need to use a different approach for scheduled jobs
       // We'll pass drive letters in a separate field or structure based on backup type
       const jobData = {
         id: editingJobId || Date.now().toString(),
         name: jobName.trim() || `Backup ${config['backup-id'] || hostname}`,
-        scheduleTime: scheduleTime,
-        runAtStartup: triggerMode === 'manual' ? false : runAtStartup,
-        triggerMode: triggerMode,
-        intervalMinutes: triggerMode === 'interval' ? intervalMinutes : undefined,
-        windowAllDay: triggerMode === 'interval' ? windowAllDay : undefined,
-        windowStart: triggerMode === 'interval' && !windowAllDay ? windowStart : undefined,
-        windowEnd: triggerMode === 'interval' && !windowAllDay ? windowEnd : undefined,
-        daysOfWeek: triggerMode === 'manual' ? [] : daysOfWeek,
+        runAtStartup: scheduleMode === 'manual' ? false : runAtStartup,
+        scheduleMode,
+        schedules,
         backupDirs: backupType === 'directory' ? dirList : [],
         backupId: useVmType ? vmBackupID : config['backup-id'],
         useVSS: config.usevss,
@@ -2200,14 +2205,8 @@ function App() {
         // Reset form after save
         setJobName('')
         setMachineAsVM(false); setVmIdNumber(''); setImageFolders('')
-        setScheduleTime('02:00')
         setRunAtStartup(false)
-        setTriggerMode('daily')
-        setIntervalMinutes(120)
-        setWindowAllDay(true)
-        setWindowStart('09:00')
-        setWindowEnd('17:00')
-        setDaysOfWeek(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+        setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
         setBackupDirs('')
         setEmailOnSuccess(false); setEmailOnSuccessTo('')
         setEmailOnFailure(false); setEmailOnFailureTo('')
@@ -3705,14 +3704,8 @@ function App() {
                     setJobName('')
                     setMachineAsVM(false); setVmIdNumber(''); setImageFolders('')
                     setBackupMode('scheduled')
-                    setScheduleTime('02:00')
                     setRunAtStartup(false)
-                    setTriggerMode('daily')
-                    setIntervalMinutes(120)
-                    setWindowAllDay(true)
-                    setWindowStart('09:00')
-                    setWindowEnd('17:00')
-                    setDaysOfWeek(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+                    setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
                     setBackupDirs('')
                     setExcludeList('')
                     setTreeExcludes([])
@@ -3771,9 +3764,7 @@ function App() {
                                 padding: '2px 7px', borderRadius: '3px', background: '#eef0f4', color: '#3d5aa8',
                                 border: '1px solid #ccd4e6', verticalAlign: 'middle', marginRight: '6px',
                               }}>
-                                {job.triggerMode === 'manual' ? t('triggerModeManual').toUpperCase()
-                                  : job.triggerMode === 'interval' ? t('triggerModeInterval').toUpperCase()
-                                  : t('triggerModeDaily').toUpperCase()}
+                                {(() => { const c = cardSchedule(job); return c.sch ? t(badgeKey(c.sch)).toUpperCase() + (c.on > 1 ? ` +${c.on - 1}` : '') : t('triggerModeManual').toUpperCase() })()}
                               </span>
                               {/* Backup type badge — reuses the existing backupTypeDirectory/
                                   backupTypeMachine translations (already in all 6 languages),
@@ -3843,22 +3834,9 @@ function App() {
                                   scheduler keeps on the job; manual sets have none. */}
                               <div style={{lineHeight: 1.3, minWidth: 0, whiteSpace: 'nowrap'}}>
                                 <div>
-                                  {job.triggerMode === 'manual'
-                                    ? t('manualOnDemand')
-                                    : job.triggerMode === 'interval'
-                                    ? <>{t('everyNMinutes').replace('{n}', job.intervalMinutes)}
-                                        {!job.windowAllDay && ` (${job.windowStart}–${job.windowEnd})`}</>
-                                    : <>{job.scheduleTime}</>}
-                                  {job.triggerMode !== 'manual' && (
-                                    <>
-                                      {' · '}
-                                      {!job.daysOfWeek || job.daysOfWeek.length === 0 || job.daysOfWeek.length === 7
-                                        ? t('everyDay')
-                                        : job.daysOfWeek.map(d => t(`day${d}`)).join(', ')}
-                                    </>
-                                  )}
+                                  {(() => { const c = cardSchedule(job); return c.manual ? t('manualOnDemand') : c.sch ? describeSchedule(t, language, c.sch) : t('schedNoneOnShort') })()}
                                 </div>
-                                {job.triggerMode !== 'manual' && job.nextRun && (() => {
+                                {!cardSchedule(job).manual && job.nextRun && (() => {
                                   const when = new Date(job.nextRun)
                                   if (isNaN(when.getTime())) return null
                                   const now = new Date()
@@ -3904,14 +3882,8 @@ function App() {
                               setEditingJobId(job.id)
                               setJobName(job.name || '')
                               setBackupMode('scheduled')
-                              setScheduleTime(job.scheduleTime)
                               setRunAtStartup(job.runAtStartup)
-                              setTriggerMode(job.triggerMode || 'daily')
-                              setIntervalMinutes(job.intervalMinutes || 120)
-                              setWindowAllDay(job.windowAllDay !== false)
-                              setWindowStart(job.windowStart || '09:00')
-                              setWindowEnd(job.windowEnd || '17:00')
-                              setDaysOfWeek(job.daysOfWeek && job.daysOfWeek.length > 0 ? job.daysOfWeek : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+                              { const js = jobScheduling(job); setScheduleMode(js.mode); setSchedules(js.schedules.map(sc => ({ ...sc, weekdays: [...(sc.weekdays || [])] }))) }
                               setBackupDirs(job.backupDirs.join('\n'))
                               // Machine-type jobs keep their selected disks in driveLetters, not
                               // backupDirs — without restoring this, handleStartBackup's "select
@@ -3986,14 +3958,8 @@ function App() {
                                     setEditingJobId(null)
                                     setJobName(t('cloneNameSuffix').replace('{name}', job.name || ''))
                                     setBackupMode('scheduled')
-                                    setScheduleTime(job.scheduleTime)
                                     setRunAtStartup(job.runAtStartup)
-                                    setTriggerMode(job.triggerMode || 'daily')
-                                    setIntervalMinutes(job.intervalMinutes || 120)
-                                    setWindowAllDay(job.windowAllDay !== false)
-                                    setWindowStart(job.windowStart || '09:00')
-                                    setWindowEnd(job.windowEnd || '17:00')
-                                    setDaysOfWeek(job.daysOfWeek && job.daysOfWeek.length > 0 ? job.daysOfWeek : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+                                    { const js = jobScheduling(job); setScheduleMode(js.mode); setSchedules(js.schedules.map(sc => ({ ...sc, weekdays: [...(sc.weekdays || [])] }))) }
                                     setBackupDirs(job.backupDirs.join('\n'))
                                     setSelectedDrives(job.driveLetters || [])
                                     setImageFolders((job.imageFolders || []).join('\n'))
@@ -4154,138 +4120,11 @@ function App() {
                 </div>
               )}
 
-              {triggerMode !== 'manual' && (
-                <div className="form-group">
-                  <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer'}}>
-                    <input
-                      type="checkbox"
-                      checked={runAtStartup}
-                      onChange={(e) => setRunAtStartup(e.target.checked)}
-                      style={{width: '20px', height: '20px', cursor: 'pointer'}}
-                    />
-                    <span>{t('runAtStartup')}</span>
-                  </label>
-                </div>
-              )}
-
-              <div className="form-group">
-                <label>{t('triggerMode')}</label>
-                <TabList
-                  selectedValue={triggerMode}
-                  onTabSelect={(_e, data) => setTriggerMode(data.value)}
-                  size="small"
-                  style={{marginTop: '10px'}}
-                >
-                  <Tab value="daily">{t('triggerModeDaily')}</Tab>
-                  <Tab value="interval">{t('triggerModeInterval')}</Tab>
-                  <Tab value="manual">{t('triggerModeManual')}</Tab>
-                </TabList>
-              </div>
-
-              {triggerMode === 'daily' && (
-                <div className="form-group">
-                  <label>{t('dailyExecutionTime')}</label>
-                  <input
-                    type="time"
-                    value={scheduleTime}
-                    onChange={(e) => setScheduleTime(e.target.value)}
-                    style={{width: '200px', padding: '10px', fontSize: '16px'}}
-                  />
-                </div>
-              )}
-
-              {triggerMode === 'interval' && (
-                <>
-                  <div className="form-group">
-                    <label>{t('intervalMinutesLabel')}</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={intervalMinutes}
-                      onChange={(e) => setIntervalMinutes(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                      style={{width: '120px', padding: '10px', fontSize: '16px'}}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer'}}>
-                      <input
-                        type="checkbox"
-                        checked={windowAllDay}
-                        onChange={(e) => setWindowAllDay(e.target.checked)}
-                        style={{width: '20px', height: '20px', cursor: 'pointer'}}
-                      />
-                      <span>{t('windowAllDay')}</span>
-                    </label>
-                  </div>
-
-                  {!windowAllDay && (
-                    <div className="form-group" style={{display: 'flex', gap: '15px', alignItems: 'center'}}>
-                      <span>{t('windowBetween')}</span>
-                      <input
-                        type="time"
-                        value={windowStart}
-                        onChange={(e) => setWindowStart(e.target.value)}
-                        style={{padding: '8px', fontSize: '14px'}}
-                      />
-                      <span>{t('windowAnd')}</span>
-                      <input
-                        type="time"
-                        value={windowEnd}
-                        onChange={(e) => setWindowEnd(e.target.value)}
-                        style={{padding: '8px', fontSize: '14px'}}
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-
-              {triggerMode !== 'manual' && (
-                <div className="form-group">
-                  <label>{t('daysOfWeekLabel')}</label>
-                  <div style={{display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap'}}>
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
-                      const selected = daysOfWeek.includes(day)
-                      return (
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => setDaysOfWeek(selected ? daysOfWeek.filter(d => d !== day) : [...daysOfWeek, day])}
-                          style={{
-                            padding: '6px 10px',
-                            backgroundColor: selected ? 'var(--accent)' : '#e2e8f0',
-                            color: selected ? 'white' : '#4a5568',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            fontSize: '13px',
-                            fontWeight: selected ? 'bold' : 'normal'
-                          }}
-                        >
-                          {t(`day${day}`)}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="info-box" style={{backgroundColor: '#eef2ff'}}>
-                {triggerMode === 'manual' ? (
-                  <>{t('schedulingInfoManual')}</>
-                ) : (
-                  <>
-                    {triggerMode === 'daily'
-                      ? <>{t('schedulingInfo')} <strong>{scheduleTime}</strong></>
-                      : <>{t('schedulingInfoInterval').replace('{n}', intervalMinutes)}
-                          {!windowAllDay && ` ${t('windowRange', { start: windowStart, end: windowEnd })}`}</>}
-                    <br/>{t('schedulingInfoDays')} {daysOfWeek.length === 0 || daysOfWeek.length === 7
-                      ? t('everyDay')
-                      : daysOfWeek.map(d => t(`day${d}`)).join(', ')}
-                    {runAtStartup && <><br/>{t('andAtStartup')}</>}
-                  </>
-                )}
-              </div>
+              <ScheduleEditor
+                scheduleMode={scheduleMode} setScheduleMode={setScheduleMode}
+                schedules={schedules} setSchedules={setSchedules}
+                runAtStartup={runAtStartup} setRunAtStartup={setRunAtStartup}
+              />
             </div>
           )}
 
@@ -4690,14 +4529,8 @@ function App() {
               setJobName('')
               setMachineAsVM(false); setVmIdNumber(''); setImageFolders('')
               setChangeDetectionMode('legacy'); setFullReadEvery(0)
-              setScheduleTime('02:00')
               setRunAtStartup(false)
-              setTriggerMode('daily')
-              setIntervalMinutes(120)
-              setWindowAllDay(true)
-              setWindowStart('09:00')
-              setWindowEnd('17:00')
-              setDaysOfWeek(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+              setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
               setBackupDirs('')
               setExcludeList('')
               setTreeExcludes([])
