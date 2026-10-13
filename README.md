@@ -223,6 +223,9 @@ proxmoxbackupgo.exe
         Backup ID (optional - if not specified, the hostname is used as the default for host-type backups)
   -pxarout string
         Output PXAR archive for debug purposes (optional)
+  -no-mtime
+        Record 1970-01-01 as every file and folder time instead of the real one
+        (advanced, optional; see "Leaving times out of the archive" below)
   -backupstream string  ***NEW***
         Filename for stream backup
   -mail-host string
@@ -264,6 +267,12 @@ Each directory is backed up as its own backup group, with the backup id `<backup
 In a JSON config file use `"backupdirs": ["C:\\Data", "D:\\Photos"]`. The single `"backupdir"` field keeps working and can be combined with `"backupdirs"`.
 
 Encryption works the same way as for a single directory: `-keyfile` (and `-keyfile-passphrase`, or the interactive prompt) is read once, and every directory's backup group is encrypted with that key.
+
+### Leaving times out of the archive
+
+Every file's and folder's modification time is part of the archive, so a time that changes changes the archive bytes, and the chunks around that entry are uploaded again even though nothing in them changed. For most data that is the right trade. Some trees, though, keep touching their folders while the files stay the same: a store that files its data under hash-named folders (`aa/bb/<rest of the hash>`) can end up re-uploading a large part of the archive every run for that reason alone.
+
+`-no-mtime` (`"no-mtime": true` in a JSON config file) records 1970-01-01 as every file's and folder's time instead, so only real content changes cost new chunks. The real times are not kept anywhere: a restore dates every item 1970-01-01. The option is off by default; use it for a source where the times do not matter.
 
 Note on mail templating:
 [Go's templating engine](https://pkg.go.dev/text/template) is used for mail subjects and bodies, please refer to the documentation for the syntax.

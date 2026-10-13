@@ -317,6 +317,21 @@ type PXARArchive struct {
 	// actually backed up. Used to capture NTFS ACLs and other per-file metadata
 	// that PXAR cannot represent. Best-effort: errors are logged and ignored.
 	MetaCollector MetaCollector
+
+	// NoMTime writes 0 (1970-01-01) as every file's and folder's modification
+	// time instead of the real one. A changed time changes the archive bytes, so
+	// trees whose times move without their contents changing (a folder gains
+	// and loses temporary files) otherwise re-upload the chunks around every such
+	// entry. Restored items then get 1970-01-01.
+	NoMTime bool
+}
+
+// entryMTime is the time recorded for an entry: the real one, or 0 with NoMTime.
+func (a *PXARArchive) entryMTime(info os.FileInfo) uint64 {
+	if a.NoMTime {
+		return 0
+	}
+	return uint64(info.ModTime().Unix())
 }
 
 //This function will flush the internal buffer and update position
@@ -487,7 +502,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		uid:   1000, //This is fixed because this project for now targeting windows , on which execute, traverse etc permissions don't exist
 		gid:   1000,
 		mtime: MTime{
-			secs:    uint64(fileInfo.ModTime().Unix()),
+			secs:    a.entryMTime(fileInfo),
 			nanos:   0,
 			padding: 0,
 		},
@@ -763,7 +778,7 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 		uid:   1000,
 		gid:   1000,
 		mtime: MTime{
-			secs:    uint64(fileInfo.ModTime().Unix()),
+			secs:    a.entryMTime(fileInfo),
 			nanos:   0,
 			padding: 0,
 		},
@@ -847,7 +862,7 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 
 	return CatalogFile{
 		Name:  basename,
-		MTime: uint64(fileInfo.ModTime().Unix()),
+		MTime: a.entryMTime(fileInfo),
 		Size:  uint64(fileInfo.Size()),
 	}, nil
 }

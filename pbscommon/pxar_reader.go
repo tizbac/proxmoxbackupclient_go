@@ -40,6 +40,10 @@ type PXARTreeEntry struct {
 	Size    uint64
 	Mode    uint32
 	ModTime int64
+	// ModTimeSet reports that the entry carried a modification time. ModTime
+	// alone cannot say so: 0 is a real time (1970-01-01 00:00:00 UTC) and
+	// anything before 1970 is negative.
+	ModTimeSet bool
 }
 
 // PXARExtractedFile represents an extracted file (or directory) with metadata.
@@ -131,6 +135,7 @@ func (pr *PXARReader) walk(cb walkCallback) error {
 	pendingName := ""
 	var pendingFileMode uint64
 	var pendingFileMtime uint64
+	pendingFileMtimeSet := false
 	hasPendingFile := false
 	rootSeen := false
 
@@ -178,9 +183,11 @@ func (pr *PXARReader) walk(cb walkCallback) error {
 			// Layout: mode(u64) | flags(u64) | uid(u32) | gid(u32) | mtime.secs(u64) | mtime.nanos(u32) | mtime.padding(u32) = 40 bytes
 			var mode uint64
 			var mtimeSecs uint64
+			mtimeSet := false
 			if len(data) >= 32 {
 				mode = binary.LittleEndian.Uint64(data[0:8])
 				mtimeSecs = binary.LittleEndian.Uint64(data[24:32])
+				mtimeSet = true
 			}
 
 			if mode&IFMT == IFDIR {
@@ -191,10 +198,11 @@ func (pr *PXARReader) walk(cb walkCallback) error {
 				} else {
 					subPath := joinArchivePath(currentPath, pendingName)
 					if err := cb(PXARTreeEntry{
-						Path:    subPath,
-						IsDir:   true,
-						Mode:    uint32(mode),
-						ModTime: int64(mtimeSecs),
+						Path:       subPath,
+						IsDir:      true,
+						Mode:       uint32(mode),
+						ModTime:    int64(mtimeSecs),
+						ModTimeSet: mtimeSet,
 					}, nil); err != nil {
 						return err
 					}
@@ -207,6 +215,7 @@ func (pr *PXARReader) walk(cb walkCallback) error {
 				// Regular file: defer emission until the matching PAYLOAD arrives.
 				pendingFileMode = mode
 				pendingFileMtime = mtimeSecs
+				pendingFileMtimeSet = mtimeSet
 				hasPendingFile = true
 			}
 
@@ -219,11 +228,12 @@ func (pr *PXARReader) walk(cb walkCallback) error {
 				path := joinArchivePath(currentPath, pendingName)
 				payload := io.NewSectionReader(pr.ra, pr.offset, contentSize)
 				if err := cb(PXARTreeEntry{
-					Path:    path,
-					IsDir:   false,
-					Size:    uint64(contentSize),
-					Mode:    uint32(pendingFileMode),
-					ModTime: int64(pendingFileMtime),
+					Path:       path,
+					IsDir:      false,
+					Size:       uint64(contentSize),
+					Mode:       uint32(pendingFileMode),
+					ModTime:    int64(pendingFileMtime),
+					ModTimeSet: pendingFileMtimeSet,
 				}, payload); err != nil {
 					return err
 				}
@@ -351,6 +361,14 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 	includes := NormalizeIncludes(includePaths)
 	extracted := make([]PXARExtractedFile, 0, 64)
 
+	// Folder times are applied once the walk is over: writing a file into a
+	// folder sets that folder's mtime to now.
+	type dirTime struct {
+		path  string
+		mtime int64
+	}
+	var dirTimes []dirTime
+
 	err := pr.walk(func(e PXARTreeEntry, payload *io.SectionReader) error {
 		if !pathMatches(e.Path, includes) {
 			return nil
@@ -376,6 +394,14 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		}
 
 		if e.IsDir {
+			// Restore the folder's time when it is part of the selection (not
+			// just an ancestor created to reach it) and this restore creates
+			// it, or may overwrite what is already there.
+			if e.ModTimeSet && pathSelected(e.Path, includes) {
+				if _, statErr := os.Lstat(fullPath); overwrite || os.IsNotExist(statErr) {
+					dirTimes = append(dirTimes, dirTime{fullPath, e.ModTime})
+				}
+			}
 			if err := os.MkdirAll(fullPath, 0755); err != nil {
 				extracted = append(extracted, PXARExtractedFile{
 					Path: fullPath, IsDir: true,
@@ -458,7 +484,9 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			})
 			return nil
 		}
-		if e.ModTime > 0 {
+		// Any recorded time is applied: 0 is 1970-01-01 and a time before
+		// 1970 is negative, both real modification times.
+		if e.ModTimeSet {
 			t := time.Unix(e.ModTime, 0)
 			_ = os.Chtimes(fullPath, t, t)
 		}
@@ -468,6 +496,13 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		})
 		return nil
 	})
+
+	// Best effort, like the file times: the content is already on disk. A
+	// folder's own time does not change its parent's, so the order is free.
+	for _, d := range dirTimes {
+		t := time.Unix(d.mtime, 0)
+		_ = os.Chtimes(d.path, t, t)
+	}
 	return extracted, err
 }
 
@@ -526,6 +561,21 @@ func pathMatches(path string, includes []string) bool {
 			return true
 		}
 		if strings.HasPrefix(inc, path+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// pathSelected reports whether path lies inside the selection: an include
+// itself or something below one. Unlike pathMatches it is false for the
+// ancestors of an include, which a restore only creates to reach it.
+func pathSelected(path string, includes []string) bool {
+	if len(includes) == 0 {
+		return true
+	}
+	for _, inc := range includes {
+		if path == inc || strings.HasPrefix(path, inc+"/") {
 			return true
 		}
 	}

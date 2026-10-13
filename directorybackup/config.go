@@ -55,6 +55,12 @@ type Config struct {
 	// PBKDF2 KDF. Left empty, the passphrase is asked for on the console.
 	// Ignored for `--kdf none` key files, which need nothing.
 	KeyFilePassphrase string `json:"keyfilepassphrase"`
+
+	// NoMTime records 0 (1970-01-01) as every file's and folder's time instead
+	// of the real one, so entries whose time changes but whose content does not
+	// leave the archive bytes, and so its chunks, unchanged. Restored items get
+	// 1970-01-01.
+	NoMTime bool `json:"no-mtime"`
 }
 
 // Dirs returns every configured source directory: "backupdir" first (if set),
@@ -120,6 +126,7 @@ func loadConfig() *Config {
 	noVSSFlag := flag.Bool("novss", false, "Disable VSS ( For filesystems that don't support it, for example veracrypt )")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
 	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
+	noMTimeFlag := flag.Bool("no-mtime", false, "Record 1970-01-01 as every file and folder time instead of the real one, so time-only changes (a folder whose contents come and go) do not change the archive and re-upload its chunks; restored items get 1970-01-01 (advanced, optional)")
 
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
 	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")
@@ -198,6 +205,9 @@ func loadConfig() *Config {
 	}
 	if *keyFilePassphraseFlag != "" {
 		config.KeyFilePassphrase = *keyFilePassphraseFlag
+	}
+	if *noMTimeFlag {
+		config.NoMTime = true
 	}
 
 	initSmtpConfigIfNeeded := func() {
