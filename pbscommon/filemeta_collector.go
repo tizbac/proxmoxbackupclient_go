@@ -8,4 +8,7 @@ type FileMetaCollector interface {
 	MetaCollector
 	FinalizeRaw() (*BackupFileMeta, error)
 	Stats() (entries, uniqueSDDLs, errors int)
+	// StreamStats: alternate data streams recorded with content, recorded by
+	// name only, and extended attributes (Windows; zero elsewhere).
+	StreamStats() (streams, skipped, eas int)
 }

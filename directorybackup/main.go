@@ -693,12 +693,19 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 			},
 		}
 		entries, _, metaErrs := metaCollector.Stats()
-		if blob, serr := combined.Serialize(); serr != nil {
+		blob, dropped, serr := combined.SerializeCapped(pbscommon.MaxFileMetaBlobBytes)
+		if dropped > 0 {
+			fmt.Fprintf(os.Stderr, "warning: file metadata too large for one PBS blob: the content of %d alternate data streams was left out\n", dropped)
+		}
+		if serr != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to serialize file metadata: %v\n", serr)
 		} else if uerr := client.UploadBlob(pbscommon.FileMetaBlobName, blob); uerr != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to upload file metadata blob: %v\n", uerr)
 		} else {
 			fmt.Printf("File metadata: %d entries, %d errors\n", entries, metaErrs)
+			if streams, skipped, eas := metaCollector.StreamStats(); streams+skipped+eas > 0 {
+				fmt.Printf("Alternate data streams: %d recorded, %d by name only; extended attributes: %d\n", streams, skipped, eas)
+			}
 		}
 	}
 

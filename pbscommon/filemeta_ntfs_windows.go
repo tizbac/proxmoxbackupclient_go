@@ -15,7 +15,8 @@ import (
 
 // NTFSMetaCollector implements MetaCollector for Windows (the GUI and the
 // directory CLI both use it). It captures owner/group/DACL (as an SDDL
-// string), NTFS file attributes and the creation time during the pxar walk
+// string), NTFS file attributes, the creation time, alternate data streams
+// and extended attributes during the pxar walk
 // and serializes everything into a single gzipped JSON file that lives as a
 // virtual file inside the archive root.
 //
@@ -29,6 +30,13 @@ type NTFSMetaCollector struct {
 	sddlIdx map[string]int
 	meta    *BackupFileMeta
 	errors  int
+
+	// streamBudget is how much alternate data stream content this archive may
+	// still record (MaxStreamBytesTotal); the counters feed the run's log.
+	streamBudget   int64
+	streams        int
+	streamsSkipped int
+	eas            int
 }
 
 // NewNTFSMetaCollector creates a collector rooted at the given filesystem path.
@@ -40,8 +48,9 @@ func NewNTFSMetaCollector(root, hostname string) *NTFSMetaCollector {
 		absRoot = root
 	}
 	return &NTFSMetaCollector{
-		root:    absRoot,
-		sddlIdx: make(map[string]int),
+		root:         absRoot,
+		sddlIdx:      make(map[string]int),
+		streamBudget: MaxStreamBytesTotal,
 		meta: &BackupFileMeta{
 			Version:  FileMetaVersion,
 			Root:     absRoot,
@@ -98,8 +107,29 @@ func (c *NTFSMetaCollector) Collect(absPath string, info os.FileInfo, isDir bool
 		}
 	}
 
+	// Alternate data streams and extended attributes. The budget is shared,
+	// so it is read and updated under the lock; reading the streams
+	// themselves happens outside it.
+	c.mu.Lock()
+	budget := c.streamBudget
+	c.mu.Unlock()
+	start := budget
+	streams, eas, serr := readStreamsAndEAs(absPath, &budget)
+	if serr != nil {
+		c.incErr()
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.streamBudget -= start - budget
+	for _, s := range streams {
+		if s.Skipped == "" {
+			c.streams++
+		} else {
+			c.streamsSkipped++
+		}
+	}
+	c.eas += len(eas)
 
 	idx, ok := c.sddlIdx[sddl]
 	if !ok {
@@ -114,8 +144,19 @@ func (c *NTFSMetaCollector) Collect(absPath string, info os.FileInfo, isDir bool
 		SDDLIdx: idx,
 		Attrs:   attrs,
 		Created: created,
+		Streams: streams,
+		EAs:     eas,
 	})
 	return nil
+}
+
+// StreamStats returns how many alternate data streams were recorded with
+// their content, how many only by name (too large, over the budget, or
+// unreadable), and how many extended attributes were recorded.
+func (c *NTFSMetaCollector) StreamStats() (streams, skipped, eas int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.streams, c.streamsSkipped, c.eas
 }
 
 func (c *NTFSMetaCollector) incErr() {

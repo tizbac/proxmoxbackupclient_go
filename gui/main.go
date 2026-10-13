@@ -1698,8 +1698,8 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 //
 // includePaths uses archive-style paths (forward slash). When empty the entire
 // snapshot is restored. restoreACLs (NTFS ACLs/attributes on Windows, POSIX
-// ACLs/xattrs on Linux) and timestamps are effective; restoreADS is still a
-// logged no-op because no alternate data stream capture exists yet.
+// ACLs/xattrs on Linux), restoreADS (alternate data streams and NTFS extended
+// attributes, Windows) and timestamps all take effect.
 //
 // Progress is streamed to the frontend via the "restore:progress" event;
 // completion via "restore:complete".
@@ -1775,7 +1775,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		IncludePaths:       includePaths,
 		Overwrite:          overwrite,
 		RestoreACLs:        restoreACLs,
-		RestoreADS:         restoreADS,
+		SkipStreams:        !restoreADS,
 		KeepNewTimes:       !restoreTimestamps,
 		Crypt:              cfg.Crypt,
 		OnProgress:         emit,

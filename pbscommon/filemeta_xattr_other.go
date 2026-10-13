@@ -16,3 +16,5 @@ func (c *XattrCollector) Finalize() ([]byte, error) { return nil, nil }
 func (c *XattrCollector) FinalizeRaw() (*BackupFileMeta, error) { return nil, nil }
 
 func (c *XattrCollector) Stats() (entries, uniqueSDDLs, errors int) { return 0, 0, 0 }
+
+func (c *XattrCollector) StreamStats() (streams, skipped, eas int) { return 0, 0, 0 }

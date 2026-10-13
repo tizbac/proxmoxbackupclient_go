@@ -147,6 +147,9 @@ func (c *XattrCollector) FinalizeRaw() (*BackupFileMeta, error) {
 }
 
 // Stats returns entry count, unique SDDL count (always 0 on Linux) and errors.
+// StreamStats: Linux has no alternate data streams or NTFS extended attributes.
+func (c *XattrCollector) StreamStats() (streams, skipped, eas int) { return 0, 0, 0 }
+
 func (c *XattrCollector) Stats() (entries, uniqueSDDLs, errors int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

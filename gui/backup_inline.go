@@ -1371,7 +1371,11 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		}
 
 		if len(combinedACLs.Archives) > 0 {
-			if aclBytes, aclErr := combinedACLs.Serialize(); aclErr != nil {
+			aclBytes, dropped, aclErr := combinedACLs.SerializeCapped(pbscommon.MaxFileMetaBlobBytes)
+			if dropped > 0 {
+				writeBackupLog(fmt.Sprintf("WARNING: file metadata too large for one PBS blob: the content of %d alternate data streams was left out (permissions and attributes kept)", dropped))
+			}
+			if aclErr != nil {
 				writeBackupLog(fmt.Sprintf("WARNING: failed to serialize combined NTFS metadata: %v", aclErr))
 			} else if upErr := client.UploadBlob(BackupAclsFilename, aclBytes); upErr != nil {
 				writeBackupLog(fmt.Sprintf("WARNING: failed to upload combined NTFS metadata blob: %v", upErr))
@@ -2208,6 +2212,9 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 	} else if m != nil && len(m.Entries) > 0 {
 		entries, uniqueSDDLs, metaErrs := ntfsCollector.Stats()
 		writeBackupLog(fmt.Sprintf("NTFS metadata: %d entries, %d unique SDDLs, %d errors", entries, uniqueSDDLs, metaErrs))
+		if streams, skipped, eas := ntfsCollector.StreamStats(); streams+skipped+eas > 0 {
+			writeBackupLog(fmt.Sprintf("Alternate data streams: %d recorded, %d by name only (too large or unreadable); extended attributes: %d", streams, skipped, eas))
+		}
 		aclMeta = m
 	}
 
