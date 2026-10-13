@@ -77,7 +77,7 @@ packaging/debian/build-deb.sh [output-dir]     # .deb, on Debian, Ubuntu or Mint
 packaging/fedora/build-rpm.sh [output-dir]     # .rpm, in a fedora:44 Docker container
 ```
 
-Both take the version from `gui/wails.json`, or from `PBS_VERSION`. The .deb build host needs Go, `dpkg-dev` and the GTK3 and WebKitGTK dev packages; the .rpm build host needs only git and Docker. See [packaging/debian/README.md](packaging/debian/README.md) for what the packages install. `make deb` and `make pkgfedora` call the same scripts.
+Both take the version from `gui/wails.json`, or from `PBS_VERSION`. The .deb build host needs Go, `dpkg-dev` and the GTK3 and WebKitGTK dev packages. Build release .debs on Ubuntu 22.04 (a container is fine) with `libwebkit2gtk-4.1-dev`: the package then depends on WebKitGTK 4.1 and glibc 2.34, which Ubuntu 22.04 and 24.04, Mint 21 and Debian 12 and 13 all have. A .deb built against WebKitGTK 4.0 (Mint 21's dev package) does not install on Debian 13 or Ubuntu 24.04, and one built on a newer system needs a newer glibc than Mint 21 has; the .rpm build host needs only git and Docker. See [packaging/debian/README.md](packaging/debian/README.md) for what the packages install. `make deb` and `make pkgfedora` call the same scripts.
 
 ## Tests
 
