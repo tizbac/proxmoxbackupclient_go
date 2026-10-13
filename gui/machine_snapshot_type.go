@@ -32,6 +32,9 @@ func validateScheduledJob(job ScheduledJob) error {
 	if err := validateJobChangeDetection(job); err != nil {
 		return err
 	}
+	if err := validateSchedules(job); err != nil {
+		return err
+	}
 	if job.BackupType != "machine" || !job.MachineAsVM {
 		return nil
 	}

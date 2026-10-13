@@ -195,7 +195,8 @@ func (a *App) ImportSettings() (string, error) {
 	}
 	jobsImported := 0
 	for _, job := range bundle.ScheduledJobs {
-		job.NextRun = calculateNextRun(job)
+		normalizeJobSchedules(&job)
+		setNextRun(&job, time.Now())
 		if i, ok := byID[job.ID]; ok {
 			job.Enabled = existingJobs[i].Enabled
 			existingJobs[i] = job
