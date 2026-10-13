@@ -342,7 +342,7 @@ func TestSearchFilesInlineRejectsBadQueryBeforeNetwork(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	if strings.Contains(err.Error(), "liste des snapshots") {
+	if strings.Contains(err.Error(), "listing the snapshots") {
 		t.Errorf("an invalid regexp reached the network call: %v", err)
 	}
 }

@@ -416,18 +416,18 @@ func (c *Config) validateEncryptionKeyFile() error {
 		return nil
 	}
 	if err := security.ValidatePath(c.EncryptionKeyFile); err != nil {
-		return fmt.Errorf("chemin de cle de chiffrement invalide: %w", err)
+		return fmt.Errorf("invalid encryption key path: %w", err)
 	}
 	if _, err := os.Stat(c.EncryptionKeyFile); err != nil {
-		return fmt.Errorf("fichier de cle de chiffrement illisible (%s): %w", c.EncryptionKeyFile, err)
+		return fmt.Errorf("cannot read the encryption key file (%s): %w", c.EncryptionKeyFile, err)
 	}
 	keyCfg, err := pbscommon.LoadKeyConfig(c.EncryptionKeyFile)
 	if err != nil {
-		return fmt.Errorf("lecture du fichier de cle de chiffrement %s: %w", c.EncryptionKeyFile, err)
+		return fmt.Errorf("reading the encryption key file %s: %w", c.EncryptionKeyFile, err)
 	}
 	if c.EncryptionKeyPassphrase != "" && keyCfg.KDF != nil {
 		if err := verifyKeyPassphrase(c.EncryptionKeyFile, c.EncryptionKeyPassphrase); err != nil {
-			return fmt.Errorf("la phrase de passe enregistree ne deverrouille pas la cle %s: %w", c.EncryptionKeyFile, err)
+			return fmt.Errorf("the saved passphrase does not unlock the key %s: %w", c.EncryptionKeyFile, err)
 		}
 	}
 	return nil
@@ -487,7 +487,7 @@ func (c *Config) GetPBSServer(id string) (*PBSServer, error) {
 	// Get server by ID
 	pbs, exists := c.PBSServers[id]
 	if !exists {
-		return nil, fmt.Errorf("serveur PBS '%s' introuvable", id)
+		return nil, fmt.Errorf("PBS server '%s' not found", id)
 	}
 
 	return pbs, nil
@@ -534,7 +534,7 @@ func (c *Config) UpdatePBSServer(pbs *PBSServer) error {
 
 	existing, exists := c.PBSServers[pbs.ID]
 	if !exists {
-		return fmt.Errorf("serveur PBS '%s' introuvable", pbs.ID)
+		return fmt.Errorf("PBS server '%s' not found", pbs.ID)
 	}
 
 	// A server authenticates with EITHER a token OR user/password, never both.
@@ -554,7 +554,7 @@ func (c *Config) UpdatePBSServer(pbs *PBSServer) error {
 // DeletePBSServer removes a PBS server from the configuration
 func (c *Config) DeletePBSServer(id string) error {
 	if _, exists := c.PBSServers[id]; !exists {
-		return fmt.Errorf("serveur PBS '%s' introuvable", id)
+		return fmt.Errorf("PBS server '%s' not found", id)
 	}
 
 	delete(c.PBSServers, id)
@@ -587,7 +587,7 @@ func (c *Config) ListPBSServers() []*PBSServer {
 // SetDefaultPBS sets the default PBS server ID
 func (c *Config) SetDefaultPBS(id string) error {
 	if _, exists := c.PBSServers[id]; !exists {
-		return fmt.Errorf("serveur PBS '%s' introuvable", id)
+		return fmt.Errorf("PBS server '%s' not found", id)
 	}
 
 	c.DefaultPBSID = id

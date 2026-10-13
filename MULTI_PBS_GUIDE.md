@@ -85,7 +85,7 @@ One-off backups and restores pass a server ID in the same way.
 
 `App.resolvePBS(pbsID)` in `gui/pbs_server.go` is used by backups and restores, in the GUI build and the service build alike:
 
-1. A non-empty `pbsID` is looked up in `PBSServers`; an unknown ID is an error (`serveur PBS '<id>' introuvable`).
+1. A non-empty `pbsID` is looked up in `PBSServers`; an unknown ID is an error (`PBS server '<id>' not found`).
 2. An empty `pbsID` uses `EffectivePBS()`: the legacy top-level fields if `BaseURL` is set, otherwise the default server (`GetPBSServer("")`). With no default and exactly one server, that server is used; with no default and several servers, the error is `no PBS server specified and no default server`.
 3. The result is a `*Config` with authentication filled in (`withAuth`). Restores then unlock the server's key (`resolveRestorePBS`).
 

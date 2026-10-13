@@ -30,9 +30,9 @@ Shared code: `pbscommon` (PBS protocol, pxar, chunking, encryption), `clientcomm
 - `make deb`, `make pkgfedora` - Build the .deb or the .rpm
 - `make lint` - Run golangci-lint
 - `make security-check` - Run security checks with gosec
-- `make cli` - Build the CLI tools (`cli-directory` runs `go mod tidy`, which can change `go.mod`)
-
-The Makefile's `all`, `gui`, `service`, `cross-gui-windows` and `release` targets still use the old Nimbus Backup names and a `cmd/service` folder that does not exist; they do not work as they stand. The root `build.bat`, `build_cli.bat`, `build_gui.bat`, `build_gui.sh` and `build.sh` are also out of date.
+- `make cli` - Build the CLI tools into `dist/`
+- `make gui`, then `make service` - The GUI and the background service into `gui/build/bin` (`make all` does the CLI tools, the GUI and the service)
+- `make msi` - The Windows installer (`installer/wix/build-msi.ps1`)
 
 ## Important Notes
 

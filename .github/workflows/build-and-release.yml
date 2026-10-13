@@ -323,11 +323,10 @@ jobs:
       - name: Build MSI Installer
         working-directory: installer/wix
         run: |
-          # Pass the resolved version to the WiX preprocessor so MSI
-          # metadata matches the tag / ldflags version.
-          candle.exe "-dProductVersion=${{ steps.version.outputs.VERSION_MSI }}" Product.wxs -ext WixUIExtension -ext WixUtilExtension
-           light.exe Product.wixobj -ext WixUIExtension -ext WixUtilExtension -out ProxmoxBackupClient.msi
-           Copy-Item ProxmoxBackupClient.msi ../../dist/
+          # The same script as a local build (x64, ICE61 allowed), with the
+          # resolved version so the MSI metadata matches the tag.
+          ./build-msi.ps1 -Version "${{ steps.version.outputs.VERSION_MSI }}" -WixDir "C:\Program Files (x86)\WiX Toolset v3.14\bin"
+          Copy-Item "out/ProxmoxBackupClient-${{ steps.version.outputs.VERSION_MSI }}-x64.msi" ../../dist/ProxmoxBackupClient.msi
         shell: pwsh
 
       - name: Upload GUI artifacts

@@ -126,9 +126,9 @@ A Backup Set shows its server in its Destination tab. **Reports** list each run.
 
 ## Troubleshooting
 
-### "serveur PBS 'xxx' introuvable"
+### "PBS server 'xxx' not found"
 
-The app's message for a server ID that does not exist (the message is in French whatever the language). A Backup Set still points at a deleted server: edit the set and choose a server in the Destination tab.
+The app's message for a server ID that does not exist (versions up to 0.8.2 gave it in French: "serveur PBS 'xxx' introuvable"). A Backup Set still points at a deleted server: edit the set and choose a server in the Destination tab.
 
 ### "no PBS server specified and no default server"
 

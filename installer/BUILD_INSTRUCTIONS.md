@@ -89,5 +89,5 @@ Service logs are in `C:\ProgramData\ProxmoxBackupClient` (`service-service.log`,
 
 ## CI
 
-`.github/workflows/build-and-release.yml` also builds an MSI. It calls `candle` and `light`
-directly on `Product.wxs` (not `build-msi.ps1`) and names the file `ProxmoxBackupClient.msi`.
+`.github/workflows/build-and-release.yml` also builds an MSI, with `build-msi.ps1` and the
+WiX Toolset that Chocolatey installs, and uploads it as `ProxmoxBackupClient.msi`.

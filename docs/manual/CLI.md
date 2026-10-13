@@ -376,7 +376,7 @@ ProxmoxBackupClientSVC.exe -service install|uninstall|start|stop|restart
 
 Run it as administrator (Windows) or root (Linux). Usually you do not need it:
 
-* **Windows.** The installer (MSI) installs the service as `ProxmoxBackupClientSVC`, and **Preferences > Advanced > Run as Service** in the GUI installs, starts, stops and removes it under the same name. `-service install` registers it under the older name `ProxmoxBackupClient`. The GUI recognises both, but do not install it both ways.
+* **Windows.** The installer (MSI) installs the service as `ProxmoxBackupClientSVC`, and **Preferences > Advanced > Run as Service** in the GUI installs, starts, stops and removes it under the same name, and so does `-service install`. Versions up to 0.8.2 used the name `ProxmoxBackupClient` for `-service install`; the GUI still recognises a service installed that way, but remove it (`-service uninstall` with that older program) before installing the new one, or there would be two.
 * **Linux.** The `.deb` and `.rpm` install the systemd unit `proxmoxbackupclient.service` without turning it on. Turn it on with **Run as Service** in the GUI started as administrator: it copies your Backup Sets, servers, keys and history to `/var/lib/proxmoxbackupclient`, where the service reads them, then enables and starts the unit. `systemctl` and `/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC -service ...` act on the same unit but do not copy any settings.
 
 See the GUI manual ([GUI.md](GUI.md#15-background-service-tray-and-closing-the-window)) for what the service does.

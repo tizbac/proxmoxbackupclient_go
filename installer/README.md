@@ -16,8 +16,6 @@ For silent installs on many computers see [DEPLOYMENT.md](DEPLOYMENT.md).
 | `wix/NimbusBackup.wxs`, `wix/AcmeBackup.wxs` | Example brand files (placeholder URLs). Not built by `build-msi.ps1`. |
 | `wix/License.rtf` | The licence page shown during install. |
 | `icons/<ExeName>.ico` | The icon for each brand, picked by the brand's `ExeName`. |
-| `wix/build.bat` | Old script from before the fork. It does not pass a version and names the output `NimbusBackup.msi`. Do not use it. |
-| `config.example.json` | Old example in a format the app no longer reads. Nothing uses it. |
 
 ## What the MSI installs
 
@@ -49,13 +47,17 @@ ProgramData are not touched. Installing an older version over a newer one is ref
 On removal the service is stopped and deleted, and the programs and the Start menu entry go.
 `C:\ProgramData\ProxmoxBackupClient` is kept unless the property `KEEP_CONFIG` is `0`.
 
-- A full-UI removal (run the MSI again, choose Remove) shows a page that asks
-  "Keep configuration" or "Delete configuration". Keep is the default.
-- Programs and Features offers only "Uninstall" (the MSI sets `ARPNOMODIFY`). That runs
-  without the installer's own pages, so the question is not asked and the settings are kept.
+- Programs and Features > Change (Windows 11 Settings > Apps > Modify), then Remove, shows a
+  page that asks "Keep configuration" or "Delete configuration". Keep is the default. Running
+  the MSI again and choosing Remove does the same.
+- Programs and Features > Uninstall runs without the installer's own pages, so the question
+  is not asked and the settings are kept.
 - Silent: `msiexec /x <msi> /qn` keeps the settings; add `KEEP_CONFIG=0` to delete them.
 
-Only the silent paths have been tested so far (see [../MSI_UNINSTALL_TEST.md](../MSI_UNINSTALL_TEST.md)).
+The silent paths have been tested; the pages have not been clicked through yet (see [../MSI_UNINSTALL_TEST.md](../MSI_UNINSTALL_TEST.md)).
+
+"Delete configuration" removes what it can: files the app holds open (its logs, if a copy of
+it is running from another folder) stay.
 
 ## Public properties
 
@@ -73,7 +75,9 @@ Sets are added in the app after the install.
 A brand is one `.wxs` file that sets `ProductName`, `ExeName`, `ServiceExeName`,
 `VendorKey`, `Manufacturer`, `UpgradeCode` and the four Programs and Features links, then
 includes `ProductBody.wxi`. The programs are installed under the brand's exe names, and
-the app picks its brand from its own exe name at run time (`gui/brand.go`).
+the app picks its brand from its own exe name at run time (`gui/brand.go`). Every brand
+keeps its settings in `C:\ProgramData\ProxmoxBackupClient`, and the removal page and
+`KEEP_CONFIG=0` act on that folder.
 
 To make one: copy `Product.wxs`, give it a new UpgradeCode, add `icons/<ExeName>.ico`,
 build the two programs under the brand's names, and run candle and light on the new file

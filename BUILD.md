@@ -83,6 +83,6 @@ Both take the version from `gui/wails.json`, or from `PBS_VERSION`. The .deb bui
 
 `make test` runs `go test -race` in every module (the separate modules with `GOWORK=off`). `make test-e2e` backs up with the CLIs against a real PBS in Docker and restores with the official client; see `testing/e2e/README.md`.
 
-## Older build files
+## Makefile
 
-Several files in the repository root predate the current layout and do not build the current GUI: `build.bat` (there is no Go package in the root), `build_cli.bat` (`directorybackup` is not in `go.work`), `build_gui.bat` and `build_gui.sh` (they refer to an older Fyne GUI), `build.sh`, and the Makefile's `gui`, `service`, `cross-gui-windows` and `release` targets (they use the old Nimbus Backup names and a `cmd/service` folder that does not exist). Use the commands above instead.
+On Linux (or with GNU make and a POSIX shell on Windows) the Makefile runs the same commands: `make cli` (the command-line tools in `dist/`), `make gui`, then `make service` (in that order: `wails build -clean` empties `gui/build/bin`), `make all` for all three, `make deb`, `make pkgfedora`, `make msi` (Windows), `make test`, `make test-e2e`, `make clean`. `make help` lists them. The version comes from `gui/wails.json`.

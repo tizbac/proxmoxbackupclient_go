@@ -1303,7 +1303,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 		var err error
 		meta, err = ReadSnapshotMetaInline(opts, false)
 		if err != nil {
-			return fmt.Errorf("lecture du sidecar pour restauration in-place: %w", err)
+			return fmt.Errorf("reading the snapshot's file list for an in-place restore: %w", err)
 		}
 		// Validate immediately so the user sees the cross-host / cross-OS
 		// refusal before any chunk is downloaded.

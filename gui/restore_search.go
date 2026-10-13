@@ -216,7 +216,7 @@ func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
 	snaps, err := ListSnapshotsInline(opts.BaseURL, opts.AuthID, opts.Secret, opts.Ticket, opts.CSRFToken,
 		opts.Datastore, opts.Namespace, opts.CertFingerprint, opts.HostPrefix)
 	if err != nil {
-		return nil, fmt.Errorf("liste des snapshots: %v", err)
+		return nil, fmt.Errorf("listing the snapshots: %v", err)
 	}
 
 	type target struct {
@@ -253,7 +253,7 @@ func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
 		}
 		if opts.OnProgress != nil {
 			opts.OnProgress(float64(i)/float64(denom),
-				fmt.Sprintf("Recherche dans %s (%s) — %d/%d", tg.backupID, tg.at.Format("2006-01-02 15:04"), i+1, len(targets)))
+				fmt.Sprintf("Searching %s (%s), %d/%d", tg.backupID, tg.at.Format("2006-01-02 15:04"), i+1, len(targets)))
 		}
 
 		ropts := RestoreOptions{

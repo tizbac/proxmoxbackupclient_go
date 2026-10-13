@@ -19,26 +19,35 @@ C:\ProgramData\ProxmoxBackupClient\
 
 ## How it works (installer/wix/ProductBody.wxi)
 
-- Property `KEEP_CONFIG`, default `1` (keep).
-- Custom action `DeleteConfigFolder`: `cmd.exe /c rmdir /s /q "%ProgramData%\<ExeName>"`,
-  deferred, run as SYSTEM (`Impersonate="no"`), errors ignored.
-  It runs before RemoveFiles when `(REMOVE="ALL") AND NOT UPGRADINGPRODUCTCODE AND (KEEP_CONFIG="0")`,
-  so never during an upgrade.
-- Dialog `UninstallDlg` ("Do you want to keep your configuration and logs?") with two radio
-  buttons, "Keep configuration" (1) and "Delete configuration" (0). It is in the
-  InstallUISequence, shown when `REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`, so only during a
-  removal with the full installer UI.
+- Property `KEEP_CONFIG`, default `1` (keep). It is a secure property, so a choice made in
+  the installer's pages reaches the elevated part of the removal.
+- Custom action `DeleteConfigFolder`: `cmd.exe /c rmdir /s /q "%ProgramData%\ProxmoxBackupClient"`,
+  deferred, run as SYSTEM (`Impersonate="no"`), errors ignored. It runs before RemoveFiles
+  when `(REMOVE="ALL") AND NOT UPGRADINGPRODUCTCODE AND (KEEP_CONFIG="0")`, so never during
+  an upgrade. The folder is the same for every brand, as in the app (`gui/config.go`).
+- Page `UninstallDlg` ("Do you want to keep your configuration and logs?") with two radio
+  buttons, "Keep configuration" (1) and "Delete configuration" (0). It sits in the
+  maintenance wizard: Remove on the "Change, repair, or remove" page leads to it, its Next
+  leads to "Ready to remove", and Back on that page returns to it.
+- The installer's pages are WixUI_InstallDir's, copied as `WixUI_PbcInstallDir` without its
+  `ARPNOMODIFY` property. So Programs and Features offers "Change" (Windows 11 Settings:
+  "Modify"), which opens those pages. `ARPNOMODIFY` is set only while the pages run (so the
+  unused Change button on them stays greyed) and cleared before the product is registered.
 
-Programs and Features shows only "Uninstall" for this product (the WixUI_InstallDir set
-sets `ARPNOMODIFY=1`). That runs the removal without the installer's own dialogs, so
-`UninstallDlg` is expected not to appear there and the settings are kept. To see the
-dialog, run `msiexec /i <the same msi>` on a computer where it is installed and choose Remove.
+Programs and Features' "Uninstall" (Settings: "Uninstall") still removes without the
+installer's pages, so the question is not asked there and the settings are kept. To be
+asked, use "Change" or "Modify", then Remove.
 
 ## Status
 
-Tested on winclient with 0.8.99 and 0.8.100 (commit 5a9b779, 12 October 2026): silent
-install, silent upgrade, and silent removal with the settings kept. The dialog and the
-delete path have not been tested yet.
+- 12 October 2026, 0.8.99 and 0.8.100 (commit 5a9b779) on winclient: silent install, silent
+  upgrade, silent removal with the settings kept.
+- 13 October 2026, 0.8.101 on winclient: silent install (the uninstall entry has no
+  `NoModify`, so "Change" shows; service `ProxmoxBackupClientSVC` running), silent removal
+  with the settings kept, silent removal with `KEEP_CONFIG=0` (DeleteConfigFolder ran; every
+  file went except two logs held open by a copy of the app running from another folder).
+- Not clicked through yet (needs a desktop session): tests 3, 4, 5 and 7. The page order was
+  checked in the built MSI's ControlEvent table.
 
 ## Tests
 
@@ -53,25 +62,28 @@ Sets, so the folder holds `config.json` and `scheduled_jobs.json`.
   Start menu entry gone, Programs and Features entry gone.
 - `C:\ProgramData\ProxmoxBackupClient` still there with `config.json` and `scheduled_jobs.json`.
 
-### 2. Silent removal with KEEP_CONFIG=0
+### 2. Silent removal with KEEP_CONFIG=0 (passed)
 
 `msiexec /x <msi> /qn KEEP_CONFIG=0 /l*v uninstall.log`
 
 - Programs, service and entries gone as in test 1.
-- `C:\ProgramData\ProxmoxBackupClient` gone.
+- `C:\ProgramData\ProxmoxBackupClient` gone (close the app first: files it holds open stay).
 - `uninstall.log` shows `DeleteConfigFolder` running.
 
 ### 3. Programs and Features > Uninstall
 
 - Expected: no keep or delete question; programs gone; settings kept.
 
-### 4. Full UI removal, keep
+### 4. Programs and Features > Change, Remove, keep
 
-`msiexec /i <msi>`, then Remove, then on `UninstallDlg` leave "Keep configuration".
+Programs and Features > Change (or Settings > Apps > Modify), Next, Remove; on the keep or
+delete page leave "Keep configuration", Next, Remove.
 
-- The dialog appears. Afterwards the settings are kept, as in test 1.
+- The page appears. Afterwards the settings are kept, as in test 1.
+- Back on "Ready to remove" returns to the keep or delete page; Back there returns to
+  "Change, repair, or remove".
 
-### 5. Full UI removal, delete
+### 5. Programs and Features > Change, Remove, delete
 
 As test 4, but choose "Delete configuration".
 
@@ -86,7 +98,7 @@ Install a newer build over the installed one.
 
 ### 7. Cancel
 
-Start a full UI removal (test 4) and press Cancel on `UninstallDlg`.
+Start test 4 and press Cancel on the keep or delete page.
 
 - App, service and settings all still there.
 
@@ -96,11 +108,3 @@ Start a full UI removal (test 4) and press Cancel on `UninstallDlg`.
   `DeleteConfigFolder` and `KEEP_CONFIG`.
 - If the folder is not deleted with `KEEP_CONFIG=0`, check that the app or another
   program does not hold a file open in it (the action ignores errors).
-
-## Known issue: branded builds
-
-`DeleteConfigFolder` and the dialog text use `%ProgramData%\<ExeName>`. The app always
-keeps its settings in `C:\ProgramData\ProxmoxBackupClient` (`gui/config.go`), whatever
-the brand. For the default brand the two match. For a branded MSI (for example
-`NimbusBackup`), `KEEP_CONFIG=0` would try to delete `C:\ProgramData\NimbusBackup` and
-leave the real settings behind.

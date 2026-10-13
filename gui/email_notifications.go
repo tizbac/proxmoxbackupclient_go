@@ -137,12 +137,13 @@ func (a *App) runPostBackupActions(job ScheduledJob, success bool, message strin
 		writeDebugLog(fmt.Sprintf("[PostBackup] job %q configured to minimise to the tray after backup", job.Name))
 		a.MinimizeToTray()
 	}
-	if job.ExitAppAfter {
+	// Exiting is for the app only: in the service it would stop every
+	// schedule until Windows or systemd restarts it.
+	if job.ExitAppAfter && a.isServiceProcess {
+		writeDebugLog(fmt.Sprintf("[PostBackup] job %q is set to exit the app after backup; ignored in the service", job.Name))
+	} else if job.ExitAppAfter {
 		writeDebugLog(fmt.Sprintf("[PostBackup] job %q configured to exit the app after backup — exiting", job.Name))
-		go func() {
-			time.Sleep(2 * time.Second) // give the history write and any event emit a moment to land
-			os.Exit(0)
-		}()
+		go exitAppAfterBackup()
 	}
 	if job.ShutdownAfter {
 		writeDebugLog(fmt.Sprintf("[PostBackup] job %q configured to shut down the computer after backup — shutting down", job.Name))
@@ -151,6 +152,13 @@ func (a *App) runPostBackupActions(job ScheduledJob, success bool, message strin
 			shutdownComputer()
 		}()
 	}
+}
+
+// exitAppAfterBackup ends the app once a set that closes it has finished.
+// A variable so tests can see whether it was called.
+var exitAppAfterBackup = func() {
+	time.Sleep(2 * time.Second) // give the history write and any event emit a moment to land
+	os.Exit(0)
 }
 
 // shutdownComputer requests an OS shutdown. Best-effort: logged on failure,

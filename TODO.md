@@ -8,11 +8,7 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 - [ ] **Code signing** for the exe files and the MSI (no Authenticode certificate yet, so SmartScreen and Defender warn). Options: Azure Trusted Signing (about 108 EUR a year), SignPath, or a DigiCert/Sectigo certificate. Then check the signature shows in the file properties and a fresh Windows 11 install gives no SmartScreen warning.
 - [ ] **Release workflow in CI** (`.github/workflows/release.yml`): build Windows, the Linux packages and the BMR ISO in one run and attest them (build provenance needs GitHub Actions, not a personal machine). Today releases are built and uploaded by hand.
 - [ ] **VirusTotal scan** of the release files (manual upload or an API key).
-- [ ] **MSI: the keep-settings question on removal** is probably never shown from Programs and Features: the MSI sets `ARPNOMODIFY=1`, so Uninstall there runs without the dialog; only `msiexec /i` then Remove shows it. Test, then either make the dialog reachable or reword the CHANGELOG and installer docs.
-- [ ] **Branded MSIs would delete the wrong settings folder**: the "delete settings" step and its dialog text in `installer/wix/ProductBody.wxi` use `%ProgramData%\<ExeName>`, but the app always uses `C:\ProgramData\ProxmoxBackupClient`.
-- [ ] **CI's MSI step** calls candle and light directly without `-arch x64` or `-sice:ICE61`; switch it to `installer/wix/build-msi.ps1`, and drop the stale `installer/build.bat` and `config.example.json`.
-- [ ] **Dead build files**: the Makefile's `all`, `gui`, `service`, `cross-gui-windows` and `release` targets use the old Nimbus names and a `cmd/service` folder that does not exist; the root `build.bat`, `build_cli.bat`, `build_gui.bat`, `build_gui.sh` and `build.sh` no longer work either. BUILD.md has the commands that do. Fix or delete them.
-- [ ] `packaging/arch/PKGBUILD` still builds upstream's old "pbsgo" package: update it to the .deb/.rpm layout or drop it.
+- [ ] **MSI: click through the removal pages** on a desktop: Programs and Features > Change, Remove, keep or delete, Back, Cancel (tests 3, 4, 5 and 7 in [MSI_UNINSTALL_TEST.md](MSI_UNINSTALL_TEST.md)). The silent paths passed on 2026-10-13.
 - [ ] **Silent MSI install with a ready-made config** for Group Policy or Intune: a `CONFIGFILE` property and a custom action that copies it into `C:\ProgramData\ProxmoxBackupClient`, a template config, and a deployment guide. Not built: `installer/wix` has no such property.
 
 ## Upstream (tizbac/proxmoxbackupclient_go)
@@ -25,8 +21,6 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 - [ ] **Stats rows for runs the service does**: Files, Processing, Upload and New/Reused stay empty on the card for a run handed to the service or started by its schedule. The percentage and stage line already arrive (`/backup/runs`); add the stats to the API's run entry and have `watchServiceRuns` emit them as the app's own runs do.
 - [ ] **Live test: the encryption key on machine backups the service runs** (fixed in 2f46844, not tried with a key configured).
 - [ ] **Live test on Linux: Restart as administrator** (pkexec) from a desktop session, and clicking Install in the root app.
-- [ ] **Bug: "When the backup finishes: closes (the app exits)" stops the service.** For a set the service runs, `runPostBackupActions` (`gui/email_notifications.go`) calls `os.Exit(0)` in the service process. Skip it there (minimise already checks `isServiceProcess`), and maybe say in the editor that it applies to the app only.
-- [ ] **Two service names on Windows**: `ProxmoxBackupClientSVC -service install` registers the service as `ProxmoxBackupClient`, while the MSI and Preferences > Run as Service use `ProxmoxBackupClientSVC`. Check and make them one name (installing both ways would give two services).
 - [ ] Maybe: Pause from the tray menu, and a "resume at" time.
 
 ## Backing up
@@ -70,7 +64,6 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 - [ ] Native-speaker review of the machine-translated strings (the 17 languages other than English and French), the encryption texts first.
 - [ ] The 12 translated READMEs were regenerated from the English one on 2026-10-13 (condensed, machine-translated): keep them in step when the English README changes, and have native speakers look them over.
 - [ ] `MachineBackupConfig` (machine backup settings) has hard-coded English labels; move them to the translations.
-- [ ] Some Go error messages are still in French and reach the window in every language: "serveur PBS '%s' introuvable" (`gui/config.go`, 4 places), "fichier de cle de chiffrement illisible" (`gui/config.go`), and the key messages in `gui/crypt_key.go` ("fichier introuvable ou illisible", "cle illisible", "le fichier %s existe deja..."). Put them in English (MULTI_PBS_GUIDE.md and MULTI_PBS_USER_GUIDE.md quote the first one).
 - [ ] Screenshots in `docs/screenshots` date from late September (old side menu, no More menu or VSS badge, a BETA banner on Restore, the old Preferences tabs); only `gui-backup-progress.png` is current. Retake them with the UI harness or a real run. The `nimbus-*.png` files are upstream's.
 
 ## Command-line tools

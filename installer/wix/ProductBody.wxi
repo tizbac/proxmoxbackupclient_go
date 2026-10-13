@@ -132,8 +132,12 @@
     <Property Id="ARPURLUPDATEINFO" Value="$(var.ArpUrlUpdateInfo)" />
     <Property Id="ARPCONTACT" Value="$(var.ArpContact)" />
 
-    <!-- UI -->
-    <UIRef Id="WixUI_InstallDir" />
+    <!-- UI: WixUI_InstallDir's dialogs (copied below as WixUI_PbcInstallDir),
+         with the keep-settings page between Remove and Ready to remove, and
+         without WixUI_InstallDir's ARPNOMODIFY: Programs and Features' plain
+         "Uninstall" runs without any pages, so "Change" (Settings: "Modify")
+         must stay to reach Remove and that question. -->
+    <UIRef Id="WixUI_PbcInstallDir" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
     <!-- License -->
@@ -143,7 +147,9 @@
     <Property Id="AUTOSTART" Value="1" />
 
     <!-- ==================== UNINSTALL CONFIGURATION CLEANUP ==================== -->
-    <Property Id="KEEP_CONFIG" Value="1" />
+    <!-- Secure: the choice made on the uninstall page must reach the
+         elevated part of the removal. -->
+    <Property Id="KEEP_CONFIG" Value="1" Secure="yes" />
 
     <CustomAction Id="SetKeepConfigNo" Property="KEEP_CONFIG" Value="0" />
     <CustomAction Id="SetKeepConfigYes" Property="KEEP_CONFIG" Value="1" />
@@ -156,16 +162,28 @@
                   Impersonate="no"
                   Return="ignore" />
 
-    <!-- Custom action to delete config directory -->
+    <!-- Custom action to delete config directory. Every brand keeps its
+         settings in C:\ProgramData\ProxmoxBackupClient (gui/config.go
+         getConfigDir), whatever its ExeName. -->
     <CustomAction Id="DeleteConfigFolder"
                   Directory="TARGETDIR"
-                  ExeCommand='cmd.exe /c "if exist "%ProgramData%\$(var.ExeName)" rmdir /s /q "%ProgramData%\$(var.ExeName)""'
+                  ExeCommand='cmd.exe /c "if exist "%ProgramData%\ProxmoxBackupClient" rmdir /s /q "%ProgramData%\ProxmoxBackupClient""'
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
 
+    <!-- The maintenance pages disable their Change button when ARPNOMODIFY is
+         set, so set it for the pages only, and clear it again before the
+         product is registered so Programs and Features keeps "Change". -->
+    <CustomAction Id="SetNoModifyForPages" Property="ARPNOMODIFY" Value="1" />
+    <CustomAction Id="ClearNoModify" Property="ARPNOMODIFY" Value="[PBC_NOTHING]" />
+    <InstallUISequence>
+      <Custom Action="SetNoModifyForPages" Before="MaintenanceWelcomeDlg">Installed</Custom>
+    </InstallUISequence>
+
     <!-- Schedule custom actions -->
     <InstallExecuteSequence>
+      <Custom Action="ClearNoModify" Before="RegisterProduct">ARPNOMODIFY</Custom>
       <Custom Action="KillGUIProcesses" Before="StopServices">
         UPGRADINGPRODUCTCODE
       </Custom>
@@ -186,7 +204,7 @@
         </Control>
 
         <Control Id="ConfigInfo" Type="Text" X="25" Y="60" Width="320" Height="60" Transparent="yes" NoPrefix="yes">
-          <Text>The settings are kept in C:\ProgramData\$(var.ExeName): the PBS servers and their tokens, the Backup Sets, encryption keys, reports and logs. Keep them to reinstall later with everything as it was.</Text>
+          <Text>The settings are kept in C:\ProgramData\ProxmoxBackupClient: the PBS servers and their tokens, the Backup Sets, encryption keys, reports and logs. Keep them to reinstall later with everything as it was.</Text>
         </Control>
 
         <Control Id="KeepConfigRadio" Type="RadioButtonGroup" X="25" Y="130" Width="320" Height="50" Property="KEEP_CONFIG">
@@ -202,19 +220,68 @@
           <Publish Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
         </Control>
 
-        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Uninstall">
-          <Publish Event="EndDialog" Value="Return">1</Publish>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Next">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
         </Control>
 
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
           <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
         </Control>
       </Dialog>
-
-      <InstallUISequence>
-        <Show Dialog="UninstallDlg" Before="ProgressDlg">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Show>
-      </InstallUISequence>
     </UI>
+
+    <!-- WixUI_InstallDir (WiX 3.14) as it is, except: Remove goes through
+         UninstallDlg, and no ARPNOMODIFY property (see SetNoModifyForPages). -->
+    <UI Id="WixUI_PbcInstallDir">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <Property Id="WixUI_Mode" Value="InstallDir" />
+
+      <DialogRef Id="BrowseDlg" />
+      <DialogRef Id="DiskCostDlg" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+
+      <Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath" Order="3">1</Publish>
+      <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg">NOT Installed</Publish>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">Installed AND PATCH</Publish>
+
+      <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">1</Publish>
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg">LicenseAccepted = "1"</Publish>
+
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="DoAction" Value="WixUIValidatePath" Order="2">NOT WIXUI_DONTVALIDATEPATH</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="SpawnDialog" Value="InvalidDirDlg" Order="3"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="4">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2">1</Publish>
+
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1">NOT Installed</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2"><![CDATA[Installed AND NOT PATCH AND WixUI_InstallMode<>"Remove"]]></Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="UninstallDlg" Order="2">Installed AND NOT PATCH AND WixUI_InstallMode="Remove"</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">Installed AND PATCH</Publish>
+
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="UninstallDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+    </UI>
+    <UIRef Id="WixUI_Common" />
 
   </Product>
 </Include>

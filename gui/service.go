@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
 	"time"
 
 	"github.com/kardianos/service"
@@ -129,41 +127,4 @@ func (s *BackupService) Stop(svc service.Service) error {
 
 	writeDebugLog("Proxmox Backup Client service stopped")
 	return nil
-}
-
-// RunAsService starts the application as a background service
-func RunAsService() {
-	writeDebugLog("Attempting to run as a background service")
-
-	svcConfig := &service.Config{
-		Name:        "ProxmoxBackupClient",
-		DisplayName: "Proxmox Backup Client Service",
-		Description: "Executes scheduled backups to Proxmox Backup Server with VSS support",
-	}
-
-	backupSvc := &BackupService{}
-	s, err := service.New(backupSvc, svcConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	logger, err := s.Logger(nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = s.Run()
-	if err != nil {
-		logger.Error(err)
-	}
-}
-
-// IsServiceMode checks if running in service mode
-func IsServiceMode() bool {
-	for _, arg := range os.Args {
-		if arg == "--service" {
-			return true
-		}
-	}
-	return false
 }
