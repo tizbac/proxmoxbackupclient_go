@@ -326,7 +326,6 @@ func undeleteRuns(cfg *Config, job ScheduledJob, bySnap map[int64]map[string][]s
 		o := restoreOptsFor(cfg, backupID, u)
 		o.ArchiveIncludes = bySnap[u]
 		o.RestoreACLs = true
-		o.RestoreTimestamps = true
 		o.VerifyAfterRestore = verify
 		o.ParallelExtraction = parallel
 		if dest == "" {
@@ -847,7 +846,6 @@ func (a *App) applyRollbackMoves(ctx context.Context, p *rollbackPlan, policy st
 	o.ArchiveIncludes = includes
 	o.KeepExisting = true // everything being replaced has been moved aside
 	o.RestoreACLs = true
-	o.RestoreTimestamps = true
 	o.VerifyAfterRestore = verify
 	o.ParallelExtraction = a.config != nil && a.config.ParallelRestore
 	return m, manifestPath, []RestoreOptions{o}, nil

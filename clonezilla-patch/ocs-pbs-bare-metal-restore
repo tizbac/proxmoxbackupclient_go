@@ -490,21 +490,44 @@ partx -a "$NBDDEV" >/dev/null 2>&1
 udevadm settle --timeout=10 >/dev/null 2>&1
 
 # 8. auto-detect the target disk: the one non-NBD, non-removable, non-loop,
-# non-optical local block device. Zero or more than one -> ask, never guess
-# on an ambiguous multi-disk machine (this is an irreversible drive-wipe).
+# non-optical local block device that is not the boot stick. Zero or more
+# than one -> ask, never guess on an ambiguous multi-disk machine (this is an
+# irreversible drive-wipe).
+#
+# The boot stick: a USB SSD often reports removable=0, and a Ventoy stick
+# serves the ISO through device-mapper, so neither is caught by the checks
+# above. Find the disk(s) under the live medium instead: lsblk -s walks from
+# the mounted device (a partition, or /dev/mapper/ventoy) down to the disk it
+# sits on. A Ventoy stick is also recognised by its VTOYEFI partition, which
+# still holds when the live system was copied to RAM (toram) and the medium
+# is no longer mounted.
+BOOT_DISKS=" "
+add_boot_disk() { case "$BOOT_DISKS" in *" $1 "*) ;; *) BOOT_DISKS+="$1 " ;; esac; }
+for src in $(findmnt -nro SOURCE /run/live/medium 2>/dev/null) /dev/mapper/ventoy; do
+  [ -b "$src" ] || continue
+  for d in $(lsblk -nsrpo NAME,TYPE "$src" 2>/dev/null | awk '$2=="disk"{print $1}'); do
+    add_boot_disk "$d"
+  done
+done
+for d in $(lsblk -nrpo NAME,PKNAME,LABEL 2>/dev/null | awk '$3=="VTOYEFI" && $2!=""{print $2}'); do
+  add_boot_disk "$d"
+done
+[ "$BOOT_DISKS" != " " ] && echo "Boot disk(s), not offered as target:${BOOT_DISKS% }"
+
 declare -a CANDIDATES
 for bd in /sys/block/*; do
   name="$(basename "$bd")"
   case "$name" in
-    nbd*|loop*|sr*|ram*) continue ;;
+    nbd*|loop*|sr*|ram*|zram*|dm-*) continue ;;
   esac
   [ -f "$bd/removable" ] && [ "$(cat "$bd/removable" 2>/dev/null)" = "1" ] && continue
+  case "$BOOT_DISKS" in *" /dev/$name "*) continue ;; esac
   [ -b "/dev/$name" ] && CANDIDATES+=("/dev/$name")
 done
 
 if [ "${#CANDIDATES[@]}" -eq 0 ]; then
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --msgbox "No local target disk found (only removable/optical/loop devices detected).\n\n$msg_program_stop" 0 0 $DIA_ESC
+  --msgbox "No local target disk found (only the boot stick and removable/optical/loop devices detected).\n\n$msg_program_stop" 0 0 $DIA_ESC
   exit 1
 elif [ "${#CANDIDATES[@]}" -eq 1 ]; then
   TARGET="${CANDIDATES[0]}"

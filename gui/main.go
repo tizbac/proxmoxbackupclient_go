@@ -1774,7 +1774,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		Overwrite:          overwrite,
 		RestoreACLs:        restoreACLs,
 		RestoreADS:         restoreADS,
-		RestoreTimestamps:  restoreTimestamps,
+		KeepNewTimes:       !restoreTimestamps,
 		Crypt:              cfg.Crypt,
 		OnProgress:         emit,
 		ParallelExtraction: a.config.ParallelRestore,

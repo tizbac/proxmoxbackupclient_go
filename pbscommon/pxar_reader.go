@@ -86,6 +86,10 @@ type PXARReader struct {
 	// Linux, and ownership only changes when running as root.
 	restoreOwner bool
 
+	// keepNewTimes leaves extracted files with the time they were written
+	// instead of the archive's modification time.
+	keepNewTimes bool
+
 	// createdLinks holds every symlink this extraction created. Entries whose
 	// path runs through one are refused, so a hostile archive cannot plant a
 	// link to /etc and then write "through" it. Touched only by the walking
@@ -128,6 +132,10 @@ func (pr *PXARReader) progressWeight(e PXARTreeEntry, matched bool) int64 {
 // bits. Off by default: archives written on Windows carry a fixed 1000:1000
 // and 0777, which must not be applied to a Linux restore unless asked for.
 func (pr *PXARReader) SetRestoreOwnership(on bool) { pr.restoreOwner = on }
+
+// SetRestoreTimes switches setting each file's recorded modification time
+// on (the default) or off. Off, files keep the time they were written.
+func (pr *PXARReader) SetRestoreTimes(on bool) { pr.keepNewTimes = !on }
 
 // underCreatedLink reports whether any parent directory of path is a symlink
 // created earlier in this extraction.
@@ -1224,7 +1232,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		if pr.restoreOwner {
 			applyModeOwner(fullPath, e.Mode, e.UID, e.GID, true)
 		}
-		if e.ModTimeSet || e.ModTime != 0 { // 0 from the archive = 1970-01-01; negative = pre-1970
+		if !pr.keepNewTimes && (e.ModTimeSet || e.ModTime != 0) { // 0 from the archive = 1970-01-01; negative = pre-1970
 			fsStart = time.Now()
 			t := time.Unix(e.ModTime, int64(e.ModNanos))
 			_ = os.Chtimes(fullPath, t, t)
@@ -1513,7 +1521,7 @@ func (pr *PXARReader) extractOneFileParallel(e PXARTreeEntry, fullPath string, p
 	if pr.restoreOwner {
 		applyModeOwner(fullPath, e.Mode, e.UID, e.GID, true)
 	}
-	if e.ModTimeSet || e.ModTime != 0 { // 0 from the archive = 1970-01-01; negative = pre-1970
+	if !pr.keepNewTimes && (e.ModTimeSet || e.ModTime != 0) { // 0 from the archive = 1970-01-01; negative = pre-1970
 		fsStart = time.Now()
 		t := time.Unix(e.ModTime, int64(e.ModNanos))
 		_ = os.Chtimes(fullPath, t, t)

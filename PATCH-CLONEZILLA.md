@@ -230,12 +230,14 @@ When the automated flow runs:
    seconds, or `pbsnbd` exits (wrong key, server not answering), the last
    lines of the attach log are shown and the flow stops.
 4. Auto-detects the restore target: a local block device that is not
-   `nbd*`/`loop*`/`sr*`/`ram*` and not marked removable. With exactly one
-   candidate it is used; with several the user picks one (sizes shown); with
-   none the flow stops. The boot medium is not excluded as such: a Ventoy
-   stick or USB SSD that reports itself as non-removable is a candidate, and
-   is the only one if the internal disk is not seen. The confirmation below
-   is the safeguard.
+   `nbd*`/`loop*`/`sr*`/`ram*`/`zram*`/`dm-*`, not marked removable and not
+   the boot stick. The boot stick is the disk under the live medium
+   (`findmnt /run/live/medium`, or Ventoy's `/dev/mapper/ventoy`, walked
+   down to its disk with `lsblk -s`), plus any disk with a `VTOYEFI`
+   partition (still found after `toram`); this catches a Ventoy stick or a
+   USB SSD that reports itself as non-removable. With exactly one candidate
+   it is used; with several the user picks one (sizes shown); with none the
+   flow stops.
 5. Shows one confirmation (source/target/sizes, from `parted ... unit GB`)
    before the write, deliberately just the one dialog, since
    `ocs-onthefly` itself still asks its own two separate confirmations

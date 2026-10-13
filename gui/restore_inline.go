@@ -54,10 +54,10 @@ const (
 // accepted and normalized.
 //
 // RestoreACLs re-applies the captured NTFS ACLs/DOS attributes (Windows) or
-// POSIX ACLs/xattrs (Linux) from the snapshot's metadata blob. RestoreTimestamps
-// is always effective: file mtimes, and folder mtimes in a final pass, are
-// restored regardless. RestoreADS is still reserved: no alternate data stream
-// capture exists yet, so it is a logged no-op.
+// POSIX ACLs/xattrs (Linux) from the snapshot's metadata blob. File mtimes,
+// and folder mtimes in a final pass, are restored unless KeepNewTimes is set.
+// RestoreADS is still reserved: no alternate data stream capture exists yet,
+// so it is a logged no-op.
 type RestoreOptions struct {
 	BaseURL         string
 	AuthID          string
@@ -93,11 +93,14 @@ type RestoreOptions struct {
 	// taken on a different machine. Honored only in RestoreModeOriginal.
 	AllowCrossHost bool
 
-	IncludePaths      []string
-	Overwrite         bool
-	RestoreACLs       bool // applies NTFS ACLs/attributes (Windows) or POSIX ACLs/xattrs (Linux)
-	RestoreADS        bool // reserved, no ADS capture exists yet
-	RestoreTimestamps bool // mtime is always restored; flag kept for symmetry
+	IncludePaths []string
+	Overwrite    bool
+	RestoreACLs  bool // applies NTFS ACLs/attributes (Windows) or POSIX ACLs/xattrs (Linux)
+	RestoreADS   bool // reserved, no ADS capture exists yet
+	// KeepNewTimes leaves restored files and folders with the time they were
+	// written ("Restore modification times" unticked). The zero value restores
+	// the backed-up times, so every other caller keeps doing that.
+	KeepNewTimes bool
 
 	// Ctx, when set, bounds the whole restore: cancelling it aborts an
 	// in-flight chunk fetch immediately (see DIDXReaderAt.SetContext) instead
@@ -1543,6 +1546,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			stage("transferring", archiveDetail)
 			reader.SetHashFiles(opts.VerifyAfterRestore)
 			reader.SetRestoreOwnership(restoreOwnershipEnabled())
+			reader.SetRestoreTimes(!opts.KeepNewTimes)
 			if opts.OnFile != nil {
 				reader.SetFileCallback(opts.OnFile)
 			}
@@ -1784,13 +1788,17 @@ func finishExtraction(opts RestoreOptions, extracted []pbscommon.PXARExtractedFi
 	progress(extractEnd, fmt.Sprintf("Extracted %d files", successCount))
 
 	if dirCount > 0 {
-		stage("dirtimes", "")
-		dApplied, dFailed := applyDirectoryTimes(extracted,
-			func() bool { return opts.Ctx != nil && opts.Ctx.Err() != nil },
-			func(done, total int) {
-				progress(extractEnd, fmt.Sprintf("Setting folder timestamps: %d of %d", done, total))
-			})
-		writeBackupLog(fmt.Sprintf("Folder timestamps: applied %d, failed %d", dApplied, dFailed))
+		if opts.KeepNewTimes {
+			writeBackupLog("Folder timestamps: not restored (option off)")
+		} else {
+			stage("dirtimes", "")
+			dApplied, dFailed := applyDirectoryTimes(extracted,
+				func() bool { return opts.Ctx != nil && opts.Ctx.Err() != nil },
+				func(done, total int) {
+					progress(extractEnd, fmt.Sprintf("Setting folder timestamps: %d of %d", done, total))
+				})
+			writeBackupLog(fmt.Sprintf("Folder timestamps: applied %d, failed %d", dApplied, dFailed))
+		}
 		if restoreOwnershipEnabled() {
 			applyDirectoryOwnership(extracted)
 		}

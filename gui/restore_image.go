@@ -710,9 +710,11 @@ func writeImageFile(opts RestoreOptions, dest string, f imagefs.FileReader, e im
 		return skip(false, err.Error())
 	}
 	applyImageOwnerMode(dest, e)
-	mt := time.Unix(res.ModTime, int64(res.ModNanos))
-	if err := os.Chtimes(dest, mt, mt); err != nil {
-		writeBackupLog(fmt.Sprintf("Time not set on %s: %v", dest, err))
+	if !opts.KeepNewTimes {
+		mt := time.Unix(res.ModTime, int64(res.ModNanos))
+		if err := os.Chtimes(dest, mt, mt); err != nil {
+			writeBackupLog(fmt.Sprintf("Time not set on %s: %v", dest, err))
+		}
 	}
 	if e.Created > 0 {
 		_ = applyCreationTime(dest, e.Created)

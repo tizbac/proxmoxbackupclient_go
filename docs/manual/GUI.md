@@ -464,7 +464,7 @@ Selective restore reads only the chunks that hold the ticked files, so restoring
 | Restore to alternate path | Writes to the **Destination folder** you choose (**Browse**) |
 | Keep original directory structure | Alternate path only. On: `dest\Users\alice\doc.txt`. Off: `dest\doc.txt` (good for a single file) |
 | Overwrite existing files | Always on for original path |
-| Restore modification times | Sets file and folder modification times. At present they are put back whether or not this is ticked |
+| Restore modification times | Sets file and folder modification times as they were in the backup. Untick it to leave restored files with the time of the restore. Creation times (Windows) are put back either way. Undelete and Roll back always put the times back |
 | Verify after restore | Reads every restored file back and compares it with the snapshot. Mismatches are reported; nothing is deleted |
 | Restore permissions/ACLs | Windows: owner, group, permissions (DACL) and Hidden/System/Archive/ReadOnly attributes. Linux: POSIX ACLs and extended attributes. Run as administrator (or root) for this |
 | Restore Alternate Data Streams (ADS) | Greyed out (coming soon) |

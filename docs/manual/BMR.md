@@ -57,7 +57,7 @@ Writing the ISO as above gives the whole stick to one image. [Ventoy](https://ww
 
 Ventoy starts on legacy BIOS and UEFI machines. With Secure Boot on, its first start asks you to enrol Ventoy's key once (follow its on-screen steps), or turn Secure Boot off for the restore.
 
-**Check the target disk.** Booted from a Ventoy stick (or a USB SSD that reports itself as a fixed disk), the restore can list the stick next to the machine's own disk and ask which to restore to. Pick the machine's disk; the confirmation screen shows each disk's size before anything is written. If the machine's own disk is not seen at all, the boot drive can even be the only candidate and be chosen for you, so always read the confirmation screen. Test the stick once on a spare machine or VM, as with any boot media.
+The restore never offers the stick it booted from as the disk to restore to, a Ventoy stick or USB SSD included. Test the stick once on a spare machine or VM, as with any boot media.
 
 The ISO boots on both legacy BIOS and UEFI machines. It can also be network-booted like any Clonezilla Live image; setting that up is not covered here.
 
@@ -112,7 +112,7 @@ The chosen image is attached as `/dev/nbd0`. If it cannot be attached (wrong key
 
 ### 4.6 Pick and confirm the target disk
 
-The target is a local disk that is not marked removable and is not optical, a loop device or the attached image. With exactly one such disk it is chosen for you. The boot drive is not left out on purpose: a Ventoy stick or USB SSD that reports itself as a fixed disk is a candidate too ([section 3](#3-get-the-iso-and-make-the-boot-media)). With several, a menu asks, showing each size. The target should be at least as large as the original disk.
+The target is a local disk that is not marked removable, is not the stick the restore booted from (a Ventoy stick or a USB SSD included), and is not optical, a loop device or the attached image. With exactly one such disk it is chosen for you. With several, a menu asks, showing each size. The target should be at least as large as the original disk.
 
 A confirmation screen shows the source and target with their sizes:
 
@@ -182,7 +182,7 @@ A disk image carries the drivers of the machine it came from.
 | "That passphrase did not unlock the key" | Retype the passphrase; 3 attempts in total |
 | "No disk partition with a filesystem was found" | Plug in the key USB stick, then start the flow again |
 | "/dev/nbd0 could not be attached" | Wrong key file for an encrypted backup, or the server stopped answering. The message shows the attach log |
-| "No local target disk found" | The new disk is missing, unsupported by the live system, or seen as removable. Check cabling and BIOS settings |
+| "No local target disk found" | The new disk is missing, unsupported by the live system, or seen as removable. Check cabling and BIOS settings. The stick the restore booted from is never offered |
 | Several disks and unsure which is the target | Compare sizes in the menu; if still unsure, check disk models and serials in the firmware setup first, or disconnect the others |
 | Clonezilla reports the target is too small | Use a disk at least as large as the original |
 | Stops at a `GRUB` prompt after restore | Should not happen with this ISO (it restores the area GRUB uses). Make sure you used the "PBS Bare Metal Restore" entry, not a hand-run restore without Clonezilla's `-j2` option |

@@ -5,7 +5,7 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 ## Release and distribution
 
 - [ ] **Next release.** The last release is v0.8.1 (0.8.2 was deployed, not released). Master now also holds the MSI and Linux packages, the Linux background service, Pause/Resume/Stop for service runs and the shared Backup ID warning (CHANGELOG [Unreleased]). Pick the version (the docs assume v0.9.0), tag, release, then deploy to the machines.
-- [ ] **Code signing** for the exe files and the MSI (no Authenticode certificate yet, so SmartScreen and Defender warn). Options: Azure Trusted Signing (about 108 EUR a year), SignPath, or a DigiCert/Sectigo certificate. Then check the signature shows in the file properties and a fresh Windows 11 install gives no SmartScreen warning.
+- [ ] **Code signing** for the exe files and the MSI (no Authenticode certificate yet, so SmartScreen and Defender warn). Options (checked 2026-10-13): SignPath Foundation (free for open source, signs builds from CI, so needs the release workflow below), a Certum open-source certificate (from about 50 EUR a year), or a Sectigo/DigiCert certificate (roughly 150 to 400 GBP a year, key on a token or cloud HSM). Azure Artifact Signing ($9.99 a month) takes individuals only in the US and Canada. Then check the signature shows in the file properties and a fresh Windows 11 install gives no SmartScreen warning.
 - [ ] **Release workflow in CI** (`.github/workflows/release.yml`): build Windows, the Linux packages and the BMR ISO in one run and attest them (build provenance needs GitHub Actions, not a personal machine). Today releases are built and uploaded by hand.
 - [ ] **VirusTotal scan** of the release files (manual upload or an API key).
 - [ ] **MSI: click through the removal pages** on a desktop: Programs and Features > Change, Remove, keep or delete, Back, Cancel (tests 3, 4, 5 and 7 in [MSI_UNINSTALL_TEST.md](MSI_UNINSTALL_TEST.md)). The silent paths passed on 2026-10-13.
@@ -42,13 +42,11 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 - [ ] **Disk images: a changed partition layout** since a snapshot (a partition moved) makes that snapshot's folder list fail with a clear error; could fall back to finding the volume by its NTFS serial number.
 - [ ] **Disk images: BitLocker volumes** cannot be browsed (they would need the recovery key).
 - [ ] **Quick test: Proxmox VE File Restore** on a `vm/9000xxx` snapshot this client wrote, to compare with our own disk-image browsing.
-- [ ] The **Restore modification times** tick box does nothing: modification times are always restored (`restore_inline.go`). Remove it, or make it work.
 - [ ] Maybe: an "Other backup..." choice in the Undelete and Roll back set picker (server, backup ID, target folder) for another machine's backups.
 
 ## Bare-metal restore ISO
 
-- [ ] **Never offer the boot stick as the target disk.** The wizard skips only nbd, loop, sr, ram and removable devices, so a Ventoy stick (device-mapper) or a USB SSD that reports non-removable becomes a candidate. Also skip `dm-*`, `zram*` and the disk behind the live medium (`findmnt -no SOURCE /run/live/medium` or `/dev/mapper/ventoy`, its parent via `lsblk -no PKNAME`, a dm device's `slaves/`).
-- [ ] Rebuild the ISO (`patch-clonezilla.sh` on VM140) and test from a dd-written stick, a Ventoy stick (BIOS and UEFI) and a USB SSD, on a VM with one and with two internal disks. Check the key-file step lists the Ventoy data partition (exFAT) so the key can live on the same stick.
+- [ ] Rebuild the ISO with the boot-stick exclusion (done in the wizard 2026-10-13 and checked on VM140 with loop-device sticks, a fake `/dev/mapper/ventoy` and a `VTOYEFI` partition; not yet booted) (`patch-clonezilla.sh` on VM140) and test from a dd-written stick, a Ventoy stick (BIOS and UEFI) and a USB SSD, on a VM with one and with two internal disks. Check the key-file step lists the Ventoy data partition (exFAT) so the key can live on the same stick.
 - [ ] Test a bare-metal boot with a passphrase-protected key.
 - [ ] **Publish a new ISO.** The only published one (v0.5.0) predates the removal of the Linux snapshot store file (`.pbs_snapshot_N.cow`) after a restore; BMR.md tells its users to delete it by hand.
 

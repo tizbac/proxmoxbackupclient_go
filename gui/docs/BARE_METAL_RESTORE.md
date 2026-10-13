@@ -115,14 +115,10 @@ the last lines of the attach log and the flow stops.
 ### 6. Confirm the restore target
 
 The wizard looks for the disk to restore *onto*: a local disk that is not marked as
-removable and is not the snapshot you just attached. If there's exactly one candidate,
-it's chosen automatically. If there's more than one, you're asked to pick, with each
-disk's size shown, since guessing wrong here is unrecoverable.
-
-**Watch out when you boot from a Ventoy stick or a USB SSD:** some of these report
-themselves as fixed disks, so the boot drive itself can be offered as a target, or even
-chosen automatically if the machine's own disk is not seen. Check the device and size
-before you continue.
+removable, is not the stick you booted from (a Ventoy stick or USB SSD included) and is
+not the snapshot you just attached. If there's exactly one candidate, it's chosen
+automatically. If there's more than one, you're asked to pick, with each disk's size
+shown, since guessing wrong here is unrecoverable.
 
 Either way, you'll see **one confirmation screen** showing the source snapshot and the
 target disk, with their sizes, before anything is written:
