@@ -150,9 +150,17 @@ over an hour.
 
 - The restored disk boots with everything as it was at snapshot time: files, settings and
   permissions, whatever the operating system.
-- If it doesn't boot cleanly (rare, but more likely if the new disk's controller or the
-  boot mode, UEFI or legacy BIOS, differs from the original machine), repair the boot
-  loader with the operating system's own tools:
+- **Set the firmware to match the original machine first**, above all when you restore a
+  physical machine into a virtual machine. A UEFI machine (GPT disk, nearly every computer
+  from 2015 on) needs UEFI firmware: in a Proxmox VE VM, BIOS **OVMF (UEFI)** plus an EFI
+  Disk with "Pre-Enroll keys" unticked. A legacy BIOS machine (MBR disk) needs **SeaBIOS**,
+  or Legacy/CSM boot on a real computer. With the wrong one the disk is restored but will
+  not start ("No bootable device" or the UEFI shell); change the setting and start again,
+  no second restore needed. Windows' System Information shows "BIOS Mode: UEFI" or
+  "Legacy" on the original machine.
+- If it still doesn't boot cleanly (rare, but more likely if the new disk's controller
+  differs from the original machine), repair the boot loader with the operating system's
+  own tools:
   - **Windows:** boot from a Windows installation USB and use its "Repair your computer"
     → Startup Repair option.
   - **Linux:** boot a live Linux system and reinstall the boot loader (usually GRUB) the
@@ -185,9 +193,9 @@ doesn't have a driver for). Check the physical connection first.
 that's not enough to tell them apart, check disk models and serials in the machine's
 BIOS/UEFI setup first, or disconnect the disks you want to keep, then come back.
 
-**It finished but the system won't boot**: see "After the restore" above for repairing
-the boot loader; this is a boot-configuration issue, not a sign the restore itself
-failed.
+**It finished but the system won't boot**: check the firmware first (UEFI for a GPT
+disk, legacy BIOS for MBR; see "After the restore" above), then repair the boot loader;
+this is a boot-configuration issue, not a sign the restore itself failed.
 
 **Restoring after ransomware or corruption**: pick a snapshot from *before* the
 infection, not the most recent one. If you're not sure how far back is safe, check this

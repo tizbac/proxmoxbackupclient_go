@@ -166,6 +166,40 @@ The same `vm` snapshot can also be restored onto bare metal with the ISO; it app
 
 ## 7. Restoring onto different hardware (P2V and replacement machines)
 
+### Match the firmware to the disk
+
+A disk only starts with the kind of firmware it was set up for. Whether you restore a physical machine into a VM (P2V) or onto a replacement computer, set the target's firmware to match the original machine:
+
+| Original machine | Disk | Proxmox VE VM (Hardware > BIOS) | Replacement computer (firmware setup) |
+|---|---|---|---|
+| UEFI | GPT | **OVMF (UEFI)**, plus an **EFI Disk** with **Pre-Enroll keys** unticked (Secure Boot off) | UEFI boot; Secure Boot off if the restore will not start |
+| Legacy BIOS | MBR | **SeaBIOS** (the default) | Legacy or CSM boot |
+
+With the wrong firmware the restore itself works, but the restored disk does not start: the VM stops at "No bootable device" or the UEFI shell. Change the firmware setting and start it again; there is no need to restore again.
+
+To find out which the original used: on Windows, **System Information** (`msinfo32`) shows **BIOS Mode: UEFI** or **Legacy**, and Disk Management shows a disk's partition style (GPT or MBR) under **Properties > Volumes**. On Linux, UEFI if the folder `/sys/firmware/efi` exists. Nearly every computer from 2015 on uses UEFI and GPT.
+
+A `vm` snapshot restored through Proxmox VE ([section 6](#6-restoring-a-vm-snapshot-onto-proxmox-ve)) gets the right firmware by itself. Add an EFI Disk (Pre-Enroll keys unticked) if a UEFI one does not start.
+
+### A physical machine into a VM with the ISO
+
+1. Create an empty VM: **BIOS** as in the table above, a **SATA** disk at least as large as the original, an **Intel E1000** network card (Windows has the driver built in; VirtIO is fine for Linux), and the ISO in the CD drive, first in the boot order.
+2. Run the restore ([section 4](#4-automated-restore-step-by-step)).
+3. Take the CD out of the boot order and start the VM. Windows shows "Getting devices ready" while it sets up the new hardware, and may restart once.
+
+### Tested routes
+
+| From | To | Route | Result |
+|---|---|---|---|
+| Windows 10 laptop, UEFI/GPT (`vm` snapshot) | Proxmox VE VM, OVMF, SATA | ISO, booted from a disk | Started at the user's desktop |
+| Windows Server, UEFI/GPT (`vm` snapshot) | Proxmox VE VM | Proxmox VE restore | Started without changes |
+| Xubuntu desktop, UEFI/GPT (`vm` snapshot) | Proxmox VE VM, OVMF | Proxmox VE restore, and the ISO | Started at the desktop (Proxmox VE route: EFI Disk added first) |
+| Linux, legacy BIOS/MBR (`host` snapshot) | Proxmox VE VM, SeaBIOS | ISO, and Proxmox VE restore of a `vm` copy | Started at the login prompt |
+| Linux Mint, encrypted backup, passphrase-protected key | Proxmox VE VM, SeaBIOS | ISO, key from a USB stick | Started |
+| Linux PC | the same physical PC (new disk) | ISO | Started |
+
+### Drivers
+
 A disk image carries the drivers of the machine it came from.
 
 * **Linux** usually starts on different hardware.
@@ -186,5 +220,6 @@ A disk image carries the drivers of the machine it came from.
 | Several disks and unsure which is the target | Compare sizes in the menu; if still unsure, check disk models and serials in the firmware setup first, or disconnect the others |
 | Clonezilla reports the target is too small | Use a disk at least as large as the original |
 | Stops at a `GRUB` prompt after restore | Should not happen with this ISO (it restores the area GRUB uses). Make sure you used the "PBS Bare Metal Restore" entry, not a hand-run restore without Clonezilla's `-j2` option |
-| The restored system will not start | Repair the boot loader: Startup Repair from Windows installation media, or the distribution's GRUB repair on Linux (see "After the restore") |
+| A restored VM stops at "No bootable device" or the UEFI shell | The firmware does not match the disk: OVMF (UEFI) for a GPT disk, SeaBIOS for MBR ([section 7](#match-the-firmware-to-the-disk)). Change it and start again |
+| The restored system will not start | Check the firmware first (row above). Then repair the boot loader: Startup Repair from Windows installation media, or the distribution's GRUB repair on Linux (see "After the restore") |
 | A large `.pbs_snapshot_N.cow` file on a restored Linux system | Restored with an ISO from v0.5.0 or earlier; delete the file (see [4.7](#47-the-restore)) |
