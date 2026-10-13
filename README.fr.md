@@ -28,10 +28,10 @@
 
 Voir aussi les [scénarios de restauration](docs/RESTORE_GUIDE.md) et l'[index des manuels](docs/manual/README.md).
 
-## 🆕 Sur master, pour la prochaine version
+## 🆕 Nouveau en v0.9.0 : plusieurs planifications par ensemble, installeurs, service Linux
 
-Dans le [CHANGELOG](CHANGELOG.md) sous [Unreleased], pas encore publié :
-
+- **Plusieurs planifications par ensemble**, de quelques minutes à une fois par an (« chaque jour à 02:00 » plus « le dernier jour du mois » ou « le 2e mardi »), chacune décrite en clair avec ses 3 prochaines exécutions. Les ensembles existants gardent leur planification.
+- **Les sauvegardes de dossiers conservent les flux de données alternatifs et les attributs étendus NTFS** (Windows), comme la marque « téléchargé depuis Internet », et la restauration les remet.
 - **Installeurs** : **MSI Windows** (application et service dans Program Files, menu Démarrer, mise à jour sur place, paramètres conservés ou supprimés à la désinstallation) et **paquets Linux** `.deb` (Debian, Ubuntu, Mint) et `.rpm` (Fedora).
 - **Service d'arrière-plan sous Linux** (`proxmoxbackupclient.service`) : les ensembles planifiés tournent en root, même sans session ouverte (Préférences > Avancé > Exécuter en tant que service). **Redémarrer en tant qu'administrateur** fonctionne aussi sous Linux (via pkexec).
 - **Pause, Reprendre et Arrêter** pour les sauvegardes lancées par le service.
@@ -41,6 +41,11 @@ Dans le [CHANGELOG](CHANGELOG.md) sous [Unreleased], pas encore publié :
 - Les sauvegardes machine Linux ignorent l'espace libre (ext2/3/4, XFS).
 - Récupération et Retour arrière pour les ensembles machine Linux, et **en ligne de commande** : `-list-sets`, `-undelete`, `-rollback`.
 - Les outils en ligne de commande écrivent leurs erreurs sur stderr, et `proxmoxbackup-machine` envoie son e-mail de notification.
+- L'**ISO de restauration bare-metal** ne propose jamais la clé USB sur laquelle elle a démarré comme disque cible, et le manuel explique comment faire correspondre le firmware (UEFI ou BIOS) quand une machine physique devient une VM.
+- **Toutes les langues relues** (17 traductions, environ 1 850 chaînes) ; dates et nombres suivent la langue de l'application.
+- L'accélération de v0.8.2 sur l'espace vide (étiquetée, jamais publiée seule) est aussi incluse.
+
+Voir le [CHANGELOG](CHANGELOG.md) pour la liste complète.
 
 ## 💽 Nouveau en v0.8.0
 

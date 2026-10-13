@@ -28,10 +28,10 @@
 
 Siehe auch die [Wiederherstellungsszenarien](docs/RESTORE_GUIDE.md) und die [Übersicht der Handbücher](docs/manual/README.md).
 
-## 🆕 Auf master, für das nächste Release
+## 🆕 Neu in v0.9.0: mehrere Zeitpläne pro Sicherungssatz, Installer, ein Linux-Dienst
 
-Im [CHANGELOG](CHANGELOG.md) unter [Unreleased], noch nicht veröffentlicht:
-
+- **Mehrere Zeitpläne pro Sicherungssatz**, von alle paar Minuten bis einmal im Jahr („täglich um 02:00“ plus „am letzten Tag des Monats“ oder „am 2. Dienstag“), jeder in Klartext mit seinen nächsten 3 Läufen. Bestehende Sätze behalten ihren Zeitplan.
+- **Ordnersicherungen behalten alternative Datenströme und erweiterte NTFS-Attribute** (Windows), etwa die Markierung „aus dem Internet heruntergeladen“, und eine Wiederherstellung stellt sie wieder her.
 - **Installer**: **Windows-MSI** (App und Dienst unter Program Files, Startmenü, Aktualisierung an Ort und Stelle, Einstellungen beim Entfernen behalten oder löschen) und **Linux-Pakete** `.deb` (Debian, Ubuntu, Mint) und `.rpm` (Fedora).
 - **Hintergrunddienst unter Linux** (`proxmoxbackupclient.service`): Geplante Sätze laufen als root, auch ohne angemeldeten Benutzer (Einstellungen > Erweitert > Als Dienst ausführen). **Als Administrator neu starten** funktioniert auch unter Linux (über pkexec).
 - **Pause, Fortsetzen und Stoppen** für Sicherungen, die der Dienst ausführt.
@@ -41,6 +41,11 @@ Im [CHANGELOG](CHANGELOG.md) unter [Unreleased], noch nicht veröffentlicht:
 - Linux-Maschinensicherungen überspringen freien Speicher (ext2/3/4, XFS).
 - Gelöschte Dateien und Zurücksetzen für Linux-Maschinen-Sätze, und **per Kommandozeile**: `-list-sets`, `-undelete`, `-rollback`.
 - Die Kommandozeilenwerkzeuge geben Fehler auf stderr aus, und `proxmoxbackup-machine` verschickt seine Benachrichtigungs-E-Mail.
+- Die **ISO für Bare-Metal-Wiederherstellung** bietet nie den Stick, von dem sie gestartet wurde, als Zieldatenträger an, und das Handbuch erklärt, wie die Firmware (UEFI oder BIOS) passen muss, wenn aus einem physischen Rechner eine VM wird.
+- **Alle Sprachen überarbeitet** (17 Übersetzungen, rund 1.850 Texte); Datums- und Zahlenformate folgen der Sprache der App.
+- Die Beschleunigung für leeren Speicher aus v0.8.2 (getaggt, nie einzeln veröffentlicht) ist ebenfalls enthalten.
+
+Die vollständige Liste steht im [CHANGELOG](CHANGELOG.md).
 
 ## 💽 Neu in v0.8.0
 

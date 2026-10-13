@@ -28,10 +28,10 @@
 
 Vedere anche gli [scenari di ripristino](docs/RESTORE_GUIDE.md) e l'[indice dei manuali](docs/manual/README.md).
 
-## 🆕 Su master, per la prossima release
+## 🆕 Novità della v0.9.0: più pianificazioni per set di backup, installer, un servizio Linux
 
-Nel [CHANGELOG](CHANGELOG.md) sotto [Unreleased], non ancora rilasciato:
-
+- **Più pianificazioni per set di backup**, da una ogni pochi minuti a una all'anno ("ogni giorno alle 02:00" più "l'ultimo giorno del mese" o "il 2° martedì"), ciascuna descritta a parole con le sue prossime 3 esecuzioni. I set esistenti mantengono la loro pianificazione.
+- **I backup di cartelle conservano gli stream di dati alternativi e gli attributi estesi NTFS** (Windows), come il contrassegno "scaricato da Internet", e il ripristino li rimette.
 - **Installer**: **MSI per Windows** (app e servizio in Program Files, menu Start, aggiornamento sul posto, impostazioni mantenute o eliminate alla rimozione) e **pacchetti Linux** `.deb` (Debian, Ubuntu, Mint) e `.rpm` (Fedora).
 - **Servizio in background su Linux** (`proxmoxbackupclient.service`): i set pianificati girano come root anche senza utenti collegati (Preferenze > Avanzate > Esegui come servizio). **Riavvia come amministratore** funziona anche su Linux (tramite pkexec).
 - **Pausa, Riprendi e Ferma** per i backup eseguiti dal servizio.
@@ -41,6 +41,11 @@ Nel [CHANGELOG](CHANGELOG.md) sotto [Unreleased], non ancora rilasciato:
 - I backup macchina Linux saltano lo spazio libero (ext2/3/4, XFS).
 - Recupero e Rollback per i set macchina Linux, e **da riga di comando**: `-list-sets`, `-undelete`, `-rollback`.
 - Gli strumenti a riga di comando scrivono gli errori su stderr, e `proxmoxbackup-machine` invia la sua e-mail di notifica.
+- La **ISO di ripristino bare-metal** non propone mai come disco di destinazione la chiavetta da cui è partita, e il manuale spiega come far corrispondere il firmware (UEFI o BIOS) quando una macchina fisica diventa una VM.
+- **Tutte le lingue riviste** (17 traduzioni, circa 1.850 stringhe); date e numeri seguono la lingua dell'app.
+- È inclusa anche l'accelerazione della v0.8.2 sullo spazio vuoto (taggata, mai pubblicata da sola).
+
+L'elenco completo è nel [CHANGELOG](CHANGELOG.md).
 
 ## 💽 Novità della v0.8.0
 

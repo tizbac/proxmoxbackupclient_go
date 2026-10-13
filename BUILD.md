@@ -39,8 +39,8 @@ rm go.tmpwork go.tmpwork.sum
 From `gui/`:
 
 ```powershell
-wails build -clean -ldflags "-X main.appVersion=0.8.2"
-go build -tags service -trimpath -ldflags "-s -w -X main.appVersion=0.8.2" -o build\bin\ProxmoxBackupClientSVC.exe
+wails build -clean -ldflags "-X main.appVersion=0.9.0"
+go build -tags service -trimpath -ldflags "-s -w -X main.appVersion=0.9.0" -o build\bin\ProxmoxBackupClientSVC.exe
 ```
 
 This gives `gui\build\bin\ProxmoxBackupClient.exe` (the app) and `gui\build\bin\ProxmoxBackupClientSVC.exe` (the background service, which also takes `-list-sets`, `-undelete` and `-rollback`). Keep them in the same folder. Use the version from `gui/wails.json` (`productVersion`).

@@ -30,10 +30,10 @@ Es un **conjunto de herramientas** para hacer copias de seguridad en PBS:
 | [Escenarios de restauración](docs/RESTORE_GUIDE.md) | Qué restauración usar en cada caso |
 | [Índice de manuales](docs/manual/README.md) | Resumen de los tres manuales |
 
-## 🆕 En master, para la próxima versión
+## 🆕 Novedades de v0.9.0: varias programaciones por conjunto, instaladores, un servicio en Linux
 
-Figuran en el [CHANGELOG](CHANGELOG.md) bajo [Unreleased] y aún no están en ninguna versión publicada:
-
+- **Varias programaciones por conjunto**, desde cada pocos minutos hasta una vez al año: «todos los días a las 02:00» más «cada mes el último día» o «el 2.º martes», cada una descrita con palabras y con sus 3 próximas ejecuciones. Los conjuntos existentes conservan su programación.
+- **Las copias de carpetas conservan los flujos de datos alternativos y los atributos extendidos NTFS** (Windows), como la marca «descargado de Internet», y la restauración los repone. La lista de limitaciones conocidas queda vacía.
 - **Instaladores**: un **MSI para Windows** (aplicación y servicio en Program Files, entrada en el menú Inicio, actualizaciones en el sitio, conservar o borrar la configuración al desinstalar) y **paquetes Linux** `.deb` (Debian, Ubuntu, Mint) y `.rpm` (Fedora), con la aplicación, las tres herramientas de línea de comandos, los manuales y entradas de menú.
 - **Servicio en segundo plano en Linux** (`proxmoxbackupclient.service`): los conjuntos programados se ejecutan como root, también sin nadie conectado. Se activa en Preferencias > Avanzado > Ejecutar como servicio, igual que en Windows. **Reiniciar como administrador** ya funciona también en Linux (mediante pkexec).
 - **Pausar, Reanudar y Detener las copias que ejecuta el servicio**, con su tarjeta de progreso en la aplicación abierta.
@@ -43,6 +43,11 @@ Figuran en el [CHANGELOG](CHANGELOG.md) bajo [Unreleased] y aún no están en ni
 - **Las copias de máquina Linux omiten el espacio libre** (ext2/3/4, XFS), como las de Windows desde v0.8.0.
 - **Recuperación y Reversión para conjuntos de máquina Linux**, y **desde la línea de comandos** para cualquier conjunto: `-list-sets`, `-undelete`, `-rollback` (sección 12 del [manual de la línea de comandos](docs/manual/CLI.md)).
 - Las herramientas de línea de comandos escriben los errores en stderr en lugar de mostrar ventanas, y `proxmoxbackup-machine` envía su correo de notificación.
+- **La ISO de restauración bare-metal** nunca ofrece como disco de destino la memoria USB desde la que arrancó, y el manual explica cómo hacer coincidir el firmware (UEFI o BIOS) cuando una máquina física pasa a ser una VM.
+- **Todos los idiomas revisados** (17 traducciones, unas 1.850 cadenas), y las fechas y los números siguen el idioma de la aplicación.
+- La mejora de v0.8.2 en el manejo del espacio vacío (etiquetada, nunca publicada por separado) también está incluida en esta versión.
+
+Véase el [CHANGELOG](CHANGELOG.md) para la lista completa.
 
 ## 💽 Novedades de v0.8.0: copias de máquina más rápidas, archivos desde ellas, Pausar/Reanudar
 

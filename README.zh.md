@@ -30,10 +30,10 @@
 | [恢复场景](docs/RESTORE_GUIDE.md) | 什么情况下用哪种恢复 |
 | [手册索引](docs/manual/README.md) | 三本手册概览 |
 
-## 🆕 master 分支上，下一个版本将包含
+## 🆕 v0.9.0 新功能：每个 Backup Set 可设多个计划、安装包、Linux 服务
 
-以下内容记录在 [CHANGELOG](CHANGELOG.md) 的 [Unreleased] 下，尚未正式发布：
-
+- **每个 Backup Set 可设多个计划**，频率从每隔几分钟到每年一次：“每天 02:00”再加“每月最后一天”或“第 2 个星期二”，每个计划都用通俗文字描述，并列出接下来的 3 次运行。现有备份集保留原来的计划。
+- **文件夹备份保留备用数据流和 NTFS 扩展属性**（Windows），例如“从互联网下载”标记，恢复时一并还原。已知限制列表现已清空。
 - **安装包**：**Windows MSI**（应用和后台服务装在 Program Files 下，有开始菜单项，支持原地升级，卸载时可选择保留或删除设置），以及 **Linux 软件包** `.deb`（Debian、Ubuntu、Mint）和 `.rpm`（Fedora），包含应用、三个命令行工具、手册和菜单项。
 - **Linux 后台服务**（`proxmoxbackupclient.service`）：计划中的 Backup Sets 以 root 运行，无人登录时也会执行。与 Windows 一样，在 **Preferences > Advanced > Run as Service** 中开启。**Restart as administrator** 现在在 Linux 上也可用（通过 pkexec）。
 - 由服务运行的备份也可 **Pause、Resume、Stop**，打开应用时能看到其进度卡片。
@@ -43,6 +43,11 @@
 - **Linux 整机备份跳过空闲空间**（ext2/3/4、XFS），与 Windows 自 v0.8.0 起相同。
 - Linux 整机 Backup Sets 支持 **Undelete 和 Roll back**；任何 Backup Set 也可**在命令行中**使用：`-list-sets`、`-undelete`、`-rollback`（见[命令行手册](docs/manual/CLI.md)第 12 节）。
 - 命令行工具把错误输出到 stderr，不再弹出消息框；`proxmoxbackup-machine` 会发送通知邮件。
+- **裸机恢复 ISO** 不会把自己启动所用的 U 盘列为恢复目标磁盘；手册还说明了把物理机恢复为虚拟机时如何匹配固件（UEFI 或 BIOS）。
+- **所有语言均已审校**（17 种翻译，约 1,850 条字符串），日期和数字格式跟随应用语言。
+- v0.8.2 对空白磁盘空间的提速（已打标签，未单独发布）也包含在此版本中。
+
+完整列表见 [CHANGELOG](CHANGELOG.md)。
 
 ## 💽 v0.8.0 新功能：更快的整机备份、从中取回文件、暂停/继续
 

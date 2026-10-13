@@ -30,10 +30,10 @@ Det är en **svit av verktyg** för säkerhetskopiering till PBS:
 | [Återställningsscenarier](docs/RESTORE_GUIDE.md) | Vilken återställning som passar när |
 | [Manualindex](docs/manual/README.md) | Översikt över de tre manualerna |
 
-## 🆕 På master, till nästa version
+## 🆕 Nytt i v0.9.0: flera scheman per Backup Set, installationsprogram, en Linux-tjänst
 
-Dessa står i [CHANGELOG](CHANGELOG.md) under [Unreleased] och finns ännu inte i någon release:
-
+- **Flera scheman per Backup Set**, från några minuters intervall till en gång om året: ”varje dag kl. 02:00” plus ”varje månad den sista dagen” eller ”den 2:a tisdagen”, varje schema i klartext med sina nästa 3 körningar. Befintliga sets behåller sitt schema.
+- **Mappbackuper behåller alternativa dataströmmar och utökade NTFS-attribut** (Windows), till exempel markeringen ”hämtad från internet”, och en återställning lägger tillbaka dem. Listan över kända begränsningar är nu tom.
 - **Installationsprogram**: en **Windows-MSI** (appen och bakgrundstjänsten under Program Files, post i Start-menyn, uppgradering på plats, behåll eller radera inställningarna vid avinstallation) och **Linux-paket**, `.deb` (Debian, Ubuntu, Mint) och `.rpm` (Fedora), med appen, de tre kommandoradsverktygen, manualerna och menyposter.
 - **Bakgrundstjänst på Linux** (`proxmoxbackupclient.service`): schemalagda Backup Sets körs som root, även när ingen är inloggad. Slås på under Preferences > Advanced > Run as Service, som på Windows. **Restart as administrator** fungerar nu även på Linux (via pkexec).
 - **Pause, Resume och Stop för backuper som tjänsten kör**, med förloppskortet i den öppna appen.
@@ -43,6 +43,11 @@ Dessa står i [CHANGELOG](CHANGELOG.md) under [Unreleased] och finns ännu inte 
 - **Maskinbackuper på Linux hoppar över ledigt utrymme** (ext2/3/4, XFS), som Windows gör sedan v0.8.0.
 - **Undelete och Roll back för Linux-maskinbackupsets**, och **från kommandoraden** för alla Backup Sets: `-list-sets`, `-undelete`, `-rollback` (avsnitt 12 i [kommandoradsmanualen](docs/manual/CLI.md)).
 - Kommandoradsverktygen skriver fel till stderr i stället för att visa meddelanderutor, och `proxmoxbackup-machine` skickar sitt notifieringsmejl.
+- **ISO:n för bare-metal-återställning** erbjuder aldrig stickan den startade från som disk att återställa till, och manualen förklarar hur firmware (UEFI eller BIOS) ska matcha när en fysisk maskin blir en VM.
+- **Alla språk granskade** (17 översättningar, cirka 1 850 strängar), och datum och tal följer appens språk.
+- v0.8.2:s snabbare hantering av tomt diskutrymme (taggad, aldrig publicerad separat) finns också med i den här versionen.
+
+Se [CHANGELOG](CHANGELOG.md) för hela listan.
 
 ## 💽 Nytt i v0.8.0: snabbare maskinbackup, filer ur den, Pause/Resume
 

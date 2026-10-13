@@ -1,6 +1,6 @@
 # Command line tools: user manual
 
-This manual covers the command line tools. It applies to the version after v0.8.2 (the changes listed under "Unreleased" in the [changelog](../../CHANGELOG.md)). For the graphical client see [GUI.md](GUI.md); for bare-metal restore see [BMR.md](BMR.md).
+This manual covers the command line tools. It applies to v0.9.0 (see the [changelog](../../CHANGELOG.md)). For the graphical client see [GUI.md](GUI.md); for bare-metal restore see [BMR.md](BMR.md).
 
 ## Contents
 

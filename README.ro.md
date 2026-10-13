@@ -30,10 +30,10 @@ Este o **suită de instrumente** pentru backup în PBS:
 | [Scenarii de restaurare](docs/RESTORE_GUIDE.md) | Ce restaurare să folosiți și când |
 | [Indexul manualelor](docs/manual/README.md) | Prezentare generală a celor trei manuale |
 
-## 🆕 Pe master, pentru următoarea versiune
+## 🆕 Nou în v0.9.0: mai multe planificări per Set de Backup, instalatoare, un serviciu Linux
 
-Sunt în [CHANGELOG](CHANGELOG.md) sub [Unreleased] și încă nu fac parte dintr-o versiune publicată:
-
+- **Mai multe planificări per Set de Backup**, de la câteva minute până la o dată pe an: „zilnic la 02:00” plus „lunar, în ultima zi” sau „a 2-a marți”, fiecare planificare descrisă în cuvinte, cu următoarele 3 rulări. Seturile existente își păstrează planificarea.
+- **Backupurile de foldere păstrează fluxurile de date alternative și atributele extinse NTFS** (Windows), cum ar fi marcajul „descărcat de pe internet”, iar restaurarea le pune la loc. Lista de limitări cunoscute este acum goală.
 - **Instalatoare**: un **MSI pentru Windows** (aplicația și serviciul în Program Files, intrare în meniul Start, actualizări pe loc, păstrarea sau ștergerea setărilor la dezinstalare) și **pachete Linux** `.deb` (Debian, Ubuntu, Mint) și `.rpm` (Fedora), cu aplicația, cele trei instrumente în linie de comandă, manualele și intrări în meniu.
 - **Serviciu de fundal pe Linux** (`proxmoxbackupclient.service`): Seturile de Backup planificate rulează ca root, chiar și când nu este nimeni autentificat. Se activează din Preferințe > Avansat > Rulare ca serviciu, ca pe Windows. **Repornește ca administrator** funcționează acum și pe Linux (prin pkexec).
 - **Pauză, Reia și Oprește pentru backupurile rulate de serviciu**, cu cardul lor de progres în aplicația deschisă.
@@ -43,6 +43,11 @@ Sunt în [CHANGELOG](CHANGELOG.md) sub [Unreleased] și încă nu fac parte dint
 - **Backupurile de mașină Linux sar peste spațiul liber** (ext2/3/4, XFS), ca cele Windows din v0.8.0.
 - **Recuperare și Revenire pentru Seturile de Backup de mașină Linux**, și **din linia de comandă** pentru orice set: `-list-sets`, `-undelete`, `-rollback` (secțiunea 12 din [manualul liniei de comandă](docs/manual/CLI.md)).
 - Instrumentele în linie de comandă scriu erorile în stderr în loc să afișeze ferestre de mesaj, iar `proxmoxbackup-machine` trimite e-mailul de notificare.
+- **ISO-ul de restaurare bare-metal** nu oferă niciodată ca disc țintă stickul de pe care a pornit, iar manualul explică potrivirea firmware-ului (UEFI sau BIOS) când o mașină fizică devine VM.
+- **Toate limbile revizuite** (17 traduceri, aproximativ 1.850 de texte), iar datele și numerele urmează limba aplicației.
+- Accelerarea din v0.8.2 pentru spațiul gol (etichetată, niciodată publicată separat) este inclusă și ea în această versiune.
+
+Vedeți [CHANGELOG](CHANGELOG.md) pentru lista completă.
 
 ## 💽 Nou în v0.8.0: backupuri de mașină mai rapide, fișiere din ele, Pauză/Reia
 

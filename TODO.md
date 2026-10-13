@@ -4,7 +4,7 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 
 ## Release and distribution
 
-- [ ] **Next release.** The last release is v0.8.1 (0.8.2 was deployed, not released). Master now also holds the MSI and Linux packages, the Linux background service, Pause/Resume/Stop for service runs and the shared Backup ID warning (CHANGELOG [Unreleased]). Pick the version (the docs assume v0.9.0), tag, release, then deploy to the machines.
+- [ ] **Publish v0.9.0.** Built and tested on 2026-10-14 (tag v0.9.0 local only): push master and the tag, publish the GitHub release with the assets and notes, then deploy to the machines.
 - [ ] **Code signing** for the exe files and the MSI (no Authenticode certificate yet, so SmartScreen and Defender warn). Options (checked 2026-10-13): SignPath Foundation (free for open source, signs builds from CI, so needs the release workflow below), a Certum open-source certificate (from about 50 EUR a year), or a Sectigo/DigiCert certificate (roughly 150 to 400 GBP a year, key on a token or cloud HSM). Azure Artifact Signing ($9.99 a month) takes individuals only in the US and Canada. Then check the signature shows in the file properties and a fresh Windows 11 install gives no SmartScreen warning.
 - [ ] **Release workflow in CI** (`.github/workflows/release.yml`): build Windows, the Linux packages and the BMR ISO in one run and attest them (build provenance needs GitHub Actions, not a personal machine). Today releases are built and uploaded by hand.
 - [ ] **VirusTotal scan** of the release files (manual upload or an API key).

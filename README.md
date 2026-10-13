@@ -28,10 +28,10 @@ It is a **suite of tools** for backing up to PBS:
 | [Restore scenarios](docs/RESTORE_GUIDE.md) | Which restore to use when |
 | [Manuals index](docs/manual/README.md) | An overview of the three manuals |
 
-## 🆕 On master, for the next release
+## 🆕 New in v0.9.0: several schedules per Backup Set, installers, a Linux service
 
-These are in the [CHANGELOG](CHANGELOG.md) under [Unreleased] and not yet in a release:
-
+- **Several schedules per Backup Set**, from every few minutes to once a year: "every day at 02:00" plus "every month on the last day" or "the 2nd Tuesday", each schedule in plain words with its next 3 runs. Existing sets keep their schedule.
+- **Folder backups keep alternate data streams and NTFS extended attributes** (Windows), such as the "downloaded from the internet" mark, and a restore puts them back. Known Limitations now lists none.
 - **Installers**: a **Windows MSI** (app and background service under Program Files, Start menu entry, in-place upgrades, keep or delete the settings on removal) and **Linux packages**, `.deb` (Debian, Ubuntu, Mint) and `.rpm` (Fedora), with the app, the three command-line tools, the manuals and menu entries.
 - **A background service on Linux** (`proxmoxbackupclient.service`): scheduled Backup Sets run as root, also when nobody is logged in. Turn it on in Preferences > Advanced > Run as Service, as on Windows. **Restart as administrator** now works on Linux too (through pkexec).
 - **Pause, Resume and Stop for backups the service runs**, with their progress card in the open app.
@@ -41,6 +41,11 @@ These are in the [CHANGELOG](CHANGELOG.md) under [Unreleased] and not yet in a r
 - **Linux machine backups skip free space** (ext2/3/4, XFS), as Windows ones do since v0.8.0.
 - **Undelete and Roll back for Linux machine Backup Sets**, and **from the command line** for any Backup Set: `-list-sets`, `-undelete`, `-rollback` (section 12 of the [command line manual](docs/manual/CLI.md)).
 - The command-line tools print errors to stderr instead of showing message boxes, and `proxmoxbackup-machine` sends its notification e-mail.
+- **The bare-metal restore ISO** never offers the stick it booted from as the disk to restore onto, and the manual explains matching the firmware (UEFI or BIOS) when a physical machine becomes a VM.
+- **Every language reviewed** (17 translations, about 1,850 strings), and dates and numbers follow the app's language.
+- v0.8.2's faster handling of blank disk space (tagged, never published on its own) is in this release too.
+
+See the [CHANGELOG](CHANGELOG.md) for the full list.
 
 ## 💽 New in v0.8.0: faster machine backups, files back from them, Pause/Resume
 
@@ -49,7 +54,7 @@ These are in the [CHANGELOG](CHANGELOG.md) under [Unreleased] and not yet in a r
 - **Restore files from a machine backup**: each NTFS volume in the image is a folder you can browse, search and tick. Nothing is mounted or downloaded first; only the file table and then the chosen files' data are read (a 127 GB laptop C: with 430,000 files lists in 4 to 15 seconds). So one machine backup per laptop covers both a bare-metal restore and "I need that file back".
 - **Undelete and Roll back** work on machine Backup Sets (Windows), on the folders you choose for the set (by default Desktop, Documents, Pictures, Music, Videos and Downloads).
 - **Pause and Resume** a running folder or machine backup, a **VSS / Snapshot ON-OFF badge** on each set card, and Windows **creation times** backed up and restored.
-- **v0.8.2** (tagged, not published as a release; the change ships with the next one): blank disk space is no longer hashed block by block, so a mostly empty disk goes through in about a third of the time (a 50 GB test disk: 3m36s, now 1m15s).
+- **v0.8.2** (tagged, not published as a release; the change ships in v0.9.0): blank disk space is no longer hashed block by block, so a mostly empty disk goes through in about a third of the time (a 50 GB test disk: 3m36s, now 1m15s).
 
 See the [CHANGELOG](CHANGELOG.md).
 
@@ -135,7 +140,7 @@ The original author may choose to merge anything else from this repo as they see
 | Another Linux | Unpack `ProxmoxBackupClient-v<version>-linux-amd64.tar.gz` (needs the WebKitGTK runtime) |
 | Command line only | `ProxmoxBackupClient-CLI-v<version>-windows-amd64.zip` or `-linux-amd64.tar.gz` |
 
-The MSI, `.deb` and `.rpm` are new on master: releases up to v0.8.1 have only the zip and tar.gz files. Until a release carries the installers, build them as described in [BUILD.md](BUILD.md).
+The MSI, `.deb` and `.rpm` are new in v0.9.0: releases up to v0.8.1 have only the zip and tar.gz files. [BUILD.md](BUILD.md) describes building them yourself.
 
 The Linux packages install two menu entries: **Proxmox Backup Client** runs the app as you (folder backups of your own files), and **Proxmox Backup Client (administrator)** runs it as root, asking for your password through polkit, for machine backups and block snapshots. The background service is installed but not turned on; see [packaging/debian/README.md](packaging/debian/README.md).
 
@@ -166,10 +171,10 @@ On Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`.
 - **Incremental folder backups** (change detection, Metadata mode): unchanged files are reused without being read, as in the official client, with an optional full read every N runs
 - **Machine (whole-disk) backups** on Windows and Linux that skip free space and survive bad sectors, stored as `host` or as a Proxmox VE `vm` snapshot
 - **Restore**: snapshot browsing, file search (wildcards, regular expressions, full paths) and selective restore, with NTFS/POSIX ACL restore, folder timestamps, Windows creation times and an optional verify pass
-- **Files back from machine backups**: browse and restore files from NTFS volumes in a disk image (FAT, exFAT, ext2/3/4 and XFS on master)
+- **Files back from machine backups**: browse and restore files from NTFS volumes in a disk image (FAT, exFAT, ext2/3/4 and XFS from v0.9.0)
 - **Undelete** and **Roll back** (from v0.7.0): find files a Backup Set's backups still have but the disk does not, and put them back; or put a set's folders back as they were at a chosen backup, with a preview first and Undo afterwards. Folder and machine sets. See the [GUI manual](docs/manual/GUI.md#10-undelete)
 - **Pause, Resume and Stop** a running backup
-- **Run as Service**: install, start, stop or remove the background service from Preferences > Advanced, so schedules run without anyone signed in (Windows from v0.7.0; Linux on master)
+- **Run as Service**: install, start, stop or remove the background service from Preferences > Advanced, so schedules run without anyone signed in (Windows from v0.7.0; Linux from v0.9.0)
 - Live progress card: start time and forecast finish, files done of total, processing speed (data and files per second) and actual upload speed, current file, and why a run is reading every file
 - VSS (Volume Shadow Copy) on Windows, elastio-snap/dattobd block snapshots on Linux
 - Email notifications and post-backup actions, Backup Set cloning, settings export and import
@@ -182,7 +187,7 @@ On Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`.
 - `proxmoxbackup-directory`: folder (pxar) backups with deduplication and `-change-detection-mode legacy|data|metadata`
 - `proxmoxbackup-machine`: live whole-disk backups of Windows (VSS) and Linux (elastio-snap/dattobd) machines (fidx, incremental, free space skipped unless `-readfreespace`)
 - `proxmoxbackup-nbd`: NBD server for restoring disk backups (Linux)
-- `ProxmoxBackupClientSVC` (Windows) and `proxmoxbackupclient` (Linux packages): `-list-sets`, `-undelete` and `-rollback` for Backup Sets defined in the GUI (on master)
+- `ProxmoxBackupClientSVC` (Windows) and `proxmoxbackupclient` (Linux packages): `-list-sets`, `-undelete` and `-rollback` for Backup Sets defined in the GUI (from v0.9.0)
 
 The first three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapshots. Full reference: [command line manual](docs/manual/CLI.md).
 
@@ -357,7 +362,7 @@ Español
 ### Smart system exclusions (folder backups)
 Folder backups leave out these on their own:
 
-**System folders:** `System Volume Information` (VSS storage, can reach 100+ GB) and `$RECYCLE.BIN` wherever they are; `Recovery` only at the root of a drive (on master; earlier versions skipped a folder of that name at any depth); `.pbs-rollback` (Roll back's safety folder).
+**System folders:** `System Volume Information` (VSS storage, can reach 100+ GB) and `$RECYCLE.BIN` wherever they are; `Recovery` only at the root of a drive (from v0.9.0; earlier versions skipped a folder of that name at any depth); `.pbs-rollback` (Roll back's safety folder).
 **System files:** `pagefile.sys`, `hiberfil.sys`, `swapfile.sys` and `DumpStack.log.tmp`.
 
 **Why this matters:** a drive may show 1.03 TB used while real files are ~141 GB. Without exclusions the backup would include VSS snapshots (wasted space and time); with them, the size matches the real data.
@@ -366,7 +371,7 @@ Folder backups leave out these on their own:
 
 ### Security & quality
 - Optional client-side encryption of every chunk, with a signed manifest
-- Settings folder open to administrators only on Windows, private to its owner on Linux (on master)
+- Settings folder open to administrators only on Windows, private to its owner on Linux (from v0.9.0)
 - The local service API listens on 127.0.0.1 only and needs a token, renewed every time the service starts
 - Input validation and credential sanitization
 - Path traversal prevention
@@ -395,7 +400,7 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 **Known limitations**
 - A key generated by the GUI is written with a protected ACL (current user, SYSTEM and Administrators only). Key files you keep elsewhere keep whatever permissions their folder gives them.
-- `config.json` holds the PBS tokens, passwords and any remembered passphrase in plain text. On master its folder is open to administrators only (Windows) or to its owner only (Linux); up to v0.8.2 it was readable by local Users on Windows, so restrict it yourself on a shared machine.
+- `config.json` holds the PBS tokens, passwords and any remembered passphrase in plain text. From v0.9.0 its folder is open to administrators only (Windows) or to its owner only (Linux); up to v0.8.2 it was readable by local Users on Windows, so restrict it yourself on a shared machine.
 - Restoring an encrypted snapshot needs the same key file; there is no recovery if it is lost.
 - The Ask-key flow and the service are separate processes: use Remember for anything that runs through the service.
 
@@ -488,7 +493,7 @@ immediately after.
 
 ### File restore from a disk backup
 
-The GUI's Restore page opens a machine backup like a folder backup: each volume in the image is a folder you can browse and restore from (NTFS from v0.8.0; FAT, exFAT, ext2/3/4 and XFS on master). Nothing is mounted.
+The GUI's Restore page opens a machine backup like a folder backup: each volume in the image is a folder you can browse and restore from (NTFS from v0.8.0; FAT, exFAT, ext2/3/4 and XFS from v0.9.0). Nothing is mounted.
 
 On Linux you can also attach a disk backup as a block device with the nbd tool.
 
