@@ -581,6 +581,11 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 
 	//Physical drive paths will be like  "\\\\.\\PhysicalDrive0"
 	client.Connect(false, cfg.BackupType)
+	// A failed or stopped backup must drop its session too (Finish does it
+	// for a good one): left open, PBS keeps the backup task running and the
+	// group locked, so the next backup of the same group fails for as long
+	// as this process lives.
+	defer client.Close()
 	disks := make([]BackupDisk, 0)
 
 	// Calculate total size of all disks
