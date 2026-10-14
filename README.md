@@ -6,17 +6,85 @@
 [![Release](https://img.shields.io/github/v/release/mjb-is/proxmoxbackupclient_go)](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-manuals-orange)](docs/manual/README.md)
 
-**Proxmox Backup Client is an open-source (GPL-3.0) backup client for Proxmox Backup Server (PBS), working on Windows and Linux.**
+**Proxmox Backup Client is an open-source (GPL-3.0) backup client for Proxmox Backup Server (PBS), for Windows and Linux.** It backs up folders as browsable file archives and whole machines as bootable disk images, on schedules or on demand, and brings back anything from a single file to a whole machine, onto the same computer, a replacement, or a Proxmox VE virtual machine.
 
-It is a **suite of tools** for backing up to PBS:
+I build it for my own homelab, to make PBS the single backup system for a mix of Windows and Linux servers, desktops and laptops, in place of Backup for Workgroups, rsync mirrors and Clonezilla/RescueZilla images. It began in September 2026 as a fork of [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) and has grown well beyond it: over 350 commits since, with 18 fixes and features sent back to the original project ([list below](#-contributions-to-the-original-project)).
 
-- **Proxmox Backup Client GUI** (based on the Nimbus Backup GUI from RDEM Systems): a graphical client for backing up Windows and Linux servers and workstations to PBS, with consistent snapshots (VSS on Windows, elastio-snap/dattobd on Linux), Backup Sets with schedules, folder and whole-disk backups, restore, Undelete and Roll back, several PBS servers, and a background service on Windows and Linux.
-- **`proxmoxbackup-directory`**: command-line tool for folder (pxar) backups with deduplication and change detection.
-- **`proxmoxbackup-machine`**: command-line tool for live whole-disk backups (fidx) of Windows (VSS) and Linux (elastio-snap/dattobd) machines; the image is bootable after a bare-metal restore.
-- **`proxmoxbackup-nbd`**: attaches a disk backup as an NBD device for restoring (Linux).
-- A **bare-metal restore ISO** built on Clonezilla Live.
+**You are welcome to use it as it is.** It is officially **alpha software**, used at your own risk, with no guarantee or warranty of any kind. I test every release myself and it is in regular use on my own machines, but see [Status, bug reports and feature requests](#-status-bug-reports-and-feature-requests) before relying on it.
 
-> Keywords: proxmox backup client windows · PBS client · Windows VSS backup · immutable offsite backups · Proxmox Backup Server interface.
+The suite:
+
+- **Proxmox Backup Client GUI**: the app for Windows and Linux. Backup Sets with several schedules each, folder and whole-disk backups with consistent snapshots (VSS on Windows, elastio-snap/dattobd on Linux), restore of files from folder and machine backups, Undelete and Roll back, several PBS servers, client-side encryption, and a background service so schedules run with nobody signed in.
+- **`proxmoxbackup-directory`**: command-line folder (pxar) backups with deduplication and change detection.
+- **`proxmoxbackup-machine`**: command-line live whole-disk backups (fidx) of Windows and Linux machines; the image is bootable after a restore.
+- **`proxmoxbackup-nbd`**: attaches a disk backup as an NBD device (Linux).
+- **A bare-metal restore ISO** built on Clonezilla Live, with a guided restore from power-on to reboot.
+
+> Keywords: proxmox backup client windows · PBS client · Windows VSS backup · physical to virtual (P2V) · bare-metal restore · Proxmox Backup Server interface.
+
+## ⭐ What it does, with measured results
+
+| | Result |
+|---|---|
+| **Incremental folder backups** | A 480.9 GB file server share of 761,866 files: first run 4 h 17 min, each later run 10 to 15 minutes. Unchanged files are not even opened (the official client's Metadata change detection). |
+| **Fast machine backups** | Free space, the paging file and the hibernation file are not read, and blank disk space is not hashed. A 1 TB laptop disk with 373 GB used: 1 h 23 min to 1 h 44 min before, 38 minutes now. A 50 GB test disk: 3 min 36 s, now 1 min 15 s. |
+| **Files back from machine backups** | Browse a disk image like a folder and restore single files, from NTFS, FAT, exFAT, ext2/3/4 and XFS. A laptop's 127 GB C: drive with 430,000 files lists in 4 to 15 seconds; nothing is mounted or downloaded first. |
+| **Physical machine into a virtual machine** | Back up a PC or server, then start it as a Proxmox VE VM: restored through Proxmox VE itself, or with the restore ISO. [See below](#-physical-machines-into-virtual-machines-p2v). |
+| **Bare-metal restore** | Boot the ISO (USB stick, CD or PXE), enter the PBS details, pick the backup: a 32 GB Windows machine was back at its login screen 8 minutes after power-on. |
+| **Undelete** | After 39 GB were deleted from a 761,000-file share, a 7-day search found exactly those files in about a minute, and put them back. |
+| **Roll back** | Put a set's folders back as they were at a chosen backup, with a preview first and Undo afterwards. |
+| **Schedules** | Several per Backup Set, from every few minutes to once a year: "every day at 02:00" plus "the last day of every month" or "the 2nd Tuesday", each shown in plain words with its next 3 runs. |
+| **Restore fidelity** | NTFS permissions, attributes, alternate data streams and extended attributes, creation and folder times on Windows; modes, owners, ACLs, extended attributes and symlinks on Linux. An optional pass re-reads what was restored and compares it with the backup. |
+| **Works with Proxmox's own tools** | Backups made here restore byte-identically with the official `proxmox-backup-client`, and the other way round. [Details](#-compatible-with-the-official-proxmox-client-in-both-directions). |
+
+## 🧩 What it adds over the original project
+
+Beyond the [18 changes merged into the original project](#-contributions-to-the-original-project), this client adds:
+
+**Backups**
+- Incremental folder backups with the official client's change detection (Data and Metadata modes, split pxar v2 archives), with a full read every N runs.
+- Machine backups that skip free space, the paging file and the hibernation file (Windows NTFS; Linux ext2/3/4 and XFS), write unreadable sectors as zeros and carry on, and show blocks, disk, partition and chunk counts as they run.
+- Pause, Resume and Stop for folder and machine backups, also for backups the background service runs.
+- Alternate data streams, NTFS extended attributes and creation times in Windows folder backups.
+
+**Schedules and Backup Sets**
+- Several schedules per Backup Set, from every few minutes to once a year (the nth weekday, the last day of the month), each in plain words with its next 3 runs.
+- A background service on Linux as well as Windows, and Restart as administrator on Linux.
+- Quick or full Run Now, a VSS / Snapshot badge, a SHARED ID warning, set names written to PBS as snapshot comments, email alerts, post-backup actions, and settings export and import.
+
+**Restores**
+- Single files back from machine backups (NTFS, FAT, exFAT, ext2/3/4, XFS), without mounting or downloading the image.
+- Undelete and Roll back, for folder and machine Backup Sets, in the GUI and from the command line.
+- An optional verify pass after a restore, Windows creation times, and a snapshot tree that loads one folder at a time, so very large backups open at once.
+- A guided bare-metal restore ISO that also restores into an empty VM, and tested physical-to-virtual routes ([P2V](#-physical-machines-into-virtual-machines-p2v)).
+- Byte-identical compatibility with the official `proxmox-backup-client` in both directions, including its Data and Metadata (split archive) snapshots.
+
+**The app**
+- A rebuilt interface: menu bar, side menu, Reports with the full backup and restore history, a Message Log, five colour themes and a custom colour, tray and toast notifications.
+- 18 interface languages, every one reviewed (the original has 5).
+- Settings folder locked to administrators (Windows) or its owner (Linux), and a service API token renewed at every start.
+- MSI, `.deb` and `.rpm` packages, and the user manuals for the GUI, the command line and bare-metal restore.
+
+## 🔄 Physical machines into virtual machines (P2V)
+
+A machine backup of a physical PC or server can become a Proxmox VE virtual machine, two ways:
+
+**1. Restore it in Proxmox VE.** Set the Backup Set (or one-off backup) to **Backup as: Proxmox VE virtual machine**. The backup is stored as `vm/<number>` with a small VM configuration, so Proxmox VE lists it with its other VM backups: open the PBS storage in Proxmox VE, select the backup, **Restore**, pick a VM ID and storage. The VM gets one SATA disk and the right firmware for the disk (OVMF for UEFI/GPT, SeaBIOS for BIOS/MBR); add a network card before starting it, and an EFI disk (Pre-Enroll keys unticked) if a UEFI one does not start.
+
+**2. Restore it with the bare-metal restore ISO into an empty VM.** Create a VM with the same firmware as the original machine (OVMF with an EFI disk for UEFI/GPT, SeaBIOS for BIOS/MBR), a SATA disk at least as large as the original and an Intel E1000 network card, boot it from the ISO and run the restore. This works for `host` and `vm` backups alike, and the same backup still restores onto bare metal.
+
+Tested routes:
+
+| From | To | Route | Result |
+|---|---|---|---|
+| Windows 10 laptop, UEFI/GPT | Proxmox VE VM | Restore ISO | Started at the user's desktop |
+| Windows Server, UEFI/GPT | Proxmox VE VM | Proxmox VE restore | Started without changes |
+| Xubuntu desktop, UEFI/GPT | Proxmox VE VM | Proxmox VE restore, and the restore ISO | Started at the desktop |
+| Linux, BIOS/MBR | Proxmox VE VM | Restore ISO, and Proxmox VE restore | Started at the login prompt |
+| Linux Mint, encrypted backup | Proxmox VE VM | Restore ISO, key from a USB stick | Started |
+| Linux PC | the same PC with a new disk | Restore ISO | Started |
+
+Windows sets up the new virtual hardware on first start ("Getting devices ready"). The [bare-metal restore manual](docs/manual/BMR.md#7-restoring-onto-different-hardware-p2v-and-replacement-machines) has the firmware table, drivers and step-by-step instructions.
 
 ## 📖 User manuals
 
@@ -24,7 +92,7 @@ It is a **suite of tools** for backing up to PBS:
 |---|---|
 | **[GUI manual](docs/manual/GUI.md)** | Install, PBS servers, Backup Sets and schedules, incremental backups, progress, restore, Undelete, Roll back, Reports, logs, Preferences, the background service, troubleshooting |
 | **[Command line manual](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`: every flag, config files, exit codes, scheduling; Undelete and Roll back from the command line |
-| **[Bare-metal restore manual](docs/manual/BMR.md)** | The restore ISO, step by step; `vm` snapshots onto Proxmox VE; different hardware |
+| **[Bare-metal restore manual](docs/manual/BMR.md)** | The restore ISO, step by step; `vm` backups onto Proxmox VE; physical to virtual; different hardware |
 | [Restore scenarios](docs/RESTORE_GUIDE.md) | Which restore to use when |
 | [Manuals index](docs/manual/README.md) | An overview of the three manuals |
 
@@ -43,44 +111,8 @@ It is a **suite of tools** for backing up to PBS:
 - The command-line tools print errors to stderr instead of showing message boxes, and `proxmoxbackup-machine` sends its notification e-mail.
 - **The bare-metal restore ISO** never offers the stick it booted from as the disk to restore onto, and the manual explains matching the firmware (UEFI or BIOS) when a physical machine becomes a VM.
 - **Every language reviewed** (17 translations, about 1,850 strings), and dates and numbers follow the app's language.
-- v0.8.2's faster handling of blank disk space (tagged, never published on its own) is in this release too.
 
-See the [CHANGELOG](CHANGELOG.md) for the full list.
-
-## 💽 New in v0.8.0: faster machine backups, files back from them, Pause/Resume
-
-- **Machine backups skip free space** (and the paging and hibernation files) on Windows, so a half-empty disk is read in about half the time, and a **bad sector** no longer stops the backup: it goes into the image as zeros and the run says where.
-- The machine backup progress card shows blocks of total, the disk and partition, New / Reused / blank chunks and the upload rate.
-- **Restore files from a machine backup**: each NTFS volume in the image is a folder you can browse, search and tick. Nothing is mounted or downloaded first; only the file table and then the chosen files' data are read (a 127 GB laptop C: with 430,000 files lists in 4 to 15 seconds). So one machine backup per laptop covers both a bare-metal restore and "I need that file back".
-- **Undelete and Roll back** work on machine Backup Sets (Windows), on the folders you choose for the set (by default Desktop, Documents, Pictures, Music, Videos and Downloads).
-- **Pause and Resume** a running folder or machine backup, a **VSS / Snapshot ON-OFF badge** on each set card, and Windows **creation times** backed up and restored.
-- **v0.8.2** (tagged, not published as a release; the change ships in v0.9.0): blank disk space is no longer hashed block by block, so a mostly empty disk goes through in about a third of the time (a 50 GB test disk: 3m36s, now 1m15s).
-
-See the [CHANGELOG](CHANGELOG.md).
-
-## 🗑️ New in v0.7.0: Undelete and Roll back
-
-Two new pages in the GUI, for folder Backup Sets:
-
-- **Undelete** finds the files that are in a set's backups but no longer on disk, in the newest backup or every backup of the last 7 or 30 days, shows them as a folder tree with when each went missing (and "probably moved to ..." when the same file is elsewhere), and restores the ticked ones where they were or to another folder. After deleting 39 GB from a 761,000-file share, a 7-day search found exactly those files in about a minute.
-- **Roll back** puts a set's folders back as they were at a chosen backup. It previews what would change (missing, changed, added since), then restores. Every file it replaces or removes is first moved aside on the same drive, so **Undo** puts everything back.
-
-Only the backups' file lists and the folders' listings are read; no file is opened until it is restored. Also new: in-app confirmation dialogs, a Next run time on each Backup Set card, a suggested Backup ID per set (`deepthought-data`), unique set names, and the background service included in the Windows download (Preferences > Advanced > Run as Service). See the [GUI manual](docs/manual/GUI.md#10-undelete) and the [CHANGELOG](CHANGELOG.md).
-
-## ⚡ New in v0.6.0: incremental folder backups
-
-Folder backups can now skip files that have not changed, using the same **change detection** as the official `proxmox-backup-client`. In **Metadata** mode the client compares each file's size, modification time (to the nanosecond), mode and owner with the previous snapshot. Unchanged files are not even opened: their data is reused from the previous snapshot's chunks. Only new and changed files are read and uploaded.
-
-Measured on a real file server (480.9 GB, 761,866 files on USB disks):
-
-| Run | Time | Read | New chunks uploaded |
-|---|---|---|---|
-| First Metadata run (nothing to compare with) | 4 h 17 min | every file | 135,549 |
-| Following runs | about 10 to 15 min (quicker when the last run was minutes ago) | only changed files; all 761,866 unchanged files reused | 4 to 40 |
-
-Because unchanged data is neither read nor sent, it also cuts traffic to a remote or offsite PBS to little more than what actually changed.
-
-To use it: edit a folder **Backup Set**, **Destination** tab, **Change detection: Metadata**. Set **Read every file every N runs** so that every Nth run is a full read, which catches the rare change that keeps a file's size and time (for example 42 for a set that runs every 4 hours, roughly weekly). Give each set its **own Backup ID**: Metadata mode compares with the newest snapshot in the group, so two sets sharing an ID make each other read everything. Command line: `-change-detection-mode metadata`. Legacy stays the default; details in [Faster folder backups: change detection](#faster-folder-backups-change-detection) and the [GUI manual](docs/manual/GUI.md#7-incremental-folder-backups-change-detection).
+Earlier releases: **v0.8** faster machine backups (free space skipped, bad sectors survived), files back from machine backups, Pause and Resume; **v0.7** Undelete and Roll back; **v0.6** incremental folder backups. The [CHANGELOG](CHANGELOG.md) has every change.
 
 ## 🤝 Compatible with the official Proxmox client, in both directions
 
@@ -94,40 +126,6 @@ So your backups are never tied to this client: Proxmox's own tools restore every
 
 > ⚠️ **Disclaimer:** This project is **not affiliated in any way** with **Proxmox Server Solutions GmbH**. "Proxmox", the Proxmox logo and related names are the property of their respective owners; here they are used **only** to state compatibility. See [proxmox.com](https://www.proxmox.com/) for their products.
 
-## 🔧 About this fork
-
-This is **mjb-is's fork** of the upstream project. Repo: **https://github.com/mjb-is/proxmoxbackupclient_go**. Focus areas: creating functionality and flow that would allow PBS to be the single server-based backup system in my homelab, which currently uses a mix of Proxmox Backup Server with Proxmox VE VM and Linux host backups, Backup for Workgroups for Windows servers file-based and bare-metal recovery, FastFileSync/Rsync incremental file mirrors, and CloneZilla/RescueZilla. Hardening the Windows/Linux GUI client and building a fully automated bare-metal restore path on top of Clonezilla. Highlights over upstream:
-
-- **Rebuilt GUI**: a native File/View/Tools/Help menu bar, a left side menu (Backup, Restore, Undelete, Roll back, Reports, Message Log, Preferences, About), "Backup Sets" with daily, interval or manual triggers, a type badge and a one-click "Run Now", a Reports page with full backup history, a capped Message Log, and a Preferences dialog with five colour themes (Amber, Blue, Green, Red, Dark) plus a custom colour option. Eighteen interface languages (French, English, Italian, German, Polish, Spanish, Bulgarian, Czech, Greek, Hungarian, Latvian, Lithuanian, Dutch, Portuguese, Romanian, Slovak, Turkish and Ukrainian), with no hardcoded language left, so the whole application displays in the selected language.
-- **A real PBS/NBD chunk-fetch reliability fix**: regular hangs on full machine backup restore (4 fails to 1 success typical) came from a `zstd.NewReader` call in the reader path started with a live `io.Reader` instead of `nil`, silently spinning up an unused background streaming-decode goroutine that could deadlock a bare-metal restore mid-transfer. Fixed upstream too, merged as [PR #85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85).
-- **A fully automated "PBS Bare Metal Restore" wizard** for the Clonezilla live ISO: see [below](#clonezilla-live-iso-bare-metal-restore). Test restore of a 32GiB Windows machine from power-on into the boot ISO, through to a restored Windows login, in just 8 minutes; similarly, a 40GiB Linux Mint restore in 10 minutes to the login prompt. Both tested on isolated VMs, still to be tested on bare metal.
-- **Restore fidelity and feedback**: NTFS ACLs and DOS attributes are re-applied on Windows, along with alternate data streams (such as the "downloaded from the internet" mark) and NTFS extended attributes, and POSIX ACLs and extended attributes on Linux (all verified live). Folder timestamps are restored as well as file ones. Linux folder backups also record real modes, owners and symlinks, and a root restore re-applies them. An optional "Verify after restore" pass re-reads what was written and compares it with the snapshot. Selective restore uses the archive's own index instead of scanning it, the snapshot tree loads one folder at a time, and the restore progress bar tracks bytes actually written, with a stage label under it and the run recorded in Reports.
-- **Backup Set workflow**: clone a set, a Backup Set's name is written to PBS as the snapshot comment (one-off backups get an optional comment field), email notifications with on-failure options, post-backup actions (shut down, minimise to the tray or exit the app, run an application), settings export and import between machines, a queue that names what is waiting behind the active job, and Stop, Pause and Resume on the progress card.
-- **Backup behaviour**: an optional multi-threaded read-ahead for backups (experimental), the file currently being archived is shown during directory backups, network shares are no longer snapshotted with VSS, and mapped drives are visible in the folder picker even when the app is elevated. A tray tooltip and Windows toast notifications report backup and restore activity.
-- **Machine backup as a Proxmox VE "vm" snapshot.** The one-off backup form and Backup Sets can store a machine backup as `vm/<id>` so Proxmox VE can list and restore it (pick a target Storage in the restore dialog; a restored Windows UEFI/GPT disk is verified to boot). The ID is numeric, with an offset into a reserved range by default so it cannot clash with a real VM. The generated VM config is minimal (SATA disk, OVMF for GPT disks, no TPM or Secure Boot keys, no drivers), so expect a bare-bones VM. This also works as a physical-to-virtual conversion: a `vm` snapshot restores onto Proxmox VE and boots (verified with a Windows Server UEFI disk), and the same snapshot can still be restored onto bare metal with the Clonezilla bare-metal restore, which lists `vm` snapshots alongside `host` ones (verified over PXE onto a blank VM). A Backup Set stores its numeric ID, so every scheduled run lands in the same `vm/<id>` group; a set with a non-numeric ID is refused at save time. Host backup remains the default. Restoring these snapshots onto Proxmox VE and onto bare metal has been tested repeatedly with no failures to date.
-
-Anything of general use gets sent upstream as a PR rather than kept fork-only; day-to-day fork-specific work stays here. Seventeen pull requests from this fork have been merged into the original project so far, and one ([#105](https://github.com/tizbac/proxmoxbackupclient_go/pull/105), file and folder times on restore) is open:
-
-  - [PR #85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85): Fix zstd decoder goroutine deadlock in `GetChunkData` (hung full-machine restores)
-  - [PR #86](https://github.com/tizbac/proxmoxbackupclient_go/pull/86): Fully automated PBS Bare Metal Restore boot entry for the Clonezilla ISO
-  - [PR #87](https://github.com/tizbac/proxmoxbackupclient_go/pull/87): Linux snapshots: drive elastio-snap/dattobd through ioctl instead of `elioctl`/`dbdctl`
-  - [PR #88](https://github.com/tizbac/proxmoxbackupclient_go/pull/88): Restore: re-apply captured NTFS ACLs (Windows) and POSIX ACLs and xattrs (Linux)
-  - [PR #90](https://github.com/tizbac/proxmoxbackupclient_go/pull/90): `machinebackuplib`: make `vm` backups restorable and bootable on Proxmox VE
-  - [PR #91](https://github.com/tizbac/proxmoxbackupclient_go/pull/91): GUI: back machines up as `host`, not `vm`, by default
-  - [PR #92](https://github.com/tizbac/proxmoxbackupclient_go/pull/92): `patch-clonezilla`: skip patches whose change is already in the base ISO
-  - [PR #93](https://github.com/tizbac/proxmoxbackupclient_go/pull/93): `patch-clonezilla`: add the PBS bare-metal restore entry to `isolinux.cfg`
-  - [PR #94](https://github.com/tizbac/proxmoxbackupclient_go/pull/94): Restore the data between the MBR and the first partition in the BMR flow (BIOS/MBR machines boot after restore)
-  - [PR #95](https://github.com/tizbac/proxmoxbackupclient_go/pull/95): Fix reading passphrase-protected key files made by `proxmox-backup-client`
-  - [PR #96](https://github.com/tizbac/proxmoxbackupclient_go/pull/96): `directorybackup`: back up several directories in one run
-  - [PR #97](https://github.com/tizbac/proxmoxbackupclient_go/pull/97): Docs: point elastio-snap at the maintained Axcient fork
-  - [PR #98](https://github.com/tizbac/proxmoxbackupclient_go/pull/98): `pbscommon`: skip the key file permission check on Windows
-  - [PR #99](https://github.com/tizbac/proxmoxbackupclient_go/pull/99): Restore encrypted backups from the Clonezilla BMR ISO
-  - [PR #102](https://github.com/tizbac/proxmoxbackupclient_go/pull/102): `snapshot`: delete our VSS shadow copies after every backup, through the VSS API
-  - [PR #103](https://github.com/tizbac/proxmoxbackupclient_go/pull/103): `machinebackup`: skip hashing blank (all-zero) chunks
-  - [PR #104](https://github.com/tizbac/proxmoxbackupclient_go/pull/104): CLIs: report errors on stderr, never in a message box
-
-The original author may choose to merge anything else from this repo as they see fit under GPL.
-
 ## 📦 Download and install
 
 👉 **[Download the latest release](https://github.com/mjb-is/proxmoxbackupclient_go/releases)**
@@ -137,57 +135,59 @@ The original author may choose to merge anything else from this repo as they see
 | Windows | The **MSI installer** (`ProxmoxBackupClient-<version>-x64.msi`) installs the app and the background service under Program Files, with a Start menu entry. Or unzip `ProxmoxBackupClient-v<version>-windows-amd64.zip` (the app and `ProxmoxBackupClientSVC.exe`; keep them in the same folder) |
 | Debian, Ubuntu, Mint | `sudo apt install ./proxmoxbackupclient_<version>_amd64.deb` |
 | Fedora | `sudo dnf install ./proxmoxbackupclient-<version>-1.fc44.x86_64.rpm` |
-| Another Linux | Unpack `ProxmoxBackupClient-v<version>-linux-amd64.tar.gz` (needs the WebKitGTK runtime) |
+| Another Linux | Unpack `ProxmoxBackupClient-v<version>-linux-amd64.tar.gz` (needs the WebKitGTK 4.1 runtime) |
 | Command line only | `ProxmoxBackupClient-CLI-v<version>-windows-amd64.zip` or `-linux-amd64.tar.gz` |
+| A machine to restore | `ProxmoxBackupClient-GO-BMR-Restore-v<version>.iso`, the bare-metal restore ISO |
 
 The MSI, `.deb` and `.rpm` are new in v0.9.0: releases up to v0.8.1 have only the zip and tar.gz files. [BUILD.md](BUILD.md) describes building them yourself.
 
 The Linux packages install two menu entries: **Proxmox Backup Client** runs the app as you (folder backups of your own files), and **Proxmox Backup Client (administrator)** runs it as root, asking for your password through polkit, for machine backups and block snapshots. The background service is installed but not turned on; see [packaging/debian/README.md](packaging/debian/README.md).
 
 > ⚠️ **Windows shows "virus detected" (e.g. `Trojan:Win32/Sabsik.FL.A!ml`) or a SmartScreen warning?**
-> This is a **known false positive** for Go/Wails applications: it is *not* a virus. The `!ml` suffix indicates a machine-learning model detection that flags *unsigned and uncommon* executables. Upstream has more detail: [why this happens and how to verify their download](https://github.com/tizbac/proxmoxbackupclient_go).
+> This is a **known false positive** for Go/Wails applications: it is *not* a virus. The `!ml` suffix indicates a machine-learning model detection that flags *unsigned and uncommon* executables. Check the download against `SHA256SUMS.txt` (below).
 
 ### 🔎 Verifying a download
 
-Every release from this fork includes a `SHA256SUMS.txt`:
+Every release includes a `SHA256SUMS.txt`:
 
 ```powershell
-Get-FileHash .\ProxmoxBackupClient-v0.8.1-windows-amd64.zip -Algorithm SHA256   # compare with SHA256SUMS.txt
+Get-FileHash .\ProxmoxBackupClient-0.9.0-x64.msi -Algorithm SHA256   # compare with SHA256SUMS.txt
 ```
 
 On Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`.
 
-> ℹ️ **No code signing, CI-signed attestation, or VirusTotal scan yet** for this fork's own builds (upstream's own releases have some of these; see their repo). These are built and uploaded manually, not yet through a CI pipeline that could produce a verifiable build-provenance attestation. See [TODO.md](TODO.md) if you'd like to help set that up.
+> ℹ️ **No code signing, CI-signed attestation, or VirusTotal scan yet.** Releases are built and uploaded manually, not yet through a CI pipeline that could produce a verifiable build-provenance attestation. See [TODO.md](TODO.md) if you'd like to help set that up.
 
 ## ✨ Features
 
-### GUI: Proxmox Backup Client GUI (recommended)
+### GUI
 - **🌍 Multilingual**: 18 interface languages: French, English, Italian, German, Polish, Spanish, Bulgarian, Czech, Greek, Hungarian, Latvian, Lithuanian, Dutch, Portuguese, Romanian, Slovak, Turkish and Ukrainian
 - Native menu bar and side menu (Backup, Restore, Undelete, Roll back, Reports, Message Log, Preferences, About)
-- **Backup Sets**: reusable named jobs with daily / interval / manual scheduling, a directory-vs-machine type badge, a VSS / Snapshot badge, "Run Now" (quick or full read for Metadata sets), and a **SHARED ID** warning when two sets would write into one backup group
+- **Backup Sets**: reusable named jobs with **several schedules each** (every few minutes to yearly, or manual), a directory-vs-machine type badge, a VSS / Snapshot badge, "Run Now" (quick or full read for Metadata sets), and a **SHARED ID** warning when two sets would write into one backup group
 - **One-off backups** of folders or whole disks
 - **Reports** page with full backup and restore history, and a capped **Message Log** for diagnostics
 - **Preferences** dialog with five colour themes (Amber, Blue, Green, Red, Dark) plus a custom colour option
 - **Incremental folder backups** (change detection, Metadata mode): unchanged files are reused without being read, as in the official client, with an optional full read every N runs
-- **Machine (whole-disk) backups** on Windows and Linux that skip free space and survive bad sectors, stored as `host` or as a Proxmox VE `vm` snapshot
-- **Restore**: snapshot browsing, file search (wildcards, regular expressions, full paths) and selective restore, with NTFS/POSIX ACL restore, folder timestamps, Windows creation times and an optional verify pass
-- **Files back from machine backups**: browse and restore files from NTFS volumes in a disk image (FAT, exFAT, ext2/3/4 and XFS from v0.9.0)
-- **Undelete** and **Roll back** (from v0.7.0): find files a Backup Set's backups still have but the disk does not, and put them back; or put a set's folders back as they were at a chosen backup, with a preview first and Undo afterwards. Folder and machine sets. See the [GUI manual](docs/manual/GUI.md#10-undelete)
+- **Machine (whole-disk) backups** on Windows and Linux that skip free space and survive bad sectors, stored as `host` or as a Proxmox VE `vm` backup
+- **Physical to virtual**: a machine backup restores into a Proxmox VE VM, through Proxmox VE or the restore ISO
+- **Restore**: snapshot browsing, file search (wildcards, regular expressions, full paths) and selective restore, with NTFS/POSIX ACLs, alternate data streams, folder timestamps, Windows creation times and an optional verify pass
+- **Files back from machine backups**: browse and restore files from NTFS, FAT, exFAT, ext2/3/4 and XFS volumes in a disk image
+- **Undelete** and **Roll back**: find files a Backup Set's backups still have but the disk does not, and put them back; or put a set's folders back as they were at a chosen backup, with a preview first and Undo afterwards. Folder and machine sets. See the [GUI manual](docs/manual/GUI.md#10-undelete)
 - **Pause, Resume and Stop** a running backup
-- **Run as Service**: install, start, stop or remove the background service from Preferences > Advanced, so schedules run without anyone signed in (Windows from v0.7.0; Linux from v0.9.0)
+- **Run as Service**: install, start, stop or remove the background service from Preferences > Advanced, so schedules run without anyone signed in (Windows and Linux)
 - Live progress card: start time and forecast finish, files done of total, processing speed (data and files per second) and actual upload speed, current file, and why a run is reading every file
 - VSS (Volume Shadow Copy) on Windows, elastio-snap/dattobd block snapshots on Linux
 - Email notifications and post-backup actions, Backup Set cloning, settings export and import
 - Several PBS servers, with certificate fingerprint pinning (trust on first use), API token or user/password login
 - **Client-side encryption**: per-server PBS key file (AES-256-GCM, manifest signed), optional passphrase protection, see [Client-side encryption](#-client-side-encryption)
-- Administrator protection for changing Backup Sets (Windows), with Restart as administrator
+- Administrator protection for changing Backup Sets, with Restart as administrator
 - Debug logging for diagnostics
 
 ### CLI tools
 - `proxmoxbackup-directory`: folder (pxar) backups with deduplication and `-change-detection-mode legacy|data|metadata`
-- `proxmoxbackup-machine`: live whole-disk backups of Windows (VSS) and Linux (elastio-snap/dattobd) machines (fidx, incremental, free space skipped unless `-readfreespace`)
+- `proxmoxbackup-machine`: live whole-disk backups of Windows (VSS) and Linux (elastio-snap/dattobd) machines (fidx, incremental, free space skipped unless `-readfreespace`, `-type vm` for a Proxmox VE backup)
 - `proxmoxbackup-nbd`: NBD server for restoring disk backups (Linux)
-- `ProxmoxBackupClientSVC` (Windows) and `proxmoxbackupclient` (Linux packages): `-list-sets`, `-undelete` and `-rollback` for Backup Sets defined in the GUI (from v0.9.0)
+- `ProxmoxBackupClientSVC` (Windows) and `proxmoxbackupclient` (Linux packages): `-list-sets`, `-undelete` and `-rollback` for Backup Sets defined in the GUI
 
 The first three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapshots. Full reference: [command line manual](docs/manual/CLI.md).
 
@@ -221,27 +221,26 @@ The first three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapsh
 **Schedules**: several per set, from every few minutes to once a year ("every month on the last day", "the 2nd Tuesday"), with the next 3 runs
 
 </td>
-</tr>
-<tr>
-<td width="33%">
-
-[<img src="docs/screenshots/backup-sets-vm-badge.png" width="280">](docs/screenshots/backup-sets-vm-badge.png)
-**Backup Sets as Proxmox VE VMs**: a set stored as a `vm` snapshot carries a `MACHINE (VM)` badge
-
-</td>
 <td width="33%">
 
 [<img src="docs/screenshots/backup-set-as-vm.png" width="280">](docs/screenshots/backup-set-as-vm.png)
-**Backup as**: choose the Proxmox VE virtual machine type and a numeric ID; the PBS backup ID is shown as you type
+**Backup as a Proxmox VE VM**: choose the virtual machine type and a numeric ID; the PBS backup ID is shown as you type
 
 </td>
+<td width="33%">
+
+[<img src="docs/screenshots/backup-sets-vm-badge.png" width="280">](docs/screenshots/backup-sets-vm-badge.png)
+**Backup Sets as Proxmox VE VMs**: a set stored as a `vm` backup carries a `MACHINE (VM)` badge
+
+</td>
+</tr>
+<tr>
 <td width="33%">
 
 [<img src="docs/screenshots/oneoff-as-vm.png" width="280">](docs/screenshots/oneoff-as-vm.png)
 **One-off backups**: the same option on the one-off form
+
 </td>
-</tr>
-<tr>
 <td width="33%">
 
 [<img src="docs/screenshots/gui-restore-progress.png" width="280">](docs/screenshots/gui-restore-progress.png)
@@ -254,14 +253,14 @@ The first three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapsh
 **Reports**: full run history with a detail panel (duration, chunks, folders backed up)
 
 </td>
+</tr>
+<tr>
 <td width="33%">
 
 [<img src="docs/screenshots/gui-message-log.png" width="280">](docs/screenshots/gui-message-log.png)
 **Message Log**: a capped, timestamped diagnostic feed across every backup and restore
 
 </td>
-</tr>
-<tr>
 <td width="33%">
 
 [<img src="docs/screenshots/gui-preferences-servers.png" width="280">](docs/screenshots/gui-preferences-servers.png)
@@ -274,14 +273,14 @@ The first three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapsh
 **Add/edit a server**: URL, user/password or API token, datastore and namespace
 
 </td>
+</tr>
+<tr>
 <td width="33%">
 
 [<img src="docs/screenshots/gui-theme-amber.png" width="280">](docs/screenshots/gui-theme-amber.png)
 **Themes**: five built-in colour palettes plus a custom colour, recolouring the whole app live (see the strip below)
 
 </td>
-</tr>
-<tr>
 <td width="33%">
 
 [<img src="docs/screenshots/gui-preferences-advanced.png" width="280">](docs/screenshots/gui-preferences-advanced.png)
@@ -362,16 +361,16 @@ Español
 ### Smart system exclusions (folder backups)
 Folder backups leave out these on their own:
 
-**System folders:** `System Volume Information` (VSS storage, can reach 100+ GB) and `$RECYCLE.BIN` wherever they are; `Recovery` only at the root of a drive (from v0.9.0; earlier versions skipped a folder of that name at any depth); `.pbs-rollback` (Roll back's safety folder).
+**System folders:** `System Volume Information` (VSS storage, can reach 100+ GB) and `$RECYCLE.BIN` wherever they are; `Recovery` only at the root of a drive; `.pbs-rollback` (Roll back's safety folder).
 **System files:** `pagefile.sys`, `hiberfil.sys`, `swapfile.sys` and `DumpStack.log.tmp`.
 
 **Why this matters:** a drive may show 1.03 TB used while real files are ~141 GB. Without exclusions the backup would include VSS snapshots (wasted space and time); with them, the size matches the real data.
 
-**Recommendation:** use a **folder** backup with these exclusions for file-level backups; use a **machine** backup in a separate Backup Set for bare-metal restore (it is a whole-disk image; free space and the paging and hibernation files go in as zeros).
+**Recommendation:** use a **folder** backup with these exclusions for file-level backups; use a **machine** backup in a separate Backup Set for bare-metal restore and P2V (it is a whole-disk image; free space and the paging and hibernation files go in as zeros).
 
 ### Security & quality
 - Optional client-side encryption of every chunk, with a signed manifest
-- Settings folder open to administrators only on Windows, private to its owner on Linux (from v0.9.0)
+- Settings folder open to administrators only on Windows, private to its owner on Linux
 - The local service API listens on 127.0.0.1 only and needs a token, renewed every time the service starts
 - Input validation and credential sanitization
 - Path traversal prevention
@@ -396,7 +395,7 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 ```
 `-keyfile-passphrase` is only needed for a protected key and is prompted for when omitted. `proxmoxbackup-machine` and `proxmoxbackup-nbd` take the same two flags; `proxmoxbackup-nbd` needs them to attach an encrypted disk image and checks the first chunk before touching the NBD device, so a wrong key fails immediately.
 
-**Bare-metal restore:** the Clonezilla ISO asks for the key (none, a key file on a USB stick, or a typed path) and for the passphrase of a protected key. The key is never written to the ISO. See [PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md).
+**Bare-metal restore:** the restore ISO asks for the key (none, a key file on a USB stick, or a typed path) and for the passphrase of a protected key. The key is never written to the ISO. See [PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md).
 
 **Known limitations**
 - A key generated by the GUI is written with a protected ACL (current user, SYSTEM and Administrators only). Key files you keep elsewhere keep whatever permissions their folder gives them.
@@ -406,7 +405,7 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 ## Faster folder backups: change detection
 
-In the default Legacy mode every folder backup reads every file, so a run takes as long as reading the whole folder even when nothing changed. Backup Sets (and the CLI) can use the change-detection modes of the official `proxmox-backup-client` instead. Metadata mode is in daily use on a 480.9 GB, 761,866-file server, where a run with few changes takes 10 to 15 minutes instead of over 4 hours (see [New in v0.6.0](#-new-in-v060-incremental-folder-backups)).
+In the default Legacy mode every folder backup reads every file, so a run takes as long as reading the whole folder even when nothing changed. Backup Sets (and the CLI) can use the change-detection modes of the official `proxmox-backup-client` instead. Metadata mode is in daily use on a 480.9 GB, 761,866-file server, where a run with few changes takes 10 to 15 minutes instead of over 4 hours.
 
 | Mode | Reads | Stored as |
 |---|---|---|
@@ -416,9 +415,11 @@ In the default Legacy mode every folder backup reads every file, so a run takes 
 
 In **Metadata** mode the first run reads everything (there is nothing to compare with yet); later runs read only what changed. A file changed in a way that keeps its size and modification time is not noticed, which is why a set can also **read every file every N runs** (a Data run): that run catches such changes and drops the padding that reuse leaves in the archive. A file that could not be read completely (zero-padded after a read error) is always read again on the next run. Reuse only happens from a previous backup encrypted the same way, with the same key.
 
-**GUI:** edit a Backup Set, **Destination** tab, **Change detection**. It applies to folder sets only: machine (full disk) backups are disk images and are not affected, so bare-metal (Clonezilla) and Proxmox VE restores work exactly as before. One-off backups use Legacy. Only runs that finish successfully count towards the next full read; the Backup Sets list shows "Next full read in N runs". The progress card says when and why a run is reading every file. **Reports** shows each run's mode and how many unchanged files were reused.
+Because unchanged data is neither read nor sent, it also cuts traffic to a remote or offsite PBS to little more than what actually changed.
 
-**One Backup ID per set.** Metadata mode compares with the newest snapshot in the backup group. If two sets (or two machines) use the same Backup ID on the same server, each run compares with the other's snapshot and reads everything. On master the Backup Set editor warns about this.
+**GUI:** edit a Backup Set, **Destination** tab, **Change detection**. It applies to folder sets only: machine (full disk) backups are disk images and are not affected, so bare-metal and Proxmox VE restores work exactly as before. One-off backups use Legacy. Only runs that finish successfully count towards the next full read; the Backup Sets list shows "Next full read in N runs". The progress card says when and why a run is reading every file. **Reports** shows each run's mode and how many unchanged files were reused.
+
+**One Backup ID per set.** Metadata mode compares with the newest snapshot in the backup group. If two sets (or two machines) use the same Backup ID on the same server, each run compares with the other's snapshot and reads everything. The Backup Set editor warns about this.
 
 **CLI:** `-change-detection-mode legacy|data|metadata`, or `"change-detection-mode"` in the JSON config. There is no CLI "every N runs" flag: schedule an occasional run with `-change-detection-mode data` instead.
 
@@ -443,7 +444,7 @@ For example an invocation could be:
 
 `proxmoxbackup-machine.exe -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
 
-The above command will look at Disk 0, detect all mounted partitions, take a VSS snapshot of these, and then create a bootable backup image of the whole disk as fidx. Free space and the paging and hibernation files go into the image as zeros without being read (Linux ext2/3/4 and XFS free space too, on master); `-readfreespace` reads everything instead, for a forensic copy.
+The above command will look at Disk 0, detect all mounted partitions, take a VSS snapshot of these, and then create a bootable backup image of the whole disk as fidx. Free space and the paging and hibernation files go into the image as zeros without being read (on Linux, ext2/3/4 and XFS free space too); `-readfreespace` reads everything instead, for a forensic copy. A sector that cannot be read goes into the image as zeros, and the run lists where. Add `-type vm` to store the backup as a Proxmox VE VM backup ([P2V](#-physical-machines-into-virtual-machines-p2v)).
 
 The next backup will be incremental; hashing has been parallelized so speeds of 1 GB/sec can be easily reached.
 
@@ -493,7 +494,7 @@ immediately after.
 
 ### File restore from a disk backup
 
-The GUI's Restore page opens a machine backup like a folder backup: each volume in the image is a folder you can browse and restore from (NTFS from v0.8.0; FAT, exFAT, ext2/3/4 and XFS from v0.9.0). Nothing is mounted.
+The GUI's Restore page opens a machine backup like a folder backup: each volume in the image (NTFS, FAT, exFAT, ext2/3/4 or XFS) is a folder you can browse and restore from. Nothing is mounted.
 
 On Linux you can also attach a disk backup as a block device with the nbd tool.
 
@@ -508,15 +509,15 @@ To use it use a command line similar to this:
 
 If you omit `-path`, a terminal UI will show up allowing you to select the fidx file.
 
-> Beware to not use this on a machine running important stuff (a corrupt filesystem can crash the OS potentially, that's why Proxmox VE uses a QEMU instance for this).
+> Do not use this on a machine running anything important: a corrupt file system can crash the OS, which is why Proxmox VE uses a QEMU instance for this.
 
-Also be very sure to have unmounted anything on the nbd disk before stopping pbsnbd, if not you will likely end up with a busy unmountable partition. If someone has an indication of how to recover from that, please tell me.
+Unmount everything on the nbd disk before stopping `proxmoxbackup-nbd`, or the partition is likely to stay busy and impossible to unmount.
 
 If you get a `Device or resource busy` error, you have to force disconnect by running `nbd-client -d /dev/nbd0` or simply reboot.
 
-### Restore to physical machine
+### Restore to a physical machine or a VM
 
-This fork ships a patched Clonezilla Live ISO with a fully automated **"PBS Bare Metal Restore"** boot menu entry: see [Clonezilla live ISO (bare-metal restore)](#clonezilla-live-iso-bare-metal-restore) below. It's a separate, first-position, default-on-timeout entry that skips Clonezilla's own language/keyboard prompts entirely: enter your PBS connection details, pick a snapshot, confirm the auto-detected target disk, and it handles network setup, NBD attach, the restore itself and an automatic reboot with no further input.
+The bare-metal restore ISO has a fully automated **"PBS Bare Metal Restore"** boot menu entry: see [Bare-metal restore ISO](#-bare-metal-restore-iso) below. It is the first, default-on-timeout entry and skips Clonezilla's own language and keyboard prompts: enter your PBS connection details, pick a snapshot, confirm the detected target disk, and it handles network setup, NBD attach, the restore itself and an automatic reboot with no further input. The same ISO restores into an empty virtual machine for [P2V](#-physical-machines-into-virtual-machines-p2v).
 
 The older, semi-manual route also still ships on the same ISO, as its own entry in Clonezilla's normal mode-selection menu ("pbs-nbd"): it walks you through PBS connection details and attaches the chosen snapshot to `/dev/nbd0` in the background, then leaves you to drive the actual restore through Clonezilla's own standard disk-restore wizard by hand.
 
@@ -582,7 +583,7 @@ This allows backing up a stream instead of a pxar, allowing endless possibilitie
 mysqldump yourdatabase | ./proxmoxbackup-directory -backupstream yourdatabase.sql [other options]
 ```
 
-This allows leveraging buzhash for dedup even when using tar for example, or the sql dump itself. And if someone wants to attempt it, it should be possible with some hack to pipe the DISM command to generate a WIM image to this and have a full host backup.
+This allows leveraging buzhash for dedup even when using tar for example, or the sql dump itself.
 
 ## Known Issues
 
@@ -595,6 +596,7 @@ On Windows the command-line tools take a process lock: a second backup started w
 - Windows 10/11 or Windows Server (64-bit), with administrator rights for VSS and machine backups
 - or Linux (the packages are for Debian, Ubuntu, Mint and Fedora), with the WebKitGTK runtime for the GUI, and root plus the elastio-snap or dattobd kernel module for consistent machine backups
 - Network access to a Proxmox Backup Server
+- For P2V: Proxmox VE with the PBS datastore added as storage, or any hypervisor that can boot the restore ISO
 
 ## 🔨 Building from source
 
@@ -628,24 +630,24 @@ Configure several PBS servers and pick the target per Backup Set or one-off back
 
 Legacy single-PBS configuration is automatically migrated to a `default` server on first load.
 
-### Clonezilla live ISO (bare-metal restore)
+### 💿 Bare-metal restore ISO
 
-The rescue workflow is built by patching a stock Clonezilla Live ISO with the `pbsnbd` / `machinebackup` binaries plus two menu entries (boots from CD, USB via `dd`, and UEFI):
+The restore ISO is a stock Clonezilla Live ISO patched with the `pbsnbd` / `machinebackup` binaries plus two menu entries. It boots from CD, from a USB stick (written with `dd`, or from a Ventoy stick), over PXE, and on UEFI or BIOS machines:
 
-- **`ocs-pbs-nbd`**: a **"pbs-nbd"** entry added to Clonezilla's own mode-selection menu. Prompts for your PBS connection details and the snapshot to restore, attaches it to `/dev/nbd0` in the background, then hands off to Clonezilla's normal disk-restore wizard for you to drive by hand.
-- **`ocs-pbs-bare-metal-restore`**: a new, first-position, default-on-timeout boot menu entry: **"Proxmox Backup Client Go - PBS Bare Metal Restore"**. Skips Clonezilla's language/keyboard prompts and its own generic wizard entirely, and walks straight from PBS credentials to a completed, auto-rebooted restore: DHCP is tried first (falling back to a static-IP prompt only if it fails), NTP sync runs by default, the target disk is auto-detected, and on success the machine shows a completion message and reboots on its own. Works identically for Windows- and Linux-sourced backups (Clonezilla restores at the raw block level, so it's OS-agnostic). Built to its own ISO filename alongside the manual-wizard ISO, so both stay available.
+- **`ocs-pbs-bare-metal-restore`**: the first, default-on-timeout boot menu entry, **"Proxmox Backup Client Go - PBS Bare Metal Restore"**. It skips Clonezilla's language and keyboard prompts and its generic wizard, and goes straight from PBS credentials to a completed, auto-rebooted restore: DHCP first (a static-IP prompt only if that fails), NTP sync, an encryption key from a USB stick if the backup is encrypted, and target disk detection that never offers the stick it booted from. On success it shows a completion message and reboots. It restores Windows and Linux backups alike (the restore is at block level), onto bare metal or into an empty VM.
+- **`ocs-pbs-nbd`**: a **"pbs-nbd"** entry in Clonezilla's own mode-selection menu. Prompts for your PBS connection details and the snapshot to restore, attaches it to `/dev/nbd0` in the background, then hands off to Clonezilla's normal disk-restore wizard for you to drive by hand.
 
-Also fixed on the Clonezilla side, independent of either menu entry: a `zstd.NewReader` deadlock in the PBS chunk-fetch path (merged upstream as [PR #85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85); the other upstream PRs are listed [above](#-about-this-fork)) and a 100%-reproducible "first restore pass fails with 'no partition', rerun succeeds" bug, root-caused to Clonezilla's own `is_disk_without_part_and_fs()` (in `ocs-functions`) racing against udev rather than any NBD-attach timing.
+Also fixed on the restore side: a `zstd.NewReader` deadlock in the PBS chunk-fetch path that hung full-machine restores (contributed to the original project as [PR #85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85)), a "first restore pass fails with 'no partition', rerun succeeds" bug caused by Clonezilla's own `is_disk_without_part_and_fs()` racing udev, and BIOS/MBR machines that did not start after a restore (the data between the MBR and the first partition is now restored too).
 
 ```bash
 ./patch-clonezilla.sh \
   -o clonezilla-live-patched.iso \
-  clonezilla-live-3.3.3-15-amd64.iso \
+  clonezilla-live-3.3.3-37-amd64.iso \
   ./build/pbsnbd ./build/machinebackup \
   ./clonezilla-patch/ocs-pbs-nbd ./clonezilla-patch/ocs-pbs-bare-metal-restore
 ```
 
-Full details (why a full ISO rebuild instead of an in-place swap, prerequisites, menu flow, verification) in **[PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md)**.
+Full details (why a full ISO rebuild instead of an in-place swap, prerequisites, menu flow, verification) in **[PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md)**; using it in the **[bare-metal restore manual](docs/manual/BMR.md)**.
 
 ### Building the Windows GUI
 
@@ -662,64 +664,50 @@ Full details (why a full ISO rebuild instead of an in-place swap, prerequisites,
 - **[MSI_UNINSTALL_TEST.md](MSI_UNINSTALL_TEST.md)**: MSI uninstall dialog (keep/delete configuration) and its test plan.
 - **[AGENTS.md](AGENTS.md)**: repository layout and conventions, for contributors and coding agents.
 
-## 🌐 Tech Support in Italy
+## 🔁 Contributions to the original project
 
-Being said that the project and **ALL** its contributions will remain forever public and licensed under GPLv3 license, main sponsor of this project and also of the latest machine backup features, E.T.I. Srl ( https://etitech.net ) can provide, to who needs it, support for Proxmox deployments in general and specifically Windows backup tools.
+Fixes and features of general use are offered to [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) as pull requests. Eighteen have been merged:
 
-There will never be a "community" & "enterprise" different edition, solely tech support will be an independent service.
-Any customization that you are going to ask, even if development may be paid, will be released as GPLv3 like the whole project is.
+  - [PR #85](https://github.com/tizbac/proxmoxbackupclient_go/pull/85): Fix zstd decoder goroutine deadlock in `GetChunkData` (hung full-machine restores)
+  - [PR #86](https://github.com/tizbac/proxmoxbackupclient_go/pull/86): Fully automated PBS Bare Metal Restore boot entry for the Clonezilla ISO
+  - [PR #87](https://github.com/tizbac/proxmoxbackupclient_go/pull/87): Linux snapshots: drive elastio-snap/dattobd through ioctl instead of `elioctl`/`dbdctl`
+  - [PR #88](https://github.com/tizbac/proxmoxbackupclient_go/pull/88): Restore: re-apply captured NTFS ACLs (Windows) and POSIX ACLs and xattrs (Linux)
+  - [PR #90](https://github.com/tizbac/proxmoxbackupclient_go/pull/90): `machinebackuplib`: make `vm` backups restorable and bootable on Proxmox VE
+  - [PR #91](https://github.com/tizbac/proxmoxbackupclient_go/pull/91): GUI: back machines up as `host`, not `vm`, by default
+  - [PR #92](https://github.com/tizbac/proxmoxbackupclient_go/pull/92): `patch-clonezilla`: skip patches whose change is already in the base ISO
+  - [PR #93](https://github.com/tizbac/proxmoxbackupclient_go/pull/93): `patch-clonezilla`: add the PBS bare-metal restore entry to `isolinux.cfg`
+  - [PR #94](https://github.com/tizbac/proxmoxbackupclient_go/pull/94): Restore the data between the MBR and the first partition in the BMR flow (BIOS/MBR machines boot after restore)
+  - [PR #95](https://github.com/tizbac/proxmoxbackupclient_go/pull/95): Fix reading passphrase-protected key files made by `proxmox-backup-client`
+  - [PR #96](https://github.com/tizbac/proxmoxbackupclient_go/pull/96): `directorybackup`: back up several directories in one run
+  - [PR #97](https://github.com/tizbac/proxmoxbackupclient_go/pull/97): Docs: point elastio-snap at the maintained Axcient fork
+  - [PR #98](https://github.com/tizbac/proxmoxbackupclient_go/pull/98): `pbscommon`: skip the key file permission check on Windows
+  - [PR #99](https://github.com/tizbac/proxmoxbackupclient_go/pull/99): Restore encrypted backups from the Clonezilla BMR ISO
+  - [PR #102](https://github.com/tizbac/proxmoxbackupclient_go/pull/102): `snapshot`: delete our VSS shadow copies after every backup, through the VSS API
+  - [PR #103](https://github.com/tizbac/proxmoxbackupclient_go/pull/103): `machinebackup`: skip hashing blank (all-zero) chunks
+  - [PR #104](https://github.com/tizbac/proxmoxbackupclient_go/pull/104): CLIs: report errors on stderr, never in a message box
+  - [PR #105](https://github.com/tizbac/proxmoxbackupclient_go/pull/105): Restore: put back every file time, also 1970 and earlier, and folder times
 
-## 🖥️ GUI attribution
+## 🧪 Status, bug reports and feature requests
 
-The **Proxmox Backup Client GUI** is based on the **[Nimbus Backup GUI](https://nimbus.rdem-systems.com)**, developed and maintained by **[RDEM Systems](https://www.rdem-systems.com/)**.
+**This is alpha software, provided as is, without guarantee or warranty of any kind, and used entirely at your own risk.** I take no responsibility for lost or damaged data, including source files.
 
-The GUI (originally a fork of this project) has been merged back into this repository: the entire codebase, including the GUI and all its features, remains open-source under the GPLv3 license. RDEM Systems sponsors the GUI development and provides commercial support for it.
+It is built for my own homelab. Every release is tested by me before it goes out, and it is in regular use there: scheduled folder and machine backups of Windows and Linux machines, with restores, Undelete, Roll back, bare-metal restores and P2V restores tested along the way. No backup is proven until you have restored from it, so test your own restores, including a bare-metal one, before relying on it.
 
-## ⚠️ Warning
+- **Bug reports are welcome**: open an [issue](https://github.com/mjb-is/proxmoxbackupclient_go/issues) with what you did, what happened and the log (Message Log, or the files in the settings folder).
+- **Feature requests**: I add features that help my own use, so I am not taking requests for others. Please send them to the original project, [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go/issues). Pull requests that fix bugs, or that would clearly help my use too, are welcome.
 
-This software is provided "as is". Although we aim for reliability, we decline any responsibility for loss of or damage to data. Always test your backups and verify restoration before relying on them in production.
+## 🙏 Credits and history
 
-The software is still alpha quality and we take no responsibility for any kind of damage or data loss, even of source files.
+The original command-line client was written by Tiziano Bacocco (tizbac) from 2023. RDEM Systems' graphical client was later merged into it, and with it the first GUI, multi-PBS support and the Windows service. This fork started in September 2026 to fill the gaps that kept PBS from being my only backup system; its releases run from v0.3.0, and fixes of general use go back to the original project.
+
+- The original client, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), by Tiziano Bacocco (tizbac) and its contributors.
+- The workflow and feel of Backup for Workgroups (BFW), which Backup Sets, Undelete and Roll back follow.
+- [Clonezilla Live](https://clonezilla.org/), which the bare-metal restore ISO is built on.
 
 ## 📄 License
 
 GPLv3: see the [LICENSE](LICENSE) file.
 
-## 🏷️ Branding
-
-Every contributor who has contributed **at least 5 commits** that add functionality or fixes, has the right to have their branding data added for commercial use.
-
-The only conditions are that the company that the branding points to is **not** running any of the following:
-
-- Malware campaigns
-- Businesses promoting war (this applies to any country, including western ones)
-- Scams
-- Data theft
-- Child trafficking
-- Violence
-- Discrimination
-- Drugs
-- Any activity generally recognized as illegal
-
-If any complaint shows up at any of the contributors, we will try to get in touch; if no valid explanation is given, we will **immediately terminate** that benefit.
-
-The **GPLv3 license remains active**, and you will still be free to fork the project and build your own executables.
-
-## 🤝 Contribute
-
-The GUI is now fully implemented, but contributions are still welcome, especially:
-
-1. Encryption: native review of the machine-translated encryption strings, and a key-management story beyond a key file (for example a Windows DPAPI or Credential Manager store)
-2. Physical-to-virtual (P2V) migration, restoring a bare-metal backup into a virtual machine (working for the basics via the `vm` snapshot type, verified with a Windows UEFI disk; still missing a NIC, TPM, virtio drivers, CPU/RAM taken from the real machine, and non-SATA disk buses)
-3. Async upload / multicore upload of chunks (multicore compression is already implemented for machine backup)
-4. Proxmox side patch to add another kind of entry to pxar format with Windows security descriptors in it
-5. Support for Windows symlinks
-6. Anything interesting you can come up with :)
-
-## About Proxmox Backup Client GO contributors
-
-Proxmox Backup Client GO contributors develop and maintain this project. The software relies on the NTP/NTS infrastructure and the [11 public NTS servers](https://github.com/jauderho/nts-servers) listed in the community reference.
-
 ---
 
-**© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems.**
+**Changes since the fork © 2026 mjb-is, building on the work of Tiziano Bacocco (tizbac), the Proxmox Backup Client GO contributors and RDEM Systems (© 2024-2026).**

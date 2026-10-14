@@ -434,19 +434,9 @@ body {
     border-left: 4px solid var(--accent);
 }
 
-/* About tab: Technology's items are short phrases, so a full-width card
-   reads as a row of columns instead of one tall list; Features pairs a
-   heading with a one-line description per item, so two columns keep its
-   longer list from running the page's height up unnecessarily. */
-.tech-grid {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 10px 20px;
-}
-
+/* About tab: Features pairs a heading with a one-line description per
+   item, so two columns keep its list from running the page's height up
+   unnecessarily. */
 .feature-grid {
     list-style: none;
     margin: 0;

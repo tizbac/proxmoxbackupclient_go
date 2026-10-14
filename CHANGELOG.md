@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- README rewritten for where the project is now: built for my homelab and offered as is (alpha, no warranty, at your own risk), with what it adds over the original project, measured results, a physical-to-virtual (P2V) section with the tested routes, bug reports here and feature requests to the original project, and credits and history. The Nimbus GUI and the original project's Italian support and branding sections are gone. The 12 translated READMEs follow.
+- About page: 12 current features instead of 8 out-of-date ones, the Technology card removed, an alpha and no-warranty line, the Links translated with a Report a bug link, and the copyright reads "Changes since the fork © 2026 mjb-is, building on the work of ...". The program's file properties carry the same copyright.
+
 ## [0.9.0] - 2026-10-14
 
 The headline is several schedules per Backup Set. This release also brings the Windows installer and Linux packages, a background service on Linux, alternate data streams and NTFS extended attributes in folder backups, and v0.8.2's change (tagged, never published on its own).

@@ -5267,20 +5267,10 @@ function App() {
           </div>
 
           <div className="card" style={{marginTop: '18px'}}>
-            <h3>{t('technology')}</h3>
-            <ul className="tech-grid">
-              <li>{t('techList.wails')}</li>
-              <li>{t('techList.performance')}</li>
-              <li>{t('techList.interface')}</li>
-              <li>{t('techList.logs')}</li>
-              <li>{t('techList.nogpu')}</li>
-            </ul>
-          </div>
-
-          <div className="card" style={{marginTop: '20px'}}>
             <h3>{t('features')}</h3>
             <ul className="feature-grid">
-              {['backupSets', 'multiPbs', 'bareMetalRestore', 'snapshotRestore', 'languages', 'themes', 'reportsLog', 'dedup'].map((k) => (
+              {['backupSets', 'incremental', 'machineBackups', 'p2v', 'bareMetalRestore', 'snapshotRestore',
+                'undeleteRollback', 'encryption', 'service', 'multiPbs', 'compatible', 'languages'].map((k) => (
                 <li key={k}>
                   <strong>{t(`featuresList.${k}.title`)}</strong>
                   {t(`featuresList.${k}.desc`)}
@@ -5290,11 +5280,12 @@ function App() {
           </div>
 
           <div className="card" style={{marginTop: '20px', display: 'flex', alignItems: 'center', gap: '28px'}}>
-            <h3 style={{margin: 0}}>Links</h3>
+            <h3 style={{margin: 0}}>{t('aboutLinks')}</h3>
             {[
-              ['updates', 'Releases', 'https://github.com/mjb-is/proxmoxbackupclient_go/releases'],
-              ['contact', 'Source code', 'https://github.com/mjb-is/proxmoxbackupclient_go'],
-              ['license', 'License', 'https://github.com/mjb-is/proxmoxbackupclient_go/blob/master/LICENSE']
+              ['updates', t('aboutLinkReleases'), 'https://github.com/mjb-is/proxmoxbackupclient_go/releases'],
+              ['contact', t('aboutLinkSource'), 'https://github.com/mjb-is/proxmoxbackupclient_go'],
+              ['issues', t('aboutLinkIssues'), 'https://github.com/mjb-is/proxmoxbackupclient_go/issues'],
+              ['license', t('aboutLinkLicense'), 'https://github.com/mjb-is/proxmoxbackupclient_go/blob/master/LICENSE']
             ].map(([k, label, fallback]) => {
               const u = (brand.urls && brand.urls[k]) || fallback
               return (
@@ -5304,7 +5295,8 @@ function App() {
           </div>
 
           <div className="info-box" style={{marginTop: '20px', fontSize: '12px', lineHeight: 1.7}}>
-            <div>{t('legalCredit')}</div>
+            <div style={{fontWeight: 600}}>{t('legalAlpha')}</div>
+            <div style={{marginTop: '6px'}}>{t('legalCredit')}</div>
             <div style={{marginTop: '6px'}}>
               {t('copyright')} · <a href="https://github.com/mjb-is/proxmoxbackupclient_go/graphs/contributors" style={{color: 'var(--accent)'}} target="_blank" rel="noopener noreferrer">{t('viewContributors')}</a>
             </div>
