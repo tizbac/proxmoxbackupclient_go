@@ -692,8 +692,12 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	// backup_meta_linux.go). Best-effort: nil on any failure (missing blob on
 	// a legacy snapshot, network error) just means files restore without
 	// their ACLs/attributes re-applied, never fails the restore.
+	// The same blob carries each file's creation time, which a restore on
+	// Windows always puts back (like the modification time), so it is fetched
+	// there whether or not ACLs were asked for.
 	var aclMeta *BackupFileMeta
-	if opts.RestoreACLs {
+	restoreCreated := runtime.GOOS == "windows"
+	if opts.RestoreACLs || restoreCreated {
 		aclClient := &pbscommon.PBSClient{
 			BaseURL: opts.BaseURL, CertFingerPrint: opts.CertFingerprint,
 			AuthID: opts.AuthID, Secret: opts.Secret, Ticket: opts.Ticket, CSRFToken: opts.CSRFToken,
@@ -761,9 +765,12 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	// Re-apply captured ACLs/attributes now that the files are actually on
 	// disk. Best-effort per file: an apply failure is logged, never fails
 	// the restore — the file's content is already safely on disk regardless.
+	// The extraction has already set the modification times, folders' last,
+	// and nothing below writes file data, so they stay as restored.
 	if aclMeta != nil {
 		entryIdx := buildFileMetaIndex(aclMeta)
 		applied, failed := 0, 0
+		cApplied, cFailed := 0, 0
 		for _, f := range extracted {
 			if f.Skipped || f.ArchivePath == "" {
 				continue
@@ -772,12 +779,30 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			if !ok {
 				continue
 			}
+			// Creation time first: the ACL applied next may take away the
+			// right to change it.
+			if restoreCreated && entry.Created > 0 {
+				if cerr := applyCreationTime(f.Path, entry.Created); cerr != nil {
+					cFailed++
+					if cFailed <= 50 {
+						writeBackupLog(fmt.Sprintf("Creation time not set on %s: %v", f.Path, cerr))
+					}
+				} else {
+					cApplied++
+				}
+			}
+			if !opts.RestoreACLs {
+				continue
+			}
 			if aerr := applyNTFSMetadata(f.Path, entry, aclMeta.SDDLs); aerr != nil {
 				failed++
 				writeBackupLog(fmt.Sprintf("NTFS metadata apply failed for %s: %v", f.Path, aerr))
 			} else {
 				applied++
 			}
+		}
+		if cApplied > 0 || cFailed > 0 {
+			writeBackupLog(fmt.Sprintf("Creation times: applied %d, failed %d", cApplied, cFailed))
 		}
 		if applied > 0 || failed > 0 {
 			writeBackupLog(fmt.Sprintf("NTFS ACLs/attributes: applied %d, failed %d", applied, failed))
