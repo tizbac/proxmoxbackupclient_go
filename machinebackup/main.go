@@ -10,7 +10,14 @@ import (
 	"machinebackuplib"
 
 	"os"
+	"time"
 )
+
+// machinebackuplib.Backup does not report chunk counts, so unlike
+// directorybackup's the default body leaves them out.
+var defaultMailSubjectTemplate = "Backup {{.Status}}"
+var defaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}}){{else}}Error occurred while working, backup may be not completed.
+Last error is: {{.ErrorStr}}{{end}}`
 
 type arrayFlags []string
 
@@ -174,6 +181,46 @@ func loadConfig() *machinebackuplib.Config {
 	return config
 }
 
+// sendMail sends the notification e-mail to every configured recipient. A
+// custom subject or body template that does not work falls back to the
+// default one.
+func sendMail(smtpCfg *machinebackuplib.SMTPConfig, mailCtx clientcommon.MailCtx) error {
+	build := func(custom, def, what string) (string, error) {
+		if custom != "" {
+			s, err := mailCtx.BuildStr(custom)
+			if err == nil {
+				return s, nil
+			}
+			fmt.Fprintf(os.Stderr, "Cannot use custom mail %s: %v\n", what, err)
+		}
+		return mailCtx.BuildStr(def)
+	}
+	var subjectTemplate, bodyTemplate string
+	if smtpCfg.Template != nil {
+		subjectTemplate, bodyTemplate = smtpCfg.Template.Subject, smtpCfg.Template.Body
+	}
+	subject, err := build(subjectTemplate, defaultMailSubjectTemplate, "subject")
+	if err != nil {
+		return err
+	}
+	body, err := build(bodyTemplate, defaultMailBodyTemplate, "body")
+	if err != nil {
+		return err
+	}
+
+	client, err := clientcommon.SetupMailClient(smtpCfg.Host, smtpCfg.Port, smtpCfg.Username, smtpCfg.Password, smtpCfg.Insecure)
+	if err != nil {
+		return fmt.Errorf("cannot connect to mail server: %w", err)
+	}
+	defer client.Quit()
+	for _, m := range smtpCfg.Mails {
+		if err := clientcommon.SendMail(m.From, m.To, subject, body, client); err != nil {
+			return fmt.Errorf("cannot send email to %s: %w", m.To, err)
+		}
+	}
+	return nil
+}
+
 func fatalError(msg string, err error) {
 	fmt.Fprintf(os.Stderr, "Fatal error: %s: %v\n", msg, err)
 	os.Exit(1)
@@ -229,13 +276,41 @@ func main() {
 		fatalError("encryption key", err)
 	}
 
+	begin := time.Now()
 	result, err := machinebackuplib.Backup(cfg, func(percentage float64, message string) bool {
 		return false
 	})
+	end := time.Now()
+
+	// The notification e-mail goes out for a failed run too, so it is sent
+	// before the error exit. A mail that cannot be sent makes the run exit 1,
+	// as in directorybackup, but never hides the backup's own error.
+	mailFailed := false
+	if cfg.SMTP != nil {
+		hostname, herr := os.Hostname()
+		if herr != nil {
+			hostname = "unknown"
+		}
+		mailErr := sendMail(cfg.SMTP, clientcommon.MailCtx{
+			Error:     err,
+			Hostname:  hostname,
+			Datastore: cfg.Datastore,
+			StartTime: begin,
+			EndTime:   end,
+		})
+		if mailErr != nil {
+			fmt.Fprintf(os.Stderr, "Notification e-mail: %v\n", mailErr)
+			mailFailed = true
+		}
+	}
+
 	if err != nil {
 		fatalError("backup", err)
 	}
 	for _, disk := range result.Disks {
 		fmt.Printf("Backed up disk %d (%d bytes)\n", disk.Index, disk.Size)
+	}
+	if mailFailed {
+		os.Exit(1)
 	}
 }
