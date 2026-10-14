@@ -45,8 +45,40 @@ var catalog_magic = []byte{145, 253, 96, 249, 196, 103, 88, 213}
 // that should not be included in file-mode backups
 var excludedSystemFolders = []string{
 	"System Volume Information", // VSS snapshots storage
-	"$RECYCLE.BIN",               // Windows recycle bin
-	"Recovery",                   // Windows recovery partition data
+	"$RECYCLE.BIN",              // Windows recycle bin
+}
+
+// Windows system folders excluded only at the root of a volume: Windows keeps
+// its recovery data in C:\Recovery, but a folder called Recovery anywhere else
+// (D:\Data\Recovery, a photo recovery folder...) is the user's own.
+var rootOnlySystemFolders = []string{
+	"Recovery", // Windows recovery environment data
+}
+
+// isVolumeRoot reports whether path is the root of a volume: "C:\", a shadow
+// copy's root (\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopyN), a share's
+// root (\\server\share) or "/".
+func isVolumeRoot(path string) bool {
+	if path == "" {
+		return false
+	}
+	if strings.Trim(path, "/") == "" {
+		return true
+	}
+	s := strings.TrimRight(strings.ReplaceAll(path, "/", `\`), `\`)
+	if len(s) == 2 && s[1] == ':' {
+		return true
+	}
+	low := strings.ToLower(s)
+	const shadow = `\\?\globalroot\device\harddiskvolumeshadowcopy`
+	if strings.HasPrefix(low, shadow) {
+		rest := low[len(shadow):]
+		return rest != "" && strings.Trim(rest, "0123456789") == ""
+	}
+	if strings.HasPrefix(s, `\\`) && !strings.HasPrefix(s, `\\?\`) {
+		return len(strings.Split(s[2:], `\`)) == 2
+	}
+	return false
 }
 
 // Windows system files to exclude automatically from backups
@@ -60,10 +92,19 @@ var excludedSystemFiles = []string{
 
 // shouldSkipSystemFolder checks if a folder should be automatically excluded
 // Uses case-insensitive comparison for Windows compatibility
-func shouldSkipSystemFolder(name string) bool {
+// atVolumeRoot is true for a folder directly at the root of a volume, where
+// the root-only system folders are excluded too
+func shouldSkipSystemFolder(name string, atVolumeRoot bool) bool {
 	for _, excluded := range excludedSystemFolders {
 		if strings.EqualFold(name, excluded) {
 			return true
+		}
+	}
+	if atVolumeRoot {
+		for _, excluded := range rootOnlySystemFolders {
+			if strings.EqualFold(name, excluded) {
+				return true
+			}
 		}
 	}
 	return false
@@ -304,6 +345,8 @@ type PXARArchive struct {
 	// "C:\\Users\\Alice\\Temp" matches when backing up "C:\\Users\\Alice". Under VSS
 	// the walked path differs from this, which is why pattern and entry are both
 	// reduced to paths relative to their respective roots before comparison.
+	// It also tells whether the backup is of a whole volume ("C:\\"), where
+	// Recovery at the root is left out; when empty the walked path is used.
 	ExcludeRoot string
 	// root is the toplevel WALKED path, captured on the first WriteDir call, used to
 	// compute each entry's path relative to the (possibly VSS shadow-copy) root.
@@ -550,6 +593,16 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		}
 	}
 
+	// The root-only system folders (Recovery) are skipped only among the
+	// children of a backup root that is itself a volume root. That is decided
+	// on the folder as the user named it (ExcludeRoot): under VSS the walked
+	// path is a link to the shadow copy, not "C:\".
+	logicalRoot := a.ExcludeRoot
+	if logicalRoot == "" {
+		logicalRoot = a.root
+	}
+	atVolumeRoot := toplevel && isVolumeRoot(logicalRoot)
+
 	for _, file := range files {
 		startpos := a.pos
 
@@ -565,7 +618,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 
 		if file.IsDir() {
 			// Skip Windows system folders (VSS snapshots, recycle bin, etc.)
-			if shouldSkipSystemFolder(file.Name()) {
+			if shouldSkipSystemFolder(file.Name(), atVolumeRoot) {
 				skipMsg := fmt.Sprintf("System folder (auto-excluded): %s", filepath.Join(path, file.Name()))
 				a.SkippedFiles = append(a.SkippedFiles, skipMsg)
 				continue
