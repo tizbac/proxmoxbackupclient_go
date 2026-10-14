@@ -51,7 +51,43 @@ type FileMetaEntry struct {
 	// for a dictionary to earn its complexity, and the blob is already
 	// gzip-compressed, which absorbs most of the repetition anyway.
 	Xattrs map[string][]byte `json:"x,omitempty"`
+	// Streams are the file's (or folder's) alternate data streams on NTFS,
+	// such as Zone.Identifier; EAs its NTFS extended attributes. Windows
+	// only and optional: older readers ignore them.
+	Streams []StreamEntry `json:"t,omitempty"`
+	EAs     []EAEntry     `json:"e,omitempty"`
 }
+
+// StreamEntry is one alternate data stream. Skipped is empty when its content
+// is in Data (an empty stream has no Data); otherwise it says why the content
+// was not recorded (larger than maxStreamBytes, over the archive's
+// maxStreamBytesTotal, unreadable, or dropped to keep the side file under the
+// PBS blob limit) and the restore leaves the stream out.
+type StreamEntry struct {
+	Name    string `json:"n"`
+	Size    int64  `json:"z"`
+	Data    []byte `json:"d,omitempty"`
+	Skipped string `json:"k,omitempty"`
+}
+
+// EAEntry is one NTFS extended attribute (FILE_FULL_EA_INFORMATION).
+type EAEntry struct {
+	Name  string `json:"n"`
+	Flags uint8  `json:"f,omitempty"`
+	Value []byte `json:"v,omitempty"`
+}
+
+const (
+	// maxStreamBytes is the largest alternate data stream recorded with its
+	// content. Nearly all are a few hundred bytes (Zone.Identifier).
+	maxStreamBytes = 1 << 20
+	// maxStreamBytesTotal bounds the stream content one archive records, so
+	// the side file stays well inside the PBS blob size limit.
+	maxStreamBytesTotal = 8 << 20
+	// maxFileMetaBlobBytes is the size the serialized side file must stay
+	// under (PBS refuses blobs over 16 MiB).
+	maxFileMetaBlobBytes = 15 << 20
+)
 
 // BackupFileMeta is the root of the ACL side-car. SDDLs are deduplicated into
 // a string array and each entry references by index.
@@ -82,6 +118,31 @@ func SerializeFileMeta(meta *BackupFileMeta) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// serializeFileMetaCapped is SerializeFileMeta, but if the result would be
+// larger than limit the recorded stream contents are dropped (each marked
+// Skipped) and it is serialized again, so permissions and attributes are never
+// lost to a large stream. dropped counts the streams whose content was dropped.
+func serializeFileMetaCapped(meta *BackupFileMeta, limit int) (blob []byte, dropped int, err error) {
+	blob, err = SerializeFileMeta(meta)
+	if err != nil || len(blob) <= limit {
+		return blob, 0, err
+	}
+	for i := range meta.Entries {
+		for j := range meta.Entries[i].Streams {
+			s := &meta.Entries[i].Streams[j]
+			if s.Skipped == "" {
+				s.Data, s.Skipped = nil, "metadata record too large"
+				dropped++
+			}
+		}
+	}
+	if dropped == 0 {
+		return blob, 0, nil
+	}
+	blob, err = SerializeFileMeta(meta)
+	return blob, dropped, err
 }
 
 // downloadBackupFileMeta fetches and decodes the NTFS ACL/attributes blob

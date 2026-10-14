@@ -163,3 +163,7 @@ func (c *NTFSMetaCollector) Stats() (entries, uniqueSDDLs, errors int) {
 	defer c.mu.Unlock()
 	return len(c.meta.Entries), 0, c.errors
 }
+
+// StreamStats: Linux has no alternate data streams or NTFS extended
+// attributes (its xattrs travel in Xattrs).
+func (c *NTFSMetaCollector) StreamStats() (streams, skipped, eas, dropped int) { return 0, 0, 0, 0 }

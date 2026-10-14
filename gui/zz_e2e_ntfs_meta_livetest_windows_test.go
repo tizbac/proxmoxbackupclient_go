@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -163,5 +164,163 @@ func TestE2ENTFSMetaCreationTimes(t *testing.T) {
 			}
 		}
 		t.Logf("%s: %d creation times checked", label, len(created))
+	})
+}
+
+// Alternate data streams (on files and a folder, an empty one, one too large
+// to record) and extended attributes come back when RestoreADS is set and not
+// otherwise; the modification and creation times stay as backed up although
+// writing a stream changes them, and the read-only attribute is applied after
+// the streams.
+func TestE2ENTFSMetaStreams(t *testing.T) {
+	e2eNTFSServerFromEnv(t)
+	src := filepath.Join(t.TempDir(), "ntfs-streams-src")
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk := func(rel, data string) string {
+		t.Helper()
+		p := filepath.Join(src, filepath.FromSlash(rel))
+		must(os.MkdirAll(filepath.Dir(p), 0o755))
+		must(os.WriteFile(p, []byte(data), 0o644))
+		return p
+	}
+	zone := "[ZoneTransfer]\r\nZoneId=3\r\nReferrerUrl=https://example.com/\r\nHostUrl=https://example.com/setup.exe\r\n"
+	mk("e2e-marker.txt", "marker")
+	setup := mk("downloads/setup.exe", "an installer")
+	mk("downloads/setup.exe:Zone.Identifier", zone)
+	two := mk("downloads/two streams.docx", "a document")
+	mk("downloads/two streams.docx:Zone.Identifier", zone)
+	mk("downloads/two streams.docx:com.dropbox.attrs", "\x00\x01dropbox")
+	mk("downloads/two streams.docx:empty", "")
+	bigFile := mk("big stream.bin", "x")
+	must(os.WriteFile(bigFile+":huge", bytes.Repeat([]byte("h"), maxStreamBytes+10), 0o644))
+	folder := filepath.Join(src, "folder with stream")
+	must(os.MkdirAll(folder, 0o755))
+	must(os.WriteFile(folder+":folderinfo", []byte("on the folder"), 0o644))
+	wsl := mk("wsl/linux file", "from WSL")
+	must(setEAs(wsl, []EAEntry{{Name: "$LXUID", Value: []byte{0xe8, 0x03, 0, 0}}, {Name: "$LXMOD", Value: []byte{0xa4, 0x81, 0, 0}}, {Name: "USER.NOTE", Value: []byte("hello")}}))
+	ro := mk("readonly with stream.txt", "read only")
+	mk("readonly with stream.txt:note", "stream on a read-only file")
+
+	old := time.Date(2015, 3, 4, 5, 6, 7, 0, time.UTC)
+	created := time.Date(2004, 5, 6, 7, 8, 9, 0, time.UTC)
+	for _, p := range []string{setup, two, bigFile, wsl, ro, folder} {
+		setCreatedForTest(t, p, created)
+		must(os.Chtimes(p, old, old))
+	}
+	must(os.Chmod(ro, 0o444))
+
+	// What a restore with streams must bring back, read from the source.
+	type want struct {
+		streams        map[string]string
+		eas            map[string]string
+		mtime, created time.Time
+	}
+	expect := map[string]want{}
+	filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
+		must(err)
+		rel, _ := filepath.Rel(src, p)
+		if rel == "." {
+			return nil
+		}
+		budget := int64(maxStreamBytesTotal)
+		ss, eas, rerr := readStreamsAndEAs(p, &budget)
+		must(rerr)
+		w := want{streams: map[string]string{}, eas: map[string]string{}, mtime: info.ModTime(), created: readCreatedForTest(t, p)}
+		for _, s := range ss {
+			if s.Skipped == "" {
+				w.streams[s.Name] = string(s.Data)
+			} else {
+				w.streams[s.Name] = "(not recorded)"
+			}
+		}
+		for _, e := range eas {
+			w.eas[e.Name] = string(e.Value)
+		}
+		expect[filepath.ToSlash(rel)] = w
+		return nil
+	})
+	if len(expect["wsl/linux file"].eas) != 3 || len(expect["downloads/two streams.docx"].streams) != 3 ||
+		expect["big stream.bin"].streams["huge"] != "(not recorded)" {
+		t.Fatalf("source not set up: %+v", expect)
+	}
+
+	e2eNTFSBackupRestore(t, "streams", src, map[string]RestoreOptions{
+		"streams and ACLs": {RestoreACLs: true, RestoreADS: true},
+		"streams, no ACLs": {RestoreADS: true},
+		"streams unticked": {RestoreACLs: true},
+	}, func(label, root string) {
+		skip := label == "streams unticked"
+		bad, nStreams, nEAs := 0, 0, 0
+		for rel, w := range expect {
+			p := filepath.Join(root, filepath.FromSlash(rel))
+			info, err := os.Stat(p)
+			if err != nil {
+				t.Errorf("%s: %s missing: %v", label, rel, err)
+				bad++
+				continue
+			}
+			budget := int64(maxStreamBytesTotal)
+			ss, eas, _ := readStreamsAndEAs(p, &budget)
+			got := map[string]string{}
+			for _, s := range ss {
+				got[s.Name] = string(s.Data)
+			}
+			for name, data := range w.streams {
+				g, ok := got[name]
+				switch {
+				case skip && ok:
+					t.Errorf("%s: %s:%s restored although RestoreADS is off", label, rel, name)
+					bad++
+				case skip:
+				case data == "(not recorded)" && ok:
+					t.Errorf("%s: %s:%s (too large to record) exists after restore", label, rel, name)
+					bad++
+				case data != "(not recorded)" && (!ok || g != data):
+					t.Errorf("%s: %s:%s = %q, %v; want %q", label, rel, name, g, ok, data)
+					bad++
+				case ok:
+					nStreams++
+				}
+			}
+			gotEA := map[string]string{}
+			for _, e := range eas {
+				gotEA[e.Name] = string(e.Value)
+			}
+			for name, v := range w.eas {
+				if skip {
+					if _, ok := gotEA[name]; ok {
+						t.Errorf("%s: %s EA %s restored although RestoreADS is off", label, rel, name)
+						bad++
+					}
+				} else if gotEA[name] != v {
+					t.Errorf("%s: %s EA %s = %q; want %q", label, rel, name, gotEA[name], v)
+					bad++
+				} else {
+					nEAs++
+				}
+			}
+			// Whole seconds: the archive stores seconds. A stream write
+			// changing the time would show as the time of the restore.
+			if info.ModTime().Unix() != w.mtime.Unix() {
+				t.Errorf("%s: %s modification time %v; want %v", label, rel, info.ModTime().UTC(), w.mtime.UTC())
+				bad++
+			}
+			if c := readCreatedForTest(t, p); !c.Equal(w.created) {
+				t.Errorf("%s: %s creation time %v; want %v", label, rel, c.UTC(), w.created.UTC())
+				bad++
+			}
+		}
+		if label != "streams, no ACLs" {
+			if info, err := os.Stat(filepath.Join(root, "readonly with stream.txt")); err == nil && info.Mode().Perm()&0o200 != 0 {
+				t.Errorf("%s: read-only attribute not restored", label)
+				bad++
+			}
+		}
+		t.Logf("%s: %d paths checked, %d streams and %d EAs restored, %d problems", label, len(expect), nStreams, nEAs, bad)
 	})
 }
