@@ -39,3 +39,7 @@ func applyNTFSMetadata(destPath string, entry FileMetaEntry, sddls []string) err
 	}
 	return nil
 }
+
+// applyCreationTime: Linux has no settable creation (birth) time, so a
+// Windows snapshot restored here keeps the time the file was written.
+func applyCreationTime(destPath string, created int64) error { return nil }
