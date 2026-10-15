@@ -1129,6 +1129,48 @@ func (pbs *PBSClient) SetComment(comment string) error {
 	return nil
 }
 
+// GetComment reads the snapshot's comment (its PBS notes), the snapshot
+// being the one Manifest names, as SetComment writes it.
+func (pbs *PBSClient) GetComment() (string, error) {
+	client := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: pbs.buildTLSConfig()},
+	}
+
+	params := url.Values{}
+	params.Set("backup-type", pbs.Manifest.BackupType)
+	params.Set("backup-id", pbs.Manifest.BackupID)
+	params.Set("backup-time", fmt.Sprintf("%d", pbs.Manifest.BackupTime))
+	if pbs.Namespace != "" {
+		params.Set("ns", pbs.Namespace)
+	}
+
+	fullURL := fmt.Sprintf("%s/api2/json/admin/datastore/%s/notes?%s", pbs.BaseURL, pbs.Datastore, params.Encode())
+	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/json")
+	pbs.setAuth(req)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("HTTP error reading comment: %d - %s", resp.StatusCode, string(body))
+	}
+	var r struct {
+		Data string `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return "", err
+	}
+	return r.Data, nil
+}
+
 func (pbs *PBSClient) Finish() error {
 	req, err := http.NewRequest("POST", pbs.BaseURL+"/finish", nil)
 	if err != nil {

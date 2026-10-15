@@ -416,6 +416,21 @@ func bootDiskIsGPT(disks []BackupDisk) bool {
 // BackupResult represents the result of a backup operation
 type BackupResult struct {
 	Disks []BackupDisk
+
+	client  *pbscommon.PBSClient // the finished snapshot, for AddNote
+	comment string               // the comment the backup set, if any
+}
+
+// AddNote adds note to the snapshot's PBS comment (the notes the PBS web UI
+// shows in its Comment column), after the comment the backup set, if any.
+func (r *BackupResult) AddNote(note string) error {
+	if r == nil || r.client == nil {
+		return errors.New("no snapshot to add a note to")
+	}
+	if r.comment != "" {
+		note = r.comment + " | " + note
+	}
+	return r.client.SetComment(note)
 }
 
 // qemuConfigData is the input to qemuConfigTemplate.
@@ -717,7 +732,9 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 	}
 
 	return &BackupResult{
-		Disks: disks,
+		Disks:   disks,
+		client:  client,
+		comment: cfg.Comment,
 	}, nil
 }
 

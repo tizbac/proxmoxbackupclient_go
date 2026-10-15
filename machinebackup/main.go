@@ -185,10 +185,11 @@ func loadConfig() *machinebackuplib.Config {
 
 // sendResultMail sends the notification e-mail when -mail-* (or the config
 // file's smtp section) asks for one. A mail problem is reported on stderr
-// and never changes the backup's own exit code.
-func sendResultMail(cfg *machinebackuplib.Config, ctx clientcommon.MailCtx) {
+// and never changes the backup's own exit code. It returns false when a
+// mail could not be sent.
+func sendResultMail(cfg *machinebackuplib.Config, ctx clientcommon.MailCtx) bool {
 	if cfg.SMTP == nil || len(cfg.SMTP.Mails) == 0 {
-		return
+		return true
 	}
 	build := func(custom, def string) string {
 		if custom != "" {
@@ -210,16 +211,19 @@ func sendResultMail(cfg *machinebackuplib.Config, ctx clientcommon.MailCtx) {
 	client, err := clientcommon.SetupMailClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Cannot connect to the mail server: "+err.Error())
-		return
+		return false
 	}
 	defer client.Quit()
+	sent := true
 	for _, m := range cfg.SMTP.Mails {
 		if err := clientcommon.SendMail(m.From, m.To, subject, body, client); err != nil {
 			fmt.Fprintln(os.Stderr, "Cannot send the notification e-mail: "+err.Error())
+			sent = false
 		} else {
 			fmt.Printf("Notification e-mail sent to %s\n", m.To)
 		}
 	}
+	return sent
 }
 
 func hostnameOrEmpty() string {
@@ -308,12 +312,21 @@ func main() {
 	for _, r := range jp.Unreadable() {
 		readErrors = append(readErrors, fmt.Sprintf("%s at byte %d (%d bytes)", r.Disk, r.Offset, r.Length))
 	}
-	sendResultMail(cfg, clientcommon.MailCtx{
+	mailSent := sendResultMail(cfg, clientcommon.MailCtx{
 		NewChunks: jp.NewChunks.Load(), ReusedChunks: jp.ReusedChunks.Load(), Datastore: cfg.Datastore,
 		Error: err, ReadErrors: readErrors, Hostname: hostnameOrEmpty(), StartTime: start, EndTime: time.Now(),
 	})
 	if err != nil {
 		fatalError("backup", err)
+	}
+	// A failed backup has no snapshot to note it on; a good one gets the mail
+	// problem in its PBS comment, where it is seen when the backup is viewed.
+	if !mailSent {
+		if nerr := result.AddNote(clientcommon.MailFailedNote); nerr != nil {
+			fmt.Fprintln(os.Stderr, "Cannot add the mail warning to the PBS snapshot comment: "+nerr.Error())
+		} else {
+			fmt.Println("Mail warning added to the PBS snapshot comment.")
+		}
 	}
 	for _, disk := range result.Disks {
 		fmt.Printf("Backed up disk %d (%d bytes)\n", disk.Index, disk.Size)

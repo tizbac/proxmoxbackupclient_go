@@ -1,12 +1,14 @@
 package main
 
 import (
+	"clientcommon"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"pbscommon"
 	"strings"
 	"testing"
 )
@@ -21,10 +23,39 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// liveComment returns the PBS comment of the newest snapshot of backupID.
+func liveComment(t *testing.T, backupID string) string {
+	t.Helper()
+	c := &pbscommon.PBSClient{
+		BaseURL:         os.Getenv("PBS_LIVE_URL"),
+		CertFingerPrint: os.Getenv("PBS_LIVE_FINGERPRINT"),
+		AuthID:          os.Getenv("PBS_LIVE_AUTHID"),
+		Secret:          os.Getenv("PBS_LIVE_SECRET"),
+		Datastore:       os.Getenv("PBS_LIVE_DATASTORE"),
+	}
+	snaps, err := c.ListSnapshots()
+	if err != nil {
+		t.Fatalf("list snapshots: %v", err)
+	}
+	for _, s := range snaps { // newest first
+		if s.BackupID == backupID {
+			c.Manifest = s
+			comment, err := c.GetComment()
+			if err != nil {
+				t.Fatalf("read the comment of %s/%s/%d: %v", s.BackupType, s.BackupID, s.BackupTime, err)
+			}
+			return comment
+		}
+	}
+	t.Fatalf("no snapshot of %s on the server", backupID)
+	return ""
+}
+
 // A backup that worked exits 0 even when its notification e-mail cannot be
-// sent: the mail problem goes to stderr only. The mail server is a port with
-// nothing listening on it. Needs a PBS: PBS_LIVE_URL, PBS_LIVE_AUTHID,
-// PBS_LIVE_SECRET, PBS_LIVE_FINGERPRINT and PBS_LIVE_DATASTORE.
+// sent: the mail problem goes to stderr and into the snapshot's PBS comment.
+// The mail server is a port with nothing listening on it. Needs a PBS:
+// PBS_LIVE_URL, PBS_LIVE_AUTHID, PBS_LIVE_SECRET, PBS_LIVE_FINGERPRINT and
+// PBS_LIVE_DATASTORE.
 func TestMailFailureKeepsBackupExitCode(t *testing.T) {
 	url := os.Getenv("PBS_LIVE_URL")
 	if url == "" {
@@ -41,6 +72,7 @@ func TestMailFailureKeepsBackupExitCode(t *testing.T) {
 	closedPort := fmt.Sprint(ln.Addr().(*net.TCPAddr).Port)
 	ln.Close()
 
+	const backupID = "dir-mail-failure-test"
 	cmd := exec.Command(os.Args[0],
 		"-baseurl", url,
 		"-certfingerprint", os.Getenv("PBS_LIVE_FINGERPRINT"),
@@ -48,7 +80,7 @@ func TestMailFailureKeepsBackupExitCode(t *testing.T) {
 		"-secret", os.Getenv("PBS_LIVE_SECRET"),
 		"-datastore", os.Getenv("PBS_LIVE_DATASTORE"),
 		"-backupdir", dir,
-		"-backup-id", "dir-mail-failure-test",
+		"-backup-id", backupID,
 		"-novss",
 		"-mail-host", "127.0.0.1",
 		"-mail-port", closedPort,
@@ -68,6 +100,9 @@ func TestMailFailureKeepsBackupExitCode(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "Cannot connect to the mail server") {
 		t.Errorf("no mail error in the output\n%s", out)
+	}
+	if comment := liveComment(t, backupID); comment != clientcommon.MailFailedNote {
+		t.Errorf("snapshot comment %q, want %q", comment, clientcommon.MailFailedNote)
 	}
 	t.Logf("%s", out)
 }

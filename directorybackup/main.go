@@ -320,14 +320,20 @@ func main() {
 
 	begin := time.Now()
 	var readErrors []string
+	// snapshots holds the clients of the snapshots this run made, for the
+	// mail warning note below.
+	var snapshots []*pbscommon.PBSClient
 	if len(dirs) == 1 {
 		readErrors, err = backup(client, newchunk, reusechunk, cfg.PxarOut, dirs[0], cfg.UseVSS)
+		if err == nil {
+			snapshots = append(snapshots, client)
+		}
 	} else if len(dirs) > 1 {
 		baseID := cfg.BackupID
 		if baseID == "" {
 			baseID = hostname
 		}
-		readErrors, err = backup_many(newClient, newchunk, reusechunk, cfg.PxarOut, dirs, baseID, cfg.UseVSS)
+		readErrors, snapshots, err = backup_many(newClient, newchunk, reusechunk, cfg.PxarOut, dirs, baseID, cfg.UseVSS)
 	} else if cfg.BackupStreamName != "" {
 		sn := cfg.BackupStreamName
 		if !strings.HasSuffix(sn, ".didx") {
@@ -335,6 +341,9 @@ func main() {
 		}
 		fmt.Printf("Backing up from STDIN to %s", sn)
 		err = backup_stream(client, newchunk, reusechunk, sn, os.Stdin)
+		if err == nil {
+			snapshots = append(snapshots, client)
+		}
 
 	} else {
 		panic("No backup dir or stream name specified, exiting")
@@ -389,16 +398,31 @@ func main() {
 		}
 		// A mail problem is reported on stderr and never changes the backup's
 		// own exit code, as in machinebackup.
+		mailSent := true
 		client, err := clientcommon.SetupMailClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Cannot connect to the mail server: "+err.Error())
+			mailSent = false
 		} else {
 			defer client.Quit()
 			for _, ccc := range cfg.SMTP.Mails {
 				if err := clientcommon.SendMail(ccc.From, ccc.To, subject, msg, client); err != nil {
 					fmt.Fprintln(os.Stderr, "Cannot send the notification e-mail: "+err.Error())
+					mailSent = false
 				} else {
 					fmt.Printf("Notification e-mail sent to %s\n", ccc.To)
+				}
+			}
+		}
+		// The mail problem also goes in the PBS comment of every snapshot this
+		// run made, where it is seen when the backup is viewed. A failed backup
+		// has no snapshot to note it on.
+		if !mailSent {
+			for _, s := range snapshots {
+				if nerr := s.SetComment(clientcommon.MailFailedNote); nerr != nil {
+					fmt.Fprintf(os.Stderr, "Cannot add the mail warning to the PBS comment of %s: %v\n", s.Manifest.BackupID, nerr)
+				} else {
+					fmt.Printf("Mail warning added to the PBS comment of %s.\n", s.Manifest.BackupID)
 				}
 			}
 		}
@@ -422,22 +446,24 @@ func main() {
 // backup group with the id <base>_<path> (the same ids the GUI uses), so PBS
 // retention and restore treat every directory as an independent series. A
 // directory that fails does not stop the others; the failures are joined into
-// the returned error.
-func backup_many(newClient func(backupID string) (*pbscommon.PBSClient, error), newchunk, reusechunk *atomic.Uint64, pxarOut string, dirs []string, baseID string, usevss bool) ([]string, error) {
+// the returned error. The clients of the snapshots that were made are returned
+// too, so a note can be added to them afterwards.
+func backup_many(newClient func(backupID string) (*pbscommon.PBSClient, error), newchunk, reusechunk *atomic.Uint64, pxarOut string, dirs []string, baseID string, usevss bool) ([]string, []*pbscommon.PBSClient, error) {
 	if pxarOut != "" {
-		return nil, fmt.Errorf("-pxarout writes a single archive and cannot be combined with several -backupdir")
+		return nil, nil, fmt.Errorf("-pxarout writes a single archive and cannot be combined with several -backupdir")
 	}
 
 	ids := make(map[string]string, len(dirs))
 	for _, dir := range dirs {
 		id := clientcommon.GenerateBackupID(baseID, dir)
 		if other, dup := ids[id]; dup {
-			return nil, fmt.Errorf("%q and %q would both be backed up as backup-id %q; pass distinct directories", other, dir, id)
+			return nil, nil, fmt.Errorf("%q and %q would both be backed up as backup-id %q; pass distinct directories", other, dir, id)
 		}
 		ids[id] = dir
 	}
 
 	var readErrors []string
+	var done []*pbscommon.PBSClient
 	var failures []error
 	for _, dir := range dirs {
 		id := clientcommon.GenerateBackupID(baseID, dir)
@@ -455,9 +481,11 @@ func backup_many(newClient func(backupID string) (*pbscommon.PBSClient, error), 
 		readErrors = append(readErrors, dirReadErrors...)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", dir, err))
+		} else {
+			done = append(done, client)
 		}
 	}
-	return readErrors, errors.Join(failures...)
+	return readErrors, done, errors.Join(failures...)
 }
 
 func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, filename string, stream io.Reader) error {

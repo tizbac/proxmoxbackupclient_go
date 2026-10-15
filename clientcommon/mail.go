@@ -131,6 +131,11 @@ func SendMail(from, to, subject, body string, c *smtp.Client) error {
 	return nil
 }
 
+// MailFailedNote is added to a snapshot's PBS comment when its notification
+// e-mail could not be sent, so the problem shows in the PBS web UI too and
+// not only in the run's own output.
+const MailFailedNote = "Error sending notification email, check client mail configuration."
+
 type MailCtx struct {
 	NewChunks    uint64
 	ReusedChunks uint64

@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - About page: 12 current features instead of 8 out-of-date ones, the Technology card removed, an alpha and no-warranty line, the Links translated with a Report a bug link, and the copyright reads "Changes since the fork © 2026 mjb-is, building on the work of ...". The program's file properties carry the same copyright.
 - `proxmoxbackup-directory`: a notification e-mail that cannot be sent no longer fails the run. The mail error is printed and the exit code comes from the backup alone (0 done, 1 failed, 3 done with unreadable files), as `proxmoxbackup-machine` already did. Before, a good backup exited 1, and a backup with unreadable files exited 1 instead of 3. With several recipients, a failed send no longer stops the rest.
 
+### Added
+- `proxmoxbackup-directory` and `proxmoxbackup-machine`: when the notification e-mail cannot be sent, the snapshot's PBS comment reads "Error sending notification email, check client mail configuration.", so the problem is seen when the backup is viewed in PBS and not only in the run's output. A multi-folder run notes every snapshot it made. A comment the backup set already is kept, with the warning after it. A failed backup has no snapshot to note.
+
 ## [0.9.0] - 2026-10-14
 
 The headline is several schedules per Backup Set. This release also brings the Windows installer and Linux packages, a background service on Linux, alternate data streams and NTFS extended attributes in folder backups, and v0.8.2's change (tagged, never published on its own).
