@@ -457,8 +457,11 @@ func (pbs *PBSClient) ObtainTicket() error {
 // NamespaceHint in missingNamespaceErr.
 
 func (pbs *PBSClient) ListSnapshots() ([]BackupManifest, error) {
+	// PBS reads every snapshot's manifest in the datastore (or namespace) to
+	// answer this. With a cold cache over spinning disks that takes longer
+	// than 10 s on a datastore of a few hundred snapshots.
 	client := &http.Client{
-		Timeout:   10 * time.Second,
+		Timeout:   120 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: pbs.buildTLSConfig()},
 	}
 
