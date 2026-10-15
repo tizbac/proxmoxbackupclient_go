@@ -1277,6 +1277,14 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 		entries, uniqueSDDLs, metaErrs := ntfsCollector.Stats()
 		writeBackupLog(fmt.Sprintf("NTFS metadata: %d entries, %d unique SDDLs, %d errors, %d bytes gzipped",
 			entries, uniqueSDDLs, metaErrs, len(aclBytes)))
+		streams, byName, eas, dropped := ntfsCollector.StreamStats()
+		if streams+byName+eas > 0 {
+			writeBackupLog(fmt.Sprintf("Alternate data streams: %d recorded, %d by name only (too large or unreadable); extended attributes: %d",
+				streams, byName, eas))
+		}
+		if dropped > 0 {
+			writeBackupLog(fmt.Sprintf("WARNING: NTFS metadata too large for one PBS blob: the content of %d alternate data streams was left out (permissions and attributes kept)", dropped))
+		}
 		if upErr := client.UploadBlob(BackupAclsFilename, aclBytes); upErr != nil {
 			writeBackupLog(fmt.Sprintf("WARNING: failed to upload NTFS metadata blob: %v", upErr))
 		}

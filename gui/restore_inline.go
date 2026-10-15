@@ -35,10 +35,11 @@ const (
 // descendants. Paths use forward slashes (archive style); backslashes are
 // accepted and normalized.
 //
-// RestoreACLs / RestoreADS / RestoreTimestamps are reserved for the upcoming
-// NTFS sidecar work — accepted today so the API surface is stable, but only
-// RestoreTimestamps has any effect (always-on: mtime is restored). The other
-// two are no-ops until the per-file .proxmox_meta sidecar lands.
+// RestoreACLs re-applies the captured NTFS ACLs/attributes (Windows) or POSIX
+// ACLs/xattrs (Linux) from the snapshot's metadata blob. RestoreADS writes back
+// the alternate data streams and NTFS extended attributes recorded there
+// (Windows). Modification times are always restored, and on Windows creation
+// times too; RestoreTimestamps is kept for symmetry.
 type RestoreOptions struct {
 	BaseURL         string
 	AuthID          string
@@ -68,8 +69,8 @@ type RestoreOptions struct {
 
 	IncludePaths      []string
 	Overwrite         bool
-	RestoreACLs       bool // reserved — requires NTFS sidecar
-	RestoreADS        bool // reserved — requires NTFS sidecar
+	RestoreACLs       bool // NTFS ACLs/attributes (Windows) or POSIX ACLs/xattrs (Linux)
+	RestoreADS        bool // alternate data streams and NTFS extended attributes (Windows)
 	RestoreTimestamps bool // mtime is always restored; flag kept for symmetry
 
 	OnProgress func(percent float64, message string)
@@ -765,12 +766,14 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	// Re-apply captured ACLs/attributes now that the files are actually on
 	// disk. Best-effort per file: an apply failure is logged, never fails
 	// the restore — the file's content is already safely on disk regardless.
-	// The extraction has already set the modification times, folders' last,
-	// and nothing below writes file data, so they stay as restored.
+	// The extraction has already set the modification times, folders' last.
+	// Only writing a stream or EA below changes one, and it is set back.
+	restoreStreams := opts.RestoreADS && runtime.GOOS == "windows"
 	if aclMeta != nil {
 		entryIdx := buildFileMetaIndex(aclMeta)
 		applied, failed := 0, 0
 		cApplied, cFailed := 0, 0
+		sWritten, sSkipped, sFailed, eaFiles := 0, 0, 0, 0
 		for _, f := range extracted {
 			if f.Skipped || f.ArchivePath == "" {
 				continue
@@ -779,7 +782,26 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			if !ok {
 				continue
 			}
-			// Creation time first: the ACL applied next may take away the
+			// Alternate data streams and extended attributes first, while the
+			// file is still writable (the attributes and ACL come last).
+			if restoreStreams && (len(entry.Streams) > 0 || len(entry.EAs) > 0) {
+				before, statErr := os.Lstat(f.Path)
+				w, sk, serr := writeStreamsAndEAs(f.Path, entry.Streams, entry.EAs)
+				sWritten += w
+				sSkipped += sk
+				if serr != nil {
+					sFailed++
+					if sFailed <= 50 {
+						writeBackupLog(fmt.Sprintf("Alternate data streams or extended attributes not all restored on %s: %v", f.Path, serr))
+					}
+				} else if len(entry.EAs) > 0 {
+					eaFiles++
+				}
+				if statErr == nil && (w > 0 || len(entry.EAs) > 0) {
+					_ = os.Chtimes(f.Path, before.ModTime(), before.ModTime())
+				}
+			}
+			// Creation time next: the ACL applied after may take away the
 			// right to change it.
 			if restoreCreated && entry.Created > 0 {
 				if cerr := applyCreationTime(f.Path, entry.Created); cerr != nil {
@@ -801,18 +823,16 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 				applied++
 			}
 		}
+		if sWritten+sSkipped+sFailed+eaFiles > 0 {
+			writeBackupLog(fmt.Sprintf("Alternate data streams: %d restored, %d recorded by name only (not restored); extended attributes restored on %d files; %d files failed",
+				sWritten, sSkipped, eaFiles, sFailed))
+		}
 		if cApplied > 0 || cFailed > 0 {
 			writeBackupLog(fmt.Sprintf("Creation times: applied %d, failed %d", cApplied, cFailed))
 		}
 		if applied > 0 || failed > 0 {
 			writeBackupLog(fmt.Sprintf("NTFS ACLs/attributes: applied %d, failed %d", applied, failed))
 		}
-	}
-
-	if opts.RestoreADS {
-		// Reserved option — no ADS sidecar exists. Log the request so it
-		// shows up in support transcripts.
-		writeBackupLog("NOTE: ADS restore requested but not yet implemented (no ADS sidecar exists)")
 	}
 
 	progress(1.0, "Restore completed")

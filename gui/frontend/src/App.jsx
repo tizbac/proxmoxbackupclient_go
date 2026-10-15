@@ -177,7 +177,7 @@ function App() {
     overwrite: false,
     timestamps: true,
     acls: false, // opt-in — off by default even though the ACL/attributes sidecar now exists
-    ads: false   // disabled in UI until an ADS sidecar lands
+    ads: true    // alternate data streams and NTFS extended attributes (Windows)
   })
   const [restoreLoading, setRestoreLoading] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
@@ -2970,9 +2970,13 @@ function App() {
                     />
                     {t('optionACLs')}
                   </label>
-                  <label style={{display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.5}} title={t('optionComingSoon')}>
-                    <input type="checkbox" disabled checked={false} />
-                    {t('optionADS')} <span style={{fontSize: '11px'}}>({t('comingSoon')})</span>
+                  <label style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.ads}
+                      onChange={(e) => setRestoreOptions(o => ({...o, ads: e.target.checked}))}
+                    />
+                    {t('optionADS')}
                   </label>
                 </div>
 

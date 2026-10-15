@@ -1879,9 +1879,9 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 //     destPath/<basename>.
 //
 // includePaths uses archive-style paths (forward slash). When empty the entire
-// snapshot is restored. The ACL/ADS/timestamps flags are accepted today but
-// only timestamps is effective — the per-file NTFS sidecar required for the
-// other two is still on the roadmap.
+// snapshot is restored. restoreACLs (NTFS ACLs/attributes on Windows, POSIX
+// ACLs/xattrs on Linux) and restoreADS (alternate data streams and NTFS
+// extended attributes, Windows) take effect; timestamps are always restored.
 //
 // Progress is streamed to the frontend via the "restore:progress" event;
 // completion via "restore:complete".
