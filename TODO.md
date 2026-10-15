@@ -1,6 +1,6 @@
 # Proxmox Backup Client - TODO
 
-What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGELOG.md). The old, much longer list (with its design notes, findings and audit trail) is kept in [docs/TODO-HISTORY.md](docs/TODO-HISTORY.md); every item still open there has been carried over here.
+What is still open, as of 2026-10-15 (after v0.9.1). Finished work is in [CHANGELOG.md](CHANGELOG.md). The old, much longer list (with its design notes, findings and audit trail) is kept in [docs/TODO-HISTORY.md](docs/TODO-HISTORY.md); every item still open there has been carried over here.
 
 ## Release and distribution
 
@@ -12,8 +12,8 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 
 ## Upstream (tizbac/proxmoxbackupclient_go)
 
-- [ ] **#105 open**: restore puts back 1970 and earlier file times and folder times, plus `-no-mtime` (CLI, asked for by tizbac). Waiting on review.
-- [ ] Candidate ports, each a fresh small branch off upstream/master (our commits no longer apply as patches): `proxmoxbackup-machine` sends its mail (fork 5e02a28); exclude "Recovery" only at the drive root (d749941); restore permissions when the owner cannot be set, and keep a folder's protected (non-inheriting) DACL (5c1ef56).
+- [ ] **#113 open**: the bare-metal restore wizard never offers the boot stick (Ventoy, USB SSD) and refuses a disk smaller than the backed up one as the target. Waiting on review. (#102 to #112 are merged.)
+- [ ] Candidate port, a fresh small branch off upstream/master (our commits no longer apply as patches): restore permissions when the owner cannot be set, and keep a folder's protected (non-inheriting) DACL (5c1ef56).
 
 ## Background service
 
@@ -40,9 +40,9 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 
 ## Bare-metal restore ISO
 
-- [ ] Boot-stick exclusion: the 2026-10-13 test ISO, booted as a fixed SATA disk on a UEFI VM, left that disk out and named it under "Not eligible as target" (Mick). Still to try: a real Ventoy stick (BIOS and UEFI) and a BIOS VM with two internal disks (`patch-clonezilla.sh` on VM140) and test from a dd-written stick, a Ventoy stick (BIOS and UEFI) and a USB SSD, on a VM with one and with two internal disks. Check the key-file step lists the Ventoy data partition (exFAT) so the key can live on the same stick.
-- [ ] Test a bare-metal boot with a passphrase-protected key.
-- [ ] **Publish a new ISO.** The only published one (v0.5.0) predates the removal of the Linux snapshot store file (`.pbs_snapshot_N.cow`) after a restore; BMR.md tells its users to delete it by hand.
+- [ ] Boot-stick exclusion, still to try: a dd-written stick, a real USB SSD, and a VM with two internal disks. Done: the ISO as a fixed SATA disk on a UEFI VM (2026-10-13), and a real Ventoy stick with UEFI and BIOS, in Ventoy's normal and GRUB2 modes (2026-10-15, v0.9.1 ISO). Check the key-file step lists the Ventoy data partition (exFAT) so the key can live on the same stick.
+- [ ] A full restore with the v0.9.1 ISO onto a target the same size or larger (the smaller-disk refusal was tested; the path that goes ahead was not booted with this ISO).
+- [ ] The wizard passes the PBS password to `pbsnbd` on the command line, so it shows in `ps` on the live system: pass it through the environment or a file.
 
 ## Security
 
@@ -53,12 +53,14 @@ What is still open, as of 2026-10-13. Finished work is in [CHANGELOG.md](CHANGEL
 
 ## Languages and docs
 
-- [ ] Native speakers to look over the app's strings in the languages its users actually use. All 17 were reviewed against the English on 2026-10-13 (meaning, one term per concept, menu names, plurals, quotation marks); a native ear still catches what is correct but unidiomatic. The feature lists on the About page (`featuresList`, `techList`) were not part of that review.
-- [ ] The 12 translated READMEs were regenerated from the English one on 2026-10-13 (condensed, machine-translated): keep them in step when the English README changes, and have native speakers look them over.
+- [ ] Native speakers to look over the app's strings in the languages its users actually use. All 17 were reviewed against the English on 2026-10-13 (meaning, one term per concept, menu names, plurals, quotation marks); a native ear still catches what is correct but unidiomatic. The feature lists on the About page (`featuresList`, `techList`) were not part of that review, nor were the Backup Set More menu's new labels (37df34d, 2026-10-15).
+- [ ] The 12 translated READMEs were regenerated from the English one on 2026-10-13 (condensed, machine-translated): keep them in step when the English README changes (they do not have the v0.9.1 paragraph yet), and have native speakers look them over.
+- [ ] `docs/screenshots/nimbus-gui-*.png` (3 files from September) are no longer linked from anywhere: delete them.
 
 ## Command-line tools
 
 - [ ] `proxmoxbackup-directory` still prints a few early errors (config file, fingerprint, login, key file) to stdout instead of stderr.
+- [ ] Maybe: the app and the service note a notification e-mail that could not be sent in the snapshot's PBS comment, as the command-line tools do since v0.9.1 (`clientcommon.MailFailedNote`).
 
 ## Tests
 

@@ -1,6 +1,6 @@
 # Proxmox Backup Client - TODO history
 
-> **This is the old TODO list, kept as it was on 2026-10-13 for its design notes, findings and audit trail.** Many items here are done, superseded or no longer relevant, and some unticked boxes belong to work finished another way. The current open list is [TODO.md](../TODO.md) at the top of the repository; anything still open from this file has been carried over there.
+> **This is the old TODO list, kept as it was on 2026-10-13 for its design notes, findings and audit trail.** Many items here are done, superseded or no longer relevant, and some unticked boxes belong to work finished another way. The current open list is [TODO.md](../TODO.md) at the top of the repository; anything still open from this file has been carried over there. Items finished after 2026-10-13 are marked where they were done, with the commit and release (reviewed 2026-10-15, after v0.9.1).
 
 ## ✅ RÉCEMMENT COMPLÉTÉES (v0.1.78-v0.1.92)
 
@@ -31,14 +31,14 @@
 - [x] ~~Job.PBSID référence serveur~~ ✓ (`gui/jobs.go`)
 - [x] ~~Méthodes App exposées au frontend~~ ✓ (`gui/main.go`)
 - [x] ~~Documentation complète~~ ✓ (`MULTI_PBS_GUIDE.md`)
-- [ ] **Frontend GUI à développer** (liste serveurs, dropdown jobs)
+- [x] (confirmed by the code audit of 2026-09-29, see "Multi-PBS Architecture" below) **Frontend GUI à développer** (liste serveurs, dropdown jobs)
 
 ### ~~MSI Uninstall Dialog~~ ✅ IMPLÉMENTÉ
 - [x] ~~Propriété KEEP_CONFIG~~ ✓ (`installer/wix/Product.wxs`)
 - [x] ~~Custom action DeleteConfigFolder~~ ✓
 - [x] ~~Dialog personnalisé avec radio buttons~~ ✓
 - [x] ~~Documentation tests~~ ✓ (`MSI_UNINSTALL_TEST.md`)
-- [ ] **Tests sur Windows à faire**
+- [~] **Tests sur Windows à faire** (2026-10-13: the silent install, upgrade and removal paths passed; the MSI was published with v0.9.0. Clicking through the removal pages is still open in TODO.md.)
 
 ---
 
@@ -57,7 +57,7 @@ and restore: written at `gui/backup_inline.go:1502`, read back at `gui/restore_i
 original folder path in the restore UI instead of the sanitized backup-id. Gracefully falls back
 to nil for legacy snapshots with no meta file. `gui/backup_meta.go:12`.
 
-#### Étape 1 : NTFS Metadata Fidelity — ACLs/attributes ✅ DONE 2026-09-26, ADS/Creation Time still open
+#### ~~Étape 1 : NTFS Metadata Fidelity — ACLs/attributes ✅ DONE 2026-09-26, ADS/Creation Time still open~~ ✅ ALL DONE: creation times 2026-10-08, ADS and NTFS extended attributes in v0.9.0 (2026-10-14)
 
 - ✅ **ACLs (Security Descriptors) and DOS attributes: captured AND restored, end to end.**
   Capture: `gui/backup_meta_windows.go` (commit `ee3d6e0`) reads each file's SDDL string +
@@ -73,17 +73,26 @@ to nil for legacy snapshots with no meta file. `gui/backup_meta.go:12`.
   the Hidden attribute, backed up and restored through a real PBS round-trip, both the DACL (SDDL
   string comparison) and the attribute matched exactly
   (`gui/zz_ntfs_acl_restore_livetest_test.go`).
-- ❌ **Alternate Data Streams** (e.g. `Zone.Identifier`): still genuinely untouched, no code
-  anywhere, before or after the ACL work.
-  - [ ] Needs both capture (add an ADS field to `FileMetaEntry` + a collector) and restore
+- ✅ **Alternate Data Streams** (e.g. `Zone.Identifier`): DONE in v0.9.0 (7eea515, 3b5c31f,
+  901e237), with NTFS extended attributes (where WSL keeps Linux owners and permissions).
+  - [x] Needs both capture (add an ADS field to `FileMetaEntry` + a collector) and restore
         application — the checkbox for this already exists in the UI too, still correctly
         disabled/"(coming soon)" since nothing backs it yet.
+        Built as: `pbscommon/filemeta_streams_windows.go` records each file's streams (content up to
+        1 MB each, 8 MB per folder, larger ones by name) and EAs, opening each file once without
+        reading its contents; the GUI and `proxmoxbackup-directory` both record them. The Restore
+        page's "Restore alternate data streams and extended attributes" option is on by default,
+        and Undelete and Roll back always put them back. Known Limitations lists none since.
+        Disk-image restores put streams back too (ux-batch 8ef8285). Backups made before v0.9.0
+        have no streams to restore.
 - ✅ **Creation Time**: DONE 2026-10-08. `FileMetaEntry.Created` (FILETIME, json "c") captured by
   NTFSMetaCollector from the walk's own FileInfo (no extra disk access), restored on Windows for
   every restore (not only with RestoreACLs) by `applyCreationTime` before the ACL step, stage
   "created" when ACLs are off. Unit round trip + live undelete check (2004 creation time comes
   back). Linux: nothing to set. The CLI `proxmoxbackup-directory` does not write the NTFS blob, so
-  CLI backups still lack it.
+  CLI backups still lack it. **Since 15ab299 (2026-10-11)** the CLI on Windows writes the same blob
+  (permissions, attributes, creation times), and from v0.9.0 streams and EAs too. Offered upstream
+  as #108 (creation times) and #109 (streams and EAs), both merged.
 - **UID/GID hardcoding** in `pbscommon/pxar.go`: unchanged (`uid: 1000, gid: 1000`), with an
   existing comment noting this is fine since the project targets Windows — separate from the
   Windows-specific SDDL/attrs blob, not something the ACL work touches.
@@ -358,7 +367,7 @@ Au lieu de gérer des checkpoints de chunks uploadés, on découpe le travail en
   - [x] ~~Dialog WiX personnalisé~~ ✓
   - [x] ~~Propriété KEEP_CONFIG~~ ✓
   - [x] ~~CustomAction DeleteConfigFolder~~ ✓
-  - [ ] **Tests sur Windows à faire**
+  - [~] **Tests sur Windows à faire** (2026-10-13: silent paths passed, MSI published with v0.9.0; the removal pages still to click through, TODO.md)
 
 - [ ] **Installation Silencieuse (Silent Install)**
   - [ ] **Approche: Config JSON pré-configuré** (propre pour AD/GPO)
@@ -420,6 +429,11 @@ weekly via days-of-week — without a real cron parser, and never needed a legac
 migration since it was built fresh rather than evolved from a single-daily-time field. **Nothing
 left to build here.** Everything below is the original plan, kept for reference only — it doesn't
 describe what actually shipped.
+
+**Update 2026-10-15:** the monthly and yearly cases this design could not express came with
+several schedules per Backup Set in v0.9.0 (every N minutes, hours, days, weeks, months or years;
+a day of the month, the last day, or "the 2nd Tuesday"), still without a cron parser. See "Better
+scheduler: several schedules per Backup Set" below.
 
 **Problème actuel (original, now resolved a different way) :** Scheduler supporte uniquement backup quotidien à heure fixe (HH:MM)
 **Use cases manquants :**
@@ -612,19 +626,19 @@ Found 2026-10-08: datastore prune job `pbs-prune` (04:00, keep-daily 7, weekly 4
 
 Order: phase 0 now, then 1, 2, 3. Undelete is useful on its own after phase 2.
 
-### 💽 Restore files from a machine (disk image) backup (Mick, 2026-10-08) - NTFS DONE 2026-10-11
+### 💽 Restore files from a machine (disk image) backup (Mick, 2026-10-08) - NTFS DONE 2026-10-11, the other file systems 2026-10-12, released in v0.9.0
 DONE: pbscommon.NewFIDXReaderAt (fixed index -> DIDXReaderAt), gui/imagefs (GPT/MBR, file system probe, NTFS listing by one MFT sweep, file data via go-ntfs incl. compressed/sparse, extents for read-ahead), restore_image.go (tree per NTFS volume, restore to another folder in MFT order then disk order with read-ahead over the files' clusters, times, attributes, verify), Restore page markers. Live on sarah-yoga510 vm/9000194 (Production): 566k entries, restore + verify OK in abs and flat modes.
 DONE 2026-10-12 (ux-batch 8ef8285, 11758ac): permissions from $Secure, ADS, FAT12/16/32, exFAT, ext2/3/4, XFS, a file system on the whole disk, a clear BitLocker message, and a cached listing per snapshot (`.img.gz`, trimmed after 30 days). polaris vm/9000015 (247.7 GB ext4): 183,755 entries in 47 s, 0.6 s from the cache.
 Still open: the PVE File Restore comparison; reading BitLocker volumes (needs the recovery key).
 Today a machine backup (`drive-*.img.fidx`, host or vm) can only be restored whole: bare-metal restore with the ISO, or a VM restore in Proxmox VE. To get a few files back you need Linux (`proxmoxbackup-nbd` attaches the image read-only as `/dev/nbdN`, then mount and copy, see docs/manual/CLI.md) or PVE's File Restore on a `vm/<id>` snapshot (not yet tried on images this client writes). Goal: browse a disk image in the GUI's Restore page, tick files and folders, and restore them, like a folder backup, on Windows and Linux, with nothing mounted by the OS.
-- [ ] **Read the image on demand.** Random access over the fixed index (the restore code already fetches any chunk by index, with a chunk cache), so browsing touches only the chunks it needs, not the whole disk.
-- [ ] **Partitions.** Read MBR and GPT, list partitions with type, size and label, and pick the ones with a filesystem we can read. Skip MSR, EFI-only and recovery partitions by default but allow them.
-- [ ] **NTFS (first).** A pure-Go read-only NTFS reader over that `io.ReaderAt` (candidate: `www.velocidex.com/golang/go-ntfs`, used by Velociraptor). Folder tree with sizes and times, file contents including fragmented and compressed files; ADS and EFS-encrypted files listed but skipped with a note. Restored files get times and, when restoring as administrator, the security descriptor from `$Secure`, as folder restore does.
-- [ ] **Linux filesystems (later).** ext4 first (a pure-Go reader, or on Linux only the NBD attach that `proxmoxbackup-nbd` already does), then XFS. FAT32/exFAT for EFI and data sticks if cheap.
-- [ ] **GUI.** In Restore, a machine snapshot shows its disks, then partitions, then the same folder tree, search, tick boxes, "Restore to" choices, restore card and Reports row as a folder snapshot ("Restore from disk image: N files"). Search across a large partition reads the MFT once and caches the index locally (as Undelete caches catalogs).
-- [ ] **Speed check.** Listing the MFT of a 500 GB NTFS volume touches maybe 1 to 2 GB of chunks; measure on deepthought's `vm/9000198` and a laptop image; cache MFT-derived indexes like the Undelete catalogs.
+- [x] (pbscommon.NewFIDXReaderAt, see DONE above) **Read the image on demand.** Random access over the fixed index (the restore code already fetches any chunk by index, with a chunk cache), so browsing touches only the chunks it needs, not the whole disk.
+- [x] (gui/imagefs) **Partitions.** Read MBR and GPT, list partitions with type, size and label, and pick the ones with a filesystem we can read. Skip MSR, EFI-only and recovery partitions by default but allow them.
+- [x] (2026-10-11; permissions from $Secure and ADS in ux-batch 8ef8285, so streams are restored, not skipped; released in v0.9.0) **NTFS (first).** A pure-Go read-only NTFS reader over that `io.ReaderAt` (candidate: `www.velocidex.com/golang/go-ntfs`, used by Velociraptor). Folder tree with sizes and times, file contents including fragmented and compressed files; ADS and EFS-encrypted files listed but skipped with a note. Restored files get times and, when restoring as administrator, the security descriptor from `$Secure`, as folder restore does.
+- [x] (ux-batch 8ef8285, 11758ac, v0.9.0: ext2/3/4, XFS, FAT12/16/32, exFAT) **Linux filesystems (later).** ext4 first (a pure-Go reader, or on Linux only the NBD attach that `proxmoxbackup-nbd` already does), then XFS. FAT32/exFAT for EFI and data sticks if cheap.
+- [x] (restore_image.go, Restore page markers; listing cached per snapshot) **GUI.** In Restore, a machine snapshot shows its disks, then partitions, then the same folder tree, search, tick boxes, "Restore to" choices, restore card and Reports row as a folder snapshot ("Restore from disk image: N files"). Search across a large partition reads the MFT once and caches the index locally (as Undelete caches catalogs).
+- [x] (sarah-yoga510 vm/9000194: 566k entries; polaris vm/9000015 ext4: 183,755 entries in 47 s, 0.6 s from the cache; README: a 127 GB C: with 430,000 files lists in 4 to 15 s) **Speed check.** Listing the MFT of a 500 GB NTFS volume touches maybe 1 to 2 GB of chunks; measure on deepthought's `vm/9000198` and a laptop image; cache MFT-derived indexes like the Undelete catalogs.
 - [ ] **Quick test first:** try PVE File Restore on deepthought's `vm/9000198` snapshot and note whether it works on this client's images (if so, document it as the interim way).
-- [ ] Docs: GUI manual Restore chapter, CLI manual note, CHANGELOG.
+- [x] (v0.9.0: GUI manual, CHANGELOG "Files back from machine backups of every common file system") Docs: GUI manual Restore chapter, CLI manual note, CHANGELOG.
 
 ### ~~⏸️ Pause and Resume a running backup~~ ✅ DONE (Mick, 2026-10-10)
 Pause button on the progress card; the run waits at its next safe point (between files, 64 KiB blocks of a large file, disk-image blocks) with the PBS session kept open, and Resume carries on. Stop works while paused. `pbscommon/pause.go` (PauseGate), `gui/backup_pause.go`, live test `zz_backup_pause_livetest_test.go` (PBS_PAUSE=1, PBS_PAUSE_SECS). Not available for backups run by the service (nor is Stop): see the next item.
@@ -634,22 +648,22 @@ Pause button on the progress card; the run waits at its next safe point (between
 ### ~~📊 Machine (disk image) backups: show New / Reused / Uploaded on the progress card and in Reports~~ ✅ DONE (Mick, 2026-10-11)
 Seen on sarah-yoga510's first full machine backup (128 GB, half empty, ~13 min on 1 GbE, so much of it cannot have crossed the network): Upload sat at 0, nothing said what was reused, and the block line showed twice. Now `machinebackuplib.JobProgress` (Config.Progress) counts new / reused / blank (all-zero, by digest) chunks and uploaded bytes, and tracks phase, disk n of N, position and partition; `runMachineBackupInline` samples it every second into `OnStats` (Kind "machine"). Card rows: Blocks N / total, Disk, Partition, real Upload rate, "Processed (New, Reused, k of them blank space)"; stage line per phase. Log: one line per 1% with the counts, plus a `[RESULT]` line. Completion message / Reports: `logMachineBackupCompletedStats`. Progress messages say "Block N / M". 18 languages, CHANGELOG.
 - [x] (ux-batch a7e38ff) Disk model in the Disk row ("BIWIN SSD") and file system in the Partition row ("C: (NTFS)"); the Windows disk picker shows real models too.
-- [~] Machine backups run by the service: percentage and stage line now reach the window (the service build only logged them, so the card sat at "Starting backup..."); the stats rows (Files, Processing, Upload, New/Reused) still are not bridged.
+- [x] (7ff0857, v0.9.0) Machine backups run by the service: percentage and stage line now reach the window (the service build only logged them, so the card sat at "Starting backup..."); the stats rows (Files, Processing, Upload, New/Reused) still are not bridged. Since 7ff0857 the card fills in the same rows as for a run of the app's own.
 - [x] Windows machine backup zero-fills unreadable sectors (4 KiB units, media errors only) and reports a partial backup with where (`readResilient` in machinebackuplib/resilient.go, shared with Linux). 2026-10-11, after new-laptop's BIWIN SSD.
 
-### 🗓️ Better scheduler: several schedules per Backup Set (Mick, 2026-10-11)
+### ~~🗓️ Better scheduler: several schedules per Backup Set (Mick, 2026-10-11)~~ ✅ DONE 2026-10-13, released in v0.9.0 (cda2d6b, 1a7210f, b900908)
 Today a set has ONE trigger (`ScheduledJob.TriggerMode` in scheduler.go: "daily" at `ScheduleTime`, "interval" every `IntervalMinutes` in an optional daily window, or "manual") plus `DaysOfWeek`. A weekly backup means "daily" with 6 of 7 days unticked; monthly or yearly isn't possible. Goal: cron-like flexibility, still simple and obvious.
-- [ ] **Model:** `Schedules []Schedule` per set (old fields migrated into one entry on load, kept readable for older builds). A Schedule: Repeat every N {hours | days | weeks | months | years}, plus:
+- [x] (cda2d6b; minutes were added as a unit, shortest repeat 5 minutes) **Model:** `Schedules []Schedule` per set (old fields migrated into one entry on load, kept readable for older builds). A Schedule: Repeat every N {hours | days | weeks | months | years}, plus:
   - hours: at minute :MM, optional time window (today's interval mode);
   - days: at HH:MM, optional weekdays filter;
   - weeks: on which weekdays (ticks) at HH:MM;
   - months: on day D (1-31, or "last day") or "the 1st/2nd/3rd/4th/last Monday...", at HH:MM;
   - years: on date (day + month) at HH:MM;
   - optional start date (first run, so "every 2 weeks" has an anchor) and an enabled tick.
-- [ ] **UI:** Manual / Scheduled radio. Scheduled shows a list of schedules, each one line in plain words ("Every week on Mon, Fri at 18:00", "Every month on the last day at 02:00") with Edit / Delete, and **Add schedule**. Editor: "Repeat every [N] [hours/days/weeks/months/years]" then only the fields that unit needs, and a live "Next 3 runs: ..." preview. Card shows the next run from all schedules.
-- [ ] **Behaviour:** the set's next run = earliest across its schedules; two schedules due together run once; missed-while-off catch-up as today; "full read every N runs" counts runs, not schedules. Optional later: a per-schedule override (e.g. the monthly one does a full read, or targets another PBS server).
-- [ ] Service mode reads the same model; tests for next-run maths (month ends, 29 Feb, DST changes, "last Friday").
-- [ ] Translations (18), manual chapter, CHANGELOG.
+- [x] (1a7210f: the Schedule tab and the set card's badge) **UI:** Manual / Scheduled radio. Scheduled shows a list of schedules, each one line in plain words ("Every week on Mon, Fri at 18:00", "Every month on the last day at 02:00") with Edit / Delete, and **Add schedule**. Editor: "Repeat every [N] [hours/days/weeks/months/years]" then only the fields that unit needs, and a live "Next 3 runs: ..." preview. Card shows the next run from all schedules.
+- [x] (cda2d6b; the per-schedule override stays a maybe in TODO.md) **Behaviour:** the set's next run = earliest across its schedules; two schedules due together run once; missed-while-off catch-up as today; "full read every N runs" counts runs, not schedules. Optional later: a per-schedule override (e.g. the monthly one does a full read, or targets another PBS server).
+- [x] (cda2d6b) Service mode reads the same model; tests for next-run maths (month ends, 29 Feb, DST changes, "last Friday").
+- [x] (b900908) Translations (18), manual chapter, CHANGELOG.
 
 ### ~~🏷️ Backup set card: Snapshot ON/OFF badge~~ ✅ DONE (Mick, 2026-10-11)
 Third badge on each set card (after the trigger and type badges): "VSS ON"/"VSS OFF" on Windows, "SNAPSHOT ON/OFF" on Linux, from the set's own `useVSS` (folder sets); machine sets always show ON (every mounted volume is snapshotted). Platform-specific tooltips (network drives are read live; Linux: where the volume supports a snapshot / elastio-snap for machines). 18 languages.
@@ -675,7 +689,7 @@ Seen live on deepthought: 4 folders from deepthought-data (480 GB, 158,801 paylo
 - [x] (40470e4) Multi-include fast path: ResolveArchivePathBST per include, sort spans, walkRange each; create parent dirs from each include's parent path.
 - [x] (40470e4) Split archives: one metadata-only pass to collect each selected file's payload byte range; replace `prefetchLimit` with an allowed-chunk-range set so read-ahead never leaves a selected range (or the current file).
 - [x] (40470e4) Progress: totals = sum of selected sizes / chunks in those ranges; "written" = real bytes of selected files only (see the restore-totals item).
-- [x] (ux-batch b0f3f43: per-reader prefetch window of 11 in parallel mode, refetches counted and logged separately) Cache >= (workers + 1) x 33 (~192 chunks) or smaller read-ahead in parallel mode; report refetches separately. (Still open: the fixed restore fetched 3,744 chunks for 3,620 selected, 124 refetches.)
+- [x] (ux-batch b0f3f43: per-reader prefetch window of 11 in parallel mode, refetches counted and logged separately) Cache >= (workers + 1) x 33 (~192 chunks) or smaller read-ahead in parallel mode; report refetches separately. (Still open: the fixed restore fetched 3,744 chunks for 3,620 selected, 124 refetches.) **Update 2026-10-15:** b0f3f43 is the fix for those 124 refetches (the workers share the read-ahead out), released in v0.9.0; no rerun of the deepthought restore to count them again has been recorded.
 - [x] Tested live on deepthought 2026-10-07 20:56 with dev-40470e4, same 4 folders: "selection is 8.0 GB in 3620 chunks (3 ranges)", fetched 3,744 chunks (3.4% refetch), extraction 3m50s, 13,514 files / 895 dirs, robocopy compare of all 4 folders identical, 170 files SHA-256 matched. Before the fix: ~25,000 chunks in 20 min without reaching Sarah. Original item: test on pbs-test: selective restore of 2-4 folders from a split snapshot, compare chunks fetched vs the chunk count of the selected ranges.
 
 ### 🐛 "Full read every N runs" counts dispatches, not successful runs (2026-10-07)
@@ -767,10 +781,12 @@ but leaving `editingJobId` unset so Save creates a new job (`SaveScheduledJob`) 
 the original (`UpdateScheduledJob`). Name defaults to "{name} (copy)" (all 6 languages), editable
 before the first save. `lastRun`/history reset for free since the clone gets its own fresh ID.
 
-### 🛡️ BMR: never offer the boot stick as the restore target (Ventoy, USB SSDs) (2026-10-08)
+### ~~🛡️ BMR: never offer the boot stick as the restore target (Ventoy, USB SSDs) (2026-10-08)~~ ✅ DONE v0.9.0, Ventoy fixed in v0.9.1
 `ocs-pbs-bare-metal-restore` step 8 picks the target from `/sys/block`, skipping only nbd, loop, sr, ram and devices with `removable=1`. Booted from a Ventoy stick, the ISO is mapped through device-mapper (`dm-*`, not removable), and a USB SSD stick often reports `removable=0`, so the stick becomes a candidate: the restore asks which disk instead of picking the only internal one. The confirmation screen (disk and size) still guards it, but it should not be offered at all.
-- [ ] Also skip `dm-*` and `zram*`, and the disk(s) behind the live medium: `findmnt -no SOURCE /run/live/medium` (or Ventoy's `/dev/mapper/ventoy`), its parent disk (`lsblk -no PKNAME`) and a dm device's `slaves/`.
-- [ ] Rebuild the ISO (patch-clonezilla.sh on VM140), test from a dd-written stick, a Ventoy stick (BIOS and UEFI) and a USB SSD, on a VM with one and with two internal disks.
+- [x] (dc61efa, 42c2079, v0.9.0; a8c1bac, v0.9.1) Also skip `dm-*` and `zram*`, and the disk(s) behind the live medium: `findmnt -no SOURCE /run/live/medium` (or Ventoy's `/dev/mapper/ventoy`), its parent disk (`lsblk -no PKNAME`) and a dm device's `slaves/`. The v0.9.0 lookup by `/dev/mapper/ventoy` and the `VTOYEFI` label missed a real Ventoy stick (the live system has no `/dev/mapper/ventoy` link), so v0.9.1 finds the medium's disk from its `MAJ:MIN` through `/sys/dev/block`. The confirmation names it: "Not eligible as target: /dev/sdb (250GB) boot disk (Ventoy)".
+- [~] Rebuild the ISO (patch-clonezilla.sh on VM140), test from a dd-written stick, a Ventoy stick (BIOS and UEFI) and a USB SSD, on a VM with one and with two internal disks. Done: the ISO as a fixed SATA disk on a UEFI VM (2026-10-13), and a real 250 GB Ventoy stick passed through to a VM with one internal disk, UEFI and BIOS, each in Ventoy's normal and GRUB2 modes (2026-10-15, v0.9.1 ISO). Still to try: a dd-written stick, a real USB SSD, and a VM with two internal disks (TODO.md).
+- [x] (a8bd26d, v0.9.1, found in the Ventoy test) Also refuse a target disk smaller than the backed up disk: the wizard's `-icds` turns off Clonezilla's own size check, so a 256 GB backup was offered for a 64 GB disk. Now stopped before anything is written, with both sizes. Offered upstream with the boot-stick check as #113.
+- [x] (9a4c06d, fca3725, v0.9.1, found in the Ventoy test) The v0.9.0 ISO had no restore entry in the BIOS boot menu (`isolinux.cfg`): upstream's fix (patch 0005, #93) had not been carried into the fork.
 - [ ] Check the key-file step lists the Ventoy data partition (exFAT), so the key `.json` can live on the same stick; document it if it works.
 
 ### 🅿️ PARKED (36) 🌍 BMR wizard skips language selection entirely — English only
@@ -835,7 +851,7 @@ scan, and no MSI at all (just a plain `.exe` zip). README corrected to say so pl
 implying guarantees this fork doesn't actually provide yet.
 
 To actually close this gap for a future release:
-- [ ] **MSI installer** — the WiX project already exists (`installer/wix/Product.wxs`,
+- [x] (ux-batch 5a9b779; the first MSI was published with v0.9.0, 2026-10-14) **MSI installer** — the WiX project already exists (`installer/wix/Product.wxs`,
       `build.bat`), but WiX Toolset (`candle.exe`/`light.exe`) isn't installed on the current dev
       machine, and `installer/wix/*.wxs` should be checked for stale "NimbusBackup"/"AcmeBackup"
       branding before trusting it builds the right thing for this fork.
@@ -855,6 +871,7 @@ Upstream (tizbac) is now 214 commits ahead of our master and we are 437 ahead of
 - [x] ✅ (ux-batch 5a9b779: builds with `installer/wix/build-msi.ps1`, install/upgrade/uninstall tested on winclient) **MSI installer.** Our WiX project exists (`installer/wix/Product.wxs`, plus `NimbusBackup.wxs`/`AcmeBackup.wxs` branded variants) but has never been built here: install WiX, check branding and service registration, borrow what helps from upstream's reworked `installer/wix` and `make msi`, test install/upgrade/uninstall on winclient. Supersedes the MSI line in "Release pipeline" below.
 - [x] ✅ (ux-batch, 2026-10-12: .deb tested on VM140, .rpm built in a Fedora container; NO systemd service yet, see "Linux background service" below) **Linux packages.** .deb (and .rpm if wanted) with a systemd unit for the service, from upstream's `packaging/` as a starting point; test on pbs-test and VM140, then rigel.
 - [x] ✅ Branches and draft text ready, NOT opened (2026-10-12): `pr/vss-delete-shadows` (C:\Dev\pbc-upstream-vss), `pr/blank-chunk-digest` (C:\Dev\pbc-upstream-blank), drafts in C:\Dev\upstream-pr-drafts-2026-10-12.md. #101: close (upstream builds on Windows now). #100: keep, bug still on master, re-tested there. **Upstream PRs (small, separate, each on a fresh branch off upstream/master):** VSS shadow leak fix (94ba93b; go-vss's VSS_CTX_ALL is wrong, delete with 0xffffffff), blank-chunk digest shortcut (86cbf78). Our open #100 (single instance) and #101 (Windows build) predate the rework: redo or close.
+  **Update 2026-10-15:** upstream merged #102 to #112 (VSS shadows, blank-chunk digest, CLI without dialogs, restore times, then #106 to #112: recovery at the root only, machine session close, creation times, streams and EAs, machine CLI mail, list-snapshots timeout, BMR snapshot store removal). #113 (BMR: never the boot stick, never a smaller disk, as the target) is open. #100 and #101 were closed.
 - [ ] **Machine backup: empty-block marker** (offered 2026-10-11, not agreed yet): skip the 4 MiB copy for blank chunks in `emitZeros`/`push`; about 3-4 min off mick-yoga's 27 min run.
 
 - [x] ✅ (branch linux-service, 2026-10-12: systemd unit, shared /var/lib/proxmoxbackupclient root:sudo 2750, Run as Service on Linux, tested on VM140) **Linux background service** (design first). The Windows service runs as SYSTEM and reads the shared settings in ProgramData; on Linux the settings are per user (`~/.config`), and a root service would need its own settings location and a way to hand the API token to the desktop user without making it world readable. Until then scheduled sets on Linux run while the app is open.
@@ -1075,6 +1092,7 @@ Directory backups only report progress every 10 MB of data (`gui/backup_inline.g
 - Implemented differently from the plan above: `PXARArchive.OnFile` -> atomic on `jobProgress` -> a 500 ms ticker in `runBackupInlineInternal` calls `BackupOptions.OnFile` only when the path changed -> Wails event `backup:file` (one small event per tick, not per file) -> one middle-truncated monospace line under the stats while running. VSS shadow paths are mapped back to the logical path. Verified live on the winclient (VSS run emitted only paths under the source). Message Log is untouched.
 
 #### Experimental: machine backup as "vm" type (Mick, 2026-10-02) - BUILT 2026-10-02, awaiting a real PVE restore test
+**Update 2026-10-15:** Backup Sets can be stored as a VM too (the "Whole PC as a VM" set, MACHINE (VM) badge), and Proxmox VE restores of `vm` snapshots this client wrote were tested on 2026-10-13: a Windows Server (UEFI) started without changes, an Xubuntu desktop (UEFI) after adding an EFI Disk, a Linux BIOS/MBR machine at its login prompt (BMR.md section 7 "Tested routes", 0889067; README "Physical machines into virtual machines"). The VM gets the firmware that matches the disk.
 **Built (one-off backups only, English only via `tl` fallbacks):** one-off machine form has "Backup as (experimental)": Host (default) or Proxmox VE virtual machine. VM mode takes a VM ID (1-999999) plus an ID style, shows the resulting PBS backup ID, and warns. Styles: Reserved range = 9000000+ID (default), Leading zeros = 000+ID. The GUI sends `backupType` "machine-vm" with the computed numeric ID; `machineSnapshotType` (gui/machine_snapshot_type.go) maps that to PBS type "vm" in both the standalone and service paths. Scheduled machine backups stay "host". Still to settle by a real restore on a PVE node: do both ID styles list and restore, do `sataN` entries match the `drive-sataN` names, and which style is safer.
 Fork only, not for upstream. GUI "Backup as" choice for machine backups: default "host" with the host name as backup ID; optional "vm" that needs a numeric VMID and is labelled experimental. Open questions to settle first by a real restore on a Proxmox VE node:
 - Does PVE restore a `vm/<id>` snapshot written by this client (config `sataN` entries vs `drive-sataN.img.fidx` names, where N is the Windows disk number)?
@@ -1958,8 +1976,8 @@ Client-side encryption is implemented, but with a PBS key file (AES-256-GCM, sig
 - [x] **GUI**: Encryption tab, passphrase prompt on backup and restore, Reports column, warning that a snapshot cannot be restored without the key
 - [x] CLI `-keyfile` / `-keyfile-passphrase` on directory, machine and nbd tools; Clonezilla BMR key selection
 - [ ] Windows Credential Manager / DPAPI store for the key and remembered passphrase (still plain config)
-- [ ] Tighten the ACL on existing key files and on `config.json` (holds the PBS token and any remembered passphrase, readable by local Users on a default install)
-- [ ] Test a bare-metal boot with a passphrase-protected key, and restore of an encrypted snapshot from the Proxmox VE storage configuration
+- [x] (ux-batch eb91d17, 2026-10-12, released in v0.9.0: the settings folder, `config.json` included, is open to administrators and SYSTEM only; key files kept outside that folder are still left as they are, in TODO.md) Tighten the ACL on existing key files and on `config.json` (holds the PBS token and any remembered passphrase, readable by local Users on a default install)
+- [~] Test a bare-metal boot with a passphrase-protected key, and restore of an encrypted snapshot from the Proxmox VE storage configuration. The bare-metal boot PASSED 2026-10-13 (Linux Mint, encrypted backup, passphrase-protected key from a USB stick; BMR.md section 7 "Tested routes", 0889067). The Proxmox VE storage restore is still untested (TODO.md).
 - [ ] Native-speaker review of the machine-translated encryption strings in the 17 non-French/English languages
 - [ ] "Export recovery key" button
 
@@ -2025,7 +2043,7 @@ historical, not current:
 - [ ] **Tests**
   - [ ] Test: restaurer 1 fichier avec ACL custom
   - [ ] Test: restaurer dossier avec sous-arborescence + permissions
-  - [ ] Test: restaurer fichier avec ADS (Zone.Identifier)
+  - [x] (v0.9.0, 7eea515: `gui/zz_e2e_streams_livetest_windows_test.go`) Test: restaurer fichier avec ADS (Zone.Identifier)
   - [ ] Test: restaurer 10GB, vérifier progress accurate
   - [ ] Test: restaurer sur chemin avec espaces/accents
 
@@ -2235,9 +2253,9 @@ Sprint Restore-3 (2 jours): Documentation complète
 ### 📚 Tests Critiques à Ajouter
 
 **NTFS Round-trip Tests** (`pkg/ntfs/backup_stream_test.go`):
-- [ ] TestBackupRestoreACL - Fichier avec ACL custom
-- [ ] TestBackupRestoreADS - Fichier avec Alternate Data Streams
-- [ ] TestBackupRestoreDOSAttributes - Hidden/System/Archive
+- [x] (`gui/zz_ntfs_acl_restore_livetest_test.go`, 2026-09-26) TestBackupRestoreACL - Fichier avec ACL custom
+- [x] (v0.9.0, 7eea515: `pbscommon/filemeta_streams_windows_test.go` and the live `gui/zz_e2e_streams_livetest_windows_test.go`) TestBackupRestoreADS - Fichier avec Alternate Data Streams
+- [x] (the ACL live test above also round-trips the Hidden attribute) TestBackupRestoreDOSAttributes - Hidden/System/Archive
 - [ ] TestBackupRestoreTimestamps - CreationTime/LastAccessTime
 
 **DPAPI Tests** (`pkg/secrets/dpapi_test.go`):
@@ -2268,10 +2286,10 @@ Code read for docs/manual. The first five were fixed in ux-batch (2026-10-12).
 - [x] (f39bffb) `proxmoxbackup-nbd` interactive TUI mode (no `-path`) does not pass the encryption key to the client; only `-list` and `-path` use it.
 - [x] (d749941) The automatic "Recovery" exclusion skips a folder named Recovery at any depth, not only at the drive root.
 - [x] (5c1ef56) Windows ACL restore sets owner, group and DACL in one call, so when the owner cannot be set (SeRestorePrivilege, see the restore owner item above) the DACL is not applied either. Apply them separately.
-- [ ] Stale English strings: `emailNotificationsIntro` and `emailNoSmtpWarning` point to "Preferences > Advanced" (SMTP is on the Email tab); About `featuresList.languages` says "Six-language" (there are 18).
-- [ ] `gui/docs/BARE_METAL_RESTORE.md` (the in-app guide) lacks the encryption key step and implies API tokens work for the ISO login (it takes username and password only).
-- [ ] `docs/screenshots/gui-backup-progress.png` shows the old progress card; retake with the v0.6.0 card.
-- [ ] Not reviewed for v0.6.0: `FEATURES_STATUS.md`, `RELEASE_NOTES.md`, the translated READMEs (they lack incremental backups and the compatibility section).
+- [x] (763d4b6, 2026-10-13; About rewritten in d090d18) Stale English strings: `emailNotificationsIntro` and `emailNoSmtpWarning` point to "Preferences > Advanced" (SMTP is on the Email tab); About `featuresList.languages` says "Six-language" (there are 18).
+- [x] (763d4b6, 2026-10-13: section 4 "Encryption key", and "API tokens do not work" at the login) `gui/docs/BARE_METAL_RESTORE.md` (the in-app guide) lacks the encryption key step and implies API tokens work for the ISO login (it takes username and password only).
+- [x] (763d4b6, 2026-10-13; every screenshot retaken for v0.9.1 in 007eff9) `docs/screenshots/gui-backup-progress.png` shows the old progress card; retake with the v0.6.0 card.
+- [x] (763d4b6, 2026-10-13: every manual and README checked against the code, the 12 translated READMEs regenerated from the English one) Not reviewed for v0.6.0: `FEATURES_STATUS.md`, `RELEASE_NOTES.md`, the translated READMEs (they lack incremental backups and the compatibility section).
 
 ---
 
