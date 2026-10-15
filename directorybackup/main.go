@@ -454,12 +454,13 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 	return client.Finish()
 }
 
-func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, noMTime bool) ([]string, error) {
+func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, originalDir string, noMTime bool) ([]string, error) {
 	client.Connect(false, "host")
 	knownChunks := haxmap.New[string, bool]()
 
 	archive := &pbscommon.PXARArchive{}
 	archive.ArchiveName = "backup.pxar.didx"
+	archive.ExcludeRoot = originalDir // the folder as named, also when read through a VSS snapshot
 	archive.NoMTime = noMTime
 
 	previousDidx, err := client.DownloadPreviousToBytes(archive.ArchiveName)
@@ -573,7 +574,7 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 			}
 			//Remove VSS snapshot on windows, on linux for now NOP
 			var e error
-			readErrors, e = backup_real(client, newchunk, reusechunk, pxarOut, snapshotDir, noMTime)
+			readErrors, e = backup_real(client, newchunk, reusechunk, pxarOut, snapshotDir, originalDir, noMTime)
 			return e
 
 		})
@@ -582,7 +583,7 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 			readErrors[i] = unmapSnapshotPathString(readErrors[i], snapshotDir, originalDir)
 		}
 	} else {
-		readErrors, err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir, noMTime)
+		readErrors, err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir, originalDir, noMTime)
 	}
 
 	if err != nil {
