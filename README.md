@@ -98,6 +98,8 @@ Windows sets up the new virtual hardware on first start ("Getting devices ready"
 
 ## 🆕 New in v0.9.0: several schedules per Backup Set, installers, a Linux service
 
+**v0.9.1** fixes the bare-metal restore ISO: the restore entry is back in its BIOS boot menu, a Ventoy stick is recognised as the boot disk, and a target disk smaller than the original is refused before anything is written. It also notes a failed notification e-mail in the snapshot's PBS comment.
+
 - **Several schedules per Backup Set**, from every few minutes to once a year: "every day at 02:00" plus "every month on the last day" or "the 2nd Tuesday", each schedule in plain words with its next 3 runs. Existing sets keep their schedule.
 - **Folder backups keep alternate data streams and NTFS extended attributes** (Windows), such as the "downloaded from the internet" mark, and a restore puts them back. Known Limitations now lists none.
 - **Installers**: a **Windows MSI** (app and background service under Program Files, Start menu entry, in-place upgrades, keep or delete the settings on removal) and **Linux packages**, `.deb` (Debian, Ubuntu, Mint) and `.rpm` (Fedora), with the app, the three command-line tools, the manuals and menu entries.

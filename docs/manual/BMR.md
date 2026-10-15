@@ -57,7 +57,7 @@ Writing the ISO as above gives the whole stick to one image. [Ventoy](https://ww
 
 Ventoy starts on legacy BIOS and UEFI machines. With Secure Boot on, its first start asks you to enrol Ventoy's key once (follow its on-screen steps), or turn Secure Boot off for the restore.
 
-The restore never offers the stick it booted from as the disk to restore to, a Ventoy stick or USB SSD included. Test the stick once on a spare machine or VM, as with any boot media.
+The restore never offers the stick it booted from as the disk to restore to, a Ventoy stick or USB SSD included. This was tested from a Ventoy stick with UEFI and BIOS firmware, in Ventoy's normal and GRUB2 modes. Test the stick once on a spare machine or VM, as with any boot media.
 
 The ISO boots on both legacy BIOS and UEFI machines. It can also be network-booted like any Clonezilla Live image; setting that up is not covered here.
 
@@ -112,7 +112,7 @@ The chosen image is attached as `/dev/nbd0`. If it cannot be attached (wrong key
 
 ### 4.6 Pick and confirm the target disk
 
-The target is a local disk that is not marked removable, is not the stick the restore booted from (a Ventoy stick or a USB SSD included), and is not optical, a loop device or the attached image. With exactly one such disk it is chosen for you. With several, a menu asks, showing each size. The confirmation (or the menu) lists the boot stick under "Not eligible as target", with its size, so you can see it was recognised. The target should be at least as large as the original disk.
+The target is a local disk that is not marked removable, is not the stick the restore booted from (a Ventoy stick or a USB SSD included), and is not optical, a loop device or the attached image. With exactly one such disk it is chosen for you. With several, a menu asks, showing each size. The confirmation (or the menu) lists the boot stick under "Not eligible as target", with its size, so you can see it was recognised. The target must be at least as large as the original disk: a smaller one is refused before anything is written, with both sizes shown.
 
 A confirmation screen shows the source and target with their sizes:
 
@@ -218,7 +218,8 @@ A disk image carries the drivers of the machine it came from.
 | "/dev/nbd0 could not be attached" | Wrong key file for an encrypted backup, or the server stopped answering. The message shows the attach log |
 | "No local target disk found" | The new disk is missing, unsupported by the live system, or seen as removable. Check cabling and BIOS settings. The stick the restore booted from is never offered |
 | Several disks and unsure which is the target | Compare sizes in the menu; if still unsure, check disk models and serials in the firmware setup first, or disconnect the others |
-| Clonezilla reports the target is too small | Use a disk at least as large as the original |
+| "The target disk is smaller than the backed up disk" | Use a disk at least as large as the original; the message gives the size in bytes. Nothing has been written to the disk it names |
+| Booted in BIOS mode, the ISO asks for a language and keyboard instead of starting the restore | The v0.9.0 ISO's BIOS menu lacked the restore entry: use v0.9.1 or later, or pick "Enter_shell" and run `sudo /usr/local/sbin/ocs-pbs-bare-metal-restore` |
 | Stops at a `GRUB` prompt after restore | Should not happen with this ISO (it restores the area GRUB uses). Make sure you used the "PBS Bare Metal Restore" entry, not a hand-run restore without Clonezilla's `-j2` option |
 | A restored VM stops at "No bootable device" or the UEFI shell | The firmware does not match the disk: OVMF (UEFI) for a GPT disk, SeaBIOS for MBR ([section 7](#match-the-firmware-to-the-disk)). Change it and start again |
 | The restored system will not start | Check the firmware first (row above). Then repair the boot loader: Startup Repair from Windows installation media, or the distribution's GRUB repair on Linux (see "After the restore") |
