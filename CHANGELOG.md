@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - README rewritten for where the project is now: built for my homelab and offered as is (alpha, no warranty, at your own risk), with what it adds over the original project, measured results, a physical-to-virtual (P2V) section with the tested routes, bug reports here and feature requests to the original project, and credits and history. The Nimbus GUI and the original project's Italian support and branding sections are gone. The 12 translated READMEs follow.
 - About page: 12 current features instead of 8 out-of-date ones, the Technology card removed, an alpha and no-warranty line, the Links translated with a Report a bug link, and the copyright reads "Changes since the fork © 2026 mjb-is, building on the work of ...". The program's file properties carry the same copyright.
+- `proxmoxbackup-directory`: a notification e-mail that cannot be sent no longer fails the run. The mail error is printed and the exit code comes from the backup alone (0 done, 1 failed, 3 done with unreadable files), as `proxmoxbackup-machine` already did. Before, a good backup exited 1, and a backup with unreadable files exited 1 instead of 3. With several recipients, a failed send no longer stops the rest.
 
 ## [0.9.0] - 2026-10-14
 

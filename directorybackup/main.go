@@ -387,17 +387,19 @@ func main() {
 				panic(err)
 			}
 		}
+		// A mail problem is reported on stderr and never changes the backup's
+		// own exit code, as in machinebackup.
 		client, err := clientcommon.SetupMailClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
 		if err != nil {
-			fmt.Println("Cannot connect to mail server: " + err.Error())
-			os.Exit(1)
-		}
-		defer client.Quit()
-		for _, ccc := range cfg.SMTP.Mails {
-			err = clientcommon.SendMail(ccc.From, ccc.To, subject, msg, client)
-			if err != nil {
-				fmt.Println("Cannot send email: " + err.Error())
-				os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Cannot connect to the mail server: "+err.Error())
+		} else {
+			defer client.Quit()
+			for _, ccc := range cfg.SMTP.Mails {
+				if err := clientcommon.SendMail(ccc.From, ccc.To, subject, msg, client); err != nil {
+					fmt.Fprintln(os.Stderr, "Cannot send the notification e-mail: "+err.Error())
+				} else {
+					fmt.Printf("Notification e-mail sent to %s\n", ccc.To)
+				}
 			}
 		}
 	}
