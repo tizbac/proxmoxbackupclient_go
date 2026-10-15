@@ -587,6 +587,19 @@ echo "Target disk        : $TARGET"
 SRC_SIZE="$(disk_size "$NBDDEV")"
 TGT_SIZE="$(disk_size "$TARGET")"
 
+# A target smaller than the source cannot take the source's partition table
+# (-k0 below), and -icds turns off Clonezilla's own disk size check, so the
+# restore would only fail part way through. Stop before anything is written.
+# A larger target is fine.
+SRC_BYTES="$(blockdev --getsize64 "$NBDDEV" 2>/dev/null)"
+TGT_BYTES="$(blockdev --getsize64 "$TARGET" 2>/dev/null)"
+if [ -n "$SRC_BYTES" ] && [ -n "$TGT_BYTES" ] && [ "$SRC_BYTES" -gt "$TGT_BYTES" ]; then
+  echo "Target ${TARGET} (${TGT_BYTES} bytes) is smaller than the source ${NBDDEV} (${SRC_BYTES} bytes)"
+  $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
+  --msgbox "The target disk is smaller than the backed up disk.\n\nSource (PBS snapshot) : ${NBDDEV}  (${SRC_SIZE:-unknown size}, ${SRC_BYTES} bytes)\nTarget (THIS MACHINE)  : ${TARGET}  (${TGT_SIZE:-unknown size}, ${TGT_BYTES} bytes)\n\nRestore onto a disk of at least ${SRC_BYTES} bytes. Nothing has been written to ${TARGET}.\n\n$msg_program_stop" 0 0 $DIA_ESC
+  exit 1
+fi
+
 # 9. confirmation before the destructive write: shows source+target+sizes.
 # Deliberately just the one dialog here, not also a typed device-name
 # step -- ocs-onthefly itself (below, no -batch) still asks its own two
