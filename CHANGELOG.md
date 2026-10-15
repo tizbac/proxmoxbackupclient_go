@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Clearer Backup Set More menu**: the last four items say what they act on: **Undelete removed files...**, **Roll back to chosen snapshot...**, **Clone this Backup Set** and **Delete this Backup Set** (were Undelete..., Roll back..., Clone and Delete). In every language.
+
 ## [0.9.1] - 2026-10-15
 
 Fixes to the bare-metal restore ISO, found by booting it from a Ventoy stick, plus the README and About refresh and the notification e-mail fixes on master since 0.9.0.

@@ -3939,10 +3939,10 @@ function App() {
                                 {(
                                   <>
                                     <button role="menuitem" className="set-more-item" onClick={() => { setSetToolJobId(job.id); setActiveTab('undelete') }}>
-                                      {tl('undeleteShortcut', 'Undelete...')}
+                                      {tl('undeleteShortcut', 'Undelete removed files...')}
                                     </button>
                                     <button role="menuitem" className="set-more-item" onClick={() => { setSetToolJobId(job.id); setActiveTab('rollback') }}>
-                                      {tl('rollbackShortcut', 'Roll back...')}
+                                      {tl('rollbackShortcut', 'Roll back to chosen snapshot...')}
                                     </button>
                                   </>
                                 )}

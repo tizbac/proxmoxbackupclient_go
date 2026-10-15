@@ -233,10 +233,10 @@ Each card has **Run Now**, **Edit** and a **More ▾** menu:
 | Edit | Opens the editor |
 | More > Run now: quick (changed files only) | Metadata folder sets only. Reuses unchanged files even when the set is due its full read; the full read stays due for the next run ([section 7](#read-every-file-every-n-runs)) |
 | More > Run now: full read (every file) | Metadata folder sets only. Reads every file now and restarts the full-read count |
-| More > Undelete... | Opens Undelete with this set picked ([section 10](#10-undelete)) |
-| More > Roll back... | Opens Roll back with this set picked ([section 11](#11-roll-back)) |
-| More > Clone | Opens the editor with a copy, named "<name> (copy)" |
-| More > Delete | Asks for confirmation, then deletes the set (not its snapshots) |
+| More > Undelete removed files... | Opens Undelete with this set picked ([section 10](#10-undelete)) |
+| More > Roll back to chosen snapshot... | Opens Roll back with this set picked ([section 11](#11-roll-back)) |
+| More > Clone this Backup Set | Opens the editor with a copy, named "<name> (copy)" |
+| More > Delete this Backup Set | Asks for confirmation, then deletes the set (not its snapshots) |
 
 Click **Add New Backup Set** to create one. Give it a **Backup set name**, fill in the five tabs (**Source**, **Exclusions**, **Schedule**, **Destination**, **Alerts**), then click **Save Backup Set**. Each set needs its own name: a name another set already has (in any mix of capitals) is flagged under the name box and the set is not saved.
 
@@ -505,7 +505,7 @@ The same reading is what Undelete and Roll back use for machine sets.
 
 ## 10. Undelete
 
-**Undelete** (side menu, or **More > Undelete...** on a Backup Set's card) finds files that are in a Backup Set's backups but no longer on disk, and puts them back.
+**Undelete** (side menu, or **More > Undelete removed files...** on a Backup Set's card) finds files that are in a Backup Set's backups but no longer on disk, and puts them back.
 
 1. Pick the **Backup Set**. A machine set is listed with the folders it covers ([section 6.1](#61-source-tab)); their file lists are read from the disk images (NTFS on Windows; ext4 or XFS on Linux, where folders on LVM or RAID are left out with the reason).
 2. Choose how far to **Look back**:
@@ -534,7 +534,7 @@ Undelete also runs from the command line for any Backup Set ([CLI.md, section 12
 
 ## 11. Roll back
 
-**Roll back** (side menu, or **More > Roll back...** on a Backup Set's card) puts a Backup Set's folders back as they were at a chosen backup. You see what would change first, and everything it replaces or removes is kept, so the roll back can be undone. For a machine set it works on the set's **Folders for Undelete and Roll back**, reading them from the disk images.
+**Roll back** (side menu, or **More > Roll back to chosen snapshot...** on a Backup Set's card) puts a Backup Set's folders back as they were at a chosen backup. You see what would change first, and everything it replaces or removes is kept, so the roll back can be undone. For a machine set it works on the set's **Folders for Undelete and Roll back**, reading them from the disk images.
 
 1. Pick the **Backup Set**. Its backups are listed newest first with their size; 🔒 marks a protected snapshot.
 2. Pick a backup from the list, or enter a date and time in **The backup at or before** to pick the newest backup at or before it.
