@@ -34,13 +34,9 @@ var (
 	// ErrCancelled is the sentinel a backup run returns when the user pressed
 	// Stop. Callers match it with errors.Is to report a cancellation as such
 	// instead of as a failure.
-	ErrCancelled               = errors.New("backup cancelled by user")
-	errUploadAborted           = errors.New("upload aborted")
-	defaultMailSubjectTemplate = "Backup {{.Status}}"
-	defaultMailBodyTemplate    = `{{if .Success}}Backup complete ({{.FromattedDuration}})
-Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while working, backup may be not completed.
-Last error is: {{.ErrorStr}}{{end}}`
-	didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
+	ErrCancelled     = errors.New("backup cancelled by user")
+	errUploadAborted = errors.New("upload aborted")
+	didxMagic        = []byte{28, 145, 78, 165, 25, 186, 179, 205}
 )
 
 type ChunkState struct {
