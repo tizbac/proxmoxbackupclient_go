@@ -1,6 +1,6 @@
 # Proxmox Backup Client GUI: user manual
 
-This manual covers the graphical client (the GUI) on Windows and Linux. It applies to v0.9.0 (see the [changelog](../../CHANGELOG.md)).
+This manual covers the graphical client (the GUI) on Windows and Linux. It applies to v0.9.1 (see the [changelog](../../CHANGELOG.md)).
 
 For the command line tools see [CLI.md](CLI.md). For restoring a whole machine onto bare metal see [BMR.md](BMR.md).
 

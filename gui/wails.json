@@ -14,7 +14,7 @@
   "info": {
     "companyName": "Proxmox Backup Client",
     "productName": "Proxmox Backup Client",
-    "productVersion": "0.9.0",
+    "productVersion": "0.9.1",
     "copyright": "Changes since the fork © 2026 mjb-is, building on the work of Tiziano Bacocco (tizbac), the Proxmox Backup Client GO contributors and RDEM Systems (© 2024-2026).",
     "comments": "Backup client for Proxmox Backup Server"
   },

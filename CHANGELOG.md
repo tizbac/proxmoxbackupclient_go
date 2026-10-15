@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-15
+
+Fixes to the bare-metal restore ISO, found by booting it from a Ventoy stick, plus the README and About refresh and the notification e-mail fixes on master since 0.9.0.
+
+### Fixed (bare-metal restore ISO)
+- **The restore entry is in the BIOS boot menu again.** Booted in legacy BIOS mode (a CD, a USB stick written from the ISO, or Ventoy in BIOS mode), the v0.9.0 ISO showed the standard Clonezilla menu and started Clonezilla's own language questions instead of the restore wizard. The BIOS menu reads `isolinux.cfg`, and the change that adds the entry there had not been carried into this fork's build. "Proxmox Backup Client Go - PBS Bare Metal Restore" is again the first and default entry, as in the UEFI menu.
+- **A Ventoy stick is recognised as the boot disk.** Under Ventoy the wizard found neither the `/dev/mapper/ventoy` link nor the VTOYEFI label, so the stick was left off the target list only because it reports itself as removable, and was not named. It is now found through the kernel's device tree and listed as "Not eligible as target: /dev/sdb (250GB) boot disk (Ventoy)". Tested with UEFI and BIOS, in Ventoy's normal and GRUB2 modes.
+- **A target disk smaller than the backed up disk is refused** before anything is written, with both sizes shown. The restore turns off Clonezilla's own size check so that a larger replacement disk is accepted, and that also let a smaller one through to the confirm screen, where the restore would have failed part way. A target the same size or larger works as before.
+
 ### Changed
 - README rewritten for where the project is now: built for my homelab and offered as is (alpha, no warranty, at your own risk), with what it adds over the original project, measured results, a physical-to-virtual (P2V) section with the tested routes, bug reports here and feature requests to the original project, and credits and history. The Nimbus GUI and the original project's Italian support and branding sections are gone. The 12 translated READMEs follow.
 - About page: 12 current features instead of 8 out-of-date ones, the Technology card removed, an alpha and no-warranty line, the Links translated with a Report a bug link, and the copyright reads "Changes since the fork © 2026 mjb-is, building on the work of ...". The program's file properties carry the same copyright.

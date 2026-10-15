@@ -1,6 +1,6 @@
 # User manuals
 
-These manuals apply to v0.9.0 of the [mjb-is fork of Proxmox Backup Client](https://github.com/mjb-is/proxmoxbackupclient_go) (see the [changelog](../../CHANGELOG.md)). The Linux packages install them in `/usr/share/doc/proxmoxbackupclient/manual/`.
+These manuals apply to v0.9.1 of the [mjb-is fork of Proxmox Backup Client](https://github.com/mjb-is/proxmoxbackupclient_go) (see the [changelog](../../CHANGELOG.md)). The Linux packages install them in `/usr/share/doc/proxmoxbackupclient/manual/`.
 
 Proxmox Backup Client backs up Windows and Linux computers to a Proxmox Backup Server (PBS). It backs up folders as browsable file archives and whole disks as bootable images, on a schedule or on demand, with optional client-side encryption. Folder backups can use change detection, so a repeat backup of a large, mostly unchanged folder reads and sends only what changed: on a 480.9 GB share of 761,866 files, the first run took 4 h 17 min and each later run about 10 minutes. Restores range from a single file, through the GUI (from folder and machine backups alike), to a whole machine onto bare metal, through a bootable Clonezilla-based ISO. Undelete and Roll back bring back what went missing from a Backup Set's folders, or put the folders back as they were at a chosen backup.
 
