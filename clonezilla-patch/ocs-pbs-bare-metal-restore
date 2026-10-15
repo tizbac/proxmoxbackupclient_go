@@ -496,21 +496,36 @@ udevadm settle --timeout=10 >/dev/null 2>&1
 #
 # The boot stick: a USB SSD often reports removable=0, and a Ventoy stick
 # serves the ISO through device-mapper, so neither is caught by the checks
-# above. Find the disk(s) under the live medium instead: lsblk -s walks from
-# the mounted device (a partition, or /dev/mapper/ventoy) down to the disk it
-# sits on. A Ventoy stick is also recognised by its VTOYEFI partition, which
-# still holds when the live system was copied to RAM (toram) and the medium
-# is no longer mounted.
+# above. Find the disk(s) under the live medium instead, from the mount's
+# MAJ:MIN through sysfs: device-mapper slaves are followed down and a
+# partition gives its disk. Names in /dev are not used, because under Ventoy
+# the medium is mounted from /dev/mapper/ventoy but udev never creates that
+# link in the live system (only /dev/dm-0 exists). A Ventoy stick is also
+# recognised by its device-mapper device named "ventoy" and by its VTOYEFI
+# partition, which still hold when the live system was copied to RAM (toram)
+# and the medium is no longer mounted.
 BOOT_DISKS=" "
 VENTOY_DISKS=" "
 add_boot_disk() { case "$BOOT_DISKS" in *" $1 "*) ;; *) BOOT_DISKS+="$1 " ;; esac; }
-disks_under() { lsblk -nsrpo NAME,TYPE "$1" 2>/dev/null | awk '$2=="disk"{print $1}'; }
+disks_of_dev() {
+  local sys s
+  sys="$(readlink -f "/sys/dev/block/$1" 2>/dev/null)"
+  [ -n "$sys" ] && [ -e "$sys" ] || return 0
+  if [ -n "$(ls -A "$sys/slaves" 2>/dev/null)" ]; then
+    for s in "$sys"/slaves/*; do disks_of_dev "$(cat "$s/dev")"; done
+  elif [ -f "$sys/partition" ]; then
+    echo "/dev/$(basename "$(dirname "$sys")")"
+  else
+    echo "/dev/$(basename "$sys")"
+  fi
+}
 disk_size() { LC_ALL=C parted -s "$1" unit GB print 2>/dev/null | grep -m1 '^Disk .*:' | sed -E 's/.*: *//'; }
-for src in $(findmnt -nro SOURCE /run/live/medium 2>/dev/null); do
-  [ -b "$src" ] || continue
-  for d in $(disks_under "$src"); do add_boot_disk "$d"; done
+for mm in $(findmnt -nro MAJ:MIN /run/live/medium 2>/dev/null); do
+  for d in $(disks_of_dev "$mm"); do add_boot_disk "$d"; done
 done
-for d in $([ -b /dev/mapper/ventoy ] && disks_under /dev/mapper/ventoy) \
+for d in $(for dm in /sys/block/dm-*; do
+             [ "$(cat "$dm/dm/name" 2>/dev/null)" = "ventoy" ] && disks_of_dev "$(cat "$dm/dev")"
+           done) \
          $(lsblk -nrpo NAME,PKNAME,LABEL 2>/dev/null | awk '$3=="VTOYEFI" && $2!=""{print $2}'); do
   add_boot_disk "$d"
   VENTOY_DISKS+="$d "
