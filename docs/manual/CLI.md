@@ -66,8 +66,11 @@ Instead of a token you can log in with a PBS user. The backup tools use `-pbsuse
 | `PBS_SERVER`, `PBS_PORT` | Server and port (default port 8007) |
 | `PBS_DATASTORE` | Datastore |
 | `PBS_AUTH_ID` | Token ID |
-| `PBS_PASSWORD` | Token secret |
+| `PBS_PASSWORD` | Token secret; for `proxmoxbackup-nbd -username`, the user's password |
 | `PBS_FINGERPRINT` | Certificate fingerprint |
+| `PBS_ENCRYPTION_PASSWORD` | Passphrase for a protected `-keyfile` |
+
+A secret in the environment stays out of the process list, where any user on the computer can read a command line.
 
 **JSON config file.** `proxmoxbackup-directory` and `proxmoxbackup-machine` take `-config <file>`. Flags given on the command line override values from the file. See [`config.json.example`](../../config.json.example):
 
@@ -242,7 +245,7 @@ Restore a machine backup with the bare-metal restore ISO ([BMR.md](BMR.md)), or,
 | `-path <type/id/time/file>` | | The image to attach, for example `vm/107/2026-03-01T00:07:00Z/drive-scsi0.img.fidx`. A trailing `#comment` (as printed by `-list`) is ignored |
 | `-list` | | Print every image as `type/id/time/file[#comment]` and exit. Needs no root |
 | `-nbd <n>` | `0` | Use `/dev/nbd<n>` |
-| `-username`, `-password` | | User login instead of a token |
+| `-username`, `-password` | | User login instead of a token. Without `-password`, `PBS_PASSWORD` is used |
 | `-keyfile`, `-keyfile-passphrase` | | Key for an encrypted snapshot |
 | `-help` | | Show the flags |
 
@@ -269,7 +272,7 @@ Do not use this on a machine running important services: a damaged file system o
 
 `-keyfile <file>` encrypts every chunk with AES-256-GCM and signs the manifest. The key file format is the official one: a key made with `proxmox-backup-client key create` works here, and a key made by this client (GUI **Generate...**) works with the official client.
 
-For a passphrase-protected key (scrypt or PBKDF2), pass `-keyfile-passphrase`, or leave it out to be asked on the console. Unattended runs need the passphrase in the command or config file.
+For a passphrase-protected key (scrypt or PBKDF2), pass `-keyfile-passphrase` or set `PBS_ENCRYPTION_PASSWORD`, or leave both out to be asked on the console. Unattended runs need the passphrase in the environment, the command or the config file.
 
 Key files from the original project's tools and GUI work too. A protected key in the flat layout that its code expected before October 2026 (`"kdf": {"kdf": "scrypt", ...}`) is read as well. A key file this client writes is always in the official layout.
 

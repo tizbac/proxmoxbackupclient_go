@@ -174,14 +174,14 @@ func main() {
 	authIDFlag := flag.String("authid", "", "Authentication ID (PBS Api token)")
 	secretFlag := flag.String("secret", "", "Secret for authentication")
 	usernameFlag := flag.String("username", "", "Username for ticket login (used with -password; overrides -authid/-secret)")
-	passwordFlag := flag.String("password", "", "Password for ticket login (with -username)")
+	passwordFlag := flag.String("password", "", "Password for ticket login (with -username; default $PBS_PASSWORD)")
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	nbdFlag := flag.Int("nbd", 0, "NBD number")
 	backupPath := flag.String("path", "", "Path to backup, eg. vm/100/2026-03-01T00:07:00Z/drive-scsi0.img.fidx")
 	listFlag := flag.Bool("list", false, "List available fidx images as 'type/id/time/file' lines and exit (no TUI)")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (required to restore a snapshot taken with encryption enabled)")
-	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
+	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (default $PBS_ENCRYPTION_PASSWORD; prompted for when neither is set)")
 	helpFlag := flag.Bool("help", false, "Show help")
 	// Fills any of these still at their flag default from the PBS_* environment
 	// variables before Parse() runs, so an explicit CLI flag still wins over an
@@ -191,6 +191,15 @@ func main() {
 	if *helpFlag {
 		flag.PrintDefaults()
 		return
+	}
+	// The secrets can come from the environment (the official client's names),
+	// so a caller such as the bare-metal restore wizard need not put them on
+	// the command line, where ps shows them to everyone on the system.
+	if *usernameFlag != "" && *passwordFlag == "" {
+		*passwordFlag = os.Getenv("PBS_PASSWORD")
+	}
+	if *keyFilePassphraseFlag == "" {
+		*keyFilePassphraseFlag = os.Getenv("PBS_ENCRYPTION_PASSWORD")
 	}
 
 	// An encrypted .fidx only yields plaintext through NewFIDXServer's

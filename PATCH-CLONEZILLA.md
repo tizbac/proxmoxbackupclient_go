@@ -133,8 +133,10 @@ files on it are listed, the chosen one is copied to
 `/tmp/pbs-encryption-key.json` with mode 600 and the stick is unmounted
 again), or **a typed path** (for example a key placed on the boot medium). A
 key file that is passphrase protected (`kdf` set) makes the helper ask for the
-passphrase in a hidden box. The key is handed to `pbsnbd` as
-`-keyfile` / `-keyfile-passphrase`. `pbsnbd` reads the first chunk of the
+passphrase in a hidden box. The key file is handed to `pbsnbd` as `-keyfile`,
+the passphrase in the `PBS_ENCRYPTION_PASSWORD` environment variable (and the
+PBS password in `PBS_PASSWORD`), so neither shows in `ps` on the live system.
+`pbsnbd` reads the first chunk of the
 image before it touches the NBD device, so a missing or wrong key fails
 immediately with a clear message instead of leaving a dead `/dev/nbdN`. In the automated bare-metal restore a mistyped passphrase is asked for again, three attempts in total, before the helper stops; `ocs-pbs-nbd` stops at the first wrong passphrase.
 The key is never written to the ISO.
@@ -184,7 +186,7 @@ When the user picks it, the helper:
    (c) the `.fidx` file to attach. Menus with a single entry are skipped.
 6. Passes the chosen `-list` line verbatim (including any trailing `#comment`,
    which `pbsnbd -path` strips) to `pbsnbd -path` (with the same
-   `-baseurl -username -password -datastore [-namespace]` arguments) and
+   `-baseurl -username -datastore [-namespace]` arguments and `PBS_PASSWORD`) and
    **forks it in the background**, so the Clonezilla main menu / shell stays
    usable while `/dev/nbd0` attaches. Rerunning the flow warns and stops the
    previous background instance first.
@@ -244,7 +246,7 @@ When the automated flow runs:
    see the fork's own history if picking that back up).
    After the datastore, the same encryption-key menu as `ocs-pbs-nbd` is shown
    (see "Encrypted backups" above). The PBS login is a username and password
-   only (`pbsnbd -username -password`); API tokens are not offered.
+   only (`pbsnbd -username`, the password in `PBS_PASSWORD`); API tokens are not offered.
 3. Lists and lets the user pick a snapshot via the same three-level
    kind/date/file menu `ocs-pbs-nbd` uses, then attaches it via `pbsnbd`
    and waits for the device to report a size before continuing (the

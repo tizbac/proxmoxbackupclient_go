@@ -98,7 +98,8 @@ knowing before changing anything in `pbscommon`:
 
 * **Symlinks are not tested.** A Linux backup stores them as links
   (`writeSymlink` in `pbscommon/pxar.go`; on Windows they are skipped), but the
-  fixtures contain none yet.
+  fixture contains none, and `assert_tree_identical` compares only regular
+  files and folders.
 * **No restore CLI exists in this project.** Restore is in the GUI
   (`gui/restore_inline.go`, plus the Undelete and Roll back command line of
   the GUI's service program, which needs a GUI Backup Set) or delegated to `proxmoxbackup-nbd` for block

@@ -50,9 +50,9 @@ import sys
 open(sys.argv[1], 'wb').write(bytes(range(256)) * 4096 * 3)
 " "$src/pattern.bin"
 
-	# NOTE: symlinks are deliberately NOT part of the fixture. Our pxar
-	# writer skips them (pbscommon/pxar_reader.go, walk()), so they are not
-	# restorable today. See README.md "Known gaps".
+	# NOTE: the fixture has no symlinks yet. A Linux backup stores them as
+	# links (writeSymlink in pbscommon/pxar.go), but tree_manifest and
+	# tree_dirs would not compare them. See README.md "Known gaps".
 	log "directory fixture: $(find "$src" | wc -l) entries, $(du -sh "$src" | cut -f1)"
 }
 

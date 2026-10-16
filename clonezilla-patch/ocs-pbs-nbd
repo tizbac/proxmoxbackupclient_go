@@ -239,6 +239,7 @@ echo "Connection settings saved to ${CRED_FILE} (for pre-filling the next run)."
 # can be unplugged again straight away.
 KEY_ARGS=()
 KEYFILE=""
+KEYPASS=""
 KEY_COPY="/tmp/pbs-encryption-key.json"
 KEY_MNT="/mnt/pbs-keystick"
 KEY_TITLE="PBS NBD attach"
@@ -314,7 +315,6 @@ if [ "$KEY_CHOICE" != "none" ] && [ -n "$KEY_CHOICE" ]; then
     $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
       --passwordbox "Passphrase for the encryption key:" 0 0 2> "$DIA_TMP"
     KEYPASS="$(cat "$DIA_TMP")"
-    KEY_ARGS+=(-keyfile-passphrase "$KEYPASS")
   fi
   echo "Encryption key  : ${KEYFILE}"
 else
@@ -324,7 +324,10 @@ fi
 # 5. list the backups
 echo $msg_delimiter_star_line
 echo "> Listing backups on ${PBS_SERVER} (datastore=${PBS_DS}${PBS_NS:+, namespace=${PBS_NS}})..."
-if ! "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
+# The password and the key passphrase go to pbsnbd in its environment
+# (PBS_PASSWORD, PBS_ENCRYPTION_PASSWORD), not as arguments, which ps shows.
+if ! PBS_PASSWORD="$PBS_PASS" PBS_ENCRYPTION_PASSWORD="$KEYPASS" \
+     "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" \
      -datastore "$PBS_DS" $NS_OPT "${KEY_ARGS[@]}" -list > "$LIST_TMP" 2> "$LIST_ERR"; then
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS NBD attach" \
   --msgbox "Could not list the backups:\n$(cat "$LIST_ERR")\n\n$msg_program_stop" 0 0 $DIA_ESC
@@ -461,7 +464,8 @@ NS_DISP=""
 echo "> Attaching '${SELECTED}' to ${NBDDEV} in the background (datastore=${PBS_DS}${NS_DISP})..."
 # setsid + </dev/null: run in its own session without a controlling terminal,
 # so returning to the Clonezilla main menu does not take the NBD server down.
-setsid "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
+PBS_PASSWORD="$PBS_PASS" PBS_ENCRYPTION_PASSWORD="$KEYPASS" \
+setsid "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" \
      -datastore "$PBS_DS" $NS_OPT "${KEY_ARGS[@]}" -nbd "$NBDNUM" -path "$SELECTED" < /dev/null > "$ATTACH_LOG" 2>&1 &
 PBSNBD_PID=$!
 

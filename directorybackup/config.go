@@ -103,7 +103,7 @@ func (c *Config) valid() bool {
 	}
 
 	if err := pbscommon.ValidateChangeDetectionMode(c.ChangeDetectionMode); err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 		return false
 	}
 
@@ -165,12 +165,12 @@ func loadConfig() *Config {
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {
-			fmt.Printf("Error reading config file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
 		}
 		err = json.Unmarshal(file, config)
 		if err != nil {
-			fmt.Printf("Error parsing config file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error parsing config file: %v\n", err)
 			os.Exit(1)
 		}
 	}

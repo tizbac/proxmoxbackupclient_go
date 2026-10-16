@@ -232,6 +232,7 @@ save_credentials
 # can be unplugged again straight away.
 KEY_ARGS=()
 KEYFILE=""
+KEYPASS=""
 KEY_PROTECTED=0
 KEY_COPY="/tmp/pbs-encryption-key.json"
 KEY_MNT="/mnt/pbs-keystick"
@@ -309,7 +310,6 @@ if [ "$KEY_CHOICE" != "none" ] && [ -n "$KEY_CHOICE" ]; then
     $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
       --passwordbox "Passphrase for the encryption key:" 0 0 2> "$DIA_TMP"
     KEYPASS="$(cat "$DIA_TMP")"
-    KEY_ARGS+=(-keyfile-passphrase "$KEYPASS")
   fi
   echo "Encryption key  : ${KEYFILE}"
 else
@@ -320,8 +320,11 @@ fi
 echo "> Listing backups on ${PBS_SERVER} (datastore=${PBS_DS}${PBS_NS:+, namespace=${PBS_NS}})..."
 # pbsnbd unlocks the key before it lists anything, so a mistyped passphrase
 # fails here. Give three attempts in total before giving up.
+# The password and the key passphrase go to pbsnbd in its environment
+# (PBS_PASSWORD, PBS_ENCRYPTION_PASSWORD), not as arguments, which ps shows.
 KEY_TRIES=1
-while ! "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
+while ! PBS_PASSWORD="$PBS_PASS" PBS_ENCRYPTION_PASSWORD="$KEYPASS" \
+     "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" \
      -datastore "$PBS_DS" $NS_OPT "${KEY_ARGS[@]}" -list > "$LIST_TMP" 2> "$LIST_ERR"; do
   if [ "$KEY_PROTECTED" = "1" ] && grep -qi 'wrong password' "$LIST_ERR"; then
     if [ "$KEY_TRIES" -ge 3 ]; then
@@ -335,7 +338,6 @@ while ! "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_P
     $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
       --passwordbox "Passphrase for the encryption key (attempt ${KEY_TRIES} of 3):" 0 0 2> "$DIA_TMP"
     KEYPASS="$(cat "$DIA_TMP")"
-    KEY_ARGS=(-keyfile "$KEYFILE" -keyfile-passphrase "$KEYPASS")
     continue
   fi
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
@@ -466,7 +468,8 @@ echo "Selected file      : $SELECTED"
 # unlike ocs-pbs-nbd's fork-and-return-to-menu design) -- setsid so it
 # survives this script's own exit once the restore is running.
 echo "> Attaching '${SELECTED}' to ${NBDDEV}..."
-setsid "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" -password "$PBS_PASS" \
+PBS_PASSWORD="$PBS_PASS" PBS_ENCRYPTION_PASSWORD="$KEYPASS" \
+setsid "$PBSNBD" -baseurl "$PBS_SERVER" -username "$PBS_USER" \
      -datastore "$PBS_DS" $NS_OPT "${KEY_ARGS[@]}" -nbd "$NBDNUM" -path "$SELECTED" < /dev/null > "$ATTACH_LOG" 2>&1 &
 PBSNBD_PID=$!
 

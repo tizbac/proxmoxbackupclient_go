@@ -205,9 +205,11 @@ func e2eCompare(t *testing.T, label string, want, got map[string]e2eFile, prefix
 		}
 		// mtime exactly 0 is stored as "no mtime" in the archive format, so it
 		// restores as the restore time. Known limitation, logged not failed.
+		// Folders are compared too: the restore sets their times once their
+		// contents are written (restore_dirtimes.go).
 		if !w.dir && w.mtime == 0 && g.mtime != 0 {
 			t.Logf("  known limitation: %s has mtime 0 (restored as restore time)", k)
-		} else if !w.dir && w.mtime != g.mtime {
+		} else if w.mtime != g.mtime {
 			mtimes = append(mtimes, fmt.Sprintf("%s want=%d got=%d", k, w.mtime, g.mtime))
 		}
 	}

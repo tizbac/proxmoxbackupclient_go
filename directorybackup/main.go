@@ -246,7 +246,7 @@ func main() {
 	// ask the user to confirm it before pinning.
 	fingerprint, err := clientcommon.ConfirmFingerprint(cfg.BaseURL, cfg.CertFingerprint)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 	cfg.CertFingerprint = fingerprint
@@ -255,7 +255,7 @@ func main() {
 	if cfg.PBSUsername != "" && cfg.PBSPassword == "" {
 		cfg.PBSPassword, err = clientcommon.PromptPassword(fmt.Sprintf("Password for %s: ", cfg.PBSUsername))
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	}
@@ -274,7 +274,7 @@ func main() {
 
 	crypt, err := clientcommon.LoadCryptConfig(cfg.KeyFile, cfg.KeyFilePassphrase)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -305,7 +305,7 @@ func main() {
 	}
 	hostname, err := os.Hostname()
 	if err != nil {
-		fmt.Println("Failed to retrieve hostname:", err)
+		fmt.Fprintln(os.Stderr, "warning: failed to retrieve hostname:", err)
 		hostname = "unknown"
 	}
 
@@ -314,7 +314,7 @@ func main() {
 	if len(dirs) <= 1 {
 		client, err = newClient(cfg.BackupID)
 		if err != nil {
-			fmt.Printf("Error: ticket login failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: ticket login failed: %v\n", err)
 			os.Exit(1)
 		}
 	}
@@ -372,7 +372,7 @@ func main() {
 	var msg string
 	msg, err = mailCtx.BuildStr(mailBodyTemplate)
 	if err != nil {
-		fmt.Println("Cannot use custom mail body: " + err.Error())
+		fmt.Fprintln(os.Stderr, "Cannot use custom mail body: "+err.Error())
 		msg, err = mailCtx.BuildStr(defaultMailBodyTemplate)
 		if err != nil {
 			// this should never happen
@@ -390,7 +390,7 @@ func main() {
 
 		subject, err = mailCtx.BuildStr(mailSubjectTemplate)
 		if err != nil {
-			fmt.Println("Cannot use custom mail subject: " + err.Error())
+			fmt.Fprintln(os.Stderr, "Cannot use custom mail subject: "+err.Error())
 			subject, err = mailCtx.BuildStr(defaultMailSubjectTemplate)
 			if err != nil {
 				// this should never happen
