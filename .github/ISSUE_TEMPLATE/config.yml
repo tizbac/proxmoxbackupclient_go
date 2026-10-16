@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and help
+    url: https://github.com/mjb-is/proxmoxbackupclient_go/discussions
+    about: How do I...? Ask in Discussions.
+  - name: Feature requests
+    url: https://github.com/tizbac/proxmoxbackupclient_go/issues
+    about: I add features that help my own use, so please send feature requests to the original project.
+  - name: User manuals
+    url: https://github.com/mjb-is/proxmoxbackupclient_go/blob/master/docs/manual/README.md
+    about: The GUI, command-line and bare-metal restore manuals.

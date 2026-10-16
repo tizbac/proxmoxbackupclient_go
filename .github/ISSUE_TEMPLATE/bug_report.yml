@@ -1,0 +1,106 @@
+name: Bug report
+description: Something does not work as the manual says it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. This is alpha software built for my own homelab, offered as is, but bug reports are welcome and read.
+
+        Before you post: please check the open issues for the same problem, and look through the log for anything private (server names, user names, folder names) that you would rather not share. Never paste passwords, API tokens or key files.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown at the bottom left of the window and on the About page.
+      placeholder: v0.9.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Windows Server
+        - Linux, Debian or Ubuntu
+        - Linux, Fedora
+        - Linux, other
+        - The bare-metal restore ISO
+    validations:
+      required: true
+
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part
+      options:
+        - The app (GUI)
+        - The background service
+        - proxmoxbackup-directory (command line)
+        - proxmoxbackup-machine (command line)
+        - The bare-metal restore ISO
+        - The installer (MSI, .deb or .rpm)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: doing
+    attributes:
+      label: What were you doing
+      options:
+        - Folder backup
+        - Machine (whole disk) backup
+        - Restore
+        - Undelete
+        - Roll back
+        - Bare-metal restore
+        - Restoring into a Proxmox VE VM (P2V)
+        - Installing or updating
+        - Settings or schedules
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: pbs
+    attributes:
+      label: Proxmox Backup Server version
+      description: Optional. Shown in the PBS web interface.
+      placeholder: "4.0"
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Exact error messages help most.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Optional, if you can make it happen again.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        The Message Log, or the files in the log folder (Preferences > Message Log > View Logs). Windows: C:\ProgramData\ProxmoxBackupClient\. Linux: ~/.local/state/proxmoxbackupclient/, or /var/log/proxmoxbackupclient/ for the background service. Each backup run has its own backup-...log.gz; you can also attach the file instead of pasting it.
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Optional. Screenshots, the size of the backup, how the server is reached (LAN, VPN, internet), and so on.
