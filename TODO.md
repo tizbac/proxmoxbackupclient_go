@@ -19,7 +19,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 - [ ] **Live test: the encryption key on machine backups the service runs** (fixed in 2f46844, not tried with a key configured).
 - [ ] **Live test on Linux: Restart as administrator** (pkexec) from a desktop session, and clicking Install in the root app.
-- [ ] **Live test: Pause backup in the tray** on a real desktop, for a run of the app and a run of the service (built 2026-10-16).
+- [ ] Pause backup in the tray: try it by hand with the mouse. Tested on winclient on 2026-10-16 by sending the tray's own messages, for a run of the app and a run of the service: greyed out when idle, Pause and Resume from the tray, the window and the tray following each other, the tooltip, and greyed out again after the run.
 - [ ] Maybe: a "resume at" time for a paused backup.
 
 ## Backing up
