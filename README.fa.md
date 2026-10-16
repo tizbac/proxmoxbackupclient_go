@@ -5,6 +5,11 @@
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/mjb-is/proxmoxbackupclient_go)](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-manuals-orange)](docs/manual/README.md)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/mickbeeby)
+
+> **ساخته‌شده بر پایه کار دیگران.** این فورک بر پایه پروژه اصلی [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) از Tiziano Bacocco (tizbac) و کلاینت گرافیکی Nimbus Backup از RDEM Systems ساخته شده است؛ کلاینتی که در پروژه اصلی ادغام شد و رابط گرافیکی این برنامه از آن شکل گرفت.
+>
+> ☕ این کلاینت رایگان است و رایگان می‌ماند. اگر در وقت شما صرفه‌جویی می‌کند، می‌توانید [در Ko-fi برایم یک قهوه بخرید](https://ko-fi.com/mickbeeby). این کاملاً اختیاری است و هیچ پشتیبانی یا وعده‌ای برای قابلیت‌ها نمی‌خرد.
 
 **Proxmox Backup Client یک کلاینت پشتیبان‌گیری متن‌باز (GPL-3.0) برای Proxmox Backup Server (PBS) است که روی ویندوز و لینوکس کار می‌کند.** از پوشه‌ها به‌صورت آرشیو فایل قابل مرور و از کل ماشین به‌صورت ایمیج دیسک قابل بوت پشتیبان می‌گیرد، طبق زمان‌بندی یا هر وقت بخواهید، و هر چیزی را از یک فایل تنها تا کل ماشین برمی‌گرداند: روی همان کامپیوتر، روی یک ماشین جایگزین یا روی یک ماشین مجازی Proxmox VE.
 
@@ -679,11 +684,14 @@ ISO بازیابی یک ISO استاندارد Clonezilla Live است که با 
 - **گزارش باگ خوشایند است**: یک [issue](https://github.com/mjb-is/proxmoxbackupclient_go/issues) باز کنید و بنویسید چه کردید، چه اتفاقی افتاد، و لاگ را پیوست کنید (Message Log، یا فایل‌های پوشه تنظیمات).
 - **درخواست قابلیت**: من قابلیت‌هایی را اضافه می‌کنم که به استفاده خودم کمک کنند، پس درخواست‌هایی را که برای دیگران است نمی‌پذیرم. لطفاً آن‌ها را به پروژه اصلی بفرستید: [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go/issues). pull request هایی که باگ رفع می‌کنند، یا آشکارا به استفاده من هم کمک می‌کنند، خوشایندند.
 
+گزارش باگ و اصلاحات مفیدترین کمک هستند. اگر می‌خواهید به شکل دیگری تشکر کنید، می‌توانید [در Ko-fi برایم یک قهوه بخرید](https://ko-fi.com/mickbeeby).
+
 ## 🙏 قدردانی و تاریخچه
 
 کلاینت خط فرمان اصلی را Tiziano Bacocco (tizbac) از 2023 نوشت. بعدها کلاینت گرافیکی RDEM Systems در آن ادغام شد و همراه آن اولین GUI، پشتیبانی از چند PBS و سرویس ویندوز آمد. این فورک در سپتامبر 2026 شروع شد تا کمبودهایی را پر کند که مانع می‌شدند PBS تنها سیستم پشتیبان‌گیری من باشد؛ نسخه‌های آن از v0.3.0 شروع می‌شوند، و رفع اشکال‌هایی که کاربرد عمومی دارند به پروژه اصلی بازمی‌گردند.
 
 - کلاینت اصلی، [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go)، از Tiziano Bacocco (tizbac) و مشارکت‌کنندگان آن.
+- کلاینت گرافیکی Nimbus Backup از RDEM Systems، نقطه شروع رابط گرافیکی این برنامه.
 - روند کار و حس Backup for Workgroups (BFW)، که Backup Sets، Undelete و Roll back از آن پیروی می‌کنند.
 - [Clonezilla Live](https://clonezilla.org/)، که ISO بازیابی bare-metal بر پایه آن ساخته شده است.
 
@@ -694,3 +702,5 @@ GPLv3: فایل [LICENSE](LICENSE) را ببینید.
 ---
 
 **تغییرات پس از فورک © 2026 mjb-is، بر پایه کار Tiziano Bacocco (tizbac)، مشارکت‌کنندگان Proxmox Backup Client GO و RDEM Systems (© 2024-2026).**
+
+☕ اگر این کلاینت برایتان مفید است، می‌توانید [در Ko-fi برایم یک قهوه بخرید](https://ko-fi.com/mickbeeby). سپاس.

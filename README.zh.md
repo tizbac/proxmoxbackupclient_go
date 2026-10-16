@@ -5,6 +5,11 @@
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/mjb-is/proxmoxbackupclient_go)](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-manuals-orange)](docs/manual/README.md)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/mickbeeby)
+
+> **建立在他人工作的基础上。** 本分支基于 Tiziano Bacocco (tizbac) 的原始项目 [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go)，以及 RDEM Systems 的 Nimbus Backup 图形客户端；后者曾合并进原项目，本应用的图形界面即由它发展而来。
+>
+> ☕ 本客户端免费，并将一直免费。如果它为你节省了时间，可以[在 Ko-fi 上请我喝杯咖啡](https://ko-fi.com/mickbeeby)。这完全自愿，不换取任何支持或功能承诺。
 
 **Proxmox Backup Client 是一个面向 Proxmox Backup Server (PBS) 的开源 (GPL-3.0) 备份客户端，可在 Windows 和 Linux 上运行。** 它把文件夹备份为可浏览的文件归档，把整台机器备份为可启动的磁盘镜像，可以按计划运行，也可以随时手动运行；恢复时小到单个文件、大到整台机器都能取回，可以恢复到原来的电脑、替换用的电脑或 Proxmox VE 虚拟机上。
 
@@ -679,11 +684,14 @@ installer\wix\build-msi.ps1       # MSI (WiX 3), after building the app and the 
 - **欢迎报告错误**：请提交 [issue](https://github.com/mjb-is/proxmoxbackupclient_go/issues)，写明你做了什么、发生了什么，并附上日志（Message Log，或设置目录中的日志文件）。
 - **功能请求**：我只添加对我自己的使用有帮助的功能，所以不接受为他人定制的功能请求。请把它们发送到原项目 [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go/issues)。欢迎修复错误的 pull request，或明显也对我的使用有帮助的 pull request。
 
+错误报告和修复是最有用的帮助。如果你想以其他方式表示感谢，可以[在 Ko-fi 上请我喝杯咖啡](https://ko-fi.com/mickbeeby)。
+
 ## 🙏 致谢与历史
 
 最初的命令行客户端由 Tiziano Bacocco (tizbac) 自 2023 年起编写。后来 RDEM Systems 的图形客户端被合并进来，随之带来了第一个 GUI、多 PBS 支持和 Windows 服务。本 fork 始于 2026 年 9 月，用来填补那些让 PBS 无法成为我唯一备份系统的空缺；它的版本从 v0.3.0 开始，具有通用价值的修复会回馈给原项目。
 
 - 原始客户端 [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go)，作者 Tiziano Bacocco (tizbac) 及其贡献者。
+- RDEM Systems 的 Nimbus Backup 图形客户端，本应用图形界面的起点。
 - Backup for Workgroups (BFW) 的工作流程和使用感受，Backup Sets、Undelete 和 Roll back 都沿用了它。
 - [Clonezilla Live](https://clonezilla.org/)，裸机恢复 ISO 以它为基础构建。
 
@@ -694,3 +702,5 @@ GPLv3：见 [LICENSE](LICENSE) 文件。
 ---
 
 **fork 之后的改动 © 2026 mjb-is，基于 Tiziano Bacocco (tizbac)、Proxmox Backup Client GO 贡献者和 RDEM Systems 的工作 (© 2024-2026)。**
+
+☕ 如果这个客户端对你有用，可以[在 Ko-fi 上请我喝杯咖啡](https://ko-fi.com/mickbeeby)。谢谢！

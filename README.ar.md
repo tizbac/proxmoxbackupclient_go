@@ -5,6 +5,11 @@
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/mjb-is/proxmoxbackupclient_go)](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-manuals-orange)](docs/manual/README.md)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/mickbeeby)
+
+> **مبني على عمل الآخرين.** يعتمد هذا الفرع (fork) على المشروع الأصلي [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) لـ Tiziano Bacocco (tizbac)، وعلى عميل الواجهة الرسومية Nimbus Backup من RDEM Systems، الذي دُمج فيه ومنه نشأت الواجهة الرسومية لهذا التطبيق.
+>
+> ☕ العميل مجاني وسيبقى مجانيًا. إذا وفّر عليك بعض الوقت، يمكنك [أن تشتري لي فنجان قهوة على Ko-fi](https://ko-fi.com/mickbeeby). هذا اختياري تمامًا ولا يشتري دعمًا ولا وعودًا بميزات.
 
 **Proxmox Backup Client عميل نسخ احتياطي مفتوح المصدر (GPL-3.0) لخادم Proxmox Backup Server (PBS)، لويندوز ولينكس.** ينسخ المجلدات كأرشيفات ملفات يمكن تصفحها، والأجهزة الكاملة كصور أقراص قابلة للإقلاع، وفق جداول زمنية أو عند الطلب، ويعيد أي شيء، من ملف واحد إلى جهاز كامل، إلى الحاسوب نفسه أو إلى جهاز بديل أو إلى آلة افتراضية في Proxmox VE.
 
@@ -696,11 +701,14 @@ installer\wix\build-msi.ps1       # MSI (WiX 3), after building the app and the 
 - **بلاغات الأخطاء مرحّب بها**: افتح [issue](https://github.com/mjb-is/proxmoxbackupclient_go/issues) واذكر ما فعلته وما حدث وأرفق السجل (Message Log، أو الملفات في مجلد الإعدادات).
 - **طلبات الميزات**: أضيف الميزات التي تفيد استخدامي الخاص، لذا لا أقبل طلبات لغيري. يرجى إرسالها إلى المشروع الأصلي، [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go/issues). وطلبات السحب التي تصلح أخطاء، أو التي ستفيد استخدامي أيضًا بوضوح، مرحّب بها.
 
+بلاغات الأخطاء والإصلاحات هي أكثر مساعدة مفيدة. إذا أردت أن تشكر بطريقة أخرى، يمكنك [أن تشتري لي فنجان قهوة على Ko-fi](https://ko-fi.com/mickbeeby).
+
 ## 🙏 الشكر والتاريخ
 
 كتب Tiziano Bacocco (tizbac) عميل سطر الأوامر الأصلي بدءًا من 2023. ثم دُمج فيه لاحقًا العميل الرسومي من RDEM Systems، ومعه أول واجهة رسومية ودعم عدة خوادم PBS وخدمة ويندوز. بدأ هذا الفرع في سبتمبر 2026 لسد الثغرات التي كانت تمنع PBS من أن يكون نظام النسخ الاحتياطي الوحيد لدي؛ وتبدأ إصداراته من v0.3.0، والإصلاحات ذات الفائدة العامة تعود إلى المشروع الأصلي.
 
 - العميل الأصلي، [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go)، من Tiziano Bacocco (tizbac) والمساهمين فيه.
+- عميل الواجهة الرسومية Nimbus Backup من RDEM Systems، نقطة انطلاق الواجهة الرسومية لهذا التطبيق.
 - أسلوب عمل Backup for Workgroups (BFW) وطابعه، اللذان تتبعهما Backup Sets وUndelete وRoll back.
 - [Clonezilla Live](https://clonezilla.org/)، الذي بُني عليه قرص ISO للاستعادة على جهاز فارغ.
 
@@ -711,3 +719,5 @@ GPLv3: راجع ملف [LICENSE](LICENSE).
 ---
 
 **التغييرات منذ الفرع © 2026 mjb-is، بناءً على عمل Tiziano Bacocco (tizbac) ومساهمي Proxmox Backup Client GO وRDEM Systems (© 2024-2026).**
+
+☕ إذا كان هذا العميل مفيدًا لك، يمكنك [أن تشتري لي فنجان قهوة على Ko-fi](https://ko-fi.com/mickbeeby). شكرًا لك.

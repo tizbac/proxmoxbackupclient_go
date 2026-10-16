@@ -5,6 +5,11 @@
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/mjb-is/proxmoxbackupclient_go)](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-manuals-orange)](docs/manual/README.md)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/mickbeeby)
+
+> **Construit pe munca altora.** Acest fork se bazează pe [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) original al lui Tiziano Bacocco (tizbac) și pe clientul grafic Nimbus Backup al RDEM Systems, care a fost integrat în acesta și din care a pornit interfața grafică a acestei aplicații.
+>
+> ☕ Clientul este gratuit și va rămâne gratuit. Dacă vă economisește timp, puteți [să-mi oferiți o cafea pe Ko-fi](https://ko-fi.com/mickbeeby). Este complet opțional și nu cumpără nici asistență, nici promisiuni de funcționalități.
 
 **Proxmox Backup Client este un client de backup open-source (GPL-3.0) pentru Proxmox Backup Server (PBS), pentru Windows și Linux.** Face backup folderelor ca arhive de fișiere care pot fi parcurse și mașinilor întregi ca imagini de disc bootabile, după planificare sau la cerere, și readuce orice, de la un singur fișier până la o mașină întreagă, pe același calculator, pe unul de înlocuire sau într-o mașină virtuală Proxmox VE.
 
@@ -696,11 +701,14 @@ Este construit pentru propriul meu homelab. Fiecare versiune este testată de mi
 - **Rapoartele de erori sunt binevenite**: deschideți un [issue](https://github.com/mjb-is/proxmoxbackupclient_go/issues) cu ce ați făcut, ce s-a întâmplat și jurnalul (Jurnalul de mesaje sau fișierele din folderul de setări).
 - **Cereri de funcționalități**: adaug funcționalități care îmi folosesc în propria utilizare, așa că nu accept cereri pentru alte utilizări. Vă rog să le trimiteți proiectului original, [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go/issues). Pull request-urile care corectează erori, sau care ar ajuta clar și utilizarea mea, sunt binevenite.
 
+Rapoartele de erori și corecturile sunt cel mai util ajutor. Dacă doriți să mulțumiți altfel, puteți [să-mi oferiți o cafea pe Ko-fi](https://ko-fi.com/mickbeeby).
+
 ## 🙏 Mulțumiri și istoric
 
 Clientul original în linie de comandă a fost scris de Tiziano Bacocco (tizbac) începând din 2023. Ulterior, clientul grafic al RDEM Systems a fost integrat în el, și odată cu acesta primul GUI, suportul multi-PBS și serviciul Windows. Acest fork a început în septembrie 2026 pentru a acoperi lipsurile care împiedicau PBS să fie singurul meu sistem de backup; versiunile sale pornesc de la v0.3.0, iar corecturile de interes general se întorc în proiectul original.
 
 - Clientul original, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), de Tiziano Bacocco (tizbac) și contribuitorii săi.
+- Clientul grafic Nimbus Backup al RDEM Systems, punctul de pornire al interfeței grafice a acestei aplicații.
 - Fluxul de lucru și stilul Backup for Workgroups (BFW), pe care le urmează Seturile de Backup, Recuperarea fișierelor șterse și Revenirea.
 - [Clonezilla Live](https://clonezilla.org/), pe care este construit ISO-ul de restaurare bare-metal.
 
@@ -711,3 +719,5 @@ GPLv3: vedeți fișierul [LICENSE](LICENSE).
 ---
 
 **Modificări de la fork © 2026 mjb-is, pe baza muncii lui Tiziano Bacocco (tizbac), a contribuitorilor Proxmox Backup Client GO și a RDEM Systems (© 2024-2026).**
+
+☕ Dacă acest client vă este util, puteți [să-mi oferiți o cafea pe Ko-fi](https://ko-fi.com/mickbeeby). Mulțumesc.

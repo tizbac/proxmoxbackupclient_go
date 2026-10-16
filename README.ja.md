@@ -5,6 +5,11 @@
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/mjb-is/proxmoxbackupclient_go)](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-manuals-orange)](docs/manual/README.md)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/mickbeeby)
+
+> **他の方々の成果の上に成り立っています。** このフォークは、Tiziano Bacocco (tizbac) によるオリジナルの [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) と、RDEM Systems の Nimbus Backup GUI クライアントを基にしています。後者はオリジナルに統合され、本アプリの GUI はそこから発展しました。
+>
+> ☕ このクライアントは無料で、今後も無料です。時間の節約に役立ったら、[Ko-fi でコーヒーをおごっていただけます](https://ko-fi.com/mickbeeby)。完全に任意であり、サポートや機能の約束を買うものではありません。
 
 **Proxmox Backup Client は、Proxmox Backup Server (PBS) 向けのオープンソース (GPL-3.0) バックアップクライアントで、Windows と Linux で動作します。** フォルダーは閲覧できるファイルアーカイブとして、マシン全体は起動可能なディスクイメージとしてバックアップし、スケジュールでも必要なときにも実行できます。復元は 1 つのファイルからマシン全体まで、同じコンピューター、交換用のマシン、Proxmox VE の仮想マシンのいずれにも戻せます。
 
@@ -679,11 +684,14 @@ installer\wix\build-msi.ps1       # MSI (WiX 3), after building the app and the 
 - **バグ報告は歓迎します**：[issue](https://github.com/mjb-is/proxmoxbackupclient_go/issues) を開き、何をしたか、何が起きたか、ログ（Message Log、または設定フォルダー内のファイル）を添えてください。
 - **機能要望**：私は自分の用途に役立つ機能を追加しているので、ほかの方のための要望は受け付けていません。本家プロジェクト [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go/issues) に送ってください。バグを修正するプルリクエストや、明らかに私の用途にも役立つプルリクエストは歓迎します。
 
+最も役に立つのはバグ報告と修正です。別の形でお礼をしたい場合は、[Ko-fi でコーヒーをおごっていただけます](https://ko-fi.com/mickbeeby)。
+
 ## 🙏 クレジットと経緯
 
 元のコマンドラインクライアントは、2023 年から Tiziano Bacocco (tizbac) が書いたものです。後に RDEM Systems のグラフィカルクライアントがそこに統合され、それとともに最初の GUI、マルチ PBS 対応、Windows サービスが加わりました。このフォークは 2026 年 9 月に、PBS を私の唯一のバックアップシステムにするうえで足りなかった部分を埋めるために始まりました。リリースは v0.3.0 から始まり、汎用的な修正は本家プロジェクトに還元しています。
 
 - 元のクライアント [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go)。作者は Tiziano Bacocco (tizbac) とそのコントリビューター。
+- RDEM Systems の Nimbus Backup GUI クライアント。本アプリの GUI の出発点です。
 - Backup for Workgroups (BFW) のワークフローと使い心地。Backup Sets、Undelete、Roll back はこれにならっています。
 - [Clonezilla Live](https://clonezilla.org/)。ベアメタル復元 ISO のベースです。
 
@@ -694,3 +702,5 @@ GPLv3：[LICENSE](LICENSE) ファイルを参照してください。
 ---
 
 **フォーク以降の変更 © 2026 mjb-is。Tiziano Bacocco (tizbac)、Proxmox Backup Client GO のコントリビューター、RDEM Systems の成果 (© 2024-2026) に基づいています。**
+
+☕ このクライアントが役に立ったら、[Ko-fi でコーヒーをおごっていただけます](https://ko-fi.com/mickbeeby)。ありがとうございます。

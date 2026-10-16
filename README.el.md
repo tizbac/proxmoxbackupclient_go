@@ -5,6 +5,11 @@
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/mjb-is/proxmoxbackupclient_go)](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-manuals-orange)](docs/manual/README.md)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/mickbeeby)
+
+> **Χτισμένο πάνω στη δουλειά άλλων.** Αυτό το fork βασίζεται στο αρχικό [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) του Tiziano Bacocco (tizbac) και στο γραφικό πρόγραμμα Nimbus Backup της RDEM Systems, που ενσωματώθηκε σε αυτό και από το οποίο προήλθε το γραφικό περιβάλλον αυτής της εφαρμογής.
+>
+> ☕ Το πρόγραμμα είναι δωρεάν και θα παραμείνει δωρεάν. Αν σας γλιτώνει χρόνο, μπορείτε να [με κεράσετε έναν καφέ στο Ko-fi](https://ko-fi.com/mickbeeby). Είναι εντελώς προαιρετικό και δεν εξασφαλίζει ούτε υποστήριξη ούτε υποσχέσεις για λειτουργίες.
 
 **Το Proxmox Backup Client είναι πρόγραμμα-πελάτης αντιγράφων ασφαλείας ανοιχτού κώδικα (GPL-3.0) για το Proxmox Backup Server (PBS), για Windows και Linux.** Αποθηκεύει φακέλους ως αρχεία που μπορείτε να περιηγηθείτε και ολόκληρα μηχανήματα ως εκκινήσιμες εικόνες δίσκων, με χρονοδιάγραμμα ή κατ' απαίτηση, και φέρνει πίσω οτιδήποτε, από ένα μεμονωμένο αρχείο έως ένα ολόκληρο μηχάνημα, στον ίδιο υπολογιστή, σε έναν αντικαταστάτη ή σε μια εικονική μηχανή Proxmox VE.
 
@@ -696,11 +701,14 @@ installer\wix\build-msi.ps1       # MSI (WiX 3), after building the app and the 
 - **Οι αναφορές σφαλμάτων είναι ευπρόσδεκτες**: ανοίξτε ένα [issue](https://github.com/mjb-is/proxmoxbackupclient_go/issues) με το τι κάνατε, τι συνέβη και το αρχείο καταγραφής (Αρχείο καταγραφής μηνυμάτων, ή τα αρχεία στον φάκελο ρυθμίσεων).
 - **Αιτήματα λειτουργιών**: προσθέτω λειτουργίες που βοηθούν τη δική μου χρήση, οπότε δεν δέχομαι αιτήματα για άλλους. Παρακαλώ στείλτε τα στο αρχικό έργο, [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go/issues). Τα pull requests που διορθώνουν σφάλματα, ή που θα βοηθούσαν σαφώς και τη δική μου χρήση, είναι ευπρόσδεκτα.
 
+Οι αναφορές σφαλμάτων και οι διορθώσεις είναι η πιο χρήσιμη βοήθεια. Αν θέλετε να ευχαριστήσετε με άλλον τρόπο, μπορείτε να [με κεράσετε έναν καφέ στο Ko-fi](https://ko-fi.com/mickbeeby).
+
 ## 🙏 Ευχαριστίες και ιστορικό
 
 Το αρχικό πρόγραμμα-πελάτης γραμμής εντολών γράφτηκε από τον Tiziano Bacocco (tizbac) από το 2023. Το γραφικό πρόγραμμα της RDEM Systems συγχωνεύθηκε αργότερα σε αυτό, και μαζί του το πρώτο GUI, η υποστήριξη πολλών PBS και η υπηρεσία Windows. Αυτό το fork ξεκίνησε τον Σεπτέμβριο του 2026 για να καλύψει τα κενά που εμπόδιζαν το PBS να γίνει το μοναδικό μου σύστημα αντιγράφων ασφαλείας· οι εκδόσεις του ξεκινούν από την v0.3.0, και οι διορθώσεις γενικής χρήσης επιστρέφουν στο αρχικό έργο.
 
 - Το αρχικό πρόγραμμα-πελάτης, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), από τον Tiziano Bacocco (tizbac) και τους συνεισφέροντές του.
+- Το γραφικό πρόγραμμα Nimbus Backup της RDEM Systems, η αφετηρία του γραφικού περιβάλλοντος αυτής της εφαρμογής.
 - Η ροή εργασίας και η αίσθηση του Backup for Workgroups (BFW), την οποία ακολουθούν τα Σύνολα Αντιγράφων Ασφαλείας, η Ανάκτηση διαγραμμένων και η Επαναφορά κατάστασης.
 - Το [Clonezilla Live](https://clonezilla.org/), πάνω στο οποίο βασίζεται το ISO επαναφοράς bare-metal.
 
@@ -711,3 +719,5 @@ GPLv3: δείτε το αρχείο [LICENSE](LICENSE).
 ---
 
 **Αλλαγές από το fork και μετά © 2026 mjb-is, πάνω στη δουλειά των Tiziano Bacocco (tizbac), των συνεισφερόντων του Proxmox Backup Client GO και της RDEM Systems (© 2024-2026).**
+
+☕ Αν αυτό το πρόγραμμα σας είναι χρήσιμο, μπορείτε να [με κεράσετε έναν καφέ στο Ko-fi](https://ko-fi.com/mickbeeby). Ευχαριστώ.

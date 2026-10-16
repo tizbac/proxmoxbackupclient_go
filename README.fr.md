@@ -5,6 +5,11 @@
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/mjb-is/proxmoxbackupclient_go)](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-manuals-orange)](docs/manual/README.md)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/mickbeeby)
+
+> **Construit sur le travail d'autres personnes.** Ce fork s'appuie sur le [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) d'origine de Tiziano Bacocco (tizbac) et sur le client graphique Nimbus Backup de RDEM Systems, qui y a été intégré et dont est issue l'interface graphique de cette application.
+>
+> ☕ Le client est gratuit et le restera. S'il vous fait gagner du temps, vous pouvez [m'offrir un café sur Ko-fi](https://ko-fi.com/mickbeeby). C'est entièrement facultatif et n'achète ni assistance ni promesse de fonctionnalité.
 
 **Proxmox Backup Client est un client de sauvegarde open source (GPL-3.0) pour Proxmox Backup Server (PBS), sous Windows et Linux.** Il sauvegarde des dossiers sous forme d'archives de fichiers navigables et des machines entières sous forme d'images disque amorçables, selon des planifications ou à la demande, et restaure tout, d'un simple fichier à une machine entière, sur le même ordinateur, sur une machine de remplacement ou dans une machine virtuelle Proxmox VE.
 
@@ -696,11 +701,14 @@ Il est conçu pour mon propre homelab. Je teste moi-même chaque version avant s
 - **Les rapports de bugs sont les bienvenus** : ouvrez une [issue](https://github.com/mjb-is/proxmoxbackupclient_go/issues) avec ce que vous avez fait, ce qui s'est passé et le journal (le Journal des messages, ou les fichiers du dossier des paramètres).
 - **Demandes de fonctionnalités** : j'ajoute les fonctionnalités utiles à mon propre usage, donc je ne prends pas de demandes pour d'autres usages. Merci de les adresser au projet d'origine, [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go/issues). Les pull requests qui corrigent des bugs, ou qui seraient clairement utiles à mon usage aussi, sont les bienvenues.
 
+Les rapports de bugs et les correctifs sont l'aide la plus utile. Si vous souhaitez remercier autrement, vous pouvez [m'offrir un café sur Ko-fi](https://ko-fi.com/mickbeeby).
+
 ## 🙏 Remerciements et historique
 
 Le client en ligne de commande d'origine a été écrit par Tiziano Bacocco (tizbac) à partir de 2023. Le client graphique de RDEM Systems y a ensuite été intégré, et avec lui la première GUI, la prise en charge multi-PBS et le service Windows. Ce fork a commencé en septembre 2026 pour combler les manques qui empêchaient PBS d'être mon unique système de sauvegarde ; ses versions partent de la v0.3.0, et les corrections d'intérêt général sont renvoyées au projet d'origine.
 
 - Le client d'origine, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), de Tiziano Bacocco (tizbac) et ses contributeurs.
+- Le client graphique Nimbus Backup de RDEM Systems, point de départ de l'interface graphique de cette application.
 - Le fonctionnement et l'esprit de Backup for Workgroups (BFW), dont s'inspirent les ensembles de sauvegarde, la Récupération et le Retour arrière.
 - [Clonezilla Live](https://clonezilla.org/), sur lequel repose l'ISO de restauration bare-metal.
 
@@ -711,3 +719,5 @@ GPLv3 : voir le fichier [LICENSE](LICENSE).
 ---
 
 **Modifications depuis le fork © 2026 mjb-is, à partir du travail de Tiziano Bacocco (tizbac), des contributeurs de Proxmox Backup Client GO et de RDEM Systems (© 2024-2026).**
+
+☕ Si ce client vous est utile, vous pouvez [m'offrir un café sur Ko-fi](https://ko-fi.com/mickbeeby). Merci.
