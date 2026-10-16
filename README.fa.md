@@ -13,6 +13,11 @@
 
 **Proxmox Backup Client یک کلاینت پشتیبان‌گیری متن‌باز (GPL-3.0) برای Proxmox Backup Server (PBS) است که روی ویندوز و لینوکس کار می‌کند.** از پوشه‌ها به‌صورت آرشیو فایل قابل مرور و از کل ماشین به‌صورت ایمیج دیسک قابل بوت پشتیبان می‌گیرد، طبق زمان‌بندی یا هر وقت بخواهید، و هر چیزی را از یک فایل تنها تا کل ماشین برمی‌گرداند: روی همان کامپیوتر، روی یک ماشین جایگزین یا روی یک ماشین مجازی Proxmox VE.
 
+<p align="center">
+  <a href="docs/screenshots/overview-how-it-works.png"><img src="docs/screenshots/overview-how-it-works.png" width="400" alt="How it works: Windows and Linux machines back up through the client to Proxmox Backup Server, then restore as files, onto bare metal, or into a Proxmox VE VM"></a>
+  <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
+</p>
+
 من آن را برای homelab خودم می‌سازم تا PBS تنها سیستم پشتیبان‌گیری مجموعه‌ای از سرورها، کامپیوترهای رومیزی و لپ‌تاپ‌های ویندوز و لینوکس باشد و جای Backup for Workgroups، آینه‌های rsync و ایمیج‌های Clonezilla/RescueZilla را بگیرد. این پروژه در سپتامبر 2026 به‌عنوان فورکی از [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) شروع شد و از آن زمان بسیار فراتر رفته است: بیش از 350 کامیت، که 18 رفع اشکال و قابلیت از میان آن‌ها به پروژه اصلی بازگردانده شده است ([فهرست در پایین](#-مشارکت-در-پروژه-اصلی)).
 
 **می‌توانید آن را همان‌گونه که هست به کار ببرید.** این نرم‌افزار رسماً **نرم‌افزار آلفا** است و استفاده از آن کاملاً با مسئولیت خودتان است، بدون هیچ نوع ضمانت یا تعهدی. من هر نسخه را خودم آزمایش می‌کنم و روی ماشین‌های خودم به‌طور منظم از آن استفاده می‌کنم، اما پیش از تکیه بر آن بخش [وضعیت، گزارش باگ و درخواست قابلیت](#-وضعیت-گزارش-باگ-و-درخواست-قابلیت) را بخوانید.

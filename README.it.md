@@ -13,6 +13,11 @@
 
 **Proxmox Backup Client è un client di backup open source (GPL-3.0) per Proxmox Backup Server (PBS), per Windows e Linux.** Esegue il backup di cartelle come archivi di file sfogliabili e di macchine intere come immagini disco avviabili, secondo pianificazioni o su richiesta, e ripristina qualsiasi cosa, da un singolo file a una macchina intera, sullo stesso computer, su una macchina sostitutiva o in una macchina virtuale Proxmox VE.
 
+<p align="center">
+  <a href="docs/screenshots/overview-how-it-works.png"><img src="docs/screenshots/overview-how-it-works.png" width="400" alt="How it works: Windows and Linux machines back up through the client to Proxmox Backup Server, then restore as files, onto bare metal, or into a Proxmox VE VM"></a>
+  <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
+</p>
+
 Lo sviluppo per il mio homelab, per fare di PBS l'unico sistema di backup di un insieme misto di server, desktop e portatili Windows e Linux, al posto di Backup for Workgroups, di mirror rsync e di immagini Clonezilla/RescueZilla. È nato a settembre 2026 come fork di [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) e lo ha ormai superato di molto: oltre 350 commit da allora, con 18 correzioni e funzionalità inviate al progetto originale ([elenco più sotto](#-contributi-al-progetto-originale)).
 
 **Siete liberi di usarlo così com'è.** È ufficialmente **software alpha**, da usare a vostro rischio, senza alcuna garanzia di alcun tipo. Collaudo personalmente ogni release e lo uso regolarmente sulle mie macchine, ma leggete [Stato, segnalazioni di bug e richieste di funzionalità](#-stato-segnalazioni-di-bug-e-richieste-di-funzionalità) prima di farci affidamento.

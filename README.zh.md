@@ -13,6 +13,11 @@
 
 **Proxmox Backup Client 是一个面向 Proxmox Backup Server (PBS) 的开源 (GPL-3.0) 备份客户端，可在 Windows 和 Linux 上运行。** 它把文件夹备份为可浏览的文件归档，把整台机器备份为可启动的磁盘镜像，可以按计划运行，也可以随时手动运行；恢复时小到单个文件、大到整台机器都能取回，可以恢复到原来的电脑、替换用的电脑或 Proxmox VE 虚拟机上。
 
+<p align="center">
+  <a href="docs/screenshots/overview-how-it-works.png"><img src="docs/screenshots/overview-how-it-works.png" width="400" alt="How it works: Windows and Linux machines back up through the client to Proxmox Backup Server, then restore as files, onto bare metal, or into a Proxmox VE VM"></a>
+  <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
+</p>
+
 我为自己的家庭实验室 (homelab) 开发它，目的是让 PBS 成为 Windows 和 Linux 服务器、台式机和笔记本混合环境中唯一的备份系统，取代 Backup for Workgroups、rsync 镜像以及 Clonezilla/RescueZilla 镜像。它于 2026 年 9 月作为 [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) 的 fork 起步，如今已远远超出原项目：此后已有 350 多个 commit，其中 18 项修复和功能已回馈给原项目（[见下方列表](#-对原项目的贡献)）。
 
 **欢迎按原样使用。** 它正式定位为 **alpha 软件**，使用风险完全由你自己承担，不提供任何形式的保证或担保。每个版本都由我亲自测试，我自己的机器也在日常使用它，但在依赖它之前，请先阅读[状态、错误报告和功能请求](#-状态错误报告和功能请求)。

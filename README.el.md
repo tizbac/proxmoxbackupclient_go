@@ -13,6 +13,11 @@
 
 **Το Proxmox Backup Client είναι πρόγραμμα-πελάτης αντιγράφων ασφαλείας ανοιχτού κώδικα (GPL-3.0) για το Proxmox Backup Server (PBS), για Windows και Linux.** Αποθηκεύει φακέλους ως αρχεία που μπορείτε να περιηγηθείτε και ολόκληρα μηχανήματα ως εκκινήσιμες εικόνες δίσκων, με χρονοδιάγραμμα ή κατ' απαίτηση, και φέρνει πίσω οτιδήποτε, από ένα μεμονωμένο αρχείο έως ένα ολόκληρο μηχάνημα, στον ίδιο υπολογιστή, σε έναν αντικαταστάτη ή σε μια εικονική μηχανή Proxmox VE.
 
+<p align="center">
+  <a href="docs/screenshots/overview-how-it-works.png"><img src="docs/screenshots/overview-how-it-works.png" width="400" alt="How it works: Windows and Linux machines back up through the client to Proxmox Backup Server, then restore as files, onto bare metal, or into a Proxmox VE VM"></a>
+  <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
+</p>
+
 Το φτιάχνω για το δικό μου homelab, ώστε το PBS να γίνει το μοναδικό σύστημα αντιγράφων ασφαλείας για ένα μείγμα διακομιστών, επιτραπέζιων και φορητών υπολογιστών με Windows και Linux, στη θέση του Backup for Workgroups, των κατοπτρισμών rsync και των εικόνων Clonezilla/RescueZilla. Ξεκίνησε τον Σεπτέμβριο του 2026 ως fork του [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) και έχει πάει πολύ πιο πέρα από αυτό: πάνω από 350 commits από τότε, με 18 διορθώσεις και λειτουργίες να έχουν σταλεί πίσω στο αρχικό έργο ([λίστα παρακάτω](#-συνεισφορές-στο-αρχικό-έργο)).
 
 **Είστε ευπρόσδεκτοι να το χρησιμοποιήσετε ως έχει.** Είναι επίσημα **λογισμικό σε στάδιο alpha**, το χρησιμοποιείτε με δική σας ευθύνη, χωρίς καμία απολύτως εγγύηση. Δοκιμάζω ο ίδιος κάθε έκδοση και το χρησιμοποιώ τακτικά στα δικά μου μηχανήματα, αλλά διαβάστε την ενότητα [Κατάσταση, αναφορές σφαλμάτων και αιτήματα λειτουργιών](#-κατάσταση-αναφορές-σφαλμάτων-και-αιτήματα-λειτουργιών) πριν βασιστείτε σε αυτό.
