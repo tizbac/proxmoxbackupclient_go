@@ -45,6 +45,8 @@ go build -tags service -trimpath -ldflags "-s -w -X main.appVersion=0.9.1" -o bu
 
 This gives `gui\build\bin\ProxmoxBackupClient.exe` (the app) and `gui\build\bin\ProxmoxBackupClientSVC.exe` (the background service, which also takes `-list-sets`, `-undelete` and `-rollback`). Keep them in the same folder. Use the version from `gui/wails.json` (`productVersion`).
 
+The app's Help page shows the manuals from `gui/docs/`, copies of `docs/manual/GUI.md`, `CLI.md`, `BMR.md` and `docs/RESTORE_GUIDE.md`. After editing a manual, copy it over first (`make manuals`, which `make gui` runs); the GUI tests fail while the copies differ.
+
 To build the Windows GUI on Linux, `./build_gui_windows_docker.sh` runs `wails build` in a `golang:1.25` container and writes `ProxmoxBackupClientGO.exe`. It does not build the service.
 
 ## Command-line tools

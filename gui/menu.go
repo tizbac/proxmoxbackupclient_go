@@ -72,20 +72,32 @@ func buildAppMenu(a *App) *menu.Menu {
 	})
 	// These two mirror each other's naming ("Bare Metal Restore ISO"/"Bare
 	// Metal Restore Guide") deliberately, so both halves of disaster-recovery
-	// prep sit together in the menu. View opens an in-app overlay (the one
-	// "opens an overlay" exception this file's own convention already makes
-	// for nav:* events); Download calls straight into the App method, same
-	// as the ISO's BrowserOpenURL call above — an action, not a navigation.
+	// prep sit together in the menu. View opens the bare-metal restore manual
+	// on the Help page; Save calls straight into the App method, same as the
+	// ISO's BrowserOpenURL call above: an action, not a navigation.
 	toolsMenu.AddText("View Bare Metal Restore Guide", nil, func(_ *menu.CallbackData) {
-		runtime.EventsEmit(a.ctx, "nav:bmrguide")
+		runtime.EventsEmit(a.ctx, "nav:manual", "bmr")
 	})
-	toolsMenu.AddText("Download Bare Metal Restore Guide…", nil, func(_ *menu.CallbackData) {
-		if _, err := a.DownloadBMRGuide(); err != nil {
-			writeDebugLog("DownloadBMRGuide (menu): " + err.Error())
+	toolsMenu.AddText("Save Bare Metal Restore Guide…", nil, func(_ *menu.CallbackData) {
+		if _, err := a.SaveManual("bmr"); err != nil {
+			writeDebugLog("SaveManual bmr (menu): " + err.Error())
 		}
 	})
 
 	helpMenu := appMenu.AddSubmenu("Help")
+	helpMenu.AddText("User Manual", keys.Key("f1"), func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:manual", "gui")
+	})
+	helpMenu.AddText("Command-Line Manual", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:manual", "cli")
+	})
+	helpMenu.AddText("Bare-Metal Restore Manual", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:manual", "bmr")
+	})
+	helpMenu.AddText("Which Restore Do I Need?", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:manual", "restore")
+	})
+	helpMenu.AddSeparator()
 	helpMenu.AddText("Known Limitations", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "nav:limitations")
 	})

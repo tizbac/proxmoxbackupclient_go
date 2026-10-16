@@ -5,7 +5,7 @@ import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
 import DirectoryTree from './components/DirectoryTree'
 import KnownLimitationsModal from './components/KnownLimitationsModal'
-import BMRGuideModal from './components/BMRGuideModal'
+import ManualViewer from './components/ManualViewer'
 import ClosePromptModal from './components/ClosePromptModal'
 import JobsLockModal from './components/JobsLockModal'
 import RadioGroup from './components/RadioGroup'
@@ -406,7 +406,13 @@ function App() {
   }
   const [activeTab, setActiveTab] = useState('backup')
   const [showLimitations, setShowLimitations] = useState(false)
-  const [showBMRGuide, setShowBMRGuide] = useState(false)
+  // Help page: which manual and section. nonce makes asking for the same
+  // section again scroll back to it.
+  const [manualView, setManualView] = useState({ doc: 'gui', anchor: '', nonce: 0 })
+  const openManual = (doc, anchor = '') => {
+    setManualView((v) => ({ doc: doc || 'gui', anchor: anchor || '', nonce: v.nonce + 1 }))
+    setActiveTab('help')
+  }
   const [showClosePrompt, setShowClosePrompt] = useState(false)
   const [showPreferences, setShowPreferences] = useState(false)
   const [prefsTab, setPrefsTab] = useState('account')
@@ -1182,8 +1188,8 @@ function App() {
     const unsubLimitations = EventsOn('nav:limitations', () => {
       setShowLimitations(true)
     })
-    const unsubBMRGuide = EventsOn('nav:bmrguide', () => {
-      setShowBMRGuide(true)
+    const unsubManual = EventsOn('nav:manual', (doc) => {
+      openManual(doc)
     })
     const unsubClosePrompt = EventsOn('nav:closeprompt', () => {
       setShowClosePrompt(true)
@@ -1195,7 +1201,7 @@ function App() {
     return () => {
       if (unsubGoto) unsubGoto()
       if (unsubLimitations) unsubLimitations()
-      if (unsubBMRGuide) unsubBMRGuide()
+      if (unsubManual) unsubManual()
       if (unsubClosePrompt) unsubClosePrompt()
       if (unsubPreferences) unsubPreferences()
     }
@@ -2977,6 +2983,9 @@ function App() {
         <button className="nav-btn nav-btn-secondary" onClick={() => { setPrefsTab('account'); setShowPreferences(true) }}>
           {t('prefsTitle')}
         </button>
+        <button className={`nav-btn nav-btn-secondary ${activeTab === 'help' ? 'active' : ''}`} onClick={() => setActiveTab('help')}>
+          {t('navHelp')}
+        </button>
         <button className={`nav-btn nav-btn-secondary ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>
           {t('tabAbout')}
         </button>
@@ -3490,7 +3499,7 @@ function App() {
               <div style={{display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 26px', borderTop: '1px solid #ddd', flex: '0 0 auto'}}>
                 <button className="btn btn-primary" onClick={() => setShowPreferences(false)}>{t('prefsOK')}</button>
                 <button className="btn" onClick={() => setShowPreferences(false)}>{t('cancel')}</button>
-                <button className="btn">{t('prefsHelp')}</button>
+                <button className="btn" onClick={() => { setShowPreferences(false); openManual('gui', '14-preferences') }}>{t('prefsHelp')}</button>
               </div>
             </div>
           </div>
@@ -5260,6 +5269,13 @@ function App() {
           )}
         </div>
 
+        <div className={`tab-content ${activeTab === 'help' ? 'active' : ''}`}>
+          {activeTab === 'help' && (
+            <ManualViewer doc={manualView.doc} anchor={manualView.anchor} nonce={manualView.nonce}
+              onOpen={openManual} appVersion={appVersion} />
+          )}
+        </div>
+
         <div className={`tab-content ${activeTab === 'about' ? 'active' : ''}`}>
           <div style={{display: 'flex', alignItems: 'baseline', gap: '10px'}}>
             <h2 style={{margin: 0}}>{t('aboutTitle')}</h2>
@@ -5530,7 +5546,6 @@ function App() {
       </div>
 
       {showLimitations && <KnownLimitationsModal onClose={() => setShowLimitations(false)} />}
-      {showBMRGuide && <BMRGuideModal onClose={() => setShowBMRGuide(false)} />}
       {showClosePrompt && <ClosePromptModal onClose={() => setShowClosePrompt(false)} />}
       {showJobsLock && (
         <JobsLockModal

@@ -1,7 +1,7 @@
 # Proxmox Backup Client: build, package and test.
 # The same commands as BUILD.md; run from the repository root.
 
-.PHONY: help all cli cli-directory cli-machine cli-nbd gui gui-dev service \
+.PHONY: help all cli cli-directory cli-machine cli-nbd gui gui-dev service manuals \
 	deb pkgfedora msi test test-e2e lint security-check clean install-deps
 
 # Version from gui/wails.json (productVersion)
@@ -20,6 +20,7 @@ help:
 	@echo "  gui            the GUI, gui/build/bin/ProxmoxBackupClient$(EXE) (wails build)"
 	@echo "  service        the background service, gui/build/bin/ProxmoxBackupClientSVC$(EXE)"
 	@echo "  gui-dev        the GUI in wails dev mode"
+	@echo "  manuals        copy the manuals from docs/ into gui/docs/ (built into the app; gui does this)"
 	@echo "  deb            the .deb (packaging/debian/build-deb.sh)"
 	@echo "  pkgfedora      the .rpm, in a fedora:44 container (packaging/fedora/build-rpm.sh)"
 	@echo "  msi            the Windows installer (installer/wix/build-msi.ps1; build gui and service first)"
@@ -52,7 +53,13 @@ cli-nbd:
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=0 go build $(CLI_FLAGS) -o $(BUILD_DIR)/proxmoxbackup-nbd ./nbd
 
-gui:
+# The app's Help page shows these manuals; go:embed only sees files inside gui/.
+manuals:
+	@mkdir -p gui/docs/manual
+	cp docs/manual/GUI.md docs/manual/CLI.md docs/manual/BMR.md gui/docs/manual/
+	cp docs/RESTORE_GUIDE.md gui/docs/
+
+gui: manuals
 	cd gui && wails build -clean -ldflags "-X main.appVersion=$(VERSION)"
 
 gui-dev:

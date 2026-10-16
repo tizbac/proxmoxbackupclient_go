@@ -7,12 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The user manuals in the app.** A **Help** page in the side menu shows the GUI, command-line and bare-metal restore manuals and the restore scenarios ("Which restore?"), built into the program so they work offline and match its version. A contents list jumps to each section, links between the manuals stay in the app, links to other files open on GitHub at this version, and **Find in this manual**, **Save a copy…** and **Open on GitHub** sit above it. The Help menu opens each manual (F1 for the GUI one), and the Preferences dialog's **Help** button, which did nothing, opens the Preferences section. The manuals are in English; the page's own labels are in every language.
+
 ### Added (from the original project)
 - `proxmoxbackup-directory -no-mtime` (`"no-mtime": true` in the JSON config) records 1970-01-01 as every file's and folder's modification time, so a tree whose times move while the contents stay the same (a store filed under hash-named folders) no longer uploads its chunks again on every run. The real modification times are not kept. Metadata change detection reads every file with it. Written by this fork for the original project (part of tizbac/proxmoxbackupclient_go#105) and not carried back until now. Tested against PBS: after only the times changed, 2 of 12 chunks were new with the option and all 12 without.
 - Passphrase-protected key files in the flat layout (`"kdf": {"kdf": "scrypt", ...}`) that the original project's code expected before #95 are read, so such a key works here unchanged. (Unprotected keys, the only kind the original project's GUI creates, already worked.) Key files are still always written in the official layout. The tests with key files made by the official `proxmox-backup-client` came over too.
 
 ### Changed
 - **Clearer Backup Set More menu**: the last four items say what they act on: **Undelete removed files...**, **Roll back to chosen snapshot...**, **Clone this Backup Set** and **Delete this Backup Set** (were Undelete..., Roll back..., Clone and Delete). In every language.
+- **One bare-metal restore guide.** Tools > View Bare Metal Restore Guide shows the bare-metal restore manual (`docs/manual/BMR.md`) on the Help page instead of a separate, shorter guide that had fallen behind it, and Save Bare Metal Restore Guide… saves that manual. The old guide (`gui/docs/BARE_METAL_RESTORE.md`) is gone.
 
 ## [0.9.1] - 2026-10-15
 

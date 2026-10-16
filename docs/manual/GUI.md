@@ -80,7 +80,7 @@ On Linux, **Proxmox Backup Client (administrator)** runs the GUI as root with yo
 
 ## 3. The window
 
-The left sidebar has **Backup**, **Restore**, **Undelete** and **Roll back**, a thin divider, then **Reports** and **Message Log**. **Preferences** and **About** are at the bottom. The language picker (flag) is at the top right; 18 languages are available. The status bar at the bottom shows the version ("Version v..." for a release, "Development build ..." otherwise) and a **Known Limitations** link.
+The left sidebar has **Backup**, **Restore**, **Undelete** and **Roll back**, a thin divider, then **Reports** and **Message Log**. **Preferences**, **Help** and **About** are at the bottom. The language picker (flag) is at the top right; 18 languages are available. The status bar at the bottom shows the version ("Version v..." for a release, "Development build ..." otherwise) and a **Known Limitations** link.
 
 The menu bar:
 
@@ -93,9 +93,13 @@ The menu bar:
 | Tools | Backup, Restore, Undelete, Roll back | Opens that page |
 | Tools | Preferences… | Opens the Preferences dialog |
 | Tools | Download Bare Metal Restore ISO… | Opens the latest release page in your browser |
-| Tools | View Bare Metal Restore Guide | Shows the built-in bare-metal restore guide |
-| Tools | Download Bare Metal Restore Guide… | Saves the guide as a Markdown file |
+| Tools | View Bare Metal Restore Guide | Opens the bare-metal restore manual on the Help page |
+| Tools | Save Bare Metal Restore Guide… | Saves that manual as a Markdown file |
+| Help | User Manual (F1) | Opens this manual on the Help page |
+| Help | Command-Line Manual, Bare-Metal Restore Manual, Which Restore Do I Need? | Opens that manual on the Help page |
 | Help | Known Limitations, About | Information pages |
+
+**Help** shows the user manuals, built into the program so they work offline and match its version: this one, the command-line manual, the bare-metal restore manual and the restore scenarios ("Which restore?"). Pick one at the top; the contents list on the left jumps to a section, and links between the manuals stay in the app. **Find in this manual** searches the page (Enter for the next match, Shift+Enter for the previous one). **Save a copy…** saves the manual as a Markdown file, for example to read on a phone during a bare-metal restore; **Open on GitHub** shows it online at this version. The manuals are in English.
 
 Anything that deletes, replaces or restores asks first in a dialog naming the action, for example **Delete this Backup Set?** with **Cancel** and **Delete**. For risky actions the dialog is red and Cancel is selected, so pressing Enter does nothing harmful; Escape or a click outside the dialog cancels.
 
@@ -616,7 +620,7 @@ A Metadata run also logs how many unchanged files were reused, how many chunks w
 
 ## 14. Preferences
 
-Open Preferences from the side menu or **Tools > Preferences…**. The dialog has **OK** and **Cancel** at the bottom; each setting is saved as you change it (or with the tab's own **Save** button).
+Open Preferences from the side menu or **Tools > Preferences…**. The dialog has **OK**, **Cancel** and **Help** at the bottom; each setting is saved as you change it (or with the tab's own **Save** button). **Help** opens this section of the manual.
 
 | Tab | Contents |
 |---|---|

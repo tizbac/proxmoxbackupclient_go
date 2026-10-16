@@ -867,3 +867,47 @@ body {
 .set-more-item:disabled { color: #a0aec0; cursor: default; background: none; }
 .set-more-menu { white-space: nowrap; }
 .set-more-sep { border-top: 1px solid #e2e8f0; margin: 4px 0; }
+
+/* Help page: the user manuals (components/ManualViewer.jsx) */
+.manual-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-bottom: 14px; }
+.manual-toolbar h2 { margin: 0; }
+.manual-tabs { display: flex; border: 1px solid #cbd5e0; border-radius: 6px; overflow: hidden; }
+.manual-tab {
+    background: #fff; border: none; border-right: 1px solid #cbd5e0; padding: 7px 14px;
+    font: inherit; font-size: 13px; font-weight: 600; color: #4a5568; cursor: pointer;
+}
+.manual-tab:last-child { border-right: none; }
+.manual-tab:hover { background: #f1f4f8; }
+.manual-tab.active { background: var(--accent); color: #fff; }
+.manual-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.manual-actions .btn { padding: 7px 14px; font-size: 13px; margin: 0; text-decoration: none; }
+.manual-find { width: 230px; padding: 7px 10px; border: 1px solid #cbd5e0; border-radius: 6px; font: inherit; font-size: 13px; }
+.manual-note { font-size: 12px; color: #718096; margin: -6px 0 12px; }
+.manual-layout { display: flex; align-items: flex-start; gap: 28px; }
+.manual-toc {
+    flex: 0 0 210px; position: sticky; top: 0; max-height: calc(100vh - 220px); overflow-y: auto;
+    border-right: 1px solid #e2e8f0; padding-right: 12px;
+}
+.manual-toc-title { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #a0aec0; margin-bottom: 6px; }
+.manual-toc a { display: block; padding: 4px 6px; border-radius: 4px; font-size: 13px; color: #4a5568; text-decoration: none; line-height: 1.35; }
+.manual-toc a:hover { background: #f1f4f8; color: #1a202c; }
+.manual-toc a.active { color: var(--accent); font-weight: 600; }
+.manual-body { flex: 1 1 auto; min-width: 0; max-width: 860px; font-size: 14px; line-height: 1.6; color: #2d3748; }
+.manual-body h1 { font-size: 24px; margin: 0 0 12px; }
+.manual-body h2 { font-size: 19px; margin: 30px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
+.manual-body h3 { font-size: 16px; margin: 22px 0 8px; }
+.manual-body h4 { font-size: 14px; margin: 18px 0 6px; }
+.manual-body h1, .manual-body h2, .manual-body h3, .manual-body h4 { scroll-margin-top: 8px; color: #1a202c; }
+.manual-body p { margin: 8px 0; }
+.manual-body ul, .manual-body ol { margin: 8px 0; padding-left: 24px; }
+.manual-body li { margin: 3px 0; }
+.manual-body li > ul, .manual-body li > ol { margin: 3px 0; }
+.manual-body a { color: var(--accent); }
+.manual-body code { font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 12.5px; background: #f1f3f5; padding: 1px 5px; border-radius: 3px; }
+.manual-body pre { background: #1f2329; color: #e6e6e6; padding: 12px 14px; border-radius: 6px; overflow-x: auto; margin: 10px 0; }
+.manual-body pre code { background: none; padding: 0; color: inherit; font-size: 12.5px; }
+.manual-body blockquote { border-left: 3px solid var(--accent); background: #fff8f1; margin: 10px 0; padding: 6px 12px; color: #4a5568; }
+.manual-body table { border-collapse: collapse; margin: 10px 0; font-size: 13px; display: block; overflow-x: auto; }
+.manual-body th, .manual-body td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; vertical-align: top; }
+.manual-body th { background: #f7fafc; font-weight: 600; }
+.manual-body hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }

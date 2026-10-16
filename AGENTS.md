@@ -38,6 +38,7 @@ Shared code: `pbscommon` (PBS protocol, pxar, chunking, encryption), `clientcomm
 
 - GUI build requires `wails` CLI tool (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0`) on Windows; the Linux packages build the GUI with plain `go build -tags production`
 - Build process uses security hardening flags (`-trimpath`, `-s -w`)
+- The app's Help page embeds copies of `docs/manual/GUI.md`, `CLI.md`, `BMR.md` and `docs/RESTORE_GUIDE.md` from `gui/docs/` (go:embed cannot reach outside `gui/`). Edit the files in `docs/`, then copy them over with `make manuals` (`make gui` does it too); `TestEmbeddedManualsMatchDocs` fails while they differ, and `node src/manuals.test.mjs` in `gui/frontend` checks every link between the manuals
 - Settings live in `C:\ProgramData\ProxmoxBackupClient\` on Windows; on Linux in `~/.proxmox-backup-guardian/`, or `/var/lib/proxmoxbackupclient/` once the service is installed
 - Cross-compilation uses GOOS and GOARCH environment variables
 - Live tests are the `gui/zz_*_livetest*_test.go` files; each is skipped unless its environment variables are set (for example `PBS_LIVE_TEST=1`; the skip message names them), and most need a real PBS
