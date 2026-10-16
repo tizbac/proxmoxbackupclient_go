@@ -1,6 +1,6 @@
 # Proxmox Backup Client - TODO
 
-What is still open, as of 2026-10-15 (after v0.9.1). Finished work is in [CHANGELOG.md](CHANGELOG.md). The old, much longer list (with its design notes, findings and audit trail) is kept in [docs/TODO-HISTORY.md](docs/TODO-HISTORY.md); every item still open there has been carried over here.
+What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGELOG.md](CHANGELOG.md). The old, much longer list (with its design notes, findings and audit trail) is kept in [docs/TODO-HISTORY.md](docs/TODO-HISTORY.md); every item still open there has been carried over here.
 
 ## Release and distribution
 
@@ -19,7 +19,8 @@ What is still open, as of 2026-10-15 (after v0.9.1). Finished work is in [CHANGE
 
 - [ ] **Live test: the encryption key on machine backups the service runs** (fixed in 2f46844, not tried with a key configured).
 - [ ] **Live test on Linux: Restart as administrator** (pkexec) from a desktop session, and clicking Install in the root app.
-- [ ] Maybe: Pause from the tray menu, and a "resume at" time.
+- [ ] **Live test: Pause backup in the tray** on a real desktop, for a run of the app and a run of the service (built 2026-10-16).
+- [ ] Maybe: a "resume at" time for a paused backup.
 
 ## Backing up
 
@@ -42,7 +43,7 @@ What is still open, as of 2026-10-15 (after v0.9.1). Finished work is in [CHANGE
 
 - [ ] Boot-stick exclusion, still to try: a dd-written stick, a real USB SSD, and a VM with two internal disks. Done: the ISO as a fixed SATA disk on a UEFI VM (2026-10-13), and a real Ventoy stick with UEFI and BIOS, in Ventoy's normal and GRUB2 modes (2026-10-15, v0.9.1 ISO). Check the key-file step lists the Ventoy data partition (exFAT) so the key can live on the same stick.
 - [ ] A full restore with the v0.9.1 ISO onto a target the same size or larger (the smaller-disk refusal was tested; the path that goes ahead was not booted with this ISO).
-- [ ] The wizard passes the PBS password to `pbsnbd` on the command line, so it shows in `ps` on the live system: pass it through the environment or a file.
+- [ ] Rebuild the ISO with the wizards that pass the PBS password and key passphrase to `pbsnbd` in the environment (2026-10-16; `pbsnbd` itself tested on linuxclient), boot it, and check `ps` shows neither during a restore with a protected key.
 
 ## Security
 
@@ -55,19 +56,15 @@ What is still open, as of 2026-10-15 (after v0.9.1). Finished work is in [CHANGE
 
 - [ ] Native speakers to look over the app's strings in the languages its users actually use. All 17 were reviewed against the English on 2026-10-13 (meaning, one term per concept, menu names, plurals, quotation marks); a native ear still catches what is correct but unidiomatic. The feature lists on the About page (`featuresList`, `techList`) were not part of that review, nor were the Backup Set More menu's new labels (37df34d, 2026-10-15).
 - [ ] The 12 translated READMEs were regenerated from the English one on 2026-10-13 (condensed, machine-translated): keep them in step when the English README changes (they do not have the v0.9.1 paragraph yet), and have native speakers look them over.
-- [ ] `docs/screenshots/nimbus-gui-*.png` (3 files from September) are no longer linked from anywhere: delete them.
 
 ## Command-line tools
 
-- [ ] `proxmoxbackup-directory` still prints a few early errors (config file, fingerprint, login, key file) to stdout instead of stderr.
 - [ ] Maybe: the app and the service note a notification e-mail that could not be sent in the snapshot's PBS comment, as the command-line tools do since v0.9.1 (`clientcommon.MailFailedNote`).
 
 ## Tests
 
-- [ ] `testing/e2e/run.sh` still says symbolic links are skipped.
-
+- [ ] Maybe: symbolic links in the Docker end-to-end fixture (`testing/e2e`), with `assert_tree_identical` comparing link targets.
 - [ ] Load test: five Backup Sets at once, check memory stays bounded.
-- [ ] The opt-in end-to-end test (`PBS_E2E=1`) still skips folder modification times; enable that comparison next time it runs.
 
 ## Parked
 

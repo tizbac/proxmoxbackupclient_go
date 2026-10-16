@@ -4,6 +4,7 @@ package main
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
@@ -13,6 +14,16 @@ import (
 // polledRuns holds the service runs this window started and follows itself
 // (pollBackupProgress); watchServiceRuns leaves those alone.
 var polledRuns sync.Map // job ID -> struct{}
+
+// serviceRunsSnapshot is the service's run list as watchServiceRuns last
+// fetched it, for the tray's Pause/Resume item. at is when the fetch started.
+type serviceRunsSnapshot struct {
+	at   time.Time
+	runs *api.RunsResponse
+}
+
+// latestServiceRuns is nil while the service does not run the schedules.
+var latestServiceRuns atomic.Pointer[serviceRunsSnapshot]
 
 // watchServiceRuns shows the service's own runs in this window. While the
 // service runs the schedules, it lists the service's runs every 3 s and
@@ -28,12 +39,15 @@ func (a *App) watchServiceRuns() {
 	for range ticker.C {
 		if a.ctx == nil || a.mode != api.ModeService {
 			following = ""
+			latestServiceRuns.Store(nil)
 			continue
 		}
+		fetched := time.Now()
 		resp, err := a.apiClient.GetRuns()
 		if err != nil {
 			continue
 		}
+		latestServiceRuns.Store(&serviceRunsSnapshot{at: fetched, runs: resp})
 		var run *api.BackupProgress
 		if following != "" {
 			for i := range resp.Runs {

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **The user manuals in the app.** A **Help** page in the side menu shows the GUI, command-line and bare-metal restore manuals and the restore scenarios ("Which restore?"), built into the program so they work offline and match its version. A contents list jumps to each section, links between the manuals stay in the app, links to other files open on GitHub at this version, and **Find in this manual**, **Save a copy…** and **Open on GitHub** sit above it. The Help menu opens each manual (F1 for the GUI one), and the Preferences dialog's **Help** button, which did nothing, opens the Preferences section. The manuals are in English; the page's own labels are in every language.
+- **Pause from the tray** (Windows). The tray icon's menu has **Pause backup**, which can be clicked while a backup runs, in the app or in the background service, and becomes **Resume backup** while it is paused. The tooltip says **Backup paused**. Pausing in the window shows in the tray within a second or two, and the other way round.
+- `PBS_ENCRYPTION_PASSWORD` (the official client's variable) gives the key passphrase to `proxmoxbackup-directory`, `proxmoxbackup-machine` and `proxmoxbackup-nbd` when `-keyfile-passphrase` is not given, and `proxmoxbackup-nbd -username` takes the password from `PBS_PASSWORD` when `-password` is not given. A secret in the environment does not show in the process list.
+
+### Security
+- **Bare-metal restore ISO: the PBS password and the key passphrase no longer show in `ps`.** The wizards (`ocs-pbs-bare-metal-restore` and `ocs-pbs-nbd`) passed them to `pbsnbd` as `-password` and `-keyfile-passphrase`, so anyone on the live system could read them in the process list while a restore ran. They now go in `PBS_PASSWORD` and `PBS_ENCRYPTION_PASSWORD`.
+
+### Fixed
+- `proxmoxbackup-directory` prints its early errors (config file, certificate fingerprint, password prompt, key file, login, mail templates) on standard error, like the rest of its errors, instead of standard output.
+
+### Tests
+- The live end-to-end folder test (`PBS_E2E=1`) compares the modification times of folders as well as files. It passed against PBS: 1,915 files and folders, every restore, times included.
 
 ### Added (from the original project)
 - `proxmoxbackup-directory -no-mtime` (`"no-mtime": true` in the JSON config) records 1970-01-01 as every file's and folder's modification time, so a tree whose times move while the contents stay the same (a store filed under hash-named folders) no longer uploads its chunks again on every run. The real modification times are not kept. Metadata change detection reads every file with it. Written by this fork for the original project (part of tizbac/proxmoxbackupclient_go#105) and not carried back until now. Tested against PBS: after only the times changed, 2 of 12 chunks were new with the option and all 12 without.

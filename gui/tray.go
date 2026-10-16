@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -18,7 +20,19 @@ import (
 var (
 	trayInitialized = false
 	menuShow        *systray.MenuItem
+	menuPause       *systray.MenuItem
 	menuQuit        *systray.MenuItem
+)
+
+// The tray's Pause/Resume item and tooltip. trayMu guards the rest.
+var (
+	trayMu         sync.Mutex
+	trayTooltipMsg = "Scheduled backups active" // last UpdateTrayTooltip message
+	trayRunning    bool                         // a backup runs: the item is enabled
+	trayPaused     bool                         // it is paused: the item says Resume
+	// trayPauseClickedAt (Unix ns) is when the item was last clicked. A service
+	// run list fetched before then may not show that click yet.
+	trayPauseClickedAt atomic.Int64
 )
 
 // preventCloseToTray reports whether closing the main window should be
@@ -55,6 +69,9 @@ func onReady(a *App) func() {
 		menuShow = systray.AddMenuItem("🖥️ Show window", "Open the Proxmox Backup Client interface")
 		systray.AddSeparator()
 
+		menuPause = systray.AddMenuItem("⏸️ Pause backup", "Pause the running backup; it carries on from the same place on Resume")
+		menuPause.Disable() // until a backup runs (trayPauseLoop)
+
 		menuStatus := systray.AddMenuItem("📊 Backup status", "See scheduled backup status")
 		menuStatus.Disable() // For display only
 
@@ -70,6 +87,8 @@ func onReady(a *App) func() {
 					// Show the main window
 					runtime.WindowShow(a.ctx)
 					runtime.WindowUnminimise(a.ctx)
+				case <-menuPause.ClickedCh:
+					a.trayPauseClicked()
 				case <-menuQuit.ClickedCh:
 					writeDebugLog("Tray: Quit clicked")
 					// Quit systray first
@@ -90,7 +109,95 @@ func onReady(a *App) func() {
 		// Populate the real idle tooltip right away, rather than leaving the
 		// generic one up to a minute until the scheduler's own next tick.
 		a.RefreshIdleTooltip()
+
+		go a.trayPauseLoop()
 	}
+}
+
+// trayRunState reports whether a backup runs, in this process or, with Run as
+// Service, in the service, and whether it is paused. ok is false while the
+// service's run list is older than the last click on the item.
+func (a *App) trayRunState() (running, paused, ok bool) {
+	if localBackupRunning() {
+		p, _ := backupPause.Paused()
+		return true, p, true
+	}
+	if !a.serviceRunsBackups() {
+		return false, false, true
+	}
+	snap := latestServiceRuns.Load()
+	if snap == nil {
+		return false, false, true
+	}
+	if snap.at.UnixNano() < trayPauseClickedAt.Load() {
+		return false, false, false
+	}
+	for _, r := range snap.runs.Runs {
+		if r.Running && !r.Complete {
+			return true, r.Paused, true
+		}
+	}
+	return false, false, true
+}
+
+// trayPauseLoop keeps the Pause/Resume item in step with the backup, also
+// when Pause is pressed in the window: enabled only while a backup runs, and
+// Resume while it is paused.
+func (a *App) trayPauseLoop() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		if running, paused, ok := a.trayRunState(); ok {
+			setTrayPause(running, paused)
+		}
+	}
+}
+
+// setTrayPause shows a backup's state on the Pause/Resume item and in the
+// tooltip.
+func setTrayPause(running, paused bool) {
+	paused = running && paused
+	trayMu.Lock()
+	defer trayMu.Unlock()
+	if menuPause == nil || (running == trayRunning && paused == trayPaused) {
+		return
+	}
+	trayRunning, trayPaused = running, paused
+	if paused {
+		menuPause.SetTitle("▶️ Resume backup")
+		menuPause.SetTooltip("Carry on with the paused backup")
+	} else {
+		menuPause.SetTitle("⏸️ Pause backup")
+		menuPause.SetTooltip("Pause the running backup; it carries on from the same place on Resume")
+	}
+	if running {
+		menuPause.Enable()
+	} else {
+		menuPause.Disable()
+	}
+	showTrayTooltipLocked()
+}
+
+// trayPauseClicked pauses or resumes the running backup, wherever it runs.
+func (a *App) trayPauseClicked() {
+	trayPauseClickedAt.Store(time.Now().UnixNano())
+	trayMu.Lock()
+	resume := trayPaused
+	trayMu.Unlock()
+	var st BackupPauseState
+	var err error
+	if resume {
+		writeDebugLog("Tray: Resume backup clicked")
+		st, err = a.ResumeBackup()
+	} else {
+		writeDebugLog("Tray: Pause backup clicked")
+		st, err = a.PauseBackup()
+	}
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("Tray: pause/resume failed: %v", err))
+		return
+	}
+	setTrayPause(true, st.Paused)
 }
 
 func onExit() {
@@ -115,7 +222,24 @@ func (a *App) UpdateTrayTooltip(message string) {
 	if !trayInitialized {
 		return
 	}
-	systray.SetTooltip(fmt.Sprintf("Proxmox Backup Client - %s", message))
+	trayMu.Lock()
+	defer trayMu.Unlock()
+	trayTooltipMsg = message
+	showTrayTooltipLocked()
+}
+
+// showTrayTooltipLocked sets the tooltip from the last message, saying so
+// while the backup is paused. trayMu must be held.
+func showTrayTooltipLocked() {
+	msg := trayTooltipMsg
+	if trayPaused {
+		if label, ok := strings.CutPrefix(msg, "Backup running: "); ok {
+			msg = "Backup paused: " + label
+		} else {
+			msg = "Backup paused"
+		}
+	}
+	systray.SetTooltip(fmt.Sprintf("Proxmox Backup Client - %s", msg))
 }
 
 var (

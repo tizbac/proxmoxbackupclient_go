@@ -431,7 +431,7 @@ The box underneath shows **Processed:** data done / total, in GB with GiB in bra
 - if the connection to PBS drops (the server restarts, the network goes down) the backup fails as it would while running, and has to be run again;
 - Forecast finish and Time remaining show **Paused**, and pick up again from fresh measurements after Resume.
 
-Pause works for folder and machine backups, whether the app or the background service runs them. With **Run as Service** on ([section 15](#15-background-service-tray-and-closing-the-window)), a Backup Set the service starts on its schedule shows the same card in an open app window, with its set's name, within a few seconds, and Pause, Resume and Stop act on the service's run. A window opened during the run picks it up, paused or not. The card of a run the service started on its own shows the stage line and the percentage; the Files, Folder and Upload rows read **Not available**, as the service does not pass those figures on.
+Pause works for folder and machine backups, whether the app or the background service runs them. With **Run as Service** on ([section 15](#15-background-service-tray-and-closing-the-window)), a Backup Set the service starts on its schedule shows the same card in an open app window, with its set's name, within a few seconds, and Pause, Resume and Stop act on the service's run. A window opened during the run picks it up, paused or not. On Windows the tray icon's menu has **Pause backup** too (**Resume backup** while paused), so a run can be paused without opening the window ([section 15](#15-background-service-tray-and-closing-the-window)). The card of a run the service started on its own shows the stage line and the percentage; the Files, Folder and Upload rows read **Not available**, as the service does not pass those figures on.
 
 **Stop** ends the run after the current file, and also works while paused. Reports record it as cancelled (⏹️), not failed.
 
@@ -636,7 +636,7 @@ Open Preferences from the side menu or **Tools > Preferences…**. The dialog ha
 
 **Closing the window on Windows** (the X) asks whether to **Minimize to Tray** or **Exit**. Minimised, the GUI keeps running in the notification area and its schedules still run. **Exit** (also **File > Exit**) quits completely, and no schedules run from the GUI until you open it again.
 
-The **tray icon** (Windows) menu has Show window, Backup status and Quit. Windows notifications report finished backups and restores.
+The **tray icon** (Windows) menu has Show window, Pause backup, Backup status and Quit. **Pause backup** can be clicked while a backup runs, whether the app or the background service runs it, and pauses it as the progress card's Pause does ([section 8](#8-the-backup-progress-card)); it then reads **Resume backup**, and the icon's tooltip says **Backup paused**. Windows notifications report finished backups and restores.
 
 **Linux has no tray.** Closing the window quits the app, and **Minimize to Tray** does nothing. Use the background service for schedules that run while the app is closed.
 
