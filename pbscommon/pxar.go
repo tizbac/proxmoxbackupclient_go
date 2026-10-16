@@ -438,6 +438,15 @@ type PXARArchive struct {
 	// that PXAR cannot represent. Best-effort: errors are logged and ignored.
 	MetaCollector MetaCollector
 
+	// NoMTime writes 0 (1970-01-01) as every file's and folder's modification
+	// time instead of the real one. A changed time changes the archive bytes, so
+	// trees whose times move without their contents changing (a folder gains
+	// and loses temporary files) otherwise re-upload the chunks around every such
+	// entry. Restored items then get 1970-01-01. Metadata change detection
+	// (Reuse) is off with it: a file edited in place keeps its size, and without
+	// its time nothing would show it changed.
+	NoMTime bool
+
 	// PrefetchWorkers > 0 enables per-directory read-ahead: before WriteDir's
 	// file loop runs, it starts up to this many concurrent background reads
 	// for the directory's own regular files (see startPrefetch), so the
@@ -543,7 +552,7 @@ func (a *PXARArchive) archivePath(path string) string {
 // reuseCandidate reports whether metadata change detection would consider
 // path unchanged (used to keep read-ahead off files that will not be read).
 func (a *PXARArchive) reuseCandidate(path string, info os.FileInfo) bool {
-	if a.Reuse == nil || !a.Split || !info.Mode().IsRegular() {
+	if a.Reuse == nil || a.NoMTime || !a.Split || !info.Mode().IsRegular() {
 		return false
 	}
 	mode, uid, gid, secs, nanos := a.entryMetaFor(info, IFREG)
@@ -593,6 +602,9 @@ const entryNanosOffset = 48
 // the file again, so metadata change detection reads it next time instead of
 // reusing the padded content for as long as the file stays unchanged.
 func (a *PXARArchive) markEntryIncomplete(entryAt int) {
+	if a.NoMTime {
+		return // no change detection to steer, and every time stays 0
+	}
 	b := a.buffer.Bytes()
 	if entryAt < 0 || entryAt+entryNanosOffset+4 > len(b) {
 		return
@@ -639,19 +651,32 @@ func (a *PXARArchive) tryReuseFile(path, basename string, fileInfo os.FileInfo) 
 	}
 	return CatalogFile{
 		Name:  basename,
-		MTime: uint64(fileInfo.ModTime().Unix()),
+		MTime: a.catalogMTime(fileInfo),
 		Size:  size,
 	}, true, nil
 }
 
 // entryMetaFor is entryMeta plus the real sub-second mtime for split
 // archives (entryMeta reports 0 on Windows to keep classic archives stable).
+// With NoMTime the time is 0.
 func (a *PXARArchive) entryMetaFor(info os.FileInfo, kind uint64) (mode uint64, uid, gid uint32, secs uint64, nanos uint32) {
 	mode, uid, gid, secs, nanos = entryMeta(info, kind)
+	if a.NoMTime {
+		return mode, uid, gid, 0, 0
+	}
 	if a.Split && nanos == 0 {
 		nanos = uint32(info.ModTime().Nanosecond())
 	}
 	return
+}
+
+// catalogMTime is the time the catalog records for a file: the real one, or
+// 0 with NoMTime.
+func (a *PXARArchive) catalogMTime(info os.FileInfo) uint64 {
+	if a.NoMTime {
+		return 0
+	}
+	return uint64(info.ModTime().Unix())
 }
 
 // beginPayload starts a file's content: in split mode it writes a
@@ -1320,7 +1345,7 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	}
 
 	// Metadata change detection: an unchanged file is not read at all.
-	if a.Split && a.Reuse != nil {
+	if a.Split && a.Reuse != nil && !a.NoMTime {
 		cf, done, err := a.tryReuseFile(path, basename, fileInfo)
 		if err != nil {
 			return CatalogFile{}, err
@@ -1523,7 +1548,7 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 
 	return CatalogFile{
 		Name:  basename,
-		MTime: uint64(fileInfo.ModTime().Unix()),
+		MTime: a.catalogMTime(fileInfo),
 		Size:  uint64(fileInfo.Size()),
 	}, nil
 }

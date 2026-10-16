@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (from the original project)
+- `proxmoxbackup-directory -no-mtime` (`"no-mtime": true` in the JSON config) records 1970-01-01 as every file's and folder's modification time, so a tree whose times move while the contents stay the same (a store filed under hash-named folders) no longer uploads its chunks again on every run. The real modification times are not kept. Metadata change detection reads every file with it. Written by this fork for the original project (part of tizbac/proxmoxbackupclient_go#105) and not carried back until now. Tested against PBS: after only the times changed, 2 of 12 chunks were new with the option and all 12 without.
+- Passphrase-protected key files in the flat layout (`"kdf": {"kdf": "scrypt", ...}`) that the original project's code expected before #95 are read, so such a key works here unchanged. (Unprotected keys, the only kind the original project's GUI creates, already worked.) Key files are still always written in the official layout. The tests with key files made by the official `proxmox-backup-client` came over too.
+
 ### Changed
 - **Clearer Backup Set More menu**: the last four items say what they act on: **Undelete removed files...**, **Roll back to chosen snapshot...**, **Clone this Backup Set** and **Delete this Backup Set** (were Undelete..., Roll back..., Clone and Delete). In every language.
 

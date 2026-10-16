@@ -101,13 +101,14 @@ A config file keeps the secret off the command line and out of the process list.
 | `-novss` | VSS on | Do not snapshot the source first. Needed for file systems without VSS (VeraCrypt volumes, some network shares) and on Linux unless you run as root with `elastio-snap` or `dattobd` loaded |
 | `-keyfile <file>` | | Encrypt with this PBS key file ([section 7](#7-encryption)) |
 | `-keyfile-passphrase <text>` | asked | Passphrase for a protected key |
+| `-no-mtime` | off | Record 1970-01-01 as every file and folder time ([below](#leaving-times-out-of-the-archive)) |
 | `-backupstream <name>` | | Back up standard input as `<name>.didx` instead of a folder |
 | `-pxarout <file>` | | Also write the archive to a local file (debugging). Single folder only |
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
 | `-config <file>` | | JSON config file |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
-Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `usevss`, `keyfile`, `keyfilepassphrase`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `smtp`.
+Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `smtp`.
 
 ### Examples
 
@@ -140,6 +141,12 @@ Repeat `-backupdir`. Each folder becomes its own backup group, with the ID `<bas
 ### Permissions, attributes and dates
 
 Besides each file's contents and modification time, the tool records on Windows each file's and folder's permissions (owner, group and access list), attributes (read-only, hidden, system...), creation time, alternate data streams (up to 1 MB each) and NTFS extended attributes (from v0.9.0), and on Linux extended attributes and POSIX ACLs. They are stored with the snapshot, and a restore in the GUI puts them back (permissions only when **Restore permissions/ACLs** is ticked). Windows CLI backups made before v0.8.1 did not record them.
+
+### Leaving times out of the archive
+
+Every file's and folder's modification time is part of the archive, so a time that changes changes the archive bytes, and the chunks around that entry are uploaded again even though nothing in them changed. For most data that is the right trade. Some trees, though, keep touching their folders while the files stay the same: a store that files its data under hash-named folders (`aa/bb/<rest of the hash>`) can end up uploading a large part of the archive again on every run for that reason alone.
+
+`-no-mtime` (`"no-mtime": true` in the JSON config) records 1970-01-01 as every file's and folder's modification time instead, so only real content changes cost new chunks. The real modification times are not kept: a restore dates every item 1970-01-01. Creation times and permissions are still recorded with the snapshot as above. With `-change-detection-mode metadata` every file is read, as in `data` mode: without the times, a file changed in place at the same size could not be told apart. The option is off by default; use it for a source where the times do not matter.
 
 ### What gets skipped
 
@@ -263,6 +270,8 @@ Do not use this on a machine running important services: a damaged file system o
 `-keyfile <file>` encrypts every chunk with AES-256-GCM and signs the manifest. The key file format is the official one: a key made with `proxmox-backup-client key create` works here, and a key made by this client (GUI **Generate...**) works with the official client.
 
 For a passphrase-protected key (scrypt or PBKDF2), pass `-keyfile-passphrase`, or leave it out to be asked on the console. Unattended runs need the passphrase in the command or config file.
+
+Key files from the original project's tools and GUI work too. A protected key in the flat layout that its code expected before October 2026 (`"kdf": {"kdf": "scrypt", ...}`) is read as well. A key file this client writes is always in the official layout.
 
 Without the key an encrypted snapshot cannot be restored. Keep a copy away from the computer.
 

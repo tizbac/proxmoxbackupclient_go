@@ -230,6 +230,7 @@ func main() {
 
 	cfg := loadConfig()
 	changeDetectionMode = cfg.ChangeDetectionMode
+	noMTime = cfg.NoMTime
 
 	// Errors go to stderr with a non-zero exit, never a message box: a box
 	// waits for a click that an unattended scheduled run never gets (and on
@@ -552,6 +553,9 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 // changeDetectionMode is the -change-detection-mode setting (see Config).
 var changeDetectionMode string
 
+// noMTime is the -no-mtime setting (see Config).
+var noMTime bool
+
 func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, originalPath string, vssUsed bool) ([]string, error) {
 	client.Connect(false, "host")
 	knownChunks := haxmap.New[string, bool]()
@@ -561,6 +565,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	archive.ArchiveName = "backup.pxar.didx"
 	archive.ExcludeRoot = originalPath // the folder as named, also when read through a shadow copy
 	archive.OnNotice = func(msg string) { fmt.Println(msg) }
+	archive.NoMTime = noMTime
 	if split {
 		// Metadata stream; the payload stream is backup.ppxar.didx.
 		archive.ArchiveName = "backup.mpxar.didx"
@@ -643,7 +648,9 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		}
 		archive.PayloadWriteCB = func(b []byte) error { return payloadChunk.HandleData(b, client) }
 		archive.OnPayloadFileStart = func() error { return payloadChunk.SuggestBoundary(client) }
-		if changeDetectionMode == pbscommon.ChangeDetectionMetadata {
+		if changeDetectionMode == pbscommon.ChangeDetectionMetadata && noMTime {
+			fmt.Println("Metadata change detection: off with -no-mtime (no times to compare), reading every file")
+		} else if changeDetectionMode == pbscommon.ChangeDetectionMetadata {
 			// Reuse unchanged files from the previous snapshot without
 			// reading them; an unusable previous snapshot means data mode.
 			prev, prevTime, lerr := client.LoadPreviousSplitArchive(archive.ArchiveName, "backup.ppxar.didx", prevPayload)

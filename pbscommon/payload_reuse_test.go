@@ -122,6 +122,9 @@ type splitRun struct {
 	opened  map[string]int
 }
 
+// splitNoMTime sets NoMTime on the archives runSplitBackup writes.
+var splitNoMTime bool
+
 // runSplitBackup backs root up as a split archive, reusing from prev if set.
 func runSplitBackup(t *testing.T, root string, store map[[32]byte][]byte, prev *splitRun) *splitRun {
 	return runSplitBackupFailing(t, root, store, prev, nil)
@@ -147,7 +150,7 @@ func runSplitBackupFailing(t *testing.T, root string, store map[[32]byte][]byte,
 	defer func() { openForRead = oldOpen }()
 
 	var meta bytes.Buffer
-	a := &PXARArchive{ArchiveName: "t.mpxar.didx", Split: true}
+	a := &PXARArchive{ArchiveName: "t.mpxar.didx", Split: true, NoMTime: splitNoMTime}
 	a.WriteCB = func(b []byte) error { meta.Write(b); return nil }
 	a.PayloadWriteCB = r.payload.write
 	a.OnPayloadFileStart = r.payload.suggest

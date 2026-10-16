@@ -344,7 +344,9 @@ func verifyPlaintextDigest(plaintext []byte, crypt *CryptConfig, digest []byte) 
 // file. KDF is "scrypt" or "PBKDF2"; only the fields relevant to it are used.
 // On disk it is serde's externally tagged enum, as written by
 // proxmox-backup-client: {"Scrypt":{"n":..,"r":..,"p":..,"salt":..}} or
-// {"PBKDF2":{"iter":..,"salt":..}}.
+// {"PBKDF2":{"iter":..,"salt":..}}. The flat layout upstream's code expected
+// before tizbac/proxmoxbackupclient_go#95, {"kdf":"scrypt","n":..,"r":..,
+// "p":..,"salt":..}, is still read; a key file is always written tagged.
 type KeyDerivationConfig struct {
 	KDF  string
 	N    uint64
@@ -362,7 +364,23 @@ type kdfParams struct {
 	Salt string `json:"salt"`
 }
 
+type flatKDF struct {
+	KDF string `json:"kdf"`
+	kdfParams
+}
+
 func (k *KeyDerivationConfig) UnmarshalJSON(raw []byte) error {
+	var flat flatKDF
+	if err := json.Unmarshal(raw, &flat); err == nil && flat.KDF != "" {
+		switch flat.KDF {
+		case "scrypt", "PBKDF2":
+			k.KDF = flat.KDF
+			k.N, k.R, k.P, k.Iter, k.Salt = flat.N, flat.R, flat.P, flat.Iter, flat.Salt
+			return nil
+		default:
+			return fmt.Errorf("unsupported key derivation function %q", flat.KDF)
+		}
+	}
 	var tagged map[string]kdfParams
 	if err := json.Unmarshal(raw, &tagged); err != nil {
 		return fmt.Errorf("unrecognised key derivation function in key file: %w", err)
