@@ -151,12 +151,26 @@ func (a *App) trayRunState() (running, paused, ok bool) {
 // trayPauseLoop keeps the Pause/Resume item in step with the backup, also
 // when Pause is pressed in the window: enabled only while a backup runs, and
 // Resume while it is paused.
+// Once a run has ended it also puts the idle tooltip back, as soon as the
+// run has let go of the operation slot, rather than at the scheduler's next
+// once-a-minute refresh.
 func (a *App) trayPauseLoop() {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	wasRunning, idlePending := false, false
 	for range ticker.C {
-		if running, paused, ok := a.trayRunState(); ok {
-			setTrayPause(running, paused)
+		running, paused, ok := a.trayRunState()
+		if !ok {
+			continue
+		}
+		setTrayPause(running, paused)
+		if wasRunning && !running {
+			idlePending = true
+		}
+		wasRunning = running
+		if idlePending && !running && currentOperationLabel() == "" {
+			idlePending = false
+			a.RefreshIdleTooltip()
 		}
 	}
 }
