@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -52,6 +53,13 @@ func (a *App) SetupSystemTray() {
 
 	// Setup tray in goroutine to avoid blocking
 	go func() {
+		// The tray's hidden window gets its messages only on the OS thread
+		// that created it. systray locks the thread in its init, which covers
+		// a Run on the main goroutine only; this Run has a goroutine of its
+		// own, so without the lock the scheduler can move the message loop to
+		// another thread and the tray stops answering (seen on winclient
+		// during a backup, 2026-10-16: right-click did nothing).
+		goruntime.LockOSThread()
 		systray.Run(onReady(a), onExit)
 	}()
 

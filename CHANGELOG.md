@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bare-metal restore ISO: the PBS password and the key passphrase no longer show in `ps`.** The wizards (`ocs-pbs-bare-metal-restore` and `ocs-pbs-nbd`) passed them to `pbsnbd` as `-password` and `-keyfile-passphrase`, so anyone on the live system could read them in the process list while a restore ran. They now go in `PBS_PASSWORD` and `PBS_ENCRYPTION_PASSWORD`.
 
 ### Fixed
+- **The tray icon could stop answering** (Windows): right-click did nothing, so Show window and Quit could not be reached from the tray until the app was restarted. Its message loop could be moved to another thread than the one its window belongs to, most likely while a backup kept the computer busy. Seen while testing tray Pause on a test machine. The loop now stays on its own thread.
 - `proxmoxbackup-directory` prints its early errors (config file, certificate fingerprint, password prompt, key file, login, mail templates) on standard error, like the rest of its errors, instead of standard output.
 
 ### Tests
