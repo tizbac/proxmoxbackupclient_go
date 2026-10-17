@@ -25,6 +25,11 @@ type EncryptionKeyInfo struct {
 	// `proxmox-backup-client key create` (the default, KDF=scrypt). Its
 	// passphrase is either stored in the settings or asked for when needed.
 	PassphraseProtected bool `json:"passphrase_protected"`
+	// OpenToOthers is true when other local accounts can read the key file
+	// (keyFileOpenToOthers). The app does not change the permissions of a
+	// file the user picked by itself: it warns, and RestrictEncryptionKeyFileAccess
+	// does it when asked.
+	OpenToOthers bool `json:"open_to_others"`
 	// Usable is false when the file cannot be used by the GUI: it does not
 	// exist or is malformed. When false, Reason says why.
 	Usable bool   `json:"usable"`
@@ -49,6 +54,9 @@ func inspectKeyFile(path string) EncryptionKeyInfo {
 	if st.IsDir() {
 		info.Reason = "the path is a folder, not a key file"
 		return info
+	}
+	if open, err := keyFileOpenToOthers(path); err == nil {
+		info.OpenToOthers = open
 	}
 
 	keyCfg, err := pbscommon.LoadKeyConfig(path)
@@ -85,6 +93,25 @@ func inspectKeyFile(path string) EncryptionKeyInfo {
 // on every keystroke while the user is typing a path.
 func (a *App) InspectEncryptionKeyFile(path string) EncryptionKeyInfo {
 	return inspectKeyFile(strings.TrimSpace(path))
+}
+
+// RestrictEncryptionKeyFileAccess limits who can read the key file at path to
+// this account, SYSTEM and Administrators on Windows (the service reads it as
+// SYSTEM), or to its owner on Linux, and returns the key's info again.
+func (a *App) RestrictEncryptionKeyFileAccess(path string) (EncryptionKeyInfo, error) {
+	path = strings.TrimSpace(path)
+	if err := security.ValidatePath(path); err != nil {
+		return EncryptionKeyInfo{}, fmt.Errorf("invalid key file path: %w", err)
+	}
+	if info := inspectKeyFile(path); !info.Exists || !info.Usable {
+		return info, fmt.Errorf("not a usable key file: %s", info.Reason)
+	}
+	if err := restrictKeyAccess(path, false); err != nil {
+		return EncryptionKeyInfo{}, fmt.Errorf("changing the permissions of %s: %w", path, err)
+	}
+	info := inspectKeyFile(path)
+	writeDebugLog(fmt.Sprintf("RestrictEncryptionKeyFileAccess: %s (still open to others: %v)", path, info.OpenToOthers))
+	return info, nil
 }
 
 // GenerateEncryptionKeyFile creates a brand new encryption key at path and

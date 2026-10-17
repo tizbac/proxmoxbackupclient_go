@@ -59,6 +59,7 @@ require (
 	github.com/rodolfoag/gow32 v0.0.0-20230512144032-1e896a3c51aa // indirect
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/samber/lo v1.49.1 // indirect
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/st-matskevich/go-vss v0.3.3 // indirect
 	github.com/tawesoft/golib/v2 v2.16.0 // indirect
 	github.com/tkrajina/go-reflector v0.5.8 // indirect

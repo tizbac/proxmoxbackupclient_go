@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from '../i18n/i18nContext'
 import { askConfirm, showNotice } from './ConfirmDialog'
+import PaperKeyDialog from './PaperKeyDialog'
 
 // Wails bindings are resolved by App.jsx on window.go; this component receives
 // them as props so it stays testable/usable when the runtime is absent (the dev
@@ -43,6 +44,10 @@ export default function EncryptionKeyField({
   const openExisting = useCallback(resolve('OpenEncryptionKeyDialog'), [])
   const openNew = useCallback(resolve('OpenEncryptionKeySaveDialog'), [])
   const verify = useCallback(resolve('VerifyEncryptionKeyPassphrase'), [])
+  const restrict = useCallback(resolve('RestrictEncryptionKeyFileAccess'), [])
+  const saveCopy = useCallback(resolve('SaveEncryptionKeyCopy'), [])
+  const paper = useCallback(resolve('EncryptionPaperKey'), [])
+  const [paperKey, setPaperKey] = useState(null)
 
   // Re-inspect whenever the path changes. Wails bindings always return a
   // Promise, so the result has to be awaited; a stale answer from a previous
@@ -137,7 +142,47 @@ export default function EncryptionKeyField({
     }
   }
 
+  const handleRestrict = async () => {
+    if (!restrict) return
+    setBusy(true)
+    try {
+      const r = await restrict(value || '')
+      if (r) setInfo(r)
+      await showNotice({ title: t('encryptionKeyRestrict'), icon: '🔒', message: r && r.open_to_others ? t('encryptionKeyOpenToOthers') : t('encryptionKeyRestricted') })
+    } catch (err) {
+      await showNotice({ title: t('encryptionKeyRestrict'), icon: '❌', message: t('encryptionKeyRestrictFailed').replace('{err}', err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleSaveCopy = async () => {
+    if (!saveCopy) return
+    setBusy(true)
+    try {
+      const dest = await saveCopy(value || '')
+      if (dest) await showNotice({ title: t('encryptionKeySaveCopy'), icon: '🔑', message: t('encryptionKeyCopySaved').replace('{path}', dest) })
+    } catch (err) {
+      await showNotice({ title: t('encryptionKeySaveCopy'), icon: '❌', message: t('encryptionKeyCopyFailed').replace('{err}', err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handlePaper = async () => {
+    if (!paper) return
+    setBusy(true)
+    try {
+      setPaperKey(await paper(value || ''))
+    } catch (err) {
+      await showNotice({ title: t('paperKeyTitle'), icon: '❌', message: String(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const reason = info && !info.usable ? info.reason : ''
+  const haveKey = !!(info && info.usable && info.exists && info.fingerprint)
 
   return (
     <div className={`form-group ${className}`.trim()}>
@@ -179,7 +224,31 @@ export default function EncryptionKeyField({
         {reason && (
           <div style={{ color: '#c62828', wordBreak: 'break-word' }}>{reason}</div>
         )}
+        {info && info.open_to_others && (
+          <div style={{ color: '#c62828', marginTop: '4px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>⚠️ {t('encryptionKeyOpenToOthers')}</span>
+            <button type="button" className="btn btn-secondary" style={{ margin: 0, padding: '4px 10px', fontSize: '12px' }} onClick={handleRestrict} disabled={!restrict || busy}>
+              🔒 {t('encryptionKeyRestrict')}
+            </button>
+          </div>
+        )}
       </div>
+
+      {haveKey && (
+        <div style={{ marginTop: '10px', fontSize: '13px' }}>
+          <div style={{ fontWeight: 600, marginBottom: '4px' }}>{t('encryptionKeyBackupTitle')}</div>
+          <div style={{ color: '#666', fontSize: '12px', marginBottom: '6px' }}>{t('encryptionKeyBackupIntro')}</div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-secondary" style={{ margin: 0, padding: '6px 12px' }} onClick={handleSaveCopy} disabled={!saveCopy || busy}>
+              💾 {t('encryptionKeySaveCopy')}
+            </button>
+            <button type="button" className="btn btn-secondary" style={{ margin: 0, padding: '6px 12px' }} onClick={handlePaper} disabled={!paper || busy}>
+              🖨️ {t('encryptionKeyPaper')}
+            </button>
+          </div>
+        </div>
+      )}
+      {paperKey && <PaperKeyDialog paperKey={paperKey} onClose={() => setPaperKey(null)} />}
 
       {info && info.passphrase_protected && (
         <div style={{ marginTop: '10px', fontSize: '13px' }}>

@@ -289,6 +289,15 @@ func LoadConfig() *Config {
 	if err := json.Unmarshal(stripUTF8BOM(data), config); err != nil {
 		return config
 	}
+	if config.openSecrets() {
+		sealOnLoadOnce.Do(func() {
+			if err := config.Save(); err != nil {
+				writeDebugLog(fmt.Sprintf("config: could not write the secrets back sealed: %v", err))
+			} else {
+				writeDebugLog("config: plain-text secrets in config.json sealed")
+			}
+		})
+	}
 
 	// ==================== AUTO-MIGRATION ====================
 	// If legacy single PBS config exists (BaseURL not empty) and PBSServers is empty,
@@ -335,7 +344,11 @@ func (c *Config) Save() error {
 		return err
 	}
 
-	data, err := json.MarshalIndent(c, "", "  ")
+	sealed, err := c.sealedCopy()
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(sealed, "", "  ")
 	if err != nil {
 		return err
 	}

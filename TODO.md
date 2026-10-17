@@ -25,7 +25,6 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 ## Backing up
 
 - [ ] Maybe: options per schedule (the monthly one does a full read, or goes to another server). Several schedules per set were built on 2026-10-13; Mick put this off.
-- [ ] **Retention per Backup Set in the client** (keep last N / hourly / daily / weekly / monthly), applied by a group prune after each good run, so Undelete and Roll back keep more restore points. Only works where the datastore's own prune job leaves that group alone (own namespace, or looser datastore rules). Show "Rollback points kept: ..." on the card. (The PBS-side `keep-hourly 48` is already in place.)
 - [ ] Maybe: NTFS extended attributes in files restored from a machine (disk image) backup (the image reader does not read `$EA`; folder backups record them since v0.9.0, and a bare-metal restore keeps them).
 - [ ] **Very large folders in split backups** are split one level deep only (`gui/backup_analysis.go`): a 700 GB subfolder becomes one 700 GB part. Recursive splitting down to a size limit was planned; less pressing since change detection reuses unchanged files. Decide whether it is still wanted.
 - [ ] Machine backups: a GUI option for a forensic copy (read free space too; the CLI has `-readfreespace`).
@@ -47,9 +46,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 ## Security
 
-- [ ] **Secrets stored in plain text** in `config.json`: PBS tokens, passwords and remembered key passphrases. The settings folder is now open to administrators only (eb91d17, CHANGELOG [Unreleased] > Security), so this is defence in depth: DPAPI (`CryptProtectData` with the machine scope, so the SYSTEM service can read them) on Windows with automatic migration of old configs, and a Linux equivalent or at least the 0700/0640 folder as now.
-- [ ] Key files kept outside the settings folder keep whatever permissions they had (keys the app generates get a protected ACL).
-- [ ] An "Export recovery key" button (print or save the key with its fingerprint).
+- [ ] Live test on winclient of the 2026-10-17 security batch with the service installed: an old plain `config.json` converted to `dpapi:` on first start, backups by the app and by the service still log in, a remembered passphrase still unlocks a protected key in a service run, and Print a paper key printed to a real printer (or PDF) and scanned back.
 - [ ] Restore of an encrypted snapshot from the Proxmox VE storage configuration (key given to PVE): untested.
 
 ## Languages and docs
@@ -73,4 +70,5 @@ Kept, not being worked on (Mick, 2026-10-11).
 - **BMR wizard language choice**: the wizard is English only by design (it skips Clonezilla's language prompt for speed); a picker would need a full string table for our own prompts.
 - **Speed limit per Backup Set**: a cap slows every run even when the link is free; revisit only for a real case such as a slow site link. Pause covers "the server is busy now".
 - **A separate bare-metal restore CLI** (`cmd/proxmoxbackupclient-restore` for a Linux live USB): the BMR ISO's wizard covers bare-metal restore; build it only if a no-GUI rescue path is wanted.
+- **Retention per Backup Set in the client**: retention is the server's job (the datastore prune job, now with `keep-hourly`), the usual backup token (DatastoreBackup) cannot prune, and a client prune would fight the datastore job unless the set had its own namespace. Parked by Mick, 2026-10-14.
 - **Is deepthought's backup CPU-bound?** Moot since change detection skips unchanged files; reopen only if a full read is too slow.

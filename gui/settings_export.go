@@ -24,7 +24,8 @@ const currentSettingsBundleVersion = 1
 
 // ExportSettings writes a JSON bundle of the current PBS servers, theme and
 // Backup Sets to a user-chosen file. includeSecrets controls whether PBS
-// tokens/passwords and the SMTP password are written in plain text — the
+// tokens/passwords, remembered key passphrases and the SMTP password are
+// written in plain text (never sealed: the bundle is for another computer) — the
 // frontend defaults this to false, since the exported file itself has no
 // other protection (no passphrase/encryption). Returns the chosen path, or
 // "" if the save dialog was cancelled.
@@ -44,6 +45,7 @@ func (a *App) ExportSettings(includeSecrets bool) (string, error) {
 			if !includeSecrets {
 				srvCopy.Secret = ""
 				srvCopy.Password = ""
+				srvCopy.EncryptionKeyPassphrase = ""
 			}
 			cfgCopy.PBSServers[id] = &srvCopy
 		}
@@ -52,6 +54,7 @@ func (a *App) ExportSettings(includeSecrets bool) (string, error) {
 		cfgCopy.Secret = ""
 		cfgCopy.Password = ""
 		cfgCopy.SMTPPassword = ""
+		cfgCopy.EncryptionKeyPassphrase = ""
 	}
 	// Never export a live session ticket — it's short-lived and per-machine,
 	// re-minted from the stored credentials on the next operation anyway.
