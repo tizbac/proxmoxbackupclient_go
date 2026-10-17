@@ -260,7 +260,7 @@ Click **Add New Backup Set** to create one. Give it a **Backup set name**, fill 
 
 A machine set also has **Forensic copy: read free space too**. Ticked, every sector is read, free space and the paging and hibernation files included, so deleted files can be recovered from the image later (like `proxmoxbackup-machine -readfreespace`). Unticked (the default) they go into the image as zeros without being read ([machine backups](#machine-backups-host-or-vm)). A forensic set reads the whole disk on every run and its backups take more space. Its card shows a **FORENSIC** badge.
 
-A machine set also has **Folders for Undelete and Roll back**, one per line. Undelete and Roll back work on these folders, reading their files from the disk images. Left empty, they use your Desktop, Documents, Pictures, Music, Videos and Downloads. The folders must be on the disks the set backs up.
+A machine set also has **Folders for Undelete and Roll back**, one per line. Undelete and Roll back work on these folders, reading their files from the disk images. Left empty, they use your Desktop, Documents, Pictures, Music, Videos and Downloads. The folders must be on the disks the set backs up. Each folder's volume is found in an older disk image by its NTFS volume serial number, so a partition moved or resized since that backup is still found; without a match (another file system, or a volume formatted again) it is found by where its partition starts.
 
 ### 6.2 Exclusions tab
 

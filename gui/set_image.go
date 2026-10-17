@@ -135,14 +135,21 @@ func imageSetIndex(cfg *Config, job ScheduledJob, snap SetSnapshot, cancel func(
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", ib.archive, err)
 			}
-			var part *imagefs.Partition
-			for i := range parts {
-				if parts[i].Start == ib.offset {
-					part = &parts[i]
+			cands := make([]imagePart, len(parts))
+			for i, p := range parts {
+				cands[i].start = p.Start
+				if p.FS == "ntfs" {
+					cands[i].serial, cands[i].hasSerial = imagefs.NTFSSerial(ra, p.Start)
 				}
 			}
-			if part == nil {
-				return nil, fmt.Errorf("%s has no partition at %d in the backup of %s", ib.archive, ib.offset, snap.ID)
+			live, liveOK := liveVolumeSerial(roots[base])
+			pick := pickImagePart(cands, ib.offset, live, liveOK)
+			if pick < 0 {
+				return nil, fmt.Errorf("%s has no partition at %d in the backup of %s, and none with the volume serial number of %s (the disk's partitions have changed since)", ib.archive, ib.offset, snap.ID, roots[base])
+			}
+			part := &parts[pick]
+			if part.Start != ib.offset {
+				writeDebugLog(fmt.Sprintf("Backup of %s: %s found by its volume serial number at %d (it is at %d on the disk now)", snap.ID, roots[base], part.Start, ib.offset))
 			}
 			vol, err := imagefs.OpenVolume(part.FS, io.NewSectionReader(ra, part.Start, part.Size), part.Size)
 			if err != nil {

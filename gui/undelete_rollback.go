@@ -328,12 +328,14 @@ func undeleteRuns(cfg *Config, job ScheduledJob, bySnap map[int64]map[string][]s
 		o.RestoreACLs = true
 		o.VerifyAfterRestore = verify
 		o.ParallelExtraction = parallel
+		// The folders' own paths: where Original puts them back, and for a
+		// machine set also how its volume is found in an older image.
+		o.ArchiveRoots = map[string]string{}
+		for archive := range bySnap[u] {
+			o.ArchiveRoots[archive] = roots[archiveBaseOf(archive)]
+		}
 		if dest == "" {
 			o.Mode = RestoreModeOriginal
-			o.ArchiveRoots = map[string]string{}
-			for archive := range bySnap[u] {
-				o.ArchiveRoots[archive] = roots[archiveBaseOf(archive)]
-			}
 			o.KeepExisting = true
 		} else {
 			o.Mode = RestoreModeAlternateAbs

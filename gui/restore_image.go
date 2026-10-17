@@ -115,6 +115,10 @@ type imageVolume struct {
 	Entries []imagefs.Entry // sorted by path, with what Open needs to find each file
 	// CaseInsensitive: names match without regard to case (NTFS, FAT).
 	CaseInsensitive bool
+	// Serial is an NTFS volume's serial number (HasSerial), which finds a
+	// machine set's folder after its partition moved (pickImagePart).
+	Serial    uint64 `json:",omitempty"`
+	HasSerial bool   `json:",omitempty"`
 }
 
 // imageListing keeps the volumes of the last image snapshot listed, so a
@@ -200,6 +204,9 @@ func openImageVolumes(s *imageSession, opts RestoreOptions, list bool, cancel fu
 			}
 			v := imageVolume{Display: volumeName(p, vol.Label(), vol.FSName(), di+1, len(archives)), Archive: a, Start: p.Start, Size: p.Size,
 				FS: vol.FSName(), CaseInsensitive: vol.CaseInsensitive()}
+			if p.FS == "ntfs" {
+				v.Serial, v.HasSerial = imagefs.NTFSSerial(ra, p.Start)
+			}
 			if list {
 				start := time.Now()
 				last := time.Time{}
@@ -405,11 +412,24 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 			return rewriter(v.Display + "/" + e.Path)
 		}
 	}
-	volumeAt := func(archive string, offset int64) *imageVolume {
+	// volumeAt finds a machine set's folder volume: by the live folder's
+	// volume serial number when root is known (the partition may have moved
+	// since this snapshot), else by its offset.
+	volumeAt := func(archive string, offset int64, root string) *imageVolume {
+		var idx []int
+		var cands []imagePart
 		for i := range vols {
-			if vols[i].Archive == archive && vols[i].Start == offset {
-				return &vols[i]
+			if vols[i].Archive == archive {
+				idx = append(idx, i)
+				cands = append(cands, imagePart{start: vols[i].Start, serial: vols[i].Serial, hasSerial: vols[i].HasSerial})
 			}
+		}
+		live, liveOK := uint32(0), false
+		if root != "" {
+			live, liveOK = liveVolumeSerial(root)
+		}
+		if k := pickImagePart(cands, offset, live, liveOK); k >= 0 {
+			return &vols[idx[k]]
 		}
 		return nil
 	}
@@ -418,15 +438,15 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 	case opts.ArchiveIncludes != nil:
 		for key, rels := range opts.ArchiveIncludes {
 			if ib, ok := parseImageBase(key); ok {
-				v := volumeAt(ib.archive, ib.offset)
+				root := opts.ArchiveRoots[key]
+				v := volumeAt(ib.archive, ib.offset, root)
 				if v == nil {
-					return fmt.Errorf("%s: no browsable volume at %d in the disk image", ib.archive, ib.offset)
+					return fmt.Errorf("%s: no browsable volume at %d in the disk image, nor one with the volume serial number of %s", ib.archive, ib.offset, root)
 				}
 				sub := ib.sub
 				if v.CaseInsensitive {
 					sub = exactCasePath(v.Entries, ib.sub)
 				}
-				root := opts.ArchiveRoots[key]
 				folderName := v.Display
 				if sub != "" {
 					folderName = sub[strings.LastIndexByte(sub, '/')+1:]

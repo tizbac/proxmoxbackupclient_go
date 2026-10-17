@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
 const ioctlVolumeGetVolumeDiskExtents = 0x00560000
@@ -36,4 +38,19 @@ func volumeDiskExtent(path string) (disk int, offset int64, err error) {
 		return 0, 0, fmt.Errorf("%s spans %d disks", vol, c)
 	}
 	return int(binary.LittleEndian.Uint32(out[8:])), int64(binary.LittleEndian.Uint64(out[16:])), nil
+}
+
+// liveVolumeSerial is the volume serial number of the drive holding path, as
+// `vol` shows it (the low 32 bits of an NTFS volume's serial).
+func liveVolumeSerial(path string) (uint32, bool) {
+	vol := filepath.VolumeName(filepath.Clean(path))
+	if len(vol) != 2 || vol[1] != ':' {
+		return 0, false
+	}
+	root, _ := windows.UTF16PtrFromString(vol + `\`)
+	var serial uint32
+	if err := windows.GetVolumeInformation(root, nil, 0, &serial, nil, nil, nil, 0); err != nil {
+		return 0, false
+	}
+	return serial, true
 }

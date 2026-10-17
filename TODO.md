@@ -26,12 +26,11 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 - [ ] Maybe: options per schedule (the monthly one does a full read, or goes to another server). Several schedules per set were built on 2026-10-13; Mick put this off.
 - [ ] Maybe: NTFS extended attributes in files restored from a machine (disk image) backup (the image reader does not read `$EA`; folder backups record them since v0.9.0, and a bare-metal restore keeps them).
 - [ ] **Very large folders in split backups** are split one level deep only (`gui/backup_analysis.go`): a 700 GB subfolder becomes one 700 GB part. Recursive splitting down to a size limit was planned; less pressing since change detection reuses unchanged files. Decide whether it is still wanted.
-- [ ] Live test of a forensic machine set (2026-10-17): the run log says "Forensic copy", "free space not read" stays 0, and a deleted file's data is in the image.
 - [ ] Offered, not agreed: an empty-block marker in machine backups, skipping the 4 MiB copy for blank chunks in `emitZeros`/`push` (about 3 to 4 minutes off a 27 minute laptop run).
 
 ## Restoring
 
-- [ ] **Disk images: a changed partition layout** since a snapshot (a partition moved) makes that snapshot's folder list fail with a clear error; could fall back to finding the volume by its NTFS serial number.
+- [ ] Live test of finding a machine set's folder after its partition moved (2026-10-17, unit-tested): move a partition on a test disk (a raw copy keeps the serial), then Undelete from a snapshot taken before.
 - [ ] **Disk images: BitLocker volumes** cannot be browsed (they would need the recovery key).
 - [ ] **Quick test: Proxmox VE File Restore** on a `vm/9000xxx` snapshot this client wrote, to compare with our own disk-image browsing.
 - [ ] Maybe: an "Other backup..." choice in the Undelete and Roll back set picker (server, backup ID, target folder) for another machine's backups.
@@ -54,7 +53,6 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 ## Command-line tools
 
-- [ ] Live test of the mail-failed note from the app and the service (2026-10-17, unit-tested only): a set with an e-mail on completion and an SMTP server that refuses, then the snapshot's comment on PBS.
 
 ## Tests
 
