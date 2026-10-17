@@ -31,7 +31,6 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 ## Restoring
 
 - [ ] **Disk images: BitLocker volumes** cannot be browsed (they would need the recovery key).
-- [ ] **Quick test: Proxmox VE File Restore** on a `vm/9000xxx` snapshot this client wrote, to compare with our own disk-image browsing.
 - [ ] Maybe: an "Other backup..." choice in the Undelete and Roll back set picker (server, backup ID, target folder) for another machine's backups.
 
 ## Bare-metal restore ISO

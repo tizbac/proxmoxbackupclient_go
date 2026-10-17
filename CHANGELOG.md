@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `proxmoxbackup-directory` prints its early errors (config file, certificate fingerprint, password prompt, key file, login, mail templates) on standard error, like the rest of its errors, instead of standard output.
 
 ### Tests
+- **Proxmox VE File Restore reads this client's disk images.** On `vm/9000015` (a Debian machine's whole disk, ext4), PVE's File Restore listed the three partitions and `/etc/ssh` in partition 1 with the same 11 entries and sizes as the app's own Restore page. PVE starts a small helper VM and lists one folder at a time (about a second each); the app reads the whole file table first (85 seconds for this 248 GB disk with 3 GB used) and then browses at once. PVE also shows the extended and swap partitions, which the app leaves out.
 - Live on a test machine: a forensic machine set run (the log says "Forensic copy" and no free space is skipped), and the mail warning on PBS after a refused e-mail, for a Run Now handed to the service and for a run the service scheduled.
 - Live on a test machine, run by the background service with a passphrase-protected key whose passphrase is remembered (and stored sealed): a folder set and a 50 GB machine set, both encrypted. The machine set was the open "encryption key on machine backups the service runs" check.
 - The live end-to-end folder test (`PBS_E2E=1`) compares the modification times of folders as well as files. It passed against PBS: 1,915 files and folders, every restore, times included.
