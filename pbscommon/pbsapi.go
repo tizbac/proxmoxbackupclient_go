@@ -469,6 +469,19 @@ func (pbs *PBSClient) ObtainTicket() error {
 // NamespaceHint in missingNamespaceErr.
 
 func (pbs *PBSClient) ListSnapshots() ([]BackupManifest, error) {
+	return pbs.listSnapshots(url.Values{})
+}
+
+// ListGroupSnapshots lists the snapshots of one backup group (type and ID),
+// newest first, without PBS reading the rest of the datastore.
+func (pbs *PBSClient) ListGroupSnapshots(backupType, backupID string) ([]BackupManifest, error) {
+	params := url.Values{}
+	params.Add("backup-type", backupType)
+	params.Add("backup-id", backupID)
+	return pbs.listSnapshots(params)
+}
+
+func (pbs *PBSClient) listSnapshots(params url.Values) ([]BackupManifest, error) {
 	// PBS reads every manifest in the datastore; on a cold cache over a spinning disk that exceeds 10s.
 	client := &http.Client{
 		Timeout:   120 * time.Second,
@@ -477,7 +490,6 @@ func (pbs *PBSClient) ListSnapshots() ([]BackupManifest, error) {
 
 	ret := make([]BackupManifest, 0)
 	var r SnapshotsResp
-	params := url.Values{}
 	if pbs.Namespace != "" {
 		params.Add("ns", pbs.Namespace)
 	}

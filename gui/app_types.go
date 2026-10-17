@@ -115,6 +115,42 @@ type pendingPostActionsEntry struct {
 	// noter can add a note to the snapshot the run made (set by the
 	// backup's OnSnapshot), for the post-backup actions.
 	noter atomic.Pointer[noterBox]
+	// serviceDone receives the outcome of a run the app handed to the
+	// background service (startBackupViaService), so the scheduler can wait
+	// for it before writing history and running the post-backup actions.
+	serviceDone chan serviceRunOutcome
+}
+
+// serviceRunOutcome is how a run handed to the service ended.
+type serviceRunOutcome struct {
+	success bool
+	message string
+}
+
+// watchServiceRun gives the run under key a channel for its service outcome
+// (nil for a one-off run, which has no entry and nobody waiting).
+func (a *App) watchServiceRun(key string) chan serviceRunOutcome {
+	if key == "" {
+		return nil
+	}
+	v, ok := a.pendingPostActions.Load(key)
+	if !ok {
+		return nil
+	}
+	ch := make(chan serviceRunOutcome, 1)
+	v.(*pendingPostActionsEntry).serviceDone = ch
+	return ch
+}
+
+// serviceRunDone returns the channel watchServiceRun gave the run under key.
+func (a *App) serviceRunDone(key string) chan serviceRunOutcome {
+	if key == "" {
+		return nil
+	}
+	if v, ok := a.pendingPostActions.Load(key); ok {
+		return v.(*pendingPostActionsEntry).serviceDone
+	}
+	return nil
 }
 
 // snapshotNoter adds a note to the PBS comment of a finished snapshot.

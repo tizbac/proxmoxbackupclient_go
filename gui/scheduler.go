@@ -1024,6 +1024,25 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			postActionsKey,
 		)
 	}
+	// The app handed the run to the background service: the call above only
+	// started it. Wait for its real outcome, so the history entry and the
+	// post-backup actions (an e-mail saying it completed, the "after"
+	// application, a shutdown) come when it has finished, not at once.
+	// Found live 2026-10-17: a Run Now in service mode wrote "success" and
+	// ran them at the start of a 5 minute machine backup.
+	noter := a.runNoter(postActionsKey)
+	if err == nil && !a.isServiceProcess {
+		if ch := a.serviceRunDone(postActionsKey); ch != nil {
+			writeDebugLog(fmt.Sprintf("Backup Set %s: waiting for the service to finish the run", job.Name))
+			if o := <-ch; !o.success {
+				err = fmt.Errorf("%s", o.message)
+			} else {
+				// The snapshot is the service's: find it on the server if
+				// a failed e-mail has to be noted on it.
+				noter = a.newGroupNoter(job, startTime)
+			}
+		}
+	}
 	// Close the API entry if the backup ended before its own completion
 	// reported (a failure before it started); otherwise this changes nothing.
 	if runID != "" {
@@ -1108,7 +1127,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 		// pendingPostActions map entry doesn't leak for this run's lifetime
 		// (`job` is this function's own local variable throughout, so the
 		// discarded value itself isn't needed — only the cleanup is).
-		a.runPostBackupActions(job, err == nil, historyEntry.Message, a.runNoter(postActionsKey))
+		a.runPostBackupActions(job, err == nil, historyEntry.Message, noter)
 		a.setScheduledJobName("")
 		a.takePendingPostActions(postActionsKey)
 	} else if err != nil {

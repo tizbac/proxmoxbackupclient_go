@@ -848,7 +848,7 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 	writeDebugLog(fmt.Sprintf("[Service Mode] Backup started: %s (JobID: %s)", resp.Message, resp.JobID))
 
 	// Start polling for progress updates
-	go a.pollBackupProgress(resp.JobID)
+	go a.pollBackupProgress(resp.JobID, a.watchServiceRun(postActionsKey))
 
 	return nil
 }
@@ -881,13 +881,21 @@ func (a *App) startMachineBackupViaService(backupType string, backupDevices []st
 	writeDebugLog(fmt.Sprintf("[Service Mode] Machine backup started: %s (JobID: %s)", resp.Message, resp.JobID))
 
 	// Start polling for progress updates
-	go a.pollBackupProgress(resp.JobID)
+	go a.pollBackupProgress(resp.JobID, a.watchServiceRun(postActionsKey))
 
 	return nil
 }
 
-// pollBackupProgress polls the service for backup progress and emits events to GUI
-func (a *App) pollBackupProgress(jobID string) {
+// pollBackupProgress polls the service for backup progress and emits events to
+// GUI. done (may be nil) receives the run's outcome once it ends: a Backup Set
+// run waits for it before its history and post-backup actions, which would
+// otherwise fire when the run was handed over, long before it finished.
+func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
+	finish := func(success bool, message string) {
+		if done != nil {
+			done <- serviceRunOutcome{success: success, message: message}
+		}
+	}
 	writeDebugLog(fmt.Sprintf("[Service Mode] Starting progress polling for job: %s", jobID))
 	ticker := time.NewTicker(3 * time.Second) // Poll every 3 seconds
 	defer ticker.Stop()
@@ -916,6 +924,7 @@ func (a *App) pollBackupProgress(jobID string) {
 						"message": "Lost contact with backup service (status unavailable)",
 					})
 				}
+				finish(false, "Lost contact with backup service (status unavailable)")
 				return
 			}
 			continue
@@ -947,6 +956,7 @@ func (a *App) pollBackupProgress(jobID string) {
 					"message": progress.Message,
 				})
 			}
+			finish(progress.Success, progress.Message)
 			return
 		}
 	}
