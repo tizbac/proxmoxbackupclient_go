@@ -84,11 +84,11 @@ func TestRunChangeDetectionModeTravelsWithTheRun(t *testing.T) {
 		t.Fatalf("machine run got %q", got)
 	}
 	// A GUI request handed to the service.
-	skey := a.RegisterRunOptions("directory", "data")
+	skey := a.RegisterRunOptions("directory", "data", false)
 	if got := a.runChangeDetectionMode(skey); got != "data" {
 		t.Fatalf("service request got %q", got)
 	}
-	if got := a.runChangeDetectionMode(a.RegisterRunOptions("directory", "bogus")); got != "" {
+	if got := a.runChangeDetectionMode(a.RegisterRunOptions("directory", "bogus", false)); got != "" {
 		t.Fatalf("invalid mode passed through as %q", got)
 	}
 

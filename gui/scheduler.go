@@ -36,6 +36,10 @@ type ScheduledJob struct {
 	// numeric PBS ID, computed by the editor, so the same set always lands in
 	// the same vm/<id> group.
 	MachineAsVM bool `json:"machineAsVm,omitempty"`
+	// ReadFreeSpace makes a machine set a forensic copy: free space and the
+	// paging/hibernation files are read too, instead of going into the image
+	// as zeros (the CLI's -readfreespace). Ignored for folder sets.
+	ReadFreeSpace bool `json:"readFreeSpace,omitempty"`
 	// ChangeDetectionMode is the folder-backup format and change detection,
 	// as in the official client: "" or "legacy" (classic archive, every file
 	// read), "data" (split archive, every file read) or "metadata" (split
@@ -1104,7 +1108,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 		// pendingPostActions map entry doesn't leak for this run's lifetime
 		// (`job` is this function's own local variable throughout, so the
 		// discarded value itself isn't needed — only the cleanup is).
-		a.runPostBackupActions(job, err == nil, historyEntry.Message)
+		a.runPostBackupActions(job, err == nil, historyEntry.Message, a.runNoter(postActionsKey))
 		a.setScheduledJobName("")
 		a.takePendingPostActions(postActionsKey)
 	} else if err != nil {
@@ -1137,7 +1141,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 		}); herr != nil {
 			writeDebugLog(fmt.Sprintf("Warning: Failed to add job history: %v", herr))
 		}
-		a.runPostBackupActions(job, false, err.Error())
+		a.runPostBackupActions(job, false, err.Error(), nil)
 		a.setScheduledJobName("")
 		a.takePendingPostActions(postActionsKey)
 	}

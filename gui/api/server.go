@@ -30,10 +30,10 @@ type Server struct {
 
 // RunOptionsRegistrar is optionally implemented by the BackupHandler: it
 // records per-run options that StartBackup's fixed signature cannot carry
-// (a Backup Set's change-detection mode) and returns the key to pass as
-// StartBackup's postActionsKey.
+// (a Backup Set's change-detection mode, a machine set's forensic copy) and
+// returns the key to pass as StartBackup's postActionsKey.
 type RunOptionsRegistrar interface {
-	RegisterRunOptions(backupType, changeDetectionMode string) string
+	RegisterRunOptions(backupType, changeDetectionMode string, readFreeSpace bool) string
 }
 
 // RunTracker is optionally implemented by the BackupHandler: it registers a
@@ -42,7 +42,7 @@ type RunOptionsRegistrar interface {
 // backup then reports its progress and outcome to the entry (ReportProgress,
 // FinishRun).
 type RunTracker interface {
-	TrackRequestRun(jobID, backupType, changeDetectionMode string) string
+	TrackRequestRun(jobID, backupType, changeDetectionMode string, readFreeSpace bool) string
 }
 
 // RunController is optionally implemented by the BackupHandler: Pause,
@@ -210,9 +210,9 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, machine bool) 
 		// detection).
 		runKey := ""
 		if t, ok := s.app.(RunTracker); ok {
-			runKey = t.TrackRequestRun(jobID, req.BackupType, req.ChangeDetectionMode)
-		} else if r, ok := s.app.(RunOptionsRegistrar); ok && req.ChangeDetectionMode != "" {
-			runKey = r.RegisterRunOptions(req.BackupType, req.ChangeDetectionMode)
+			runKey = t.TrackRequestRun(jobID, req.BackupType, req.ChangeDetectionMode, req.ReadFreeSpace)
+		} else if r, ok := s.app.(RunOptionsRegistrar); ok && (req.ChangeDetectionMode != "" || req.ReadFreeSpace) {
+			runKey = r.RegisterRunOptions(req.BackupType, req.ChangeDetectionMode, req.ReadFreeSpace)
 		}
 
 		var err error

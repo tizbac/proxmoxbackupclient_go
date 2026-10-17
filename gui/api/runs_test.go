@@ -43,7 +43,7 @@ func (f *fakeHandler) UpdateScheduledJobFromMap(map[string]interface{}) error { 
 func (f *fakeHandler) DeleteScheduledJobFromMap(string) error                 { return nil }
 func (f *fakeHandler) PinServerFingerprint(string, string) error              { return nil }
 
-func (f *fakeHandler) TrackRequestRun(jobID, backupType, changeDetectionMode string) string {
+func (f *fakeHandler) TrackRequestRun(jobID, backupType, changeDetectionMode string, readFreeSpace bool) string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	key := "key-" + jobID

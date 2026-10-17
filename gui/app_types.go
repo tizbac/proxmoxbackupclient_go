@@ -112,6 +112,49 @@ type pendingPostActionsEntry struct {
 	result atomic.Pointer[BackupStatus]
 	// runID is the run's entry on the service's API (service process only).
 	runID string
+	// noter can add a note to the snapshot the run made (set by the
+	// backup's OnSnapshot), for the post-backup actions.
+	noter atomic.Pointer[noterBox]
+}
+
+// snapshotNoter adds a note to the PBS comment of a finished snapshot.
+type snapshotNoter interface {
+	AddNote(note string) error
+}
+
+type noterBox struct{ n snapshotNoter }
+
+// setRunNoter records the snapshot the run under key made (BackupOptions.OnSnapshot).
+func (a *App) setRunNoter(key string, n snapshotNoter) {
+	if key == "" || n == nil {
+		return
+	}
+	if v, ok := a.pendingPostActions.Load(key); ok {
+		v.(*pendingPostActionsEntry).noter.Store(&noterBox{n})
+	}
+}
+
+// noter returns the entry's snapshot noter, or nil.
+func (e *pendingPostActionsEntry) snapshotNoter() snapshotNoter {
+	if e == nil {
+		return nil
+	}
+	if b := e.noter.Load(); b != nil {
+		return b.n
+	}
+	return nil
+}
+
+// runNoter returns the snapshot noter of the run under key without taking
+// the entry.
+func (a *App) runNoter(key string) snapshotNoter {
+	if key == "" {
+		return nil
+	}
+	if v, ok := a.pendingPostActions.Load(key); ok {
+		return v.(*pendingPostActionsEntry).snapshotNoter()
+	}
+	return nil
 }
 
 // runIDFor returns the API entry of the service run under key ("" if none).
@@ -127,9 +170,9 @@ func (a *App) runIDFor(key string) string {
 
 // TrackRequestRun registers a run the GUI asked the service for, under its
 // API entry jobID (api.RunTracker). Like RegisterRunOptions it carries the
-// run's change detection; the backup's own completion removes it.
-func (a *App) TrackRequestRun(jobID, backupType, changeDetectionMode string) string {
-	key := a.RegisterRunOptions(backupType, changeDetectionMode)
+// run's change detection and forensic copy; the backup's own completion removes it.
+func (a *App) TrackRequestRun(jobID, backupType, changeDetectionMode string, readFreeSpace bool) string {
+	key := a.RegisterRunOptions(backupType, changeDetectionMode, readFreeSpace)
 	if v, ok := a.pendingPostActions.Load(key); ok {
 		v.(*pendingPostActionsEntry).runID = jobID
 	}

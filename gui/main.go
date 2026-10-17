@@ -806,7 +806,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	switch a.mode {
 	case api.ModeService:
 		// Use HTTP API to communicate with service (service has admin rights as LocalSystem)
-		return a.startMachineBackupViaService(backupType, backupDevices, backupID, useVSS, compression, pbsServerID, comment)
+		return a.startMachineBackupViaService(backupType, backupDevices, backupID, useVSS, compression, pbsServerID, comment, postActionsKey)
 	case api.ModeStandalone:
 		// Direct execution - check admin if VSS requested
 		if useVSS && !isAdmin() {
@@ -854,7 +854,7 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 }
 
 // startMachineBackupViaService sends machine backup request to the service via HTTP API
-func (a *App) startMachineBackupViaService(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string) error {
+func (a *App) startMachineBackupViaService(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	if err := a.checkServiceKey(pbsServerID); err != nil {
 		return err
 	}
@@ -868,6 +868,8 @@ func (a *App) startMachineBackupViaService(backupType string, backupDevices []st
 		Compression:  compression,
 		PBSServerID:  pbsServerID,
 		Comment:      comment,
+		// A machine Backup Set's forensic copy setting (ScheduledJob.ReadFreeSpace).
+		ReadFreeSpace: a.runReadFreeSpace(postActionsKey),
 	}
 
 	resp, err := a.apiClient.StartMachineBackup(req)
@@ -1081,6 +1083,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		ScheduledFullRead:   scheduledFullRead,
 		FullReadRequested:   fullReadRequested,
 		Crypt:               pbsCfg.Crypt,
+		OnSnapshot:          func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
@@ -1230,7 +1233,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			// Standalone-mode post-backup actions (email/run-app/exit/shutdown)
 			// for a scheduled job — nil for a genuine one-off backup.
 			if postActionsEntry != nil {
-				a.runPostBackupActions(*postActionsEntry.job, success, message)
+				a.runPostBackupActions(*postActionsEntry.job, success, message, postActionsEntry.snapshotNoter())
 			}
 
 			// currentScheduledJobName is still a shared field (kept for the
@@ -1402,6 +1405,8 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		DisableSplit:   a.config.DisableSplit,
 		SplitSizeBytes: a.config.SplitSizeBytes(),
 		Crypt:          pbsCfg.Crypt,
+		ReadFreeSpace:  a.runReadFreeSpace(postActionsKey),
+		OnSnapshot:     func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
@@ -1510,7 +1515,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			// OnComplete's matching comment above (startBackupDirect) for the
 			// full reasoning.
 			if postActionsEntry != nil {
-				a.runPostBackupActions(*postActionsEntry.job, success, message)
+				a.runPostBackupActions(*postActionsEntry.job, success, message, postActionsEntry.snapshotNoter())
 			}
 
 			// currentScheduledJobName is still a shared field (kept for the

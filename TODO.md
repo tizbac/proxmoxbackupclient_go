@@ -17,7 +17,6 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 ## Background service
 
-- [ ] **Live test: the encryption key on machine backups the service runs** (fixed in 2f46844, not tried with a key configured).
 - [ ] **Live test on Linux: Restart as administrator** (pkexec) from a desktop session, and clicking Install in the root app.
 - [ ] Pause backup in the tray: try it by hand with the mouse. Tested on winclient on 2026-10-16 by sending the tray's own messages, for a run of the app and a run of the service: greyed out when idle, Pause and Resume from the tray, the window and the tray following each other, the tooltip, and greyed out again after the run.
 - [ ] Maybe: a "resume at" time for a paused backup.
@@ -27,8 +26,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 - [ ] Maybe: options per schedule (the monthly one does a full read, or goes to another server). Several schedules per set were built on 2026-10-13; Mick put this off.
 - [ ] Maybe: NTFS extended attributes in files restored from a machine (disk image) backup (the image reader does not read `$EA`; folder backups record them since v0.9.0, and a bare-metal restore keeps them).
 - [ ] **Very large folders in split backups** are split one level deep only (`gui/backup_analysis.go`): a 700 GB subfolder becomes one 700 GB part. Recursive splitting down to a size limit was planned; less pressing since change detection reuses unchanged files. Decide whether it is still wanted.
-- [ ] Machine backups: a GUI option for a forensic copy (read free space too; the CLI has `-readfreespace`).
-- [ ] Machine backups: volumes without a drive letter (EFI, recovery) are still read whole (small).
+- [ ] Live test of a forensic machine set (2026-10-17): the run log says "Forensic copy", "free space not read" stays 0, and a deleted file's data is in the image.
 - [ ] Offered, not agreed: an empty-block marker in machine backups, skipping the 4 MiB copy for blank chunks in `emitZeros`/`push` (about 3 to 4 minutes off a 27 minute laptop run).
 
 ## Restoring
@@ -56,7 +54,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 ## Command-line tools
 
-- [ ] Maybe: the app and the service note a notification e-mail that could not be sent in the snapshot's PBS comment, as the command-line tools do since v0.9.1 (`clientcommon.MailFailedNote`).
+- [ ] Live test of the mail-failed note from the app and the service (2026-10-17, unit-tested only): a set with an e-mail on completion and an SMTP server that refuses, then the snapshot's comment on PBS.
 
 ## Tests
 
@@ -71,4 +69,5 @@ Kept, not being worked on (Mick, 2026-10-11).
 - **Speed limit per Backup Set**: a cap slows every run even when the link is free; revisit only for a real case such as a slow site link. Pause covers "the server is busy now".
 - **A separate bare-metal restore CLI** (`cmd/proxmoxbackupclient-restore` for a Linux live USB): the BMR ISO's wizard covers bare-metal restore; build it only if a no-GUI rescue path is wanted.
 - **Retention per Backup Set in the client**: retention is the server's job (the datastore prune job, now with `keep-hourly`), the usual backup token (DatastoreBackup) cannot prune, and a client prune would fight the datastore job unless the set had its own namespace. Parked by Mick, 2026-10-14.
+- **Machine backups: skipping free space in partitions without a drive letter** (EFI, recovery), which are read whole. Looked at 2026-10-17: the EFI partition is FAT32, which VSS cannot snapshot; the recovery partition could be snapshotted by its volume GUID, at the cost of one more snapshot set every run, and skipping its free space without a snapshot could zero clusters written during the backup. Together they are about 1 GB, read in seconds and nearly all reused. Not worth the risk.
 - **Is deepthought's backup CPU-bound?** Moot since change detection skips unchanged files; reopen only if a full read is too slow.

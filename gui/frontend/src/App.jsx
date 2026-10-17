@@ -622,6 +622,8 @@ function App() {
   const [oneOffComment, setOneOffComment] = useState('') // Optional PBS snapshot comment for a one-off backup
   // Back a machine up as a PBS "vm" snapshot (restorable from Proxmox VE).
   const [machineAsVM, setMachineAsVM] = useState(false)
+  // A machine Backup Set that also reads free space (a forensic copy).
+  const [readFreeSpace, setReadFreeSpace] = useState(false)
   // Change detection for a directory Backup Set ('legacy' | 'data' | 'metadata')
   // and, for metadata, a full read every N runs (0 = never).
   const [changeDetectionMode, setChangeDetectionMode] = useState('legacy')
@@ -632,6 +634,7 @@ function App() {
   const applyVmFieldsFromJob = (job) => {
     const isVm = job.backupType === 'machine' && !!job.machineAsVm
     setMachineAsVM(isVm)
+    setReadFreeSpace(job.backupType === 'machine' && !!job.readFreeSpace)
     if (!isVm) { setVmIdNumber(''); setVmIdStyle('range'); return }
     const id = String(job.backupId || '')
     if (/^000\d+$/.test(id)) { setVmIdStyle('zeros'); setVmIdNumber(id.slice(3)) }
@@ -2174,6 +2177,7 @@ function App() {
         useVSS: config.usevss,
         backupType: backupType,
         machineAsVm: useVmType,
+        readFreeSpace: backupType === 'machine' && readFreeSpace,
         excludeList: backupType === 'directory' ? getEffectiveExcludeList() : [],
         driveLetters: backupType === 'machine' ? selectedDrives : [],
         imageFolders: backupType === 'machine' ? imageFolders.split('\n').map(d => d.trim()).filter(d => d) : [],
@@ -2210,7 +2214,7 @@ function App() {
         }
         // Reset form after save
         setJobName('')
-        setMachineAsVM(false); setVmIdNumber(''); setImageFolders('')
+        setMachineAsVM(false); setReadFreeSpace(false); setVmIdNumber(''); setImageFolders('')
         setRunAtStartup(false)
         setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
         setBackupDirs('')
@@ -3711,7 +3715,7 @@ function App() {
                   onClick={() => {
                     setEditingJobId(null)
                     setJobName('')
-                    setMachineAsVM(false); setVmIdNumber(''); setImageFolders('')
+                    setMachineAsVM(false); setReadFreeSpace(false); setVmIdNumber(''); setImageFolders('')
                     setBackupMode('scheduled')
                     setRunAtStartup(false)
                     setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
@@ -3787,6 +3791,15 @@ function App() {
                               }}>
                                 {(job.backupType === 'machine' ? t('backupTypeMachine') : t('backupTypeDirectory')).split(' ')[0].toUpperCase()}{job.machineAsVm ? ' (VM)' : ''}
                               </span>
+                              {job.backupType === 'machine' && job.readFreeSpace && (
+                                <span title={tl('machineReadFreeSpaceHint', '')} style={{
+                                  display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
+                                  padding: '2px 7px', borderRadius: '3px', background: '#f3eefa', color: '#5b3a8c',
+                                  border: '1px solid #ddd0ee', verticalAlign: 'middle', marginRight: '6px',
+                                }}>
+                                  {tl('machineForensicBadge', 'FORENSIC')}
+                                </span>
+                              )}
                               {/* Snapshot badge: whether this set reads through a
                                   snapshot, from the set's own setting (folder sets) or
                                   always (machine sets snapshot every mounted volume).
@@ -4234,6 +4247,24 @@ function App() {
           )}
           {backupType === 'machine' && backupMode === 'scheduled' && (
             <div className="form-group">
+              <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontWeight: 'normal', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={readFreeSpace}
+                  onChange={(e) => setReadFreeSpace(e.target.checked)}
+                  style={{ width: 'auto', marginTop: '3px' }}
+                />
+                <span>
+                  <strong>{tl('machineReadFreeSpace', 'Forensic copy: read free space too')}</strong>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', maxWidth: '560px' }}>
+                    {tl('machineReadFreeSpaceHint', 'Reads every sector, including free space and the paging and hibernation files, so deleted files can be recovered from the image later. Without it they go into the image as zeros without being read. Much slower, and the backups take more space.')}
+                  </div>
+                </span>
+              </label>
+            </div>
+          )}
+          {backupType === 'machine' && backupMode === 'scheduled' && (
+            <div className="form-group">
               <label htmlFor="imageFolders">{tl('imageFoldersLabel', 'Folders for Undelete and Roll back')}</label>
               <textarea
                 id="imageFolders"
@@ -4536,7 +4567,7 @@ function App() {
             <button className="btn btn-secondary" onClick={() => {
               setEditingJobId(null)
               setJobName('')
-              setMachineAsVM(false); setVmIdNumber(''); setImageFolders('')
+              setMachineAsVM(false); setReadFreeSpace(false); setVmIdNumber(''); setImageFolders('')
               setChangeDetectionMode('legacy'); setFullReadEvery(0)
               setRunAtStartup(false)
               setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])

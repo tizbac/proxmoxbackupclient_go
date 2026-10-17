@@ -101,7 +101,7 @@ func (a *App) runChangeDetectionMode(postActionsKey string) string {
 
 // RegisterRunOptions records the options of a backup request the GUI handed
 // to the service and returns the key to run it under (api.RunOptionsRegistrar).
-func (a *App) RegisterRunOptions(backupType, changeDetectionMode string) string {
+func (a *App) RegisterRunOptions(backupType, changeDetectionMode string, readFreeSpace bool) string {
 	if pbscommon.ValidateChangeDetectionMode(changeDetectionMode) != nil {
 		changeDetectionMode = ""
 	}
@@ -109,7 +109,23 @@ func (a *App) RegisterRunOptions(backupType, changeDetectionMode string) string 
 		ID:                  "service-request",
 		BackupType:          backupType,
 		ChangeDetectionMode: changeDetectionMode,
+		ReadFreeSpace:       readFreeSpace,
 	}, "")
+}
+
+// runReadFreeSpace reports whether the run registered under postActionsKey
+// is a machine set's forensic copy (ScheduledJob.ReadFreeSpace). Only the
+// machine-backup path reads it.
+func (a *App) runReadFreeSpace(postActionsKey string) bool {
+	if postActionsKey == "" {
+		return false
+	}
+	v, ok := a.pendingPostActions.Load(postActionsKey)
+	if !ok {
+		return false
+	}
+	e := v.(*pendingPostActionsEntry)
+	return e.job != nil && e.job.ReadFreeSpace
 }
 
 // paramUint reads a numeric completion parameter (see backup_inline.go,

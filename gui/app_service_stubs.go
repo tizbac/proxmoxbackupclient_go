@@ -177,6 +177,7 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		// The Backup Set's change detection for this run (scheduler.go), or
 		// the mode a GUI request carried (api server); "" for one-off runs.
 		ChangeDetectionMode: a.runChangeDetectionMode(postActionsKey),
+		OnSnapshot:          func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent*100, message))
 			a.reportRun(runID, percent, message)
@@ -287,6 +288,10 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		DisableSplit:   pbsCfg.DisableSplit,
 		SplitSizeBytes: pbsCfg.SplitSizeBytes(),
 		Crypt:          pbsCfg.Crypt,
+		// A machine set's forensic copy, from the scheduler's job copy or
+		// the GUI's request (RegisterRunOptions).
+		ReadFreeSpace: a.runReadFreeSpace(postActionsKey),
+		OnSnapshot:    func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent*100, message))
 			a.reportRun(runID, percent, message)

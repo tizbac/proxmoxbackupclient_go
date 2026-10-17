@@ -207,7 +207,7 @@ All folders ticked in one backup go into one snapshot, each as its own archive. 
 * **Host backup (default).** Stored as `host/<Backup ID>`. Restore it to bare metal with the Clonezilla ISO.
 * **Proxmox VE virtual machine.** Stored as `vm/<number>` so Proxmox VE lists it as a VM backup and can restore it as a VM. You type a VM ID (1 to 999999). To keep clear of your real VMs the ID is changed: **Reserved range (9000000 + ID)** (default) or **Leading zeros (000 + ID)**. The form shows the resulting "Backup ID in PBS". The VM Proxmox VE creates is bare-bones: a SATA disk, OVMF firmware for GPT disks, and no network card, TPM or drivers. The same snapshot can also be restored to bare metal with the Clonezilla ISO.
 
-A Windows machine backup reads free space as zeros instead of from the disk, using each NTFS volume's own allocation map, and leaves the paging, hibernation and swap files out the same way. A Linux machine backup does the same for ext2/3/4 and XFS. A half-empty disk is read in about half the time, and deleted data never reaches the backup. The image is still a complete disk. If the disk cannot read part of a partition (a bad sector), that part goes into the image as zeros and the run finishes as a partial backup that says where.
+A Windows machine backup (unless the set is a forensic copy, [section 6.1](#61-source-tab)) reads free space as zeros instead of from the disk, using each NTFS volume's own allocation map, and leaves the paging, hibernation and swap files out the same way. A Linux machine backup does the same for ext2/3/4 and XFS. A half-empty disk is read in about half the time, and deleted data never reaches the backup. The image is still a complete disk. If the disk cannot read part of a partition (a bad sector), that part goes into the image as zeros and the run finishes as a partial backup that says where.
 
 ### Exclusions
 
@@ -232,6 +232,7 @@ A Backup Set is a saved backup with a name, its schedules and options. The **Bac
 |---|---|
 | DAILY, REPEAT, WEEKLY, MONTHLY, YEARLY, MANUAL | The kind of schedule that gives the next run, with +1, +2... for the set's other schedules that are on. MANUAL: the set only runs on Run Now, or none of its schedules is on |
 | DIRECTORY, MACHINE, MACHINE (VM) | The backup type; (VM) for a machine set stored as a Proxmox VE VM |
+| FORENSIC | A machine set that reads free space too ([section 6.1](#61-source-tab)) |
 | VSS ON, VSS OFF (Linux: SNAPSHOT ON, SNAPSHOT OFF) | Whether the set reads through a snapshot. Machine sets always show ON |
 | VSS PARTLY, VSS N/A (amber) | The set asks for a snapshot, but some (PARTLY) or all (N/A) of its folders are network drives or shares, which cannot be snapshotted and are read live. Hover the badge for the list |
 | SHARED ID (amber) | Another set writes into the same backup group on PBS ([section 6.4](#64-destination-tab)). Hover it for the other set's name |
@@ -256,6 +257,8 @@ Click **Add New Backup Set** to create one. Give it a **Backup set name**, fill 
 ### 6.1 Source tab
 
 **Backup type**, then the folders (Directory) or disks and **Backup as** (Machine), as for one-off backups ([section 5](#5-one-off-backups)).
+
+A machine set also has **Forensic copy: read free space too**. Ticked, every sector is read, free space and the paging and hibernation files included, so deleted files can be recovered from the image later (like `proxmoxbackup-machine -readfreespace`). Unticked (the default) they go into the image as zeros without being read ([machine backups](#machine-backups-host-or-vm)). A forensic set reads the whole disk on every run and its backups take more space. Its card shows a **FORENSIC** badge.
 
 A machine set also has **Folders for Undelete and Roll back**, one per line. Undelete and Roll back work on these folders, reading their files from the disk images. Left empty, they use your Desktop, Documents, Pictures, Music, Videos and Downloads. The folders must be on the disks the set backs up.
 
@@ -317,7 +320,7 @@ Schedules run while the GUI is running (in the tray is fine) or in the installed
 
 The actions run in this order when the set finishes: the email, the "after" application, the window choice, then the shutdown last.
 
-Email needs the SMTP account in **Preferences > Email** ([section 14](#14-preferences)). The tab warns if none is set up.
+Email needs the SMTP account in **Preferences > Email** ([section 14](#14-preferences)). The tab warns if none is set up. If a successful backup's e-mail cannot be sent (the mail server is down or refuses it), "Error sending notification email, check client mail configuration." is added to the snapshot's comment on PBS, after the set's name, as the command-line tools do, so it shows in the PBS web interface.
 
 ### 6.6 What PBS sees
 

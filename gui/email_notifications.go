@@ -60,8 +60,9 @@ func (a *App) SendTestEmail(to string) error {
 // for a finished Backup Set, using the global SMTP account. Best-effort: a
 // failure here is logged, never propagated (a backup that actually
 // succeeded/failed must not be reported differently just because the
-// notification email itself couldn't be sent).
-func (a *App) sendJobNotificationEmail(job ScheduledJob, success bool, message string) {
+// notification email itself couldn't be sent). It reports whether an e-mail
+// was due and could not be sent (no SMTP server set counts as not due).
+func (a *App) sendJobNotificationEmail(job ScheduledJob, success bool, message string) (failed bool) {
 	to := job.EmailOnSuccessTo
 	enabled := job.EmailOnSuccess
 	if !success {
@@ -69,18 +70,18 @@ func (a *App) sendJobNotificationEmail(job ScheduledJob, success bool, message s
 		enabled = job.EmailOnFailure
 	}
 	if !enabled || to == "" {
-		return
+		return false
 	}
 	if a.config.SMTPHost == "" {
 		writeDebugLog(fmt.Sprintf("[PostBackup] %q wants an email on %s but no SMTP server is configured in Preferences — skipping",
 			job.Name, map[bool]string{true: "completion", false: "failure"}[success]))
-		return
+		return false
 	}
 
 	client, err := clientcommon.SetupMailClient(a.config.SMTPHost, a.config.SMTPPort, a.config.SMTPUsername, a.config.SMTPPassword, a.config.SMTPInsecure)
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("[PostBackup] could not connect to mail server for job %q: %v", job.Name, err))
-		return
+		return true
 	}
 	defer client.Quit()
 
@@ -99,7 +100,23 @@ func (a *App) sendJobNotificationEmail(job ScheduledJob, success bool, message s
 
 	if err := clientcommon.SendMail(from, to, subject, body, client); err != nil {
 		writeDebugLog(fmt.Sprintf("[PostBackup] could not send notification email for job %q: %v", job.Name, err))
+		return true
 	}
+	return false
+}
+
+// noteMailFailed adds clientcommon.MailFailedNote to the PBS comment of the
+// snapshot a run made, as the command-line tools do, so the problem shows
+// in the PBS web UI too. A failed run usually has no snapshot (noter nil).
+func noteMailFailed(jobName string, noter snapshotNoter) {
+	if noter == nil {
+		return
+	}
+	if err := noter.AddNote(clientcommon.MailFailedNote); err != nil {
+		writeDebugLog(fmt.Sprintf("[PostBackup] could not add the mail warning to the PBS comment for job %q: %v", jobName, err))
+		return
+	}
+	writeDebugLog(fmt.Sprintf("[PostBackup] mail warning added to the PBS comment of %q's snapshot", jobName))
 }
 
 // runPreBackupApp runs a Backup Set's configured "before" application, if
@@ -128,8 +145,12 @@ func runPostBackupApp(command, jobName, when string) {
 // to do after it completes: email notification, an application, then exiting
 // the app and/or shutting down the computer — deliberately in that order,
 // since a shutdown is irreversible and must be the very last thing attempted.
-func (a *App) runPostBackupActions(job ScheduledJob, success bool, message string) {
-	a.sendJobNotificationEmail(job, success, message)
+// noter is the run's snapshot (nil when there is none): an e-mail that could
+// not be sent is noted in its PBS comment.
+func (a *App) runPostBackupActions(job ScheduledJob, success bool, message string, noter snapshotNoter) {
+	if a.sendJobNotificationEmail(job, success, message) {
+		noteMailFailed(job.Name, noter)
+	}
 	runPostBackupApp(job.RunAppAfter, job.Name, "after")
 
 	// Only a GUI has a window to hide; the service runs scheduled sets too.

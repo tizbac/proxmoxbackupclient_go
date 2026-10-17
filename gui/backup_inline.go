@@ -103,7 +103,13 @@ type BackupOptions struct {
 	Comment string
 	// Crypt encrypts every chunk and signs the manifest. Nil means a plain
 	// snapshot. Populated from Config.Crypt (Config.EncryptionKeyFile).
-	Crypt      *pbscommon.CryptConfig
+	Crypt *pbscommon.CryptConfig
+	// ReadFreeSpace (machine backups): read free space too, a forensic copy.
+	ReadFreeSpace bool
+	// OnSnapshot receives, before OnComplete, a way to add a note to the
+	// snapshot a successful run made (the post-backup actions use it when
+	// the notification e-mail cannot be sent).
+	OnSnapshot func(snapshotNoter)
 	OnProgress func(percent float64, message string)
 	// OnComplete's message is always plain, already-formatted English text
 	// (backward-compatible with every existing consumer). key/params are
@@ -1588,6 +1594,10 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		status.Outcome, successfulDirs, len(opts.BackupObjects), status.NewChunks, status.ReusedChunks,
 		status.FailedChunks, len(status.SkippedReadError), len(status.ExcludedByPolicy), status.TotalBytes, duration))
 
+	if status.Success() && opts.OnSnapshot != nil {
+		opts.OnSnapshot(&clientNoter{client: client})
+	}
+
 	// Additive (choice A): OnComplete keeps its (success, message) contract for
 	// existing consumers; OnResult carries the full structured status for the
 	// sidecar (Group 1) and rich history.
@@ -1604,6 +1614,17 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		return fmt.Errorf("%s", completionMsg)
 	}
 	return nil
+}
+
+// clientNoter adds a note to the PBS comment of the snapshot a folder backup
+// made, after the comment it was given (as machinebackuplib.BackupResult does).
+type clientNoter struct{ client *pbscommon.PBSClient }
+
+func (c *clientNoter) AddNote(note string) error {
+	if comment := c.client.Manifest.Comment; comment != "" {
+		note = comment + " | " + note
+	}
+	return c.client.SetComment(note)
 }
 
 // runMachineBackupInline handles machine backup using machinebackuplib
@@ -1625,7 +1646,11 @@ func runMachineBackupInline(opts BackupOptions) error {
 		BackupDevices:   opts.BackupObjects,
 		Comment:         opts.Comment,
 		Crypt:           opts.Crypt,
+		ReadFreeSpace:   opts.ReadFreeSpace,
 		Progress:        &machinebackuplib.JobProgress{},
+	}
+	if opts.ReadFreeSpace {
+		writeBackupLog("Forensic copy: free space and the paging/hibernation files are read too")
 	}
 	jp := cfg.Progress
 
@@ -1729,8 +1754,11 @@ func runMachineBackupInline(opts BackupOptions) error {
 	defer stopTicker()
 
 	// Perform machine backup
-	_, err := machinebackuplib.Backup(cfg, progress)
+	result, err := machinebackuplib.Backup(cfg, progress)
 	stopTicker()
+	if err == nil && result != nil && opts.OnSnapshot != nil {
+		opts.OnSnapshot(result)
+	}
 	writeBackupLog(fmt.Sprintf("[RESULT] machine backup: %s of %s read, %s", formatByteSize(jp.BytesDone.Load()), formatByteSize(jp.BytesTotal.Load()), counts()))
 	if err != nil && opts.Ctx != nil && opts.Ctx.Err() != nil {
 		// Stop is the user's choice, not a failure: reported as a folder

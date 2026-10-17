@@ -14,6 +14,9 @@ type BackupRequest struct {
 	// ChangeDetectionMode is a directory Backup Set run's mode ("", "legacy",
 	// "data", "metadata"); an older service ignores it (classic format).
 	ChangeDetectionMode string `json:"change_detection_mode,omitempty"`
+	// ReadFreeSpace makes a machine backup a forensic copy (free space read
+	// too); an older service ignores it and skips free space.
+	ReadFreeSpace bool `json:"read_free_space,omitempty"`
 }
 
 // BackupResponse represents the result of a backup operation
