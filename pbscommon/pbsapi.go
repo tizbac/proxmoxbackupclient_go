@@ -779,6 +779,22 @@ func (pbs *PBSClient) ChunkDigestHex(chunkdata []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// ChunkMatchesDigest reports whether a fetched chunk's plaintext is the one
+// digestHex names. With a key configured, a plain sha256 also matches: an
+// unencrypted snapshot (taken before the key was set up) read with the key
+// loaded. Choosing the right one per snapshot would need its manifest at
+// every reader; a match of the other kind would need a sha256 preimage.
+func (pbs *PBSClient) ChunkMatchesDigest(chunkdata []byte, digestHex string) bool {
+	if pbs.ChunkDigestHex(chunkdata) == digestHex {
+		return true
+	}
+	if pbs.Crypt == nil {
+		return false
+	}
+	sum := sha256.Sum256(chunkdata)
+	return hex.EncodeToString(sum[:]) == digestHex
+}
+
 // defaultCryptMode is the crypt-mode a freshly created index archive entry
 // gets. UploadManifest re-derives it for every archive before signing, so
 // this is only about keeping the in-memory manifest honest between creation

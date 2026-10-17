@@ -473,6 +473,36 @@ func TestDIDXReaderAtEncryptedArchiveWithoutKey(t *testing.T) {
 	}
 }
 
+// An unencrypted archive (a snapshot taken before the key was set up) must
+// still read with the key loaded: its chunks carry plain sha256 digests.
+// Found live 2026-10-17: Undelete on a machine set failed with "content hash
+// mismatch" on its older, unencrypted snapshots once a key was configured.
+func TestDIDXReaderAtPlainArchiveWithKeyLoaded(t *testing.T) {
+	payloads := payloadsOf(3, 64)
+	a := makeDIDX(t, nil, payloads...)
+	f := newFakePBSWithDIDX(t, "plain.didx", a, nil)
+	f.Crypt = testCryptConfig(t)
+
+	r, size, err := f.NewDIDXReaderAt("plain.didx", 4, nil)
+	if err != nil {
+		t.Fatalf("NewDIDXReaderAt: %v", err)
+	}
+	got := make([]byte, size)
+	if _, err := r.ReadAt(got, 0); err != nil {
+		t.Fatalf("reading a plain archive with a key loaded: %v", err)
+	}
+	if !bytes.Equal(got, bytes.Join(payloads, nil)) {
+		t.Fatal("wrong content")
+	}
+
+	// A tampered chunk is still caught.
+	f.corrupt[a.order[1]] = bytes.Repeat([]byte{0xCD}, len(payloads[1]))
+	r2, _, _ := f.NewDIDXReaderAt("plain.didx", 4, nil)
+	if _, err := r2.ReadAt(make([]byte, 8), 64); err == nil {
+		t.Fatal("a tampered chunk was accepted with a key loaded")
+	}
+}
+
 // The wrong key must fail the integrity check, not silently return garbage.
 func TestDIDXReaderAtEncryptedArchiveWrongKey(t *testing.T) {
 	crypt := testCryptConfig(t)

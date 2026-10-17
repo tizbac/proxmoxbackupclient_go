@@ -252,7 +252,7 @@ func DecodeEncryptedBlob(raw []byte, crypt *CryptConfig, digest []byte) ([]byte,
 		if err := verifyBlobCRC(raw, DataBlobHeaderSize); err != nil {
 			return nil, err
 		}
-		if err := verifyPlaintextDigest(plaintext, crypt, digest); err != nil {
+		if err := verifyUnencryptedDigest(plaintext, crypt, digest); err != nil {
 			return nil, err
 		}
 		return plaintext, nil
@@ -264,7 +264,7 @@ func DecodeEncryptedBlob(raw []byte, crypt *CryptConfig, digest []byte) ([]byte,
 		if err != nil {
 			return nil, err
 		}
-		if err := verifyPlaintextDigest(plaintext, crypt, digest); err != nil {
+		if err := verifyUnencryptedDigest(plaintext, crypt, digest); err != nil {
 			return nil, err
 		}
 		return plaintext, nil
@@ -316,6 +316,20 @@ func verifyBlobCRC(raw []byte, headerSize int) error {
 		return fmt.Errorf("blob CRC32 mismatch (stored %#08x, computed %#08x)", stored, got)
 	}
 	return nil
+}
+
+// verifyUnencryptedDigest checks an unencrypted chunk against its digest. With
+// a key configured that digest is either keyed (a sign-only snapshot) or a
+// plain sha256 (a snapshot taken before the key was set up, or without it),
+// so both are accepted: a chunk that matches the other kind would need a
+// sha256 preimage. Encrypted chunks keep the strict check.
+func verifyUnencryptedDigest(plaintext []byte, crypt *CryptConfig, digest []byte) error {
+	if crypt != nil && len(digest) > 0 {
+		if plain := sha256.Sum256(plaintext); bytes.Equal(plain[:], digest) {
+			return nil
+		}
+	}
+	return verifyPlaintextDigest(plaintext, crypt, digest)
 }
 
 func verifyPlaintextDigest(plaintext []byte, crypt *CryptConfig, digest []byte) error {

@@ -395,10 +395,11 @@ func (r *DIDXReaderAt) fetchOnce(ci int) ([]byte, error) {
 	}
 	hashStart := time.Now()
 	// PBS dynamic-index digests are the SHA-256 of the chunk plaintext, or the
-	// id_key-salted digest for an encrypted snapshot (see PBSClient.ChunkDigest).
+	// id_key-salted digest for an encrypted snapshot (see PBSClient.ChunkDigest;
+	// with a key loaded both are accepted, for snapshots taken without it).
 	// A mismatch means a corrupted or tampered chunk, so fail rather than serve
 	// wrong data.
-	digestOK := r.pbs.ChunkDigestHex(chunk) == digest
+	digestOK := r.pbs.ChunkMatchesDigest(chunk, digest)
 	r.hashNanos.Add(int64(time.Since(hashStart)))
 	if !digestOK {
 		return nil, fmt.Errorf("chunk %s (index %d): content hash mismatch", digest, ci)
