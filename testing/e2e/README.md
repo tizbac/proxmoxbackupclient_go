@@ -49,7 +49,7 @@ Every setting is an environment variable with a sensible default:
 
 | # | Test | Assertion |
 |---|---|---|
-| 1 | Directory backup → official restore | Every file and directory is byte-identical (`sha256` manifest diff + directory-tree diff). |
+| 1 | Directory backup → official restore | Every file and directory is byte-identical (`sha256` manifest diff + directory-tree diff), and every symbolic link comes back as a link with the same target (to a file, out of a folder, to a folder, dangling, absolute, a non-ASCII name). The `.proxmox_backup_client_meta.json` our backup adds at the root is left out of the comparison and checked on its own: it must name the source folder and the backup ID. |
 | 2 | Block/file backup (`.fidx`) → official restore | The restored image is byte-identical to the source. |
 | 3 | **Encrypted** directory backup → official restore `--keyfile` | Restores identically; and the unkeyed restore is *refused*. |
 | 4 | **Encrypted** block backup → official restore `--keyfile` | Restores identically; and the unkeyed restore is *refused*. |
@@ -96,10 +96,14 @@ knowing before changing anything in `pbscommon`:
 
 ## Known gaps
 
-* **Symlinks are not tested.** A Linux backup stores them as links
-  (`writeSymlink` in `pbscommon/pxar.go`; on Windows they are skipped), but the
-  fixture contains none, and `assert_tree_identical` compares only regular
-  files and folders.
+* **The workflow does not run on this repository's branch.** `e2e.yml` (like
+  the other workflows) triggers on `main` and `develop`; the branch here is
+  `master`, so the suite has only been run by hand. The symlink checks and the
+  metadata file handling were tested on 2026-10-18 without Docker: the fixture
+  and `assert_tree_identical` on a copy of the tree (and on copies with a link
+  followed, a link retargeted, a folder link followed: each caught), and a
+  backup of the fixture by `proxmoxbackup-directory` restored with the official
+  client 3.4.9 from a real PBS.
 * **No restore CLI exists in this project.** Restore is in the GUI
   (`gui/restore_inline.go`, plus the Undelete and Roll back command line of
   the GUI's service program, which needs a GUI Backup Set) or delegated to `proxmoxbackup-nbd` for block

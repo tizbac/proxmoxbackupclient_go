@@ -89,14 +89,43 @@ assert_dir_exists() {
 	return 0
 }
 
-# Sorted "<sha256>  <relpath>" listing of every regular file under $1.
+# The file our directory backup adds at the root of every folder archive
+# (pbscommon.BackupMetaFilename): the official client restores it as an
+# ordinary file. The tree comparisons leave it out; assert_backup_meta checks it.
+BACKUP_META=".proxmox_backup_client_meta.json"
+
+# Sorted "<sha256>  <relpath>" listing of every regular file under $1,
+# without the backup's own metadata file at the root.
 tree_manifest() {
-	( cd "$1" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum )
+	( cd "$1" && find . -type f ! -path "./$BACKUP_META" -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum )
+}
+
+# assert_backup_meta <restored-dir> <original-path> <backup-id>: the metadata
+# file our backup added at the archive root came back, and names the folder
+# and backup ID it was made from.
+assert_backup_meta() {
+	local dir="$1" orig="$2" id="$3"
+	assert_file_exists "$dir/$BACKUP_META"
+	python3 - "$dir/$BACKUP_META" "$orig" "$id" <<-'PY' || die "$dir/$BACKUP_META does not describe this backup"
+		import json, sys
+		m = json.load(open(sys.argv[1]))
+		if m.get("original_path") != sys.argv[2] or m.get("backup_id") != sys.argv[3]:
+		    sys.exit(f"original_path={m.get('original_path')!r} backup_id={m.get('backup_id')!r}")
+	PY
+	ok "$BACKUP_META restored with original_path and backup_id of this backup"
+	return 0
 }
 
 # Sorted relative listing of every directory under $1 (excludes the root).
 tree_dirs() {
 	( cd "$1" && find . -mindepth 1 -type d -print | LC_ALL=C sort )
+}
+
+# Sorted "<relpath> -> <target>" listing of every symbolic link under $1, the
+# target as stored in the link (not resolved). A link restored as the file
+# or folder it points to is missing here, and shows up in the other listings.
+tree_links() {
+	( cd "$1" && find . -type l -printf '%p -> %l\n' | LC_ALL=C sort )
 }
 
 # assert_tree_identical <dir-a> <dir-b> <label>
@@ -105,20 +134,25 @@ assert_tree_identical() {
 	assert_dir_exists "$a"
 	assert_dir_exists "$b"
 
-	local d_manifest d_dirs
-	d_manifest="$(mktemp)"; d_dirs="$(mktemp)"
+	local d_manifest d_dirs d_links
+	d_manifest="$(mktemp)"; d_dirs="$(mktemp)"; d_links="$(mktemp)"
 	if ! diff -u <(tree_manifest "$a") <(tree_manifest "$b") >"$d_manifest"; then
-		printf '%s' "$d_manifest" >&2
-		rm -f "$d_manifest" "$d_dirs"
+		cat "$d_manifest" >&2
+		rm -f "$d_manifest" "$d_dirs" "$d_links"
 		die "$label: restored files differ from the source"
 	fi
 	if ! diff -u <(tree_dirs "$a") <(tree_dirs "$b") >"$d_dirs"; then
-		printf '%s' "$d_dirs" >&2
-		rm -f "$d_manifest" "$d_dirs"
+		cat "$d_dirs" >&2
+		rm -f "$d_manifest" "$d_dirs" "$d_links"
 		die "$label: restored directory tree differs from the source"
 	fi
-	rm -f "$d_manifest" "$d_dirs"
-	ok "$label: $(tree_manifest "$a" | wc -l) file(s) byte-identical, tree layout identical"
+	if ! diff -u <(tree_links "$a") <(tree_links "$b") >"$d_links"; then
+		cat "$d_links" >&2
+		rm -f "$d_manifest" "$d_dirs" "$d_links"
+		die "$label: restored symbolic links differ from the source"
+	fi
+	rm -f "$d_manifest" "$d_dirs" "$d_links"
+	ok "$label: $(tree_manifest "$a" | wc -l) file(s) byte-identical, $(tree_links "$a" | wc -l) symlink(s) with the same targets, tree layout identical"
 	return 0
 }
 

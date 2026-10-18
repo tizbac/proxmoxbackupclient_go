@@ -53,7 +53,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 ## Tests
 
-- [ ] Maybe: symbolic links in the Docker end-to-end fixture (`testing/e2e`), with `assert_tree_identical` comparing link targets.
+- [ ] Run the Docker end-to-end suite (`testing/e2e`) in CI: `e2e.yml` and the other workflows trigger on `main`/`develop`, not this repository's `master`, so it has never run here (part of the CI work).
 - [ ] Load test: five Backup Sets at once, check memory stays bounded.
 
 ## Parked

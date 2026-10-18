@@ -34,6 +34,7 @@ type e2eFile struct {
 	sum   string
 	mtime int64
 	dir   bool
+	link  string // a symbolic link's target, as stored in the link
 }
 
 func e2eSnapshotState(t *testing.T, root string) map[string]e2eFile {
@@ -48,6 +49,14 @@ func e2eSnapshotState(t *testing.T, root string) map[string]e2eFile {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(p)
+			if err != nil {
+				return err
+			}
+			m[rel] = e2eFile{link: target}
+			return nil
+		}
 		if info.IsDir() {
 			m[rel] = e2eFile{dir: true, mtime: info.ModTime().Unix()}
 			return nil
@@ -138,6 +147,26 @@ func e2eBuildTree(t *testing.T, root string) {
 	ro := filepath.Join(root, "attrs", "readonly.txt")
 	e2eWriteBytes(t, ro, []byte("read only"))
 	_ = os.Chmod(ro, 0444)
+	// Symbolic links (Linux; a Windows backup skips them): to a file, out of
+	// a folder, to a folder (must not be followed), dangling, and absolute.
+	// The restore must recreate each link with its target text unchanged.
+	if runtime.GOOS != "windows" {
+		for link, target := range map[string]string{
+			"links/to-file":     "../e2e-marker.txt",
+			"links/to-dir":      "../unicode",
+			"links/dangling":    "does-not-exist",
+			"links/absolute":    "/etc/hostname",
+			"links/café link ☕": "to-file",
+		} {
+			p := filepath.Join(root, filepath.FromSlash(link))
+			if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, p); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 }
 
 func e2eMutate(t *testing.T, root string) {
@@ -196,9 +225,15 @@ func e2eCompare(t *testing.T, label string, want, got map[string]e2eFile, prefix
 			missing = append(missing, k)
 			continue
 		}
-		if w.dir != g.dir {
+		if w.dir != g.dir || (w.link == "") != (g.link == "") {
 			content = append(content, k+" (type)")
 			continue
+		}
+		if w.link != "" {
+			if w.link != g.link {
+				content = append(content, fmt.Sprintf("%s (link to %q, restored to %q)", k, w.link, g.link))
+			}
+			continue // a link's own time is not compared
 		}
 		if !w.dir && (w.sum != g.sum || w.size != g.size) {
 			content = append(content, k)
