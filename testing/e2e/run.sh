@@ -51,6 +51,9 @@ open(sys.argv[1], 'wb').write(bytes(range(256)) * 4096 * 3)
 " "$src/pattern.bin"
 
 	make_symlinks "$src"
+	# The comparison leaves this name out at the root (lib.sh); the fixture
+	# must not have its own file there, or a difference in it would be hidden.
+	[ ! -e "$src/$BACKUP_META" ] || die "the fixture must not contain $BACKUP_META"
 	log "directory fixture: $(find "$src" | wc -l) entries ($(find "$src" -type l | wc -l) symlinks), $(du -sh "$src" | cut -f1)"
 }
 
@@ -159,7 +162,7 @@ test_namespace_roundtrip() {
 	step "official client: restoring from namespace '$PBS_NAMESPACE'"
 	pbc_restore "host/$snap" backup.pxar.didx restore-ns --ns "$PBS_NAMESPACE"
 	assert_tree_identical "$WORK/src" "$WORK/restore-ns" "namespaced directory backup"
-	assert_backup_meta "$WORK/restore-ns" "$WORK/src" "$snap"
+	assert_backup_meta "$WORK/restore-ns" "$(cd "$WORK/src" && pwd)" "$snap"
 
 	# Guard against the exact regression above: the snapshot must NOT also be
 	# visible in the root namespace. Tests 1-5 do create root-namespace
@@ -200,7 +203,7 @@ test_directory_backup() {
 
 	pbc_restore host/e2e-dir backup.pxar.didx restore-dir
 	assert_tree_identical "$WORK/src" "$WORK/restore-dir" "directory backup"
-	assert_backup_meta "$WORK/restore-dir" "$WORK/src" e2e-dir
+	assert_backup_meta "$WORK/restore-dir" "$(cd "$WORK/src" && pwd)" e2e-dir
 }
 
 # ===========================================================================
@@ -228,7 +231,7 @@ test_directory_backup_encrypted() {
 
 	pbc_restore host/e2e-dir-enc backup.pxar.didx restore-dir-enc --keyfile key.pem
 	assert_tree_identical "$WORK/src" "$WORK/restore-dir-enc" "encrypted directory backup"
-	assert_backup_meta "$WORK/restore-dir-enc" "$WORK/src" e2e-dir-enc
+	assert_backup_meta "$WORK/restore-dir-enc" "$(cd "$WORK/src" && pwd)" e2e-dir-enc
 }
 
 # ===========================================================================

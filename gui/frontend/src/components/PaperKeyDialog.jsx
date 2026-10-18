@@ -50,7 +50,7 @@ ${inBrowser ? `<p class="note">${esc(t('paperKeyBrowserTabNote'))}</p>` : ''}
 <p>${esc(t('paperKeyIntro'))}</p>
 <p class="warn">${esc(pk.passphrase_protected ? t('paperKeyProtected') : t('paperKeyUnprotected'))}</p>
 <table>${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td${k === t('paperKeyFingerprint') ? ' class="fp"' : ''}>${esc(v)}</td></tr>`).join('')}</table>
-<img alt="QR" src="data:image/png;base64,${pk.qr_png}">
+<img alt="QR" src="data:image/png;base64,${esc(pk.qr_png)}">
 <pre>${esc(pk.key_text)}</pre>
 ${inBrowser ? '<script>addEventListener("load", function () { setTimeout(function () { window.print() }, 300) })</script>' : ''}
 </body></html>`
@@ -61,6 +61,11 @@ export default function PaperKeyDialog({ paperKey, onClose }) {
   const closeRef = useRef(null)
   const frameRef = useRef(null)
   const [browserMsg, setBrowserMsg] = useState(null)
+  const [busy, setBusy] = useState(false)
+  // busyRef guards at once: a second click can arrive before React has
+  // re-rendered the button as disabled (tested: two quick clicks opened two
+  // browser tabs with only the state).
+  const busyRef = useRef(false)
 
   useEffect(() => {
     if (closeRef.current) closeRef.current.focus()
@@ -72,11 +77,20 @@ export default function PaperKeyDialog({ paperKey, onClose }) {
   const handlePrint = async () => {
     const inBrowser = paperKey.print_in_browser && resolvePrintInBrowser()
     if (inBrowser) {
+      // One page per click: a second click while the browser opens would
+      // serve the key a second time.
+      if (busyRef.current) return
+      busyRef.current = true
+      setBusy(true)
       try {
         await inBrowser(printablePage(paperKey, t, true))
         setBrowserMsg({ ok: true, text: t('paperKeyBrowserOpened') })
+        await new Promise((r) => setTimeout(r, 3000))
       } catch (err) {
-        setBrowserMsg({ ok: false, text: t('paperKeyBrowserFailed').replace('{err}', String(err)) })
+        setBrowserMsg({ ok: false, text: t('paperKeyBrowserFailed').replace('{err}', () => String(err)) })
+      } finally {
+        busyRef.current = false
+        setBusy(false)
       }
       return
     }
@@ -128,7 +142,7 @@ export default function PaperKeyDialog({ paperKey, onClose }) {
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '0 18px 18px', flexWrap: 'wrap' }}>
           <button ref={closeRef} type="button" className="btn btn-secondary" style={{ margin: 0 }} onClick={onClose}>{t('paperKeyClose')}</button>
-          <button type="button" className="btn" style={{ margin: 0 }} onClick={handlePrint}>🖨️ {t('paperKeyPrint')}</button>
+          <button type="button" className="btn" style={{ margin: 0 }} onClick={handlePrint} disabled={busy}>🖨️ {t('paperKeyPrint')}</button>
         </div>
       </div>
     </div>

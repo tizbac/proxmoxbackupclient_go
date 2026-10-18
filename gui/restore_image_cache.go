@@ -16,7 +16,11 @@ import (
 // file tables again, which for a large NTFS or ext4 volume means downloading
 // gigabytes of chunks and a minute or more.
 
-const imageCacheSchema = 1
+// imageCacheSchema changes whenever imagefs.Entry gains a field, so lists
+// cached by an older version are read again rather than loaded with the new
+// field empty (gob leaves fields it does not find at their zero value).
+// 2: Entry.HasEAs (NTFS extended attributes).
+const imageCacheSchema = 2
 
 type imageVolumesCache struct {
 	Schema int

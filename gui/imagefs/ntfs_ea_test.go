@@ -159,4 +159,15 @@ func TestNTFSExtendedAttributes(t *testing.T) {
 	if seen != len(expected) {
 		t.Fatalf("found %d of the %d expected entries", seen, len(expected))
 	}
+
+	// A file flagged by a stale extension record but without $EA has none,
+	// and that is not an error.
+	for _, e := range entries {
+		if e.Path == "plain.txt" {
+			e.HasEAs = true
+			if got, err := vol.ExtendedAttributes(e); err != nil || len(got) != 0 {
+				t.Fatalf("plain.txt with a stale flag: %v, %v; want none and no error", got, err)
+			}
+		}
+	}
 }

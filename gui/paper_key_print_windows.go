@@ -4,7 +4,9 @@ package main
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 // openInUserBrowser opens url in the default web browser without
@@ -13,7 +15,11 @@ import (
 // browser elevated too. Explorer's exit code means nothing here, so only a
 // failure to start it is an error.
 func openInUserBrowser(_ context.Context, url string) error {
-	cmd := exec.Command("explorer.exe", url)
+	explorer := "explorer.exe"
+	if win := os.Getenv("SystemRoot"); win != "" {
+		explorer = filepath.Join(win, "explorer.exe") // not whatever PATH finds first
+	}
+	cmd := exec.Command(explorer, url)
 	if err := cmd.Start(); err != nil {
 		return err
 	}

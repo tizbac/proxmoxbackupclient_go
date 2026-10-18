@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"unsafe"
 
 	"github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
@@ -25,6 +26,9 @@ func restoreImageStreams(vol imagefs.Volume, dest string, e imagefs.Entry, buf [
 	}
 	n := 0
 	for _, s := range e.Streams {
+		if !validStreamName(s.Name) {
+			return n, fmt.Errorf("stream %q: not a valid stream name", s.Name)
+		}
 		f, err := nv.OpenStream(e, s.Name)
 		if err != nil {
 			return n, fmt.Errorf("stream %s: %w", s.Name, err)
@@ -43,6 +47,14 @@ func restoreImageStreams(vol imagefs.Volume, dest string, e imagefs.Entry, buf [
 		n++
 	}
 	return n, nil
+}
+
+// validStreamName reports whether name (read from an image) can be used as
+// a stream name: it goes into a path (dest:name), and one with a separator
+// could point elsewhere once Windows tidies the path. NTFS itself does not
+// allow these characters in a stream name, so only a damaged image has one.
+func validStreamName(name string) bool {
+	return name != "" && !strings.ContainsAny(name, `\/:`+"\x00")
 }
 
 // restoreImageEAs puts the NTFS extended attributes of an entry restored from

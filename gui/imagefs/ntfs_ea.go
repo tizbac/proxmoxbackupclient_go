@@ -2,7 +2,10 @@ package imagefs
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"www.velocidex.com/golang/go-ntfs/parser"
@@ -42,6 +45,11 @@ func (v *NTFS) ExtendedAttributes(e Entry) (eas []EA, err error) {
 		return nil, fmt.Errorf("NTFS: record %d: %w", e.Record, err)
 	}
 	rr, err := parser.OpenStream(v.ctx, m, attrEA, parser.WILDCARD_STREAM_ID, parser.WILDCARD_STREAM_NAME)
+	if errors.Is(err, os.ErrNotExist) {
+		// HasEAs came from a stale extension record (List merges them by
+		// record number only): the file has none.
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("NTFS: extended attributes of %s: %w", e.Path, err)
 	}
@@ -53,7 +61,12 @@ func (v *NTFS) ExtendedAttributes(e Entry) (eas []EA, err error) {
 		size = maxEABytes
 	}
 	buf := make([]byte, size)
-	n, _ := rr.ReadAt(buf, 0)
+	n, err := rr.ReadAt(buf, 0)
+	if err != nil && err != io.EOF && int64(n) < size {
+		// A short read (a chunk of a non-resident $EA that could not be
+		// fetched) would give only the first attributes: report it instead.
+		return nil, fmt.Errorf("NTFS: reading the extended attributes of %s: %w", e.Path, err)
+	}
 	return parseEAs(buf[:n]), nil
 }
 

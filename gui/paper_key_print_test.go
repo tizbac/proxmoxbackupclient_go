@@ -8,11 +8,26 @@ import (
 	"time"
 )
 
+// gone reports whether nothing answers at url any more (the listener is
+// closed), waiting up to a second for the shutdown.
+func gone(url string) bool {
+	for i := 0; i < 20; i++ {
+		r, err := http.Get(url)
+		if err != nil {
+			return true
+		}
+		r.Body.Close()
+		time.Sleep(50 * time.Millisecond)
+	}
+	return false
+}
+
 // The paper key page is served once, at its random path only, with
-// no-store, and the address is gone afterwards.
+// no-store and a policy that loads nothing from elsewhere, and the
+// listener closes afterwards.
 func TestServePageOnce(t *testing.T) {
 	page := "<!doctype html><html><body>paper key</body></html>"
-	url, err := servePageOnce(page, time.Minute)
+	url, _, err := servePageOnce(page, time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,11 +36,16 @@ func TestServePageOnce(t *testing.T) {
 	}
 	base := url[:strings.LastIndex(url, "/")]
 
-	if r, err := http.Get(base + "/nothing"); err != nil || r.StatusCode != http.StatusNotFound {
-		t.Fatalf("other path: %v %v, want 404", r, err)
+	r, err := http.Get(base + "/nothing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode != http.StatusNotFound {
+		t.Fatalf("other path: %d, want 404", r.StatusCode)
 	}
 
-	r, err := http.Get(url)
+	r, err = http.Get(url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,26 +57,35 @@ func TestServePageOnce(t *testing.T) {
 	if cc := r.Header.Get("Cache-Control"); cc != "no-store" {
 		t.Fatalf("Cache-Control %q, want no-store", cc)
 	}
-
-	time.Sleep(200 * time.Millisecond)
-	if r, err := http.Get(url); err == nil {
-		r.Body.Close()
-		if r.StatusCode == http.StatusOK {
-			t.Fatal("served a second time")
-		}
+	if csp := r.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'none'") {
+		t.Fatalf("Content-Security-Policy %q", csp)
+	}
+	if !gone(url) {
+		t.Fatal("still listening after the page was fetched")
 	}
 }
 
-// Nothing fetches the page: the address closes when the window ends.
+// Nothing fetches the page: the listener closes when the window ends.
 func TestServePageOnceExpires(t *testing.T) {
-	url, err := servePageOnce("<html></html>", 100*time.Millisecond)
+	url, _, err := servePageOnce("<html></html>", 100*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(400 * time.Millisecond)
-	if r, err := http.Get(url); err == nil {
-		r.Body.Close()
-		t.Fatalf("still served after the window: %d", r.StatusCode)
+	time.Sleep(200 * time.Millisecond)
+	if !gone(url) {
+		t.Fatal("still listening after the window")
+	}
+}
+
+// stop (the browser could not be opened) closes the listener at once.
+func TestServePageOnceStop(t *testing.T) {
+	url, stop, err := servePageOnce("<html></html>", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	if !gone(url) {
+		t.Fatal("still listening after stop")
 	}
 }
 

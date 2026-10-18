@@ -145,7 +145,7 @@ export default function EncryptionKeyField({
     } catch (err) {
       await showNotice({
         title: tl('dlgKeyFailedTitle', 'The key could not be created'), icon: '❌',
-        message: t('encryptionKeyGenerateFailed').replace('{err}', err),
+        message: t('encryptionKeyGenerateFailed').replace('{err}', () => String(err)),
       })
     } finally {
       setBusy(false)
@@ -160,7 +160,7 @@ export default function EncryptionKeyField({
       if (r) setInfo(r)
       await showNotice({ title: t('encryptionKeyRestrict'), icon: '🔒', message: r && r.open_to_others ? t('encryptionKeyOpenToOthers') : t('encryptionKeyRestricted') })
     } catch (err) {
-      await showNotice({ title: t('encryptionKeyRestrict'), icon: '❌', message: t('encryptionKeyRestrictFailed').replace('{err}', err) })
+      await showNotice({ title: t('encryptionKeyRestrict'), icon: '❌', message: t('encryptionKeyRestrictFailed').replace('{err}', () => String(err)) })
     } finally {
       setBusy(false)
     }
@@ -173,7 +173,7 @@ export default function EncryptionKeyField({
       const dest = await saveCopy(value || '')
       if (dest) await showNotice({ title: t('encryptionKeySaveCopy'), icon: '🔑', message: t('encryptionKeyCopySaved').replace('{path}', dest) })
     } catch (err) {
-      await showNotice({ title: t('encryptionKeySaveCopy'), icon: '❌', message: t('encryptionKeyCopyFailed').replace('{err}', err) })
+      await showNotice({ title: t('encryptionKeySaveCopy'), icon: '❌', message: t('encryptionKeyCopyFailed').replace('{err}', () => String(err)) })
     } finally {
       setBusy(false)
     }

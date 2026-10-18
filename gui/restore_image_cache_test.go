@@ -20,7 +20,7 @@ func TestImageVolumesCacheRoundTrip(t *testing.T) {
 			Entries: []imagefs.Entry{
 				{Path: "Users", IsDir: true, MTime: 1, Record: 70, SecurityID: 256},
 				{Path: "Users/a.txt", Size: 5, MTime: 2, Created: 3, Attrs: 0x20, Record: 71, SecurityID: 257,
-					Streams: []imagefs.Stream{{Name: "Zone.Identifier", Size: 26}}},
+					Streams: []imagefs.Stream{{Name: "Zone.Identifier", Size: 26}}, HasEAs: true},
 			},
 		}, {
 			Display: "Partition 4 (ext4, 2.0 GB)", FS: "ext4",

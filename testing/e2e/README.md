@@ -96,9 +96,10 @@ knowing before changing anything in `pbscommon`:
 
 ## Known gaps
 
-* **The workflow does not run on this repository's branch.** `e2e.yml` (like
-  the other workflows) triggers on `main` and `develop`; the branch here is
-  `master`, so the suite has only been run by hand. The symlink checks and the
+* **The workflow does not run by itself on this repository's branch.**
+  `e2e.yml` runs on pushes and pull requests to `main` and `develop` (or when
+  started by hand from the Actions tab); the branch here is `master`, so it
+  has never run here. The symlink checks and the
   metadata file handling were tested on 2026-10-18 without Docker: the fixture
   and `assert_tree_identical` on a copy of the tree (and on copies with a link
   followed, a link retargeted, a folder link followed: each caught), and a

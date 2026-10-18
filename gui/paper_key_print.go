@@ -38,11 +38,12 @@ func (a *App) PrintPaperKeyInBrowser(page string) error {
 	if !strings.Contains(page, "<html") {
 		return fmt.Errorf("not a page")
 	}
-	url, err := servePageOnce(page, paperKeyServeWindow)
+	url, stop, err := servePageOnce(page, paperKeyServeWindow)
 	if err != nil {
 		return err
 	}
 	if err := openInUserBrowser(a.ctx, url); err != nil {
+		stop()
 		return fmt.Errorf("opening the web browser: %w", err)
 	}
 	writeDebugLog("PrintPaperKeyInBrowser: paper key opened in the web browser to print")
@@ -50,26 +51,38 @@ func (a *App) PrintPaperKeyInBrowser(page string) error {
 }
 
 // servePageOnce serves page at a random path on 127.0.0.1 and returns its
-// URL. The listener closes after the page has been fetched once, or after
-// window. Nothing is cached: the response says no-store.
-func servePageOnce(page string, window time.Duration) (string, error) {
+// URL and a function that stops serving it. The listener closes after the
+// page has been fetched once, or after window, or when stop is called.
+// Nothing is cached (no-store) and the page may load nothing from elsewhere.
+func servePageOnce(page string, window time.Duration) (string, func(), error) {
 	tok := make([]byte, 16)
 	if _, err := rand.Read(tok); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	path := "/" + hex.EncodeToString(tok)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	srv := &http.Server{ReadHeaderTimeout: 10 * time.Second}
-	var once sync.Once
+	var (
+		once  sync.Once
+		timer *time.Timer
+		mu    sync.Mutex
+	)
 	stop := func() {
 		once.Do(func() {
+			mu.Lock()
+			if timer != nil {
+				timer.Stop()
+			}
+			mu.Unlock()
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				_ = srv.Shutdown(ctx)
+				if srv.Shutdown(ctx) != nil {
+					_ = srv.Close()
+				}
 			}()
 		})
 	}
@@ -88,10 +101,14 @@ func servePageOnce(page string, window time.Duration) (string, error) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'")
 		_, _ = w.Write([]byte(page))
 		stop()
 	})
 	go func() { _ = srv.Serve(ln) }()
-	time.AfterFunc(window, stop)
-	return "http://" + ln.Addr().String() + path, nil
+	mu.Lock()
+	timer = time.AfterFunc(window, stop)
+	mu.Unlock()
+	return "http://" + ln.Addr().String() + path, stop, nil
 }

@@ -53,7 +53,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 ## Tests
 
-- [ ] Run the Docker end-to-end suite (`testing/e2e`) in CI: `e2e.yml` and the other workflows trigger on `main`/`develop`, not this repository's `master`, so it has never run here (part of the CI work).
+- [ ] Run the Docker end-to-end suite (`testing/e2e`) in CI: `e2e.yml` runs on pushes and pull requests to `main`/`develop` (or by hand), not this repository's `master`, so it has never run here; `build-and-release.yml` has the same branches (part of the CI work).
 - [ ] Load test: five Backup Sets at once, check memory stays bounded.
 
 ## Parked

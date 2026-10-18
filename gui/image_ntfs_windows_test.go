@@ -15,6 +15,25 @@ import (
 	"pbscommon"
 )
 
+// Stream names from an image go into a path (dest:name): one that could
+// point elsewhere is refused.
+func TestValidStreamName(t *testing.T) {
+	for name, want := range map[string]bool{
+		"Zone.Identifier":     true,
+		"com.dropbox.attrs":   true,
+		"ünïcode stream":      true,
+		"":                    false,
+		`x\..\..\escaped.txt`: false,
+		"a/b":                 false,
+		"a:$DATA":             false,
+		"nul\x00byte":         false,
+	} {
+		if got := validStreamName(name); got != want {
+			t.Errorf("validStreamName(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
 // Files and folders restored from an NTFS volume in a disk image get their
 // extended attributes and alternate data streams back, as a folder restore
 // does, and keep the image's modification time although writing a stream
