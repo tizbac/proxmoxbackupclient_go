@@ -34,6 +34,9 @@ type PaperKey struct {
 	QRPNG   string `json:"qr_png"`
 	Printed string `json:"printed"`
 	Host    string `json:"host,omitempty"`
+	// PrintInBrowser: print through the web browser (PrintPaperKeyInBrowser),
+	// because the app's window cannot print here.
+	PrintInBrowser bool `json:"print_in_browser"`
 }
 
 // readKeyForExport reads and checks the key file at path, returning its text
@@ -83,6 +86,7 @@ func (a *App) EncryptionPaperKey(path string) (PaperKey, error) {
 		QRPNG:               base64.StdEncoding.EncodeToString(png),
 		Printed:             time.Now().Format("2006-01-02 15:04"),
 		Host:                host,
+		PrintInBrowser:      paperKeyPrintsInBrowser(),
 	}, nil
 }
 

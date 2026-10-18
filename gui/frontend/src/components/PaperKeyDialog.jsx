@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from '../i18n/i18nContext'
 
 // PaperKeyDialog shows an encryption key laid out for printing (from the
@@ -8,10 +8,20 @@ import { useTranslation } from '../i18n/i18nContext'
 // for the print dialog (WebView2 returns at once and prints when the user
 // clicks Print in its preview), so the frame stays until the dialog closes:
 // removed earlier, the job has nothing to print and fails.
+//
+// Where the app's window cannot print (WebView2 while the app runs as
+// administrator, paperKey.print_in_browser), the same page is handed to the
+// backend, which opens it once in the user's web browser; there it asks to
+// print as soon as it has loaded, with a note on screen only.
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
-function printablePage(pk, t) {
+function resolvePrintInBrowser() {
+  if (window.go && window.go.main && window.go.main.App) return window.go.main.App.PrintPaperKeyInBrowser
+  return undefined
+}
+
+function printablePage(pk, t, inBrowser = false) {
   const rows = [
     [t('paperKeyFingerprint'), pk.fingerprint],
     [t('paperKeyCreated'), pk.created],
@@ -32,13 +42,17 @@ function printablePage(pk, t) {
   img { width: 70mm; height: 70mm; image-rendering: pixelated; display: block; margin: 6px 0 10px; }
   pre { font-family: Consolas, monospace; font-size: 9.5px; white-space: pre-wrap; word-break: break-all; border: 1px solid #999; padding: 8px; margin: 0; }
   .warn { font-weight: 600; }
+  .note { font-size: 14px; background: #fff4d6; border: 1px solid #e0b84c; padding: 8px 12px; margin: 0 0 14px; }
+  @media print { .note { display: none; } }
 </style></head><body>
+${inBrowser ? `<p class="note">${esc(t('paperKeyBrowserTabNote'))}</p>` : ''}
 <h1>${esc(t('paperKeyTitle'))}</h1>
 <p>${esc(t('paperKeyIntro'))}</p>
 <p class="warn">${esc(pk.passphrase_protected ? t('paperKeyProtected') : t('paperKeyUnprotected'))}</p>
 <table>${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td${k === t('paperKeyFingerprint') ? ' class="fp"' : ''}>${esc(v)}</td></tr>`).join('')}</table>
 <img alt="QR" src="data:image/png;base64,${pk.qr_png}">
 <pre>${esc(pk.key_text)}</pre>
+${inBrowser ? '<script>addEventListener("load", function () { setTimeout(function () { window.print() }, 300) })</script>' : ''}
 </body></html>`
 }
 
@@ -46,6 +60,7 @@ export default function PaperKeyDialog({ paperKey, onClose }) {
   const { t } = useTranslation()
   const closeRef = useRef(null)
   const frameRef = useRef(null)
+  const [browserMsg, setBrowserMsg] = useState(null)
 
   useEffect(() => {
     if (closeRef.current) closeRef.current.focus()
@@ -54,7 +69,17 @@ export default function PaperKeyDialog({ paperKey, onClose }) {
     }
   }, [])
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    const inBrowser = paperKey.print_in_browser && resolvePrintInBrowser()
+    if (inBrowser) {
+      try {
+        await inBrowser(printablePage(paperKey, t, true))
+        setBrowserMsg({ ok: true, text: t('paperKeyBrowserOpened') })
+      } catch (err) {
+        setBrowserMsg({ ok: false, text: t('paperKeyBrowserFailed').replace('{err}', String(err)) })
+      }
+      return
+    }
     if (frameRef.current) frameRef.current.remove()
     const frame = document.createElement('iframe')
     frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
@@ -95,6 +120,11 @@ export default function PaperKeyDialog({ paperKey, onClose }) {
               <dd style={{ margin: 0, wordBreak: 'break-all' }}>{pk.path}</dd>
             </dl>
           </div>
+          {browserMsg && (
+            <p role="status" style={{ margin: '12px 0 0', fontSize: '13px', color: browserMsg.ok ? '#2d3748' : '#c62828', background: browserMsg.ok ? '#f1f5f9' : '#fdecea', padding: '8px 10px', borderRadius: '4px' }}>
+              {browserMsg.text}
+            </p>
+          )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '0 18px 18px', flexWrap: 'wrap' }}>
           <button ref={closeRef} type="button" className="btn btn-secondary" style={{ margin: 0 }} onClick={onClose}>{t('paperKeyClose')}</button>

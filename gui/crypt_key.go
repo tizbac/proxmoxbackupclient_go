@@ -194,6 +194,17 @@ func DefaultEncryptionKeyPath() (string, error) {
 	return filepath.Join(dir, "keys", "encryption-key.json"), nil
 }
 
+// EncryptionKeyPathExample is the path shown as an example in the empty key
+// field: where a generated key goes on this computer (the frontend's fixed
+// example is a Windows path).
+func (a *App) EncryptionKeyPathExample() string {
+	p, err := DefaultEncryptionKeyPath()
+	if err != nil {
+		return ""
+	}
+	return p
+}
+
 // OpenEncryptionKeyDialog opens a native picker for an EXISTING key file, so the
 // user does not have to type a Windows path. Returns "" when cancelled.
 func (a *App) OpenEncryptionKeyDialog() (string, error) {

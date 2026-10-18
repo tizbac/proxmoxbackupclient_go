@@ -158,7 +158,7 @@ The tab shows the key's fingerprint. Every chunk is encrypted with AES-256-GCM a
 | Button | What it does |
 |---|---|
 | 💾 Save a copy… | Saves a copy of the key file where you choose, for example on a USB stick. The copy is the same file: a passphrase-protected key stays protected |
-| 🖨️ Print a paper key… | Shows the key's fingerprint and a QR code of the key file, and **Print** prints a page with both and the key file's text. To get the key back, scan the QR code (or type the text) into a file and choose that file with Browse... |
+| 🖨️ Print a paper key… | Shows the key's fingerprint and a QR code of the key file, and **Print** prints a page with both and the key file's text. To get the key back, scan the QR code (or type the text) into a file and choose that file with Browse... On Windows, when the app runs as administrator, its window cannot print, so **Print** opens the page in your web browser instead, which offers to print it: print from there and close the tab. The page is sent to the browser once, straight from the app, and is not saved as a file |
 
 A key without a passphrase on paper is as good as the file: anyone with the page can read your encrypted backups. The paper key says so.
 

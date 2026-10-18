@@ -47,7 +47,17 @@ export default function EncryptionKeyField({
   const restrict = useCallback(resolve('RestrictEncryptionKeyFileAccess'), [])
   const saveCopy = useCallback(resolve('SaveEncryptionKeyCopy'), [])
   const paper = useCallback(resolve('EncryptionPaperKey'), [])
+  const pathExample = useCallback(resolve('EncryptionKeyPathExample'), [])
   const [paperKey, setPaperKey] = useState(null)
+  // The example in the empty field: this computer's own keys folder (the
+  // translated example is a Windows path).
+  const [example, setExample] = useState('')
+  useEffect(() => {
+    if (!pathExample) return undefined
+    let live = true
+    Promise.resolve().then(() => pathExample()).then((p) => { if (live && p) setExample(p) }).catch(() => {})
+    return () => { live = false }
+  }, [pathExample])
 
   // Re-inspect whenever the path changes. Wails bindings always return a
   // Promise, so the result has to be awaited; a stale answer from a previous
@@ -192,7 +202,7 @@ export default function EncryptionKeyField({
           type="text"
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={t('phEncryptionKey')}
+          placeholder={example || t('phEncryptionKey')}
           spellCheck={false}
           style={{ flex: '1 1 auto', minWidth: 0, width: 'auto' }}
         />

@@ -40,7 +40,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 ## Security
 
-- [ ] Live test on winclient of the 2026-10-17 security batch with the service installed: an old plain `config.json` converted to `dpapi:` on first start, backups by the app and by the service still log in, a remembered passphrase still unlocks a protected key in a service run, and Print a paper key printed to a real printer (or PDF) and scanned back.
+- [ ] Paper key printing from the Linux app run as root (`proxmoxbackupclient-root`): untested (needs the password for pkexec). As the normal user it printed (2026-10-18).
 - [ ] Restore of an encrypted snapshot from the Proxmox VE storage configuration (key given to PVE): untested.
 
 ## Languages and docs
