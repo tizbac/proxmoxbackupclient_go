@@ -11,6 +11,7 @@ import (
 
 	"github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
 	"golang.org/x/sys/windows"
+	"pbscommon"
 )
 
 // restoreImageStreams writes the alternate data streams (Zone.Identifier
@@ -42,6 +43,28 @@ func restoreImageStreams(vol imagefs.Volume, dest string, e imagefs.Entry, buf [
 		n++
 	}
 	return n, nil
+}
+
+// restoreImageEAs puts the NTFS extended attributes of an entry restored from
+// a disk image (WSL's $LXUID, $LXGID and $LXMOD, say) back on dest, as a
+// folder restore does. Returns how many were written.
+func restoreImageEAs(vol imagefs.Volume, dest string, e imagefs.Entry) (int, error) {
+	nv, ok := vol.(*imagefs.NTFS)
+	if !ok || !e.HasEAs {
+		return 0, nil
+	}
+	eas, err := nv.ExtendedAttributes(e)
+	if err != nil || len(eas) == 0 {
+		return 0, err
+	}
+	out := make([]pbscommon.EAEntry, len(eas))
+	for i, ea := range eas {
+		out[i] = pbscommon.EAEntry{Name: ea.Name, Flags: ea.Flags, Value: ea.Value}
+	}
+	if _, _, err := pbscommon.WriteStreamsAndEAs(dest, nil, out); err != nil {
+		return 0, err
+	}
+	return len(out), nil
 }
 
 // imageSDDL returns the SDDL form of an NTFS entry's security descriptor

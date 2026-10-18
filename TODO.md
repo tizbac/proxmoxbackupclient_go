@@ -24,7 +24,6 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 ## Backing up
 
 - [ ] Maybe: options per schedule (the monthly one does a full read, or goes to another server). Several schedules per set were built on 2026-10-13; Mick put this off.
-- [ ] Maybe: NTFS extended attributes in files restored from a machine (disk image) backup (the image reader does not read `$EA`; folder backups record them since v0.9.0, and a bare-metal restore keeps them).
 - [ ] **Very large folders in split backups** are split one level deep only (`gui/backup_analysis.go`): a 700 GB subfolder becomes one 700 GB part. Recursive splitting down to a size limit was planned; less pressing since change detection reuses unchanged files. Decide whether it is still wanted.
 - [ ] Offered, not agreed: an empty-block marker in machine backups, skipping the 4 MiB copy for blank chunks in `emitZeros`/`push` (about 3 to 4 minutes off a 27 minute laptop run).
 

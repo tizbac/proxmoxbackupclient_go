@@ -578,20 +578,52 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 	}
 	stage("transferring", "")
 
+	// Alternate data streams and extended attributes (NTFS), of folders and
+	// files, unless the restore leaves them out (the same option as a
+	// folder restore's).
+	buf := make([]byte, 1<<20)
+	streams, streamErrs, eaFiles, eaErrs := 0, 0, 0, 0
+	writeStreamsAndEAs := func(vol imagefs.Volume, dest string, e imagefs.Entry) {
+		if opts.SkipStreams {
+			return
+		}
+		if len(e.Streams) > 0 {
+			n, err := restoreImageStreams(vol, dest, e, buf)
+			streams += n
+			if err != nil {
+				streamErrs++
+				if streamErrs <= 20 {
+					writeBackupLog(fmt.Sprintf("Alternate data streams of %s not all restored: %v", dest, err))
+				}
+			}
+		}
+		if e.HasEAs {
+			n, err := restoreImageEAs(vol, dest, e)
+			switch {
+			case err != nil:
+				eaErrs++
+				if eaErrs <= 20 {
+					writeBackupLog(fmt.Sprintf("Extended attributes of %s not restored: %v", dest, err))
+				}
+			case n > 0:
+				eaFiles++
+			}
+		}
+	}
+
 	for _, d := range dirs {
 		if err := os.MkdirAll(d.dest, 0o755); err != nil {
 			extracted = append(extracted, pbscommon.PXARExtractedFile{Path: d.dest, IsDir: true, Skipped: true, SkipReason: err.Error()})
 			continue
 		}
 		applyImageOwnerMode(d.dest, d.entry)
+		writeStreamsAndEAs(opened[d.vol.Display], d.dest, d.entry)
 		extracted = append(extracted, pbscommon.PXARExtractedFile{Path: d.dest, ArchivePath: d.vol.Display + "/" + d.entry.Path,
 			IsDir: true, ModTime: imagefs.UnixSeconds(d.entry.MTime), ModNanos: filetimeNanos(d.entry.MTime), ModTimeSet: d.entry.MTime != 0})
 	}
 
 	var written int64
 	lastEmit := time.Time{}
-	buf := make([]byte, 1<<20)
-	streams, streamErrs := 0, 0
 	for _, j := range jobs {
 		if cancelled() {
 			return fmt.Errorf("restore cancelled")
@@ -612,18 +644,8 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 					opts.OnStats(&RestoreProgressStats{BytesDone: uint64(written), BytesTotal: uint64(total), CurrentArchive: j.vol.Display})
 				}
 			}
-		})
+		}, func(dest string) { writeStreamsAndEAs(opened[j.vol.Display], dest, j.entry) })
 		ef.ArchivePath = j.vol.Display + "/" + j.entry.Path
-		if !ef.Skipped && len(j.entry.Streams) > 0 {
-			n, err := restoreImageStreams(opened[j.vol.Display], j.dest, j.entry, buf)
-			streams += n
-			if err != nil {
-				streamErrs++
-				if streamErrs <= 20 {
-					writeBackupLog(fmt.Sprintf("Alternate data streams of %s not all restored: %v", j.dest, err))
-				}
-			}
-		}
 		extracted = append(extracted, ef)
 	}
 	if opts.OnStats != nil {
@@ -641,7 +663,9 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 	if streams > 0 || streamErrs > 0 {
 		writeBackupLog(fmt.Sprintf("Alternate data streams: %d restored, %d files with streams that could not be written", streams, streamErrs))
 	}
-
+	if eaFiles > 0 || eaErrs > 0 {
+		writeBackupLog(fmt.Sprintf("Extended attributes: restored on %d files and folders, %d could not be written", eaFiles, eaErrs))
+	}
 	errorSkipCount, verifyFailures, err := finishExtraction(opts, extracted, extractEnd, progress, stage)
 	if err != nil {
 		return err
@@ -691,10 +715,12 @@ func restoreImageSnapshot(opts RestoreOptions, mode RestoreMode, progress func(f
 }
 
 // writeImageFile writes one file from the image to dest through a .part
-// file, then sets its times (and attributes with RestoreACLs). A file that
+// file, then calls afterData (when set, for its streams and extended
+// attributes), then sets its times (and attributes with RestoreACLs): last,
+// because writing a stream changes the modification time. A file that
 // exists is left alone unless Overwrite. Errors are reported in the result
 // (Skipped), as the pxar extractor does, so one bad file does not stop the rest.
-func writeImageFile(opts RestoreOptions, dest string, f imagefs.FileReader, e imagefs.Entry, buf []byte, onWrite func(int64)) pbscommon.PXARExtractedFile {
+func writeImageFile(opts RestoreOptions, dest string, f imagefs.FileReader, e imagefs.Entry, buf []byte, onWrite func(int64), afterData func(dest string)) pbscommon.PXARExtractedFile {
 	res := pbscommon.PXARExtractedFile{Path: dest, Size: e.Size, ModTime: imagefs.UnixSeconds(e.MTime), ModNanos: filetimeNanos(e.MTime)}
 	skip := func(expected bool, why string) pbscommon.PXARExtractedFile {
 		res.Skipped, res.Expected, res.SkipReason = true, expected, why
@@ -730,6 +756,9 @@ func writeImageFile(opts RestoreOptions, dest string, f imagefs.FileReader, e im
 		return skip(false, err.Error())
 	}
 	applyImageOwnerMode(dest, e)
+	if afterData != nil {
+		afterData(dest)
+	}
 	if !opts.KeepNewTimes {
 		mt := time.Unix(res.ModTime, int64(res.ModNanos))
 		if err := os.Chtimes(dest, mt, mt); err != nil {

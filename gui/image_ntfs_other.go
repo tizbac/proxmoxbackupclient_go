@@ -9,6 +9,11 @@ func restoreImageStreams(vol imagefs.Volume, dest string, e imagefs.Entry, buf [
 	return 0, nil
 }
 
+// restoreImageEAs: NTFS extended attributes have nowhere to go off Windows.
+func restoreImageEAs(vol imagefs.Volume, dest string, e imagefs.Entry) (int, error) {
+	return 0, nil
+}
+
 // applyImagePermissions: Windows permissions do not apply off Windows.
 func applyImagePermissions(vol imagefs.Volume, dest string, e imagefs.Entry, cache map[uint32]string) (applied, ownerKept bool, err error) {
 	return false, false, nil

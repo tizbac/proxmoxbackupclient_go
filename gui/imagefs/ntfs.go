@@ -34,10 +34,12 @@ type Entry struct {
 	LinkTarget string
 
 	// NTFS: the file's security descriptor id in $Secure (0 = none or an
-	// old NTFS 1.x volume), see NTFS.SecurityDescriptor, and its named data
-	// streams (alternate data streams such as Zone.Identifier).
+	// old NTFS 1.x volume), see NTFS.SecurityDescriptor, its named data
+	// streams (alternate data streams such as Zone.Identifier), and whether
+	// it has extended attributes, see NTFS.ExtendedAttributes.
 	SecurityID uint32
 	Streams    []Stream
+	HasEAs     bool
 }
 
 // Stream is a named data stream of an NTFS file.
@@ -144,6 +146,7 @@ type record struct {
 	size    uint64
 	hasSize bool
 	streams []Stream
+	hasEAs  bool
 }
 
 type fileName struct {
@@ -265,6 +268,7 @@ func (v *NTFS) List(cancel func() bool, progress func(done, total int64)) ([]Ent
 			b.size, b.hasSize = e.size, true
 		}
 		b.streams = mergeStreams(b.streams, e.streams)
+		b.hasEAs = b.hasEAs || e.hasEAs
 	}
 	return buildEntries(files), nil
 }
@@ -310,7 +314,7 @@ func buildEntries(files map[uint64]*record) []Entry {
 				continue // a reserved metafile in the root
 			}
 			e := Entry{Path: joinPath(parent, n.name), IsDir: f.isDir, MTime: f.mtime, Created: f.created, Attrs: f.attrs, Record: num,
-				SecurityID: f.secID, Streams: f.streams}
+				SecurityID: f.secID, Streams: f.streams, HasEAs: f.hasEAs}
 			if !f.isDir {
 				e.Size = f.size
 			}
@@ -440,6 +444,8 @@ func parseRecord(b []byte, num uint64) (r record, ok bool) {
 			} else if len(a) >= 56 && binary.LittleEndian.Uint64(a[16:]) == 0 {
 				r.size, r.hasSize = binary.LittleEndian.Uint64(a[48:]), true // first extent carries the real size
 			}
+		case attrEA:
+			r.hasEAs = true
 		}
 		off += length
 	}

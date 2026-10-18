@@ -514,7 +514,7 @@ A machine backup (a `host` or `vm` snapshot of whole disks) opens in Restore lik
 
 * **File systems**: NTFS, FAT12/16/32 (EFI partitions, memory cards), exFAT, ext2/3/4 and XFS. Swap, LVM and unknown partitions are left out. A BitLocker partition cannot be browsed, and the restore log says why.
 * **Where to**: files always go to another folder (Restore to alternate path). They are never written over the live disk.
-* **What comes back**: file contents, modification and creation times, and the alternate data streams of NTFS files (such as Zone.Identifier). With **Restore permissions/ACLs** ticked, also the read-only, hidden, system and archive attributes and, on Windows, the NTFS permissions. Files from ext2/3/4 and XFS volumes keep their symbolic links and, restored on Linux, their permissions (and owners when restoring as root).
+* **What comes back**: file contents, modification and creation times, and on Windows the alternate data streams (such as Zone.Identifier) and extended attributes (such as the ones WSL keeps for Linux owners and permissions) of NTFS files and folders, unless **Restore alternate data streams and extended attributes** is unticked. With **Restore permissions/ACLs** ticked, also the read-only, hidden, system and archive attributes and, on Windows, the NTFS permissions. Files from ext2/3/4 and XFS volumes keep their symbolic links and, restored on Linux, their permissions (and owners when restoring as root).
 * **Speed**: a 127 GB laptop C: with 430,000 files lists in 4 to 15 seconds. Each volume's file list is kept on this computer once read, so opening the same snapshot again, even after a restart, is quick. `System Volume Information` is left out.
 
 The same reading is what Undelete and Roll back use for machine sets.
