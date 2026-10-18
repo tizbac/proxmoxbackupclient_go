@@ -219,7 +219,7 @@ $(CLONEZILLA_OUT): $(CLONEZILLA_STOCK) $(CLONEZILLA_PBSNBD) $(CLONEZILLA_DEPS)
 	@command -v xorriso >/dev/null || { echo "error: xorriso not installed (apt install xorriso)" >&2; exit 1; }
 	@command -v unsquashfs >/dev/null || { echo "error: unsquashfs not installed (apt install squashfs-tools)" >&2; exit 1; }
 	@command -v fakeroot >/dev/null || { echo "error: fakeroot not installed (apt install fakeroot)" >&2; exit 1; }
-	@test -f /usr/lib/ISOLINUX/isohdpfx.bin || { echo "error: isohybrid MBR not found (apt install isolinux)" >&2; exit 1; }
+	@test -f /usr/lib/ISOLINUX/isohdpfx.bin || test -f /usr/lib/syslinux/bios/isohdpfx.bin || { echo "error: isohybrid MBR not found (apt install isolinux or syslinux-common)" >&2; exit 1; }
 	@echo "🧩 Patching Clonezilla ISO (PBS NBD scripts + main/first-boot menus)..."
 	PATCH_DIR="$(abspath clonezilla-patch/patches)" ISO_SQFS=/live/filesystem.squashfs \
 		./patch-clonezilla.sh -o "$@" "$(CLONEZILLA_STOCK)" \
