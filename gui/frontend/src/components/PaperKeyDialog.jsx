@@ -4,7 +4,10 @@ import { useTranslation } from '../i18n/i18nContext'
 // PaperKeyDialog shows an encryption key laid out for printing (from the
 // backend's EncryptionPaperKey): fingerprint, the key file's text and a QR
 // code of it. Print sends only the page below to the printer, through a
-// hidden frame, so the app around it is not printed.
+// hidden frame, so the app around it is not printed. print() does not wait
+// for the print dialog (WebView2 returns at once and prints when the user
+// clicks Print in its preview), so the frame stays until the dialog closes:
+// removed earlier, the job has nothing to print and fails.
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
@@ -18,7 +21,8 @@ function printablePage(pk, t) {
   ].filter(([, v]) => v)
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(t('paperKeyTitle'))}</title>
 <style>
-  body { font-family: Segoe UI, Arial, sans-serif; margin: 18mm; color: #000; }
+  @page { margin: 0; } /* no browser header and footer (date, title, address) */
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 0; padding: 18mm; color: #000; }
   h1 { font-size: 20px; margin: 0 0 6px; }
   p { font-size: 12px; line-height: 1.45; margin: 4px 0 10px; }
   table { border-collapse: collapse; font-size: 12px; margin: 8px 0 12px; }
@@ -41,24 +45,26 @@ function printablePage(pk, t) {
 export default function PaperKeyDialog({ paperKey, onClose }) {
   const { t } = useTranslation()
   const closeRef = useRef(null)
+  const frameRef = useRef(null)
 
   useEffect(() => {
     if (closeRef.current) closeRef.current.focus()
+    return () => {
+      if (frameRef.current) frameRef.current.remove()
+    }
   }, [])
 
   const handlePrint = () => {
+    if (frameRef.current) frameRef.current.remove()
     const frame = document.createElement('iframe')
     frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
     frame.setAttribute('aria-hidden', 'true')
     frame.srcdoc = printablePage(paperKey, t)
     frame.onload = () => {
-      try {
-        frame.contentWindow.focus()
-        frame.contentWindow.print()
-      } finally {
-        setTimeout(() => frame.remove(), 1000)
-      }
+      frame.contentWindow.focus()
+      frame.contentWindow.print()
     }
+    frameRef.current = frame
     document.body.appendChild(frame)
   }
 
