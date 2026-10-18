@@ -55,7 +55,7 @@ removed on exit):
 ## Prerequisites
 
 - `xorriso` (>= 1.5), `unsquashfs`/`mksquashfs` (squashfs-tools), `7z`
-  (7-zip), `isoinfo` (genisoimage) — for reading the volume id.
+  (7-zip) — xorriso also reads the volume id (no genisoimage needed).
 - `patch` — to apply the unified-diff menu patches.
 - An isohybrid MBR prefix, normally
   `/usr/lib/ISOLINUX/isohdpfx.bin` or `/usr/lib/syslinux/bios/isohdpfx.bin`

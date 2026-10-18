@@ -188,10 +188,13 @@ ROOTFS="$WORK/rootfs"
 NEW_SQFS="$WORK/filesystem.new"
 SQFS="$TREE$SQFS_PATH"
 
-# Volume id: explicit env wins, else read it back from the source ISO.
+# Volume id: explicit env wins, else read it back from the source ISO with
+# xorriso (already a hard requirement; avoids depending on genisoimage's
+# isoinfo). Never let a failed pipeline abort the script silently: a missing
+# volume id only falls back to the CLONEZILLA default below.
 VOL="${ISO_VOLUME:-}"
 if [ -z "$VOL" ]; then
-  VOL="$(isoinfo -d -i "$IN" 2>/dev/null | grep -i 'volume id' | sed -E 's/.*volume id:[[:space:]]*//' | tr -d '[:space:]')"
+  VOL="$(xorriso -indev "$IN" -pvd_info 2>/dev/null | sed -n 's/.*Volume Id[[:space:]]*:[[:space:]]*//p' | head -n1 | tr -d '[:space:]' || true)"
 fi
 [ -n "$VOL" ] || VOL="CLONEZILLA"
 
