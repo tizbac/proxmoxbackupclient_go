@@ -39,7 +39,8 @@ function printablePage(pk, t, inBrowser = false) {
   td { padding: 2px 12px 2px 0; vertical-align: top; }
   td:first-child { color: #444; white-space: nowrap; }
   .fp { font-family: Consolas, monospace; font-weight: 600; }
-  img { width: 70mm; height: 70mm; image-rendering: pixelated; display: block; margin: 6px 0 10px; }
+  /* 140 mm: large enough for a laptop camera to read from about 40 cm (Import, Camera). */
+  img { width: 140mm; height: 140mm; image-rendering: pixelated; display: block; margin: 4px auto 10px; }
   pre { font-family: Consolas, monospace; font-size: 9.5px; white-space: pre-wrap; word-break: break-all; border: 1px solid #999; padding: 8px; margin: 0; }
   .warn { font-weight: 600; }
   .note { font-size: 14px; background: #fff4d6; border: 1px solid #e0b84c; padding: 8px 12px; margin: 0 0 14px; }

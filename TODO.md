@@ -30,6 +30,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 ## Restoring
 
 - [ ] **Disk images: BitLocker volumes** cannot be browsed (they would need the recovery key).
+- [ ] Restoring an encrypted snapshot with the wrong key fails with "unable to decrypt data: cipher: message authentication failed" on the first chunk. The manifest names the key's fingerprint: compare it first and say "this snapshot was encrypted with another key (fingerprint ...)". Seen in the key import live test (2026-10-18).
 - [ ] Maybe: an "Other backup..." choice in the Undelete and Roll back set picker (server, backup ID, target folder) for another machine's backups.
 
 ## Bare-metal restore ISO
@@ -41,6 +42,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 ## Security
 
 - [ ] Paper key printing from the Linux app run as root (`proxmoxbackupclient-root`): untested (needs the password for pkexec). As the normal user it printed (2026-10-18).
+- [ ] Key import with a real webcam: tested only with a camera feed played to WebView2 (Windows) and WebKit's test camera (Linux), as the test machines have none. Also untested: the camera in the Linux app run as root, and building the Linux app against webkit2gtk-4.1 (`-tags webkit2_41`, the .deb's choice where its headers exist), as linuxclient only has the 4.0 headers; the camera code uses the same pkg-config lines as Wails.
 - [ ] Restore of an encrypted snapshot from the Proxmox VE storage configuration (key given to PVE): untested.
 
 ## Languages and docs

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from '../i18n/i18nContext'
 import { askConfirm, showNotice } from './ConfirmDialog'
 import PaperKeyDialog from './PaperKeyDialog'
+import KeyImportDialog from './KeyImportDialog'
 
 // Wails bindings are resolved by App.jsx on window.go; this component receives
 // them as props so it stays testable/usable when the runtime is absent (the dev
@@ -41,7 +42,8 @@ export default function EncryptionKeyField({
 
   const inspect = useCallback(resolve('InspectEncryptionKeyFile'), [])
   const generate = useCallback(resolve('GenerateEncryptionKeyFile'), [])
-  const openExisting = useCallback(resolve('OpenEncryptionKeyDialog'), [])
+  const importKey = resolve('SaveImportedKey')
+  const [importing, setImporting] = useState(false)
   const openNew = useCallback(resolve('OpenEncryptionKeySaveDialog'), [])
   const verify = useCallback(resolve('VerifyEncryptionKeyPassphrase'), [])
   const restrict = useCallback(resolve('RestrictEncryptionKeyFileAccess'), [])
@@ -113,14 +115,18 @@ export default function EncryptionKeyField({
     }
   }
 
-  const handleBrowse = async () => {
-    if (!openExisting) return
-    try {
-      const p = await openExisting()
-      if (p) onChange(p)
-    } catch (err) {
-      console.error('encryption key browse failed', err)
-    }
+  // A key brought back by Import (a copy of the key file, or a paper key) is
+  // saved in the keys folder; the field then points at that file.
+  const handleImported = async (result) => {
+    setImporting(false)
+    const saved = result && result.info
+    if (!saved || !saved.path) return
+    onChange(saved.path)
+    setInfo(saved)
+    let message = t(result.already_there ? 'keyImportAlready' : 'keyImportSaved')
+      .replace('{path}', () => saved.path).replace('{fp}', () => saved.fingerprint || '?')
+    if (saved.passphrase_protected) message += ' ' + t('keyImportSavedProtected')
+    await showNotice({ title: t('keyImportDoneTitle'), icon: '🔑', message })
   }
 
   const handleGenerate = async () => {
@@ -206,8 +212,8 @@ export default function EncryptionKeyField({
           spellCheck={false}
           style={{ flex: '1 1 auto', minWidth: 0, width: 'auto' }}
         />
-        <button type="button" className="btn btn-secondary" style={{ whiteSpace: 'nowrap', padding: '8px 12px' }} onClick={handleBrowse} disabled={!openExisting || busy}>
-          {t('encryptionKeyBrowse')}
+        <button type="button" className="btn btn-secondary" style={{ whiteSpace: 'nowrap', padding: '8px 12px' }} onClick={() => setImporting(true)} disabled={!importKey || busy}>
+          {t('encryptionKeyImport')}
         </button>
         <button type="button" className="btn btn-secondary" style={{ whiteSpace: 'nowrap', padding: '8px 12px' }} onClick={handleGenerate} disabled={!generate || busy}>
           {t('encryptionKeyGenerate')}
@@ -259,6 +265,7 @@ export default function EncryptionKeyField({
         </div>
       )}
       {paperKey && <PaperKeyDialog paperKey={paperKey} onClose={() => setPaperKey(null)} />}
+      {importing && <KeyImportDialog onClose={() => setImporting(false)} onImported={handleImported} />}
 
       {info && info.passphrase_protected && (
         <div style={{ marginTop: '10px', fontSize: '13px' }}>

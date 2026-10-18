@@ -393,7 +393,7 @@ Folder backups leave out these on their own:
 
 Snapshots can be encrypted before they leave the machine, using a Proxmox Backup Server key file (the format `proxmox-backup-client key create` writes, so keys are interchangeable with the official client). Every chunk is encrypted with AES-256-GCM and the manifest is signed. The PBS server never sees the key.
 
-**GUI:** open **Preferences > Account Information**, edit a server and use its **Encryption** tab. Browse to an existing key file or **Generate...** a new one (the Advanced option protects it with a passphrase). The tab shows the key fingerprint. Reports show whether each backup was encrypted. **Without the key file a snapshot cannot be restored: keep a copy somewhere safe, away from this machine.**
+**GUI:** open **Preferences > Account Information**, edit a server and use its **Encryption** tab. **Import...** a key you already have (a copy of the key file, or a paper key read with the camera, from a scan or photo, or typed in) or **Generate...** a new one. The tab shows the key fingerprint. Reports show whether each backup was encrypted. **Without the key file a snapshot cannot be restored: keep a copy somewhere safe, away from this machine.**
 
 **Passphrase-protected keys (scrypt or PBKDF2):** choose how the app unlocks the key:
 - **Ask me**: the passphrase is asked once per app session and kept in memory only. Scheduled and startup backups never prompt: they fail fast, with a clear message, until the passphrase has been entered in that session. A backup run through the background service also fails fast for an Ask key.
