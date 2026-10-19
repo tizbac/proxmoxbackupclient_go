@@ -47,7 +47,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 ## Languages and docs
 
 - [ ] Native speakers to look over the app's strings in the languages its users actually use. All 17 were reviewed against the English on 2026-10-13 (meaning, one term per concept, menu names, plurals, quotation marks); a native ear still catches what is correct but unidiomatic. The feature lists on the About page (`featuresList`, `techList`) were not part of that review, nor were the Backup Set More menu's new labels (37df34d, 2026-10-15).
-- [ ] The 12 translated READMEs were regenerated from the English one on 2026-10-13 (condensed, machine-translated): keep them in step when the English README changes (they do not have the v0.9.1 paragraph yet), and have native speakers look them over.
+- [ ] The 12 translated READMEs were regenerated from the English one on 2026-10-13 (condensed, machine-translated): keep them in step when the English README changes (in step again on 2026-10-19: the v0.9.1 paragraph, `-no-mtime` and Import... added), and have native speakers look them over.
 
 ## Command-line tools
 

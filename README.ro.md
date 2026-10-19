@@ -108,6 +108,8 @@ Windows configurează noul hardware virtual la prima pornire („Getting devices
 
 ## 🆕 Nou în v0.9.0: mai multe planificări per Set de Backup, instalatoare, un serviciu Linux
 
+**v0.9.1** corectează ISO-ul de restaurare bare-metal: intrarea de restaurare a revenit în meniul de pornire BIOS, un stick Ventoy este recunoscut ca disc de pornire, iar un disc țintă mai mic decât originalul este refuzat înainte de a se scrie ceva. De asemenea, notează în comentariul PBS al instantaneului un e-mail de notificare care nu a putut fi trimis.
+
 - **Mai multe planificări per Set de Backup**, de la câteva minute până la o dată pe an: „zilnic la 02:00” plus „lunar, în ultima zi” sau „a 2-a marți”, fiecare planificare descrisă în cuvinte, cu următoarele 3 rulări. Seturile existente își păstrează planificarea.
 - **Backupurile de foldere păstrează fluxurile de date alternative și atributele extinse NTFS** (Windows), cum ar fi marcajul „descărcat de pe internet”, iar restaurarea le pune la loc. Lista de limitări cunoscute nu mai conține niciuna.
 - **Instalatoare**: un **MSI pentru Windows** (aplicația și serviciul de fundal în Program Files, intrare în meniul Start, actualizări pe loc, păstrarea sau ștergerea setărilor la dezinstalare) și **pachete Linux**, `.deb` (Debian, Ubuntu, Mint) și `.rpm` (Fedora), cu aplicația, cele trei instrumente în linie de comandă, manualele și intrări în meniu.
@@ -391,7 +393,7 @@ Backupurile de foldere omit automat următoarele:
 
 Instantaneele pot fi criptate înainte de a părăsi mașina, folosind un fișier cheie Proxmox Backup Server (formatul scris de `proxmox-backup-client key create`, deci cheile sunt interschimbabile cu clientul oficial). Fiecare fragment este criptat cu AES-256-GCM, iar manifestul este semnat. Serverul PBS nu vede niciodată cheia.
 
-**GUI:** deschideți **Preferințe > Informații despre cont**, editați un server și folosiți fila **Criptare**. Alegeți un fișier cheie existent sau apăsați **Generează...** pentru unul nou (opțiunea Avansat îl protejează cu o frază de acces). Fila afișează amprenta cheii. Rapoartele arată dacă fiecare backup a fost criptat. **Fără fișierul cheie, un instantaneu nu poate fi restaurat: păstrați o copie într-un loc sigur, departe de această mașină.**
+**GUI:** deschideți **Preferințe > Informații despre cont**, editați un server și folosiți fila **Criptare**. Apăsați **Importă...** pentru o cheie pe care o aveți deja (o copie a fișierului cheie sau o cheie pe hârtie citită cu camera, dintr-o scanare sau o fotografie, ori tastată) sau **Generează...** pentru una nouă. Fila afișează amprenta cheii. Rapoartele arată dacă fiecare backup a fost criptat. **Fără fișierul cheie, un instantaneu nu poate fi restaurat: păstrați o copie într-un loc sigur, departe de această mașină.**
 
 **Chei protejate cu frază de acces (scrypt sau PBKDF2):** alegeți cum deblochează aplicația cheia:
 - **Întreabă-mă**: fraza de acces este cerută o dată pe sesiune a aplicației și păstrată doar în memorie. Backupurile planificate și cele de la pornire nu o cer niciodată: eșuează imediat, cu un mesaj clar, până când fraza de acces a fost introdusă în acea sesiune. Un backup rulat prin serviciul de fundal eșuează și el imediat cu o cheie în modul Întreabă-mă.
@@ -555,6 +557,7 @@ proxmoxbackup-directory
   -novss                     Do not snapshot the source (VSS on Windows, elastio-snap/dattobd on Linux)
   -keyfile string            PBS encryption key file
   -keyfile-passphrase string Passphrase for a protected key (asked for when omitted)
+  -no-mtime                  Record 1970-01-01 as every file and folder time (advanced; see the CLI manual)
   -backupstream string       Back up standard input as <name>.didx instead of a directory
   -pxarout string            Also write the archive to a local file (debugging)
   -mail-host, -mail-port, -mail-username, -mail-password, -mail-insecure,

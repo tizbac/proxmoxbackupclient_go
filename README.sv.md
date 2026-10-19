@@ -108,6 +108,8 @@ Windows installerar den nya virtuella hårdvaran vid första starten (”Getting
 
 ## 🆕 Nytt i v0.9.0: flera scheman per Backup Set, installationsprogram, en Linux-tjänst
 
+**v0.9.1** rättar ISO:n för bare-metal-återställning: återställningsvalet finns åter i BIOS-startmenyn, en Ventoy-sticka känns igen som startdisken, och en måldisk som är mindre än originalet avvisas innan något skrivs. Den noterar också ett aviseringsmejl som inte kunde skickas i ögonblicksbildens PBS-kommentar.
+
 - **Flera scheman per Backup Set**, från några minuters intervall till en gång om året: ”varje dag kl. 02:00” plus ”varje månad den sista dagen” eller ”den 2:a tisdagen”, varje schema i klartext med sina nästa 3 körningar. Befintliga sets behåller sitt schema.
 - **Mappbackuper behåller alternativa dataströmmar och utökade NTFS-attribut** (Windows), till exempel markeringen ”hämtad från internet”, och en återställning lägger tillbaka dem. Listan över kända begränsningar innehåller nu inga.
 - **Installationsprogram**: en **Windows-MSI** (appen och bakgrundstjänsten under Program Files, post i Start-menyn, uppgradering på plats, behåll eller radera inställningarna vid avinstallation) och **Linux-paket**, `.deb` (Debian, Ubuntu, Mint) och `.rpm` (Fedora), med appen, de tre kommandoradsverktygen, manualerna och menyposter.
@@ -391,7 +393,7 @@ Mappbackuper utelämnar följande av sig själva:
 
 Ögonblicksbilder kan krypteras innan de lämnar maskinen, med en Proxmox Backup Server-nyckelfil (formatet som `proxmox-backup-client key create` skriver, så nycklarna är utbytbara med den officiella klienten). Varje chunk krypteras med AES-256-GCM och manifestet signeras. PBS-servern ser aldrig nyckeln.
 
-**GUI:** öppna **Preferences > Account Information** (inställningar > kontouppgifter), redigera en server och använd dess flik **Encryption** (kryptering). Bläddra fram en befintlig nyckelfil eller använd **Generate...** för att skapa en ny (det avancerade alternativet skyddar den med en lösenfras). Fliken visar nyckelns fingeravtryck. Reports visar om varje backup var krypterad. **Utan nyckelfilen kan en ögonblicksbild inte återställas: spara en kopia på ett säkert ställe, utanför den här maskinen.**
+**GUI:** öppna **Preferences > Account Information** (inställningar > kontouppgifter), redigera en server och använd dess flik **Encryption** (kryptering). Använd **Import...** för en nyckel du redan har (en kopia av nyckelfilen, eller en pappersnyckel som läses med kameran, från en skanning eller ett foto, eller skrivs in) eller **Generate...** för att skapa en ny. Fliken visar nyckelns fingeravtryck. Reports visar om varje backup var krypterad. **Utan nyckelfilen kan en ögonblicksbild inte återställas: spara en kopia på ett säkert ställe, utanför den här maskinen.**
 
 **Lösenfrasskyddade nycklar (scrypt eller PBKDF2):** välj hur appen låser upp nyckeln:
 - **Ask me** (fråga mig): lösenfrasen efterfrågas en gång per appsession och hålls bara i minnet. Schemalagda backuper och backuper vid uppstart frågar aldrig: de misslyckas direkt, med ett tydligt meddelande, tills lösenfrasen har angetts i den sessionen. En backup som körs via bakgrundstjänsten misslyckas också direkt med en Ask-nyckel.
@@ -555,6 +557,7 @@ proxmoxbackup-directory
   -novss                     Do not snapshot the source (VSS on Windows, elastio-snap/dattobd on Linux)
   -keyfile string            PBS encryption key file
   -keyfile-passphrase string Passphrase for a protected key (asked for when omitted)
+  -no-mtime                  Record 1970-01-01 as every file and folder time (advanced; see the CLI manual)
   -backupstream string       Back up standard input as <name>.didx instead of a directory
   -pxarout string            Also write the archive to a local file (debugging)
   -mail-host, -mail-port, -mail-username, -mail-password, -mail-insecure,

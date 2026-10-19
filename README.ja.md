@@ -108,6 +108,8 @@ Windows は初回起動時に新しい仮想ハードウェアをセットアッ
 
 ## 🆕 v0.9.0 の新機能：Backup Set ごとに複数のスケジュール、インストーラー、Linux サービス
 
+**v0.9.1** ではベアメタル復元 ISO を修正しました。BIOS のブートメニューに復元項目が戻り、Ventoy の USB メモリが起動ディスクとして認識され、元より小さい復元先ディスクは何かを書き込む前に拒否されます。また、通知メールを送れなかった場合はスナップショットの PBS コメントにそのことを記録します。
+
 - **Backup Set ごとに複数のスケジュール**：数分ごとから年 1 回まで設定でき、「毎日 02:00」に加えて「毎月末日」や「第 2 火曜日」も組み合わせられます。各スケジュールはわかりやすい言葉で表示され、次の 3 回の実行予定も示されます。既存のセットはスケジュールをそのまま引き継ぎます。
 - **フォルダーバックアップが代替データストリームと NTFS 拡張属性を保持**（Windows）。「インターネットからダウンロードした」印なども含め、復元時に元に戻します。既知の制限は現在ありません。
 - **インストーラー**：**Windows MSI**（アプリとバックグラウンドサービスを Program Files に配置、スタートメニュー登録、上書きアップグレード、削除時に設定を残すか消すかを選択）と、**Linux パッケージ** `.deb`（Debian、Ubuntu、Mint）および `.rpm`（Fedora）。アプリ、3 つのコマンドラインツール、マニュアル、メニュー項目を含みます。
@@ -391,7 +393,7 @@ Español
 
 スナップショットは、マシンを出る前に Proxmox Backup Server の鍵ファイルで暗号化できます（`proxmox-backup-client key create` が書く形式なので、鍵は公式クライアントと相互に使えます）。各チャンクは AES-256-GCM で暗号化され、マニフェストには署名が付きます。PBS サーバーが鍵を目にすることはありません。
 
-**GUI：** **Preferences > Account Information** を開き、サーバーを編集してその **Encryption** タブを使います。既存の鍵ファイルを選ぶか、**Generate...** で新しく作ります（Advanced オプションでパスフレーズ保護）。タブには鍵のフィンガープリントが表示されます。Reports には各バックアップが暗号化されたかどうかが表示されます。**鍵ファイルがなければスナップショットは復元できません。このマシン以外の安全な場所にコピーを保管してください。**
+**GUI：** **Preferences > Account Information** を開き、サーバーを編集してその **Encryption** タブを使います。手元にある鍵を **Import...** で取り込む（鍵ファイルのコピー、またはカメラ、スキャン、写真から読み取るか手入力したペーパーキー）か、**Generate...** で新しく作ります。タブには鍵のフィンガープリントが表示されます。Reports には各バックアップが暗号化されたかどうかが表示されます。**鍵ファイルがなければスナップショットは復元できません。このマシン以外の安全な場所にコピーを保管してください。**
 
 **パスフレーズで保護された鍵（scrypt または PBKDF2）：** アプリが鍵をどう解錠するかを選びます：
 - **Ask me**：パスフレーズはアプリのセッションごとに 1 回尋ね、メモリにだけ保持します。スケジュール実行と起動時のバックアップは入力を求めません。そのセッションでパスフレーズが入力されるまで、分かりやすいメッセージを出してすぐに失敗します。Ask の鍵では、バックグラウンドサービス経由のバックアップもすぐに失敗します。
@@ -538,6 +540,7 @@ proxmoxbackup-directory
   -novss                     Do not snapshot the source (VSS on Windows, elastio-snap/dattobd on Linux)
   -keyfile string            PBS encryption key file
   -keyfile-passphrase string Passphrase for a protected key (asked for when omitted)
+  -no-mtime                  Record 1970-01-01 as every file and folder time (advanced; see the CLI manual)
   -backupstream string       Back up standard input as <name>.didx instead of a directory
   -pxarout string            Also write the archive to a local file (debugging)
   -mail-host, -mail-port, -mail-username, -mail-password, -mail-insecure,

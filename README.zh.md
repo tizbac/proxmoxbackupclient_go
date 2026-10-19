@@ -108,6 +108,8 @@ Windows 在首次启动时会配置新的虚拟硬件（“正在准备设备”
 
 ## 🆕 v0.9.0 新功能：每个 Backup Set 可设多个计划、安装包、Linux 服务
 
+**v0.9.1** 修复了裸机恢复 ISO：恢复项重新出现在 BIOS 启动菜单中，Ventoy U 盘会被识别为启动盘，比原盘小的目标磁盘会在写入任何数据之前被拒绝。此外，通知邮件发送失败时会记在快照的 PBS 注释里。
+
 - **每个 Backup Set 可设多个计划**，频率从每隔几分钟到每年一次：“每天 02:00”再加“每月最后一天”或“第 2 个星期二”，每个计划都用通俗文字描述，并列出接下来的 3 次运行。现有备份集保留原来的计划。
 - **文件夹备份保留备用数据流和 NTFS 扩展属性**（Windows），例如“从互联网下载”标记，恢复时一并还原。已知限制列表现已清空。
 - **安装包**：**Windows MSI**（应用和后台服务装在 Program Files 下，有开始菜单项，支持原地升级，卸载时可选择保留或删除设置），以及 **Linux 软件包** `.deb`（Debian、Ubuntu、Mint）和 `.rpm`（Fedora），包含应用、三个命令行工具、手册和菜单项。
@@ -391,7 +393,7 @@ Español
 
 快照可以在离开机器之前加密，使用 Proxmox Backup Server 密钥文件（即 `proxmox-backup-client key create` 写出的格式，因此密钥与官方客户端通用）。每个块都用 AES-256-GCM 加密，清单经过签名。PBS 服务器永远看不到密钥。
 
-**GUI：** 打开 **Preferences > Account Information**，编辑服务器，进入其 **Encryption** 标签页。选择已有的密钥文件，或点 **Generate...** 生成新密钥（Advanced 选项可用口令保护它）。该标签页显示密钥指纹。Reports 会显示每次备份是否加密。**没有密钥文件就无法恢复快照：请在本机之外的安全位置保存一份副本。**
+**GUI：** 打开 **Preferences > Account Information**，编辑服务器，进入其 **Encryption** 标签页。用 **Import...** 导入已有的密钥（密钥文件的副本，或通过摄像头、扫描件、照片读取或手动输入的纸质密钥），或点 **Generate...** 生成新密钥。该标签页显示密钥指纹。Reports 会显示每次备份是否加密。**没有密钥文件就无法恢复快照：请在本机之外的安全位置保存一份副本。**
 
 **带口令保护的密钥（scrypt 或 PBKDF2）：** 选择应用如何解锁密钥：
 - **Ask me**：每个应用会话询问一次口令，只保存在内存中。计划备份和启动时的备份从不弹出询问：在该会话中输入口令之前，它们会立即失败并给出明确提示。对 Ask 类密钥，通过后台服务运行的备份也会立即失败。
@@ -538,6 +540,7 @@ proxmoxbackup-directory
   -novss                     Do not snapshot the source (VSS on Windows, elastio-snap/dattobd on Linux)
   -keyfile string            PBS encryption key file
   -keyfile-passphrase string Passphrase for a protected key (asked for when omitted)
+  -no-mtime                  Record 1970-01-01 as every file and folder time (advanced; see the CLI manual)
   -backupstream string       Back up standard input as <name>.didx instead of a directory
   -pxarout string            Also write the archive to a local file (debugging)
   -mail-host, -mail-port, -mail-username, -mail-password, -mail-insecure,

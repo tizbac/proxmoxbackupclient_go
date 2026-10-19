@@ -108,6 +108,8 @@ Windows installe le nouveau matériel virtuel au premier démarrage (« Prépara
 
 ## 🆕 Nouveau en v0.9.0 : plusieurs planifications par ensemble de sauvegarde, installeurs, un service Linux
 
+**v0.9.1** corrige l'ISO de restauration bare-metal : l'entrée de restauration est de retour dans son menu de démarrage BIOS, une clé Ventoy est reconnue comme disque de démarrage, et un disque cible plus petit que l'original est refusé avant toute écriture. Elle note aussi dans le commentaire PBS du snapshot un e-mail de notification qui n'a pas pu être envoyé.
+
 - **Plusieurs planifications par ensemble de sauvegarde**, de quelques minutes à une fois par an : « chaque jour à 02:00 » plus « chaque mois le dernier jour » ou « le 2e mardi », chaque planification décrite en clair avec ses 3 prochaines exécutions. Les ensembles existants gardent leur planification.
 - **Les sauvegardes de dossiers conservent les flux de données alternatifs et les attributs étendus NTFS** (Windows), comme la marque « téléchargé depuis Internet », et une restauration les remet en place. La section Limites connues n'en liste désormais plus aucune.
 - **Installeurs** : un **MSI Windows** (application et service d'arrière-plan dans Program Files, entrée dans le menu Démarrer, mises à jour sur place, paramètres conservés ou supprimés à la désinstallation) et des **paquets Linux**, `.deb` (Debian, Ubuntu, Mint) et `.rpm` (Fedora), avec l'application, les trois outils en ligne de commande, les manuels et les entrées de menu.
@@ -391,7 +393,7 @@ Les sauvegardes de dossiers laissent de côté d'elles-mêmes les éléments sui
 
 Les snapshots peuvent être chiffrés avant de quitter la machine, avec un fichier de clé Proxmox Backup Server (le format qu'écrit `proxmox-backup-client key create`, donc les clés sont interchangeables avec le client officiel). Chaque chunk est chiffré en AES-256-GCM et le manifeste est signé. Le serveur PBS ne voit jamais la clé.
 
-**GUI :** ouvrez **Préférences > Informations du compte**, modifiez un serveur et utilisez son onglet **Chiffrement**. Choisissez un fichier de clé existant ou **Générer...** une nouvelle clé (l'option avancée la protège par une phrase secrète). L'onglet affiche l'empreinte de la clé. Les rapports indiquent si chaque sauvegarde était chiffrée. **Sans le fichier de clé, un snapshot ne peut pas être restauré : gardez-en une copie en lieu sûr, loin de cette machine.**
+**GUI :** ouvrez **Préférences > Informations du compte**, modifiez un serveur et utilisez son onglet **Chiffrement**. **Importer...** une clé que vous avez déjà (une copie du fichier de clé, ou une clé papier lue avec la caméra, depuis un scan ou une photo, ou saisie au clavier) ou **Générer...** une nouvelle clé. L'onglet affiche l'empreinte de la clé. Les rapports indiquent si chaque sauvegarde était chiffrée. **Sans le fichier de clé, un snapshot ne peut pas être restauré : gardez-en une copie en lieu sûr, loin de cette machine.**
 
 **Clés protégées par phrase secrète (scrypt ou PBKDF2) :** choisissez comment l'application déverrouille la clé :
 - **Me la demander** : la phrase secrète est demandée une fois par session de l'application et gardée en mémoire uniquement. Les sauvegardes planifiées et au démarrage ne la demandent jamais : elles échouent immédiatement, avec un message clair, tant que la phrase secrète n'a pas été saisie dans cette session. Une sauvegarde lancée par le service d'arrière-plan échoue aussi immédiatement avec une clé « Me la demander ».
@@ -555,6 +557,7 @@ proxmoxbackup-directory
   -novss                     Do not snapshot the source (VSS on Windows, elastio-snap/dattobd on Linux)
   -keyfile string            PBS encryption key file
   -keyfile-passphrase string Passphrase for a protected key (asked for when omitted)
+  -no-mtime                  Record 1970-01-01 as every file and folder time (advanced; see the CLI manual)
   -backupstream string       Back up standard input as <name>.didx instead of a directory
   -pxarout string            Also write the archive to a local file (debugging)
   -mail-host, -mail-port, -mail-username, -mail-password, -mail-insecure,

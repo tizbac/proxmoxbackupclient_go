@@ -108,6 +108,8 @@ Al primo avvio Windows configura il nuovo hardware virtuale ("Preparazione dei d
 
 ## 🆕 Novità della v0.9.0: più pianificazioni per set di backup, installer, un servizio Linux
 
+La **v0.9.1** corregge la ISO di ripristino bare-metal: la voce di ripristino è di nuovo nel menu di avvio BIOS, una chiavetta Ventoy viene riconosciuta come disco di avvio e un disco di destinazione più piccolo dell'originale viene rifiutato prima di scrivere qualsiasi cosa. Inoltre annota nel commento PBS dello snapshot un'e-mail di notifica che non è stato possibile inviare.
+
 - **Più pianificazioni per set di backup**, da una ogni pochi minuti a una all'anno: "ogni giorno alle 02:00" più "ogni mese l'ultimo giorno" o "il 2° martedì", ciascuna pianificazione descritta a parole con le sue prossime 3 esecuzioni. I set esistenti mantengono la loro pianificazione.
 - **I backup di cartelle conservano gli stream di dati alternativi e gli attributi estesi NTFS** (Windows), come il contrassegno "scaricato da Internet", e un ripristino li rimette. La sezione Limiti noti ora non ne elenca più nessuno.
 - **Installer**: un **MSI per Windows** (app e servizio in background in Program Files, voce nel menu Start, aggiornamenti sul posto, impostazioni mantenute o eliminate alla rimozione) e **pacchetti Linux**, `.deb` (Debian, Ubuntu, Mint) e `.rpm` (Fedora), con l'app, i tre strumenti a riga di comando, i manuali e le voci di menu.
@@ -391,7 +393,7 @@ I backup di cartelle escludono automaticamente:
 
 Gli snapshot possono essere cifrati prima di lasciare la macchina, usando un file di chiave di Proxmox Backup Server (il formato scritto da `proxmox-backup-client key create`, quindi le chiavi sono intercambiabili con il client ufficiale). Ogni chunk viene cifrato con AES-256-GCM e il manifest è firmato. Il server PBS non vede mai la chiave.
 
-**GUI:** aprire **Preferenze > Informazioni account**, modificare un server e usare la sua scheda **Cifratura**. Selezionare un file di chiave esistente oppure **Genera...** una nuova chiave (l'opzione avanzata la protegge con una passphrase). La scheda mostra l'impronta della chiave. I report indicano se ogni backup era cifrato. **Senza il file di chiave uno snapshot non può essere ripristinato: conservatene una copia in un luogo sicuro, lontano da questa macchina.**
+**GUI:** aprire **Preferenze > Informazioni account**, modificare un server e usare la sua scheda **Cifratura**. **Importa...** una chiave che si ha già (una copia del file di chiave, oppure una chiave su carta letta con la fotocamera, da una scansione o una foto, o digitata) oppure **Genera...** una nuova chiave. La scheda mostra l'impronta della chiave. I report indicano se ogni backup era cifrato. **Senza il file di chiave uno snapshot non può essere ripristinato: conservatene una copia in un luogo sicuro, lontano da questa macchina.**
 
 **Chiavi protette da passphrase (scrypt o PBKDF2):** scegliere come l'app sblocca la chiave:
 - **Chiedimela**: la passphrase viene chiesta una volta per sessione dell'app e tenuta solo in memoria. I backup pianificati e quelli all'avvio non la chiedono mai: falliscono subito, con un messaggio chiaro, finché la passphrase non è stata inserita in quella sessione. Anche un backup eseguito dal servizio in background fallisce subito con una chiave "Chiedimela".
@@ -555,6 +557,7 @@ proxmoxbackup-directory
   -novss                     Do not snapshot the source (VSS on Windows, elastio-snap/dattobd on Linux)
   -keyfile string            PBS encryption key file
   -keyfile-passphrase string Passphrase for a protected key (asked for when omitted)
+  -no-mtime                  Record 1970-01-01 as every file and folder time (advanced; see the CLI manual)
   -backupstream string       Back up standard input as <name>.didx instead of a directory
   -pxarout string            Also write the archive to a local file (debugging)
   -mail-host, -mail-port, -mail-username, -mail-password, -mail-insecure,

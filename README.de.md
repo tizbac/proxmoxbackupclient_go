@@ -108,6 +108,8 @@ Windows richtet die neue virtuelle Hardware beim ersten Start ein („Geräte we
 
 ## 🆕 Neu in v0.9.0: mehrere Zeitpläne pro Sicherungssatz, Installer, ein Linux-Dienst
 
+**v0.9.1** behebt Fehler in der Wiederherstellungs-ISO: Der Wiederherstellungseintrag ist wieder im BIOS-Bootmenü, ein Ventoy-Stick wird als Startdatenträger erkannt, und ein Zieldatenträger, der kleiner als das Original ist, wird abgelehnt, bevor etwas geschrieben wird. Außerdem vermerkt sie eine fehlgeschlagene Benachrichtigungs-E-Mail im PBS-Kommentar des Snapshots.
+
 - **Mehrere Zeitpläne pro Sicherungssatz**, von alle paar Minuten bis einmal im Jahr: „täglich um 02:00“ plus „jeden Monat am letzten Tag“ oder „am 2. Dienstag“, jeder Zeitplan in Klartext mit seinen nächsten 3 Läufen. Bestehende Sätze behalten ihren Zeitplan.
 - **Ordnersicherungen behalten alternative Datenströme und erweiterte NTFS-Attribute** (Windows), etwa die Markierung „aus dem Internet heruntergeladen“, und eine Wiederherstellung stellt sie wieder her. Unter Bekannte Einschränkungen ist jetzt nichts mehr aufgeführt.
 - **Installer**: ein **Windows-MSI** (App und Hintergrunddienst unter Program Files, Eintrag im Startmenü, Aktualisierung an Ort und Stelle, Einstellungen beim Entfernen behalten oder löschen) und **Linux-Pakete**, `.deb` (Debian, Ubuntu, Mint) und `.rpm` (Fedora), mit der App, den drei Kommandozeilenwerkzeugen, den Handbüchern und Menüeinträgen.
@@ -391,7 +393,7 @@ Ordnersicherungen lassen Folgendes von selbst weg:
 
 Snapshots können verschlüsselt werden, bevor sie den Rechner verlassen, mit einer Schlüsseldatei für Proxmox Backup Server (das Format, das `proxmox-backup-client key create` schreibt, sodass Schlüssel mit dem offiziellen Client austauschbar sind). Jeder Chunk wird mit AES-256-GCM verschlüsselt und das Manifest wird signiert. Der PBS-Server sieht den Schlüssel nie.
 
-**GUI:** Öffnen Sie **Einstellungen > Kontoinformationen**, bearbeiten Sie einen Server und verwenden Sie seinen Reiter **Verschlüsselung**. Wählen Sie eine vorhandene Schlüsseldatei oder **Generieren...** Sie einen neuen Schlüssel (die erweiterte Option schützt ihn mit einer Passphrase). Der Reiter zeigt den Fingerabdruck des Schlüssels. Die Berichte zeigen, ob jede Sicherung verschlüsselt war. **Ohne die Schlüsseldatei kann ein Snapshot nicht wiederhergestellt werden: Bewahren Sie eine Kopie an einem sicheren Ort auf, getrennt von diesem Rechner.**
+**GUI:** Öffnen Sie **Einstellungen > Kontoinformationen**, bearbeiten Sie einen Server und verwenden Sie seinen Reiter **Verschlüsselung**. **Importieren...** Sie einen Schlüssel, den Sie schon haben (eine Kopie der Schlüsseldatei oder einen Papierschlüssel, mit der Kamera gelesen, aus einem Scan oder Foto oder eingetippt), oder **Generieren...** Sie einen neuen. Der Reiter zeigt den Fingerabdruck des Schlüssels. Die Berichte zeigen, ob jede Sicherung verschlüsselt war. **Ohne die Schlüsseldatei kann ein Snapshot nicht wiederhergestellt werden: Bewahren Sie eine Kopie an einem sicheren Ort auf, getrennt von diesem Rechner.**
 
 **Durch eine Passphrase geschützte Schlüssel (scrypt oder PBKDF2):** Wählen Sie, wie die App den Schlüssel entsperrt:
 - **Nachfragen**: Die Passphrase wird einmal pro Sitzung der App abgefragt und nur im Arbeitsspeicher gehalten. Geplante Sicherungen und Sicherungen beim Start fragen nie nach: Sie schlagen sofort mit einer klaren Meldung fehl, bis die Passphrase in dieser Sitzung eingegeben wurde. Eine über den Hintergrunddienst ausgeführte Sicherung schlägt bei einem Schlüssel mit „Nachfragen“ ebenfalls sofort fehl.
@@ -555,6 +557,7 @@ proxmoxbackup-directory
   -novss                     Do not snapshot the source (VSS on Windows, elastio-snap/dattobd on Linux)
   -keyfile string            PBS encryption key file
   -keyfile-passphrase string Passphrase for a protected key (asked for when omitted)
+  -no-mtime                  Record 1970-01-01 as every file and folder time (advanced; see the CLI manual)
   -backupstream string       Back up standard input as <name>.didx instead of a directory
   -pxarout string            Also write the archive to a local file (debugging)
   -mail-host, -mail-port, -mail-username, -mail-password, -mail-insecure,

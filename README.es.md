@@ -108,6 +108,8 @@ Windows configura el nuevo hardware virtual en el primer arranque («Getting dev
 
 ## 🆕 Novedades de v0.9.0: varias programaciones por conjunto, instaladores, un servicio en Linux
 
+**v0.9.1** corrige la ISO de restauración bare-metal: la entrada de restauración vuelve a estar en su menú de arranque BIOS, una memoria Ventoy se reconoce como el disco de arranque y un disco de destino más pequeño que el original se rechaza antes de escribir nada. Además, anota en el comentario PBS de la instantánea un correo de notificación que no se pudo enviar.
+
 - **Varias programaciones por conjunto de copias de seguridad**, desde cada pocos minutos hasta una vez al año: «todos los días a las 02:00» más «cada mes el último día» o «el 2.º martes», cada programación descrita con palabras y con sus 3 próximas ejecuciones. Los conjuntos existentes conservan su programación.
 - **Las copias de carpetas conservan los flujos de datos alternativos y los atributos extendidos NTFS** (Windows), como la marca «descargado de Internet», y la restauración los repone. La lista de limitaciones conocidas ya no contiene ninguna.
 - **Instaladores**: un **MSI para Windows** (aplicación y servicio en segundo plano en Program Files, entrada en el menú Inicio, actualizaciones en el sitio, conservar o borrar la configuración al desinstalar) y **paquetes Linux**, `.deb` (Debian, Ubuntu, Mint) y `.rpm` (Fedora), con la aplicación, las tres herramientas de línea de comandos, los manuales y entradas de menú.
@@ -391,7 +393,7 @@ Las copias de carpetas omiten por sí solas lo siguiente:
 
 Las instantáneas pueden cifrarse antes de salir del equipo, con un archivo de clave de Proxmox Backup Server (el formato que escribe `proxmox-backup-client key create`, así que las claves son intercambiables con el cliente oficial). Cada fragmento se cifra con AES-256-GCM y el manifiesto se firma. El servidor PBS nunca ve la clave.
 
-**GUI:** abra **Preferencias > Información de la cuenta**, edite un servidor y use su pestaña **Cifrado**. Elija un archivo de clave existente o pulse **Generar...** para crear uno nuevo (la opción avanzada lo protege con una frase de paso). La pestaña muestra la huella de la clave. Los Informes indican si cada copia estaba cifrada. **Sin el archivo de clave no se puede restaurar una instantánea: guarde una copia en un lugar seguro, fuera de este equipo.**
+**GUI:** abra **Preferencias > Información de la cuenta**, edite un servidor y use su pestaña **Cifrado**. Pulse **Importar...** para traer una clave que ya tenga (una copia del archivo de clave, o una clave en papel leída con la cámara, desde un escaneo o una foto, o tecleada) o **Generar...** para crear una nueva. La pestaña muestra la huella de la clave. Los Informes indican si cada copia estaba cifrada. **Sin el archivo de clave no se puede restaurar una instantánea: guarde una copia en un lugar seguro, fuera de este equipo.**
 
 **Claves protegidas por frase de paso (scrypt o PBKDF2):** elija cómo desbloquea la clave la aplicación:
 - **Pedírmela**: la frase de paso se pide una vez por sesión de la aplicación y solo se guarda en memoria. Las copias programadas y las de inicio nunca la piden: fallan enseguida, con un mensaje claro, hasta que se introduce la frase de paso en esa sesión. Una copia ejecutada por el servicio en segundo plano también falla enseguida con una clave en modo Pedírmela.
@@ -555,6 +557,7 @@ proxmoxbackup-directory
   -novss                     Do not snapshot the source (VSS on Windows, elastio-snap/dattobd on Linux)
   -keyfile string            PBS encryption key file
   -keyfile-passphrase string Passphrase for a protected key (asked for when omitted)
+  -no-mtime                  Record 1970-01-01 as every file and folder time (advanced; see the CLI manual)
   -backupstream string       Back up standard input as <name>.didx instead of a directory
   -pxarout string            Also write the archive to a local file (debugging)
   -mail-host, -mail-port, -mail-username, -mail-password, -mail-insecure,
