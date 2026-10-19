@@ -30,7 +30,6 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 ## Restoring
 
 - [ ] **Disk images: BitLocker volumes** cannot be browsed (they would need the recovery key).
-- [ ] Restoring an encrypted snapshot with the wrong key fails with "unable to decrypt data: cipher: message authentication failed" on the first chunk. The manifest names the key's fingerprint: compare it first and say "this snapshot was encrypted with another key (fingerprint ...)". Seen in the key import live test (2026-10-18).
 - [ ] Maybe: an "Other backup..." choice in the Undelete and Roll back set picker (server, backup ID, target folder) for another machine's backups.
 
 ## Bare-metal restore ISO
@@ -57,6 +56,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 - [ ] Run the Docker end-to-end suite (`testing/e2e`) in CI: `e2e.yml` runs on pushes and pull requests to `main`/`develop` (or by hand), not this repository's `master`, so it has never run here; `build-and-release.yml` has the same branches (part of the CI work).
 - [ ] Load test: five Backup Sets at once, check memory stays bounded.
+- [ ] `pbscommon` tests that start many small test servers (`TestDownloadDIDXIndexRejectsMalformed`) fail now and then on Windows with "Only one usage of each socket address", about 5 in 30 runs with `-count=30` (seen 2026-10-19, also without that day's changes). Each download opens a new connection, so closed ones pile up; Linux is not affected. Reuse one HTTP client per test server, or retry the dial in the tests.
 
 ## Parked
 

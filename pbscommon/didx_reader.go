@@ -176,9 +176,14 @@ func (r *DIDXReaderAt) SetContext(ctx context.Context) {
 // since chunks are fetched as the caller reads. cacheChunks defaults to 32.
 // progress (optional) is called with (chunksFetchedSoFar, totalChunks) each time
 // a NEW chunk is fetched from the server (cache hits do not advance it).
+// An encrypted archive and a key that cannot read it are refused first, with
+// a *SnapshotKeyError (CheckArchiveKey).
 func (pbs *PBSClient) NewDIDXReaderAt(archiveName string, cacheChunks int, progress func(fetched, total int)) (*DIDXReaderAt, int64, error) {
 	if cacheChunks <= 0 {
 		cacheChunks = 32
+	}
+	if err := pbs.CheckArchiveKey(archiveName); err != nil {
+		return nil, 0, err
 	}
 	idx, err := pbs.downloadDIDXIndex(archiveName)
 	if err != nil {

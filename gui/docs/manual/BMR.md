@@ -215,7 +215,7 @@ A disk image carries the drivers of the machine it came from.
 | "No backups found in datastore" | Datastore and namespace (text after the first `/`), and the user's rights on it |
 | "That passphrase did not unlock the key" | Retype the passphrase; 3 attempts in total |
 | "No disk partition with a filesystem was found" | Plug in the key USB stick, then start the flow again |
-| "/dev/nbd0 could not be attached" | Wrong key file for an encrypted backup, or the server stopped answering. The message shows the attach log |
+| "/dev/nbd0 could not be attached" | Wrong key file for an encrypted backup, or the server stopped answering. The message shows the attach log; for a wrong key it says "this snapshot was encrypted with another key" and shows the fingerprint of the key the snapshot needs and of the key given |
 | "No local target disk found" | The new disk is missing, unsupported by the live system, or seen as removable. Check cabling and BIOS settings. The stick the restore booted from is never offered |
 | Several disks and unsure which is the target | Compare sizes in the menu; if still unsure, check disk models and serials in the firmware setup first, or disconnect the others |
 | "The target disk is smaller than the backed up disk" | Use a disk at least as large as the original; the message gives the size in bytes. Nothing has been written to the disk it names |

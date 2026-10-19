@@ -721,6 +721,8 @@ This client adds one small file at the root of its folder snapshots, `.proxmox_b
 
 **Scheduled backups fail with a passphrase message.** The key is set to **Ask me** and nobody has entered the passphrase since the GUI started, or the run went through the service. Use **Remember on this computer** for unattended runs.
 
+**A restore says "this snapshot was encrypted with another key".** The key on the server's **Encryption** tab is not the one the snapshot was made with. The message gives the fingerprint of the key the snapshot needs and of the key in use; bring the right one in with **Import...** (the paper key or a copy of the key file). With no key set, it says the snapshot needs its encryption key and gives that key's fingerprint. Nothing is restored or overwritten before this check.
+
 **"Changing Backup Sets needs administrator rights."** Job protection is on (Windows), or the background service holds the Backup Sets (Linux). Click **Restart as administrator**.
 
 **"This PC's backup settings are open to its administrators only."** You are signed in with a standard account, which cannot read the settings. Click **Restart as administrator** and give an administrator's password.

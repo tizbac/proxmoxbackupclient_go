@@ -1,8 +1,8 @@
 package main
 
 import (
-	"context"
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -75,7 +75,7 @@ func setReadOnly(dev *os.File, readonly bool) error {
 	return nil
 }
 
-func nbdStart(pbsclient *pbscommon.PBSClient, fidxdata []byte, nbd_index int) {
+func nbdStart(pbsclient *pbscommon.PBSClient, archive string, fidxdata []byte, nbd_index int) {
 	os.Remove("/tmp/pbsnbd")
 	l, err := net.Listen("unix", "/tmp/pbsnbd")
 	if err != nil {
@@ -87,6 +87,19 @@ func nbdStart(pbsclient *pbscommon.PBSClient, fidxdata []byte, nbd_index int) {
 	}
 	// Fail before the NBD device is attached: a missing or wrong key would
 	// otherwise leave a dead /dev/nbdN that blocks every reader in D state.
+	// The key is compared with the one the manifest names first, so the
+	// message says which key is needed. One fingerprint per line: the
+	// bare-metal restore wizard shows the log's last 4 lines, 200 characters
+	// each.
+	if err := pbsclient.CheckArchiveKey(archive); err != nil {
+		var ke *pbscommon.SnapshotKeyError
+		if errors.As(err, &ke) && ke.GivenKey != "" {
+			fmt.Fprintf(os.Stderr, "pbsnbd: this snapshot was encrypted with another key.\nSnapshot's key: %s\nKey given:      %s\n", ke.SnapshotKey, ke.GivenKey)
+		} else {
+			fmt.Fprintf(os.Stderr, "pbsnbd: %v\n", err)
+		}
+		os.Exit(1)
+	}
 	if len(backend.chunks) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), chunkFetchTimeout)
 		_, err := pbsclient.GetChunkData(ctx, backend.chunks[0])
@@ -297,7 +310,7 @@ func main() {
 		client.Connect(true, parts[0])
 		data, err := client.DownloadToBytes(parts[3])
 		fmt.Println(len(data))
-		nbdStart(client, data, *nbdFlag)
+		nbdStart(client, parts[3], data, *nbdFlag)
 		return
 	}
 
@@ -384,7 +397,7 @@ func main() {
 									app.SetRoot(error_modal, true)
 								} else {
 									app.Stop()
-									nbdStart(client, data, *nbdFlag)
+									nbdStart(client, x.Filename, data, *nbdFlag)
 								}
 							})
 

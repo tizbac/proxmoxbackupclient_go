@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"hash/crc32"
 	"net/http"
 	"net/http/httptest"
@@ -92,6 +93,20 @@ type fakePBSWithDIDX struct {
 	overrideDidx []byte
 	// corrupt maps a digest to replacement plaintext, to exercise integrity checks.
 	corrupt map[string][]byte
+	// manifest, when set, is served as index.json.blob (a plain DataBlob);
+	// without it the manifest is missing, as for the tests written before
+	// the key check (CheckArchiveKey then lets the reader open).
+	manifest []byte
+}
+
+// setManifest serves m as the snapshot's index.json.blob.
+func (f *fakePBSWithDIDX) setManifest(t *testing.T, m BackupManifest) {
+	t.Helper()
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	f.manifest = mustEncodeBlob(t, raw, nil)
 }
 
 func newFakePBSWithDIDX(t *testing.T, name string, a *didxArchive, crypt *CryptConfig) *fakePBSWithDIDX {
@@ -103,6 +118,10 @@ func newFakePBSWithDIDX(t *testing.T, name string, a *didxArchive, crypt *CryptC
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/download":
+			if r.URL.Query().Get("file-name") == ManifestBlobName && f.manifest != nil {
+				w.Write(f.manifest)
+				return
+			}
 			if r.URL.Query().Get("file-name") != name {
 				http.Error(w, "no such archive", http.StatusNotFound)
 				return

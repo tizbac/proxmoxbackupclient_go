@@ -264,7 +264,7 @@ sudo proxmoxbackup-nbd -baseurl https://pbs.example.com:8007 -certfingerprint AA
 
 The tool stays in the foreground while the device is attached. Press Ctrl+C to detach. Unmount everything on the device first, or the partitions stay busy. If you see `Device or resource busy`, run `nbd-client -d /dev/nbd0` or reboot.
 
-With `-keyfile`, the tool reads the first chunk before it attaches the device, so a missing or wrong key stops straight away with a clear message.
+Before it attaches the device, the tool compares the key with the one the snapshot was encrypted with (the manifest names its fingerprint) and reads the first chunk, so a missing or wrong key stops straight away with a clear message: for a wrong key, "this snapshot was encrypted with another key" and the two fingerprints.
 
 Do not use this on a machine running important services: a damaged file system on the attached image can upset the kernel.
 

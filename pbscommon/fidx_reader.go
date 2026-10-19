@@ -60,6 +60,9 @@ func (pbs *PBSClient) NewFIDXReaderAt(archiveName string, cacheChunks int, progr
 	if cacheChunks <= 0 {
 		cacheChunks = 16
 	}
+	if err := pbs.CheckArchiveKey(archiveName); err != nil {
+		return nil, 0, err
+	}
 	raw, err := pbs.DownloadToBytes(archiveName)
 	if err != nil {
 		return nil, 0, fmt.Errorf("download index %q: %w", archiveName, err)
