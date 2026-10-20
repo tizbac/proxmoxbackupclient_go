@@ -35,8 +35,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 ## Bare-metal restore ISO
 
 - [ ] Boot-stick exclusion, still to try: a dd-written stick, a real USB SSD, and a VM with two internal disks. Done: the ISO as a fixed SATA disk on a UEFI VM (2026-10-13), and a real Ventoy stick with UEFI and BIOS, in Ventoy's normal and GRUB2 modes (2026-10-15, v0.9.1 ISO). Check the key-file step lists the Ventoy data partition (exFAT) so the key can live on the same stick.
-- [ ] A full restore with the v0.9.1 ISO onto a target the same size or larger (the smaller-disk refusal was tested; the path that goes ahead was not booted with this ISO).
-- [ ] Rebuild the ISO with the wizards that pass the PBS password and key passphrase to `pbsnbd` in the environment (2026-10-16; `pbsnbd` itself tested on linuxclient), boot it, and check `ps` shows neither during a restore with a protected key.
+- [ ] Boot a restored real operating system from the next release ISO. On 2026-10-19 a test ISO (`-test-20261019b`, this tree) restored a 2 GiB GPT test disk (FAT ESP and ext4 data) onto a disk of the same size and onto a 1 GiB larger one, every file identical, with a passphrase-protected key from a USB stick; it was not a bootable system.
 
 ## Security
 
