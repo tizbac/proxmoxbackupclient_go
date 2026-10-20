@@ -64,6 +64,10 @@ type PBSTicket struct {
 	CertFingerprint string `json:"cert_fingerprint,omitempty"`
 	Datastore       string `json:"datastore,omitempty"`
 	Namespace       string `json:"namespace,omitempty"`
+	// EncryptionKeyFile is the PATH of the server's key file (not the key):
+	// the GUI unlocks it itself to decrypt encrypted snapshots, since chunks
+	// are decrypted client-side, in the process doing the restore/listing.
+	EncryptionKeyFile string `json:"encryption_key_file,omitempty"`
 }
 
 // BackupProgress represents the current state of a running backup

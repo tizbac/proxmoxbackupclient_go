@@ -312,9 +312,9 @@ func (a *App) TestPBSServerForAPI(id string, draft map[string]interface{}) error
 // connection parameters. The GUI uses the ticket for restore/listing
 // operations and never sees the PBS credentials:
 //   - user/password servers: classic username/password ticket;
-//   - API-token servers: the token ID + secret are exchanged at
-//     /access/ticket (the same endpoint the PBS web UI uses for token login),
-//     yielding a cookie ticket the GUI can use without the secret.
+//   - API-token servers: PBS issues no ticket for a token, so the ticket is
+//     minted from the username/password also stored on the entry; a
+//     token-only entry can back up but not be browsed from the GUI.
 func (a *App) MintPBSTicketForAPI(id string) (*api.PBSTicket, error) {
 	srv, err := a.config.GetPBSServer(id)
 	if err != nil {
@@ -324,9 +324,14 @@ func (a *App) MintPBSTicketForAPI(id string) (*api.PBSTicket, error) {
 	cfg := srv.ToConfig()
 
 	if cfg.AuthID != "" {
-		// Token server: mint the ticket from the token itself.
+		// Token server: PBS does not issue a ticket for an API token, so the
+		// ticket comes from the user/password stored next to the token. Say so
+		// instead of ObtainTicket's bare "username and password are required".
 		if cfg.Secret == "" {
 			return nil, fmt.Errorf("serveur %q: secret manquant", srv.ID)
+		}
+		if cfg.Username == "" || cfg.Password == "" {
+			return nil, fmt.Errorf("server %q: browsing and restoring in Service Mode need the PBS username and password on this server entry (PBS cannot issue a session ticket for an API token)", srv.ID)
 		}
 		client := &pbscommon.PBSClient{
 			BaseURL:         cfg.BaseURL,
@@ -359,6 +364,8 @@ func (a *App) MintPBSTicketForAPI(id string) (*api.PBSTicket, error) {
 		CertFingerprint: cfg.CertFingerprint,
 		Datastore:       cfg.Datastore,
 		Namespace:       cfg.Namespace,
+		// The key path, never the key: same exposure as the sanitized config.
+		EncryptionKeyFile: srv.EncryptionKeyFile,
 	}, nil
 }
 
