@@ -51,6 +51,9 @@ func TestChunkStateEncryptedDigests(t *testing.T) {
 		Datastore: "teststore",
 		Client:    *http.DefaultClient,
 		Crypt:     crypt,
+		// CloseDynamicIndex records the index checksum in the manifest
+		// entry of the writer (wid 0 here).
+		Manifest: pbscommon.BackupManifest{Files: []pbscommon.File{{}}},
 	}
 
 	// Several average-size (4 MiB) chunks, so both HandleData's cut points and
