@@ -313,7 +313,7 @@ if [ "$KEY_CHOICE" != "none" ] && [ -n "$KEY_CHOICE" ]; then
   # PBKDF2); an unprotected one has null.
   if grep -Eq '"kdf"[[:space:]]*:[[:space:]]*\{' "$KEYFILE"; then
     $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
-      --passwordbox "Passphrase for the encryption key:" 0 0 2> "$DIA_TMP"
+      --passwordbox "Passphrase for the encryption key:" 8 60 2> "$DIA_TMP"
     KEYPASS="$(cat "$DIA_TMP")"
   fi
   echo "Encryption key  : ${KEYFILE}"

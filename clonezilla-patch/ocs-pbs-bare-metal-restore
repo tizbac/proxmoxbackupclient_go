@@ -308,7 +308,7 @@ if [ "$KEY_CHOICE" != "none" ] && [ -n "$KEY_CHOICE" ]; then
   if grep -Eq '"kdf"[[:space:]]*:[[:space:]]*\{' "$KEYFILE"; then
     KEY_PROTECTED=1
     $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
-      --passwordbox "Passphrase for the encryption key:" 0 0 2> "$DIA_TMP"
+      --passwordbox "Passphrase for the encryption key:" 8 60 2> "$DIA_TMP"
     KEYPASS="$(cat "$DIA_TMP")"
   fi
   echo "Encryption key  : ${KEYFILE}"
@@ -336,7 +336,7 @@ while ! PBS_PASSWORD="$PBS_PASS" PBS_ENCRYPTION_PASSWORD="$KEYPASS" \
       --msgbox "That passphrase did not unlock the key (attempt ${KEY_TRIES} of 3). Try again." 0 0 $DIA_ESC
     KEY_TRIES=$((KEY_TRIES + 1))
     $DIA --backtitle "$msg_nchc_free_software_labs" --title "$KEY_TITLE" \
-      --passwordbox "Passphrase for the encryption key (attempt ${KEY_TRIES} of 3):" 0 0 2> "$DIA_TMP"
+      --passwordbox "Passphrase for the encryption key (attempt ${KEY_TRIES} of 3):" 8 60 2> "$DIA_TMP"
     KEYPASS="$(cat "$DIA_TMP")"
     continue
   fi
