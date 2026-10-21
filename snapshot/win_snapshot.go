@@ -4,6 +4,7 @@
 package snapshot
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/go-ole/go-ole"
 	"github.com/st-matskevich/go-vss"
@@ -81,7 +83,34 @@ func getAppDataFolder() (string, error) {
 	return appDataFolder, nil
 }
 
+// vssTimeoutMs is how long each step of a shadow copy (gather, prepare,
+// snapshot) may take, in milliseconds (go-vss passes it to IVssAsync::Wait
+// and raises anything under 180000). Three minutes was not enough on a busy
+// machine: a run of five backups in a row timed out in DoSnapshotSet while the
+// WMI writer was slow to freeze (2026-10-21, winclient).
+const vssTimeoutMs = 10 * 60 * 1000
+
+// vssBusyWait is how long a snapshot waits, in total, for another shadow copy
+// creation to finish (VSS_E_SNAPSHOT_SET_IN_PROGRESS: "Wait a few moments and
+// try again"), and vssBusyRetry how often it tries again.
+var (
+	vssBusyWait  = 10 * time.Minute
+	vssBusyRetry = 30 * time.Second
+)
+
 func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) error {
+	// go-vss initialises COM (a single-threaded apartment) for the length of
+	// CreateSnapshot only, while the snapshot's COM objects are used again at
+	// Release, after the backup. Without this, the goroutine could carry on
+	// on another OS thread, and Release (BackupComplete) then called them
+	// from a thread outside their apartment. Keep the whole snapshot, from
+	// creation to release, on one thread with the apartment alive throughout
+	// (CoInitialize here, go-vss's own then only nests inside it). The defers
+	// run last, after the snapshotters are released below.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ole.CoInitialize(0)
+	defer ole.CoUninitialize()
 
 	// One Snapshotter per volume: go-vss rejects reuse of a single Snapshotter
 	// for a second volume ("snapshotter is already in use"), which made every
@@ -124,10 +153,14 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 
 		fmt.Print("Creating VSS Snapshot...")
 
-		// Check VSS writers status before creating snapshot
-		checkWritersCmd := exec.Command("vssadmin", "list", "writers")
+		// Check VSS writers status before creating snapshot (only for the
+		// warnings below; a vssadmin that does not answer must not hold up
+		// the backup).
+		listCtx, cancelList := context.WithTimeout(context.Background(), time.Minute)
+		checkWritersCmd := exec.CommandContext(listCtx, "vssadmin", "list", "writers")
 		checkWritersCmd.SysProcAttr = hidden()
 		writersOutput, _ := checkWritersCmd.CombinedOutput()
+		cancelList()
 		writersStatus := string(writersOutput)
 
 		// Log warnings for writers with known errors
@@ -150,28 +183,27 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 			fmt.Println("         → File-level backup will work normally")
 		}
 
-		sn := &vss.Snapshotter{}
-		snapshot, err := sn.CreateSnapshot(volName, false, 180)
-		if err != nil && isShadowAlreadyInProgress(err) {
-			// IVssBackupComponents stuck from a previous crashed run.
-			// vssadmin delete shadows alone won't release it — we have to bounce
-			// the VSS service to drop the orphaned context, then retry once.
-			if len(snapshotters) > 0 {
-				// We already hold shadows for earlier volumes in this set, and
-				// vssForceReset deletes shadows / bounces the VSS service, which
-				// would destroy them. Fail instead of self-sabotaging the set.
-				return fmt.Errorf("VSS busy while building a multi-volume snapshot set: %w", err)
-			}
-			fmt.Printf("⚠️  VSS busy: %v\n", err)
-			fmt.Println("         → Resetting VSS service state and retrying once...")
-			// Do NOT Release the failed Snapshotter: go-vss already aborted and
-			// released its components on the failed CreateSnapshot (without
-			// nil-ing them), so a second Release would touch freed COM state.
-			if resetErr := vssForceReset(); resetErr != nil {
-				fmt.Printf("         → VSS reset failed: %v\n", resetErr)
-			}
+		// Another shadow copy being made (by another program, or VSS still
+		// finishing one of ours that timed out) is waited for: VSS says to
+		// try again in a moment. This used to delete every shadow copy on the
+		// computer (vssadmin delete shadows /all: System Restore points,
+		// other backup programs' copies) and restart the VSS service. When
+		// the busy snapshot was this process's own, the restart could not
+		// finish (VSS waits for our in-progress call), so the backup hung for
+		// good with the service stuck stopping and every queued backup behind
+		// it (found 2026-10-21 running five backups in a row on winclient).
+		// A context left by a crashed process is released by Windows once
+		// that process is gone, so waiting covers that case too.
+		// Do NOT Release a failed Snapshotter: go-vss already aborted and
+		// released its components on the failed CreateSnapshot (without
+		// nil-ing them), so a second Release would touch freed COM state.
+		var sn *vss.Snapshotter
+		snapshot, err := retryWhileBusy(func() (*vss.Snapshot, error) {
 			sn = &vss.Snapshotter{}
-			snapshot, err = sn.CreateSnapshot(volName, false, 180)
+			return sn.CreateSnapshot(volName, false, vssTimeoutMs)
+		})
+		if err != nil && isShadowAlreadyInProgress(err) {
+			return fmt.Errorf("VSS snapshot creation failed: another shadow copy was still being made after %v: %w", vssBusyWait, err)
 		}
 		if err != nil {
 			errMsg := err.Error()
@@ -266,16 +298,14 @@ func VSSCleanup() error {
 		}
 	}
 
-	// NOTE: we deliberately do NOT bounce the Windows VSS service here.
-	// `net stop/start VSS` affects EVERY VSS consumer on the host — on a Domain
-	// Controller, or a machine running third-party backup software (Veritas Backup
-	// Exec, Windows Server Backup, SQL/Exchange agents), restarting VSS can abort
-	// their in-flight snapshots and corrupt their backup state. Doing it on every
-	// service startup is especially hostile and runs even when no backup is due.
-	// A stuck IVssBackupComponents context from a previously crashed run ("shadow
-	// copy creation already in progress") is instead recovered lazily and only when
-	// it actually blocks us, by vssForceReset() on the next CreateSnapshot attempt
-	// — right before our own backup. See CreateVSSSnapshot.
+	// NOTE: we deliberately do NOT bounce the Windows VSS service, here or
+	// anywhere. `net stop/start VSS` affects EVERY VSS consumer on the host — on
+	// a Domain Controller, or a machine running third-party backup software
+	// (Veritas Backup Exec, Windows Server Backup, SQL/Exchange agents),
+	// restarting VSS can abort their in-flight snapshots and corrupt their
+	// backup state. A context left by a crashed run is released by Windows once
+	// that process has gone; CreateVSSSnapshot waits for it ("already in
+	// progress") instead.
 	return nil
 }
 
@@ -328,66 +358,31 @@ func deleteShadowVSS(bare string) error {
 	return err
 }
 
-// isShadowAlreadyInProgress detects the "shadow copy creation is already in
-// progress" error returned by go-vss / Windows VSS when a previous
-// IVssBackupComponents context is still held.
+// retryWhileBusy calls create until it succeeds, fails for another reason, or
+// another shadow copy creation has kept VSS busy for vssBusyWait, trying again
+// every vssBusyRetry.
+func retryWhileBusy(create func() (*vss.Snapshot, error)) (*vss.Snapshot, error) {
+	busyUntil := time.Now().Add(vssBusyWait)
+	for {
+		snapshot, err := create()
+		if err == nil || !isShadowAlreadyInProgress(err) || time.Now().Add(vssBusyRetry).After(busyUntil) {
+			return snapshot, err
+		}
+		fmt.Printf("⚠️  VSS busy (%v): trying again in %v\n", err, vssBusyRetry)
+		time.Sleep(vssBusyRetry)
+	}
+}
+
+// isShadowAlreadyInProgress detects VSS_E_SNAPSHOT_SET_IN_PROGRESS
+// (0x80042316): another shadow copy creation has not finished yet. go-vss
+// reports it as "... Another shadow copy creation is already in progress.
+// Wait a few moments and try again."
 func isShadowAlreadyInProgress(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
-	// Windows surfaces this either as VSS_E_BAD_STATE (0x8004230f) or as a
-	// human-readable message containing "already in progress".
 	return strings.Contains(msg, "already in progress") ||
-		strings.Contains(msg, "0x8004230f")
-}
-
-// vssForceReset is the aggressive recovery used mid-backup when a snapshot
-// attempt returns "already in progress". It deletes orphan shadows then
-// bounces the VSS service so the next CreateSnapshot starts from a clean
-// state.
-//
-// DELIBERATE /all here (unlike startup VSSCleanup which is now scoped): this runs
-// ONLY when our own CreateSnapshot is already blocked by a stuck VSS context, not
-// on every service start — a much smaller blast radius. The "in progress" state is
-// an in-flight requester/provider sequence, not a completed shadow we can target
-// by ID, so clearing it needs the service bounce below. WINDOWS-VERIFY: tighten
-// this (and the error classifier above; the in-progress code may be 0x80042316,
-// not 0x8004230f) before relying on it.
-func vssForceReset() error {
-	deleteCmd := exec.Command("vssadmin", "delete", "shadows", "/all", "/quiet")
-	deleteCmd.SysProcAttr = hidden()
-	if out, err := deleteCmd.CombinedOutput(); err != nil {
-		fmt.Printf("VSS reset: delete shadows warning: %v - %s\n", err, string(out))
-	}
-	return restartVSSService()
-}
-
-// restartVSSService bounces the Windows Volume Shadow Copy service. Safe at
-// service startup and during error recovery because Proxmox Backup Client is the only VSS
-// consumer on backup-dedicated hosts, and stopping VSS just discards any
-// in-flight shadow context (which is exactly what we want when it's stuck).
-func restartVSSService() error {
-	fmt.Println("VSS Cleanup: Restarting VSS service to clear stuck state...")
-	stopCmd := exec.Command("net", "stop", "VSS")
-	stopCmd.SysProcAttr = hidden()
-	if out, err := stopCmd.CombinedOutput(); err != nil {
-		// "service is not started" is fine — we'll start it next.
-		if !strings.Contains(string(out), "not started") &&
-			!strings.Contains(strings.ToLower(string(out)), "n'est pas démarr") {
-			fmt.Printf("VSS service stop warning: %v - %s\n", err, string(out))
-		}
-	}
-	startCmd := exec.Command("net", "start", "VSS")
-	startCmd.SysProcAttr = hidden()
-	if out, err := startCmd.CombinedOutput(); err != nil {
-		// "already started" is fine.
-		if strings.Contains(string(out), "already been started") ||
-			strings.Contains(strings.ToLower(string(out)), "déjà été démarr") {
-			return nil
-		}
-		return fmt.Errorf("net start VSS failed: %v - %s", err, string(out))
-	}
-	fmt.Println("VSS Cleanup: VSS service restarted")
-	return nil
+		strings.Contains(msg, "snapshot_set_in_progress") ||
+		strings.Contains(msg, "0x80042316")
 }
