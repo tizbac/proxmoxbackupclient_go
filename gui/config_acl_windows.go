@@ -119,7 +119,15 @@ func normaliseOwners(dir string, trusted []*windows.SID, newOwner *windows.SID) 
 	empty := (*windows.ACL)(unsafe.Pointer(&emptyBuf[0]))
 	fixed := 0
 	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || path == dir {
+		if err != nil {
+			return nil
+		}
+		if path == dir {
+			// The folder itself keeps the permissions just set, but not an
+			// outside owner: the owner of a folder can always change its
+			// permissions back (a standard user who created the folder
+			// before the app was installed).
+			fixed += resetForeignOwner(dir, trusted, newOwner)
 			return nil
 		}
 		sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
@@ -146,6 +154,30 @@ func normaliseOwners(dir string, trusted []*windows.SID, newOwner *windows.SID) 
 		return nil
 	})
 	return fixed
+}
+
+// resetForeignOwner gives newOwner ownership of path when its owner is not in
+// trusted, leaving its permissions as they are. Returns 1 when it did.
+func resetForeignOwner(path string, trusted []*windows.SID, newOwner *windows.SID) int {
+	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	if err != nil {
+		return 0
+	}
+	owner, _, err := sd.Owner()
+	if err != nil || owner == nil {
+		return 0
+	}
+	for _, t := range trusted {
+		if owner.Equals(t) {
+			return 0
+		}
+	}
+	if err := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION, newOwner, nil, nil, nil); err != nil {
+		writeDebugLog(fmt.Sprintf("[ConfigACL] could not reset owner of %s (owned by %s): %v", path, owner.String(), err))
+		return 0
+	}
+	writeDebugLog(fmt.Sprintf("[ConfigACL] reset owner of %s (was %s)", path, owner.String()))
+	return 1
 }
 
 var (
