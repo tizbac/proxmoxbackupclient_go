@@ -8,12 +8,12 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 - [ ] **Release workflow in CI** (`.github/workflows/release.yml`): build Windows, the Linux packages and the BMR ISO in one run and attest them (build provenance needs GitHub Actions, not a personal machine). Today releases are built and uploaded by hand.
 - [ ] **VirusTotal scan** of the release files (manual upload or an API key).
 - [ ] **MSI: click through the removal pages** on a desktop: Programs and Features > Change, Remove, keep or delete, Back, Cancel (tests 3, 4, 5 and 7 in [MSI_UNINSTALL_TEST.md](MSI_UNINSTALL_TEST.md)). The silent paths passed on 2026-10-13.
-- [ ] **Silent MSI install with a ready-made config** for Group Policy or Intune: a `CONFIGFILE` property and a custom action that copies it into `C:\ProgramData\ProxmoxBackupClient`, a template config, and a deployment guide. Not built: `installer/wix` has no such property.
 
 ## Upstream (tizbac/proxmoxbackupclient_go)
 
 - [ ] **#113 open**: the bare-metal restore wizard never offers the boot stick (Ventoy, USB SSD) and refuses a disk smaller than the backed up one as the target. Waiting on review. (#102 to #112 are merged.)
-- [ ] Candidate port, a fresh small branch off upstream/master (our commits no longer apply as patches): restore permissions when the owner cannot be set, and keep a folder's protected (non-inheriting) DACL (5c1ef56).
+- [ ] Restore permissions when the owner cannot be set, and keep a folder's protected (non-inheriting) DACL (5c1ef56): ported on 2026-10-21 to a local branch off upstream/master (`port-restore-perms-protected-dacl`, PR text drafted), not yet sent.
+- [ ] Candidate port: waiting while VSS is busy instead of `vssadmin delete shadows /all` and a VSS restart, and freeing each shadow copy's VSS object (8a3c4d4, 609250d, 2026-10-21). Upstream's `snapshot/win_snapshot.go` has the same code; a cherry-pick does not apply cleanly, so port by hand.
 
 ## Background service
 
@@ -25,6 +25,9 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 - [ ] Maybe: options per schedule (the monthly one does a full read, or goes to another server). Several schedules per set were built on 2026-10-13; Mick put this off.
 - [ ] **Very large folders in split backups** are split one level deep only (`gui/backup_analysis.go`): a 700 GB subfolder becomes one 700 GB part. Recursive splitting down to a size limit was planned; less pressing since change detection reuses unchanged files. Decide whether it is still wanted.
+- [ ] **VSS: about 21 handles left behind per snapshot** (Windows; was 33 before 2026-10-21). All in creating and releasing the shadow copy (none in deleting it, in the VSS object itself, or in `vssadmin`), mostly handles to threads that have ended, plus events and semaphores. A service with a daily backup gains about 7,700 a year. Measure with `TestLiveVSSHandles` (`PBS_VSS_VOL`, `PBS_VSS_HANDLES`). Tried without effect: FreeWriterMetadata after the snapshot, and CoInitializeSecurity as Microsoft's vshadow sample sets it (the VSS 8194 "IVssWriterCallback access denied" events on every snapshot stayed too; they may be connected).
+- [ ] Maybe: read files that only SYSTEM may read (Windows Defender's folders in Program Files, protected files in System32) with backup semantics (SeBackupPrivilege) when the app runs elevated or as the service, as backup programs do. Today such a set ends as partial (the 2026-10-21 load test: System32 8 files, Program Files 1 folder).
+- [ ] Maybe: Reports shows a partial run (some files unreadable, the rest backed up) as failed, next to "Backup completed in ...: N files skipped". A status of its own (warning) would say it better.
 - [ ] Offered, not agreed: an empty-block marker in machine backups, skipping the 4 MiB copy for blank chunks in `emitZeros`/`push` (about 3 to 4 minutes off a 27 minute laptop run).
 
 ## Restoring
@@ -54,7 +57,6 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 ## Tests
 
 - [ ] Run the Docker end-to-end suite (`testing/e2e`) in CI: `e2e.yml` runs on pushes and pull requests to `main`/`develop` (or by hand), not this repository's `master`, so it has never run here; `build-and-release.yml` has the same branches (part of the CI work).
-- [ ] Load test: five Backup Sets at once, check memory stays bounded.
 
 ## Parked
 
