@@ -41,12 +41,12 @@ var errBusy = errors.New("VSS_E_SNAPSHOT_SET_IN_PROGRESS - Another shadow copy c
 func TestRetryWhileBusyWaitsForVSS(t *testing.T) {
 	shortBusyWait(t, time.Second, 10*time.Millisecond)
 	calls := 0
-	snap, err := retryWhileBusy(func() (*vss.Snapshot, error) {
+	snap, err := retryWhileBusy(func() (*vssShadow, error) {
 		calls++
 		if calls < 4 {
 			return nil, errBusy
 		}
-		return &vss.Snapshot{Id: "ok"}, nil
+		return &vssShadow{Snapshot: vss.Snapshot{Id: "ok"}}, nil
 	})
 	if err != nil || snap == nil || snap.Id != "ok" || calls != 4 {
 		t.Fatalf("got %v %v after %d calls", snap, err, calls)
@@ -58,7 +58,7 @@ func TestRetryWhileBusyGivesUp(t *testing.T) {
 	shortBusyWait(t, 100*time.Millisecond, 20*time.Millisecond)
 	calls := 0
 	start := time.Now()
-	_, err := retryWhileBusy(func() (*vss.Snapshot, error) { calls++; return nil, errBusy })
+	_, err := retryWhileBusy(func() (*vssShadow, error) { calls++; return nil, errBusy })
 	if !isShadowAlreadyInProgress(err) {
 		t.Fatalf("want the busy error, got %v", err)
 	}
@@ -71,7 +71,7 @@ func TestRetryWhileBusyGivesUp(t *testing.T) {
 func TestRetryWhileBusyOtherErrorAtOnce(t *testing.T) {
 	shortBusyWait(t, time.Second, 10*time.Millisecond)
 	calls := 0
-	_, err := retryWhileBusy(func() (*vss.Snapshot, error) { calls++; return nil, errors.New("VSS_E_BAD_STATE") })
+	_, err := retryWhileBusy(func() (*vssShadow, error) { calls++; return nil, errors.New("VSS_E_BAD_STATE") })
 	if err == nil || calls != 1 {
 		t.Fatalf("got %v after %d calls", err, calls)
 	}
