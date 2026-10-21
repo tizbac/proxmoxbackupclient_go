@@ -68,7 +68,7 @@ Checks on every request (`authMiddleware`):
 Errors are JSON with the HTTP status repeated in `code`:
 
 ```json
-{ "error": "backup_id is required", "code": 400 }
+{ "error": "Invalid request: unexpected EOF", "code": 400 }
 ```
 
 A wrong method gets **405** `Method not allowed`.
@@ -121,7 +121,8 @@ Request (`BackupRequest`):
 }
 ```
 
-- `backup_id` is required (400 without it).
+- `backup_id`: empty means the computer's name, as for a Backup Set without one (before
+  0.9.2 an empty one was refused with 400 `backup_id is required`).
 - `compression`: `fastest` (default when empty), `default`, `better` or `best`.
 - `pbs_server_id`: empty means the default server.
 - `comment` goes to the snapshot's manifest comment as is.

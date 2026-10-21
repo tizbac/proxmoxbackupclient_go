@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -165,10 +166,18 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, machine bool) 
 		return
 	}
 
-	// Validate request
+	// An empty backup ID means the computer's name, as everywhere else (the
+	// service's own scheduled runs, a run in the app without the service).
+	// A Backup Set may have none: one the installer set up from a settings
+	// file (CONFIGFILE), or one whose ID was cleared. Run Now on such a set,
+	// handed to the service, failed with "backup_id is required".
 	if req.BackupID == "" {
-		s.writeError(w, "backup_id is required", http.StatusBadRequest)
-		return
+		host, err := os.Hostname()
+		if err != nil || host == "" {
+			s.writeError(w, "backup_id is required (the computer's name could not be read)", http.StatusBadRequest)
+			return
+		}
+		req.BackupID = host
 	}
 
 	// Reload config before backup (config may have been updated by GUI)

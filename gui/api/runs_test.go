@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ type fakeHandler struct {
 	mu          sync.Mutex
 	machineDevs []string
 	dirRuns     int
+	backupIDs   []string
 	runKeys     []string
 	tracked     map[string]string // run key -> job ID
 	paused      bool
@@ -26,6 +28,7 @@ func (f *fakeHandler) StartBackup(backupType string, backupDirs, driveLetters, e
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.dirRuns++
+	f.backupIDs = append(f.backupIDs, backupID)
 	f.runKeys = append(f.runKeys, postActionsKey)
 	return nil
 }
@@ -193,6 +196,36 @@ func TestRunControl(t *testing.T) {
 
 // Machine backups the GUI asks for reach StartMachineBackup (the route was
 // missing: the request got a 404), with the disks and a tracked run key.
+// A Backup Set without a backup ID (one the installer set up, or one whose
+// ID was cleared) runs as the computer's name when the app hands it to the
+// service, as it does everywhere else; it was refused with
+// "backup_id is required".
+func TestEmptyBackupIDIsComputerName(t *testing.T) {
+	fake := &fakeHandler{}
+	_, c := newTestService(t, fake)
+	resp, err := c.StartBackup(&BackupRequest{BackupType: "directory", BackupDirs: []string{`C:\Data`}})
+	if err != nil || resp.JobID == "" {
+		t.Fatalf("StartBackup with no backup ID = %+v, %v", resp, err)
+	}
+	host, _ := os.Hostname()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		fake.mu.Lock()
+		ids := append([]string(nil), fake.backupIDs...)
+		fake.mu.Unlock()
+		if len(ids) == 1 {
+			if ids[0] != host {
+				t.Fatalf("backup ID %q, want the computer's name %q", ids[0], host)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("backup not started: %v", ids)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func TestMachineBackupRoute(t *testing.T) {
 	fake := &fakeHandler{}
 	_, c := newTestService(t, fake)
