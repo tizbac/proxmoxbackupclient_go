@@ -3,6 +3,7 @@ package pbscommon
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/bits"
@@ -302,6 +303,11 @@ func ca_make_bst(input []GoodByeItem, output *[]GoodByeItem) {
 
 type PXAROutCB func([]byte) error
 
+// ErrWriteCancelled is returned by WriteDir and WriteFile once
+// PXARArchive.Cancelled reports true. The archive is then incomplete: the
+// caller must drop the backup session instead of finishing it.
+var ErrWriteCancelled = errors.New("archive write cancelled")
+
 // MetaCollector is an optional hook invoked during the PXAR walk for every
 // directory and regular file that is actually being backed up (after skip
 // checks). Implementations capture per-entry metadata that PXAR itself cannot
@@ -367,6 +373,12 @@ type PXARArchive struct {
 	// and loses temporary files) otherwise re-upload the chunks around every such
 	// entry. Restored items then get 1970-01-01.
 	NoMTime bool
+
+	// Cancelled, if set, is checked before every write of the archive (at
+	// least every 64 KiB). Once it returns true the walk stops with
+	// ErrWriteCancelled, so a cancel no longer waits for the end of a large
+	// folder or file.
+	Cancelled func() bool
 }
 
 // entryMTime is the time recorded for an entry: the real one, or 0 with NoMTime.
@@ -382,9 +394,11 @@ func (a *PXARArchive) entryMTime(info os.FileInfo) uint64 {
 //It is useful when we building a data structure and we need to keep a specific offset and output it only at the end
 
 func (a *PXARArchive) Flush() error {
-
 	b := make([]byte, 64*1024)
 	for {
+		if a.Cancelled != nil && a.Cancelled() {
+			return ErrWriteCancelled
+		}
 		count, _ := a.buffer.Read(b)
 		if count <= 0 {
 			break

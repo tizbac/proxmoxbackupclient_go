@@ -82,9 +82,9 @@ var (
 )
 
 // Current in-flight backup cancellation. The GUI's Stop button calls
-// CancelBackup() which cancels this context at a safe point (between
-// directories / between retries), so the running backup aborts gracefully
-// without committing a partial snapshot.
+// CancelBackup() which cancels this context. The archive writer checks it at
+// every write, so the folder being backed up stops at once and its session is
+// dropped without committing a partial snapshot.
 var (
 	currentBackupCancelMutex sync.Mutex
 	currentBackupCancel      context.CancelFunc
@@ -212,6 +212,10 @@ type ChunkState struct {
 	totalSize           *atomic.Uint64 // Total size, updated by background scan
 	uploadErrors        []string       // Collect upload errors to report at the end
 	errorsMutex         sync.Mutex     // Protect uploadErrors slice
+
+	// cancelCtx is the Stop button's context: it ends the upload retries.
+	// nil = never cancelled.
+	cancelCtx context.Context
 }
 
 func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, failedchunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool], onProgress func(float64, string), totalSize *atomic.Uint64, onStats func(*BackupProgressStats), currentDir string) {
@@ -239,6 +243,15 @@ func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, fa
 	c.uploadErrors = make([]string, 0)
 }
 
+// retryParent is the context the chunk upload retries derive from: the Stop
+// button's one when set, so a cancel ends the retries and their waits.
+func (c *ChunkState) retryParent() context.Context {
+	if c.cancelCtx != nil {
+		return c.cancelCtx
+	}
+	return context.Background()
+}
+
 func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 	chunkpos := c.C.Scan(b)
 
@@ -264,7 +277,7 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 				chunkData := c.currentChunk // Capture for closure
 				retryConfig := retry.DefaultConfig()
 				retryConfig.MaxAttempts = 5 // More retries for chunk uploads
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				ctx, cancel := context.WithTimeout(c.retryParent(), 5*time.Minute)
 				defer cancel()
 
 				err := retry.DoWithJitter(ctx, retryConfig, retry.DefaultRetryable, func() error {
@@ -399,7 +412,7 @@ func (c *ChunkState) EOF(client *pbscommon.PBSClient) error {
 			chunkData := c.currentChunk
 			retryConfig := retry.DefaultConfig()
 			retryConfig.MaxAttempts = 5
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			ctx, cancel := context.WithTimeout(c.retryParent(), 5*time.Minute)
 			defer cancel()
 
 			err := retry.DoWithJitter(ctx, retryConfig, retry.DefaultRetryable, func() error {
@@ -813,7 +826,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		var err error
 		var dirBytes uint64
 		for attempt := 1; attempt <= maxDirAttempts; attempt++ {
-			dirBytes, err = backupDirectory(client, &newchunk, &reusechunk, &failedchunk, dir, opts.UseVSS, progress, opts.OnStats, opts.ExcludeList)
+			dirBytes, err = backupDirectory(opts.Ctx, client, &newchunk, &reusechunk, &failedchunk, dir, opts.UseVSS, progress, opts.OnStats, opts.ExcludeList)
 			if err == nil {
 				break
 			}
@@ -855,6 +868,20 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 				}
 				writeBackupLog(fmt.Sprintf("Wait complete, retrying directory %s with fresh connection", dir))
 			}
+		}
+
+		// Cancelled in the middle of this directory: drop its session (already
+		// done above on an error) instead of finishing it, so nothing of it is
+		// committed. Stop here like a cancel between two directories does.
+		if opts.Ctx != nil && opts.Ctx.Err() != nil {
+			if err == nil {
+				client.Close()
+			}
+			writeBackupLog(fmt.Sprintf("Cancellation requested during backup of %s — stopped, not committed", dir))
+			if opts.OnComplete != nil {
+				opts.OnComplete(false, "Backup cancelled by user")
+			}
+			return machinebackuplib.ErrCancelled
 		}
 
 		// Capture this directory's lists before the next directory's Connect() resets
@@ -1108,7 +1135,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 	return nil
 }
 
-func backupDirectory(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, usevss bool, progress func(float64, string), onStats func(*BackupProgressStats), excludeList []string) (uint64, error) {
+func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, usevss bool, progress func(float64, string), onStats func(*BackupProgressStats), excludeList []string) (uint64, error) {
 	writeBackupLog(fmt.Sprintf("Starting backup of %s", backupdir))
 	originalPath := backupdir
 
@@ -1120,16 +1147,16 @@ func backupDirectory(client *pbscommon.PBSClient, newchunk, reusechunk, failedch
 				break
 			}
 			var e error
-			bytesArchived, e = backupReal(client, newchunk, reusechunk, failedchunk, backupdir, originalPath, usevss, progress, onStats, excludeList)
+			bytesArchived, e = backupReal(ctx, client, newchunk, reusechunk, failedchunk, backupdir, originalPath, usevss, progress, onStats, excludeList)
 			return e
 		})
 		return bytesArchived, err
 	}
 
-	return backupReal(client, newchunk, reusechunk, failedchunk, backupdir, originalPath, usevss, progress, onStats, excludeList)
+	return backupReal(ctx, client, newchunk, reusechunk, failedchunk, backupdir, originalPath, usevss, progress, onStats, excludeList)
 }
 
-func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, originalPath string, vssUsed bool, progress func(float64, string), onStats func(*BackupProgressStats), excludeList []string) (returnBytes uint64, returnErr error) {
+func backupReal(cancelCtx context.Context, client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, originalPath string, vssUsed bool, progress func(float64, string), onStats func(*BackupProgressStats), excludeList []string) (returnBytes uint64, returnErr error) {
 	// Panic recovery - critical to prevent silent crashes during backup
 	defer func() {
 		if r := recover(); r != nil {
@@ -1167,6 +1194,9 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 	archive.ArchiveName = "backup.pxar.didx"
 	archive.ExcludeList = excludeList
 	archive.ExcludeRoot = originalPath // logical root for VSS-safe absolute-pattern matching
+	if cancelCtx != nil {
+		archive.Cancelled = func() bool { return cancelCtx.Err() != nil }
+	}
 
 	// Inject backup metadata into the PXAR archive root
 	hostname, _ := os.Hostname()
@@ -1207,6 +1237,8 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 
 	pcat1Chunk := ChunkState{}
 	pcat1Chunk.Init(newchunk, reusechunk, failedchunk, knownChunks, nil, totalSize, nil, "")
+	pxarChunk.cancelCtx = cancelCtx
+	pcat1Chunk.cancelCtx = cancelCtx
 
 	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
 	if err != nil {
@@ -1258,6 +1290,11 @@ func backupReal(client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *
 		return 0, fmt.Errorf("backup produced 0 bytes for %s — directory may be empty, inaccessible, or all files were excluded", backupdir)
 	}
 
+	// A cancel that lands after the last archive write: stop before closing
+	// the indexes, so the session is dropped with nothing committed.
+	if cancelCtx != nil && cancelCtx.Err() != nil {
+		return 0, pbscommon.ErrWriteCancelled
+	}
 	if err = pxarChunk.EOF(client); err != nil {
 		return 0, err
 	}
