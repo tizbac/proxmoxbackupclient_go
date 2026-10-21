@@ -19,7 +19,7 @@ func TestDIDXReaderAt_PrefetchWindowSharedCache(t *testing.T) {
 	}
 	srv, _ := newFakeChunkServer(t, chunks, 0)
 	defer srv.Close()
-	pbs := &PBSClient{BaseURL: srv.URL, Client: *srv.Client()}
+	pbs := &PBSClient{BaseURL: srv.URL, Client: readerTestClient(srv)}
 
 	run := func(window int) DIDXReaderAtStats {
 		idx := buildFakeIndex(chunks)

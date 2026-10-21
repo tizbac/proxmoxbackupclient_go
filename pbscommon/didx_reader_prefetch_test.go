@@ -93,7 +93,7 @@ func TestDIDXReaderAt_SequentialReadMatchesSource(t *testing.T) {
 	srv, hitCounts := newFakeChunkServer(t, chunks, 0)
 	defer srv.Close()
 
-	pbs := &PBSClient{BaseURL: srv.URL, Client: *srv.Client()}
+	pbs := &PBSClient{BaseURL: srv.URL, Client: readerTestClient(srv)}
 	idx := buildFakeIndex(chunks)
 	r := newTestReaderAt(pbs, idx)
 
@@ -130,7 +130,7 @@ func TestDIDXReaderAt_ConcurrentReadersCoalesce(t *testing.T) {
 	srv, hitCounts := newFakeChunkServer(t, chunks, 5*time.Millisecond)
 	defer srv.Close()
 
-	pbs := &PBSClient{BaseURL: srv.URL, Client: *srv.Client()}
+	pbs := &PBSClient{BaseURL: srv.URL, Client: readerTestClient(srv)}
 	idx := buildFakeIndex(chunks)
 	r := newTestReaderAt(pbs, idx)
 
@@ -171,7 +171,7 @@ func TestDIDXReaderAt_PrefetchOverlapsLatency(t *testing.T) {
 	srv, _ := newFakeChunkServer(t, chunks, delay)
 	defer srv.Close()
 
-	pbs := &PBSClient{BaseURL: srv.URL, Client: *srv.Client()}
+	pbs := &PBSClient{BaseURL: srv.URL, Client: readerTestClient(srv)}
 	idx := buildFakeIndex(chunks)
 	r := newTestReaderAt(pbs, idx)
 
