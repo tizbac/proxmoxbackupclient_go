@@ -628,8 +628,17 @@ fi
 #            On a BIOS/MBR disk that is where GRUB keeps its core image, so
 #            without it the restored disk stops at a bare "GRUB" prompt.
 #            ocs-onthefly always saves it but only restores it when asked.
+#   -irhr    keep the restored Linux system's identity. Without it Clonezilla
+#            (made for cloning one machine to many) gives the restored system
+#            a new /etc/machine-id and removes its udev hardware records. A
+#            bare-metal restore brings back the same machine: with a new
+#            machine-id, systemd-networkd sends another DHCP client ID (so the
+#            machine can get another address) and the journal starts afresh.
+#            Found 2026-10-21 restoring a Debian 13 machine. The initramfs
+#            update (no -iui) stays: it helps when the restored disk is in
+#            different hardware, and only rebuilds it from the restored system.
 # No -p (postaction) here deliberately: this is the zero-choice BMR flow, so
-# the reboot itself is handled explicitly below with our own message,
+# the power-off itself is handled explicitly below with our own message,
 # instead of ocs-onthefly's own generic "-p choose" prompt (which is right
 # for the manual ocs-pbs-nbd path, where an operator is already driving
 # Clonezilla's menus, but wrong here).
@@ -658,16 +667,22 @@ remove_snapshot_stores() {
 }
 
 echo "> Starting restore: ${NBDDEV} -> ${TARGET} ..."
-ocs-onthefly -icds -k0 -sfsck -j2 -f "$NBDDEV" -d "$TARGET"
+ocs-onthefly -icds -k0 -sfsck -j2 -irhr -f "$NBDDEV" -d "$TARGET"
 RC=$?
 [ "$RC" = "0" ] && remove_snapshot_stores
 if [ "$RC" != "0" ]; then
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
   --msgbox "Restore finished with a non-zero exit code ($RC).\nCheck ${ocs_log_dir} for details.\n\n$msg_press_enter_to_continue" 0 0 $DIA_ESC
 else
+  # Power off rather than reboot: started from a USB stick there is no
+  # "remove the medium" prompt (live-boot only gives one for a disc), so a
+  # reboot started the stick, and this wizard, again (seen 2026-10-21). The
+  # stick cannot be pulled before the reboot either, as the live system runs
+  # from it. Off, the stick comes out safely and the next start is the
+  # restored disk.
   $DIA --backtitle "$msg_nchc_free_software_labs" --title "PBS Bare Metal Restore" \
-  --msgbox "Restore is complete. The system will now reboot and you will be prompted when to remove the temporary boot drive." 0 0 $DIA_ESC
-  reboot
+  --msgbox "Restore is complete.\n\nChoose OK to switch the machine off. Then remove the boot stick or disc and switch the machine on again: it starts from the restored disk ${TARGET}.\n\nIf it starts this restore system again, choose the restored disk in the firmware's boot menu." 0 0 $DIA_ESC
+  poweroff
 fi
 
 exit "$RC"

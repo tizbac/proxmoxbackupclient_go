@@ -130,12 +130,13 @@ Restores of 32 to 40 GiB Windows and Linux test machines took 8 to 11 minutes fr
 
 ### 4.8 Finish
 
-* **Success:** "Restore is complete. The system will now reboot..." Remove the boot media when prompted.
-* **Failure:** the exit code and the log folder are shown, and the machine does not reboot. Look in the log folder, then run the restore again.
+* **Success:** "Restore is complete." Choose OK and the machine switches off. Remove the boot stick or disc, then switch the machine on: it starts from the restored disk. (ISOs up to v0.9.1 restarted instead, and from a USB stick that started the restore system again.)
+* **Failure:** the exit code and the log folder are shown, and the machine does not switch off. Look in the log folder, then run the restore again.
 
 ### After the restore
 
-* The restored system is exactly as it was at the snapshot: files, settings and permissions, whatever the operating system.
+* The restored system is exactly as it was at the snapshot: files, settings and permissions, whatever the operating system. A Linux system keeps its machine ID (`/etc/machine-id`), from which systemd-networkd makes its DHCP client ID, so a DHCP server that keys leases by client ID still knows the machine. (ISOs up to v0.9.1 gave it a new machine ID and rebuilt its initramfs; the rebuild is kept, as it helps on different hardware.)
+* On different hardware, a Linux system's network settings may name the old network card (by its MAC address, as cloud images and netplan configurations often do, or by an interface name that has changed). The system starts but has no network until the settings name the new card.
 * If it does not start, repair its boot loader with the operating system's own tools. This is more likely if the disk controller or boot mode (UEFI or BIOS) differs from the original machine.
   * Windows: boot a Windows installation USB and use **Repair your computer > Troubleshoot > Startup Repair**.
   * Linux: boot a live Linux system and reinstall the boot loader (usually GRUB) the way your distribution describes.
