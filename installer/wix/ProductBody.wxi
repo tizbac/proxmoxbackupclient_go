@@ -146,6 +146,21 @@
     <!-- ==================== AUTO-START CONFIGURATION ==================== -->
     <Property Id="AUTOSTART" Value="1" />
 
+    <!-- ==================== SETTINGS FOR MANY COMPUTERS ==================== -->
+    <!-- CONFIGFILE=<full path of a file saved with Preferences > Export>: the
+         installed service program, run as SYSTEM before the service starts,
+         locks the settings folder down and merges the file into it as
+         Import would (-apply-settings, gui/settings_deploy.go). The file is
+         read where it is, never copied. A file that cannot be read or used
+         fails the install, which is rolled back. See installer/DEPLOYMENT.md. -->
+    <Property Id="CONFIGFILE" Secure="yes" />
+    <CustomAction Id="ApplyDeploySettings"
+                  FileKey="SvcExe"
+                  ExeCommand='-apply-settings "[CONFIGFILE]"'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
     <!-- ==================== UNINSTALL CONFIGURATION CLEANUP ==================== -->
     <!-- Secure: the choice made on the uninstall page must reach the
          elevated part of the removal. -->
@@ -186,6 +201,9 @@
       <Custom Action="ClearNoModify" Before="RegisterProduct">ARPNOMODIFY</Custom>
       <Custom Action="KillGUIProcesses" Before="StopServices">
         UPGRADINGPRODUCTCODE
+      </Custom>
+      <Custom Action="ApplyDeploySettings" Before="StartServices">
+        CONFIGFILE AND NOT (REMOVE="ALL")
       </Custom>
       <Custom Action="DeleteConfigFolder" Before="RemoveFiles">
         (REMOVE="ALL") AND NOT UPGRADINGPRODUCTCODE AND (KEEP_CONFIG="0")

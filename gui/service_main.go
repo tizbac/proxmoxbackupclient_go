@@ -16,6 +16,10 @@ import (
 )
 
 func main() {
+	// -apply-settings <file>: the installer's CONFIGFILE (settings_deploy.go).
+	if path, ok := applySettingsArg(os.Args[1:]); ok {
+		os.Exit(runApplySettings(path))
+	}
 	// -list-sets, -undelete, -rollback: a command-line run, not the service.
 	if runSetCLI(os.Args[1:]) {
 		return

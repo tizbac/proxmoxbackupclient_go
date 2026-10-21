@@ -18,6 +18,10 @@ type SettingsBundle struct {
 	AppVersion    string         `json:"appVersion"`
 	Config        *Config        `json:"config,omitempty"`
 	ScheduledJobs []ScheduledJob `json:"scheduledJobs,omitempty"`
+	// SourceHost is the name of the computer the bundle was exported from.
+	// A bundle deployed to many computers by the installer
+	// (applySettingsFile) uses it to give each computer its own backup IDs.
+	SourceHost string `json:"sourceHost,omitempty"`
 }
 
 const currentSettingsBundleVersion = 1
@@ -66,12 +70,14 @@ func (a *App) ExportSettings(includeSecrets bool) (string, error) {
 		return "", fmt.Errorf("failed to load scheduled jobs: %w", err)
 	}
 
+	host, _ := os.Hostname()
 	bundle := SettingsBundle{
 		BundleVersion: currentSettingsBundleVersion,
 		ExportedAt:    time.Now().Format(time.RFC3339),
 		AppVersion:    appVersion,
 		Config:        &cfgCopy,
 		ScheduledJobs: jobs,
+		SourceHost:    host,
 	}
 
 	data, err := json.MarshalIndent(bundle, "", "  ")
@@ -134,12 +140,9 @@ func (a *App) ImportSettings() (string, error) {
 		return "", fmt.Errorf("failed to read import file: %w", err)
 	}
 
-	var bundle SettingsBundle
-	if err := json.Unmarshal(stripUTF8BOM(raw), &bundle); err != nil {
-		return "", fmt.Errorf("not a valid settings export: %w", err)
-	}
-	if bundle.Config == nil {
-		return "", fmt.Errorf("settings file has no configuration section")
+	bundle, err := parseSettingsBundle(raw)
+	if err != nil {
+		return "", err
 	}
 
 	// Importing Backup Sets changes the job list, so it is subject to the same
@@ -150,6 +153,42 @@ func (a *App) ImportSettings() (string, error) {
 		}
 	}
 
+	serversImported, jobsImported, err := a.mergeSettingsBundle(bundle, false)
+	if err != nil {
+		return "", err
+	}
+	writeDebugLog(fmt.Sprintf("ImportSettings: merged %d PBS server(s), %d job(s) from %s", serversImported, jobsImported, path))
+	return path, nil
+}
+
+// parseSettingsBundle reads a file written by ExportSettings.
+func parseSettingsBundle(raw []byte) (SettingsBundle, error) {
+	var bundle SettingsBundle
+	if err := json.Unmarshal(stripUTF8BOM(raw), &bundle); err != nil {
+		return bundle, fmt.Errorf("not a valid settings export: %w", err)
+	}
+	if bundle.Config == nil {
+		return bundle, fmt.Errorf("settings file has no configuration section")
+	}
+	for id, srv := range bundle.Config.PBSServers {
+		if srv == nil {
+			return bundle, fmt.Errorf("settings file: PBS server %q is empty", id)
+		}
+	}
+	return bundle, nil
+}
+
+// mergeSettingsBundle merges a bundle into the current configuration, as
+// described at ImportSettings. forDeployment is one bundle set up on many
+// computers by the installer (applySettingsFile). There:
+//   - a backup ID made from the exporting computer's name is made from this
+//     computer's (deployedBackupID), so the computers do not all back up into
+//     the same groups;
+//   - the bundle's default server only becomes this computer's default when
+//     it has none (sets without a server use the default);
+//   - the sets' run state (last run, full-read count) is the exporting
+//     computer's, so it is cleared.
+func (a *App) mergeSettingsBundle(bundle SettingsBundle, forDeployment bool) (serversImported, jobsImported int, err error) {
 	if a.config == nil {
 		a.config = LoadConfig()
 	}
@@ -157,19 +196,23 @@ func (a *App) ImportSettings() (string, error) {
 		a.config.PBSServers = make(map[string]*PBSServer)
 	}
 
-	serversImported := 0
 	for id, srv := range bundle.Config.PBSServers {
 		srvCopy := *srv
-		if srvCopy.Secret == "" && srvCopy.Password == "" {
-			if existing, ok := a.config.PBSServers[id]; ok {
+		if existing, ok := a.config.PBSServers[id]; ok && existing != nil {
+			if srvCopy.Secret == "" && srvCopy.Password == "" {
 				srvCopy.Secret = existing.Secret
 				srvCopy.Password = existing.Password
+			}
+			// A file exported without passwords has no key passphrase either:
+			// keep the one this computer remembers.
+			if srvCopy.EncryptionKeyPassphrase == "" {
+				srvCopy.EncryptionKeyPassphrase = existing.EncryptionKeyPassphrase
 			}
 		}
 		a.config.PBSServers[id] = &srvCopy
 		serversImported++
 	}
-	if bundle.Config.DefaultPBSID != "" {
+	if bundle.Config.DefaultPBSID != "" && (!forDeployment || a.config.DefaultPBSID == "") {
 		a.config.DefaultPBSID = bundle.Config.DefaultPBSID
 	}
 	if bundle.Config.Theme != nil {
@@ -185,23 +228,36 @@ func (a *App) ImportSettings() (string, error) {
 	}
 
 	if err := a.config.Save(); err != nil {
-		return "", fmt.Errorf("failed to save imported config: %w", err)
+		return 0, 0, fmt.Errorf("failed to save imported config: %w", err)
 	}
 
 	existingJobs, err := a.GetScheduledJobs()
 	if err != nil {
-		return "", fmt.Errorf("failed to load existing jobs: %w", err)
+		return 0, 0, fmt.Errorf("failed to load existing jobs: %w", err)
 	}
 	byID := make(map[string]int, len(existingJobs))
 	for i, j := range existingJobs {
 		byID[j.ID] = i
 	}
-	jobsImported := 0
+	thisHost, _ := os.Hostname()
 	for _, job := range bundle.ScheduledJobs {
+		if forDeployment {
+			if id := deployedBackupID(job.BackupID, bundle.SourceHost, thisHost); id != job.BackupID {
+				writeDebugLog(fmt.Sprintf("[Deploy] Backup Set %q: backup ID %q becomes %q on this computer", job.Name, job.BackupID, id))
+				job.BackupID = id
+			}
+			job.LastRun, job.NextRun, job.NextRunBy = "", "", ""
+			job.MetadataRunsSinceFullRead = 0
+		}
 		normalizeJobSchedules(&job)
 		setNextRun(&job, time.Now())
 		if i, ok := byID[job.ID]; ok {
 			job.Enabled = existingJobs[i].Enabled
+			if forDeployment {
+				// Deployed again: the set's own runs on this computer.
+				job.LastRun = existingJobs[i].LastRun
+				job.MetadataRunsSinceFullRead = existingJobs[i].MetadataRunsSinceFullRead
+			}
 			existingJobs[i] = job
 		} else {
 			existingJobs = append(existingJobs, job)
@@ -211,16 +267,14 @@ func (a *App) ImportSettings() (string, error) {
 
 	jobsPath, err := getScheduledJobsPath()
 	if err != nil {
-		return "", fmt.Errorf("failed to get jobs path: %w", err)
+		return serversImported, 0, fmt.Errorf("failed to get jobs path: %w", err)
 	}
 	jobsData, err := json.MarshalIndent(existingJobs, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal jobs: %w", err)
+		return serversImported, 0, fmt.Errorf("failed to marshal jobs: %w", err)
 	}
 	if err := atomicWriteFile(jobsPath, jobsData, 0600); err != nil {
-		return "", fmt.Errorf("failed to write jobs file: %w", err)
+		return serversImported, 0, fmt.Errorf("failed to write jobs file: %w", err)
 	}
-
-	writeDebugLog(fmt.Sprintf("ImportSettings: merged %d PBS server(s), %d job(s) from %s", serversImported, jobsImported, path))
-	return path, nil
+	return serversImported, jobsImported, nil
 }

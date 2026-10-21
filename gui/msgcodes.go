@@ -61,6 +61,10 @@ const (
 	// Restore (gui/main.go, RestoreSnapshot's goroutine).
 	MsgRestoreCompleted MessageKey = "logRestoreCompleted" // (none)
 	MsgRestoreFailed    MessageKey = "logRestoreFailed"    // {error}
+
+	// Settings deployed with the installer (gui/settings_deploy.go).
+	MsgDeploySettingsApplied MessageKey = "logDeploySettingsApplied" // {servers}, {sets}
+	MsgDeploySettingsFailed  MessageKey = "logDeploySettingsFailed"  // {error}
 )
 
 // msgParams is a small typed alias so call sites read as `msgParams{"dir": p}`
