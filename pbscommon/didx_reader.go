@@ -2,6 +2,8 @@ package pbscommon
 
 import (
 	"container/list"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -98,7 +100,7 @@ func (r *DIDXReaderAt) chunkAt(ci int) ([]byte, error) {
 	// id_key-salted digest for an encrypted snapshot (see PBSClient.ChunkDigest).
 	// A mismatch means a corrupted or tampered chunk — fail rather than serve
 	// wrong data.
-	if r.pbs.ChunkDigestHex(chunk) != digest {
+	if r.pbs.ChunkDigestHex(chunk) != digest && !legacyEncryptedDigest(r.pbs, chunk, digest) {
 		return nil, fmt.Errorf("chunk %s (index %d): content hash mismatch", digest, ci)
 	}
 	r.cache.put(ci, chunk)
@@ -197,4 +199,19 @@ func (c *chunkCache) put(idx int, data []byte) {
 		c.ll.Remove(oldest)
 		delete(c.items, oldest.Value.(*chunkCacheEntry).idx)
 	}
+}
+
+// legacyEncryptedDigest accepts an encrypted snapshot's chunk indexed under the
+// bare sha256(plaintext) instead of sha256(plaintext || id_key). The GUI and
+// service directory backup wrote such snapshots until it went through
+// PBSClient.ChunkDigest; without this they could not be restored at all.
+// Accepting it keeps the check meaningful: the bare sha256 still binds
+// the chunk to the index, and an encrypted chunk has also passed AES-GCM
+// authentication under the key on its way here.
+func legacyEncryptedDigest(pbs *PBSClient, chunk []byte, digest string) bool {
+	if pbs.Crypt == nil {
+		return false
+	}
+	sum := sha256.Sum256(chunk)
+	return hex.EncodeToString(sum[:]) == digest
 }

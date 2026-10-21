@@ -454,6 +454,46 @@ func TestDIDXReaderAtEncryptedArchive(t *testing.T) {
 	}
 }
 
+// The GUI/service directory backup used to encrypt its chunks but index them
+// under the bare SHA-256. Such snapshots must stay restorable with the key.
+func TestDIDXReaderAtLegacyEncryptedArchive(t *testing.T) {
+	crypt := testCryptConfig(t)
+	payloads := payloadsOf(3, 128)
+	a := makeDIDX(t, nil, payloads...) // bare SHA-256 digests...
+	want := bytes.Join(payloads, nil)
+
+	f := newFakePBSWithDIDX(t, "legacy.didx", a, crypt) // ...over encrypted blobs
+	r, _, err := f.NewDIDXReaderAt("legacy.didx", 8, nil)
+	if err != nil {
+		t.Fatalf("NewDIDXReaderAt: %v", err)
+	}
+	got := make([]byte, len(want))
+	if _, err := r.ReadAt(got, 0); err != nil && !errors.Is(err, io.EOF) {
+		t.Fatalf("ReadAt: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Error("decrypted stream differs from the original chunks")
+	}
+}
+
+// The legacy fallback must not turn the integrity check off.
+func TestDIDXReaderAtLegacyEncryptedArchiveRejectsMismatch(t *testing.T) {
+	crypt := testCryptConfig(t)
+	payloads := payloadsOf(2, 64)
+	a := makeDIDX(t, nil, payloads...)
+	f := newFakePBSWithDIDX(t, "legacy.didx", a, crypt)
+	f.corrupt[a.order[0]] = bytes.Repeat([]byte{0xAB}, len(payloads[0]))
+
+	r, _, err := f.NewDIDXReaderAt("legacy.didx", 4, nil)
+	if err != nil {
+		t.Fatalf("NewDIDXReaderAt: %v", err)
+	}
+	_, err = r.ReadAt(make([]byte, 8), 0)
+	if err == nil || !strings.Contains(err.Error(), "content hash mismatch") {
+		t.Errorf("error = %v, want a content hash mismatch", err)
+	}
+}
+
 // Without the key, an encrypted archive must fail loudly rather than serve
 // ciphertext.
 func TestDIDXReaderAtEncryptedArchiveWithoutKey(t *testing.T) {

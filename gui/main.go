@@ -1683,12 +1683,26 @@ func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
 		}
 		// Build a Config with the ticket + non-secret connection params.
 		cfg := &Config{
-			BaseURL:         ticket.BaseURL,
-			CertFingerprint: ticket.CertFingerprint,
-			Datastore:       ticket.Datastore,
-			Namespace:       ticket.Namespace,
-			Ticket:          ticket.Ticket,
-			CSRFToken:       ticket.CSRFToken,
+			BaseURL:           ticket.BaseURL,
+			CertFingerprint:   ticket.CertFingerprint,
+			Datastore:         ticket.Datastore,
+			Namespace:         ticket.Namespace,
+			Ticket:            ticket.Ticket,
+			CSRFToken:         ticket.CSRFToken,
+			EncryptionKeyFile: ticket.EncryptionKeyFile,
+		}
+		// A service older than the GUI does not send the key path: fall back
+		// to the hydrated (sanitized) config, which keeps it.
+		if cfg.EncryptionKeyFile == "" {
+			if srv, err := a.config.GetPBSServer(pbsID); err == nil {
+				cfg.EncryptionKeyFile = srv.EncryptionKeyFile
+			}
+		}
+		// Chunks are decrypted here, in the GUI process: without this every
+		// read of an encrypted snapshot failed with "no encryption key was
+		// provided".
+		if err := cfg.loadCryptConfig(); err != nil {
+			return nil, err
 		}
 		return cfg, nil
 	}
