@@ -198,6 +198,7 @@ A `vm` snapshot restored through Proxmox VE ([section 6](#6-restoring-a-vm-snaps
 | Linux, legacy BIOS/MBR (`host` snapshot) | Proxmox VE VM, SeaBIOS | ISO, and Proxmox VE restore of a `vm` copy | Started at the login prompt |
 | Linux Mint, encrypted backup, passphrase-protected key | Proxmox VE VM, SeaBIOS | ISO, key from a USB stick | Started |
 | Linux PC | the same physical PC (new disk) | ISO | Started |
+| Debian 13, UEFI and BIOS boot, encrypted backup, passphrase-protected key | Proxmox VE VM with two internal disks, OVMF and SeaBIOS; disk of the same size, and larger | ISO on a non-removable USB disk, key from a USB stick | Started at the login prompt, files, UUIDs, host keys and machine ID unchanged |
 
 ### Drivers
 

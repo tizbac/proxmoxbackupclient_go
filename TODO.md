@@ -34,8 +34,8 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 ## Bare-metal restore ISO
 
-- [ ] Boot-stick exclusion, still to try: a dd-written stick, a real USB SSD, and a VM with two internal disks. Done: the ISO as a fixed SATA disk on a UEFI VM (2026-10-13), and a real Ventoy stick with UEFI and BIOS, in Ventoy's normal and GRUB2 modes (2026-10-15, v0.9.1 ISO). Check the key-file step lists the Ventoy data partition (exFAT) so the key can live on the same stick.
-- [ ] Boot a restored real operating system from the next release ISO. On 2026-10-19 a test ISO (`-test-20261019b`, this tree) restored a 2 GiB GPT test disk (FAT ESP and ext4 data) onto a disk of the same size and onto a 1 GiB larger one, every file identical, with a passphrase-protected key from a USB stick; it was not a bootable system.
+- [ ] Boot-stick exclusion, still to try on real hardware: a real USB SSD. Done: the ISO as a fixed SATA disk on a UEFI VM (2026-10-13), a real Ventoy stick with UEFI and BIOS, in Ventoy's normal and GRUB2 modes (2026-10-15, v0.9.1 ISO), and the ISO written raw to a USB disk reporting itself non-removable on a VM with two internal disks, UEFI and BIOS (2026-10-21). Check the key-file step lists the Ventoy data partition (exFAT) so the key can live on the same stick.
+- [ ] Restore and start a Windows machine with the next release ISO, as was done for a Debian 13 machine on 2026-10-21 (UEFI and BIOS, same size and larger disk, test ISO `-test-20261021`).
 
 ## Security
 
