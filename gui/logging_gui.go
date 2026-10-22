@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"testing"
 	"time"
 )
 
@@ -25,7 +26,9 @@ var (
 
 func init() {
 	// Setup log directory for GUI
-	if runtime.GOOS == "windows" {
+	if testing.Testing() {
+		logDir = testLogDir()
+	} else if runtime.GOOS == "windows" {
 		programData := os.Getenv("ProgramData")
 		if programData == "" {
 			programData = "C:\\ProgramData"

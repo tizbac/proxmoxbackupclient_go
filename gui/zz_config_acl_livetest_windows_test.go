@@ -26,7 +26,7 @@ func TestLiveHardenConfigDir(t *testing.T) {
 	if !isAdmin() {
 		t.Fatal("run elevated")
 	}
-	dir, err := os.MkdirTemp(os.Getenv("ProgramData"), "pbs-acl-test-")
+	dir, err := os.MkdirTemp(realProgramData, "pbs-acl-test-")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -29,6 +29,7 @@ func liveLinuxSvc(t *testing.T, step string) {
 	if os.Getenv("PBS_LINUX_SVC") != step {
 		t.Skip("set PBS_LINUX_SVC=" + step)
 	}
+	useRealSettings(t)
 }
 
 func newLiveApp() *App {
