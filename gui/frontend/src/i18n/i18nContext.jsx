@@ -29,16 +29,25 @@ export function I18nProvider({ children }) {
     localStorage.setItem('language', language)
   }, [language])
 
-  const t = (key, params) => {
-    const keys = key.split('.')
-    let value = translations[language]
-
+  const lookup = (lang, keys) => {
+    let value = translations[lang]
     for (const k of keys) {
       if (value && typeof value === 'object') {
         value = value[k]
       } else {
-        return key // Return key if translation not found
+        return undefined
       }
+    }
+    return value
+  }
+
+  const t = (key, params) => {
+    const keys = key.split('.')
+    let value = lookup(language, keys)
+    // A key not translated yet in this language falls back to English
+    // before showing the raw key.
+    if (typeof value !== 'string' && language !== 'en') {
+      value = lookup('en', keys)
     }
 
     if (typeof value === 'string' && params) {
