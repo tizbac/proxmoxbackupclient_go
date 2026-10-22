@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -74,14 +75,29 @@ func TestConfigValidation(t *testing.T) {
 	}
 }
 
-func TestConfigSaveLoad(t *testing.T) {
-	// Create temp directory for test
+// useTempDefaultConfigDir points getConfigDir's default location at a temp
+// directory and returns the config.json path it should then resolve to. On
+// Windows the default is %ProgramData%\ProxmoxBackupClient, not the home
+// directory, so setting HOME alone left these tests writing the real
+// C:\ProgramData\ProxmoxBackupClient\config.json of the machine running them.
+func useTempDefaultConfigDir(t *testing.T) string {
+	t.Helper()
 	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	defer func() { _ = os.Setenv("HOME", oldHome) }()
+	old := configDirOverride
+	SetConfigDir("")
+	t.Cleanup(func() { SetConfigDir(old) })
+	t.Setenv("HOME", tmpDir)
+	if runtime.GOOS == "windows" {
+		t.Setenv("ProgramData", tmpDir)
+		return filepath.Join(tmpDir, "ProxmoxBackupClient", "config.json")
+	}
+	t.Setenv("ProgramData", "")
+	t.Setenv("SystemDrive", "")
+	return filepath.Join(tmpDir, ".proxmox-backup-guardian", "config.json")
+}
 
-	// Set temp HOME for test
-	_ = os.Setenv("HOME", tmpDir)
+func TestConfigSaveLoad(t *testing.T) {
+	configPath := useTempDefaultConfigDir(t)
 
 	config := &Config{
 		BaseURL:   "https://pbs.example.com:8007",
@@ -98,7 +114,6 @@ func TestConfigSaveLoad(t *testing.T) {
 	}
 
 	// Verify file exists
-	configPath := filepath.Join(tmpDir, ".proxmox-backup-guardian", "config.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Fatalf("Config file not created at %s", configPath)
 	}
@@ -121,18 +136,13 @@ func TestConfigSaveLoad(t *testing.T) {
 }
 
 func TestGetConfigPath(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	defer func() { _ = os.Setenv("HOME", oldHome) }()
-
-	_ = os.Setenv("HOME", tmpDir)
+	expectedPath := useTempDefaultConfigDir(t)
 
 	configPath, err := getConfigPath()
 	if err != nil {
 		t.Fatalf("getConfigPath() error = %v", err)
 	}
 
-	expectedPath := filepath.Join(tmpDir, ".proxmox-backup-guardian", "config.json")
 	if configPath != expectedPath {
 		t.Errorf("getConfigPath() = %v, want %v", configPath, expectedPath)
 	}
