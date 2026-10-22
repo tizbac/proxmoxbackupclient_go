@@ -89,8 +89,9 @@ func (a *App) SaveScheduledJob(job ScheduledJob) error {
 		return fmt.Errorf("failed to load existing jobs (refusing to overwrite): %w", err)
 	}
 
-	// Set enabled by default
-	job.Enabled = true
+	// Enabled is stored as sent (the form's "Enabled" checkbox): no longer
+	// forced to true. An HTTP API caller that sends no "enabled" key still
+	// gets an enabled job (see SaveScheduledJobFromMap).
 
 	// Calculate next run
 	job.NextRun = calculateNextRun(job.ScheduleTime)
@@ -210,8 +211,9 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 	found := false
 	for i, j := range jobs {
 		if j.ID == job.ID {
-			// Preserve enabled state
-			job.Enabled = j.Enabled
+			// Enabled is taken as sent: the edit form carries it (an HTTP API
+			// caller that omits it keeps the stored value, see
+			// UpdateScheduledJobFromMap).
 			// The edit form never carries the run record: keep it instead of
 			// overwriting it with an empty value (an update must not erase when
 			// the job last ran).
