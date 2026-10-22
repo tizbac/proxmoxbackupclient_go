@@ -23,6 +23,11 @@ func (a *App) SaveScheduledJobFromMap(jobData map[string]interface{}) error {
 	if err := json.Unmarshal(jsonData, &job); err != nil {
 		return fmt.Errorf("failed to unmarshal job data: %w", err)
 	}
+	// A caller that predates the enable/disable option sends no "enabled"
+	// key: its new job must run, as it always did.
+	if _, ok := jobData["enabled"]; !ok {
+		job.Enabled = true
+	}
 
 	return a.SaveScheduledJob(job)
 }
@@ -37,6 +42,20 @@ func (a *App) UpdateScheduledJobFromMap(jobData map[string]interface{}) error {
 	var job ScheduledJob
 	if err := json.Unmarshal(jsonData, &job); err != nil {
 		return fmt.Errorf("failed to unmarshal job data: %w", err)
+	}
+	// A caller that sends no "enabled" key keeps the stored state instead of
+	// silently disabling the job.
+	if _, ok := jobData["enabled"]; !ok {
+		jobs, err := a.GetScheduledJobs()
+		if err != nil {
+			return fmt.Errorf("failed to load jobs: %w", err)
+		}
+		for _, j := range jobs {
+			if j.ID == job.ID {
+				job.Enabled = j.Enabled
+				break
+			}
+		}
 	}
 
 	return a.UpdateScheduledJob(job)

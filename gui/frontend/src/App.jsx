@@ -135,6 +135,7 @@ function App() {
   const [backupMode, setBackupMode] = useState('oneshot') // 'oneshot' or 'scheduled'
   const [scheduleTime, setScheduleTime] = useState('02:00')
   const [runAtStartup, setRunAtStartup] = useState(false)
+  const [jobEnabled, setJobEnabled] = useState(true)
   const [scheduledJobs, setScheduledJobs] = useState([])
   const [runningJobs, setRunningJobs] = useState([])
   const [jobHistory, setJobHistory] = useState([])
@@ -1260,6 +1261,7 @@ function App() {
         name: `Backup ${config['backup-id'] || hostname}`,
         scheduleTime: scheduleTime,
         runAtStartup: runAtStartup,
+        enabled: jobEnabled,
         backupDirs: backupType === 'directory' ? dirList : [],
         backupId: config['backup-id'],
         useVSS: config.usevss,
@@ -1287,6 +1289,7 @@ function App() {
         // Reset form after save
         setScheduleTime('02:00')
         setRunAtStartup(false)
+        setJobEnabled(true)
         setBackupDirs('')
         setBackupPBSID('')
         setMachineBackupKind('host')
@@ -2025,6 +2028,18 @@ function App() {
                 <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer'}}>
                   <input
                     type="checkbox"
+                    checked={jobEnabled}
+                    onChange={(e) => setJobEnabled(e.target.checked)}
+                    style={{width: '20px', height: '20px', cursor: 'pointer'}}
+                  />
+                  <span>✅ {t('jobEnabled')}</span>
+                </label>
+              </div>
+
+              <div className="form-group">
+                <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer'}}>
+                  <input
+                    type="checkbox"
                     checked={runAtStartup}
                     onChange={(e) => setRunAtStartup(e.target.checked)}
                     style={{width: '20px', height: '20px', cursor: 'pointer'}}
@@ -2033,10 +2048,16 @@ function App() {
                 </label>
               </div>
 
-              <div className="info-box" style={{backgroundColor: '#eef2ff'}}>
-                💡 {t('schedulingInfo')} <strong>{scheduleTime}</strong>
-                {runAtStartup && <><br/>{t('andAtStartup')}</>}
-              </div>
+              {jobEnabled ? (
+                <div className="info-box" style={{backgroundColor: '#eef2ff'}}>
+                  💡 {t('schedulingInfo')} <strong>{scheduleTime}</strong>
+                  {runAtStartup && <><br/>{t('andAtStartup')}</>}
+                </div>
+              ) : (
+                <div className="info-box" style={{backgroundColor: '#f1f3f5'}}>
+                  ⏸️ {t('jobDisabledInfo')}
+                </div>
+              )}
             </div>
           )}
 
@@ -2243,6 +2264,7 @@ function App() {
               setEditingJobId(null)
               setScheduleTime('02:00')
               setRunAtStartup(false)
+              setJobEnabled(true)
               setBackupDirs('')
               setExcludeList('')
               setBackupType('directory')
@@ -2263,13 +2285,18 @@ function App() {
                 <div key={job.id} style={{
                   padding: '15px',
                   marginBottom: '10px',
-                  backgroundColor: '#f8f9fa',
+                  backgroundColor: job.enabled === false ? '#e9ecef' : '#f8f9fa',
                   borderRadius: '8px',
-                  border: '1px solid #dee2e6'
+                  border: job.enabled === false ? '1px dashed #adb5bd' : '1px solid #dee2e6'
                 }}>
                   <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                    <div>
+                    <div style={job.enabled === false ? {opacity: 0.6} : undefined}>
                       <strong>{job.name}</strong>
+                      {job.enabled === false && (
+                        <span style={{marginLeft: '8px', padding: '2px 8px', fontSize: '12px', borderRadius: '10px', backgroundColor: '#adb5bd', color: '#fff'}}>
+                          ⏸️ {t('jobDisabled')}
+                        </span>
+                      )}
                       <div style={{fontSize: '14px', color: '#6c757d', marginTop: '5px'}}>
                         ⏰ {job.scheduleTime} {job.runAtStartup && '• 🚀 Au démarrage'}
                       </div>
@@ -2296,6 +2323,7 @@ function App() {
                           setBackupMode('scheduled')
                           setScheduleTime(job.scheduleTime)
                           setRunAtStartup(job.runAtStartup)
+                          setJobEnabled(job.enabled !== false)
                           setBackupDirs((job.backupDirs || []).join('\n'))
                           setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                           setBackupType(job.backupType)

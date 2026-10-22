@@ -37,7 +37,7 @@ func sampleJob() ScheduledJob {
 		BackupType:   "machine",
 		ExcludeList:  []string{"*.tmp", "cache/"},
 		Compression:  "better",
-		Enabled:      true, // a stored job is enabled (SaveScheduledJob forces it)
+		Enabled:      true,
 	}
 }
 
@@ -287,7 +287,8 @@ func readJobsFile(t *testing.T) string {
 }
 
 // An update must not erase the run record: the edit form never carries
-// lastRun (nor the enabled flag), so a save would otherwise wipe them.
+// lastRun, so a save would otherwise wipe it. The enabled flag is taken as
+// sent (here: the stored false, sent back unchanged).
 func TestUpdateScheduledJobKeepsLastRunAndEnabled(t *testing.T) {
 	a := newSchedulerTestApp(t)
 	if err := a.SaveScheduledJob(sampleJob()); err != nil {
@@ -317,6 +318,70 @@ func TestUpdateScheduledJobKeepsLastRunAndEnabled(t *testing.T) {
 	}
 	if got.NextRun == "" {
 		t.Errorf("NextRun = empty, want it recalculated for the new schedule")
+	}
+}
+
+// The form's "Enabled" checkbox: a job can be created disabled, then turned
+// back on by an update, which gives it a fresh nextRun.
+func TestScheduledJobEnabledFlagIsHonored(t *testing.T) {
+	a := newSchedulerTestApp(t)
+	job := sampleJob()
+	job.Enabled = false
+	if err := a.SaveScheduledJob(job); err != nil {
+		t.Fatalf("SaveScheduledJob() error = %v", err)
+	}
+	if got := list0(t, a); got.Enabled {
+		t.Fatalf("Enabled = true after saving a disabled job, want false")
+	}
+
+	job.Enabled = true
+	if err := a.UpdateScheduledJob(job); err != nil {
+		t.Fatalf("UpdateScheduledJob() error = %v", err)
+	}
+	got := list0(t, a)
+	if !got.Enabled {
+		t.Errorf("Enabled = false after re-enabling, want true")
+	}
+	if _, err := time.Parse(time.RFC3339, got.NextRun); err != nil {
+		t.Errorf("NextRun %q is not a valid run time after re-enabling: %v", got.NextRun, err)
+	}
+
+	job.Enabled = false
+	if err := a.UpdateScheduledJob(job); err != nil {
+		t.Fatalf("UpdateScheduledJob() error = %v", err)
+	}
+	if got := list0(t, a); got.Enabled {
+		t.Errorf("Enabled = true after disabling, want false")
+	}
+}
+
+// HTTP API callers that predate the option send no "enabled" key: a created
+// job is enabled, an updated job keeps its stored state.
+func TestScheduledJobFromMapWithoutEnabledKey(t *testing.T) {
+	a := newSchedulerTestApp(t)
+	m := jobToMap(&ScheduledJob{ID: "job-1", Name: "Nightly", ScheduleTime: "02:30",
+		BackupType: "directory", BackupDirs: []string{"/data"}, BackupID: "host-01"})
+	delete(m, "enabled")
+	if err := a.SaveScheduledJobFromMap(m); err != nil {
+		t.Fatalf("SaveScheduledJobFromMap() error = %v", err)
+	}
+	if got := list0(t, a); !got.Enabled {
+		t.Fatalf("Enabled = false, want a job created without the key to be enabled")
+	}
+
+	jobs := readStoredJobs(t)
+	jobs[0].Enabled = false
+	writeJobs(t, jobs)
+	m["scheduleTime"] = "04:45"
+	if err := a.UpdateScheduledJobFromMap(m); err != nil {
+		t.Fatalf("UpdateScheduledJobFromMap() error = %v", err)
+	}
+	got := list0(t, a)
+	if got.Enabled {
+		t.Errorf("Enabled = true, want the stored false kept when the key is absent")
+	}
+	if got.ScheduleTime != "04:45" {
+		t.Errorf("ScheduleTime = %q, want 04:45", got.ScheduleTime)
 	}
 }
 

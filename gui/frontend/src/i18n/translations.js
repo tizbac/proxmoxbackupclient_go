@@ -128,9 +128,12 @@ const translations = {
       editMode: "Mode édition",
       editModeText: "Modifiez les paramètres et cliquez sur \"Mettre à jour\"",
       dailyExecutionTime: "Heure d'exécution quotidienne",
+      jobEnabled: "Tâche activée",
       runAtStartup: "Exécuter aussi au démarrage de la machine",
       schedulingInfo: "Le backup sera exécuté automatiquement chaque jour à",
       andAtStartup: "Et également à chaque démarrage du système.",
+      jobDisabledInfo: "Tâche désactivée : elle ne s'exécutera pas tant qu'elle n'est pas réactivée.",
+      jobDisabled: "Désactivée",
 
       // Backup Form
       directoriesToBackup: "Répertoires à sauvegarder (un par ligne)",
@@ -502,9 +505,12 @@ const translations = {
       editMode: "Edit mode",
       editModeText: "Modify settings and click \"Update\"",
       dailyExecutionTime: "Daily execution time",
+      jobEnabled: "Job enabled",
       runAtStartup: "Also run at machine startup",
       schedulingInfo: "Backup will run automatically every day at",
       andAtStartup: "And also at every system startup.",
+      jobDisabledInfo: "Job disabled: it will not run until it is enabled again.",
+      jobDisabled: "Disabled",
 
       // Backup Form
       directoriesToBackup: "Directories to backup (one per line)",
@@ -877,9 +883,12 @@ const translations = {
       editMode: "Modalità modifica",
       editModeText: "Modifica le impostazioni e clicca su \"Aggiorna\"",
       dailyExecutionTime: "Ora di esecuzione giornaliera",
+      jobEnabled: "Attività abilitata",
       runAtStartup: "Esegui anche all'avvio del computer",
       schedulingInfo: "Il backup verrà eseguito automaticamente ogni giorno alle",
       andAtStartup: "E anche all'avvio del sistema.",
+      jobDisabledInfo: "Attività disabilitata: non verrà eseguita finché non sarà riabilitata.",
+      jobDisabled: "Disabilitata",
 
       // Backup Form
       directoriesToBackup: "Directory da backup (una per riga)",
@@ -1252,9 +1261,12 @@ const translations = {
       editMode: "Bearbeitungsmodus",
       editModeText: "Einstellungen ändern und auf \"Aktualisieren\" klicken",
       dailyExecutionTime: "Tägliche Ausführungszeit",
+      jobEnabled: "Auftrag aktiviert",
       runAtStartup: "Auch beim Maschinenstart ausführen",
       schedulingInfo: "Sicherung wird automatisch jeden Tag um",
       andAtStartup: "Und auch bei jedem Systemstart.",
+      jobDisabledInfo: "Auftrag deaktiviert: er wird erst wieder ausgeführt, wenn er aktiviert wird.",
+      jobDisabled: "Deaktiviert",
 
       // Backup Form
       directoriesToBackup: "Zu sichernde Verzeichnisse (eins pro Zeile)",
@@ -1627,9 +1639,12 @@ const translations = {
       editMode: "Tryb edycji",
       editModeText: "Zmodyfikuj ustawienia i kliknij \"Aktualizuj\"",
       dailyExecutionTime: "Czas wykonywania dziennego",
+      jobEnabled: "Zadanie włączone",
       runAtStartup: "Uruchamiaj również przy starcie komputera",
       schedulingInfo: "Kopia zapasowa zostanie automatycznie uruchomiona każdego dnia o",
       andAtStartup: "I również przy każdym uruchomieniu systemu.",
+      jobDisabledInfo: "Zadanie wyłączone: nie zostanie uruchomione, dopóki nie zostanie ponownie włączone.",
+      jobDisabled: "Wyłączone",
 
       // Backup Form
       directoriesToBackup: "Katalogi do kopii zapasowej (jeden na linię)",
