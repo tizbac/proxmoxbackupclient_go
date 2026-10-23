@@ -2,6 +2,8 @@
 // schedule, and its next runs for the preview. The next-run maths mirrors
 // gui/schedules.go (the backend decides when a set really runs).
 
+import { dateLocale } from '../i18n/i18nContext'
+
 export const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 export const UNITS = ['minutes', 'hours', 'days', 'weeks', 'months', 'years']
@@ -60,17 +62,18 @@ export function tp(t, language, key, n, params = {}) {
   return tryKey(`${key}_${cat}`) || t(`${key}_other`, { n, ...params })
 }
 
-// Weekday and month names in the app's language, from the browser.
+// Weekday and month names in the app's language, from the browser, in the
+// computer's regional form of it ("23 October" in en-GB, not "October 23").
 const ref = new Date(2024, 0, 1) // a Monday
 export const weekdayName = (language, wd, style = 'long') => {
   const d = new Date(ref); d.setDate(1 + WEEK.indexOf(wd))
-  try { return d.toLocaleDateString(language, { weekday: style }) } catch { return wd }
+  try { return d.toLocaleDateString(dateLocale(language), { weekday: style }) } catch { return wd }
 }
 export const monthName = (language, m) => {
-  try { return new Date(2024, m - 1, 1).toLocaleDateString(language, { month: 'long' }) } catch { return String(m) }
+  try { return new Date(2024, m - 1, 1).toLocaleDateString(dateLocale(language), { month: 'long' }) } catch { return String(m) }
 }
 const dayMonth = (language, m, d) => {
-  try { return new Date(2024, m - 1, d).toLocaleDateString(language, { day: 'numeric', month: 'long' }) } catch { return `${d}/${m}` }
+  try { return new Date(2024, m - 1, d).toLocaleDateString(dateLocale(language), { day: 'numeric', month: 'long' }) } catch { return `${d}/${m}` }
 }
 
 // nthWord is "2nd", "last"... for a weekday of the month. Where ordinals agree

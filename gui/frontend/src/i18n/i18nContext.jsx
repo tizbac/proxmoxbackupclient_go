@@ -6,8 +6,12 @@ const I18nContext = createContext()
 // Dates and numbers follow the app's language, not the computer's: a
 // toLocaleString / toLocaleDateString / toLocaleTimeString call with no
 // locale (or []) uses appLocale. When the app language is the computer's own
-// language, the computer's locale is kept (en-GB dates on a British PC).
+// language, the computer's locale is kept (en-GB dates on a British PC). That
+// is the regional format from the backend (Windows' "Regional format",
+// LC_TIME on Linux): the web view's navigator.language is the display
+// language, often en-US on a British PC.
 let appLocale
+let regionalLocale = ''
 const withAppLocale = (orig) => function (locales, options) {
   const none = locales === undefined || (Array.isArray(locales) && locales.length === 0)
   return orig.call(this, none && appLocale ? appLocale : locales, options)
@@ -19,8 +23,16 @@ for (const [proto, names] of [
   for (const n of names) proto[n] = withAppLocale(proto[n])
 }
 function localeFor(language) {
-  const os = navigator.language || ''
-  return os.split('-')[0] === language ? os : language
+  for (const os of [regionalLocale, navigator.language || '']) {
+    if (os.split('-')[0] === language) return os
+  }
+  return language
+}
+
+// dateLocale is the locale for a date shown in this language: appLocale when
+// it is that language, for code that passes the language explicitly.
+export function dateLocale(language) {
+  return appLocale && appLocale.split('-')[0] === language ? appLocale : language
 }
 
 export function I18nProvider({ children }) {
@@ -45,7 +57,21 @@ export function I18nProvider({ children }) {
     return 'en'
   })
 
+  // The computer's regional format, once the backend has answered; until then
+  // dates use navigator.language.
+  const [regional, setRegional] = useState(regionalLocale)
+  useEffect(() => {
+    const get = window.go?.main?.App?.GetRegionalLocale
+    if (!get) return
+    get().then((loc) => {
+      try {
+        if (loc && Intl.DateTimeFormat.supportedLocalesOf([loc]).length) setRegional(loc)
+      } catch { /* not a locale the web view knows */ }
+    }).catch(() => {})
+  }, [])
+
   // Set while rendering, so the children rendered below already use it.
+  regionalLocale = regional
   appLocale = localeFor(language)
 
   useEffect(() => {

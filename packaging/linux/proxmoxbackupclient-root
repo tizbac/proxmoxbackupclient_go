@@ -16,6 +16,8 @@
 #   shows a graphical prompt; sudo is used only from a terminal.
 # - DISPLAY/XAUTHORITY (X11) and WAYLAND_DISPLAY/XDG_RUNTIME_DIR (Wayland) are
 #   passed so the window can open on the user's session.
+# - LANG, LANGUAGE and the LC_ variables the app reads are passed so the app
+#   keeps the user's language and date format (pkexec clears them).
 BIN=/usr/lib/proxmoxbackupclient/ProxmoxBackupClient
 
 if [ "$(id -u)" = "0" ]; then
@@ -28,6 +30,8 @@ RUN='"$0" "$@"; rc=$?; for d in "$HOME/.proxmox-backup-guardian" "$HOME/.local/s
 set -- env "HOME=$HOME" \
     "DISPLAY=${DISPLAY:-}" "XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}" \
     "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}" "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-}" \
+    "LANG=${LANG:-}" "LANGUAGE=${LANGUAGE:-}" "LC_ALL=${LC_ALL:-}" \
+    "LC_TIME=${LC_TIME:-}" "LC_NUMERIC=${LC_NUMERIC:-}" "LC_MESSAGES=${LC_MESSAGES:-}" \
     sh -c "$RUN" "$BIN" "$@"
 
 if [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
