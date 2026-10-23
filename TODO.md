@@ -11,8 +11,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 ## Upstream (tizbac/proxmoxbackupclient_go)
 
-- [ ] **#120 open** (2026-10-22): `TestConfigSaveLoad` no longer writes the real `C:\ProgramData\ProxmoxBackupClient\config.json` on Windows (it replaced a real config with dummy values on a machine that also runs the client). Waiting on review. (#102 to #113 are merged.)
-- [ ] Restore permissions when the owner cannot be set, and keep a folder's protected (non-inheriting) DACL (5c1ef56): ported on 2026-10-21 to a local branch off upstream/master (`port-restore-perms-protected-dacl`, PR text drafted), not yet sent.
+- [ ] Restore permissions when the owner cannot be set, and keep a folder's protected (non-inheriting) DACL (5c1ef56): ported to a local branch on upstream/master (`port-restore-perms-protected-dacl`, rebased after #120 on 2026-10-23, PR text drafted), not yet sent. (#102 to #113 and #120 are merged.)
 - [ ] Candidate port: waiting while VSS is busy instead of `vssadmin delete shadows /all` and a VSS restart, and freeing each shadow copy's VSS object (8a3c4d4, 609250d, 2026-10-21). Upstream's `snapshot/win_snapshot.go` has the same code; a cherry-pick does not apply cleanly, so port by hand.
 
 ## Background service
