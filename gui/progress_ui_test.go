@@ -54,6 +54,12 @@ func TestFormatByteSizeBothUnits(t *testing.T) {
 		480850777117: "480.9 GB (447.8 GiB)",
 		8589934592:   "8.6 GB (8.0 GiB)",
 		1048576:      "1.0 MB (1.0 MiB)",
+		// Either side of 1000/1024: both figures use the same unit step.
+		1053081190: "1.1 GB (1.0 GiB)",
+		1000000:    "1.0 MB (1.0 MiB)",
+		1023000:    "1.0 MB (1.0 MiB)",
+		999999:     "1.0 MB (1.0 MiB)",
+		999949:     "999.9 KB (976.5 KiB)",
 	}
 	for in, want := range cases {
 		if got := formatByteSize(in); got != want {

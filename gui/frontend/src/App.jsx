@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import { TabList, Tab } from '@fluentui/react-components'
 import { useTranslation } from './i18n/i18nContext'
 import LanguageSwitcher from './components/LanguageSwitcher'
@@ -134,15 +134,20 @@ function fixed(v, d) {
 
 function formatSpeed(bytesPerSec) {
   if (!bytesPerSec || bytesPerSec <= 0) return '0 KB/s'
-  const scale = (value, base, units) => {
-    let v = value
-    let u = 0
-    while (v >= base && u < units.length - 1) { v /= base; u++ }
-    return `${fixed(v, u === 0 ? 0 : 1)} ${units[u]}/s`
-  }
-  const dec = scale(bytesPerSec, 1000, ['B', 'KB', 'MB', 'GB', 'TB'])
-  const bin = scale(bytesPerSec, 1024, ['B', 'KiB', 'MiB', 'GiB', 'TiB'])
-  return dec === bin ? dec : `${dec} (${bin})`
+  return dualUnits(bytesPerSec, '/s')
+}
+
+// An amount in decimal units with the binary figure in brackets, both at the
+// same unit step so they read as the same amount: "1.1 GB (1.0 GiB)", not
+// "1.1 GB (1004.3 MiB)". Under 1000 it is plain bytes.
+function dualUnits(n, suffix = '') {
+  const dec = ['B', 'KB', 'MB', 'GB', 'TB']
+  const bin = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+  let v = n
+  let u = 0
+  while (v >= 999.95 && u < dec.length - 1) { v /= 1000; u++ } // 999.95 would show as 1000.0
+  if (u === 0) return `${fixed(n, 0)} B${suffix}`
+  return `${fixed(v, 1)} ${dec[u]}${suffix} (${fixed(n / Math.pow(1024, u), 1)} ${bin[u]}${suffix})`
 }
 
 // Reused collator: same ordering as String.localeCompare but far cheaper per
@@ -181,13 +186,7 @@ function formatDuration(totalSeconds) {
 // really 480.7 GB and disagreed with PBS.
 function formatBytesDual(bytes) {
   if (!bytes || bytes < 1000) return `${bytes || 0} B`
-  const scale = (base, units) => {
-    let v = bytes
-    let u = 0
-    while (v >= base && u < units.length - 1) { v /= base; u++ }
-    return `${fixed(v, 1)} ${units[u]}`
-  }
-  return `${scale(1000, ['B', 'KB', 'MB', 'GB', 'TB'])} (${scale(1024, ['B', 'KiB', 'MiB', 'GiB', 'TiB'])})`
+  return dualUnits(bytes)
 }
 
 // Wall-clock time with the day, in the user's locale ("Wed 07/10 19:35:51"),
@@ -309,6 +308,71 @@ function renderLocalizedMessage(entry, t, lang) {
     }
   }
   return { text: entry.message, usedKey: false }
+}
+
+// The messages of a backup that finished: 'clean' ones say nothing beyond
+// their figures, so Reports and the Message Log show the figures as fields
+// instead of the sentence; the others keep their sentence too (errors, the
+// unreadable areas of a disk).
+const COMPLETION_KEYS = {
+  logBackupCompleted: 'clean', logMachineBackupCompleted: 'clean', logMachineBackupCompletedStats: 'clean',
+  logBackupCompletedWithErrors: 'warn', logBackupPartial: 'warn', logMachineBackupUnreadable: 'warn',
+}
+const SUCCESS_KEYS = new Set(['logBackupCompleted', 'logMachineBackupCompleted', 'logMachineBackupCompletedStats', 'logBackupCompletedGeneric', 'logRestoreCompleted'])
+
+// A clean finish that also counted as one: a folder backup that could not
+// read some files keeps the "completed" message but is an error (Message
+// Log) or failed (Reports), and keeps its sentence.
+function isCleanFinish(entry) {
+  if (COMPLETION_KEYS[entry.message_key] !== 'clean') return false
+  return entry.level ? entry.level === 'info' : entry.status === 'success'
+}
+
+// The figures of a finished backup as [label, value] pairs: duration, size,
+// chunks and data uploaded, plus skipped files. Null for any other message.
+// Entries saved before the byte counts were recorded have them as text
+// ("128.0 GB (119.2 GiB)") or, for folder backups, in MB.
+function backupFacts(entry, t, lang) {
+  if (!COMPLETION_KEYS[entry.message_key]) return null
+  const p = entry.message_params || {}
+  const tl = (k, en) => { const v = t(k); return v === k ? en : v }
+  const facts = []
+  if (p.duration) facts.push([tl('reportsDuration', 'Duration'), p.duration])
+  let size = null
+  if (typeof p.readBytes === 'number') size = formatBytesDual(p.readBytes)
+  else if (typeof p.bytes === 'number') size = formatBytesDual(p.bytes)
+  else if (typeof p.read === 'string') size = p.read
+  else if (p.mb != null && Number.isFinite(Number(p.mb))) size = formatBytesDual(Math.round(Number(p.mb) * 1e6))
+  if (size) facts.push([tl('reportsBackupSize', 'Backup size'), size])
+  if (typeof p.new === 'number' && typeof p.reused === 'number') {
+    const part = (label, n) => `${label} (${fmtNum(n, lang)})`
+    const parts = [
+      part(tl('reportsChunkTotal', 'Total'), p.new + p.reused),
+      part(tl('processedNew', 'New'), p.new),
+      part(tl('processedReused', 'Reused'), p.reused),
+    ]
+    if (typeof p.blank === 'number') parts.push(part(tl('reportsChunkBlank', 'Blank'), p.blank))
+    if (p.failed > 0) parts.push(part(tl('reportsChunkFailed', 'Failed'), p.failed))
+    facts.push([tl('reportsChunks', 'Chunks'), parts.join(', ')])
+  }
+  if (typeof p.uploadedBytes === 'number') facts.push([tl('reportsUploaded', 'Data uploaded'), formatBytesDual(p.uploadedBytes)])
+  else if (typeof p.uploaded === 'string') facts.push([tl('reportsUploaded', 'Data uploaded'), p.uploaded])
+  // Skipped files, unless the message is shown too (it names them).
+  if (p.skipped > 0 && isCleanFinish(entry)) {
+    facts.push([tl('reportsWarnings', 'Warnings'), t('logSkippedFilesNote', { count: fmtNum(p.skipped, lang) }).replace(/^[\s⚠️]+/, '')])
+  }
+  return facts
+}
+
+// A Message Log entry's icon: a tick for a backup or restore that finished
+// (a warning sign when it skipped files), a stop sign for one the user
+// stopped, otherwise by level.
+function messageIcon(entry) {
+  if (entry.message_key === 'logBackupCancelled' || /cancelled by user/i.test(entry.message || '')) return '⏹️'
+  if (entry.level === 'error') return '❌'
+  if (entry.level === 'warning') return '⚠️'
+  if (SUCCESS_KEYS.has(entry.message_key)) return entry.message_params?.skipped > 0 ? '⚠️' : '✅'
+  return 'ℹ️'
 }
 
 // A whole number with the language's thousands separators ("181,912").
@@ -3548,8 +3612,8 @@ function App() {
 
               {/* Every row is always there, in a fixed order, so nothing moves
                   as values arrive: "Calculating..." until a value exists,
-                  "Not available" where the run cannot provide one (machine
-                  backups have no file counts or upload figure). */}
+                  "Not available" where the run cannot provide one (a run in
+                  the background service sends its percentage only). */}
               {(() => {
                 const s = backupStats
                 const now = Date.now()
@@ -3631,6 +3695,9 @@ function App() {
                   ? <>
                       {tl('processedLabel', 'Processed:')} {formatBytesDual(s.bytesDone)} / {s.bytesTotal > 0 ? formatBytesDual(s.bytesTotal) : calc}
                       {s.hasDetail && <> ({tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>})</>}
+                      {/* The data sent to the server so far: new chunks only, so
+                          far less than Processed when most of it is reused. */}
+                      {s.hasDetail && <> · {tl('processedUploaded', 'Uploaded:')} {formatBytesDual(s.uploadedBytes)}</>}
                     </>
                   : <>{tl('processedLabel', 'Processed:')} 0 B / {calc}</>
                 return (
@@ -5468,7 +5535,13 @@ function App() {
                             </span>
                           </>
                         )}
-                        {selected.message && (
+                        {(backupFacts(selected, t, language) || []).map(([label, value]) => (
+                          <Fragment key={label}>
+                            <strong>{label}</strong>
+                            <span>{value}</span>
+                          </Fragment>
+                        ))}
+                        {selected.message && !isCleanFinish(selected) && (
                           <>
                             <strong>{t('msgColMessage')}</strong>
                             <span style={{whiteSpace: 'pre-wrap'}}>{renderLocalizedMessage(selected, t, language).text}</span>
@@ -5551,8 +5624,25 @@ function App() {
                         : entry.source}
                     </span>
                     <span style={{flex: '1 1 auto'}}>
-                      {entry.level === 'error' ? '❌ ' : entry.level === 'warning' ? '⚠️ ' : 'ℹ️ '}
+                      {messageIcon(entry)}{' '}
                       {(() => {
+                        // A clean finish: what finished, then its figures as fields.
+                        const facts = isCleanFinish(entry) && backupFacts(entry, t, language)
+                        if (facts && facts.length > 0) {
+                          const what = entry.message_key === 'logBackupCompleted'
+                            ? t('logBackupCompletedGeneric')
+                            : tl('logMachineBackupCompletedShort', 'Machine backup completed')
+                          return (
+                            <>
+                              {entry.job_name ? `${entry.job_name}: ` : ''}{what}
+                              <span style={{display: 'block', fontSize: '12px', color: '#718096', marginTop: '2px'}}>
+                                {facts.map(([label, value], i) => (
+                                  <Fragment key={label}>{i > 0 && ' · '}<strong>{label}</strong> {value}</Fragment>
+                                ))}
+                              </span>
+                            </>
+                          )
+                        }
                         const { text, usedKey } = renderLocalizedMessage(entry, t, language)
                         return (usedKey && entry.job_name ? `${entry.job_name}: ` : '') + text
                       })()}

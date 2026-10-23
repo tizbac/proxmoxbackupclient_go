@@ -38,21 +38,24 @@ import (
 // convention as the GUI's speed ("357.9 GB (333.3 GiB)"): this used to divide
 // by 1024 and label the result GB, so figures disagreed with PBS (decimal)
 // and looked wrong next to Windows Explorer (binary, labelled GB).
+//
+// The binary figure uses the decimal one's unit step, so the two read as the
+// same amount: "1.1 GB (1.0 GiB)", not "1.1 GB (1004.3 MiB)".
 func formatByteSize(bytes uint64) string {
 	if bytes < 1000 {
 		return fmt.Sprintf("%d B", bytes)
 	}
-	scale := func(base float64, units []string) string {
-		v, u := float64(bytes), 0
-		for v >= base && u < len(units)-1 {
-			v /= base
-			u++
-		}
-		return fmt.Sprintf("%.1f %s", v, units[u])
+	dec, bin := []string{"B", "KB", "MB", "GB", "TB"}, []string{"B", "KiB", "MiB", "GiB", "TiB"}
+	v, u := float64(bytes), 0
+	for v >= 999.95 && u < len(dec)-1 { // 999.95 would print as 1000.0
+		v /= 1000
+		u++
 	}
-	dec := scale(1000, []string{"B", "KB", "MB", "GB", "TB"})
-	bin := scale(1024, []string{"B", "KiB", "MiB", "GiB", "TiB"})
-	return dec + " (" + bin + ")"
+	b := float64(bytes)
+	for i := 0; i < u; i++ {
+		b /= 1024
+	}
+	return fmt.Sprintf("%.1f %s (%.1f %s)", v, dec[u], b, bin[u])
 }
 
 // BackupOptions contains all parameters for a backup operation
@@ -1505,6 +1508,11 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 
 	progress(1.0, progressMsg)
 
+	// The raw byte counts, so Reports and the Message Log can show the size
+	// and the data uploaded as fields of their own, in both units.
+	completionParams["bytes"] = jobProg.bytesDoneBase.Load()
+	completionParams["uploadedBytes"] = jobProg.uploadedBytes.Load()
+
 	// skipped rides along in every completion key's params (0 when there were
 	// none) so the frontend can splice in the "N files skipped" clause itself
 	// — see msgcodes.go's MsgSkippedFilesNote doc comment — without losing
@@ -1797,7 +1805,9 @@ func runMachineBackupInline(opts BackupOptions) error {
 	read, uploaded := formatByteSize(jp.BytesTotal.Load()), formatByteSize(jp.UploadedBytes.Load())
 	completionMsg := fmt.Sprintf("Machine backup completed in %s: %s read (%d new, %d reused chunks, %d of them blank space; %s uploaded)",
 		formatDuration(duration), read, newC, reusedC, blankC, uploaded)
-	completionParams := msgParams{"duration": formatDuration(duration), "read": read, "new": newC, "reused": reusedC, "blank": blankC, "uploaded": uploaded}
+	completionParams := msgParams{"duration": formatDuration(duration), "read": read, "new": newC, "reused": reusedC, "blank": blankC, "uploaded": uploaded,
+		// The raw byte counts behind read and uploaded, for Reports and the Message Log.
+		"readBytes": jp.BytesTotal.Load(), "uploadedBytes": jp.UploadedBytes.Load()}
 	completionKey, outcome := MsgMachineBackupCompletedStats, OutcomeVerifiedSuccess
 
 	// Sectors the disk could not read are zeros in the image: the backup is

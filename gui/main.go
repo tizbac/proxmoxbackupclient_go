@@ -1516,6 +1516,10 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			}
 			if !success {
 				historyEntry.Status = "failed"
+				// A Stop is the user's choice, as for a folder backup above.
+				if isCancelledRun(message, msgKey) {
+					historyEntry.Status = "cancelled"
+				}
 			}
 			if err := a.AddJobHistory(historyEntry); err != nil {
 				writeDebugLog(fmt.Sprintf("Warning: Failed to add manual backup to history: %v", err))
