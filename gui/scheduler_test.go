@@ -161,6 +161,11 @@ func TestJobWireMapDecodesBackIntoEveryField(t *testing.T) {
 	job.LastRun = "2026-01-02T03:04:05Z"
 	job.NextRun = "2026-01-03T02:30:00Z"
 	job.Enabled = true
+	// The recurrence fields must survive the service wire too, or a weekly /
+	// monthly job silently turns back into a daily one on save.
+	job.Frequency = FrequencyWeekly
+	job.Weekdays = []int{1, 3, 5}
+	job.DayOfMonth = 15
 
 	m := jobToMap(&job)
 	b, err := json.Marshal(m)
@@ -188,6 +193,9 @@ func TestGetScheduledJobsForAPIRoundTrip(t *testing.T) {
 	job := sampleJob()
 	job.BackupKind = "vm"
 	job.PBSID = "site-b"
+	job.Frequency = FrequencyWeekly
+	job.Weekdays = []int{2, 4}
+	job.DayOfMonth = 15
 	if err := a.SaveScheduledJob(job); err != nil {
 		t.Fatalf("SaveScheduledJob() error = %v", err)
 	}
@@ -243,6 +251,11 @@ func TestSaveScheduledJobValidates(t *testing.T) {
 		{"hour out of range", func(j *ScheduledJob) { j.ScheduleTime = "25:00" }, "HH:MM"},
 		{"minute out of range", func(j *ScheduledJob) { j.ScheduleTime = "02:75" }, "HH:MM"},
 		{"no schedule and no startup run", func(j *ScheduledJob) { j.ScheduleTime = ""; j.RunAtStartup = false }, "planification requise"},
+		{"weekly without weekday", func(j *ScheduledJob) { j.Frequency = "weekly"; j.Weekdays = nil }, "jour de la semaine"},
+		{"invalid weekday", func(j *ScheduledJob) { j.Frequency = "weekly"; j.Weekdays = []int{7} }, "jour de la semaine invalide"},
+		{"monthly without day", func(j *ScheduledJob) { j.Frequency = "monthly"; j.DayOfMonth = 0 }, "jour du mois"},
+		{"monthly day out of range", func(j *ScheduledJob) { j.Frequency = "monthly"; j.DayOfMonth = 32 }, "jour du mois"},
+		{"unknown frequency", func(j *ScheduledJob) { j.Frequency = "yearly" }, "fréquence de planification invalide"},
 		{"nothing to back up", func(j *ScheduledJob) { j.BackupDirs = nil; j.DriveLetters = nil }, "repertoire ou un disque"},
 	}
 
@@ -689,6 +702,171 @@ func TestCalculateNextRun(t *testing.T) {
 	}
 	if parsed.Hour() != 2 || parsed.Minute() != 30 {
 		t.Errorf("next run %s is not at 02:30", next)
+	}
+}
+
+// Weekly and monthly schedules resolve to the first matching wall-clock
+// occurrence: today when the time has not passed yet, otherwise the next
+// matching weekday/month, skipping months that do not contain the chosen day.
+func TestNextRunForJobFrequency(t *testing.T) {
+	// Wednesday 21 October 2026, 12:00 UTC.
+	now := time.Date(2026, time.October, 21, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name string
+		job  ScheduledJob
+		want time.Time
+	}{
+		{
+			name: "daily later today",
+			job:  ScheduledJob{ScheduleTime: "18:00"},
+			want: time.Date(2026, time.October, 21, 18, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "daily already passed",
+			job:  ScheduledJob{ScheduleTime: "10:00"},
+			want: time.Date(2026, time.October, 22, 10, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "weekly same weekday later today",
+			job:  ScheduledJob{ScheduleTime: "18:00", Frequency: FrequencyWeekly, Weekdays: []int{3}},
+			want: time.Date(2026, time.October, 21, 18, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "weekly same weekday already passed",
+			job:  ScheduledJob{ScheduleTime: "10:00", Frequency: FrequencyWeekly, Weekdays: []int{3}},
+			want: time.Date(2026, time.October, 28, 10, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "weekly first selected day",
+			job:  ScheduledJob{ScheduleTime: "09:00", Frequency: FrequencyWeekly, Weekdays: []int{5, 1}},
+			want: time.Date(2026, time.October, 23, 9, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "monthly later this month",
+			job:  ScheduledJob{ScheduleTime: "03:00", Frequency: FrequencyMonthly, DayOfMonth: 25},
+			want: time.Date(2026, time.October, 25, 3, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "monthly already passed this month",
+			job:  ScheduledJob{ScheduleTime: "03:00", Frequency: FrequencyMonthly, DayOfMonth: 20},
+			want: time.Date(2026, time.November, 20, 3, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "monthly on the 31st",
+			job:  ScheduledJob{ScheduleTime: "03:00", Frequency: FrequencyMonthly, DayOfMonth: 31},
+			want: time.Date(2026, time.October, 31, 3, 0, 0, 0, time.UTC),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := nextRunForJob(tt.job, now)
+			if !ok {
+				t.Fatalf("nextRunForJob() not ok for %+v", tt.job)
+			}
+			if !got.Equal(tt.want) {
+				t.Errorf("next run = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+// A monthly job on a day the next month does not have is skipped to the next
+// month that does: 31 April does not exist, so the run is 31 May.
+func TestNextRunForJobMonthlySkipsMissingDay(t *testing.T) {
+	now := time.Date(2026, time.April, 15, 12, 0, 0, 0, time.UTC)
+	got, ok := nextRunForJob(ScheduledJob{
+		ScheduleTime: "03:00",
+		Frequency:    FrequencyMonthly,
+		DayOfMonth:   31,
+	}, now)
+	if !ok {
+		t.Fatalf("nextRunForJob() not ok")
+	}
+	want := time.Date(2026, time.May, 31, 3, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Errorf("next run = %s, want %s", got, want)
+	}
+}
+
+func TestNextRunForJobRejectsIncompleteFrequency(t *testing.T) {
+	now := time.Date(2026, time.October, 21, 12, 0, 0, 0, time.UTC)
+	for _, job := range []ScheduledJob{
+		{ScheduleTime: "03:00", Frequency: FrequencyWeekly},
+		{ScheduleTime: "03:00", Frequency: FrequencyWeekly, Weekdays: []int{9}},
+		{ScheduleTime: "03:00", Frequency: FrequencyMonthly},
+		{ScheduleTime: "03:00", Frequency: FrequencyMonthly, DayOfMonth: 32},
+	} {
+		if got, ok := nextRunForJob(job, now); ok {
+			t.Errorf("nextRunForJob(%+v) = %s, want not ok", job, got)
+		}
+	}
+}
+
+// Saving a weekly or monthly job stores the recurrence and schedules its
+// nextRun on a matching day, not on the next calendar day as a daily job would.
+func TestSaveScheduledJobStoresRecurrence(t *testing.T) {
+	tests := []struct {
+		name  string
+		apply func(*ScheduledJob)
+		check func(time.Time) error
+	}{
+		{
+			name: "weekly",
+			apply: func(j *ScheduledJob) {
+				j.ScheduleTime = "03:15"
+				j.Frequency = FrequencyWeekly
+				j.Weekdays = []int{int(time.Saturday)}
+			},
+			check: func(next time.Time) error {
+				if next.Weekday() != time.Saturday {
+					return fmt.Errorf("next run is a %s, want Saturday", next.Weekday())
+				}
+				return nil
+			},
+		},
+		{
+			name: "monthly",
+			apply: func(j *ScheduledJob) {
+				j.ScheduleTime = "03:15"
+				j.Frequency = FrequencyMonthly
+				j.DayOfMonth = 1
+			},
+			check: func(next time.Time) error {
+				if next.Day() != 1 {
+					return fmt.Errorf("next run is on day %d, want 1", next.Day())
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := newSchedulerTestApp(t)
+			job := sampleJob()
+			tt.apply(&job)
+			if err := a.SaveScheduledJob(job); err != nil {
+				t.Fatalf("SaveScheduledJob() error = %v", err)
+			}
+
+			got := list0(t, a)
+			if got.Frequency != job.Frequency {
+				t.Errorf("Frequency = %q, want %q", got.Frequency, job.Frequency)
+			}
+			if !reflect.DeepEqual(got.Weekdays, job.Weekdays) || got.DayOfMonth != job.DayOfMonth {
+				t.Errorf("recurrence = weekdays %v day %d, want weekdays %v day %d",
+					got.Weekdays, got.DayOfMonth, job.Weekdays, job.DayOfMonth)
+			}
+			next, err := time.Parse(time.RFC3339, got.NextRun)
+			if err != nil {
+				t.Fatalf("NextRun %q is not RFC3339: %v", got.NextRun, err)
+			}
+			if err := tt.check(next); err != nil {
+				t.Error(err)
+			}
+		})
 	}
 }
 

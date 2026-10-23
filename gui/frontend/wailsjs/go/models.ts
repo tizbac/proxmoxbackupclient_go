@@ -306,6 +306,9 @@ export namespace main {
 	    id: string;
 	    name: string;
 	    scheduleTime: string;
+	    frequency?: string;
+	    weekdays?: number[];
+	    dayOfMonth?: number;
 	    runAtStartup: boolean;
 	    backupDirs: string[];
 	    driveLetters: string[];
@@ -329,6 +332,9 @@ export namespace main {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.scheduleTime = source["scheduleTime"];
+	        this.frequency = source["frequency"];
+	        this.weekdays = source["weekdays"];
+	        this.dayOfMonth = source["dayOfMonth"];
 	        this.runAtStartup = source["runAtStartup"];
 	        this.backupDirs = source["backupDirs"];
 	        this.driveLetters = source["driveLetters"];

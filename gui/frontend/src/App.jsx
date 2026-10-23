@@ -68,6 +68,39 @@ if (window.runtime) {
   OpenBrowser = window.runtime.BrowserOpenURL
 }
 
+// 0=Sunday … 6=Saturday, matching Go's time.Weekday (and JS Date.getDay).
+const WEEKDAYS = [
+  { value: 0, key: 'weekdaySun' },
+  { value: 1, key: 'weekdayMon' },
+  { value: 2, key: 'weekdayTue' },
+  { value: 3, key: 'weekdayWed' },
+  { value: 4, key: 'weekdayThu' },
+  { value: 5, key: 'weekdayFri' },
+  { value: 6, key: 'weekdaySat' },
+]
+
+function weekdayName(value, t) {
+  const day = WEEKDAYS.find(d => d.value === value)
+  return day ? t(day.key) : String(value)
+}
+
+// formatRecurrence renders a job's stored frequency for the jobs list.
+// Jobs saved before frequencies existed have no field and are daily.
+function formatRecurrence(job, t) {
+  if (job.frequency === 'weekly') {
+    const days = (job.weekdays || [])
+      .slice()
+      .sort((a, b) => a - b)
+      .map(d => weekdayName(d, t))
+      .join(', ')
+    return t('scheduleSummaryWeekly', { days })
+  }
+  if (job.frequency === 'monthly') {
+    return t('scheduleSummaryMonthly', { day: job.dayOfMonth })
+  }
+  return t('scheduleSummaryDaily')
+}
+
 function App() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('servers')
@@ -134,6 +167,9 @@ function App() {
   // Scheduling states
   const [backupMode, setBackupMode] = useState('oneshot') // 'oneshot' or 'scheduled'
   const [scheduleTime, setScheduleTime] = useState('02:00')
+  const [scheduleFrequency, setScheduleFrequency] = useState('daily') // 'daily', 'weekly', 'monthly'
+  const [scheduleWeekdays, setScheduleWeekdays] = useState([1]) // Monday, 0=Sunday … 6=Saturday
+  const [scheduleDayOfMonth, setScheduleDayOfMonth] = useState(1)
   const [runAtStartup, setRunAtStartup] = useState(false)
   const [jobEnabled, setJobEnabled] = useState(true)
   const [scheduledJobs, setScheduledJobs] = useState([])
@@ -1260,6 +1296,9 @@ function App() {
         id: editingJobId || Date.now().toString(),
         name: `Backup ${config['backup-id'] || hostname}`,
         scheduleTime: scheduleTime,
+        frequency: scheduleFrequency,
+        weekdays: scheduleFrequency === 'weekly' ? scheduleWeekdays : [],
+        dayOfMonth: scheduleFrequency === 'monthly' ? Number(scheduleDayOfMonth) : 0,
         runAtStartup: runAtStartup,
         enabled: jobEnabled,
         backupDirs: backupType === 'directory' ? dirList : [],
@@ -1288,6 +1327,9 @@ function App() {
         }
         // Reset form after save
         setScheduleTime('02:00')
+        setScheduleFrequency('daily')
+        setScheduleWeekdays([1])
+        setScheduleDayOfMonth(1)
         setRunAtStartup(false)
         setJobEnabled(true)
         setBackupDirs('')
@@ -2015,7 +2057,74 @@ function App() {
               )}
 
               <div className="form-group">
-                <label>{t('dailyExecutionTime')}</label>
+                <label>{t('scheduleFrequency')}</label>
+                <select
+                  value={scheduleFrequency}
+                  onChange={(e) => setScheduleFrequency(e.target.value)}
+                  style={{width: '240px', padding: '10px', fontSize: '16px'}}
+                >
+                  <option value="daily">{t('frequencyDaily')}</option>
+                  <option value="weekly">{t('frequencyWeekly')}</option>
+                  <option value="monthly">{t('frequencyMonthly')}</option>
+                </select>
+              </div>
+
+              {scheduleFrequency === 'weekly' && (
+                <div className="form-group">
+                  <label>{t('weekdaysLabel')}</label>
+                  <div style={{display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px'}}>
+                    {WEEKDAYS.map(day => {
+                      const selected = scheduleWeekdays.includes(day.value)
+                      return (
+                        <label key={day.value} style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 10px',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          backgroundColor: selected ? 'var(--accent)' : '#e2e8f0',
+                          color: selected ? 'white' : '#4a5568'
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => setScheduleWeekdays(prev => e.target.checked
+                              ? [...prev, day.value].sort((a, b) => a - b)
+                              : prev.filter(d => d !== day.value))}
+                          />
+                          {t(day.key)}
+                        </label>
+                      )
+                    })}
+                  </div>
+                  {scheduleWeekdays.length === 0 && (
+                    <p style={{marginTop: '6px', fontSize: '0.85em', color: '#dc3545'}}>
+                      ⚠️ {t('weekdaysRequired')}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {scheduleFrequency === 'monthly' && (
+                <div className="form-group">
+                  <label>{t('dayOfMonthLabel')}</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={scheduleDayOfMonth}
+                    onChange={(e) => setScheduleDayOfMonth(Number(e.target.value))}
+                    style={{width: '120px', padding: '10px', fontSize: '16px'}}
+                  />
+                  <p style={{marginTop: '6px', fontSize: '0.85em', color: '#6c757d'}}>
+                    {t('dayOfMonthHint')}
+                  </p>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label>{t('executionTime')}</label>
                 <input
                   type="time"
                   value={scheduleTime}
@@ -2050,7 +2159,13 @@ function App() {
 
               {jobEnabled ? (
                 <div className="info-box" style={{backgroundColor: '#eef2ff'}}>
-                  💡 {t('schedulingInfo')} <strong>{scheduleTime}</strong>
+                  💡 {scheduleFrequency === 'weekly'
+                    ? t('schedulingInfoWeekly', {
+                        days: scheduleWeekdays.slice().sort((a, b) => a - b).map(d => weekdayName(d, t)).join(', ')
+                      })
+                    : scheduleFrequency === 'monthly'
+                      ? t('schedulingInfoMonthly', { day: scheduleDayOfMonth })
+                      : t('schedulingInfo')} <strong>{scheduleTime}</strong>
                   {runAtStartup && <><br/>{t('andAtStartup')}</>}
                 </div>
               ) : (
@@ -2263,6 +2378,9 @@ function App() {
             <button className="btn btn-secondary" onClick={() => {
               setEditingJobId(null)
               setScheduleTime('02:00')
+              setScheduleFrequency('daily')
+              setScheduleWeekdays([1])
+              setScheduleDayOfMonth(1)
               setRunAtStartup(false)
               setJobEnabled(true)
               setBackupDirs('')
@@ -2298,7 +2416,7 @@ function App() {
                         </span>
                       )}
                       <div style={{fontSize: '14px', color: '#6c757d', marginTop: '5px'}}>
-                        ⏰ {job.scheduleTime} {job.runAtStartup && '• 🚀 Au démarrage'}
+                        ⏰ {job.scheduleTime} • {formatRecurrence(job, t)} {job.runAtStartup && `• 🚀 ${t('startupShort')}`}
                       </div>
                       <div style={{fontSize: '13px', color: '#6c757d', marginTop: '3px'}}>
                         {job.backupType === 'machine'
@@ -2322,6 +2440,9 @@ function App() {
                           setEditingJobId(job.id)
                           setBackupMode('scheduled')
                           setScheduleTime(job.scheduleTime)
+                          setScheduleFrequency(job.frequency || 'daily')
+                          setScheduleWeekdays(job.weekdays && job.weekdays.length ? job.weekdays : [1])
+                          setScheduleDayOfMonth(job.dayOfMonth && job.dayOfMonth >= 1 ? job.dayOfMonth : 1)
                           setRunAtStartup(job.runAtStartup)
                           setJobEnabled(job.enabled !== false)
                           setBackupDirs((job.backupDirs || []).join('\n'))

@@ -14,11 +14,23 @@ import (
 var runningJobs = make(map[string]bool)
 var runningJobsMutex sync.Mutex
 
+// Scheduling frequencies understood by a ScheduledJob. An empty Frequency is
+// treated as "daily", so jobs saved before this option existed keep running
+// every day exactly as before.
+const (
+	FrequencyDaily   = "daily"
+	FrequencyWeekly  = "weekly"
+	FrequencyMonthly = "monthly"
+)
+
 // ScheduledJob represents a scheduled backup job
 type ScheduledJob struct {
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
-	ScheduleTime string   `json:"scheduleTime"` // HH:MM format
+	ScheduleTime string   `json:"scheduleTime"`         // HH:MM format
+	Frequency    string   `json:"frequency,omitempty"`  // "daily" (default), "weekly" or "monthly"
+	Weekdays     []int    `json:"weekdays,omitempty"`   // weekly: 0=Sunday … 6=Saturday
+	DayOfMonth   int      `json:"dayOfMonth,omitempty"` // monthly: 1-31
 	RunAtStartup bool     `json:"runAtStartup"`
 	BackupDirs   []string `json:"backupDirs"`
 	DriveLetters []string `json:"driveLetters"` // physical disks for machine backups
@@ -94,7 +106,7 @@ func (a *App) SaveScheduledJob(job ScheduledJob) error {
 	// gets an enabled job (see SaveScheduledJobFromMap).
 
 	// Calculate next run
-	job.NextRun = calculateNextRun(job.ScheduleTime)
+	job.NextRun = calculateNextRunForJob(job)
 
 	// Add new job
 	jobs = append(jobs, job)
@@ -218,8 +230,8 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 			// overwriting it with an empty value (an update must not erase when
 			// the job last ran).
 			job.LastRun = j.LastRun
-			// Recalculate next run with new schedule time
-			job.NextRun = calculateNextRun(job.ScheduleTime)
+			// Recalculate next run with new schedule
+			job.NextRun = calculateNextRunForJob(job)
 			jobs[i] = job
 			found = true
 			break
@@ -348,27 +360,101 @@ func (a *App) AddJobHistory(entry JobHistory) error {
 	return atomicWriteFile(historyPath, data, 0600)
 }
 
-// calculateNextRun calculates the next run time based on schedule time (HH:MM)
+// calculateNextRun calculates the next run time of a daily schedule (HH:MM).
+// It is kept for callers that only have a time; jobs go through
+// calculateNextRunForJob so their frequency is taken into account.
 func calculateNextRun(scheduleTime string) string {
-	hour, min, ok := parseScheduleTime(scheduleTime)
+	return calculateNextRunForJob(ScheduledJob{ScheduleTime: scheduleTime})
+}
+
+// calculateNextRunForJob returns the next run of job as an RFC3339 timestamp,
+// or "" when the job has no executable schedule.
+func calculateNextRunForJob(job ScheduledJob) string {
+	nextRun, ok := nextRunForJob(job, time.Now())
 	if !ok {
 		return ""
 	}
+	return nextRun.Format(time.RFC3339)
+}
 
-	now := time.Now()
-
-	// Schedule for today at the specified time
-	nextRun := time.Date(now.Year(), now.Month(), now.Day(), hour, min, 0, 0, now.Location())
-
-	// If time has already passed today, schedule for tomorrow. Use AddDate (a
-	// calendar day) rather than Add(24h): across a DST transition 24h of absolute
-	// duration lands an hour off the intended wall-clock time, so a job at "02:30"
-	// would fire at 01:30 or 03:30 on the switch day.
-	if nextRun.Before(now) {
-		nextRun = nextRun.AddDate(0, 0, 1)
+// nextRunForJob computes the first occurrence of job's schedule at or after
+// now. Day-of-month values that do not exist in a month (31 in February, 31 in
+// April…) are skipped, like cron does, instead of being clamped to the last
+// day: a job meant for the 31st stays a job for the 31st.
+func nextRunForJob(job ScheduledJob, now time.Time) (time.Time, bool) {
+	hour, min, ok := parseScheduleTime(job.ScheduleTime)
+	if !ok {
+		return time.Time{}, false
 	}
 
-	return nextRun.Format(time.RFC3339)
+	switch normalizeFrequency(job.Frequency) {
+	case FrequencyWeekly:
+		allowed := make(map[time.Weekday]bool, len(job.Weekdays))
+		for _, day := range job.Weekdays {
+			if day >= 0 && day <= 6 {
+				allowed[time.Weekday(day)] = true
+			}
+		}
+		if len(allowed) == 0 {
+			return time.Time{}, false
+		}
+		// Today counts when the time has not passed yet; otherwise the first
+		// matching day within the next week is the answer.
+		base := time.Date(now.Year(), now.Month(), now.Day(), hour, min, 0, 0, now.Location())
+		for i := 0; i <= 7; i++ {
+			candidate := base.AddDate(0, 0, i)
+			if !allowed[candidate.Weekday()] {
+				continue
+			}
+			if i == 0 && candidate.Before(now) {
+				continue
+			}
+			return candidate, true
+		}
+		return time.Time{}, false
+
+	case FrequencyMonthly:
+		if job.DayOfMonth < 1 || job.DayOfMonth > 31 {
+			return time.Time{}, false
+		}
+		// At most one year ahead covers every possible gap between two months
+		// that actually contain DayOfMonth.
+		for i := 0; i <= 12; i++ {
+			firstOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, i, 0)
+			lastDay := time.Date(firstOfMonth.Year(), firstOfMonth.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day()
+			if job.DayOfMonth > lastDay {
+				continue
+			}
+			candidate := time.Date(firstOfMonth.Year(), firstOfMonth.Month(), job.DayOfMonth, hour, min, 0, 0, now.Location())
+			if candidate.Before(now) {
+				continue
+			}
+			return candidate, true
+		}
+		return time.Time{}, false
+
+	default: // daily
+		// Use AddDate (a calendar day) rather than Add(24h): across a DST
+		// transition 24h of absolute duration lands an hour off the intended
+		// wall-clock time, so a job at "02:30" would fire at 01:30 or 03:30 on
+		// the switch day.
+		nextRun := time.Date(now.Year(), now.Month(), now.Day(), hour, min, 0, 0, now.Location())
+		if nextRun.Before(now) {
+			nextRun = nextRun.AddDate(0, 0, 1)
+		}
+		return nextRun, true
+	}
+}
+
+// normalizeFrequency folds the empty value (jobs saved before the option
+// existed) into "daily" and lower-cases/trims user input. Unknown values are
+// returned as-is so validate can reject them.
+func normalizeFrequency(frequency string) string {
+	f := strings.ToLower(strings.TrimSpace(frequency))
+	if f == "" {
+		return FrequencyDaily
+	}
+	return f
 }
 
 // parseScheduleTime parses an "HH:MM" schedule (single-digit hour/minute
@@ -392,6 +478,24 @@ func parseScheduleTime(scheduleTime string) (hour, min int, ok bool) {
 func (j *ScheduledJob) validate() error {
 	if strings.TrimSpace(j.Name) == "" {
 		return fmt.Errorf("job name requis")
+	}
+	switch normalizeFrequency(j.Frequency) {
+	case FrequencyDaily:
+	case FrequencyWeekly:
+		if len(j.Weekdays) == 0 {
+			return fmt.Errorf("au moins un jour de la semaine est requis pour une planification hebdomadaire")
+		}
+		for _, day := range j.Weekdays {
+			if day < 0 || day > 6 {
+				return fmt.Errorf("jour de la semaine invalide: %d (0=dimanche … 6=samedi)", day)
+			}
+		}
+	case FrequencyMonthly:
+		if j.DayOfMonth < 1 || j.DayOfMonth > 31 {
+			return fmt.Errorf("jour du mois invalide: %d (1-31 attendu)", j.DayOfMonth)
+		}
+	default:
+		return fmt.Errorf("fréquence de planification invalide: %q", j.Frequency)
 	}
 	if _, _, ok := parseScheduleTime(j.ScheduleTime); !ok && j.ScheduleTime != "" {
 		return fmt.Errorf("heure de planification invalide (format HH:MM attendu): %q", j.ScheduleTime)
@@ -433,7 +537,7 @@ func (a *App) RecalculateNextRuns() {
 			}
 		}
 
-		newNextRun := calculateNextRun(job.ScheduleTime)
+		newNextRun := calculateNextRunForJob(job)
 		writeDebugLog(fmt.Sprintf("[RecalculateNextRuns] Job %s: nextRun was missing/invalid (%q), set to %s",
 			job.Name, job.NextRun, newNextRun))
 		jobs[i].NextRun = newNextRun
@@ -794,7 +898,7 @@ func (a *App) runClaimedJob(job ScheduledJob) {
 	for i, j := range jobs {
 		if j.ID == job.ID {
 			jobs[i].LastRun = time.Now().Format(time.RFC3339)
-			jobs[i].NextRun = calculateNextRun(j.ScheduleTime)
+			jobs[i].NextRun = calculateNextRunForJob(j)
 			found = true
 			break
 		}
@@ -906,6 +1010,9 @@ func apiJobsToSlice(apiJobs []map[string]interface{}) []ScheduledJob {
 			ID:           firstStr(m, "id"),
 			Name:         firstStr(m, "name"),
 			ScheduleTime: firstStr(m, "scheduleTime", "schedule"),
+			Frequency:    firstStr(m, "frequency"),
+			Weekdays:     firstIntSlice(m, "weekdays"),
+			DayOfMonth:   firstInt(m, "dayOfMonth", "day_of_month"),
 			RunAtStartup: firstBool(m, "runAtStartup", "run_at_startup"),
 			BackupDirs:   firstStrSlice(m, "backupDirs", "backup_dirs"),
 			DriveLetters: firstStrSlice(m, "driveLetters", "drive_letters"),
@@ -995,6 +1102,36 @@ func firstBool(m map[string]interface{}, keys ...string) bool {
 		}
 	}
 	return false
+}
+
+func firstInt(m map[string]interface{}, keys ...string) int {
+	for _, k := range keys {
+		switch v := m[k].(type) {
+		case float64:
+			return int(v)
+		case int:
+			return v
+		}
+	}
+	return 0
+}
+
+func firstIntSlice(m map[string]interface{}, keys ...string) []int {
+	for _, k := range keys {
+		if v, ok := m[k].([]interface{}); ok {
+			out := make([]int, 0, len(v))
+			for _, x := range v {
+				switch n := x.(type) {
+				case float64:
+					out = append(out, int(n))
+				case int:
+					out = append(out, n)
+				}
+			}
+			return out
+		}
+	}
+	return nil
 }
 
 func firstStrSlice(m map[string]interface{}, keys ...string) []string {

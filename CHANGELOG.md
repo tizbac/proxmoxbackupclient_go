@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Weekly and monthly scheduled jobs** — the GUI can now schedule a backup on one or more weekdays, or on a specific day of each month, instead of only every day. Jobs saved before this change keep running daily, unchanged.
+
 ## [0.2.119] - 2026-06-12
 
 ### Internal
