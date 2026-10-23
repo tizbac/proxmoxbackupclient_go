@@ -31,6 +31,30 @@ wails_field() {
     sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$ROOT/gui/wails.json" | head -n1
 }
 
+# Debian's Version field must start with a digit. get-version.sh returns
+# "dev-<sha>" for a checkout that is not on an exact tag, which dpkg-deb
+# rejects ("version number does not start with a digit"). Turn such a build
+# version into a valid local version based on the release in wails.json:
+#   dev-500590ed -> 0.2.119+dev.500590ed
+# "+" sorts after the base release, so the dev snapshot is newer than 0.2.119
+# and older than the next release (0.2.120).
+debian_version() {
+    v=$1
+    case "$v" in
+        [0-9]*) printf '%s\n' "$v"; return 0 ;;
+    esac
+    base=$(wails_field productVersion)
+    [ -n "$base" ] || base=0.0.0
+    case "$base" in
+        [0-9]*) : ;;
+        *) base=0.0.0 ;;
+    esac
+    # The character set Debian allows in a version, minus the hyphen (which
+    # would split the version into an upstream part and a revision).
+    suffix=$(printf '%s' "$v" | sed 's/[^A-Za-z0-9.+~]/./g')
+    printf '%s+%s\n' "$base" "$suffix"
+}
+
 # Read version from git tag (exact match) or git short SHA
 # Falls back to wails.json if not in a git repo
 if [ -f "$ROOT/scripts/get-version.sh" ]; then
@@ -39,6 +63,7 @@ else
     VERSION=$(wails_field productVersion)
 fi
 [ -n "$VERSION" ] || { echo "error: cannot determine version" >&2; exit 1; }
+VERSION=$(debian_version "$VERSION")
 GUI_OUTPUT=$(wails_field outputfilename)
 [ -n "$GUI_OUTPUT" ] || GUI_OUTPUT=ProxmoxBackupClient
 
