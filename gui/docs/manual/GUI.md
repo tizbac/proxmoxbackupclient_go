@@ -445,12 +445,13 @@ The rows of a folder backup:
 | Processing | Data processed per second over the last 10 seconds, plus files per second. Reused data counts, so this shows how fast the run is getting through the folder |
 | Folder | The folder being processed |
 | Upload | Data actually sent to PBS per second over the last 10 seconds. Close to zero when nearly everything is reused |
-| Uploaded | Data sent to PBS so far in this run. Only new chunks are sent, so this is usually far less than the data processed |
+| Processed | Data done / total, in GB with GiB in brackets (1 GB = 1,000,000,000 bytes, 1 GiB = 1,073,741,824 bytes; the two figures always use the same step, so 1.1 GB shows as 1.0 GiB, not 1004.3 MiB) |
+| Uploaded | Data sent to PBS so far in this run. Only new chunks are sent, so this is usually far less than Processed |
 | Current file | The file being read now, updated 5 times a second |
 
 A machine backup has the same layout with rows for a disk: **Blocks** (4 MiB blocks of the current disk, done / total), **Disk** (model, device and size, for example "CT500MX500SSD1, \\.\PhysicalDrive0 (465.8 GiB)"), and **Partition** in place of Current file (for example "C: (NTFS)", "Partition 2" or "Unpartitioned space"; on Linux "/dev/sda2 (/, ext4)").
 
-The box underneath shows **Processed:** data done / total, in GB with GiB in brackets (1 GB = 1,000,000,000 bytes, 1 GiB = 1,073,741,824 bytes; the two figures always use the same step, so 1.1 GB shows as 1.0 GiB, not 1004.3 MiB), and the number of **New** and **Reused** chunks. A machine backup adds how many of the reused chunks are blank space, and in red how much of the disk could not be read (zeros in the image). Failed chunks show in red.
+The box underneath shows the number of **New** and **Reused** chunks. A machine backup adds how many of the reused chunks are blank space, and in red how much of the disk could not be read (zeros in the image). Failed chunks show in red.
 
 **Pause** holds the run where it is, part way through a file if need be, and the button becomes **Resume**. Nothing is read or uploaded while it is paused, and the connection to PBS stays open, so Resume carries on from the same place. Stopping a backup and starting it again would read everything from the beginning. Use it when the PBS server or the network is busy with something else, or the computer is needed for a while. While a backup is paused:
 

@@ -3691,12 +3691,14 @@ function App() {
                 } else {
                   fileLine = <span className="pending-value">{s.currentDir ? `${tl('scanning', 'Scanning')} ${s.currentDir}...` : tl('waiting', 'Waiting...')}</span>
                 }
+                // Data read so far beside data sent so far (Uploaded: new
+                // chunks only, so far less when most of it is reused).
                 const processed = s.hasDetail || s.bytesDone > 0
-                  ? <>
-                      {tl('processedLabel', 'Processed:')} {formatBytesDual(s.bytesDone)} / {s.bytesTotal > 0 ? formatBytesDual(s.bytesTotal) : calc}
-                      {s.hasDetail && <> ({tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>})</>}
-                    </>
-                  : <>{tl('processedLabel', 'Processed:')} 0 B / {calc}</>
+                  ? <>{formatBytesDual(s.bytesDone)} / {s.bytesTotal > 0 ? formatBytesDual(s.bytesTotal) : calc}</>
+                  : <>0 B / {calc}</>
+                const chunks = s.hasDetail
+                  ? <>{tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>}</>
+                  : (status.message && status.type === 'info' ? status.message : calc)
                 return (
                   <>
                     <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px', height: '20px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'}}>
@@ -3711,17 +3713,14 @@ function App() {
                       {row(tl('processingLabel', 'Processing:'), processing)}
                       {row(machine ? tl('diskLabel', 'Disk:') : t('currentDirLabel'), folder)}
                       {row(tl('uploadLabel', 'Upload:'), upload)}
-                      {/* The data sent to the server so far, under its rate: new
-                          chunks only, so far less than Processed when most of
-                          it is reused. */}
-                      <div />
+                      {row(tl('processedLabel', 'Processed:'), processed)}
                       {row(tl('processedUploaded', 'Uploaded:'), s.hasDetail ? formatBytesDual(s.uploadedBytes) : na)}
                       <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
                         <strong style={{flex: '0 0 auto'}}>{machine ? tl('partitionLabel', 'Partition:') : tl('currentFileLabel', 'Current file:')}</strong> {fileLine}
                       </div>
                     </div>
                     <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef', minHeight: '18px'}}>
-                      {s.hasDetail || !(status.message && status.type === 'info') ? processed : status.message}
+                      {chunks}
                     </div>
                   </>
                 )
