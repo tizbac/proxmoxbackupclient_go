@@ -1641,7 +1641,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 
 	// One machine-greppable result line for support (pairs with the start-of-run
 	// target log): outcome label + the structured counters behind completionMsg.
-	writeBackupLog(fmt.Sprintf("[RESULT] outcome=%s dirs_ok=%d/%d new=%d reused=%d failed=%d read_errors=%d excluded=%d bytes=%d new_data=%d sent=%d duration=%s",
+	writeBackupLog(fmt.Sprintf("[RESULT] outcome=%s dirs_ok=%d/%d new=%d reused=%d failed=%d read_errors=%d excluded=%d bytes=%d new_data=%d transferred=%d duration=%s",
 		status.Outcome, successfulDirs, len(opts.BackupObjects), status.NewChunks, status.ReusedChunks,
 		status.FailedChunks, len(status.SkippedReadError), len(status.ExcludedByPolicy), status.TotalBytes,
 		jobProg.uploadedBytes.Load(), client.SentBytes(), duration))
@@ -1708,7 +1708,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 
 	// counts is the "New / Reused / blank / uploaded" part of the log lines.
 	counts := func() string {
-		return fmt.Sprintf("new %d, reused %d (%d blank), new data %s, sent %s, free space not read %s",
+		return fmt.Sprintf("new %d, reused %d (%d blank), new/changed data %s, transferred %s, free space not read %s",
 			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(), formatByteSize(jp.UploadedBytes.Load()),
 			formatByteSize(jp.SentBytes()), formatByteSize(jp.FreeSkipped.Load()))
 	}

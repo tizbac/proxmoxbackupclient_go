@@ -362,8 +362,8 @@ function backupFacts(entry, t, lang) {
     if (p.failed > 0) parts.push(part(tl('reportsChunkFailed', 'Failed'), p.failed))
     facts.push([tl('reportsChunks', 'Chunks'), parts.join(', ')])
   }
-  if (typeof p.uploadedBytes === 'number') facts.push([tl('reportsUploaded', 'New data'), formatBytesDual(p.uploadedBytes)])
-  else if (typeof p.uploaded === 'string') facts.push([tl('reportsUploaded', 'New data'), p.uploaded])
+  if (typeof p.uploadedBytes === 'number') facts.push([tl('reportsUploaded', 'New/changed data'), formatBytesDual(p.uploadedBytes)])
+  else if (typeof p.uploaded === 'string') facts.push([tl('reportsUploaded', 'New/changed data'), p.uploaded])
   // What the new data took on the network, after compression (entries
   // saved before this was recorded have only the figure above).
   if (typeof p.sentBytes === 'number') {
@@ -3729,9 +3729,10 @@ function App() {
                 const processed = s.hasDetail || s.bytesDone > 0
                   ? <>{formatBytesDual(s.bytesDone)} / {s.bytesTotal > 0 ? formatBytesDual(s.bytesTotal) : calc}</>
                   : <>0 B / {calc}</>
-                // The new chunks before (New data) and after compression (Data
-                // transferred): a changed block counts whole (4 MiB in a disk
-                // image), so New data overstates what crossed the network.
+                // The new chunks before (New/changed data) and after
+                // compression (Data transferred): a changed block counts whole
+                // (4 MiB in a disk image), so the first overstates what
+                // crossed the network.
                 const ratio = compressionRatio(s.uploadedBytes, s.sentBytes)
                 const chunks = s.hasDetail
                   ? <>{tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>}</>
@@ -3751,7 +3752,7 @@ function App() {
                       {row(machine ? tl('diskLabel', 'Disk:') : t('currentDirLabel'), folder)}
                       {row(tl('uploadLabel', 'Upload:'), upload)}
                       {row(tl('processedLabel', 'Processed:'), processed)}
-                      {row(tl('newDataLabel', 'New data:'), s.hasDetail ? formatBytesDual(s.uploadedBytes) : na)}
+                      {row(tl('newDataLabel', 'New/changed data:'), s.hasDetail ? formatBytesDual(s.uploadedBytes) : na)}
                       {row(tl('ratioLabel', 'Compression ratio:'), s.hasDetail ? (ratio || calc) : na)}
                       {row(tl('sentLabel', 'Data transferred:'), s.hasDetail ? formatBytesDual(s.sentBytes) : na)}
                       <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>

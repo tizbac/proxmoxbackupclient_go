@@ -291,7 +291,7 @@ func main() {
 	jp := &machinebackuplib.JobProgress{}
 	cfg.Progress = jp
 	counts := func() string {
-		return fmt.Sprintf("new %d, reused %d (%d blank), new data %s, sent %s, free space not read %s",
+		return fmt.Sprintf("new %d, reused %d (%d blank), new/changed data %s, transferred %s, free space not read %s",
 			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(),
 			machinebackuplib.BytesToString(int64(jp.UploadedBytes.Load())), machinebackuplib.BytesToString(int64(jp.SentBytes())),
 			machinebackuplib.BytesToString(int64(jp.FreeSkipped.Load())))
