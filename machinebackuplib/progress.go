@@ -146,6 +146,25 @@ func (p *JobProgress) Unreadable() []BadRange {
 	return append([]BadRange(nil), p.bad...)
 }
 
+// Reset clears every figure for a fresh attempt at the same job, after the
+// connection to the server was lost and the backup starts again.
+func (p *JobProgress) Reset() {
+	if p == nil {
+		return
+	}
+	for _, c := range []*atomic.Uint64{&p.NewChunks, &p.ReusedChunks, &p.BlankChunks, &p.UploadedBytes,
+		&p.BytesDone, &p.BytesTotal, &p.UnreadableBytes, &p.FreeSkipped} {
+		c.Store(0)
+	}
+	p.sent.Store(nil)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.bad = nil
+	p.phase, p.disk, p.diskModel, p.partition = "", "", "", ""
+	p.diskNo, p.diskCount = 0, 0
+	p.diskSize, p.diskPos = 0, 0
+}
+
 // SentBytes is how much the uploaded chunks took on the network so far:
 // UploadedBytes after compression (or encryption). 0 before the job connects.
 func (p *JobProgress) SentBytes() uint64 {

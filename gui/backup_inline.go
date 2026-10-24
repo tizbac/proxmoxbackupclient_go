@@ -149,6 +149,47 @@ func isFatalSessionError(err error) bool {
 		strings.Contains(s, "writer '") && strings.Contains(s, "not registered")
 }
 
+// machineRetryWaits are the waits before each new attempt at a machine
+// backup whose connection to PBS was lost: four more attempts over about half
+// an hour. A run on a mobile link lost its session part way (2026-10-24) and
+// a manual retry 13 minutes later went through.
+var machineRetryWaits = []time.Duration{2 * time.Minute, 5 * time.Minute, 10 * time.Minute, 15 * time.Minute}
+
+// machineRetryable says whether a machine backup that failed with err is
+// worth starting again: the connection or session was lost, the server could
+// not be reached, or PBS still held the backup group's lock from the lost
+// session. Anything else (a snapshot or disk error, a refused token) fails at
+// once.
+func machineRetryable(err error) bool {
+	if isFatalSessionError(err) || retry.DefaultRetryable(err) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	// Not plain "lock": "block" contains it, and a disk read error must not retry.
+	for _, m := range []string{"no route to host", "network is unreachable", "dial tcp", "locked", "acquire lock", "already running"} {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// waitOrCancel waits for d, or until ctx is cancelled (false).
+func waitOrCancel(ctx context.Context, d time.Duration) bool {
+	if ctx == nil {
+		time.Sleep(d)
+		return true
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 // cardRefresh is how often a running backup sends the progress card its
 // figures (and a folder backup its current file): 10 times a second, so the
 // numbers roll instead of ticking. Each update is one small event and a
@@ -1705,6 +1746,11 @@ func runMachineBackupInline(opts BackupOptions) error {
 		return opts.Ctx != nil && opts.Ctx.Err() != nil
 	}
 
+	// While waiting to start again after a lost connection: when, and which
+	// attempt comes next (see the retry loop below).
+	var retryAt atomic.Int64
+	var retryAttempt atomic.Int32
+
 	// emitStats sends the card's live figures on a timer, as folder backups
 	// do, so speeds are measured over a steady cadence.
 	emitStats := func() {
@@ -1712,6 +1758,9 @@ func runMachineBackupInline(opts BackupOptions) error {
 			return
 		}
 		w := jp.Where()
+		if at := retryAt.Load(); at > 0 {
+			w.Phase = "retry_wait"
+		}
 		total := jp.BytesTotal.Load()
 		done := jp.BytesDone.Load()
 		pct := 0.0
@@ -1737,6 +1786,9 @@ func runMachineBackupInline(opts BackupOptions) error {
 			DiskDone:      w.DiskPos,
 			Partition:     w.Partition,
 			Unreadable:    jp.UnreadableBytes.Load(),
+			RetryAt:       retryAt.Load(),
+			Attempt:       int(retryAttempt.Load()),
+			Attempts:      len(machineRetryWaits) + 1,
 		})
 	}
 	tickerDone := make(chan struct{})
@@ -1766,8 +1818,33 @@ func runMachineBackupInline(opts BackupOptions) error {
 	}
 	defer stopTicker()
 
-	// Perform machine backup
-	result, err := machinebackuplib.Backup(cfg, progress)
+	// Perform machine backup. A lost connection (a mobile link dropping, PBS
+	// restarting) ends the PBS session, and with it every chunk sent in it, so
+	// the run starts again with a new session and new snapshots after a wait
+	// that grows each time, as a folder backup does. The wait also lets PBS
+	// release the backup group's lock; an attempt made while it still holds it
+	// fails at once and waits again.
+	var result *machinebackuplib.BackupResult
+	var err error
+	for attempt := 1; ; attempt++ {
+		result, err = machinebackuplib.Backup(cfg, progress)
+		if err == nil || attempt > len(machineRetryWaits) || !machineRetryable(err) ||
+			(opts.Ctx != nil && opts.Ctx.Err() != nil) {
+			break
+		}
+		wait := machineRetryWaits[attempt-1]
+		at := time.Now().Add(wait)
+		writeBackupLog(fmt.Sprintf("Connection to the server lost on attempt %d of %d (%s): %v. Starting again at %s with a new session; chunks sent in the lost one are sent again.",
+			attempt, len(machineRetryWaits)+1, counts(), err, at.Format("15:04:05")))
+		jp.Reset()
+		retryAt.Store(at.UnixMilli())
+		retryAttempt.Store(int32(attempt + 1))
+		if !waitOrCancel(opts.Ctx, wait) {
+			retryAt.Store(0)
+			break // Stop pressed: reported as cancelled below
+		}
+		retryAt.Store(0)
+	}
 	stopTicker()
 	if err == nil && result != nil && opts.OnSnapshot != nil {
 		opts.OnSnapshot(result)

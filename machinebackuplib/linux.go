@@ -270,8 +270,10 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 	ch := make(chan []byte)
 	errCh := make(chan error, 1)
 	uploadDone := make(chan struct{})
+	readerDone := make(chan struct{})
 
 	go func() {
+		defer close(readerDone)
 		err := writeSegments(dev, segments, total, ch, uploadDone, progressCallback, jp, readFree)
 		// Error first, then close: uploadWorker's non-blocking check of
 		// errCh runs after ch is drained and must find the value there.
@@ -290,6 +292,11 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 	}()
 
 	<-uploadDone
+	// The reader holds the snapshot devices open until it returns (it stops at
+	// its next block once the upload has ended). Returning before then left
+	// them open while the snapshots were destroyed, which failed with
+	// "resource busy" after an upload error (seen 2026-10-24 on a 4G link).
+	<-readerDone
 	return uploadErr
 }
 

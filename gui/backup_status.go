@@ -213,6 +213,12 @@ type BackupProgressStats struct {
 	Partition   string `json:"partition,omitempty"`
 	// Unreadable is how much of the disk could not be read (zeros in the image).
 	Unreadable uint64 `json:"unreadable,omitempty"`
+	// RetryAt (Unix ms) is set while a machine backup waits to start again
+	// after losing its connection (Phase "retry_wait"); Attempt is the one
+	// coming, of Attempts.
+	RetryAt  int64 `json:"retry_at,omitempty"`
+	Attempt  int   `json:"attempt,omitempty"`
+	Attempts int   `json:"attempts,omitempty"`
 }
 
 // event is the payload of the "backup:stats" Wails event.
@@ -243,5 +249,8 @@ func (s *BackupProgressStats) event() map[string]interface{} {
 		"diskDone":      s.DiskDone,
 		"partition":     s.Partition,
 		"unreadable":    s.Unreadable,
+		"retryAt":       s.RetryAt,
+		"attempt":       s.Attempt,
+		"attempts":      s.Attempts,
 	}
 }
