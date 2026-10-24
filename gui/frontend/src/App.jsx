@@ -16,6 +16,7 @@ import EncryptionKeyField from './components/EncryptionKeyField'
 import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTools'
 import { suggestBackupId, setsSharingGroup } from './backupId'
 import ScheduleEditor from './components/ScheduleEditor'
+import LastRunAgo from './components/LastRunAgo'
 import { newSchedule, describe as describeSchedule, badgeKey, scheduleProblem, jobScheduling } from './components/schedules'
 // Wails runtime imports (will be available when built with Wails)
 let OpenSnapshotTree, ListSnapshotChildren, SnapshotSelectionBytes
@@ -307,7 +308,7 @@ function renderLocalizedMessage(entry, t, lang) {
       try { withNote.mb = Number(params.mb).toLocaleString(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) } catch { /* keep as sent */ }
     }
     if (typeof params.skipped === 'number') {
-      withNote.skippedNote = params.skipped > 0 ? t('logSkippedFilesNote', { count: fmtNum(params.skipped, lang) }) : ''
+      withNote.skippedNote = skippedNotes(params, t, lang).map(n => '\n' + n.text).join('')
     }
     const translated = t(key, withNote)
     if (translated !== key) {
@@ -372,20 +373,43 @@ function backupFacts(entry, t, lang) {
     if (ratio) facts.push([tl('reportsRatio', 'Compression ratio'), ratio])
   }
   // Skipped files, unless the message is shown too (it names them).
-  if (p.skipped > 0 && isCleanFinish(entry)) {
-    facts.push([tl('reportsWarnings', 'Warnings'), t('logSkippedFilesNote', { count: fmtNum(p.skipped, lang) }).replace(/^[\s⚠️]+/, '')])
+  if (isCleanFinish(entry)) {
+    for (const n of skippedNotes(p, t, lang)) {
+      const text = n.text.replace(/^[\s⚠️]+/, '')
+      facts.push(n.warn ? [tl('reportsWarnings', 'Warnings'), text] : [tl('reportsSkippedByDesign', 'Left out'), text])
+    }
   }
   return facts
 }
 
+// What a finished backup skipped, as notes for its message and Reports.
+// Files it could not read are a warning; links, sockets, pipes and system
+// files it leaves out on purpose are not. Backups recorded before the two
+// were counted apart (no `unreadable`) keep a single note with a warning.
+function skippedNotes(p, t, lang) {
+  if (!(p.skipped > 0)) return []
+  const note = (key, n, warn) => ({ text: t(key, { count: fmtNum(n, lang) }).replace(/^\n/, ''), warn })
+  if (typeof p.unreadable !== 'number') return [note('logSkippedFilesNote', p.skipped, true)]
+  const notes = []
+  if (p.unreadable > 0) notes.push(note('logUnreadableFilesNote', p.unreadable, true))
+  if (p.skipped > p.unreadable) notes.push(note('logSkippedByDesignNote', p.skipped - p.unreadable, false))
+  return notes
+}
+
+// skippedWarns is whether a finished backup skipped anything worth a warning sign.
+function skippedWarns(p) {
+  if (!p || !(p.skipped > 0)) return false
+  return typeof p.unreadable === 'number' ? p.unreadable > 0 : true
+}
+
 // A Message Log entry's icon: a tick for a backup or restore that finished
-// (a warning sign when it skipped files), a stop sign for one the user
+// (a warning sign when it could not read some files), a stop sign for one the user
 // stopped, otherwise by level.
 function messageIcon(entry) {
   if (entry.message_key === 'logBackupCancelled' || /cancelled by user/i.test(entry.message || '')) return '⏹️'
   if (entry.level === 'error') return '❌'
   if (entry.level === 'warning') return '⚠️'
-  if (SUCCESS_KEYS.has(entry.message_key)) return entry.message_params?.skipped > 0 ? '⚠️' : '✅'
+  if (SUCCESS_KEYS.has(entry.message_key)) return skippedWarns(entry.message_params) ? '⚠️' : '✅'
   return 'ℹ️'
 }
 
@@ -3981,8 +4005,9 @@ function App() {
                                 })()}
                               </div>
                             </div>
-                            <div style={{fontSize: '12px', color: '#888', marginTop: '2px', whiteSpace: 'nowrap'}}>
+                            <div style={{fontSize: '12px', color: '#888', marginTop: '2px'}}>
                               {t('lastRun')} {job.lastRun ? new Date(job.lastRun).toLocaleString() : t('neverRun')}
+                              {job.lastRun && <LastRunAgo when={job.lastRun} />}
                               {job.backupType !== 'machine' && job.changeDetectionMode === 'metadata' && job.fullReadEvery > 0 && (() => {
                                 // Same rule as the backend (changeDetectionForRun):
                                 // the run that brings the count to N is a full read.

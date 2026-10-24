@@ -812,6 +812,20 @@ func append_u64_7bit(a []byte, v uint64) []byte {
 
 */
 
+// specialFileKind names a file that is not regular data, for the skipped list.
+func specialFileKind(m os.FileMode) string {
+	switch {
+	case m&os.ModeSocket != 0:
+		return "Socket"
+	case m&os.ModeNamedPipe != 0:
+		return "Pipe (FIFO)"
+	case m&os.ModeDevice != 0:
+		return "Device"
+	default:
+		return "Special file"
+	}
+}
+
 // addReadError records a genuine read failure or content instability: it is added
 // to both SkippedFiles (display) and ReadErrors (which downgrades the backup
 // outcome below verified_success). Expected skips append to SkippedFiles directly.
@@ -1332,7 +1346,7 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 		// regular data: record them as skipped rather than hang or misread.
 		if !fileInfo.Mode().IsRegular() {
 			a.SkippedFiles = append(a.SkippedFiles,
-				fmt.Sprintf("Special file (skipped): %s", path))
+				fmt.Sprintf("%s (skipped, holds no file data): %s", specialFileKind(fileInfo.Mode()), path))
 			return CatalogFile{}, nil
 		}
 	}

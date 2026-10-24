@@ -241,7 +241,7 @@ Some names are always skipped: the folders `System Volume Information`, `$RECYCL
 
 ## 6. Backup Sets
 
-A Backup Set is a saved backup with a name, its schedules and options. The **Backup** page lists them under **Your backup sets**. Each card shows the set's name, badges, the schedule that gives the next run and **Next run** (for scheduled sets), and **Last run**.
+A Backup Set is a saved backup with a name, its schedules and options. The **Backup** page lists them under **Your backup sets**. Each card shows the set's name, badges, the schedule that gives the next run and **Next run** (for scheduled sets), and **Last run** with how long ago that was ("- 2 days, 20 hours, 45 minutes ago"), which moves on each minute.
 
 | Badge | Meaning |
 |---|---|
@@ -633,7 +633,7 @@ Click a run for its details:
 | Type | Folders, Full machine, Restore, Undelete or Roll back |
 | Encryption | Encrypted or Unencrypted |
 | Change detection | Legacy, Data (split archive) or Metadata (unchanged files skipped), with "N unchanged files reused without reading, size" |
-| Duration, Backup size, Chunks, New/changed data, Data transferred, Compression ratio | A finished backup's figures. Chunks gives the total, New, Reused and, for a machine backup, Blank (reused chunks that are blank space). New/changed data is the size of the new chunks; Data transferred is what they took on the network once compressed (backups made before this version show New/changed data only). Warnings lists skipped files |
+| Duration, Backup size, Chunks, New/changed data, Data transferred, Compression ratio | A finished backup's figures. Chunks gives the total, New, Reused and, for a machine backup, Blank (reused chunks that are blank space). New/changed data is the size of the new chunks; Data transferred is what they took on the network once compressed (backups made before this version show New/changed data only). Warnings gives the number of files the backup could not read; Left out gives the links, sockets, pipes and system files it leaves out on purpose, which is not a problem. The backup log names each one |
 | Message | The result message, for a failed run, a run with errors or a machine backup with unreadable sectors (where they are) |
 | Backup ID, VSS, Folders | |
 | Snapshot, Destination, Paths, Files, Size, Verification, Duration | Restores, Undeletes and Roll backs |

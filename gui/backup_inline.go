@@ -149,6 +149,22 @@ func isFatalSessionError(err error) bool {
 		strings.Contains(s, "writer '") && strings.Contains(s, "not registered")
 }
 
+// skippedSummary is the plain-text tail of a folder backup's completion
+// message for what it skipped: a warning for the files it could not read,
+// and a plain note for the links, sockets, pipes and system files it leaves
+// out on purpose (on 24/10 a Linux home folder's five "access denied" were
+// all sockets). The backup log lists each one either way.
+func skippedSummary(skipped, unreadable int) string {
+	s := ""
+	if unreadable > 0 {
+		s += fmt.Sprintf("\n⚠️  %d files/folders could not be read (the backup log lists them)", unreadable)
+	}
+	if byDesign := skipped - unreadable; byDesign > 0 {
+		s += fmt.Sprintf("\n%d items left out by design: links, sockets, pipes and system files (the backup log lists them)", byDesign)
+	}
+	return s
+}
+
 // machineRetryWaits are the waits before each new attempt at a machine
 // backup whose connection to PBS was lost: four more attempts over about half
 // an hour. A run on a mobile link lost its session part way (2026-10-24) and
@@ -1561,6 +1577,10 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	// — see msgcodes.go's MsgSkippedFilesNote doc comment — without losing
 	// that detail when a localized message_key is rendered instead of Message.
 	completionParams["skipped"] = len(allSkipped)
+	// The part of those it could not read (the rest are links, sockets,
+	// pipes and system files it leaves out on purpose), so only these get a
+	// warning sign.
+	completionParams["unreadable"] = len(allReadErrors)
 	// Same for the change-detection outcome, so the history entry written from
 	// OnComplete can show it (Reports).
 	changeMode := opts.ChangeDetectionMode
@@ -1576,7 +1596,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	}
 
 	if len(allSkipped) > 0 {
-		completionMsg += fmt.Sprintf("\n⚠️  %d files/folders skipped (access denied or junction points)", len(allSkipped))
+		completionMsg += skippedSummary(len(allSkipped), len(allReadErrors))
 		writeBackupLog(fmt.Sprintf("=== SKIPPED FILES/DIRECTORIES (%d) ===", len(allSkipped)))
 
 		// Log first 50 skipped files in detail
