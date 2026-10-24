@@ -444,14 +444,25 @@ The rows of a folder backup:
 | Files | Files done / total files. The total comes from the previous snapshot or a scan |
 | Processing | Data processed per second over the last 10 seconds, plus files per second. Reused data counts, so this shows how fast the run is getting through the folder |
 | Folder | The folder being processed |
-| Upload | Data actually sent to PBS per second over the last 10 seconds. Close to zero when nearly everything is reused |
+| Upload | Data actually sent to PBS per second over the last 10 seconds, compressed, as it goes over the network. Close to zero when nearly everything is reused |
 | Processed | Data done / total, in GB with GiB in brackets (1 GB = 1,000,000,000 bytes, 1 GiB = 1,073,741,824 bytes; the two figures always use the same step, so 1.1 GB shows as 1.0 GiB, not 1004.3 MiB) |
-| Uploaded | Data sent to PBS so far in this run. Only new chunks are sent, so this is usually far less than Processed |
+| Sent | Data sent to PBS so far in this run, compressed: what it took on the network (without the few percent of connection overhead). Only new chunks are sent, so this is usually far less than Processed |
 | Current file | The file being read now, updated 5 times a second |
 
 A machine backup has the same layout with rows for a disk: **Blocks** (4 MiB blocks of the current disk, done / total), **Disk** (model, device and size, for example "CT500MX500SSD1, \\.\PhysicalDrive0 (465.8 GiB)"), and **Partition** in place of Current file (for example "C: (NTFS)", "Partition 2" or "Unpartitioned space"; on Linux "/dev/sda2 (/, ext4)").
 
-The box underneath shows the number of **New** and **Reused** chunks. A machine backup adds how many of the reused chunks are blank space, and in red how much of the disk could not be read (zeros in the image). Failed chunks show in red.
+The box underneath shows the number of **New** and **Reused** chunks. A machine backup adds how many of the reused chunks are blank space, and in red how much of the disk could not be read (zeros in the image). Failed chunks show in red. Once something has been sent, the box ends with the new data before and after compression, for example "318.8 MB (304.0 MiB) of new data, sent as 48.2 MB (46.0 MiB), 6.6:1 compressed". An encrypted backup is not compressed, so there the two are about the same.
+
+**Why a repeat run still sends data.** A machine backup stores a disk in 4 MiB blocks. A block in which anything changed, even a few bytes of a log or database file, is a new chunk and is counted whole as new data. Compression then shrinks it before it is sent, which is why Sent is often several times smaller than the new data. On a metered or slow link, Sent and Upload are the figures to watch.
+
+Real example, a small Linux PC at an unoccupied remote site, recording two cameras with live detection and running home automation, backing up over a 4G mobile connection (about 4.8 Mbit/s upload) and a VPN to a PBS at home:
+
+| Run | Time | New chunks | New data | Sent over the network |
+|---|---|---|---|---|
+| Whole 128 GB disk image (an earlier image of it already on PBS), then the home folder (folder backup, Metadata mode, 346 unchanged files reused) | 10 min 38 s, then 14 s | 213 of 30,527 (25,418 of them blank), then 12 | 861 MiB | about 172 MiB |
+| The same disk again, two minutes later | 5 min 32 s | 76 | 300 MiB | about 46 MiB |
+
+The PC kept recording without dropping frames throughout. The network figures were measured at the VPN server, so they include the connection overhead.
 
 **Pause** holds the run where it is, part way through a file if need be, and the button becomes **Resume**. Nothing is read or uploaded while it is paused, and the connection to PBS stays open, so Resume carries on from the same place. Stopping a backup and starting it again would read everything from the beginning. Use it when the PBS server or the network is busy with something else, or the computer is needed for a while. While a backup is paused:
 
@@ -618,7 +629,7 @@ Click a run for its details:
 | Type | Folders, Full machine, Restore, Undelete or Roll back |
 | Encryption | Encrypted or Unencrypted |
 | Change detection | Legacy, Data (split archive) or Metadata (unchanged files skipped), with "N unchanged files reused without reading, size" |
-| Duration, Backup size, Chunks, Data uploaded | A finished backup's figures. Chunks gives the total, New, Reused and, for a machine backup, Blank (reused chunks that are blank space). Data uploaded is the new data sent to the server. Warnings lists skipped files |
+| Duration, Backup size, Chunks, New data, Sent over the network | A finished backup's figures. Chunks gives the total, New, Reused and, for a machine backup, Blank (reused chunks that are blank space). New data is the size of the new chunks; Sent over the network is what they took once compressed, with the ratio (backups made before this version show New data only). Warnings lists skipped files |
 | Message | The result message, for a failed run, a run with errors or a machine backup with unreadable sectors (where they are) |
 | Backup ID, VSS, Folders | |
 | Snapshot, Destination, Paths, Files, Size, Verification, Duration | Restores, Undeletes and Roll backs |
@@ -627,7 +638,7 @@ A failed backup has a **Rerun** button that loads its folders and Backup ID into
 
 ## 13. Message Log and log files
 
-**Message Log** is a timestamped list of backup and restore messages (✅ finished, ℹ️ information, ⚠️ warning, ❌ error, ⏹️ stopped by you) with their source, capped at 1,000 entries. A finished backup shows its figures underneath, as in Reports: duration, backup size, chunks and data uploaded.
+**Message Log** is a timestamped list of backup and restore messages (✅ finished, ℹ️ information, ⚠️ warning, ❌ error, ⏹️ stopped by you) with their source, capped at 1,000 entries. A finished backup shows its figures underneath, as in Reports: duration, backup size, chunks, new data and what was sent over the network.
 
 Log files are in `C:\ProgramData\ProxmoxBackupClient\` on Windows (Linux: [section 2](#where-settings-are-kept)). **Preferences > Message Log > View Logs** opens the folder.
 

@@ -38,6 +38,7 @@ The suite:
 |---|---|
 | **Incremental folder backups** | A 480.9 GB file server share of 761,866 files: first run 4 h 17 min, each later run 10 to 15 minutes. Unchanged files are not even opened (the official client's Metadata change detection). |
 | **Fast machine backups** | Free space, the paging file and the hibernation file are not read, and blank disk space is not hashed. A 1 TB laptop disk with 373 GB used: 1 h 23 min to 1 h 44 min before, 38 minutes now. A 50 GB test disk: 3 min 36 s, now 1 min 15 s. |
+| **Slow and metered links** | Only new data is sent, compressed, and the app shows what really crossed the network. A small Linux PC at an unoccupied remote site, recording two cameras on a 4G connection (4.8 Mbit/s up): its whole 128 GB disk image plus its home folder in 11 minutes for about 172 MiB, and the disk again minutes later for about 46 MiB, while it kept recording. |
 | **Files back from machine backups** | Browse a disk image like a folder and restore single files, from NTFS, FAT, exFAT, ext2/3/4 and XFS. A laptop's 127 GB C: drive with 430,000 files lists in 4 to 15 seconds; nothing is mounted or downloaded first. |
 | **Physical machine into a virtual machine** | Back up a PC or server, then start it as a Proxmox VE VM: restored through Proxmox VE itself, or with the restore ISO. [See below](#-physical-machines-into-virtual-machines-p2v). |
 | **Bare-metal restore** | Boot the ISO (USB stick, CD or PXE), enter the PBS details, pick the backup: a 32 GB Windows machine was back at its login screen 8 minutes after power-on. |

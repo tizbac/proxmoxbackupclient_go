@@ -369,7 +369,7 @@ function backupFacts(entry, t, lang) {
   // saved before this was recorded have only the figure above).
   if (typeof p.sentBytes === 'number') {
     const ratio = compressionText(p.uploadedBytes, p.sentBytes, tl)
-    facts.push([tl('reportsSent', 'Sent over the network'), formatBytesDual(p.sentBytes) + (ratio ? ` (${ratio})` : '')])
+    facts.push([tl('reportsSent', 'Sent over the network'), formatBytesDual(p.sentBytes) + (ratio ? `, ${ratio}` : '')])
   }
   // Skipped files, unless the message is shown too (it names them).
   if (p.skipped > 0 && isCleanFinish(entry)) {
@@ -3720,7 +3720,7 @@ function App() {
                 // figure overstates what crossed the network.
                 const ratio = compressionText(s.uploadedBytes, s.sentBytes, tl)
                 const newDataLine = s.hasDetail && s.uploadedBytes > 0 && s.sentBytes > 0
-                  ? `${tl('newDataSentAs', '{raw} of new data, sent as {sent}').replace('{raw}', formatBytesDual(s.uploadedBytes)).replace('{sent}', formatBytesDual(s.sentBytes))}${ratio ? ` (${ratio})` : ''}`
+                  ? `${tl('newDataSentAs', '{raw} of new data, sent as {sent}').replace('{raw}', formatBytesDual(s.uploadedBytes)).replace('{sent}', formatBytesDual(s.sentBytes))}${ratio ? `, ${ratio}` : ''}`
                   : ''
                 const chunks = s.hasDetail
                   ? <>{tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>}{newDataLine && <> · {newDataLine}</>}</>
