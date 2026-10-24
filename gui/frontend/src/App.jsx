@@ -189,6 +189,14 @@ function formatBytesDual(bytes) {
   return dualUnits(bytes)
 }
 
+// "6.6:1 compressed": how much smaller new data was on the network than
+// before compression. Empty until both are known.
+function compressionText(raw, sent, tl) {
+  if (!(raw > 0 && sent > 0)) return ''
+  const ratio = (raw / sent).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return tl('compressedRatio', '{ratio}:1 compressed').replace('{ratio}', ratio)
+}
+
 // Wall-clock time with the day, in the user's locale ("Wed 07/10 19:35:51"),
 // for the progress cards' Started and Forecast finish. The day matters for a
 // run that crosses midnight.
@@ -355,8 +363,14 @@ function backupFacts(entry, t, lang) {
     if (p.failed > 0) parts.push(part(tl('reportsChunkFailed', 'Failed'), p.failed))
     facts.push([tl('reportsChunks', 'Chunks'), parts.join(', ')])
   }
-  if (typeof p.uploadedBytes === 'number') facts.push([tl('reportsUploaded', 'Data uploaded'), formatBytesDual(p.uploadedBytes)])
-  else if (typeof p.uploaded === 'string') facts.push([tl('reportsUploaded', 'Data uploaded'), p.uploaded])
+  if (typeof p.uploadedBytes === 'number') facts.push([tl('reportsUploaded', 'New data'), formatBytesDual(p.uploadedBytes)])
+  else if (typeof p.uploaded === 'string') facts.push([tl('reportsUploaded', 'New data'), p.uploaded])
+  // What the new data took on the network, after compression (entries
+  // saved before this was recorded have only the figure above).
+  if (typeof p.sentBytes === 'number') {
+    const ratio = compressionText(p.uploadedBytes, p.sentBytes, tl)
+    facts.push([tl('reportsSent', 'Sent over the network'), formatBytesDual(p.sentBytes) + (ratio ? ` (${ratio})` : '')])
+  }
   // Skipped files, unless the message is shown too (it names them).
   if (p.skipped > 0 && isCleanFinish(entry)) {
     facts.push([tl('reportsWarnings', 'Warnings'), t('logSkippedFilesNote', { count: fmtNum(p.skipped, lang) }).replace(/^[\s⚠️]+/, '')])
@@ -421,6 +435,8 @@ const EMPTY_BACKUP_STATS = {
   filesDone: 0,
   filesTotal: 0,
   uploadedBytes: 0,
+  // sentBytes: the new data as it went over the network (compressed).
+  sentBytes: 0,
   filesRate: null,
   uploadRate: null,
   phase: '',
@@ -978,7 +994,7 @@ function App() {
     const unsubStats = EventsOn('backup:stats', (data) => {
       const now = Date.now()
       const samples = backupSamplesRef.current
-      samples.push({ t: now, bytes: data.bytesDone || 0, files: data.filesDone || 0, uploaded: data.uploadedBytes || 0 })
+      samples.push({ t: now, bytes: data.bytesDone || 0, files: data.filesDone || 0, uploaded: data.uploadedBytes || 0, sent: data.sentBytes || 0 })
       while (samples.length > 0 && now - samples[0].t > 180000) samples.shift()
       setBackupStats(prev => {
         const bytesDone = data.bytesDone || 0
@@ -991,7 +1007,9 @@ function App() {
         const avg = elapsed > 0 ? bytesDone / elapsed : 0
         const speed = windowRate(samples, 'bytes', 10000, now) ?? avg
         const filesRate = windowRate(samples, 'files', 10000, now)
-        const uploadRate = windowRate(samples, 'uploaded', 10000, now)
+        // Upload is the network rate: compressed bytes sent, where the
+        // backend reports them.
+        const uploadRate = windowRate(samples, data.sentBytes !== undefined ? 'sent' : 'uploaded', 10000, now)
 
         // The finish forecast uses the last 2 minutes, so it follows a real
         // change of pace without swinging with every folder of small files.
@@ -1027,6 +1045,7 @@ function App() {
           filesDone: data.filesDone || 0,
           filesTotal: data.filesTotal || 0,
           uploadedBytes: data.uploadedBytes || 0,
+          sentBytes: data.sentBytes || 0,
           // Machine backups send no phase: never keep one from another run.
           phase: data.phase === undefined ? '' : (data.phase || prev.phase),
           readReason: data.readReason || '',
@@ -3691,13 +3710,20 @@ function App() {
                 } else {
                   fileLine = <span className="pending-value">{s.currentDir ? `${tl('scanning', 'Scanning')} ${s.currentDir}...` : tl('waiting', 'Waiting...')}</span>
                 }
-                // Data read so far beside data sent so far (Uploaded: new
-                // chunks only, so far less when most of it is reused).
+                // Data read so far beside data sent so far (Sent: new chunks
+                // only, compressed, so far less when most of it is reused).
                 const processed = s.hasDetail || s.bytesDone > 0
                   ? <>{formatBytesDual(s.bytesDone)} / {s.bytesTotal > 0 ? formatBytesDual(s.bytesTotal) : calc}</>
                   : <>0 B / {calc}</>
+                // The new chunks before and after compression: a changed
+                // block counts whole (4 MiB in a disk image), so the raw
+                // figure overstates what crossed the network.
+                const ratio = compressionText(s.uploadedBytes, s.sentBytes, tl)
+                const newDataLine = s.hasDetail && s.uploadedBytes > 0 && s.sentBytes > 0
+                  ? `${tl('newDataSentAs', '{raw} of new data, sent as {sent}').replace('{raw}', formatBytesDual(s.uploadedBytes)).replace('{sent}', formatBytesDual(s.sentBytes))}${ratio ? ` (${ratio})` : ''}`
+                  : ''
                 const chunks = s.hasDetail
-                  ? <>{tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>}</>
+                  ? <>{tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>}{newDataLine && <> · {newDataLine}</>}</>
                   : (status.message && status.type === 'info' ? status.message : calc)
                 return (
                   <>
@@ -3714,7 +3740,7 @@ function App() {
                       {row(machine ? tl('diskLabel', 'Disk:') : t('currentDirLabel'), folder)}
                       {row(tl('uploadLabel', 'Upload:'), upload)}
                       {row(tl('processedLabel', 'Processed:'), processed)}
-                      {row(tl('processedUploaded', 'Uploaded:'), s.hasDetail ? formatBytesDual(s.uploadedBytes) : na)}
+                      {row(tl('sentLabel', 'Sent:'), s.hasDetail ? formatBytesDual(s.sentBytes) : na)}
                       <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
                         <strong style={{flex: '0 0 auto'}}>{machine ? tl('partitionLabel', 'Partition:') : tl('currentFileLabel', 'Current file:')}</strong> {fileLine}
                       </div>

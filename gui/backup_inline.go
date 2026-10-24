@@ -1041,6 +1041,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 			FilesDone:     jobProg.filesDone.Load(),
 			FilesTotal:    filesTotal,
 			UploadedBytes: jobProg.uploadedBytes.Load(),
+			SentBytes:     client.SentBytes(),
 			Phase:         loadString(&jobProg.phase),
 			ReadReason:    loadString(&jobProg.readReason),
 			ChangeMode:    opts.ChangeDetectionMode,
@@ -1512,6 +1513,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	// and the data uploaded as fields of their own, in both units.
 	completionParams["bytes"] = jobProg.bytesDoneBase.Load()
 	completionParams["uploadedBytes"] = jobProg.uploadedBytes.Load()
+	completionParams["sentBytes"] = client.SentBytes()
 
 	// skipped rides along in every completion key's params (0 when there were
 	// none) so the frontend can splice in the "N files skipped" clause itself
@@ -1598,9 +1600,10 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 
 	// One machine-greppable result line for support (pairs with the start-of-run
 	// target log): outcome label + the structured counters behind completionMsg.
-	writeBackupLog(fmt.Sprintf("[RESULT] outcome=%s dirs_ok=%d/%d new=%d reused=%d failed=%d read_errors=%d excluded=%d bytes=%d duration=%s",
+	writeBackupLog(fmt.Sprintf("[RESULT] outcome=%s dirs_ok=%d/%d new=%d reused=%d failed=%d read_errors=%d excluded=%d bytes=%d new_data=%d sent=%d duration=%s",
 		status.Outcome, successfulDirs, len(opts.BackupObjects), status.NewChunks, status.ReusedChunks,
-		status.FailedChunks, len(status.SkippedReadError), len(status.ExcludedByPolicy), status.TotalBytes, duration))
+		status.FailedChunks, len(status.SkippedReadError), len(status.ExcludedByPolicy), status.TotalBytes,
+		jobProg.uploadedBytes.Load(), client.SentBytes(), duration))
 
 	if status.Success() && opts.OnSnapshot != nil {
 		opts.OnSnapshot(&clientNoter{client: client})
@@ -1664,8 +1667,9 @@ func runMachineBackupInline(opts BackupOptions) error {
 
 	// counts is the "New / Reused / blank / uploaded" part of the log lines.
 	counts := func() string {
-		return fmt.Sprintf("new %d, reused %d (%d blank), uploaded %s, free space not read %s",
-			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(), formatByteSize(jp.UploadedBytes.Load()), formatByteSize(jp.FreeSkipped.Load()))
+		return fmt.Sprintf("new %d, reused %d (%d blank), new data %s, sent %s, free space not read %s",
+			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(), formatByteSize(jp.UploadedBytes.Load()),
+			formatByteSize(jp.SentBytes()), formatByteSize(jp.FreeSkipped.Load()))
 	}
 
 	// Progress callback wrapper. Returning true (user pressed Stop, which
@@ -1721,6 +1725,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 			NewChunks:     jp.NewChunks.Load(),
 			ReusedChunks:  jp.ReusedChunks.Load(),
 			UploadedBytes: jp.UploadedBytes.Load(),
+			SentBytes:     jp.SentBytes(),
 			Phase:         w.Phase,
 			Kind:          "machine",
 			BlankChunks:   jp.BlankChunks.Load(),
@@ -1807,7 +1812,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 		formatDuration(duration), read, newC, reusedC, blankC, uploaded)
 	completionParams := msgParams{"duration": formatDuration(duration), "read": read, "new": newC, "reused": reusedC, "blank": blankC, "uploaded": uploaded,
 		// The raw byte counts behind read and uploaded, for Reports and the Message Log.
-		"readBytes": jp.BytesTotal.Load(), "uploadedBytes": jp.UploadedBytes.Load()}
+		"readBytes": jp.BytesTotal.Load(), "uploadedBytes": jp.UploadedBytes.Load(), "sentBytes": jp.SentBytes()}
 	completionKey, outcome := MsgMachineBackupCompletedStats, OutcomeVerifiedSuccess
 
 	// Sectors the disk could not read are zeros in the image: the backup is

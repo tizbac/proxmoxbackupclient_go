@@ -187,6 +187,9 @@ type BackupProgressStats struct {
 	// UploadedBytes is the content of new chunks sent to PBS so far: zero
 	// when every file is unchanged, whatever BytesDone says.
 	UploadedBytes uint64 `json:"uploaded_bytes"`
+	// SentBytes is what those new chunks took on the network: their size
+	// after compression (or encryption), without TLS and HTTP overhead.
+	SentBytes uint64 `json:"sent_bytes"`
 	// Phase is "connecting", "data" or "finishing".
 	Phase string `json:"phase,omitempty"`
 	// ReadReason says why every file is being read, when it is ("full_read"
@@ -226,7 +229,8 @@ func (s *BackupProgressStats) event() map[string]interface{} {
 		"filesDone":     s.FilesDone,
 		"filesTotal":    s.FilesTotal,
 		"uploadedBytes": s.UploadedBytes,
-		"phase":         s.Phase,
+		"sentBytes":     s.SentBytes,
+		"phase":        s.Phase,
 		"readReason":    s.ReadReason,
 		"changeMode":    s.ChangeMode,
 		"kind":          s.Kind,

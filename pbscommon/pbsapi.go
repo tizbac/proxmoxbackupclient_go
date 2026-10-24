@@ -221,6 +221,17 @@ type PBSClient struct {
 	// alone is a no-op while streams are open.
 	activeConn   net.Conn
 	activeConnMu sync.Mutex
+
+	// sentBytes totals the encoded size of every chunk uploaded (see SentBytes).
+	sentBytes atomic.Uint64
+}
+
+// SentBytes is the size of the chunks this client has uploaded as they went
+// over the network: compressed (or encrypted) and framed for PBS, without
+// the TLS and HTTP overhead. New data is counted before compression, so on
+// compressible data this is several times smaller.
+func (pbs *PBSClient) SentBytes() uint64 {
+	return pbs.sentBytes.Load()
 }
 
 // activeClients tracks every PBSClient currently holding an open HTTP/2
@@ -890,6 +901,7 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 		return fmt.Errorf("Error making request: %s %s", string(resp1), string(resp2.Proto))
 	}
 
+	pbs.sentBytes.Add(uint64(len(outBuffer)))
 	return nil
 }
 

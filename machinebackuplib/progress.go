@@ -30,6 +30,9 @@ type JobProgress struct {
 	// but sent as zeros.
 	FreeSkipped atomic.Uint64
 
+	// sent reads the job's PBS client counter (see SentBytes).
+	sent atomic.Pointer[func() uint64]
+
 	mu        sync.Mutex
 	bad       []BadRange
 	phase     string
@@ -141,6 +144,24 @@ func (p *JobProgress) Unreadable() []BadRange {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]BadRange(nil), p.bad...)
+}
+
+// SentBytes is how much the uploaded chunks took on the network so far:
+// UploadedBytes after compression (or encryption). 0 before the job connects.
+func (p *JobProgress) SentBytes() uint64 {
+	if p == nil {
+		return 0
+	}
+	if f := p.sent.Load(); f != nil {
+		return (*f)()
+	}
+	return 0
+}
+
+func (p *JobProgress) setSentSource(f func() uint64) {
+	if p != nil {
+		p.sent.Store(&f)
+	}
 }
 
 // countChunk records one chunk of an image. blank is true for an all-zero

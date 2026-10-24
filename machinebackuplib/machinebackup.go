@@ -534,6 +534,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		cfg.Progress = &JobProgress{}
 	}
 	jp := cfg.Progress
+	jp.setSentSource(client.SentBytes)
 	jp.setPhase("connecting")
 	if progressCallback != nil {
 		progressCallback(0, "Connecting to Proxmox Backup Server...")
