@@ -106,25 +106,20 @@ Al primo avvio Windows configura il nuovo hardware virtuale ("Preparazione dei d
 | [Scenari di ripristino](docs/RESTORE_GUIDE.md) | Quale ripristino usare e quando |
 | [Indice dei manuali](docs/manual/README.md) | Una panoramica dei tre manuali |
 
-## 🆕 Novità della v0.9.0: più pianificazioni per set di backup, installer, un servizio Linux
+## 🆕 Novità della v0.10.0: cosa passa davvero sulla rete, chiavi che si possono conservare, i manuali nell'app
 
-La **v0.9.1** corregge la ISO di ripristino bare-metal: la voce di ripristino è di nuovo nel menu di avvio BIOS, una chiavetta Ventoy viene riconosciuta come disco di avvio e un disco di destinazione più piccolo dell'originale viene rifiutato prima di scrivere qualsiasi cosa. Inoltre annota nel commento PBS dello snapshot un'e-mail di notifica che non è stato possibile inviare.
+- **Cosa invia davvero un backup.** La scheda di avanzamento, i Report e il Registro messaggi mostrano **Dati nuovi/modificati**, **Dati trasferiti** (quanto è passato sulla rete, compresso) e il **Rapporto di compressione**. Un backup incrementale di un disco da 128 GB con 365 MB di dati modificati ha inviato 53 MB.
+- **Un backup macchina riparte quando si perde la connessione a PBS**, dopo 2, 5, 10 e 15 minuti, con il conto alla rovescia sulla sua scheda.
+- **Conservare una copia della chiave di cifratura**: **Salva una copia...**, **Stampa una chiave su carta...** con un codice QR, e **Importa...** per recuperare una chiave da un file, dalla fotocamera, da una foto o da testo digitato, verificata con la sua impronta prima di essere salvata.
+- **I manuali utente nell'app**: una pagina **Guida** (F1) con i manuali della GUI, della riga di comando e del ripristino bare-metal, offline e allineati alla versione.
+- **Pausa dall'area di notifica** (Windows), per i backup eseguiti dall'app o dal servizio in background.
+- **Copia forense** per i set di backup macchina: legge anche lo spazio libero, così i file eliminati si possono recuperare dall'immagine.
+- **Le password in `config.json` sono cifrate su Windows** (DPAPI, per questo computer). Tornare poi alla 0.9.1 o a versioni precedenti significa reinserirle.
+- **Configurare molti computer con l'MSI**: `msiexec /i ... CONFIGFILE=<file>` unisce un file di impostazioni esportato, con ID Backup ricavati dal nome di ciascun computer.
+- **Ogni scheda di un set di backup indica quanto tempo fa è stato eseguito l'ultima volta**, e link, socket e file di sistema che un backup esclude di proposito non compaiono più come avviso.
+- **Correzioni**: un backup poteva bloccarsi per sempre, ed eliminare tutte le copie shadow del computer, quando VSS era occupato; gli snapshot VSS lasciavano handle aperti; un Esegui ora affidato al servizio eseguiva le sue azioni dopo il backup (e poteva spegnere il computer) appena iniziava l'esecuzione. La ISO di ripristino bare-metal tiene le password fuori dall'elenco dei processi, mantiene il machine ID di un sistema Linux ripristinato e spegne la macchina al termine invece di ricominciare il ripristino da una chiavetta USB.
 
-- **Più pianificazioni per set di backup**, da una ogni pochi minuti a una all'anno: "ogni giorno alle 02:00" più "ogni mese l'ultimo giorno" o "il 2° martedì", ciascuna pianificazione descritta a parole con le sue prossime 3 esecuzioni. I set esistenti mantengono la loro pianificazione.
-- **I backup di cartelle conservano gli stream di dati alternativi e gli attributi estesi NTFS** (Windows), come il contrassegno "scaricato da Internet", e un ripristino li rimette. La sezione Limiti noti ora non ne elenca più nessuno.
-- **Installer**: un **MSI per Windows** (app e servizio in background in Program Files, voce nel menu Start, aggiornamenti sul posto, impostazioni mantenute o eliminate alla rimozione) e **pacchetti Linux**, `.deb` (Debian, Ubuntu, Mint) e `.rpm` (Fedora), con l'app, i tre strumenti a riga di comando, i manuali e le voci di menu.
-- **Un servizio in background su Linux** (`proxmoxbackupclient.service`): i set di backup pianificati girano come root, anche quando nessuno è collegato. Si attiva in Preferenze > Avanzate > Esegui come servizio, come su Windows. **Riavvia come amministratore** ora funziona anche su Linux (tramite pkexec).
-- **Pausa, Riprendi e Ferma per i backup eseguiti dal servizio**, con la loro scheda di avanzamento nell'app aperta.
-- **Un avviso quando due set di backup condividono un gruppo di backup** (stesso server, tipo e ID Backup), con un badge **ID condiviso** su entrambe le schede.
-- **Impostazioni protette**: su Windows `C:\ProgramData\ProxmoxBackupClient` è ora accessibile solo agli amministratori; su Linux la cartella delle impostazioni è privata del suo proprietario.
-- **File dai backup macchina di tutti i file system più comuni**: FAT, exFAT, ext2/3/4 e XFS oltre a NTFS. I ripristini di immagini Windows rimettono anche permessi e stream di dati alternativi.
-- **I backup macchina Linux saltano lo spazio libero** (ext2/3/4, XFS), come quelli Windows dalla v0.8.0.
-- **Recupero e Rollback per i set di backup di macchine Linux**, e **da riga di comando** per qualsiasi set di backup: `-list-sets`, `-undelete`, `-rollback` (sezione 12 del [manuale della riga di comando](docs/manual/CLI.md)).
-- Gli strumenti a riga di comando scrivono gli errori su stderr invece di mostrare finestre di messaggio, e `proxmoxbackup-machine` invia la sua e-mail di notifica.
-- **La ISO di ripristino bare-metal** non propone mai come disco di destinazione la chiavetta da cui è stata avviata, e il manuale spiega come far corrispondere il firmware (UEFI o BIOS) quando una macchina fisica diventa una VM.
-- **Tutte le lingue riviste** (17 traduzioni, circa 1.850 stringhe), e date e numeri seguono la lingua dell'app.
-
-Release precedenti: **v0.8** backup macchina più veloci (spazio libero saltato, settori danneggiati superati), file dai backup macchina, Pausa e Riprendi; **v0.7** Recupero e Rollback; **v0.6** backup incrementali di cartelle. Il [CHANGELOG](CHANGELOG.md) contiene tutte le modifiche.
+Release precedenti: **v0.9** più pianificazioni per set di backup, installer per Windows e Linux, un servizio in background su Linux, file dai backup macchina di tutti i file system più comuni; **v0.8** backup macchina più veloci (spazio libero saltato, settori danneggiati superati), file dai backup macchina, Pausa e Riprendi; **v0.7** Recupero e Rollback; **v0.6** backup incrementali di cartelle. Il [CHANGELOG](CHANGELOG.md) contiene tutte le modifiche.
 
 ## 🤝 Compatibile con il client Proxmox ufficiale, in entrambe le direzioni
 

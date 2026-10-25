@@ -1,6 +1,6 @@
 # Command line tools: user manual
 
-This manual covers the command line tools. It applies to v0.9.1 (see the [changelog](../../CHANGELOG.md)). For the graphical client see [GUI.md](GUI.md); for bare-metal restore see [BMR.md](BMR.md).
+This manual covers the command line tools. It applies to v0.10.0 (see the [changelog](../../CHANGELOG.md)). For the graphical client see [GUI.md](GUI.md); for bare-metal restore see [BMR.md](BMR.md).
 
 ## Contents
 
@@ -301,7 +301,7 @@ Template fields include `.Success`, `.Status`, `.NewChunks`, `.ReusedChunks`, `.
 | 2 | Another backup job is already running on this computer |
 | 3 | The snapshot was saved, but not everything could be read: `proxmoxbackup-directory`, some files are incomplete; `proxmoxbackup-machine` (v0.8.1 and later), some sectors are zeros in the image |
 
-Errors go to standard error, with the list of options after "Missing or invalid options". A few early errors of `proxmoxbackup-directory` (a config file, fingerprint, login or key file problem) still go to standard output. (In v0.8.2 and earlier, on Windows, missing options and "another job is running" showed a message box, which waits for a click an unattended run never gets; `proxmoxbackup-directory` even carried on after the box.)
+Errors go to standard error, with the list of options after "Missing or invalid options". (In v0.8.2 and earlier, on Windows, missing options and "another job is running" showed a message box, which waits for a click an unattended run never gets; `proxmoxbackup-directory` even carried on after the box.)
 
 ## 10. Scheduling
 

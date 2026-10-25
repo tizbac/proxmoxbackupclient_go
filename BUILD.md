@@ -39,8 +39,8 @@ rm go.tmpwork go.tmpwork.sum
 From `gui/`:
 
 ```powershell
-wails build -clean -ldflags "-X main.appVersion=0.9.1"
-go build -tags service -trimpath -ldflags "-s -w -X main.appVersion=0.9.1" -o build\bin\ProxmoxBackupClientSVC.exe
+wails build -clean -ldflags "-X main.appVersion=0.10.0"
+go build -tags service -trimpath -ldflags "-s -w -X main.appVersion=0.10.0" -o build\bin\ProxmoxBackupClientSVC.exe
 ```
 
 This gives `gui\build\bin\ProxmoxBackupClient.exe` (the app) and `gui\build\bin\ProxmoxBackupClientSVC.exe` (the background service, which also takes `-list-sets`, `-undelete` and `-rollback`). Keep them in the same folder. Use the version from `gui/wails.json` (`productVersion`).
@@ -67,7 +67,7 @@ Build the app and the service first (above), then:
 ```powershell
 cd installer\wix
 .\build-msi.ps1                       # version from gui\wails.json
-.\build-msi.ps1 -Version 0.9.1 -WixDir C:\Dev\tools\wix314
+.\build-msi.ps1 -Version 0.10.0 -WixDir C:\Dev\tools\wix314
 ```
 
 The result is `installer\wix\out\ProxmoxBackupClient-<version>-x64.msi`. The version must be three numbers (`x.y.z`). WiX is looked for in `-WixDir`, then on `PATH`.

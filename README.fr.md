@@ -106,25 +106,20 @@ Windows installe le nouveau matériel virtuel au premier démarrage (« Prépara
 | [Scénarios de restauration](docs/RESTORE_GUIDE.md) | Quelle restauration utiliser et quand |
 | [Index des manuels](docs/manual/README.md) | Une vue d'ensemble des trois manuels |
 
-## 🆕 Nouveau en v0.9.0 : plusieurs planifications par ensemble de sauvegarde, installeurs, un service Linux
+## 🆕 Nouveau en v0.10.0 : ce qui passe vraiment sur le réseau, des clés que vous pouvez conserver, les manuels dans l'application
 
-**v0.9.1** corrige l'ISO de restauration bare-metal : l'entrée de restauration est de retour dans son menu de démarrage BIOS, une clé Ventoy est reconnue comme disque de démarrage, et un disque cible plus petit que l'original est refusé avant toute écriture. Elle note aussi dans le commentaire PBS du snapshot un e-mail de notification qui n'a pas pu être envoyé.
+- **Ce qu'une sauvegarde envoie vraiment.** La carte de progression, les Rapports et le Journal des messages affichent **Données nouvelles/modifiées**, **Données transférées** (ce qui est passé sur le réseau, compressé) et le **Taux de compression**. Une sauvegarde incrémentielle d'un disque de 128 Go avec 365 Mo de données modifiées a envoyé 53 Mo.
+- **Une sauvegarde de machine redémarre quand la connexion à PBS est perdue**, après 2, 5, 10 et 15 minutes, avec le compte à rebours sur sa carte.
+- **Gardez une copie de la clé de chiffrement** : **Enregistrer une copie...**, **Imprimer une clé papier...** avec un QR code, et **Importer...** pour récupérer une clé depuis un fichier, la caméra, une photo ou un texte saisi, vérifiée par son empreinte avant d'être enregistrée.
+- **Les manuels d'utilisation dans l'application** : une page **Aide** (F1) avec les manuels de la GUI, de la ligne de commande et de la restauration bare-metal, hors ligne et correspondant à la version.
+- **Pause depuis la zone de notification** (Windows), pour les sauvegardes lancées par l'application ou par le service d'arrière-plan.
+- **Copie forensique** pour les ensembles de sauvegarde de machines : lit aussi l'espace libre, pour que les fichiers supprimés puissent être récupérés depuis l'image.
+- **Les mots de passe dans `config.json` sont chiffrés sous Windows** (DPAPI, pour cet ordinateur). Revenir ensuite à la 0.9.1 ou à une version plus ancienne oblige à les saisir de nouveau.
+- **Configurer de nombreux ordinateurs avec le MSI** : `msiexec /i ... CONFIGFILE=<file>` fusionne un fichier de paramètres exporté, avec des Backup ID tirés du nom de chaque ordinateur.
+- **Chaque carte d'ensemble de sauvegarde indique depuis combien de temps il ne s'est pas exécuté**, et les liens, sockets et fichiers système qu'une sauvegarde omet volontairement n'apparaissent plus comme un avertissement.
+- **Corrections** : une sauvegarde pouvait rester bloquée indéfiniment, et supprimer tous les clichés instantanés (shadow copies) de l'ordinateur, quand VSS était occupé ; les snapshots VSS laissaient des handles ouverts ; un Exécuter maintenant confié au service déclenchait ses actions après sauvegarde (et pouvait éteindre l'ordinateur) dès le début de l'exécution. L'ISO de restauration bare-metal garde les mots de passe hors de la liste des processus, conserve le machine ID d'un système Linux restauré, et éteint la machine à la fin au lieu de relancer la restauration depuis une clé USB.
 
-- **Plusieurs planifications par ensemble de sauvegarde**, de quelques minutes à une fois par an : « chaque jour à 02:00 » plus « chaque mois le dernier jour » ou « le 2e mardi », chaque planification décrite en clair avec ses 3 prochaines exécutions. Les ensembles existants gardent leur planification.
-- **Les sauvegardes de dossiers conservent les flux de données alternatifs et les attributs étendus NTFS** (Windows), comme la marque « téléchargé depuis Internet », et une restauration les remet en place. La section Limites connues n'en liste désormais plus aucune.
-- **Installeurs** : un **MSI Windows** (application et service d'arrière-plan dans Program Files, entrée dans le menu Démarrer, mises à jour sur place, paramètres conservés ou supprimés à la désinstallation) et des **paquets Linux**, `.deb` (Debian, Ubuntu, Mint) et `.rpm` (Fedora), avec l'application, les trois outils en ligne de commande, les manuels et les entrées de menu.
-- **Un service d'arrière-plan sous Linux** (`proxmoxbackupclient.service`) : les ensembles de sauvegarde planifiés s'exécutent en root, y compris sans session ouverte. Activez-le dans Préférences > Avancé > Exécuter en tant que service, comme sous Windows. **Redémarrer en tant qu'administrateur** fonctionne désormais aussi sous Linux (via pkexec).
-- **Pause, Reprendre et Arrêter pour les sauvegardes lancées par le service**, avec leur carte de progression dans l'application ouverte.
-- **Un avertissement quand deux ensembles de sauvegarde partagent un groupe de sauvegarde** (même serveur, même type et même Backup ID), avec un badge **ID partagé** sur les deux cartes.
-- **Paramètres verrouillés** : sous Windows, `C:\ProgramData\ProxmoxBackupClient` n'est plus accessible qu'aux administrateurs ; sous Linux, le dossier des paramètres est privé à son propriétaire.
-- **Fichiers récupérés depuis les sauvegardes de machines de tous les systèmes de fichiers courants** : FAT, exFAT, ext2/3/4 et XFS en plus de NTFS. Les restaurations d'images Windows remettent aussi les permissions et les flux de données alternatifs.
-- **Les sauvegardes de machines Linux ignorent l'espace libre** (ext2/3/4, XFS), comme celles de Windows depuis la v0.8.0.
-- **Récupération et Retour arrière pour les ensembles de machines Linux**, et **en ligne de commande** pour tout ensemble de sauvegarde : `-list-sets`, `-undelete`, `-rollback` (section 12 du [manuel de la ligne de commande](docs/manual/CLI.md)).
-- Les outils en ligne de commande écrivent leurs erreurs sur stderr au lieu d'afficher des boîtes de dialogue, et `proxmoxbackup-machine` envoie son e-mail de notification.
-- **L'ISO de restauration bare-metal** ne propose jamais la clé USB sur laquelle elle a démarré comme disque cible de la restauration, et le manuel explique comment faire correspondre le firmware (UEFI ou BIOS) quand une machine physique devient une VM.
-- **Toutes les langues relues** (17 traductions, environ 1 850 chaînes), et les dates et les nombres suivent la langue de l'application.
-
-Versions précédentes : **v0.8** sauvegardes de machines plus rapides (espace libre ignoré, secteurs défectueux surmontés), fichiers récupérés depuis les sauvegardes de machines, Pause et Reprendre ; **v0.7** Récupération et Retour arrière ; **v0.6** sauvegardes de dossiers incrémentielles. Le [CHANGELOG](CHANGELOG.md) contient toutes les modifications.
+Versions précédentes : **v0.9** plusieurs planifications par ensemble de sauvegarde, installeurs Windows et Linux, un service d'arrière-plan sous Linux, fichiers récupérés depuis les sauvegardes de machines de tous les systèmes de fichiers courants ; **v0.8** sauvegardes de machines plus rapides (espace libre ignoré, secteurs défectueux surmontés), fichiers récupérés depuis les sauvegardes de machines, Pause et Reprendre ; **v0.7** Récupération et Retour arrière ; **v0.6** sauvegardes de dossiers incrémentielles. Le [CHANGELOG](CHANGELOG.md) contient toutes les modifications.
 
 ## 🤝 Compatible avec le client Proxmox officiel, dans les deux sens
 

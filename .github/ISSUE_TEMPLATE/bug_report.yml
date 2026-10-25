@@ -14,7 +14,7 @@ body:
     attributes:
       label: Version
       description: Shown at the bottom left of the window and on the About page.
-      placeholder: v0.9.1
+      placeholder: v0.10.0
     validations:
       required: true
 

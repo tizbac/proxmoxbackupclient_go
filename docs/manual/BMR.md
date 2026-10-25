@@ -1,6 +1,6 @@
 # Bare-metal restore: user manual
 
-This manual covers restoring a whole machine from a machine (full disk) backup. It applies to v0.9.1. For file and folder restores use the GUI's Restore page ([GUI.md](GUI.md#9-restore)).
+This manual covers restoring a whole machine from a machine (full disk) backup. It applies to v0.10.0. For file and folder restores use the GUI's Restore page ([GUI.md](GUI.md#9-restore)).
 
 The restore copies the disk image block for block, so it works the same whatever the operating system on the disk: Windows, Linux or another.
 

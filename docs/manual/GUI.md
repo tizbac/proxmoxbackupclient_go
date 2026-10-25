@@ -1,6 +1,6 @@
 # Proxmox Backup Client GUI: user manual
 
-This manual covers the graphical client (the GUI) on Windows and Linux. It applies to v0.9.1 (see the [changelog](../../CHANGELOG.md)).
+This manual covers the graphical client (the GUI) on Windows and Linux. It applies to v0.10.0 (see the [changelog](../../CHANGELOG.md)).
 
 For the command line tools see [CLI.md](CLI.md). For restoring a whole machine onto bare metal see [BMR.md](BMR.md).
 
@@ -82,7 +82,7 @@ On Linux, **Proxmox Backup Client (administrator)** runs the GUI as root with yo
 
 ## 3. The window
 
-The left sidebar has **Backup**, **Restore**, **Undelete** and **Roll back**, a thin divider, then **Reports** and **Message Log**. **Preferences**, **Help** and **About** are at the bottom. The language picker (flag) is at the top right; 18 languages are available. The status bar at the bottom shows the version ("Version v..." for a release, "Development build ..." otherwise) and a **Known Limitations** link.
+The left sidebar has **Backup**, **Restore**, **Undelete** and **Roll back**, a thin divider, then **Reports** and **Message Log**. **Preferences**, **Help** and **About** are at the bottom. The language picker (flag) is at the top right; 18 languages are available. Dates and numbers follow the app's language; with the app in English they follow the computer's regional format (Windows' Region settings; on Linux `LC_ALL`, `LC_TIME`, then `LANG`), so a British PC shows 23/10/2026, 14:05. The status bar at the bottom shows the version ("Version v..." for a release, "Development build ..." otherwise) and a **Known Limitations** link.
 
 The menu bar:
 
@@ -472,10 +472,10 @@ The PC kept recording without dropping frames throughout. The network figures ab
 
 - other backups and restores in this app wait, as they do behind a running backup;
 - the VSS snapshot stays in place, so its shadow storage grows as files on that drive change;
-- if the connection to PBS drops (the server restarts, the network goes down) the backup fails as it would while running, and has to be run again;
+- if the connection to PBS drops (the server restarts, the network goes down) PBS ends the backup as it would while running, and the app starts it again as described under **When the connection is lost** above;
 - Forecast finish and Time remaining show **Paused**, and pick up again from fresh measurements after Resume.
 
-Pause works for folder and machine backups, whether the app or the background service runs them. With **Run as Service** on ([section 15](#15-background-service-tray-and-closing-the-window)), a Backup Set the service starts on its schedule shows the same card in an open app window, with its set's name, within a few seconds, and Pause, Resume and Stop act on the service's run. A window opened during the run picks it up, paused or not. On Windows the tray icon's menu has **Pause backup** too (**Resume backup** while paused), so a run can be paused without opening the window ([section 15](#15-background-service-tray-and-closing-the-window)). The card of a run the service started on its own shows the stage line and the percentage; the Files, Folder and Upload rows read **Not available**, as the service does not pass those figures on.
+Pause works for folder and machine backups, whether the app or the background service runs them. With **Run as Service** on ([section 15](#15-background-service-tray-and-closing-the-window)), a Backup Set the service starts on its schedule shows the same card in an open app window, with its set's name, within a few seconds, and Pause, Resume and Stop act on the service's run. A window opened during the run picks it up, paused or not. On Windows the tray icon's menu has **Pause backup** too (**Resume backup** while paused), so a run can be paused without opening the window ([section 15](#15-background-service-tray-and-closing-the-window)). The card of a run the service started on its own fills in as for a run of the app's own: the stage line, the percentage, and the Files, Folder, Upload and data rows. (A background service from a version before v0.9.0 sends only its percentage, and the other rows then read **Not available**.)
 
 **Stop** ends the run after the current file, and also works while paused. Reports record it as cancelled (⏹️), not failed.
 
@@ -528,7 +528,7 @@ Selective restore reads only the chunks that hold the ticked files, so restoring
 | Restore modification times | Sets file and folder modification times as they were in the backup. Untick it to leave restored files with the time of the restore. Creation times (Windows) are put back either way. Undelete and Roll back always put the times back |
 | Verify after restore | Reads every restored file back and compares it with the snapshot. Mismatches are reported; nothing is deleted |
 | Restore permissions/ACLs | Windows: owner, group, permissions (DACL) and Hidden/System/Archive/ReadOnly attributes. Linux: POSIX ACLs and extended attributes. Run as administrator (or root) for this |
-| Restore alternate data streams and extended attributes | Windows, on by default. Puts back the data attached to files and folders, such as the "downloaded from the internet" mark (Zone.Identifier), and NTFS extended attributes (WSL keeps Linux owners and permissions in them). Streams over 1 MB are recorded by name only and are not restored (the restore log says how many). Backups made before v0.9.0 did not record them. Not shown on Linux |
+| Restore alternate data streams and extended attributes | Windows, on by default. Puts back the data attached to files and folders, such as the "downloaded from the internet" mark (Zone.Identifier), and NTFS extended attributes (WSL keeps Linux owners and permissions in them). Streams over 1 MB are recorded by name only and are not restored (the restore log says how many). Folder backups made before v0.9.0 did not record them; disk images of any version give them back. Not shown on Linux |
 
 On Windows the **creation time** (Explorer's "Date created") of every file and folder is put back too, whether or not permissions are restored, for backups made with v0.8.0 or later; older backups did not record it.
 
@@ -642,7 +642,7 @@ A failed backup has a **Rerun** button that loads its folders and Backup ID into
 
 ## 13. Message Log and log files
 
-**Message Log** is a timestamped list of backup and restore messages (✅ finished, ℹ️ information, ⚠️ warning, ❌ error, ⏹️ stopped by you) with their source, capped at 1,000 entries. A finished backup shows its figures underneath, as in Reports: duration, backup size, chunks, new/changed data, data transferred and the compression ratio.
+**Message Log** is a timestamped list of backup and restore messages (✅ finished, ℹ️ information, ⚠️ warning, ❌ error, ⏹️ stopped by you) with their source, capped at 1,000 entries. A finished backup shows its figures underneath, as in Reports: duration, backup size, chunks, new/changed data, data transferred and the compression ratio. It has a ✅ when it read everything it set out to, also when it left out links, sockets, pipes or system files on purpose (listed as "items left out by design"), and a ⚠️ when it could not read some files.
 
 Log files are in `C:\ProgramData\ProxmoxBackupClient\` on Windows (Linux: [section 2](#where-settings-are-kept)). **Preferences > Message Log > View Logs** opens the folder.
 
@@ -658,7 +658,7 @@ Logs rotate at 10 MB, keeping 5 old files.
 Every run log ends with a `[RESULT]` line, for example:
 
 ```
-[RESULT] outcome=verified_success dirs_ok=1/1 new=9 reused=158838 failed=0 read_errors=0 excluded=0 bytes=480858587134 duration=10m24.4s
+[RESULT] outcome=verified_success dirs_ok=1/1 new=9 reused=158838 failed=0 read_errors=0 excluded=0 bytes=480858587134 new_data=37748736 transferred=9215932 duration=10m24.4s
 ```
 
 A Metadata run also logs how many unchanged files were reused, how many chunks were reused and how much padding that added. A machine backup logs one progress line per 1%.
@@ -726,6 +726,8 @@ This client adds one small file at the root of its folder snapshots, `.proxmox_b
 ## 17. Troubleshooting
 
 **A USB or external source disk drops out during a backup.** The backup waits up to 2 minutes for the disk to come back, reopens the file and carries on, logging both events. If one file still cannot be read, only that file is affected: it is filled with zeros to its recorded size, marked incomplete in the log, and read again on the next run. If the disk does not come back within 2 minutes the backup fails. A recurring drop-out usually means a cable, port or hub problem; avoid chaining USB hubs.
+
+**A backup stays at "Creating VSS snapshot..." (Windows).** Another shadow copy is being made, by another backup program, System Restore or a backup of this app that timed out. The backup tries again every 30 seconds for up to 10 minutes, then fails with "another shadow copy was still being made after 10m0s". It never deletes other shadow copies or restarts the VSS service; `vssadmin list shadows` and `vssadmin list writers` show what VSS is doing.
 
 **A machine backup ends as partial.** Part of a disk could not be read (bad sectors). That part is zeros in the image; the card, the Reports row and the log say where and how much. Check the disk's health.
 

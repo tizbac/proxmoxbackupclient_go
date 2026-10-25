@@ -106,25 +106,20 @@ Windows configura el nuevo hardware virtual en el primer arranque («Getting dev
 | [Escenarios de restauración](docs/RESTORE_GUIDE.md) | Qué restauración usar en cada caso |
 | [Índice de manuales](docs/manual/README.md) | Un resumen de los tres manuales |
 
-## 🆕 Novedades de v0.9.0: varias programaciones por conjunto, instaladores, un servicio en Linux
+## 🆕 Novedades de v0.10.0: lo que de verdad cruza la red, claves que puede conservar, los manuales en la aplicación
 
-**v0.9.1** corrige la ISO de restauración bare-metal: la entrada de restauración vuelve a estar en su menú de arranque BIOS, una memoria Ventoy se reconoce como el disco de arranque y un disco de destino más pequeño que el original se rechaza antes de escribir nada. Además, anota en el comentario PBS de la instantánea un correo de notificación que no se pudo enviar.
+- **Lo que de verdad envía una copia.** La tarjeta de progreso, los Informes y el Registro de mensajes muestran **Datos nuevos/modificados**, **Datos transferidos** (lo que ocupó en la red, comprimido) y la **Relación de compresión**. Una copia incremental de un disco de 128 GB con 365 MB de datos modificados envió 53 MB.
+- **Una copia de máquina vuelve a empezar cuando se pierde la conexión con PBS**, tras 2, 5, 10 y 15 minutos, con la cuenta atrás en su tarjeta.
+- **Conserve una copia de la clave de cifrado**: **Guardar una copia...**, **Imprimir una clave en papel...** con un código QR, e **Importar...** para recuperar una clave desde un archivo, la cámara, una foto o texto tecleado, comprobada con su huella antes de guardarla.
+- **Los manuales de usuario en la aplicación**: una página **Ayuda** (F1) con los manuales de la GUI, de la línea de comandos y de la restauración bare-metal, sin conexión y acordes con la versión.
+- **Pausar desde la bandeja del sistema** (Windows), para las copias que ejecuta la aplicación o el servicio en segundo plano.
+- **Copia forense** para los conjuntos de máquina: lee también el espacio libre, de modo que los archivos borrados se pueden recuperar de la imagen.
+- **Las contraseñas de `config.json` se cifran en Windows** (DPAPI, para este equipo). Volver después a 0.9.1 o anterior obliga a introducirlas de nuevo.
+- **Configure muchos equipos con el MSI**: `msiexec /i ... CONFIGFILE=<file>` incorpora un archivo de configuración exportado, con ID de copia de seguridad formados a partir del nombre de cada equipo.
+- **Cada tarjeta de conjunto indica cuánto hace que se ejecutó por última vez**, y los enlaces, sockets y archivos de sistema que una copia omite a propósito ya no aparecen como aviso.
+- **Correcciones**: una copia podía quedarse colgada para siempre, y borrar todas las instantáneas de volumen (shadow copies) del equipo, cuando VSS estaba ocupado; las instantáneas VSS dejaban handles abiertos; un Ejecutar ahora entregado al servicio realizaba sus acciones tras la copia (y podía apagar el equipo) en cuanto empezaba la ejecución. La ISO de restauración bare-metal mantiene las contraseñas fuera de la lista de procesos, conserva el machine ID de un sistema Linux restaurado y apaga la máquina al terminar en lugar de volver a iniciar la restauración desde una memoria USB.
 
-- **Varias programaciones por conjunto de copias de seguridad**, desde cada pocos minutos hasta una vez al año: «todos los días a las 02:00» más «cada mes el último día» o «el 2.º martes», cada programación descrita con palabras y con sus 3 próximas ejecuciones. Los conjuntos existentes conservan su programación.
-- **Las copias de carpetas conservan los flujos de datos alternativos y los atributos extendidos NTFS** (Windows), como la marca «descargado de Internet», y la restauración los repone. La lista de limitaciones conocidas ya no contiene ninguna.
-- **Instaladores**: un **MSI para Windows** (aplicación y servicio en segundo plano en Program Files, entrada en el menú Inicio, actualizaciones en el sitio, conservar o borrar la configuración al desinstalar) y **paquetes Linux**, `.deb` (Debian, Ubuntu, Mint) y `.rpm` (Fedora), con la aplicación, las tres herramientas de línea de comandos, los manuales y entradas de menú.
-- **Un servicio en segundo plano en Linux** (`proxmoxbackupclient.service`): los conjuntos programados se ejecutan como root, también cuando no hay nadie conectado. Se activa en Preferencias > Avanzado > Ejecutar como servicio, igual que en Windows. **Reiniciar como administrador** ya funciona también en Linux (mediante pkexec).
-- **Pausar, Reanudar y Detener las copias que ejecuta el servicio**, con su tarjeta de progreso en la aplicación abierta.
-- **Un aviso cuando dos conjuntos comparten un grupo de copias** (mismo servidor, tipo e ID de copia de seguridad), con una insignia **ID compartido** en ambas tarjetas.
-- **Configuración protegida**: en Windows `C:\ProgramData\ProxmoxBackupClient` ahora solo es accesible para los administradores; en Linux la carpeta de configuración es privada de su propietario.
-- **Archivos desde copias de máquina con todos los sistemas de archivos habituales**: FAT, exFAT, ext2/3/4 y XFS además de NTFS. Las restauraciones de imágenes de Windows reponen también los permisos y los flujos de datos alternativos.
-- **Las copias de máquina Linux omiten el espacio libre** (ext2/3/4, XFS), como las de Windows desde v0.8.0.
-- **Recuperación y Reversión para conjuntos de máquina Linux**, y **desde la línea de comandos** para cualquier conjunto: `-list-sets`, `-undelete`, `-rollback` (sección 12 del [manual de la línea de comandos](docs/manual/CLI.md)).
-- Las herramientas de línea de comandos escriben los errores en stderr en lugar de mostrar ventanas de mensaje, y `proxmoxbackup-machine` envía su correo de notificación.
-- **La ISO de restauración bare-metal** nunca ofrece como disco de destino la memoria USB desde la que arrancó, y el manual explica cómo hacer coincidir el firmware (UEFI o BIOS) cuando una máquina física pasa a ser una VM.
-- **Todos los idiomas revisados** (17 traducciones, unas 1.850 cadenas), y las fechas y los números siguen el idioma de la aplicación.
-
-Versiones anteriores: **v0.8** copias de máquina más rápidas (espacio libre omitido, sectores defectuosos superados), archivos desde copias de máquina, Pausar y Reanudar; **v0.7** Recuperación y Reversión; **v0.6** copias de carpetas incrementales. El [CHANGELOG](CHANGELOG.md) recoge todos los cambios.
+Versiones anteriores: **v0.9** varias programaciones por conjunto, instaladores para Windows y Linux, un servicio en segundo plano en Linux, archivos desde copias de máquina con todos los sistemas de archivos habituales; **v0.8** copias de máquina más rápidas (espacio libre omitido, sectores defectuosos superados), archivos desde copias de máquina, Pausar y Reanudar; **v0.7** Recuperación y Reversión; **v0.6** copias de carpetas incrementales. El [CHANGELOG](CHANGELOG.md) recoge todos los cambios.
 
 ## 🤝 Compatible con el cliente oficial de Proxmox, en ambos sentidos
 

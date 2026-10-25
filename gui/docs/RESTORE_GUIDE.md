@@ -1,6 +1,6 @@
 # Restore scenarios
 
-Which restore to use, and where the steps are. Applies to v0.9.1 (see the [changelog](../CHANGELOG.md)). The steps themselves are in the [GUI manual's Restore chapter](manual/GUI.md#9-restore) and in [BMR.md](manual/BMR.md); this page only points the way.
+Which restore to use, and where the steps are. Applies to v0.10.0 (see the [changelog](../CHANGELOG.md)). The steps themselves are in the [GUI manual's Restore chapter](manual/GUI.md#9-restore) and in [BMR.md](manual/BMR.md); this page only points the way.
 
 | Scenario | Method | Steps |
 |---|---|---|

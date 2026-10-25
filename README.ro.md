@@ -106,25 +106,20 @@ Windows configurează noul hardware virtual la prima pornire („Getting devices
 | [Scenarii de restaurare](docs/RESTORE_GUIDE.md) | Ce restaurare să folosiți și când |
 | [Indexul manualelor](docs/manual/README.md) | O prezentare generală a celor trei manuale |
 
-## 🆕 Nou în v0.9.0: mai multe planificări per Set de Backup, instalatoare, un serviciu Linux
+## 🆕 Nou în v0.10.0: ce trece cu adevărat prin rețea, chei pe care le puteți păstra, manualele în aplicație
 
-**v0.9.1** corectează ISO-ul de restaurare bare-metal: intrarea de restaurare a revenit în meniul de pornire BIOS, un stick Ventoy este recunoscut ca disc de pornire, iar un disc țintă mai mic decât originalul este refuzat înainte de a se scrie ceva. De asemenea, notează în comentariul PBS al instantaneului un e-mail de notificare care nu a putut fi trimis.
+- **Ce trimite cu adevărat un backup.** Cardul de progres, Rapoartele și Jurnalul de mesaje arată **Date noi/modificate**, **Date transferate** (cât a ocupat în rețea, comprimat) și **Raport de compresie**. Un backup incremental al unui disc de 128 GB cu 365 MB de date modificate a trimis 53 MB.
+- **Un backup de mașină pornește din nou când se pierde conexiunea cu PBS**, după 2, 5, 10 și 15 minute, cu numărătoarea inversă pe cardul său.
+- **Păstrați o copie a cheii de criptare**: **Salvați o copie...**, **Tipăriți o cheie pe hârtie...** cu un cod QR și **Importă...** pentru a aduce înapoi o cheie dintr-un fișier, de la cameră, dintr-o fotografie sau din text tastat, verificată după amprenta ei înainte de a fi salvată.
+- **Manualele de utilizare în aplicație**: o pagină **Ajutor** (F1) cu manualele GUI, al liniei de comandă și al restaurării bare-metal, offline și potrivite cu versiunea.
+- **Pauză din zona de notificare** (Windows), pentru backupurile rulate de aplicație sau de serviciul de fundal.
+- **Copie criminalistică** pentru Seturile de Backup de mașină: citește și spațiul liber, astfel încât fișierele șterse pot fi recuperate din imagine.
+- **Parolele din `config.json` sunt criptate pe Windows** (DPAPI, pentru acest computer). Revenirea ulterioară la 0.9.1 sau la o versiune mai veche înseamnă reintroducerea lor.
+- **Configurați multe computere cu MSI-ul**: `msiexec /i ... CONFIGFILE=<file>` integrează un fișier de setări exportat, cu ID-uri de backup formate din numele fiecărui computer.
+- **Fiecare card de Set de Backup arată cât timp a trecut de la ultima rulare**, iar linkurile, socketurile și fișierele de sistem pe care un backup le omite intenționat nu mai apar ca avertisment.
+- **Corecturi**: un backup se putea bloca definitiv și putea șterge toate copiile shadow de pe computer când VSS era ocupat; instantaneele VSS lăsau handle-uri deschise; un Execută acum predat serviciului rula acțiunile de după backup (și putea opri computerul) chiar la pornirea rulării. ISO-ul de restaurare bare-metal ține parolele în afara listei de procese, păstrează machine ID-ul unui sistem Linux restaurat și oprește mașina la final în loc să pornească din nou restaurarea de pe un stick USB.
 
-- **Mai multe planificări per Set de Backup**, de la câteva minute până la o dată pe an: „zilnic la 02:00” plus „lunar, în ultima zi” sau „a 2-a marți”, fiecare planificare descrisă în cuvinte, cu următoarele 3 rulări. Seturile existente își păstrează planificarea.
-- **Backupurile de foldere păstrează fluxurile de date alternative și atributele extinse NTFS** (Windows), cum ar fi marcajul „descărcat de pe internet”, iar restaurarea le pune la loc. Lista de limitări cunoscute nu mai conține niciuna.
-- **Instalatoare**: un **MSI pentru Windows** (aplicația și serviciul de fundal în Program Files, intrare în meniul Start, actualizări pe loc, păstrarea sau ștergerea setărilor la dezinstalare) și **pachete Linux**, `.deb` (Debian, Ubuntu, Mint) și `.rpm` (Fedora), cu aplicația, cele trei instrumente în linie de comandă, manualele și intrări în meniu.
-- **Un serviciu de fundal pe Linux** (`proxmoxbackupclient.service`): Seturile de Backup planificate rulează ca root, chiar și când nu este nimeni autentificat. Se activează din Preferințe > Avansat > Rulare ca serviciu, ca pe Windows. **Repornește ca administrator** funcționează acum și pe Linux (prin pkexec).
-- **Pauză, Reia și Oprește pentru backupurile rulate de serviciu**, cu cardul lor de progres în aplicația deschisă.
-- **Un avertisment când două Seturi de Backup împart un grup de backup** (același server, tip și ID backup), cu o insignă **ID comun** pe ambele carduri.
-- **Setări protejate**: pe Windows `C:\ProgramData\ProxmoxBackupClient` este acum accesibil doar administratorilor; pe Linux folderul de setări este privat pentru proprietarul său.
-- **Fișiere din backupurile de mașină pentru toate sistemele de fișiere uzuale**: FAT, exFAT, ext2/3/4 și XFS, pe lângă NTFS. Restaurările imaginilor Windows refac și permisiunile și fluxurile de date alternative.
-- **Backupurile de mașină Linux sar peste spațiul liber** (ext2/3/4, XFS), ca cele Windows începând cu v0.8.0.
-- **Recuperare și Revenire pentru Seturile de Backup de mașină Linux** și **din linia de comandă** pentru orice Set de Backup: `-list-sets`, `-undelete`, `-rollback` (secțiunea 12 din [manualul liniei de comandă](docs/manual/CLI.md)).
-- Instrumentele în linie de comandă scriu erorile în stderr în loc să afișeze ferestre de mesaj, iar `proxmoxbackup-machine` trimite e-mailul de notificare.
-- **ISO-ul de restaurare bare-metal** nu oferă niciodată ca disc țintă stickul de pe care a pornit, iar manualul explică potrivirea firmware-ului (UEFI sau BIOS) când o mașină fizică devine VM.
-- **Toate limbile revizuite** (17 traduceri, aproximativ 1.850 de texte), iar datele și numerele urmează limba aplicației.
-
-Versiuni anterioare: **v0.8** backupuri de mașină mai rapide (spațiul liber sărit, sectoarele defecte depășite), fișiere din backupurile de mașină, Pauză și Reia; **v0.7** Recuperare fișiere șterse și Revenire; **v0.6** backupuri incrementale de foldere. [CHANGELOG](CHANGELOG.md) conține toate modificările.
+Versiuni anterioare: **v0.9** mai multe planificări per Set de Backup, instalatoare pentru Windows și Linux, un serviciu de fundal pe Linux, fișiere din backupurile de mașină pentru toate sistemele de fișiere uzuale; **v0.8** backupuri de mașină mai rapide (spațiul liber sărit, sectoarele defecte depășite), fișiere din backupurile de mașină, Pauză și Reia; **v0.7** Recuperare fișiere șterse și Revenire; **v0.6** backupuri incrementale de foldere. [CHANGELOG](CHANGELOG.md) conține toate modificările.
 
 ## 🤝 Compatibil cu clientul oficial Proxmox, în ambele sensuri
 

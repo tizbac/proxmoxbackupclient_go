@@ -15,7 +15,7 @@ Every release on the [releases page](https://github.com/mjb-is/proxmoxbackupclie
 | `ProxmoxBackupClient-v<version>-linux-amd64.tar.gz` | The Linux app without a package |
 | `ProxmoxBackupClient-CLI-v<version>-windows-amd64.zip` | `proxmoxbackup-directory.exe`, `proxmoxbackup-machine.exe` |
 | `ProxmoxBackupClient-CLI-v<version>-linux-amd64.tar.gz` | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd` |
-| `ProxmoxBackupClient-GO-BMR-Restore-v<version>.iso` | The bare-metal restore ISO, when the release changes it (v0.9.0 and v0.9.1 do) |
+| `ProxmoxBackupClient-GO-BMR-Restore-v<version>.iso` | The bare-metal restore ISO, when the release changes it (v0.9.0, v0.9.1 and v0.10.0 do) |
 
 Up to v0.8.1 a release had only the four archives; the ISO was attached to the release that last changed it.
 

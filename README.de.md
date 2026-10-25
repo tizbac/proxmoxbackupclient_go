@@ -106,25 +106,20 @@ Windows richtet die neue virtuelle Hardware beim ersten Start ein („Geräte we
 | [Wiederherstellungsszenarien](docs/RESTORE_GUIDE.md) | Welche Wiederherstellung wann |
 | [Übersicht der Handbücher](docs/manual/README.md) | Ein Überblick über die drei Handbücher |
 
-## 🆕 Neu in v0.9.0: mehrere Zeitpläne pro Sicherungssatz, Installer, ein Linux-Dienst
+## 🆕 Neu in v0.10.0: was wirklich über das Netzwerk geht, Schlüssel, die Sie aufbewahren können, die Handbücher in der App
 
-**v0.9.1** behebt Fehler in der Wiederherstellungs-ISO: Der Wiederherstellungseintrag ist wieder im BIOS-Bootmenü, ein Ventoy-Stick wird als Startdatenträger erkannt, und ein Zieldatenträger, der kleiner als das Original ist, wird abgelehnt, bevor etwas geschrieben wird. Außerdem vermerkt sie eine fehlgeschlagene Benachrichtigungs-E-Mail im PBS-Kommentar des Snapshots.
+- **Was eine Sicherung wirklich sendet.** Die Fortschrittskarte, die Berichte und das Meldungsprotokoll zeigen **Neue/geänderte Daten**, **Übertragene Daten** (was über das Netzwerk ging, komprimiert) und das **Kompressionsverhältnis**. Eine inkrementelle Sicherung einer 128-GB-Platte mit 365 MB geänderten Daten hat 53 MB gesendet.
+- **Eine Maschinensicherung startet neu, wenn die Verbindung zu PBS verloren geht**, nach 2, 5, 10 und 15 Minuten, mit dem Countdown auf ihrer Karte.
+- **Eine Kopie des Verschlüsselungsschlüssels aufbewahren**: **Kopie speichern...**, **Papierschlüssel drucken...** mit einem QR-Code und **Importieren...**, um einen Schlüssel aus einer Datei, mit der Kamera, aus einem Foto oder als eingetippten Text zurückzuholen, geprüft anhand seines Fingerabdrucks, bevor er gespeichert wird.
+- **Die Benutzerhandbücher in der App**: eine Seite **Hilfe** (F1) mit dem GUI-, dem Kommandozeilen- und dem Bare-Metal-Wiederherstellungshandbuch, offline und passend zur Version.
+- **Pause aus dem Infobereich** (Windows), für Sicherungen, die die App oder der Hintergrunddienst ausführt.
+- **Forensische Kopie** für Maschinen-Sicherungssätze: liest auch den freien Speicher, sodass gelöschte Dateien aus dem Abbild wiederhergestellt werden können.
+- **Passwörter in `config.json` werden unter Windows verschlüsselt** (DPAPI, für diesen Computer). Wer danach auf 0.9.1 oder älter zurückgeht, muss sie neu eingeben.
+- **Viele Computer mit dem MSI einrichten**: `msiexec /i ... CONFIGFILE=<file>` übernimmt eine exportierte Einstellungsdatei, mit Sicherungs-IDs aus dem eigenen Namen jedes Computers.
+- **Jede Karte eines Sicherungssatzes zeigt, wie lange sein letzter Lauf her ist**, und Links, Sockets und Systemdateien, die eine Sicherung absichtlich auslässt, erscheinen nicht mehr als Warnung.
+- **Korrekturen**: Eine Sicherung konnte dauerhaft hängen bleiben und jede Schattenkopie auf dem Computer löschen, wenn VSS beschäftigt war; VSS-Snapshots ließen Handles offen; ein an den Dienst übergebenes Jetzt ausführen führte seine Aktionen nach der Sicherung (bis hin zum Ausschalten des Computers) schon beim Start des Laufs aus. Die ISO für die Bare-Metal-Wiederherstellung hält Passwörter aus der Prozessliste heraus, behält die Machine-ID eines wiederhergestellten Linux-Systems und schaltet den Rechner am Ende aus, statt die Wiederherstellung erneut von einem USB-Stick zu starten.
 
-- **Mehrere Zeitpläne pro Sicherungssatz**, von alle paar Minuten bis einmal im Jahr: „täglich um 02:00“ plus „jeden Monat am letzten Tag“ oder „am 2. Dienstag“, jeder Zeitplan in Klartext mit seinen nächsten 3 Läufen. Bestehende Sätze behalten ihren Zeitplan.
-- **Ordnersicherungen behalten alternative Datenströme und erweiterte NTFS-Attribute** (Windows), etwa die Markierung „aus dem Internet heruntergeladen“, und eine Wiederherstellung stellt sie wieder her. Unter Bekannte Einschränkungen ist jetzt nichts mehr aufgeführt.
-- **Installer**: ein **Windows-MSI** (App und Hintergrunddienst unter Program Files, Eintrag im Startmenü, Aktualisierung an Ort und Stelle, Einstellungen beim Entfernen behalten oder löschen) und **Linux-Pakete**, `.deb` (Debian, Ubuntu, Mint) und `.rpm` (Fedora), mit der App, den drei Kommandozeilenwerkzeugen, den Handbüchern und Menüeinträgen.
-- **Ein Hintergrunddienst unter Linux** (`proxmoxbackupclient.service`): Geplante Sicherungssätze laufen als root, auch wenn niemand angemeldet ist. Eingeschaltet wird er unter Einstellungen > Erweitert > Als Dienst ausführen, wie unter Windows. **Als Administrator neu starten** funktioniert jetzt auch unter Linux (über pkexec).
-- **Pause, Fortsetzen und Stoppen für Sicherungen, die der Dienst ausführt**, mit ihrer Fortschrittskarte in der geöffneten App.
-- **Eine Warnung, wenn zwei Sicherungssätze eine Sicherungsgruppe teilen** (gleicher Server, Typ und gleiche Sicherungs-ID), mit einem Kennzeichen **Geteilte ID** auf beiden Karten.
-- **Einstellungen abgesichert**: Unter Windows ist `C:\ProgramData\ProxmoxBackupClient` jetzt nur noch für Administratoren zugänglich; unter Linux ist der Einstellungsordner privat für seinen Eigentümer.
-- **Dateien aus Maschinensicherungen aller gängigen Dateisysteme**: FAT, exFAT, ext2/3/4 und XFS ebenso wie NTFS. Wiederherstellungen von Windows-Abbildern stellen auch Berechtigungen und alternative Datenströme wieder her.
-- **Linux-Maschinensicherungen überspringen freien Speicher** (ext2/3/4, XFS), wie die unter Windows seit v0.8.0.
-- **Gelöschte Dateien und Zurücksetzen für Linux-Maschinen-Sicherungssätze**, und **per Kommandozeile** für jeden Sicherungssatz: `-list-sets`, `-undelete`, `-rollback` (Abschnitt 12 des [Kommandozeilen-Handbuchs](docs/manual/CLI.md)).
-- Die Kommandozeilenwerkzeuge geben Fehler auf stderr aus, statt Meldungsfenster anzuzeigen, und `proxmoxbackup-machine` verschickt seine Benachrichtigungs-E-Mail.
-- **Die ISO für die Bare-Metal-Wiederherstellung** bietet nie den Stick, von dem sie gestartet wurde, als Zieldatenträger an, und das Handbuch erklärt, wie die Firmware (UEFI oder BIOS) passen muss, wenn aus einem physischen Rechner eine VM wird.
-- **Alle Sprachen überarbeitet** (17 Übersetzungen, rund 1.850 Texte), und Datums- und Zahlenformate folgen der Sprache der App.
-
-Frühere Releases: **v0.8** schnellere Maschinensicherungen (freier Speicher übersprungen, defekte Sektoren überstanden), Dateien aus Maschinensicherungen, Pause und Fortsetzen; **v0.7** Gelöschte Dateien und Zurücksetzen; **v0.6** inkrementelle Ordnersicherungen. Das [CHANGELOG](CHANGELOG.md) enthält jede Änderung.
+Frühere Releases: **v0.9** mehrere Zeitpläne pro Sicherungssatz, Installer für Windows und Linux, ein Hintergrunddienst unter Linux, Dateien aus Maschinensicherungen aller gängigen Dateisysteme; **v0.8** schnellere Maschinensicherungen (freier Speicher übersprungen, defekte Sektoren überstanden), Dateien aus Maschinensicherungen, Pause und Fortsetzen; **v0.7** Gelöschte Dateien und Zurücksetzen; **v0.6** inkrementelle Ordnersicherungen. Das [CHANGELOG](CHANGELOG.md) enthält jede Änderung.
 
 ## 🤝 Kompatibel mit dem offiziellen Proxmox-Client, in beide Richtungen
 

@@ -106,25 +106,20 @@ Windows 在首次启动时会配置新的虚拟硬件（“正在准备设备”
 | [恢复场景](docs/RESTORE_GUIDE.md) | 什么情况下用哪种恢复 |
 | [手册索引](docs/manual/README.md) | 三本手册概览 |
 
-## 🆕 v0.9.0 新功能：每个 Backup Set 可设多个计划、安装包、Linux 服务
+## 🆕 v0.10.0 新功能：真正经过网络的数据量、可以保存的密钥、应用内的手册
 
-**v0.9.1** 修复了裸机恢复 ISO：恢复项重新出现在 BIOS 启动菜单中，Ventoy U 盘会被识别为启动盘，比原盘小的目标磁盘会在写入任何数据之前被拒绝。此外，通知邮件发送失败时会记在快照的 PBS 注释里。
+- **备份真正发送了多少。** 进度卡片、Reports 和 Message Log 显示 **New/changed data**、**Data transferred**（在网络上实际传输的量，已压缩）和 **Compression ratio**。一块 128 GB 磁盘的增量备份，变更数据 365 MB，实际发送 53 MB。
+- **与 PBS 的连接断开时，整机备份会重新开始**，分别在 2、5、10 和 15 分钟后重试，卡片上显示倒计时。
+- **保存一份加密密钥副本**：**Save a copy...**、带二维码的 **Print a paper key...**，以及 **Import...**，可从文件、摄像头、照片或输入的文本取回密钥，保存前会核对其指纹。
+- **应用内的用户手册**：**Help** 页面（F1）包含 GUI、命令行和裸机恢复手册，可离线使用，且与版本一致。
+- **从托盘 Pause**（Windows），适用于应用或后台服务运行的备份。
+- 整机 Backup Sets 的 **Forensic copy**：同时读取空闲空间，因此可以从镜像中恢复已删除的文件。
+- **Windows 上 `config.json` 中的密码已加密**（DPAPI，绑定本机）。之后若退回 0.9.1 或更早版本，需要重新输入密码。
+- **用 MSI 部署多台计算机**：`msiexec /i ... CONFIGFILE=<file>` 会合并导出的设置文件，Backup ID 取自每台计算机自己的名称。
+- **每张 Backup Set 卡片显示上次运行距今多久**；备份有意跳过的链接、套接字和系统文件不再显示为警告。
+- **修复**：VSS 繁忙时，备份可能永久卡住，并删除计算机上的所有卷影副本；VSS 快照泄漏句柄；交给服务执行的 Run Now 在运行刚开始时就执行了备份后操作（可能导致关机）。裸机恢复 ISO 不再在进程列表中暴露密码，保留恢复后 Linux 系统的 machine ID，完成后关闭机器，而不是从 U 盘再次启动恢复。
 
-- **每个 Backup Set 可设多个计划**，频率从每隔几分钟到每年一次：“每天 02:00”再加“每月最后一天”或“第 2 个星期二”，每个计划都用通俗文字描述，并列出接下来的 3 次运行。现有备份集保留原来的计划。
-- **文件夹备份保留备用数据流和 NTFS 扩展属性**（Windows），例如“从互联网下载”标记，恢复时一并还原。已知限制列表现已清空。
-- **安装包**：**Windows MSI**（应用和后台服务装在 Program Files 下，有开始菜单项，支持原地升级，卸载时可选择保留或删除设置），以及 **Linux 软件包** `.deb`（Debian、Ubuntu、Mint）和 `.rpm`（Fedora），包含应用、三个命令行工具、手册和菜单项。
-- **Linux 后台服务**（`proxmoxbackupclient.service`）：计划中的 Backup Sets 以 root 运行，无人登录时也会执行。与 Windows 一样，在 Preferences > Advanced > Run as Service 中开启。**Restart as administrator** 现在在 Linux 上也可用（通过 pkexec）。
-- **由服务运行的备份也可 Pause、Resume 和 Stop**，打开应用时能看到其进度卡片。
-- **两个 Backup Sets 共用同一备份组时发出警告**（相同服务器、类型和 Backup ID），两张卡片上都显示 **SHARED ID** 标记。
-- **设置目录加锁**：Windows 上 `C:\ProgramData\ProxmoxBackupClient` 现在仅对管理员开放；Linux 上设置目录仅属主可访问。
-- **从所有常见文件系统的整机备份中取回文件**：除 NTFS 外，还支持 FAT、exFAT、ext2/3/4 和 XFS。Windows 镜像恢复同时还原权限和备用数据流。
-- **Linux 整机备份跳过空闲空间**（ext2/3/4、XFS），与 Windows 自 v0.8.0 起的做法相同。
-- **Linux 整机 Backup Sets 支持 Undelete 和 Roll back**，任何 Backup Set 也可**在命令行中**使用：`-list-sets`、`-undelete`、`-rollback`（见[命令行手册](docs/manual/CLI.md)第 12 节）。
-- 命令行工具把错误输出到 stderr，不再弹出消息框；`proxmoxbackup-machine` 会发送通知邮件。
-- **裸机恢复 ISO** 不会把自己启动所用的 U 盘列为恢复目标磁盘；手册还说明了把物理机变成虚拟机时如何匹配固件（UEFI 或 BIOS）。
-- **所有语言均已审校**（17 种翻译，约 1,850 条字符串），日期和数字格式跟随应用语言。
-
-早期版本：**v0.8** 更快的整机备份（跳过空闲空间、遇到坏扇区不中断）、从整机备份中取回文件、Pause 和 Resume；**v0.7** Undelete 和 Roll back；**v0.6** 增量文件夹备份。所有改动见 [CHANGELOG](CHANGELOG.md)。
+早期版本：**v0.9** 每个 Backup Set 可设多个计划、Windows 和 Linux 安装包、Linux 后台服务、从所有常见文件系统的整机备份中取回文件；**v0.8** 更快的整机备份（跳过空闲空间、遇到坏扇区不中断）、从整机备份中取回文件、Pause 和 Resume；**v0.7** Undelete 和 Roll back；**v0.6** 增量文件夹备份。所有改动见 [CHANGELOG](CHANGELOG.md)。
 
 ## 🤝 与官方 Proxmox 客户端双向兼容
 

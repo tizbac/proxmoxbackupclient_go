@@ -106,25 +106,20 @@ Windows installerar den nya virtuella hårdvaran vid första starten (”Getting
 | [Återställningsscenarier](docs/RESTORE_GUIDE.md) | Vilken återställning som passar när |
 | [Manualindex](docs/manual/README.md) | En översikt över de tre manualerna |
 
-## 🆕 Nytt i v0.9.0: flera scheman per Backup Set, installationsprogram, en Linux-tjänst
+## 🆕 Nytt i v0.10.0: vad som faktiskt går över nätverket, nycklar du kan spara, manualerna i appen
 
-**v0.9.1** rättar ISO:n för bare-metal-återställning: återställningsvalet finns åter i BIOS-startmenyn, en Ventoy-sticka känns igen som startdisken, och en måldisk som är mindre än originalet avvisas innan något skrivs. Den noterar också ett aviseringsmejl som inte kunde skickas i ögonblicksbildens PBS-kommentar.
+- **Vad en backup faktiskt skickar.** Förloppskortet, Reports och Message Log visar **New/changed data** (nya/ändrade data), **Data transferred** (vad som gick över nätverket, komprimerat) och **Compression ratio** (komprimeringsgrad). En inkrementell backup av en disk på 128 GB med 365 MB ändrade data skickade 53 MB.
+- **En maskinbackup startar om när anslutningen till PBS bryts**, efter 2, 5, 10 och 15 minuter, med nedräkningen på sitt kort.
+- **Spara en kopia av krypteringsnyckeln**: **Save a copy...**, **Print a paper key...** med en QR-kod, och **Import...** för att hämta tillbaka en nyckel från en fil, kameran, ett foto eller inskriven text, kontrollerad mot sitt fingeravtryck innan den sparas.
+- **Användarmanualerna i appen**: en **Help**-sida (hjälp, F1) med manualerna för GUI, kommandorad och bare-metal-återställning, offline och för rätt version.
+- **Pause från meddelandefältet** (Windows), för backuper som appen eller bakgrundstjänsten kör.
+- **Forensic copy** (kriminalteknisk kopia) för maskinbackupsets: läser även ledigt utrymme, så att raderade filer kan återställas ur avbilden.
+- **Lösenord i `config.json` krypteras på Windows** (DPAPI, för den här datorn). Att sedan gå tillbaka till 0.9.1 eller äldre innebär att de måste anges igen.
+- **Konfigurera många datorer med MSI:n**: `msiexec /i ... CONFIGFILE=<file>` slår ihop en exporterad inställningsfil, med Backup ID:n som bildas av varje dators eget namn.
+- **Varje Backup Set-kort visar hur länge sedan det senast kördes**, och länkar, sockets och systemfiler som en backup avsiktligt utelämnar visas inte längre som en varning.
+- **Rättningar**: en backup kunde hänga sig för gott, och radera varje skuggkopia på datorn, när VSS var upptaget; VSS-ögonblicksbilder läckte handtag; en Run Now som lämnades över till tjänsten körde sina åtgärder efter backup (och kunde stänga av datorn) redan när körningen startade. ISO:n för bare-metal-återställning håller lösenord borta från processlistan, behåller machine ID för ett återställt Linux-system och stänger av maskinen när den är klar i stället för att starta återställningen igen från ett USB-minne.
 
-- **Flera scheman per Backup Set**, från några minuters intervall till en gång om året: ”varje dag kl. 02:00” plus ”varje månad den sista dagen” eller ”den 2:a tisdagen”, varje schema i klartext med sina nästa 3 körningar. Befintliga sets behåller sitt schema.
-- **Mappbackuper behåller alternativa dataströmmar och utökade NTFS-attribut** (Windows), till exempel markeringen ”hämtad från internet”, och en återställning lägger tillbaka dem. Listan över kända begränsningar innehåller nu inga.
-- **Installationsprogram**: en **Windows-MSI** (appen och bakgrundstjänsten under Program Files, post i Start-menyn, uppgradering på plats, behåll eller radera inställningarna vid avinstallation) och **Linux-paket**, `.deb` (Debian, Ubuntu, Mint) och `.rpm` (Fedora), med appen, de tre kommandoradsverktygen, manualerna och menyposter.
-- **En bakgrundstjänst på Linux** (`proxmoxbackupclient.service`): schemalagda Backup Sets körs som root, även när ingen är inloggad. Slås på under **Preferences > Advanced > Run as Service** (inställningar > avancerat > kör som tjänst), som på Windows. **Restart as administrator** fungerar nu även på Linux (via pkexec).
-- **Pause, Resume och Stop för backuper som tjänsten kör**, med förloppskortet i den öppna appen.
-- **En varning när två Backup Sets delar backupgrupp** (samma server, typ och Backup ID), med en **SHARED ID**-märkning på båda korten.
-- **Låsta inställningar**: på Windows är `C:\ProgramData\ProxmoxBackupClient` nu bara öppen för administratörer; på Linux är inställningsmappen privat för ägaren.
-- **Filer ur maskinbackuper för alla vanliga filsystem**: FAT, exFAT, ext2/3/4 och XFS utöver NTFS. Återställning av Windows-avbilder tar också tillbaka behörigheter och alternativa dataströmmar.
-- **Maskinbackuper på Linux hoppar över ledigt utrymme** (ext2/3/4, XFS), som Windows gör sedan v0.8.0.
-- **Undelete och Roll back för Linux-maskinbackupsets**, och **från kommandoraden** för alla Backup Sets: `-list-sets`, `-undelete`, `-rollback` (avsnitt 12 i [kommandoradsmanualen](docs/manual/CLI.md)).
-- Kommandoradsverktygen skriver fel till stderr i stället för att visa meddelanderutor, och `proxmoxbackup-machine` skickar sitt notifieringsmejl.
-- **ISO:n för bare-metal-återställning** erbjuder aldrig stickan den startade från som disk att återställa till, och manualen förklarar hur firmware (UEFI eller BIOS) ska matcha när en fysisk maskin blir en VM.
-- **Alla språk granskade** (17 översättningar, cirka 1 850 strängar), och datum och tal följer appens språk.
-
-Tidigare releaser: **v0.8** snabbare maskinbackup (ledigt utrymme hoppas över, dåliga sektorer överlevs), filer ur maskinbackuper, Pause och Resume; **v0.7** Undelete och Roll back; **v0.6** inkrementell mappbackup. [CHANGELOG](CHANGELOG.md) innehåller varje ändring.
+Tidigare releaser: **v0.9** flera scheman per Backup Set, installationsprogram för Windows och Linux, en bakgrundstjänst på Linux, filer ur maskinbackuper för alla vanliga filsystem; **v0.8** snabbare maskinbackup (ledigt utrymme hoppas över, dåliga sektorer överlevs), filer ur maskinbackuper, Pause och Resume; **v0.7** Undelete och Roll back; **v0.6** inkrementell mappbackup. [CHANGELOG](CHANGELOG.md) innehåller varje ändring.
 
 ## 🤝 Kompatibel med den officiella Proxmox-klienten, åt båda hållen
 

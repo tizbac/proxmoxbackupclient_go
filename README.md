@@ -107,25 +107,20 @@ Windows sets up the new virtual hardware on first start ("Getting devices ready"
 | [Restore scenarios](docs/RESTORE_GUIDE.md) | Which restore to use when |
 | [Manuals index](docs/manual/README.md) | An overview of the three manuals |
 
-## 🆕 New in v0.9.0: several schedules per Backup Set, installers, a Linux service
+## 🆕 New in v0.10.0: what really crosses the network, keys you can keep, the manuals in the app
 
-**v0.9.1** fixes the bare-metal restore ISO: the restore entry is back in its BIOS boot menu, a Ventoy stick is recognised as the boot disk, and a target disk smaller than the original is refused before anything is written. It also notes a failed notification e-mail in the snapshot's PBS comment.
+- **What a backup really sends.** The progress card, Reports and the Message Log show **New/changed data**, **Data transferred** (what it took on the network, compressed) and the **Compression ratio**. An incremental backup of a 128 GB disk with 365 MB of changed data sent 53 MB.
+- **A machine backup starts again when the connection to PBS is lost**, after 2, 5, 10 and 15 minutes, with the countdown on its card.
+- **Keep a copy of the encryption key**: **Save a copy...**, **Print a paper key...** with a QR code, and **Import...** to bring a key back from a file, the camera, a photo or typed text, checked against its fingerprint before it is saved.
+- **The user manuals in the app**: a **Help** page (F1) with the GUI, command-line and bare-metal restore manuals, offline and matching the version.
+- **Pause from the tray** (Windows), for backups the app or the background service runs.
+- **Forensic copy** for machine Backup Sets: reads free space too, so deleted files can be recovered from the image.
+- **Passwords in `config.json` are encrypted on Windows** (DPAPI, for this computer). Going back to 0.9.1 or older afterwards means entering them again.
+- **Set up many computers with the MSI**: `msiexec /i ... CONFIGFILE=<file>` merges an exported settings file, with backup IDs made from each computer's own name.
+- **Each Backup Set card says how long ago it last ran**, and links, sockets and system files a backup leaves out on purpose no longer show as a warning.
+- **Fixes**: a backup could hang for good, and delete every shadow copy on the computer, when VSS was busy; VSS snapshots leaked handles; Run Now handed to the service ran the set's after-backup actions (and could shut the computer down) as the run started. The bare-metal restore ISO keeps passwords out of the process list, keeps a restored Linux system's machine ID, and switches the machine off when done instead of starting the restore again from a USB stick.
 
-- **Several schedules per Backup Set**, from every few minutes to once a year: "every day at 02:00" plus "every month on the last day" or "the 2nd Tuesday", each schedule in plain words with its next 3 runs. Existing sets keep their schedule.
-- **Folder backups keep alternate data streams and NTFS extended attributes** (Windows), such as the "downloaded from the internet" mark, and a restore puts them back. Known Limitations now lists none.
-- **Installers**: a **Windows MSI** (app and background service under Program Files, Start menu entry, in-place upgrades, keep or delete the settings on removal) and **Linux packages**, `.deb` (Debian, Ubuntu, Mint) and `.rpm` (Fedora), with the app, the three command-line tools, the manuals and menu entries.
-- **A background service on Linux** (`proxmoxbackupclient.service`): scheduled Backup Sets run as root, also when nobody is logged in. Turn it on in Preferences > Advanced > Run as Service, as on Windows. **Restart as administrator** now works on Linux too (through pkexec).
-- **Pause, Resume and Stop for backups the service runs**, with their progress card in the open app.
-- **A warning when two Backup Sets share a backup group** (same server, type and Backup ID), with a **SHARED ID** badge on both cards.
-- **Settings locked down**: on Windows `C:\ProgramData\ProxmoxBackupClient` is now open to administrators only; on Linux the settings folder is private to its owner.
-- **Files back from machine backups of every common file system**: FAT, exFAT, ext2/3/4 and XFS as well as NTFS. Windows image restores also put back permissions and alternate data streams.
-- **Linux machine backups skip free space** (ext2/3/4, XFS), as Windows ones do since v0.8.0.
-- **Undelete and Roll back for Linux machine Backup Sets**, and **from the command line** for any Backup Set: `-list-sets`, `-undelete`, `-rollback` (section 12 of the [command line manual](docs/manual/CLI.md)).
-- The command-line tools print errors to stderr instead of showing message boxes, and `proxmoxbackup-machine` sends its notification e-mail.
-- **The bare-metal restore ISO** never offers the stick it booted from as the disk to restore onto, and the manual explains matching the firmware (UEFI or BIOS) when a physical machine becomes a VM.
-- **Every language reviewed** (17 translations, about 1,850 strings), and dates and numbers follow the app's language.
-
-Earlier releases: **v0.8** faster machine backups (free space skipped, bad sectors survived), files back from machine backups, Pause and Resume; **v0.7** Undelete and Roll back; **v0.6** incremental folder backups. The [CHANGELOG](CHANGELOG.md) has every change.
+Earlier releases: **v0.9** several schedules per Backup Set, Windows and Linux installers, a Linux background service, files back from machine backups of every common file system; **v0.8** faster machine backups (free space skipped, bad sectors survived), files back from machine backups, Pause and Resume; **v0.7** Undelete and Roll back; **v0.6** incremental folder backups. The [CHANGELOG](CHANGELOG.md) has every change.
 
 ## 🤝 Compatible with the official Proxmox client, in both directions
 
