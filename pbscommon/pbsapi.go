@@ -403,6 +403,18 @@ func (pbs *PBSClient) authHeaderLines() []string {
 	return []string{fmt.Sprintf("Authorization: PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret)}
 }
 
+// upgradeHostHeader is the Host header of the hand-written HTTP/1.1 upgrade
+// request: the host of BaseURL as written, like net/http and
+// proxmox-backup-client send it, and not the dial address, which always
+// carries the port. "pbs.example.com:443" defeats a reverse proxy routing on
+// an exact Host match (upstream #89, fixed there in #116).
+func upgradeHostHeader(baseURL, addr string) string {
+	if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return addr
+}
+
 // redactRequest masks the credential from a fully-built raw request string so
 // it can be logged without leaking the ticket / CSRF token / API secret.
 func (pbs *PBSClient) redactRequest(s string) string {
@@ -1378,7 +1390,7 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 				} else {
 					requestLines = append(requestLines, "GET /api2/json/reader?"+q.Encode()+" HTTP/1.1")
 				}
-				requestLines = append(requestLines, "Host: "+addr)
+				requestLines = append(requestLines, "Host: "+upgradeHostHeader(pbs.BaseURL, addr))
 				requestLines = append(requestLines, pbs.authHeaderLines()...)
 				if !reader {
 					requestLines = append(requestLines, "Upgrade: proxmox-backup-protocol-v1")
