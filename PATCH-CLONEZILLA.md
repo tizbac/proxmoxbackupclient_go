@@ -192,8 +192,8 @@ Where `ocs-pbs-nbd` above hands off to Clonezilla's own generic device-image/
 device-device wizard once the snapshot is attached, this is a separate,
 first-position, default-on-timeout **boot menu entry** — not a Clonezilla
 main-menu option — that skips Clonezilla's language/keyboard prompts and its
-own wizard entirely, walking straight from PBS credentials to a completed,
-auto-rebooted restore.
+own wizard entirely, walking straight from PBS credentials to a completed
+restore and a powered-off machine, ready to start from the restored disk.
 
 - Helper `/usr/local/sbin/ocs-pbs-bare-metal-restore`
   (`clonezilla-patch/ocs-pbs-bare-metal-restore`) is injected into the live
@@ -254,12 +254,15 @@ When the automated flow runs:
    before the write — deliberately just the one dialog, since
    `ocs-onthefly` itself still asks its own two separate confirmations
    before actually wiping the destination.
-6. Runs `ocs-onthefly -icds -k0 -sfsck -j2 -f <nbd-device> -d <target>` directly
-   (`-j2` restores the data between the MBR and the first partition, where GRUB
-   keeps its core image on a BIOS/MBR disk), with no `-p` postaction — success
-   shows a plain-language completion
-   message and reboots on its own; failure shows the exit code and where to
-   find the logs, no reboot.
+6. Runs `ocs-onthefly -icds -k0 -sfsck -j2 -irhr -f <nbd-device> -d <target>`
+   directly (`-j2` restores the data between the MBR and the first partition,
+   where GRUB keeps its core image on a BIOS/MBR disk; `-irhr` keeps a restored
+   Linux system's `/etc/machine-id` and udev hardware records, which Clonezilla
+   otherwise resets for cloning), with no `-p` postaction — success shows a
+   plain-language completion message and then switches the machine off, so
+   the boot stick can be removed and the next start is the restored disk (a
+   reboot started the stick, and this flow, again); failure shows the exit
+   code and where to find the logs, and stays on.
 
 **English/UK-only, by design, for now:** `locales=en_US.UTF-8 keyboard-layouts=gb` is hardcoded
 in both menu patches, so this entry skips Clonezilla's language/keyboard prompt entirely rather
