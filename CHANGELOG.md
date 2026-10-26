@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **A machine backup of a Windows disk that also holds Linux on MBR failed** with "failed to read partition entirely", the first number larger than the second (reported in the original project as tizbac/proxmoxbackupclient_go#114). On an MBR disk Windows lists the primary partitions first and the logical ones after them, and the disk was read in that order: with Linux in logical partitions before the recovery partition at the end of the disk, the part before Linux was never read. The partitions are now read in disk order, and a disk whose partitions overlap, or end past the end of the disk, is refused before the VSS snapshot is taken. Reproduced on a test machine with a disk laid out that way: the backup failed before and completes now, and every chunk outside the NTFS partition matches the disk.
+- **A Windows machine backup stored the NTFS backup boot sector as zeros.** A partition with a drive letter is read through its VSS shadow copy, which covers the volume and not the partition's last sector, where NTFS keeps its backup boot sector; that sector went into the image as zeros, and `ntfsfix -n` on a restored image reported "alternate boot sector BAD". The end of the partition past the volume is now read from the disk itself. Checked on a test machine: the restored image's last sector matches the disk, and `ntfsfix -n` reports the alternate boot sector OK.
+- **`proxmoxbackup-machine -config file.json` ignored the file's `backupdev`** unless `-backupdev` was also given, and stopped at "Missing or invalid options". `-backupdev` now replaces the file's device list only when it is given.
 
 ## [0.10.0] - 2026-10-25
 

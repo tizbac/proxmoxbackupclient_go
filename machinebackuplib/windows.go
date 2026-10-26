@@ -501,7 +501,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			return true
 		}
 
-		// zeroBlk pads a shadow copy smaller than its partition.
+		// zeroBlk stands in for free space and unreadable sectors.
 		zeroBlk := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
 		block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
 
@@ -533,15 +533,14 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 					return err
 				}
 				// Read the shadow up to the partition end: a larger shadow is
-				// cut at the partition boundary, a smaller one (file system
-				// smaller than the partition) is padded with zeros below.
-				// Reads stay inside the shadow, so none runs off its end.
+				// cut at the partition boundary, and past the end of a smaller
+				// one (the volume ends before the partition) the rest is read
+				// from the disk (shadowThenDisk).
 				if uint64(l) > length {
 					log.Print("Harmless warning: VSS snapshot is larger than partition, will read only up to the partition end")
-				} else {
-					length = uint64(l)
 				}
-				src, srcOff, name = snapshot_file, 0, fmt.Sprintf("%s: (shadow copy %s)", P.Letter, snap.Id)
+				name = fmt.Sprintf("%s: (shadow copy %s)", P.Letter, snap.Id)
+				src, srcOff = &shadowThenDisk{shadow: snapshot_file, disk: F, start: int64(P.StartByte), name: name}, 0
 				if !readFree {
 					if m, err := readUsedMap(snapshot_file, snapPath); err != nil {
 						log.Printf("Reading all of %s, free space included: %v", name, err)

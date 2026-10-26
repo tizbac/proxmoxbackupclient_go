@@ -107,7 +107,11 @@ func loadConfig() *machinebackuplib.Config {
 	if *backupIDFlag != "" {
 		config.BackupID = *backupIDFlag
 	}
-	config.BackupDevices = backupdevs
+	// -backupdev replaces the config file's device list only when given;
+	// otherwise the file's "backupdev" is kept.
+	if len(backupdevs) > 0 {
+		config.BackupDevices = backupdevs
+	}
 	if *readFreeSpaceFlag {
 		config.ReadFreeSpace = true
 	}
