@@ -787,6 +787,23 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 	}, nil
 }
 
+// specialFileKind names a FIFO, socket or device node for the skipped list,
+// and returns "" for anything else. ModeIrregular is deliberately not here:
+// on Windows Go sets it on any reparse point that is not a link (OneDrive
+// placeholders among them), and those open and read normally.
+func specialFileKind(m os.FileMode) string {
+	switch {
+	case m&os.ModeNamedPipe != 0:
+		return "Pipe (FIFO)"
+	case m&os.ModeSocket != 0:
+		return "Socket"
+	case m&os.ModeDevice != 0:
+		return "Device"
+	default:
+		return ""
+	}
+}
+
 // On pxar first item and consquently entry point must always be WriteDir , because toplevel is always a directory
 // So backing up single file is not possible
 func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, error) {
@@ -806,6 +823,17 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 		skipMsg := fmt.Sprintf("Junction point (skipped): %s", path)
 		a.SkippedFiles = append(a.SkippedFiles, skipMsg)
 		return CatalogFile{}, nil // Return nil error to continue backup
+	}
+
+	// FIFOs, sockets and device nodes hold no file data. Opening a FIFO blocks
+	// until a writer appears, so the backup hung for good; a socket cannot be
+	// opened; a device node was opened as the device and stored as an empty
+	// regular file. Skip them, like junction points: an expected skip, not a
+	// read error.
+	if kind := specialFileKind(fileInfo.Mode()); kind != "" {
+		a.SkippedFiles = append(a.SkippedFiles,
+			fmt.Sprintf("%s (skipped, holds no file data): %s", kind, path))
+		return CatalogFile{}, nil
 	}
 
 	file, err := os.Open(path)
