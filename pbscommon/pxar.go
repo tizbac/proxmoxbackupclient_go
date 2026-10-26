@@ -787,6 +787,10 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 	}, nil
 }
 
+// openForRead opens a file for WriteFile; tests replace it to simulate read
+// errors part way through a file.
+var openForRead = func(path string) (io.ReadCloser, error) { return os.Open(path) }
+
 // On pxar first item and consquently entry point must always be WriteDir , because toplevel is always a directory
 // So backing up single file is not possible
 func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, error) {
@@ -808,7 +812,7 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 		return CatalogFile{}, nil // Return nil error to continue backup
 	}
 
-	file, err := os.Open(path)
+	file, err := openForRead(path)
 
 	if err != nil {
 		// Log file open errors but continue backup - don't fail on locked/system files
@@ -870,6 +874,11 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 
 	readbuffer := make([]byte, 1024*64)
 	var written uint64
+	// readFailed is set when the file could not be read to the end (a bad
+	// sector, a cloud placeholder that cannot be fetched, a locked range). That
+	// file is zero-padded and flagged below and the backup carries on, as it
+	// does for a file that cannot be opened.
+	var readFailed error
 
 	for written < declaredSize {
 		toRead := uint64(len(readbuffer))
@@ -888,17 +897,23 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 			break
 		}
 		if err != nil {
-			return CatalogFile{}, fmt.Errorf("failed to read from %s: %w", path, err)
+			readFailed = err
+			break
 		}
 	}
 
-	// File shrank since Lstat (or read short): pad with zeros so the emitted
-	// payload matches the declared length and the stream stays aligned. Flag it as
-	// a content-instability read error so the backup is not reported as fully
-	// verified (v2-H-02) rather than silently passing.
+	// File shrank since Lstat (or read short), or could not be read to the end:
+	// pad with zeros so the emitted payload matches the declared length and the
+	// stream stays aligned. Flag it as a read error so the backup is not reported
+	// as fully verified (v2-H-02) rather than silently passing.
 	if written < declaredSize {
-		a.addReadError(
-			fmt.Sprintf("File shrank during backup, zero-padded to declared size (content inconsistent): %s", path))
+		if readFailed != nil {
+			a.addReadError(
+				fmt.Sprintf("Read failed after %d of %d bytes, zero-padded to declared size (content incomplete): %s (Error: %v)", written, declaredSize, path, readFailed))
+		} else {
+			a.addReadError(
+				fmt.Sprintf("File shrank during backup, zero-padded to declared size (content inconsistent): %s", path))
+		}
 		pad := make([]byte, 1024*64)
 		for written < declaredSize {
 			n := uint64(len(pad))
