@@ -3690,7 +3690,7 @@ function App() {
                 const block = Math.min(blocks, Math.max(1, Math.ceil(s.diskDone / BLOCK)))
                 let stage
                 if (backupStopRequested) {
-                  stage = tl('stageStopping', 'Stopping after the current file...')
+                  stage = tl('stageStopping', 'Stopping...')
                 } else if (paused) {
                   stage = `⏸ ${tl('stagePaused', 'Paused for {duration}. The connection to the server stays open: Resume carries on from here.').replace('{duration}', formatDuration(Math.max(0, (now - backupPause.since) / 1000)))}`
                 } else if (s.phase === 'retry_wait') {

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Stop takes effect part way through a large file** (folder backups), instead of after it, from the original project's change (tizbac/proxmoxbackupclient_go#117). The archive writer checks for Stop before every 64 KiB block, the classic and split (Data and Metadata mode) archives alike; chunk upload retries end on Stop, chunks still queued are not sent or counted as failed, and a Stop after the last write still drops the session before the indexes are closed, so no snapshot is kept. The card says **Stopping...** in all 18 languages, and the manual describes the new behaviour. The upload workers of a stopped or failed folder no longer stay behind after the run.
+
 ## [0.10.0] - 2026-10-25
 
 What a backup really sends over the network, a machine backup that starts again when the connection drops, encryption keys you can keep and bring back (paper key, QR code, camera), the user manuals in the app, Pause from the tray, forensic machine copies, passwords in `config.json` encrypted on Windows, MSI deployment with a settings file, and fixes for VSS, the background service and the bare-metal restore ISO.

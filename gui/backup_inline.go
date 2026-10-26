@@ -480,8 +480,48 @@ type ChunkState struct {
 	// and upload overlap instead of waiting for each other.
 	uploadJobs chan uploadJob
 	uploadWG   sync.WaitGroup
+	closeOnce  sync.Once
 	fatalErrMu sync.Mutex
 	fatalErr   error
+
+	// cancelCtx is the Stop button's context: it ends the upload retries,
+	// and chunks still queued when it is cancelled are not sent (upstream
+	// #117). nil = never cancelled.
+	cancelCtx context.Context
+}
+
+// retryParent is the context the chunk upload retries derive from: the Stop
+// button's one when set, so a cancel ends the retries and their waits.
+func (c *ChunkState) retryParent() context.Context {
+	if c.cancelCtx != nil {
+		return c.cancelCtx
+	}
+	return context.Background()
+}
+
+// stopped reports whether the Stop button's context has been cancelled.
+func (c *ChunkState) stopped() bool {
+	return c.cancelCtx != nil && c.cancelCtx.Err() != nil
+}
+
+// latchFatal records err as the first fatal error, if none is recorded yet.
+func (c *ChunkState) latchFatal(err error) {
+	c.fatalErrMu.Lock()
+	if c.fatalErr == nil {
+		c.fatalErr = err
+	}
+	c.fatalErrMu.Unlock()
+}
+
+// closeUploads stops the upload workers taking new jobs; they end after the
+// one they are on. EOF calls it and then waits for them; a backup that ends
+// with an error (a Stop, a failed walk) calls it without waiting, so the
+// workers do not stay behind once the session is dropped.
+func (c *ChunkState) closeUploads() {
+	if c.uploadJobs == nil {
+		return
+	}
+	c.closeOnce.Do(func() { close(c.uploadJobs) })
 }
 
 func (c *ChunkState) Init(client *pbscommon.PBSClient, newchunk *atomic.Uint64, reusechunk *atomic.Uint64, failedchunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool], onProgress func(float64, string), progress *jobProgress, onStats func(*BackupProgressStats), currentDir string) {
@@ -521,13 +561,24 @@ func (c *ChunkState) startUploadWorkers(client *pbscommon.PBSClient) {
 		go func() {
 			defer c.uploadWG.Done()
 			for job := range c.uploadJobs {
+				// Stopped: send nothing more. The session is dropped, so
+				// the walk only needs to see the cancel (checkFatal).
+				if c.stopped() {
+					c.latchFatal(c.cancelCtx.Err())
+					continue
+				}
 				retryConfig := retry.DefaultConfig()
 				retryConfig.MaxAttempts = 5
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				ctx, cancel := context.WithTimeout(c.retryParent(), 5*time.Minute)
 				err := retry.DoWithJitter(ctx, retryConfig, retry.DefaultRetryable, func() error {
 					return client.UploadDynamicCompressedChunk(c.wrid, job.digest, job.data)
 				})
 				cancel()
+				if err != nil && c.stopped() {
+					// Ended by Stop, not a failed chunk.
+					c.latchFatal(c.cancelCtx.Err())
+					continue
+				}
 				if err != nil {
 					errMsg := fmt.Sprintf("⚠️  Failed to upload chunk %s after %d retries: %v", job.digest, retryConfig.MaxAttempts, err)
 					writeBackupLog(errMsg)
@@ -766,7 +817,7 @@ func (c *ChunkState) EOF(client *pbscommon.PBSClient) error {
 	// Every remaining chunk has been handed to the upload workers (possibly
 	// still in flight) — stop accepting new jobs and wait for all of them to
 	// finish before touching AssignDynamicChunks/CloseDynamicIndex below.
-	close(c.uploadJobs)
+	c.closeUploads()
 	c.uploadWG.Wait()
 	if err := c.checkFatal(); err != nil {
 		return err
@@ -1337,7 +1388,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 				// the generic "directory-local error, keep going" branch
 				// below would silently swallow Stop and move on to the next
 				// directory instead, exactly the bug this fixes.
-				if errors.Is(err, context.Canceled) {
+				if errors.Is(err, context.Canceled) || errors.Is(err, pbscommon.ErrWriteCancelled) {
 					writeBackupLog(fmt.Sprintf("Cancellation requested — stopping mid-backup of %s", dir))
 					client.Close()
 					if opts.OnComplete != nil {
@@ -2219,11 +2270,21 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 
 	writeBackupLog(fmt.Sprintf("Known chunks: %d", knownChunks.Len()))
 
-	pxarChunk := ChunkState{}
+	pxarChunk := ChunkState{cancelCtx: ctx}
 	// payloadChunk carries the file contents of a split archive and drives
 	// progress (its position is the archived data); pxarChunk is then the
 	// small metadata stream and reports no progress of its own.
 	var payloadChunk *ChunkState
+	// A run that ends with an error (a Stop, a failed walk) never reaches
+	// EOF: let the upload workers go, the caller drops the session.
+	defer func() {
+		if returnErr != nil {
+			pxarChunk.closeUploads()
+			if payloadChunk != nil {
+				payloadChunk.closeUploads()
+			}
+		}
+	}()
 	if split {
 		pxarChunk.Init(client, newchunk, reusechunk, failedchunk, knownChunks, nil, jobProg, nil, "")
 
@@ -2236,7 +2297,7 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 			payloadKnown.Set(shahash, true)
 		}
 		writeBackupLog(fmt.Sprintf("Known payload chunks: %d", payloadKnown.Len()))
-		payloadChunk = &ChunkState{}
+		payloadChunk = &ChunkState{cancelCtx: ctx}
 		payloadChunk.Init(client, newchunk, reusechunk, failedchunk, payloadKnown, progress, jobProg, onStats, backupdir)
 		payloadChunk.wrid, err = client.CreateDynamicIndex(payloadName)
 		if err != nil {
@@ -2329,6 +2390,11 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 		return 0, nil, logicalSkipped, logicalExcluded, logicalReadErrors, fmt.Errorf("backup produced 0 bytes for %s — directory may be empty, inaccessible, or all files were excluded", backupdir)
 	}
 
+	// A Stop that lands after the last archive write: stop before closing
+	// the indexes, so the session is dropped with nothing committed (#117).
+	if ctx != nil && ctx.Err() != nil {
+		return 0, nil, logicalSkipped, logicalExcluded, logicalReadErrors, ctx.Err()
+	}
 	if err = pxarChunk.EOF(client); err != nil {
 		return 0, nil, logicalSkipped, logicalExcluded, logicalReadErrors, err
 	}

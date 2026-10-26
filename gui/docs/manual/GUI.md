@@ -430,7 +430,7 @@ The line under the bar says what the run is doing:
 | Connecting to the server... / Taking a snapshot of the volumes... | A machine backup getting ready |
 | Reading disk 1 of 2: CT500MX500SSD1, \\.\PhysicalDrive0 (465.8 GiB) | A machine backup reading a disk: its model, device and size |
 | Finishing: closing the disk image and uploading the manifest... | The last step of a machine backup |
-| Stopping after the current file... | You pressed Stop |
+| Stopping... | You pressed Stop |
 | ⏸ Paused for ... | You pressed Pause; the time counts up |
 
 The rows of a folder backup:
@@ -477,7 +477,7 @@ The PC kept recording without dropping frames throughout. The network figures ab
 
 Pause works for folder and machine backups, whether the app or the background service runs them. With **Run as Service** on ([section 15](#15-background-service-tray-and-closing-the-window)), a Backup Set the service starts on its schedule shows the same card in an open app window, with its set's name, within a few seconds, and Pause, Resume and Stop act on the service's run. A window opened during the run picks it up, paused or not. On Windows the tray icon's menu has **Pause backup** too (**Resume backup** while paused), so a run can be paused without opening the window ([section 15](#15-background-service-tray-and-closing-the-window)). The card of a run the service started on its own fills in as for a run of the app's own: the stage line, the percentage, and the Files, Folder, Upload and data rows. (A background service from a version before v0.9.0 sends only its percentage, and the other rows then read **Not available**.)
 
-**Stop** ends the run after the current file, and also works while paused. Reports record it as cancelled (⏹️), not failed.
+**Stop** ends the run at once, part way through a file if need be, and also works while paused. No snapshot is kept for the stopped run, so the next backup compares with the last complete one. Reports record it as cancelled (⏹️), not failed.
 
 Anything waiting behind the run is listed under the card.
 

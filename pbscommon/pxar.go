@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/bits"
@@ -354,6 +355,11 @@ func ca_make_bst(input []GoodByeItem, output *[]GoodByeItem) {
 
 type PXAROutCB func([]byte) error
 
+// ErrWriteCancelled is returned by WriteDir and WriteFile once
+// PXARArchive.Cancelled reports true. The archive is then incomplete: the
+// caller must drop the backup session instead of finishing it.
+var ErrWriteCancelled = errors.New("archive write cancelled")
+
 // MetaCollector is an optional hook invoked during the PXAR walk for every
 // directory and regular file that is actually being backed up (after skip
 // checks). Implementations capture per-entry metadata that PXAR itself cannot
@@ -386,14 +392,22 @@ type PXARArchive struct {
 	// do nothing at all for the common case of a single folder (or a whole
 	// single disk) — the backup simply ran to completion regardless, no
 	// matter how long the click-to-stop wait. This checks at file
-	// granularity instead: still not instant for one single giant file, but
-	// responsive for everything else.
+	// granularity, and Flush/flushPayload check it again before every 64 KiB
+	// block they write, so a large file stops part way through too (from
+	// upstream #117). A cancel ends the walk with Ctx.Err().
 	Ctx context.Context
 
 	// Pause, when set, holds the walk while the user has the backup paused
 	// (see pause.go). It is checked at the same points as Ctx, and also
 	// between read blocks so a large file pauses part way through.
 	Pause *PauseGate
+
+	// Cancelled, if set, is checked before every write of the archive (at
+	// least every 64 KiB). Once it returns true the walk stops with
+	// ErrWriteCancelled, so a cancel no longer waits for the end of a large
+	// folder or file. Upstream's hook (#117); Ctx does the same for callers
+	// that have a context.
+	Cancelled func() bool
 
 	// OnFile, when set, is called with each file's path as WriteFile starts it
 	// (progress display only; must be cheap and non-blocking).
@@ -518,11 +532,26 @@ type PXARArchive struct {
 // PayloadPos returns how many bytes have been written to the payload stream.
 func (a *PXARArchive) PayloadPos() uint64 { return a.payloadPos }
 
+// writeCancelled reports why an archive write has to stop: Ctx's error once
+// it is cancelled, ErrWriteCancelled once the Cancelled hook fires, else nil.
+func (a *PXARArchive) writeCancelled() error {
+	if a.Ctx != nil && a.Ctx.Err() != nil {
+		return a.Ctx.Err()
+	}
+	if a.Cancelled != nil && a.Cancelled() {
+		return ErrWriteCancelled
+	}
+	return nil
+}
+
 // flushPayload hands the pending payload-stream bytes to PayloadWriteCB.
 func (a *PXARArchive) flushPayload() error {
 	b := make([]byte, 64*1024)
 	wrote := false
 	for {
+		if err := a.writeCancelled(); err != nil {
+			return err
+		}
 		count, _ := a.payloadBuffer.Read(b)
 		if count <= 0 {
 			break
@@ -729,9 +758,11 @@ func (a *PXARArchive) CatalogPos() uint64 {
 //It is useful when we building a data structure and we need to keep a specific offset and output it only at the end
 
 func (a *PXARArchive) Flush() error {
-
 	b := make([]byte, 64*1024)
 	for {
+		if err := a.writeCancelled(); err != nil {
+			return err
+		}
 		count, _ := a.buffer.Read(b)
 		if count <= 0 {
 			break
