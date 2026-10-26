@@ -231,9 +231,11 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 	ch := make(chan []byte)
 	errCh := make(chan error, 1)
 	uploadDone := make(chan struct{})
+	readerDone := make(chan struct{})
 
 	go func() {
-		err := writeSegments(dev, segments, total, ch, uploadDone, progressCallback)
+		defer close(readerDone)
+		err := readDiskSegments(dev, segments, total, ch, uploadDone, progressCallback)
 		// Publish the result BEFORE closing ch — see the ordering contract on
 		// uploadWorker. errCh is buffered, so this send never blocks.
 		errCh <- err
@@ -247,12 +249,23 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 	var uploadErr error
 	go func() {
 		defer close(uploadDone)
-		uploadErr = uploadWorker(client, fidxName, total, ch, errCh)
+		uploadErr = uploadDiskImage(client, fidxName, total, ch, errCh)
 	}()
 
 	<-uploadDone
+	// The reader holds the snapshot devices open until it returns (it stops at
+	// its next block once the upload has ended). Returning before then left
+	// them open while the caller destroyed the snapshots, which failed with
+	// "resource busy" after an upload error.
+	<-readerDone
 	return uploadErr
 }
+
+// Test seams for streamStitchedDisk's reader and uploader.
+var (
+	readDiskSegments = writeSegments
+	uploadDiskImage  = uploadWorker
+)
 
 func assembleSegments(total uint64, regions []diskSegment) []diskSegment {
 	sort.Slice(regions, func(i, j int) bool { return regions[i].start < regions[j].start })
