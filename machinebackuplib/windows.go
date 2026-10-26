@@ -423,6 +423,13 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 		return 0, err
 	}
 
+	// Planned before the snapshot, so a layout that cannot be read refuses
+	// the backup without taking one.
+	parts, err = planDiskReads(parts, uint64(total))
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", diskdev, err)
+	}
+
 	// Visible "working" phase before the snapshot step: on a live Windows
 	// system CreateVSSSnapshot can take a while (it runs the VSS writers),
 	// and without this the GUI progress bar appears frozen at 0%.
@@ -431,33 +438,6 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 	}
 
 	return total, snapshot.CreateVSSSnapshot(snapshot_paths, false, func(snapshots map[string]snapshot.SnapShot) error {
-		newparts := make([]Partition, 0)
-		var curpos uint64 = 0
-		for _, P := range parts {
-			if P.StartByte != curpos { //Add a fake partition to backup raw data between
-				newparts = append(newparts, Partition{
-					StartByte:   curpos,
-					EndByte:     P.StartByte,
-					RequiresVSS: false,
-					Letter:      "",
-					Skip:        false,
-				})
-			}
-			newparts = append(newparts, P)
-			curpos = P.EndByte
-		}
-		if curpos < uint64(total) {
-			newparts = append(newparts, Partition{
-				StartByte:   curpos,
-				EndByte:     uint64(total),
-				RequiresVSS: false,
-				Letter:      "",
-				Skip:        false,
-			})
-		}
-
-		parts = newparts
-
 		fmt.Printf("%+v\n", parts)
 
 		F, err := os.Open(diskdev)
