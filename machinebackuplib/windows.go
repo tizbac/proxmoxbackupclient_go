@@ -500,31 +500,42 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			return true
 		}
 
+		block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
+
+		// readRaw reads the disk itself from pos up to end and returns how
+		// far it got.
+		readRaw := func(pos, end uint64) (uint64, error) {
+			if _, err := F.Seek(int64(pos), io.SeekStart); err != nil {
+				return pos, fmt.Errorf("seek to offset %d in %s: %w", pos, diskdev, err)
+			}
+			for pos < end {
+				nbytes, rerr := F.Read(block[:min(uint64(len(block)), end-pos)])
+				if nbytes > 0 {
+					if !push(block[:nbytes]) {
+						return pos, errUploadAborted
+					}
+					pos += uint64(nbytes)
+				}
+				if report(pos) {
+					return pos, ErrCancelled
+				}
+				b++
+				if rerr == io.EOF {
+					break
+				}
+				if rerr != nil {
+					return pos, fmt.Errorf("read %s at offset %d: %w", diskdev, pos, rerr)
+				}
+			}
+			return pos, nil
+		}
+
 		readPartition := func(P Partition) error {
 			pos := P.StartByte
-			block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
 			if !P.RequiresVSS {
-				if _, err := F.Seek(int64(P.StartByte), io.SeekStart); err != nil {
-					return fmt.Errorf("seek to offset %d in %s: %w", P.StartByte, diskdev, err)
-				}
-				for pos < P.EndByte {
-					nbytes, rerr := F.Read(block[:min(uint64(len(block)), P.EndByte-pos)])
-					if nbytes > 0 {
-						if !push(block[:nbytes]) {
-							return errUploadAborted
-						}
-						pos += uint64(nbytes)
-					}
-					if report(pos) {
-						return ErrCancelled
-					}
-					b++
-					if rerr == io.EOF {
-						break
-					}
-					if rerr != nil {
-						return fmt.Errorf("read %s at offset %d: %w", diskdev, pos, rerr)
-					}
+				var err error
+				if pos, err = readRaw(P.StartByte, P.EndByte); err != nil {
+					return err
 				}
 			} else {
 				snap, ok := snapshots[P.Letter+":\\"]
@@ -548,8 +559,8 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 				// Read the shadow up to the partition end. Clamping each read
 				// to P.EndByte-pos means pos never overshoots, so a shadow that
 				// is exactly the partition size ends cleanly on EOF, a smaller
-				// shadow leaves a positive pad, and a larger one is simply
-				// truncated at the partition boundary.
+				// shadow leaves the rest to read from the disk, and a larger
+				// one is simply truncated at the partition boundary.
 				for pos < P.EndByte {
 					nbytes, rerr := snapshot_file.Read(block[:min(uint64(len(block)), P.EndByte-pos)])
 					if report(pos) {
@@ -570,20 +581,16 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 					}
 				}
 
-				// Pad with zeros for the bytes the shadow didn't cover (FS
-				// smaller than the partition). npad is computed from how much
-				// was actually read, avoiding the unsigned underflow the old
-				// pre-computed npad hit when the shadow was >= the partition.
-				npad := P.EndByte - pos
-				zeroBlk := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
-				for npad > 0 {
-					log.Printf("Padding %d", npad)
-					m := min(uint64(pbscommon.PBS_FIXED_CHUNK_SIZE), npad)
-					if !push(zeroBlk[:m]) {
-						return errUploadAborted
+				// The shadow covers the volume, which can end before the
+				// partition does. NTFS always does: its backup boot sector is
+				// the partition's last sector, outside the volume. The file
+				// system never writes past the volume's end, so the rest is
+				// read from the disk itself rather than stored as zeros.
+				if pos < P.EndByte {
+					log.Printf("Reading the last %d bytes of the partition from the disk", P.EndByte-pos)
+					if pos, err = readRaw(pos, P.EndByte); err != nil {
+						return err
 					}
-					pos += m
-					npad -= m
 				}
 			}
 			if pos != P.EndByte {
