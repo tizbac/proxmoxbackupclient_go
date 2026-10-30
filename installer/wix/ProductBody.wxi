@@ -99,10 +99,15 @@
         <RemoveRegistryValue Root="HKCU"
                              Key="Software\Microsoft\Windows\CurrentVersion\Run"
                              Name="$(var.ExeName)"/>
-        <!-- Hard-coded name used by very old builds. -->
+        <!-- Hard-coded name used by very old builds. Skipped for the Nimbus
+             brand, whose ExeName is already "NimbusBackup": two
+             RemoveRegistryValue rows with the same Root/Key/Name are one
+             primary key, and light.exe rejects the duplicate (LGHT0130). -->
+        <?if $(var.ExeName) != "NimbusBackup" ?>
         <RemoveRegistryValue Root="HKCU"
                              Key="Software\Microsoft\Windows\CurrentVersion\Run"
                              Name="NimbusBackup"/>
+        <?endif ?>
       </Component>
     </DirectoryRef>
 
