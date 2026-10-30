@@ -103,12 +103,11 @@ Vid backup av en hel enhet (t.ex. `D:\`) exkluderar Proxmox Backup Client automa
 MSI stödjer Windows Installers standardflagga för tyst installation samt publika egenskaper för alla standardvärden:
 
 ```powershell
-# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+# Silent install with the defaults (service: Automatic + started)
 msiexec /i ProxmoxBackupClient.msi /quiet
 
-# Install the service but do NOT enable/autostart it (Manual + stopped),
-# and skip the GUI autostart entry too
-msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+# Install the service but do NOT enable/autostart it (Manual + stopped)
+msiexec /i ProxmoxBackupClient.msi /quiet SERVICEAUTOSTART=0
 
 # Custom directory + verbose install log
 msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
@@ -119,7 +118,6 @@ msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
 
 | Egenskap | Standard | Verkning |
 | --- | --- | --- |
-| `AUTOSTART` | `1` | `0` = ingen GUI-autostart vid inloggning |
 | `SERVICEAUTOSTART` | `1` | `0` = tjänsten installeras som **Manuell** och lämnas **stoppad** — installerad, men aldrig aktiverad eller autostartad |
 | `KEEP_CONFIG` | `1` | Endast vid avinstallation: `0` = tar också bort `%ProgramData%\<ExeName>` |
 | `INSTALLFOLDER` | `Program Files` | Installationskatalog (kan även ändras i gränssnittet) |

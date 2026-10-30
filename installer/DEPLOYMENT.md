@@ -10,7 +10,6 @@ Toutes les commandes de ce guide sont silencieuses grâce au switch standard de 
 
 | Propriété | Défaut | Effet |
 | --- | --- | --- |
-| `AUTOSTART` | `1` | `0` = pas d'entrée d'autodémarrage de la GUI à la connexion |
 | `SERVICEAUTOSTART` | `1` | `0` = service installé en **Manuel** et laissé **arrêté** — installé, mais jamais activé ni autodémarré |
 | `KEEP_CONFIG` | `1` | Uniquement à la désinstallation : `0` = supprime aussi le dossier `%ProgramData%\<ExeName>` |
 | `INSTALLFOLDER` | `Program Files` | Répertoire d'installation (les chemins contenant des espaces sont entre guillemets) |
@@ -19,9 +18,8 @@ Toutes les commandes de ce guide sont silencieuses grâce au switch standard de 
 # Installation silencieuse, réglages par défaut (service : Auto + démarré)
 msiexec /i ProxmoxBackupClient.msi /quiet
 
-# Installer le service SANS l'activer ni l'autodémarrer (Manuel + arrêté),
-# sans autodémarrage de la GUI non plus
-msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+# Installer le service SANS l'activer ni l'autodémarrer (Manuel + arrêté)
+msiexec /i ProxmoxBackupClient.msi /quiet SERVICEAUTOSTART=0
 
 # Répertoire personnalisé + log détaillé
 msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
@@ -89,7 +87,7 @@ Copiez `config.example.json` et personnalisez-le pour votre environnement:
 3. **Paramètres d'installation** (propriétés publiques, voir ci-dessus) :
    - Utiliser la ligne de commande avancée :
      ```
-     AUTOSTART=0 SERVICEAUTOSTART=0
+     SERVICEAUTOSTART=0
      ```
      (ajuster selon le comportement d'autodémarrage souhaité)
 
@@ -103,7 +101,7 @@ Copiez `config.example.json` et personnalisez-le pour votre environnement:
 
 2. **Commande d'installation**:
    ```powershell
-   msiexec /i ProxmoxBackupClient.msi /qn AUTOSTART=0
+   msiexec /i ProxmoxBackupClient.msi /qn
    ```
 
 3. **Script de pré-requis**:

@@ -103,12 +103,11 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 MSI は Windows Installer の標準的なサイレント スイッチに加え、すべての既定値を変更できる公開プロパティに対応しています：
 
 ```powershell
-# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+# Silent install with the defaults (service: Automatic + started)
 msiexec /i ProxmoxBackupClient.msi /quiet
 
-# Install the service but do NOT enable/autostart it (Manual + stopped),
-# and skip the GUI autostart entry too
-msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+# Install the service but do NOT enable/autostart it (Manual + stopped)
+msiexec /i ProxmoxBackupClient.msi /quiet SERVICEAUTOSTART=0
 
 # Custom directory + verbose install log
 msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
@@ -119,7 +118,6 @@ msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
 
 | プロパティ | 既定値 | 効果 |
 | --- | --- | --- |
-| `AUTOSTART` | `1` | `0` = ログオン時の GUI 自動起動を作成しない |
 | `SERVICEAUTOSTART` | `1` | `0` = サービスを「手動」でインストールし**停止したまま**にする — インストールされますが有効化・自動起動はされません |
 | `KEEP_CONFIG` | `1` | アンインストール時のみ: `0` = `%ProgramData%\<ExeName>` も削除 |
 | `INSTALLFOLDER` | `Program Files` | インストール先ディレクトリ（UI からも変更可能） |

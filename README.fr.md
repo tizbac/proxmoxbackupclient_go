@@ -101,12 +101,11 @@ Lors de la sauvegarde d'un disque entier (ex. `D:\`), Proxmox Backup Client excl
 Le MSI accepte le commutateur silencieux standard de Windows Installer, plus des propriétés publiques pour chaque valeur par défaut :
 
 ```powershell
-# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+# Silent install with the defaults (service: Automatic + started)
 msiexec /i ProxmoxBackupClient.msi /quiet
 
-# Install the service but do NOT enable/autostart it (Manual + stopped),
-# and skip the GUI autostart entry too
-msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+# Install the service but do NOT enable/autostart it (Manual + stopped)
+msiexec /i ProxmoxBackupClient.msi /quiet SERVICEAUTOSTART=0
 
 # Custom directory + verbose install log
 msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
@@ -117,7 +116,6 @@ msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
 
 | Propriété | Défaut | Effet |
 | --- | --- | --- |
-| `AUTOSTART` | `1` | `0` = pas de démarrage automatique de la GUI à la connexion |
 | `SERVICEAUTOSTART` | `1` | `0` = service en **Manuel**, laissé **arrêté** — installé, mais jamais activé ni autodémarré |
 | `KEEP_CONFIG` | `1` | Désinstallation uniquement : `0` = supprime aussi `%ProgramData%\<ExeName>` |
 | `INSTALLFOLDER` | `Program Files` | Répertoire d'installation (modifiable aussi dans l'interface) |

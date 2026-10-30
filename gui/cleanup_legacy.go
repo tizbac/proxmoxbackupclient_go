@@ -1,9 +1,12 @@
+//go:build windows
 // +build windows
 
 package main
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -54,15 +57,26 @@ func cleanupRegistryEntry() {
 	}
 	defer key.Close()
 
-	// Try to delete the value (ignore error if doesn't exist)
-	err = key.DeleteValue("NimbusBackup")
-	if err == nil {
-		writeDebugLog("Removed legacy Registry auto-start entry")
-	} else if err != registry.ErrNotExist {
-		// Some other error, log it
-		writeDebugLog("Registry cleanup: " + err.Error())
-	} else {
-		// Entry doesn't exist - that's fine
-		writeDebugLog("No legacy Registry entry found (already clean)")
+	// The value name is the executable base name (brand-dependent). Older
+	// versions also used the hard-coded "NimbusBackup" name.
+	names := []string{"NimbusBackup"}
+	if exePath, err := os.Executable(); err == nil {
+		if name := normalizeBrandKey(filepath.Base(exePath)); name != "" && name != "nimbusbackup" {
+			names = append(names, name)
+		}
+	}
+
+	for _, name := range names {
+		// Try to delete the value (ignore error if it doesn't exist)
+		err = key.DeleteValue(name)
+		if err == nil {
+			writeDebugLog("Removed legacy Registry auto-start entry: " + name)
+		} else if err != registry.ErrNotExist {
+			// Some other error, log it
+			writeDebugLog("Registry cleanup (" + name + "): " + err.Error())
+		} else {
+			// Entry doesn't exist - that's fine
+			writeDebugLog("No legacy Registry entry found for " + name + " (already clean)")
+		}
 	}
 }

@@ -73,7 +73,6 @@ Le MSI supporte le mode silencieux standard de Windows Installer (`/quiet` ou `/
 
 | Propriété | Défaut | Effet |
 | --- | --- | --- |
-| `AUTOSTART` | `1` | `0` = pas d'entrée d'autodémarrage de la GUI à la connexion |
 | `SERVICEAUTOSTART` | `1` | `0` = service installé en **Manuel** et laissé **arrêté** — installé, mais jamais activé ni autodémarré |
 | `KEEP_CONFIG` | `1` | Uniquement à la désinstallation : `0` = supprime aussi `%ProgramData%\<ExeName>` |
 | `INSTALLFOLDER` | `Program Files` | Répertoire d'installation |
@@ -83,7 +82,7 @@ Le MSI supporte le mode silencieux standard de Windows Installer (`/quiet` ou `/
 msiexec /i ProxmoxBackupClient.msi /quiet
 
 # Installer le service SANS l'activer ni l'autodémarrer
-msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+msiexec /i ProxmoxBackupClient.msi /quiet SERVICEAUTOSTART=0
 
 # Désinstallation silencieuse qui purge la configuration
 msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0

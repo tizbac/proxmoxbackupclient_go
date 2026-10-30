@@ -90,17 +90,19 @@
                        Type="integer"
                        Value="1"
                        KeyPath="yes"/>
-      </Component>
 
-      <!-- Auto-start registry entry (conditional) -->
-      <Component Id="AutoStartRegistry" Guid="*">
-        <Condition>AUTOSTART = "1"</Condition>
-        <RegistryValue Root="HKCU"
-                       Key="Software\Microsoft\Windows\CurrentVersion\Run"
-                       Name="$(var.ExeName)"
-                       Type="string"
-                       Value="&quot;[INSTALLFOLDER]$(var.ExeName).exe&quot; --minimized"
-                       KeyPath="yes"/>
+        <!-- Older versions created a per-user logon entry that started the GUI
+             elevated at boot. Autostart is no longer installed; remove the
+             stale value whenever this component is installed (including
+             upgrades) so it stops prompting at logon. This only touches the
+             value, never the shared Run key. -->
+        <RemoveRegistryValue Root="HKCU"
+                             Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                             Name="$(var.ExeName)"/>
+        <!-- Hard-coded name used by very old builds. -->
+        <RemoveRegistryValue Root="HKCU"
+                             Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                             Name="NimbusBackup"/>
       </Component>
     </DirectoryRef>
 
@@ -112,7 +114,6 @@
       <ComponentRef Id="GUIExecutable" />
       <ComponentRef Id="ServiceExecutable" />
       <ComponentRef Id="ApplicationShortcut" />
-      <ComponentRef Id="AutoStartRegistry" />
     </Feature>
 
     <!-- Add/Remove Programs metadata (Programs & Features). Per-brand; keep in
@@ -135,12 +136,9 @@
          no extra property — msiexec's own /quiet does it — e.g.:
 
            msiexec /i NimbusBackup.msi /quiet
-           msiexec /i NimbusBackup.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+           msiexec /i NimbusBackup.msi /quiet SERVICEAUTOSTART=0
            msiexec /x NimbusBackup.msi /quiet KEEP_CONFIG=0
 
-         AUTOSTART         1 (default) | 0 — create the per-user logon entry
-                           (HKCU Run) that starts the GUI minimized. 0 = no
-                           GUI autostart.
          SERVICEAUTOSTART  1 (default) | 0 — service startup type: 1 = Auto
                            (starts with Windows, and is started by the
                            installer); 0 = installed as Manual and left
@@ -154,7 +152,6 @@
          Silent logging:   msiexec /i <msi> /quiet /L*v "C:\Temp\install.log"
          Exit codes:       0 = success, 3010 = success, reboot required.
     ======================================================================== -->
-    <Property Id="AUTOSTART" Value="1" />
     <Property Id="SERVICEAUTOSTART" Value="1" />
 
     <!-- SERVICEAUTOSTART=0: WiX's ServiceInstall/@Start is an enum, not a

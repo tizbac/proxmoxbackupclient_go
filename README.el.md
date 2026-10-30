@@ -103,12 +103,11 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 Το MSI υποστηρίζει το τυπικό διακόπτη αθόρυβης εγκατάστασης του Windows Installer και δημόσιες ιδιότητες για κάθε προεπιλεγμένη τιμή:
 
 ```powershell
-# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+# Silent install with the defaults (service: Automatic + started)
 msiexec /i ProxmoxBackupClient.msi /quiet
 
-# Install the service but do NOT enable/autostart it (Manual + stopped),
-# and skip the GUI autostart entry too
-msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+# Install the service but do NOT enable/autostart it (Manual + stopped)
+msiexec /i ProxmoxBackupClient.msi /quiet SERVICEAUTOSTART=0
 
 # Custom directory + verbose install log
 msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
@@ -119,7 +118,6 @@ msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
 
 | Ιδιότητα | Προεπιλογή | Αποτέλεσμα |
 | --- | --- | --- |
-| `AUTOSTART` | `1` | `0` = χωρίς αυτόματη εκκίνηση GUI κατά τη σύνδεση |
 | `SERVICEAUTOSTART` | `1` | `0` = η υπηρεσία εγκαθίσταται **χειροκίνητη** και μένει **σταματημένη** — εγκατεστημένη, αλλά ποτέ ενεργοποιημένη ή με αυτόματη εκκίνηση |
 | `KEEP_CONFIG` | `1` | Μόνο κατά την απεγκατάσταση: `0` = διαγράφει και το `%ProgramData%\<ExeName>` |
 | `INSTALLFOLDER` | `Program Files` | Κατάλογος εγκατάστασης (επεξεργάσιμος και από το UI) |

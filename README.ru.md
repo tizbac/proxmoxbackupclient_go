@@ -103,12 +103,11 @@ gh attestation verify .\ProxmoxBackupClient.exe --repo tizbac/proxmoxbackupclien
 MSI поддерживает стандартный ключ тихой установки Windows Installer и публичные свойства для всех значений по умолчанию:
 
 ```powershell
-# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+# Silent install with the defaults (service: Automatic + started)
 msiexec /i ProxmoxBackupClient.msi /quiet
 
-# Install the service but do NOT enable/autostart it (Manual + stopped),
-# and skip the GUI autostart entry too
-msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+# Install the service but do NOT enable/autostart it (Manual + stopped)
+msiexec /i ProxmoxBackupClient.msi /quiet SERVICEAUTOSTART=0
 
 # Custom directory + verbose install log
 msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
@@ -119,7 +118,6 @@ msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
 
 | Свойство | По умолчанию | Действие |
 | --- | --- | --- |
-| `AUTOSTART` | `1` | `0` = без автозапуска GUI при входе |
 | `SERVICEAUTOSTART` | `1` | `0` = служба «**Вручную**», остаётся **остановленной** — установлена, но не включается и не запускается автоматически |
 | `KEEP_CONFIG` | `1` | Только при удалении: `0` = удалить также `%ProgramData%\<ExeName>` |
 | `INSTALLFOLDER` | `Program Files` | Каталог установки (также меняется в интерфейсе) |

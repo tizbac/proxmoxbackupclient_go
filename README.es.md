@@ -103,12 +103,11 @@ Al respaldar un disco completo (p. ej., `D:\`), Proxmox Backup Client excluye au
 El MSI admite el interruptor de instalación silenciosa de Windows Installer y propiedades públicas para cada valor predeterminado:
 
 ```powershell
-# Silent install with the defaults (service: Automatic + started; GUI autostart enabled)
+# Silent install with the defaults (service: Automatic + started)
 msiexec /i ProxmoxBackupClient.msi /quiet
 
-# Install the service but do NOT enable/autostart it (Manual + stopped),
-# and skip the GUI autostart entry too
-msiexec /i ProxmoxBackupClient.msi /quiet AUTOSTART=0 SERVICEAUTOSTART=0
+# Install the service but do NOT enable/autostart it (Manual + stopped)
+msiexec /i ProxmoxBackupClient.msi /quiet SERVICEAUTOSTART=0
 
 # Custom directory + verbose install log
 msiexec /i ProxmoxBackupClient.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
@@ -119,7 +118,6 @@ msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
 
 | Propiedad | Predeterminado | Efecto |
 | --- | --- | --- |
-| `AUTOSTART` | `1` | `0` = sin autoinicio de la GUI al iniciar sesión |
 | `SERVICEAUTOSTART` | `1` | `0` = servicio **Manual**, **detenido** — instalado, pero nunca activado ni autoiniciado |
 | `KEEP_CONFIG` | `1` | Solo desinstalación: `0` = elimina también `%ProgramData%\<ExeName>` |
 | `INSTALLFOLDER` | `Program Files` | Directorio de instalación (también editable en la interfaz) |
