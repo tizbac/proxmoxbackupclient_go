@@ -359,8 +359,14 @@ jobs:
             if (-not (Test-Path $wxs)) { throw "missing WiX source for brand ${brand}: $wxs" }
             if (-not (Test-Path "../../installer/icons/$brand.ico")) { throw "missing icon for brand ${brand}" }
 
-            Copy-Item (Join-Path $bin 'ProxmoxBackupClient.exe') (Join-Path $bin "$brand.exe") -Force
-            Copy-Item (Join-Path $bin 'ProxmoxBackupClientSVC.exe') (Join-Path $bin "$($brand)SVC.exe") -Force
+            foreach ($pair in @(
+                @((Join-Path $bin 'ProxmoxBackupClient.exe'), (Join-Path $bin "$brand.exe")),
+                @((Join-Path $bin 'ProxmoxBackupClientSVC.exe'), (Join-Path $bin "$($brand)SVC.exe"))
+            )) {
+                # The default brand's name IS the build output name; copying a
+                # file onto itself is an error even with -Force.
+                if ($pair[0] -ne $pair[1]) { Copy-Item $pair[0] $pair[1] -Force }
+            }
 
             candle.exe "-dProductVersion=$version" $wxs -ext WixUIExtension -ext WixUtilExtension -out "$brand.wixobj"
             if ($LASTEXITCODE -ne 0) { throw "candle failed for $brand (exit $LASTEXITCODE)" }
