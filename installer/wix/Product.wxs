@@ -26,7 +26,7 @@
   <!-- ProductVersion is passed from CI via candle -dProductVersion=x.y.z;
        this is the local-dev fallback. Keep in sync with gui/wails.json. -->
   <?ifndef ProductVersion ?>
-    <?define ProductVersion = "0.2.72" ?>
+    <?define ProductVersion = "1.2.0" ?>
   <?endif ?>
 
   <?include ProductBody.wxi ?>

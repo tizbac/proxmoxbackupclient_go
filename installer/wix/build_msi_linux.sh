@@ -47,15 +47,22 @@ fi
 #     <wails.json productVersion>.<number of commits>
 #
 # so every dev MSI carries a valid AND strictly increasing ProductVersion
-# (0.2.119.655), while a tagged release keeps its own numeric version.
+# (1.2.0.738), while a tagged release keeps its own numeric version.
 BASE_VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/gui/wails.json" | head -n1)
 
 msi_product_version() {
-    local v="$1" p1 p2 p3 count
+    local v="$1" core p1 p2 p3 count
     # already numeric x.y.z or x.y.z.w (an optional leading "v" from a tag)
     v="${v#v}"
     if printf '%s\n' "$v" | grep -Eq '^[0-9]+(\.[0-9]+){2,3}$'; then
         printf '%s\n' "$v"
+        return
+    fi
+    # prerelease tag (1.2.0-rc.1, 1.2.0+build): WiX only accepts the numeric
+    # core, so use it rather than falling through to the commit-count scheme.
+    core="${v%%[-+]*}"
+    if printf '%s\n' "$core" | grep -Eq '^[0-9]+(\.[0-9]+){2}$'; then
+        printf '%s\n' "$core"
         return
     fi
     IFS=. read -r p1 p2 p3 _ <<<"$BASE_VERSION"

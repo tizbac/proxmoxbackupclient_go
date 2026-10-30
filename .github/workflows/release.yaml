@@ -14,11 +14,11 @@ permissions:
 jobs:
   goreleaser:
     timeout-minutes: 30
-    outputs:
-      hashes: ${{ steps.hash.outputs.hashes }}
     permissions:
-      contents: write   # create GitHub release
-      packages: write   # publish docker images (if configured in goreleaser)
+      contents: write      # create the GitHub release
+      packages: write      # publish docker images (if configured in goreleaser)
+      id-token: write      # mint the Sigstore OIDC token for attestation
+      attestations: write  # store the build-provenance attestation
     runs-on: ubuntu-latest
 
     steps:
@@ -45,28 +45,23 @@ jobs:
         id: run-goreleaser
         uses: goreleaser/goreleaser-action@v5
         with:
-          version: latest
+          # Pinned to the v2 major: the config (.goreleaser.yaml) is schema v2,
+          # which goreleaser < v2.19 accepted but newer majors change again.
+          # Floating "latest" is what silently broke the release pipeline.
+          version: "~> v2.19"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate subject (for provenance)
-        id: hash
-        env:
-          ARTIFACTS: "${{ steps.run-goreleaser.outputs.artifacts }}"
-        run: |
-          set -euo pipefail
-          checksum_file=$(echo "$ARTIFACTS" | jq -r '.[] | select (.type=="Checksum") | .path')
-          echo "hashes=$(cat $checksum_file | base64 -w0)" >> "$GITHUB_OUTPUT"
-
-  provenance:
-    needs: [goreleaser]
-    permissions:
-      actions: read
-      id-token: write
-      contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.4.0
-    with:
-      base64-subjects: "${{ needs.goreleaser.outputs.hashes }}"
-      upload-assets: true
-      private-repository: true
+      # GitHub-native provenance for the goreleaser archives. This replaces the
+      # external SLSA generator workflow (slsa-github-generator@v1.4.0), whose
+      # reusable workflow has been failing since v1.1.3 and which only attested
+      # checksums.txt rather than the files users download. Verify with
+      # `gh attestation verify <file> --repo tizbac/proxmoxbackupclient_go`.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt

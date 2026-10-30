@@ -35,9 +35,9 @@ wails_field() {
 # "dev-<sha>" for a checkout that is not on an exact tag, which dpkg-deb
 # rejects ("version number does not start with a digit"). Turn such a build
 # version into a valid local version based on the release in wails.json:
-#   dev-500590ed -> 0.2.119+dev.500590ed
-# "+" sorts after the base release, so the dev snapshot is newer than 0.2.119
-# and older than the next release (0.2.120).
+#   dev-500590ed -> 1.2.0+dev.500590ed
+# "+" sorts after the base release, so the dev snapshot is newer than 1.2.0
+# and older than the next release (1.2.1).
 debian_version() {
     v=$1
     case "$v" in

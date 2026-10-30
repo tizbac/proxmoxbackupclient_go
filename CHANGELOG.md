@@ -7,8 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0-rc.1] - 2026-10-30
+
+First prerelease of the 1.2 line (635 commits since 1.1.3). Published as a
+GitHub **prerelease**: install it on test systems, not on production ones.
+The MSI reports ProductVersion 1.2.0 (Windows Installer requires a numeric
+x.y.z), so uninstall this prerelease before installing 1.2.0 final.
+
 ### Added
 - **Weekly and monthly scheduled jobs** — the GUI can now schedule a backup on one or more weekdays, or on a specific day of each month, instead of only every day. Jobs saved before this change keep running daily, unchanged.
+- **Branded installers** — the same binaries ship under the Proxmox Backup Client, Nimbus Backup, Acme Backup and Etitech Backup brands (exe-driven `gui/brand.go` catalogue, per-brand icons, WiX installers and MSI build scripts).
+- **Machine backup** — restores in disk order, reads the tail of a VSS partition from the disk, waits while VSS is busy, and keeps (or deliberately drops) a restored Linux system's identity for bare-metal restores.
+- Localized READMEs (ar, de, el, es, fa, fr, it, ja, ro, ru, sv, zh).
+
+### Fixed
+- **pxar** — a read error part way through a file no longer ends the backup, and FIFOs/sockets/device nodes are skipped instead of opened.
+- **Restore** — says which key an encrypted snapshot needs; restores protected DACLs correctly.
+- **Backups** — previous-index corruption no longer panics chunk dedup; failed folders release their backup-group lock instead of failing the rest of the run; more transient PBS failures are retried.
+- **Builds** — version handling unified on the git tag across MSI, deb, rpm, arch and Docker; the MSI is built with candle/light under Wine in Docker.
+- **CI/release** — the goreleaser config was migrated to schema v2 (goreleaser ≥ v2.19 rejects v1 configs), prerelease tags such as `v1.2.0-rc.1` no longer feed a non-numeric version to WiX, and provenance is now attested with `actions/attest-build-provenance` instead of the failing SLSA generator workflow.
 
 ## [0.2.119] - 2026-06-12
 

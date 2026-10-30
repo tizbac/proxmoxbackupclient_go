@@ -1,12 +1,14 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
-
-# The lines below are called `modelines`. See `:help modeline`
-# Feel free to remove those if you don't want/need to use them.
+# GoReleaser configuration for the cross-platform CLI archives.
+#
+# The Windows GUI + service MSIs are *not* built here: they come from
+# .github/workflows/build-and-release.yml, which uploads them to the same
+# GitHub release this file creates for the tag.
+#
+# Config schema: GoReleaser v2 (v1 configs are rejected since v2.19).
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
 
-version: 1
+version: 2
 
 builds:
   - id: windows
@@ -68,17 +70,17 @@ builds:
       - darwin
     goarch:
       - arm64
-  
 
 release:
-  # for prerelease it doesn't build and distribute
+  # A tag with a prerelease suffix (e.g. v1.2.0-rc.1) publishes as a
+  # GitHub prerelease automatically.
   prerelease: auto
 
 universal_binaries:
   - replace: true
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     allow_different_binary_count: true
     name_template: >-
       {{ .ProjectName }}_
@@ -88,21 +90,16 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
-    - goos: windows
-      format: zip
-    
+      - goos: windows
+        formats: [zip]
+
 checksum:
   name_template: checksums.txt
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 changelog:
   sort: asc
   filters:
     exclude:
       - '^docs:'
       - '^test:'
-
-# The lines beneath this are called `modelines`. See `:help modeline`
-# Feel free to remove those if you don't want/use them.
-# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# vim: set ts=2 sw=2 tw=0 fo=cnqoj

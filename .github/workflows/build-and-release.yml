@@ -238,17 +238,25 @@ jobs:
           #
           # VERSION feeds main.appVersion via ldflags (displayed in the
           # GUI, logged in each run banner). VERSION_MSI feeds the WiX
-          # ProductVersion, which must be a strict x.y.z numeric tuple
-          # — so on branch builds we strip the -dev-<sha> suffix for
-          # the MSI but keep it on the binary.
+          # ProductVersion and the service .syso, both of which must be a
+          # strict numeric x.y.z tuple:
+          #   - dev builds strip the -dev-<sha> suffix;
+          #   - prerelease tags (v1.2.0-rc.1) strip the -rc.1 suffix, so the
+          #     MSI reports 1.2.0 instead of failing candle.exe with an
+          #     invalid ProductVersion. The binaries keep the full version.
           $base = (Get-Content gui/wails.json | ConvertFrom-Json).info.productVersion
           if ("${{ github.ref_type }}" -eq "tag") {
             $version = "${{ github.ref_name }}" -replace "^v", ""
-            $version_msi = $version
           } else {
             $shortSha = "${{ github.sha }}".Substring(0, 7)
             $version = "$base-dev-$shortSha"
-            $version_msi = $base
+          }
+          $version_msi = ($version -split '[-+]')[0]
+          if ($version_msi -notmatch '^\d+\.\d+\.\d+$') {
+            $version_msi = ($base -split '[-+]')[0]
+          }
+          if ($version_msi -notmatch '^\d+\.\d+\.\d+$') {
+            throw "'$version_msi' is not a numeric x.y.z version; WiX/versioninfo would reject it"
           }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           echo "VERSION_MSI=$version_msi" >> $env:GITHUB_OUTPUT
@@ -535,8 +543,14 @@ jobs:
            echo "" >> RELEASE_BODY.md
            echo "**Proxmox Backup Client** — [Releases](https://github.com/tizbac/proxmoxbackupclient_go/releases)" >> RELEASE_BODY.md
 
+      # The goreleaser workflow ("Release Automation") normally creates the
+      # release for this tag a few minutes earlier, with the cross-platform CLI
+      # archives. This step then updates that release: it appends the GUI/MSI
+      # and the CLI bundles built above and sets the body. action-gh-release
+      # edits an existing release for the tag rather than failing, which is what
+      # makes the two workflows coexist.
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_BODY.md
           files: release/*
