@@ -1999,8 +1999,8 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	return nil
 }
 
-// OpenRestoreDestDialog opens a native folder picker so the user can choose
-// where to restore files. Returns "" if the dialog was cancelled.
+// OpenDirectoryPicker opens a native folder picker so the user can choose a
+// directory. Returns "" if the dialog was cancelled.
 //
 // Hardened against a reported crash on the client: the native Windows folder
 // picker (IFileDialog) can fault when handed an empty/invalid initial folder,

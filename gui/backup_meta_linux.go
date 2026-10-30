@@ -164,6 +164,6 @@ func (c *NTFSMetaCollector) Stats() (entries, uniqueSDDLs, errors int) {
 	return len(c.meta.Entries), 0, c.errors
 }
 
-// StreamStats: Linux has no alternate data streams or NTFS extended
-// attributes (its xattrs travel in Xattrs).
+// StreamStats reports zero alternate data streams and no NTFS extended
+// attributes on Linux: its xattrs travel in Xattrs instead.
 func (c *NTFSMetaCollector) StreamStats() (streams, skipped, eas, dropped int) { return 0, 0, 0, 0 }
