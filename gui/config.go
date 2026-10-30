@@ -252,7 +252,7 @@ func getConfigDir() (string, error) {
 		return "", fmt.Errorf("no config directory available")
 	}
 
-	// #nosec G302 -- configDir is a system location or an explicit override set at startup
+	// #nosec G302 G703 -- configDir is a system location or an explicit override set at startup (never request input)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return "", err
 	}

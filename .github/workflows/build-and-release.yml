@@ -7,6 +7,10 @@ on:
       - 'v*'
   pull_request:
     branches: [ main ]
+  # Manual run: exercises security/test/build-cli/build-gui without publishing
+  # (the release job only runs for v* tags), which is how the pipeline is
+  # validated before a release tag is pushed.
+  workflow_dispatch:
 
 env:
   GO_VERSION: '1.25'
@@ -63,7 +67,11 @@ jobs:
         env:
           GOWORK: off
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          # Pinned: gosec adds rules between releases (v2.30 brought the G703
+          # path-traversal taint analysis), and an unpinned scanner turning a
+          # previously green release red is exactly what happened here. Bump
+          # deliberately, in a PR, not implicitly at release time.
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
           cd gui && gosec -severity high -confidence high ./...
 
       - name: Run golangci-lint

@@ -27,6 +27,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -35,6 +36,26 @@ import (
 
 // elevatedTokenFetchFlag is the argv marker identifying the elevated child.
 const elevatedTokenFetchFlag = "--elevated-token-fetch"
+
+// checkHandoffPath rejects handoff paths the parent could not have created.
+// The elevated child writes to the path it is given, so only an absolute,
+// regular (non-symlink) file is accepted — a FIFO or device would block or
+// misbehave, and a symlink could redirect the root-owned write elsewhere.
+func checkHandoffPath(p string) error {
+	if !filepath.IsAbs(p) {
+		return fmt.Errorf("not an absolute path: %q", p)
+	}
+	// #nosec G703 -- Lstat is the check itself: it must look at the untrusted
+	// path, and unlike Open/Stat it neither follows symlinks nor writes.
+	fi, err := os.Lstat(filepath.Clean(p))
+	if err != nil {
+		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("not a regular file: %q", p)
+	}
+	return nil
+}
 
 // handleElevatedTokenFetchChild returns true (and exits the process) when this
 // invocation IS the elevated child: it copies the service token into the
@@ -63,8 +84,19 @@ func handleElevatedTokenFetchChild(args []string) bool {
 			os.Exit(exitTokenFileUnread)
 		}
 
+		// The handoff path arrives in argv, and this child runs elevated: refuse
+		// anything that is not the plain file the parent created, so an
+		// invocation cannot use the (user-approved) elevation prompt to
+		// truncate an arbitrary file.
+		if err := checkHandoffPath(handoff); err != nil {
+			writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: refusing handoff path: %v", err))
+			os.Exit(exitHandoffUnusable)
+		}
+
 		// The parent created the handoff file; open it WITHOUT creating
 		// it, so a vanished file can never be re-created root-owned.
+		// #nosec G703 -- handoff was validated by checkHandoffPath just above
+		// (absolute path, existing regular file, no symlink).
 		f, err := os.OpenFile(handoff, os.O_WRONLY|os.O_TRUNC, 0600)
 		if err != nil {
 			writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: cannot open handoff file: %v", err))
