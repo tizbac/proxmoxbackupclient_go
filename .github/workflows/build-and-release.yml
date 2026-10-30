@@ -322,11 +322,8 @@ jobs:
           go build -tags service -trimpath -buildmode=pie -ldflags "-s -w -X main.appVersion=${{ steps.version.outputs.VERSION }}" -o build/bin/ProxmoxBackupClientSVC.exe
         shell: pwsh
 
-      - name: Copy binaries to dist
-        run: |
-          New-Item -ItemType Directory -Force -Path dist
-           Copy-Item gui/build/bin/ProxmoxBackupClient.exe dist/
-           Copy-Item gui/build/bin/ProxmoxBackupClientSVC.exe dist/
+      - name: Prepare dist directory
+        run: New-Item -ItemType Directory -Force -Path dist | Out-Null
         shell: pwsh
 
       - name: Install WiX Toolset
@@ -336,23 +333,49 @@ jobs:
           echo "C:\Program Files (x86)\WiX Toolset v3.14\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         shell: pwsh
 
-      - name: Build MSI Installer
+      # One MSI per brand, version-stamped. The GUI picks its identity from the
+      # executable name (gui/brand.go), so ProductBody.wxi packages the same
+      # binaries under <ExeName>.exe / <ServiceExeName>.exe; staging them per
+      # brand is what makes "NimbusBackup.msi" install Nimbus Backup.
+      # Brand list and naming mirror installer/wix/build_msi_linux.sh and
+      # scripts/build-signpath.ps1. Only the MSIs are published: the release
+      # ships no stand-alone .exe.
+      - name: Build MSI installers (one per brand)
         working-directory: installer/wix
-        run: |
-          # Pass the resolved version to the WiX preprocessor so MSI
-          # metadata matches the tag / ldflags version.
-          candle.exe "-dProductVersion=${{ steps.version.outputs.VERSION_MSI }}" Product.wxs -ext WixUIExtension -ext WixUtilExtension
-           light.exe Product.wixobj -ext WixUIExtension -ext WixUtilExtension -out ProxmoxBackupClient.msi
-           Copy-Item ProxmoxBackupClient.msi ../../dist/
         shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # ProductVersion must be numeric (WiX), but the FILE name carries the
+          # real release version, so testers can tell 1.2.0-rc.1 from 1.2.0.
+          $version = "${{ steps.version.outputs.VERSION_MSI }}"
+          $fileVersion = "${{ steps.version.outputs.VERSION }}"
+          $brands = @('ProxmoxBackupClient', 'NimbusBackup', 'AcmeBackup', 'EtitechBackup')
+          $bin = (Resolve-Path '../../gui/build/bin').Path
+          $dist = (Resolve-Path '../../dist').Path
+
+          foreach ($brand in $brands) {
+            # The default brand ships as the generic Product.wxs.
+            $wxs = if ($brand -eq 'ProxmoxBackupClient' -and -not (Test-Path "$brand.wxs")) { 'Product.wxs' } else { "$brand.wxs" }
+            if (-not (Test-Path $wxs)) { throw "missing WiX source for brand ${brand}: $wxs" }
+            if (-not (Test-Path "../../installer/icons/$brand.ico")) { throw "missing icon for brand ${brand}" }
+
+            Copy-Item (Join-Path $bin 'ProxmoxBackupClient.exe') (Join-Path $bin "$brand.exe") -Force
+            Copy-Item (Join-Path $bin 'ProxmoxBackupClientSVC.exe') (Join-Path $bin "$($brand)SVC.exe") -Force
+
+            candle.exe "-dProductVersion=$version" $wxs -ext WixUIExtension -ext WixUtilExtension -out "$brand.wixobj"
+            if ($LASTEXITCODE -ne 0) { throw "candle failed for $brand (exit $LASTEXITCODE)" }
+            light.exe "$brand.wixobj" -ext WixUIExtension -ext WixUtilExtension -sval -out (Join-Path $dist "$brand-$fileVersion.msi")
+            if ($LASTEXITCODE -ne 0) { throw "light failed for $brand (exit $LASTEXITCODE)" }
+            Write-Host "==> $brand-$fileVersion.msi"
+          }
+
+          Get-ChildItem $dist -Filter *.msi | Format-Table Name, Length
 
       - name: Upload GUI artifacts
         uses: actions/upload-artifact@v4
         with:
            name: ProxmoxBackupClient-Windows
-           path: |
-             dist/ProxmoxBackupClient.exe
-             dist/ProxmoxBackupClient.msi
+           path: dist/*.msi
 
   # Create release on tag
   release:
@@ -400,13 +423,11 @@ jobs:
           cd artifacts/cli-macOS && tar -czf ../../release/proxmoxbackup-cli-${{ steps.version.outputs.VERSION }}-macos.tar.gz *
           cd ../..
 
-           # GUI Windows - Add .exe, .msi (with and without version) and .zip
-           cd artifacts/ProxmoxBackupClient-Windows
-           cp ProxmoxBackupClient.exe ../../release/ProxmoxBackupClient-${{ steps.version.outputs.VERSION }}.exe
-           cp ProxmoxBackupClient.exe ../../release/ProxmoxBackupClient.exe
-           cp ProxmoxBackupClient.msi ../../release/ProxmoxBackupClient-${{ steps.version.outputs.VERSION }}.msi
-           cp ProxmoxBackupClient.msi ../../release/ProxmoxBackupClient.msi
-           zip ../../release/ProxmoxBackupClient-${{ steps.version.outputs.VERSION }}-windows.zip *
+          # GUI Windows - one version-stamped MSI per brand, and nothing else:
+          # the release ships no stand-alone .exe (the MSI installs it under
+          # the brand name the GUI resolves at runtime).
+          cd artifacts/ProxmoxBackupClient-Windows
+          cp *.msi ../../release/
           cd ../..
 
       - name: Generate SHA256 checksums
@@ -423,8 +444,7 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
-            release/ProxmoxBackupClient*.exe
-            release/ProxmoxBackupClient*.msi
+            release/*.msi
             release/*.zip
             release/*.tar.gz
 
@@ -448,9 +468,8 @@ jobs:
           : > vt-section.md
           emitted=0
           VER="${{ steps.version.outputs.VERSION }}"
-          # Use the version-stamped copies so the published label reads
-          # "ProxmoxBackupClient-v0.2.106.msi" (identical bytes → same VT report).
-           for f in "release/ProxmoxBackupClient-${VER}.exe" "release/ProxmoxBackupClient-${VER}.msi"; do
+          # Every branded MSI in this release (the .exe is no longer published).
+           for f in release/*-${VER}.msi; do
             [ -f "$f" ] || continue
             name=$(basename "$f")
             sha=$(sha256sum "$f" | awk '{print $1}')
@@ -498,7 +517,24 @@ jobs:
           cat > RELEASE_BODY.md << 'EOFNOTES'
            # 🚀 Proxmox Backup Client ${{ steps.version.outputs.VERSION }}
 
-           > ⚠️ **Windows flagged the download as a virus?** This is a known false positive (unsigned Go/Wails binary) — *not* a virus. See the [project repository](https://github.com/tizbac/proxmoxbackupclient_go) for how to verify the download. A code-signing certificate (SignPath Foundation) is on the way.
+           > ⚠️ **Windows flagged the download as a virus?** This is a known false positive (unsigned Go/Wails binaries inside the installer) — *not* a virus. See the [project repository](https://github.com/tizbac/proxmoxbackupclient_go) for how to verify the download. A code-signing certificate (SignPath Foundation) is on the way.
+
+          ## 📦 Downloads
+
+          One Windows installer (`.msi`) per brand — no stand-alone `.exe` is
+          published. Pick the brand you are licensed for; they are the same
+          build, and the installed application takes its identity from its
+          executable name.
+
+          | File | Brand |
+          |---|---|
+          | `ProxmoxBackupClient-<version>.msi` | Proxmox Backup Client (default) |
+          | `NimbusBackup-<version>.msi` | Nimbus Backup |
+          | `AcmeBackup-<version>.msi` | Acme Backup |
+          | `EtitechBackup-<version>.msi` | Etitech Backup |
+
+          The command-line tools are in the per-platform archives
+          (`proxmoxbackup-cli-*` and `proxmoxbackupclient_go_*`).
 
           ## 📝 What's in this release
 

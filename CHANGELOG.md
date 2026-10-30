@@ -27,6 +27,9 @@ x.y.z), so uninstall this prerelease before installing 1.2.0 final.
 - **Builds** — version handling unified on the git tag across MSI, deb, rpm, arch and Docker; the MSI is built with candle/light under Wine in Docker.
 - **CI/release** — the goreleaser config was migrated to schema v2 (goreleaser ≥ v2.19 rejects v1 configs), prerelease tags such as `v1.2.0-rc.1` no longer feed a non-numeric version to WiX, and provenance is now attested with `actions/attest-build-provenance` instead of the failing SLSA generator workflow.
 
+### Packaging
+- Windows downloads are **MSI installers only** — one per brand (`ProxmoxBackupClient`, `NimbusBackup`, `AcmeBackup`, `EtitechBackup`), all built from the same binaries. The stand-alone `.exe` and the unversioned MSI are no longer published; every MSI file name carries the release version.
+
 ## [0.2.119] - 2026-06-12
 
 ### Internal
