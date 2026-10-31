@@ -95,6 +95,7 @@ func onReady(a *App) func() {
 					// Show the main window
 					runtime.WindowShow(a.ctx)
 					runtime.WindowUnminimise(a.ctx)
+					runtime.EventsEmit(a.ctx, "window:shown")
 				case <-menuPause.ClickedCh:
 					a.trayPauseClicked()
 				case <-menuQuit.ClickedCh:
@@ -237,6 +238,8 @@ func (a *App) ShowFromTray() {
 	writeDebugLog("Showing from tray")
 	runtime.WindowShow(a.ctx)
 	runtime.WindowUnminimise(a.ctx)
+	// The page reads the Backup Sets again: hidden, it may not have.
+	runtime.EventsEmit(a.ctx, "window:shown")
 }
 
 // UpdateTrayTooltip updates the tray icon tooltip (e.g., with next backup time)

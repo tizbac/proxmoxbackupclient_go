@@ -1144,14 +1144,45 @@ function App() {
   }, [])
 
   // Keep the Backup Set cards' Last run and Next run current while the
-  // Backup page is open (runs and the scheduler change them).
+  // Backup page is open (runs and the scheduler change them). It reads them
+  // at once on coming to the page, as the timer may not have run meanwhile.
   useEffect(() => {
     if (activeTab !== 'backup' || !GetScheduledJobs) return undefined
-    const id = setInterval(() => {
+    const refresh = () => {
       GetScheduledJobs().then(jobs => { if (jobs) setScheduledJobs(jobs) }).catch(() => {})
-    }, 30000)
+    }
+    refresh()
+    const id = setInterval(refresh, 30000)
     return () => clearInterval(id)
   }, [activeTab])
+
+  // The window can sit hidden in the tray for days, and a hidden page's
+  // timers may not run at all: read the sets again when it is shown or
+  // focused, and after a backup ends (its Last run is saved a moment later).
+  useEffect(() => {
+    if (!GetScheduledJobs) return undefined
+    const refresh = () => {
+      GetScheduledJobs().then(jobs => { if (jobs) setScheduledJobs(jobs) }).catch(() => {})
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', refresh)
+    const timers = []
+    let unsubShown, unsubDone
+    if (EventsOn) {
+      unsubShown = EventsOn('window:shown', refresh)
+      unsubDone = EventsOn('backup:complete', () => {
+        timers.push(setTimeout(refresh, 5000), setTimeout(refresh, 20000))
+      })
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', refresh)
+      timers.forEach(clearTimeout)
+      if (unsubShown) unsubShown()
+      if (unsubDone) unsubDone()
+    }
+  }, [])
 
   // Listen to restore events
   useEffect(() => {
