@@ -184,6 +184,8 @@ func (a *App) recordChangeDetectionOutcome(jobID string, success, readEveryFile 
 	if jobID == "" || jobID == "service-request" {
 		return
 	}
+	jobsFileMu.Lock()
+	defer jobsFileMu.Unlock()
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
 		// Never rewrite the jobs file from a failed read: it would wipe every job.

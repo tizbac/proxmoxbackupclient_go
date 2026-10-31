@@ -222,6 +222,17 @@ type JobHistory struct {
 	DurationSec         int  `json:"durationSec,omitempty"`
 }
 
+// jobsFileMu and historyFileMu keep this process's read-change-write of
+// scheduled_jobs.json and job_history.json one at a time. With several runs
+// at once, two finishing together each read the file, changed their own part
+// and wrote it back, and the second write lost the first's (a Last run, a
+// full-read count, a Reports entry). Readers need no lock: a file is
+// replaced whole (atomicWriteFile).
+var (
+	jobsFileMu    sync.Mutex
+	historyFileMu sync.Mutex
+)
+
 func getScheduledJobsPath() (string, error) {
 	dir, err := getConfigDir()
 	if err != nil {
@@ -249,6 +260,8 @@ func (a *App) SaveScheduledJob(job ScheduledJob) error {
 	}
 	normalizeJobSchedules(&job)
 
+	jobsFileMu.Lock()
+	defer jobsFileMu.Unlock()
 	// Load existing jobs
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
@@ -374,6 +387,8 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 	}
 	normalizeJobSchedules(&job)
 
+	jobsFileMu.Lock()
+	defer jobsFileMu.Unlock()
 	// Load existing jobs
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
@@ -433,6 +448,8 @@ func (a *App) DeleteScheduledJob(jobID string) error {
 	}
 	writeDebugLog(fmt.Sprintf("DeleteScheduledJob called for ID: %s", jobID))
 
+	jobsFileMu.Lock()
+	defer jobsFileMu.Unlock()
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
 		return err
@@ -552,6 +569,8 @@ func (a *App) AddJobHistory(entry JobHistory) error {
 // touching the Message Log. Restores use it directly because they already
 // write their own "Restore" Message Log line.
 func (a *App) appendJobHistory(entry JobHistory) error {
+	historyFileMu.Lock()
+	defer historyFileMu.Unlock()
 	history, err := a.GetJobHistory()
 	if err != nil {
 		// Refuse to overwrite the history file with just this entry when the
@@ -630,6 +649,8 @@ func calculateNextRunAt(job ScheduledJob, now time.Time) string {
 func (a *App) RecalculateNextRuns() {
 	writeDebugLog("RecalculateNextRuns called - repairing missing/invalid nextRun values")
 
+	jobsFileMu.Lock()
+	defer jobsFileMu.Unlock()
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("Error loading scheduled jobs: %v", err))
@@ -739,6 +760,8 @@ func (a *App) StopScheduler() {
 func (a *App) CleanupAbandonedJobs() {
 	writeDebugLog("CleanupAbandonedJobs called - cleaning up stale running jobs")
 
+	historyFileMu.Lock()
+	defer historyFileMu.Unlock()
 	history, err := a.GetJobHistory()
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("Error loading job history: %v", err))
@@ -931,30 +954,8 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	// backup. Only the frontend's own one-off machine backup button ever
 	// called StartMachineBackup correctly; every SCHEDULED machine backup
 	// set has never actually worked.
-	// Let startBackupDirect/startMachineBackupDirect's OnComplete (main.go)
-	// use this job's real name for the history entry it writes, instead of
-	// the generic "Manual backup - X"/"Backup machine - X" label — see
-	// currentScheduledJobName's doc comment (app_types.go) for why a plain
-	// field is safe here (operation_queue.go already serializes to one
-	// backup/restore at a time process-wide).
-	//
-	// Deliberately NOT cleared via defer here: in standalone mode,
-	// StartBackup/StartMachineBackup below are fire-and-forget (the real
-	// backup runs in a goroutine and this function returns immediately), so
-	// a defer here would clear the name/post-actions before the backup even
-	// starts, let alone finishes — found live 2026-09-26 when two named
-	// Backup Sets ("Backup with VSS"/"Backup without VSS") both showed up in
-	// Reports as the generic "Manual backup - X" label. The goroutine's
-	// OnComplete (main.go) is what actually consumes these fields once the
-	// real outcome is known, so it is also what clears them — safe due to
-	// operation_queue.go's serialization: the next backup can't acquire the
-	// slot (and call setScheduledJobName again) until OnComplete has fully
-	// finished, since the slot's release is deferred around the same
-	// RunBackupInline call that invokes OnComplete synchronously before
-	// returning. The two branches below (service mode, and standalone's
-	// immediate-failure case) are genuinely synchronous — OnComplete never
-	// runs for either — so they clear explicitly themselves.
-	a.setScheduledJobName(job.Name)
+	// The run's name (history, Reports, the PBS comment) is job.Name, passed
+	// as the comment below.
 
 	runPreBackupApp(job)
 
@@ -987,6 +988,10 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	// removed) but had no one-off use case at all, so a per-run key replaces
 	// them outright instead of just moving where a shared value gets read.
 	postActionsKey := a.registerPendingPostActions(job, trigger)
+	// A run this app does itself goes on in a goroutine (startBackupDirect)
+	// and writes its own history and post-backup actions; this closes when
+	// it has ended. Taken now: the run drops its entry when it completes.
+	localDone := a.localRunDone(postActionsKey)
 
 	// In the service, the run gets an entry on the local API like a run a
 	// GUI asked for, so an open window shows it and can pause or stop it.
@@ -1041,6 +1046,12 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 				// a failed e-mail has to be noted on it.
 				noter = a.newGroupNoter(job, startTime)
 			}
+		} else if localDone != nil && a.mode != api.ModeService {
+			// Hold the set as running until its run has ended, queue wait
+			// included: with several backups at once a set waiting behind
+			// its own earlier run must not be queued again by the next tick,
+			// and Last run says when the run finished.
+			<-localDone
 		}
 	}
 	// Close the API entry if the backup ended before its own completion
@@ -1128,7 +1139,6 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 		// (`job` is this function's own local variable throughout, so the
 		// discarded value itself isn't needed — only the cleanup is).
 		a.runPostBackupActions(job, err == nil, historyEntry.Message, noter)
-		a.setScheduledJobName("")
 		a.takePendingPostActions(postActionsKey)
 	} else if err != nil {
 		// Standalone mode: err here is only ever non-nil for an immediate,
@@ -1161,12 +1171,13 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			writeDebugLog(fmt.Sprintf("Warning: Failed to add job history: %v", herr))
 		}
 		a.runPostBackupActions(job, false, err.Error(), nil)
-		a.setScheduledJobName("")
 		a.takePendingPostActions(postActionsKey)
 	}
 
 	// Update job's last run and calculate next run.
 	// Re-read from file to pick up any changes made by the GUI while backup was running.
+	jobsFileMu.Lock()
+	defer jobsFileMu.Unlock()
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
 		// Never rewrite the jobs file from a failed read — it would wipe every job.

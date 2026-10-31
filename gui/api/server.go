@@ -47,15 +47,16 @@ type RunTracker interface {
 }
 
 // RunController is optionally implemented by the BackupHandler: Pause,
-// Resume and Stop for the backup the service is running, so a GUI can
-// control a run it did not start (a scheduled one) as well as its own.
+// Resume and Stop for a backup the service is running, so a GUI can control
+// a run it did not start (a scheduled one) as well as its own. jobID is the
+// run's progress entry; "" means every run (an older GUI sends none).
 type RunController interface {
-	PauseRun() error
-	ResumeRun() error
-	StopRun() error
-	// RunPauseState reports whether the running backup is paused, and since
+	PauseRun(jobID string) error
+	ResumeRun(jobID string) error
+	StopRun(jobID string) error
+	// RunPauseState reports whether the backup jobID is paused, and since
 	// when (Unix ms).
-	RunPauseState() (paused bool, sinceUnixMs int64)
+	RunPauseState(jobID string) (paused bool, sinceUnixMs int64)
 }
 
 // BackupHandler interface that the service must implement
@@ -198,6 +199,10 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, machine bool) 
 		Progress:  0,
 		Message:   "Starting backup...",
 		StartTime: time.Now().Format(time.RFC3339),
+		// The set's (or one-off's) name, so a window showing several runs
+		// can tell them apart.
+		Name:     req.Comment,
+		BackupID: req.BackupID,
 	}
 	log.Printf("[API] Progress entry created for %s (total entries: %d)", jobID, len(s.backupProgress))
 	s.progressMutex.Unlock()
@@ -365,7 +370,7 @@ func (s *Server) FinishRun(jobID string, success bool, message string) {
 // withPause copies a progress entry, adding the pause state to a running one.
 func (s *Server) withPause(p BackupProgress) BackupProgress {
 	if c, ok := s.app.(RunController); ok && p.Running {
-		p.Paused, p.PausedSince = c.RunPauseState()
+		p.Paused, p.PausedSince = c.RunPauseState(p.JobID)
 	}
 	return p
 }
@@ -396,7 +401,7 @@ func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRunControl serves POST /backup/pause, /backup/resume and
-// /backup/stop for the backup the service is running.
+// /backup/stop for the backup named by ?job= (every backup without it).
 func (s *Server) handleRunControl(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -407,14 +412,15 @@ func (s *Server) handleRunControl(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, "This service cannot pause or stop backups", http.StatusNotImplemented)
 		return
 	}
+	jobID := r.URL.Query().Get("job")
 	var err error
 	switch strings.TrimPrefix(r.URL.Path, "/backup/") {
 	case "pause":
-		err = c.PauseRun()
+		err = c.PauseRun(jobID)
 	case "resume":
-		err = c.ResumeRun()
+		err = c.ResumeRun(jobID)
 	case "stop":
-		err = c.StopRun()
+		err = c.StopRun(jobID)
 	default:
 		s.writeError(w, "Not found", http.StatusNotFound)
 		return
@@ -423,7 +429,7 @@ func (s *Server) handleRunControl(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, err.Error(), http.StatusConflict)
 		return
 	}
-	paused, since := c.RunPauseState()
+	paused, since := c.RunPauseState(jobID)
 	s.writeJSON(w, RunControlResponse{Paused: paused, PausedSince: since}, http.StatusOK)
 }
 

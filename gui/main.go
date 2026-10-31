@@ -421,6 +421,7 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		"parallel_restore":              cfg.ParallelRestore,
 		"parallel_backup_read":          cfg.ParallelBackupRead,
 		"backup_read_workers":           cfg.BackupReadWorkers,
+		"max_concurrent_runs":           clampRunLimit(cfg.MaxConcurrentRuns),
 		"hostname":                      hostname,
 		// Global SMTP account (Preferences > Advanced). Same M-04 pattern as
 		// the PBS secret above: never hand the real password to the webview,
@@ -904,6 +905,9 @@ func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
 	defer polledRuns.Delete(jobID)
 	lastPaused := false
 	lastFile := ""
+	// The window tells runs apart by this id (several can run at once).
+	runID := serviceRunPrefix + jobID
+	name, backupID := "", ""
 
 	// Without a bound, a permanently-404ing job (evicted/collided entry, or a
 	// service restart that dropped the progress map) would poll forever. Give up
@@ -920,6 +924,8 @@ func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
 				writeDebugLog("[Service Mode] Giving up polling after repeated failures")
 				if a.ctx != nil {
 					runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
+						"runId":   runID,
+						"name":    name,
 						"success": false,
 						"message": "Lost contact with backup service (status unavailable)",
 					})
@@ -930,30 +936,41 @@ func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
 			continue
 		}
 		consecutiveErrors = 0
+		if progress.Name != "" {
+			name = progress.Name
+		}
+		if progress.BackupID != "" {
+			backupID = progress.BackupID
+		}
 
 		// Emit progress event to GUI
 		if a.ctx != nil && progress.Running {
 			runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
+				"runId":   runID,
+				"name":    name,
 				"percent": progress.Progress,
 				"message": progress.Message,
 			})
-			a.emitRunDetail(progress, &lastFile)
+			a.emitRunDetail(progress, &lastFile, runID)
 			if progress.Paused != lastPaused {
 				lastPaused = progress.Paused
-				a.emitPause(BackupPauseState{Paused: progress.Paused, Since: progress.PausedSince})
+				a.emitPause(runID, BackupPauseState{Paused: progress.Paused, Since: progress.PausedSince})
 			}
 		}
 
 		// If backup completed, emit final event and stop polling
 		if progress.Complete {
 			if lastPaused {
-				a.emitPause(BackupPauseState{})
+				a.emitPause(runID, BackupPauseState{})
 			}
 			writeDebugLog(fmt.Sprintf("[Service Mode] Backup completed: success=%v", progress.Success))
 			if a.ctx != nil {
 				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
-					"success": progress.Success,
-					"message": progress.Message,
+					"runId":    runID,
+					"name":     name,
+					"backupId": backupID,
+					"success":  progress.Success,
+					"message":  progress.Message,
 				})
 			}
 			finish(progress.Success, progress.Message)
@@ -970,19 +987,13 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		writeDebugLog(fmt.Sprintf("[Backup ID] Empty backup-id, using hostname: %s", backupID))
 	}
 
-	// Resolve the PBS comment: an explicit comment (typed into the one-off
-	// form's "Backup Name" field) always wins; otherwise fall back to
-	// whichever of the same two sources Reports already uses for this run's
-	// history label — the triggering Backup Set's own name
-	// (currentScheduledJobName, already set by executeScheduledJob before
-	// this call) or the generic "Manual backup - X" text for a genuine
-	// one-off that also left the new field blank. Same value, same
-	// precedence, just read here (backup start) instead of only at
-	// OnComplete (history write) — see scheduledJobNameOr's doc comment.
+	// Resolve the PBS comment: the run's own name (a Backup Set's, passed by
+	// the scheduler, or what was typed into the one-off form's "Backup Name"
+	// field), else the generic "Manual backup - X". Reports labels the run
+	// with the same name.
 	if comment == "" {
-		comment = a.scheduledJobNameOr(fmt.Sprintf("Manual backup - %s", backupID))
+		comment = fmt.Sprintf("Manual backup - %s", backupID)
 	}
-	a.UpdateTrayTooltip(fmt.Sprintf("Backup running: %s", comment))
 
 	// Sanitize backup ID for logging
 	sanitizedID := security.SanitizeForLog(backupID)
@@ -1055,6 +1066,20 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		targetDirs = driveLetters
 	}
 
+	// The run, registered now so the window can show and stop it while it
+	// waits its turn. Its events carry its id: several can run at once.
+	run := newBackupRun(comment, backupType, backupID)
+	runDone := a.localRunDone(postActionsKey)
+	emit := func(event string, data map[string]interface{}) {
+		if a.isServiceProcess || a.ctx == nil {
+			return
+		}
+		data["runId"] = run.id
+		data["name"] = comment
+		data["backupId"] = backupID
+		runtime.EventsEmit(a.ctx, event, data)
+	}
+
 	// Prepare backup options
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
@@ -1115,10 +1140,9 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			// NEVER emit events if we're the service process (no Wails runtime)
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnProgress] Emitting Wails event (GUI mode)")
-				runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
+				emit("backup:progress", map[string]interface{}{
 					"percent": percent * 100,
 					"message": message,
-					"name":    comment,
 				})
 			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
 				writeDebugLog("[OnProgress] No callbacks/context (service or headless mode)")
@@ -1157,7 +1181,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 			// NEVER emit events if we're the service process (no Wails runtime)
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnComplete] Emitting Wails event (GUI mode)")
-				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
+				emit("backup:complete", map[string]interface{}{
 					"success":        success,
 					"message":        message,
 					"message_key":    msgKey,
@@ -1246,12 +1270,6 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 				a.runPostBackupActions(*postActionsEntry.job, success, message, postActionsEntry.snapshotNoter())
 			}
 
-			// currentScheduledJobName is still a shared field (kept for the
-			// one-off comment-fallback case) — clear it now that this run has
-			// consumed it. postActions/trigger need no clearing: they are
-			// plain parameters now, not shared state.
-			a.setScheduledJobName("")
-
 			if success {
 				a.ShowToastNotification("Backup Complete", comment, false)
 			} else {
@@ -1265,22 +1283,16 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 	// In the service process there is no Wails runtime, and the service-mode stats
 	// bridge is a separate backlog item (service-mode progress), so we only emit here.
 	opts.OnFile = func(path string) {
-		if a.isServiceProcess || a.ctx == nil {
-			return
-		}
-		runtime.EventsEmit(a.ctx, "backup:file", map[string]interface{}{"path": path})
+		emit("backup:file", map[string]interface{}{"path": path})
 	}
 	opts.OnStats = func(stats *BackupProgressStats) {
 		if a.isServiceProcess || a.ctx == nil {
 			return
 		}
-		runtime.EventsEmit(a.ctx, "backup:stats", stats.event())
+		emit("backup:stats", stats.event())
 	}
 	opts.OnResult = func(status *BackupStatus) {
-		if a.isServiceProcess || a.ctx == nil {
-			return
-		}
-		runtime.EventsEmit(a.ctx, "backup:result", map[string]interface{}{
+		emit("backup:result", map[string]interface{}{
 			"outcome":      string(status.Outcome),
 			"newChunks":    status.NewChunks,
 			"reusedChunks": status.ReusedChunks,
@@ -1291,45 +1303,67 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		})
 	}
 
-	// Run backup inline (in background goroutine to not block UI). Queues
-	// behind any backup/restore already running in this process — see
-	// operation_queue.go.
-	go func() {
-		// comment (resolved above via scheduledJobNameOr) is reused here as the
-		// display name a caller behind THIS one would see — same name either
-		// way, whether this run was triggered by a click or a schedule firing.
-		release := acquireOperationSlot(comment, func(heldBy string) {
-			opts.OnProgress(0.01, fmt.Sprintf("Queued: %s — waiting for %s to finish...", comment, heldBy))
-		})
-		defer release()
+	// "host" (not "vm") for a machine backup too — found 2026-09-24: "vm"
+	// tells machinebackuplib to also generate a Proxmox VE VM config, which
+	// requires the backup-id to be a NUMERIC VMID (strconv.ParseInt). Every
+	// machine backup here defaults to a hostname-style backup-id, same as
+	// every other backup type, so it always failed at that exact last step —
+	// after successfully transferring the entire disk. "host" has no such
+	// requirement and is the right choice for a plain bare-metal backup (the
+	// Clonezilla/NBD restore path reads the raw disk chunks directly, not this
+	// VM config, so nothing about that workflow needs "vm" type). The "vm"
+	// type, with its own numeric-VMID input on the one-off form, is reached
+	// via StartMachineBackup instead: see machineSnapshotType. This
+	// StartBackup path always stays "host".
+	opts.BackupType = "host"
+	kind := opBackup
+	if backupType == "machine" {
+		kind = opMachine
+	}
 
-		var err error
-		if backupType == "machine" {
-			// "host" (not "vm") — found 2026-09-24: "vm" tells machinebackuplib
-			// to also generate a Proxmox VE VM config, which requires the
-			// backup-id to be a NUMERIC VMID (strconv.ParseInt). Every machine
-			// backup here defaults to a hostname-style backup-id, same as
-			// every other backup type, so it always failed at that exact last
-			// step — after successfully transferring the entire disk. "host"
-			// has no such requirement and is the right choice for a plain
-			// bare-metal backup (the Clonezilla/NBD restore path reads the
-			// raw disk chunks directly, not this VM config, so nothing about
-			// that workflow needs "vm" type). The "vm" type, with
-			// its own numeric-VMID input on the one-off form, is reached via
-			// StartMachineBackup instead: see machineSnapshotType. This
-			// StartBackup path always stays "host".
-			opts.BackupType = "host"
-			err = RunBackupInline(opts)
-		} else {
-			opts.BackupType = "host"
-			err = RunBackupInline(opts)
-		}
-		if err != nil {
-			writeDebugLog(fmt.Sprintf("Backup error: %v", err))
-		}
-	}()
+	// Run backup inline (in background goroutine to not block UI), once its
+	// turn comes — see operation_queue.go.
+	go a.runLocalBackup(run, opts, kind, runDone)
 
 	return nil
+}
+
+// runLocalBackup waits for the run's turn (operation_queue.go), runs it and
+// ends it. A Stop while it waits ends it as cancelled, with the usual
+// completion (history entry, the set's actions after a backup). runDone (may
+// be nil) is closed at the very end, for the scheduler.
+func (a *App) runLocalBackup(run *backupRun, opts BackupOptions, kind opKind, runDone chan struct{}) {
+	defer func() {
+		run.end()
+		a.refreshRunningTooltip()
+		if runDone != nil {
+			close(runDone)
+		}
+	}()
+	req := opRequest{name: run.name, kind: kind,
+		group: opGroupKey(opts.BaseURL, opts.Datastore, opts.Namespace, opts.BackupType, opts.BackupID)}
+	h, err := acquireOperation(run.ctx, req, func(waitingFor string) {
+		run.queued.Store(true)
+		writeDebugLog(fmt.Sprintf("Queued: %s, waiting for %s", run.name, waitingFor))
+		if opts.OnProgress != nil {
+			opts.OnProgress(0.01, queuedMessage(run.name, waitingFor))
+		}
+	})
+	run.queued.Store(false)
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("%s was stopped while it waited its turn", run.name))
+		if opts.OnComplete != nil {
+			opts.OnComplete(false, "Backup cancelled by user", MsgBackupCancelled, nil)
+		}
+		return
+	}
+	defer h.Release()
+	a.refreshRunningTooltip()
+
+	opts.Run = run
+	if err := RunBackupInline(opts); err != nil {
+		writeDebugLog(fmt.Sprintf("Backup error (%s): %v", run.name, err))
+	}
 }
 
 // startMachineBackupDirect performs machine backup directly (standalone mode)
@@ -1343,9 +1377,8 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	// Resolve the PBS comment — see startBackupDirect's matching comment for
 	// the full reasoning (same precedence, machine-backup's own fallback text).
 	if comment == "" {
-		comment = a.scheduledJobNameOr(fmt.Sprintf("Backup machine - %s", backupID))
+		comment = fmt.Sprintf("Backup machine - %s", backupID)
 	}
-	a.UpdateTrayTooltip(fmt.Sprintf("Backup running: %s", comment))
 
 	// Sanitize backup ID for logging
 	sanitizedID := security.SanitizeForLog(backupID)
@@ -1389,6 +1422,19 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	}
 	if err := cryptUnlock(); err != nil {
 		return err
+	}
+
+	// The run and its events: see startBackupDirect.
+	run := newBackupRun(comment, "machine", backupID)
+	runDone := a.localRunDone(postActionsKey)
+	emit := func(event string, data map[string]interface{}) {
+		if a.isServiceProcess || a.ctx == nil {
+			return
+		}
+		data["runId"] = run.id
+		data["name"] = comment
+		data["backupId"] = backupID
+		runtime.EventsEmit(a.ctx, event, data)
 	}
 
 	// Prepare backup options
@@ -1438,10 +1484,9 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			// NEVER emit events if we're the service process (no Wails runtime)
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnProgress] Emitting Wails event (GUI mode)")
-				runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
+				emit("backup:progress", map[string]interface{}{
 					"percent": percent * 100,
 					"message": message,
-					"name":    comment,
 				})
 			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
 				writeDebugLog("[OnProgress] No callbacks/context (service or headless mode)")
@@ -1480,7 +1525,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			// NEVER emit events if we're the service process (no Wails runtime)
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnComplete] Emitting Wails event (GUI mode)")
-				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
+				emit("backup:complete", map[string]interface{}{
 					"success":        success,
 					"message":        message,
 					"message_key":    msgKey,
@@ -1532,12 +1577,6 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 				a.runPostBackupActions(*postActionsEntry.job, success, message, postActionsEntry.snapshotNoter())
 			}
 
-			// currentScheduledJobName is still a shared field (kept for the
-			// one-off comment-fallback case) — clear it now that this run has
-			// consumed it. postActions/trigger need no clearing: they are
-			// plain parameters now, not shared state.
-			a.setScheduledJobName("")
-
 			if success {
 				a.ShowToastNotification("Backup Complete", comment, false)
 			} else {
@@ -1551,22 +1590,16 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	// In the service process there is no Wails runtime, and the service-mode stats
 	// bridge is a separate backlog item (service-mode progress), so we only emit here.
 	opts.OnFile = func(path string) {
-		if a.isServiceProcess || a.ctx == nil {
-			return
-		}
-		runtime.EventsEmit(a.ctx, "backup:file", map[string]interface{}{"path": path})
+		emit("backup:file", map[string]interface{}{"path": path})
 	}
 	opts.OnStats = func(stats *BackupProgressStats) {
 		if a.isServiceProcess || a.ctx == nil {
 			return
 		}
-		runtime.EventsEmit(a.ctx, "backup:stats", stats.event())
+		emit("backup:stats", stats.event())
 	}
 	opts.OnResult = func(status *BackupStatus) {
-		if a.isServiceProcess || a.ctx == nil {
-			return
-		}
-		runtime.EventsEmit(a.ctx, "backup:result", map[string]interface{}{
+		emit("backup:result", map[string]interface{}{
 			"outcome":      string(status.Outcome),
 			"newChunks":    status.NewChunks,
 			"reusedChunks": status.ReusedChunks,
@@ -1577,20 +1610,9 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		})
 	}
 
-	// Run backup inline (in background goroutine to not block UI). Queues
-	// behind any backup/restore already running in this process — see
-	// operation_queue.go.
-	go func() {
-		release := acquireOperationSlot(comment, func(heldBy string) {
-			opts.OnProgress(0.01, fmt.Sprintf("Queued: %s — waiting for %s to finish...", comment, heldBy))
-		})
-		defer release()
-
-		err := RunBackupInline(opts)
-		if err != nil {
-			writeDebugLog(fmt.Sprintf("Machine backup error: %v", err))
-		}
-	}()
+	// Run backup inline (in background goroutine to not block UI), once its
+	// turn comes — see operation_queue.go.
+	go a.runLocalBackup(run, opts, opMachine, runDone)
 
 	return nil
 }
@@ -1763,7 +1785,6 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	// restore is running when this card is the only one on screen) and for
 	// the queued-behind-this-one message another operation would show.
 	restoreLabel := fmt.Sprintf("Restore of %s @ %s", backupID, snapshotID)
-	a.UpdateTrayTooltip(fmt.Sprintf("Restoring: %s", restoreLabel))
 
 	emit := func(percent float64, message string) {
 		markRestoreProgress()
@@ -1857,10 +1878,16 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	}
 
 	go func() {
-		release := acquireOperationSlot(restoreLabel, func(heldBy string) {
-			emit(0.01, fmt.Sprintf("Queued: %s — waiting for %s to finish...", restoreLabel, heldBy))
+		// One restore at a time, and never beside a backup of the same group.
+		release := acquireOperationSlot(opRequest{name: restoreLabel, kind: opRestore,
+			group: opGroupKey(cfg.BaseURL, cfg.Datastore, cfg.Namespace, "host", backupID)}, func(waitingFor string) {
+			emit(0.01, queuedMessage(restoreLabel, waitingFor))
 		})
-		defer release()
+		defer func() {
+			release()
+			a.refreshRunningTooltip()
+		}()
+		a.UpdateTrayTooltip(fmt.Sprintf("Restoring: %s", restoreLabel))
 
 		markRestoreStarted()
 		defer markRestoreDone()

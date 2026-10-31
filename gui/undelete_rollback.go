@@ -984,7 +984,7 @@ func (a *App) UndoRollback(manifestPath string) (string, error) {
 	if rollbackHeld(m.JobID) {
 		return "", fmt.Errorf("a roll back of this set is running")
 	}
-	release := acquireOperationSlot("Undo roll back: "+m.SetName, nil)
+	release := acquireOperationSlot(opRequest{name: "Undo roll back: " + m.SetName, kind: opExclusive}, nil)
 	defer release()
 	movedFrom := map[string]bool{}
 	for _, mv := range m.Moved {
@@ -1181,13 +1181,18 @@ func (a *App) runSetRestore(op setRestoreOp) {
 		}
 		var release func()
 		if err == nil {
-			release = acquireOperationSlot(op.Label, func(heldBy string) {
-				emit(0.01, fmt.Sprintf("Queued: %s — waiting for %s to finish...", op.Label, heldBy))
+			// Undelete and Roll back put files back into folders other sets
+			// may be reading: they run alone (operation_queue.go).
+			release = acquireOperationSlot(opRequest{name: op.Label, kind: opExclusive}, func(waitingFor string) {
+				emit(0.01, queuedMessage(op.Label, waitingFor))
 			})
 		} else {
 			release = func() {}
 		}
-		defer release()
+		defer func() {
+			release()
+			a.refreshRunningTooltip()
+		}()
 		markRestoreStarted()
 		defer markRestoreDone()
 		ctx, _ := newRestoreContext()

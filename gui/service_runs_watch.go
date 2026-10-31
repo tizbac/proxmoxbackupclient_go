@@ -25,20 +25,25 @@ type serviceRunsSnapshot struct {
 // latestServiceRuns is nil while the service does not run the schedules.
 var latestServiceRuns atomic.Pointer[serviceRunsSnapshot]
 
+// followedServiceRun is what the window was last told about one service run.
+type followedServiceRun struct {
+	paused bool
+	file   string
+}
+
 // watchServiceRuns shows the service's own runs in this window. While the
 // service runs the schedules, it lists the service's runs every 3 s and
-// follows one this window did not start (a scheduled run), sending the same
-// progress, pause and completion events as a run of its own: the progress
-// card appears, with Pause and Stop, which go to the service.
+// follows every one this window did not start (scheduled runs, several at
+// once), sending the same progress, pause and completion events as a run of
+// its own, each under its own run id: each gets its card, with Pause and
+// Stop, which go to the service.
 func (a *App) watchServiceRuns() {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
-	following := ""
-	lastPaused := false
-	lastFile := ""
+	following := map[string]*followedServiceRun{}
 	for range ticker.C {
 		if a.ctx == nil || a.mode != api.ModeService {
-			following = ""
+			following = map[string]*followedServiceRun{}
 			latestServiceRuns.Store(nil)
 			continue
 		}
@@ -48,66 +53,70 @@ func (a *App) watchServiceRuns() {
 			continue
 		}
 		latestServiceRuns.Store(&serviceRunsSnapshot{at: fetched, runs: resp})
-		var run *api.BackupProgress
-		if following != "" {
-			for i := range resp.Runs {
-				if resp.Runs[i].JobID == following {
-					run = &resp.Runs[i]
-				}
+		listed := map[string]bool{}
+		for i := range resp.Runs {
+			run := &resp.Runs[i]
+			listed[run.JobID] = true
+			if _, mine := polledRuns.Load(run.JobID); mine {
+				continue
 			}
-			if run == nil {
-				// Gone from the service (restarted): the card cannot stay.
+			f := following[run.JobID]
+			if f == nil {
+				if !run.Running {
+					continue // finished before this window saw it
+				}
+				f = &followedServiceRun{}
+				following[run.JobID] = f
+				writeDebugLog("[Service Mode] Showing the service's run " + run.JobID + " (" + run.Name + ")")
+			}
+			id := serviceRunPrefix + run.JobID
+			if run.Complete {
 				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
-					"success": false, "message": "Lost contact with the backup in the service",
+					"runId": id, "name": run.Name, "success": run.Success, "message": run.Message,
 				})
-				following = ""
-				continue
-			}
-		} else {
-			for i := range resp.Runs {
-				r := &resp.Runs[i]
-				if _, mine := polledRuns.Load(r.JobID); r.Running && !mine {
-					run, following, lastPaused, lastFile = r, r.JobID, false, ""
-					writeDebugLog("[Service Mode] Showing the service's run " + r.JobID + " (" + r.Name + ")")
-					break
+				if f.paused {
+					a.emitPause(id, BackupPauseState{})
 				}
-			}
-			if run == nil {
+				delete(following, run.JobID)
 				continue
 			}
-		}
-
-		if run.Complete {
-			runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
-				"success": run.Success, "message": run.Message,
+			runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
+				"runId": id, "percent": run.Progress, "message": run.Message, "name": run.Name,
 			})
-			if lastPaused {
-				a.emitPause(BackupPauseState{})
+			a.emitRunDetail(run, &f.file, id)
+			if run.Paused != f.paused {
+				f.paused = run.Paused
+				a.emitPause(id, BackupPauseState{Paused: run.Paused, Since: run.PausedSince})
 			}
-			following = ""
-			continue
 		}
-		runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
-			"percent": run.Progress, "message": run.Message, "name": run.Name,
-		})
-		a.emitRunDetail(run, &lastFile)
-		if run.Paused != lastPaused {
-			lastPaused = run.Paused
-			a.emitPause(BackupPauseState{Paused: run.Paused, Since: run.PausedSince})
+		for jobID := range following {
+			if !listed[jobID] {
+				// Gone from the service (restarted): its card cannot stay.
+				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
+					"runId": serviceRunPrefix + jobID, "success": false, "message": "Lost contact with the backup in the service",
+				})
+				delete(following, jobID)
+			}
 		}
 	}
 }
 
 // emitRunDetail passes a service run's live statistics and current file on
-// as this window's own "backup:stats" and "backup:file" events, so the card's
-// Files, Processing, Upload and New/Reused rows fill in as for a run of its
-// own. lastFile holds the file last sent, so an unchanged one is not resent.
-func (a *App) emitRunDetail(run *api.BackupProgress, lastFile *string) {
+// as this window's own "backup:stats" and "backup:file" events, under the
+// run's id, so the card's Files, Processing, Upload and New/Reused rows fill
+// in as for a run of its own. lastFile holds the file last sent, so an
+// unchanged one is not resent.
+func (a *App) emitRunDetail(run *api.BackupProgress, lastFile *string, runID string) {
 	if run.Stats != nil {
-		runtime.EventsEmit(a.ctx, "backup:stats", run.Stats)
+		stats := make(map[string]interface{}, len(run.Stats)+1)
+		for k, v := range run.Stats {
+			stats[k] = v
+		}
+		stats["runId"] = runID
+		runtime.EventsEmit(a.ctx, "backup:stats", stats)
 	}
 	if run.File != "" && run.File != *lastFile {
 		*lastFile = run.File
-		runtime.EventsEmit(a.ctx, "backup:file", map[string]interface{}{"path": run.File})
+		runtime.EventsEmit(a.ctx, "backup:file", map[string]interface{}{"runId": runID, "path": run.File})
 	}
 }

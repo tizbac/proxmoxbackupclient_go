@@ -258,7 +258,7 @@ Each card has **Run Now**, **Edit** and a **More ▾** menu:
 
 | Button | What it does |
 |---|---|
-| Run Now | Starts the set now, as its schedule would. If another backup or restore is running it waits in the queue |
+| Run Now | Starts the set now, as its schedule would. It runs beside the backups already going, or waits its turn ([section 6.7](#67-several-backups-at-once)) |
 | Edit | Opens the editor |
 | More > Run now: quick (changed files only) | Metadata folder sets only. Reuses unchanged files even when the set is due its full read; the full read stays due for the next run ([section 7](#read-every-file-every-n-runs)) |
 | More > Run now: full read (every file) | Metadata folder sets only. Reads every file now and restarts the full-read count |
@@ -333,7 +333,7 @@ Schedules run while the GUI is running (in the tray is fine) or in the installed
 | When the backup finishes, the app window: | **Stays as it is** (default), **Minimises to the tray** or **Closes (the app exits)**. Minimising needs the tray, so it does nothing on Linux, and it does nothing for a run the background service makes |
 | Turn off the computer after the backup | Shuts the computer down when the set finishes. A warning shows while it is ticked |
 
-The actions run in this order when the set finishes: the email, the "after" application, the window choice, then the shutdown last.
+The actions run in this order when the set finishes: the email, the "after" application, the window choice, then the shutdown last. Closing the app or turning the computer off waits until the other backups and restores already running or waiting at that moment have finished, so it never cuts one short ([section 6.7](#67-several-backups-at-once)); a run that starts later is not waited for.
 
 Email needs the SMTP account in **Preferences > Email** ([section 14](#14-preferences)). The tab warns if none is set up. If a successful backup's e-mail cannot be sent (the mail server is down or refuses it), "Error sending notification email, check client mail configuration." is added to the snapshot's comment on PBS, after the set's name, as the command-line tools do, so it shows in the PBS web interface.
 
@@ -341,9 +341,24 @@ Email needs the SMTP account in **Preferences > Email** ([section 14](#14-prefer
 
 The set's name is written to PBS as the snapshot comment, so it shows in the PBS web interface and in the bare-metal restore menus.
 
-### 6.7 Queue
+### 6.7 Several backups at once
 
-Only one backup or restore runs at a time. Anything started meanwhile (Run Now, a schedule, a restore) waits. The progress card lists what is waiting ("1 more backup queued…").
+Up to three backups and restores run at the same time (**Preferences > Backup Options > Backups at once**, 1 to 8). A long first backup of a large set, which can take a day or more, no longer holds up the other sets: a set of documents that runs every hour keeps its hourly runs, and a machine backup still runs at its time. Whatever the number:
+
+| Rule | Why |
+|---|---|
+| One machine backup at a time | Each reads whole disks. A machine backup does run beside folder backups |
+| One restore at a time | |
+| Nothing runs at the same time as another run of the same PBS backup group: a set never runs twice at once, and a restore or another set with the same Backup ID waits | PBS keeps one group's snapshots in order, and two backups (or a backup and a restore) of one group clash |
+| Undelete and Roll back run alone | They put files back into folders other sets may be reading |
+
+Anything that cannot start yet waits its turn, in the order it was started, and the progress card lists it with a **Stop** button ([section 8](#8-the-backup-progress-card)). A set whose run is still going, or waiting, is not started again by its schedule meanwhile; its next run is its next scheduled time after that run ends.
+
+Each run makes its own snapshot of what it reads (VSS on Windows), so two sets reading the same drive each have their own and never see each other's. Windows makes one snapshot at a time, so a run starting at the same moment as another waits a few seconds for it. On Linux, elastio-snap and dattobd allow one snapshot of a drive at a time: a backup that needs a drive another backup has a snapshot of waits until that one has finished with it, while sets on other drives run together.
+
+Runs at the same time share the computer's disks and network and the PBS server. Two backups reading the same hard disk slow each other down; sets on different drives gain the most. Set **Backups at once** to 1 to run them one after another, as before.
+
+Each run writes its own log file (`backup-<date>-<time>-<backup id>.log`), however many run at once ([section 13](#13-message-log-and-log-files)).
 
 ### 6.8 Administrator protection
 
@@ -415,6 +430,8 @@ Machine sets ignore change detection: disks are stored as images. One-off backup
 
 When a backup starts, a card appears at the top of the Backup page with the set's name, a percentage and a progress bar. Every row is there from the start. A value shows **Calculating...** until it is known, and **Not available** where the run cannot provide it.
 
+**Several backups at once** ([section 6.7](#67-several-backups-at-once)). The card shows one of them in full. **‹ 1/3 ›** beside the percentage steps through the backups running, and the card's Pause and Stop act on the one it shows. Under the buttons, **Also running** lists the others, each with its percentage (or **Paused**), **Show** to put it on the card, **⏸**/**▶** to pause or resume it and **⏹** to stop it. When the backup on the card finishes, the card moves on to the next one still running. A backup's figures (speeds, forecast) start again a second or so after it is put on the card.
+
 The line under the bar says what the run is doing:
 
 | Stage line | Meaning |
@@ -470,7 +487,7 @@ The PC kept recording without dropping frames throughout. The network figures ab
 
 **Pause** holds the run where it is, part way through a file if need be, and the button becomes **Resume**. Nothing is read or uploaded while it is paused, and the connection to PBS stays open, so Resume carries on from the same place. Stopping a backup and starting it again would read everything from the beginning. Use it when the PBS server or the network is busy with something else, or the computer is needed for a while. While a backup is paused:
 
-- other backups and restores in this app wait, as they do behind a running backup;
+- only this backup waits: other backups and restores carry on, and it keeps its place among the backups running at once;
 - the VSS snapshot stays in place, so its shadow storage grows as files on that drive change;
 - if the connection to PBS drops (the server restarts, the network goes down) PBS ends the backup as it would while running, and the app starts it again as described under **When the connection is lost** above;
 - Forecast finish and Time remaining show **Paused**, and pick up again from fresh measurements after Resume.
@@ -479,7 +496,7 @@ Pause works for folder and machine backups, whether the app or the background se
 
 **Stop** ends the run at once, part way through a file if need be, and also works while paused. No snapshot is kept for the stopped run, so the next backup compares with the last complete one. Reports record it as cancelled (⏹️), not failed.
 
-Anything waiting behind the run is listed under the card.
+Anything waiting for its turn is listed under the card, each backup with a **Stop** button that ends its wait (it is recorded as cancelled).
 
 ## 9. Restore
 
@@ -670,7 +687,7 @@ Open Preferences from the side menu or **Tools > Preferences…**. The dialog ha
 | Tab | Contents |
 |---|---|
 | Account Information | PBS servers ([section 4](#4-adding-a-pbs-server)) |
-| Backup Options | **Parallel restore extraction (experimental)**: writes several files at once during a restore. Not always faster; on our test machine it was slightly slower. **Multi-threaded backup reading (experimental)**: reads files ahead in the background during a backup, with a **Worker count:** (1 to 32, default 8). Helps when the disk is the bottleneck. Turn either off if anything behaves unexpectedly |
+| Backup Options | **Parallel restore extraction (experimental)**: writes several files at once during a restore. Not always faster; on our test machine it was slightly slower. **Multi-threaded backup reading (experimental)**: reads files ahead in the background during a backup, with a **Worker count:** (1 to 32, default 8). Helps when the disk is the bottleneck. Turn either off if anything behaves unexpectedly. **Backups at once:** how many backups and restores may run at the same time, 1 to 8, default 3 ([section 6.7](#67-several-backups-at-once)). 1 runs them one after another, as before. A change applies to the next backup to start |
 | Theme | Amber, Classic Blue, Green, Red, Dark, or Custom… (your own Accent color, Accent (hover) and the two gradient ends, as 6-digit hex values, with a preview). A branded build (one whose program file carries a brand name the app knows) uses the brand's own colours and has no Theme tab |
 | Email | The SMTP account all Backup Sets use: SMTP server, Port, Username, Password, From address, and "Allow an unencrypted connection (not recommended)". **Save**, then **Send test email** to an address to check it ("Sending..." with a wait bar while it goes). Each set picks its own recipient on its Alerts tab |
 | Export / Import Settings | **Export Settings...** saves your servers, the default server, theme, email account and Backup Sets to a `.json` file. Tick "Include passwords/tokens in the export" to include the PBS tokens and passwords, remembered key passphrases and the SMTP password, in plain text, so keep that file safe. Without it, none of them is written. Encryption key files are not included: copy them yourself (**Save a copy…** on the Encryption tab). **Import Settings...** loads such a file, for example from another computer. Servers and Backup Sets with the same ID are replaced, others are added, and nothing else is removed. Importing Backup Sets needs administrator rights while job protection is on. The same file sets up many computers at once when the Windows installer is given it (`CONFIGFILE`, see [installer/DEPLOYMENT.md](../../installer/DEPLOYMENT.md)): there, a set whose backup ID is the exporting computer's name backs up under each computer's own name |
@@ -681,7 +698,7 @@ Open Preferences from the side menu or **Tools > Preferences…**. The dialog ha
 
 **Closing the window on Windows** (the X) asks whether to **Minimize to Tray** or **Exit**. Minimised, the GUI keeps running in the notification area and its schedules still run. **Exit** (also **File > Exit**) quits completely, and no schedules run from the GUI until you open it again.
 
-The **tray icon** (Windows) menu has Show window, Pause backup, Backup status and Quit. **Pause backup** can be clicked while a backup runs, whether the app or the background service runs it, and pauses it as the progress card's Pause does ([section 8](#8-the-backup-progress-card)); it then reads **Resume backup**, and the icon's tooltip says **Backup paused**. Windows notifications report finished backups and restores.
+The **tray icon** (Windows) menu has Show window, Pause backup, Backup status and Quit. **Pause backup** can be clicked while a backup runs, whether the app or the background service runs it, and pauses it as the progress card's Pause does ([section 8](#8-the-backup-progress-card)); with several backups running it pauses them all. It then reads **Resume backup** (which resumes them all), and the icon's tooltip says **Backup paused**. While backups run, the tooltip names them ("Backup running: Data and Music"). Windows notifications report finished backups and restores.
 
 **Linux has no tray.** Closing the window quits the app, and **Minimize to Tray** does nothing. Use the background service for schedules that run while the app is closed.
 
@@ -711,7 +728,7 @@ The .deb and .rpm install the service program (`/usr/lib/proxmoxbackupclient/Pro
 
 The shared folder works like `C:\ProgramData\ProxmoxBackupClient\`: root owns it and can change it; members of the `sudo` (or `wheel`) group can read it, so their GUI, started normally, sees the Backup Sets, runs them through the service and shows history; other accounts get no access, and their GUI shows the "open to its administrators only" banner. Adding, editing, deleting or importing Backup Sets needs the GUI as root: **Restart as administrator** (in the banner and in Preferences) starts it with pkexec. As on Windows, the history of a backup started from a GUI that is not root is not recorded, because that GUI cannot write the shared history; scheduled runs are recorded by the service. An upgrade of the package restarts a running service. Removing the package stops and disables the service and keeps `/var/lib/proxmoxbackupclient/`; delete that folder yourself to remove the settings. Without systemd there is no service and the GUI runs the schedules while it is open.
 
-Runs the service makes on its own schedule show in an open GUI window, with Pause, Resume and Stop ([section 8](#8-the-backup-progress-card)).
+Runs the service makes on its own schedule show in an open GUI window, with Pause, Resume and Stop ([section 8](#8-the-backup-progress-card)); several at once each have their own. The service runs backups side by side as the app does, with the same **Backups at once** setting ([section 6.7](#67-several-backups-at-once)), which it reads before each run.
 
 ## 16. Compatibility with the official Proxmox client
 

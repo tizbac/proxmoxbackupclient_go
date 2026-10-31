@@ -16,6 +16,7 @@ type fakeService struct {
 	mu      sync.Mutex
 	paused  bool
 	stopped int
+	lastJob string // the run the last Pause or Resume named
 }
 
 func (f *fakeService) StartBackup(string, []string, []string, []string, string, bool, string, string, string, string) error {
@@ -30,9 +31,21 @@ func (f *fakeService) SaveScheduledJobFromMap(map[string]interface{}) error   { 
 func (f *fakeService) UpdateScheduledJobFromMap(map[string]interface{}) error { return nil }
 func (f *fakeService) DeleteScheduledJobFromMap(string) error                 { return nil }
 func (f *fakeService) PinServerFingerprint(string, string) error              { return nil }
-func (f *fakeService) PauseRun() error                                        { f.mu.Lock(); f.paused = true; f.mu.Unlock(); return nil }
-func (f *fakeService) ResumeRun() error                                       { f.mu.Lock(); f.paused = false; f.mu.Unlock(); return nil }
-func (f *fakeService) StopRun() error {
+func (f *fakeService) PauseRun(jobID string) error {
+	f.mu.Lock()
+	f.paused = true
+	f.lastJob = jobID
+	f.mu.Unlock()
+	return nil
+}
+func (f *fakeService) ResumeRun(jobID string) error {
+	f.mu.Lock()
+	f.paused = false
+	f.lastJob = jobID
+	f.mu.Unlock()
+	return nil
+}
+func (f *fakeService) StopRun(jobID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.stopped > 0 {
@@ -41,7 +54,7 @@ func (f *fakeService) StopRun() error {
 	f.stopped++
 	return nil
 }
-func (f *fakeService) RunPauseState() (bool, int64) {
+func (f *fakeService) RunPauseState(string) (bool, int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.paused {
@@ -82,6 +95,14 @@ func TestPauseResumeStopGoToTheService(t *testing.T) {
 	// The service's own answer comes back to the window.
 	if err := a.CancelBackup(); err == nil || err.Error() != "no backup is running" {
 		t.Fatalf("second CancelBackup = %v", err)
+	}
+
+	// A card's own buttons name its run: the service is told which one.
+	if _, err := a.PauseBackupRun(serviceRunPrefix + runID); err != nil || svc.lastJob != runID {
+		t.Fatalf("PauseBackupRun = %v, service told job %q, want %q", err, svc.lastJob, runID)
+	}
+	if _, err := a.ResumeBackupRun(serviceRunPrefix + runID); err != nil || svc.paused {
+		t.Fatalf("ResumeBackupRun = %v (service paused %v)", err, svc.paused)
 	}
 
 	server.FinishRun(runID, false, "Backup cancelled")

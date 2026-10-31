@@ -4,6 +4,7 @@ package snapshot
 
 import (
 	"fmt"
+	"sync"
 	"unsafe"
 
 	"github.com/go-ole/go-ole"
@@ -78,6 +79,15 @@ func waitVSS(step string, async *vss.IVssAsync, err error, timeoutMs int) error 
 	return fmt.Errorf("%s didn't finish properly: async operation returned bad status - 0x%x", step, status)
 }
 
+// shadowMu lets one shadow copy at a time be made or released in this
+// process. Several backups can run at once now; Windows makes one shadow copy
+// set at a time and answers a second with "another shadow copy creation is
+// already in progress", which retryWhileBusy then waited out 30 s at a time.
+// Waiting here instead takes only as long as the other creation (seconds).
+// The shadow copies themselves are held side by side for as long as each
+// backup needs; only making and releasing them take turns.
+var shadowMu sync.Mutex
+
 // vssShadow is a shadow copy made by createShadow, held until release.
 type vssShadow struct {
 	vss.Snapshot
@@ -89,6 +99,8 @@ type vssShadow struct {
 // context, as a copy backup, the way go-vss's Snapshotter.CreateSnapshot does.
 // Each step may take timeoutMs.
 func createShadow(drive string, timeoutMs int) (s *vssShadow, err error) {
+	shadowMu.Lock()
+	defer shadowMu.Unlock()
 	c, err := newVSSComponents()
 	if err != nil {
 		return nil, err
@@ -159,6 +171,8 @@ func (s *vssShadow) release() error {
 	if s == nil || s.c == nil {
 		return nil
 	}
+	shadowMu.Lock()
+	defer shadowMu.Unlock()
 	defer func() {
 		s.c.Release()
 		s.c = nil

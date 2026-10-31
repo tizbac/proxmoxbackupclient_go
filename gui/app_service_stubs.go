@@ -139,16 +139,14 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 	}
 	pbsBackupType := "host"
 
-	// Resolve the PBS comment — see main.go's startBackupDirect for the full
-	// reasoning (same precedence: explicit comment wins, else the
-	// scheduled-job name a scheduled run's history is already labeled with,
-	// else the generic fallback matching this kind).
+	// Resolve the PBS comment — see main.go's startBackupDirect: the run's
+	// own name (the scheduler passes the set's), else the generic fallback
+	// matching this kind.
 	if comment == "" {
-		fallback := fmt.Sprintf("Manual backup - %s", backupID)
+		comment = fmt.Sprintf("Manual backup - %s", backupID)
 		if kind == "machine" {
-			fallback = fmt.Sprintf("Backup machine - %s", backupID)
+			comment = fmt.Sprintf("Backup machine - %s", backupID)
 		}
-		comment = a.scheduledJobNameOr(fallback)
 	}
 
 	opts := BackupOptions{
@@ -203,17 +201,39 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		defer a.takePendingPostActions(postActionsKey)
 	}
 
-	// Execute backup using inline implementation. Queues behind any
-	// backup/restore already running in THIS process — see
-	// operation_queue.go's doc comment for the cross-process caveat (a
-	// manual restore run from a separate GUI process isn't covered here).
-	release := acquireOperationSlot(comment, func(heldBy string) {
-		writeDebugLog(fmt.Sprintf("[Service] Queued: %s — waiting for %s to finish", comment, heldBy))
-		a.reportRun(runID, 0, fmt.Sprintf("Queued: %s — waiting for %s to finish...", comment, heldBy))
-	})
-	defer release()
+	// Execute backup using inline implementation, once its turn comes (see
+	// operation_queue.go, and its doc comment for the cross-process caveat:
+	// a manual restore run from a separate GUI process isn't covered here).
+	opKindFor := opBackup
+	if kind == "machine" {
+		opKindFor = opMachine
+	}
+	return a.runServiceBackup(opts, kind, runID, opKindFor)
+}
 
-	writeDebugLog("[Service] Executing backup via RunBackupInline")
+// runServiceBackup registers the service's run (so the API can pause or
+// stop it by its entry), waits for its turn and runs it, synchronously.
+func (a *App) runServiceBackup(opts BackupOptions, kind, runID string, k opKind) error {
+	run := newBackupRun(opts.Comment, kind, opts.BackupID)
+	run.apiID = runID
+	defer run.end()
+	req := opRequest{name: opts.Comment, kind: k,
+		group: opGroupKey(opts.BaseURL, opts.Datastore, opts.Namespace, opts.BackupType, opts.BackupID)}
+	h, err := acquireOperation(run.ctx, req, func(waitingFor string) {
+		run.queued.Store(true)
+		writeDebugLog(fmt.Sprintf("[Service] Queued: %s, waiting for %s", opts.Comment, waitingFor))
+		a.reportRun(runID, 0, queuedMessage(opts.Comment, waitingFor))
+	})
+	run.queued.Store(false)
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("[Service] %s was stopped while it waited its turn", opts.Comment))
+		a.finishRun(runID, false, "Backup cancelled by user")
+		return fmt.Errorf("backup cancelled by user")
+	}
+	defer h.Release()
+
+	writeDebugLog(fmt.Sprintf("[Service] Executing %s backup via RunBackupInline: %s", kind, opts.Comment))
+	opts.Run = run
 	return RunBackupInline(opts)
 }
 
@@ -263,7 +283,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	// Resolve the PBS comment — see main.go's startMachineBackupDirect for
 	// the full reasoning.
 	if comment == "" {
-		comment = a.scheduledJobNameOr(fmt.Sprintf("Backup machine - %s", backupID))
+		comment = fmt.Sprintf("Backup machine - %s", backupID)
 	}
 
 	opts := BackupOptions{
@@ -307,12 +327,5 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		OnStats: func(stats *BackupProgressStats) { a.reportRunStats(runID, stats) },
 	}
 
-	release := acquireOperationSlot(comment, func(heldBy string) {
-		writeDebugLog(fmt.Sprintf("[Service] Queued: %s — waiting for %s to finish", comment, heldBy))
-		a.reportRun(runID, 0, fmt.Sprintf("Queued: %s — waiting for %s to finish...", comment, heldBy))
-	})
-	defer release()
-
-	writeDebugLog("[Service] Executing machine backup via RunBackupInline")
-	return RunBackupInline(opts)
+	return a.runServiceBackup(opts, "machine", runID, opMachine)
 }

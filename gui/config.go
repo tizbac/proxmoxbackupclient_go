@@ -6,10 +6,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"pbscommon"
 	"security"
 )
+
+// configSaveMu keeps two saves of config.json in this process from
+// interleaving.
+var configSaveMu sync.Mutex
 
 type Config struct {
 	// ==================== MULTI-PBS SUPPORT ====================
@@ -100,6 +105,13 @@ type Config struct {
 	// pbscommon.DefaultPrefetchWorkers).
 	ParallelBackupRead bool `json:"parallel_backup_read,omitempty"`
 	BackupReadWorkers  int  `json:"backup_read_workers,omitempty"`
+
+	// MaxConcurrentRuns is how many backups and restores may run at once
+	// (operation_queue.go): 0 means the default (DefaultMaxConcurrentRuns),
+	// 1 runs them one at a time as before. Whatever it is set to, only one
+	// machine backup and one restore run at a time, and a set never runs
+	// twice at once.
+	MaxConcurrentRuns int `json:"max_concurrent_runs,omitempty"`
 
 	// ==================== EMAIL NOTIFICATIONS ====================
 	// Global SMTP account, used by every Backup Set's own on-completion/
@@ -339,6 +351,9 @@ func LoadConfig() *Config {
 }
 
 func (c *Config) Save() error {
+	// Runs that finish together save from their own goroutines.
+	configSaveMu.Lock()
+	defer configSaveMu.Unlock()
 	configPath, err := getConfigPath()
 	if err != nil {
 		return err

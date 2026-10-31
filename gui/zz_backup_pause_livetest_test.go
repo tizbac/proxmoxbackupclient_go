@@ -119,8 +119,8 @@ func backupPauseLive(t *testing.T, mode string, hold time.Duration) {
 	if rs == nil || !rs.Success() {
 		t.Fatalf("backup after resume: %+v", rs)
 	}
-	if p, _ := backupPause.Paused(); p {
-		t.Error("the gate is still closed after the run ended")
+	if anyRunPaused().Paused || localBackupRunning() {
+		t.Error("a run is still listed (or paused) after the run ended")
 	}
 
 	dest := filepath.Join(t.TempDir(), "restore")
@@ -164,7 +164,7 @@ func backupPauseStopLive(t *testing.T) {
 	case <-time.After(60 * time.Second):
 		t.Fatal("Stop while paused did not end the backup within 60 s")
 	}
-	if p, _ := backupPause.Paused(); p {
-		t.Error("the gate is still closed after the stopped run ended")
+	if anyRunPaused().Paused || localBackupRunning() {
+		t.Error("a run is still listed (or paused) after the stopped run ended")
 	}
 }

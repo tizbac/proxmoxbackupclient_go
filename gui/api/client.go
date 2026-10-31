@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -289,10 +290,15 @@ func (c *Client) GetRuns() (*RunsResponse, error) {
 	return &runs, nil
 }
 
-// ControlRun asks the service to "pause", "resume" or "stop" the backup it
-// is running, and returns the pause state afterwards.
-func (c *Client) ControlRun(action string) (*RunControlResponse, error) {
-	resp, err := c.httpClient.Post(c.baseURL+"/backup/"+action, "application/json", nil)
+// ControlRun asks the service to "pause", "resume" or "stop" its backup
+// jobID ("" for every backup it is running), and returns that run's pause
+// state afterwards.
+func (c *Client) ControlRun(action, jobID string) (*RunControlResponse, error) {
+	u := c.baseURL + "/backup/" + action
+	if jobID != "" {
+		u += "?job=" + url.QueryEscape(jobID)
+	}
+	resp, err := c.httpClient.Post(u, "application/json", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach the service: %w", err)
 	}

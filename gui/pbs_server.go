@@ -19,7 +19,13 @@ func (a *App) resolvePBS(pbsID string) (*Config, error) {
 		}
 		return a.withAuth(pbs.ToConfig())
 	}
-	cfg := a.config.EffectivePBS()
+	// A copy, never the app's own config: with a single legacy server
+	// EffectivePBS returns the config itself, and each run unlocks its key
+	// into the result (Crypt). Shared, a run whose key could not be unlocked
+	// cleared it for another starting at the same moment, which then
+	// uploaded unencrypted.
+	cp := *a.config.EffectivePBS()
+	cfg := &cp
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}

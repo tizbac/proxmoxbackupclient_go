@@ -98,6 +98,17 @@ var (
 	vssBusyRetry = 30 * time.Second
 )
 
+// CreateVSSSnapshotCtx is CreateVSSSnapshot for a backup that can be
+// stopped: a Stop before the shadow copy is made ends it there. Several
+// backups each hold shadow copies of the same volume side by side, so nothing
+// here waits for another backup (only the making of one, shadowMu).
+func CreateVSSSnapshotCtx(ctx context.Context, paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return CreateVSSSnapshot(paths, needFiles, backup_callback)
+}
+
 func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) error {
 	// A shadow copy's COM objects are made when it is created and used again
 	// at release, after the backup. Keep the whole snapshot, from creation to

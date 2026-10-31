@@ -128,8 +128,8 @@ func onReady(a *App) func() {
 // service's run list is older than the last click on the item.
 func (a *App) trayRunState() (running, paused, ok bool) {
 	if localBackupRunning() {
-		p, _ := backupPause.Paused()
-		return true, p, true
+		// With several runs, Pause and Resume here act on them all.
+		return true, anyRunPaused().Paused, true
 	}
 	if !a.serviceRunsBackups() {
 		return false, false, true

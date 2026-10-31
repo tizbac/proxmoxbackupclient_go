@@ -21,6 +21,8 @@ type fakeHandler struct {
 	runKeys     []string
 	tracked     map[string]string // run key -> job ID
 	paused      bool
+	pausedJobs  map[string]bool
+	stopped     []string // the job each Stop named ("" = all)
 	stopErr     error
 }
 
@@ -57,13 +59,42 @@ func (f *fakeHandler) TrackRequestRun(jobID, backupType, changeDetectionMode str
 	return key
 }
 
-func (f *fakeHandler) PauseRun() error  { f.mu.Lock(); f.paused = true; f.mu.Unlock(); return nil }
-func (f *fakeHandler) ResumeRun() error { f.mu.Lock(); f.paused = false; f.mu.Unlock(); return nil }
-func (f *fakeHandler) StopRun() error   { f.mu.Lock(); defer f.mu.Unlock(); return f.stopErr }
-func (f *fakeHandler) RunPauseState() (bool, int64) {
+// Pause and Resume with no job act on every run (f.paused); with one, on
+// that run only (f.pausedJobs).
+func (f *fakeHandler) PauseRun(jobID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.paused {
+	if jobID == "" {
+		f.paused = true
+		return nil
+	}
+	if f.pausedJobs == nil {
+		f.pausedJobs = map[string]bool{}
+	}
+	f.pausedJobs[jobID] = true
+	return nil
+}
+func (f *fakeHandler) ResumeRun(jobID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if jobID == "" {
+		f.paused = false
+		f.pausedJobs = nil
+		return nil
+	}
+	delete(f.pausedJobs, jobID)
+	return nil
+}
+func (f *fakeHandler) StopRun(jobID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stopped = append(f.stopped, jobID)
+	return f.stopErr
+}
+func (f *fakeHandler) RunPauseState(jobID string) (bool, int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.paused || f.pausedJobs[jobID] {
 		return true, 1700000000000
 	}
 	return false, 0
@@ -160,14 +191,14 @@ func TestRunControl(t *testing.T) {
 	s, c := newTestService(t, fake)
 	id := s.BeginRun("Set")
 
-	st, err := c.ControlRun("pause")
+	st, err := c.ControlRun("pause", "")
 	if err != nil || !st.Paused || st.PausedSince != 1700000000000 {
 		t.Fatalf("pause = %+v, %v", st, err)
 	}
 	if r := findRun(t, c, id); !r.Paused || r.PausedSince != 1700000000000 {
 		t.Fatalf("paused run listed as %+v", r)
 	}
-	if st, err = c.ControlRun("resume"); err != nil || st.Paused {
+	if st, err = c.ControlRun("resume", ""); err != nil || st.Paused {
 		t.Fatalf("resume = %+v, %v", st, err)
 	}
 	if r := findRun(t, c, id); r.Paused {
@@ -175,14 +206,14 @@ func TestRunControl(t *testing.T) {
 	}
 
 	fake.stopErr = errors.New("no backup is running")
-	if _, err = c.ControlRun("stop"); err == nil || !strings.Contains(err.Error(), "no backup is running") {
+	if _, err = c.ControlRun("stop", ""); err == nil || !strings.Contains(err.Error(), "no backup is running") {
 		t.Fatalf("stop error = %v", err)
 	}
 	fake.stopErr = nil
-	if _, err = c.ControlRun("stop"); err != nil {
+	if _, err = c.ControlRun("stop", ""); err != nil {
 		t.Fatalf("stop: %v", err)
 	}
-	if _, err = c.ControlRun("explode"); err == nil {
+	if _, err = c.ControlRun("explode", ""); err == nil {
 		t.Fatal("unknown action accepted")
 	}
 
@@ -192,6 +223,51 @@ func TestRunControl(t *testing.T) {
 	if r := findRun(t, c, id); r.Paused {
 		t.Fatalf("finished run shown paused: %+v", r)
 	}
+}
+
+// With several runs at once, Pause and Stop name the run: only that one is
+// paused or stopped, and each run lists its own pause state.
+func TestRunControlPerRun(t *testing.T) {
+	fake := &fakeHandler{}
+	s, c := newTestService(t, fake)
+	music := s.BeginRun("Music first backup")
+	data := s.BeginRun("Data")
+
+	st, err := c.ControlRun("pause", music)
+	if err != nil || !st.Paused {
+		t.Fatalf("pause music = %+v, %v", st, err)
+	}
+	if r := findRun(t, c, music); !r.Paused {
+		t.Fatalf("music not shown paused: %+v", r)
+	}
+	if r := findRun(t, c, data); r.Paused {
+		t.Fatalf("data shown paused although only music was: %+v", r)
+	}
+	if _, err := c.ControlRun("stop", data); err != nil {
+		t.Fatalf("stop data: %v", err)
+	}
+	if len(fake.stopped) != 1 || fake.stopped[0] != data {
+		t.Fatalf("stop reached the service as %q, want %q", fake.stopped, data)
+	}
+	if st, err = c.ControlRun("resume", music); err != nil || st.Paused {
+		t.Fatalf("resume music = %+v, %v", st, err)
+	}
+}
+
+// A run the GUI asks for is listed with its name and backup-id, so a window
+// showing several runs can tell them apart.
+func TestRequestedRunNamed(t *testing.T) {
+	fake := &fakeHandler{}
+	s, c := newTestService(t, fake)
+	resp, err := c.StartBackup(&BackupRequest{BackupType: "directory", BackupID: "deepthought-data", BackupDirs: []string{`F:\Data`}, Comment: "Deepthought - Data"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := findRun(t, c, resp.JobID)
+	if r.Name != "Deepthought - Data" || r.BackupID != "deepthought-data" {
+		t.Fatalf("listed as name %q, backup-id %q", r.Name, r.BackupID)
+	}
+	_ = s
 }
 
 // Machine backups the GUI asks for reach StartMachineBackup (the route was

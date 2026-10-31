@@ -5,6 +5,7 @@ package snapshot
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,68 @@ var (
 	trackedMu sync.Mutex
 	tracked   []*linuxSnapshot
 )
+
+// Several backups can run at once in one process now. elastio-snap and
+// dattobd allow one snapshot per block device, and setting one up first
+// clears any tracer of ours left on the device (destroyStaleTracers), so a
+// second backup of the same filesystem used to destroy the first one's
+// snapshot under it. A backup now holds each device it snapshots for as long
+// as its snapshots last, and one that needs a device another holds waits for
+// it (different devices are snapshotted side by side). setupMu makes the
+// set-up itself one at a time, so two cannot take the same minor number.
+var (
+	devMu   sync.Mutex
+	devCond = sync.NewCond(&devMu)
+	devHeld = map[string]bool{}
+	setupMu sync.Mutex
+)
+
+// holdDevices waits until none of devs is held by another backup in this
+// process, then holds them all at once (all at once, so two backups can never
+// each hold one the other waits for). A cancelled ctx ends the wait.
+func holdDevices(ctx context.Context, devs []string) error {
+	stop := context.AfterFunc(ctx, func() {
+		devMu.Lock()
+		devCond.Broadcast()
+		devMu.Unlock()
+	})
+	defer stop()
+	devMu.Lock()
+	defer devMu.Unlock()
+	logged := false
+	for {
+		busy := ""
+		for _, d := range devs {
+			if devHeld[d] {
+				busy = d
+				break
+			}
+		}
+		if busy == "" {
+			for _, d := range devs {
+				devHeld[d] = true
+			}
+			return nil
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !logged {
+			log.Printf("Waiting for the snapshot of %s: another backup is reading from one", busy)
+			logged = true
+		}
+		devCond.Wait()
+	}
+}
+
+func releaseDevices(devs []string) {
+	devMu.Lock()
+	for _, d := range devs {
+		delete(devHeld, d)
+	}
+	devCond.Broadcast()
+	devMu.Unlock()
+}
 
 func detectControl() (snapControl, bool) {
 	candidates := []snapControl{
@@ -346,12 +409,37 @@ func cleanupOne(ls *linuxSnapshot) error {
 }
 
 func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) (retErr error) {
+	return CreateVSSSnapshotCtx(context.Background(), paths, needFiles, backup_callback)
+}
+
+// CreateVSSSnapshotCtx is CreateVSSSnapshot for a backup that can be stopped
+// while it waits for a device another backup has snapshotted.
+func CreateVSSSnapshotCtx(ctx context.Context, paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) (retErr error) {
 	if os.Geteuid() != 0 {
 		return fmt.Errorf("consistent snapshot requires root: refusing to proceed with an inconsistent full-system snapshot")
 	}
 	control, ok := detectControl()
 	if !ok {
 		return fmt.Errorf("no usable block snapshot module loaded: install and load elastio-snap or dattobd first (see \"Linux machine backup prerequisites\" in this project's README for build/install steps) - refusing to proceed with an inconsistent full-system snapshot")
+	}
+
+	// The block devices these paths are on, held until the snapshots are gone.
+	absPaths := make([]string, len(paths))
+	var devs []string
+	seenDev := map[string]bool{}
+	for i, path := range paths {
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			absPath = path
+		}
+		absPaths[i] = absPath
+		if _, device, _, err := findMount(absPath); err == nil && !seenDev[device] {
+			seenDev[device] = true
+			devs = append(devs, device)
+		}
+	}
+	if err := holdDevices(ctx, devs); err != nil {
+		return fmt.Errorf("stopped while waiting for another backup's snapshot to end: %w", err)
 	}
 
 	snapshots := make(map[string]SnapShot, len(paths))
@@ -361,14 +449,14 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 		for i := len(created) - 1; i >= 0; i-- {
 			retErr = errors.Join(retErr, cleanupOne(created[i]))
 		}
+		releaseDevices(devs)
 	}()
 
-	for _, path := range paths {
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			absPath = path
-		}
+	for i, path := range paths {
+		absPath := absPaths[i]
+		setupMu.Lock()
 		ls, subPath, err := createOne(control, absPath, needFiles)
+		setupMu.Unlock()
 		if err != nil {
 			return fmt.Errorf("could not snapshot %s: %w: refusing to proceed with an inconsistent full-system snapshot", absPath, err)
 		}

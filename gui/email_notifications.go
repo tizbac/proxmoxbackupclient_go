@@ -164,15 +164,30 @@ func (a *App) runPostBackupActions(job ScheduledJob, success bool, message strin
 		writeDebugLog(fmt.Sprintf("[PostBackup] job %q is set to exit the app after backup; ignored in the service", job.Name))
 	} else if job.ExitAppAfter {
 		writeDebugLog(fmt.Sprintf("[PostBackup] job %q configured to exit the app after backup — exiting", job.Name))
-		go exitAppAfterBackup()
+		go func() {
+			waitForOtherBackups(job.Name, "exiting the app")
+			exitAppAfterBackup()
+		}()
 	}
 	if job.ShutdownAfter {
 		writeDebugLog(fmt.Sprintf("[PostBackup] job %q configured to shut down the computer after backup — shutting down", job.Name))
 		go func() {
+			waitForOtherBackups(job.Name, "shutting down")
 			time.Sleep(2 * time.Second)
 			shutdownComputer()
 		}()
 	}
+}
+
+// waitForOtherBackups holds an exit or shutdown until the backups and
+// restores already running or queued beside this set's run have ended (it
+// would cut them short), this run's own included. Ones that start later are
+// not waited for.
+func waitForOtherBackups(jobName, what string) {
+	if n := runningOperationCount(); n > 1 {
+		writeDebugLog(fmt.Sprintf("[PostBackup] job %q: %s once the %d other backup(s) running now have finished", jobName, what, n-1))
+	}
+	waitForEarlierOperations()
 }
 
 // exitAppAfterBackup ends the app once a set that closes it has finished.

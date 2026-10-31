@@ -36,6 +36,8 @@ let InspectEncryptionKeyFile, GenerateEncryptionKeyFile, OpenEncryptionKeyDialog
 let ListSetSnapshots, ScanUndelete, StartUndelete, CancelSetScan, PreviewRollback, StartRollback, ListRollbacks, UndoRollback, DeleteRollbackCopies
 let GetServiceStatus, InstallService, StartBackgroundService, StopBackgroundService, RemoveService
 let PauseBackup, ResumeBackup, GetBackupPauseState
+// Several backups at once: each run's own Pause, Resume and Stop
+let GetBackupRuns, PauseBackupRun, ResumeBackupRun, CancelBackupRun, SetMaxConcurrentRuns
 
 // Check if we're running in Wails
 if (window.go) {
@@ -115,6 +117,11 @@ if (window.go) {
   PauseBackup = window.go.main.App.PauseBackup
   ResumeBackup = window.go.main.App.ResumeBackup
   GetBackupPauseState = window.go.main.App.GetBackupPauseState
+  GetBackupRuns = window.go.main.App.GetBackupRuns
+  PauseBackupRun = window.go.main.App.PauseBackupRun
+  ResumeBackupRun = window.go.main.App.ResumeBackupRun
+  CancelBackupRun = window.go.main.App.CancelBackupRun
+  SetMaxConcurrentRuns = window.go.main.App.SetMaxConcurrentRuns
 }
 
 // Wails events + runtime (open external URLs in the system browser)
@@ -783,21 +790,53 @@ function App() {
   // even when no new stats arrive.
   const [, setCardTick] = useState(0)
 
-  // Ordered list of display names waiting behind whatever's currently
-  // active — backup and restore share ONE list because they share one
-  // process-wide slot (operation_queue.go): only one thing is ever truly
-  // active, regardless of type, so there's only one real queue to show.
-  // Populated by parsing the backend's "Queued: <name> — waiting for
-  // <heldBy> to finish..." message (gui/main.go's acquireOperationSlot
-  // call sites), which now names ITSELF, not just who it's waiting behind
-  // — covers a manual click queuing behind another AND two schedules
-  // firing close together, since both paths share the same mechanism.
-  // Popped on completion (FIFO) — operation_queue.go doesn't guarantee
-  // strict FIFO among 3+ simultaneous waiters (a plain sync.Mutex isn't
-  // fair), so with a queue 2+ deep the displayed ORDER is a best-effort
-  // approximation; the actual serialization is correct regardless.
+  // Display names of backups and restores waiting for their turn
+  // (operation_queue.go: several run at once, up to the "Backups at once"
+  // setting; one waits for a free place, for its own set's earlier run, or
+  // for the machine backup or restore already running). Populated by
+  // parsing the backend's "Queued: <name> — waiting for <what> to
+  // finish..." message, and each name is taken off when that run starts or
+  // ends.
   const [pendingQueue, setPendingQueue] = useState([])
   const QUEUED_MSG_RE = /^Queued: (.+) — waiting for .+ to finish\.\.\.$/
+  // Every backup running or queued, by run id (each backup event carries
+  // its run's runId): { id, name, percent, message, queued, paused, since,
+  // startedAt, stopRequested }. The card below shows one of them in full
+  // (focusRun); the others are listed under it, each with its own Pause and
+  // Stop, and the card moves on to another when its run ends.
+  const [runs, setRuns] = useState({})
+  const runsRef = useRef({})
+  const [focusRun, setFocusRun] = useState(null)
+  const focusRunRef = useRef(null)
+  const updateRun = (id, patch) => {
+    const next = { ...runsRef.current, [id]: { ...(runsRef.current[id] || { id, startedAt: Date.now() }), ...patch } }
+    runsRef.current = next
+    setRuns(next)
+  }
+  const removeRun = (id) => {
+    if (!runsRef.current[id]) return
+    const next = { ...runsRef.current }
+    delete next[id]
+    runsRef.current = next
+    setRuns(next)
+  }
+  // Show run id on the card. Its figures start again from the next stats
+  // event (a second or so); its start time, percentage and pause carry over.
+  const focusOn = (id) => {
+    focusRunRef.current = id
+    setFocusRun(id)
+    const r = runsRef.current[id] || {}
+    backupSamplesRef.current = []
+    setBackupStats({ ...EMPTY_BACKUP_STATS, startTime: r.startedAt || Date.now() })
+    setBackupFile('')
+    setProgress(r.percent || 0)
+    setActiveBackupName(r.name || '')
+    setBackupPause({ paused: !!r.paused, since: r.since || 0 })
+    setBackupStopRequested(!!r.stopRequested)
+    setBackupRunning(true)
+  }
+  // Events of a run other than the one on the card only update its line.
+  const isOtherRun = (data) => !!(data && data.runId && focusRunRef.current && data.runId !== focusRunRef.current)
   // Which Backup Set/restore is actually running right now, so the progress
   // card's title can say so — same "name" field the backend now sends
   // alongside every real progress tick (gui/main.go), reusing the display
@@ -964,26 +1003,32 @@ function App() {
     if (!EventsOn) return
 
     const unsubProgress = EventsOn('backup:progress', (data) => {
-      // acquireOperationSlot (gui/operation_queue.go) fires this exact message
-      // — still hardcoded English on the Go side, not through the message-key
-      // i18n system — the instant a second backup/restore can't start yet.
-      // Route it into pendingQueue instead of the normal progress path so it
-      // never overwrites whatever the CURRENTLY active job's card is showing.
+      // gui/operation_queue.go sends this exact message (English on the Go
+      // side, not through the message-key i18n system) when a backup has to
+      // wait for its turn. It goes on the waiting list, never on the card.
       const queuedMatch = typeof data.message === 'string' && data.message.match(QUEUED_MSG_RE)
       if (queuedMatch) {
         const name = queuedMatch[1]
         setPendingQueue(q => q.includes(name) ? q : [...q, name])
+        if (data.runId) updateRun(data.runId, { name, queued: true, percent: 0, message: data.message })
         return
       }
-      // Deliberately NOT popped here — this same event channel also carries
-      // the ACTIVE job's own normal progress ticks (every 1-5s while it
-      // runs). Popping here would remove an entry the moment the ACTIVE
-      // job's own next tick arrives, not when it's actually that entry's
-      // turn. Correct pop point is backup:complete below, structurally
-      // guaranteed to fire before whatever was queued next starts producing
-      // its own real progress (operation_queue.go serializes them).
-
       const percent = Math.round(data.percent)
+      if (data.runId) {
+        const prev = runsRef.current[data.runId]
+        // Its turn has come: off the waiting list.
+        if (!prev || prev.queued) {
+          const name = data.name || (prev && prev.name)
+          if (name) setPendingQueue(q => q.filter(n => n !== name))
+        }
+        updateRun(data.runId, { name: data.name || (prev && prev.name) || '', percent, message: data.message, queued: false })
+        // The card follows this run if it follows none (or one that ended).
+        if (!focusRunRef.current || !runsRef.current[focusRunRef.current] || runsRef.current[focusRunRef.current].queued) {
+          focusOn(data.runId)
+        }
+        if (isOtherRun(data)) return
+      }
+
       setProgress(percent)
       showStatus(`${data.message}`, 'info', true)
       if (data.name) setActiveBackupName(data.name)
@@ -1005,22 +1050,39 @@ function App() {
 
     // File currently being archived (directory backups; throttled in the backend).
     const unsubFile = EventsOn('backup:file', (data) => {
+      if (isOtherRun(data)) return
       setBackupFile(data.path || '')
     })
 
     // Pause and Resume. On Resume the speed samples start afresh, so the
     // finish forecast is not dragged down by the paused minutes.
     const unsubPaused = EventsOn('backup:paused', (data) => {
+      if (data.runId && runsRef.current[data.runId]) {
+        updateRun(data.runId, { paused: !!data.paused, since: data.since || 0 })
+      }
+      if (isOtherRun(data)) return
       setBackupPause({ paused: !!data.paused, since: data.since || 0 })
       if (!data.paused) backupSamplesRef.current = []
     })
-    if (GetBackupPauseState) {
+    // A window opened or reloaded while backups run picks them up, with
+    // their names, queue places and pauses.
+    if (GetBackupRuns) {
+      GetBackupRuns().then(list => {
+        (list || []).forEach(r => {
+          updateRun(r.id, { name: r.name, queued: !!r.queued, paused: !!r.paused, since: r.since || 0, startedAt: r.started || Date.now(), percent: runsRef.current[r.id] ? runsRef.current[r.id].percent : 0 })
+          if (r.queued) setPendingQueue(q => q.includes(r.name) ? q : [...q, r.name])
+        })
+        const first = (list || []).find(r => !r.queued)
+        if (first && !focusRunRef.current) focusOn(first.id)
+      }).catch(() => {})
+    } else if (GetBackupPauseState) {
       GetBackupPauseState().then(st => st && setBackupPause({ paused: !!st.paused, since: st.since || 0 })).catch(() => {})
     }
 
     // Structured live statistics, on a timer while a backup runs (directory
     // and machine backups both; machine ones add kind 'machine' and the disk).
     const unsubStats = EventsOn('backup:stats', (data) => {
+      if (isOtherRun(data)) return
       const now = Date.now()
       // A machine backup starting again after a lost connection counts from
       // zero: the old attempt's samples would make the rates negative.
@@ -1105,16 +1167,38 @@ function App() {
     })
 
     const unsubComplete = EventsOn('backup:complete', (data) => {
+      const localizedMsg = renderLocalizedMessage(data, t, language).text
+      if (data.runId) {
+        const ended = runsRef.current[data.runId]
+        const name = data.name || (ended && ended.name)
+        if (name) setPendingQueue(q => q.filter(n => n !== name))
+        removeRun(data.runId)
+        const said = `${name ? name + ': ' : ''}${localizedMsg}`
+        if (isOtherRun(data)) {
+          // Another run ended: the card stays on the one it shows.
+          showStatus(data.success ? '✅ ' + said : '❌ ' + said, data.success ? 'success' : 'error')
+          return
+        }
+        // The card's run ended: it moves on to another one still running.
+        const next = Object.values(runsRef.current).filter(r => !r.queued).sort((a, b) => a.startedAt - b.startedAt)[0]
+        if (next) {
+          focusOn(next.id)
+          showStatus(data.success ? '✅ ' + said : '❌ ' + said, data.success ? 'success' : 'error')
+          return
+        }
+        focusRunRef.current = null
+        setFocusRun(null)
+      } else {
+        setPendingQueue(q => q.slice(1))
+      }
       setProgress(data.success ? 100 : 0)
       setBackupRunning(false)
       setBackupFile('')
       setActiveBackupName('')
-      setPendingQueue(q => q.slice(1))
       setBackupStats(EMPTY_BACKUP_STATS)
       backupSamplesRef.current = []
       setBackupStopRequested(false)
       setBackupPause({ paused: false, since: 0 })
-      const localizedMsg = renderLocalizedMessage(data, t, language).text
       showStatus(data.success ? '✅ ' + localizedMsg : '❌ ' + localizedMsg, data.success ? 'success' : 'error')
 
       // Add to job history
@@ -1196,8 +1280,8 @@ function App() {
         setPendingQueue(q => q.includes(name) ? q : [...q, name])
         return
       }
-      // Not popped here — see the matching comment in the backup:progress
-      // handler above. restore:complete is the correct pop point.
+      // Its turn has come: off the waiting list.
+      if (data.name) setPendingQueue(q => q.filter(n => n !== data.name))
       setRestoreProgress(Math.round((data.percent || 0) * 100))
       showStatus(`${data.message || ''}`, 'info', true)
       if (data.name) setActiveRestoreName(data.name)
@@ -1247,7 +1331,6 @@ function App() {
       setActiveRestoreName('')
       setRestoreStage({ stage: '', detail: '' })
       setRestoreFile('')
-      setPendingQueue(q => q.slice(1))
       setRestoreProgress(data.success ? 100 : 0)
       setRestoreStats(EMPTY_RESTORE_STATS)
       restoreSamplesRef.current = []
@@ -2154,10 +2237,13 @@ function App() {
       // part, so a fast completion can't be missed. The backend emits this event
       // in both standalone (OnComplete) and service mode (pollBackupProgress),
       // so awaiting it gives the part's REAL outcome instead of guessing success.
-      const armBackupCompletion = () => {
+      // Other backups can run at the same time now (a Backup Set's schedule):
+      // only this part's completion counts, matched by its backup-id.
+      const armBackupCompletion = (backupId) => {
         let unsub
         const promise = new Promise((resolve) => {
           unsub = EventsOn('backup:complete', (data) => {
+            if (data && data.backupId && backupId && data.backupId !== backupId) return
             if (typeof unsub === 'function') unsub()
             resolve(data || { success: false, message: 'completion with no data' })
           })
@@ -2175,7 +2261,7 @@ function App() {
           'info'
         )
 
-        const completion = armBackupCompletion()
+        const completion = armBackupCompletion(job.backup_id)
         try {
           await StartBackup(
             backupType,
@@ -2434,13 +2520,22 @@ function App() {
     }
   }
 
-  const handleStopBackup = async () => {
-    if (!CancelBackup) {
-      showStatus(`❌ ${t('stopBackupUnavailable')}`, 'error')
+  // Stop, Pause and Resume act on one run: the card's own, or one listed
+  // under it (or waiting). Without a run id (an older backend) they act on
+  // whatever is running.
+  const stopRun = async (id) => {
+    if (id && CancelBackupRun) {
+      await CancelBackupRun(id)
+      if (runsRef.current[id]) updateRun(id, { stopRequested: true })
       return
     }
+    if (!CancelBackup) throw new Error(t('stopBackupUnavailable'))
+    await CancelBackup()
+  }
+
+  const handleStopBackup = async () => {
     try {
-      await CancelBackup()
+      await stopRun(focusRunRef.current)
       setBackupStopRequested(true)
       showStatus(`⏹️ ${t('stopBackupInProgress')}`, 'info')
     } catch (err) {
@@ -2448,12 +2543,37 @@ function App() {
     }
   }
 
+  const pauseResumeRun = async (id, paused) => {
+    if (id && PauseBackupRun) {
+      const st = await (paused ? ResumeBackupRun(id) : PauseBackupRun(id))
+      if (st && runsRef.current[id]) updateRun(id, { paused: !!st.paused, since: st.since || 0 })
+      return st
+    }
+    const fn = paused ? ResumeBackup : PauseBackup
+    return fn ? fn() : null
+  }
+
   const handlePauseResumeBackup = async () => {
-    const fn = backupPause.paused ? ResumeBackup : PauseBackup
-    if (!fn) return
     try {
-      const st = await fn()
+      const st = await pauseResumeRun(focusRunRef.current, backupPause.paused)
       if (st) setBackupPause({ paused: !!st.paused, since: st.since || 0 })
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
+    }
+  }
+
+  // The other runs' lines under the card.
+  const handleOtherRunStop = async (r) => {
+    try {
+      await stopRun(r.id)
+      showStatus(`⏹️ ${r.name}: ${t('stopBackupInProgress')}`, 'info')
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
+    }
+  }
+  const handleOtherRunPause = async (r) => {
+    try {
+      await pauseResumeRun(r.id, r.paused)
     } catch (err) {
       showStatus(`❌ ${err}`, 'error')
     }
@@ -2965,18 +3085,69 @@ function App() {
     )
   }
 
-  // Shared between the Backup and Restore tabs — one real queue (backup and
-  // restore share operation_queue.go's single slot), rendered identically
-  // wherever it's shown, per Mick's requested format: a count line plus a
-  // numbered list of names, not just a single generic "queued" line.
+  // Shared between the Backup and Restore tabs — one queue for backups and
+  // restores (operation_queue.go), rendered identically wherever it's
+  // shown, per Mick's requested format: a count line plus a numbered list
+  // of names, not just a single generic "queued" line. A waiting backup can
+  // be stopped from here.
   const queuePanel = pendingQueue.length > 0 ? (
     <div style={{marginTop: '10px', padding: '10px 12px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#495057', border: '1px dashed #ced4da'}}>
       <div style={{fontWeight: 'bold', marginBottom: '4px'}}>
         ⏳ {pendingQueue.length === 1 ? t('queuedCountOne') : t('queuedCountMany', {n: pendingQueue.length})}
       </div>
       <ol style={{margin: 0, paddingLeft: '20px'}}>
-        {pendingQueue.map((name, i) => <li key={i}>{name}</li>)}
+        {pendingQueue.map((name, i) => {
+          const waiting = Object.values(runs).find(r => r.queued && r.name === name)
+          return (
+            <li key={i}>
+              {name}
+              {waiting && (
+                <button className="btn btn-secondary" style={{marginLeft: '8px', padding: '0 8px', fontSize: '12px'}}
+                  disabled={!!waiting.stopRequested} title={t('stopRunHint')}
+                  onClick={() => handleOtherRunStop(waiting)}>
+                  ⏹ {t('stopBackup')}
+                </button>
+              )}
+            </li>
+          )
+        })}
       </ol>
+    </div>
+  ) : null
+
+  // The runs going on (not waiting), oldest first: the card's ‹ 1/3 ›
+  // switcher steps through them, and the ones not on the card are listed
+  // under it.
+  const runningRuns = Object.values(runs).filter(r => !r.queued).sort((a, b) => a.startedAt - b.startedAt)
+  const focusIndex = Math.max(0, runningRuns.findIndex(r => r.id === focusRun))
+  const otherRuns = runningRuns.filter(r => r.id !== focusRun)
+  const otherRunsPanel = otherRuns.length > 0 ? (
+    <div style={{marginTop: '12px', padding: '10px 12px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#495057', border: '1px solid #e9ecef'}}>
+      <div style={{fontWeight: 'bold', marginBottom: '6px'}}>{t('otherRunsTitle', {n: otherRuns.length})}</div>
+      {otherRuns.map(r => (
+        <div key={r.id} style={{display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', minWidth: 0}}>
+          <span style={{flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}} title={r.message || ''}>{r.name}</span>
+          <div className="progress" style={{flex: '0 0 90px', height: '10px', marginBottom: 0}}>
+            <div className="progress-bar" style={{width: `${Math.max(1, Math.min(100, r.percent || 0))}%`}} />
+          </div>
+          <span style={{flex: '0 0 auto', minWidth: '52px', textAlign: 'right'}}>
+            {r.stopRequested ? tl('stageStopping', 'Stopping...') : r.paused ? tl('pausedShort', 'Paused') : `${r.percent || 0}%`}
+          </span>
+          <button className="btn btn-secondary" style={{padding: '0 8px', fontSize: '12px'}} title={t('showRunHint')} onClick={() => focusOn(r.id)}>
+            {t('showRun')}
+          </button>
+          {PauseBackupRun && (
+            <button className="btn btn-secondary" style={{padding: '0 8px', fontSize: '12px'}} disabled={!!r.stopRequested}
+              title={r.paused ? tl('resumeBackup', 'Resume') : tl('pauseBackup', 'Pause')} onClick={() => handleOtherRunPause(r)}>
+              {r.paused ? '▶' : '⏸'}
+            </button>
+          )}
+          <button className="btn btn-secondary" style={{padding: '0 8px', fontSize: '12px'}} disabled={!!r.stopRequested}
+            title={t('stopRunHint')} onClick={() => handleOtherRunStop(r)}>
+            ⏹
+          </button>
+        </div>
+      ))}
     </div>
   ) : null
 
@@ -3560,6 +3731,35 @@ function App() {
                       )}
                     </div>
 
+                    <div className="form-group" style={{marginTop: '24px'}}>
+                      <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                        <label htmlFor="maxConcurrentRuns">{t('maxRunsLabel')}</label>
+                        <select
+                          id="maxConcurrentRuns"
+                          style={{width: '80px'}}
+                          value={config.max_concurrent_runs || 3}
+                          onChange={async (e) => {
+                            const n = parseInt(e.target.value) || 3
+                            const before = config.max_concurrent_runs || 3
+                            setConfig({...config, max_concurrent_runs: n})
+                            if (!SetMaxConcurrentRuns) return
+                            try {
+                              await SetMaxConcurrentRuns(n)
+                              showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                              setConfig({...config, max_concurrent_runs: before})
+                            }
+                          }}
+                        >
+                          {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </div>
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('maxRunsHint')}
+                      </div>
+                    </div>
+
                   </>
                 )}
                 {prefsTab === 'export' && (
@@ -3675,9 +3875,21 @@ function App() {
               backup started via "Run Now" on a set never opens the form at all. */}
           {backupCardActive && (
             <div ref={backupCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
-              <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
-                <strong style={{fontSize: '15px'}}>{t('backupProgress')}{activeBackupName ? ` - ${activeBackupName}` : ''}</strong>
-                <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{shownProgress}%</span>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '10px'}}>
+                <strong style={{fontSize: '15px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>{t('backupProgress')}{activeBackupName ? ` - ${activeBackupName}` : ''}</strong>
+                <span style={{display: 'flex', alignItems: 'center', gap: '10px', flex: '0 0 auto'}}>
+                  {/* Several backups at once: ‹ 1/3 › steps through them on this card. */}
+                  {runningRuns.length > 1 && (
+                    <span style={{display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: '#495057'}}>
+                      <button className="btn btn-secondary" style={{padding: '0 8px', fontSize: '14px'}} title={t('prevRunHint')} aria-label={t('prevRunHint')}
+                        onClick={() => focusOn(runningRuns[(focusIndex - 1 + runningRuns.length) % runningRuns.length].id)}>‹</button>
+                      <span style={{minWidth: '34px', textAlign: 'center'}}>{focusIndex + 1}/{runningRuns.length}</span>
+                      <button className="btn btn-secondary" style={{padding: '0 8px', fontSize: '14px'}} title={t('nextRunHint')} aria-label={t('nextRunHint')}
+                        onClick={() => focusOn(runningRuns[(focusIndex + 1) % runningRuns.length].id)}>›</button>
+                    </span>
+                  )}
+                  <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{shownProgress}%</span>
+                </span>
               </div>
 
               <div className="progress" style={{height: '30px', marginBottom: '12px'}}>
@@ -3840,10 +4052,13 @@ function App() {
                 </button>
               </div>
 
-              {/* Whatever's waiting behind this one, shown under the active
-                  card rather than its own big one — each expands into this
-                  same card once its own turn actually starts (its progress
-                  events land on the normal path above, not here). */}
+              {/* The other backups running at the same time, each with its
+                  own Pause and Stop; Show puts one on this card. */}
+              {otherRunsPanel}
+
+              {/* Whatever's waiting for its turn, shown under the active
+                  card rather than its own big one — each appears above once
+                  its own turn actually starts. */}
               {queuePanel}
             </div>
           )}

@@ -7,9 +7,8 @@ import (
 	"time"
 )
 
-// TestAcquireOperationSlot_Serializes proves the core claim: a second
-// operation cannot start until the first releases the slot, and it is
-// notified (via onQueued) that it had to wait, naming what it's waiting on.
+// TestAcquireOperationSlot_Serializes proves a restore cannot start while a
+// backup of the same group runs, and is told (via onQueued) what it waits on.
 func TestAcquireOperationSlot_Serializes(t *testing.T) {
 	var running atomic.Int32
 	var maxConcurrent atomic.Int32
@@ -29,7 +28,7 @@ func TestAcquireOperationSlot_Serializes(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		release := acquireOperationSlot("backup of alpha", nil)
+		release := acquireOperationSlot(opRequest{name: "backup of alpha", kind: opBackup, group: "g1"}, nil)
 		defer release()
 		track()
 		time.Sleep(150 * time.Millisecond)
@@ -41,7 +40,7 @@ func TestAcquireOperationSlot_Serializes(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		release := acquireOperationSlot("restore of alpha", func(heldBy string) {
+		release := acquireOperationSlot(opRequest{name: "restore of alpha", kind: opRestore, group: "g1"}, func(heldBy string) {
 			queuedFor.Store(heldBy)
 		})
 		defer release()
@@ -65,7 +64,7 @@ func TestAcquireOperationSlot_Serializes(t *testing.T) {
 // idle) must not fire a spurious "queued" message.
 func TestAcquireOperationSlot_NoWaitNoNotify(t *testing.T) {
 	called := false
-	release := acquireOperationSlot("backup of beta", func(string) { called = true })
+	release := acquireOperationSlot(opRequest{name: "backup of beta", kind: opBackup}, func(string) { called = true })
 	release()
 	if called {
 		t.Fatal("onQueued fired even though the slot was idle — should only fire when the caller had to wait")

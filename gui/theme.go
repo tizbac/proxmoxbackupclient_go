@@ -39,6 +39,26 @@ func (a *App) SetParallelRestore(enabled bool) error {
 	return nil
 }
 
+// SetMaxConcurrentRuns saves Preferences > Backup Options "Backups at once": how
+// many backups and restores may run at the same time (operation_queue.go).
+// It takes effect for the next run to start; the service reads it before
+// each run. Same SaveConfig/Validate bypass as SetParallelRestore below.
+func (a *App) SetMaxConcurrentRuns(n int) error {
+	if n < 1 || n > MaxConcurrentRunsLimit {
+		return fmt.Errorf("backups at once must be between 1 and %d", MaxConcurrentRunsLimit)
+	}
+	a.config.MaxConcurrentRuns = n
+	if err := a.config.Save(); err != nil {
+		return fmt.Errorf("failed to save the backups at once setting: %w", err)
+	}
+	writeDebugLog(fmt.Sprintf("Backups at once set to %d", n))
+	// Runs waiting for a free place may start now.
+	opMu.Lock()
+	admitWaitingLocked()
+	opMu.Unlock()
+	return nil
+}
+
 // SetParallelBackupRead persists the Preferences > Advanced "multi-threaded
 // backup reading" toggle and its worker count together (not two separate
 // setters) so a change to either always lands as one consistent save — same

@@ -28,35 +28,12 @@ type App struct {
 	cliProgress func(pct float64, msg string)
 	cliDone     chan setOpResult
 
-	// currentScheduledJobName lets executeScheduledJob (scheduler.go) tell
-	// startBackupDirect/startMachineBackupDirect's OnComplete history-writing
-	// (main.go) which scheduled job's real name to use instead of the generic
-	// "Manual backup - X"/"Backup machine - X" label, without changing the
-	// Wails-exposed StartBackup/StartMachineBackup signatures (which the
-	// frontend also calls directly for one-off backups, where this field
-	// stays empty). Safe as a plain field, not a map keyed by job/request:
-	// operation_queue.go already serializes every backup/restore process-wide
-	// to one at a time, so there is never more than one in-flight value to
-	// track.
-	//
-	// Set immediately before calling StartBackup/StartMachineBackup, but NOT
-	// cleared via a defer right after that call: in standalone/GUI mode that
-	// call is fire-and-forget (the real backup runs in a goroutine and
-	// executeScheduledJob returns immediately), so a defer there would clear
-	// the name before the backup even starts, let alone finishes — found
-	// live 2026-09-26 when two named Backup Sets both showed up in Reports
-	// under the generic label. Instead, whichever of the three genuinely
-	// final points actually applies clears it: OnComplete (main.go, the
-	// normal standalone-mode case, once the real outcome is known), or one
-	// of executeScheduledJob's own two synchronous branches (service mode;
-	// or standalone's immediate pre-goroutine failure, where OnComplete
-	// never runs at all). Safe against a following run's set racing this
-	// clear: operation_queue.go's slot release is deferred around the same
-	// RunBackupInline call that invokes OnComplete synchronously, so the
-	// next backup can't acquire the slot until this one's clear has already
-	// happened.
-	currentScheduledJobNameMu sync.Mutex
-	currentScheduledJobName   string
+	// currentScheduledJobName used to live here: the name of the set being
+	// run, read back when a run had no name of its own. It was only safe
+	// while one backup ran at a time; with several at once a one-off run
+	// could take another set's name. Removed 2026-10-31: the scheduler
+	// passes the set's name as the run's comment, and a one-off without one
+	// is "Manual backup - <id>" / "Backup machine - <id>".
 
 	// currentScheduledJobPostActions/currentScheduledJobTrigger used to live
 	// here as single shared fields, same as currentScheduledJobName above —
@@ -119,6 +96,10 @@ type pendingPostActionsEntry struct {
 	// background service (startBackupViaService), so the scheduler can wait
 	// for it before writing history and running the post-backup actions.
 	serviceDone chan serviceRunOutcome
+	// runDone is closed when a run this app does itself (startBackupDirect,
+	// a goroutine) has ended, so the scheduler can hold the set as running
+	// until then: the set is not started again while it runs or queues.
+	runDone chan struct{}
 }
 
 // serviceRunOutcome is how a run handed to the service ended.
@@ -272,8 +253,20 @@ func (a *App) takeRunResult(key string) *BackupStatus {
 // gets passed as their postActionsKey parameter.
 func (a *App) registerPendingPostActions(job ScheduledJob, trigger string) string {
 	key := fmt.Sprintf("%s-%d", job.ID, time.Now().UnixNano())
-	a.pendingPostActions.Store(key, &pendingPostActionsEntry{job: &job, trigger: trigger})
+	a.pendingPostActions.Store(key, &pendingPostActionsEntry{job: &job, trigger: trigger, runDone: make(chan struct{})})
 	return key
+}
+
+// localRunDone returns the channel closed when the run under key, done in
+// this app, has ended (nil for a one-off run or an unknown key).
+func (a *App) localRunDone(key string) chan struct{} {
+	if key == "" {
+		return nil
+	}
+	if v, ok := a.pendingPostActions.Load(key); ok {
+		return v.(*pendingPostActionsEntry).runDone
+	}
+	return nil
 }
 
 // isUnattendedRun reports whether postActionsKey belongs to a run nobody is
@@ -311,26 +304,6 @@ type progressCallbacks struct {
 	onComplete func(jobID string, success bool, message string)
 }
 
-// setScheduledJobName/scheduledJobNameOr are the accessors for
-// currentScheduledJobName — see its doc comment on the App struct.
-func (a *App) setScheduledJobName(name string) {
-	a.currentScheduledJobNameMu.Lock()
-	a.currentScheduledJobName = name
-	a.currentScheduledJobNameMu.Unlock()
-}
-
-// scheduledJobNameOr returns the current scheduled job's name, or fallback
-// if this backup/restore wasn't triggered by a scheduled job (the normal
-// one-off case).
-func (a *App) scheduledJobNameOr(fallback string) string {
-	a.currentScheduledJobNameMu.Lock()
-	defer a.currentScheduledJobNameMu.Unlock()
-	if a.currentScheduledJobName != "" {
-		return a.currentScheduledJobName
-	}
-	return fallback
-}
-
 // GetLogsFolder returns the directory holding backup-gui.log/service-gui.log
 // (and their rotated .gz siblings) — GetServiceLogPath/GetBackupLogPath give
 // the individual files, but the frontend's "View Logs" button opens the
@@ -344,17 +317,19 @@ func (a *App) GetLogsFolder() string {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{
+	a := &App{
 		config:        LoadConfig(),
 		stopScheduler: make(chan struct{}),
 		apiClient:     api.NewClient(getAPITokenPath()),
 		callbacksMap:  make(map[string]*progressCallbacks),
 	}
+	a.useRunLimitFromConfig()
+	return a
 }
 
 // NewAppForService creates an App instance for Windows Service (no Wails runtime)
 func NewAppForService(ctx context.Context) *App {
-	return &App{
+	a := &App{
 		ctx:              ctx,
 		config:           LoadConfig(),
 		stopScheduler:    make(chan struct{}),
@@ -362,5 +337,19 @@ func NewAppForService(ctx context.Context) *App {
 		mode:             api.ModeStandalone, // Service executes directly
 		callbacksMap:     make(map[string]*progressCallbacks),
 		isServiceProcess: true, // Prevent mode re-detection
+	}
+	a.useRunLimitFromConfig()
+	return a
+}
+
+// useRunLimitFromConfig makes the queue (operation_queue.go) read how many
+// backups may run at once from this app's settings, as they are at the time
+// (the service reloads them before each run).
+func (a *App) useRunLimitFromConfig() {
+	maxConcurrentRuns = func() int {
+		if c := a.config; c != nil {
+			return clampRunLimit(c.MaxConcurrentRuns)
+		}
+		return DefaultMaxConcurrentRuns
 	}
 }

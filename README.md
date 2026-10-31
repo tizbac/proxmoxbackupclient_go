@@ -60,6 +60,7 @@ Beyond the [18 changes merged into the original project](#-contributions-to-the-
 
 **Schedules and Backup Sets**
 - Several schedules per Backup Set, from every few minutes to once a year (the nth weekday, the last day of the month), each in plain words with its next 3 runs.
+- Several backups at once (three by default, 1 to 8): a first backup that takes a day no longer holds up the other sets' scheduled runs. One machine backup and one restore at a time, a set never twice at once, each run with its own snapshot, log, Pause and Stop.
 - A background service on Linux as well as Windows, and Restart as administrator on Linux.
 - Quick or full Run Now, a VSS / Snapshot badge, a SHARED ID warning, set names written to PBS as snapshot comments, email alerts, post-backup actions, and settings export and import.
 
@@ -182,6 +183,7 @@ On Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`.
 - **Files back from machine backups**: browse and restore files from NTFS, FAT, exFAT, ext2/3/4 and XFS volumes in a disk image
 - **Undelete** and **Roll back**: find files a Backup Set's backups still have but the disk does not, and put them back; or put a set's folders back as they were at a chosen backup, with a preview first and Undo afterwards. Folder and machine sets. See the [GUI manual](docs/manual/GUI.md#10-undelete)
 - **Pause, Resume and Stop** a running backup
+- **Several backups at once** (Preferences > Backup Options, default 3): each on the progress card in turn (‹ 1/3 ›), the others listed under it with their own Pause and Stop. See the [GUI manual](docs/manual/GUI.md#67-several-backups-at-once)
 - **Run as Service**: install, start, stop or remove the background service from Preferences > Advanced, so schedules run without anyone signed in (Windows and Linux)
 - Live progress card: start time and forecast finish, files done of total, processing speed (data and files per second) and actual upload speed, current file, and why a run is reading every file
 - VSS (Volume Shadow Copy) on Windows, elastio-snap/dattobd block snapshots on Linux

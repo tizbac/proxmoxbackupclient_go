@@ -69,9 +69,11 @@ type BackupProgress struct {
 	Complete  bool    `json:"complete"`
 	Error     string  `json:"error,omitempty"`
 	StartTime string  `json:"start_time,omitempty"`
-	// Name is the Backup Set's name for a run the service started on its own
-	// schedule (empty for a run the GUI asked for: the GUI knows its name).
-	Name string `json:"name,omitempty"`
+	// Name is the Backup Set's (or one-off's) name, so a GUI showing several
+	// runs can tell them apart. BackupID is the run's backup-id (a GUI's
+	// request only).
+	Name     string `json:"name,omitempty"`
+	BackupID string `json:"backup_id,omitempty"`
 	// Scheduled marks a run the service started itself.
 	Scheduled bool `json:"scheduled,omitempty"`
 	// Paused and PausedSince (Unix ms) while the run waits at a pause.

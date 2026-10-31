@@ -3,7 +3,15 @@
 
 package snapshot
 
-import "log"
+import (
+	"context"
+	"log"
+)
+
+// CreateVSSSnapshotCtx is CreateVSSSnapshot; nothing here waits.
+func CreateVSSSnapshotCtx(_ context.Context, paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) error {
+	return CreateVSSSnapshot(paths, needFiles, backup_callback)
+}
 
 func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) error {
 	log.Print("\033[31;1mWarning, on linux snapshots are not supported builtin, proceeding without!\033[0m")
