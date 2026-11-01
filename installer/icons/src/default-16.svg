@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="Backup client">
+  <rect width="16" height="16" rx="3.5" fill="#0f172a"/>
+  <path d="M4 2h1v1h-1zM11 2h1v1h-1zM4 3h1v1h-1zM10 3h3v1h-3zM2 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM9 4h1v1h-1zM11 4h1v1h-1zM13 4h1v1h-1zM3 5h3v1h-3zM11 5h1v1h-1zM4 6h1v1h-1zM11 6h1v1h-1zM3 8h10v1h-10zM2 9h9v1h-9zM12 9h2v1h-2zM3 10h10v1h-10zM3 12h10v1h-10zM2 13h9v1h-9zM12 13h2v1h-2zM3 14h10v1h-10z" fill="#e2e8f0" shape-rendering="crispEdges"/>
+</svg>

@@ -10,8 +10,10 @@
 #      from the executable's name, so one binary ships every brand)
 #
 # Sources:
-#   installer/icons/src/proxmox_mark.svg — official Proxmox orange mark, as
-#                                 published on www.proxmox.com (favicon.svg)
+#   installer/icons/src/default*.svg — the default (unbranded) tile: save and
+#                                 restore arrows over a server. default.svg is
+#                                 used for 48 px and up, default-32.svg for 24
+#                                 and 32 px, default-16.svg is drawn pixel by pixel
 #   installer/icons/src/*.svg   — glyph-only square tiles for brands whose
 #                                 logo is a wide banner (drawn from
 #                                 gui/frontend/public/brands/*.svg)
@@ -32,12 +34,13 @@ for b in "${!EXE[@]}"; do
   cp "$Camel.ico" "$BRANDS/$b.ico"
 done
 
-# Proxmox tile: the official orange mark from www.proxmox.com centered on the
-# shared dark tile (same style as the Nimbus/Acme tiles).
-rsvg-convert -w 512 -h 512 src/proxmox_mark.svg -o /tmp/proxmox_mark.png
-magick -size 512x512 xc:none -fill '#0f172a' -draw 'roundrectangle 0,0 511,511 72,72' \
-  \( /tmp/proxmox_mark.png -resize 300x300 \) -gravity center -composite \
-  -define icon:auto-resize=256,128,64,48,32,16 ProxmoxBackupClient.ico
+# Default tile: no Proxmox mark (their media kit rules out using it as an app
+# icon). Each size is rendered from the artwork drawn for it rather than scaled
+# down from 256, so the tray icon stays readable at 16 px.
+for s in 256 128 64 48; do rsvg-convert -w $s -h $s src/default.svg -o /tmp/default-$s.png; done
+for s in 32 24; do rsvg-convert -w $s -h $s src/default-32.svg -o /tmp/default-$s.png; done
+rsvg-convert -w 16 -h 16 src/default-16.svg -o /tmp/default-16.png
+magick /tmp/default-{256,128,64,48,32,24,16}.png ProxmoxBackupClient.ico
 cp ProxmoxBackupClient.ico "$BRANDS/proxmoxbackupclient.ico"
 # Also the exe's resource icon (window/taskbar/Alt-Tab), shared by every
 # branded rename of the binary — better than Wails' placeholder icon.
