@@ -145,8 +145,12 @@ func TestConcurrentRunsLive(t *testing.T) {
 		}
 		s7 := startLiveRun(t, a, "Small set", liveDirOpts(smallSrc, smallID, useVSS), opBackup)
 		s7.waitAdmitted(t)
-		if n := runningOperationCount(); n != 3 {
+		// Only while the machine backup still runs (a tiny test disk is
+		// done in under a second).
+		if n := runningOperationCount(); n != 3 && !m1.finished() {
 			t.Errorf("%d operations running with a long, a machine and a small backup, want 3", n)
+		} else if n == 3 {
+			t.Logf("three backups running at once: the long one, a machine and a small one")
 		}
 		s7.mustFinish(t, "small run beside a machine backup", 10*time.Minute)
 		m1.mustFinish(t, "machine backup", 30*time.Minute)

@@ -149,12 +149,29 @@ func createShadow(drive string, timeoutMs int) (s *vssShadow, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("VSS_PROPERTIES - ParseProperties: %w", err)
 	}
+	// The shadow copy's device. Windows Server 2025 build 26100.1742 was
+	// reported giving none (tizbac/proxmoxbackupclient_go#131): the path
+	// became just `\`, which passes Validate, so a folder backup read the
+	// live volume without saying so, and a machine backup failed. WMI still
+	// knows the device then. With neither, the backup must stop rather than
+	// read the live volume.
+	device := details.DeviceObject
+	if device == "" {
+		d, werr := shadowDeviceFromWMI(snapshotID.String())
+		if werr != nil || d == "" {
+			deleteShadow(snapshotID.String())
+			return nil, fmt.Errorf("VSS_PROPERTIES - VSS gave no device for shadow copy %s, and WMI none either (%v): stopping rather than reading the live volume", snapshotID.String(), werr)
+		}
+		fmt.Printf("VSS gave no device for shadow copy %s; WMI gives %s\n", snapshotID.String(), d)
+		device = d
+		details.DeviceObject = d
+	}
 	shadow := &vssShadow{
 		Snapshot: vss.Snapshot{
 			Id:               snapshotID.String(),
 			Details:          details,
 			Drive:            drive,
-			DeviceObjectPath: details.DeviceObject + `\`,
+			DeviceObjectPath: device + `\`,
 		},
 		c:         c,
 		timeoutMs: timeoutMs,
