@@ -308,6 +308,47 @@ func TestWaitForEarlierOperations(t *testing.T) {
 	checkIdle(t)
 }
 
+// A set's next run never starts in the second its last one ended: PBS
+// refuses a second snapshot of a group with the same backup time. Another
+// group, and a restore, do not wait.
+func TestQueueNewSecondForTheSameGroup(t *testing.T) {
+	withRunLimit(t, 3)
+	for i := 0; i < 3; i++ {
+		a := startOp(context.Background(), opRequest{name: "Quick set", kind: opBackup, group: "quick"})
+		mustStart(t, a, "first run")
+		a.handle.Release()
+		ended := time.Now().Unix()
+		other := time.Now()
+		o := startOp(context.Background(), opRequest{name: "Other set", kind: opBackup, group: "other"})
+		mustStart(t, o, "another set")
+		if d := time.Since(other); d > 200*time.Millisecond {
+			t.Errorf("another group waited %s", d)
+		}
+		o.handle.Release()
+		b := startOp(context.Background(), opRequest{name: "Quick set", kind: opBackup, group: "quick"})
+		mustStart(t, b, "next run")
+		if started := time.Now().Unix(); started <= ended {
+			t.Fatalf("next run of the group started in second %d, the one its last run ended in", started)
+		}
+		b.handle.Release()
+	}
+	// Stop while it waits for the next second.
+	a := startOp(context.Background(), opRequest{name: "Quick set", kind: opBackup, group: "quick"})
+	mustStart(t, a, "run")
+	a.handle.Release()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	h, err := acquireOperation(ctx, opRequest{name: "Quick set", kind: opBackup, group: "quick"}, nil)
+	if err == nil {
+		// Only when the second had already turned (nothing to wait for).
+		h.Release()
+	} else if !errors.Is(err, context.Canceled) {
+		t.Errorf("stopped while waiting for the next second: %v", err)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	checkIdle(t)
+}
+
 func TestClampRunLimit(t *testing.T) {
 	for in, want := range map[int]int{-1: DefaultMaxConcurrentRuns, 0: DefaultMaxConcurrentRuns, 1: 1, 3: 3, 8: 8, 9: MaxConcurrentRunsLimit, 100: MaxConcurrentRunsLimit} {
 		if got := clampRunLimit(in); got != want {

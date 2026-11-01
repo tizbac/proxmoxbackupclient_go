@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 )
 
 // What may run at once in this process. Backups used to take one single slot,
@@ -69,6 +70,13 @@ var (
 	opRunning []*opTicket
 	opWaiting []*opTicket
 
+	// groupEnded is the Unix second each backup group's last backup in this
+	// process ended. A snapshot's backup time is in whole seconds and PBS
+	// refuses a second snapshot of a group in the same second (HTTP 400 on
+	// the catalog index), which happened when a quick run of a set was
+	// followed at once by its next one (found on linuxclient, 2026-11-01).
+	groupEnded = map[string]int64{}
+
 	// maxConcurrentRuns is the limit in force; the app points it at its
 	// config (setRunLimitSource).
 	maxConcurrentRuns = func() int { return DefaultMaxConcurrentRuns }
@@ -109,11 +117,47 @@ func (h *opHandle) Release() {
 	}
 	h.once.Do(func() {
 		opMu.Lock()
+		if makesSnapshot(h.t) {
+			groupEnded[h.t.group] = time.Now().Unix()
+		}
 		opRunning = removeTicket(opRunning, h.t)
 		admitWaitingLocked()
 		opCond.Broadcast()
 		opMu.Unlock()
 	})
+}
+
+// makesSnapshot reports whether t is a backup that makes a snapshot of its
+// group (a restore only reads one).
+func makesSnapshot(t *opTicket) bool {
+	return t.group != "" && (t.kind == opBackup || t.kind == opMachine)
+}
+
+// waitNewSecond holds a backup whose group's previous backup ended in this
+// very second until the next one starts, so the new snapshot's backup time
+// is later than the last one's (see groupEnded).
+func waitNewSecond(ctx context.Context, t *opTicket) error {
+	if !makesSnapshot(t) {
+		return nil
+	}
+	opMu.Lock()
+	last, ok := groupEnded[t.group]
+	opMu.Unlock()
+	if !ok {
+		return nil
+	}
+	next := time.Unix(last+1, 0)
+	if !time.Now().Before(next) {
+		return nil
+	}
+	tm := time.NewTimer(time.Until(next))
+	defer tm.Stop()
+	select {
+	case <-tm.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // acquireOperation waits until the operation may start under the rules
@@ -154,7 +198,12 @@ func acquireOperation(ctx context.Context, req opRequest, onQueued func(waitingF
 			return nil, ctx.Err()
 		}
 	}
-	return &opHandle{t: t}, nil
+	h := &opHandle{t: t}
+	if err := waitNewSecond(ctx, t); err != nil {
+		h.Release()
+		return nil, err
+	}
+	return h, nil
 }
 
 // acquireOperationSlot is acquireOperation for a caller that cannot be
