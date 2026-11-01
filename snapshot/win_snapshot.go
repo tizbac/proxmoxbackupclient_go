@@ -90,35 +90,29 @@ var (
 )
 
 func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) (retErr error) {
-	// go-vss initialises COM (a single-threaded apartment) for the length of
-	// CreateSnapshot only, while the snapshot's COM objects are used again at
-	// Release, after the backup. Without this, the goroutine could carry on
-	// on another OS thread, and Release (BackupComplete) then called them
-	// from a thread outside their apartment. Keep the whole snapshot, from
-	// creation to release, on one thread with the apartment alive throughout
-	// (CoInitialize here, go-vss's own then only nests inside it). These
-	// defers run last, after the snapshotters are released below.
+	// A shadow copy's COM objects are made when it is created and used again
+	// at release, after the backup. Keep the whole snapshot, from creation to
+	// release, on one OS thread with COM initialised throughout (a
+	// single-threaded apartment's objects must be called from their thread).
+	// These defers run last, after the shadows are released below.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	ole.CoInitialize(0)
 	defer ole.CoUninitialize()
 
-	// One Snapshotter per volume: go-vss rejects reuse of a single Snapshotter
-	// for a second volume ("snapshotter is already in use"), which made every
-	// whole-machine backup of a disk with >= 2 mounted volumes fail. Each
-	// successful snapshot is held until the backup callback has consumed them,
-	// then released together.
-	snapshotters := make([]*vss.Snapshotter, 0, len(paths))
+	// One shadow per volume (createShadow, vss_shadow_windows.go), each held
+	// until the backup callback has consumed them, then released together.
+	shadows := make([]*vssShadow, 0, len(paths))
 	// IDs of the shadows this call actually created, in creation order.
 	createdIDs := make([]string, 0, len(paths))
 	defer func() {
-		for _, s := range snapshotters {
-			if err := s.Release(); err != nil {
+		for _, s := range shadows {
+			if err := s.release(); err != nil {
 				fmt.Printf("⚠️  VSS: releasing snapshot: %v\n", err)
 			}
 		}
-		// Release() ends the writer session but does not remove the shadow
-		// copy: go-vss makes it in the auto-release backup context, yet it
+		// release() ends the writer session but does not remove the shadow
+		// copy: it is made in the auto-release backup context, yet it
 		// outlives the release, often until the process exits. A GUI or
 		// service stays running between backups, so each shadow lingered for
 		// hours, kept copy-on-write going on the volume, and its storage
@@ -185,13 +179,10 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 		// good with the service stuck stopping and every queued backup behind
 		// it. A context left by a crashed process is released by Windows once
 		// that process is gone, so waiting covers that case too.
-		// Do NOT Release a failed Snapshotter: go-vss already aborted and
-		// released its components on the failed CreateSnapshot (without
-		// nil-ing them), so a second Release would touch freed COM state.
-		var sn *vss.Snapshotter
-		snapshot, err := retryWhileBusy(func() (*vss.Snapshot, error) {
-			sn = &vss.Snapshotter{}
-			return sn.CreateSnapshot(volName, false, vssTimeoutMs)
+		// A failed createShadow has already aborted and freed its VSS object,
+		// so there is nothing to release for it.
+		snapshot, err := retryWhileBusy(func() (*vssShadow, error) {
+			return createShadow(volName, vssTimeoutMs)
 		})
 		if err != nil && isShadowAlreadyInProgress(err) {
 			return fmt.Errorf("VSS snapshot creation failed: another shadow copy was still being made after %v: %w", vssBusyWait, err)
@@ -217,7 +208,7 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 		}
 
 		// Snapshot is valid: track it so it is released after the backup callback.
-		snapshotters = append(snapshotters, sn)
+		shadows = append(shadows, snapshot)
 
 		fmt.Printf("✓ Snapshot created: %s\n", snapshot.Id)
 		if hasWriterWarnings {
@@ -333,7 +324,7 @@ func VSSCleanup() error {
 // retryWhileBusy calls create until it succeeds, fails for another reason, or
 // another shadow copy creation has kept VSS busy for vssBusyWait, trying again
 // every vssBusyRetry.
-func retryWhileBusy(create func() (*vss.Snapshot, error)) (*vss.Snapshot, error) {
+func retryWhileBusy(create func() (*vssShadow, error)) (*vssShadow, error) {
 	busyUntil := time.Now().Add(vssBusyWait)
 	for {
 		snapshot, err := create()
@@ -384,7 +375,7 @@ func deleteShadowVSS(bare string) error {
 		}
 	}
 	defer ole.CoUninitialize()
-	c, err := vss.LoadAndInitVSS()
+	c, err := newVSSComponents()
 	if err != nil {
 		return fmt.Errorf("VSS init: %w", err)
 	}
