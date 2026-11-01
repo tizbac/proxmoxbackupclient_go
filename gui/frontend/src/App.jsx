@@ -22,7 +22,7 @@ import { newSchedule, describe as describeSchedule, badgeKey, scheduleProblem, j
 // Wails runtime imports (will be available when built with Wails)
 let OpenSnapshotTree, ListSnapshotChildren, SnapshotSelectionBytes
 let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
-let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, RunScheduledJobNow, GetJobHistory, GetMessageLog, GetSystemInfo, GetLastBackupDirs
+let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, SetScheduledJobEnabled, RunScheduledJobNow, GetJobHistory, GetMessageLog, GetSystemInfo, GetLastBackupDirs
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
@@ -67,6 +67,7 @@ if (window.go) {
   UpdateScheduledJob = window.go.main.App.UpdateScheduledJob
   GetScheduledJobs = window.go.main.App.GetScheduledJobs
   DeleteScheduledJob = window.go.main.App.DeleteScheduledJob
+  SetScheduledJobEnabled = window.go.main.App.SetScheduledJobEnabled
   RunScheduledJobNow = window.go.main.App.RunScheduledJobNow
   GetJobHistory = window.go.main.App.GetJobHistory
   GetMessageLog = window.go.main.App.GetMessageLog
@@ -4175,8 +4176,19 @@ function App() {
                           {/* The text keeps room for its lines; on a narrow window the
                               buttons wrap below it instead of squeezing it. */}
                           <div style={{flex: '1 0 auto', maxWidth: '100%', minWidth: 0}}>
-                            <strong>{job.name}</strong>
+                            <strong style={{color: job.enabled === false ? '#888' : undefined}}>{job.name}</strong>
                             <div style={{fontSize: '12px', color: '#6c757d', marginTop: '2px', display: 'flex', alignItems: 'center'}}>
+                              {/* A disabled set keeps its settings but is not run by the
+                                  schedule (Run Now still works); More > Enable turns it back on. */}
+                              {job.enabled === false && (
+                                <span title={tl('setDisabledTip', 'This set does not run on its schedule. You can still run it now. Enable it again from More.')} style={{
+                                  display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
+                                  padding: '2px 7px', borderRadius: '3px', background: '#f4f4f4', color: '#666',
+                                  border: '1px solid #ccc', verticalAlign: 'middle', marginRight: '6px', cursor: 'help',
+                                }}>
+                                  {tl('setDisabledBadge', 'Disabled').toUpperCase()}
+                                </span>
+                              )}
                               <span style={{
                                 display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
                                 padding: '2px 7px', borderRadius: '3px', background: '#eef0f4', color: '#3d5aa8',
@@ -4263,7 +4275,10 @@ function App() {
                                 <div>
                                   {(() => { const c = cardSchedule(job); return c.manual ? t('manualOnDemand') : c.sch ? describeSchedule(t, language, c.sch) : t('schedNoneOnShort') })()}
                                 </div>
-                                {!cardSchedule(job).manual && job.nextRun && (() => {
+                                {!cardSchedule(job).manual && job.enabled === false && (
+                                  <div>{t('schedSetNext', { time: tl('nextRunDisabled', 'disabled') })}</div>
+                                )}
+                                {!cardSchedule(job).manual && job.enabled !== false && job.nextRun && (() => {
                                   const when = new Date(job.nextRun)
                                   if (isNaN(when.getTime())) return null
                                   const now = new Date()
@@ -4411,6 +4426,23 @@ function App() {
                                   }}
                                 >
                                   {t('cloneJob')}
+                                </button>
+                                <button
+                                  role="menuitem"
+                                  className="set-more-item"
+                                  onClick={async () => {
+                                    const enable = job.enabled === false
+                                    try {
+                                      await SetScheduledJobEnabled(job.id, enable)
+                                      const jobs = await GetScheduledJobs()
+                                      setScheduledJobs(jobs || [])
+                                      showStatus(tl(enable ? 'statusSetEnabled' : 'statusSetDisabled', enable ? 'Backup set enabled' : 'Backup set disabled'), 'success')
+                                    } catch (err) {
+                                      if (!handleJobsLockError(err)) showStatus(`❌ ${jobErrText(err)}`, 'error')
+                                    }
+                                  }}
+                                >
+                                  {job.enabled === false ? tl('setEnable', 'Enable') : tl('setDisable', 'Disable')}
                                 </button>
                                 <button
                                   role="menuitem"

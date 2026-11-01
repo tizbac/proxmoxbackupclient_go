@@ -441,6 +441,46 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 	return nil
 }
 
+// SetScheduledJobEnabled enables or disables a backup set. A disabled set
+// keeps its settings and history but the scheduler leaves it alone (Run Now
+// still works). Enabling works out the next run from now, so a set that was
+// disabled for a while does not fire at once for the runs it missed.
+func (a *App) SetScheduledJobEnabled(jobID string, enabled bool) error {
+	if err := a.checkJobsChangeAllowed(); err != nil {
+		return err
+	}
+	jobsFileMu.Lock()
+	defer jobsFileMu.Unlock()
+	jobs, err := a.GetScheduledJobs()
+	if err != nil {
+		return fmt.Errorf("failed to load jobs: %w", err)
+	}
+	found := false
+	for i := range jobs {
+		if jobs[i].ID == jobID {
+			jobs[i].Enabled = enabled
+			if enabled {
+				setNextRun(&jobs[i], time.Now())
+			}
+			found = true
+			writeDebugLog(fmt.Sprintf("Backup set %s %s (next run: %s)", jobs[i].Name, map[bool]string{true: "enabled", false: "disabled"}[enabled], jobs[i].NextRun))
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("job with ID %s not found", jobID)
+	}
+	jobsPath, err := getScheduledJobsPath()
+	if err != nil {
+		return fmt.Errorf("failed to get jobs path: %w", err)
+	}
+	data, err := json.MarshalIndent(jobs, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal jobs: %w", err)
+	}
+	return atomicWriteFile(jobsPath, data, 0600)
+}
+
 // DeleteScheduledJob removes a scheduled job by ID
 func (a *App) DeleteScheduledJob(jobID string) error {
 	if err := a.checkJobsChangeAllowed(); err != nil {

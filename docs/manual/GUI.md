@@ -252,6 +252,7 @@ A Backup Set is a saved backup with a name, its schedules and options. The **Bac
 | VSS ON, VSS OFF (Linux: SNAPSHOT ON, SNAPSHOT OFF) | Whether the set reads through a snapshot. Machine sets always show ON |
 | VSS PARTLY, VSS N/A (amber) | The set asks for a snapshot, but some (PARTLY) or all (N/A) of its folders are network drives or shares, which cannot be snapshotted and are read live. Hover the badge for the list |
 | SHARED ID (amber) | Another set writes into the same backup group on PBS ([section 6.4](#64-destination-tab)). Hover it for the other set's name |
+| DISABLED (grey) | The set is out of its schedule (**More > Disable**); Run Now still works |
 
 A Metadata set with a full read set up also shows **Next full read in N runs** or **Next run: full read (reads every file)** after Last run.
 
@@ -266,6 +267,7 @@ Each card has **Run Now**, **Edit** and a **More ▾** menu:
 | More > Undelete removed files... | Opens Undelete with this set picked ([section 10](#10-undelete)) |
 | More > Roll back to chosen snapshot... | Opens Roll back with this set picked ([section 11](#11-roll-back)) |
 | More > Clone this Backup Set | Opens the editor with a copy, named "<name> (copy)" |
+| More > Disable / Enable | Disable takes the set out of its schedule but keeps it and its settings: the card shows **DISABLED** and "Next run: disabled", and Run Now still works. Enable puts it back on its schedule from the next due time, without catching up the runs it missed |
 | More > Delete this Backup Set | Asks for confirmation, then deletes the set (not its snapshots) |
 
 Click **Add New Backup Set** to create one. Give it a **Backup set name**, fill in the five tabs (**Source**, **Exclusions**, **Schedule**, **Destination**, **Alerts**), then click **Save Backup Set**. Each set needs its own name: a name another set already has (in any mix of capitals) is flagged under the name box and the set is not saved.
