@@ -137,12 +137,23 @@ func createShadow(drive string, timeoutMs int) (s *vssShadow, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("VSS_PROPERTIES - ParseProperties: %w", err)
 	}
+	// The shadow copy's device. On Windows Server 2025 build 26100.1742, run
+	// as SYSTEM, VSS gave none (#131): the path became just `\`, which passes
+	// Validate, so a folder backup read the live volume without saying so and
+	// a machine backup failed. WMI still knows the device then. With neither,
+	// delete the shadow copy and stop rather than read the live volume.
+	device, err := shadowDevice(snapshotID.String(), details.DeviceObject, shadowDeviceFromWMI)
+	if err != nil {
+		deleteShadowsBestEffort([]string{snapshotID.String()})
+		return nil, err
+	}
+	details.DeviceObject = device
 	shadow := &vssShadow{
 		Snapshot: vss.Snapshot{
 			Id:               snapshotID.String(),
 			Details:          details,
 			Drive:            drive,
-			DeviceObjectPath: details.DeviceObject + `\`,
+			DeviceObjectPath: device + `\`,
 		},
 		c:         c,
 		timeoutMs: timeoutMs,
@@ -151,6 +162,21 @@ func createShadow(drive string, timeoutMs int) (s *vssShadow, err error) {
 		return nil, err
 	}
 	return shadow, nil
+}
+
+// shadowDevice returns the device of shadow copy id: the one VSS gave
+// (vssDevice) or, when that is empty, the one fromWMI finds. With neither it
+// returns an error, so the backup stops instead of reading the live volume.
+func shadowDevice(id, vssDevice string, fromWMI func(string) (string, error)) (string, error) {
+	if vssDevice != "" {
+		return vssDevice, nil
+	}
+	d, err := fromWMI(id)
+	if err != nil || d == "" {
+		return "", fmt.Errorf("VSS_PROPERTIES - VSS gave no device for shadow copy %s, and WMI none either (%v): stopping rather than reading the live volume", id, err)
+	}
+	fmt.Printf("VSS gave no device for shadow copy %s; WMI gives %s\n", id, d)
+	return d, nil
 }
 
 // release tells VSS the backup is done and frees the VSS object, whatever

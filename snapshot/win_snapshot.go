@@ -149,20 +149,15 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 		cancelList()
 		writersStatus := string(writersOutput)
 
-		// Log warnings for writers with known errors
-		hasWriterWarnings := false
-		if strings.Contains(writersStatus, "System Writer") && strings.Contains(writersStatus, "Last error") {
-			fmt.Println("⚠️  WARNING: System Writer has errors - system state may not be fully captured")
-			hasWriterWarnings = true
+		// Warn about writers that report an error. This used to look for
+		// "System Writer" and "Last error" anywhere in the output, and every
+		// writer prints "Last error: No error", so it warned on every run
+		// (#131).
+		problems := writerProblems(writersStatus)
+		for _, p := range problems {
+			fmt.Printf("⚠️  WARNING: VSS writer %s - what it covers may not be fully captured\n", p)
 		}
-		if strings.Contains(writersStatus, "NTDS") && (strings.Contains(writersStatus, "Last error") || strings.Contains(writersStatus, "0x800423f4")) {
-			fmt.Println("⚠️  WARNING: NTDS Writer refuses to participate - Active Directory state will not be captured")
-			hasWriterWarnings = true
-		}
-		if strings.Contains(writersStatus, "Dhcp") && strings.Contains(writersStatus, "Last error") {
-			fmt.Println("⚠️  WARNING: DHCP Jet Writer has errors - DHCP configuration may not be captured")
-			hasWriterWarnings = true
-		}
+		hasWriterWarnings := len(problems) > 0
 
 		if hasWriterWarnings {
 			fmt.Println("         → Backup will continue with available writers only")
@@ -207,8 +202,10 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 			return fmt.Errorf("VSS snapshot creation failed: no valid snapshot created")
 		}
 
-		// Snapshot is valid: track it so it is released after the backup callback.
+		// Snapshot is valid: track it so it is released and deleted after the
+		// backup callback (or when this returns an error below).
 		shadows = append(shadows, snapshot)
+		createdIDs = append(createdIDs, snapshot.Id)
 
 		fmt.Printf("✓ Snapshot created: %s\n", snapshot.Id)
 		if hasWriterWarnings {
@@ -222,7 +219,6 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 		}
 
 		snapshots[path] = SnapShot{FullPath: filepath.Join(appDataFolder, "VSS", snapshot.Id, subPath), Id: snapshot.Id, ObjectPath: snapshot.DeviceObjectPath, Valid: true}
-		createdIDs = append(createdIDs, snapshot.Id)
 
 	}
 
@@ -319,6 +315,40 @@ func VSSCleanup() error {
 	// that process has gone; CreateVSSSnapshot waits for it ("already in
 	// progress") instead.
 	return nil
+}
+
+// writerProblems reads `vssadmin list writers` output and returns, for each
+// writer whose state is failed or whose last error is not "No error", its
+// name with what it reports ("'System Writer' state [8] Failed, last error
+// Retryable error"). Output in another language than English gives none.
+func writerProblems(out string) []string {
+	var problems []string
+	name, state, lastErr := "", "", ""
+	flush := func() {
+		if name == "" {
+			return
+		}
+		failed := strings.Contains(state, "Failed")
+		errored := lastErr != "" && !strings.EqualFold(lastErr, "No error")
+		if failed || errored {
+			problems = append(problems, fmt.Sprintf("%s state %s, last error %s", name, state, lastErr))
+		}
+		name, state, lastErr = "", "", ""
+	}
+	for _, line := range strings.Split(strings.ReplaceAll(out, "\r", ""), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Writer name:"):
+			flush()
+			name = strings.TrimSpace(strings.TrimPrefix(line, "Writer name:"))
+		case strings.HasPrefix(line, "State:"):
+			state = strings.TrimSpace(strings.TrimPrefix(line, "State:"))
+		case strings.HasPrefix(line, "Last error:"):
+			lastErr = strings.TrimSpace(strings.TrimPrefix(line, "Last error:"))
+		}
+	}
+	flush()
+	return problems
 }
 
 // retryWhileBusy calls create until it succeeds, fails for another reason, or
