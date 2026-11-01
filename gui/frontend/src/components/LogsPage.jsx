@@ -100,7 +100,8 @@ export default function LogsPage({ t, language, active, request, onOpenFolder, f
         : t('logsKindApp')
     return f.service ? `${base} (${t('logsService')})` : base
   }
-  const when = (f) => new Date(f.kind === 'run' && f.started ? f.started : f.modified).toLocaleString(language)
+  // As Reports shows times: the computer's own format.
+  const when = (f) => new Date(f.kind === 'run' && f.started ? f.started : f.modified).toLocaleString()
   const selFile = sel && files.find(f => f.folder === sel.folder && f.name === sel.name)
   const lineStyle = (s) => /\[ERROR\]|FAILED|Failed|failed|Cannot |CRITICAL|panic/.test(s) ? { color: '#c0392b' }
     : /WARNING|⚠️|Skipped|skipped/.test(s) ? { color: '#a06000' } : undefined
