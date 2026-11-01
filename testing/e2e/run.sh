@@ -168,7 +168,9 @@ test_namespace_roundtrip() {
 run_test() {
 	local name="$1"; shift
 	printf '\n%s--- %s ---%s\n' "$C_BOLD" "$name" "$C_RESET"
-	if "$@"; then
+	# In a subshell, so a failed assertion (die -> exit 1) fails just this
+	# test and the suite goes on to report every other one.
+	if ( "$@" ); then
 		PASSED+=("$name")
 		printf '%s%s✔ %s%s\n' "$C_BOLD" "$C_GREEN" "$name" "$C_RESET"
 	else

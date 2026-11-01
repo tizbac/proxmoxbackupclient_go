@@ -353,7 +353,17 @@ pbc_restore() {
 	# The official client creates blob/index targets with O_EXCL, so a leftover
 	# file from a previous run would make the restore fail for the wrong reason.
 	rm -rf "$target_abs"
-	pbc restore "$snapshot" "$archive" "$target" "$@"
+	# Our pxar writer stores every entry as uid/gid 1000 (it targets Windows,
+	# which has no POSIX owners; pbscommon/pxar.go), so a non-root restore
+	# (the GitHub runner is uid 1001) cannot chown to that and stops with
+	# "failed to set ownership: Operation not permitted". Ownership is not
+	# what this suite checks, so the official client is told to leave it.
+	local own=()
+	case "$archive" in
+		*.pxar.didx) own=(--ignore-ownership true) ;;
+	esac
+	pbc restore "$snapshot" "$archive" "$target" "${own[@]+"${own[@]}"}" "$@" \
+		|| die "official client could not restore $snapshot $archive"
 }
 
 # Assert that an official-client operation that is *supposed* to fail really
