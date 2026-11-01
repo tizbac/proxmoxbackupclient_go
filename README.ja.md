@@ -2,6 +2,8 @@
 
 [🇬🇧 English](README.md) · [🇫🇷 Français](README.fr.md) · [🇮🇹 Italiano](README.it.md) · [🇩🇪 Deutsch](README.de.md) · [🇪🇸 Español](README.es.md) · [🇷🇺 Русский](README.ru.md) · [🇨🇳 中文](README.zh.md) · [🇯🇵 日本語](README.ja.md) · [🇬🇷 Ελληνικά](README.el.md) · [🇷🇴 Română](README.ro.md) · [🇸🇪 Svenska](README.sv.md) · [🇸🇦 العربية](README.ar.md) · [🇮🇷 فارسی](README.fa.md)
 
+> ⚠️ **商標および関連性に関するお知らせ。** 本プロジェクトは**独立したコミュニティプロジェクト**であり、Proxmox の公式製品ではありません。**Proxmox Server Solutions GmbH とは一切関係がなく、同社からの承認や支援、スポンサー提供も受けていません。** **Proxmox®** は Proxmox Server Solutions GmbH の EU・米国その他の国における登録商標であり、ここでは**互換性を説明するためだけ**に使用しています。Proxmox 自身の商標ガイドライン（登録商標を製品名やアプリ名に使用してはならない — 例：「Proxmox XY App」ではなく「XY App for Proxmox Virtual Environment」）に従い、**ブランドなしクライアントの改名を進めています**：現在 *Proxmox Backup Client* という名称の製品は、Proxmox の商標を含まない名称に変更されます。正確なルールは [Proxmox のメディアキット](https://www.proxmox.com/en/about/company-details/media-kit) をご覧ください。
+
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-github-orange)](https://github.com/tizbac/proxmoxbackupclient_go)

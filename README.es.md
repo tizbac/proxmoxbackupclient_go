@@ -2,6 +2,8 @@
 
 [🇬🇧 English](README.md) · [🇫🇷 Français](README.fr.md) · [🇮🇹 Italiano](README.it.md) · [🇩🇪 Deutsch](README.de.md) · [🇪🇸 Español](README.es.md) · [🇷🇺 Русский](README.ru.md) · [🇨🇳 中文](README.zh.md) · [🇯🇵 日本語](README.ja.md) · [🇬🇷 Ελληνικά](README.el.md) · [🇷🇴 Română](README.ro.md) · [🇸🇪 Svenska](README.sv.md) · [🇸🇦 العربية](README.ar.md) · [🇮🇷 فارسی](README.fa.md)
 
+> ⚠️ **Aviso sobre marca y afiliación.** Este es un **proyecto comunitario independiente**, no un producto oficial de Proxmox: **no está afiliado, respaldado ni patrocinado por Proxmox Server Solutions GmbH**. **Proxmox®** es una marca registrada de Proxmox Server Solutions GmbH en la UE, EE. UU. y otros países, y aquí se usa **solo** para describir la compatibilidad. Siguiendo las directrices de Proxmox sobre el uso de su marca (las marcas registradas no deben usarse en nombres de productos o aplicaciones — por ejemplo, "XY App for Proxmox Virtual Environment" en lugar de "Proxmox XY App"), **está en marcha el cambio de nombre del cliente sin marca**: el producto que actualmente se llama *Proxmox Backup Client* pasará a un nombre que no contenga la marca Proxmox. Consulta el [media kit de Proxmox](https://www.proxmox.com/en/about/company-details/media-kit) para conocer las reglas exactas.
+
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-github-orange)](https://github.com/tizbac/proxmoxbackupclient_go)

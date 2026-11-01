@@ -2,6 +2,8 @@
 
 [🇬🇧 English](README.md) · [🇫🇷 Français](README.fr.md) · [🇮🇹 Italiano](README.it.md) · [🇩🇪 Deutsch](README.de.md) · [🇪🇸 Español](README.es.md) · [🇷🇺 Русский](README.ru.md) · [🇨🇳 中文](README.zh.md) · [🇯🇵 日本語](README.ja.md) · [🇬🇷 Ελληνικά](README.el.md) · [🇷🇴 Română](README.ro.md) · [🇸🇪 Svenska](README.sv.md) · [🇸🇦 العربية](README.ar.md) · [🇮🇷 فارسی](README.fa.md)
 
+> ⚠️ **商标与关联性声明。** 本项目是一个**独立的社区项目**，并非 Proxmox 官方产品：它与 **Proxmox Server Solutions GmbH 没有任何关联，也未获得该公司的背书或赞助**。**Proxmox®** 是 Proxmox Server Solutions GmbH 在欧盟、美国及其他国家和地区的注册商标，此处**仅**用于说明兼容性。依据 Proxmox 自身的商标准则（注册商标不得用于产品或应用名称——例如应使用“XY App for Proxmox Virtual Environment”，而不是“Proxmox XY App”），**无品牌版本客户端正在更名**：目前名为 *Proxmox Backup Client* 的产品将改用不含 Proxmox 商标的名称。具体规则见 [Proxmox 媒体资料包](https://www.proxmox.com/en/about/company-details/media-kit)。
+
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-github-orange)](https://github.com/tizbac/proxmoxbackupclient_go)

@@ -2,6 +2,8 @@
 
 [🇬🇧 English](README.md) · [🇫🇷 Français](README.fr.md) · [🇮🇹 Italiano](README.it.md) · [🇩🇪 Deutsch](README.de.md) · [🇪🇸 Español](README.es.md) · [🇷🇺 Русский](README.ru.md) · [🇨🇳 中文](README.zh.md) · [🇯🇵 日本語](README.ja.md) · [🇬🇷 Ελληνικά](README.el.md) · [🇷🇴 Română](README.ro.md) · [🇸🇪 Svenska](README.sv.md) · [🇸🇦 العربية](README.ar.md) · [🇮🇷 فارسی](README.fa.md)
 
+> ⚠️ **Avviso su marchio e affiliazione.** Questo è un **progetto comunitario indipendente**, non un prodotto Proxmox ufficiale: **non è affiliato, approvato o sponsorizzato da Proxmox Server Solutions GmbH**. **Proxmox®** è un marchio registrato di Proxmox Server Solutions GmbH nell'UE, negli Stati Uniti e in altri paesi, ed è usato qui **solo** per descrivere la compatibilità. In base alle linee guida di Proxmox sull'uso del marchio (i marchi registrati non devono essere usati nei nomi di prodotti o applicazioni — ad esempio "XY App for Proxmox Virtual Environment" invece di "Proxmox XY App"), **è in corso il cambio di nome del client non brandizzato**: il prodotto attualmente chiamato *Proxmox Backup Client* riceverà un nome che non contiene il marchio Proxmox. Vedi il [media kit di Proxmox](https://www.proxmox.com/en/about/company-details/media-kit) per le regole esatte.
+
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-github-orange)](https://github.com/tizbac/proxmoxbackupclient_go)
@@ -16,8 +18,6 @@
 - **`proxmoxbackup-nbd`** — server NBD per ripristinare backup disco (Linux).
 
 > Parole chiave: client proxmox backup windows · client PBS · backup Windows VSS · backup remoto immutabile · interfaccia Proxmox Backup Server.
-
-> ⚠️ **Disclaimer:** Questo progetto **non è affiliato in alcun modo** con **Proxmox Server Solutions GmbH**. "Proxmox", il logo Proxmox e i relativi nomi sono di proprietà dei rispettivi titolari; qui vengono usati **solo** per dichiarare la compatibilità. Vedi [proxmox.com](https://www.proxmox.com/) per i loro prodotti.
 
 ## 📦 Download
 

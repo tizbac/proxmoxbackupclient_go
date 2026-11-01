@@ -2,6 +2,8 @@
 
 [🇬🇧 English](README.md) · [🇫🇷 Français](README.fr.md) · [🇮🇹 Italiano](README.it.md) · [🇩🇪 Deutsch](README.de.md) · [🇪🇸 Español](README.es.md) · [🇷🇺 Русский](README.ru.md) · [🇨🇳 中文](README.zh.md) · [🇯🇵 日本語](README.ja.md) · [🇬🇷 Ελληνικά](README.el.md) · [🇷🇴 Română](README.ro.md) · [🇸🇪 Svenska](README.sv.md) · [🇸🇦 العربية](README.ar.md) · [🇮🇷 فارسی](README.fa.md)
 
+> ⚠️ **اطلاعیهٔ علامت تجاری و وابستگی.** این یک **پروژهٔ اجتماعی مستقل** است، نه محصول رسمی Proxmox: **هیچ وابستگی، تأیید یا حمایت مالی از سوی Proxmox Server Solutions GmbH ندارد**. **Proxmox®** علامت تجاری ثبت‌شدهٔ Proxmox Server Solutions GmbH در اتحادیهٔ اروپا، ایالات متحده و دیگر کشورهاست و در اینجا **فقط** برای بیان سازگاری به کار می‌رود. بر پایهٔ راهنمای علامت تجاری خود Proxmox (نشانه‌های ثبت‌شده نباید در نام محصول یا برنامه استفاده شوند — برای نمونه «XY App for Proxmox Virtual Environment» به‌جای «Proxmox XY App»)، **تغییر نام کارخواه بدون برند در جریان است**: محصولی که اکنون *Proxmox Backup Client* نام دارد به نامی تغییر می‌کند که نشان Proxmox در آن نیست. برای قواعد دقیق، [کیت رسانه‌ای Proxmox](https://www.proxmox.com/en/about/company-details/media-kit) را ببینید.
+
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
 [![Documentation](https://img.shields.io/badge/docs-github-orange)](https://github.com/tizbac/proxmoxbackupclient_go)

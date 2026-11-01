@@ -1,5 +1,7 @@
 # Proxmox Backup Client - Installateur MSI
 
+> ⚠️ **Avis relatif à la marque et à l'affiliation.** Ce projet est un **projet communautaire indépendant**, et non un produit Proxmox officiel : il n'est **affilié ni à Proxmox Server Solutions GmbH, ni approuvé, ni sponsorisé par cette société**. **Proxmox®** est une marque déposée de Proxmox Server Solutions GmbH dans l'UE, aux États-Unis et dans d'autres pays ; elle n'est utilisée ici **que** pour décrire la compatibilité. Conformément aux règles d'usage de la marque de Proxmox (les marques déposées ne doivent pas être utilisées dans les noms de produits ou d'applications — par exemple « XY App for Proxmox Virtual Environment » plutôt que « Proxmox XY App »), **un renommage du client non marqué est en cours** : le produit actuellement appelé *Proxmox Backup Client* va recevoir un nom qui ne contient pas la marque Proxmox. Voir le [kit média Proxmox](https://www.proxmox.com/en/about/company-details/media-kit) pour les règles exactes.
+
 Ce dossier contient les fichiers nécessaires pour créer l'installateur MSI de Proxmox Backup Client avec support du service Windows.
 
 ## Prérequis
