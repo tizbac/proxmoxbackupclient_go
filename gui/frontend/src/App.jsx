@@ -795,7 +795,7 @@ function App() {
   const [, setCardTick] = useState(0)
 
   // Display names of backups and restores waiting for their turn
-  // (operation_queue.go: several run at once, up to the "Backups at once"
+  // (operation_queue.go: several run at once, up to the "Maximum Concurrent Backups"
   // setting; one waits for a free place, for its own set's earlier run, or
   // for the machine backup or restore already running). Populated by
   // parsing the backend's "Queued: <name> — waiting for <what> to

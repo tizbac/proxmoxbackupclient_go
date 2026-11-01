@@ -160,11 +160,11 @@ func TestConcurrentRunsLive(t *testing.T) {
 		}
 	}
 
-	// 6. "Backups at once" at 1: a new run waits for a free place even for
+	// 6. "Maximum Concurrent Backups" at 1: a new run waits for a free place even for
 	// another set, and starts once the limit is raised again.
 	maxConcurrentRuns = func() int { return 1 }
 	s8 := startLiveRun(t, a, "Small set", liveDirOpts(smallSrc, smallID, useVSS), opBackup)
-	s8.waitQueued(t, "a run with Backups at once at 1")
+	s8.waitQueued(t, "a run with Maximum Concurrent Backups at 1")
 	maxConcurrentRuns = func() int { return 3 }
 	opMu.Lock()
 	admitWaitingLocked()

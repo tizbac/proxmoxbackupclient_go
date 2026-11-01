@@ -344,7 +344,7 @@ The set's name is written to PBS as the snapshot comment, so it shows in the PBS
 
 ### 6.7 Several backups at once
 
-Up to three backups and restores run at the same time (**Preferences > Backup Options > Backups at once**, 1 to 8). A long first backup of a large set, which can take a day or more, no longer holds up the other sets: a set of documents that runs every hour keeps its hourly runs, and a machine backup still runs at its time. Whatever the number:
+Up to three backups and restores run at the same time (**Preferences > Backup Options > Maximum Concurrent Backups**, 1 to 8). A long first backup of a large set, which can take a day or more, no longer holds up the other sets: a set of documents that runs every hour keeps its hourly runs, and a machine backup still runs at its time. Whatever the number:
 
 | Rule | Why |
 |---|---|
@@ -357,7 +357,7 @@ Anything that cannot start yet waits its turn, in the order it was started, and 
 
 Each run makes its own snapshot of what it reads (VSS on Windows), so two sets reading the same drive each have their own and never see each other's. Windows makes one snapshot at a time, so a run starting at the same moment as another waits a few seconds for it. On Linux, elastio-snap and dattobd allow one snapshot of a drive at a time: a backup that needs a drive another backup has a snapshot of waits until that one has finished with it, while sets on other drives run together.
 
-Runs at the same time share the computer's disks and network and the PBS server. Two backups reading the same hard disk slow each other down; sets on different drives gain the most. Set **Backups at once** to 1 to run them one after another, as before.
+Runs at the same time share the computer's disks and network and the PBS server. Two backups reading the same hard disk slow each other down; sets on different drives gain the most. Set **Maximum Concurrent Backups** to 1 to run them one after another, as before.
 
 Each run writes its own log file (`backup-<date>-<time>-<backup id>.log`), however many run at once ([section 13](#13-message-log-and-log-files)).
 
@@ -698,7 +698,7 @@ Open Preferences from the side menu or **Tools > Preferences…**. The dialog ha
 | Tab | Contents |
 |---|---|
 | Account Information | PBS servers ([section 4](#4-adding-a-pbs-server)) |
-| Backup Options | **Parallel restore extraction (experimental)**: writes several files at once during a restore. Not always faster; on our test machine it was slightly slower. **Multi-threaded backup reading (experimental)**: reads files ahead in the background during a backup, with a **Worker count:** (1 to 32, default 8). Helps when the disk is the bottleneck. Turn either off if anything behaves unexpectedly. **Backups at once:** how many backups and restores may run at the same time, 1 to 8, default 3 ([section 6.7](#67-several-backups-at-once)). 1 runs them one after another, as before. A change applies to the next backup to start |
+| Backup Options | **Parallel restore extraction (experimental)**: writes several files at once during a restore. Not always faster; on our test machine it was slightly slower. **Multi-threaded backup reading (experimental)**: reads files ahead in the background during a backup, with a **Worker count:** (1 to 32, default 8). Helps when the disk is the bottleneck. Turn either off if anything behaves unexpectedly. **Maximum Concurrent Backups:** how many backups and restores may run at the same time, 1 to 8, default 3 ([section 6.7](#67-several-backups-at-once)). 1 runs them one after another, as before. A change applies to the next backup to start |
 | Theme | Amber, Classic Blue, Green, Red, Dark, or Custom… (your own Accent color, Accent (hover) and the two gradient ends, as 6-digit hex values, with a preview). A branded build (one whose program file carries a brand name the app knows) uses the brand's own colours and has no Theme tab |
 | Email | The SMTP account all Backup Sets use: SMTP server, Port, Username, Password, From address, and "Allow an unencrypted connection (not recommended)". **Save**, then **Send test email** to an address to check it ("Sending..." with a wait bar while it goes). Each set picks its own recipient on its Alerts tab |
 | Export / Import Settings | **Export Settings...** saves your servers, the default server, theme, email account and Backup Sets to a `.json` file. Tick "Include passwords/tokens in the export" to include the PBS tokens and passwords, remembered key passphrases and the SMTP password, in plain text, so keep that file safe. Without it, none of them is written. Encryption key files are not included: copy them yourself (**Save a copy…** on the Encryption tab). **Import Settings...** loads such a file, for example from another computer. Servers and Backup Sets with the same ID are replaced, others are added, and nothing else is removed. Importing Backup Sets needs administrator rights while job protection is on. The same file sets up many computers at once when the Windows installer is given it (`CONFIGFILE`, see [installer/DEPLOYMENT.md](../../installer/DEPLOYMENT.md)): there, a set whose backup ID is the exporting computer's name backs up under each computer's own name |
@@ -739,7 +739,7 @@ The .deb and .rpm install the service program (`/usr/lib/proxmoxbackupclient/Pro
 
 The shared folder works like `C:\ProgramData\ProxmoxBackupClient\`: root owns it and can change it; members of the `sudo` (or `wheel`) group can read it, so their GUI, started normally, sees the Backup Sets, runs them through the service and shows history; other accounts get no access, and their GUI shows the "open to its administrators only" banner. Adding, editing, deleting or importing Backup Sets needs the GUI as root: **Restart as administrator** (in the banner and in Preferences) starts it with pkexec. As on Windows, the history of a backup started from a GUI that is not root is not recorded, because that GUI cannot write the shared history; scheduled runs are recorded by the service. An upgrade of the package restarts a running service. Removing the package stops and disables the service and keeps `/var/lib/proxmoxbackupclient/`; delete that folder yourself to remove the settings. Without systemd there is no service and the GUI runs the schedules while it is open.
 
-Runs the service makes on its own schedule show in an open GUI window, with Pause, Resume and Stop ([section 8](#8-the-backup-progress-card)); several at once each have their own. The service runs backups side by side as the app does, with the same **Backups at once** setting ([section 6.7](#67-several-backups-at-once)), which it reads before each run.
+Runs the service makes on its own schedule show in an open GUI window, with Pause, Resume and Stop ([section 8](#8-the-backup-progress-card)); several at once each have their own. The service runs backups side by side as the app does, with the same **Maximum Concurrent Backups** setting ([section 6.7](#67-several-backups-at-once)), which it reads before each run.
 
 ## 16. Compatibility with the official Proxmox client
 
