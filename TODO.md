@@ -11,8 +11,9 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 
 ## Upstream (tizbac/proxmoxbackupclient_go)
 
-- [ ] **#121 open** (2026-10-23): restore permissions when the owner cannot be set, and keep a folder's protected (non-inheriting) DACL (port of 5c1ef56). Waiting on review. (#102 to #113 and #120 are merged.)
-- [ ] Candidate port: waiting while VSS is busy instead of `vssadmin delete shadows /all` and a VSS restart, and freeing each shadow copy's VSS object (8a3c4d4, 609250d, 2026-10-21). Upstream's `snapshot/win_snapshot.go` has the same code; a cherry-pick does not apply cleanly, so port by hand.
+- [ ] **Merge the fork into upstream** (Mick is a collaborator from 2026-10-26): on a short-lived `develop` branch, in stages (engine and CLIs, GUI, then the rename, packaging and docs), each merged to master once tested; small fixes go straight to master. Then retire the fork. #121 to #130 were merged on 2026-10-26; the VSS handle leak (a84e50b) and the junctions fix (8354c96) were pushed to master on 2026-11-01.
+- [ ] **#131** (VSS gave no device on Server 2025 26100.1742): fix ready on `pr/vss-no-device-v2`, held until it is tested on a VM installed from the original 26100.1742 release ISO, as SYSTEM.
+- [ ] **Neutral default icon** ready on `pr/neutral-default-icon`, to go in with the rename, with the GUI header logo.
 
 ## Background service
 
@@ -28,6 +29,7 @@ What is still open, as of 2026-10-16 (after v0.9.1). Finished work is in [CHANGE
 - [ ] Maybe: read files that only SYSTEM may read (Windows Defender's folders in Program Files, protected files in System32) with backup semantics (SeBackupPrivilege) when the app runs elevated or as the service, as backup programs do. Today such a set ends as partial (the 2026-10-21 load test: System32 8 files, Program Files 1 folder).
 - [ ] Maybe: Reports shows a partial run (some files unreadable, the rest backed up) as failed, next to "Backup completed in ...: N files skipped". A status of its own (warning) would say it better.
 - [ ] Offered, not agreed: an empty-block marker in machine backups, skipping the 4 MiB copy for blank chunks in `emitZeros`/`push` (about 3 to 4 minutes off a 27 minute laptop run).
+- [ ] **Smaller fixed chunk size for machine backups** (1 MiB or 512 KiB instead of 4 MiB), agreed with tizbac on 2026-11-01 as the way to cut the changed data per backup, rather than dirty-block tracking through the USN journal (too much room for silent corruption). After the merge work. Measured on 2026-11-01 from three Windows VMs' daily backups on the production PBS (200 changed 4 MiB chunks each, old and new decoded and compared): the changed data at 1 MiB is 48 to 68% of the 4 MiB figure, at 512 KiB 35 to 49%, at 256 KiB 26 to 36%, flattening below that (4 KiB 16 to 24%). Cost: 4x or 8x more chunks (index size, GC, verify, upload requests). First test on pbs-test whether PBS takes and verifies a fidx with another chunk size, whether PVE restores it (qmrestore, live restore) and whether file browsing works: the fidx header carries the chunk size, but 4 MiB may be assumed elsewhere (`PBS_FIXED_CHUNK_SIZE` here). Scripts: `leak\dirty_chunks.py`, `leak\subblock_dirty.py` in the 2026-11-01 scratch archive. tizbac's ideas (2026-11-01): a parameter per disk, small chunks for the system disk only, while a disk holding a big shared folder could even use 8 MiB; and warn about scheduled defragmentation (it moves blocks, so they all count as changed) and help turn it off. On an SSD Windows' Optimize Drives only trims, which moves nothing, so the warning is for hard disks. Before building, check PBS and PVE's source for places that assume 4 MiB (he suggests an LLM pass over the code).
 
 ## Restoring
 
