@@ -2,15 +2,22 @@ name: Build and Release
 
 on:
   push:
-    branches: [ main, develop, github-release ]
+    branches: [ master, develop, github-release ]
     tags:
       - 'v*'
   pull_request:
-    branches: [ main ]
+    branches: [ master, develop ]
   # Manual run: exercises security/test/build-cli/build-gui without publishing
   # (the release job only runs for v* tags), which is how the pipeline is
   # validated before a release tag is pushed.
   workflow_dispatch:
+
+# A newer push to the same branch or PR cancels the build still running for the
+# older one, so only the latest commit builds. Tag runs are never cancelled:
+# they publish the release.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   GO_VERSION: '1.25'
