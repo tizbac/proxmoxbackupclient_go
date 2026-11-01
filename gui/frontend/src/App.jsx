@@ -17,6 +17,7 @@ import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTool
 import { suggestBackupId, setsSharingGroup } from './backupId'
 import ScheduleEditor from './components/ScheduleEditor'
 import LastRunAgo from './components/LastRunAgo'
+import LogsPage, { logRequestFor } from './components/LogsPage'
 import { newSchedule, describe as describeSchedule, badgeKey, scheduleProblem, jobScheduling } from './components/schedules'
 // Wails runtime imports (will be available when built with Wails)
 let OpenSnapshotTree, ListSnapshotChildren, SnapshotSelectionBytes
@@ -720,6 +721,9 @@ function App() {
   const [jobHistory, setJobHistory] = useState([])
   const [selectedHistoryId, setSelectedHistoryId] = useState(null) // Reports page: which run's detail is shown
   const [messageLog, setMessageLog] = useState([])
+  // View Full Logs: what to open there when a report or message asks for its
+  // log ({folder, name, around, notice, nonce}).
+  const [logRequest, setLogRequest] = useState(null)
   const [editingJobId, setEditingJobId] = useState(null) // Track which job is being edited
   const [showBackupForm, setShowBackupForm] = useState(false) // Backup tab: form open vs. Backup Sets landing view
   const [backupFormTab, setBackupFormTab] = useState('source') // Backup Set editor: Source/Exclusions/Schedule/Destination/Alerts
@@ -2970,6 +2974,26 @@ function App() {
     return `${fixed(n, 1)} ${units[i]}`
   }
 
+  // Opens View Full Logs at the log of a Reports entry or a Message Log
+  // line: a backup's own run log, else the backup log (a restore) or the
+  // app log around its time.
+  const openLogFor = async ({ backupId, name, at, kind }) => {
+    let id = backupId
+    if (!id && name) {
+      const set = scheduledJobs.find(j => j.name === name)
+      if (set) id = set.backupId || hostname
+      else if (/^(Manual backup|Backup machine) - /.test(name)) id = name.replace(/^(Manual backup|Backup machine) - /, '')
+    }
+    const req = await logRequestFor({ backupId: id, at, kind: id ? kind : (kind === 'restore' ? 'restore' : 'app'),
+      notice: kind === 'backup' && id ? t('logsNoRunLog') : '' })
+    if (!req) {
+      showStatus(`❌ ${t('logsNone')}`, 'error')
+      return
+    }
+    setLogRequest({ ...req, nonce: Date.now() })
+    setActiveTab('logs')
+  }
+
   // Reconstruct the absolute on-disk location a file came from, by joining the
   // backup's original_path (from the meta sidecar) with the archive-relative
   // path. Critical for split backups, where each part is a separate backup-id
@@ -3302,6 +3326,9 @@ function App() {
         </button>
         <button className={`nav-btn ${activeTab === 'messagelog' ? 'active' : ''}`} onClick={() => setActiveTab('messagelog')}>
           {t('navMessageLog')}
+        </button>
+        <button className={`nav-btn ${activeTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveTab('logs')}>
+          {t('navFullLogs')}
         </button>
         <div className="nav-spacer" />
         <button className="nav-btn nav-btn-secondary" onClick={() => { setPrefsTab('account'); setShowPreferences(true) }}>
@@ -5892,6 +5919,19 @@ function App() {
                           {t('rerun')}
                         </button>
                       )}
+                      <button
+                        className="btn btn-secondary"
+                        style={{marginTop: '16px', marginLeft: selected.status === 'failed' && selected.kind !== 'restore' ? '8px' : 0}}
+                        onClick={() => openLogFor({
+                          backupId: selected.backupId,
+                          name: selected.name,
+                          // A restore's entry has its end: its lines start a duration earlier.
+                          at: Date.parse(selected.timestamp) - (selected.kind === 'restore' ? (selected.durationSec || 0) * 1000 : 0),
+                          kind: selected.kind === 'restore' ? 'restore' : 'backup',
+                        })}
+                      >
+                        📄 {t('viewLog')}
+                      </button>
                     </div>
                   )
                 })()}
@@ -5959,12 +5999,28 @@ function App() {
                         return (usedKey && entry.job_name ? `${entry.job_name}: ` : '') + text
                       })()}
                     </span>
+                    <button className="btn btn-secondary" style={{flex: '0 0 auto', padding: '2px 8px', fontSize: '12px'}}
+                      title={t('viewLog')}
+                      onClick={() => openLogFor({
+                        name: entry.job_name,
+                        at: Date.parse(entry.timestamp),
+                        kind: entry.source === 'Restore' ? 'restore' : entry.source === 'Backup' ? 'backup' : 'app',
+                      })}>
+                      📄
+                    </button>
                   </div>
                 ))}
               </div>
             </div>
           )}
           <p style={{fontSize: '11px', color: '#a0aec0', marginTop: '10px'}}>{t('msgLogCap')}</p>
+        </div>
+
+        {/* View Full Logs */}
+        <div className={`tab-content ${activeTab === 'logs' ? 'active' : ''}`}>
+          <LogsPage t={t} language={language} active={activeTab === 'logs'} request={logRequest}
+            onOpenFolder={OpenLogsFolder ? () => OpenLogsFolder().catch(err => showStatus(`❌ ${err}`, 'error')) : null}
+            formatBytes={formatBytes} />
         </div>
       </div>
 

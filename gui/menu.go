@@ -41,6 +41,9 @@ func buildAppMenu(a *App) *menu.Menu {
 	viewMenu.AddText("Message Log", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "nav:goto", "messagelog")
 	})
+	viewMenu.AddText("Full Logs", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "logs")
+	})
 
 	// Backup/Restore live here rather than View — the Backup tab IS the
 	// backup-sets manager now, which reads more like a tool you open than a
@@ -98,6 +101,10 @@ func buildAppMenu(a *App) *menu.Menu {
 		runtime.EventsEmit(a.ctx, "nav:manual", "restore")
 	})
 	helpMenu.AddSeparator()
+	// The full logs, for when a report or a message says to look in the log.
+	helpMenu.AddText("View Full Logs", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "logs")
+	})
 	helpMenu.AddText("Known Limitations", nil, func(_ *menu.CallbackData) {
 		runtime.EventsEmit(a.ctx, "nav:limitations")
 	})

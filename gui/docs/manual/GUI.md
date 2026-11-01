@@ -82,7 +82,7 @@ On Linux, **Proxmox Backup Client (administrator)** runs the GUI as root with yo
 
 ## 3. The window
 
-The left sidebar has **Backup**, **Restore**, **Undelete** and **Roll back**, a thin divider, then **Reports** and **Message Log**. **Preferences**, **Help** and **About** are at the bottom. The language picker (flag) is at the top right; 18 languages are available. Dates and numbers follow the app's language; with the app in English they follow the computer's regional format (Windows' Region settings; on Linux `LC_ALL`, `LC_TIME`, then `LANG`), so a British PC shows 23/10/2026, 14:05. The status bar at the bottom shows the version ("Version v..." for a release, "Development build ..." otherwise) and a **Known Limitations** link.
+The left sidebar has **Backup**, **Restore**, **Undelete** and **Roll back**, a thin divider, then **Reports**, **Message Log** and **View Full Logs**. **Preferences**, **Help** and **About** are at the bottom. The language picker (flag) is at the top right; 18 languages are available. Dates and numbers follow the app's language; with the app in English they follow the computer's regional format (Windows' Region settings; on Linux `LC_ALL`, `LC_TIME`, then `LANG`), so a British PC shows 23/10/2026, 14:05. The status bar at the bottom shows the version ("Version v..." for a release, "Development build ..." otherwise) and a **Known Limitations** link.
 
 The menu bar:
 
@@ -91,7 +91,7 @@ The menu bar:
 | File | Backup Now (Ctrl+B) | Opens the Backup page |
 | File | Minimize to Tray | Hides the window to the notification area (Windows) |
 | File | Exit (Ctrl+Q) | Quits the program |
-| View | Reports, Message Log | Opens that page |
+| View | Reports, Message Log, Full Logs | Opens that page |
 | Tools | Backup, Restore, Undelete, Roll back | Opens that page |
 | Tools | Preferences… | Opens the Preferences dialog |
 | Tools | Download Bare Metal Restore ISO… | Opens the latest release page in your browser |
@@ -99,6 +99,7 @@ The menu bar:
 | Tools | Save Bare Metal Restore Guide… | Saves that manual as a Markdown file |
 | Help | User Manual (F1) | Opens this manual on the Help page |
 | Help | Command-Line Manual, Bare-Metal Restore Manual, Which Restore Do I Need? | Opens that manual on the Help page |
+| Help | View Full Logs | Opens the log files in the app ([section 13](#13-message-log-and-log-files)) |
 | Help | Known Limitations, About | Information pages |
 
 **Help** shows the user manuals, built into the program so they work offline and match its version: this one, the command-line manual, the bare-metal restore manual and the restore scenarios ("Which restore?"). Pick one at the top; the contents list on the left jumps to a section, and links between the manuals stay in the app. **Find in this manual** searches the page (Enter for the next match, Shift+Enter for the previous one). **Save a copy…** saves the manual as a Markdown file, for example to read on a phone during a bare-metal restore; **Open on GitHub** shows it online at this version. The manuals are in English.
@@ -655,11 +656,21 @@ Click a run for its details:
 | Backup ID, VSS, Folders | |
 | Snapshot, Destination, Paths, Files, Size, Verification, Duration | Restores, Undeletes and Roll backs |
 
-A failed backup has a **Rerun** button that loads its folders and Backup ID into the Backup page.
+A failed backup has a **Rerun** button that loads its folders and Backup ID into the Backup page. **📄 View log** opens the run's own log file in **View Full Logs** ([section 13](#13-message-log-and-log-files)); for a restore, or a backup whose own log is no longer there, it opens the backup log at the run's time.
 
 ## 13. Message Log and log files
 
 **Message Log** is a timestamped list of backup and restore messages (✅ finished, ℹ️ information, ⚠️ warning, ❌ error, ⏹️ stopped by you) with their source, capped at 1,000 entries. A finished backup shows its figures underneath, as in Reports: duration, backup size, chunks, new/changed data, data transferred and the compression ratio. It has a ✅ when it read everything it set out to, also when it left out links, sockets, pipes or system files on purpose (listed as "items left out by design"), and a ⚠️ when it could not read some files.
+
+Each line has a **📄** button that opens the log at that message: a backup's own run log, or for anything else the app's log at the message's time.
+
+**View Full Logs** (in the side menu under Message Log, and on the **Help** and **View** menus) shows the log files themselves, in the app. The list on the left has every log file, newest first: a backup run's own log ("Backup run: deepthought-data", with when it started), the backup and restore log, and the app and schedules log, marked "service" when the background service wrote it, with its size. The one picked shows on the right, its last 2,000 lines to begin with, or, opened from Reports or the Message Log, the lines around that time with the line itself highlighted:
+
+* **Show only lines containing…** then **Show** (or Enter) keeps only the lines with that text, in any case, for example `skipped`, `ERROR` or a file name.
+* **Hide chunk lines** (ticked to begin with) leaves out the "New chunk" and "Reuse chunk" lines, one per 4 MiB of data, which make up most of a run's log.
+* **Show more lines** shows four times as many lines, up to 200,000. The line above the box says how many lines are shown of how many there are.
+* Errors show in red and warnings and skipped files in amber. Compressed (`.gz`) logs are read as they are.
+* **Refresh** reads the list and the log again; **Open log folder** opens the folder.
 
 Log files are in `C:\ProgramData\ProxmoxBackupClient\` on Windows (Linux: [section 2](#where-settings-are-kept)). **Preferences > Message Log > View Logs** opens the folder.
 

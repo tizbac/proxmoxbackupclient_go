@@ -174,7 +174,7 @@ On Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`.
 - Native menu bar and side menu (Backup, Restore, Undelete, Roll back, Reports, Message Log, Preferences, About)
 - **Backup Sets**: reusable named jobs with **several schedules each** (every few minutes to yearly, or manual), a directory-vs-machine type badge, a VSS / Snapshot badge, "Run Now" (quick or full read for Metadata sets), and a **SHARED ID** warning when two sets would write into one backup group
 - **One-off backups** of folders or whole disks
-- **Reports** page with full backup and restore history, and a capped **Message Log** for diagnostics
+- **Reports** page with full backup and restore history, a capped **Message Log** for diagnostics, and **View Full Logs** to read the log files in the app (each report and message opens its own log)
 - **Preferences** dialog with five colour themes (Amber, Blue, Green, Red, Dark) plus a custom colour option
 - **Incremental folder backups** (change detection, Metadata mode): unchanged files are reused without being read, as in the official client, with an optional full read every N runs
 - **Machine (whole-disk) backups** on Windows and Linux that skip free space and survive bad sectors, stored as `host` or as a Proxmox VE `vm` backup
