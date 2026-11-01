@@ -507,7 +507,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 	}
 
 	// Skip directory junction points to avoid infinite loops and access errors
-	if !toplevel && fileInfo.Mode()&os.ModeSymlink != 0 {
+	if !toplevel && isLinkEntry(path, fileInfo) {
 		skipMsg := fmt.Sprintf("Junction point (skipped): %s", path)
 		a.SkippedFiles = append(a.SkippedFiles, skipMsg)
 		return CatalogDir{}, nil // Return nil error to continue backup
@@ -793,8 +793,9 @@ var openForRead = func(path string) (io.ReadCloser, error) { return os.Open(path
 
 // specialFileKind names a FIFO, socket or device node for the skipped list,
 // and returns "" for anything else. ModeIrregular is deliberately not here:
-// on Windows Go sets it on any reparse point that is not a link (OneDrive
-// placeholders among them), and those open and read normally.
+// on Windows Go sets it on reparse points such as OneDrive placeholders, and
+// those open and read normally. Junctions are irregular too since Go 1.23,
+// but isLinkEntry has already skipped them as links by then.
 func specialFileKind(m os.FileMode) string {
 	switch {
 	case m&os.ModeNamedPipe != 0:
@@ -823,7 +824,7 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 	}
 
 	// Skip junction points and symlinks (common on Windows: "Application Data", etc.)
-	if fileInfo.Mode()&os.ModeSymlink != 0 {
+	if isLinkEntry(path, fileInfo) {
 		skipMsg := fmt.Sprintf("Junction point (skipped): %s", path)
 		a.SkippedFiles = append(a.SkippedFiles, skipMsg)
 		return CatalogFile{}, nil // Return nil error to continue backup
