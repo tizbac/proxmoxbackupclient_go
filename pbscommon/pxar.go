@@ -909,7 +909,7 @@ func (a *PXARArchive) startPrefetch(dirPath string, files []os.DirEntry) map[str
 			continue
 		}
 		info, err := file.Info()
-		if err != nil || info.Mode()&os.ModeSymlink != 0 || info.Size() > maxPrefetchFileSize {
+		if err != nil || isLinkEntry(fullPath, info) || info.Size() > maxPrefetchFileSize {
 			continue
 		}
 		if a.reuseCandidate(fullPath, info) {
@@ -975,7 +975,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 	}
 
 	// Skip directory junction points to avoid infinite loops and access errors
-	if !toplevel && fileInfo.Mode()&os.ModeSymlink != 0 {
+	if !toplevel && isLinkEntry(path, fileInfo) {
 		skipMsg := fmt.Sprintf("Junction point (skipped): %s", path)
 		a.SkippedFiles = append(a.SkippedFiles, skipMsg)
 		return CatalogDir{}, nil // Return nil error to continue backup
@@ -1383,7 +1383,7 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	}
 
 	// Skip junction points and symlinks (common on Windows: "Application Data", etc.)
-	if fileInfo.Mode()&os.ModeSymlink != 0 {
+	if isLinkEntry(path, fileInfo) {
 		skipMsg := fmt.Sprintf("Junction point (skipped): %s", path)
 		a.SkippedFiles = append(a.SkippedFiles, skipMsg)
 		return CatalogFile{}, nil // Return nil error to continue backup
