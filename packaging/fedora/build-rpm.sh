@@ -47,7 +47,7 @@ sed "s/^Version:.*$/Version:       $VERSION/" "$SCRIPT_DIR/proxmoxbackupclient.s
 echo "==> building in container ($IMAGE)"
 docker run --rm -i \
     -v "$RPM":/src:z \
-    -v "$OUT_DIR":/out \
+    -v "$OUT_DIR":/out:z \
     "$IMAGE" \
     bash -s <<'DOCKER'
 set -eux

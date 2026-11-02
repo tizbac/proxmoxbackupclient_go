@@ -17,8 +17,9 @@ BuildRequires: webkit2gtk4.1-devel
 # pkexec: the app asks for an administrator's password through it to connect
 # to the service, whose API token is root's alone.
 Requires:      polkit
-# Replaces the project's earlier pbsgo package (1.2.0-rc packaging).
-Obsoletes:     pbsgo
+# Replaces the project's earlier pbsgo package (1.2.0-rc packaging). rpm
+# wants a version on Obsoletes; pbsgo never reached 2.0.
+Obsoletes:     pbsgo < 2.0.0
 
 %description
 Backs folders and whole disks up to a Proxmox Backup Server and restores
