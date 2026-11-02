@@ -74,7 +74,11 @@ func elevationCommand(exe string) (*exec.Cmd, error) {
 		}
 	}
 	args = append(args, exe)
-	return exec.Command(pkexec, args...), nil
+	// The arguments are this user's own session variables and this program's
+	// own path, given to pkexec, which asks for the password before it runs
+	// anything as root: nothing crosses from a less trusted source.
+	return exec.Command(pkexec, args...), nil // #nosec G702 -- the user's own session and program, see above
+
 }
 
 // rootCopyRunning: is another copy of this program running as root?
