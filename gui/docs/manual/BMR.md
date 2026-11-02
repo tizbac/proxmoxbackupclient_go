@@ -1,6 +1,6 @@
 # Bare-metal restore: user manual
 
-This manual covers restoring a whole machine from a machine (full disk) backup. It applies to v0.10.0. For file and folder restores use the GUI's Restore page ([GUI.md](GUI.md#9-restore)).
+This manual covers restoring a whole machine from a machine (full disk) backup. It applies to version 2.0. For file and folder restores use the GUI's Restore page ([GUI.md](GUI.md#9-restore)).
 
 The restore copies the disk image block for block, so it works the same whatever the operating system on the disk: Windows, Linux or another.
 
@@ -39,7 +39,7 @@ A bare-metal restore needs a **machine** backup: a Backup Set or one-off backup 
 
 The ISO is a Clonezilla Live image with this project's restore tools added.
 
-1. Download `ProxmoxBackupClient-GO-BMR-Restore-<version>.iso` from the [releases page](https://github.com/mjb-is/proxmoxbackupclient_go/releases). In the GUI, **Tools > Download Bare Metal Restore ISO…** opens that page. A release that did not change the ISO links to the one from an earlier release (up to v0.8.1, the v0.5.0 ISO).
+1. Download `ProxmoxBackupClient-GO-BMR-Restore-<version>.iso` from the [releases page](https://github.com/tizbac/proxmoxbackupclient_go/releases). In the GUI, **Tools > Download Bare Metal Restore ISO…** opens that page. A release that did not change the ISO links to the one from an earlier release.
 2. Check it against that release's `SHA256SUMS.txt`.
 3. Write it to a USB stick (everything on the stick is erased):
    * Linux: `sudo dd if=ProxmoxBackupClient-GO-BMR-Restore-<version>.iso of=/dev/sdX bs=4M conv=fsync status=progress`
@@ -124,18 +124,18 @@ Clonezilla then asks twice more before it writes. Answer `y` to each.
 
 Clonezilla copies the partition table, every partition and the data between the partition table and the first partition. That last part matters on legacy BIOS disks, where GRUB keeps part of itself there; without it the disk would stop at a bare `GRUB` prompt. UEFI (GPT) disks restore their EFI system partition like any other partition.
 
-A Linux machine backup carries the block snapshot's copy-on-write file (`.pbs_snapshot_N.cow`, about a tenth of each snapshotted file system). Backups made with this version leave its contents out of the image, but the file itself is still there. After a successful restore the ISO deletes it from each ext2/3/4 and XFS partition. An ISO built before this version (v0.5.0 and earlier) does not: delete `/.pbs_snapshot_*.cow` (and the same name at the top of any other snapshotted file system, such as `/home`) yourself after the first start.
+A Linux machine backup carries the block snapshot's copy-on-write file (`.pbs_snapshot_N.cow`, about a tenth of each snapshotted file system). Backups made with this version leave its contents out of the image, but the file itself is still there. After a successful restore the ISO deletes it from each ext2/3/4 and XFS partition. A test-build ISO from before 6 October 2026 does not: delete `/.pbs_snapshot_*.cow` (and the same name at the top of any other snapshotted file system, such as `/home`) yourself after the first start.
 
 Restores of 32 to 40 GiB Windows and Linux test machines took 8 to 11 minutes from power-on to the login prompt on a local network. Time depends on disk size, network and PBS speed.
 
 ### 4.8 Finish
 
-* **Success:** "Restore is complete." Choose OK and the machine switches off. Remove the boot stick or disc, then switch the machine on: it starts from the restored disk. (ISOs up to v0.9.1 restarted instead, and from a USB stick that started the restore system again.)
+* **Success:** "Restore is complete." Choose OK and the machine switches off. Remove the boot stick or disc, then switch the machine on: it starts from the restored disk. (Test-build ISOs from before 25 October 2026 restarted instead, and from a USB stick that started the restore system again.)
 * **Failure:** the exit code and the log folder are shown, and the machine does not switch off. Look in the log folder, then run the restore again.
 
 ### After the restore
 
-* The restored system is exactly as it was at the snapshot: files, settings and permissions, whatever the operating system. A Linux system keeps its machine ID (`/etc/machine-id`), from which systemd-networkd makes its DHCP client ID, so a DHCP server that keys leases by client ID still knows the machine. (ISOs up to v0.9.1 gave it a new machine ID and rebuilt its initramfs; the rebuild is kept, as it helps on different hardware.)
+* The restored system is exactly as it was at the snapshot: files, settings and permissions, whatever the operating system. A Linux system keeps its machine ID (`/etc/machine-id`), from which systemd-networkd makes its DHCP client ID, so a DHCP server that keys leases by client ID still knows the machine. (Test-build ISOs from before 25 October 2026 gave it a new machine ID and rebuilt its initramfs; the rebuild is kept, as it helps on different hardware.)
 * On different hardware, a Linux system's network settings may name the old network card (by its MAC address, as cloud images and netplan configurations often do, or by an interface name that has changed). The system starts but has no network until the settings name the new card.
 * If it does not start, repair its boot loader with the operating system's own tools. This is more likely if the disk controller or boot mode (UEFI or BIOS) differs from the original machine.
   * Windows: boot a Windows installation USB and use **Repair your computer > Troubleshoot > Startup Repair**.
@@ -221,8 +221,7 @@ A disk image carries the drivers of the machine it came from.
 | "No local target disk found" | The new disk is missing, unsupported by the live system, or seen as removable. Check cabling and BIOS settings. The stick the restore booted from is never offered |
 | Several disks and unsure which is the target | Compare sizes in the menu; if still unsure, check disk models and serials in the firmware setup first, or disconnect the others |
 | "The target disk is smaller than the backed up disk" | Use a disk at least as large as the original; the message gives the size in bytes. Nothing has been written to the disk it names |
-| Booted in BIOS mode, the ISO asks for a language and keyboard instead of starting the restore | The v0.9.0 ISO's BIOS menu lacked the restore entry: use v0.9.1 or later, or pick "Enter_shell" and run `sudo /usr/local/sbin/ocs-pbs-bare-metal-restore` |
 | Stops at a `GRUB` prompt after restore | Should not happen with this ISO (it restores the area GRUB uses). Make sure you used the "PBS Bare Metal Restore" entry, not a hand-run restore without Clonezilla's `-j2` option |
 | A restored VM stops at "No bootable device" or the UEFI shell | The firmware does not match the disk: OVMF (UEFI) for a GPT disk, SeaBIOS for MBR ([section 7](#match-the-firmware-to-the-disk)). Change it and start again |
 | The restored system will not start | Check the firmware first (row above). Then repair the boot loader: Startup Repair from Windows installation media, or the distribution's GRUB repair on Linux (see "After the restore") |
-| A large `.pbs_snapshot_N.cow` file on a restored Linux system | Restored with an ISO from v0.5.0 or earlier; delete the file (see [4.7](#47-the-restore)) |
+| A large `.pbs_snapshot_N.cow` file on a restored Linux system | Restored with a test-build ISO from before 6 October 2026; delete the file (see [4.7](#47-the-restore)) |

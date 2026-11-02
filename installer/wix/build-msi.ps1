@@ -3,7 +3,7 @@ Builds the Windows installer (ProxmoxBackupClient-<version>-x64.msi) from the
 GUI and service programs in gui\build\bin. Build those first (wails build, and
 go build -tags service -o gui\build\bin\ProxmoxBackupClientSVC.exe ./gui).
 
-  .\build-msi.ps1 [-Version 0.9.0] [-WixDir C:\Dev\tools\wix314] [-OutDir out]
+  .\build-msi.ps1 [-Version 2.0.0] [-WixDir C:\Dev\tools\wix314] [-OutDir out]
 
 The version defaults to gui\wails.json's productVersion; WiX 3 (candle.exe and
 light.exe) is found in -WixDir or on PATH (https://github.com/wixtoolset/wix3/releases,
@@ -22,7 +22,7 @@ if (-not $OutDir) { $OutDir = Join-Path $here 'out' }
 if (-not $Version) {
     $Version = (Get-Content (Join-Path $repo 'gui\wails.json') -Raw | ConvertFrom-Json).info.productVersion
 }
-# MSI versions are three numbers: "0.9.0-rc1" or "dev-..." are not allowed.
+# MSI versions are three numbers: "2.0.0-rc1" or "dev-..." are not allowed.
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "version '$Version' must be x.y.z" }
 
 $candle = Join-Path $WixDir 'candle.exe'

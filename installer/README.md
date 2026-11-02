@@ -100,7 +100,7 @@ old version instead of replacing it.
 
 ## Troubleshooting
 
-- **"version '...' must be x.y.z"**: MSI versions are three numbers. Pass `-Version 0.9.0`
+- **"version '...' must be x.y.z"**: MSI versions are three numbers. Pass `-Version 2.0.0`
   for a `-rc1` or `dev-...` build.
 - **"gui\build\bin\... is missing"**: build both programs first (see BUILD_INSTRUCTIONS.md).
 - **candle.exe not found**: unpack WiX 3.14 to `C:\Dev\tools\wix314`, pass `-WixDir`, or

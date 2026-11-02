@@ -935,7 +935,7 @@ function App() {
     timestamps: true,
     verify: false, // re-read restored files and compare with the snapshot
     acls: false, // opt-in — off by default even though the NTFS sidecar now exists
-    ads: true    // alternate data streams and NTFS extended attributes (Windows), recorded since 0.9.0
+    ads: true    // alternate data streams and NTFS extended attributes (Windows), recorded since 1.2
   })
   const [restoreLoading, setRestoreLoading] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)

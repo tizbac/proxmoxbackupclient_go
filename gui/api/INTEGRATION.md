@@ -84,7 +84,7 @@ Whether the service is up, and what it runs with.
 ```json
 {
   "running": true,
-  "version": "0.9.0",
+  "version": "2.0.0",
   "active_jobs": 0,
   "configuration": {
     "hostname": "PC01",
@@ -121,8 +121,8 @@ Request (`BackupRequest`):
 }
 ```
 
-- `backup_id`: empty means the computer's name, as for a Backup Set without one (before
-  0.9.2 an empty one was refused with 400 `backup_id is required`).
+- `backup_id`: empty means the computer's name, as for a Backup Set without one (version
+  1.2 and earlier refused an empty one with 400 `backup_id is required`).
 - `compression`: `fastest` (default when empty), `default`, `better` or `best`.
 - `pbs_server_id`: empty means the default server.
 - `comment` goes to the snapshot's manifest comment as is.

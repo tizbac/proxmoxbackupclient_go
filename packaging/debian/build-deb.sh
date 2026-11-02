@@ -2,7 +2,7 @@
 # build-deb.sh - build the proxmoxbackupclient Debian/Ubuntu package (.deb).
 #
 # Usage: packaging/debian/build-deb.sh [output-dir]     (default: dist/)
-#        PBS_VERSION=0.9.0 packaging/debian/build-deb.sh   (default: gui/wails.json)
+#        PBS_VERSION=2.0.0 packaging/debian/build-deb.sh   (default: gui/wails.json)
 #
 # Build host requirements:
 #   - Go toolchain; wails CLI optional (plain go build is used without it)

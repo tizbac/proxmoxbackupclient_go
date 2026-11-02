@@ -1,6 +1,6 @@
 # Proxmox Backup Client GUI: user manual
 
-This manual covers the graphical client (the GUI) on Windows and Linux. It applies to v0.10.0 (see the [changelog](../../CHANGELOG.md)).
+This manual covers the graphical client (the GUI) on Windows and Linux. It applies to version 2.0 (see the [changelog](../../CHANGELOG.md)).
 
 For the command line tools see [CLI.md](CLI.md). For restoring a whole machine onto bare metal see [BMR.md](BMR.md).
 
@@ -40,7 +40,7 @@ The GUI backs up Windows and Linux computers to a Proxmox Backup Server (PBS) an
 
 ### Windows
 
-There are two downloads on the [releases page](https://github.com/mjb-is/proxmoxbackupclient_go/releases). Check either against `SHA256SUMS.txt`:
+There are two downloads on the [releases page](https://github.com/tizbac/proxmoxbackupclient_go/releases). Check either against `SHA256SUMS.txt`:
 
 ```powershell
 Get-FileHash .\<downloaded file> -Algorithm SHA256
@@ -74,7 +74,7 @@ The app needs the WebKitGTK runtime that Wails programs use; most desktop distri
 
 The main files are `config.json` (servers, tokens, remembered passphrases, email account), `scheduled_jobs.json` (Backup Sets), `job_history.json` (Reports) and `message_log.json` (Message Log).
 
-**Passwords in `config.json`.** On Windows the PBS tokens and passwords, remembered key passphrases and the email password are stored encrypted with Windows' own data protection (DPAPI) for this computer: they show as `"dpapi:..."` in the file. The app and the background service can read them; a copy of the file on another computer cannot. An older `config.json` is converted the first time the app or the service starts. This does not keep them from an administrator of this computer, who can read anything the service can; the folder permissions below keep other accounts out. If you copy `config.json` to another computer, enter the passwords again there (or use **Export settings** with secrets, which writes them in plain text). Going back to version 0.9.1 or older after the conversion means entering them again too. On Linux they are stored in plain text, protected by the folder permissions.
+**Passwords in `config.json`.** On Windows the PBS tokens and passwords, remembered key passphrases and the email password are stored encrypted with Windows' own data protection (DPAPI) for this computer: they show as `"dpapi:..."` in the file. The app and the background service can read them; a copy of the file on another computer cannot. An older `config.json` is converted the first time the app or the service starts. This does not keep them from an administrator of this computer, who can read anything the service can; the folder permissions below keep other accounts out. If you copy `config.json` to another computer, enter the passwords again there (or use **Export settings** with secrets, which writes them in plain text). Going back to version 1.2 or older after the conversion means entering them again too. On Linux they are stored in plain text, protected by the folder permissions.
 
 **Who can read them.** On Windows the settings folder is open to SYSTEM and Administrators (full control) and to each local administrator account (read, and create files). Standard accounts have no access at all: a standard user who opens the GUI sees "This PC's backup settings are open to its administrators only. Restart as administrator to see and run your Backup Sets." The service sets these permissions when it starts, and so does the GUI when it runs as administrator. On Linux a user's own settings folder is private to that user. The shared folder `/var/lib/proxmoxbackupclient/` belongs to root and members of the `sudo` (or `wheel`) group can read it ([section 15](#15-background-service-tray-and-closing-the-window)).
 
@@ -419,7 +419,7 @@ To choose for one run, use the card's **More** menu: **Run now: quick (changed f
 
 ### Switching an existing set to Metadata
 
-1. Update every computer you restore from to v0.6.0 or later first. Versions before split-archive support show the folders of a Data or Metadata snapshot without their files.
+1. Update every computer you restore from to version 2.0 or later first. Versions before split-archive support show the folders of a Data or Metadata snapshot without their files.
 2. Give the set its own Backup ID if it shares one ([section 6.4](#64-destination-tab)).
 3. Edit the set, **Destination** tab, choose **Metadata: skip unchanged files (fastest)**, set **Read every file every N runs**, and save.
 
@@ -495,7 +495,7 @@ The PC kept recording without dropping frames throughout. The network figures ab
 - if the connection to PBS drops (the server restarts, the network goes down) PBS ends the backup as it would while running, and the app starts it again as described under **When the connection is lost** above;
 - Forecast finish and Time remaining show **Paused**, and pick up again from fresh measurements after Resume.
 
-Pause works for folder and machine backups, whether the app or the background service runs them. With **Run as Service** on ([section 15](#15-background-service-tray-and-closing-the-window)), a Backup Set the service starts on its schedule shows the same card in an open app window, with its set's name, within a few seconds, and Pause, Resume and Stop act on the service's run. A window opened during the run picks it up, paused or not. On Windows the tray icon's menu has **Pause backup** too (**Resume backup** while paused), so a run can be paused without opening the window ([section 15](#15-background-service-tray-and-closing-the-window)). The card of a run the service started on its own fills in as for a run of the app's own: the stage line, the percentage, and the Files, Folder, Upload and data rows. (A background service from a version before v0.9.0 sends only its percentage, and the other rows then read **Not available**.)
+Pause works for folder and machine backups, whether the app or the background service runs them. With **Run as Service** on ([section 15](#15-background-service-tray-and-closing-the-window)), a Backup Set the service starts on its schedule shows the same card in an open app window, with its set's name, within a few seconds, and Pause, Resume and Stop act on the service's run. A window opened during the run picks it up, paused or not. On Windows the tray icon's menu has **Pause backup** too (**Resume backup** while paused), so a run can be paused without opening the window ([section 15](#15-background-service-tray-and-closing-the-window)). The card of a run the service started on its own fills in as for a run of the app's own: the stage line, the percentage, and the Files, Folder, Upload and data rows. (A background service from version 1.2 or earlier sends only its percentage, and the other rows then read **Not available**.)
 
 **Stop** ends the run at once, part way through a file if need be, and also works while paused. No snapshot is kept for the stopped run, so the next backup compares with the last complete one. Reports record it as cancelled (⏹️), not failed.
 
@@ -503,7 +503,7 @@ Anything waiting for its turn is listed under the card, each backup with a **Sto
 
 ## 9. Restore
 
-Open the **Restore** page. The box at the top lists what restore supports: files and folders (full tree), selective restore, modification times, creation times (Windows), several PBS servers, NTFS ACLs (Windows) or POSIX ACLs (Linux), and alternate data streams and NTFS extended attributes (Windows; folder backups record them from v0.9.0 on).
+Open the **Restore** page. The box at the top lists what restore supports: files and folders (full tree), selective restore, modification times, creation times (Windows), several PBS servers, NTFS ACLs (Windows) or POSIX ACLs (Linux), and alternate data streams and NTFS extended attributes (Windows; folder backups made by version 1.1 or earlier, or by a test build from before 14 October 2026, lack them).
 
 ### 9.1 Find the snapshot
 
@@ -548,9 +548,9 @@ Selective restore reads only the chunks that hold the ticked files, so restoring
 | Restore modification times | Sets file and folder modification times as they were in the backup. Untick it to leave restored files with the time of the restore. Creation times (Windows) are put back either way. Undelete and Roll back always put the times back |
 | Verify after restore | Reads every restored file back and compares it with the snapshot. Mismatches are reported; nothing is deleted |
 | Restore permissions/ACLs | Windows: owner, group, permissions (DACL) and Hidden/System/Archive/ReadOnly attributes. Linux: POSIX ACLs and extended attributes. Run as administrator (or root) for this |
-| Restore alternate data streams and extended attributes | Windows, on by default. Puts back the data attached to files and folders, such as the "downloaded from the internet" mark (Zone.Identifier), and NTFS extended attributes (WSL keeps Linux owners and permissions in them). Streams over 1 MB are recorded by name only and are not restored (the restore log says how many). Folder backups made before v0.9.0 did not record them; disk images of any version give them back. Not shown on Linux |
+| Restore alternate data streams and extended attributes | Windows, on by default. Puts back the data attached to files and folders, such as the "downloaded from the internet" mark (Zone.Identifier), and NTFS extended attributes (WSL keeps Linux owners and permissions in them). Streams over 1 MB are recorded by name only and are not restored (the restore log says how many). Folder backups made by version 1.1 or earlier, or by a test build from before 14 October 2026, did not record them; disk images of any version give them back. Not shown on Linux |
 
-On Windows the **creation time** (Explorer's "Date created") of every file and folder is put back too, whether or not permissions are restored, for backups made with v0.8.0 or later; older backups did not record it.
+On Windows the **creation time** (Explorer's "Date created") of every file and folder is put back too, whether or not permissions are restored, for backups made by version 1.2 or later; version 1.1, and test builds from before 11 October 2026, did not record it.
 
 Click **▶️ Restore**.
 

@@ -35,8 +35,8 @@ into `C:\ProgramData\ProxmoxBackupClient`, the way **Preferences > Import** does
   computer's name when it runs), and `<that name>-<set>`, as the Backup Set editor
   suggests, becomes `<this computer>-<set>`. Without that, every computer would back up into
   the same backup groups on PBS. Other backup IDs are kept, so give a set a fixed ID only
-  when one machine should own it. This needs a file exported by version 0.9.2 or later
-  (older files do not say which computer they came from).
+  when one machine should own it. This needs a file exported by version 2.0 or later
+  (test builds' files may not say which computer they came from).
 - The file's default server becomes the computer's default only if it has none.
 - The Message Log says "Settings from the installer applied (PBS servers: N, Backup Sets:
   N)", or why not.
@@ -77,7 +77,7 @@ Not in the file:
 ### Commands
 
 ```powershell
-msiexec /i ProxmoxBackupClient-0.9.2-x64.msi /qn AUTOSTART=0 CONFIGFILE="\\server\deploy\pbc-settings.json" /l*v C:\Windows\Temp\pbc-install.log
+msiexec /i ProxmoxBackupClient-2.0.0-x64.msi /qn AUTOSTART=0 CONFIGFILE="\\server\deploy\pbc-settings.json" /l*v C:\Windows\Temp\pbc-install.log
 ```
 
 Give the full path: a relative one is not found. The install runs as SYSTEM under GPO and
@@ -104,19 +104,19 @@ Run as an administrator, or as SYSTEM (GPO, Intune).
 
 ```powershell
 # Install or upgrade
-msiexec /i ProxmoxBackupClient-0.9.0-x64.msi /qn /norestart /l*v C:\Windows\Temp\pbc-install.log
+msiexec /i ProxmoxBackupClient-2.0.0-x64.msi /qn /norestart /l*v C:\Windows\Temp\pbc-install.log
 
 # Without the sign-in Run entry
-msiexec /i ProxmoxBackupClient-0.9.0-x64.msi /qn AUTOSTART=0
+msiexec /i ProxmoxBackupClient-2.0.0-x64.msi /qn AUTOSTART=0
 
 # Other install folder
-msiexec /i ProxmoxBackupClient-0.9.0-x64.msi /qn INSTALLFOLDER="D:\Apps\ProxmoxBackupClient"
+msiexec /i ProxmoxBackupClient-2.0.0-x64.msi /qn INSTALLFOLDER="D:\Apps\ProxmoxBackupClient"
 
 # Remove, keeping C:\ProgramData\ProxmoxBackupClient
-msiexec /x ProxmoxBackupClient-0.9.0-x64.msi /qn
+msiexec /x ProxmoxBackupClient-2.0.0-x64.msi /qn
 
 # Remove and delete the settings
-msiexec /x ProxmoxBackupClient-0.9.0-x64.msi /qn KEEP_CONFIG=0
+msiexec /x ProxmoxBackupClient-2.0.0-x64.msi /qn KEEP_CONFIG=0
 ```
 
 `AUTOSTART=1` (the default) writes the Run entry under HKLM, so the app starts in the
@@ -137,7 +137,7 @@ an option such as `AUTOSTART=0`, use a transform (.mst) made with Orca or a simi
 Add it as a Line-of-business app (the MSI as is) or as a Win32 app (packed with the
 Win32 Content Prep Tool), with:
 
-- Install: `msiexec /i ProxmoxBackupClient-0.9.0-x64.msi /qn`
+- Install: `msiexec /i ProxmoxBackupClient-2.0.0-x64.msi /qn`
 - Uninstall: `msiexec /x {ProductCode} /qn`
 - Detection: the MSI product code, or the file
   `C:\Program Files\ProxmoxBackupClient\ProxmoxBackupClientSVC.exe`.

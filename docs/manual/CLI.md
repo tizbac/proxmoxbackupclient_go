@@ -1,6 +1,6 @@
 # Command line tools: user manual
 
-This manual covers the command line tools. It applies to v0.10.0 (see the [changelog](../../CHANGELOG.md)). For the graphical client see [GUI.md](GUI.md); for bare-metal restore see [BMR.md](BMR.md).
+This manual covers the command line tools. It applies to version 2.0 (see the [changelog](../../CHANGELOG.md)). For the graphical client see [GUI.md](GUI.md); for bare-metal restore see [BMR.md](BMR.md).
 
 ## Contents
 
@@ -20,7 +20,7 @@ This manual covers the command line tools. It applies to v0.10.0 (see the [chang
 
 ## 1. The tools
 
-The command line tools are in separate downloads on the [releases page](https://github.com/mjb-is/proxmoxbackupclient_go/releases):
+The command line tools are in separate downloads on the [releases page](https://github.com/tizbac/proxmoxbackupclient_go/releases):
 
 | Download | Contains |
 |---|---|
@@ -143,7 +143,7 @@ Repeat `-backupdir`. Each folder becomes its own backup group, with the ID `<bas
 
 ### Permissions, attributes and dates
 
-Besides each file's contents and modification time, the tool records on Windows each file's and folder's permissions (owner, group and access list), attributes (read-only, hidden, system...), creation time, alternate data streams (up to 1 MB each) and NTFS extended attributes (from v0.9.0), and on Linux extended attributes and POSIX ACLs. They are stored with the snapshot, and a restore in the GUI puts them back (permissions only when **Restore permissions/ACLs** is ticked). Windows CLI backups made before v0.8.1 did not record them.
+Besides each file's contents and modification time, the tool records on Windows each file's and folder's permissions (owner, group and access list), attributes (read-only, hidden, system...), creation time, alternate data streams (up to 1 MB each) and NTFS extended attributes, and on Linux extended attributes and POSIX ACLs. They are stored with the snapshot, and a restore in the GUI puts them back (permissions only when **Restore permissions/ACLs** is ticked). Backups made by `proxmoxbackup-directory` in version 1.2 or earlier did not record them.
 
 ### Leaving times out of the archive
 
@@ -183,7 +183,7 @@ Points to know:
 * **Give each job its own `-backup-id`.** Metadata mode compares with the newest snapshot in the group, whichever job made it.
 * **Run a full read now and then.** A change that keeps the size and modification time is not noticed. The GUI's "read every file every N runs" has no CLI flag; schedule a second task that runs the same command with `-change-detection-mode data`, for example weekly. Later `metadata` runs compare with that snapshot as normal.
 * Reuse only happens from a snapshot encrypted with the same key (or both unencrypted).
-* Restoring split archives needs v0.6.0 of this client (or the official client). Update every machine you restore from before switching.
+* Restoring split archives needs version 2.0 of this client (or the official client). Update every machine you restore from before switching.
 
 ## 5. proxmoxbackup-machine: whole-disk backups
 
@@ -280,7 +280,7 @@ Without the key an encrypted snapshot cannot be restored. Keep a copy away from 
 
 ## 8. Email reports
 
-`proxmoxbackup-directory` and `proxmoxbackup-machine` can email a report at the end of every run, failed runs included. (In v0.8.2 and earlier `proxmoxbackup-machine` checked the flags but sent nothing.) A machine backup with unreadable sectors reports `Partial` and lists where they are. If the email cannot be sent, `proxmoxbackup-directory` exits with code 1; `proxmoxbackup-machine` prints the problem on standard error and keeps the backup's own exit code.
+`proxmoxbackup-directory` and `proxmoxbackup-machine` can email a report at the end of every run, failed runs included. (In version 1.1 and earlier `proxmoxbackup-machine` checked the flags but sent nothing.) A machine backup with unreadable sectors reports `Partial` and lists where they are. If the email cannot be sent, `proxmoxbackup-directory` exits with code 1; `proxmoxbackup-machine` prints the problem on standard error and keeps the backup's own exit code.
 
 | Flag | Meaning |
 |---|---|
@@ -299,9 +299,9 @@ Template fields include `.Success`, `.Status`, `.NewChunks`, `.ReusedChunks`, `.
 | 0 | Success |
 | 1 | Failed: bad options, connection or login failure, key problem or backup error. For `proxmoxbackup-directory` also: the report email could not be sent |
 | 2 | Another backup job is already running on this computer |
-| 3 | The snapshot was saved, but not everything could be read: `proxmoxbackup-directory`, some files are incomplete; `proxmoxbackup-machine` (v0.8.1 and later), some sectors are zeros in the image |
+| 3 | The snapshot was saved, but not everything could be read: `proxmoxbackup-directory`, some files are incomplete; `proxmoxbackup-machine` (version 2.0 and later), some sectors are zeros in the image |
 
-Errors go to standard error, with the list of options after "Missing or invalid options". (In v0.8.2 and earlier, on Windows, missing options and "another job is running" showed a message box, which waits for a click an unattended run never gets; `proxmoxbackup-directory` even carried on after the box.)
+Errors go to standard error, with the list of options after "Missing or invalid options". (In version 1.1 and earlier, on Windows, missing options and "another job is running" showed a message box, which waits for a click an unattended run never gets; `proxmoxbackup-directory` even carried on after the box.)
 
 ## 10. Scheduling
 
@@ -388,7 +388,7 @@ ProxmoxBackupClientSVC.exe -service install|uninstall|start|stop|restart
 
 Run it as administrator (Windows) or root (Linux). Usually you do not need it:
 
-* **Windows.** The installer (MSI) installs the service as `ProxmoxBackupClientSVC`, and **Preferences > Advanced > Run as Service** in the GUI installs, starts, stops and removes it under the same name, and so does `-service install`. Versions up to 0.8.2 used the name `ProxmoxBackupClient` for `-service install`; the GUI still recognises a service installed that way, but remove it (`-service uninstall` with that older program) before installing the new one, or there would be two.
+* **Windows.** The installer (MSI) installs the service as `ProxmoxBackupClientSVC`, and **Preferences > Advanced > Run as Service** in the GUI installs, starts, stops and removes it under the same name, and so does `-service install`. Test builds from before 14 October 2026 used the name `ProxmoxBackupClient` for `-service install`; the GUI still recognises a service installed that way, but remove it (`-service uninstall` with that older program) before installing the new one, or there would be two.
 * **Linux.** The `.deb` and `.rpm` install the systemd unit `proxmoxbackupclient.service` without turning it on. Turn it on with **Run as Service** in the GUI started as administrator: it copies your Backup Sets, servers, keys and history to `/var/lib/proxmoxbackupclient`, where the service reads them, then enables and starts the unit. `systemctl` and `/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC -service ...` act on the same unit but do not copy any settings.
 
 See the GUI manual ([GUI.md](GUI.md#15-background-service-tray-and-closing-the-window)) for what the service does.

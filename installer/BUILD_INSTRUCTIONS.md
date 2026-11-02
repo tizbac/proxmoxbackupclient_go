@@ -13,7 +13,7 @@ Build both, then run `build-msi.ps1`.
 
 ```powershell
 cd gui
-wails build -clean -platform windows/amd64 -ldflags "-X main.appVersion=0.9.0"
+wails build -clean -platform windows/amd64 -ldflags "-X main.appVersion=2.0.0"
 ```
 
 This writes `gui\build\bin\ProxmoxBackupClient.exe`. `-clean` empties `gui\build\bin`, so
@@ -24,7 +24,7 @@ build the app before the service.
 From the repository root:
 
 ```powershell
-go build -tags service -ldflags "-X main.appVersion=0.9.0" -o gui\build\bin\ProxmoxBackupClientSVC.exe ./gui
+go build -tags service -ldflags "-X main.appVersion=2.0.0" -o gui\build\bin\ProxmoxBackupClientSVC.exe ./gui
 ```
 
 The `service` build tag makes the service program (no window, local API on
@@ -34,7 +34,7 @@ The `service` build tag makes the service program (no window, local API on
 
 ```powershell
 cd installer\wix
-.\build-msi.ps1 -Version 0.9.0
+.\build-msi.ps1 -Version 2.0.0
 ```
 
 Options:
@@ -58,7 +58,7 @@ As an administrator:
 
 ```powershell
 # Install silently and log
-msiexec /i .\out\ProxmoxBackupClient-0.9.0-x64.msi /qn /l*v install.log
+msiexec /i .\out\ProxmoxBackupClient-2.0.0-x64.msi /qn /l*v install.log
 
 # Check the service
 Get-Service ProxmoxBackupClientSVC | Select-Object Name, Status, StartType
@@ -80,8 +80,8 @@ should be running.
 Remove:
 
 ```powershell
-msiexec /x .\out\ProxmoxBackupClient-0.9.0-x64.msi /qn                 # keeps the settings
-msiexec /x .\out\ProxmoxBackupClient-0.9.0-x64.msi /qn KEEP_CONFIG=0   # deletes them
+msiexec /x .\out\ProxmoxBackupClient-2.0.0-x64.msi /qn                 # keeps the settings
+msiexec /x .\out\ProxmoxBackupClient-2.0.0-x64.msi /qn KEEP_CONFIG=0   # deletes them
 ```
 
 Service logs are in `C:\ProgramData\ProxmoxBackupClient` (`service-service.log`,

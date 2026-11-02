@@ -17,7 +17,7 @@ launchers, menu entries and systemd unit in `packaging/linux/`, and install the 
 
 ```sh
 packaging/debian/build-deb.sh [output-dir]      # default: dist/
-PBS_VERSION=0.9.0 packaging/debian/build-deb.sh
+PBS_VERSION=2.0.0 packaging/debian/build-deb.sh
 ```
 
 ## .rpm

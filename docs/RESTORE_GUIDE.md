@@ -1,6 +1,6 @@
 # Restore scenarios
 
-Which restore to use, and where the steps are. Applies to v0.10.0 (see the [changelog](../CHANGELOG.md)). The steps themselves are in the [GUI manual's Restore chapter](manual/GUI.md#9-restore) and in [BMR.md](manual/BMR.md); this page only points the way.
+Which restore to use, and where the steps are. Applies to version 2.0 (see the [changelog](../CHANGELOG.md)). The steps themselves are in the [GUI manual's Restore chapter](manual/GUI.md#9-restore) and in [BMR.md](manual/BMR.md); this page only points the way.
 
 | Scenario | Method | Steps |
 |---|---|---|
@@ -32,9 +32,9 @@ Which restore to use, and where the steps are. Applies to v0.10.0 (see the [chan
 From a folder backup:
 
 * File contents, verified against the snapshot if you tick **Verify after restore**.
-* Modification times of files and folders, and on Windows creation times (backups from v0.8.0 on).
+* Modification times of files and folders, and on Windows creation times (backups made by version 1.2 or later).
 * With **Restore permissions/ACLs**: on Windows owner, group, permissions (DACL) and the Hidden, System, Archive and ReadOnly attributes (run as administrator so any recorded owner can be set); on Linux POSIX ACLs and extended attributes, plus owner and mode when restoring as root.
-* With **Restore alternate data streams and extended attributes** (Windows, on by default): the data attached to files and folders, such as Zone.Identifier, up to 1 MB per stream, and NTFS extended attributes. Folder backups record them from v0.9.0 on.
+* With **Restore alternate data streams and extended attributes** (Windows, on by default): the data attached to files and folders, such as Zone.Identifier, up to 1 MB per stream, and NTFS extended attributes. Folder backups made by version 1.1 or earlier, or by a test build from before 14 October 2026, lack them.
 * Where a file has two names (a hard link), only one is restored.
 
 From a machine backup the files always go to another folder; the GUI manual lists what comes back ([section 9.6](manual/GUI.md#96-files-from-a-machine-backup)).
