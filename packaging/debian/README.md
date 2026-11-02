@@ -47,8 +47,9 @@ packaging/fedora/build-rpm.sh [output-dir]      # default: dist/
 | `/usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png` | icon |
 | `/usr/share/doc/proxmoxbackupclient/` | README, CHANGELOG, the manuals (and `copyright` in the .deb) |
 
-The .deb recommends `pkexec | policykit-1` and suggests `elastio-snap-dkms`; the .rpm
-requires `polkit`.
+The .deb depends on `pkexec | policykit-1` and suggests `elastio-snap-dkms`; the .rpm
+and the Arch package require `polkit`. The app needs pkexec to connect to the background
+service (below).
 
 ## The two menu entries
 
@@ -81,22 +82,29 @@ Preferences > Advanced > Run as Service. That:
 1. copies your settings (servers, keys, Backup Sets, history) to
    `/var/lib/proxmoxbackupclient`, unless that folder already holds settings; your own
    `~/.proxmox-backup-guardian` is left as it was;
-2. runs `systemctl enable --now proxmoxbackupclient.service`; the service then locks the
-   folder down as above.
+2. makes that folder root's alone: owner root, group root, folders 0700, files 0600;
+3. runs `systemctl enable --now proxmoxbackupclient.service`.
 
-From then on the service keeps the settings, and the app works on them through the
-service's local API. The API needs the service's token
-(`/var/lib/proxmoxbackupclient/api-token`, root, 0600). The app gets it by running a copy
-of itself as root through pkexec: you are asked for your password (an administrator's, if
-your account is not in the sudo or wheel group) the first time the app's window is in front
-of you, and once more each time the service replaces the token (every 24 hours). The app
-keeps the token in memory only. Until it is connected its window shows a **Connect**
-button and no settings. Without pkexec (polkit) the app cannot connect. The administrator
-app, running as root, reads the token itself.
+The service repeats step 2 every time it starts, so a folder an earlier version left
+readable by the `sudo` or `wheel` group (root:sudo 2750, group-readable files) is locked
+again on the first start after the upgrade. Its API token (`api-token` in that folder) is
+root 0600, and the service writes a new one each time it starts and every 24 hours.
 
-The same Preferences section also starts, stops and removes the service. Removing it stops
-and disables the unit; the settings stay in `/var/lib/proxmoxbackupclient`, and the app
-goes back to your own settings and runs their schedules while it is open.
+From then on the app works on the service's settings through the service's local API
+(127.0.0.1), never by reading the folder. To use the API it needs the service's token,
+which only root can read: it asks for an administrator's password with pkexec once its
+window is in front of you (never at sign-in, when it starts in the tray), and whenever you
+click **Connect**. A copy of the app run as root hands the token over and exits; the app
+keeps it in memory only. When the service replaces the token, the window shows **Connect**
+again and asks once more the next time it comes to the front. Anyone who can give an
+administrator's password can connect, also a user outside the sudo group; a user who
+cannot can choose **Use my own settings** and keep their own servers and Backup Sets in
+`~/.proxmox-backup-guardian`. Without pkexec (polkit) the app cannot connect. The
+administrator app (`proxmoxbackupclient-root`) reads the token itself, without a prompt.
+
+The same Preferences section also starts, stops and removes the service. Removing it
+stops and disables the unit; the settings stay in `/var/lib/proxmoxbackupclient`, and the
+app goes back to your own settings and runs their schedules while it is open.
 
 The service logs to `/var/log/proxmoxbackupclient/`. See section 15 of the GUI manual.
 

@@ -14,6 +14,8 @@ BuildRequires: golang
 BuildRequires: gcc
 BuildRequires: gtk3-devel
 BuildRequires: webkit2gtk4.1-devel
+# pkexec: the app asks for an administrator's password through it to connect
+# to the service, whose API token is root's alone.
 Requires:      polkit
 # Replaces the project's earlier pbsgo package (1.2.0-rc packaging).
 Obsoletes:     pbsgo

@@ -4,6 +4,12 @@ Documentation=file:///usr/share/doc/proxmoxbackupclient/manual/GUI.md
 Wants=network-online.target
 After=network-online.target
 
+# The service keeps /var/lib/proxmoxbackupclient root's alone (0700, files
+# 0600) itself, on every start. No StateDirectory=: systemd would create that
+# folder before the service starts, and the service then would not take over
+# an earlier pbsgo install's /var/lib/pbsgo (it does so only while the folder
+# is missing). No sandboxing either: machine backups need root's full access to
+# disks and snapshot devices.
 [Service]
 Type=simple
 ExecStart=/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC

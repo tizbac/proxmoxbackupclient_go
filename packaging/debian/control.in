@@ -6,8 +6,7 @@ Homepage: https://github.com/tizbac/proxmoxbackupclient_go
 Section: admin
 Priority: optional
 Installed-Size: @SIZE@
-Depends: @DEPENDS@
-Recommends: pkexec | policykit-1
+Depends: @DEPENDS@, pkexec | policykit-1
 Suggests: elastio-snap-dkms
 Conflicts: pbsgo
 Replaces: pbsgo

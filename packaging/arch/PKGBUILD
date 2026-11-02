@@ -44,9 +44,10 @@ arch=(x86_64 aarch64)
 url='https://github.com/tizbac/proxmoxbackupclient_go'
 license=(GPL-3.0-or-later)
 makedepends=(go gtk3 webkit2gtk-4.1)
-depends=(glibc gtk3 webkit2gtk-4.1 gdk-pixbuf2 glib2 libsoup3 systemd)
-optdepends=('polkit: pkexec for the administrator app'
-            'sudo: elevation when pkexec is unavailable')
+# polkit (pkexec): the app asks for an administrator's password through it to
+# connect to the service, whose API token is root's alone.
+depends=(glibc gtk3 webkit2gtk-4.1 gdk-pixbuf2 glib2 libsoup3 systemd polkit)
+optdepends=('sudo: proxmoxbackupclient-root from a terminal')
 conflicts=(pbsgo)
 replaces=(pbsgo)
 install=proxmoxbackupclient.install

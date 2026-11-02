@@ -10,8 +10,9 @@
 #   The program and the hand-back run as ONE elevated command (an exec
 #   replaces this script, so nothing after it would run). The same goes for
 #   its log folder (~/.local/state/proxmoxbackupclient). With the background
-#   service installed the settings are in /var/lib/proxmoxbackupclient
-#   instead, which stays root's.
+#   service running, the app as root reads the service's API token itself and
+#   works on the service's settings through its API. Only Run as Service
+#   writes /var/lib/proxmoxbackupclient directly, and that stays root's alone.
 # - From the desktop (no terminal) the password is asked with pkexec, which
 #   shows a graphical prompt; sudo is used only from a terminal.
 # - DISPLAY/XAUTHORITY (X11) and WAYLAND_DISPLAY/XDG_RUNTIME_DIR (Wayland) are
