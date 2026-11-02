@@ -157,7 +157,8 @@ jobs:
           GOWORK: off
         run: |
           rc=0
-          for m in pbscommon pkg/retry pkg/security; do
+          # gui/api is its own module, so the gui job's ./... leaves it out.
+          for m in pbscommon pkg/retry pkg/security gui/api; do
             echo "::group::go test $m"
             # go mod tidy first: these library modules are normally built via the
             # workspace / replace directives, so their own go.mod/go.sum can lack
