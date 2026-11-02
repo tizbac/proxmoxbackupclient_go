@@ -6,38 +6,35 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/user"
 	"path/filepath"
-	"strconv"
 	"time"
 )
 
-// hardenConfigDir protects the settings folder.
+// hardenConfigDir protects a settings folder.
 //
 // A user's own folder (~/.proxmox-backup-guardian) is made private to its
-// owner. Files in it are already written 0600; the folder itself was created
-// 0755, which let other local accounts list it.
+// owner; files in it are already written 0600.
 //
-// The service's shared folder (/var/lib/proxmoxbackupclient) mirrors what
-// C:\ProgramData\ProxmoxBackupClient gets on Windows: root owns everything and
-// may change it; the computer's administrators (group sudo, or wheel) may read
-// it, so their app, run without sudo, reads the Backup Sets and the API token
-// and hands backups to the service; nobody else gets in. The folder is setgid,
-// so files written later keep that group, and they are written group-readable
-// (sharedFileMode). Only root can do this: for anyone else it does nothing.
+// The service's folder (/var/lib/proxmoxbackupclient) is root's alone: root
+// owns everything, folders 0700 and files 0600, as upstream's service keeps
+// its state. Earlier builds let the sudo or wheel group read it (setgid,
+// group-readable files) so an administrator's app could read the Backup Sets
+// and the API token without a prompt; upstream removed that as a
+// vulnerability, and this undoes it on each start of the service. The app
+// reaches the settings through the service's API instead. Only root can do
+// this: for anyone else it does nothing.
 func hardenConfigDir(dir string) error {
-	if !inSharedConfigDir(dir) {
+	if filepath.Clean(dir) != filepath.Clean(sharedConfigDir) {
 		return os.Chmod(dir, 0o700)
 	}
 	if os.Geteuid() != 0 {
 		return nil
 	}
 	start := time.Now()
-	gid, group := adminGroup()
-	if err := os.Chown(dir, 0, gid); err != nil {
+	if err := os.Chown(dir, 0, 0); err != nil {
 		return fmt.Errorf("%s: %w", dir, err)
 	}
-	if err := os.Chmod(dir, os.ModeSetgid|0o750); err != nil {
+	if err := os.Chmod(dir, 0o700); err != nil {
 		return fmt.Errorf("%s: %w", dir, err)
 	}
 	items, failed := 0, 0
@@ -46,51 +43,22 @@ func hardenConfigDir(dir string) error {
 			return nil
 		}
 		items++
-		if lerr := os.Lchown(p, 0, gid); lerr != nil {
+		if lerr := os.Lchown(p, 0, 0); lerr != nil {
 			failed++
 		}
 		if d.Type()&fs.ModeSymlink != 0 {
 			return nil
 		}
-		info, ierr := d.Info()
-		if ierr != nil {
-			return nil
-		}
-		mode := sharedFileMode(p, info.Mode().Perm())
+		mode := os.FileMode(0o600)
 		if d.IsDir() {
-			mode = os.ModeSetgid | 0o750
+			mode = 0o700
 		}
 		if cerr := os.Chmod(p, mode); cerr != nil {
 			failed++
 		}
 		return nil
 	})
-	writeDebugLog(fmt.Sprintf("[ConfigACL] %s: root + group %s (read), %d item(s), %d failed; %dms",
-		dir, group, items, failed, time.Since(start).Milliseconds()))
+	writeDebugLog(fmt.Sprintf("[ConfigACL] %s: root only, %d item(s), %d failed; %dms",
+		dir, items, failed, time.Since(start).Milliseconds()))
 	return nil
-}
-
-// shareConfigFile gives a file the service wrote outside atomicWriteFile (the
-// API token) the shared folder's group-readable mode.
-func shareConfigFile(path string) {
-	if !inSharedConfigDir(path) {
-		return
-	}
-	if info, err := os.Stat(path); err == nil {
-		_ = os.Chmod(path, sharedFileMode(path, info.Mode().Perm()))
-	}
-}
-
-// adminGroup is the group whose members administer this computer: sudo
-// (Debian, Ubuntu, Mint), wheel (Fedora, RHEL, Arch) or admin. Without one
-// only root gets in (gid 0).
-func adminGroup() (int, string) {
-	for _, name := range []string{"sudo", "wheel", "admin"} {
-		if g, err := user.LookupGroup(name); err == nil {
-			if gid, err := strconv.Atoi(g.Gid); err == nil {
-				return gid, name
-			}
-		}
-	}
-	return 0, "root"
 }

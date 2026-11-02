@@ -8,12 +8,12 @@ import (
 	"time"
 )
 
-// The service writes a new API token each time it starts (NewToken). It also
-// replaces it on a schedule while it runs, so a token copied from the
-// settings folder stops working within a day (from upstream). The GUI reads
-// the token file on every request (tokenTransport), so it follows each new
-// token without being told; the replaced token stays accepted for a grace
-// window so a request already on its way is not refused.
+// The service takes a new API token at every start (NewToken) and replaces
+// it on a schedule while it runs, so a token copied out of memory or the file
+// stops working within a day (from upstream). An app holding the replaced
+// token gets a 401 once the grace window is over and fetches the new one
+// through elevation again (reauth.go); the grace window keeps requests
+// already on their way from being refused.
 
 const (
 	// DefaultTokenRotation is how often the running service replaces the
@@ -94,11 +94,6 @@ type TokenRotator struct {
 	path     string
 	interval time.Duration
 	grace    time.Duration
-	// Prepare runs on each new token file before it replaces the old one;
-	// the service uses it to make the file readable by administrators on
-	// Linux (shareConfigFile), as at start-up, so their apps never meet a
-	// token file they cannot read.
-	Prepare func(path string)
 
 	stop     chan struct{}
 	stopOnce sync.Once
@@ -135,17 +130,16 @@ func (r *TokenRotator) Start() {
 }
 
 // Rotate makes the server require a new token and then writes it to the
-// token file (upstream's order). Until the file changes, GUIs keep sending
-// the replaced token, which is accepted for the grace window; no GUI can
-// read a token the server does not accept yet. If the file cannot be
-// written, the server goes back to the token in the file.
+// token file (upstream's order), so nothing can read a token the server does
+// not accept yet. If the file cannot be written, the server goes back to the
+// token in the file.
 func (r *TokenRotator) Rotate() error {
 	next, err := generateToken()
 	if err != nil {
 		return err
 	}
 	prev := r.server.SetToken(next)
-	if err := replaceTokenFile(r.path, next, r.Prepare); err != nil {
+	if err := replaceTokenFile(r.path, next); err != nil {
 		r.server.SetToken(prev)
 		return err
 	}

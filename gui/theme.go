@@ -69,6 +69,9 @@ func (a *App) GetTheme() ThemeSettings {
 // preference through SaveConfig failed with "PBS server URL required" for
 // exactly that setup (found 2026-09-23, Mick's own multi-PBS config).
 func (a *App) SetParallelRestore(enabled bool) error {
+	if a.delegated() {
+		return a.serviceCall("SetParallelRestore", enabled)
+	}
 	a.config.ParallelRestore = enabled
 	if err := a.config.Save(); err != nil {
 		return fmt.Errorf("failed to save parallel restore setting: %w", err)
@@ -83,6 +86,9 @@ func (a *App) SetParallelRestore(enabled bool) error {
 func (a *App) SetMaxConcurrentRuns(n int) error {
 	if n < 1 || n > MaxConcurrentRunsLimit {
 		return fmt.Errorf("maximum concurrent backups must be between 1 and %d", MaxConcurrentRunsLimit)
+	}
+	if a.delegated() {
+		return a.serviceCall("SetMaxConcurrentRuns", n)
 	}
 	a.config.MaxConcurrentRuns = n
 	if err := a.config.Save(); err != nil {
@@ -103,6 +109,9 @@ func (a *App) SetMaxConcurrentRuns(n int) error {
 // multi-PBS reason. workers <= 0 is accepted and just means "use the
 // default" (see Config.EffectivePrefetchWorkers).
 func (a *App) SetParallelBackupRead(enabled bool, workers int) error {
+	if a.delegated() {
+		return a.serviceCall("SetParallelBackupRead", enabled, workers)
+	}
 	a.config.ParallelBackupRead = enabled
 	a.config.BackupReadWorkers = workers
 	if err := a.config.Save(); err != nil {

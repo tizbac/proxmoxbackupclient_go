@@ -211,7 +211,8 @@ func nextFullReadCount(job ScheduledJob, success, readEveryFile bool) int {
 // Set's full-read counter (nextFullReadCount). jobID "" (a one-off backup)
 // does nothing.
 func (a *App) recordChangeDetectionOutcome(jobID string, success, readEveryFile bool) {
-	if jobID == "" || jobID == "service-request" {
+	// In an app working through the service, the set is the service's.
+	if jobID == "" || jobID == "service-request" || a.delegated() {
 		return
 	}
 	jobsFileMu.Lock()

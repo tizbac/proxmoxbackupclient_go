@@ -352,125 +352,44 @@ func keysFolder() (string, error) {
 	return filepath.Dir(p), nil
 }
 
-// sameKeyInFolder returns a key file in dir that holds exactly the key in
-// cfg (whose fingerprint, checked, is fp): the same key data, protected the
-// same way with the same salt, and naming that fingerprint. A file merely
-// naming the fingerprint is not enough: a protected file's fingerprint is
-// not checked without its passphrase, and the user may be importing an
-// unprotected copy because a protected one (say, with a forgotten
-// passphrase) cannot be used.
-func sameKeyInFolder(dir string, cfg *pbscommon.KeyConfig, fp string) string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return ""
-	}
-	norm := func(s string) string { return strings.Join(strings.Fields(s), "") }
-	for _, e := range entries {
-		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".json") {
-			continue
-		}
-		p := filepath.Join(dir, e.Name())
-		have, err := pbscommon.LoadKeyConfig(p)
-		if err != nil || norm(have.Data) != cfg.Data || strings.ToLower(have.Fingerprint) != fp {
-			continue
-		}
-		switch {
-		case have.KDF == nil && cfg.KDF == nil:
-		case have.KDF != nil && cfg.KDF != nil:
-			k := *have.KDF
-			k.Salt = norm(k.Salt)
-			if k != *cfg.KDF {
-				continue
-			}
-		default:
-			continue
-		}
-		return p
-	}
-	return ""
-}
-
 // saveImportedKey checks the key in text (with passphrase, for a protected
 // key) and saves it as a new file in dir, named after its fingerprint like a
 // saved copy. A key already in dir is not saved again: that file is
 // returned, with existed true. Nothing is ever overwritten.
 func saveImportedKey(dir, text, passphrase string) (path string, existed bool, err error) {
-	out, cfg, err := parseKeyText(text)
+	out, cfg, fp, err := prepareImportedKey(text, passphrase)
 	if err != nil {
 		return "", false, err
+	}
+	return storeImportedKey(dir, out, cfg, fp)
+}
+
+// prepareImportedKey checks the key in text (with passphrase, for a
+// protected key) and returns the key file to save, its parsed form and its
+// checked fingerprint (named in the file).
+func prepareImportedKey(text, passphrase string) (out string, cfg *pbscommon.KeyConfig, fp string, err error) {
+	out, cfg, err = parseKeyText(text)
+	if err != nil {
+		return "", nil, "", err
 	}
 	crypt, err := cfg.CryptConfig([]byte(passphrase))
 	if err != nil {
 		if cfg.KDF != nil && !isFingerprintMismatch(err) {
-			return "", false, fmt.Errorf("the passphrase does not unlock this key: %w", err)
+			return "", nil, "", fmt.Errorf("the passphrase does not unlock this key: %w", err)
 		}
-		return "", false, fmt.Errorf("the key cannot be read: %w", err)
+		return "", nil, "", fmt.Errorf("the key cannot be read: %w", err)
 	}
-	fp := crypt.Fingerprint()
+	fp = crypt.Fingerprint()
 	if cfg.Fingerprint == "" {
 		// Name it like every other key file does, so it can be checked later.
 		cfg.Fingerprint = fp
 		b, err := json.MarshalIndent(cfg, "", "  ")
 		if err != nil {
-			return "", false, err
+			return "", nil, "", err
 		}
 		out = string(b) + "\n"
 	}
-
-	if existing := sameKeyInFolder(dir, cfg, fp); existing != "" {
-		return existing, true, nil
-	}
-	if st, err := os.Stat(dir); err != nil {
-		if !os.IsNotExist(err) {
-			return "", false, fmt.Errorf("folder %s: %w", dir, err)
-		}
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return "", false, fmt.Errorf("creating the folder %s: %w", dir, err)
-		}
-		if err := restrictKeyAccess(dir, true); err != nil {
-			writeDebugLog(fmt.Sprintf("saveImportedKey: could not restrict access to %s: %v", dir, err))
-		}
-	} else if !st.IsDir() {
-		return "", false, fmt.Errorf("%s is not a folder", dir)
-	}
-
-	base := "encryption-key-" + strings.ReplaceAll(fp, ":", "")[:8]
-	for n := 1; n < 100; n++ {
-		name := base + ".json"
-		if n > 1 {
-			name = fmt.Sprintf("%s-%d.json", base, n)
-		}
-		path = filepath.Join(dir, name)
-		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-		if errors.Is(err, os.ErrExist) {
-			continue
-		}
-		if err != nil {
-			return "", false, fmt.Errorf("creating %s: %w", path, err)
-		}
-		_, werr := f.WriteString(out)
-		if serr := f.Sync(); werr == nil {
-			werr = serr
-		}
-		if cerr := f.Close(); werr == nil {
-			werr = cerr
-		}
-		if werr != nil {
-			_ = os.Remove(path) // the write error is the one to report
-			return "", false, fmt.Errorf("writing %s: %w", path, werr)
-		}
-		// Best effort, as for a generated key: a FAT/exFAT folder has no
-		// permissions to set.
-		if err := restrictKeyAccess(path, false); err != nil {
-			writeDebugLog(fmt.Sprintf("saveImportedKey: could not restrict access to %s: %v", path, err))
-		}
-		if back := inspectKeyFile(path); !back.Usable || back.Fingerprint != fp {
-			_ = os.Remove(path)
-			return "", false, fmt.Errorf("the key was written to %s but did not read back as the same key (%s)", path, back.Reason)
-		}
-		return path, false, nil
-	}
-	return "", false, fmt.Errorf("could not find a free file name for the key in %s", dir)
+	return out, cfg, fp, nil
 }
 
 // ReadImportKeyText reads a key typed or pasted into the import dialog.
@@ -639,6 +558,17 @@ func (a *App) VerifyImportedKey(text, passphrase string) (KeyImport, error) {
 // SaveImportedKey saves a key read for import into this computer's keys
 // folder (see saveImportedKey) and returns the saved file's info.
 func (a *App) SaveImportedKey(text, passphrase string) (ImportedKeyResult, error) {
+	// With the service, the key goes into its keys folder: the app checks it
+	// here (the passphrase never leaves the app) and the service stores it.
+	if a.delegated() {
+		out, _, _, err := prepareImportedKey(text, passphrase)
+		if err != nil {
+			return ImportedKeyResult{}, err
+		}
+		var res ImportedKeyResult
+		err = a.apiClient.Call("StoreImportedKey", &res, out)
+		return res, err
+	}
 	dir, err := keysFolder()
 	if err != nil {
 		return ImportedKeyResult{}, err
@@ -650,12 +580,4 @@ func (a *App) SaveImportedKey(text, passphrase string) (ImportedKeyResult, error
 	info := inspectKeyFile(path)
 	writeDebugLog(fmt.Sprintf("SaveImportedKey: %s (fingerprint %s, already there: %v)", path, info.Fingerprint, existed))
 	return ImportedKeyResult{Info: info, AlreadyThere: existed}, nil
-}
-
-// ImportedKeyResult is SaveImportedKey's answer.
-type ImportedKeyResult struct {
-	Info EncryptionKeyInfo `json:"info"`
-	// AlreadyThere: the keys folder already held this key, so nothing was
-	// written and Info is that file.
-	AlreadyThere bool `json:"already_there"`
 }

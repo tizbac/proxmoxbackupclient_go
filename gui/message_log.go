@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -57,6 +58,31 @@ func getMessageLogPath() (string, error) {
 // unkeyed entry — e.g. a general App-source message with no translation
 // available yet); see MessageLogEntry's doc comment.
 func LogMessage(source, level, message, jobName string, key MessageKey, params msgParams) {
+	e := MessageLogEntry{
+		Timestamp:     time.Now().Format(time.RFC3339),
+		Source:        source,
+		Level:         level,
+		Message:       message,
+		JobName:       jobName,
+		MessageKey:    key,
+		MessageParams: params,
+	}
+	// With the service, its Message Log is the one the window shows: the
+	// entry goes there, or to this app's own file when it cannot.
+	if sink, _ := messageSink.Load().(func(MessageLogEntry) error); sink != nil {
+		if err := sink(e); err == nil {
+			return
+		}
+	}
+	appendMessageEntry(e)
+}
+
+// messageSink, when set, takes the app's Message Log entries (resolveMode
+// sets it in service mode).
+var messageSink atomic.Value // func(MessageLogEntry) error
+
+// appendMessageEntry adds e to this program's Message Log file.
+func appendMessageEntry(e MessageLogEntry) {
 	messageLogMutex.Lock()
 	defer messageLogMutex.Unlock()
 
@@ -71,15 +97,7 @@ func LogMessage(source, level, message, jobName string, key MessageKey, params m
 		_ = json.Unmarshal(stripUTF8BOM(data), &entries) // a corrupt file just starts a fresh log, not a crash
 	}
 
-	entries = append(entries, MessageLogEntry{
-		Timestamp:     time.Now().Format(time.RFC3339),
-		Source:        source,
-		Level:         level,
-		Message:       message,
-		JobName:       jobName,
-		MessageKey:    key,
-		MessageParams: params,
-	})
+	entries = append(entries, e)
 
 	if len(entries) > maxMessageLogEntries {
 		entries = entries[len(entries)-maxMessageLogEntries:]
@@ -98,6 +116,20 @@ func LogMessage(source, level, message, jobName string, key MessageKey, params m
 // GetMessageLog returns the Message Log, newest entry first (the order the
 // UI displays it in).
 func (a *App) GetMessageLog() ([]MessageLogEntry, error) {
+	if a.delegated() {
+		maps, err := a.apiClient.GetMessageLog()
+		if err != nil {
+			return []MessageLogEntry{}, err
+		}
+		var entries []MessageLogEntry
+		if err := remarshal(maps, &entries); err != nil {
+			return nil, err
+		}
+		if entries == nil {
+			entries = []MessageLogEntry{}
+		}
+		return entries, nil
+	}
 	logPath, err := getMessageLogPath()
 	if err != nil {
 		return []MessageLogEntry{}, err

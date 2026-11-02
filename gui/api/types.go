@@ -108,3 +108,77 @@ type RunControlResponse struct {
 	Paused      bool  `json:"paused"`
 	PausedSince int64 `json:"paused_since,omitempty"`
 }
+
+// PBSAccessRequest asks the service for what one PBS operation needs (POST
+// /pbs/access): the server ID ("" for the default) and whether the snapshot
+// may be encrypted, so the key is wanted too.
+type PBSAccessRequest struct {
+	ID      string `json:"id"`
+	WithKey bool   `json:"with_key,omitempty"`
+}
+
+// PBSAccess is what the app gets for one PBS operation (restore, browse,
+// search, undelete, roll back) when the service holds the settings: where the
+// server is, and how to log in for this operation. A username server gets a
+// fresh ticket, never its password (upstream's design). A token server gets
+// its token: PBS issues tickets only for a username login, so without it a
+// token server could not be browsed (upstream's ticket flow fails there). The
+// app keeps all of it in memory for the operation only.
+type PBSAccess struct {
+	BaseURL         string `json:"baseurl"`
+	CertFingerprint string `json:"certfingerprint,omitempty"`
+	Datastore       string `json:"datastore"`
+	Namespace       string `json:"namespace,omitempty"`
+	// Token login.
+	AuthID string `json:"authid,omitempty"`
+	Secret string `json:"secret,omitempty"`
+	// Ticket login.
+	Username  string `json:"username,omitempty"`
+	Ticket    string `json:"ticket,omitempty"`
+	CSRFToken string `json:"csrf_token,omitempty"`
+	// The encryption key, when asked for (WithKey) and the server has one:
+	// its path (for messages), the key file's contents (the app may not read
+	// the settings folder) and the remembered passphrase, if any.
+	EncryptionKeyFile string `json:"encryption_key_file,omitempty"`
+	KeyFileData       []byte `json:"key_file_data,omitempty"`
+	KeyPassphrase     string `json:"key_passphrase,omitempty"`
+}
+
+// JobEnabledRequest turns a Backup Set on or off (POST /jobs/enabled).
+type JobEnabledRequest struct {
+	ID      string `json:"id"`
+	Enabled bool   `json:"enabled"`
+}
+
+// SettingsExportRequest asks for a settings export (POST /settings/export).
+type SettingsExportRequest struct {
+	IncludeSecrets bool `json:"include_secrets,omitempty"`
+}
+
+// SettingsExportResponse is the export file's contents.
+type SettingsExportResponse struct {
+	Data []byte `json:"data"`
+}
+
+// SettingsImportRequest merges an exported file (POST /settings/import).
+type SettingsImportRequest struct {
+	Data []byte `json:"data"`
+}
+
+// SettingsImportResponse summarises what an import added or changed.
+type SettingsImportResponse struct {
+	Summary string `json:"summary"`
+}
+
+// KeySaveRequest stores an encryption key in the service's keys folder (POST
+// /keys/save): the key file's contents and the name to give it ("" for a
+// generated name). The answer is the stored file's path.
+type KeySaveRequest struct {
+	Name string `json:"name,omitempty"`
+	Data []byte `json:"data"`
+}
+
+// KeySaveResponse is the path a saved key was stored at.
+type KeySaveResponse struct {
+	Path string `json:"path"`
+}

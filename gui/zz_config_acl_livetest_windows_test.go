@@ -16,7 +16,8 @@ import (
 // that inherits ProgramData's defaults, as the settings folder did, with a
 // file "planted" by another owner, then checks hardenConfigDir:
 //   - BUILTIN\Users and CREATOR OWNER's inherited ProgramData entries are gone;
-//   - SYSTEM, Administrators and this (administrator) account remain;
+//   - SYSTEM and Administrators remain, and nobody else: not this
+//     (administrator) account either, which earlier builds let read;
 //   - the planted file now belongs to Administrators and only inherits;
 //   - an existing explicit, protected ACL (a key file) is left alone.
 func TestLiveHardenConfigDir(t *testing.T) {
@@ -81,13 +82,16 @@ func TestLiveHardenConfigDir(t *testing.T) {
 	for _, p := range []string{dir, cfg} {
 		out := icacls(t, p)
 		t.Logf("%s", out)
-		if strings.Contains(out, `BUILTIN\Users`) || strings.Contains(out, `CREATOR OWNER:(I)`) {
-			t.Errorf("%s still grants BUILTIN\\Users:\n%s", p, out)
+		if strings.Contains(out, `BUILTIN\Users`) || strings.Contains(out, `CREATOR OWNER`) {
+			t.Errorf("%s still grants BUILTIN\\Users or CREATOR OWNER:\n%s", p, out)
 		}
-		for _, want := range []string{`NT AUTHORITY\SYSTEM`, `BUILTIN\Administrators`, meDomain + `\` + meName} {
+		for _, want := range []string{`NT AUTHORITY\SYSTEM`, `BUILTIN\Administrators`} {
 			if !strings.Contains(strings.ToLower(out), strings.ToLower(want)) {
 				t.Errorf("%s lacks %s:\n%s", p, want, out)
 			}
+		}
+		if strings.Contains(strings.ToLower(out), strings.ToLower(meDomain+`\`+meName)) {
+			t.Errorf("%s still lets in the administrator account %s\\%s itself:\n%s", p, meDomain, meName, out)
 		}
 	}
 	out := icacls(t, planted)

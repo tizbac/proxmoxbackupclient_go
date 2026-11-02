@@ -22,13 +22,18 @@ type Client struct {
 	httpClient *http.Client
 }
 
-// NewClient creates a new API client
+// NewClient creates a new API client. Its requests carry the token
+// (tokenTransport) and, on a 401, get a fresh one through the unauthorized
+// hook and are sent once more (reauthTransport).
 func NewClient(tokenPath string) *Client {
 	return &Client{
 		baseURL: DefaultServiceURL,
 		httpClient: &http.Client{
-			Timeout:   RequestTimeout,
-			Transport: &tokenTransport{tokenPath: tokenPath, base: http.DefaultTransport},
+			Timeout: RequestTimeout,
+			Transport: &reauthTransport{
+				base:      &tokenTransport{tokenPath: tokenPath, base: http.DefaultTransport},
+				tokenPath: tokenPath,
+			},
 		},
 	}
 }
@@ -40,20 +45,28 @@ func NewClientAt(baseURL, tokenPath string) *Client {
 	return c
 }
 
-// IsServiceAvailable checks if the local service is running
+// IsServiceAvailable reports whether the local service is running and takes
+// this app's token.
 func (c *Client) IsServiceAvailable() bool {
-	client := &http.Client{
-		Timeout:   ConnectionTimeout,
-		Transport: c.httpClient.Transport, // reuse the token-injecting transport
-	}
+	code, _ := c.ProbeStatus()
+	return code == http.StatusOK
+}
 
+// ProbeStatus asks /status and returns 200 (running, token taken), 401
+// (running, no token or a replaced one) or 0 (not reachable). It never runs
+// the unauthorized hook, so probing never asks for elevation.
+func (c *Client) ProbeStatus() (int, error) {
+	transport := c.httpClient.Transport
+	if rt, ok := transport.(*reauthTransport); ok {
+		transport = rt.base
+	}
+	client := &http.Client{Timeout: ConnectionTimeout, Transport: transport}
 	resp, err := client.Get(c.baseURL + "/status")
 	if err != nil {
-		return false
+		return 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-
-	return resp.StatusCode == http.StatusOK
+	return resp.StatusCode, nil
 }
 
 // GetStatus retrieves the service status

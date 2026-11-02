@@ -12,6 +12,9 @@ import (
 // destination server identically — main.go's RestoreSnapshot/StartBackup and
 // app_service_stubs.go's StartBackup both call this same implementation.
 func (a *App) resolvePBS(pbsID string) (*Config, error) {
+	if a.delegated() {
+		return a.serviceAccess(pbsID, false)
+	}
 	if pbsID != "" {
 		pbs, err := a.config.GetPBSServer(pbsID)
 		if err != nil {
@@ -50,7 +53,13 @@ func (a *App) checkServiceKey(pbsID string) error {
 // key. An encrypted snapshot's chunks are unreadable without it, so fail here
 // with a clear message rather than deep inside the chunk fetcher.
 func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
-	cfg, err := a.resolvePBS(pbsID)
+	var cfg *Config
+	var err error
+	if a.delegated() {
+		cfg, err = a.serviceAccess(pbsID, true)
+	} else {
+		cfg, err = a.resolvePBS(pbsID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -58,6 +67,31 @@ func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// serviceAccess is resolvePBS with the service holding the settings: the
+// service hands what this one operation needs (a fresh ticket, or a token
+// server's token, and with withKey the key file's contents and remembered
+// passphrase), kept in this Config only, never written anywhere.
+func (a *App) serviceAccess(pbsID string, withKey bool) (*Config, error) {
+	acc, err := a.apiClient.PBSAccess(pbsID, withKey)
+	if err != nil {
+		return nil, err
+	}
+	return &Config{
+		BaseURL:                 acc.BaseURL,
+		CertFingerprint:         acc.CertFingerprint,
+		Datastore:               acc.Datastore,
+		Namespace:               acc.Namespace,
+		AuthID:                  acc.AuthID,
+		Secret:                  acc.Secret,
+		Username:                acc.Username,
+		Ticket:                  acc.Ticket,
+		CSRFToken:               acc.CSRFToken,
+		EncryptionKeyFile:       acc.EncryptionKeyFile,
+		EncryptionKeyPassphrase: acc.KeyPassphrase,
+		keyFileData:             acc.KeyFileData,
+	}, nil
 }
 
 // PBSServer represents a single Proxmox Backup Server configuration

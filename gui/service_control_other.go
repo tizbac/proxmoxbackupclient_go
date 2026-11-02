@@ -16,6 +16,9 @@ type ServiceStatus struct {
 var errNoService = errors.New("the background service is only available on Windows and Linux")
 
 func (a *App) GetServiceStatus() ServiceStatus { return ServiceStatus{} }
+
+// serviceInstalled: no background service on this system.
+func serviceInstalled() bool { return false }
 func (a *App) InstallService() (ServiceStatus, error) {
 	return ServiceStatus{}, errNoService
 }

@@ -7,17 +7,19 @@ package main
 //
 //   PBS_LINUX_SVC=install  (as root, HOME = the user whose settings to move):
 //       Run as Service > Install: settings copied to /var/lib/proxmoxbackupclient,
-//       folder and token permissions, unit enabled and running, app in service mode.
-//   PBS_LINUX_SVC=user     (as an administrator, not root): the app finds the
-//       service, reads its token, sees the Backup Sets, and may not change them.
+//       which is root's alone (0700, files 0600), unit enabled and running,
+//       app in service mode.
+//   PBS_LINUX_SVC=user     (as an ordinary account, not root): the app finds
+//       the service but cannot read its token, so it is not connected, asks
+//       nobody while no window is in front of the user, and sees no Backup
+//       Sets until it connects.
 //   PBS_LINUX_SVC=remove   (as root): Remove stops and disables the unit and
 //       keeps the settings.
 
 import (
+	"errors"
 	"os"
-	"os/user"
 	"path/filepath"
-	"strconv"
 	"syscall"
 	"testing"
 
@@ -33,13 +35,15 @@ func liveLinuxSvc(t *testing.T, step string) {
 }
 
 func newLiveApp() *App {
-	return &App{
+	a := &App{
 		config:        LoadConfig(),
 		stopScheduler: make(chan struct{}),
 		apiClient:     api.NewClient(getAPITokenPath()),
-		mode:          api.NewModeDetector(getAPITokenPath()).DetectMode(),
 		callbacksMap:  make(map[string]*progressCallbacks),
+		headless:      true,
 	}
+	a.resolveMode()
+	return a
 }
 
 func fileOwnerMode(t *testing.T, p string) (uid, gid uint32, mode os.FileMode) {
@@ -67,59 +71,41 @@ func TestLiveLinuxServiceInstall(t *testing.T) {
 	if !st.Installed || st.State != "running" || st.StartType != "boot" || !st.ServiceMode || st.OtherExe {
 		t.Fatalf("after install: %+v", st)
 	}
-	gid, group := adminGroup()
-	if _, g, m := fileOwnerMode(t, sharedConfigDir); g != uint32(gid) || m.Perm() != 0o750 || m&os.ModeSetgid == 0 {
-		t.Errorf("%s: group %d (want %d %s), mode %v", sharedConfigDir, g, gid, group, m)
+	if u, g, m := fileOwnerMode(t, sharedConfigDir); u != 0 || g != 0 || m.Perm() != 0o700 || m&os.ModeSetgid != 0 {
+		t.Errorf("%s: owner %d:%d mode %v, want 0:0 0700", sharedConfigDir, u, g, m)
 	}
 	for _, f := range []string{"api-token", "config.json", "scheduled_jobs.json"} {
 		p := filepath.Join(sharedConfigDir, f)
 		u, g, m := fileOwnerMode(t, p)
 		t.Logf("%s: %d:%d %v", f, u, g, m)
-		if u != 0 || g != uint32(gid) || m.Perm() != 0o640 {
-			t.Errorf("%s: owner %d:%d mode %v, want 0:%d 0640", f, u, g, m.Perm(), gid)
+		if u != 0 || g != 0 || m.Perm() != 0o600 {
+			t.Errorf("%s: owner %d:%d mode %v, want 0:0 0600", f, u, g, m.Perm())
 		}
 	}
-	if got, _ := getConfigDir(); got != sharedConfigDir {
-		t.Errorf("app settings folder %s, want %s", got, sharedConfigDir)
+	if !a.IsServiceConnected() {
+		t.Error("an app run as root is not connected: it may read the token itself")
 	}
 }
 
 func TestLiveLinuxServiceUserView(t *testing.T) {
 	liveLinuxSvc(t, "user")
 	if os.Geteuid() == 0 {
-		t.Fatal("run as an administrator account, not root")
+		t.Fatal("run as an ordinary account, not root")
 	}
-	if u, err := user.Current(); err == nil {
-		gid, group := adminGroup()
-		ids, _ := u.GroupIds()
-		in := false
-		for _, g := range ids {
-			if g == strconv.Itoa(gid) {
-				in = true
-			}
-		}
-		if !in {
-			t.Fatalf("%s is not in group %s", u.Username, group)
-		}
-	}
-	if dir, _ := getConfigDir(); dir != sharedConfigDir {
-		t.Fatalf("settings folder %s, want %s", dir, sharedConfigDir)
+	if _, err := os.ReadFile(getAPITokenPath()); err == nil {
+		t.Fatal("an ordinary account can read the service's token file")
 	}
 	a := newLiveApp()
 	if a.mode != api.ModeService {
 		t.Fatalf("mode %s, want service", a.mode)
 	}
+	if a.IsServiceConnected() {
+		t.Fatal("connected without fetching the token")
+	}
+	// No window in front of the user: nobody is asked, the call is refused.
 	jobs, err := a.GetScheduledJobs()
-	if err != nil || len(jobs) == 0 {
-		t.Fatalf("Backup Sets: %d, %v", len(jobs), err)
-	}
-	p := a.GetJobPolicy()
-	t.Logf("policy %+v, %d set(s)", p, len(jobs))
-	if !p.Supported || !p.RequireAdmin || p.IsAdmin || p.CanModify || p.SettingsLocked || !p.Fixed {
-		t.Fatalf("policy %+v", p)
-	}
-	if err := a.checkJobsChangeAllowed(); err == nil {
-		t.Fatal("a non-root app may change the shared Backup Sets")
+	if !errors.Is(err, api.ErrUnauthorized) || len(jobs) != 0 {
+		t.Fatalf("Backup Sets before connecting: %d, %v; want none and ErrUnauthorized", len(jobs), err)
 	}
 	st := a.GetServiceStatus()
 	if !st.Installed || st.State != "running" || st.IsAdmin || !st.ServiceMode {

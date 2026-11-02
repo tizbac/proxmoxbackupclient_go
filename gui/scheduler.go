@@ -275,6 +275,9 @@ func getJobHistoryPath() (string, error) {
 
 // SaveScheduledJob saves a new scheduled job
 func (a *App) SaveScheduledJob(job ScheduledJob) error {
+	if a.delegated() {
+		return a.apiClient.Call("SaveScheduledJob", nil, job)
+	}
 	if err := a.checkJobsChangeAllowed(); err != nil {
 		return err
 	}
@@ -332,6 +335,17 @@ func (a *App) SaveScheduledJob(job ScheduledJob) error {
 
 // GetScheduledJobs returns all scheduled jobs
 func (a *App) GetScheduledJobs() ([]ScheduledJob, error) {
+	if a.delegated() {
+		maps, err := a.apiClient.GetScheduledJobsFull()
+		if err != nil {
+			return []ScheduledJob{}, err
+		}
+		jobs := []ScheduledJob{}
+		if err := remarshal(maps, &jobs); err != nil {
+			return nil, err
+		}
+		return jobs, nil
+	}
 	jobsPath, err := getScheduledJobsPath()
 	if err != nil {
 		return []ScheduledJob{}, err
@@ -408,6 +422,9 @@ func checkUniqueJobName(jobs []ScheduledJob, job ScheduledJob) error {
 
 // UpdateScheduledJob updates an existing scheduled job
 func (a *App) UpdateScheduledJob(job ScheduledJob) error {
+	if a.delegated() {
+		return a.apiClient.Call("UpdateScheduledJob", nil, job)
+	}
 	if err := a.checkJobsChangeAllowed(); err != nil {
 		return err
 	}
@@ -477,6 +494,9 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 // still works). Enabling works out the next run from now, so a set that was
 // disabled for a while does not fire at once for the runs it missed.
 func (a *App) SetScheduledJobEnabled(jobID string, enabled bool) error {
+	if a.delegated() {
+		return a.apiClient.SetJobEnabled(jobID, enabled)
+	}
 	if err := a.checkJobsChangeAllowed(); err != nil {
 		return err
 	}
@@ -514,6 +534,9 @@ func (a *App) SetScheduledJobEnabled(jobID string, enabled bool) error {
 
 // DeleteScheduledJob removes a scheduled job by ID
 func (a *App) DeleteScheduledJob(jobID string) error {
+	if a.delegated() {
+		return a.apiClient.Call("DeleteScheduledJob", nil, jobID)
+	}
 	if err := a.checkJobsChangeAllowed(); err != nil {
 		return err
 	}
@@ -566,6 +589,11 @@ func (a *App) RunScheduledJobNowRead(jobID, read string) error {
 	if read != "" && read != "full" && read != "quick" {
 		return fmt.Errorf("unknown read choice %q", read)
 	}
+	// With the service, the set runs there: it records the history and the
+	// last run and does the post-backup actions, as for its scheduled runs.
+	if a.delegated() {
+		return a.apiClient.Call("RunScheduledJobNowRead", nil, jobID, read)
+	}
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
 		return fmt.Errorf("failed to load jobs: %w", err)
@@ -601,6 +629,17 @@ func (a *App) RunScheduledJobNowRead(jobID, read string) error {
 
 // GetJobHistory returns job history
 func (a *App) GetJobHistory() ([]JobHistory, error) {
+	if a.delegated() {
+		maps, err := a.apiClient.GetJobHistory()
+		if err != nil {
+			return []JobHistory{}, err
+		}
+		history := []JobHistory{}
+		if err := remarshal(maps, &history); err != nil {
+			return nil, err
+		}
+		return history, nil
+	}
 	historyPath, err := getJobHistoryPath()
 	if err != nil {
 		return []JobHistory{}, err
@@ -640,6 +679,9 @@ func (a *App) AddJobHistory(entry JobHistory) error {
 // touching the Message Log. Restores use it directly because they already
 // write their own "Restore" Message Log line.
 func (a *App) appendJobHistory(entry JobHistory) error {
+	if a.delegated() {
+		return a.apiClient.AppendJobHistory(entry)
+	}
 	historyFileMu.Lock()
 	defer historyFileMu.Unlock()
 	history, err := a.GetJobHistory()
@@ -1243,6 +1285,11 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 
 	// Update job's last run and calculate next run.
 	// Re-read from file to pick up any changes made by the GUI while backup was running.
+	// Never in an app working through the service: its sets are the
+	// service's, which records their runs itself.
+	if a.delegated() {
+		return
+	}
 	jobsFileMu.Lock()
 	defer jobsFileMu.Unlock()
 	jobs, err := a.GetScheduledJobs()

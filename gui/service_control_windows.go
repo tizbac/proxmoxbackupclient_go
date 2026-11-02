@@ -84,6 +84,31 @@ func startTypeName(t uint32) string {
 }
 
 // openInstalled finds this app's service. The connection only needs to read.
+// serviceInstalled reports whether the background service is installed on
+// this computer, running or not (resolveMode: an app started before the
+// service answers must not run the computer's Backup Sets itself).
+// It asks only for the rights a standard account has (mgr.Connect asks for
+// all of them, which Windows refuses without elevation).
+func serviceInstalled() bool {
+	scm, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = windows.CloseServiceHandle(scm) }()
+	_, names, _ := serviceNames()
+	for _, n := range names {
+		p, err := windows.UTF16PtrFromString(n)
+		if err != nil {
+			continue
+		}
+		if h, err := windows.OpenService(scm, p, windows.SERVICE_QUERY_STATUS); err == nil {
+			_ = windows.CloseServiceHandle(h)
+			return true
+		}
+	}
+	return false
+}
+
 func openInstalled(m *mgr.Mgr, names []string) (*mgr.Service, string) {
 	for _, n := range names {
 		if s, err := m.OpenService(n); err == nil {
@@ -213,6 +238,7 @@ func (a *App) InstallService() (ServiceStatus, error) {
 		}
 	}
 	defer s.Close()
+	copyUserSettingsToService()
 	if q, err := s.Query(); err == nil && q.State != svc.Running {
 		if err := s.Start(); err != nil {
 			return a.GetServiceStatus(), fmt.Errorf("installed, but the service did not start: %w", err)
@@ -223,6 +249,53 @@ func (a *App) InstallService() (ServiceStatus, error) {
 	}
 	a.switchToServiceMode()
 	return a.GetServiceStatus(), nil
+}
+
+// copyUserSettingsToService gives the service the settings this app used
+// without it (the user's ~/.proxmox-backup-guardian), when the service's
+// folder has none yet: the PBS servers, Backup Sets, history and Message Log
+// carry on with the service. The user's own files are left as they were.
+// Key files stay where the settings name them (the service reads them as
+// SYSTEM); the service locks its folder down when it starts.
+func copyUserSettingsToService() {
+	src, err := userConfigDir()
+	if err != nil {
+		return
+	}
+	dst, err := serviceStateDir()
+	if err != nil {
+		return
+	}
+	for _, f := range []string{"config.json", "scheduled_jobs.json"} {
+		if _, err := os.Stat(filepath.Join(dst, f)); err == nil {
+			return // the service has settings of its own
+		}
+	}
+	if err := os.MkdirAll(dst, 0o700); err != nil {
+		writeDebugLog(fmt.Sprintf("[Service] could not create %s: %v", dst, err))
+		return
+	}
+	// Lock the folder before the secrets go in: under ProgramData it starts
+	// readable by every user, and the service locks it only when it starts.
+	if err := hardenConfigDir(dst); err != nil {
+		writeDebugLog(fmt.Sprintf("[Service] not copying the settings: could not lock %s: %v", dst, err))
+		return
+	}
+	n := 0
+	for _, f := range []string{"config.json", "scheduled_jobs.json", "job_history.json", "message_log.json"} {
+		data, err := os.ReadFile(filepath.Join(src, f)) // #nosec G304 -- the user's own settings folder
+		if err != nil {
+			continue
+		}
+		if err := atomicWriteFile(filepath.Join(dst, f), data, 0o600); err != nil {
+			writeDebugLog(fmt.Sprintf("[Service] could not copy %s to %s: %v", f, dst, err))
+			continue
+		}
+		n++
+	}
+	if n > 0 {
+		LogMessage("Service", "info", fmt.Sprintf("Copied %d settings file(s) from %s to %s", n, src, dst), "", "", nil)
+	}
 }
 
 // StartBackgroundService starts the installed service.

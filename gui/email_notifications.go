@@ -18,6 +18,9 @@ import (
 // existing SMTPPassword handling), so clearing it for real requires deleting
 // the whole account (host empty).
 func (a *App) SetSMTPSettings(host, port, username, password string, insecure bool, from string) error {
+	if a.delegated() {
+		return a.serviceCall("SetSMTPSettings", host, port, username, password, insecure, from)
+	}
 	a.config.SMTPHost = host
 	a.config.SMTPPort = port
 	a.config.SMTPUsername = username
@@ -36,6 +39,10 @@ func (a *App) SetSMTPSettings(host, port, username, password string, insecure bo
 // global SMTP account, so a user can confirm their SMTP settings actually
 // work before relying on them for real backup notifications.
 func (a *App) SendTestEmail(to string) error {
+	// The service holds the SMTP password.
+	if a.delegated() {
+		return a.apiClient.Call("SendTestEmail", nil, to)
+	}
 	if a.config.SMTPHost == "" {
 		return fmt.Errorf("no SMTP server configured — set one in Preferences first")
 	}

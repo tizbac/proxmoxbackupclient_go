@@ -38,8 +38,45 @@ func (a *App) ExportSettings(includeSecrets bool) (string, error) {
 	if a.isServiceProcess {
 		return "", fmt.Errorf("export unavailable in service mode")
 	}
+	// With the service, it holds the settings and builds the file.
+	var data []byte
+	var err error
+	if a.delegated() {
+		data, err = a.apiClient.ExportSettings(includeSecrets)
+	} else {
+		data, err = a.buildSettingsExport(includeSecrets)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export settings",
+		DefaultFilename: fmt.Sprintf("pbsgo-settings-%s.json", time.Now().Format("2006-01-02")),
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON files (*.json)", Pattern: "*.json"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog failed: %w", err)
+	}
+	if path == "" {
+		return "", nil // cancelled
+	}
+
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return "", fmt.Errorf("failed to write export file: %w", err)
+	}
+	writeDebugLog(fmt.Sprintf("ExportSettings: wrote %s (secrets included: %v)", path, includeSecrets))
+	return path, nil
+}
+
+// buildSettingsExport is the export file's contents (ExportSettings), from
+// this program's settings: the app's own, or the service's when the
+// service builds it for the app (ExportSettingsForAPI).
+func (a *App) buildSettingsExport(includeSecrets bool) ([]byte, error) {
 	if a.config == nil {
-		return "", fmt.Errorf("no configuration loaded")
+		return nil, fmt.Errorf("no configuration loaded")
 	}
 
 	cfgCopy := *a.config
@@ -68,7 +105,7 @@ func (a *App) ExportSettings(includeSecrets bool) (string, error) {
 
 	jobs, err := a.GetScheduledJobs()
 	if err != nil {
-		return "", fmt.Errorf("failed to load scheduled jobs: %w", err)
+		return nil, fmt.Errorf("failed to load scheduled jobs: %w", err)
 	}
 
 	host, _ := os.Hostname()
@@ -83,30 +120,11 @@ func (a *App) ExportSettings(includeSecrets bool) (string, error) {
 
 	data, err := json.MarshalIndent(bundle, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("failed to build export: %w", err)
+		return nil, fmt.Errorf("failed to build export: %w", err)
 	}
-
-	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Export settings",
-		DefaultFilename: fmt.Sprintf("pbsgo-settings-%s.json", time.Now().Format("2006-01-02")),
-		Filters: []runtime.FileFilter{
-			{DisplayName: "JSON files (*.json)", Pattern: "*.json"},
-		},
-	})
-	if err != nil {
-		return "", fmt.Errorf("save dialog failed: %w", err)
-	}
-	if path == "" {
-		return "", nil // cancelled
-	}
-
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return "", fmt.Errorf("failed to write export file: %w", err)
-	}
-
-	writeDebugLog(fmt.Sprintf("ExportSettings: wrote %d PBS server(s), %d job(s) to %s (secrets included: %v)",
-		len(cfgCopy.PBSServers), len(jobs), path, includeSecrets))
-	return path, nil
+	writeDebugLog(fmt.Sprintf("settings export: %d PBS server(s), %d job(s) (secrets included: %v)",
+		len(cfgCopy.PBSServers), len(jobs), includeSecrets))
+	return data, nil
 }
 
 // ImportSettings reads a bundle written by ExportSettings and merges it into
@@ -141,6 +159,26 @@ func (a *App) ImportSettings() (string, error) {
 		return "", fmt.Errorf("failed to read import file: %w", err)
 	}
 
+	// With the service, it merges the file into its settings.
+	var summary string
+	if a.delegated() {
+		summary, err = a.apiClient.ImportSettings(raw)
+		if err == nil {
+			err = a.hydrateFromService()
+		}
+	} else {
+		summary, err = a.importSettingsData(raw)
+	}
+	if err != nil {
+		return "", err
+	}
+	writeDebugLog(fmt.Sprintf("ImportSettings: %s from %s", summary, path))
+	return path, nil
+}
+
+// importSettingsData merges an export file's contents (ImportSettings) into
+// this program's settings and says what it merged.
+func (a *App) importSettingsData(raw []byte) (string, error) {
 	bundle, err := parseSettingsBundle(raw)
 	if err != nil {
 		return "", err
@@ -158,8 +196,7 @@ func (a *App) ImportSettings() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	writeDebugLog(fmt.Sprintf("ImportSettings: merged %d PBS server(s), %d job(s) from %s", serversImported, jobsImported, path))
-	return path, nil
+	return fmt.Sprintf("merged %d PBS server(s), %d job(s)", serversImported, jobsImported), nil
 }
 
 // parseSettingsBundle reads a file written by ExportSettings.

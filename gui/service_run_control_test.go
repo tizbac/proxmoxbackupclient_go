@@ -67,7 +67,7 @@ func (f *fakeService) RunPauseState(string) (bool, int64) {
 // service's run (this window runs no backup of its own).
 func TestPauseResumeStopGoToTheService(t *testing.T) {
 	tokenPath := filepath.Join(t.TempDir(), "api-token")
-	tok, err := api.NewToken(tokenPath)
+	tok, err := api.EnsureToken(tokenPath)
 	if err != nil {
 		t.Fatal(err)
 	}

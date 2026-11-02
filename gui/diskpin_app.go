@@ -98,7 +98,8 @@ func (a *App) resolveRunDisks(devices []string, postActionsKey string) ([]string
 // the set is saved again. Only if the set still has the paths this run
 // started from: a set edited meanwhile is left as the user saved it.
 func (a *App) keepMovedDisks(jobID string, saved, found []string) {
-	if jobID == "" || slices.Equal(saved, found) {
+	// In an app working through the service, the set is the service's.
+	if jobID == "" || slices.Equal(saved, found) || a.delegated() {
 		return
 	}
 	jobsFileMu.Lock()

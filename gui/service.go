@@ -89,22 +89,24 @@ func (s *BackupService) run() {
 	// Start HTTP API server for GUI communication (token-authenticated — H-01).
 	// If token init fails the server keeps an empty token and rejects every
 	// request (fail closed) rather than exposing the privileged API unauthenticated.
+	// The token file is the service's alone (secureTokenFile): an app gets
+	// the token through UAC or pkexec (upstream's strict model).
+	api.SecureTokenFile = secureTokenFile
+	// A new token at every start, never one found on disk: a token file
+	// planted before the first install, or read under an earlier build's
+	// wider permissions, stops working here.
 	apiToken, tokErr := api.NewToken(getAPITokenPath())
 	if tokErr != nil {
 		writeDebugLog(fmt.Sprintf("API token init failed (API will reject all requests): %v", tokErr))
 	}
-	// Linux: administrators' apps read the token (group-readable, like the
-	// folder ACL on Windows).
-	shareConfigFile(getAPITokenPath())
 	s.apiServer = api.NewServer("127.0.0.1:18765", s.app, apiToken, appVersion)
 	// Every run reports to its entry on the API, scheduled ones included.
 	s.app.runReporter = s.apiServer
-	// A new token every 24 hours as well as at each start (from upstream;
-	// PBSGO_TOKEN_ROTATION and PBSGO_TOKEN_GRACE change it, 0 turns it off).
+	// It is also replaced every 24 hours (from upstream; PBSGO_TOKEN_ROTATION
+	// and PBSGO_TOKEN_GRACE change it, 0 turns it off).
 	if tokErr == nil {
 		interval, grace := api.TokenRotationFromEnv()
 		s.tokenRotator = api.NewTokenRotator(s.apiServer, getAPITokenPath(), interval, grace)
-		s.tokenRotator.Prepare = shareConfigFile
 		s.tokenRotator.Start()
 	}
 	writeDebugLog("Starting HTTP API server on 127.0.0.1:18765")
@@ -120,6 +122,10 @@ func (s *BackupService) run() {
 	// Recalculate stale nextRun values (e.g. after service restart or missed window)
 	s.app.RecalculateNextRuns()
 	s.app.StartScheduler()
+	// Sets with "Run at startup" run when the service starts: an app started
+	// at sign-in is not connected to the service until a window asks, so it
+	// can no longer start them itself.
+	go s.app.HandleStartupRun()
 
 	// Keep the service running (scheduler and API server run in background goroutines)
 	writeDebugLog("Service main loop started, waiting for stop signal")

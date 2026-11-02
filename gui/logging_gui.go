@@ -23,11 +23,17 @@ func init() {
 	if testing.Testing() {
 		logDir = testLogDir()
 	} else if runtime.GOOS == "windows" {
-		programData := os.Getenv("ProgramData")
-		if programData == "" {
-			programData = "C:\\ProgramData"
+		// The user's own folder: the service's (ProgramData) is the
+		// service's alone, and only an elevated app could write there.
+		local := os.Getenv("LOCALAPPDATA")
+		if local == "" {
+			if home, herr := os.UserHomeDir(); herr == nil {
+				local = filepath.Join(home, "AppData", "Local")
+			} else {
+				local = os.TempDir()
+			}
 		}
-		logDir = filepath.Join(programData, "ProxmoxBackupClient")
+		logDir = filepath.Join(local, "ProxmoxBackupClient", "Logs")
 	} else {
 		// /var/log requires root to create a new subdirectory, which this GUI
 		// build (unlike the service build, which does run as root under

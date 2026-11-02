@@ -68,7 +68,34 @@ type App struct {
 	// each run reports its progress and outcome to its entry there, so a GUI
 	// can show and control it (service.go).
 	runReporter serviceRunReporter
+
+	// The app's connection to the service (service_connect.go). svcConnected:
+	// it holds a token the service takes. autoConnectTried: it asked once on
+	// its own; after that only Connect asks, until the service replaces the
+	// token.
+	svcConnected     atomic.Bool
+	serviceSettings  atomic.Bool // set by enterServiceMode: see delegated
+	ownSettings      atomic.Bool // the user chose their own settings over the service's (UseOwnSettings)
+	autoConnectTried atomic.Bool
+	tokenFetchMu     sync.Mutex
 }
+
+// delegated reports whether this app works on the service's settings
+// (service mode, upstream's strict model): its settings, Backup Sets,
+// history and PBS access go through the service's API (service_connect.go).
+// Only once enterServiceMode has run: api.ModeService is ExecutionMode's
+// zero value, so an App whose mode is not decided yet (or a test's) would
+// otherwise look like one working through the service.
+func (a *App) delegated() bool {
+	return !a.isServiceProcess && a.serviceSettings.Load() && a.apiClient != nil
+}
+
+// storedSecret stands in, in the app's copy of the service's settings, for a
+// secret the service holds (the settings document's *_set markers), so the
+// app's display code sees "a secret is stored" as before. It never leaves
+// the app: in service mode every save and every PBS operation runs in the
+// service, against the real secret.
+const storedSecret = "\x00stored-in-service"
 
 // serviceRunReporter is the part of api.Server a service run reports to.
 type serviceRunReporter interface {

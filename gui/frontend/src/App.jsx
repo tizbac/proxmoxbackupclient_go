@@ -49,6 +49,8 @@ let GetServiceStatus, InstallService, StartBackgroundService, StopBackgroundServ
 let PauseBackup, ResumeBackup, GetBackupPauseState
 // Several backups at once: each run's own Pause, Resume and Stop
 let GetBackupRuns, PauseBackupRun, ResumeBackupRun, CancelBackupRun, SetMaxConcurrentRuns
+// The background service's settings (upstream's strict model)
+let ConnectService, IsServiceConnected, UseOwnSettings
 
 // Check if we're running in Wails
 if (window.go) {
@@ -82,6 +84,9 @@ if (window.go) {
   GetJobHistory = window.go.main.App.GetJobHistory
   GetMessageLog = window.go.main.App.GetMessageLog
   GetSystemInfo = window.go.main.App.GetSystemInfo
+  ConnectService = window.go.main.App.ConnectService
+  IsServiceConnected = window.go.main.App.IsServiceConnected
+  UseOwnSettings = window.go.main.App.UseOwnSettings
   GetLastBackupDirs = window.go.main.App.GetLastBackupDirs
   // Multi-PBS
   ListPBSServers = window.go.main.App.ListPBSServers
@@ -1512,6 +1517,57 @@ function App() {
     return () => { if (unsub) unsub() }
   }, [])
 
+  // The background service keeps this computer's settings, and only an app
+  // that fetched its token (UAC, pkexec) may read them (gui/service_connect.go).
+  // The app asks once on its own when the window is in front of the user (it
+  // got focus, or was opened from the tray; never at sign-in in the tray), and
+  // again whenever Connect is clicked. Once connected, the page reloads with
+  // the service's settings.
+  const [serviceConnectError, setServiceConnectError] = useState('')
+  const connectService = async (userAsked) => {
+    if (!ConnectService) return
+    try {
+      await ConnectService(userAsked)
+      setServiceConnectError('')
+    } catch (err) {
+      if (userAsked) setServiceConnectError(String(err?.message || err))
+    }
+    if (GetSystemInfo) {
+      try {
+        const info = await GetSystemInfo()
+        if (info) setSystemInfo(prev => ({ ...prev, ...info }))
+      } catch (err) {
+        console.error('GetSystemInfo after connecting failed:', err)
+      }
+    }
+  }
+  useEffect(() => {
+    if (!EventsOn) return
+    const unsubConnected = EventsOn('service:connected', () => window.location.reload())
+    // Switched to the user's own settings (UseOwnSettings): reload with them.
+    const unsubSwitched = EventsOn('settings:switched', () => window.location.reload())
+    // The service replaced its token: show the Connect banner again.
+    const unsubDisconnected = EventsOn('service:disconnected', async () => {
+      try {
+        const info = GetSystemInfo ? await GetSystemInfo() : null
+        if (info) setSystemInfo(prev => ({ ...prev, ...info }))
+      } catch (err) {
+        console.error('GetSystemInfo after disconnecting failed:', err)
+      }
+    })
+    const auto = () => connectService(false)
+    const unsubShown = EventsOn('window:shown', auto)
+    window.addEventListener('focus', auto)
+    if (document.hasFocus()) auto()
+    return () => {
+      if (unsubConnected) unsubConnected()
+      if (unsubSwitched) unsubSwitched()
+      if (unsubDisconnected) unsubDisconnected()
+      if (unsubShown) unsubShown()
+      window.removeEventListener('focus', auto)
+    }
+  }, [])
+
   // Native menu bar (gui/menu.go) drives navigation the same way a sidebar
   // click does — it only ever asks us to switch tabs or open an overlay.
   useEffect(() => {
@@ -1691,8 +1747,10 @@ function App() {
           setPbsServers(servers || [])
           // First run: nothing to back up to yet, so open Preferences straight
           // to Account Information instead of landing the user on a Backup
-          // tab that has nothing configured behind it.
-          if (!servers || servers.length === 0) {
+          // tab that has nothing configured behind it. Not while the app is
+          // not connected to the service: it has none of its servers yet.
+          const connected = IsServiceConnected ? await IsServiceConnected() : true
+          if (connected && (!servers || servers.length === 0)) {
             setPrefsTab('account')
             setShowPreferences(true)
           }
@@ -3501,6 +3559,27 @@ function App() {
         </div>
 
       <div className="container">
+        {systemInfo.service_available && systemInfo.service_connected === false && (
+          <div className="info-box service-connect-banner" style={{marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', backgroundColor: '#fff3cd', borderLeft: '4px solid #ffc107'}}>
+            <span style={{flex: '1 1 320px'}}>🔒 {t('serviceConnectBanner')}</span>
+            <button className="btn" onClick={() => connectService(true)}>{t('serviceConnectBtn')}</button>
+            {UseOwnSettings && (
+              <button className="btn btn-secondary" onClick={() => UseOwnSettings().catch(err => setServiceConnectError(String(err?.message || err)))}>{t('serviceOwnSettingsBtn')}</button>
+            )}
+            {serviceConnectError && (
+              <span style={{flexBasis: '100%', color: '#842029'}}>{t('serviceConnectFailed', { error: serviceConnectError })}</span>
+            )}
+          </div>
+        )}
+        {systemInfo.own_settings && (
+          <div className="info-box service-own-settings-banner" style={{marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap'}}>
+            <span style={{flex: '1 1 320px'}}>👤 {t('serviceOwnSettingsBanner')}</span>
+            <button className="btn btn-secondary" onClick={() => connectService(true)}>{t('serviceConnectBtn')}</button>
+            {serviceConnectError && (
+              <span style={{flexBasis: '100%', color: '#842029'}}>{t('serviceConnectFailed', { error: serviceConnectError })}</span>
+            )}
+          </div>
+        )}
         {jobPolicy.settings_locked && (
           <div className="info-box settings-locked-banner" style={{marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap'}}>
             <span>🔒 {t('settingsLockedBanner')}</span>

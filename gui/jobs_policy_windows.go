@@ -24,7 +24,11 @@ const jobPolicyValue = "RequireAdminForJobs"
 // elevatedRestartFlag tells the relaunched copy to wait for the old instance to exit.
 const elevatedRestartFlag = "--" + elevatedRestartFlagName
 
-func jobPolicySupported() bool { return true }
+// jobPolicySupported is false: with upstream's strict model only an app that
+// fetched the service's token through UAC can reach the Backup Sets at all,
+// so every change already needs an administrator and the switch has nothing
+// left to protect. The code stays until the policy is removed with tiz.
+func jobPolicySupported() bool { return false }
 
 // jobPolicyFixed: on Windows the policy is a switch in Preferences.
 func jobPolicyFixed() bool { return false }

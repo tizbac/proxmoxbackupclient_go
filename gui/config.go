@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"pbscommon"
 	"security"
@@ -61,6 +62,10 @@ type Config struct {
 	// Crypt is EncryptionKeyFile after it has been read and unlocked, held
 	// runtime-only so the unlocked key never lands in config.json.
 	Crypt *pbscommon.CryptConfig `json:"-"`
+	// keyFileData is the key file's contents as the service handed them to
+	// an app that may not read the file (serviceAccess); unlockCrypt uses
+	// them instead of reading EncryptionKeyFile.
+	keyFileData []byte
 
 	// ==================== BACKUP SETTINGS ====================
 	BackupDir      string   `json:"backupdir,omitempty"`
@@ -224,7 +229,7 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		_ = tmp.Close()
 		return err
 	}
-	if err := tmp.Chmod(sharedFileMode(path, perm)); err != nil {
+	if err := tmp.Chmod(perm); err != nil {
 		_ = tmp.Close()
 		return err
 	}
@@ -238,47 +243,64 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
-// getAPITokenPath is the shared local-API auth token file (H-01), placed next to
-// config.json so the GUI and the privileged service resolve the same path.
+// getAPITokenPath is the service's local-API token file (H-01), in the
+// service's settings folder whichever program asks: the service writes it,
+// and only the service, root and elevated administrators may read it.
 func getAPITokenPath() string {
-	dir, err := getConfigDir()
+	dir, err := serviceStateDir()
 	if err != nil || dir == "" {
 		return "proxmox-client-api-token"
 	}
 	return filepath.Join(dir, "api-token")
 }
 
-// getConfigDir returns the application's data directory, creating it if needed.
-// On Windows it lives under ProgramData (shared GUI/Service); on Unix it's
-// ~/.proxmox-backup-guardian, or /var/lib/proxmoxbackupclient once the
-// background service is installed. Used as the parent for config.json, the restore
-// cache, and any other persistent state.
+// useServiceStateDir makes this app use the service's settings folder: set
+// by the Linux command line (-list-sets, -undelete, -rollback), which runs
+// as root on the service's Backup Sets.
+var useServiceStateDir atomic.Bool
+
+// getConfigDir returns the settings folder this program keeps its files in,
+// creating it if needed.
+//
+// The background service keeps the computer's settings in its own folder
+// (serviceStateDir): C:\ProgramData\ProxmoxBackupClient, or
+// /var/lib/proxmoxbackupclient on Linux. Only the service, SYSTEM or root,
+// and elevated administrators may open it (upstream's strict model); the
+// app reaches those settings through the service's API.
+//
+// The app keeps its own files in the user's ~/.proxmox-backup-guardian, as
+// upstream does: all its settings when it runs without a service, and
+// otherwise only what is its own (restore caches, its message log copy).
 func getConfigDir() (string, error) {
-	var configDir string
-
-	if programData := os.Getenv("ProgramData"); programData != "" {
-		// Windows: C:\ProgramData\ProxmoxBackupClient (accessible by both user and LocalSystem)
-		configDir = filepath.Join(programData, "ProxmoxBackupClient")
-	} else if systemDrive := os.Getenv("SystemDrive"); systemDrive != "" {
-		// Windows fallback: if ProgramData not set, use C:\ProgramData hardcoded
-		// This ensures service config is accessible even if env var is missing
-		configDir = filepath.Join(systemDrive, "ProgramData", "ProxmoxBackupClient")
+	var (
+		dir string
+		err error
+	)
+	if serviceBuild || useServiceStateDir.Load() {
+		dir, err = serviceStateDir()
 	} else {
-		// Linux: ~/.proxmox-backup-guardian, or the service's shared
-		// /var/lib/proxmoxbackupclient once it is installed.
-		dir, err := unixConfigDir()
-		if err != nil {
-			return "", err
-		}
-		configDir = dir
+		dir, err = userConfigDir()
 	}
-
-	// #nosec G703 -- ProgramData is a trusted Windows system environment variable, not user input
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err != nil {
 		return "", err
 	}
+	// #nosec G703 -- the folder comes from ProgramData or the home folder, not user input
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
 
-	return configDir, nil
+// serviceStateDir is the background service's settings folder (not created).
+func serviceStateDir() (string, error) {
+	if programData := os.Getenv("ProgramData"); programData != "" {
+		return filepath.Join(programData, "ProxmoxBackupClient"), nil
+	}
+	if systemDrive := os.Getenv("SystemDrive"); systemDrive != "" {
+		// ProgramData unset (a service started with a bare environment).
+		return filepath.Join(systemDrive, "ProgramData", "ProxmoxBackupClient"), nil
+	}
+	return unixServiceStateDir()
 }
 
 func getConfigPath() (string, error) {
@@ -653,6 +675,19 @@ func (c *Config) loadCryptConfig() error {
 	return c.unlockCrypt(true)
 }
 
+// parseKeyConfig reads a key file's contents (pbscommon.LoadKeyConfig from
+// memory).
+func parseKeyConfig(raw []byte) (*pbscommon.KeyConfig, error) {
+	cfg := &pbscommon.KeyConfig{}
+	if err := json.Unmarshal(raw, cfg); err != nil {
+		return nil, fmt.Errorf("unable to parse the key file: %w", err)
+	}
+	if cfg.Data == "" {
+		return nil, fmt.Errorf("the key file contains no key data")
+	}
+	return cfg, nil
+}
+
 // unlockCrypt is loadCryptConfig with control over whether the user may be
 // asked for a passphrase. Saving settings must not pop a dialog, so it passes
 // false and treats errPassphraseRequired as fine.
@@ -662,7 +697,13 @@ func (c *Config) unlockCrypt(interactive bool) error {
 		return nil
 	}
 
-	keyCfg, err := pbscommon.LoadKeyConfig(c.EncryptionKeyFile)
+	var keyCfg *pbscommon.KeyConfig
+	var err error
+	if c.keyFileData != nil {
+		keyCfg, err = parseKeyConfig(c.keyFileData)
+	} else {
+		keyCfg, err = pbscommon.LoadKeyConfig(c.EncryptionKeyFile)
+	}
 	if err != nil {
 		return fmt.Errorf("reading encryption key file %s: %w", c.EncryptionKeyFile, err)
 	}

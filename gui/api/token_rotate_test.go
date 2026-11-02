@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// From upstream, adapted: the GUI reads the token file on each request, so
-// what matters is that the file and the server agree, and that a replaced
-// token keeps working only for the grace window.
+// From upstream, adapted: the file and the server must agree (an elevated
+// fetch reads the file), and a replaced token keeps working only for the
+// grace window.
 
 func currentToken(s *Server) string {
 	s.tokenMu.RLock()
@@ -95,14 +95,19 @@ func TestTokenRotatorRotatesOnInterval(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := NewServer("127.0.0.1:0", &fakeHandler{}, "initial-token", "test")
-	var prepared, notTmp atomic.Int32
-	r := NewTokenRotator(s, path, 40*time.Millisecond, 30*time.Millisecond)
-	r.Prepare = func(p string) {
+	// Count the files given the token file's permissions: only the
+	// temporary file, before it replaces the live one.
+	var secured, notTmp atomic.Int32
+	prevSecure := SecureTokenFile
+	SecureTokenFile = func(p string) error {
 		if !strings.HasSuffix(p, ".tmp") {
 			notTmp.Add(1)
 		}
-		prepared.Add(1)
+		secured.Add(1)
+		return prevSecure(p)
 	}
+	t.Cleanup(func() { SecureTokenFile = prevSecure })
+	r := NewTokenRotator(s, path, 40*time.Millisecond, 30*time.Millisecond)
 	r.Start()
 	t.Cleanup(r.Stop)
 
@@ -120,11 +125,11 @@ func TestTokenRotatorRotatesOnInterval(t *testing.T) {
 	if got := readTokenFile(t, path); got != rotated {
 		t.Errorf("file holds %q, server requires %q", got, rotated)
 	}
-	if prepared.Load() == 0 {
-		t.Error("Prepare never ran")
+	if secured.Load() == 0 {
+		t.Error("the new token file never got its permissions")
 	}
 	if notTmp.Load() != 0 {
-		t.Error("Prepare ran on the live token file, want the temporary file")
+		t.Error("permissions were set on the live token file, want the temporary file before the rename")
 	}
 	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
 		t.Errorf("temporary token file left behind: %v", err)

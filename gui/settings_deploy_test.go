@@ -10,15 +10,26 @@ import (
 )
 
 // deployTestDir points the settings folder at a fresh temporary one and
-// returns it. getConfigDir reads %ProgramData% first on every OS.
+// returns it. The installer's settings go into the service's folder (the
+// service applies them), which serviceStateDir finds through %ProgramData%
+// on every OS.
 func deployTestDir(t *testing.T) string {
 	t.Helper()
+	useServiceDirForTest(t)
 	t.Setenv("ProgramData", t.TempDir())
 	dir, err := getConfigDir()
 	if err != nil {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+// useServiceDirForTest makes getConfigDir the service's folder for one test,
+// as it is in the service program.
+func useServiceDirForTest(t *testing.T) {
+	t.Helper()
+	useServiceStateDir.Store(true)
+	t.Cleanup(func() { useServiceStateDir.Store(false) })
 }
 
 // deployBundle is an Export Settings file from computer "SRC-PC": one PBS
@@ -284,6 +295,7 @@ func TestApplySettingsFileRefusesLinkedFolder(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symbolic links need a privilege on Windows")
 	}
+	useServiceDirForTest(t)
 	pd := t.TempDir()
 	t.Setenv("ProgramData", pd)
 	elsewhere := t.TempDir()

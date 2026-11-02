@@ -130,6 +130,7 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/backup/pause", s.handleRunControl)
 	s.mux.HandleFunc("/backup/resume", s.handleRunControl)
 	s.mux.HandleFunc("/backup/stop", s.handleRunControl)
+	s.setupStateRoutes()
 }
 
 // Handler is the API with its token check, as Start serves it (tests).

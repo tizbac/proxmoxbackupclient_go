@@ -66,6 +66,11 @@ func readKeyForExport(path string) (string, *pbscommon.KeyConfig, error) {
 // EncryptionPaperKey returns the key at path laid out for printing, with a QR
 // code of the whole key file so it can be scanned back into a file.
 func (a *App) EncryptionPaperKey(path string) (PaperKey, error) {
+	if a.keyInService(strings.TrimSpace(path)) {
+		var pk PaperKey
+		err := a.apiClient.Call("EncryptionPaperKey", &pk, path)
+		return pk, err
+	}
 	text, keyCfg, err := readKeyForExport(path)
 	if err != nil {
 		return PaperKey{}, err
@@ -98,14 +103,25 @@ func (a *App) SaveEncryptionKeyCopy(path string) (string, error) {
 		return "", fmt.Errorf("the window is not ready yet")
 	}
 	path = strings.TrimSpace(path)
-	if _, _, err := readKeyForExport(path); err != nil {
-		return "", err
+	var raw []byte
+	if a.keyInService(path) {
+		// The service reads its own key; the copy goes where the user picks.
+		if err := a.apiClient.Call("EncryptionKeyFileData", &raw, path); err != nil {
+			return "", err
+		}
+	} else {
+		if _, _, err := readKeyForExport(path); err != nil {
+			return "", err
+		}
+		var err error
+		if raw, err = os.ReadFile(path); err != nil {
+			return "", fmt.Errorf("reading %s: %w", path, err)
+		}
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("reading %s: %w", path, err)
+	fp := ""
+	if kc, err := parseKeyConfig(stripUTF8BOM(raw)); err == nil {
+		fp = kc.Fingerprint
 	}
-	fp := inspectKeyFile(path).Fingerprint
 	name := "encryption-key.json"
 	if short := strings.ReplaceAll(fp, ":", ""); len(short) >= 8 {
 		name = "encryption-key-" + short[:8] + ".json"
@@ -135,6 +151,21 @@ func (a *App) SaveEncryptionKeyCopy(path string) (string, error) {
 	}
 	writeDebugLog(fmt.Sprintf("SaveEncryptionKeyCopy: %s copied to %s (fingerprint %s)", path, dest, fp))
 	return dest, nil
+}
+
+// encryptionKeyFileData is the key file at path, checked as for a copy
+// (SaveEncryptionKeyCopy): the service hands its own key this way to an app
+// that may not read its folder, for the copy the user asked for.
+func encryptionKeyFileData(path string) ([]byte, error) {
+	path = strings.TrimSpace(path)
+	if _, _, err := readKeyForExport(path); err != nil {
+		return nil, err
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+	return raw, nil
 }
 
 // sameFile reports whether a and b name the same existing file.

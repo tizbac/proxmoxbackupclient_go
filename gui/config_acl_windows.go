@@ -21,20 +21,24 @@ import (
 //
 // hardenConfigDir replaces the folder's permissions with:
 //   - SYSTEM and Administrators: full control;
-//   - each local user account in the Administrators group: read, and create
-//     files and folders (what BUILTIN\Users had before), so an administrator's
-//     GUI running without elevation still reads the settings, writes its logs
-//     and talks to the service;
-//   - CREATOR OWNER: full control of what that account creates;
-//   - nobody else: standard users get no access at all.
+//   - nobody else.
+//
+// A program without elevation holds the Administrators SID as deny-only, so
+// only the service and elevated administrators open the folder (upstream's
+// strict model); the app reaches the settings through the service's API.
+// Earlier builds also let each local administrator account read the folder
+// (and create files in it, with CREATOR OWNER rights on them), so an
+// administrator's app read the PBS secrets and the API token without a
+// prompt; setting the DACL whole removes those entries on the next start.
 //
 // The folder's DACL is protected (no longer inherited from ProgramData) and
 // the new entries flow down to every file and subfolder that inherits. Files
-// owned by an account outside that list (for example planted by a standard
-// user before this ran) get Administrators as owner and lose any explicit
-// entries. Key files keep their own explicit, protected ACL.
+// owned by an account other than SYSTEM or Administrators (planted by a
+// standard user, or created by an administrator's app under the old rules)
+// get Administrators as owner and lose any explicit entries. Key files and
+// the API token keep their own explicit, protected ACL.
 //
-// Called by the service when it starts and by the GUI when it runs elevated.
+// Called by the service when it starts.
 func hardenConfigDir(dir string) error {
 	start := time.Now()
 	system, err := windows.CreateWellKnownSid(windows.WinLocalSystemSid)
@@ -45,28 +49,11 @@ func hardenConfigDir(dir string) error {
 	if err != nil {
 		return err
 	}
-	creatorOwner, err := windows.CreateWellKnownSid(windows.WinCreatorOwnerSid)
-	if err != nil {
-		return err
-	}
-	adminUsers, err := localAdminUserSIDs()
-	if err != nil {
-		// Fail safe: without the list only SYSTEM and Administrators get in,
-		// so a non-elevated GUI falls back to asking for elevation.
-		writeDebugLog(fmt.Sprintf("[ConfigACL] listing local administrators failed: %v", err))
-	}
 
-	entries := []windows.EXPLICIT_ACCESS{
+	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{
 		aclEntry(system, fileAllAccess, windows.SUB_CONTAINERS_AND_OBJECTS_INHERIT),
 		aclEntry(admins, fileAllAccess, windows.SUB_CONTAINERS_AND_OBJECTS_INHERIT),
-		aclEntry(creatorOwner, fileAllAccess, windows.SUB_CONTAINERS_AND_OBJECTS_INHERIT|windows.INHERIT_ONLY),
-	}
-	for _, u := range adminUsers {
-		entries = append(entries,
-			aclEntry(u, fileReadExecute, windows.SUB_CONTAINERS_AND_OBJECTS_INHERIT),
-			aclEntry(u, fileCreateChildren, windows.SUB_CONTAINERS_ONLY_INHERIT))
-	}
-	acl, err := windows.ACLFromEntries(entries, nil)
+	}, nil)
 	if err != nil {
 		return fmt.Errorf("building ACL: %w", err)
 	}
@@ -78,26 +65,25 @@ func hardenConfigDir(dir string) error {
 		return fmt.Errorf("setting permissions on %s: %w", dir, err)
 	}
 
-	trusted := append([]*windows.SID{system, admins}, adminUsers...)
-	fixed := normaliseOwners(dir, trusted, admins)
+	fixed := normaliseOwners(dir, []*windows.SID{system, admins}, admins)
 	fixed += inheritUpstreamStateFiles(dir)
-	writeDebugLog(fmt.Sprintf("[ConfigACL] %s: SYSTEM + Administrators + %d administrator account(s); %d foreign-owned or locked item(s) reset; %v",
-		dir, len(adminUsers), fixed, time.Since(start).Round(time.Millisecond)))
+	writeDebugLog(fmt.Sprintf("[ConfigACL] %s: SYSTEM + Administrators; %d foreign-owned or locked item(s) reset; %v",
+		dir, fixed, time.Since(start).Round(time.Millisecond)))
 	return nil
 }
 
-// upstreamStateFiles are the files the project's 1.2.0-rc service locked
-// down one by one (hardenWindowsACLs: SYSTEM only, api-token also
-// Administrators read, inheritance removed).
-var upstreamStateFiles = []string{"api-token", "config.json", "scheduled_jobs.json", "job_history.json"}
+// upstreamStateFiles are the settings files the project's 1.2.0-rc service
+// locked down one by one (hardenWindowsACLs: SYSTEM only, inheritance
+// removed). Its api-token is left out: the service gives it its own
+// protected ACL (secureTokenFile).
+var upstreamStateFiles = []string{"config.json", "scheduled_jobs.json", "job_history.json"}
 
 // inheritUpstreamStateFiles puts those files back to inheriting the folder's
-// permissions after an upgrade from 1.2.0-rc. Locked, the service still read
-// them, but this app (even elevated) could not, so the settings showed as
-// locked and the Backup Sets could not be changed. Only a protected DACL on
-// one of those four names is reset: this app protects key files on purpose,
-// never these. The service runs as SYSTEM, which those DACLs let in. Returns
-// how many were reset.
+// permissions after an upgrade from 1.2.0-rc, so an elevated administrator
+// can open them as well as the service. Only a protected DACL on one of those
+// names is reset: this app protects key files on purpose, never these. The
+// service runs as SYSTEM, which those DACLs let in. Returns how many were
+// reset.
 func inheritUpstreamStateFiles(dir string) int {
 	emptyBuf := [8]byte{2, 0, 8, 0, 0, 0, 0, 0} // ACL_REVISION, size 8, 0 ACEs
 	empty := (*windows.ACL)(unsafe.Pointer(&emptyBuf[0]))
@@ -127,9 +113,6 @@ func inheritUpstreamStateFiles(dir string) int {
 const (
 	fileAllAccess   = windows.STANDARD_RIGHTS_REQUIRED | windows.SYNCHRONIZE | 0x1FF // FILE_ALL_ACCESS
 	fileReadExecute = 0x001200A9                                                     // FILE_GENERIC_READ | FILE_GENERIC_EXECUTE
-	// FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES,
-	// the "WD,AD,WEA,WA" ProgramData gives BUILTIN\Users on folders.
-	fileCreateChildren = 0x0002 | 0x0004 | 0x0010 | 0x0100
 )
 
 func aclEntry(sid *windows.SID, mask windows.ACCESS_MASK, inherit uint32) windows.EXPLICIT_ACCESS {
@@ -217,52 +200,4 @@ func resetForeignOwner(path string, trusted []*windows.SID, newOwner *windows.SI
 	}
 	writeDebugLog(fmt.Sprintf("[ConfigACL] reset owner of %s (was %s)", path, owner.String()))
 	return 1
-}
-
-var (
-	procNetLocalGroupGetMembers = windows.NewLazySystemDLL("netapi32.dll").NewProc("NetLocalGroupGetMembers")
-)
-
-// localAdminUserSIDs lists the user accounts that are direct members of the
-// local Administrators group. Groups are left out: under UAC a non-elevated
-// token carries admin groups as deny-only, so a grant to a group would not
-// reach a non-elevated GUI anyway.
-func localAdminUserSIDs() ([]*windows.SID, error) {
-	admins, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
-	if err != nil {
-		return nil, err
-	}
-	// The group's name is localised ("Administratoren", ...), so look it up.
-	name, _, _, err := admins.LookupAccount("")
-	if err != nil {
-		return nil, fmt.Errorf("looking up the Administrators group: %w", err)
-	}
-	var buf *byte
-	var read, total uint32
-	r, _, _ := procNetLocalGroupGetMembers.Call(0,
-		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(name))),
-		0, uintptr(unsafe.Pointer(&buf)), 0xFFFFFFFF,
-		uintptr(unsafe.Pointer(&read)), uintptr(unsafe.Pointer(&total)), 0)
-	if r != 0 {
-		return nil, fmt.Errorf("NetLocalGroupGetMembers: %w", windows.Errno(r))
-	}
-	defer windows.NetApiBufferFree(buf)
-
-	// LOCALGROUP_MEMBERS_INFO_0 is a single PSID.
-	members := unsafe.Slice((**windows.SID)(unsafe.Pointer(buf)), read)
-	var users []*windows.SID
-	for _, m := range members {
-		if m == nil || !m.IsValid() {
-			continue
-		}
-		if _, _, use, err := m.LookupAccount(""); err != nil || use != windows.SidTypeUser {
-			continue
-		}
-		c, err := m.Copy()
-		if err != nil {
-			continue
-		}
-		users = append(users, c)
-	}
-	return users, nil
 }

@@ -114,12 +114,18 @@ func (f *fakeHandler) RunPauseState(jobID string) (bool, int64) {
 // a Client that talks to it with the token.
 func newTestService(t *testing.T, fake *fakeHandler) (*Server, *Client) {
 	t.Helper()
+	return newTestServiceWith(t, fake)
+}
+
+// newTestServiceWith is newTestService for any service App.
+func newTestServiceWith(t *testing.T, handler BackupHandler) (*Server, *Client) {
+	t.Helper()
 	tokenPath := filepath.Join(t.TempDir(), "api-token")
-	tok, err := NewToken(tokenPath)
+	tok, err := EnsureToken(tokenPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := NewServer("127.0.0.1:0", fake, tok, "test")
+	s := NewServer("127.0.0.1:0", handler, tok, "test")
 	hs := httptest.NewServer(s.authMiddleware(s.mux))
 	t.Cleanup(hs.Close)
 	c := NewClient(tokenPath)

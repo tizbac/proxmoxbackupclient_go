@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 )
 
 // The real values, as the test run found them, for useRealSettings.
@@ -13,6 +15,12 @@ var (
 	realProgramData = os.Getenv("ProgramData")
 	realUserProfile = os.Getenv("USERPROFILE")
 )
+
+// Tests that make a token file take it as written; TestSecureTokenFile
+// checks the service's ACL itself.
+func init() {
+	api.SecureTokenFile = func(string) error { return nil }
+}
 
 // isolateSettings: getConfigDir reads %ProgramData% first, and the home
 // folder when a test clears ProgramData and SystemDrive.

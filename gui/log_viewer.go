@@ -37,10 +37,11 @@ type LogFileInfo struct {
 var runLogName = regexp.MustCompile(`^backup-(\d{8})-(\d{6})-(.+?)\.log(\.\d{8}-\d{6})?(\.gz)?$`)
 
 // logFolders lists the folders logs are in: this process's, and on Linux the
-// service's (/var/log/proxmoxbackupclient) when the app can read it.
+// service's (/var/log/proxmoxbackupclient) when this process can read it
+// (root; an app works through the service otherwise).
 func logFolders() []string {
 	dirs := []string{logDir}
-	if runtime.GOOS == "linux" && logDir != "/var/log/proxmoxbackupclient" {
+	if runtime.GOOS == "linux" && logDir != "/var/log/proxmoxbackupclient" && os.Geteuid() == 0 {
 		if fi, err := os.Stat("/var/log/proxmoxbackupclient"); err == nil && fi.IsDir() {
 			dirs = append(dirs, "/var/log/proxmoxbackupclient")
 		}
@@ -67,8 +68,34 @@ func classifyLog(name string) (kind, backupID string, started int64, ok bool) {
 	return "", "", 0, false
 }
 
-// ListLogFiles lists the log files, newest first.
+// serviceLogFolder is added to the folder number of a log the service lists,
+// for an app that works through the service: its logs are in the service's
+// folder, which only the service may read, so the app asks for them.
+const serviceLogFolder = 100
+
+// ListLogFiles lists the log files, newest first: this app's, and with the
+// service those it lists (the backups it ran).
 func (a *App) ListLogFiles() ([]LogFileInfo, error) {
+	out, err := a.listLocalLogFiles()
+	if err != nil || !a.delegated() {
+		return out, err
+	}
+	var svc []LogFileInfo
+	if err := a.apiClient.ListLogs(&svc); err != nil {
+		writeDebugLog(fmt.Sprintf("log viewer: the service's logs: %v", err))
+		return out, nil
+	}
+	for _, f := range svc {
+		f.Folder += serviceLogFolder
+		f.Service = true
+		out = append(out, f)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Modified > out[j].Modified })
+	return out, nil
+}
+
+// listLocalLogFiles lists the log files in this process's folders.
+func (a *App) listLocalLogFiles() ([]LogFileInfo, error) {
 	out := []LogFileInfo{}
 	for i, dir := range logFolders() {
 		entries, err := os.ReadDir(dir)
@@ -174,6 +201,12 @@ func logLineTime(line string) string {
 // ReadLog returns the last q.Lines lines of a log that pass its filter, or
 // the ones around q.Around.
 func (a *App) ReadLog(q LogQuery) (LogView, error) {
+	if q.Folder >= serviceLogFolder && a.delegated() {
+		q.Folder -= serviceLogFolder
+		var v LogView
+		err := a.apiClient.ReadLog(q, &v)
+		return v, err
+	}
 	r, err := openLog(q.Folder, q.Name)
 	if err != nil {
 		return LogView{}, err

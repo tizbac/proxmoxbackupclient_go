@@ -143,6 +143,17 @@ func showUnit() (systemdUnit, error) {
 	return parseSystemctlShow(out), nil
 }
 
+// serviceInstalled reports whether the background service's unit is loaded
+// and enabled, running or not (resolveMode: an app started before the
+// service answers must not run the computer's Backup Sets itself).
+func serviceInstalled() bool {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return false
+	}
+	u, err := showUnit()
+	return err == nil && u.LoadState == "loaded" && u.UnitFileState == "enabled"
+}
+
 // GetServiceStatus reports whether the background service is installed and
 // running, and whether this app is handing its work to it.
 func (a *App) GetServiceStatus() ServiceStatus {

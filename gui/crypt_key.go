@@ -92,7 +92,27 @@ func inspectKeyFile(path string) EncryptionKeyInfo {
 // A missing file is reported, not raised as an error: the frontend calls this
 // on every keystroke while the user is typing a path.
 func (a *App) InspectEncryptionKeyFile(path string) EncryptionKeyInfo {
-	return inspectKeyFile(strings.TrimSpace(path))
+	path = strings.TrimSpace(path)
+	if a.keyInService(path) {
+		var info EncryptionKeyInfo
+		if err := a.apiClient.Call("InspectEncryptionKeyFile", &info, path); err != nil {
+			return EncryptionKeyInfo{Path: path, Reason: err.Error()}
+		}
+		return info
+	}
+	return inspectKeyFile(path)
+}
+
+// keyInService reports whether path is in the service's settings folder
+// while this app works through the service: a key there (the service's keys
+// folder) is the service's to read and write, so the app asks it. A key the
+// user keeps anywhere else is read by the app itself, as before.
+func (a *App) keyInService(path string) bool {
+	if !a.delegated() || path == "" {
+		return false
+	}
+	dir, err := serviceStateDir()
+	return err == nil && pathWithin(path, dir)
 }
 
 // RestrictEncryptionKeyFileAccess limits who can read the key file at path to
@@ -100,6 +120,11 @@ func (a *App) InspectEncryptionKeyFile(path string) EncryptionKeyInfo {
 // SYSTEM), or to its owner on Linux, and returns the key's info again.
 func (a *App) RestrictEncryptionKeyFileAccess(path string) (EncryptionKeyInfo, error) {
 	path = strings.TrimSpace(path)
+	if a.keyInService(path) {
+		var info EncryptionKeyInfo
+		err := a.apiClient.Call("RestrictEncryptionKeyFileAccess", &info, path)
+		return info, err
+	}
 	if err := security.ValidatePath(path); err != nil {
 		return EncryptionKeyInfo{}, fmt.Errorf("invalid key file path: %w", err)
 	}
@@ -123,6 +148,11 @@ func (a *App) RestrictEncryptionKeyFileAccess(path string) (EncryptionKeyInfo, e
 // created when missing, and must already exist as a directory otherwise.
 func (a *App) GenerateEncryptionKeyFile(path string) (EncryptionKeyInfo, error) {
 	path = strings.TrimSpace(path)
+	if a.keyInService(path) {
+		var info EncryptionKeyInfo
+		err := a.apiClient.Call("GenerateEncryptionKeyFile", &info, path)
+		return info, err
+	}
 	if path == "" {
 		return EncryptionKeyInfo{}, fmt.Errorf("enter a path for the key file")
 	}
@@ -198,6 +228,13 @@ func DefaultEncryptionKeyPath() (string, error) {
 // field: where a generated key goes on this computer (the frontend's fixed
 // example is a Windows path).
 func (a *App) EncryptionKeyPathExample() string {
+	// With the service, a new key goes into its keys folder: the service
+	// runs the backups, whoever is signed in.
+	if a.delegated() {
+		if dir, err := serviceStateDir(); err == nil {
+			return filepath.Join(dir, "keys", "encryption-key.json")
+		}
+	}
 	p, err := DefaultEncryptionKeyPath()
 	if err != nil {
 		return ""
