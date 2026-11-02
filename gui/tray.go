@@ -70,11 +70,12 @@ func onReady(a *App) func() {
 	return func() {
 		// Set tray icon from embedded PNG data (icon.go)
 		systray.SetIcon(TrayIconData)
-		systray.SetTitle("Proxmox Backup Client")
-		systray.SetTooltip("Proxmox Backup Client - Scheduled backups active")
+		name := trayName()
+		systray.SetTitle(name)
+		systray.SetTooltip(name + " - Scheduled backups active")
 
 		// Add menu items
-		menuShow = systray.AddMenuItem("🖥️ Show window", "Open the Proxmox Backup Client interface")
+		menuShow = systray.AddMenuItem("🖥️ Show window", "Open the "+name+" interface")
 		systray.AddSeparator()
 
 		menuPause = systray.AddMenuItem("⏸️ Pause backup", "Pause the running backup; it carries on from the same place on Resume")
@@ -84,7 +85,7 @@ func onReady(a *App) func() {
 		menuStatus.Disable() // For display only
 
 		systray.AddSeparator()
-		menuQuit = systray.AddMenuItem("❌ Quit", "Close Proxmox Backup Client")
+		menuQuit = systray.AddMenuItem("❌ Quit", "Close "+name)
 
 		// Handle menu item clicks
 		go func() {
@@ -264,7 +265,13 @@ func showTrayTooltipLocked() {
 			msg = "Backup paused"
 		}
 	}
-	systray.SetTooltip(fmt.Sprintf("Proxmox Backup Client - %s", msg))
+	systray.SetTooltip(fmt.Sprintf("%s - %s", trayName(), msg))
+}
+
+// trayName is the brand's title, so a branded build's tray says its own
+// name (the brand comes from the executable's name, see brand.go).
+func trayName() string {
+	return BrandFromExecutable().Title
 }
 
 var (
