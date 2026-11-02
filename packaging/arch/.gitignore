@@ -3,3 +3,5 @@ src/
 pkg/
 *.pkg.tar
 *.log
+# the staged source (packaging/stage-source.sh)
+proxmoxbackupclient-*.tar.gz

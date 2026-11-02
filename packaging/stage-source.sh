@@ -1,21 +1,23 @@
 #!/bin/sh
-# stage-source.sh - build pbsgo-<version>.tar.gz from the CURRENT working tree.
+# stage-source.sh - build proxmoxbackupclient-<version>.tar.gz from the
+# CURRENT working tree.
 #
-# The packaging targets (packaging/arch/PKGBUILD, packaging/fedora) consume this
-# tarball instead of downloading a commit from GitHub, so a package always
-# contains exactly the source it was built from - uncommitted changes included.
+# The Arch package (packaging/arch/PKGBUILD) is built from this tarball
+# instead of a commit downloaded from GitHub, so a package always contains
+# exactly the source it was built from - uncommitted changes included.
 # Packaging from a tree that has no .git directory at all works too.
 #
 # Usage: packaging/stage-source.sh [output]
 #        output: a tarball path or an existing directory
-#        (default: <repo>/dist/pbsgo-<version>.tar.gz)
+#        (default: <repo>/dist/proxmoxbackupclient-<version>.tar.gz)
 #
-# The tarball always contains a single top-level directory pbsgo-<version>,
-# which is what %setup (RPM) and $_srcroot (PKGBUILD) expect.
+# The tarball always contains a single top-level directory
+# proxmoxbackupclient-<version>, which is what $_srcroot (PKGBUILD) expects.
 set -eu
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PKG=proxmoxbackupclient
 
 # Read version from git tag (exact match) or git short SHA
 # Falls back to wails.json if not in a git repo
@@ -30,13 +32,13 @@ fi
     exit 1
 }
 
-# Default: <repo>/dist/pbsgo-<version>.tar.gz. An existing directory (or a
+# Default: <repo>/dist/$PKG-<version>.tar.gz. An existing directory (or a
 # path ending in /) means "stage into it".
-OUT=${1:-$ROOT/dist/pbsgo-$VERSION.tar.gz}
+OUT=${1:-$ROOT/dist/$PKG-$VERSION.tar.gz}
 case "$OUT" in
-    */) OUT="${OUT}pbsgo-$VERSION.tar.gz" ;;
+    */) OUT="${OUT}$PKG-$VERSION.tar.gz" ;;
 esac
-[ -d "$OUT" ] && OUT="$OUT/pbsgo-$VERSION.tar.gz"
+[ -d "$OUT" ] && OUT="$OUT/$PKG-$VERSION.tar.gz"
 case "$OUT" in
     /*) : ;;
     *)  OUT="$PWD/$OUT" ;;
@@ -45,7 +47,7 @@ mkdir -p "$(dirname "$OUT")"
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT INT TERM
-STAGE="$WORK/pbsgo-$VERSION"
+STAGE="$WORK/$PKG-$VERSION"
 
 echo "==> staging source tree ($VERSION)"
 mkdir -p "$STAGE"
@@ -55,9 +57,9 @@ mkdir -p "$STAGE"
 # build outputs and packaging leftovers are dropped. Patterns starting with
 # './' are anchored at the repository root, the others match at any depth.
 #
-# gui/build is BOTH: gui/build/windows/icon.ico is tracked and embedded
-# (gui/icon.go: //go:embed build/windows/icon.ico), while gui/build/bin is the
-# wails output - drop the latter, never the former.
+# gui/build is BOTH: gui/build/windows/icon.ico and the brand icons in
+# gui/build/windows/brands are tracked and embedded (gui/icon.go), while
+# gui/build/bin is the wails output - drop the latter, never the former.
 tar -C "$ROOT" \
     --exclude='./.git' \
     --exclude='./.go' \
@@ -81,15 +83,15 @@ tar -C "$ROOT" \
 
 # Never ship a tarball inside the tarball: a previous staging output (dist/,
 # packaging/arch/, or wherever the caller pointed us) must not be re-packed.
-find "$STAGE" -type f -name 'pbsgo-*.tar.gz' -delete
+find "$STAGE" -type f -name "$PKG-*.tar.gz" -delete
 
-tar -C "$WORK" -czf "$OUT" "pbsgo-$VERSION"
+tar -C "$WORK" -czf "$OUT" "$PKG-$VERSION"
 
 # Sanity check: no tracked file may be swallowed by an exclusion pattern
 # (gui/icon.go embeds gui/build/windows/icon.ico, for instance). Skipped when
 # packaging from a tree without .git.
 if [ -e "$ROOT/.git" ] && command -v git >/dev/null 2>&1; then
-    tar -tzf "$OUT" | sed "s|^pbsgo-$VERSION/||" | grep -v '/$' | LC_ALL=C sort \
+    tar -tzf "$OUT" | sed "s|^$PKG-$VERSION/||" | grep -v '/$' | LC_ALL=C sort \
         > "$WORK/in-tarball"
     git -C "$ROOT" ls-files | LC_ALL=C sort > "$WORK/tracked"
     missing=$(LC_ALL=C comm -23 "$WORK/tracked" "$WORK/in-tarball")

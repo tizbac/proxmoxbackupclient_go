@@ -51,10 +51,10 @@ help:
 	@echo "  cli          - Build all CLI tools"
 	@echo "  gui          - Build GUI application"
 	@echo "  service      - Build Windows Service (NimbusBackupSVC.exe)"
-	@echo "  deb          - Build the Debian package (pbsgo, Linux)"
-	@echo "  pkgarch      - Build the Arch package (pbsgo, on Arch)"
+	@echo "  deb          - Build the Debian package (proxmoxbackupclient, Linux)"
+	@echo "  pkgarch      - Build the Arch package (proxmoxbackupclient, on Arch)"
 	@echo "  pkgfedora    - Build the Fedora RPM (docker fedora:44)"
-	@echo "  stage-source - Stage the source tarball used by pkgarch/pkgfedora"
+	@echo "  stage-source - Stage the source tarball used by pkgarch"
 	@echo "  msi          - Build the Windows MSI installers on Linux (docker + wine)"
 	@echo "  clonezilla   - Download + patch the Clonezilla live ISO (not in 'all')"
 	@echo "  test         - Run all tests"
@@ -138,7 +138,7 @@ deb:
 	@sh packaging/debian/build-deb.sh $(BUILD_DIR)
 
 # Arch Linux package (run on Arch, see packaging/arch/PKGBUILD).
-# Stages pbsgo-<version>.tar.gz from the CURRENT working tree first, so the
+# Stages proxmoxbackupclient-<version>.tar.gz from the CURRENT working tree first, so the
 # package contains the source it was built from (not a GitHub commit).
 pkgarch:
 	@VERSION=$$(bash scripts/get-version.sh) && \

@@ -1,0 +1,28 @@
+# proxmoxbackupclient.install: the service steps of the .deb and .rpm
+# (packaging/debian/README.md). A fresh install enables and starts the
+# service, so the Backup Sets run on schedule with nobody logged in; an
+# upgrade keeps the user's choice (Run as Service) and restarts a running
+# service; removal stops and disables it. /var/lib/proxmoxbackupclient (the
+# Backup Sets and keys) is kept.
+
+post_install() {
+    [ -d /run/systemd/system ] || return 0
+    systemctl daemon-reload || true
+    systemctl enable --now proxmoxbackupclient.service || true
+}
+
+post_upgrade() {
+    [ -d /run/systemd/system ] || return 0
+    systemctl daemon-reload || true
+    systemctl try-restart proxmoxbackupclient.service || true
+}
+
+pre_remove() {
+    [ -d /run/systemd/system ] || return 0
+    systemctl disable --now proxmoxbackupclient.service >/dev/null 2>&1 || true
+}
+
+post_remove() {
+    [ -d /run/systemd/system ] || return 0
+    systemctl daemon-reload || true
+}

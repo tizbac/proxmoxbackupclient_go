@@ -1,25 +1,32 @@
 # Maintainer: Proxmox Backup Client contributors
 #
-# pbsgo — Proxmox Backup Server client:
-#   /usr/bin/pbsgo            directory/stream backup CLI
-#   /usr/bin/pbsgo-machine    whole-machine (raw disk) backup CLI
-#   /usr/bin/pbsgo-nbd        fidx-to-NBD restore tool (run as root)
-#   /usr/lib/pbsgo/pbsgo-gui  Wails GUI binary
-#   /usr/lib/pbsgo/pbsgo-service  systemd service binary
-#   /usr/bin/pbsgo-gui        GUI launcher (probes service + token fetch)
-#   /usr/bin/pbsgo-gui-root   GUI launcher (elevated, for machine backup)
-#   /usr/lib/systemd/system/pbsgo.service  systemd unit (NOT enabled by default)
+# proxmoxbackupclient, the same layout as the .deb and .rpm
+# (packaging/debian/README.md):
+#   /usr/bin/proxmoxbackup-directory   folder backup CLI
+#   /usr/bin/proxmoxbackup-machine     whole-disk backup CLI
+#   /usr/bin/proxmoxbackup-nbd         attach a disk image as /dev/nbdN (root)
+#   /usr/bin/proxmoxbackupclient       the app, as the current user
+#   /usr/bin/proxmoxbackupclient-root  the app as root (machine backups)
+#   /usr/lib/proxmoxbackupclient/ProxmoxBackupClient
+#   /usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC  the background service
+#   /usr/lib/systemd/system/proxmoxbackupclient.service  (enabled on a fresh
+#       install, see proxmoxbackupclient.install)
+#   /usr/share/applications/proxmoxbackupclient{,-root}.desktop
+#   /usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png
+#
+# It replaces the project's earlier pbsgo package; the service adopts
+# /var/lib/pbsgo when it finds no settings of its own (gui/config_dir_unix.go).
 #
 # Build host (Arch) requirements: base-devel, go, gtk3, webkit2gtk-4.1
 # (Arch ships the cgo headers inside the same packages, no -devel split).
 # The GUI frontend is prebuilt and committed under gui/frontend/dist, so
 # Node.js is not required.
 #
-# Source: the package is built from pbsgo-<pkgver>.tar.gz in THIS directory,
-# produced by `make pkgarch` (packaging/stage-source.sh) from the CURRENT
-# working tree - uncommitted changes included - instead of a commit fetched
-# from GitHub. pkgver must equal the gui/wails.json productVersion of that
-# tree (package() enforces the match).
+# Source: the package is built from proxmoxbackupclient-<pkgver>.tar.gz in
+# THIS directory, produced by `make pkgarch` (packaging/stage-source.sh) from
+# the CURRENT working tree - uncommitted changes included - instead of a
+# commit fetched from GitHub. pkgver must equal the gui/wails.json
+# productVersion of that tree (package() enforces the match).
 #
 # Build procedure:
 #   1. make pkgarch        # stages the tarball, then runs makepkg
@@ -29,32 +36,38 @@
 #   The tarball checksum is SKIP on purpose: it is regenerated from the local
 #   tree on every build, so there is no fixed sum to pin.
 
-pkgname=pbsgo
-pkgver=0.2.119
+pkgname=proxmoxbackupclient
+pkgver=2.0.0
 pkgrel=1
-pkgdesc='Backup client for Proxmox Backup Server (CLI + GUI)'
+pkgdesc='Backup client for Proxmox Backup Server (app, service and CLIs)'
 arch=(x86_64 aarch64)
 url='https://github.com/tizbac/proxmoxbackupclient_go'
 license=(GPL-3.0-or-later)
 makedepends=(go gtk3 webkit2gtk-4.1)
 depends=(glibc gtk3 webkit2gtk-4.1 gdk-pixbuf2 glib2 libsoup3 systemd)
+optdepends=('polkit: pkexec for the administrator app'
+            'sudo: elevation when pkexec is unavailable')
+conflicts=(pbsgo)
+replaces=(pbsgo)
+install=proxmoxbackupclient.install
 options=(!strip)
 
 # Staged from the working tree by packaging/stage-source.sh (see header): the
 # tarball must sit next to this PKGBUILD before makepkg starts, which is what
 # `make pkgarch` does. SKIP because the sum changes with every staging.
-source=("pbsgo-${pkgver}.tar.gz"
-        "pbsgo.service")
-sha256sums=('SKIP'
-            'acf4e8ab59e4a8a1483df5b7ce3bb4745f8073c418465996dc22cada56be7357')
-optdepends=('polkit: pkexec elevation for the service token fetch and machine backup'
-            'sudo: fallback elevation when pkexec is unavailable')
+source=("${pkgname}-${pkgver}.tar.gz")
+sha256sums=('SKIP')
 
 package() {
-    # NOTE: makepkg runs package() with cwd=$srcdir, and $srcdir is where the
-    # source array entries are unpacked: the tarball extracts into a
-    # subdirectory, pbsgo.service sits at its root. Never shadow $srcdir.
-    local _srcroot="pbsgo-${pkgver}"
+    # makepkg runs package() with cwd=$srcdir, where the tarball extracts into
+    # a subdirectory. Never shadow $srcdir.
+    local _srcroot="${pkgname}-${pkgver}"
+    local _lin="$_srcroot/packaging/linux"
+    if [[ ! -d "$_srcroot" ]]; then
+        echo "error: $_srcroot missing in $srcdir - stage the source first:" \
+             "sh packaging/stage-source.sh packaging/arch" >&2
+        return 1
+    fi
     local v
     v=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
         "$_srcroot/gui/wails.json")
@@ -63,42 +76,31 @@ package() {
              "update pkgver together with the tree being packaged" >&2
         return 1
     fi
-    if [[ ! -d "$_srcroot" ]]; then
-        echo "error: $_srcroot missing in $srcdir - stage the source first:" \
-             "sh packaging/stage-source.sh packaging/arch" >&2
-        return 1
-    fi
 
     # go build -o does not create parent directories
-    install -d "${pkgdir}/usr/bin" "${pkgdir}/usr/lib/pbsgo"
+    install -d "${pkgdir}/usr/bin" "${pkgdir}/usr/lib/${pkgname}"
 
     # --- CLI tools ------------------------------------------------------
-    # directorybackup builds module-mode (GOWORK=off) like the Makefile and
-    # packaging/debian/build-deb.sh do: its per-module go.sum is only complete
-    # after a `go mod tidy` pass. machinebackup/nbd/gui build in workspace
-    # mode (go.work/go.work.sum from the tarball), matching build-deb.sh.
+    # directorybackup builds module-mode (GOWORK=off): its per-module go.sum
+    # is only complete after a `go mod tidy` pass. machinebackup and nbd
+    # build in workspace mode (go.work from the tarball), as build-deb.sh.
     (
         cd "$_srcroot/directorybackup"
         GOWORK=off go mod tidy >/dev/null && \
-        GOWORK=off go build -trimpath \
+        GOWORK=off CGO_ENABLED=0 go build -trimpath \
             -ldflags "-s -w -X main.version=${pkgver}" \
-            -o "${pkgdir}/usr/bin/pbsgo" .
+            -o "${pkgdir}/usr/bin/proxmoxbackup-directory" .
     )
     (
-        cd "$_srcroot/machinebackup"
-        go build -trimpath \
-            -ldflags "-s -w -X main.version=${pkgver}" \
-            -o "${pkgdir}/usr/bin/pbsgo-machine" .
-    )
-    (
-        cd "$_srcroot/nbd"
-        go build -trimpath \
-            -ldflags "-s -w -X main.version=${pkgver}" \
-            -o "${pkgdir}/usr/bin/pbsgo-nbd" .
+        cd "$_srcroot"
+        CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${pkgver}" \
+            -o "${pkgdir}/usr/bin/proxmoxbackup-machine" ./machinebackup
+        CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${pkgver}" \
+            -o "${pkgdir}/usr/bin/proxmoxbackup-nbd" ./nbd
     )
 
-    # --- GUI (wails desktop frontend needs the production build tag;
-    #     webkit2_41 selects webkit2gtk-4.1, wails defaults to 4.0) ----
+    # --- the app (the desktop frontend needs the production build tag;
+    #     webkit2_41 selects webkit2gtk-4.1, wails defaults to 4.0) ---------
     local tags=production
     if pkg-config --exists webkit2gtk-4.1; then
         tags="${tags},webkit2_41"
@@ -107,144 +109,30 @@ package() {
         cd "$_srcroot/gui"
         go build -trimpath -tags "${tags}" \
             -ldflags "-s -w -X main.appVersion=${pkgver}" \
-            -o "${pkgdir}/usr/lib/pbsgo/pbsgo-gui" .
+            -o "${pkgdir}/usr/lib/${pkgname}/ProxmoxBackupClient" .
     )
 
-    # --- Service binary (systemd) ---
+    # --- the background service ---------------------------------------
     (
         cd "$_srcroot/gui"
-        GOWORK=off go build -trimpath -tags service \
+        CGO_ENABLED=0 go build -trimpath -tags service \
             -ldflags "-s -w -X main.appVersion=${pkgver}" \
-            -o "${pkgdir}/usr/lib/pbsgo/pbsgo-service" .
+            -o "${pkgdir}/usr/lib/${pkgname}/ProxmoxBackupClientSVC" .
     )
 
-    install -d "${pkgdir}/usr/share/applications" \
-              "${pkgdir}/usr/share/icons/hicolor/256x256/apps" \
-              "${pkgdir}/usr/lib/systemd/system"
-    install -m 0644 "$_srcroot/gui/Icon.png" \
-        "${pkgdir}/usr/share/icons/hicolor/256x256/apps/pbsgo.png"
-    install -m 0644 /dev/stdin \
-        "${pkgdir}/usr/share/applications/pbsgo-gui.desktop" <<'EOF'
-[Desktop Entry]
-Name=Proxmox Backup Client
-Comment=Backup client for Proxmox Backup Server
-Exec=pbsgo-gui
-Icon=pbsgo
-Terminal=false
-Type=Application
-Categories=System;Utility;
-EOF
-
-    # systemd unit (NOT enabled by default)
-    install -m 0644 "$srcdir/pbsgo.service" \
-        "${pkgdir}/usr/lib/systemd/system/pbsgo.service"
-
-    # --- launchers -----------------------------------------------------
-    install -m 0755 /dev/stdin "${pkgdir}/usr/bin/pbsgo-gui" <<'EOF'
-#!/bin/sh
-# pbsgo-gui: launch the Proxmox Backup Client GUI as the current user.
-# Probes the local service (127.0.0.1:18765). If the service is running but the
-# GUI cannot read its token file (/var/lib/pbsgo/api-token, root-only), this
-# launcher performs a ONE-TIME pkexec elevation to fetch the token, exports it
-# as PBSGO_API_TOKEN, and execs the GUI. On any failure it exports
-# PBSGO_TOKEN_FETCH_FAILED=1 so the GUI skips its own 401->elevated prompt.
-#
-# Note: machine (whole-disk) backup needs root privileges. To run the
-# GUI elevated, use pbsgo-gui-root instead.
-
-set -eu
-
-GUI_BIN=/usr/lib/pbsgo/pbsgo-gui
-TOKEN_FILE=/var/lib/pbsgo/api-token
-SERVICE_PORT=18765
-
-# Probe service reachability via /dev/tcp (bash builtin, no netcat needed).
-# Returns 0 if reachable, 1 if connection refused, 2 if other error.
-probe_service() {
-    # Use a short timeout with bash's /dev/tcp redirection
-    if timeout 1 bash -c "exec 3<>/dev/tcp/127.0.0.1/$SERVICE_PORT" 2>/dev/null; then
-        exec 3<&-
-        exec 3>&-
-        return 0
-    fi
-    return 1
-}
-
-# Attempt one elevated token fetch via pkexec (fallback sudo).
-# Writes the token to a temp file, then exports PBSGO_API_TOKEN.
-elevated_fetch() {
-    local handoff
-    handoff=$(mktemp /tmp/pbsgo-token-XXXXXX) || return 1
-    chmod 600 "$handoff"
-
-    # Launch the GUI binary elevated with the token-fetch child flag
-    if command -v pkexec >/dev/null 2>&1; then
-        pkexec "$GUI_BIN" --elevated-token-fetch "$handoff" >/dev/null 2>&1 || true
-    elif command -v sudo >/dev/null 2>&1; then
-        sudo --non-interactive "$GUI_BIN" --elevated-token-fetch "$handoff" >/dev/null 2>&1 || true
-    else {
-        echo "pbsgo-gui: neither pkexec nor sudo available for token fetch" >&2
-        rm -f "$handoff"
-        return 1
-    }; fi
-
-    # Wait briefly for the child to write the handoff file (max ~30s)
-    local deadline
-    deadline=$(($(date +%s) + 30))
-    while [ $(date +%s) -lt $deadline ]; do
-        if [ -s "$handoff" ]; then
-            # Read token into env var and clean up
-            PBSGO_API_TOKEN=$(cat "$handoff" 2>/dev/null | tr -d '[:space:]')
-            export PBSGO_API_TOKEN
-            rm -f "$handoff"
-            [ -n "$PBSGO_API_TOKEN" ] && return 0
-            return 1
-        fi
-        sleep 0.5
-    done
-    rm -f "$handoff"
-    return 1
-}
-
-# Main launcher logic
-if probe_service; then
-    # Service is reachable. The token file is root-only (0600): read it
-    # directly only when we ARE root. Any other user goes through the elevated
-    # fetch below, so connecting to the privileged service always asks for
-    # elevation instead of quietly using a group-readable secret.
-    if [ "$(id -u)" = "0" ] && [ -r "$TOKEN_FILE" ]; then
-        PBSGO_API_TOKEN=$(cat "$TOKEN_FILE" 2>/dev/null | tr -d '[:space:]')
-        export PBSGO_API_TOKEN
-    else
-        # Token not readable: attempt ONE elevated fetch
-        if ! elevated_fetch; then
-            # Failed: tell the GUI not to prompt again
-            export PBSGO_TOKEN_FETCH_FAILED=1
-        fi
-    fi
-fi
-
-# If the service is NOT reachable, we let the GUI start in standalone mode
-# (it will detect this itself via its own probe). No token env is exported.
-
-exec "$GUI_BIN" "$@"
-EOF
-    install -m 0755 /dev/stdin "${pkgdir}/usr/bin/pbsgo-gui-root" <<'EOF'
-#!/bin/sh
-# pbsgo-gui-root: launch the Proxmox Backup Client GUI with root
-# privileges, which machine (whole-disk) backup requires.
-if [ "$(id -u)" = "0" ]; then
-    exec /usr/lib/pbsgo/pbsgo-gui "$@"
-fi
-
-if command -v sudo >/dev/null 2>&1; then
-    if [ -n "${DISPLAY:-}" ]; then
-        # Keep the X11 session reachable from the elevated process.
-        exec sudo env "DISPLAY=$DISPLAY" "XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}" /usr/lib/pbsgo/pbsgo-gui "$@"
-    fi
-    exec sudo /usr/lib/pbsgo/pbsgo-gui "$@"
-fi
-
-exec pkexec /usr/lib/pbsgo/pbsgo-gui "$@"
-EOF
+    # --- launchers, menu entries, unit, icon, docs ---------------------
+    install -Dm 0755 "$_lin/proxmoxbackupclient" "${pkgdir}/usr/bin/proxmoxbackupclient"
+    install -Dm 0755 "$_lin/proxmoxbackupclient-root" "${pkgdir}/usr/bin/proxmoxbackupclient-root"
+    install -Dm 0644 "$_lin/proxmoxbackupclient.desktop" \
+        "${pkgdir}/usr/share/applications/proxmoxbackupclient.desktop"
+    install -Dm 0644 "$_lin/proxmoxbackupclient-root.desktop" \
+        "${pkgdir}/usr/share/applications/proxmoxbackupclient-root.desktop"
+    install -Dm 0644 "$_lin/proxmoxbackupclient.service" \
+        "${pkgdir}/usr/lib/systemd/system/proxmoxbackupclient.service"
+    install -Dm 0644 "$_srcroot/gui/Icon.png" \
+        "${pkgdir}/usr/share/icons/hicolor/256x256/apps/${pkgname}.png"
+    install -Dm 0644 "$_srcroot/README.md" "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+    install -Dm 0644 "$_srcroot/CHANGELOG.md" "${pkgdir}/usr/share/doc/${pkgname}/CHANGELOG.md"
+    install -d "${pkgdir}/usr/share/doc/${pkgname}/manual"
+    install -m 0644 "$_srcroot"/docs/manual/*.md "${pkgdir}/usr/share/doc/${pkgname}/manual/"
 }
