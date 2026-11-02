@@ -67,6 +67,40 @@ func TestInheritUpstreamStateFiles(t *testing.T) {
 	}
 }
 
+// After an upgrade from 1.2.0-rc, its config.json disk table reaches the
+// machine sets when they are loaded, and a save of config.json keeps it.
+func TestUpstreamDiskPinsAfterUpgrade(t *testing.T) {
+	t.Setenv("ProgramData", t.TempDir())
+	dir, err := getConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"config.json":         `{"pbs_servers":{},"pinned_disks":{"serial:S4XNX0A123":"\\\\.\\PhysicalDrive0"}}`,
+		"scheduled_jobs.json": `[{"id":"m","name":"Machine","scheduleTime":"02:00","backupType":"machine","driveLetters":["\\\\.\\PhysicalDrive0"],"backupDirs":null,"excludeList":null,"enabled":true}]`,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	a := &App{config: LoadConfig()}
+	jobs, err := a.GetScheduledJobs()
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("GetScheduledJobs = %v, %v", jobs, err)
+	}
+	if len(jobs[0].DiskIDs) != 1 || jobs[0].DiskIDs[0] != "serial:S4XNX0A123" {
+		t.Errorf("DiskIDs = %q, want [serial:S4XNX0A123]", jobs[0].DiskIDs)
+	}
+
+	if err := a.config.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if got := LoadConfig().UpstreamPinnedDisks["serial:S4XNX0A123"]; got != `\\.\PhysicalDrive0` {
+		t.Errorf("pinned_disks after a save: %q", got)
+	}
+}
+
 // Settings of the 1.2.0-rc app run without its service come across from the
 // user's profile once, and never over settings already in ProgramData.
 func TestImportUpstreamUserSettings(t *testing.T) {

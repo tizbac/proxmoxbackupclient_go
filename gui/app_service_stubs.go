@@ -268,6 +268,12 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 			return fmt.Errorf("one or more devices are empty")
 		}
 	}
+	// A Backup Set's disks, found by their identity: from the scheduler's job
+	// copy or the GUI's request (SetRunDiskIDs).
+	backupDevices, err := a.resolveRunDisks(backupDevices, postActionsKey)
+	if err != nil {
+		return err
+	}
 
 	pbsCfg, err := a.resolvePBS(pbsServerID)
 	if err != nil {

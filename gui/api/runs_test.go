@@ -24,6 +24,16 @@ type fakeHandler struct {
 	pausedJobs  map[string]bool
 	stopped     []string // the job each Stop named ("" = all)
 	stopErr     error
+	diskIDs     map[string][]string // run key -> disk identities (SetRunDiskIDs)
+}
+
+func (f *fakeHandler) SetRunDiskIDs(runKey string, diskIDs []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.diskIDs == nil {
+		f.diskIDs = map[string][]string{}
+	}
+	f.diskIDs[runKey] = diskIDs
 }
 
 func (f *fakeHandler) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression, pbsServerID, comment, postActionsKey string) error {
@@ -330,5 +340,37 @@ func TestMachineBackupRoute(t *testing.T) {
 	}
 	if len(fake.runKeys) != 1 || fake.tracked[fake.runKeys[0]] != resp.JobID {
 		t.Fatalf("run key %v not tracked to %s (%v)", fake.runKeys, resp.JobID, fake.tracked)
+	}
+	if len(fake.diskIDs) != 0 {
+		t.Fatalf("disk identities recorded for a request without any: %v", fake.diskIDs)
+	}
+}
+
+// A machine Backup Set run the GUI hands over carries its disks' identities
+// to the run, before the backup starts.
+func TestMachineBackupCarriesDiskIDs(t *testing.T) {
+	fake := &fakeHandler{}
+	_, c := newTestService(t, fake)
+	resp, err := c.StartMachineBackup(&BackupRequest{BackupType: "machine-vm", BackupID: "101",
+		DriveLetters: []string{`\\.\PhysicalDrive0`, `\\.\PhysicalDrive1`}, DiskIDs: []string{"serial:AAA", ""}})
+	if err != nil || resp.JobID == "" {
+		t.Fatalf("StartMachineBackup = %+v, %v", resp, err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		fake.mu.Lock()
+		keys := append([]string(nil), fake.runKeys...)
+		ids := fake.diskIDs
+		fake.mu.Unlock()
+		if len(keys) == 1 {
+			if got := ids["key-"+resp.JobID]; len(got) != 2 || got[0] != "serial:AAA" || got[1] != "" {
+				t.Fatalf("disk identities on the run: %v", ids)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("machine backup not started: %v", keys)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

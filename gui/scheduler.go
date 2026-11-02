@@ -24,7 +24,13 @@ type ScheduledJob struct {
 	RunAtStartup bool     `json:"runAtStartup"`
 	BackupDirs   []string `json:"backupDirs"`
 	DriveLetters []string `json:"driveLetters"` // physical disks for machine backups
-	BackupID     string   `json:"backupId"`
+	// DiskIDs is the identity of each disk in DriveLetters, at the same index
+	// ("" where none could be read), so a run backs up the same disks after
+	// the system numbers them differently (diskpin.go). Empty for a set saved
+	// before identities were recorded: it is backed up by its paths, and gets
+	// identities when it is next saved.
+	DiskIDs  []string `json:"diskIds,omitempty"`
+	BackupID string   `json:"backupId"`
 	// PBSServerID is which configured PBS server this set backs up to; ""
 	// means the app's current default server (same convention Restore's own
 	// server dropdown already uses).
@@ -269,6 +275,7 @@ func (a *App) SaveScheduledJob(job ScheduledJob) error {
 		return err
 	}
 	normalizeJobSchedules(&job)
+	pinJobDisks(&job)
 
 	jobsFileMu.Lock()
 	defer jobsFileMu.Unlock()
@@ -335,8 +342,13 @@ func (a *App) GetScheduledJobs() ([]ScheduledJob, error) {
 	if err := json.Unmarshal(data, &jobs); err != nil {
 		return nil, err
 	}
+	var pins map[string]string
+	if a.config != nil {
+		pins = a.config.UpstreamPinnedDisks
+	}
 	for i := range jobs {
 		normalizeJobSchedules(&jobs[i])
+		migrateUpstreamDiskPins(&jobs[i], pins)
 	}
 
 	return jobs, nil
@@ -396,6 +408,7 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 		return err
 	}
 	normalizeJobSchedules(&job)
+	pinJobDisks(&job)
 
 	jobsFileMu.Lock()
 	defer jobsFileMu.Unlock()

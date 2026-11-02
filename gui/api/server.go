@@ -54,6 +54,14 @@ type RunTracker interface {
 	TrackRequestRun(jobID, backupType, changeDetectionMode string, readFreeSpace bool) string
 }
 
+// RunDiskRegistrar is optionally implemented by the BackupHandler: it records
+// the disk identities of a machine Backup Set run the GUI asked for
+// (BackupRequest.DiskIDs) on the run's key, so the service backs up the disks
+// the set chose wherever the system has put them.
+type RunDiskRegistrar interface {
+	SetRunDiskIDs(runKey string, diskIDs []string)
+}
+
 // RunController is optionally implemented by the BackupHandler: Pause,
 // Resume and Stop for a backup the service is running, so a GUI can control
 // a run it did not start (a scheduled one) as well as its own. jobID is the
@@ -236,6 +244,9 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, machine bool) 
 			runKey = t.TrackRequestRun(jobID, req.BackupType, req.ChangeDetectionMode, req.ReadFreeSpace)
 		} else if r, ok := s.app.(RunOptionsRegistrar); ok && (req.ChangeDetectionMode != "" || req.ReadFreeSpace) {
 			runKey = r.RegisterRunOptions(req.BackupType, req.ChangeDetectionMode, req.ReadFreeSpace)
+		}
+		if d, ok := s.app.(RunDiskRegistrar); ok && machine && runKey != "" && len(req.DiskIDs) > 0 {
+			d.SetRunDiskIDs(runKey, req.DiskIDs)
 		}
 
 		var err error

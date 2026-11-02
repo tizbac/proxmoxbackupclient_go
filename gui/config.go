@@ -72,6 +72,14 @@ type Config struct {
 	// per-bin target size; 0 means the default (DefaultSplitSizeGB).
 	DisableSplit bool `json:"disable_split,omitempty"`
 	SplitSizeGB  int  `json:"split_size_gb,omitempty"`
+	// UpstreamPinnedDisks is the disk table the project's app kept before the
+	// fork was merged (1.2.0-rc): each disk's identity and the device path it
+	// was last seen at, e.g. "serial:S4XNX0A123": "\\.\PhysicalDrive0". It is
+	// only read: migrateUpstreamDiskPins gives a machine set saved by that app
+	// the identities of its disks from it each time the sets are loaded. It is
+	// kept in the file (SaveConfig carries it over), so a set not yet saved
+	// with identities of its own still finds them.
+	UpstreamPinnedDisks map[string]string `json:"pinned_disks,omitempty"`
 
 	// ==================== RESTORE SETTINGS ====================
 	// ParallelRestore opts into extracting files through a worker pool

@@ -209,6 +209,39 @@ func TestImportKeepsSourceBackupID(t *testing.T) {
 	}
 }
 
+// A machine set's disk identities name the disks of the computer the file
+// came from: imported on another computer, or deployed, the set is backed up
+// by its device paths until it is saved there. Imported back on the same
+// computer it keeps them.
+func TestImportDiskIDsOnlyOnTheSameComputer(t *testing.T) {
+	host, _ := os.Hostname()
+	machine := ScheduledJob{ID: "m1", Name: "Whole PC", BackupType: "machine", PBSServerID: "pbs1", Enabled: true,
+		DriveLetters: []string{`\\.\PhysicalDrive0`}, DiskIDs: []string{"serial:SRC-DISK"}}
+	for _, c := range []struct {
+		source  string
+		deploy  bool
+		wantIDs bool
+	}{
+		{"SRC-PC", false, false},
+		{"", false, false}, // an older export names no computer
+		{host, false, true},
+		{host, true, false},
+	} {
+		deployTestDir(t)
+		a := &App{config: LoadConfig()}
+		b := deployBundle(t)
+		b.SourceHost = c.source
+		b.ScheduledJobs = append(b.ScheduledJobs, machine)
+		if _, _, err := a.mergeSettingsBundle(b, c.deploy); err != nil {
+			t.Fatal(err)
+		}
+		got := jobsByID(t, a)["m1"].DiskIDs
+		if (len(got) == 1 && got[0] == "serial:SRC-DISK") != c.wantIDs {
+			t.Errorf("from %q (deploy %v): DiskIDs %q, want kept %v", c.source, c.deploy, got, c.wantIDs)
+		}
+	}
+}
+
 func TestApplySettingsFileRefuses(t *testing.T) {
 	deployTestDir(t)
 	bad := filepath.Join(t.TempDir(), "bad.json")

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -248,6 +249,13 @@ func (a *App) mergeSettingsBundle(bundle SettingsBundle, forDeployment bool) (se
 			}
 			job.LastRun, job.NextRun, job.NextRunBy = "", "", ""
 			job.MetadataRunsSinceFullRead = 0
+		}
+		// Disk identities name the disks of the computer the file came from.
+		// On another computer a machine set is backed up by its device paths,
+		// as one saved before identities were recorded, and gets this
+		// computer's identities when it is next saved.
+		if forDeployment || !strings.EqualFold(bundle.SourceHost, thisHost) {
+			job.DiskIDs = nil
 		}
 		normalizeJobSchedules(&job)
 		setNextRun(&job, time.Now())

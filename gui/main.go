@@ -490,6 +490,10 @@ func (a *App) SaveConfig(config *Config) error {
 		if config.Theme == nil {
 			config.Theme = a.config.Theme
 		}
+		// Not part of the settings form: the disk table of an earlier version.
+		if config.UpstreamPinnedDisks == nil {
+			config.UpstreamPinnedDisks = a.config.UpstreamPinnedDisks
+		}
 		if config.SMTPPassword == "" {
 			config.SMTPPassword = a.config.SMTPPassword
 		}
@@ -885,6 +889,8 @@ func (a *App) startMachineBackupViaService(backupType string, backupDevices []st
 		Comment:      comment,
 		// A machine Backup Set's forensic copy setting (ScheduledJob.ReadFreeSpace).
 		ReadFreeSpace: a.runReadFreeSpace(postActionsKey),
+		// A machine Backup Set's disk identities: the service finds the disks by them.
+		DiskIDs: a.runDiskIDs(postActionsKey),
 	}
 
 	resp, err := a.apiClient.StartMachineBackup(req)
@@ -1410,6 +1416,13 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 			return fmt.Errorf("one or more devices are empty")
 		}
 	}
+
+	// A Backup Set's disks, found by their identity (diskpin_app.go).
+	devices, err := a.resolveRunDisks(backupDevices, postActionsKey)
+	if err != nil {
+		return err
+	}
+	backupDevices = devices
 
 	// Note: Admin check for VSS is done in StartMachineBackup() routing layer
 	// If we're here via service, we're already running as LocalSystem

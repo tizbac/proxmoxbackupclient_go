@@ -517,6 +517,23 @@ function cardSchedule(job) {
   return { manual: false, sch: on.find(sc => sc.id === job.nextRunBy) || on[0] || null, on: on.length }
 }
 
+// diskHasId reports whether a listed disk carries the identity id (its
+// unique_id, or one of its other_ids: a set may have recorded either).
+function diskHasId(disk, id) {
+  return disk.unique_id === id || (disk.other_ids || []).includes(id)
+}
+
+// diskIdHints maps each disk of a machine set to the identity it saved with
+// it (device path -> diskIds entry); disks saved without one are left out.
+function diskIdHints(job) {
+  const ids = {}
+  ;(job.driveLetters || []).forEach((p, i) => {
+    const id = (job.diskIds || [])[i]
+    if (id) ids[p] = id
+  })
+  return ids
+}
+
 function App() {
   const { t, language } = useTranslation()
   const tl = (key, fallback) => { const v = t(key); return v === key ? fallback : v }
@@ -618,6 +635,10 @@ function App() {
   const [backupIdAuto, setBackupIdAuto] = useState(false)
   const [backupDirs, setBackupDirs] = useState('')
   const [selectedDrives, setSelectedDrives] = useState([])
+  // The identity of each ticked disk of the Backup Set being edited (device
+  // path -> its diskIds entry), so the set keeps its disks when the system has
+  // numbered them differently since it was saved.
+  const [selectedDiskIds, setSelectedDiskIds] = useState({})
   // Machine sets: folders on their disks that Undelete and Roll back work on
   // (one per line; empty = the user's Desktop, Documents, Pictures, ...).
   const [imageFolders, setImageFolders] = useState('')
@@ -998,6 +1019,40 @@ function App() {
       })
     }
   }, [backupType])
+
+  // A disk of the set being edited that the system has numbered differently
+  // since the set was saved is ticked at its number now, found by its identity.
+  useEffect(() => {
+    let moved = false
+    const ids = {}
+    const drives = selectedDrives.map(p => {
+      const id = selectedDiskIds[p]
+      if (!id) return p
+      const disk = physicalDisks.find(d => diskHasId(d, id))
+      const at = disk ? disk.device_path : p
+      if (at !== p) moved = true
+      ids[at] = id
+      return at
+    })
+    if (moved) {
+      setSelectedDrives([...new Set(drives)])
+      setSelectedDiskIds(ids)
+    }
+  }, [physicalDisks, selectedDiskIds])
+
+  // Ticking in the disk picker. An unticked disk drops the identity the set
+  // saved for it: ticked again, it is whichever disk is listed there.
+  const pickDrives = (drives) => {
+    setSelectedDrives(drives)
+    setSelectedDiskIds(ids => Object.fromEntries(Object.entries(ids).filter(([p]) => drives.includes(p))))
+  }
+
+  // Disks the set being edited saved that are not among the disks listed now.
+  // Only known when the disks could be listed with their identities.
+  const missingSetDisks = physicalDisks.some(d => d.unique_id && !d.unique_id.startsWith('size:'))
+    ? selectedDrives.filter(p => selectedDiskIds[p] && !physicalDisks.some(d => diskHasId(d, selectedDiskIds[p])))
+      .map(p => ({ path: p, id: selectedDiskIds[p] }))
+    : []
 
   // Reset backup directories when switching from directory to machine mode
   useEffect(() => {
@@ -2458,6 +2513,10 @@ function App() {
         readFreeSpace: backupType === 'machine' && readFreeSpace,
         excludeList: backupType === 'directory' ? getEffectiveExcludeList() : [],
         driveLetters: backupType === 'machine' ? selectedDrives : [],
+        // The identity of each disk, so the set's runs find it whatever number
+        // the system gives it later: the one the set saved for a disk it already
+        // had, else that of the disk listed at the path.
+        diskIds: backupType === 'machine' ? selectedDrives.map(p => selectedDiskIds[p] || physicalDisks.find(d => d.device_path === p)?.unique_id || '') : [],
         imageFolders: backupType === 'machine' ? imageFolders.split('\n').map(d => d.trim()).filter(d => d) : [],
         pbsServerId: backupPBSID,
         emailOnSuccess: emailOnSuccess,
@@ -4361,6 +4420,7 @@ function App() {
                               // rename) to a machine-type backup set, since selectedDrives looks
                               // empty even though the job has real disks configured.
                               setSelectedDrives(job.driveLetters || [])
+                              setSelectedDiskIds(diskIdHints(job))
                               setImageFolders((job.imageFolders || []).join('\n'))
                               setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
                               setBackupIdAuto(false)
@@ -4432,6 +4492,7 @@ function App() {
                                     { const js = jobScheduling(job); setScheduleMode(js.mode); setSchedules(js.schedules.map(sc => ({ ...sc, weekdays: [...(sc.weekdays || [])] }))) }
                                     setBackupDirs((job.backupDirs || []).join('\n'))
                                     setSelectedDrives(job.driveLetters || [])
+                                    setSelectedDiskIds(diskIdHints(job))
                                     setImageFolders((job.imageFolders || []).join('\n'))
                                     {
                                       const cloneName = t('cloneNameSuffix').replace('{name}', job.name || '')
@@ -4661,8 +4722,9 @@ function App() {
               backupType={backupType}
               setBackupType={setBackupType}
               physicalDisks={physicalDisks}
-              setSelectedDrives={setSelectedDrives}
+              setSelectedDrives={pickDrives}
               selectedDrives={selectedDrives}
+              missingDisks={missingSetDisks}
             />
           )}
           {backupType === 'machine' && (

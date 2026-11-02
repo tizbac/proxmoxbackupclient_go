@@ -2,21 +2,26 @@ package api
 
 // BackupRequest represents a backup job request
 type BackupRequest struct {
-	BackupType   string   `json:"backup_type"`   // "directory" or "machine"
+	BackupType   string   `json:"backup_type"` // "directory" or "machine"
 	BackupID     string   `json:"backup_id"`
 	BackupDirs   []string `json:"backup_dirs"`
 	DriveLetters []string `json:"drive_letters,omitempty"`
 	ExcludeList  []string `json:"exclude_list,omitempty"`
 	UseVSS       bool     `json:"use_vss"`
-	Compression  string   `json:"compression,omitempty"` // "fastest", "default", "better", "best"
+	Compression  string   `json:"compression,omitempty"`   // "fastest", "default", "better", "best"
 	PBSServerID  string   `json:"pbs_server_id,omitempty"` // empty = the configured default server
-	Comment      string   `json:"comment,omitempty"` // sent as-is as the PBS snapshot's manifest comment
+	Comment      string   `json:"comment,omitempty"`       // sent as-is as the PBS snapshot's manifest comment
 	// ChangeDetectionMode is a directory Backup Set run's mode ("", "legacy",
 	// "data", "metadata"); an older service ignores it (classic format).
 	ChangeDetectionMode string `json:"change_detection_mode,omitempty"`
 	// ReadFreeSpace makes a machine backup a forensic copy (free space read
 	// too); an older service ignores it and skips free space.
 	ReadFreeSpace bool `json:"read_free_space,omitempty"`
+	// DiskIDs is a machine Backup Set's identity for each disk in
+	// DriveLetters, at the same index, so the service finds the set's disks
+	// when the system has numbered them differently since; an older service
+	// ignores it and backs up the paths.
+	DiskIDs []string `json:"disk_ids,omitempty"`
 }
 
 // BackupResponse represents the result of a backup operation
@@ -29,22 +34,22 @@ type BackupResponse struct {
 
 // StatusResponse represents the service status
 type StatusResponse struct {
-	Running       bool                 `json:"running"`
-	Version       string               `json:"version"`
-	ActiveJobs    int                  `json:"active_jobs"`
-	LastBackup    string               `json:"last_backup,omitempty"`
+	Running       bool           `json:"running"`
+	Version       string         `json:"version"`
+	ActiveJobs    int            `json:"active_jobs"`
+	LastBackup    string         `json:"last_backup,omitempty"`
 	Configuration map[string]any `json:"configuration"`
 }
 
 // JobInfo represents information about a scheduled job
 type JobInfo struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	BackupType   string `json:"backup_type"`
-	Schedule     string `json:"schedule"`
-	LastRun      string `json:"last_run,omitempty"`
-	Status       string `json:"status"` // "idle", "running", "error"
-	NextRun      string `json:"next_run,omitempty"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	BackupType string `json:"backup_type"`
+	Schedule   string `json:"schedule"`
+	LastRun    string `json:"last_run,omitempty"`
+	Status     string `json:"status"` // "idle", "running", "error"
+	NextRun    string `json:"next_run,omitempty"`
 }
 
 // JobsResponse lists all configured jobs
@@ -63,7 +68,7 @@ type ErrorResponse struct {
 type BackupProgress struct {
 	JobID     string  `json:"job_id"`
 	Running   bool    `json:"running"`
-	Progress  float64 `json:"progress"`  // 0-100
+	Progress  float64 `json:"progress"` // 0-100
 	Message   string  `json:"message"`
 	Success   bool    `json:"success"`
 	Complete  bool    `json:"complete"`

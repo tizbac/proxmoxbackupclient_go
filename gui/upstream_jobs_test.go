@@ -90,6 +90,86 @@ func TestMigratedUpstreamJobSavesWithoutUpstreamKeys(t *testing.T) {
 	}
 }
 
+// The 1.2.0-rc app's disk table (config.json pinned_disks) gives its machine
+// sets the identities of their disks; Linux sets of that app name their disks
+// by /dev/disk/by-id paths.
+func TestMigrateUpstreamDiskPins(t *testing.T) {
+	var cfg Config
+	if err := json.Unmarshal([]byte(`{"pinned_disks":{
+		"serial:S4XNX0A123": "\\\\.\\PhysicalDrive0",
+		"guid:0bd1d3a2-5c1e-4f3a-9a52-1c2d3e4f5a6b": "PhysicalDrive1",
+		"sig:1a2b3c4d": "\\\\.\\PhysicalDrive3",
+		"serial:OTHER": "\\\\.\\PhysicalDrive3",
+		"size:512110190592": "\\\\.\\PhysicalDrive4"}}`), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	pins := cfg.UpstreamPinnedDisks
+
+	jobs := loadUpstreamJobs(t)
+	m := jobs["m"]
+	migrateUpstreamDiskPins(&m, pins)
+	if !sameList(m.DiskIDs, []string{"serial:S4XNX0A123"}) {
+		t.Errorf("monthly machine set DiskIDs = %q", m.DiskIDs)
+	}
+
+	// Any spelling of the path; a path two disks claim and a weak id give
+	// none, and so does a path nothing was pinned to.
+	j := ScheduledJob{BackupType: "machine", DriveLetters: []string{`\\.\physicaldrive1`, `\\.\PhysicalDrive3`, `\\.\PhysicalDrive4`, `\\.\PhysicalDrive5`}}
+	migrateUpstreamDiskPins(&j, pins)
+	if !sameList(j.DiskIDs, []string{"guid:0bd1d3a2-5c1e-4f3a-9a52-1c2d3e4f5a6b", "", "", ""}) {
+		t.Errorf("DiskIDs = %q", j.DiskIDs)
+	}
+	j = ScheduledJob{BackupType: "machine", DriveLetters: []string{`\\.\PhysicalDrive3`}}
+	migrateUpstreamDiskPins(&j, pins)
+	if j.DiskIDs != nil {
+		t.Errorf("only an ambiguous path: DiskIDs = %q, want none", j.DiskIDs)
+	}
+
+	// Linux: the by-id path is the identity.
+	j = ScheduledJob{BackupType: "machine", DriveLetters: []string{"/dev/disk/by-id/wwn-0x5000c500a1b2c3d4", "/dev/sdc"}}
+	migrateUpstreamDiskPins(&j, nil)
+	if !sameList(j.DiskIDs, []string{"byid:wwn-0x5000c500a1b2c3d4", ""}) {
+		t.Errorf("Linux DiskIDs = %q", j.DiskIDs)
+	}
+
+	// A set with identities of its own, and a folder set, are left alone.
+	j = ScheduledJob{BackupType: "machine", DriveLetters: []string{`\\.\PhysicalDrive0`}, DiskIDs: []string{"serial:MINE"}}
+	migrateUpstreamDiskPins(&j, pins)
+	if !sameList(j.DiskIDs, []string{"serial:MINE"}) {
+		t.Errorf("set with identities changed: %q", j.DiskIDs)
+	}
+	d := jobs["d"]
+	migrateUpstreamDiskPins(&d, pins)
+	if d.DiskIDs != nil {
+		t.Errorf("folder set DiskIDs = %q", d.DiskIDs)
+	}
+
+	// The table stays in config.json when this app saves it.
+	data, err := json.Marshal(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"pinned_disks":{`) || !strings.Contains(string(data), "S4XNX0A123") {
+		t.Errorf("config saved without pinned_disks: %s", data)
+	}
+}
+
+// A migrated machine set runs on the disk the 1.2.0-rc app pinned, wherever
+// that disk is now.
+func TestMigratedUpstreamSetFollowsItsDisk(t *testing.T) {
+	jobs := loadUpstreamJobs(t)
+	m := jobs["m"]
+	migrateUpstreamDiskPins(&m, map[string]string{"guid:abc": `\\.\PhysicalDrive0`})
+	present := []PhysicalDiskInfo{
+		disk(0, `\\.\PhysicalDrive0`, "serial:NEWDISK"),
+		disk(1, `\\.\PhysicalDrive1`, "serial:S4XNX0A123", "guid:abc"),
+	}
+	got, moved, err := resolveSetDisks(m.DriveLetters, m.DiskIDs, present)
+	if err != nil || !sameList(got, []string{`\\.\PhysicalDrive1`}) || len(moved) != 1 {
+		t.Errorf("resolveSetDisks = %v, %v, %v; want [\\\\.\\PhysicalDrive1]", got, moved, err)
+	}
+}
+
 // A set that already has schedules is not touched by the upstream keys.
 func TestMigrateUpstreamJobLeavesScheduledSetAlone(t *testing.T) {
 	j := ScheduledJob{ID: "x", ScheduleTime: "08:00", ScheduleMode: ScheduleModeScheduled,

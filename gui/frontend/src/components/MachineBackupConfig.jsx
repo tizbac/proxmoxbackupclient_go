@@ -1,6 +1,8 @@
 import { useTranslation } from '../i18n/i18nContext'
 
-function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, selectedDrives }) {
+// missingDisks are disks of the Backup Set being edited that are not
+// connected now ({ path, id }): the set's runs fail until they are back.
+function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, selectedDrives, missingDisks = [] }) {
   const { t, language } = useTranslation()
   const handleDriveSelect = (drivePath) => {
     if (selectedDrives.includes(drivePath)) {
@@ -48,7 +50,12 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
                   checked={selectedDrives.includes(drive.device_path)}
                   onChange={() => handleDriveSelect(drive.device_path)}
                 />
-                <span className="drive-device">{drive.device_path}</span>
+                <span className="drive-device">
+                  {drive.device_path}
+                  {drive.drive_letters && drive.drive_letters.length > 0 && (
+                    <span style={{ color: '#718096' }}>{` (${drive.drive_letters.join(' ')})`}</span>
+                  )}
+                </span>
                 <span className="drive-size">{size(drive.size)}</span>
                 <span className="drive-model">{drive.model}</span>
                 {drive.is_boot_disk && <span className="drive-badge">{t('machineDiskBadgeBoot')}</span>}
@@ -56,6 +63,11 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
               </label>
             ))}
           </div>
+          {missingDisks.map(m => (
+            <div key={m.path} className="info-box" style={{ marginTop: '10px', borderColor: '#ef4444', background: '#fef2f2', color: '#991b1b' }}>
+              {t('machineDiskNotConnected', { path: m.path, id: m.id })}
+            </div>
+          ))}
         </div>
       </div>
     </div>
