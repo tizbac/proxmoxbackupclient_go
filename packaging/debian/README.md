@@ -35,7 +35,7 @@ packaging/fedora/build-rpm.sh [output-dir]      # default: dist/
 | Path | |
 | ---- | --- |
 | `/usr/bin/proxmoxbackupclient` | starts the app as the current user (folder backups of your files; with `-list-sets`, `-undelete` or `-rollback`, those commands without a window) |
-| `/usr/bin/proxmoxbackupclient-root` | starts the app as root, for machine (whole-disk) backups and snapshots, with your own settings; asks for the password with pkexec (sudo from a terminal) |
+| `/usr/bin/proxmoxbackupclient-root` | starts the app as root, for machine (whole-disk) backups and snapshots; without the background service it uses your own settings, with it the service's; asks for the password with pkexec (sudo from a terminal) |
 | `/usr/bin/proxmoxbackup-directory` | folder backups from the command line |
 | `/usr/bin/proxmoxbackup-machine` | whole-disk backups from the command line |
 | `/usr/bin/proxmoxbackup-nbd` | attach a disk image from the server as `/dev/nbdN` (root) |
@@ -53,13 +53,15 @@ requires `polkit`.
 ## The two menu entries
 
 - **Proxmox Backup Client** runs the app as you. Folder backups of your own files work
-  this way.
+  this way. With the background service running, it asks once for administrator rights
+  (pkexec) to connect to the service (below).
 - **Proxmox Backup Client (administrator)** runs `proxmoxbackupclient-root`. It asks for
   your password through polkit (pkexec), or with sudo when started from a terminal, and
-  runs the app as root with your `HOME`, so it uses your settings
-  (`~/.proxmox-backup-guardian`). When it closes it hands that folder and your log folder
-  (`~/.local/state/proxmoxbackupclient`) back to you. Use it for machine backups, block
-  snapshots, and for turning the background service on or off.
+  runs the app as root with your `HOME`. Without the background service it uses your
+  settings (`~/.proxmox-backup-guardian`); with it, it reads the service's token itself and
+  connects without a second prompt. When it closes it hands your settings folder and your
+  log folder (`~/.local/state/proxmoxbackupclient`) back to you. Use it for machine
+  backups, block snapshots, and for turning the background service on or off.
 
 ## The background service
 
@@ -68,8 +70,10 @@ tray icon on Linux, so its window has to stay open). The service runs them as ro
 when nobody is logged in.
 
 A fresh install enables and starts the service, as the Windows installer does. On first
-start it creates `/var/lib/proxmoxbackupclient` with the permissions described below. An
-upgrade keeps your choice: a service you turned off stays off.
+start it creates `/var/lib/proxmoxbackupclient`, root's alone: owner root, group root,
+folders 0700 and files 0600. It sets these again each time it starts, which also undoes
+what earlier versions did (group `sudo`, `wheel` or `admin`, mode 2750, files readable by
+the group). An upgrade keeps your choice: a service you turned off stays off.
 
 To turn it on later (for example after turning it off), use the administrator app:
 Preferences > Advanced > Run as Service. That:
@@ -77,17 +81,22 @@ Preferences > Advanced > Run as Service. That:
 1. copies your settings (servers, keys, Backup Sets, history) to
    `/var/lib/proxmoxbackupclient`, unless that folder already holds settings; your own
    `~/.proxmox-backup-guardian` is left as it was;
-2. sets that folder to owner root, group `sudo` (or `wheel`, or `admin`; root if none of
-   these exist), mode 2750 (setgid, so new files keep the group); files in it are made
-   readable by the group (for example 0640), never writable;
-3. runs `systemctl enable --now proxmoxbackupclient.service`.
+2. runs `systemctl enable --now proxmoxbackupclient.service`; the service then locks the
+   folder down as above.
 
-From then on every copy of the app uses `/var/lib/proxmoxbackupclient`. Members of the
-sudo or wheel group can open the app normally: it reads the Backup Sets and the service's
-API token, hands backups to the service and shows history. Adding, editing or deleting
-Backup Sets needs the administrator app. The same Preferences section also starts, stops
-and removes the service. Removing it stops and disables the unit and the app runs the
-schedules again; the settings stay in `/var/lib/proxmoxbackupclient`.
+From then on the service keeps the settings, and the app works on them through the
+service's local API. The API needs the service's token
+(`/var/lib/proxmoxbackupclient/api-token`, root, 0600). The app gets it by running a copy
+of itself as root through pkexec: you are asked for your password (an administrator's, if
+your account is not in the sudo or wheel group) the first time the app's window is in front
+of you, and once more each time the service replaces the token (every 24 hours). The app
+keeps the token in memory only. Until it is connected its window shows a **Connect**
+button and no settings. Without pkexec (polkit) the app cannot connect. The administrator
+app, running as root, reads the token itself.
+
+The same Preferences section also starts, stops and removes the service. Removing it stops
+and disables the unit; the settings stay in `/var/lib/proxmoxbackupclient`, and the app
+goes back to your own settings and runs their schedules while it is open.
 
 The service logs to `/var/log/proxmoxbackupclient/`. See section 15 of the GUI manual.
 

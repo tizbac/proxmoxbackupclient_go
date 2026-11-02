@@ -14,11 +14,14 @@ follow and control the service's runs. This package holds both sides:
 
 ## How the app uses it
 
-At startup the app calls `GET /status` (`ModeDetector.DetectMode`). If it answers 200 the
-app is in **service mode**: it does not run its own scheduler, it sends Run Now and one-off
-backups to the service, and it follows the service's runs. Otherwise it is **standalone**
-and runs backups and schedules itself. Preferences > Advanced > Run as Service switches
-between the two (`gui/service_switch.go`).
+At startup the app calls `GET /status` (`Client.ProbeStatus`, `gui/service_connect.go`).
+If the service answers (200, or 401 when the app has no token yet), or is installed but not
+answering yet, the app is in **service mode**: the service keeps the computer's settings,
+Backup Sets, history and Message Log, runs every backup, and the app works on them only
+through this API. Otherwise it is **standalone** and keeps its own settings in
+`~/.proxmox-backup-guardian`. Preferences > Advanced > Run as Service switches between the
+two (`gui/service_switch.go`). A user who cannot connect may choose **Use my own settings**
+(standalone with the service running).
 
 In service mode the app:
 
@@ -28,11 +31,19 @@ In service mode the app:
   start (a scheduled one), with Pause, Resume and Stop sent to `/backup/pause`,
   `/backup/resume` and `/backup/stop`;
 - asks `GET /status` whether the service is busy (`active_jobs`);
-- sends a certificate pin to `POST /pbs/fingerprint`, because only the service may write
-  `config.json`.
+- reads the settings with `GET /config` (no secrets: `*_set` markers instead) and changes
+  them with `POST /call/{name}`, which runs one of the app's own setters in the service
+  (the list is `apiCalls` in `gui/service_api.go`);
+- gets what one restore, browse or search needs from `POST /pbs/access`;
+- reads and adds history (`/history`, `/history/append`) and Message Log entries
+  (`/messages`), lists and controls Backup Sets (`/jobs/full`, `/jobs/enabled`,
+  `/call/RunScheduledJobNowRead`), reads the service's logs (`/logs`, `/logs/read`,
+  `/logs/run`), exports and imports settings (`/settings/export`, `/settings/import`) and
+  stores keys (`/keys/save`);
+- sends a certificate pin to `POST /pbs/fingerprint`.
 
-The `/jobs` routes are served but the app does not call them: it reads and writes the
-Backup Sets file itself.
+Each of these routes is served when the service has the handler and answers **501**
+otherwise (`gui/api/server_state.go`).
 
 ## Authentication
 
@@ -42,23 +53,29 @@ Every request must carry the header
 X-Proxmox-Client-Token: <contents of the token file>
 ```
 
-The token file is `api-token` in the settings folder:
+The token file is `api-token` in the service's settings folder:
 
 | | Path | Who can read it |
 | --- | --- | --- |
-| Windows | `C:\ProgramData\ProxmoxBackupClient\api-token` | the folder's permissions: SYSTEM, Administrators, local administrator accounts (read) |
-| Linux | `/var/lib/proxmoxbackupclient/api-token` | root, and the sudo or wheel group (0640 in a 2750 root-owned folder) |
+| Windows | `C:\ProgramData\ProxmoxBackupClient\api-token` | SYSTEM (full control) and the Administrators group (read), protected; a program without elevation cannot |
+| Linux | `/var/lib/proxmoxbackupclient/api-token` | root only (0600 in a 0700 root-owned folder) |
 
 The service writes a new random token (32 bytes, hex) each time it starts, before the API
-starts (`NewToken`, an atomic replace), after it has locked the settings folder down. A
-token copied earlier, or a file planted before the service first ran, stops working at the
-next restart. The client reads the file on every request, so a running app picks up a new
-token without a restart. If the token cannot be written the server keeps an empty token
+starts (`NewToken`, an atomic replace), after it has locked the settings folder down, and
+replaces it every 24 hours (`TokenRotator`; the replaced one is accepted for 10 more
+minutes). A token copied earlier, or a file planted before the service first ran, stops
+working at the next start. If the token cannot be written the server keeps an empty token
 and refuses every request.
+
+The app, run without elevation, cannot read the file: it starts a copy of itself elevated
+(UAC on Windows, pkexec on Linux) with `--elevated-token-fetch <file>`, which writes the
+token into a file the app created and exits (`gui/token_elevated.go`). The app keeps the
+token in memory only and asks again only when the user connects (`gui/service_connect.go`).
+An elevated app, or one run as root, reads the file itself.
 
 Checks on every request (`authMiddleware`):
 
-- request body at most 1 MiB;
+- request body at most 8 MiB;
 - a request with an `Origin` header gets **403** `forbidden` (browsers send it; the app
   does not);
 - a missing or wrong token gets **401** `unauthorized` (constant-time compare).
@@ -215,14 +232,13 @@ names such as `scheduleTime` and `backupDirs`).
 Response: `{ "success": true, "message": "Job created successfully" }` (or `updated`).
 A failure is **500** `Failed to create job: <reason>`.
 
-Through the API these are refused (`JOBS_ADMIN_REQUIRED`) whenever job protection applies:
-on Windows while the "require administrator" policy is on (the default), and on Linux
-always.
+Only a caller holding the token reaches these, so they are not gated further (the earlier
+"require administrator" policy is gone).
 
 ### DELETE or POST /jobs/delete/{id}
 
 Deletes a Backup Set. Response `{ "success": true, "message": "Job deleted successfully" }`.
-**400** without an ID; refused like create and update under job protection.
+**400** without an ID.
 
 ### POST /pbs/fingerprint
 
@@ -235,7 +251,7 @@ if it cannot be saved.
 
 ## Example
 
-PowerShell, as an administrator on Windows:
+PowerShell, run as administrator (elevated) on Windows:
 
 ```powershell
 $h = @{ 'X-Proxmox-Client-Token' = (Get-Content C:\ProgramData\ProxmoxBackupClient\api-token -Raw).Trim() }
@@ -243,7 +259,7 @@ Invoke-RestMethod http://127.0.0.1:18765/status -Headers $h
 Invoke-RestMethod http://127.0.0.1:18765/backup/runs -Headers $h
 ```
 
-Linux, as root or a member of sudo or wheel:
+Linux, as root:
 
 ```sh
 curl -s -H "X-Proxmox-Client-Token: $(cat /var/lib/proxmoxbackupclient/api-token)" http://127.0.0.1:18765/status

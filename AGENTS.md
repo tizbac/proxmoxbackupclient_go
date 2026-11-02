@@ -39,7 +39,7 @@ Shared code: `pbscommon` (PBS protocol, pxar, chunking, encryption), `clientcomm
 - GUI build requires `wails` CLI tool (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0`) on Windows; the Linux packages build the GUI with plain `go build -tags production`
 - Build process uses security hardening flags (`-trimpath`, `-s -w`)
 - The app's Help page embeds copies of `docs/manual/GUI.md`, `CLI.md`, `BMR.md` and `docs/RESTORE_GUIDE.md` from `gui/docs/` (go:embed cannot reach outside `gui/`). Edit the files in `docs/`, then copy them over with `make manuals` (`make gui` does it too); `TestEmbeddedManualsMatchDocs` fails while they differ, and `node src/manuals.test.mjs` in `gui/frontend` checks every link between the manuals
-- Settings live in `C:\ProgramData\ProxmoxBackupClient\` on Windows; on Linux in `~/.proxmox-backup-guardian/`, or `/var/lib/proxmoxbackupclient/` once the service is installed
+- With the background service, the computer's settings live in its folder, `C:\ProgramData\ProxmoxBackupClient\` on Windows or `/var/lib/proxmoxbackupclient/` on Linux, which only the service, SYSTEM/root and elevated administrators can open; the app reaches them through the service's API (`gui/api/INTEGRATION.md`, `gui/service_connect.go`). Without a service, and for its own files, the app uses `~/.proxmox-backup-guardian/` (`getConfigDir`)
 - Cross-compilation uses GOOS and GOARCH environment variables
 - Live tests are the `gui/zz_*_livetest*_test.go` files; each is skipped unless its environment variables are set (for example `PBS_LIVE_TEST=1`; the skip message names them), and most need a real PBS
 
@@ -59,6 +59,6 @@ Shared code: `pbscommon` (PBS protocol, pxar, chunking, encryption), `clientcomm
 - NBD tool is Linux-only (uses Linux ioctl)
 - Machine backup works on Windows (VSS) and Linux; on Linux it refuses to run without root and a loaded elastio-snap or dattobd kernel module
 - The system tray and toast notifications are Windows-only
-- On Windows, VSS, machine backups and changing Backup Sets (job protection) need an elevated GUI; it offers Restart as administrator (pkexec on Linux)
+- Without the service, VSS and machine backups need an elevated GUI; it offers Restart as administrator (pkexec on Linux). With the service, the app needs the service's token, which it gets once through UAC or pkexec (Connect)
 - The background service runs as LocalSystem on Windows (`ProxmoxBackupClientSVC`) and as root under systemd on Linux (`proxmoxbackupclient.service`); it listens on `127.0.0.1:18765` for the GUI
 - Cross-compilation to Windows requires `GOOS=windows` environment variable

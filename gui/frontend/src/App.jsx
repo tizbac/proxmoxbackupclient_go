@@ -3572,7 +3572,7 @@ function App() {
           </div>
         )}
         {systemInfo.own_settings && (
-          <div className="info-box service-own-settings-banner" style={{marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap'}}>
+          <div className="info-box service-own-settings-banner" style={{marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', backgroundColor: '#fff3cd', borderLeft: '4px solid #ffc107'}}>
             <span style={{flex: '1 1 320px'}}>👤 {t('serviceOwnSettingsBanner')}</span>
             <button className="btn btn-secondary" onClick={() => connectService(true)}>{t('serviceConnectBtn')}</button>
             {serviceConnectError && (

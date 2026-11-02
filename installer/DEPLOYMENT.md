@@ -15,8 +15,8 @@ It does:
 - with `CONFIGFILE`, set up the PBS servers and Backup Sets (next section).
 
 Without `CONFIGFILE` it configures nothing: each computer then needs its PBS server, token
-and Backup Sets added in the app by an administrator (adding or changing Backup Sets needs
-an elevated app while job protection is on, which is the default).
+and Backup Sets added in the app by an administrator (the app asks for administrator rights
+before it shows or changes any setting).
 
 ## Settings for every computer (CONFIGFILE)
 
@@ -120,9 +120,10 @@ msiexec /x ProxmoxBackupClient-2.0.0-x64.msi /qn KEEP_CONFIG=0
 ```
 
 `AUTOSTART=1` (the default) writes the Run entry under HKLM, so the app starts in the
-tray for every user who signs in, also when GPO or Intune installed it as SYSTEM. Use
-`AUTOSTART=0` for computers where nobody needs the app at sign-in (the service runs the
-schedules either way).
+tray for every user who signs in, also when GPO or Intune installed it as SYSTEM. The app
+in the tray does not ask for administrator rights at sign-in; it asks when a user opens its
+window. Use `AUTOSTART=0` for computers where nobody needs the app at sign-in (the service
+runs the schedules either way).
 
 Install exit code 0 means success; 3010 means success with a restart needed.
 
@@ -154,17 +155,27 @@ Get-Content C:\ProgramData\ProxmoxBackupClient\service-service.log -Tail 50
 ```
 
 `service-service.log` and `backup-service.log` are the service's logs. Each backup also
-gets its own `backup-<time>-<id>.log`. These files are readable only by administrators.
+gets its own `backup-<time>-<id>.log`. These files are readable only by SYSTEM and
+elevated administrators: run PowerShell as administrator to read them. Each user's app
+logs are in `%LOCALAPPDATA%\ProxmoxBackupClient\Logs`.
 
 ## Security notes
 
-- `C:\ProgramData\ProxmoxBackupClient\config.json` holds the PBS API token secrets. The
-  service restricts the folder to SYSTEM, Administrators and local administrator accounts
-  (read and create) every time it starts. A standard user who opens the app is told the
-  settings are open to administrators only.
+- `C:\ProgramData\ProxmoxBackupClient\config.json` holds the PBS API token secrets
+  (encrypted for the computer with DPAPI). The service restricts the folder to SYSTEM and
+  Administrators every time it starts, so only the service and elevated programs can open
+  it. Earlier builds also let each local administrator account read it without elevation;
+  the service removes those entries.
 - The service's local API listens on 127.0.0.1:18765 only and needs the token in
-  `C:\ProgramData\ProxmoxBackupClient\api-token`, which the service replaces each time it
-  starts. See [../gui/api/INTEGRATION.md](../gui/api/INTEGRATION.md).
+  `C:\ProgramData\ProxmoxBackupClient\api-token` (SYSTEM full control, Administrators
+  read). The service keeps it when it restarts and replaces it every 24 hours. The app gets
+  it by asking for administrator rights (UAC) once, keeps it in memory only, and asks again
+  after it is replaced. A user who cannot give an administrator's password cannot see or
+  change the settings in the app; the service still runs the Backup Sets on schedule. See
+  [../gui/api/INTEGRATION.md](../gui/api/INTEGRATION.md).
+- The policy **Require administrator rights to add, change or delete Backup Sets** is gone:
+  with the service, every change already needs administrator rights. A `RequireAdminForJobs`
+  value left under `HKLM\SOFTWARE\ProxmoxBackupClient\Policy` is ignored.
 - The programs are not code signed. SmartScreen or Defender may warn. Check the SHA-256
   that `build-msi.ps1` prints, or the release's checksums.
 

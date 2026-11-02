@@ -36,12 +36,22 @@ For silent installs on many computers see [DEPLOYMENT.md](DEPLOYMENT.md).
 - When `DESKTOPSHORTCUTS=1` (the default): the same two shortcuts on the all-users desktop.
 - One entry in Programs and Features, with the brand's links (about, help, updates, contact).
 - When `AUTOSTART=1` (the default): a `Run` entry under HKLM, which starts the app
-  minimised to the tray when any user signs in (`--minimized`).
+  minimised to the tray when any user signs in (`--minimized`). The app does not ask for
+  administrator rights at sign-in; it asks the first time its window is opened (below).
 
-The settings are not part of the MSI. The app and the service keep them in
-`C:\ProgramData\ProxmoxBackupClient` (servers and tokens, Backup Sets, keys, reports, logs).
-The service gives that folder its own permissions when it starts: SYSTEM and Administrators
-full control, local administrator accounts read and create, nobody else.
+The settings are not part of the MSI. The service keeps them in
+`C:\ProgramData\ProxmoxBackupClient` (servers and tokens, Backup Sets, keys, reports, its
+logs). It gives that folder its own permissions when it starts: SYSTEM and Administrators
+full control, nobody else, so only the service and a program started as administrator can
+open it. Earlier builds also let each local administrator account read the folder without
+elevation; the service removes those entries.
+
+The app reaches the settings through the service's local API. It gets the service's token
+by asking for administrator rights once (UAC; a standard user gives an administrator's name
+and password), keeps it in memory, and asks again when the service replaces it (every 24
+hours). Until it is connected the app shows no settings and a **Connect** button. The
+"(Administrator)" shortcut, already elevated, connects without a second prompt. The app's own logs are in each
+user's `%LOCALAPPDATA%\ProxmoxBackupClient\Logs`.
 
 ## Upgrade
 

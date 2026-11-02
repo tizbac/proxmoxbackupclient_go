@@ -355,6 +355,8 @@ Give the archive name without `.didx`: a snapshot from `proxmoxbackup-directory`
 
 The service program that comes with the GUI, `ProxmoxBackupClientSVC.exe` on Windows, runs the GUI's Undelete and Roll back for a Backup Set defined in the GUI: the same servers, folders, exclusions and safety folder. On Linux the app takes the same options: run `proxmoxbackupclient` (the package's launcher in `/usr/bin`) or `/usr/lib/proxmoxbackupclient/ProxmoxBackupClient`, which then runs on the command line without a window; the package's `/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC` takes them too. On Windows the app itself has no console, so use the service program. Run it as administrator (Windows) or root (Linux), as the backups run.
 
+The service program works on the background service's Backup Sets, in `C:\ProgramData\ProxmoxBackupClient` or `/var/lib/proxmoxbackupclient`, which only administrators (Windows) or root (Linux) can open. With the background service installed, use it for the sets the service runs. The Linux app works on the sets in `~/.proxmox-backup-guardian`, as it does without the service.
+
 ```
 ProxmoxBackupClientSVC.exe -list-sets
 ProxmoxBackupClientSVC.exe -undelete "Documents" [-days 7] [-to D:\Recovered] [-dry-run] [-no-verify]
@@ -388,7 +390,9 @@ ProxmoxBackupClientSVC.exe -service install|uninstall|start|stop|restart
 
 Run it as administrator (Windows) or root (Linux). Usually you do not need it:
 
-* **Windows.** The installer (MSI) installs the service as `ProxmoxBackupClientSVC`, and **Preferences > Advanced > Run as Service** in the GUI installs, starts, stops and removes it under the same name, and so does `-service install`. Test builds from before 14 October 2026 used the name `ProxmoxBackupClient` for `-service install`; the GUI still recognises a service installed that way, but remove it (`-service uninstall` with that older program) before installing the new one, or there would be two.
+* **Windows.** The installer (MSI) installs the service as `ProxmoxBackupClientSVC`, and **Preferences > Advanced > Run as Service** in the GUI installs, starts, stops and removes it under the same name, and so does `-service install`. **Run as Service** also copies your own settings (`%USERPROFILE%\.proxmox-backup-guardian`) to `C:\ProgramData\ProxmoxBackupClient` if the service has none yet; `-service install` does not. Test builds from before 14 October 2026 used the name `ProxmoxBackupClient` for `-service install`; the GUI still recognises a service installed that way, but remove it (`-service uninstall` with that older program) before installing the new one, or there would be two.
 * **Linux.** The `.deb` and `.rpm` install the systemd unit `proxmoxbackupclient.service` without turning it on. Turn it on with **Run as Service** in the GUI started as administrator: it copies your Backup Sets, servers, keys and history to `/var/lib/proxmoxbackupclient`, where the service reads them, then enables and starts the unit. `systemctl` and `/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC -service ...` act on the same unit but do not copy any settings.
+
+The service's settings folder is the service's alone: SYSTEM and Administrators on Windows, root (0700, files 0600) on Linux. The GUI reaches it through the service's local API on `127.0.0.1:18765`, which needs the token in `api-token` in that folder. The GUI gets the token by asking for administrator rights (UAC, or pkexec on Linux) and keeps it in memory. The service keeps the token when it restarts and replaces it every 24 hours.
 
 See the GUI manual ([GUI.md](GUI.md#15-background-service-tray-and-closing-the-window)) for what the service does.
