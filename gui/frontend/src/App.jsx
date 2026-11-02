@@ -32,7 +32,7 @@ const ABOUT_LINK_LABEL = {
 import { newSchedule, describe as describeSchedule, badgeKey, scheduleProblem, jobScheduling } from './components/schedules'
 // Wails runtime imports (will be available when built with Wails)
 let OpenSnapshotTree, ListSnapshotChildren, SnapshotSelectionBytes
-let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
+let GetConfigWithHostname, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
 let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, SetScheduledJobEnabled, RunScheduledJobNow, GetJobHistory, GetMessageLog, GetSystemInfo, GetLastBackupDirs
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
@@ -60,7 +60,6 @@ let StartServiceAndConnect
 // Check if we're running in Wails
 if (window.go) {
   GetConfigWithHostname = window.go.main.App.GetConfigWithHostname
-  SaveConfig = window.go.main.App.SaveConfig
   TestConnection = window.go.main.App.TestConnection
   StartBackup = window.go.main.App.StartBackup
   StartMachineBackup = window.go.main.App.StartMachineBackup
@@ -604,8 +603,7 @@ function App() {
     secret: '',
     datastore: '',
     namespace: '',
-    // Path to the PBS encryption key file (NOT the key itself). Round-tripped on
-    // save because SaveConfig replaces the whole Config on the Go side.
+    // Path to the PBS encryption key file (NOT the key itself).
     encryption_key_file: '',
     encryption_key_passphrase_set: false,
     encryption_key_passphrase: '',
@@ -2385,54 +2383,6 @@ function App() {
   }
 
   // ==================== END MULTI-PBS HANDLERS ====================
-
-  // Shared shape SaveConfig expects — SaveConfig REPLACES the whole stored
-  // config (aside from a few backend-preserved fields like the PBS secret),
-  // so any caller saving even one unrelated setting (e.g. the Advanced tab's
-  // parallel-restore toggle) must still round-trip every other field here or
-  // risk wiping them. Centralized so the Account Info save and any other
-  // settings save can't drift apart on this.
-  const buildTrimmedConfig = (cfg) => ({
-    baseurl: (cfg.baseurl || '').trim(),
-    certfingerprint: (cfg.certfingerprint || '').trim(),
-    authid: (cfg.authid || '').trim(),
-    secret: (cfg.secret || '').trim(),
-    datastore: (cfg.datastore || '').trim(),
-    namespace: (cfg.namespace || '').trim(),
-    encryption_key_file: (cfg.encryption_key_file || '').trim(),
-    // Empty passphrase = keep the stored one; the backend never returns it.
-    encryption_key_passphrase: cfg.encryption_key_passphrase || '',
-    clear_encryption_key_passphrase: !!cfg.clear_encryption_key_passphrase,
-    backupdir: (cfg.backupdir || '').trim(),
-    'backup-id': (cfg['backup-id'] || '').trim() || hostname, // Use hostname if empty
-    usevss: cfg.usevss !== undefined ? cfg.usevss : true,
-    parallel_restore: !!cfg.parallel_restore
-  })
-
-  const handleSaveConfig = async () => {
-    if (!SaveConfig) {
-      showStatus(t('wailsRuntimeUnavailable'), 'error')
-      return
-    }
-
-    try {
-      const trimmedConfig = buildTrimmedConfig(config)
-      await SaveConfig(trimmedConfig)
-      // Drop the typed passphrase from state now it is saved; the backend holds it.
-      const storedNow = trimmedConfig.encryption_key_passphrase
-        ? true
-        : (trimmedConfig.clear_encryption_key_passphrase ? false : !!config.encryption_key_passphrase_set)
-      setConfig({
-        ...trimmedConfig,
-        encryption_key_passphrase: '',
-        clear_encryption_key_passphrase: false,
-        encryption_key_passphrase_set: storedNow
-      })
-      showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
-    } catch (err) {
-      showStatus(`❌ ${t('statusError')} ${err}`, 'error')
-    }
-  }
 
   const handleTestConnection = async () => {
     if (!TestConnection) {
