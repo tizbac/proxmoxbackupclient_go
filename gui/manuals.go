@@ -12,8 +12,8 @@ import (
 // matches this version. go:embed cannot reach outside the gui module, so
 // gui/docs mirrors the repo's docs/ folder for these four files (same layout,
 // so their relative links resolve the same way). docs/ is the copy to edit;
-// TestEmbeddedManualsMatchDocs fails when the two differ, and `make manuals`
-// copies them across.
+// TestEmbeddedManualsMatchDocs fails when the two differ: copy the edited
+// files from docs/ over gui/docs.
 //
 //go:embed docs/manual/GUI.md docs/manual/CLI.md docs/manual/BMR.md docs/RESTORE_GUIDE.md
 var manualFS embed.FS

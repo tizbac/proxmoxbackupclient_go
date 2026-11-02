@@ -39,10 +39,10 @@ A bare-metal restore needs a **machine** backup: a Backup Set or one-off backup 
 
 The ISO is a Clonezilla Live image with this project's restore tools added.
 
-1. Download `ProxmoxBackupClient-GO-BMR-Restore-<version>.iso` from the [releases page](https://github.com/tizbac/proxmoxbackupclient_go/releases). In the GUI, **Tools > Download Bare Metal Restore ISO…** opens that page. A release that did not change the ISO links to the one from an earlier release.
+1. Download `ProxmoxBackupClient-BMR-<version>.iso` from the [releases page](https://github.com/tizbac/proxmoxbackupclient_go/releases). In the GUI, **Tools > Download Bare Metal Restore ISO…** opens that page. A release that did not change the ISO links to the one from an earlier release.
 2. Check it against that release's `SHA256SUMS.txt`.
 3. Write it to a USB stick (everything on the stick is erased):
-   * Linux: `sudo dd if=ProxmoxBackupClient-GO-BMR-Restore-<version>.iso of=/dev/sdX bs=4M conv=fsync status=progress`
+   * Linux: `sudo dd if=ProxmoxBackupClient-BMR-<version>.iso of=/dev/sdX bs=4M conv=fsync status=progress`
    * Windows: a tool that writes the image as is, for example Rufus in "DD Image" mode, or balenaEtcher.
 
    Or burn it to a DVD, or attach it to a VM as a CD.
@@ -52,7 +52,7 @@ The ISO is a Clonezilla Live image with this project's restore tools added.
 Writing the ISO as above gives the whole stick to one image. [Ventoy](https://www.ventoy.net) is a better way to keep a recovery stick: it prepares the stick once, and from then on you simply **copy ISO files onto it** like ordinary files. At boot Ventoy shows a menu of every ISO on the stick, so one stick can carry this restore ISO next to a Windows installer, a Linux live system, memtest and so on. Updating to a newer restore ISO is a matter of copying the new file over.
 
 1. Download Ventoy from [ventoy.net](https://www.ventoy.net) and install it to the stick: **Ventoy2Disk.exe** on Windows, `Ventoy2Disk.sh` or VentoyGUI on Linux. This erases the stick once.
-2. Copy `ProxmoxBackupClient-GO-BMR-Restore-<version>.iso` onto the stick's large data partition (it shows up as a normal drive). Do not unpack it.
+2. Copy `ProxmoxBackupClient-BMR-<version>.iso` onto the stick's large data partition (it shows up as a normal drive). Do not unpack it.
 3. Boot from the stick and pick the ISO in Ventoy's menu, then carry on as in [section 4](#4-automated-restore-step-by-step).
 
 Ventoy starts on legacy BIOS and UEFI machines. With Secure Boot on, its first start asks you to enrol Ventoy's key once (follow its on-screen steps), or turn Secure Boot off for the restore.

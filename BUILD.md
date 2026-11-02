@@ -87,7 +87,7 @@ The Arch package is built on Arch with `make pkgarch`: it stages a source tarbal
 
 ## Bare-metal recovery ISO
 
-`make clonezilla` downloads the stock Clonezilla live ISO (version `CLONEZILLA_VER`, 3.3.3-37 by default, cached in `dist/clonezilla/`), builds `pbsnbd`, and patches it and the restore scripts into `dist/clonezilla-pbs-nbd-<version>.iso`. It needs network access, `7z`, `xorriso`, `squashfs-tools`, `fakeroot`, `patch` and the isolinux MBR, and is not part of `make all`. See [PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md).
+`make clonezilla` downloads the stock Clonezilla live ISO (version `CLONEZILLA_VER`, 3.3.3-37 by default, cached in `dist/clonezilla/`), builds `pbsnbd`, and patches it and the restore scripts into `dist/ProxmoxBackupClient-BMR-<version>.iso`. It needs network access, `7z`, `xorriso`, `squashfs-tools`, `fakeroot`, `patch` and the isolinux MBR, and is not part of `make all`. See [PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md).
 
 ## Tests
 

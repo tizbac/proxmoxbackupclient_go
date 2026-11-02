@@ -180,7 +180,7 @@ CLONEZILLA_SHA256 ?=
 
 CLONEZILLA_CACHE    := $(BUILD_DIR)/clonezilla
 CLONEZILLA_STOCK    := $(CLONEZILLA_CACHE)/clonezilla-live-$(CLONEZILLA_VER)-$(CLONEZILLA_ARCH).iso
-CLONEZILLA_OUT      := $(BUILD_DIR)/clonezilla-pbs-nbd-$(VERSION).iso
+CLONEZILLA_OUT      := $(BUILD_DIR)/ProxmoxBackupClient-BMR-$(VERSION).iso
 CLONEZILLA_PBSNBD   := $(CLONEZILLA_CACHE)/pbsnbd
 CLONEZILLA_SCRIPTS  := clonezilla-patch/ocs-pbs-nbd clonezilla-patch/ocs-pbs-bare-metal-restore
 CLONEZILLA_PATCHES  := $(wildcard clonezilla-patch/patches/*.patch)

@@ -22,7 +22,7 @@ func TestEmbeddedManualsMatchDocs(t *testing.T) {
 		// A Windows checkout may give either copy CRLF line endings.
 		norm := func(b []byte) []byte { return bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n")) }
 		if !bytes.Equal(norm(embedded), norm(repo)) {
-			t.Errorf("gui/%s differs from %s: copy docs/ over gui/docs (make manuals) and rebuild", m.path, m.path)
+			t.Errorf("gui/%s differs from %s: copy docs/ over gui/docs and rebuild", m.path, m.path)
 		}
 	}
 }
