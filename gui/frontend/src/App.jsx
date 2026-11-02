@@ -776,6 +776,11 @@ function App() {
   const [machineAsVM, setMachineAsVM] = useState(false)
   // A machine Backup Set that also reads free space (a forensic copy).
   const [readFreeSpace, setReadFreeSpace] = useState(false)
+  // A Linux machine Backup Set with Use snapshots off, and the override that
+  // accepts reading its mounted disks live (ScheduledJob.snapshotsOff,
+  // liveRead). Off without the override, the set's runs stop.
+  const [machineSnapshotsOff, setMachineSnapshotsOff] = useState(false)
+  const [liveReadAccepted, setLiveReadAccepted] = useState(false)
   // Change detection for a directory Backup Set ('legacy' | 'data' | 'metadata')
   // and, for metadata, a full read every N runs (0 = never).
   const [changeDetectionMode, setChangeDetectionMode] = useState('legacy')
@@ -787,6 +792,8 @@ function App() {
     const isVm = job.backupType === 'machine' && !!job.machineAsVm
     setMachineAsVM(isVm)
     setReadFreeSpace(job.backupType === 'machine' && !!job.readFreeSpace)
+    setMachineSnapshotsOff(job.backupType === 'machine' && !!job.snapshotsOff)
+    setLiveReadAccepted(job.backupType === 'machine' && !!job.snapshotsOff && !!job.liveRead)
     if (!isVm) { setVmIdNumber(''); setVmIdStyle('range'); return }
     const id = String(job.backupId || '')
     if (/^000\d+$/.test(id)) { setVmIdStyle('zeros'); setVmIdNumber(id.slice(3)) }
@@ -2497,6 +2504,38 @@ function App() {
         return
       }
 
+      // Anything that would stop the set running as saved: say so before
+      // saving, with Save anyway or Go back.
+      const linuxMachineSet = backupType === 'machine' && systemInfo.os === 'linux'
+      const blockers = []
+      if (editingJobId && scheduledJobs.find(j => j.id === editingJobId)?.enabled === false) {
+        blockers.push(tl('saveWarnDisabled', 'The set is turned off, so it will not run until you turn it on.'))
+      }
+      if (scheduleMode !== 'manual' && !runAtStartup && !schedules.some(sc => sc.enabled)) {
+        blockers.push(tl('saveWarnNoSchedule', 'No schedule is turned on, so it runs only when you press Run now.'))
+      }
+      if (linuxMachineSet && machineSnapshotsOff && !liveReadAccepted) {
+        blockers.push(tl('saveWarnSnapshotsOff', 'Use snapshots is off but reading without a snapshot is not accepted, so every run stops before it starts.'))
+      }
+      if (linuxMachineSet && !machineSnapshotsOff && !systemInfo.snapshot_module) {
+        blockers.push(tl('saveWarnNoModule', 'No snapshot module is loaded, so a run stops when one of its disks is mounted.'))
+      }
+      if (backupType === 'machine' && systemInfo.needs_local_elevation) {
+        blockers.push(tl('saveWarnNeedsRoot', 'This app is not running as administrator and the service is not running, so a run started here cannot read the disks.'))
+      }
+      if (backupType === 'machine' && missingSetDisks.length > 0) {
+        blockers.push(t('saveWarnDisksMissing', { disks: missingSetDisks.map(m => m.path).join(', ') }))
+      }
+      if (blockers.length > 0 && !(await askConfirm({
+        title: tl('saveWarnTitle', 'This Backup Set will not run as it is'),
+        message: tl('saveWarnIntro', 'Saved like this:') + '\n\n' + blockers.map(b => '• ' + b).join('\n'),
+        confirmLabel: tl('saveWarnSave', 'Save anyway'),
+        cancelLabel: tl('saveWarnBack', 'Go back'),
+        danger: true,
+      }))) {
+        return
+      }
+
       // For machine backups, we need to use a different approach for scheduled jobs
       // We'll pass drive letters in a separate field or structure based on backup type
       const jobData = {
@@ -2511,6 +2550,9 @@ function App() {
         backupType: backupType,
         machineAsVm: useVmType,
         readFreeSpace: backupType === 'machine' && readFreeSpace,
+        // Linux machine sets only: Use snapshots off, and the live-read override.
+        snapshotsOff: linuxMachineSet && machineSnapshotsOff,
+        liveRead: linuxMachineSet && machineSnapshotsOff && liveReadAccepted,
         excludeList: backupType === 'directory' ? getEffectiveExcludeList() : [],
         driveLetters: backupType === 'machine' ? selectedDrives : [],
         // The identity of each disk, so the set's runs find it whatever number
@@ -2551,7 +2593,7 @@ function App() {
         }
         // Reset form after save
         setJobName('')
-        setMachineAsVM(false); setReadFreeSpace(false); setVmIdNumber(''); setImageFolders('')
+        setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setVmIdNumber(''); setImageFolders('')
         setRunAtStartup(false)
         setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
         setBackupDirs('')
@@ -4207,7 +4249,7 @@ function App() {
                   onClick={() => {
                     setEditingJobId(null)
                     setJobName('')
-                    setMachineAsVM(false); setReadFreeSpace(false); setVmIdNumber(''); setImageFolders('')
+                    setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setVmIdNumber(''); setImageFolders('')
                     setBackupMode('scheduled')
                     setRunAtStartup(false)
                     setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
@@ -4309,17 +4351,24 @@ function App() {
                                   "VSS" on Windows, "Snapshot" on Linux. */}
                               {(() => {
                                 const linux = systemInfo.os === 'linux'
-                                const on = job.backupType === 'machine' || !!job.useVSS
+                                // A Linux machine set with Use snapshots off: amber when
+                                // it reads live (accepted), red when its runs stop.
+                                const machineOff = linux && job.backupType === 'machine' && !!job.snapshotsOff
+                                const red = machineOff && !job.liveRead
+                                const on = !machineOff && (job.backupType === 'machine' || !!job.useVSS)
                                 // Folders this set reads live although it asks for a
                                 // snapshot (network drives): amber, PARTLY or N/A.
                                 const liveDirs = on && job.backupType !== 'machine'
                                   ? (job.backupDirs || []).filter(d => snapSupport[d] === false) : []
-                                const amber = liveDirs.length > 0
-                                const allLive = amber && liveDirs.length === (job.backupDirs || []).length
-                                const tip = amber
+                                const amber = liveDirs.length > 0 || (machineOff && !red)
+                                const allLive = liveDirs.length > 0 && liveDirs.length === (job.backupDirs || []).length
+                                const tip = machineOff
+                                  ? (red ? tl('snapshotTipMachineOffNotAccepted', "Use snapshots is off but reading without a snapshot is not accepted: the set's runs stop.")
+                                         : tl('snapshotTipMachineLive', 'Use snapshots is off: mounted partitions are read live, and the image may be inconsistent.'))
+                                  : liveDirs.length > 0
                                   ? tl('snapshotTipSomeLive', 'These folders cannot be snapshotted (network drives) and are read live:') + '\n' + liveDirs.join('\n')
                                   : job.backupType === 'machine'
-                                  ? (linux ? tl('snapshotTipMachineLinux', 'Mounted partitions are read through a snapshot (elastio-snap) when one can be taken; otherwise they are read live.')
+                                  ? (linux ? tl('snapshotTipMachineLinux', 'Mounted partitions are read through a snapshot (elastio-snap or dattobd). If none can be taken the run stops, unless Use snapshots is turned off for the set.')
                                            : tl('vssTipMachine', 'Disk images always read the volumes through a Volume Shadow Copy.'))
                                   : on
                                     ? (linux ? tl('snapshotTipOnLinux', 'Files are read from a file system snapshot where the volume supports one; otherwise they are read live.')
@@ -4330,12 +4379,12 @@ function App() {
                                   <span title={tip} className={'snap-badge' + (amber ? ' snap-badge-amber' : '')} style={{
                                     display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
                                     padding: '2px 7px', borderRadius: '3px', verticalAlign: 'middle', marginRight: '6px', cursor: 'help',
-                                    background: amber ? '#fff4e0' : on ? '#eaf4fb' : '#f4f4f4',
-                                    color: amber ? '#9a5b00' : on ? '#1f6f9f' : '#777',
-                                    border: '1px solid ' + (amber ? '#f0cf96' : on ? '#c4dfef' : '#ddd'),
+                                    background: red ? '#fef2f2' : amber ? '#fff4e0' : on ? '#eaf4fb' : '#f4f4f4',
+                                    color: red ? '#b91c1c' : amber ? '#9a5b00' : on ? '#1f6f9f' : '#777',
+                                    border: '1px solid ' + (red ? '#f5c2c0' : amber ? '#f0cf96' : on ? '#c4dfef' : '#ddd'),
                                   }}>
                                     {(linux ? tl('snapshotBadge', 'Snapshot') : 'VSS').toUpperCase()}{' '}
-                                    {(allLive ? tl('snapshotNA', 'N/A') : amber ? tl('snapshotPartly', 'Partly') : on ? t('vssOn') : t('vssOff')).toUpperCase()}
+                                    {(machineOff ? t('vssOff') : allLive ? tl('snapshotNA', 'N/A') : amber ? tl('snapshotPartly', 'Partly') : on ? t('vssOn') : t('vssOff')).toUpperCase()}
                                   </span>
                                 )
                               })()}
@@ -4725,6 +4774,8 @@ function App() {
               setSelectedDrives={pickDrives}
               selectedDrives={selectedDrives}
               missingDisks={missingSetDisks}
+              systemInfo={systemInfo}
+              onRestartAsAdmin={restartAsAdmin}
             />
           )}
           {backupType === 'machine' && (
@@ -4788,6 +4839,46 @@ function App() {
                   </div>
                 </span>
               </label>
+            </div>
+          )}
+          {/* Linux machine sets: Use snapshots, and when it is off the override
+              that accepts a live read. Unticked, the override stays visible and
+              the set's runs stop; ticking Use snapshots hides it. */}
+          {backupType === 'machine' && backupMode === 'scheduled' && systemInfo.os === 'linux' && (
+            <div className="form-group">
+              <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontWeight: 'normal', cursor: 'pointer' }}>
+                <input
+                  id="machineUseSnapshots"
+                  type="checkbox"
+                  checked={!machineSnapshotsOff}
+                  onChange={(e) => { setMachineSnapshotsOff(!e.target.checked); if (e.target.checked) setLiveReadAccepted(false) }}
+                  style={{ width: 'auto', marginTop: '3px' }}
+                />
+                <span>
+                  <strong>{tl('machineUseSnapshots', 'Use snapshots')}</strong>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', maxWidth: '560px' }}>
+                    {tl('machineUseSnapshotsHint', 'Mounted disks are read through a snapshot (elastio-snap or dattobd), so the image is consistent. A snapshot needs one of those modules loaded, and root or the service.')}
+                  </div>
+                </span>
+              </label>
+              {machineSnapshotsOff && (
+                <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontWeight: 'normal', cursor: 'pointer', marginTop: '10px', marginLeft: '24px',
+                  padding: '8px 10px', borderRadius: '6px', border: '1px solid ' + (liveReadAccepted ? '#f0cf96' : '#f5c2c0'), background: liveReadAccepted ? '#fff8ec' : '#fef2f2' }}>
+                  <input
+                    id="machineLiveReadAccept"
+                    type="checkbox"
+                    checked={liveReadAccepted}
+                    onChange={(e) => setLiveReadAccepted(e.target.checked)}
+                    style={{ width: 'auto', marginTop: '3px' }}
+                  />
+                  <span>
+                    <strong>⚠️ {tl('machineLiveReadAccept', 'Run without a snapshot: I accept the backup may be inconsistent')}</strong>
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', maxWidth: '540px' }}>
+                      {tl('machineLiveReadAcceptHint', "Mounted disks are read live. Files that change during the backup can be caught half written in the image. Without this tick the set's runs stop.")}
+                    </div>
+                  </span>
+                </label>
+              )}
             </div>
           )}
           {backupType === 'machine' && backupMode === 'scheduled' && (
@@ -5094,7 +5185,7 @@ function App() {
             <button className="btn btn-secondary" onClick={() => {
               setEditingJobId(null)
               setJobName('')
-              setMachineAsVM(false); setReadFreeSpace(false); setVmIdNumber(''); setImageFolders('')
+              setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setVmIdNumber(''); setImageFolders('')
               setChangeDetectionMode('legacy'); setFullReadEvery(0)
               setRunAtStartup(false)
               setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
