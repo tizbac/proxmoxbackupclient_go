@@ -16,11 +16,11 @@ import (
 // TestZZSelectiveRestoreBSTManual is a manual, opt-in live-integration test
 // for the GOODBYE binary-search-tree fast path in pxar_reader.go
 // (resolveArchivePathBST/walkRange), added 2026-10-01 after live evidence
-// (Mick restoring one subfolder out of a 458GB combined archive) showed the
+// (a user restoring one subfolder out of a 458GB combined archive) showed the
 // previous linear-scan-only walk() fetching a fresh ~4MB chunk for
 // essentially every step forward through the archive, REGARDLESS of whether
-// that span belonged to the selected folder or a skipped sibling — see
-// docs/TODO-HISTORY.md's "selective restore from a big combined archive" entry.
+// that span belonged to the selected folder or a skipped sibling (the old
+// TODO item "selective restore from a big combined archive").
 //
 // Backs up a tree with one deliberately large sibling folder and one small
 // target folder, restores with IncludePaths naming only the small target,

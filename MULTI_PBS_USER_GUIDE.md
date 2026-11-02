@@ -53,7 +53,7 @@ Click **+ Add server**. The editor has four tabs.
 
 **User / Password** or **API Token**: fill in one of the two. A token is an Authentication ID such as `backup@pbs!laptop` and its secret. Give it the DatastoreBackup role on the datastore (DatastoreReader as well to restore snapshots someone else made). Avoid `root@pam`.
 
-**Encryption** (optional): Browse to a PBS key file or Generate a new one. Backups to this server are then encrypted before they leave the computer. **Without the key file an encrypted snapshot cannot be restored: keep a copy away from this computer.** For a key with a passphrase choose **Ask me** (once per app session; scheduled backups fail until it has been entered) or **Remember on this computer** (needed for scheduled backups and the background service).
+**Encryption** (optional): on the server's Encryption tab, **Import...** brings in an existing PBS key (a copy of the key file, or a paper key), and **Generate...** creates a new one. Backups to this server are then encrypted before they leave the computer. **Without the key file an encrypted snapshot cannot be restored: keep a copy away from this computer.** For a key with a passphrase choose **Ask me** (once per app session; scheduled backups fail until it has been entered) or **Remember on this computer** (needed for scheduled backups and the background service).
 
 Save the server. The first server you add becomes the default.
 

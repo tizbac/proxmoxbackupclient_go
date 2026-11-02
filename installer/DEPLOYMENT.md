@@ -168,7 +168,8 @@ logs are in `%LOCALAPPDATA%\ProxmoxBackupClient\Logs`.
   the service removes those entries.
 - The service's local API listens on 127.0.0.1:18765 only and needs the token in
   `C:\ProgramData\ProxmoxBackupClient\api-token` (SYSTEM full control, Administrators
-  read). The service keeps it when it restarts and replaces it every 24 hours. The app gets
+  read). The service writes a new token every time it starts and replaces it every 24 hours
+  while it runs. The app gets
   it by asking for administrator rights (UAC) once, keeps it in memory only, and asks again
   after it is replaced. A user who cannot give an administrator's password cannot see or
   change the settings in the app; the service still runs the Backup Sets on schedule. See

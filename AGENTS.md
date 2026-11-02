@@ -27,18 +27,19 @@ Shared code: `pbscommon` (PBS protocol, pxar, chunking, encryption), `clientcomm
 
 - `make test` - Run all tests with race detector, module by module
 - `make test-e2e` - End-to-end tests against a real PBS in Docker (see `testing/e2e/README.md`)
-- `make deb`, `make pkgfedora` - Build the .deb or the .rpm
+- `make deb`, `make pkgfedora`, `make pkgarch` - Build the .deb, the .rpm or the Arch package (`pkgarch` on Arch)
 - `make lint` - Run golangci-lint
 - `make security-check` - Run security checks with gosec
 - `make cli` - Build the CLI tools into `dist/`
 - `make gui`, then `make service` - The GUI and the background service into `gui/build/bin` (`make all` does the CLI tools, the GUI and the service)
-- `make msi` - The Windows installer (`installer/wix/build-msi.ps1`)
+- `make msi` - The Windows installers, one per brand, built on Linux with Docker and Wine (`installer/wix/build_msi_linux.sh`); on Windows use `installer/wix/build-msi.ps1` (see BUILD.md)
+- `make clonezilla` - The bare-metal recovery ISO (see PATCH-CLONEZILLA.md); not part of `make all`
 
 ## Important Notes
 
 - GUI build requires `wails` CLI tool (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0`) on Windows; the Linux packages build the GUI with plain `go build -tags production`
 - Build process uses security hardening flags (`-trimpath`, `-s -w`)
-- The app's Help page embeds copies of `docs/manual/GUI.md`, `CLI.md`, `BMR.md` and `docs/RESTORE_GUIDE.md` from `gui/docs/` (go:embed cannot reach outside `gui/`). Edit the files in `docs/`, then copy them over with `make manuals` (`make gui` does it too); `TestEmbeddedManualsMatchDocs` fails while they differ, and `node src/manuals.test.mjs` in `gui/frontend` checks every link between the manuals
+- The app's Help page embeds copies of `docs/manual/GUI.md`, `CLI.md`, `BMR.md` and `docs/RESTORE_GUIDE.md` from `gui/docs/` (go:embed cannot reach outside `gui/`). Edit the files in `docs/`, then copy them over by hand (no build step does it); `TestEmbeddedManualsMatchDocs` fails while they differ, and `node src/manuals.test.mjs` in `gui/frontend` checks every link between the manuals
 - With the background service, the computer's settings live in its folder, `C:\ProgramData\ProxmoxBackupClient\` on Windows or `/var/lib/proxmoxbackupclient/` on Linux, which only the service, SYSTEM/root and elevated administrators can open; the app reaches them through the service's API (`gui/api/INTEGRATION.md`, `gui/service_connect.go`). Without a service, and for its own files, the app uses `~/.proxmox-backup-guardian/` (`getConfigDir`)
 - Cross-compilation uses GOOS and GOARCH environment variables
 - Live tests are the `gui/zz_*_livetest*_test.go` files; each is skipped unless its environment variables are set (for example `PBS_LIVE_TEST=1`; the skip message names them), and most need a real PBS

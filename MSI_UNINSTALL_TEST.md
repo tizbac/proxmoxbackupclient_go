@@ -40,9 +40,9 @@ asked, use "Change" or "Modify", then Remove.
 
 ## Status
 
-- 12 October 2026, 0.8.99 and 0.8.100 (commit 5a9b779) on winclient: silent install, silent
-  upgrade, silent removal with the settings kept.
-- 13 October 2026, 0.8.101 on winclient: silent install (the uninstall entry has no
+- October 2026, on a Windows test machine, with an older and a newer build: silent install,
+  silent upgrade, silent removal with the settings kept.
+- October 2026, on the same machine: silent install (the uninstall entry has no
   `NoModify`, so "Change" shows; service `ProxmoxBackupClientSVC` running), silent removal
   with the settings kept, silent removal with `KEEP_CONFIG=0` (DeleteConfigFolder ran; every
   file went except two logs held open by a copy of the app running from another folder).

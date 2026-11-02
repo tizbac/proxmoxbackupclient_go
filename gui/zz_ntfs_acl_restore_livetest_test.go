@@ -15,7 +15,7 @@ import (
 )
 
 // TestNTFSACLRestoreLive is a manual, opt-in live-integration test proving
-// the restore-side half of NTFS ACL/attribute fidelity (see docs/TODO-HISTORY.md
+// the restore-side half of NTFS ACL/attribute fidelity (the old TODO item
 // "Backup Metadata & NTFS Fidelity"): capture already existed
 // (gui/backup_meta_windows.go), this test exercises the new restore-side
 // application (gui/restore_meta_windows.go + the wiring in
@@ -40,7 +40,7 @@ func TestNTFSACLRestoreLive(t *testing.T) {
 	// PBS_LIVE_LONG=1: the file sits more than 300 characters deep, past
 	// MAX_PATH. Go marks its processes long-path aware, so the Win32 calls
 	// (security descriptors, attributes, times) work there too, also where
-	// LongPathsEnabled is 0 (verified on winclient 2026-10-12).
+	// LongPathsEnabled is 0 (verified on a Windows test machine, October 2026).
 	fileDir := srcDir
 	if os.Getenv("PBS_LIVE_LONG") == "1" {
 		for i := 0; i < 4; i++ {

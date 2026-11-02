@@ -39,7 +39,7 @@ There is no command line restore tool for folder backups. Restore them with the 
 
 The tools are static builds and need no installation. Run the backup tools as administrator (Windows) for VSS, or as root (Linux) for snapshots and disk access.
 
-Only one backup tool runs at a time on a computer. A second one started meanwhile exits with code 2 ([section 9](#9-exit-codes)).
+On Windows, `proxmoxbackup-directory` and `proxmoxbackup-machine` take a process lock, so only one of them runs at a time in a Windows session: a second one started meanwhile exits with code 2 ([section 9](#9-exit-codes)). On Linux there is no lock. The lock does not involve the GUI or the background service, which run several backups at once ([GUI manual, section 6.7](GUI.md#67-several-backups-at-once)).
 
 ## 2. Connecting to PBS
 
@@ -291,6 +291,8 @@ Without the key an encrypted snapshot cannot be restored. Keep a copy away from 
 | `-mail-from`, `-mail-to` | Sender and recipient (the config file's `smtp.mails` list allows several pairs) |
 | `-mail-subject-template`, `-mail-body-template` | Go [text/template](https://pkg.go.dev/text/template) templates |
 
+For a relay that takes mail without a login, leave out `-mail-username` and `-mail-password` (or `username` and `password` in the `smtp` block). The sender may include a name, for example `-mail-from "Backups <backup@example.com>"`.
+
 Template fields include `.Success`, `.Status`, `.NewChunks`, `.ReusedChunks`, `.Datastore`, `.Hostname`, `.StartTime`, `.EndTime`, `.Duration`, `.FromattedDuration` (spelt like that), `.ErrorStr`, `.Partial` and `.ReadErrorCount`. The default subject is `Backup {{.Status}}`.
 
 ## 9. Exit codes
@@ -299,7 +301,7 @@ Template fields include `.Success`, `.Status`, `.NewChunks`, `.ReusedChunks`, `.
 |---|---|
 | 0 | Success |
 | 1 | Failed: bad options, connection or login failure, key problem or backup error. For `proxmoxbackup-directory` also: the report email could not be sent |
-| 2 | Another backup job is already running on this computer |
+| 2 | Windows only: another `proxmoxbackup-directory` or `proxmoxbackup-machine` run holds the process lock ([section 1](#1-the-tools)) |
 | 3 | The snapshot was saved, but not everything could be read: `proxmoxbackup-directory`, some files are incomplete; `proxmoxbackup-machine` (version 2.0 and later), some sectors are zeros in the image |
 
 Errors go to standard error, with the list of options after "Missing or invalid options". (In version 1.1 and earlier, on Windows, missing options and "another job is running" showed a message box, which waits for a click an unattended run never gets; `proxmoxbackup-directory` even carried on after the box.)

@@ -1,6 +1,6 @@
 # Proxmox Backup Client: Windows installer (MSI)
 
-> ⚠️ **Trademark & affiliation notice.** This is an **independent community project**, not an official Proxmox product: it is **not affiliated with, endorsed by, or sponsored by Proxmox Server Solutions GmbH**. **Proxmox®** is a registered trademark of Proxmox Server Solutions GmbH in the EU, the U.S. and other countries, and it is used here **only** to describe compatibility. Following Proxmox's own trademark guidance (registered marks must not be used in product or app names — e.g. "XY App for Proxmox Virtual Environment" rather than "Proxmox XY App"), **a rename of the non-branded client is underway**: the product currently called *Proxmox Backup Client* is moving to a name that does not contain the Proxmox mark. See the [Proxmox media kit](https://www.proxmox.com/en/about/company-details/media-kit) for the exact rules.
+> ⚠️ **Trademark & affiliation notice.** This is an **independent community project**, not an official Proxmox product: it is **not affiliated with, endorsed by, or sponsored by Proxmox Server Solutions GmbH**. **Proxmox®** is a registered trademark of Proxmox Server Solutions GmbH in the EU, the U.S. and other countries, and it is used here **only** to describe compatibility. Following Proxmox's own trademark guidance (registered marks must not be used in product or app names, for example "XY App for Proxmox Virtual Environment" rather than "Proxmox XY App"), **a rename of the non-branded client is underway**: the product currently called *Proxmox Backup Client* is moving to a name that does not contain the Proxmox mark. See the [Proxmox media kit](https://www.proxmox.com/en/about/company-details/media-kit) for the exact rules.
 
 This folder builds the Windows installers: one MSI per brand. It uses WiX Toolset 3
 (tested with 3.14). The release workflow (`.github/workflows/build-and-release.yml`)
@@ -86,7 +86,7 @@ it is running from another folder) stay.
 | `INSTALLFOLDER` | `C:\Program Files\ProxmoxBackupClient` | Where the two programs go. |
 | `SERVICEAUTOSTART` | `1` | `0` installs the service as Manual and leaves it stopped. |
 | `AUTOSTART` | `1` | `0` leaves out the sign-in Run entry. |
-| `DESKTOPSHORTCUTS` | `1` | `0` leaves out the two desktop shortcuts (the Start menu keeps both). |
+| `DESKTOPSHORTCUTS` | `1` | `0` leaves out the desktop shortcut (the Start menu entry stays). |
 | `CONFIGFILE` | (none) | Full path of a settings file saved with Preferences > Export, applied before the service starts. See [DEPLOYMENT.md](DEPLOYMENT.md). |
 | `KEEP_CONFIG` | `1` | On removal, `0` deletes `C:\ProgramData\ProxmoxBackupClient`. |
 

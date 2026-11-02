@@ -7,7 +7,7 @@ import (
 )
 
 // TestCancelMachineBackupLive is a manual, opt-in live-integration test
-// answering a question raised in docs/TODO-HISTORY.md ("No way to cancel a running
+// answering an old TODO item ("No way to cancel a running
 // machine backup"): does CancelBackup() (the GUI Stop button's method)
 // actually stop a running MACHINE backup, or only a directory backup?
 //

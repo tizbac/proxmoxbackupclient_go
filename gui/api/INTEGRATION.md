@@ -219,7 +219,9 @@ Act on the backup the service is running, whoever started it. No request body.
 - pause: the backup waits at its next safe point (between files, between 64 KiB blocks of
   a large file, or between disk image blocks). The PBS session stays open.
 - resume: it carries on.
-- stop: it is cancelled after the current file. Reports record it as cancelled.
+- stop: it is cancelled at once, part way through a file if need be (a folder backup checks
+  before every 64 KiB block it reads), and also while paused. No snapshot is kept. Reports
+  record it as cancelled.
 
 Response (`RunControlResponse`), the pause state afterwards:
 

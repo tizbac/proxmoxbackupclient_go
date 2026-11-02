@@ -79,7 +79,7 @@ used: patches 0003 and 0004 add a boot entry that runs it.
 ```
 ./patch-clonezilla.sh \
   -o clonezilla-live-patched.iso \
-  clonezilla-live-3.3.3-15-amd64.iso \
+  clonezilla-live-3.3.3-37-amd64.iso \
   ./build/pbsnbd ./build/machinebackup \
   ./clonezilla-patch/ocs-pbs-nbd ./clonezilla-patch/ocs-pbs-bare-metal-restore
 ```
@@ -244,7 +244,8 @@ When the automated flow runs:
    datastore (optionally `datastore/namespace`): the same shape of prompts
    as `ocs-pbs-nbd`, with basic validation and a retry loop, but as four
    separate screens (a combined single-form attempt was tried and reverted;
-   see the fork's own history if picking that back up).
+   see the git history of `clonezilla-patch/ocs-pbs-bare-metal-restore` if
+   picking that back up).
    After the datastore, the same encryption-key menu as `ocs-pbs-nbd` is shown
    (see "Encrypted backups" above). The PBS login is a username and password
    only (`pbsnbd -username`, the password in `PBS_PASSWORD`); API tokens are not offered.
@@ -293,11 +294,12 @@ flow designed to have as few as possible: a real but separate piece of work, not
 32-40 GiB disks), consistently 8-11 minutes from power-on to a working
 login prompt, and once on physical hardware (a Linux thin client booted over
 PXE, September 2026), which started its own system again. A pre-built ISO
-(includes both this entry and `ocs-pbs-nbd`) is available from
-[this fork's releases](https://github.com/mjb-is/proxmoxbackupclient_go/releases)
-if you'd rather try it before building your own. The newest pre-built ISO
-so far is the v0.5.0 one, which predates the copy-on-write file removal in
-step 6.
+(includes both this entry and `ocs-pbs-nbd`) is published with the project's
+[releases](https://github.com/tizbac/proxmoxbackupclient_go/releases)
+if you'd rather try it before building your own. An ISO from an older
+release may predate some of the steps above (for example the copy-on-write
+file removal in step 6), so build your own from the current tree
+(`make clonezilla`) when you need the latest behaviour.
 
 ## Generated ISO build (for reference)
 
@@ -305,7 +307,7 @@ Step 4 expands to (values shown are the Clonezilla defaults):
 
 ```
 xorriso -as mkisofs -o OUT \
-  -V 3.3.3-15-amd64 -J -R \
+  -V 3.3.3-37-amd64 -J -R \
   -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
   -partition_offset 16 -partition_cyl_align on \
   -partition_hd_cyl 64 -partition_sec_hd 32 \

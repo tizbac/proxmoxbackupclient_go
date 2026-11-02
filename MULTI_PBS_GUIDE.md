@@ -148,7 +148,7 @@ The legacy fields stay in the file. A config that already has `pbs_servers` is l
 | `GetServerFingerprint(url)` | The certificate fingerprint the server presents, for trust on first use | `string, error` |
 | `PinPBSServerFingerprint(id, fp)` | Stores a confirmed fingerprint on a server | `error` |
 
-With the background service running, the GUI may not be allowed to write `config.json`; fingerprint pinning then goes through the service's local API (`/pbs/fingerprint`).
+With the background service installed, the service keeps `config.json` and the app does not write it: every change to the servers goes through the service's local API (`gui/api/INTEGRATION.md`), fingerprint pinning included (`/pbs/fingerprint`).
 
 ## Frontend
 
