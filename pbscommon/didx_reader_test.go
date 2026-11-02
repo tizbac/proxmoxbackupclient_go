@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -171,9 +174,15 @@ func TestDIDXReaderAtCachesChunks(t *testing.T) {
 
 	f := newFakePBSWithDIDX(t, "a.didx", a, nil)
 
+	// The read-ahead fetches chunks on other goroutines, and fetchOnce calls
+	// the callback outside its lock, so the calls are recorded under a mutex
+	// and may come in any order.
+	var mu sync.Mutex
 	var progressCalls []int
 	r, _, err := f.NewDIDXReaderAt("a.didx", 8, func(fetched, total int) {
+		mu.Lock()
 		progressCalls = append(progressCalls, fetched)
+		mu.Unlock()
 	})
 	if err != nil {
 		t.Fatalf("NewDIDXReaderAt: %v", err)
@@ -191,12 +200,25 @@ func TestDIDXReaderAtCachesChunks(t *testing.T) {
 	if got := f.totalFetches(); got != 4 {
 		t.Errorf("fetched %d chunks, want 4 (cache is not being used)", got)
 	}
-	if len(progressCalls) != 4 {
-		t.Errorf("progress callback fired %d times, want 4 (only on new fetches)", len(progressCalls))
+	// A read-ahead fetch reports just after it caches its chunk: give the
+	// last one a moment.
+	var calls []int
+	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		mu.Lock()
+		calls = append(calls[:0], progressCalls...)
+		mu.Unlock()
+		if len(calls) >= 4 || time.Now().After(deadline) {
+			break
+		}
 	}
-	for i, got := range progressCalls {
+	if len(calls) != 4 {
+		t.Errorf("progress callback fired %d times, want 4 (only on new fetches)", len(calls))
+	}
+	sort.Ints(calls)
+	for i, got := range calls {
 		if got != i+1 {
-			t.Errorf("progress call %d reported fetched=%d, want %d", i, got, i+1)
+			t.Errorf("progress calls reported fetched=%v, want 1, 2, 3 and 4 once each", calls)
+			break
 		}
 	}
 }
