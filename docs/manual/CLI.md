@@ -196,9 +196,10 @@ Points to know:
 | `-backup-id <id>` | computer name | Backup ID. Must be numeric with `-type vm` |
 | `-keyfile`, `-keyfile-passphrase` | | Encryption ([section 7](#7-encryption)) |
 | `-readfreespace` | off | Also read free space (a forensic copy), and on Windows the paging, hibernation and swap files. By default they go into the image as zeros without being read |
+| `-skippartition <device>:<number>` | | Leave a partition out, e.g. `\\.\PhysicalDrive0:4` or `/dev/sda:3`. Repeat for more. It is not read or snapshotted and goes into the image as zeros: a restore gives it back in its place, empty and unformatted. A number the disk does not have prints a warning and leaves nothing out |
 | `-systray` | off | Show a tray icon while running. Can cause problems when nobody is logged in |
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
-| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `systray`, `keyfile`, `keyfilepassphrase` and `smtp` as in the flags) |
+| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `systray`, `keyfile`, `keyfilepassphrase` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
 Plus the connection flags in [section 2](#2-connecting-to-pbs).

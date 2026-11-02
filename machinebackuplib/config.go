@@ -79,6 +79,11 @@ type Config struct {
 	// and root), and the backup stops if none can be taken. Windows always
 	// reads a volume in use through VSS and ignores it.
 	LiveRead bool `json:"liveread,omitempty"`
+
+	// SkipPartitions are the partitions to leave out of each disk, keyed by
+	// the device as BackupDevices gives it. A partition left out is not read
+	// or snapshotted and goes into the image as zeros (PartitionSkip).
+	SkipPartitions map[string][]PartitionSkip `json:"skippartitions,omitempty"`
 }
 
 func (c *Config) Valid() bool {

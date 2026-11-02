@@ -269,10 +269,35 @@ func GetDiskSize(path string) (int64, error) {
 	return GetDiskLength(path)
 }
 
+// partitionLetter returns the drive letter of the volume on disk that
+// overlaps start..end, or "". Overlap (rather than an exact offset match)
+// also covers volumes whose extent starts slightly off the partition start.
+// Only an exact drive-letter mount ("X:\") counts. Folder mount points
+// ("C:\Mount\Data\") have no own letter; backing them up raw by partition
+// offset yields the correct data (if not crash-consistent), whereas taking
+// the host volume's letter as theirs would snapshot the wrong volume.
+func partitionLetter(start, end uint64, vols []VolumeLetterAssign, disk int) string {
+	for _, V := range vols {
+		if V.DiskNumber != int32(disk) {
+			continue
+		}
+		if end <= V.Offset || start >= V.Offset+V.Length {
+			continue // no overlap
+		}
+		for _, mountPath := range V.Letters {
+			if len(mountPath) == 3 && mountPath[1] == ':' && mountPath[2] == '\\' {
+				return string(mountPath[0])
+			}
+		}
+	}
+	return ""
+}
+
 // BackupWindowsDisk images \\.\PhysicalDrive<index>. With readFree false,
 // the free clusters of each snapshotted NTFS volume are not read but sent as
-// zeros (see usedMap).
-func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback ProgressCallback, jp *JobProgress, readFree bool) (int64, error) {
+// zeros (see usedMap). The partitions skips name are not read or snapshotted
+// and go in as zeros (markSkipped).
+func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback ProgressCallback, jp *JobProgress, readFree bool, skips []PartitionSkip) (int64, error) {
 	parts := make([]Partition, 0)
 	ch := make(chan []byte)
 	diskdev := fmt.Sprintf("\\\\.\\PhysicalDrive%d", index)
@@ -349,34 +374,22 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 		}
 		// An active volume (one with a drive letter) that overlaps this
 		// partition MUST be read through a VSS snapshot: reading the raw disk
-		// underneath a mounted NTFS volume is not crash-consistent. Overlap
-		// (rather than exact offset match) also covers volumes whose extent
-		// starts slightly off the partition start.
-		for _, V := range vols {
-			if V.DiskNumber != int32(index) {
-				continue
-			}
-			volEnd := V.Offset + V.Length
-			if p.EndByte <= V.Offset || p.StartByte >= volEnd {
-				continue // no overlap
-			}
-			// Only an exact drive-letter mount ("X:\") gives a usable VSS
-			// letter. Folder mount points ("C:\Mount\Data\") have no own
-			// letter; backing them up raw by partition offset yields the
-			// correct data (if not crash-consistent), whereas taking the host
-			// volume's letter as theirs would snapshot the wrong volume.
-			for _, mountPath := range V.Letters {
-				if len(mountPath) == 3 && mountPath[1] == ':' && mountPath[2] == '\\' {
-					p.RequiresVSS = true
-					if p.Letter == "" {
-						p.Letter = string(mountPath[0])
-						p.FileSystem = volumeFileSystem(p.Letter)
-					}
-					break
-				}
-			}
+		// underneath a mounted NTFS volume is not crash-consistent.
+		if letter := partitionLetter(p.StartByte, p.EndByte, vols, index); letter != "" {
+			p.RequiresVSS = true
+			p.Letter = letter
+			p.FileSystem = volumeFileSystem(letter)
 		}
 		parts = append(parts, p)
+	}
+
+	// The partitions the Backup Set leaves out: taken off the snapshot here,
+	// written as zeros by readPartition.
+	for _, msg := range markSkipped(diskdev, parts, skips) {
+		log.Print(msg)
+		if progressCallback != nil {
+			progressCallback(0, msg)
+		}
 	}
 
 	// Enforce VSS coverage: every drive-letter volume on this disk must fall
@@ -410,13 +423,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 		}
 	}
 
-	snapshot_paths := make([]string, 0)
-
-	for _, p := range parts {
-		if p.RequiresVSS {
-			snapshot_paths = append(snapshot_paths, fmt.Sprintf("%s:\\\\", p.Letter))
-		}
-	}
+	snapshot_paths := vssPaths(parts)
 
 	total, err := GetDiskLength(diskdev)
 	if err != nil {
@@ -578,6 +585,18 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 				jp.noteUnreadable(diskdev, diskOff, n)
 			}
 
+			if P.Skip {
+				// Left out by the Backup Set: zeros, and nothing read.
+				if !emitZeros(length) {
+					if stoppedByUser {
+						return ErrCancelled
+					}
+					return errUploadAborted
+				}
+				log.Printf("%s: %s not read, written as zeros", diskdev, P.baseLabel())
+				return nil
+			}
+
 			var err error
 			if used == nil {
 				err = readResilient(src, srcOff, length, block, 4096, emit, emitZeros, onBad)
@@ -683,6 +702,6 @@ func SysTraySetup() {
 // backupWholeDisk is Linux-only (see linux.go). On Windows whole disks are
 // handled through the \\\\.\\PhysicalDriveN path, so this reports "not handled"
 // (and liveRead does not apply: a volume in use is always read through VSS).
-func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress, readFree, liveRead bool) (bool, int64, error) {
+func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress, readFree, liveRead bool, skips []PartitionSkip) (bool, int64, error) {
 	return false, 0, nil
 }

@@ -21,10 +21,27 @@ const sectorSize = 512
 
 type diskPartition struct {
 	device     string
+	number     int // the partition's number on the disk (sda2: 2)
+	majmin     string
 	startByte  uint64
 	endByte    uint64
 	mountpoint string
 	fstype     string // "ext4", "xfs", "vfat"... ("" when unknown)
+	skip       bool   // left out by the Backup Set: not snapshotted or read
+}
+
+// label names the partition: "/dev/sda2 (/home, ext4)" or "/dev/sda1".
+func (p diskPartition) label() string {
+	var in []string
+	for _, s := range []string{p.mountpoint, p.fstype} {
+		if s != "" {
+			in = append(in, s)
+		}
+	}
+	if len(in) > 0 {
+		return p.device + " (" + strings.Join(in, ", ") + ")"
+	}
+	return p.device
 }
 
 func unescapeOctal(s string) string {
@@ -118,11 +135,14 @@ func enumeratePartitions(diskName string) ([]diskPartition, error) {
 			startByte: start * sectorSize,
 			endByte:   (start + size) * sectorSize,
 		}
+		if n, err := readUintFile(filepath.Join(pdir, "partition")); err == nil {
+			p.number = int(n)
+		}
 		if data, err := os.ReadFile(filepath.Join(pdir, "dev")); err == nil {
-			majmin := strings.TrimSpace(string(data))
-			p.mountpoint, p.fstype = mountForMajMin(majmin)
+			p.majmin = strings.TrimSpace(string(data))
+			p.mountpoint, p.fstype = mountForMajMin(p.majmin)
 			if p.fstype == "" {
-				p.fstype = udevFileSystem(majmin)
+				p.fstype = udevFileSystem(p.majmin)
 			}
 		}
 		parts = append(parts, p)
@@ -173,7 +193,40 @@ func isBlockDevice(path string) bool {
 	return fi.Mode()&os.ModeDevice != 0 && fi.Mode()&os.ModeCharDevice == 0
 }
 
-func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress, readFree, liveRead bool) (bool, int64, error) {
+// markSkippedLinux sets skip on the partitions skips name. It returns lines
+// for the run log, as markSkipped does on Windows.
+func markSkippedLinux(dev string, parts []diskPartition, skips []PartitionSkip) []string {
+	if len(skips) == 0 {
+		return nil
+	}
+	ranges := make([]partRange, len(parts))
+	for i, p := range parts {
+		ranges[i] = partRange{start: p.startByte, end: p.endByte, number: p.number}
+	}
+	skip, msgs := skipsMatch(dev, ranges, skips)
+	for i := range parts {
+		if skip[i] {
+			parts[i].skip = true
+			msgs = append(msgs, leavingOut(dev, parts[i].label(), parts[i].endByte-parts[i].startByte))
+		}
+	}
+	return msgs
+}
+
+// snapshotMountpoints are the mounted partitions to snapshot: a partition
+// left out is not read, so it needs no snapshot. A disk whose mounted
+// partitions are all left out is read without one.
+func snapshotMountpoints(parts []diskPartition) []string {
+	mountpoints := make([]string, 0)
+	for _, p := range parts {
+		if p.mountpoint != "" && !p.skip {
+			mountpoints = append(mountpoints, p.mountpoint)
+		}
+	}
+	return mountpoints
+}
+
+func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress, readFree, liveRead bool, skips []PartitionSkip) (bool, int64, error) {
 	if !strings.HasPrefix(dev, "/dev/") {
 		return false, 0, nil
 	}
@@ -198,14 +251,15 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progres
 		return false, 0, err
 	}
 
-	mountpoints := make([]string, 0)
-	for _, p := range parts {
-		if p.mountpoint != "" {
-			mountpoints = append(mountpoints, p.mountpoint)
+	for _, msg := range markSkippedLinux(dev, parts, skips) {
+		log.Print(msg)
+		if progressCallback != nil {
+			progressCallback(0, msg)
 		}
 	}
+	mountpoints := snapshotMountpoints(parts)
 
-	log.Printf("Whole-disk backup of %s (%s, %d partitions, %d mounted)",
+	log.Printf("Whole-disk backup of %s (%s, %d partitions, %d mounted and backed up)",
 		dev, BytesToString(total), len(parts), len(mountpoints))
 
 	fidxName := fmt.Sprintf("drive-sata%d.img.fidx", index)
@@ -237,7 +291,7 @@ const liveReadHint = "or turn off Use snapshots for this Backup Set and accept a
 // backup never turns inconsistent unnoticed.
 func withSnapshots(mountpoints []string, liveRead bool, read func(map[string]snapshot.SnapShot) error) error {
 	if len(mountpoints) == 0 {
-		log.Print("No partition of this disk is mounted: reading it without a snapshot")
+		log.Print("No partition of this disk that is backed up is mounted: reading it without a snapshot")
 		return read(map[string]snapshot.SnapShot{})
 	}
 	if liveRead {
@@ -259,14 +313,22 @@ type diskSegment struct {
 	snapDev string
 	cowFile string // the snapshot's copy-on-write file on this partition
 	rawFS   bool   // an unmounted ext/XFS partition, read raw with its free-space map
+	skip    bool   // a partition the Backup Set leaves out: zeros, nothing read
 }
 
-func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total uint64, parts []diskPartition, snapshots map[string]snapshot.SnapShot, progressCallback ProgressCallback, jp *JobProgress, readFree bool) error {
+// diskRegions are the parts of the disk not read raw as they are: the
+// partitions left out, those read through their snapshot, and unmounted
+// ext/XFS ones read with their free-space map.
+func diskRegions(parts []diskPartition, total uint64, snapshots map[string]snapshot.SnapShot) []diskSegment {
 	regions := make([]diskSegment, 0)
 	for _, p := range parts {
 		end := p.endByte
 		if end > total {
 			end = total
+		}
+		if p.skip {
+			regions = append(regions, diskSegment{start: p.startByte, end: end, skip: true})
+			continue
 		}
 		if p.mountpoint == "" {
 			// Not mounted, so nothing changes it while it is read: its own
@@ -285,8 +347,11 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 		log.Printf("Partition %s (%s) @ %s -> snapshot %s",
 			p.device, p.mountpoint, BytesToString(int64(p.startByte)), sn.ObjectPath)
 	}
+	return regions
+}
 
-	segments := assembleSegments(total, regions)
+func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total uint64, parts []diskPartition, snapshots map[string]snapshot.SnapShot, progressCallback ProgressCallback, jp *JobProgress, readFree bool) error {
+	segments := assembleSegments(total, diskRegions(parts, total, snapshots))
 
 	// The progress card names the partition being read; the reader only
 	// reports a fraction of the disk, so look the offset up here.
@@ -339,16 +404,10 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 func partitionLabelAt(parts []diskPartition, off uint64) string {
 	for _, p := range parts {
 		if off >= p.startByte && off < p.endByte {
-			var in []string
-			for _, s := range []string{p.mountpoint, p.fstype} {
-				if s != "" {
-					in = append(in, s)
-				}
+			if p.skip {
+				return p.label() + ", left out"
 			}
-			if len(in) > 0 {
-				return p.device + " (" + strings.Join(in, ", ") + ")"
-			}
-			return p.device
+			return p.label()
 		}
 	}
 	return "unpartitioned space"
@@ -368,7 +427,7 @@ func assembleSegments(total uint64, regions []diskSegment) []diskSegment {
 			s = cursor
 		}
 		if r.end > s {
-			segments = append(segments, diskSegment{start: s, end: r.end, snapDev: r.snapDev, cowFile: r.cowFile, rawFS: r.rawFS})
+			segments = append(segments, diskSegment{start: s, end: r.end, snapDev: r.snapDev, cowFile: r.cowFile, rawFS: r.rawFS, skip: r.skip})
 			cursor = r.end
 		}
 	}
@@ -378,7 +437,17 @@ func assembleSegments(total uint64, regions []diskSegment) []diskSegment {
 	return segments
 }
 
-func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []byte, uploadDone <-chan struct{}, progressCallback ProgressCallback, jp *JobProgress, readFree bool) (retErr error) {
+func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []byte, uploadDone <-chan struct{}, progressCallback ProgressCallback, jp *JobProgress, readFree bool) error {
+	disk, err := os.Open(dev)
+	if err != nil {
+		return err
+	}
+	defer disk.Close()
+	return copySegments(disk, dev, segments, total, ch, uploadDone, progressCallback, jp, readFree)
+}
+
+// copySegments is writeSegments reading the disk through disk.
+func copySegments(disk io.ReaderAt, dev string, segments []diskSegment, total uint64, ch chan []byte, uploadDone <-chan struct{}, progressCallback ProgressCallback, jp *JobProgress, readFree bool) error {
 	buffer := make([]byte, 0, pbscommon.PBS_FIXED_CHUNK_SIZE*2)
 
 	var pos uint64 = 0
@@ -433,17 +502,19 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 		return true
 	}
 
-	disk, err := os.Open(dev)
-	if err != nil {
-		return err
-	}
-	defer disk.Close()
-
 	block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
 	for _, seg := range segments {
 		length := seg.end - seg.start
+		if seg.skip {
+			// Left out by the Backup Set: zeros, and nothing read.
+			if !emitZeros(length) {
+				return ErrCancelled
+			}
+			log.Printf("%s at %d: left out, %s written as zeros without being read", dev, seg.start, BytesToString(int64(length)))
+			continue
+		}
 		var bad uint64
-		src, srcOff, name := io.ReaderAt(disk), seg.start, dev
+		src, srcOff, name := disk, seg.start, dev
 		if seg.snapDev != "" {
 			sf, err := os.Open(seg.snapDev)
 			if err != nil {

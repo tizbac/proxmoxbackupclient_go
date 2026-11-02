@@ -81,6 +81,13 @@ type Partition struct {
 // label names a partition for the progress card: "C: (NTFS)", "partition 2"
 // or "unpartitioned space".
 func (p Partition) label() string {
+	if p.Skip {
+		return p.baseLabel() + ", left out"
+	}
+	return p.baseLabel()
+}
+
+func (p Partition) baseLabel() string {
 	switch {
 	case p.Letter != "" && p.FileSystem != "":
 		return p.Letter + ": (" + p.FileSystem + ")"
@@ -655,6 +662,14 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		}
 	}
 
+	// Partitions to leave out of a device that is not backed up are not
+	// applied anywhere: say so rather than drop them quietly.
+	for dev := range cfg.SkipPartitions {
+		if !slices.ContainsFunc(cfg.BackupDevices, func(d string) bool { return sameDevice(d, dev) }) && progressCallback != nil {
+			progressCallback(0, fmt.Sprintf("WARNING: partitions of %s are to be left out, but %s is not backed up", dev, dev))
+		}
+	}
+
 	// Track progress for each device
 	currentProcessedSize := uint64(0)
 	jp.BytesTotal.Store(totalSize)
@@ -686,7 +701,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 
 			isGPT := diskHasGPT(dev)
 			jp.setPhase("snapshot")
-			size, err := BackupWindowsDisk(client, int(idx), deviceCallback, jp, cfg.ReadFreeSpace)
+			size, err := BackupWindowsDisk(client, int(idx), deviceCallback, jp, cfg.ReadFreeSpace, skipsFor(cfg.SkipPartitions, dev))
 			if err != nil {
 				return nil, fmt.Errorf("backup disk %s: %w", dev, err)
 			}
@@ -712,9 +727,15 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			// to a plain raw read of the device/file.
 			isGPT := diskHasGPT(dev)
 			jp.setPhase("snapshot")
-			handled, size, err := backupWholeDisk(client, dev, i, deviceCallback, jp, cfg.ReadFreeSpace, cfg.LiveRead)
+			skips := skipsFor(cfg.SkipPartitions, dev)
+			handled, size, err := backupWholeDisk(client, dev, i, deviceCallback, jp, cfg.ReadFreeSpace, cfg.LiveRead, skips)
 			if err != nil {
 				return nil, fmt.Errorf("backup device %s: %w", dev, err)
+			}
+			if !handled && len(skips) > 0 {
+				// A file or a single partition is read whole: it has no
+				// partitions of its own to leave out.
+				deviceCallback(0, fmt.Sprintf("WARNING: %s is not a whole disk, so no partition of it is left out: backing it all up", dev))
 			}
 			if handled {
 				disks = append(disks, BackupDisk{

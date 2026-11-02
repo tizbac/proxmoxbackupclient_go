@@ -45,6 +45,8 @@ func loadConfig() *machinebackuplib.Config {
 	backupTypeFlag := flag.String("type", "", "host|vm , vm will allow to restore as VM inside proxmox VE (Physical to Virtual), also it enables to use file restore feature, use numeric backupid")
 	flag.Var(&backupdevs, "backupdev", "Can be specified multiple times,Backup device file ( On windows it can be \\\\.\\PhysicalDriveN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever ; mounted partitions get a consistent point-in-time snapshot via the elastio-snap/dattobd kernel module (requires root)")
 	readFreeSpaceFlag := flag.Bool("readfreespace", false, "Windows: also read free space and the paging/hibernation files (a forensic copy); by default they go into the image as zeros without being read")
+	var skipparts arrayFlags
+	flag.Var(&skipparts, "skippartition", "Can be specified multiple times. Leave a partition out of a whole-disk backup: <device>:<partition number>, e.g. \\\\.\\PhysicalDrive0:4 or /dev/sda:3. It is not read or snapshotted and goes into the image as zeros: a restore gives it back empty and unformatted")
 	sysTrayFlag := flag.Bool("systray", false, "Enable systray( Note it can cause issues when running with no user logged in )")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
 	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
@@ -114,6 +116,18 @@ func loadConfig() *machinebackuplib.Config {
 	}
 	if *readFreeSpaceFlag {
 		config.ReadFreeSpace = true
+	}
+	// -skippartition adds to the config file's "skippartitions".
+	for _, v := range skipparts {
+		dev, skip, err := machinebackuplib.ParseSkipPartition(v)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if config.SkipPartitions == nil {
+			config.SkipPartitions = map[string][]machinebackuplib.PartitionSkip{}
+		}
+		config.SkipPartitions[dev] = append(config.SkipPartitions[dev], skip)
 	}
 	if *sysTrayFlag {
 		config.SysTray = true
