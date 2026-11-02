@@ -115,14 +115,18 @@
                        Value="1"
                        KeyPath="yes"/>
       </Component>
+    </DirectoryRef>
 
-      <!-- Auto-start registry entry (conditional). In the machine's Run key,
-           so the app starts in the tray at every user's logon, not only for
-           the user who installed it (a per-machine install wrote it for that
-           user alone). It also keeps it clear of the app's clean-up of an
-           old per-user "NimbusBackup" Run value (cleanup_legacy.go), which
-           removed the Nimbus build's own entry at every start. -->
-      <Component Id="AutoStartRegistry" Guid="*">
+    <!-- Auto-start registry entry (conditional). In the machine's Run key, so
+         the app starts in the tray at every user's logon, not only for the
+         user who installed it (a per-machine install wrote it for that user
+         alone). It also keeps it clear of the app's clean-up of an old
+         per-user "NimbusBackup" Run value (cleanup_legacy.go), which removed
+         the Nimbus build's own entry at every start. A machine-wide key
+         belongs to a machine folder (ICE38), hence INSTALLFOLDER; Win64 so
+         it lands in the 64-bit Run key. -->
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="AutoStartRegistry" Guid="*" Win64="yes">
         <Condition>AUTOSTART = "1"</Condition>
         <RegistryValue Root="HKLM"
                        Key="Software\Microsoft\Windows\CurrentVersion\Run"
