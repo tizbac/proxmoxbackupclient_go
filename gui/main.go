@@ -24,6 +24,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	wailswin "github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"machinebackuplib"
 	"pbscommon"
 	"security"
 	"snapshot"
@@ -413,6 +414,17 @@ func (a *App) ListPhysicalDisks() ([]PhysicalDiskInfo, error) {
 		return nil, err
 	}
 
+	// Each disk's partitions, for a machine set to leave some out. A disk
+	// whose table cannot be read is listed without them, and is backed up whole.
+	for i := range disks {
+		parts, err := machinebackuplib.ListPartitions(disks[i].DevicePath)
+		if err != nil {
+			writeDebugLog(fmt.Sprintf("Partitions of %s not listed: %v", disks[i].DevicePath, err))
+			continue
+		}
+		disks[i].Partitions = parts
+	}
+
 	writeDebugLog(fmt.Sprintf("Found %d physical disks", len(disks)))
 	return disks, nil
 }
@@ -736,6 +748,9 @@ func (a *App) startMachineBackupViaService(backupType string, backupDevices []st
 		// A Linux machine set read live, as its owner accepted (an older
 		// service ignores it and stops if no snapshot can be taken).
 		LiveRead: liveRead,
+		// The partitions the set leaves out; the service finds them on the
+		// set's disks as it finds the disks.
+		SkipPartitions: a.runSkipPartitions(postActionsKey),
 	}
 
 	resp, err := a.apiClient.StartMachineBackup(req)
@@ -1263,7 +1278,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 	}
 
 	// A Backup Set's disks, found by their identity (diskpin_app.go).
-	devices, err := a.resolveRunDisks(backupDevices, postActionsKey)
+	devices, skipParts, err := a.resolveRunDisks(backupDevices, postActionsKey)
 	if err != nil {
 		return err
 	}
@@ -1341,6 +1356,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		Crypt:          pbsCfg.Crypt,
 		ReadFreeSpace:  a.runReadFreeSpace(postActionsKey),
 		LiveRead:       liveRead,
+		SkipPartitions: skipParts,
 		OnSnapshot:     func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))

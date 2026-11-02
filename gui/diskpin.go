@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"machinebackuplib"
+
+	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 )
 
 // Disk identity for machine Backup Sets. Windows numbers its disks
@@ -148,6 +152,36 @@ func canonicalDevicePath(p string) string {
 // this process may not open them), nothing can be checked and devices are
 // returned as they are.
 func resolveSetDisks(devices, ids []string, present []PhysicalDiskInfo) (resolved, moved []string, err error) {
+	paths, moved, checked, err := resolveSetDiskPaths(devices, ids, present)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !checked {
+		return paths, nil, nil
+	}
+	return uniqueDevicePaths(paths), moved, nil
+}
+
+// uniqueDevicePaths drops a disk given twice.
+func uniqueDevicePaths(paths []string) []string {
+	resolved := make([]string, 0, len(paths))
+	seen := map[string]bool{}
+	for _, path := range paths {
+		// Two saved disks can be one disk now (it moved to the other's
+		// number); PBS refuses a disk given twice.
+		if key := canonicalDevicePath(path); !seen[key] {
+			seen[key] = true
+			resolved = append(resolved, path)
+		}
+	}
+	return resolved
+}
+
+// resolveSetDiskPaths is resolveSetDisks giving the path of each saved disk,
+// at the same index as devices, before a disk given twice is dropped.
+// checked is false when nothing could be checked and devices came back as
+// they are.
+func resolveSetDiskPaths(devices, ids []string, present []PhysicalDiskInfo) (paths, moved []string, checked bool, err error) {
 	byID := map[string]string{}
 	for _, d := range present {
 		for _, id := range diskIDsOf(d) {
@@ -161,31 +195,100 @@ func resolveSetDisks(devices, ids []string, present []PhysicalDiskInfo) (resolve
 		pinned = pinned || isStableDiskID(id)
 	}
 	if !pinned || len(byID) == 0 {
-		return append([]string(nil), devices...), nil, nil
+		return append([]string(nil), devices...), nil, false, nil
 	}
 
-	resolved = make([]string, 0, len(devices))
-	seen := map[string]bool{}
+	paths = make([]string, 0, len(devices))
 	for i, dev := range devices {
 		path := dev
 		if i < len(ids) && isStableDiskID(ids[i]) {
 			cur, ok := byID[ids[i]]
 			if !ok {
-				return nil, nil, fmt.Errorf("the disk this Backup Set saved as %s (%s) is not connected, and the set does not back up whichever disk is %s now: reconnect it, or edit the set and choose its disks again", dev, ids[i], dev)
+				return nil, nil, false, fmt.Errorf("the disk this Backup Set saved as %s (%s) is not connected, and the set does not back up whichever disk is %s now: reconnect it, or edit the set and choose its disks again", dev, ids[i], dev)
 			}
 			if canonicalDevicePath(cur) != canonicalDevicePath(dev) {
 				moved = append(moved, fmt.Sprintf("%s (%s) is %s now", dev, ids[i], cur))
 			}
 			path = cur
 		}
-		// Two saved disks can be one disk now (it moved to the other's
-		// number); PBS refuses a disk given twice.
-		if key := canonicalDevicePath(path); !seen[key] {
-			seen[key] = true
-			resolved = append(resolved, path)
+		paths = append(paths, path)
+	}
+	return paths, moved, true, nil
+}
+
+// PartitionSkip is a partition a machine Backup Set leaves out.
+type PartitionSkip = api.PartitionSkip
+
+// skipDiskIndex finds the disk of a set (devices, and ids at the same index)
+// that skip belongs to: the disk with its identity, or, for a skip saved
+// without one, the disk at its device path that has no identity either. -1
+// when the set has no such disk.
+func skipDiskIndex(skip PartitionSkip, devices, ids []string) int {
+	for i, dev := range devices {
+		id := ""
+		if i < len(ids) {
+			id = ids[i]
+		}
+		if skip.DiskID != "" && id == skip.DiskID {
+			return i
+		}
+		if skip.DiskID == "" && id == "" && canonicalDevicePath(dev) == canonicalDevicePath(skip.Device) {
+			return i
 		}
 	}
-	return resolved, moved, nil
+	return -1
+}
+
+// skipsByDevice gives a run the partitions to leave out of each disk, keyed
+// by the path the run backs the disk up at (paths, at the same index as the
+// set's devices and ids). A skip whose disk is not in the set is left out of
+// the map, so nothing is skipped for it, and named in dropped for the log.
+func skipsByDevice(skips []PartitionSkip, devices, ids, paths []string) (byDev map[string][]machinebackuplib.PartitionSkip, dropped []string) {
+	for _, s := range skips {
+		i := skipDiskIndex(s, devices, ids)
+		if i < 0 || i >= len(paths) {
+			dropped = append(dropped, fmt.Sprintf("%s on %s", s.Label, s.Device))
+			continue
+		}
+		if byDev == nil {
+			byDev = map[string][]machinebackuplib.PartitionSkip{}
+		}
+		byDev[paths[i]] = append(byDev[paths[i]], machinebackuplib.PartitionSkip{Start: s.Start, Size: s.Size, Number: s.Number, Label: s.Label})
+	}
+	return byDev, dropped
+}
+
+// pinSetSkips keeps the partitions a machine set leaves out in step with its
+// disks as it is saved: a skip of a disk the set no longer backs up is
+// dropped, and one saved without an identity takes its disk's identity once
+// the set has recorded one (pinSetDisks). A skip must name a partition:
+// one without a start is dropped too.
+func pinSetSkips(job *ScheduledJob) {
+	if job.BackupType != "machine" {
+		job.SkipPartitions = nil
+		return
+	}
+	var keep []PartitionSkip
+	for _, s := range job.SkipPartitions {
+		if s.Start == 0 {
+			continue
+		}
+		if s.DiskID == "" {
+			for i, dev := range job.DriveLetters {
+				if canonicalDevicePath(dev) == canonicalDevicePath(s.Device) && i < len(job.DiskIDs) {
+					s.DiskID = job.DiskIDs[i]
+					break
+				}
+			}
+		}
+		i := skipDiskIndex(s, job.DriveLetters, job.DiskIDs)
+		if i < 0 {
+			continue
+		}
+		s.Device = job.DriveLetters[i]
+		keep = append(keep, s)
+	}
+	job.SkipPartitions = keep
 }
 
 // pinSetDisks records in a machine Backup Set the identity of each disk it

@@ -271,7 +271,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	}
 	// A Backup Set's disks, found by their identity: from the scheduler's job
 	// copy or the GUI's request (SetRunDiskIDs).
-	backupDevices, err := a.resolveRunDisks(backupDevices, postActionsKey)
+	backupDevices, skipParts, err := a.resolveRunDisks(backupDevices, postActionsKey)
 	if err != nil {
 		return err
 	}
@@ -323,9 +323,10 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		Crypt:          pbsCfg.Crypt,
 		// A machine set's forensic copy, from the scheduler's job copy or
 		// the GUI's request (RegisterRunOptions).
-		ReadFreeSpace: a.runReadFreeSpace(postActionsKey),
-		LiveRead:      liveRead,
-		OnSnapshot:    func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
+		ReadFreeSpace:  a.runReadFreeSpace(postActionsKey),
+		LiveRead:       liveRead,
+		SkipPartitions: skipParts,
+		OnSnapshot:     func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent*100, message))
 			a.reportRun(runID, percent, message)

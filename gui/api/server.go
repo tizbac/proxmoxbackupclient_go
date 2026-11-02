@@ -70,6 +70,13 @@ type RunLiveReadRegistrar interface {
 	SetRunLiveRead(runKey string, liveRead bool)
 }
 
+// RunSkipRegistrar is optionally implemented by the BackupHandler: it records
+// the partitions a machine Backup Set run the GUI asked for leaves out
+// (BackupRequest.SkipPartitions).
+type RunSkipRegistrar interface {
+	SetRunSkipPartitions(runKey string, skips []PartitionSkip)
+}
+
 // RunController is optionally implemented by the BackupHandler: Pause,
 // Resume and Stop for a backup the service is running, so a GUI can control
 // a run it did not start (a scheduled one) as well as its own. jobID is the
@@ -259,6 +266,9 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, machine bool) 
 		}
 		if l, ok := s.app.(RunLiveReadRegistrar); ok && machine && runKey != "" && req.LiveRead {
 			l.SetRunLiveRead(runKey, true)
+		}
+		if k, ok := s.app.(RunSkipRegistrar); ok && machine && runKey != "" && len(req.SkipPartitions) > 0 {
+			k.SetRunSkipPartitions(runKey, req.SkipPartitions)
 		}
 
 		var err error

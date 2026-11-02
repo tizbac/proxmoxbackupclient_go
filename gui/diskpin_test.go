@@ -287,9 +287,9 @@ func TestRunDiskIDs(t *testing.T) {
 	if got := a.runDiskIDs(""); got != nil {
 		t.Errorf("one-off: %q", got)
 	}
-	devs, err := a.resolveRunDisks([]string{`\\.\PhysicalDrive9`}, "")
-	if err != nil || !sameList(devs, []string{`\\.\PhysicalDrive9`}) {
-		t.Errorf("one-off resolveRunDisks = %v, %v", devs, err)
+	devs, skips, err := a.resolveRunDisks([]string{`\\.\PhysicalDrive9`}, "")
+	if err != nil || !sameList(devs, []string{`\\.\PhysicalDrive9`}) || skips != nil {
+		t.Errorf("one-off resolveRunDisks = %v, %v, %v", devs, skips, err)
 	}
 }
 

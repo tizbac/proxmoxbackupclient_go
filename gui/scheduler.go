@@ -29,8 +29,13 @@ type ScheduledJob struct {
 	// the system numbers them differently (diskpin.go). Empty for a set saved
 	// before identities were recorded: it is backed up by its paths, and gets
 	// identities when it is next saved.
-	DiskIDs  []string `json:"diskIds,omitempty"`
-	BackupID string   `json:"backupId"`
+	DiskIDs []string `json:"diskIds,omitempty"`
+	// SkipPartitions are partitions of the set's disks that it leaves out:
+	// they are not read or snapshotted and go into the image as zeros, so a
+	// restore gives them back empty and unformatted. A run leaves one out only
+	// while its disk still has it (skipsByDevice); otherwise it is backed up.
+	SkipPartitions []PartitionSkip `json:"skipPartitions,omitempty"`
+	BackupID       string          `json:"backupId"`
 	// PBSServerID is which configured PBS server this set backs up to; ""
 	// means the app's current default server (same convention Restore's own
 	// server dropdown already uses).

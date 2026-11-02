@@ -26,6 +26,23 @@ type BackupRequest struct {
 	// owner accepted; an older service ignores it and stops when a mounted
 	// disk cannot be snapshotted.
 	LiveRead bool `json:"live_read,omitempty"`
+	// SkipPartitions are the partitions a machine Backup Set leaves out; an
+	// older service ignores them and backs up the whole disks.
+	SkipPartitions []PartitionSkip `json:"skip_partitions,omitempty"`
+}
+
+// PartitionSkip is a partition a machine Backup Set leaves out: it is not
+// read and goes into the image as zeros. The set saves it as its disk (the
+// set's diskIds entry for it, or its device path when the disk has none) and
+// where the partition starts and how long it is; a run leaves it out only
+// when that disk still has that partition.
+type PartitionSkip struct {
+	DiskID string `json:"diskId,omitempty"`
+	Device string `json:"device"`
+	Start  uint64 `json:"start"`
+	Size   uint64 `json:"size"`
+	Number int    `json:"number,omitempty"`
+	Label  string `json:"label,omitempty"` // how the editor named it, for the log
 }
 
 // BackupResponse represents the result of a backup operation

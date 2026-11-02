@@ -22,7 +22,8 @@ import (
 // backup must finish, report them as unreadable, and hold zeros there. With
 // PBS_LMB_COMPARE=1 every other byte of the image must match the device (only
 // valid for a device nothing has mounted). PBS_LMB_OUT writes the image to a
-// file, to mount and compare.
+// file, to mount and compare. PBS_LMB_SKIP=N leaves partition N out (it may
+// be the only mounted one): it must be zeros in the image.
 func TestLiveLinuxMachineBackup(t *testing.T) {
 	dev := os.Getenv("PBS_LMB_DEV")
 	if dev == "" {
@@ -39,8 +40,28 @@ func TestLiveLinuxMachineBackup(t *testing.T) {
 			bad = append(bad, rng{x &^ 4095, (y + 4095) &^ 4095})
 		}
 	}
+	// PBS_LMB_SKIP=N leaves partition N out: it must be zeros in the image,
+	// and is not compared with the device.
+	var skips map[string][]machinebackuplib.PartitionSkip
+	var skipped []rng
+	if n, _ := strconv.Atoi(os.Getenv("PBS_LMB_SKIP")); n > 0 {
+		parts, err := machinebackuplib.ListPartitions(dev)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range parts {
+			t.Logf("partition %d at %d, %d bytes: mount %q fs %q type %q role %q", p.Number, p.Start, p.Size, p.Mount, p.FileSystem, p.Type, p.Role)
+			if p.Number == n {
+				skips = map[string][]machinebackuplib.PartitionSkip{dev: {{Start: p.Start, Size: p.Size, Number: n}}}
+				skipped = append(skipped, rng{p.Start, p.Start + p.Size})
+			}
+		}
+		if skips == nil {
+			t.Fatalf("%s has no partition %d", dev, n)
+		}
+	}
 	inBad := func(off uint64) bool {
-		for _, r := range bad {
+		for _, r := range append(bad, skipped...) {
 			if off >= r.a && off < r.b {
 				return true
 			}
@@ -72,7 +93,7 @@ func TestLiveLinuxMachineBackup(t *testing.T) {
 	_, err := machinebackuplib.Backup(&machinebackuplib.Config{
 		BaseURL: e2eBaseURL, CertFingerprint: e2eFP, AuthID: e2eAuthID, Secret: e2eSecret,
 		Datastore: e2eStore, BackupID: backupID, BackupType: "host", BackupDevices: []string{dev},
-		Progress: prog,
+		Progress: prog, SkipPartitions: skips,
 	}, func(pct float64, msg string) bool {
 		if len(msgs) == 0 || msgs[len(msgs)-1] != msg {
 			msgs = append(msgs, msg)
@@ -185,6 +206,6 @@ func TestLiveLinuxMachineBackup(t *testing.T) {
 	}
 	t.Logf("bad-range sectors: %d zero in the image, %d not zero; %d differing 4 KiB pages elsewhere (compare=%v)", zeroBad, nonZeroBad, diffs, src != nil)
 	if nonZeroBad > 0 {
-		t.Errorf("%d unreadable sectors are not zero in the image", nonZeroBad)
+		t.Errorf("%d unreadable or left-out sectors are not zero in the image", nonZeroBad)
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+
+	"machinebackuplib"
 )
 
 // runJob returns the Backup Set of the run under postActionsKey (the
@@ -55,6 +57,25 @@ func pinJobDisks(job *ScheduledJob) {
 		present, _ = listPhysicalDisks()
 	}
 	pinSetDisks(job, present)
+	pinSetSkips(job)
+}
+
+// runSkipPartitions returns the partitions the run under postActionsKey
+// leaves out: a machine Backup Set's SkipPartitions, from the scheduler's job
+// copy or from the GUI's request to the service (SetRunSkipPartitions).
+func (a *App) runSkipPartitions(postActionsKey string) []PartitionSkip {
+	if job := a.runJob(postActionsKey); job != nil {
+		return job.SkipPartitions
+	}
+	return nil
+}
+
+// SetRunSkipPartitions records the partitions a machine Backup Set run the
+// GUI handed to the service leaves out (api.RunSkipRegistrar).
+func (a *App) SetRunSkipPartitions(runKey string, skips []PartitionSkip) {
+	if job := a.runJob(runKey); job != nil {
+		job.SkipPartitions = append([]PartitionSkip(nil), skips...)
+	}
 }
 
 // resolveRunDisks gives a machine backup the devices to read. For a Backup
@@ -65,30 +86,43 @@ func pinJobDisks(job *ScheduledJob) {
 // backup, a set saved before identities were recorded) is used as given.
 // Both places that run a machine backup call it: startMachineBackupDirect and
 // the service's StartMachineBackup.
-func (a *App) resolveRunDisks(devices []string, postActionsKey string) ([]string, error) {
+//
+// It also returns the partitions the set leaves out, keyed by the path each
+// disk is backed up at in this run (skipsByDevice).
+func (a *App) resolveRunDisks(devices []string, postActionsKey string) ([]string, map[string][]machinebackuplib.PartitionSkip, error) {
 	ids := a.runDiskIDs(postActionsKey)
-	if len(ids) == 0 {
-		return devices, nil
-	}
-	present, err := listPhysicalDisks()
-	if err != nil {
-		writeDebugLog(fmt.Sprintf("[DiskPin] disks could not be listed (%v): backing up %v as saved", err, devices))
-		return devices, nil
-	}
-	resolved, moved, err := resolveSetDisks(devices, ids, present)
-	if err != nil {
-		writeDebugLog(fmt.Sprintf("[DiskPin] %v", err))
-		return nil, err
-	}
-	for _, m := range moved {
-		writeDebugLog(fmt.Sprintf("[DiskPin] the disk saved as %s: backing it up there", m))
-	}
-	if len(moved) > 0 {
-		if job := a.runJob(postActionsKey); job != nil {
-			a.keepMovedDisks(job.ID, devices, resolved)
+	paths, resolved := devices, devices
+	if len(ids) > 0 {
+		present, err := listPhysicalDisks()
+		if err != nil {
+			writeDebugLog(fmt.Sprintf("[DiskPin] disks could not be listed (%v): backing up %v as saved", err, devices))
+		} else {
+			var moved []string
+			var checked bool
+			paths, moved, checked, err = resolveSetDiskPaths(devices, ids, present)
+			if err != nil {
+				writeDebugLog(fmt.Sprintf("[DiskPin] %v", err))
+				return nil, nil, err
+			}
+			resolved = paths
+			if checked {
+				resolved = uniqueDevicePaths(paths)
+			}
+			for _, m := range moved {
+				writeDebugLog(fmt.Sprintf("[DiskPin] the disk saved as %s: backing it up there", m))
+			}
+			if len(moved) > 0 {
+				if job := a.runJob(postActionsKey); job != nil {
+					a.keepMovedDisks(job.ID, devices, resolved)
+				}
+			}
 		}
 	}
-	return resolved, nil
+	skips, dropped := skipsByDevice(a.runSkipPartitions(postActionsKey), devices, ids, paths)
+	for _, d := range dropped {
+		writeDebugLog(fmt.Sprintf("[DiskPin] the set leaves out %s, but that disk is not in the set: nothing left out for it", d))
+	}
+	return resolved, skips, nil
 }
 
 // keepMovedDisks saves a Backup Set's disks at the paths they were found at,

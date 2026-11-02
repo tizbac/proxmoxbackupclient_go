@@ -24,7 +24,17 @@ type fakeHandler struct {
 	pausedJobs  map[string]bool
 	stopped     []string // the job each Stop named ("" = all)
 	stopErr     error
-	diskIDs     map[string][]string // run key -> disk identities (SetRunDiskIDs)
+	diskIDs     map[string][]string        // run key -> disk identities (SetRunDiskIDs)
+	skips       map[string][]PartitionSkip // run key -> partitions left out (SetRunSkipPartitions)
+}
+
+func (f *fakeHandler) SetRunSkipPartitions(runKey string, skips []PartitionSkip) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.skips == nil {
+		f.skips = map[string][]PartitionSkip{}
+	}
+	f.skips[runKey] = skips
 }
 
 func (f *fakeHandler) SetRunDiskIDs(runKey string, diskIDs []string) {
@@ -352,13 +362,15 @@ func TestMachineBackupRoute(t *testing.T) {
 	}
 }
 
-// A machine Backup Set run the GUI hands over carries its disks' identities
-// to the run, before the backup starts.
+// A machine Backup Set run the GUI hands over carries its disks' identities,
+// and the partitions it leaves out, to the run before the backup starts.
 func TestMachineBackupCarriesDiskIDs(t *testing.T) {
 	fake := &fakeHandler{}
 	_, c := newTestService(t, fake)
+	skip := PartitionSkip{DiskID: "serial:AAA", Device: `\\.\PhysicalDrive0`, Start: 1 << 20, Size: 100 << 20, Number: 1, Label: "partition 1"}
 	resp, err := c.StartMachineBackup(&BackupRequest{BackupType: "machine-vm", BackupID: "101",
-		DriveLetters: []string{`\\.\PhysicalDrive0`, `\\.\PhysicalDrive1`}, DiskIDs: []string{"serial:AAA", ""}})
+		DriveLetters: []string{`\\.\PhysicalDrive0`, `\\.\PhysicalDrive1`}, DiskIDs: []string{"serial:AAA", ""},
+		SkipPartitions: []PartitionSkip{skip}})
 	if err != nil || resp.JobID == "" {
 		t.Fatalf("StartMachineBackup = %+v, %v", resp, err)
 	}
@@ -367,10 +379,14 @@ func TestMachineBackupCarriesDiskIDs(t *testing.T) {
 		fake.mu.Lock()
 		keys := append([]string(nil), fake.runKeys...)
 		ids := fake.diskIDs
+		skips := fake.skips
 		fake.mu.Unlock()
 		if len(keys) == 1 {
 			if got := ids["key-"+resp.JobID]; len(got) != 2 || got[0] != "serial:AAA" || got[1] != "" {
 				t.Fatalf("disk identities on the run: %v", ids)
+			}
+			if got := skips["key-"+resp.JobID]; len(got) != 1 || got[0] != skip {
+				t.Fatalf("partitions left out on the run: %+v", skips)
 			}
 			return
 		}

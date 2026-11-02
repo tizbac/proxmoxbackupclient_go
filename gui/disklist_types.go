@@ -1,5 +1,7 @@
 package main
 
+import "machinebackuplib"
+
 // PhysicalDiskInfo represents information about a physical disk.
 //
 // No build tag (shared by both the GUI and service binaries): the OS-specific
@@ -30,4 +32,8 @@ type PhysicalDiskInfo struct {
 	// DriveLetters are the Windows volumes mounted on the disk (["C:", "D:"]),
 	// shown in the disk picker. Empty when there are none or on Linux.
 	DriveLetters []string `json:"drive_letters,omitempty"`
+	// Partitions are the disk's partitions, for a machine Backup Set to leave
+	// some out. Only ListPhysicalDisks fills them in; null when they could
+	// not be listed, [] for a disk without any.
+	Partitions []machinebackuplib.PartitionInfo `json:"partitions"`
 }

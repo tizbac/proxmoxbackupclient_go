@@ -115,6 +115,9 @@ type BackupOptions struct {
 	// LiveRead (Linux machine backups): read mounted disks without a
 	// snapshot, as the set's owner accepted (ScheduledJob.LiveRead).
 	LiveRead bool
+	// SkipPartitions (machine backups): the partitions to leave out of each
+	// disk, keyed by its device (ScheduledJob.SkipPartitions).
+	SkipPartitions map[string][]machinebackuplib.PartitionSkip
 	// OnSnapshot receives, before OnComplete, a way to add a note to the
 	// snapshot a successful run made (the post-backup actions use it when
 	// the notification e-mail cannot be sent).
@@ -1714,6 +1717,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 		Crypt:           opts.Crypt,
 		ReadFreeSpace:   opts.ReadFreeSpace,
 		LiveRead:        opts.LiveRead,
+		SkipPartitions:  opts.SkipPartitions,
 		Progress:        &machinebackuplib.JobProgress{},
 	}
 	if opts.ReadFreeSpace {

@@ -291,8 +291,11 @@ func (a *App) mergeSettingsBundle(bundle SettingsBundle, forDeployment bool) (se
 		// On another computer a machine set is backed up by its device paths,
 		// as one saved before identities were recorded, and gets this
 		// computer's identities when it is next saved.
+		// The partitions a set leaves out are those of the same disks: on
+		// another computer the set backs up its disks whole.
 		if forDeployment || !strings.EqualFold(bundle.SourceHost, thisHost) {
 			job.DiskIDs = nil
+			job.SkipPartitions = nil
 		}
 		normalizeJobSchedules(&job)
 		setNextRun(&job, time.Now())

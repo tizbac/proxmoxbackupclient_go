@@ -227,7 +227,8 @@ func TestImportKeepsSourceBackupID(t *testing.T) {
 func TestImportDiskIDsOnlyOnTheSameComputer(t *testing.T) {
 	host, _ := os.Hostname()
 	machine := ScheduledJob{ID: "m1", Name: "Whole PC", BackupType: "machine", PBSServerID: "pbs1", Enabled: true,
-		DriveLetters: []string{`\\.\PhysicalDrive0`}, DiskIDs: []string{"serial:SRC-DISK"}}
+		DriveLetters: []string{`\\.\PhysicalDrive0`}, DiskIDs: []string{"serial:SRC-DISK"},
+		SkipPartitions: []PartitionSkip{{DiskID: "serial:SRC-DISK", Device: `\\.\PhysicalDrive0`, Start: 1 << 20, Size: 100 << 20}}}
 	for _, c := range []struct {
 		source  string
 		deploy  bool
@@ -249,6 +250,11 @@ func TestImportDiskIDsOnlyOnTheSameComputer(t *testing.T) {
 		got := jobsByID(t, a)["m1"].DiskIDs
 		if (len(got) == 1 && got[0] == "serial:SRC-DISK") != c.wantIDs {
 			t.Errorf("from %q (deploy %v): DiskIDs %q, want kept %v", c.source, c.deploy, got, c.wantIDs)
+		}
+		// The partitions it leaves out are those of the same disks: on
+		// another computer it backs its disks up whole.
+		if skips := jobsByID(t, a)["m1"].SkipPartitions; (len(skips) == 1) != c.wantIDs {
+			t.Errorf("from %q (deploy %v): SkipPartitions %+v, want kept %v", c.source, c.deploy, skips, c.wantIDs)
 		}
 	}
 }
