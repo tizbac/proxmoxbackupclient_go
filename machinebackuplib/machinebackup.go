@@ -714,6 +714,9 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 
 			// Update progress for this disk
 			currentProcessedSize += uint64(size)
+			// The reader reports each 4 MiB block it hands on; the short
+			// last one goes out after that, so mark the disk done here.
+			jp.setDiskPos(uint64(size), currentProcessedSize)
 			if progressCallback != nil && totalSize > 0 {
 				percentage := float64(currentProcessedSize) / float64(totalSize)
 				if progressCallback(percentage, fmt.Sprintf("Backup complete for disk %s", dev)) {
@@ -731,6 +734,9 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			handled, size, err := backupWholeDisk(client, dev, i, deviceCallback, jp, cfg.ReadFreeSpace, cfg.LiveRead, skips)
 			if err != nil {
 				return nil, fmt.Errorf("backup device %s: %w", dev, err)
+			}
+			if !handled {
+				jp.setPhase("data") // a file or a single partition, read with no snapshot
 			}
 			if !handled && len(skips) > 0 {
 				// A file or a single partition is read whole: it has no
@@ -757,6 +763,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 				processed = size
 			}
 			currentProcessedSize += uint64(processed)
+			jp.setDiskPos(uint64(processed), currentProcessedSize) // as for a Windows disk above
 			if progressCallback != nil && totalSize > 0 {
 				percentage := float64(currentProcessedSize) / float64(totalSize)
 				if progressCallback(percentage, fmt.Sprintf("Backup complete for device %s", dev)) {

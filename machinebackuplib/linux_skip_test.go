@@ -121,10 +121,19 @@ func TestSkippedPartitionZeroedNotRead(t *testing.T) {
 		want[i] = 0
 	}
 
+	// The progress goes on through the partition left out, to the end of the
+	// disk, and the partition is counted in LeftOut.
+	jp := &JobProgress{}
+	var fractions []float64
+	progress := func(f float64, _ string) bool {
+		fractions = append(fractions, f)
+		return false
+	}
+
 	ch := make(chan []byte)
 	errc := make(chan error, 1)
 	go func() {
-		err := copySegments(disk, "/dev/sdx", segments, total, ch, make(chan struct{}), nil, nil, false)
+		err := copySegments(disk, "/dev/sdx", segments, total, ch, make(chan struct{}), progress, jp, false)
 		close(ch)
 		errc <- err
 	}()
@@ -152,5 +161,21 @@ func TestSkippedPartitionZeroedNotRead(t *testing.T) {
 	}
 	if len(disk.reads) == 0 {
 		t.Error("nothing read at all")
+	}
+	if got := jp.LeftOut.Load(); got != skipEnd-skipStart {
+		t.Errorf("LeftOut = %d, want %d", got, skipEnd-skipStart)
+	}
+	if len(fractions) == 0 {
+		t.Fatal("no progress reported")
+	}
+	for i := 1; i < len(fractions); i++ {
+		if fractions[i] < fractions[i-1] {
+			t.Fatalf("progress went back from %v to %v", fractions[i-1], fractions[i])
+		}
+	}
+	// The last full chunk is reported; the short tail goes out after the
+	// last report, so the reader ends within one chunk of the end.
+	if last := fractions[len(fractions)-1]; last < float64(total-pbscommon.PBS_FIXED_CHUNK_SIZE)/float64(total) {
+		t.Errorf("progress ended at %v, want the end of the disk", last)
 	}
 }

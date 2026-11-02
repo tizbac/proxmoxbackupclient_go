@@ -312,10 +312,14 @@ func main() {
 	jp := &machinebackuplib.JobProgress{}
 	cfg.Progress = jp
 	counts := func() string {
-		return fmt.Sprintf("new %d, reused %d (%d blank), new/changed data %s, transferred %s, free space not read %s",
+		s := fmt.Sprintf("new %d, reused %d (%d blank), new/changed data %s, transferred %s, free space not read %s",
 			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(),
 			machinebackuplib.BytesToString(int64(jp.UploadedBytes.Load())), machinebackuplib.BytesToString(int64(jp.SentBytes())),
 			machinebackuplib.BytesToString(int64(jp.FreeSkipped.Load())))
+		if n := jp.LeftOut.Load(); n > 0 {
+			s += ", partitions left out " + machinebackuplib.BytesToString(int64(n))
+		}
+		return s
 	}
 	lastPct := -1
 	start := time.Now()

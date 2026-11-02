@@ -2,8 +2,11 @@ package machinebackuplib
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
+
+	"pbscommon"
 )
 
 // PartitionSkip names a partition that a machine backup leaves out
@@ -128,6 +131,36 @@ func vssPaths(parts []Partition) []string {
 		}
 	}
 	return paths
+}
+
+// snapshotStep is the progress line before a Windows disk is read. A disk
+// with no volume to snapshot (every lettered volume left out, or none with a
+// drive letter) takes no VSS snapshot, so the line says none is needed.
+func snapshotStep(dev string, parts []Partition) string {
+	if len(vssPaths(parts)) > 0 {
+		return "Creating VSS snapshot..."
+	}
+	if slices.ContainsFunc(parts, func(p Partition) bool { return p.Skip && p.Letter != "" }) {
+		return fmt.Sprintf("%s: no snapshot needed, every volume of this disk with a drive letter is left out", dev)
+	}
+	return fmt.Sprintf("%s: no snapshot needed, no volume of this disk has a drive letter", dev)
+}
+
+// leaveOut writes length bytes of a partition left out as zeros, 4 MiB at a
+// time, and counts them in jp.LeftOut as it goes, as free space is counted.
+// The zeros move the read position like any other data, so the progress
+// bar reaches the end of the disk. It returns false when emitZeros stops.
+func leaveOut(length uint64, emitZeros func(uint64) bool, jp *JobProgress) bool {
+	for w := uint64(0); w < length; w += pbscommon.PBS_FIXED_CHUNK_SIZE {
+		n := min(uint64(pbscommon.PBS_FIXED_CHUNK_SIZE), length-w)
+		if !emitZeros(n) {
+			return false
+		}
+		if jp != nil {
+			jp.LeftOut.Add(n)
+		}
+	}
+	return true
 }
 
 // skipsFor returns the partitions to leave out of dev. A Windows disk is

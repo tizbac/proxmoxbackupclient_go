@@ -29,6 +29,9 @@ type JobProgress struct {
 	// FreeSkipped is the free space (and paging/hibernation files) not read
 	// but sent as zeros.
 	FreeSkipped atomic.Uint64
+	// LeftOut is the size of the partitions the Backup Set leaves out, sent
+	// as zeros without being read (leaveOut).
+	LeftOut atomic.Uint64
 
 	// sent reads the job's PBS client counter (see SentBytes).
 	sent atomic.Pointer[func() uint64]
@@ -153,7 +156,7 @@ func (p *JobProgress) Reset() {
 		return
 	}
 	for _, c := range []*atomic.Uint64{&p.NewChunks, &p.ReusedChunks, &p.BlankChunks, &p.UploadedBytes,
-		&p.BytesDone, &p.BytesTotal, &p.UnreadableBytes, &p.FreeSkipped} {
+		&p.BytesDone, &p.BytesTotal, &p.UnreadableBytes, &p.FreeSkipped, &p.LeftOut} {
 		c.Store(0)
 	}
 	p.sent.Store(nil)

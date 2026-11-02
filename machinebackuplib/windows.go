@@ -439,9 +439,14 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 
 	// Visible "working" phase before the snapshot step: on a live Windows
 	// system CreateVSSSnapshot can take a while (it runs the VSS writers),
-	// and without this the GUI progress bar appears frozen at 0%.
+	// and without this the GUI progress bar appears frozen at 0%. A disk
+	// with no volume to snapshot takes none and is read straight away, so
+	// the card says it is reading rather than taking a snapshot.
+	if len(snapshot_paths) == 0 {
+		jp.setPhase("data")
+	}
 	if progressCallback != nil {
-		progressCallback(0, "Creating VSS snapshot...")
+		progressCallback(0, snapshotStep(diskdev, parts))
 	}
 
 	return total, snapshot.CreateVSSSnapshot(snapshot_paths, false, func(snapshots map[string]snapshot.SnapShot) error {
@@ -587,7 +592,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 
 			if P.Skip {
 				// Left out by the Backup Set: zeros, and nothing read.
-				if !emitZeros(length) {
+				if !leaveOut(length, emitZeros, jp) {
 					if stoppedByUser {
 						return ErrCancelled
 					}

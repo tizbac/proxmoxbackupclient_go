@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"pbscommon"
 )
 
 // A skip leaves out the partition that starts where it says and is as long
@@ -102,6 +104,67 @@ func TestMarkSkippedWindows(t *testing.T) {
 	}
 	if len(msgs) != 1 || !strings.HasPrefix(msgs[0], "WARNING") || !strings.Contains(msgs[0], "partition 7") {
 		t.Errorf("unmatched: messages %q", msgs)
+	}
+}
+
+// A Windows disk with nothing left to snapshot says so, instead of
+// "Creating VSS snapshot..." for a snapshot it never takes.
+func TestSnapshotStep(t *testing.T) {
+	efi := Partition{StartByte: 1 * mib, EndByte: 101 * mib, Number: 1}
+	d := Partition{StartByte: 101 * mib, EndByte: 1000 * mib, Number: 2, RequiresVSS: true, Letter: "D", FileSystem: "NTFS"}
+	const dev = `\\.\PhysicalDrive1`
+
+	if got := snapshotStep(dev, []Partition{efi, d}); got != "Creating VSS snapshot..." {
+		t.Errorf("a lettered volume backed up: %q", got)
+	}
+	parts := []Partition{efi, d}
+	markSkipped(dev, parts, []PartitionSkip{{Number: 2}})
+	got := snapshotStep(dev, parts)
+	if strings.Contains(got, "VSS") || !strings.Contains(got, "no snapshot needed") || !strings.Contains(got, "left out") {
+		t.Errorf("every lettered volume left out: %q", got)
+	}
+	got = snapshotStep(dev, []Partition{efi, {StartByte: 101 * mib, EndByte: 1000 * mib, Number: 2}})
+	if strings.Contains(got, "VSS") || !strings.Contains(got, "no volume of this disk has a drive letter") {
+		t.Errorf("no lettered volume: %q", got)
+	}
+}
+
+// A partition left out is written as zeros in 4 MiB pieces, each counted in
+// LeftOut as it goes, and the zeros add up to the partition, so the read
+// position (and the progress bar) gets to its end.
+func TestLeaveOutCounts(t *testing.T) {
+	const length = 2*pbscommon.PBS_FIXED_CHUNK_SIZE + 12345
+	jp := &JobProgress{}
+	var written uint64
+	var seen []uint64
+	ok := leaveOut(length, func(n uint64) bool {
+		if n > pbscommon.PBS_FIXED_CHUNK_SIZE {
+			t.Errorf("piece of %d bytes, want at most 4 MiB", n)
+		}
+		written += n
+		seen = append(seen, jp.LeftOut.Load())
+		return true
+	}, jp)
+	if !ok || written != length || jp.LeftOut.Load() != length {
+		t.Fatalf("ok %v, written %d, LeftOut %d, want %d", ok, written, jp.LeftOut.Load(), length)
+	}
+	if !reflect.DeepEqual(seen, []uint64{0, pbscommon.PBS_FIXED_CHUNK_SIZE, 2 * pbscommon.PBS_FIXED_CHUNK_SIZE}) {
+		t.Errorf("LeftOut while writing %v: want it counted piece by piece", seen)
+	}
+
+	// Stopped part way: false, and only what went out is counted.
+	jp = &JobProgress{}
+	calls := 0
+	if leaveOut(length, func(n uint64) bool { calls++; return calls < 2 }, jp) {
+		t.Error("leaveOut went on after emitZeros stopped")
+	}
+	if jp.LeftOut.Load() != pbscommon.PBS_FIXED_CHUNK_SIZE {
+		t.Errorf("LeftOut after a stop = %d, want one piece", jp.LeftOut.Load())
+	}
+
+	// No progress to keep (the CLI tests): no panic.
+	if !leaveOut(length, func(uint64) bool { return true }, nil) {
+		t.Error("nil JobProgress")
 	}
 }
 

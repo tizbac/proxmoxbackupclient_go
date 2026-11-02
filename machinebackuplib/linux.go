@@ -264,6 +264,13 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progres
 
 	fidxName := fmt.Sprintf("drive-sata%d.img.fidx", index)
 
+	// Nothing to snapshot (no mounted partition left to back up, or Use
+	// snapshots turned off): the disk is read straight away, so the card
+	// says it is reading rather than taking a snapshot.
+	if len(mountpoints) == 0 || liveRead {
+		jp.setPhase("data")
+	}
+
 	err = withSnapshots(mountpoints, liveRead, func(snapshots map[string]snapshot.SnapShot) error {
 		return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback, jp, readFree)
 	})
@@ -507,7 +514,7 @@ func copySegments(disk io.ReaderAt, dev string, segments []diskSegment, total ui
 		length := seg.end - seg.start
 		if seg.skip {
 			// Left out by the Backup Set: zeros, and nothing read.
-			if !emitZeros(length) {
+			if !leaveOut(length, emitZeros, jp) {
 				return ErrCancelled
 			}
 			log.Printf("%s at %d: left out, %s written as zeros without being read", dev, seg.start, BytesToString(int64(length)))
