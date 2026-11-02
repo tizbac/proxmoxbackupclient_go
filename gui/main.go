@@ -449,6 +449,9 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		"parallel_backup_read":          cfg.ParallelBackupRead,
 		"backup_read_workers":           cfg.BackupReadWorkers,
 		"max_concurrent_runs":           clampRunLimit(cfg.MaxConcurrentRuns),
+		"upload_limit_mbps":             cfg.UploadLimitMBps,
+		"download_limit_mbps":           cfg.DownloadLimitMBps,
+		"disk_read_limit_mbps":          cfg.DiskReadLimitMBps,
 		"hostname":                      hostname,
 		// Global SMTP account (Preferences > Advanced). Same M-04 pattern as
 		// the PBS secret above: never hand the real password to the webview,
@@ -509,6 +512,7 @@ func (a *App) ReloadConfig() {
 	}
 	newConfig := LoadConfig()
 	a.config = newConfig
+	applySpeedLimits(newConfig)
 	writeDebugLog("Config reloaded from disk")
 }
 

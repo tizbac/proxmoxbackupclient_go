@@ -311,6 +311,19 @@ var apiCalls = map[string]func(a *App, args []json.RawMessage) (interface{}, err
 		}
 		return nil, a.SetMaxConcurrentRuns(n)
 	},
+	"SetSpeedLimits": func(a *App, args []json.RawMessage) (interface{}, error) {
+		var up, down, disk int
+		if err := arg(args, 0, &up); err != nil {
+			return nil, err
+		}
+		if err := arg(args, 1, &down); err != nil {
+			return nil, err
+		}
+		if err := arg(args, 2, &disk); err != nil {
+			return nil, err
+		}
+		return nil, a.SetSpeedLimits(up, down, disk)
+	},
 	"SetParallelBackupRead": func(a *App, args []json.RawMessage) (interface{}, error) {
 		var on bool
 		var workers int

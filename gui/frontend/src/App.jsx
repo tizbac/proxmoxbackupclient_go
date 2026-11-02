@@ -49,6 +49,8 @@ let GetServiceStatus, InstallService, StartBackgroundService, StopBackgroundServ
 let PauseBackup, ResumeBackup, GetBackupPauseState
 // Several backups at once: each run's own Pause, Resume and Stop
 let GetBackupRuns, PauseBackupRun, ResumeBackupRun, CancelBackupRun, SetMaxConcurrentRuns
+// Preferences > Backup Options: speed limits shared by every run
+let SetSpeedLimits
 // The background service's settings (upstream's strict model)
 let ConnectService, IsServiceConnected, UseOwnSettings, OwnSetsCount, ConnectServiceCopyingOwn
 
@@ -141,6 +143,7 @@ if (window.go) {
   ResumeBackupRun = window.go.main.App.ResumeBackupRun
   CancelBackupRun = window.go.main.App.CancelBackupRun
   SetMaxConcurrentRuns = window.go.main.App.SetMaxConcurrentRuns
+  SetSpeedLimits = window.go.main.App.SetSpeedLimits
 }
 
 // Wails events + runtime (open external URLs in the system browser)
@@ -4017,6 +4020,48 @@ function App() {
                       </div>
                       <div className="info-box" style={{marginTop: '10px'}}>
                         ℹ️ {t('maxRunsHint')}
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{marginTop: '24px'}}>
+                      <h3 style={{marginBottom: '8px'}}>{t('speedLimitsTitle')}</h3>
+                      <div style={{display: 'flex', flexWrap: 'wrap', gap: '16px'}}>
+                        {[
+                          ['upload_limit_mbps', 'speedLimitUpload'],
+                          ['download_limit_mbps', 'speedLimitDownload'],
+                          ['disk_read_limit_mbps', 'speedLimitDiskRead'],
+                        ].map(([field, label]) => (
+                          <div key={field} style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
+                            <label htmlFor={label}>{t(label)}</label>
+                            <input
+                              id={label}
+                              type="number"
+                              min="0"
+                              max="100000"
+                              step="1"
+                              style={{width: '140px'}}
+                              placeholder={t('speedLimitNone')}
+                              value={config[field] || ''}
+                              onChange={(e) => {
+                                // Whole MB/s; empty is no limit (0).
+                                const n = Math.min(100000, Math.max(0, Math.floor(Number(e.target.value)) || 0))
+                                setConfig({...config, [field]: n})
+                              }}
+                              onBlur={async () => {
+                                if (!SetSpeedLimits) return
+                                try {
+                                  await SetSpeedLimits(config.upload_limit_mbps || 0, config.download_limit_mbps || 0, config.disk_read_limit_mbps || 0)
+                                  showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                                } catch (err) {
+                                  showStatus(`❌ ${err}`, 'error')
+                                }
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('speedLimitsHint')}
                       </div>
                     </div>
 

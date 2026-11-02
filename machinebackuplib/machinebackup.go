@@ -2,6 +2,7 @@ package machinebackuplib
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -388,9 +389,11 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 			rerr = fmt.Errorf("failed to seek to start: %w", err)
 			return
 		}
+		// Charged to the disk read speed limit, as readResilient is for disks.
+		src := pbscommon.LimitReader(context.Background(), pbscommon.LimitDiskRead, f)
 		for {
 			block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE) //PBS block size is fixed 4MB
-			nread, err := f.Read(block)
+			nread, err := src.Read(block)
 			if err == io.EOF {
 				break
 			} else if err != nil {

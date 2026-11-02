@@ -71,6 +71,7 @@ func (a *App) SaveConfig(config *Config) error {
 
 	// Update in-memory config
 	a.config = config
+	applySpeedLimits(config)
 	writeDebugLog("Config saved successfully and loaded into app")
 	return nil
 }

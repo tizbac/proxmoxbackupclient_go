@@ -1362,10 +1362,13 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 				//So to achieve that the function to create SSL socket has been hijacked here
 				//Here an http 1.1 request to authenticate, start the backup and require upgrade to HTTP2 is done then the socket is passed to
 				// http2.Transport handler
-				conn, err := tls.Dial(network, addr, &pbs.TLSConfig)
+				tlsConn, err := tls.Dial(network, addr, &pbs.TLSConfig)
 				if err != nil {
 					return nil, err
 				}
+				// Everything the session sends and receives is charged to
+				// the upload and download speed limits (ratelimit.go).
+				conn := newLimitedConn(tlsConn)
 				// Stash the raw socket so Close() can force-terminate the
 				// session on shutdown even while an H2 stream is in flight.
 				pbs.activeConnMu.Lock()

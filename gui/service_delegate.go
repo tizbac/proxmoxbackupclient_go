@@ -30,6 +30,9 @@ func (a *App) hydrateFromService() error {
 		return err
 	}
 	a.config = cfg
+	// The app restores and browses in its own process, under the service's
+	// limits (the budgets are this process's own, not shared with the service).
+	applySpeedLimits(cfg)
 	return nil
 }
 

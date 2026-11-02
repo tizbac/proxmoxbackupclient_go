@@ -58,6 +58,10 @@ func (s *BackupService) run() {
 		callbacksMap:     make(map[string]*progressCallbacks),
 		isServiceProcess: true, // Prevent mode re-detection (would cause infinite loop)
 	}
+	// As NewApp does for the app: without this the queue kept the default
+	// of 3 whatever Maximum Concurrent Backups was set to.
+	s.app.useRunLimitFromConfig()
+	applySpeedLimits(s.app.config)
 
 	// Load configuration (service will read config from file when needed)
 	configMap := s.app.GetConfigWithHostname()

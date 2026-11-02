@@ -319,6 +319,7 @@ func NewApp() *App {
 		callbacksMap:  make(map[string]*progressCallbacks),
 	}
 	a.useRunLimitFromConfig()
+	applySpeedLimits(a.config)
 	return a
 }
 
@@ -334,6 +335,7 @@ func NewAppForService(ctx context.Context) *App {
 		isServiceProcess: true, // Prevent mode re-detection
 	}
 	a.useRunLimitFromConfig()
+	applySpeedLimits(a.config)
 	return a
 }
 

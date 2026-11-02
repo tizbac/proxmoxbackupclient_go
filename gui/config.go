@@ -126,6 +126,13 @@ type Config struct {
 	// twice at once.
 	MaxConcurrentRuns int `json:"max_concurrent_runs,omitempty"`
 
+	// Speed limits in MB/s (decimal megabytes), 0 for none (speed_limits.go).
+	// Each is one budget for the whole process, shared by every backup and
+	// restore running at the same time.
+	UploadLimitMBps   int `json:"upload_limit_mbps,omitempty"`
+	DownloadLimitMBps int `json:"download_limit_mbps,omitempty"`
+	DiskReadLimitMBps int `json:"disk_read_limit_mbps,omitempty"`
+
 	// ==================== EMAIL NOTIFICATIONS ====================
 	// Global SMTP account, used by every Backup Set's own on-completion/
 	// on-failure email toggle (see ScheduledJob) rather than each job storing

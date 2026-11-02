@@ -1,8 +1,11 @@
 package machinebackuplib
 
 import (
+	"context"
 	"errors"
 	"io"
+
+	"pbscommon"
 )
 
 // errCopyStopped is what readResilient returns when emit or emitZeros
@@ -25,6 +28,11 @@ var errCopyStopped = errors.New("copy stopped")
 // and 4096 suits both 512-byte and 4K-sector disks).
 func readResilient(src io.ReaderAt, srcOffset, length uint64, block []byte, unit uint64,
 	emit func([]byte) bool, emitZeros func(uint64) bool, onBad func(off, n uint64)) error {
+	// Every block a machine backup reads from a disk or shadow copy comes
+	// through here, so this is where the disk read speed limit is charged.
+	// No context: a Stop is seen after the block, which at the lowest limit
+	// (1 MB/s) is at most a few seconds away.
+	src = pbscommon.LimitReaderAt(context.Background(), pbscommon.LimitDiskRead, src)
 	var pos uint64
 	padToEnd := func() error {
 		if pos < length && !emitZeros(length-pos) {

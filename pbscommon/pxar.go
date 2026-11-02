@@ -950,7 +950,7 @@ func (a *PXARArchive) startPrefetch(dirPath string, files []os.DirEntry) map[str
 		go func() {
 			for p := range jobs {
 				pe := entries[p]
-				pe.data, pe.err = os.ReadFile(p)
+				pe.data, pe.err = readFileLimited(a.Ctx, p)
 				close(pe.done)
 			}
 		}()
@@ -1438,9 +1438,9 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	}
 
 	if reader == nil {
-		f, err := openForRead(path)
+		f, err := a.openSource(path)
 		if err != nil {
-			err = a.retrySource(path, err, "opening", func() (e error) { f, e = openForRead(path); return })
+			err = a.retrySource(path, err, "opening", func() (e error) { f, e = a.openSource(path); return })
 		}
 		if a.walkMustStop(err) {
 			return CatalogFile{}, err
@@ -1513,7 +1513,7 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 				break
 			}
 			rerr := a.retrySource(path, err, "reading", func() error {
-				f, oerr := openForRead(path)
+				f, oerr := a.openSource(path)
 				if oerr != nil {
 					return oerr
 				}

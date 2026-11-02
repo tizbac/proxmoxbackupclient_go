@@ -59,6 +59,7 @@ func (a *App) ShowToastNotification(title, message string, isError bool) {}
 // the API server probes after a config-changing request.
 func (a *App) ReloadConfig() {
 	a.config = LoadConfig()
+	applySpeedLimits(a.config)
 	writeDebugLog("Config reloaded from disk")
 }
 

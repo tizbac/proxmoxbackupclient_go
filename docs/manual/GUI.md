@@ -365,7 +365,23 @@ Runs at the same time share the computer's disks and network and the PBS server.
 
 Each run writes its own log file (`backup-<date>-<time>-<backup id>.log`), however many run at once ([section 13](#13-message-log-and-log-files)).
 
-### 6.8 Administrator protection
+### 6.8 Speed limits
+
+**Preferences > Backup Options > Speed limits** has three limits, in MB/s (1 MB is 1,000,000 bytes), so backups leave room on the network and disks for other work:
+
+| Limit | What it counts |
+|---|---|
+| **Upload to PBS** | Everything sent to the PBS server: new chunks and the indexes |
+| **Download from PBS** | Everything read from the PBS server: restores, browsing and searching a snapshot, Undelete and Roll back |
+| **Disk read** | What backups read from this computer's disks: the files of a folder backup, the disks of a machine backup |
+
+Leave a box empty (or 0) for no limit, which is the default. Each limit is shared by everything running at the same time: three backups under a 10 MB/s upload limit share 10 MB/s, they do not get 10 MB/s each. A change applies at once, also to backups and restores already running.
+
+A backup reads and then uploads, so it goes no faster than the lower of **Disk read** and **Upload to PBS**. Data that has not changed is read but not uploaded (PBS already has its chunks), so a mostly unchanged backup is held back by **Disk read**, not by **Upload to PBS**. A Metadata backup ([section 7](#7-incremental-folder-backups-change-detection)) does not read unchanged files at all.
+
+With the background service the limits are the service's and hold for every run it makes. Restores and browsing in the app use the same limits, but the app has its own share of them, apart from the service's.
+
+### 6.9 Administrator protection
 
 With the background service installed, the Backup Sets are the computer's and the service keeps them. The app reaches them only once it has connected to the service, which needs administrator rights ([section 15](#connecting-to-the-background-service)). So adding, editing, deleting, importing and running Backup Sets, and changing servers or any other setting, already needs an administrator, on Windows and on Linux. A standard account can connect too, with an administrator's name and password.
 
@@ -698,7 +714,7 @@ Open Preferences from the side menu or **Tools > Preferences…**. The dialog ha
 | Tab | Contents |
 |---|---|
 | Account Information | PBS servers ([section 4](#4-adding-a-pbs-server)) |
-| Backup Options | **Parallel restore extraction (experimental)**: writes several files at once during a restore. Not always faster; on our test machine it was slightly slower. **Multi-threaded backup reading (experimental)**: reads files ahead in the background during a backup, with a **Worker count:** (1 to 32, default 8). Helps when the disk is the bottleneck. Turn either off if anything behaves unexpectedly. **Maximum Concurrent Backups:** how many backups and restores may run at the same time, 1 to 8, default 3 ([section 6.7](#67-several-backups-at-once)). 1 runs them one after another, as before. A change applies to the next backup to start |
+| Backup Options | **Parallel restore extraction (experimental)**: writes several files at once during a restore. Not always faster; on our test machine it was slightly slower. **Multi-threaded backup reading (experimental)**: reads files ahead in the background during a backup, with a **Worker count:** (1 to 32, default 8). Helps when the disk is the bottleneck. Turn either off if anything behaves unexpectedly. **Maximum Concurrent Backups:** how many backups and restores may run at the same time, 1 to 8, default 3 ([section 6.7](#67-several-backups-at-once)). 1 runs them one after another, as before. A change applies to the next backup to start. **Speed limits**: **Upload to PBS**, **Download from PBS** and **Disk read**, in MB/s, empty for no limit, each shared by everything running at the same time ([section 6.8](#68-speed-limits)) |
 | Theme | Amber, Classic Blue, Green, Red, Dark, or Custom… (your own Accent color, Accent (hover) and the two gradient ends, as 6-digit hex values, with a preview). Each user has their own theme: until they choose one it is Green, or after an upgrade the theme the computer had. A branded build (one whose program file carries a brand name the app knows) uses the brand's own colours and has no Theme tab |
 | Email | The SMTP account all Backup Sets use: SMTP server, Port, Username, Password, From address, and "Allow an unencrypted connection (not recommended)". **Save**, then **Send test email** to an address to check it ("Sending..." with a wait bar while it goes). Each set picks its own recipient on its Alerts tab |
 | Export / Import Settings | **Export Settings...** saves your servers, the default server, theme, email account and Backup Sets to a `.json` file. Tick "Include passwords/tokens in the export" to include the PBS tokens and passwords, remembered key passphrases and the SMTP password, in plain text, so keep that file safe. Without it, none of them is written. Encryption key files are not included: copy them yourself (**Save a copy…** on the Encryption tab). **Import Settings...** loads such a file, for example from another computer. Servers and Backup Sets with the same ID are replaced, others are added, and nothing else is removed. With the background service, export and import go through the service, as every other change does. The same file sets up many computers at once when the Windows installer is given it (`CONFIGFILE`, see [installer/DEPLOYMENT.md](../../installer/DEPLOYMENT.md)): there, a set whose backup ID is the exporting computer's name backs up under each computer's own name |

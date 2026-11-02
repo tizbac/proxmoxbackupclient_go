@@ -79,6 +79,7 @@ func (a *App) enterServiceMode(connected bool) {
 	// Until connected the app shows no settings: those in the user's own
 	// folder (from use without the service) are not the computer's.
 	a.config = &Config{PBSServers: map[string]*PBSServer{}}
+	applySpeedLimits(a.config)
 	if connected {
 		if err := a.hydrateFromService(); err != nil {
 			writeDebugLog(fmt.Sprintf("[Service] reading the service's settings: %v", err))
@@ -97,6 +98,7 @@ func (a *App) leaveServiceMode() {
 	// between must never save the service's copy (its stand-ins for the
 	// secrets) as the user's settings.
 	a.config = LoadConfig()
+	applySpeedLimits(a.config)
 	a.serviceSettings.Store(false)
 	a.setModeQuiet(api.ModeStandalone)
 }
