@@ -20,6 +20,7 @@ import LastRunAgo from './components/LastRunAgo'
 import LogsPage, { logRequestFor } from './components/LogsPage'
 import StorageOffer from './components/StorageOffer'
 import { aboutLinks, PROJECT_REPO } from './aboutBrand'
+import { holdEta, finishAt } from './etaHold'
 import defaultIcon from './assets/default-icon.svg'
 
 // Translation key for each About page link (aboutLinks in aboutBrand.js).
@@ -794,6 +795,8 @@ function App() {
   // When the current restore stage began, for estimating the steps after the
   // transfer (folder timestamps, ACLs, verify) from their "N of M" counts.
   const restoreStageStartRef = useRef({ stage: '', t: 0 })
+  // The held time left of a restore's after-transfer stage (etaHold.js).
+  const restoreStageEtaRef = useRef(null)
   // A server call in progress that has no progress of its own (WaitBar):
   // { id, kind, label, startedAt }. waitSeqRef numbers the calls so a reply
   // to a call that a newer one replaced is ignored.
@@ -1139,6 +1142,8 @@ function App() {
         } else if (bytesTotal > 0 && bytesDone >= bytesTotal) {
           eta = 0
         }
+        // Shown for 10 s at a time (etaHold.js), not with every event.
+        const etaHold = holdEta(prev.etaHold, eta, now)
 
         return {
           ...prev,
@@ -1175,7 +1180,8 @@ function App() {
           speed,
           filesRate: filesRate ?? prev.filesRate,
           uploadRate: uploadRate ?? prev.uploadRate,
-          eta
+          eta: etaHold.eta,
+          etaHold
         }
       })
     })
@@ -1337,7 +1343,9 @@ function App() {
         const lastMoveAt = bytesDone > prev.bytesDone ? now : (prev.lastMoveAt || now)
         const moveSecs = (lastMoveAt - startTime) / 1000
         const avgSpeed = moveSecs > 0 ? bytesDone / moveSecs : prev.avgSpeed
-        return { startTime, bytesDone, bytesTotal, speed, eta, lastMoveAt, avgSpeed }
+        // Shown for 10 s at a time (etaHold.js), not with every event.
+        const etaHold = holdEta(prev.etaHold, eta, now)
+        return { startTime, bytesDone, bytesTotal, speed, eta: etaHold.eta, etaHold, lastMoveAt, avgSpeed }
       })
     })
     const unsubC = EventsOn('restore:complete', (data) => {
@@ -3262,6 +3270,15 @@ function App() {
             if (n > 0 && total >= n && secs > 1) remaining = Math.round((total - n) * secs / n)
           }
         }
+        // Both shown for 10 s at a time (etaHold.js): the transfer's from the
+        // stats, a later stage's held here, starting afresh with each stage.
+        let held = afterTransfer ? null : s.etaHold
+        if (afterTransfer) {
+          held = holdEta(restoreStageEtaRef.current, remaining, now, restoreStage.stage)
+          restoreStageEtaRef.current = held
+          remaining = held.eta
+        }
+        const finish = remaining === null ? null : (held && held.eta !== null ? finishAt(held) : now + remaining * 1000)
         return (
           <>
             <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px', height: '20px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'}}>
@@ -3269,7 +3286,7 @@ function App() {
             </div>
             <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginBottom: '10px'}}>
               {row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc)}
-              {row(tl('forecastFinishLabel', 'Forecast finish:'), remaining !== null ? formatClock(now + remaining * 1000) : (afterTransfer ? finishing : calc))}
+              {row(tl('forecastFinishLabel', 'Forecast finish:'), finish !== null ? formatClock(finish) : (afterTransfer ? finishing : calc))}
               {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
               {row(t('timeRemaining'), remaining !== null ? formatDuration(remaining) : (afterTransfer ? finishing : calc))}
               {row(t('speed'), transferDone && s.avgSpeed > 0
@@ -3985,7 +4002,7 @@ function App() {
                 const finishingNow = s.phase === 'finishing'
                 const finishingText = <span className="pending-value">{tl('finishingShort', 'Finishing...')}</span>
                 const pausedText = <span className="pending-value">{tl('pausedShort', 'Paused')}</span>
-                const forecast = s.eta !== null && !finishingNow ? formatClock(now + s.eta * 1000) : null
+                const forecast = s.eta !== null && !finishingNow ? formatClock(s.etaHold ? finishAt(s.etaHold) : now + s.eta * 1000) : null
                 const filesValue = !s.hasDetail ? na
                   : machine ? (blocks > 0 ? <>{block.toLocaleString()} / {blocks.toLocaleString()}</> : calc)
                   : <>{s.filesDone.toLocaleString()} / {s.filesTotal > 0 ? s.filesTotal.toLocaleString() : calc}</>
