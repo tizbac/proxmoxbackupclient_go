@@ -1,8 +1,8 @@
 const translations = {
   fr: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Client de sauvegarde pour Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Client pour Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Serveur",
@@ -222,8 +222,8 @@ const translations = {
       welcomeMessage: "Bienvenue !",
       welcomeText: "Configurez votre premier serveur PBS pour commencer les sauvegardes.",
       noPBSYet: "Vous n'avez pas encore de serveur PBS ?",
-      downloadPBS : "Télécharger et installer Proxmox Backup Server",
-      orderStorage: "Commander du stockage Proxmox Backup Client",
+      storageSelfHost: "Téléchargez et installez votre propre {pbs}, ou achetez du stockage de sauvegarde.",
+      buyBackupStorage: "Acheter du stockage de sauvegarde",
       addYourServer: "Ajouter votre serveur PBS",
       addAnotherServer: "Ajouter un autre serveur PBS",
       editServer: "Modifier le serveur",
@@ -674,16 +674,18 @@ const translations = {
         compatible: { title: "Compatible avec les outils Proxmox", desc: "Les sauvegardes se restaurent avec le client officiel, et inversement" },
         languages: { title: "Interface en 18 langues", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Modifications depuis le fork © 2026 mjb-is, à partir du travail de Tiziano Bacocco (tizbac), des contributeurs de Proxmox Backup Client GO et de RDEM Systems (© 2024-2026).",
-      legalCredit: "Né d'un fork de proxmoxbackupclient_go de tizbac. Les ensembles de sauvegarde, la Récupération et le Retour arrière reprennent le fonctionnement et l'esprit de Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 les contributeurs de Proxmox Backup Client - Go et RDEM Systems.",
       legalLicense: "Sous licence GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Non affilié à Proxmox Server Solutions GmbH. « Proxmox » et les marques associées sont la propriété de leurs détenteurs respectifs, utilisées ici uniquement pour indiquer la compatibilité.",
-      legalAlpha: "Logiciel alpha, conçu et testé dans le homelab de l'auteur. Fourni tel quel, sans aucune garantie de quelque nature que ce soit ; vous l'utilisez à vos propres risques.",
+      legalWarranty: "Fourni tel quel, sans aucune garantie de quelque nature que ce soit ; vous l'utilisez à vos propres risques.",
       aboutLinks: "Liens",
       aboutLinkReleases: "Versions",
       aboutLinkSource: "Code source",
       aboutLinkIssues: "Signaler un bug",
       aboutLinkLicense: "Licence",
+      aboutLinkWebsite: "Site web",
+      aboutLinkHelp: "Aide",
+      aboutLinkContact: "Contact",
 
       // Status Messages
       statusDiskError: "Erreur lors de la détection des disques :",
@@ -1104,8 +1106,8 @@ const translations = {
   },
   en: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Backup client for Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Client for Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Server",
@@ -1325,8 +1327,8 @@ const translations = {
       welcomeMessage: "Welcome!",
       welcomeText: "Configure your first PBS server to start backups.",
       noPBSYet: "Don't have a PBS server yet?",
-      downloadPBS : "Download and install Proxmox Backup Server",
-      orderStorage: "Order Proxmox Backup Client storage",
+      storageSelfHost: "Download and set up your own {pbs}, or buy backup storage.",
+      buyBackupStorage: "Buy Backup Storage",
       addYourServer: "Add your PBS server",
       addAnotherServer: "Add another PBS server",
       editServer: "Edit server",
@@ -1777,16 +1779,18 @@ const translations = {
         compatible: { title: "Works with Proxmox's own tools", desc: "Backups restore with the official client, and the other way round" },
         languages: { title: "18-language interface", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Changes since the fork © 2026 mjb-is, building on the work of Tiziano Bacocco (tizbac), the Proxmox Backup Client GO contributors and RDEM Systems (© 2024-2026).",
-      legalCredit: "Started as a fork of tizbac's proxmoxbackupclient_go. Backup Sets, Undelete and Roll back follow the workflow and feel of Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 Proxmox Backup Client - Go contributors and RDEM Systems.",
       legalLicense: "Licensed under the GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Not affiliated with Proxmox Server Solutions GmbH. \"Proxmox\" and related marks are the property of their respective owners, used here only to state compatibility.",
-      legalAlpha: "Alpha software, built for and tested in the author's homelab. Provided as is, without guarantee or warranty of any kind; use it at your own risk.",
+      legalWarranty: "Provided as is, without guarantee or warranty of any kind; use it at your own risk.",
       aboutLinks: "Links",
       aboutLinkReleases: "Releases",
       aboutLinkSource: "Source code",
       aboutLinkIssues: "Report a bug",
       aboutLinkLicense: "License",
+      aboutLinkWebsite: "Website",
+      aboutLinkHelp: "Help",
+      aboutLinkContact: "Contact",
 
       // Status Messages
       statusDiskError: "Error detecting disks:",
@@ -2197,8 +2201,8 @@ const translations = {
   },
   it: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Client di backup per Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Client per Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Server",
@@ -2418,8 +2422,8 @@ const translations = {
       welcomeMessage: "Benvenuto!",
       welcomeText: "Configura il tuo primo server PBS per iniziare i backup.",
       noPBSYet: "Non hai ancora un server PBS?",
-      downloadPBS : "Scarica e installa Proxmox Backup Server",
-      orderStorage: "Ordina spazio di archiviazione Proxmox Backup Client",
+      storageSelfHost: "Scarica e configura il tuo {pbs}, oppure acquista spazio di backup.",
+      buyBackupStorage: "Acquista spazio di backup",
       addYourServer: "Aggiungi il tuo server PBS",
       addAnotherServer: "Aggiungi un altro server PBS",
       editServer: "Modifica server",
@@ -2870,16 +2874,18 @@ const translations = {
         compatible: { title: "Compatibile con gli strumenti Proxmox", desc: "I backup si ripristinano con il client ufficiale, e viceversa" },
         languages: { title: "Interfaccia in 18 lingue", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Modifiche dal fork © 2026 mjb-is, basate sul lavoro di Tiziano Bacocco (tizbac), dei contributori di Proxmox Backup Client GO e di RDEM Systems (© 2024-2026).",
-      legalCredit: "Nato come fork di proxmoxbackupclient_go di tizbac. Set di backup, Recupero e Rollback seguono il funzionamento e lo stile di Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 i contributori di Proxmox Backup Client - Go e RDEM Systems.",
       legalLicense: "Distribuito con licenza GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Non affiliato a Proxmox Server Solutions GmbH. \"Proxmox\" e i marchi correlati sono proprietà dei rispettivi titolari, usati qui solo per indicare la compatibilità.",
-      legalAlpha: "Software in fase alpha, creato e testato nell'homelab dell'autore. Fornito così com'è, senza garanzie di alcun tipo; l'uso è a proprio rischio.",
+      legalWarranty: "Fornito così com'è, senza garanzie di alcun tipo; l'uso è a proprio rischio.",
       aboutLinks: "Link",
       aboutLinkReleases: "Release",
       aboutLinkSource: "Codice sorgente",
       aboutLinkIssues: "Segnala un bug",
       aboutLinkLicense: "Licenza",
+      aboutLinkWebsite: "Sito web",
+      aboutLinkHelp: "Aiuto",
+      aboutLinkContact: "Contatti",
 
       // Status Messages
       statusDiskError: "Errore durante il rilevamento dei dischi:",
@@ -3312,8 +3318,8 @@ const translations = {
   },
   de: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Sicherungsclient für Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Client für Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Server",
@@ -3533,8 +3539,8 @@ const translations = {
       welcomeMessage: "Willkommen!",
       welcomeText: "Konfigurieren Sie Ihren ersten PBS-Server, um Sicherungen zu starten.",
       noPBSYet: "Sie haben noch keinen PBS-Server?",
-      orderStorage: "Proxmox Backup Client-Speicher bestellen",
-      downloadPBS : "Proxmox Backup Server herunterladen und installieren",
+      storageSelfHost: "Laden Sie Ihren eigenen {pbs} herunter und richten Sie ihn ein, oder kaufen Sie Backup-Speicher.",
+      buyBackupStorage: "Backup-Speicher kaufen",
       addYourServer: "Ihren PBS-Server hinzufügen",
       addAnotherServer: "Weiteren PBS-Server hinzufügen",
       editServer: "Server bearbeiten",
@@ -3985,16 +3991,18 @@ const translations = {
         compatible: { title: "Kompatibel mit Proxmox-Werkzeugen", desc: "Sicherungen lassen sich mit dem offiziellen Client wiederherstellen, und umgekehrt" },
         languages: { title: "Oberfläche in 18 Sprachen", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Änderungen seit dem Fork © 2026 mjb-is, aufbauend auf der Arbeit von Tiziano Bacocco (tizbac), den Mitwirkenden von Proxmox Backup Client GO und RDEM Systems (© 2024-2026).",
-      legalCredit: "Entstanden als Fork des proxmoxbackupclient_go von tizbac. Sicherungssätze, Gelöschte Dateien und Zurücksetzen folgen der Arbeitsweise und dem Bediengefühl von Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 die Mitwirkenden von Proxmox Backup Client - Go und RDEM Systems.",
       legalLicense: "Lizenziert unter der GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Keine Verbindung zur Proxmox Server Solutions GmbH. „Proxmox“ und verwandte Marken sind Eigentum ihrer jeweiligen Inhaber und werden hier nur zur Angabe der Kompatibilität verwendet.",
-      legalAlpha: "Alpha-Software, entwickelt für das Homelab des Autors und dort getestet. Bereitgestellt wie besehen, ohne Gewährleistung oder Garantie jeglicher Art; die Nutzung erfolgt auf eigenes Risiko.",
+      legalWarranty: "Bereitgestellt wie besehen, ohne Gewährleistung oder Garantie jeglicher Art; die Nutzung erfolgt auf eigenes Risiko.",
       aboutLinks: "Links",
       aboutLinkReleases: "Versionen",
       aboutLinkSource: "Quellcode",
       aboutLinkIssues: "Fehler melden",
       aboutLinkLicense: "Lizenz",
+      aboutLinkWebsite: "Website",
+      aboutLinkHelp: "Hilfe",
+      aboutLinkContact: "Kontakt",
 
       // Status Messages
       statusDiskError: "Fehler beim Erkennen der Datenträger:",
@@ -4415,8 +4423,8 @@ const translations = {
   },
   pl: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Klient kopii zapasowych dla Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Klient dla Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Serwer",
@@ -4636,8 +4644,8 @@ const translations = {
       welcomeMessage: "Witaj!",
       welcomeText: "Skonfiguruj swój pierwszy serwer PBS, aby rozpocząć kopie zapasowe.",
       noPBSYet: "Nie masz jeszcze serwera PBS?",
-      downloadPBS : "Pobierz i zainstaluj Proxmox Backup Server",
-      orderStorage: "Zamów magazyn dla Proxmox Backup Client",
+      storageSelfHost: "Pobierz i skonfiguruj własny {pbs} albo kup przestrzeń na kopie zapasowe.",
+      buyBackupStorage: "Kup przestrzeń na kopie zapasowe",
       addYourServer: "Dodaj swój serwer PBS",
       addAnotherServer: "Dodaj kolejny serwer PBS",
       editServer: "Edytuj serwer",
@@ -5090,16 +5098,18 @@ const translations = {
         compatible: { title: "Współpraca z narzędziami Proxmox", desc: "Kopie przywraca się oficjalnym klientem, i odwrotnie" },
         languages: { title: "Interfejs w 18 językach", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Zmiany od czasu forka © 2026 mjb-is, na bazie pracy Tiziano Bacocco (tizbac), współtwórców Proxmox Backup Client GO i RDEM Systems (© 2024-2026).",
-      legalCredit: "Powstało jako fork proxmoxbackupclient_go autorstwa tizbac. Zestawy kopii zapasowej, Odzyskiwanie usuniętych i Wycofanie zmian działają w stylu i według sposobu pracy Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 współtwórcy Proxmox Backup Client - Go i RDEM Systems.",
       legalLicense: "Udostępniane na licencji GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Brak powiązania z Proxmox Server Solutions GmbH. „Proxmox” i powiązane znaki są własnością ich odpowiednich właścicieli, użyte tu wyłącznie w celu wskazania zgodności.",
-      legalAlpha: "Oprogramowanie w wersji alfa, tworzone i testowane w domowym laboratorium (homelab) autora. Dostarczane w stanie, w jakim jest, bez jakichkolwiek gwarancji ani rękojmi; używasz go na własne ryzyko.",
+      legalWarranty: "Dostarczane w stanie, w jakim jest, bez jakichkolwiek gwarancji ani rękojmi; używasz go na własne ryzyko.",
       aboutLinks: "Linki",
       aboutLinkReleases: "Wydania",
       aboutLinkSource: "Kod źródłowy",
       aboutLinkIssues: "Zgłoś błąd",
       aboutLinkLicense: "Licencja",
+      aboutLinkWebsite: "Strona internetowa",
+      aboutLinkHelp: "Pomoc",
+      aboutLinkContact: "Kontakt",
 
       // Status Messages
       statusDiskError: "Błąd wykrywania dysków:",
@@ -5554,8 +5564,8 @@ const translations = {
   },
   es: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Cliente de copia de seguridad para Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Cliente para Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Servidor",
@@ -5776,8 +5786,8 @@ const translations = {
       welcomeMessage: "¡Bienvenido!",
       welcomeText: "Configure su primer servidor PBS para empezar a hacer copias de seguridad.",
       noPBSYet: "¿Aún no tiene un servidor PBS?",
-      downloadPBS : "Descargar e instalar Proxmox Backup Server",
-      orderStorage: "Solicitar almacenamiento de Proxmox Backup Client",
+      storageSelfHost: "Descarga y configura tu propio {pbs}, o compra almacenamiento para copias de seguridad.",
+      buyBackupStorage: "Comprar almacenamiento para copias de seguridad",
       addYourServer: "Añada su servidor PBS",
       addAnotherServer: "Añadir otro servidor PBS",
       editServer: "Editar servidor",
@@ -6229,16 +6239,18 @@ const translations = {
         compatible: { title: "Compatible con las herramientas de Proxmox", desc: "Las copias se restauran con el cliente oficial, y viceversa" },
         languages: { title: "Interfaz en 18 idiomas", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Cambios desde el fork © 2026 mjb-is, sobre el trabajo de Tiziano Bacocco (tizbac), los colaboradores de Proxmox Backup Client GO y RDEM Systems (© 2024-2026).",
-      legalCredit: "Nació como fork de proxmoxbackupclient_go de tizbac. Los conjuntos de copia de seguridad, Recuperación y Reversión siguen el funcionamiento y el estilo de Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 los colaboradores de Proxmox Backup Client - Go y RDEM Systems.",
       legalLicense: "Licenciado bajo la GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "No afiliado a Proxmox Server Solutions GmbH. \"Proxmox\" y las marcas relacionadas son propiedad de sus respectivos titulares, usadas aquí solo para indicar compatibilidad.",
-      legalAlpha: "Software en fase alfa, creado y probado en el homelab del autor. Se proporciona tal cual, sin garantía de ningún tipo; úselo bajo su propia responsabilidad.",
+      legalWarranty: "Se proporciona tal cual, sin garantía de ningún tipo; úselo bajo su propia responsabilidad.",
       aboutLinks: "Enlaces",
       aboutLinkReleases: "Versiones",
       aboutLinkSource: "Código fuente",
       aboutLinkIssues: "Informar de un error",
       aboutLinkLicense: "Licencia",
+      aboutLinkWebsite: "Sitio web",
+      aboutLinkHelp: "Ayuda",
+      aboutLinkContact: "Contacto",
 
       // Status Messages
       statusDiskError: "Error al detectar discos:",
@@ -6659,8 +6671,8 @@ const translations = {
   },
   bg: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Клиент за архивиране за Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Клиент за Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Сървър",
@@ -6877,8 +6889,8 @@ const translations = {
       welcomeMessage: "Добре дошли!",
       welcomeText: "Конфигурирайте първия си PBS сървър, за да започнете архивиране.",
       noPBSYet: "Все още нямате PBS сървър?",
-      downloadPBS : "Изтегли и инсталирай Proxmox Backup Server",
-      orderStorage: "Поръчай хранилище за Proxmox Backup Client",
+      storageSelfHost: "Изтеглете и настройте свой собствен {pbs} или купете хранилище за резервни копия.",
+      buyBackupStorage: "Купете хранилище за резервни копия",
       addYourServer: "Добавете своя PBS сървър",
       addAnotherServer: "Добавете друг PBS сървър",
       editServer: "Редактирай сървър",
@@ -7330,16 +7342,18 @@ const translations = {
         compatible: { title: "Работи с инструментите на Proxmox", desc: "Архивите се възстановяват с официалния клиент, и обратно" },
         languages: { title: "Интерфейс на 18 езика", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Промени след разклоняването © 2026 mjb-is, въз основа на работата на Tiziano Bacocco (tizbac), сътрудниците на Proxmox Backup Client GO и RDEM Systems (© 2024-2026).",
-      legalCredit: "Започнат като разклонение (fork) на proxmoxbackupclient_go на tizbac. Наборите за архивиране, Възстановяване на изтрити и Връщане назад следват начина на работа и усещането на Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 сътрудниците на Proxmox Backup Client - Go и RDEM Systems.",
       legalLicense: "Лицензиран под GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Не е свързан с Proxmox Server Solutions GmbH. „Proxmox“ и свързаните марки са собственост на съответните им притежатели, използвани тук само за да се посочи съвместимост.",
-      legalAlpha: "Алфа софтуер, създаден и тестван в домашната лаборатория (homelab) на автора. Предоставя се „както е“, без каквито и да е гаранции; използвате го изцяло на свой риск.",
+      legalWarranty: "Предоставя се „както е“, без каквито и да е гаранции; използвате го изцяло на свой риск.",
       aboutLinks: "Връзки",
       aboutLinkReleases: "Версии",
       aboutLinkSource: "Изходен код",
       aboutLinkIssues: "Докладвай грешка",
       aboutLinkLicense: "Лиценз",
+      aboutLinkWebsite: "Уебсайт",
+      aboutLinkHelp: "Помощ",
+      aboutLinkContact: "Контакт",
 
       // Status Messages
       statusDiskError: "Грешка при откриване на дискове:",
@@ -7760,8 +7774,8 @@ const translations = {
   },
   cs: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Zálohovací klient pro Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Klient pro Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Server",
@@ -7978,8 +7992,8 @@ const translations = {
       welcomeMessage: "Vítejte!",
       welcomeText: "Nakonfigurujte svůj první PBS server, abyste mohli začít zálohovat.",
       noPBSYet: "Ještě nemáte PBS server?",
-      downloadPBS : "Stáhnout a nainstalovat Proxmox Backup Server",
-      orderStorage: "Objednat úložiště Proxmox Backup Client",
+      storageSelfHost: "Stáhněte si a nastavte vlastní {pbs}, nebo si kupte úložiště pro zálohy.",
+      buyBackupStorage: "Koupit úložiště pro zálohy",
       addYourServer: "Přidejte svůj PBS server",
       addAnotherServer: "Přidat další PBS server",
       editServer: "Upravit server",
@@ -8431,16 +8445,18 @@ const translations = {
         compatible: { title: "Spolupracuje s nástroji Proxmox", desc: "Zálohy lze obnovit oficiálním klientem, a naopak" },
         languages: { title: "Rozhraní v 18 jazycích", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Změny od forku © 2026 mjb-is, navazující na práci, kterou odvedli Tiziano Bacocco (tizbac), přispěvatelé Proxmox Backup Client GO a RDEM Systems (© 2024-2026).",
-      legalCredit: "Vzniklo jako fork projektu proxmoxbackupclient_go od tizbac. Sady záloh, Obnovení smazaných a Vrácení stavu vycházejí z pracovního postupu a stylu Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 přispěvatelé Proxmox Backup Client - Go a RDEM Systems.",
       legalLicense: "Šířeno pod licencí GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Nesouvisí se společností Proxmox Server Solutions GmbH. „Proxmox“ a související značky jsou majetkem jejich příslušných vlastníků, použité zde pouze k vyjádření kompatibility.",
-      legalAlpha: "Software ve verzi alfa, vytvořený a testovaný v domácí laboratoři (homelab) autora. Poskytováno tak, jak je, bez jakékoli záruky či garance; používáte jej na vlastní riziko.",
+      legalWarranty: "Poskytováno tak, jak je, bez jakékoli záruky či garance; používáte jej na vlastní riziko.",
       aboutLinks: "Odkazy",
       aboutLinkReleases: "Vydání",
       aboutLinkSource: "Zdrojový kód",
       aboutLinkIssues: "Nahlásit chybu",
       aboutLinkLicense: "Licence",
+      aboutLinkWebsite: "Web",
+      aboutLinkHelp: "Nápověda",
+      aboutLinkContact: "Kontakt",
 
       // Status Messages
       statusDiskError: "Chyba při detekci disků:",
@@ -8872,8 +8888,8 @@ const translations = {
   },
   el: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Πρόγραμμα εφεδρικής αντιγραφής για τον Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Πρόγραμμα-πελάτης για το Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Διακομιστής",
@@ -9090,8 +9106,8 @@ const translations = {
       welcomeMessage: "Καλώς ήρθατε!",
       welcomeText: "Ρυθμίστε τον πρώτο σας διακομιστή PBS για να ξεκινήσετε αντίγραφα ασφαλείας.",
       noPBSYet: "Δεν έχετε ακόμη διακομιστή PBS;",
-      downloadPBS : "Λήψη και εγκατάσταση του Proxmox Backup Server",
-      orderStorage: "Παραγγελία αποθηκευτικού χώρου Proxmox Backup Client",
+      storageSelfHost: "Κατεβάστε και εγκαταστήστε τον δικό σας {pbs} ή αγοράστε αποθηκευτικό χώρο για αντίγραφα ασφαλείας.",
+      buyBackupStorage: "Αγορά χώρου για αντίγραφα ασφαλείας",
       addYourServer: "Προσθέστε τον διακομιστή PBS σας",
       addAnotherServer: "Προσθήκη άλλου διακομιστή PBS",
       editServer: "Επεξεργασία διακομιστή",
@@ -9543,16 +9559,18 @@ const translations = {
         compatible: { title: "Συνεργάζεται με τα εργαλεία του Proxmox", desc: "Τα αντίγραφα επαναφέρονται με τον επίσημο πελάτη, και αντίστροφα" },
         languages: { title: "Διεπαφή σε 18 γλώσσες", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Αλλαγές μετά το fork © 2026 mjb-is, με βάση την εργασία των Tiziano Bacocco (tizbac), των συντελεστών του Proxmox Backup Client GO και της RDEM Systems (© 2024-2026).",
-      legalCredit: "Ξεκίνησε ως fork του proxmoxbackupclient_go του tizbac. Τα Σύνολα αντιγράφων ασφαλείας, η Ανάκτηση διαγραμμένων και η Επαναφορά κατάστασης ακολουθούν τη ροή εργασίας και την αίσθηση του Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 οι συντελεστές του Proxmox Backup Client - Go και η RDEM Systems.",
       legalLicense: "Αδειοδοτημένο υπό την GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Δεν σχετίζεται με την Proxmox Server Solutions GmbH. Το «Proxmox» και τα σχετικά σήματα είναι ιδιοκτησία των αντίστοιχων κατόχων τους, χρησιμοποιούνται εδώ μόνο για να δηλωθεί συμβατότητα.",
-      legalAlpha: "Λογισμικό σε έκδοση άλφα, φτιαγμένο και δοκιμασμένο στο homelab του δημιουργού. Παρέχεται ως έχει, χωρίς καμία εγγύηση οποιουδήποτε είδους· η χρήση γίνεται με δική σας ευθύνη.",
+      legalWarranty: "Παρέχεται ως έχει, χωρίς καμία εγγύηση οποιουδήποτε είδους· η χρήση γίνεται με δική σας ευθύνη.",
       aboutLinks: "Σύνδεσμοι",
       aboutLinkReleases: "Εκδόσεις",
       aboutLinkSource: "Πηγαίος κώδικας",
       aboutLinkIssues: "Αναφορά σφάλματος",
       aboutLinkLicense: "Άδεια χρήσης",
+      aboutLinkWebsite: "Ιστότοπος",
+      aboutLinkHelp: "Βοήθεια",
+      aboutLinkContact: "Επικοινωνία",
 
       // Status Messages
       statusDiskError: "Σφάλμα εντοπισμού δίσκων:",
@@ -9990,8 +10008,8 @@ const translations = {
   },
   hu: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Biztonsági mentési kliens a Proxmox Backup Serverhez",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Kliens a Proxmox Backup Serverhez",
 
     // Auth (user/password vs API token)
     srvTabServer: "Szerver",
@@ -10208,8 +10226,8 @@ const translations = {
       welcomeMessage: "Üdvözöljük!",
       welcomeText: "Állítsa be az első PBS szerverét a mentések elindításához.",
       noPBSYet: "Még nincs PBS szervere?",
-      downloadPBS : "Proxmox Backup Server letöltése és telepítése",
-      orderStorage: "Proxmox Backup Client tárhely rendelése",
+      storageSelfHost: "Töltse le és állítsa be a saját {pbs} példányát, vagy vásároljon mentési tárhelyet.",
+      buyBackupStorage: "Mentési tárhely vásárlása",
       addYourServer: "Adja hozzá a PBS szerverét",
       addAnotherServer: "Másik PBS szerver hozzáadása",
       editServer: "Szerver szerkesztése",
@@ -10658,16 +10676,18 @@ const translations = {
         compatible: { title: "Együttműködik a Proxmox eszközeivel", desc: "A mentések a hivatalos klienssel is visszaállíthatók, és fordítva" },
         languages: { title: "18 nyelvű felület", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "A fork óta végzett módosítások © 2026 mjb-is, Tiziano Bacocco (tizbac), a Proxmox Backup Client GO közreműködői és az RDEM Systems munkájára építve (© 2024-2026).",
-      legalCredit: "A tizbac proxmoxbackupclient_go projektjének forkjaként indult. A Mentési készletek, a Törölt fájlok helyreállítása és a Visszagörgetés a Backup for Workgroups (BFW) munkafolyamatát és stílusát követi.",
+      copyright: "© 2024-2026 a Proxmox Backup Client - Go közreműködői és az RDEM Systems.",
       legalLicense: "A GNU General Public License v3.0 (GPLv3) licenc alatt érhető el.",
       legalDisclaimer: "Nem kapcsolódik a Proxmox Server Solutions GmbH-hoz. A „Proxmox” és a kapcsolódó márkák a megfelelő tulajdonosaik tulajdonát képezik, itt csak a kompatibilitás jelzésére szerepelnek.",
-      legalAlpha: "Alfa állapotú szoftver, a szerző homelabjához készült és ott tesztelték. Úgy, ahogy van, mindenféle garancia vagy szavatosság nélkül biztosítjuk; használata kizárólag saját felelősségre történik.",
+      legalWarranty: "Úgy, ahogy van, mindenféle garancia vagy szavatosság nélkül biztosítjuk; használata kizárólag saját felelősségre történik.",
       aboutLinks: "Hivatkozások",
       aboutLinkReleases: "Kiadások",
       aboutLinkSource: "Forráskód",
       aboutLinkIssues: "Hiba bejelentése",
       aboutLinkLicense: "Licenc",
+      aboutLinkWebsite: "Weboldal",
+      aboutLinkHelp: "Súgó",
+      aboutLinkContact: "Kapcsolat",
 
       // Status Messages
       statusDiskError: "Hiba a lemezek felderítésekor:",
@@ -11088,8 +11108,8 @@ const translations = {
   },
   lv: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Dublēšanas klients serverim Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Proxmox Backup Server klients",
 
     // Auth (user/password vs API token)
     srvTabServer: "Serveris",
@@ -11306,8 +11326,8 @@ const translations = {
       welcomeMessage: "Sveicināti!",
       welcomeText: "Konfigurējiet savu pirmo PBS serveri, lai sāktu dublēšanu.",
       noPBSYet: "Vēl nav PBS servera?",
-      downloadPBS : "Lejupielādēt un instalēt Proxmox Backup Server",
-      orderStorage: "Pasūtiet Proxmox Backup Client krātuvi",
+      storageSelfHost: "Lejupielādējiet un iestatiet savu {pbs} vai iegādājieties rezerves kopiju krātuvi.",
+      buyBackupStorage: "Iegādāties rezerves kopiju krātuvi",
       addYourServer: "Pievienojiet savu PBS serveri",
       addAnotherServer: "Pievienot citu PBS serveri",
       editServer: "Rediģēt serveri",
@@ -11759,16 +11779,18 @@ const translations = {
         compatible: { title: "Darbojas ar Proxmox rīkiem", desc: "Dublējumus var atjaunot ar oficiālo klientu, un otrādi" },
         languages: { title: "Saskarne 18 valodās", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Izmaiņas kopš atzarošanas © 2026 mjb-is, balstoties uz Tiziano Bacocco (tizbac), Proxmox Backup Client GO līdzautoru un RDEM Systems darbu (© 2024-2026).",
-      legalCredit: "Sākās kā tizbac proxmoxbackupclient_go atzarojums (fork). Dublēšanas kopas, Dzēsto atjaunošana un Atrite seko Backup for Workgroups (BFW) darba plūsmai un izjūtai.",
+      copyright: "© 2024-2026 Proxmox Backup Client - Go līdzautori un RDEM Systems.",
       legalLicense: "Licencēts saskaņā ar GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Nav saistīts ar Proxmox Server Solutions GmbH. „Proxmox” un saistītās zīmes ir attiecīgo īpašnieku īpašums, izmantotas šeit tikai saderības norādīšanai.",
-      legalAlpha: "Alfa versijas programmatūra, izstrādāta un testēta autora mājas laboratorijā (homelab). Tiek nodrošināta tāda, kāda tā ir, bez jebkāda veida garantijām; izmantojiet to uz savu risku.",
+      legalWarranty: "Tiek nodrošināta tāda, kāda tā ir, bez jebkāda veida garantijām; izmantojiet to uz savu risku.",
       aboutLinks: "Saites",
       aboutLinkReleases: "Laidieni",
       aboutLinkSource: "Pirmkods",
       aboutLinkIssues: "Ziņot par kļūdu",
       aboutLinkLicense: "Licence",
+      aboutLinkWebsite: "Tīmekļa vietne",
+      aboutLinkHelp: "Palīdzība",
+      aboutLinkContact: "Kontakti",
 
       // Status Messages
       statusDiskError: "Kļūda, atklājot diskus:",
@@ -12200,8 +12222,8 @@ const translations = {
   },
   lt: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Atsarginio kopijavimo klientas, skirtas Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Proxmox Backup Server klientas",
 
     // Auth (user/password vs API token)
     srvTabServer: "Serveris",
@@ -12418,8 +12440,8 @@ const translations = {
       welcomeMessage: "Sveiki!",
       welcomeText: "Sukonfigūruokite savo pirmąjį PBS serverį, kad galėtumėte pradėti kurti atsargines kopijas.",
       noPBSYet: "Dar neturite PBS serverio?",
-      downloadPBS : "Atsisiųsti ir įdiegti Proxmox Backup Server",
-      orderStorage: "Užsisakyti Proxmox Backup Client saugyklą",
+      storageSelfHost: "Atsisiųskite ir įdiekite savo {pbs} arba įsigykite atsarginių kopijų saugyklą.",
+      buyBackupStorage: "Įsigyti atsarginių kopijų saugyklą",
       addYourServer: "Pridėkite savo PBS serverį",
       addAnotherServer: "Pridėti kitą PBS serverį",
       editServer: "Redaguoti serverį",
@@ -12874,16 +12896,18 @@ const translations = {
         compatible: { title: "Veikia su Proxmox įrankiais", desc: "Atsargines kopijas galima atkurti oficialiu klientu, ir atvirkščiai" },
         languages: { title: "Sąsaja 18 kalbų", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Pakeitimai nuo atšakos © 2026 mjb-is, remiantis Tiziano Bacocco (tizbac), Proxmox Backup Client GO bendraautorių ir RDEM Systems darbu (© 2024-2026).",
-      legalCredit: "Pradėta kaip tizbac proxmoxbackupclient_go atšaka (fork). Atsarginio kopijavimo rinkiniai, Ištrintų atkūrimas ir Grąžinimas atkartoja Backup for Workgroups (BFW) darbo eigą ir stilių.",
+      copyright: "© 2024-2026 Proxmox Backup Client - Go bendraautoriai ir RDEM Systems.",
       legalLicense: "Licencijuota pagal GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Nesusijęs su Proxmox Server Solutions GmbH. „Proxmox“ ir susiję ženklai yra atitinkamų savininkų nuosavybė, naudojami tik suderinamumui nurodyti.",
-      legalAlpha: "Alfa versijos programinė įranga, sukurta ir išbandyta autoriaus namų laboratorijoje (homelab). Teikiama tokia, kokia yra, be jokių garantijų ar įsipareigojimų; naudojate savo rizika.",
+      legalWarranty: "Teikiama tokia, kokia yra, be jokių garantijų ar įsipareigojimų; naudojate savo rizika.",
       aboutLinks: "Nuorodos",
       aboutLinkReleases: "Leidimai",
       aboutLinkSource: "Šaltinio kodas",
       aboutLinkIssues: "Pranešti apie klaidą",
       aboutLinkLicense: "Licencija",
+      aboutLinkWebsite: "Svetainė",
+      aboutLinkHelp: "Pagalba",
+      aboutLinkContact: "Kontaktai",
 
       // Status Messages
       statusDiskError: "Klaida nustatant diskus:",
@@ -13315,8 +13339,8 @@ const translations = {
   },
   nl: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Backupclient voor Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Client voor Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Server",
@@ -13533,8 +13557,8 @@ const translations = {
       welcomeMessage: "Welkom!",
       welcomeText: "Configureer uw eerste PBS-server om backups te starten.",
       noPBSYet: "Nog geen PBS-server?",
-      downloadPBS : "Proxmox Backup Server downloaden en installeren",
-      orderStorage: "Proxmox Backup Client-opslag bestellen",
+      storageSelfHost: "Download en installeer je eigen {pbs}, of koop back-upopslag.",
+      buyBackupStorage: "Back-upopslag kopen",
       addYourServer: "Voeg uw PBS-server toe",
       addAnotherServer: "Nog een PBS-server toevoegen",
       editServer: "Server bewerken",
@@ -13985,16 +14009,18 @@ const translations = {
         compatible: { title: "Werkt met de tools van Proxmox", desc: "Backups herstellen met de officiële client, en andersom" },
         languages: { title: "Interface in 18 talen", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Wijzigingen sinds de fork © 2026 mjb-is, voortbouwend op het werk van Tiziano Bacocco (tizbac), de bijdragers aan Proxmox Backup Client GO en RDEM Systems (© 2024-2026).",
-      legalCredit: "Begonnen als fork van proxmoxbackupclient_go van tizbac. Backupsets, Terughalen en Terugdraaien volgen de werkwijze en het gevoel van Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 de bijdragers aan Proxmox Backup Client - Go en RDEM Systems.",
       legalLicense: "Gelicentieerd onder de GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Niet gelieerd aan Proxmox Server Solutions GmbH. „Proxmox” en aanverwante merken zijn eigendom van hun respectievelijke eigenaren en worden hier alleen gebruikt om compatibiliteit aan te geven.",
-      legalAlpha: "Alfasoftware, gebouwd voor en getest in het homelab van de auteur. Geleverd zoals het is, zonder enige garantie of waarborg van welke aard ook; gebruik is op eigen risico.",
+      legalWarranty: "Geleverd zoals het is, zonder enige garantie of waarborg van welke aard ook; gebruik is op eigen risico.",
       aboutLinks: "Links",
       aboutLinkReleases: "Releases",
       aboutLinkSource: "Broncode",
       aboutLinkIssues: "Bug melden",
       aboutLinkLicense: "Licentie",
+      aboutLinkWebsite: "Website",
+      aboutLinkHelp: "Help",
+      aboutLinkContact: "Contact",
 
       // Status Messages
       statusDiskError: "Fout bij het detecteren van schijven:",
@@ -14415,8 +14441,8 @@ const translations = {
   },
   pt: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Cliente de backup para o Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Cliente para Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Servidor",
@@ -14633,8 +14659,8 @@ const translations = {
       welcomeMessage: "Bem-vindo!",
       welcomeText: "Configure o seu primeiro servidor PBS para começar a fazer backups.",
       noPBSYet: "Ainda não tem um servidor PBS?",
-      downloadPBS : "Descarregar e instalar o Proxmox Backup Server",
-      orderStorage: "Encomendar armazenamento Proxmox Backup Client",
+      storageSelfHost: "Transfira e configure o seu próprio {pbs}, ou compre armazenamento para cópias de segurança.",
+      buyBackupStorage: "Comprar armazenamento para cópias de segurança",
       addYourServer: "Adicione o seu servidor PBS",
       addAnotherServer: "Adicionar outro servidor PBS",
       editServer: "Editar servidor",
@@ -15086,16 +15112,18 @@ const translations = {
         compatible: { title: "Funciona com as ferramentas Proxmox", desc: "Os backups restauram-se com o cliente oficial, e vice-versa" },
         languages: { title: "Interface em 18 idiomas", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Alterações desde o fork © 2026 mjb-is, com base no trabalho de Tiziano Bacocco (tizbac), dos contribuidores do Proxmox Backup Client GO e da RDEM Systems (© 2024-2026).",
-      legalCredit: "Começou como fork do proxmoxbackupclient_go de tizbac. Os Conjuntos de Backup, Recuperar eliminados e Reverter seguem o fluxo de trabalho e o estilo do Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 os contribuidores do Proxmox Backup Client - Go e a RDEM Systems.",
       legalLicense: "Licenciado sob a GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Não afiliado com a Proxmox Server Solutions GmbH. «Proxmox» e as marcas relacionadas são propriedade dos respetivos proprietários, usadas aqui apenas para indicar compatibilidade.",
-      legalAlpha: "Software em fase alfa, criado e testado no homelab do autor. Fornecido tal como está, sem garantia de qualquer tipo; utilize-o por sua conta e risco.",
+      legalWarranty: "Fornecido tal como está, sem garantia de qualquer tipo; utilize-o por sua conta e risco.",
       aboutLinks: "Ligações",
       aboutLinkReleases: "Versões",
       aboutLinkSource: "Código-fonte",
       aboutLinkIssues: "Reportar um erro",
       aboutLinkLicense: "Licença",
+      aboutLinkWebsite: "Site",
+      aboutLinkHelp: "Ajuda",
+      aboutLinkContact: "Contacto",
 
       // Status Messages
       statusDiskError: "Erro ao detetar discos:",
@@ -15528,8 +15556,8 @@ const translations = {
   },
   ro: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Client de backup pentru Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Client pentru Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Server",
@@ -15746,8 +15774,8 @@ const translations = {
       welcomeMessage: "Bine ați venit!",
       welcomeText: "Configurați primul dvs. server PBS pentru a începe backup-urile.",
       noPBSYet: "Nu aveți încă un server PBS?",
-      downloadPBS : "Descărcați și instalați Proxmox Backup Server",
-      orderStorage: "Comandați spațiu de stocare Proxmox Backup Client",
+      storageSelfHost: "Descărcați și configurați propriul {pbs} sau cumpărați spațiu de stocare pentru copii de rezervă.",
+      buyBackupStorage: "Cumpărați spațiu pentru copii de rezervă",
       addYourServer: "Adăugați serverul dvs. PBS",
       addAnotherServer: "Adăugați alt server PBS",
       editServer: "Editează serverul",
@@ -16202,16 +16230,18 @@ const translations = {
         compatible: { title: "Funcționează cu instrumentele Proxmox", desc: "Backupurile se restaurează cu clientul oficial, și invers" },
         languages: { title: "Interfață în 18 limbi", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Modificări de la fork © 2026 mjb-is, pe baza muncii lui Tiziano Bacocco (tizbac), a contribuitorilor Proxmox Backup Client GO și a RDEM Systems (© 2024-2026).",
-      legalCredit: "A pornit ca fork al proxmoxbackupclient_go de la tizbac. Seturile de backup, Recuperare fișiere șterse și Revenire urmează fluxul de lucru și stilul Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 contribuitorii Proxmox Backup Client - Go și RDEM Systems.",
       legalLicense: "Licențiat sub GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Nu este afiliat cu Proxmox Server Solutions GmbH. „Proxmox” și mărcile conexe sunt proprietatea respectivilor deținători, utilizate aici doar pentru a indica compatibilitatea.",
-      legalAlpha: "Software în fază alfa, creat și testat în homelab-ul autorului. Furnizat ca atare, fără nicio garanție de niciun fel; îl utilizați pe propriul risc.",
+      legalWarranty: "Furnizat ca atare, fără nicio garanție de niciun fel; îl utilizați pe propriul risc.",
       aboutLinks: "Linkuri",
       aboutLinkReleases: "Versiuni",
       aboutLinkSource: "Cod sursă",
       aboutLinkIssues: "Raportează o eroare",
       aboutLinkLicense: "Licență",
+      aboutLinkWebsite: "Site web",
+      aboutLinkHelp: "Ajutor",
+      aboutLinkContact: "Contact",
 
       // Status Messages
       statusDiskError: "Eroare la detectarea discurilor:",
@@ -16643,8 +16673,8 @@ const translations = {
   },
   sk: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Zálohovací klient pre Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Klient pre Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Server",
@@ -16861,8 +16891,8 @@ const translations = {
       welcomeMessage: "Vitajte!",
       welcomeText: "Nakonfigurujte svoj prvý PBS server, aby ste mohli začať zálohovať.",
       noPBSYet: "Ešte nemáte PBS server?",
-      downloadPBS : "Stiahnuť a nainštalovať Proxmox Backup Server",
-      orderStorage: "Objednať úložisko Proxmox Backup Client",
+      storageSelfHost: "Stiahnite si a nastavte vlastný {pbs}, alebo si kúpte úložisko pre zálohy.",
+      buyBackupStorage: "Kúpiť úložisko pre zálohy",
       addYourServer: "Pridajte svoj PBS server",
       addAnotherServer: "Pridať ďalší PBS server",
       editServer: "Upraviť server",
@@ -17314,16 +17344,18 @@ const translations = {
         compatible: { title: "Spolupracuje s nástrojmi Proxmox", desc: "Zálohy sa dajú obnoviť oficiálnym klientom, a naopak" },
         languages: { title: "Rozhranie v 18 jazykoch", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Zmeny od forku © 2026 mjb-is, nadväzujúce na prácu, ktorú odviedli Tiziano Bacocco (tizbac), prispievatelia Proxmox Backup Client GO a RDEM Systems (© 2024-2026).",
-      legalCredit: "Vzniklo ako fork projektu proxmoxbackupclient_go od tizbac. Zálohovacie sady, Obnovenie zmazaných a Vrátenie stavu vychádzajú z pracovného postupu a štýlu Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 prispievatelia Proxmox Backup Client - Go a RDEM Systems.",
       legalLicense: "Šírené pod licenciou GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Nesúvisí so spoločnosťou Proxmox Server Solutions GmbH. „Proxmox“ a súvisiace značky sú majetkom ich príslušných vlastníkov, použité tu iba na vyjadrenie kompatibility.",
-      legalAlpha: "Softvér vo verzii alfa, vytvorený a testovaný v domácom laboratóriu (homelab) autora. Poskytuje sa tak, ako je, bez akejkoľvek záruky; používate ho na vlastné riziko.",
+      legalWarranty: "Poskytuje sa tak, ako je, bez akejkoľvek záruky; používate ho na vlastné riziko.",
       aboutLinks: "Odkazy",
       aboutLinkReleases: "Vydania",
       aboutLinkSource: "Zdrojový kód",
       aboutLinkIssues: "Nahlásiť chybu",
       aboutLinkLicense: "Licencia",
+      aboutLinkWebsite: "Web",
+      aboutLinkHelp: "Pomocník",
+      aboutLinkContact: "Kontakt",
 
       // Status Messages
       statusDiskError: "Chyba pri zisťovaní diskov:",
@@ -17767,8 +17799,8 @@ const translations = {
   },
   tr: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Proxmox Backup Server için yedekleme istemcisi",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Proxmox Backup Server istemcisi",
 
     // Auth (user/password vs API token)
     srvTabServer: "Sunucu",
@@ -17985,8 +18017,8 @@ const translations = {
       welcomeMessage: "Hoş geldiniz!",
       welcomeText: "Yedeklemelere başlamak için ilk PBS sunucunuzu yapılandırın.",
       noPBSYet: "Henüz bir PBS sunucunuz yok mu?",
-      downloadPBS : "Proxmox Backup Server'ı indirin ve kurun",
-      orderStorage: "Proxmox Backup Client depolama alanı sipariş edin",
+      storageSelfHost: "Kendi {pbs} sunucunuzu indirip kurun veya yedekleme depolama alanı satın alın.",
+      buyBackupStorage: "Yedekleme depolama alanı satın al",
       addYourServer: "PBS sunucunuzu ekleyin",
       addAnotherServer: "Başka bir PBS sunucusu ekle",
       editServer: "Sunucuyu düzenle",
@@ -18435,16 +18467,18 @@ const translations = {
         compatible: { title: "Proxmox'un kendi araçlarıyla çalışır", desc: "Yedekler resmi istemciyle geri yüklenir, tersi de geçerlidir" },
         languages: { title: "18 dilli arayüz", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Çataldan bu yana yapılan değişiklikler © 2026 mjb-is; Tiziano Bacocco (tizbac), Proxmox Backup Client GO katkıda bulunanları ve RDEM Systems'in çalışmasına dayanır (© 2024-2026).",
-      legalCredit: "tizbac'ın proxmoxbackupclient_go projesinin bir çatalı (fork) olarak başladı. Yedekleme setleri, Silinenleri Kurtar ve Geri Döndürme, Backup for Workgroups (BFW) iş akışını ve hissiyatını izler.",
+      copyright: "© 2024-2026 Proxmox Backup Client - Go'ya katkıda bulunanlar ve RDEM Systems.",
       legalLicense: "GNU General Public License v3.0 (GPLv3) altında lisanslanmıştır.",
       legalDisclaimer: "Proxmox Server Solutions GmbH ile bağlantılı değildir. “Proxmox” ve ilgili markalar, ilgili sahiplerinin mülkiyetindedir ve burada yalnızca uyumluluğu belirtmek için kullanılmaktadır.",
-      legalAlpha: "Alfa aşamasında bir yazılımdır; yazarın ev laboratuvarı (homelab) için geliştirilmiş ve orada test edilmiştir. Olduğu gibi, hiçbir türde garanti veya teminat olmaksızın sunulur; kullanım riski tamamen size aittir.",
+      legalWarranty: "Olduğu gibi, hiçbir türde garanti veya teminat olmaksızın sunulur; kullanım riski tamamen size aittir.",
       aboutLinks: "Bağlantılar",
       aboutLinkReleases: "Sürümler",
       aboutLinkSource: "Kaynak kodu",
       aboutLinkIssues: "Hata bildir",
       aboutLinkLicense: "Lisans",
+      aboutLinkWebsite: "Web sitesi",
+      aboutLinkHelp: "Yardım",
+      aboutLinkContact: "İletişim",
 
       // Status Messages
       statusDiskError: "Disk tespit hatası:",
@@ -18865,8 +18899,8 @@ const translations = {
   },
   uk: {
     // Header
-    appTitle: "ProxmoxBackupClient - GO",
-    appSubtitle: "Клієнт резервного копіювання для Proxmox Backup Server",
+    appTitle: "Proxmox Backup Client - Go",
+    appSubtitle: "Клієнт для Proxmox Backup Server",
 
     // Auth (user/password vs API token)
     srvTabServer: "Сервер",
@@ -19083,8 +19117,8 @@ const translations = {
       welcomeMessage: "Вітаємо!",
       welcomeText: "Налаштуйте свій перший сервер PBS, щоб почати резервне копіювання.",
       noPBSYet: "Ще немає сервера PBS?",
-      downloadPBS : "Завантажити та встановити Proxmox Backup Server",
-      orderStorage: "Замовити сховище Proxmox Backup Client",
+      storageSelfHost: "Завантажте й налаштуйте власний {pbs} або придбайте сховище для резервних копій.",
+      buyBackupStorage: "Придбати сховище для резервних копій",
       addYourServer: "Додайте свій сервер PBS",
       addAnotherServer: "Додати ще один сервер PBS",
       editServer: "Редагувати сервер",
@@ -19539,16 +19573,18 @@ const translations = {
         compatible: { title: "Працює з інструментами Proxmox", desc: "Резервні копії відновлюються офіційним клієнтом, і навпаки" },
         languages: { title: "Інтерфейс 18 мовами", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "Зміни після форку © 2026 mjb-is, на основі роботи Tiziano Bacocco (tizbac), учасників Proxmox Backup Client GO та RDEM Systems (© 2024-2026).",
-      legalCredit: "Започатковано як форк (fork) proxmoxbackupclient_go від tizbac. Набори резервного копіювання, Відновлення видалених і Відкат дотримуються робочого процесу та стилю Backup for Workgroups (BFW).",
+      copyright: "© 2024-2026 учасники Proxmox Backup Client - Go та RDEM Systems.",
       legalLicense: "Ліцензовано за GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Не пов'язано з Proxmox Server Solutions GmbH. «Proxmox» та пов'язані знаки є власністю відповідних власників, використовуються тут лише для позначення сумісності.",
-      legalAlpha: "Програмне забезпечення альфа-версії, створене й протестоване в домашній лабораторії (homelab) автора. Надається «як є», без будь-яких гарантій чи зобов'язань; використовуйте на власний ризик.",
+      legalWarranty: "Надається «як є», без будь-яких гарантій чи зобов'язань; використовуйте на власний ризик.",
       aboutLinks: "Посилання",
       aboutLinkReleases: "Випуски",
       aboutLinkSource: "Вихідний код",
       aboutLinkIssues: "Повідомити про помилку",
       aboutLinkLicense: "Ліцензія",
+      aboutLinkWebsite: "Вебсайт",
+      aboutLinkHelp: "Довідка",
+      aboutLinkContact: "Контакти",
 
       // Status Messages
       statusDiskError: "Помилка виявлення дисків:",

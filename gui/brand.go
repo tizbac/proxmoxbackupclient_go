@@ -17,8 +17,8 @@ type Brand struct {
 	Accent         string `json:"accent"`           // primary button/accent color (hex)
 	AccentHover    string `json:"accent_hover"`     // hover/pressed variant (hex)
 	BrandURL       string `json:"brand_url"`        // brand home page; also the fallback for Urls["about"]
-	BuyStorageURL  string `json:"buy_storage_url"`  // "" = buy-storage CTA hidden (falls back to the PBS download link)
-	BuyStorageText string `json:"buy_storage_text"` // CTA label; "" = use the i18n orderStorageCTA
+	BuyStorageURL  string `json:"buy_storage_url"`  // the brand sells storage here: a "Buy Backup Storage" button; "" = no button, the page offers the PBS download instead (frontend aboutBrand.js)
+	BuyStorageText string `json:"buy_storage_text"` // the button's label; "" = the translated buyBackupStorage
 	// Urls holds the About-tab / support links for this brand. Keys:
 	// "about", "help", "updates", "contact". Any key may be omitted; the
 	// frontend falls back to the upstream Proxmox destinations. These are the

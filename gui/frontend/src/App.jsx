@@ -18,6 +18,15 @@ import { suggestBackupId, setsSharingGroup } from './backupId'
 import ScheduleEditor from './components/ScheduleEditor'
 import LastRunAgo from './components/LastRunAgo'
 import LogsPage, { logRequestFor } from './components/LogsPage'
+import StorageOffer from './components/StorageOffer'
+import { aboutLinks, PROJECT_REPO } from './aboutBrand'
+import defaultIcon from './assets/default-icon.svg'
+
+// Translation key for each About page link (aboutLinks in aboutBrand.js).
+const ABOUT_LINK_LABEL = {
+  website: 'aboutLinkWebsite', help: 'aboutLinkHelp', updates: 'aboutLinkReleases', contact: 'aboutLinkContact',
+  source: 'aboutLinkSource', issues: 'aboutLinkIssues', license: 'aboutLinkLicense',
+}
 import { newSchedule, describe as describeSchedule, badgeKey, scheduleProblem, jobScheduling } from './components/schedules'
 // Wails runtime imports (will be available when built with Wails)
 let OpenSnapshotTree, ListSnapshotChildren, SnapshotSelectionBytes
@@ -3347,7 +3356,7 @@ function App() {
         <div className="hero">
           <div>
             <h1>{brand.is_default ? t('appTitle') : brand.title}</h1>
-            <p>{brand.is_default ? t('appSubtitle') : brand.title}</p>
+            <p>{t('appSubtitle')}</p>
           </div>
           <LanguageSwitcher />
         </div>
@@ -3440,27 +3449,7 @@ function App() {
                             <>
                               <br/>
                               <strong>{t('noPBSYet')}</strong><br/>
-                              {brand.buy_storage_url ? (
-                              <a
-                                href={brand.buy_storage_url}
-                                target="_blank"
-                                data-external="true"
-                                rel="noopener noreferrer"
-                                style={{color: 'var(--accent)', fontWeight: 'bold', textDecoration: 'underline'}}
-                              >
-                                {t('orderStorage')} →
-                              </a>
-                              ) : (
-                                <a
-                                href="https://www.proxmox.com/en/downloads/proxmox-backup-server"
-                                target="_blank"
-                                data-external="true"
-                                rel="noopener noreferrer"
-                                style={{color: 'var(--accent)', fontWeight: 'bold', textDecoration: 'underline'}}
-                                >
-                                {t('downloadPBS')} →
-                                </a>
-                              )}
+                              <StorageOffer brand={brand} style={{display: 'inline-block', marginTop: '6px'}} />
                             </>
                           )}
                         </div>
@@ -5715,13 +5704,6 @@ function App() {
           )}
         </div>
 
-        {/* About Tab — deliberately no logo: a recreated Proxmox mark here
-            would visually contradict the README's own non-affiliation
-            disclaimer, and the hero banner above already names the app, so
-            repeating it in a second, bigger header was pure duplication.
-            No storage-upsell CTA either — that's RDEM Systems' own brand
-            upsell (still shown, brand-gated, in Preferences' server list),
-            not something this fork's About page should push unconditionally. */}
         <div className={`tab-content ${activeTab === 'undelete' ? 'active' : ''}`}>
           <UndeletePage ui={setToolsUi} jobs={scheduledJobs} jobId={setToolJobId} setJobId={setSetToolJobId}
             restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'undelete' ? restoreCard : null} />
@@ -5745,10 +5727,30 @@ function App() {
           )}
         </div>
 
+        {/* About Tab. What is the brand's (logo, name, storage offer, its own
+            links) comes from GetBrand, so a branded build shows the vendor and
+            the default build the neutral icon; the features, credits and the
+            project links are the same for every brand. */}
         <div className={`tab-content ${activeTab === 'about' ? 'active' : ''}`}>
-          <div style={{display: 'flex', alignItems: 'baseline', gap: '10px'}}>
-            <h2 style={{margin: 0}}>{t('aboutTitle')}</h2>
+          <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
+            <img
+              src={brand.logo || defaultIcon}
+              alt=""
+              style={{height: '40px', width: 'auto', maxWidth: '180px', objectFit: 'contain'}}
+              onError={(e) => {
+                // A brand logo that fails to load falls back to the neutral icon.
+                if (!e.target.dataset.logoFallback) {
+                  e.target.dataset.logoFallback = '1'
+                  e.target.src = defaultIcon
+                }
+              }}
+            />
+            <h2 style={{margin: 0}}>{brand.is_default ? t('appTitle') : brand.title}</h2>
             <span style={{fontSize: '12px', color: '#718096'}}>{t('version')} {versionLabel}</span>
+          </div>
+
+          <div style={{marginTop: '14px', fontSize: '14px'}}>
+            <StorageOffer brand={brand} />
           </div>
 
           <div className="card" style={{marginTop: '18px'}}>
@@ -5766,24 +5768,17 @@ function App() {
 
           <div className="card" style={{marginTop: '20px', display: 'flex', alignItems: 'center', gap: '28px'}}>
             <h3 style={{margin: 0}}>{t('aboutLinks')}</h3>
-            {[
-              ['updates', t('aboutLinkReleases'), 'https://github.com/mjb-is/proxmoxbackupclient_go/releases'],
-              ['contact', t('aboutLinkSource'), 'https://github.com/mjb-is/proxmoxbackupclient_go'],
-              ['issues', t('aboutLinkIssues'), 'https://github.com/mjb-is/proxmoxbackupclient_go/issues'],
-              ['license', t('aboutLinkLicense'), 'https://github.com/mjb-is/proxmoxbackupclient_go/blob/master/LICENSE']
-            ].map(([k, label, fallback]) => {
-              const u = (brand.urls && brand.urls[k]) || fallback
-              return (
-                <a key={k} href={u} target="_blank" data-external="true" rel="noopener noreferrer" style={{fontSize: '13px', fontWeight: 600}}>{label}</a>
-              )
-            })}
+            {aboutLinks(brand).map(([k, u]) => (
+              <a key={k} href={u} target="_blank" data-external="true" rel="noopener noreferrer" style={{fontSize: '13px', fontWeight: 600}}>
+                {t(ABOUT_LINK_LABEL[k])}
+              </a>
+            ))}
           </div>
 
           <div className="info-box" style={{marginTop: '20px', fontSize: '12px', lineHeight: 1.7}}>
-            <div style={{fontWeight: 600}}>{t('legalAlpha')}</div>
-            <div style={{marginTop: '6px'}}>{t('legalCredit')}</div>
+            <div style={{fontWeight: 600}}>{t('legalWarranty')}</div>
             <div style={{marginTop: '6px'}}>
-              {t('copyright')} · <a href="https://github.com/mjb-is/proxmoxbackupclient_go/graphs/contributors" style={{color: 'var(--accent)'}} target="_blank" rel="noopener noreferrer">{t('viewContributors')}</a>
+              {t('copyright')} · <a href={`${PROJECT_REPO}/graphs/contributors`} style={{color: 'var(--accent)'}} target="_blank" data-external="true" rel="noopener noreferrer">{t('viewContributors')}</a>
             </div>
             <div style={{marginTop: '6px'}}>{t('legalLicense')}</div>
             <div style={{marginTop: '6px', color: '#718096'}}>{t('legalDisclaimer')}</div>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Backup client">
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <path d="M23 9V26M17 20L23 26L29 20" fill="none" stroke="#e2e8f0" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M41 26V9M35 15L41 9L47 15" fill="none" stroke="#e2e8f0" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="11" y="33" width="42" height="10" rx="3.5" fill="#e2e8f0"/>
+  <circle cx="45" cy="38" r="2.1" fill="#0f172a"/>
+  <rect x="11" y="46" width="42" height="10" rx="3.5" fill="#e2e8f0"/>
+  <circle cx="45" cy="51" r="2.1" fill="#0f172a"/>
+</svg>
