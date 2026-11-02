@@ -4716,15 +4716,21 @@ function App() {
                             </div>
                           </div>
                           <div className="set-actions" style={{display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto'}}>
+                          {/* Run, edit and the menu all go through the service, so they
+                              wait with Add New Backup Set while it is stopped or not
+                              connected; the list stays readable. */}
                           <button
                             className="btn"
-                            disabled={runningJobId === job.id}
+                            disabled={runningJobId === job.id || serviceBlocked}
+                            title={serviceBlockedTip}
                             onClick={() => runSetNow(job, '')}
                           >
                             {runningJobId === job.id ? '…' : t('runNow')}
                           </button>
                           <button
                             className="btn btn-secondary"
+                            disabled={serviceBlocked}
+                            title={serviceBlockedTip}
                             onClick={() => {
                               setEditingJobId(job.id)
                               setJobName(job.name || '')
@@ -4764,11 +4770,13 @@ function App() {
                               className="btn btn-secondary"
                               aria-haspopup="menu"
                               aria-expanded={openSetMenu === job.id}
+                              disabled={serviceBlocked}
+                              title={serviceBlockedTip}
                               onClick={(e) => { e.stopPropagation(); setOpenSetMenu(openSetMenu === job.id ? null : job.id) }}
                             >
                               {tl('setMoreMenu', 'More')} ▾
                             </button>
-                            {openSetMenu === job.id && (
+                            {openSetMenu === job.id && !serviceBlocked && (
                               <div role="menu" className="set-more-menu" onClick={() => setOpenSetMenu(null)}>
                                 {/* Metadata sets: choose this run's read. Quick reuses
                                     unchanged files even when a full read is due (it stays
