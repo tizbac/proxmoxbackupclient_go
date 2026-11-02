@@ -8,6 +8,9 @@ import { useTranslation } from '../i18n/i18nContext'
 //   if (!(await askConfirm({ title, message, confirmLabel, danger: true }))) return
 //   await showNotice({ title, message })
 //
+// altLabel adds a third button, which answers 'alt' (truthy: a caller that
+// only tests the answer treats it as yes).
+//
 // Requests queue, so two at once are shown one after the other. Escape,
 // the Cancel button and a click outside answer "no"; danger dialogs start
 // with the focus on Cancel so Enter never does the risky thing by accident.
@@ -136,6 +139,11 @@ export default function ConfirmHost() {
           {!isNotice && (
             <button className="btn btn-secondary" style={{ margin: 0 }} onClick={() => answer(false)} data-autofocus={danger ? true : undefined}>
               {cancelLabel}
+            </button>
+          )}
+          {!isNotice && req.altLabel && (
+            <button className="btn btn-secondary" style={{ margin: 0 }} onClick={() => answer('alt')}>
+              {req.altLabel}
             </button>
           )}
           <button

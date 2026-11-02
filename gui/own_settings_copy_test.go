@@ -1,0 +1,62 @@
+//go:build !service
+
+package main
+
+import "testing"
+
+func TestPlanOwnCopy(t *testing.T) {
+	svc := &Config{PBSServers: map[string]*PBSServer{
+		"pbs1":   {ID: "pbs1", Name: "Office", BaseURL: "https://office:8007", Datastore: "main", AuthID: "backup@pbs!a"},
+		"shared": {ID: "shared", Name: "Shared", BaseURL: "https://shared:8007/", Datastore: "ds", AuthID: "u@pbs!t"},
+	}, DefaultPBSID: "pbs1"}
+	svcJobs := []ScheduledJob{{ID: "job1", Name: "Documents"}}
+
+	own := &Config{PBSServers: map[string]*PBSServer{
+		// Same ID as the computer's pbs1, another server, same name.
+		"pbs1": {ID: "pbs1", Name: "office", BaseURL: "https://home:8007", Datastore: "home", AuthID: "me@pbs!t", EncryptionKeyFile: "C:/Users/me/key.json"},
+		// The computer's "shared", written differently.
+		"mine": {ID: "mine", Name: "Mine", BaseURL: "HTTPS://shared:8007", Datastore: "ds", AuthID: "u@pbs!t"},
+	}, DefaultPBSID: "pbs1"}
+	ownJobs := []ScheduledJob{
+		{ID: "job1", Name: "documents"},                   // default server, ID and name taken
+		{ID: "job2", Name: "Photos", PBSServerID: "mine"}, // the computer's server
+	}
+
+	servers, jobs := planOwnCopy(own, ownJobs, svc, svcJobs, "mick")
+
+	if len(servers) != 1 {
+		t.Fatalf("servers added = %d, want 1 (the other is the computer's)", len(servers))
+	}
+	s := servers["pbs1-mick"]
+	if s == nil || s.ID != "pbs1-mick" || s.Name != "office (mick)" || s.EncryptionKeyFile == "" {
+		t.Fatalf("renamed server = %+v", s)
+	}
+	if svc.PBSServers["pbs1"].Name != "Office" {
+		t.Fatal("the computer's server was changed")
+	}
+
+	if len(jobs) != 2 {
+		t.Fatalf("jobs = %d, want 2", len(jobs))
+	}
+	if j := jobs[0]; j.ID != "job1-mick" || j.Name != "documents (mick)" || j.PBSServerID != "pbs1-mick" {
+		t.Errorf("clashing set = %+v, want job1-mick, documents (mick), on pbs1-mick (not the computer's default)", j)
+	}
+	if j := jobs[1]; j.ID != "job2" || j.Name != "Photos" || j.PBSServerID != "shared" {
+		t.Errorf("set on a server the computer has = %+v, want job2 on shared", j)
+	}
+	if ownJobs[0].ID != "job1" || own.PBSServers["pbs1"].ID != "pbs1" {
+		t.Error("the user's own settings were changed")
+	}
+}
+
+func TestPlanOwnCopyRepeatedClash(t *testing.T) {
+	svc := &Config{PBSServers: map[string]*PBSServer{
+		"a":      {ID: "a", BaseURL: "https://x"},
+		"a-mick": {ID: "a-mick", BaseURL: "https://y"},
+	}}
+	own := &Config{PBSServers: map[string]*PBSServer{"a": {ID: "a", BaseURL: "https://z"}}}
+	servers, _ := planOwnCopy(own, nil, svc, nil, "mick")
+	if servers["a-mick-2"] == nil {
+		t.Fatalf("servers = %v, want a-mick-2", servers)
+	}
+}

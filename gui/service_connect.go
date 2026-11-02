@@ -126,6 +126,12 @@ func (a *App) serviceTokenHook(sent string) (string, error) {
 // window came to the front) the app asks only once on its own until the
 // service replaces the token. Returns nil when connected, or why not.
 func (a *App) ConnectService(userAsked bool) error {
+	return a.connect(userAsked, nil)
+}
+
+// connect is ConnectService; once connected, and before the window is told,
+// it runs then (nil for nothing), whose error it returns.
+func (a *App) connect(userAsked bool, then func() error) error {
 	if a.ownSettings.Load() {
 		// Working on the user's own settings: only Connect leaves them.
 		if !userAsked {
@@ -161,8 +167,12 @@ func (a *App) ConnectService(userAsked bool) error {
 		return fmt.Errorf("the background service did not take the token (status %d)", code)
 	}
 	a.svcConnected.Store(true)
+	var thenErr error
+	if then != nil {
+		thenErr = then()
+	}
 	go a.onServiceConnected()
-	return nil
+	return thenErr
 }
 
 // UseOwnSettings is the banner's "Use my own settings": for a user who cannot

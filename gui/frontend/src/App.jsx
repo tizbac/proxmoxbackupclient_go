@@ -50,7 +50,7 @@ let PauseBackup, ResumeBackup, GetBackupPauseState
 // Several backups at once: each run's own Pause, Resume and Stop
 let GetBackupRuns, PauseBackupRun, ResumeBackupRun, CancelBackupRun, SetMaxConcurrentRuns
 // The background service's settings (upstream's strict model)
-let ConnectService, IsServiceConnected, UseOwnSettings
+let ConnectService, IsServiceConnected, UseOwnSettings, OwnSetsCount, ConnectServiceCopyingOwn
 
 // Check if we're running in Wails
 if (window.go) {
@@ -87,6 +87,8 @@ if (window.go) {
   ConnectService = window.go.main.App.ConnectService
   IsServiceConnected = window.go.main.App.IsServiceConnected
   UseOwnSettings = window.go.main.App.UseOwnSettings
+  OwnSetsCount = window.go.main.App.OwnSetsCount
+  ConnectServiceCopyingOwn = window.go.main.App.ConnectServiceCopyingOwn
   GetLastBackupDirs = window.go.main.App.GetLastBackupDirs
   // Multi-PBS
   ListPBSServers = window.go.main.App.ListPBSServers
@@ -1524,10 +1526,10 @@ function App() {
   // again whenever Connect is clicked. Once connected, the page reloads with
   // the service's settings.
   const [serviceConnectError, setServiceConnectError] = useState('')
-  const connectService = async (userAsked) => {
+  const connectService = async (userAsked, copyOwn = false) => {
     if (!ConnectService) return
     try {
-      await ConnectService(userAsked)
+      await (copyOwn && ConnectServiceCopyingOwn ? ConnectServiceCopyingOwn() : ConnectService(userAsked))
       setServiceConnectError('')
     } catch (err) {
       if (userAsked) setServiceConnectError(String(err?.message || err))
@@ -1540,6 +1542,22 @@ function App() {
         console.error('GetSystemInfo after connecting failed:', err)
       }
     }
+  }
+  // Connect from the user's own settings: their own Backup Sets do not run
+  // while connected, so say so first and offer to copy them to the computer's.
+  const connectFromOwnSettings = async () => {
+    let count = 0
+    try { count = OwnSetsCount ? await OwnSetsCount() : 0 } catch { count = 0 }
+    if (count === 0) { connectService(true); return }
+    const choice = await askConfirm({
+      title: t('serviceOwnSetsTitle'),
+      message: t('serviceOwnSetsMessage', { count }),
+      confirmLabel: t('serviceConnectBtn'),
+      altLabel: t('serviceOwnSetsCopyBtn'),
+      icon: '👤',
+    })
+    if (!choice) return
+    connectService(true, choice === 'alt')
   }
   useEffect(() => {
     if (!EventsOn) return
@@ -3581,7 +3599,7 @@ function App() {
         {systemInfo.own_settings && (
           <div className="info-box service-own-settings-banner" style={{marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', backgroundColor: '#fff3cd', borderLeft: '4px solid #ffc107'}}>
             <span style={{flex: '1 1 320px'}}>👤 {t('serviceOwnSettingsBanner')}</span>
-            <button className="btn btn-secondary" onClick={() => connectService(true)}>{t('serviceConnectBtn')}</button>
+            <button className="btn btn-secondary" onClick={connectFromOwnSettings}>{t('serviceConnectBtn')}</button>
             {serviceConnectError && (
               <span style={{flexBasis: '100%', color: '#842029'}}>{t('serviceConnectFailed', { error: serviceConnectError })}</span>
             )}
