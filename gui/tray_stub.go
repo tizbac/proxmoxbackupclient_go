@@ -37,3 +37,6 @@ func (a *App) ShowToastNotification(title, message string, isError bool) {
 
 // RefreshIdleTooltip is not supported on non-Windows platforms yet (no tray)
 func (a *App) RefreshIdleTooltip() {}
+
+// setTrayServiceDown: no tray, nothing to say it in.
+func setTrayServiceDown(bool) {}

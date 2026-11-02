@@ -20,24 +20,28 @@ const (
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
+	probe      http.RoundTripper // ProbeStatus's: the token, never the 401 hook
+	answer     answerState       // whether the service answers (answer.go)
 }
 
 // NewClient creates a new API client. Its requests carry the token
 // (tokenTransport) and, on a 401, get a fresh one through the unauthorized
 // hook and are sent once more (reauthTransport). Each new connection to the
 // service's address is checked first: it must be the background service
-// that answers (serviceTransport, peer.go).
+// that answers (serviceTransport, peer.go). Every request also records
+// whether anything answered (answerTransport).
 func NewClient(tokenPath string) *Client {
-	return &Client{
-		baseURL: DefaultServiceURL,
-		httpClient: &http.Client{
-			Timeout: RequestTimeout,
-			Transport: &reauthTransport{
-				base:      &tokenTransport{tokenPath: tokenPath, base: serviceTransport},
-				tokenPath: tokenPath,
-			},
-		},
+	c := &Client{baseURL: DefaultServiceURL}
+	token := &tokenTransport{tokenPath: tokenPath, base: serviceTransport}
+	c.probe = &answerTransport{c: c, base: token}
+	c.httpClient = &http.Client{
+		Timeout: RequestTimeout,
+		Transport: &answerTransport{c: c, base: &reauthTransport{
+			base:      token,
+			tokenPath: tokenPath,
+		}},
 	}
+	return c
 }
 
 // NewClientAt is NewClient for a service listening at baseURL (tests).
@@ -55,14 +59,11 @@ func (c *Client) IsServiceAvailable() bool {
 }
 
 // ProbeStatus asks /status and returns 200 (running, token taken), 401
-// (running, no token or a replaced one) or 0 (not reachable). It never runs
-// the unauthorized hook, so probing never asks for elevation.
+// (running, no token or a replaced one) or 0 (not reachable, or something
+// other than the service answers: peer.go). It never runs the unauthorized
+// hook, so probing never asks for elevation.
 func (c *Client) ProbeStatus() (int, error) {
-	transport := c.httpClient.Transport
-	if rt, ok := transport.(*reauthTransport); ok {
-		transport = rt.base
-	}
-	client := &http.Client{Timeout: ConnectionTimeout, Transport: transport}
+	client := &http.Client{Timeout: ConnectionTimeout, Transport: c.probe}
 	resp, err := client.Get(c.baseURL + "/status")
 	if err != nil {
 		return 0, err

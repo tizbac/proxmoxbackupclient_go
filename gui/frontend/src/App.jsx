@@ -54,6 +54,8 @@ let GetBackupRuns, PauseBackupRun, ResumeBackupRun, CancelBackupRun, SetMaxConcu
 let SetSpeedLimits
 // The background service's settings (upstream's strict model)
 let ConnectService, IsServiceConnected, UseOwnSettings, OwnSetsCount, ConnectServiceCopyingOwn
+// Installed but not running: the banner's Start the service
+let StartServiceAndConnect
 
 // Check if we're running in Wails
 if (window.go) {
@@ -92,6 +94,7 @@ if (window.go) {
   UseOwnSettings = window.go.main.App.UseOwnSettings
   OwnSetsCount = window.go.main.App.OwnSetsCount
   ConnectServiceCopyingOwn = window.go.main.App.ConnectServiceCopyingOwn
+  StartServiceAndConnect = window.go.main.App.StartServiceAndConnect
   GetLastBackupDirs = window.go.main.App.GetLastBackupDirs
   // Multi-PBS
   ListPBSServers = window.go.main.App.ListPBSServers
@@ -1605,6 +1608,54 @@ function App() {
     if (!choice) return
     connectService(true, choice === 'alt')
   }
+  // Installed but not running (gui/service_connect.go serviceRunning): this
+  // computer's Backup Sets do not run. The app notices a stop or a start
+  // from its own requests to the service within a few seconds and says so
+  // (service:stopped, service:started). Start the service starts it with one
+  // administrator prompt, which also connects the app (service:connected
+  // reloads the page); declined or failed, the banner says why.
+  const [serviceStartBusy, setServiceStartBusy] = useState(false)
+  const [serviceStartError, setServiceStartError] = useState('')
+  const refreshSystemInfo = async () => {
+    if (!GetSystemInfo) return
+    try {
+      const info = await GetSystemInfo()
+      if (info) setSystemInfo(prev => ({ ...prev, ...info }))
+    } catch (err) {
+      console.error('GetSystemInfo refresh failed:', err)
+    }
+  }
+  const startService = async () => {
+    if (!StartServiceAndConnect) return
+    setServiceStartBusy(true)
+    setServiceStartError('')
+    try {
+      await StartServiceAndConnect()
+    } catch (err) {
+      const msg = String(err?.message || err)
+      setServiceStartError(msg.includes('ELEVATION_CANCELLED') ? t('serviceStartDeclined') : t('serviceStartFailed', { error: msg }))
+    }
+    setServiceStartBusy(false)
+    await refreshSystemInfo()
+  }
+  useEffect(() => {
+    if (!EventsOn) return
+    const unsubStopped = EventsOn('service:stopped', refreshSystemInfo)
+    const unsubStarted = EventsOn('service:started', () => {
+      setServiceStartError('')
+      refreshSystemInfo()
+    })
+    return () => {
+      if (unsubStopped) unsubStopped()
+      if (unsubStarted) unsubStarted()
+    }
+  }, [])
+  // Add New Backup Set and One-off Backup wait for a running, connected
+  // service (disabled, with the banner's text as their tooltip).
+  const serviceNotRunning = !!systemInfo.service_available && systemInfo.service_running === false
+  const serviceBlocked = serviceNotRunning || systemInfo.service_connected === false
+  const serviceBlockedTip = serviceNotRunning ? t('serviceNotRunningBanner') : (systemInfo.service_connected === false ? t('serviceConnectBanner') : undefined)
+
   useEffect(() => {
     if (!EventsOn) return
     const unsubConnected = EventsOn('service:connected', async () => {
@@ -3689,7 +3740,16 @@ function App() {
         </div>
 
       <div className="container">
-        {systemInfo.service_available && systemInfo.service_connected === false && (
+        {serviceNotRunning && (
+          <div className="info-box banner-warning service-stopped-banner">
+            <span className="banner-text">⚠️ {t('serviceNotRunningBanner')}</span>
+            <button className="btn" disabled={serviceStartBusy || !StartServiceAndConnect} onClick={startService}>
+              {serviceStartBusy ? t('serviceStartingBtn') : t('serviceStartBtn')}
+            </button>
+            {serviceStartError && <span className="banner-error">{serviceStartError}</span>}
+          </div>
+        )}
+        {!serviceNotRunning && systemInfo.service_available && systemInfo.service_connected === false && (
           <div className="info-box service-connect-banner" style={{marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', backgroundColor: '#fff3cd', borderLeft: '4px solid #ffc107'}}>
             <span style={{flex: '1 1 320px'}}>🔒 {t('serviceConnectBanner')}</span>
             <button className="btn" onClick={() => connectService(true)}>{t('serviceConnectBtn')}</button>
@@ -4497,11 +4557,12 @@ function App() {
               )}
               <div style={{display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '20px'}}>
                 {/* Not until connected (or on the user's own settings): the
-                    service refuses the app's changes and backups before that. */}
+                    service refuses the app's changes and backups before that,
+                    and a service that is not running takes none. */}
                 <button
                   className="btn"
-                  disabled={systemInfo.service_connected === false}
-                  title={systemInfo.service_connected === false ? t('serviceConnectBanner') : undefined}
+                  disabled={serviceBlocked}
+                  title={serviceBlockedTip}
                   onClick={() => {
                     setEditingJobId(null)
                     setJobName('')
@@ -4530,8 +4591,8 @@ function App() {
                 </button>
                 <button
                   className="btn btn-secondary"
-                  disabled={systemInfo.service_connected === false}
-                  title={systemInfo.service_connected === false ? t('serviceConnectBanner') : undefined}
+                  disabled={serviceBlocked}
+                  title={serviceBlockedTip}
                   onClick={() => {
                     setBackupMode('oneshot')
                     setOneOffComment('')

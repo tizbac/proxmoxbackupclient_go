@@ -303,25 +303,36 @@ func (a *App) StartBackgroundService() (ServiceStatus, error) {
 	if err := needAdmin(); err != nil {
 		return a.GetServiceStatus(), err
 	}
-	_, names, _ := serviceNames()
-	m, err := mgr.Connect()
-	if err != nil {
-		return a.GetServiceStatus(), err
-	}
-	defer m.Disconnect()
-	s, _ := openInstalled(m, names)
-	if s == nil {
-		return a.GetServiceStatus(), errors.New("the service is not installed")
-	}
-	defer s.Close()
-	if err := s.Start(); err != nil {
-		return a.GetServiceStatus(), err
-	}
-	if err := waitState(s, svc.Running, 30*time.Second); err != nil {
+	if err := startInstalledService(); err != nil {
 		return a.GetServiceStatus(), err
 	}
 	a.switchToServiceMode()
 	return a.GetServiceStatus(), nil
+}
+
+// startInstalledService starts the installed service (an administrator's
+// process: this app elevated, or its elevated copy, service_start.go) and
+// waits until Windows reports it running. One already running is left as
+// it is.
+func startInstalledService() error {
+	_, names, _ := serviceNames()
+	m, err := mgr.Connect()
+	if err != nil {
+		return err
+	}
+	defer m.Disconnect()
+	s, _ := openInstalled(m, names)
+	if s == nil {
+		return errors.New("the service is not installed")
+	}
+	defer s.Close()
+	if q, err := s.Query(); err == nil && q.State == svc.Running {
+		return nil
+	}
+	if err := s.Start(); err != nil && !errors.Is(err, windows.ERROR_SERVICE_ALREADY_RUNNING) {
+		return err
+	}
+	return waitState(s, svc.Running, 30*time.Second)
 }
 
 // stopService stops s if it is running. Refuses while it runs a backup.

@@ -19,6 +19,10 @@ func (a *App) GetServiceStatus() ServiceStatus { return ServiceStatus{} }
 
 // serviceInstalled: no background service on this system.
 func serviceInstalled() bool { return false }
+
+func startInstalledService() error { return errNoService }
+
+func needAdmin() error { return errNoService }
 func (a *App) InstallService() (ServiceStatus, error) {
 	return ServiceStatus{}, errNoService
 }

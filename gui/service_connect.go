@@ -77,6 +77,12 @@ func (a *App) resolveMode() {
 func (a *App) enterServiceMode(connected bool) {
 	api.SetUnauthorizedHook(a.serviceTokenHook)
 	messageSink.Store(func(e MessageLogEntry) error { return a.apiClient.AppendMessage(e) })
+	if a.apiClient != nil {
+		a.apiClient.SetAnswerHook(a.onServiceAnswer)
+		if answers, known := a.apiClient.Answering(); known {
+			setTrayServiceDown(!answers)
+		}
+	}
 	a.svcConnected.Store(connected)
 	a.setModeQuiet(api.ModeService)
 	a.serviceSettings.Store(true)
@@ -96,6 +102,10 @@ func (a *App) enterServiceMode(connected bool) {
 func (a *App) leaveServiceMode() {
 	api.SetUnauthorizedHook(nil)
 	api.SetTokenOverride("")
+	if a.apiClient != nil {
+		a.apiClient.SetAnswerHook(nil)
+	}
+	setTrayServiceDown(false)
 	messageSink.Store((func(MessageLogEntry) error)(nil))
 	a.svcConnected.Store(false)
 	// The user's own settings first, then the flag: a setter running in
@@ -162,14 +172,33 @@ func (a *App) connect(userAsked bool, then func() error) error {
 	if a.svcConnected.Load() {
 		return nil
 	}
+	// A stopped service has no token to give: say so rather than ask for
+	// elevation in vain (the window shows Start the service instead).
+	if code, _ := a.apiClient.ProbeStatus(); code == 0 {
+		return errServiceNotRunning
+	}
 	tok, err := fetchServiceToken()
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("[Service] token not fetched: %v", err))
 		return err
 	}
+	return a.useServiceToken(tok, then)
+}
+
+// errServiceNotRunning: the background service is installed but nothing
+// answers on its port (or something other than the service does).
+var errServiceNotRunning = errors.New("the background service is not running")
+
+// useServiceToken connects this app with tok, the service's token (fetched,
+// or handed back by the copy that started the service), then runs then (nil
+// for nothing) and tells the window. tokenFetchMu must be held.
+func (a *App) useServiceToken(tok string, then func() error) error {
 	api.SetTokenOverride(tok)
 	if code, _ := a.apiClient.ProbeStatus(); code != http.StatusOK {
 		api.SetTokenOverride("")
+		if code == 0 {
+			return errServiceNotRunning
+		}
 		return fmt.Errorf("the background service did not take the token (status %d)", code)
 	}
 	a.svcConnected.Store(true)
@@ -238,6 +267,51 @@ func (a *App) onServiceDisconnected() {
 	if a.ctx != nil && !a.headless {
 		runtime.EventsEmit(a.ctx, "service:disconnected")
 	}
+}
+
+// serviceRunning reports whether the background service this app works with
+// answers (its /status answers 200 or 401; gui/api/answer.go): false without
+// a service, while it is stopped, and while something other than the service
+// holds its port (the peer check refuses that; it is logged). It uses what
+// the app's last request to the service found, which the app renews every 3
+// seconds while it works with the service (watchServiceRuns), and probes
+// only when nothing has been sent yet.
+func (a *App) serviceRunning() bool {
+	if a.mode != api.ModeService || a.ownSettings.Load() || a.apiClient == nil {
+		return false
+	}
+	if answers, known := a.apiClient.Answering(); known {
+		return answers
+	}
+	code, _ := a.apiClient.ProbeStatus()
+	return code != 0
+}
+
+// onServiceAnswer runs when the service stops or starts answering (the
+// client's answer hook, installed by enterServiceMode). Stopped: the window
+// shows that the service is not running, so this computer's Backup Sets do
+// not run, with Start the service. Answering again: after a restart the
+// service has a new token, so the app is not connected any more (the next
+// request is refused and the window shows Connect); it asks once on its own
+// when the window next comes to the front.
+func (a *App) onServiceAnswer(answers bool, err error) {
+	if a.isServiceProcess || a.mode != api.ModeService || a.ownSettings.Load() {
+		return
+	}
+	setTrayServiceDown(!answers)
+	if answers {
+		a.autoConnectTried.Store(false)
+		writeDebugLog("[Service] the background service answers again")
+		a.emitEvent("service:started")
+		return
+	}
+	var pe *api.ServicePeerError
+	if errors.As(err, &pe) {
+		writeDebugLog(fmt.Sprintf("[Service] %v; treated as the background service not running: this computer's Backup Sets do not run", pe))
+	} else {
+		writeDebugLog(fmt.Sprintf("[Service] the background service is not running (%v): this computer's Backup Sets do not run until it is started", err))
+	}
+	a.emitEvent("service:stopped")
 }
 
 // onServiceConnected loads the service's settings into the app and tells

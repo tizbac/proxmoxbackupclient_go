@@ -10,24 +10,26 @@ import (
 	"time"
 )
 
-// elevatedFetchToken starts this program as root through pkexec as the
-// token-fetch copy and waits for it, then reads the handoff file (from
-// upstream's token_linux.go). Upstream fell back to "sudo
-// --non-interactive", which only works with passwordless sudo; without
+// runElevatedHandoff starts this program as root through pkexec with flag
+// and the handoff file, waits for it (timeout, then as long again polling
+// the file), and returns the token it wrote into the file: the token-fetch
+// copy (elevatedFetchToken, from upstream's token_linux.go), or the copy
+// that starts the service first (service_start.go). Upstream fell back to
+// "sudo --non-interactive", which only works with passwordless sudo; without
 // pkexec this says so instead.
-func elevatedFetchToken(handoffFile string) (string, error) {
+func runElevatedHandoff(flag, handoffFile string, timeout time.Duration) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("cannot resolve own executable: %w", err)
 	}
 	if _, err := exec.LookPath("pkexec"); err != nil {
-		return "", errors.New("connecting to the background service needs pkexec (polkit), which is not installed")
+		return "", errors.New("asking for administrator rights needs pkexec (polkit), which is not installed")
 	}
-	cmd := exec.Command("pkexec", exe, elevatedTokenFetchFlag, handoffFile) // #nosec G204 -- this program, and the file it created
+	cmd := exec.Command("pkexec", exe, flag, handoffFile) // #nosec G204 -- this program, and the file it created
 	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("cannot start the elevated token fetch: %w", err)
+		return "", fmt.Errorf("cannot start the elevated copy: %w", err)
 	}
-	writeDebugLog("[ElevatedTokenFetch] started the elevated copy, waiting for the handoff")
+	writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] %s: started the elevated copy, waiting for the handoff", flag))
 
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
@@ -42,19 +44,17 @@ func elevatedFetchToken(handoffFile string) (string, error) {
 			// pkexec exits 126 when the dialog is dismissed, 127 when not
 			// authorised.
 			if c := ee.ExitCode(); c == 126 || c == 127 {
-				return "", errors.New("the request for administrator rights was declined")
+				return "", ErrElevationDeclined
 			}
-			code := uint32(ee.ExitCode())
-			return "", fmt.Errorf("elevated token fetch failed: %s (%s)",
-				elevatedChildExitLabel(code), elevatedChildExitHint(code))
+			return "", &elevatedChildError{code: uint32(ee.ExitCode())} // #nosec G115 -- an exit status, 0 to 255
 		}
 		if err != nil {
-			return "", fmt.Errorf("elevated token fetch failed: %w", err)
+			return "", fmt.Errorf("the elevated process failed: %w", err)
 		}
-		return "", errors.New("elevated token fetch failed: the elevated process exited without writing the token")
-	case <-time.After(elevatedChildTimeout):
+		return "", errors.New("the elevated process exited without writing the token")
+	case <-time.After(timeout):
 		// Still running: most likely the password dialog is still open.
 		writeDebugLog("[ElevatedTokenFetch] the elevated copy is still running; polling the handoff file")
-		return waitForHandoff(handoffFile, elevatedChildTimeout)
+		return waitForHandoff(handoffFile, timeout)
 	}
 }

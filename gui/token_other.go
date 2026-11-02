@@ -2,10 +2,13 @@
 
 package main
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
-// elevatedFetchToken: no elevation helper on this system; an app run as the
+// runElevatedHandoff: no elevation helper on this system; an app run as the
 // service's own account reads the token file directly (fetchServiceToken).
-func elevatedFetchToken(string) (string, error) {
+func runElevatedHandoff(string, string, time.Duration) (string, error) {
 	return "", errors.New("connecting to the background service needs the app run as administrator on this system")
 }

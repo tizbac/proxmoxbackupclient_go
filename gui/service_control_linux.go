@@ -354,14 +354,21 @@ func (a *App) StartBackgroundService() (ServiceStatus, error) {
 	if err := needAdmin(); err != nil {
 		return a.GetServiceStatus(), err
 	}
-	if _, err := systemctl("start", linuxServiceUnit+".service"); err != nil {
-		return a.GetServiceStatus(), err
-	}
-	if err := waitActive("running", 30*time.Second); err != nil {
+	if err := startInstalledService(); err != nil {
 		return a.GetServiceStatus(), err
 	}
 	a.switchToServiceMode()
 	return a.GetServiceStatus(), nil
+}
+
+// startInstalledService starts the service's unit (as root: this app run as
+// root, or its elevated copy, service_start.go) and waits until systemd
+// reports it running.
+func startInstalledService() error {
+	if _, err := systemctl("start", linuxServiceUnit+".service"); err != nil {
+		return err
+	}
+	return waitActive("running", 30*time.Second)
 }
 
 // stopLinuxService stops the service. Refuses while it runs a backup.

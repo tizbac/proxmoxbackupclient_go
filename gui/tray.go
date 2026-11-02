@@ -31,6 +31,8 @@ var (
 	trayTooltipMsg = "Scheduled backups active" // last UpdateTrayTooltip message
 	trayRunning    bool                         // a backup runs: the item is enabled
 	trayPaused     bool                         // it is paused: the item says Resume
+	trayServiceOff bool                         // the background service is installed but not running
+	trayReady      bool                         // onReady has run: the tooltip can be set
 	// trayPauseClickedAt (Unix ns) is when the item was last clicked. A service
 	// run list fetched before then may not show that click yet.
 	trayPauseClickedAt atomic.Int64
@@ -72,7 +74,10 @@ func onReady(a *App) func() {
 		systray.SetIcon(TrayIconForBrand(BrandFromExecutable()))
 		name := trayName()
 		systray.SetTitle(name)
-		systray.SetTooltip(name + " - Scheduled backups active")
+		trayMu.Lock()
+		trayReady = true
+		showTrayTooltipLocked() // "Scheduled backups active", or that the service is not running
+		trayMu.Unlock()
 
 		// Add menu items
 		menuShow = systray.AddMenuItem("🖥️ Show window", "Open the "+name+" interface")
@@ -254,11 +259,29 @@ func (a *App) UpdateTrayTooltip(message string) {
 	showTrayTooltipLocked()
 }
 
+// setTrayServiceDown says in the tooltip that the background service, which
+// runs this computer's Backup Sets, is not running (service_connect.go), or
+// stops saying so.
+func setTrayServiceDown(down bool) {
+	trayMu.Lock()
+	defer trayMu.Unlock()
+	if trayServiceOff == down {
+		return
+	}
+	trayServiceOff = down
+	if trayReady {
+		showTrayTooltipLocked()
+	}
+}
+
 // showTrayTooltipLocked sets the tooltip from the last message, saying so
-// while the backup is paused. trayMu must be held.
+// while the backup is paused, or while the background service is not
+// running. trayMu must be held.
 func showTrayTooltipLocked() {
 	msg := trayTooltipMsg
-	if trayPaused {
+	if trayServiceOff {
+		msg = "Background service not running: Backup Sets do not run"
+	} else if trayPaused {
 		if label, ok := strings.CutPrefix(msg, "Backup running: "); ok {
 			msg = "Backup paused: " + label
 		} else {

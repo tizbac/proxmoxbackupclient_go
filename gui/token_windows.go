@@ -21,9 +21,6 @@ const (
 	swShownormal          = 1
 )
 
-// ErrElevationDeclined is a dismissed UAC prompt.
-var ErrElevationDeclined = errors.New("the request for administrator rights was declined")
-
 var (
 	shell32DLL         = windows.NewLazySystemDLL("shell32.dll")
 	shellExecuteExProc = shell32DLL.NewProc("ShellExecuteExW")
@@ -70,30 +67,33 @@ func shellExecuteRunas(exe, params string) (windows.Handle, error) {
 	return windows.Handle(sei.HProcess), nil
 }
 
-// elevatedFetchToken starts this program elevated (UAC) as the token-fetch
-// copy and waits for it, then reads the handoff file.
-func elevatedFetchToken(handoffFile string) (string, error) {
+// runElevatedHandoff starts this program elevated (UAC) with flag and the
+// handoff file, waits for it (timeout, then as long again polling the file),
+// and returns the token it wrote into the file: the token-fetch copy
+// (elevatedFetchToken), or the copy that starts the service first
+// (service_start.go).
+func runElevatedHandoff(flag, handoffFile string, timeout time.Duration) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("cannot resolve own executable: %w", err)
 	}
 
-	h, err := shellExecuteRunas(exe, elevatedTokenFetchFlag+` "`+handoffFile+`"`)
+	h, err := shellExecuteRunas(exe, flag+` "`+handoffFile+`"`)
 	if err != nil {
 		return "", err
 	}
 	if h == 0 {
-		return waitForHandoff(handoffFile, elevatedChildTimeout)
+		return waitForHandoff(handoffFile, timeout)
 	}
 	defer func() { _ = windows.CloseHandle(h) }()
 
-	// Wait for the copy rather than polling the whole time: it only reads the
-	// token file, so a failure shows at once, with its reason.
-	ev, werr := windows.WaitForSingleObject(h, uint32(elevatedChildTimeout/time.Millisecond))
+	// Wait for the copy rather than polling the whole time: a failure shows
+	// at once, with its reason.
+	ev, werr := windows.WaitForSingleObject(h, uint32(timeout/time.Millisecond))
 	if werr != nil || ev != windows.WAIT_OBJECT_0 {
-		writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child still running after %s (wait error %v, event %d); polling the handoff file",
-			elevatedChildTimeout, werr, ev))
-		return waitForHandoff(handoffFile, elevatedChildTimeout)
+		writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] %s: child still running after %s (wait error %v, event %d); polling the handoff file",
+			flag, timeout, werr, ev))
+		return waitForHandoff(handoffFile, timeout)
 	}
 
 	var code uint32
@@ -106,8 +106,7 @@ func elevatedFetchToken(handoffFile string) (string, error) {
 		return token, nil
 	}
 	if haveCode && code != 0 {
-		return "", fmt.Errorf("elevated token fetch failed: %s (%s)",
-			elevatedChildExitLabel(code), elevatedChildExitHint(code))
+		return "", &elevatedChildError{code: code}
 	}
-	return "", errors.New("elevated token fetch failed: the elevated process exited without writing the token")
+	return "", errors.New("the elevated process exited without writing the token")
 }

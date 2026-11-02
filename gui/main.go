@@ -65,6 +65,11 @@ func main() {
 	if handleElevatedTokenFetchChild(os.Args[1:]) {
 		return
 	}
+	// The elevated copy that starts the background service for the window's
+	// Start the service (service_start.go): it does nothing else either.
+	if handleElevatedServiceStartChild(os.Args[1:]) {
+		return
+	}
 	// -list-sets, -undelete, -rollback (set_cli.go). On Windows the GUI has
 	// no console; the service program takes them there.
 	if stdruntime.GOOS != "windows" && runSetCLI(os.Args[1:]) {
@@ -379,6 +384,10 @@ func (a *App) GetSystemInfo() map[string]interface{} {
 		// service_connected: false while the app works through the service
 		// but has no token yet (ConnectService); the window offers Connect.
 		"service_connected": a.IsServiceConnected(),
+		// service_running: the service answers (serviceRunning). Installed
+		// but not running, the window says so (its Backup Sets do not run)
+		// and offers Start the service instead of Connect.
+		"service_running": a.serviceRunning(),
 		// own_settings: the user chose their own settings over the service's
 		// (UseOwnSettings); the window offers Connect to go back.
 		"own_settings": a.ownSettings.Load(),
