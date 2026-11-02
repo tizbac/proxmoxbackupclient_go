@@ -36,6 +36,10 @@ import (
 // is asked.
 var errNoPromptNow = errors.New("not connected to the background service yet")
 
+// A connection the app refuses because something other than the background
+// service answers on its port (gui/api/peer.go) goes to the debug log.
+func init() { api.SetPeerLog(writeDebugLog) }
+
 // resolveMode decides how this app runs: with the service (it answers,
 // 200 or 401) or on its own. A 200 means this app could read the token
 // itself (elevated, or root): connected at once.

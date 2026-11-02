@@ -24,14 +24,16 @@ type Client struct {
 
 // NewClient creates a new API client. Its requests carry the token
 // (tokenTransport) and, on a 401, get a fresh one through the unauthorized
-// hook and are sent once more (reauthTransport).
+// hook and are sent once more (reauthTransport). Each new connection to the
+// service's address is checked first: it must be the background service
+// that answers (serviceTransport, peer.go).
 func NewClient(tokenPath string) *Client {
 	return &Client{
 		baseURL: DefaultServiceURL,
 		httpClient: &http.Client{
 			Timeout: RequestTimeout,
 			Transport: &reauthTransport{
-				base:      &tokenTransport{tokenPath: tokenPath, base: http.DefaultTransport},
+				base:      &tokenTransport{tokenPath: tokenPath, base: serviceTransport},
 				tokenPath: tokenPath,
 			},
 		},

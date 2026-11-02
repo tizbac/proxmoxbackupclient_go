@@ -10,6 +10,7 @@ follow and control the service's runs. This package holds both sides:
 | `client.go` | the client the app uses (`Client`) |
 | `types.go` | request and response bodies |
 | `auth.go` | the token file and the checks applied to every request |
+| `peer.go` | the app's check that it is the service answering, on each connection |
 | `mode.go` | `ModeDetector`: service mode or standalone |
 
 ## How the app uses it
@@ -72,6 +73,22 @@ The app, run without elevation, cannot read the file: it starts a copy of itself
 token into a file the app created and exits (`gui/token_elevated.go`). The app keeps the
 token in memory only and asks again only when the user connects (`gui/service_connect.go`).
 An elevated app, or one run as root, reads the file itself.
+
+The app also checks the service before it sends anything. While the service is stopped,
+another program could listen on `127.0.0.1:18765` and pose as it, to collect the token or a
+PBS secret typed into Preferences. So on each new connection to that address, before a byte
+is sent, the app looks up who holds the other end of that connection (`peer.go`):
+
+| | The other end must be |
+| --- | --- |
+| Windows | the service's own process: the process that owns the socket in the system's TCP table (`GetExtendedTcpTable`) has the process ID the Service Control Manager gives for the running service (`gui/service_peer_windows.go`) |
+| Linux | root's (uid 0), from `/proc/net/tcp` and `/proc/net/tcp6`: the connection's socket and every socket listening on port 18765 (until it is accepted, many kernels show a connection as root's whoever listens); the service runs as root, and only root can listen as root |
+| macOS, others | not checked yet |
+
+Anything else is refused: the connection is closed unused, the debug log gets a line such as
+`something other than the background service is answering on 127.0.0.1:18765 (process 4321
+(python.exe)): not connecting`, and the app behaves as if the service were not running.
+Other programs using the API are not affected; they can make the same check.
 
 Checks on every request (`authMiddleware`):
 

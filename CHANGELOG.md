@@ -51,6 +51,8 @@ restore, client-side encryption, the background service on Windows and Linux, an
 
 - **Restores, browsing and search get only what one operation needs.** The service hands the app a fresh PBS login ticket for a server with a user name and password, or the API token for a server with a token, and the encryption key when the backup is encrypted, for that operation only and in memory only. The app no longer reads them from disk. Servers with an API token can restore and browse through the service, which 1.2.0-rc.1 does not allow.
 
+- **The app checks that it is the background service answering before it sends anything.** While the service was stopped, any program on the computer could listen on `127.0.0.1:18765` and pose as it, and the app would send it the service's token and any PBS secret typed into Preferences. Now, on each new connection, the app looks up who holds the other end: on Windows it must be the service's own process, as the Service Control Manager reports it; on Linux root, for that connection and for every socket listening on the port. Anything else is refused before a byte is sent, logged in the debug log, and treated as a service that is not running. macOS is not checked yet. `gui/api/INTEGRATION.md` describes the check.
+
 ### Fixed
 
 - **Pause, Stop and the run's log belonged to the whole app**, not to a backup, which only worked while one backup ran at a time: starting a second backup stopped the first, Pause and Stop acted on whichever had started last, and every run wrote into the newest run's log file. Each run now has its own.
