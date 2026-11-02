@@ -57,18 +57,34 @@ export function SetPicker({ ui, jobs, value, onChange }) {
   // Machine sets too: their folders for Undelete and Roll back are read
   // from the disk images (NTFS on Windows, ext4 or XFS on Linux).
   const sets = jobs || []
-  const describe = (j) => j.backupType === 'machine'
-    ? `${tl('setPickerMachine', 'machine')}: ${(j.imageFolders && j.imageFolders.length > 0) ? j.imageFolders.join(', ') : tl('setPickerMachineDefault', 'your Desktop, Documents, Pictures...')}`
-    : (j.backupDirs || []).join(', ')
+  const folders = (j) => j.backupType === 'machine'
+    ? ((j.imageFolders && j.imageFolders.length > 0) ? j.imageFolders : [tl('setPickerMachineDefault', 'your Desktop, Documents, Pictures...')])
+    : (j.backupDirs || [])
+  const describe = (j) => (j.backupType === 'machine' ? `${tl('setPickerMachine', 'machine')}: ` : '') + folders(j).join(', ')
+  // The open list is as wide as its longest entry and Windows draws it past
+  // the window's edge, so an entry shows the first folder and how many more,
+  // cut short if still long; the chosen set's folders are listed in full
+  // under the list.
+  const short = (j) => {
+    const f = folders(j)
+    let s = (j.backupType === 'machine' ? `${tl('setPickerMachine', 'machine')}: ` : '') + (f[0] || '')
+    if (f.length > 1) s += ` +${f.length - 1}`
+    const label = `${j.name} (${s})`
+    return label.length > 90 ? label.slice(0, 89) + '…' : label
+  }
+  const chosen = sets.find(j => j.id === value)
   return (
     <div className="form-group">
       <label htmlFor={`setpick-${ui.idSuffix || ''}`}>{tl('setPickerLabel', 'Backup Set')}</label>
       <select id={`setpick-${ui.idSuffix || ''}`} value={value || ''} onChange={(e) => onChange(e.target.value)}>
         <option value="">{tl('setPickerChooseAny', 'Choose a Backup Set...')}</option>
         {sets.map(j => (
-          <option key={j.id} value={j.id}>{j.name} ({describe(j)})</option>
+          <option key={j.id} value={j.id} title={`${j.name} (${describe(j)})`}>{short(j)}</option>
         ))}
       </select>
+      {chosen && (
+        <p style={{fontSize: '13px', color: '#718096', marginTop: '6px', overflowWrap: 'anywhere'}}>{describe(chosen)}</p>
+      )}
       {sets.length === 0 && (
         <p style={{fontSize: '13px', color: '#718096', marginTop: '6px'}}>
           {tl('setPickerNoneAny', 'There are no Backup Sets yet. Create one on the Backup page.')}
