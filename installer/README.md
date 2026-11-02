@@ -30,7 +30,10 @@ For silent installs on many computers see [DEPLOYMENT.md](DEPLOYMENT.md).
 - The Windows service `ProxmoxBackupClientSVC`, display name "Proxmox Backup Client Service".
   It runs as LocalSystem, starts automatically at boot and is started at the end of the install.
   The app finds it and hands it backups and schedules ("Run as Service" shows as on).
-- A Start menu entry "Proxmox Backup Client".
+- Start menu entries "Proxmox Backup Client" and "Proxmox Backup Client (Administrator)".
+  The second starts the app with `-admin`, which asks for elevation through UAC (MSI
+  shortcuts cannot carry "Run as administrator" themselves).
+- When `DESKTOPSHORTCUTS=1` (the default): the same two shortcuts on the all-users desktop.
 - One entry in Programs and Features, with the brand's links (about, help, updates, contact).
 - When `AUTOSTART=1` (the default): a `Run` entry under HKLM, which starts the app
   minimised to the tray when any user signs in (`--minimized`).
@@ -71,6 +74,7 @@ it is running from another folder) stay.
 | `INSTALLFOLDER` | `C:\Program Files\ProxmoxBackupClient` | Where the two programs go. |
 | `SERVICEAUTOSTART` | `1` | `0` installs the service as Manual and leaves it stopped. |
 | `AUTOSTART` | `1` | `0` leaves out the sign-in Run entry. |
+| `DESKTOPSHORTCUTS` | `1` | `0` leaves out the two desktop shortcuts (the Start menu keeps both). |
 | `CONFIGFILE` | (none) | Full path of a settings file saved with Preferences > Export, applied before the service starts. See [DEPLOYMENT.md](DEPLOYMENT.md). |
 | `KEEP_CONFIG` | `1` | On removal, `0` deletes `C:\ProgramData\ProxmoxBackupClient`. |
 

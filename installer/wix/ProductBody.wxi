@@ -57,6 +57,10 @@
       <Directory Id="ProgramMenuFolder">
         <Directory Id="ApplicationProgramsFolder" Name="$(var.ProductName)"/>
       </Directory>
+
+      <!-- Desktop shortcuts (DESKTOPSHORTCUTS); the all-users desktop in a
+           per-machine install -->
+      <Directory Id="DesktopFolder" Name="Desktop"/>
     </Directory>
 
     <!-- Main application files -->
@@ -107,10 +111,48 @@
                   Icon="AppIcon"
                   Target="[INSTALLFOLDER]$(var.ExeName).exe"
                   WorkingDirectory="INSTALLFOLDER"/>
+        <!-- MSI shortcuts cannot carry "Run as administrator": the app
+             relaunches itself through UAC when started with -admin
+             (gui/admin_start_windows.go). -->
+        <Shortcut Id="ApplicationStartMenuShortcutAdmin"
+                  Name="$(var.ProductName) (Administrator)"
+                  Description="Backup client for Proxmox Backup Server, as administrator"
+                  Icon="AppIcon"
+                  Target="[INSTALLFOLDER]$(var.ExeName).exe"
+                  Arguments="-admin"
+                  WorkingDirectory="INSTALLFOLDER"/>
         <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
         <RegistryValue Root="HKCU"
                        Key="Software\$(var.VendorKey)\$(var.ExeName)"
                        Name="installed"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes"/>
+      </Component>
+    </DirectoryRef>
+
+    <!-- Desktop shortcuts (DESKTOPSHORTCUTS = "1", the default): the app and
+         the app as administrator, as in the Start menu. The HKCU key path is
+         what ICE38 wants for a component in a profile folder. -->
+    <DirectoryRef Id="DesktopFolder">
+      <Component Id="DesktopShortcuts" Guid="*">
+        <Condition>DESKTOPSHORTCUTS = "1"</Condition>
+        <Shortcut Id="DesktopShortcut"
+                  Name="$(var.ProductName)"
+                  Description="Backup client for Proxmox Backup Server"
+                  Icon="AppIcon"
+                  Target="[INSTALLFOLDER]$(var.ExeName).exe"
+                  WorkingDirectory="INSTALLFOLDER"/>
+        <Shortcut Id="DesktopShortcutAdmin"
+                  Name="$(var.ProductName) (Administrator)"
+                  Description="Backup client for Proxmox Backup Server, as administrator"
+                  Icon="AppIcon"
+                  Target="[INSTALLFOLDER]$(var.ExeName).exe"
+                  Arguments="-admin"
+                  WorkingDirectory="INSTALLFOLDER"/>
+        <RegistryValue Root="HKCU"
+                       Key="Software\$(var.VendorKey)\$(var.ExeName)"
+                       Name="desktopShortcuts"
                        Type="integer"
                        Value="1"
                        KeyPath="yes"/>
@@ -146,6 +188,7 @@
       <ComponentRef Id="ServiceExecutable" />
       <ComponentRef Id="ApplicationShortcut" />
       <ComponentRef Id="AutoStartRegistry" />
+      <ComponentRef Id="DesktopShortcuts" />
     </Feature>
 
     <!-- Add/Remove Programs metadata (Programs & Features). Per-brand; keep in
@@ -184,6 +227,9 @@
          AUTOSTART         1 (default) | 0: start the app in the tray at every
                            user's logon (a machine Run entry starting it
                            minimized; no UAC).
+         DESKTOPSHORTCUTS  1 (default) | 0: put the app, and the app as
+                           administrator, on the desktop (both are always in
+                           the Start menu).
          CONFIGFILE        Full path of a file saved with Preferences > Export:
                            applied to the settings before the service starts
                            (see below and installer/DEPLOYMENT.md).
@@ -211,6 +257,7 @@
 
     <!-- ==================== AUTO-START CONFIGURATION ==================== -->
     <Property Id="AUTOSTART" Value="1" />
+    <Property Id="DESKTOPSHORTCUTS" Value="1" />
 
     <!-- ==================== SETTINGS FOR MANY COMPUTERS ==================== -->
     <!-- CONFIGFILE=<full path of a file saved with Preferences > Export>: the

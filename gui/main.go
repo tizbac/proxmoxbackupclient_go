@@ -68,7 +68,11 @@ func main() {
 	}
 	// Parse command line flags
 	minimized := flag.Bool("minimized", false, "Start minimized to system tray")
+	asAdmin := flag.Bool("admin", false, "Windows: start elevated (the installer's Administrator shortcuts)")
 	flag.Parse()
+	if *asAdmin && startAsAdmin() {
+		return
+	}
 
 	// Check for single instance (GUI only)
 	// If another instance exists, activate it and exit
