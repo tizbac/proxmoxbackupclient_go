@@ -749,9 +749,15 @@ function App() {
     if (!GetJobPolicy) return
     try { setJobPolicy(await GetJobPolicy()) } catch (e) { /* keep last known */ }
   }
-  const jobErrText = (err) => String(err).includes('JOBS_ADMIN_REQUIRED')
-    ? t('jobsAdminRequired')
-    : `${t('statusError')} ${err}`
+  // A refused token (the service restarted, or renewed it): ConnectService
+  // answers api.ErrUnauthorized.
+  const isNotConnectedErr = (err) => String(err?.message || err).includes('not connected to the background service')
+  const jobErrText = (err) => {
+    const msg = String(err?.message || err)
+    if (msg.includes('JOBS_ADMIN_REQUIRED')) return t('jobsAdminRequired')
+    if (isNotConnectedErr(err)) return t('serviceNotConnectedRetry')
+    return `${t('statusError')} ${msg}`
+  }
   const restartAsAdmin = async () => {
     if (!RequestElevation) return
     try {
@@ -1533,11 +1539,14 @@ function App() {
   // again whenever Connect is clicked. Once connected, the page reloads with
   // the service's settings.
   const [serviceConnectError, setServiceConnectError] = useState('')
+  // Returns whether the app is connected now.
   const connectService = async (userAsked, copyOwn = false) => {
-    if (!ConnectService) return
+    if (!ConnectService) return false
+    let ok = false
     try {
       await (copyOwn && ConnectServiceCopyingOwn ? ConnectServiceCopyingOwn() : ConnectService(userAsked))
       setServiceConnectError('')
+      ok = true
     } catch (err) {
       if (userAsked) setServiceConnectError(String(err?.message || err))
     }
@@ -1549,6 +1558,7 @@ function App() {
         console.error('GetSystemInfo after connecting failed:', err)
       }
     }
+    return ok
   }
   // Connect from the user's own settings: their own Backup Sets do not run
   // while connected, so say so first and offer to copy them to the computer's.
@@ -2665,25 +2675,34 @@ function App() {
         fullReadEvery: backupType === 'directory' && changeDetectionMode === 'metadata' ? fullReadEvery : 0
       }
 
-      // Save or update to backend
+      // Save or update to backend. An update keeps the set's enabled state and
+      // a new set is saved enabled; the switch changes it.
+      let written = false
+      const writeJob = async () => {
+        if (!written) {
+          await (editingJobId ? UpdateScheduledJob(jobData) : SaveScheduledJob(jobData))
+          written = true
+        }
+        const wasEnabled = !editingJobId || scheduledJobs.find(j => j.id === editingJobId)?.enabled !== false
+        if (wasEnabled !== jobEnabled) await SetScheduledJobEnabled(jobData.id, jobEnabled)
+      }
       try {
+        try {
+          await writeJob()
+        } catch (err) {
+          // The service replaced the app's token since the form was opened
+          // (it restarted, or its 24-hour renewal): Connect asks for the
+          // password, then the save goes on with the form as it was.
+          if (!isNotConnectedErr(err) || !(await connectService(true))) throw err
+          await writeJob()
+        }
         if (editingJobId) {
-          // Update existing job
-          await UpdateScheduledJob(jobData)
-          // An update keeps the set's enabled state; the switch changes it.
-          if ((scheduledJobs.find(j => j.id === editingJobId)?.enabled !== false) !== jobEnabled) {
-            await SetScheduledJobEnabled(editingJobId, jobEnabled)
-          }
           // Reload rather than use the form's copy: the backend adds the
           // next run and keeps the last run and run counters.
           setScheduledJobs((await GetScheduledJobs()) || scheduledJobs.map(j => j.id === editingJobId ? jobData : j))
           showStatus(`✅ ${t('statusJobUpdated')}`, 'success')
           setEditingJobId(null)
         } else {
-          // Create new job
-          await SaveScheduledJob(jobData)
-          // A new set is saved enabled.
-          if (!jobEnabled) await SetScheduledJobEnabled(jobData.id, false)
           setScheduledJobs((await GetScheduledJobs()) || [...scheduledJobs, jobData])
           showStatus(`✅ ${t('statusJobScheduled')}`, 'success')
         }

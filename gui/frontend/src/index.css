@@ -319,11 +319,15 @@ body {
     align-items: center;
     gap: 10px;
     max-width: 400px;
+    /* Two lines high either way, so switching does not move the page. */
+    box-sizing: border-box;
+    min-height: calc(3em + 18px);
     margin: 10px 0 0;
     padding: 8px 12px;
     border: 1px solid;
     border-radius: 6px;
     font-size: 13px;
+    line-height: 1.5;
     font-weight: normal;
     cursor: pointer;
 }
