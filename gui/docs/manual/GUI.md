@@ -40,14 +40,13 @@ The GUI backs up Windows and Linux computers to a Proxmox Backup Server (PBS) an
 
 ### Windows
 
-There are two downloads on the [releases page](https://github.com/tizbac/proxmoxbackupclient_go/releases). Check either against `SHA256SUMS.txt`:
+Each release on the [releases page](https://github.com/tizbac/proxmoxbackupclient_go/releases) has the installer, `ProxmoxBackupClient-<version>.msi` (a branded build has its own, such as `NimbusBackup-<version>.msi`). Check it against `SHA256SUMS.txt`:
 
 ```powershell
 Get-FileHash .\<downloaded file> -Algorithm SHA256
 ```
 
-* **The installer (MSI)**, `ProxmoxBackupClient-<version>-x64.msi`. It installs the app and its background service under `C:\Program Files\ProxmoxBackupClient\`, installs the service as `ProxmoxBackupClientSVC` and starts it, and adds a Start menu entry and an entry in Programs and Features. Running a newer MSI upgrades in place. To remove it and choose whether to keep the settings (servers and tokens, Backup Sets, keys, reports and logs), use **Change** in Programs and Features (**Modify** in Windows 11 Settings > Apps), then **Remove**; plain **Uninstall** keeps them without asking.
-* **The zip**, `ProxmoxBackupClient-<version>-windows-amd64.zip`. Unzip it to a folder of your choice, for example `C:\ProxmoxBackupClient`. It holds `ProxmoxBackupClient.exe` and the service program `ProxmoxBackupClientSVC.exe`; keep them together. Nothing is installed: the GUI runs the schedules itself until you install the service ([section 15](#15-background-service-tray-and-closing-the-window)).
+The installer installs the app and its background service under `C:\Program Files\ProxmoxBackupClient\`, installs the service as `ProxmoxBackupClientSVC` and starts it, and adds a Start menu entry and an entry in Programs and Features. Running a newer MSI upgrades in place. To remove it and choose whether to keep the settings (servers and tokens, Backup Sets, keys, reports and logs), use **Change** in Programs and Features (**Modify** in Windows 11 Settings > Apps), then **Remove**; plain **Uninstall** keeps them without asking.
 
 Start **Proxmox Backup Client** (`ProxmoxBackupClient.exe`). Without the service, start it with **Run as administrator**: administrator rights are needed for VSS (consistent snapshots of files that are open) and for machine backups. With the service running, backups go through the service, which has those rights, and the app asks for administrator rights once to connect to it ([section 15](#connecting-to-the-background-service)).
 
@@ -731,26 +730,26 @@ The **tray icon** (Windows) menu has Show window, Pause backup, Backup status an
 
 ### Windows service
 
-With the background service installed and running, the service runs the schedules and backups started from the GUI are handed to it, so scheduled Backup Sets run even when nobody is signed in and the GUI is closed. The service runs as Local System, so VSS works without starting the GUI as administrator. Encryption keys used through the service must be set to **Remember on this computer**. Without the service, the GUI runs the schedules itself while it is open. The MSI installs and starts the service for you; with the zip, install it here.
+With the background service installed and running, the service runs the schedules and backups started from the GUI are handed to it, so scheduled Backup Sets run even when nobody is signed in and the GUI is closed. The service runs as Local System, so VSS works without starting the GUI as administrator. Encryption keys used through the service must be set to **Remember on this computer**. Without the service, the GUI runs the schedules itself while it is open. The MSI installs and starts the service for you; if it has been removed, install it again here.
 
 **Run as Service** (Preferences > Advanced) shows whether the service is installed, whether it is running, how it starts ("starts with Windows"), and whether the GUI is handing its work to it ("This app hands backups and schedules to the service." or "This app is running the schedules itself."). As administrator you can:
 
 | Button | What it does |
 |---|---|
 | Install and start | Installs `ProxmoxBackupClientSVC.exe`, which must be in the same folder as `ProxmoxBackupClient.exe`, as an automatic Windows service named `ProxmoxBackupClientSVC`, running as Local System, restarted automatically if it stops unexpectedly. If the service has no settings yet, your own (servers, Backup Sets, history and Message Log) are copied to it first; your own folder is left as it was, and key files stay where they are. Then starts it. The GUI stops its own scheduler and hands schedules and backups to the service, so nothing runs twice |
-| Start / Stop | Starts or stops the installed service. While it is stopped the GUI works on your own settings again and runs their schedules. Stop is refused while the service is running a backup |
+| Start / Stop | Starts or stops the installed service. While it is stopped nothing runs the computer's Backup Sets: the GUI does not run them itself, and shows **Connect** until the service is back. Stop is refused while the service is running a backup |
 | Remove | Stops and uninstalls the service. Its settings stay in `C:\ProgramData\ProxmoxBackupClient\`; the GUI works on your own settings again and runs their schedules while it is open |
 
 If the GUI is not running as administrator, a **Restart as administrator** button is shown. If the installed service runs a program other than the one beside this GUI, the tab says which. A service installed by an older version under the name `ProxmoxBackupClient` is recognised too.
 
 ### Linux service
 
-The .deb and .rpm install the service program (`/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC`) and the systemd unit `proxmoxbackupclient.service`, but do not turn it on. **Run as Service** (Preferences > Advanced, in the GUI started as administrator) does:
+The .deb and .rpm install the service program (`/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC`) and the systemd unit `proxmoxbackupclient.service`. A fresh install enables and starts the service, as the Windows installer does; an upgrade keeps your choice, so a service you turned off stays off. **Run as Service** (Preferences > Advanced, in the GUI started as administrator) turns it on again:
 
 | Button | What it does |
 |---|---|
 | Install and start | Copies your Backup Sets, servers, keys and history to `/var/lib/proxmoxbackupclient/` (only if nothing is there yet; your own `~/.proxmox-backup-guardian/` is left as it was), then enables and starts the unit, which runs as root and starts with the computer. From then on the service keeps the settings, the GUI works on them through the service ([connecting](#connecting-to-the-background-service)), and it hands schedules and backups to the service |
-| Start / Stop | `systemctl start` / `stop`. While it is stopped the GUI works on your own settings again and runs their schedules. Stop is refused while the service is running a backup |
+| Start / Stop | `systemctl start` / `stop`. While it is stopped nothing runs the computer's Backup Sets: the GUI does not run them itself, and shows **Connect** until the service is back. Stop is refused while the service is running a backup |
 | Remove | Stops and disables the unit. The settings stay in `/var/lib/proxmoxbackupclient/` for when the service is turned on again; the GUI works on your own settings again |
 
 `/var/lib/proxmoxbackupclient/` belongs to root alone (folders 0700, files 0600), as `C:\ProgramData\ProxmoxBackupClient\` belongs to SYSTEM and Administrators. A GUI started normally works on the settings through the service once it has connected ([below](#connecting-to-the-background-service)). Earlier versions let the `sudo` (or `wheel`) group read the folder directly; the service undoes that when it starts. Backups you start from the GUI run in the service, which records them in Reports as it does its scheduled runs. An upgrade of the package restarts a running service. Removing the package stops and disables the service and keeps `/var/lib/proxmoxbackupclient/`; delete that folder yourself to remove the settings. Without systemd there is no service and the GUI runs the schedules while it is open.
