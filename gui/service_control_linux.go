@@ -263,6 +263,11 @@ func (a *App) InstallService() (ServiceStatus, error) {
 // left as it was). The root app keeps the user's HOME (proxmoxbackupclient-root),
 // so that is the user who installs the service.
 func moveSettingsToShared() error {
+	// A computer that had the earlier pbsgo package keeps its service's
+	// settings rather than the user's own.
+	if err := adoptPbsgoState(); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(sharedConfigDir, 0o750); err != nil {
 		return fmt.Errorf("could not create %s: %w", sharedConfigDir, err)
 	}

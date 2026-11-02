@@ -101,7 +101,7 @@ for m in "$ROOT"/docs/manual/*.md; do install -m 0644 "$m" "$DOC/manual/"; done
 cat > "$DOC/copyright" <<EOF
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: proxmoxbackupclient_go
-Source: https://github.com/mjb-is/proxmoxbackupclient_go
+Source: https://github.com/tizbac/proxmoxbackupclient_go
 
 Files: *
 License: GPL-3.0-or-later

@@ -7,7 +7,7 @@ Release:       1%{?dist}
 Summary:       Backup client for Proxmox Backup Server (app and command line)
 
 License:       GPL-3.0-or-later
-URL:           https://github.com/mjb-is/proxmoxbackupclient_go
+URL:           https://github.com/tizbac/proxmoxbackupclient_go
 Source0:       proxmoxbackupclient-%{version}.tar.gz
 
 BuildRequires: golang
@@ -15,6 +15,8 @@ BuildRequires: gcc
 BuildRequires: gtk3-devel
 BuildRequires: webkit2gtk4.1-devel
 Requires:      polkit
+# Replaces the project's earlier pbsgo package (1.2.0-rc packaging).
+Obsoletes:     pbsgo
 
 %description
 Backs folders and whole disks up to a Proxmox Backup Server and restores

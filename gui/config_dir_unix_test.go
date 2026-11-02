@@ -108,3 +108,55 @@ func TestHardenConfigDirUnix(t *testing.T) {
 		t.Fatalf("non-root changed the shared folder: %o", info.Mode().Perm())
 	}
 }
+
+// A computer that had the earlier pbsgo package keeps its service's settings:
+// they move to the shared folder when it is not there yet, and never over
+// settings already in it.
+func TestAdoptPbsgoState(t *testing.T) {
+	root := t.TempDir()
+	shared := filepath.Join(root, "proxmoxbackupclient")
+	withSharedDir(t, shared)
+	old := pbsgoStateDir
+	pbsgoStateDir = filepath.Join(root, "pbsgo")
+	t.Cleanup(func() { pbsgoStateDir = old })
+
+	// No pbsgo settings: nothing happens.
+	if err := adoptPbsgoState(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(shared); !os.IsNotExist(err) {
+		t.Fatalf("shared folder made without pbsgo settings: %v", err)
+	}
+
+	if err := os.MkdirAll(pbsgoStateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"config.json", "scheduled_jobs.json"} {
+		if err := os.WriteFile(filepath.Join(pbsgoStateDir, n), []byte(`{}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := adoptPbsgoState(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(shared, "scheduled_jobs.json")); err != nil {
+		t.Fatalf("pbsgo settings not moved: %v", err)
+	}
+	if _, err := os.Stat(pbsgoStateDir); !os.IsNotExist(err) {
+		t.Fatalf("pbsgo folder still there after the move: %v", err)
+	}
+
+	// With settings in the shared folder, another pbsgo folder is left alone.
+	if err := os.MkdirAll(pbsgoStateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pbsgoStateDir, "config.json"), []byte(`{"x":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := adoptPbsgoState(); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(shared, "config.json")); string(data) != `{}` {
+		t.Errorf("shared settings replaced: %s", data)
+	}
+}

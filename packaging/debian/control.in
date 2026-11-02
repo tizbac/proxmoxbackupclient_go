@@ -1,14 +1,16 @@
 Package: proxmoxbackupclient
 Version: @VERSION@
 Architecture: @ARCH@
-Maintainer: proxmoxbackupclient_go (mjb-is fork) <noreply@github.com>
-Homepage: https://github.com/mjb-is/proxmoxbackupclient_go
+Maintainer: Proxmox Backup Client contributors <noreply@github.com>
+Homepage: https://github.com/tizbac/proxmoxbackupclient_go
 Section: admin
 Priority: optional
 Installed-Size: @SIZE@
 Depends: @DEPENDS@
 Recommends: pkexec | policykit-1
 Suggests: elastio-snap-dkms
+Conflicts: pbsgo
+Replaces: pbsgo
 Description: Backup client for Proxmox Backup Server (app and command line)
  Backs folders and whole disks up to a Proxmox Backup Server and restores
  them, with deduplication, encryption, change detection, Undelete and
