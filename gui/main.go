@@ -766,7 +766,7 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 	if !a.isServiceProcess && a.mode == api.ModeStandalone {
 		if a.apiClient.IsServiceAvailable() {
 			writeDebugLog("[Mode Detection] Service now available, switching to Service mode")
-			a.mode = api.ModeService
+			a.setMode(api.ModeService)
 		}
 	}
 
@@ -802,7 +802,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	if !a.isServiceProcess && a.mode == api.ModeStandalone {
 		if a.apiClient.IsServiceAvailable() {
 			writeDebugLog("[Mode Detection] Service now available, switching to Service mode")
-			a.mode = api.ModeService
+			a.setMode(api.ModeService)
 		}
 	}
 

@@ -1435,6 +1435,21 @@ function App() {
     return () => { if (unsub) unsub() }
   }, [])
 
+  // The service appeared or went after start-up (gui/service_switch.go
+  // setMode): refresh the mode badge and the notices that depend on it.
+  useEffect(() => {
+    if (!EventsOn || !GetSystemInfo) return
+    const unsub = EventsOn('mode:changed', async () => {
+      try {
+        const info = await GetSystemInfo()
+        if (info) setSystemInfo(prev => ({ ...prev, ...info }))
+      } catch (err) {
+        console.error('mode:changed refresh failed:', err)
+      }
+    })
+    return () => { if (unsub) unsub() }
+  }, [])
+
   // Native menu bar (gui/menu.go) drives navigation the same way a sidebar
   // click does — it only ever asks us to switch tabs or open an overlay.
   useEffect(() => {
