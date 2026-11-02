@@ -119,9 +119,10 @@ msiexec /x ProxmoxBackupClient-0.9.0-x64.msi /qn
 msiexec /x ProxmoxBackupClient-0.9.0-x64.msi /qn KEEP_CONFIG=0
 ```
 
-`AUTOSTART=1` (the default) writes the Run entry under HKCU of the account that runs the
-install. Under GPO or Intune that is SYSTEM, so the entry does nothing useful for the
-signed-in user. Use `AUTOSTART=0` there.
+`AUTOSTART=1` (the default) writes the Run entry under HKLM, so the app starts in the
+tray for every user who signs in, also when GPO or Intune installed it as SYSTEM. Use
+`AUTOSTART=0` for computers where nobody needs the app at sign-in (the service runs the
+schedules either way).
 
 Install exit code 0 means success; 3010 means success with a restart needed.
 
@@ -129,14 +130,14 @@ Install exit code 0 means success; 3010 means success with a restart needed.
 
 Computer Configuration > Policies > Software Settings > Software Installation, new
 package, "Assigned", pointing at the MSI on a share that Domain Computers can read. To set
-`AUTOSTART=0`, use a transform (.mst) made with Orca or a similar tool.
+an option such as `AUTOSTART=0`, use a transform (.mst) made with Orca or a similar tool.
 
 ## Intune
 
 Add it as a Line-of-business app (the MSI as is) or as a Win32 app (packed with the
 Win32 Content Prep Tool), with:
 
-- Install: `msiexec /i ProxmoxBackupClient-0.9.0-x64.msi /qn AUTOSTART=0`
+- Install: `msiexec /i ProxmoxBackupClient-0.9.0-x64.msi /qn`
 - Uninstall: `msiexec /x {ProductCode} /qn`
 - Detection: the MSI product code, or the file
   `C:\Program Files\ProxmoxBackupClient\ProxmoxBackupClientSVC.exe`.

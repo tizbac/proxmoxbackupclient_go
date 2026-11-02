@@ -116,10 +116,15 @@
                        KeyPath="yes"/>
       </Component>
 
-      <!-- Auto-start registry entry (conditional) -->
+      <!-- Auto-start registry entry (conditional). In the machine's Run key,
+           so the app starts in the tray at every user's logon, not only for
+           the user who installed it (a per-machine install wrote it for that
+           user alone). It also keeps it clear of the app's clean-up of an
+           old per-user "NimbusBackup" Run value (cleanup_legacy.go), which
+           removed the Nimbus build's own entry at every start. -->
       <Component Id="AutoStartRegistry" Guid="*">
         <Condition>AUTOSTART = "1"</Condition>
-        <RegistryValue Root="HKCU"
+        <RegistryValue Root="HKLM"
                        Key="Software\Microsoft\Windows\CurrentVersion\Run"
                        Name="$(var.ExeName)"
                        Type="string"
@@ -172,8 +177,9 @@
                            installer); 0 = installed as Manual and left
                            STOPPED after the install (SetServiceDemandStart
                            below): the service exists but nothing starts it.
-         AUTOSTART         1 (default) | 0: start the app in the tray at logon
-                           (a per-user Run entry starting it minimized; no UAC).
+         AUTOSTART         1 (default) | 0: start the app in the tray at every
+                           user's logon (a machine Run entry starting it
+                           minimized; no UAC).
          CONFIGFILE        Full path of a file saved with Preferences > Export:
                            applied to the settings before the service starts
                            (see below and installer/DEPLOYMENT.md).

@@ -32,8 +32,8 @@ For silent installs on many computers see [DEPLOYMENT.md](DEPLOYMENT.md).
   The app finds it and hands it backups and schedules ("Run as Service" shows as on).
 - A Start menu entry "Proxmox Backup Client".
 - One entry in Programs and Features, with the brand's links (about, help, updates, contact).
-- When `AUTOSTART=1` (the default): a `Run` entry under HKCU for the account that ran
-  the install, which starts the app minimised to the tray at sign-in (`--minimized`).
+- When `AUTOSTART=1` (the default): a `Run` entry under HKLM, which starts the app
+  minimised to the tray when any user signs in (`--minimized`).
 
 The settings are not part of the MSI. The app and the service keep them in
 `C:\ProgramData\ProxmoxBackupClient` (servers and tokens, Backup Sets, keys, reports, logs).
