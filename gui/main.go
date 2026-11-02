@@ -359,16 +359,27 @@ func (a *App) GetHostname() string {
 
 // GetSystemInfo returns system information for UI (mode, admin status, etc.)
 func (a *App) GetSystemInfo() map[string]interface{} {
-	return map[string]interface{}{
-		"mode":              a.mode.String(),
-		"is_admin":          isAdmin(),
-		"hostname":          a.GetHostname(),
-		"service_available": a.mode == api.ModeService,
+	info := map[string]interface{}{
+		"mode":     a.mode.String(),
+		"is_admin": isAdmin(),
+		// needs_local_elevation: a machine backup from this window needs it
+		// relaunched as administrator (machineNeedsElevation).
+		"needs_local_elevation": machineNeedsElevation(stdruntime.GOOS, isAdmin(), a.isServiceProcess, a.mode),
+		"hostname":              a.GetHostname(),
+		"service_available":     a.mode == api.ModeService,
 		// os = runtime.GOOS ("windows", "linux", "darwin") — used by the
 		// restore UI to enable/disable the in-place mode when the snapshot
 		// was taken on a different platform.
 		"os": stdruntime.GOOS,
 	}
+	// Linux: the block snapshot module machine backups read through
+	// ("elastio-snap" or "dattobd"), shown in the machine backup screen.
+	if stdruntime.GOOS == "linux" {
+		if control, ok := snapshot.DetectControl(); ok {
+			info["snapshot_module"] = control.Name
+		}
+	}
+	return info
 }
 
 func (a *App) GetVersion() string {
