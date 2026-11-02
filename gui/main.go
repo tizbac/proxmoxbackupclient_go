@@ -96,6 +96,7 @@ func main() {
 	writeDebugLog(fmt.Sprintf("Crash report path: %s", crashReportPath))
 
 	startStallWatchdog()
+	importUpstreamUserSettings()
 
 	// Install SIGINT/SIGTERM handler so any live PBS backup session gets
 	// closed before we exit. Without this, a forced kill (e.g. "update

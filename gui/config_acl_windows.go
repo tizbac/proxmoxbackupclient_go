@@ -80,9 +80,48 @@ func hardenConfigDir(dir string) error {
 
 	trusted := append([]*windows.SID{system, admins}, adminUsers...)
 	fixed := normaliseOwners(dir, trusted, admins)
-	writeDebugLog(fmt.Sprintf("[ConfigACL] %s: SYSTEM + Administrators + %d administrator account(s); %d foreign-owned item(s) reset; %v",
+	fixed += inheritUpstreamStateFiles(dir)
+	writeDebugLog(fmt.Sprintf("[ConfigACL] %s: SYSTEM + Administrators + %d administrator account(s); %d foreign-owned or locked item(s) reset; %v",
 		dir, len(adminUsers), fixed, time.Since(start).Round(time.Millisecond)))
 	return nil
+}
+
+// upstreamStateFiles are the files the project's 1.2.0-rc service locked
+// down one by one (hardenWindowsACLs: SYSTEM only, api-token also
+// Administrators read, inheritance removed).
+var upstreamStateFiles = []string{"api-token", "config.json", "scheduled_jobs.json", "job_history.json"}
+
+// inheritUpstreamStateFiles puts those files back to inheriting the folder's
+// permissions after an upgrade from 1.2.0-rc. Locked, the service still read
+// them, but this app (even elevated) could not, so the settings showed as
+// locked and the Backup Sets could not be changed. Only a protected DACL on
+// one of those four names is reset: this app protects key files on purpose,
+// never these. The service runs as SYSTEM, which those DACLs let in. Returns
+// how many were reset.
+func inheritUpstreamStateFiles(dir string) int {
+	emptyBuf := [8]byte{2, 0, 8, 0, 0, 0, 0, 0} // ACL_REVISION, size 8, 0 ACEs
+	empty := (*windows.ACL)(unsafe.Pointer(&emptyBuf[0]))
+	n := 0
+	for _, name := range upstreamStateFiles {
+		path := filepath.Join(dir, name)
+		sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+		if err != nil {
+			continue // not there
+		}
+		control, _, err := sd.Control()
+		if err != nil || control&windows.SE_DACL_PROTECTED == 0 {
+			continue
+		}
+		if err := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
+			windows.DACL_SECURITY_INFORMATION|windows.UNPROTECTED_DACL_SECURITY_INFORMATION,
+			nil, nil, empty, nil); err != nil {
+			writeDebugLog(fmt.Sprintf("[ConfigACL] could not unlock %s (locked by an older version): %v", path, err))
+			continue
+		}
+		writeDebugLog(fmt.Sprintf("[ConfigACL] %s locked by an older version: now inherits the folder's permissions", path))
+		n++
+	}
+	return n
 }
 
 const (
