@@ -324,24 +324,11 @@ För att utesluta en partition, till exempel ett spelbibliotek eller en datapart
 
 ### Förutsättningar för säkerhetskopiering av Linux-datorer (motsvarigheten till VSS)
 
-Säkerhetskopiering av Windows-datorer använder VSS. Linux har ingen VSS, så en datorsäkerhetskopia av en Linux-dator i drift behöver kärnmodulen `elastio-snap` (en fork av `dattobd`) för att ta en ögonblicksbild av blockenheten vid en viss tidpunkt medan det skrivs till den. Även `dattobd` själv fungerar om den redan är inläst.
-
-Det ursprungliga repositoryt `elastio/elastio-snap` är arkiverat och går inte längre att bygga på aktuella kärnor. Använd den underhållna forken [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap) (grenen `develop`). Version 0.12.11 av den forken byggdes och kördes på Debian 13 med kärna 6.12. `.deb`-paketet föreslår paketet `elastio-snap-dkms`.
+Säkerhetskopiering av Windows-datorer använder VSS. Linux har ingen VSS, så en datorsäkerhetskopia av en Linux-dator i drift tar en ögonblicksbild vid en viss tidpunkt av varje monterad partition med en kärnmodul: `elastio-snap` (den underhållna forken, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)) eller `dattobd`.
 
 Två saker krävs, annars vägrar en Linux-datorsäkerhetskopia att köras:
 
-1. **Kärnmodulen måste vara installerad och inläst.** Bygge från källkod:
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   Detta läser in den bara för den aktuella uppstarten. Lägg till en post i `/etc/modules-load.d/` för att läsa in den vid varje uppstart. Dess egen [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) beskriver installation från paket.
+1. **Kärnmodulen måste vara installerad och inläst.** Installera den via DKMS, så att den byggs om efter varje kärnuppdatering, och se till att den läses in vid varje uppstart. Avsnittet [Ögonblicksbilder i Linux: installera elastio-snap eller dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) i handboken för det grafiska gränssnittet har testade steg för Debian, Ubuntu, Mint och Fedora, samt Secure Boot och kontroller. I november 2026 går ingen av modulerna att bygga på kärna 7 (Fedora 44 efter dess uppdateringar).
 
 2. **Säkerhetskopieringen måste köras som root.** Modulens styrgränssnitt är bara tillgängligt för root, och ögonblicksbilden nekas för en vanlig användare. Bakgrundstjänsten körs som root; utan den använder du **Restart as administrator** (starta om som administratör) i appen, eller kör `proxmoxbackup-machine` med `sudo`. En vanlig mappsäkerhetskopia behöver inte root.
 

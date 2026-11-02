@@ -321,24 +321,11 @@ Pour exclure une partition, par exemple une bibliothèque de jeux ou une partiti
 
 ### Prérequis des sauvegardes machine Linux (équivalent de VSS)
 
-La sauvegarde machine Windows utilise VSS. Linux n'a pas de VSS : une sauvegarde machine d'un hôte Linux en fonctionnement nécessite donc le module noyau `elastio-snap` (un fork de `dattobd`) pour prendre un instantané à un instant donné du périphérique bloc pendant qu'il est en cours d'écriture. `dattobd` lui-même fonctionne aussi s'il est déjà chargé.
-
-Le dépôt d'origine `elastio/elastio-snap` est archivé et ne se compile plus sur les noyaux actuels. Utilisez le fork maintenu, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap) (branche `develop`). La version 0.12.11 de ce fork s'est compilée et a fonctionné sous Debian 13 avec le noyau 6.12. Le `.deb` suggère le paquet `elastio-snap-dkms`.
+La sauvegarde machine Windows utilise VSS. Linux n'a pas de VSS : une sauvegarde machine d'un hôte Linux en fonctionnement prend donc un instantané à un instant donné de chaque partition montée avec un module noyau, `elastio-snap` (le fork maintenu, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)) ou `dattobd`.
 
 Deux conditions sont requises, sinon une sauvegarde machine Linux refuse de s'exécuter :
 
-1. **Le module noyau doit être installé et chargé.** Compilation depuis les sources :
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   Cela le charge pour le démarrage en cours uniquement. Ajoutez une entrée dans `/etc/modules-load.d/` pour le charger à chaque démarrage. Son propre [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) couvre les installations par paquets.
+1. **Le module noyau doit être installé et chargé.** Installez-le via DKMS, pour qu'il soit recompilé après chaque mise à jour du noyau, et faites-le charger à chaque démarrage. La section [Instantanés Linux : installer elastio-snap ou dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) du manuel de l'interface graphique donne des étapes testées pour Debian, Ubuntu, Mint et Fedora, ainsi que pour Secure Boot et les vérifications. En novembre 2026, aucun des deux modules ne se compile sur le noyau 7 (Fedora 44 après ses mises à jour).
 
 2. **La sauvegarde doit s'exécuter en tant que root.** L'interface de contrôle du module est réservée à root, et l'instantané est refusé pour un utilisateur normal. Le service d'arrière-plan s'exécute en tant que root ; sans lui, utilisez **Redémarrer en tant qu'administrateur** dans l'application, ou lancez `proxmoxbackup-machine` avec `sudo`. Une simple sauvegarde de dossiers n'a pas besoin de root.
 

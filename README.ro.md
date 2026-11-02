@@ -324,24 +324,11 @@ Pentru a exclude o partiție, de exemplu o bibliotecă de jocuri sau o partiție
 
 ### Cerințe pentru backup-ul mașinilor Linux (echivalentul VSS)
 
-Backup-ul mașinilor Windows folosește VSS. Linux nu are VSS, așa că backup-ul de mașină al unui sistem Linux în funcțiune are nevoie de modulul de kernel `elastio-snap` (un fork al `dattobd`) pentru a face un instantaneu la un moment dat al dispozitivului bloc în timp ce se scrie pe el. Funcționează și `dattobd` însuși, dacă este deja încărcat.
-
-Depozitul original `elastio/elastio-snap` este arhivat și nu se mai compilează pe kernelurile actuale. Folosiți fork-ul întreținut, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap) (ramura `develop`). Versiunea 0.12.11 a acestui fork s-a compilat și a rulat pe Debian 13 cu kernelul 6.12. Pachetul `.deb` sugerează pachetul `elastio-snap-dkms`.
+Backup-ul mașinilor Windows folosește VSS. Linux nu are VSS, așa că backup-ul de mașină al unui sistem Linux în funcțiune face un instantaneu la un moment dat al fiecărei partiții montate cu ajutorul unui modul de kernel: `elastio-snap` (fork-ul întreținut, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)) sau `dattobd`.
 
 Sunt necesare două lucruri, altfel un backup de mașină Linux refuză să ruleze:
 
-1. **Modulul de kernel trebuie să fie instalat și încărcat.** Compilare din surse:
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   Astfel este încărcat doar pentru pornirea curentă. Adăugați o intrare în `/etc/modules-load.d/` pentru a-l încărca la fiecare pornire. Propriul său [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) descrie instalările din pachete.
+1. **Modulul de kernel trebuie să fie instalat și încărcat.** Instalați-l prin DKMS, ca să fie recompilat după fiecare actualizare de kernel, și configurați-l să se încarce la fiecare pornire. Secțiunea [Instantanee Linux: instalarea elastio-snap sau dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) din manualul interfeței grafice conține pași testați pentru Debian, Ubuntu, Mint și Fedora, plus Secure Boot și verificări. În noiembrie 2026, niciunul dintre cele două module nu se compilează pe kernelul 7 (Fedora 44 după actualizări).
 
 2. **Backup-ul trebuie să ruleze ca root.** Interfața de control a modulului este accesibilă doar pentru root, iar instantaneul este refuzat unui utilizator obișnuit. Serviciul de fundal rulează ca root; fără el, folosiți **Repornește ca administrator** în aplicație sau rulați `proxmoxbackup-machine` cu `sudo`. Un simplu backup de foldere nu are nevoie de root.
 

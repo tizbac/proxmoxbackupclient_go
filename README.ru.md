@@ -324,24 +324,11 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 ### Требования для копий машин Linux (аналог VSS)
 
-Копирование машин Windows использует VSS. В Linux нет VSS, поэтому для копии работающей машины Linux нужен модуль ядра `elastio-snap` (форк `dattobd`), чтобы сделать снимок блочного устройства на определённый момент, пока на него идёт запись. Сам `dattobd` тоже работает, если он уже загружен.
-
-Исходный репозиторий `elastio/elastio-snap` заархивирован и больше не собирается на современных ядрах. Используйте поддерживаемый форк [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap) (ветка `develop`). Версия 0.12.11 этого форка собралась и работала на Debian 13 с ядром 6.12. Пакет `.deb` рекомендует пакет `elastio-snap-dkms`.
+Копирование машин Windows использует VSS. В Linux нет VSS, поэтому копия работающей машины Linux делает снимок каждого смонтированного раздела на определённый момент с помощью модуля ядра: `elastio-snap` (поддерживаемый форк, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)) или `dattobd`.
 
 Необходимы два условия, иначе копия машины Linux откажется запускаться:
 
-1. **Модуль ядра должен быть установлен и загружен.** Сборка из исходного кода:
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   Так модуль загружается только до следующей перезагрузки. Добавьте запись в `/etc/modules-load.d/`, чтобы он загружался при каждой загрузке. Его собственный [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) описывает установку из пакетов.
+1. **Модуль ядра должен быть установлен и загружен.** Устанавливайте его через DKMS, чтобы он пересобирался после каждого обновления ядра, и настройте его загрузку при каждом запуске. В разделе руководства по графическому интерфейсу [Снимки в Linux: установка elastio-snap или dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) есть проверенные шаги для Debian, Ubuntu, Mint и Fedora, а также сведения о Secure Boot и проверках. В ноябре 2026 года ни один из двух модулей не собирается на ядре 7 (Fedora 44 после обновлений).
 
 2. **Копирование должно выполняться от root.** Интерфейс управления модулем доступен только root, и обычному пользователю в снимке отказывается. Фоновая служба работает от root; без неё используйте в приложении **Restart as administrator** (перезапустить от имени администратора) или запускайте `proxmoxbackup-machine` через `sudo`. Обычной копии папок root не нужен.
 

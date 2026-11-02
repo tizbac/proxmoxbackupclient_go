@@ -324,24 +324,11 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 ### پیش‌نیازهای پشتیبان‌گیری از دستگاه لینوکسی (معادل VSS)
 
-پشتیبان‌گیری از دستگاه ویندوزی از VSS استفاده می‌کند. لینوکس VSS ندارد، بنابراین پشتیبان‌گیری از یک میزبان لینوکسی در حال اجرا به ماژول هستهٔ `elastio-snap` (یک انشعاب از `dattobd`) نیاز دارد تا از دستگاه بلوکی، هم‌زمان با نوشته شدن روی آن، اسنپ‌شاتی در یک لحظهٔ مشخص بگیرد. خود `dattobd` نیز اگر از قبل بارگذاری شده باشد کار می‌کند.
-
-مخزن اصلی `elastio/elastio-snap` بایگانی شده است و دیگر روی هسته‌های کنونی ساخته نمی‌شود. از انشعاب نگهداری‌شده، [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap) (شاخهٔ `develop`)، استفاده کنید. نسخهٔ 0.12.11 این انشعاب روی Debian 13 با هستهٔ 6.12 ساخته و اجرا شد. بستهٔ `.deb` بستهٔ `elastio-snap-dkms` را پیشنهاد می‌کند.
+پشتیبان‌گیری از دستگاه ویندوزی از VSS استفاده می‌کند. لینوکس VSS ندارد، بنابراین پشتیبان‌گیری از یک میزبان لینوکسی در حال اجرا، با یک ماژول هسته از هر پارتیشن mount‌شده اسنپ‌شاتی در یک لحظهٔ مشخص می‌گیرد: `elastio-snap` (انشعاب نگهداری‌شده، [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)) یا `dattobd`.
 
 دو چیز لازم است، وگرنه پشتیبان‌گیری از دستگاه لینوکسی از اجرا خودداری می‌کند:
 
-1. **ماژول هسته باید نصب و بارگذاری شده باشد.** ساخت از کد منبع:
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   این کار ماژول را فقط برای بوت کنونی بارگذاری می‌کند. برای بارگذاری در هر بوت، یک مورد در `/etc/modules-load.d/` اضافه کنید. [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) خود آن، نصب‌های بسته‌بندی‌شده را پوشش می‌دهد.
+1. **ماژول هسته باید نصب و بارگذاری شده باشد.** آن را از طریق DKMS نصب کنید تا پس از هر به‌روزرسانی هسته دوباره ساخته شود، و ترتیبی دهید که در هر بوت بارگذاری شود. بخش [اسنپ‌شات‌های لینوکس: نصب elastio-snap یا dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) در راهنمای GUI مراحل آزموده‌شده برای Debian، Ubuntu، Mint و Fedora، به‌همراه Secure Boot و بررسی‌ها را دارد. در نوامبر 2026 هیچ‌یک از دو ماژول روی هستهٔ 7 ساخته نمی‌شود (Fedora 44 پس از به‌روزرسانی‌هایش).
 
 2. **پشتیبان‌گیری باید با root اجرا شود.** رابط کنترلی ماژول فقط برای root است و اسنپ‌شات برای کاربر عادی رد می‌شود. سرویس پس‌زمینه با root اجرا می‌شود؛ بدون آن، در برنامه از **Restart as administrator** (راه‌اندازی دوباره به‌عنوان مدیر) استفاده کنید، یا `proxmoxbackup-machine` را با `sudo` اجرا کنید. پشتیبان‌گیری سادهٔ پوشه به root نیاز ندارد.
 

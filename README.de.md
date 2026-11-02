@@ -321,24 +321,11 @@ Um eine Partition auszunehmen, etwa eine Spielebibliothek oder eine Datenpartiti
 
 ### Voraussetzungen für Linux-Maschinensicherungen (VSS-Entsprechung)
 
-Die Maschinensicherung unter Windows nutzt VSS. Linux hat kein VSS, daher braucht die Maschinensicherung eines laufenden Linux-Hosts das Kernelmodul `elastio-snap` (ein Fork von `dattobd`), um einen zeitpunktgenauen Snapshot des Blockgeräts zu erstellen, während darauf geschrieben wird. `dattobd` selbst funktioniert ebenfalls, wenn es bereits geladen ist.
-
-Das ursprüngliche Repository `elastio/elastio-snap` ist archiviert und lässt sich auf aktuellen Kerneln nicht mehr bauen. Verwenden Sie den gepflegten Fork [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap) (Branch `develop`). Version 0.12.11 dieses Forks ließ sich unter Debian 13 mit Kernel 6.12 bauen und lief dort. Das `.deb` schlägt das Paket `elastio-snap-dkms` vor.
+Die Maschinensicherung unter Windows nutzt VSS. Linux hat kein VSS, daher erstellt die Maschinensicherung eines laufenden Linux-Hosts mit einem Kernelmodul einen zeitpunktgenauen Snapshot jeder eingebundenen Partition: `elastio-snap` (der gepflegte Fork, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)) oder `dattobd`.
 
 Zwei Dinge sind erforderlich, sonst verweigert eine Linux-Maschinensicherung den Start:
 
-1. **Das Kernelmodul muss installiert und geladen sein.** Bau aus dem Quellcode:
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   Damit wird es nur für den aktuellen Systemstart geladen. Legen Sie einen Eintrag in `/etc/modules-load.d/` an, um es bei jedem Start zu laden. Die eigene [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) des Projekts beschreibt die Installation aus Paketen.
+1. **Das Kernelmodul muss installiert und geladen sein.** Installieren Sie es über DKMS, damit es nach jedem Kernel-Update neu gebaut wird, und lassen Sie es bei jedem Start laden. Der Abschnitt [Linux-Snapshots: elastio-snap oder dattobd installieren](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) im GUI-Handbuch enthält getestete Schritte für Debian, Ubuntu, Mint und Fedora sowie Hinweise zu Secure Boot und zur Überprüfung. Im November 2026 lässt sich keines der beiden Module auf Kernel 7 bauen (Fedora 44 nach seinen Updates).
 
 2. **Die Sicherung muss als root laufen.** Die Steuerschnittstelle des Moduls ist nur für root zugänglich, und für einen normalen Benutzer wird der Snapshot verweigert. Der Hintergrunddienst läuft als root; ohne ihn verwenden Sie **Als Administrator neu starten** in der App oder führen `proxmoxbackup-machine` mit `sudo` aus. Eine einfache Ordnersicherung braucht kein root.
 

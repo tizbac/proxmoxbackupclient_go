@@ -324,24 +324,11 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 ### Linux 机器备份的前提条件（相当于 VSS）
 
-Windows 机器备份使用 VSS。Linux 没有 VSS，因此要备份正在运行的 Linux 主机，需要 `elastio-snap` 内核模块（`dattobd` 的一个分支），在块设备被写入时为其做时间点快照。如果 `dattobd` 本身已经加载，也可以使用。
-
-原始的 `elastio/elastio-snap` 仓库已归档，无法在当前内核上构建。请使用仍在维护的分支 [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)（`develop` 分支）。该分支的 0.12.11 版本已在 Debian 13（内核 6.12）上成功构建并运行。`.deb` 软件包建议安装 `elastio-snap-dkms`。
+Windows 机器备份使用 VSS。Linux 没有 VSS，因此备份正在运行的 Linux 主机时，会用一个内核模块为每个已挂载的分区做时间点快照：`elastio-snap`（仍在维护的分支 [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)）或 `dattobd`。
 
 必须满足两个条件，否则 Linux 机器备份会拒绝运行：
 
-1. **内核模块必须已安装并加载。** 从源代码构建：
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   这样只在本次启动中加载。要在每次启动时加载，请在 `/etc/modules-load.d/` 中添加一项。它自己的 [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) 介绍了软件包形式的安装方法。
+1. **内核模块必须已安装并加载。** 请通过 DKMS 安装，这样每次内核更新后都会自动重新构建，并设置为每次启动时加载。GUI 手册中的 [Linux 快照：安装 elastio-snap 或 dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) 一节提供了在 Debian、Ubuntu、Mint 和 Fedora 上测试过的步骤，并介绍了 Secure Boot 和检查方法。截至 2026 年 11 月，这两个模块都无法在内核 7 上构建（更新后的 Fedora 44）。
 
 2. **备份必须以 root 身份运行。** 该模块的控制接口仅限 root 使用，普通用户请求快照会被拒绝。后台服务以 root 身份运行；没有后台服务时，请在应用中使用 **Restart as administrator**（以管理员身份重新启动），或用 `sudo` 运行 `proxmoxbackup-machine`。普通的文件夹备份不需要 root。
 

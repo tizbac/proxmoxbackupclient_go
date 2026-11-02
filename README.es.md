@@ -321,24 +321,11 @@ Para excluir una partición, por ejemplo una biblioteca de juegos o una partici�
 
 ### Requisitos previos de las copias de máquina en Linux (equivalente a VSS)
 
-La copia de máquina en Windows usa VSS. Linux no tiene VSS, así que la copia de máquina de un host Linux en funcionamiento necesita el módulo del kernel `elastio-snap` (un fork de `dattobd`) para tomar una instantánea en un momento dado del dispositivo de bloques mientras se escribe en él. El propio `dattobd` también funciona si ya está cargado.
-
-El repositorio original `elastio/elastio-snap` está archivado y ya no compila con los kernels actuales. Use el fork mantenido, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap) (rama `develop`). La versión 0.12.11 de ese fork compiló y funcionó en Debian 13 con el kernel 6.12. El `.deb` sugiere el paquete `elastio-snap-dkms`.
+La copia de máquina en Windows usa VSS. Linux no tiene VSS, así que la copia de máquina de un host Linux en funcionamiento toma una instantánea en un momento dado de cada partición montada con un módulo del kernel: `elastio-snap` (el fork mantenido, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)) o `dattobd`.
 
 Se necesitan dos cosas; si no, una copia de máquina Linux se niega a ejecutarse:
 
-1. **El módulo del kernel debe estar instalado y cargado.** Compilación desde el código fuente:
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   Esto lo carga solo para el arranque actual. Añada una entrada en `/etc/modules-load.d/` para cargarlo en cada arranque. Su propio [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) explica las instalaciones mediante paquetes.
+1. **El módulo del kernel debe estar instalado y cargado.** Instálelo mediante DKMS, para que se recompile tras cada actualización del kernel, y haga que se cargue en cada arranque. La sección [Instantáneas en Linux: instalar elastio-snap o dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) del manual de la interfaz gráfica tiene pasos probados para Debian, Ubuntu, Mint y Fedora, además de Secure Boot y comprobaciones. En noviembre de 2026 ninguno de los dos módulos compila con el kernel 7 (Fedora 44 tras sus actualizaciones).
 
 2. **La copia debe ejecutarse como root.** La interfaz de control del módulo es solo para root, y la instantánea se rechaza para un usuario normal. El servicio en segundo plano se ejecuta como root; sin él, use **Reiniciar como administrador** en la aplicación, o ejecute `proxmoxbackup-machine` con `sudo`. Una simple copia de carpetas no necesita root.
 

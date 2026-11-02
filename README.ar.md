@@ -324,24 +324,11 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 ### متطلبات نسخ أجهزة Linux (ما يعادل VSS)
 
-يستخدم نسخ أجهزة Windows تقنية VSS. لا يوجد VSS في Linux، لذا يحتاج نسخ جهاز Linux قيد التشغيل إلى وحدة النواة `elastio-snap` (تفرّع من `dattobd`) لأخذ لقطة في لحظة زمنية محددة لجهاز الكتل أثناء الكتابة إليه. ويعمل `dattobd` نفسه أيضًا إذا كان محمّلًا بالفعل.
-
-المستودع الأصلي `elastio/elastio-snap` مؤرشف ولم يعد يُبنى على الأنوية الحالية. استخدم التفرّع المصان، [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap) (الفرع `develop`). الإصدار 0.12.11 من ذلك التفرّع بُني وعمل على Debian 13 مع النواة 6.12. تقترح حزمة `.deb` الحزمة `elastio-snap-dkms`.
+يستخدم نسخ أجهزة Windows تقنية VSS. لا يوجد VSS في Linux، لذا يأخذ نسخ جهاز Linux قيد التشغيل لقطة في لحظة زمنية محددة لكل قسم مركّب باستخدام وحدة نواة: `elastio-snap` (التفرّع المصان، [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)) أو `dattobd`.
 
 يلزم أمران، وإلا رفض نسخ جهاز Linux العمل:
 
-1. **يجب أن تكون وحدة النواة مثبتة ومحمّلة.** البناء من المصدر:
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   يحمّلها هذا للإقلاع الحالي فقط. أضف إدخالًا في `/etc/modules-load.d/` لتحميلها عند كل إقلاع. ويغطي ملفها [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) طرق التثبيت من الحزم.
+1. **يجب أن تكون وحدة النواة مثبتة ومحمّلة.** ثبّتها عبر DKMS لكي يُعاد بناؤها بعد كل تحديث للنواة، واجعلها تُحمَّل عند كل إقلاع. يحتوي قسم [لقطات Linux: تثبيت elastio-snap أو dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) في دليل الواجهة الرسومية على خطوات مُختبرة لـ Debian وUbuntu وMint وFedora، إضافة إلى Secure Boot وطرق التحقق. في نوفمبر 2026 لا تُبنى أيّ من الوحدتين على النواة 7 (Fedora 44 بعد تحديثاته).
 
 2. **يجب أن يعمل النسخ بصلاحيات root.** واجهة التحكم في الوحدة مقصورة على root، وتُرفض اللقطة لمستخدم عادي. تعمل الخدمة الخلفية بصلاحيات root؛ ودونها، استخدم **Restart as administrator** (إعادة التشغيل كمسؤول) في التطبيق، أو شغّل `proxmoxbackup-machine` مع `sudo`. لا يحتاج نسخ المجلدات العادي إلى root.
 

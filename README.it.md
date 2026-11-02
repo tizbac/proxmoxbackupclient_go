@@ -321,24 +321,11 @@ Per escludere una partizione, ad esempio una libreria di giochi o una partizione
 
 ### Prerequisiti per il backup macchina su Linux (equivalente di VSS)
 
-Il backup macchina su Windows usa VSS. Linux non ha VSS, quindi il backup macchina di un host Linux in funzione richiede il modulo del kernel `elastio-snap` (un fork di `dattobd`) per creare uno snapshot puntuale del dispositivo a blocchi mentre viene scritto. Funziona anche `dattobd` stesso, se è già caricato.
-
-Il repository originale `elastio/elastio-snap` è archiviato e non si compila più sui kernel attuali. Usa il fork mantenuto, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap) (ramo `develop`). La versione 0.12.11 di quel fork si è compilata e ha funzionato su Debian 13 con il kernel 6.12. Il `.deb` suggerisce il pacchetto `elastio-snap-dkms`.
+Il backup macchina su Windows usa VSS. Linux non ha VSS, quindi il backup macchina di un host Linux in funzione crea uno snapshot puntuale di ogni partizione montata con un modulo del kernel: `elastio-snap` (il fork mantenuto, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)) oppure `dattobd`.
 
 Servono due cose, altrimenti un backup macchina Linux si rifiuta di partire:
 
-1. **Il modulo del kernel deve essere installato e caricato.** Compilazione dai sorgenti:
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   Questo lo carica solo per l'avvio corrente. Aggiungi una voce in `/etc/modules-load.d/` per caricarlo a ogni avvio. Il suo [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) tratta le installazioni da pacchetto.
+1. **Il modulo del kernel deve essere installato e caricato.** Installalo tramite DKMS, così viene ricompilato dopo ogni aggiornamento del kernel, e fallo caricare a ogni avvio. La sezione [Snapshot su Linux: installare elastio-snap o dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) del manuale della GUI contiene passaggi testati per Debian, Ubuntu, Mint e Fedora, oltre a Secure Boot e alle verifiche. A novembre 2026 nessuno dei due moduli si compila sul kernel 7 (Fedora 44 dopo i suoi aggiornamenti).
 
 2. **Il backup deve essere eseguito come root.** L'interfaccia di controllo del modulo è riservata a root, e lo snapshot viene rifiutato a un utente normale. Il servizio in background viene eseguito come root; senza di esso, usa **Riavvia come amministratore** nell'app, oppure esegui `proxmoxbackup-machine` con `sudo`. Un semplice backup di cartelle non richiede root.
 

@@ -324,24 +324,11 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 ### Linux マシンバックアップの前提条件（VSS 相当）
 
-Windows のマシンバックアップは VSS を使います。Linux には VSS がないため、稼働中の Linux ホストのマシンバックアップには、書き込み中のブロックデバイスのある時点のスナップショットを取得する `elastio-snap` カーネルモジュール（`dattobd` のフォーク）が必要です。`dattobd` がすでに読み込まれていれば、それも使えます。
-
-元の `elastio/elastio-snap` リポジトリはアーカイブ済みで、現在のカーネルではビルドできません。メンテナンスされているフォーク [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)（ブランチ `develop`）を使ってください。このフォークのバージョン 0.12.11 は、カーネル 6.12 の Debian 13 でビルドと動作が確認されています。`.deb` は `elastio-snap-dkms` パッケージを推奨 (suggests) しています。
+Windows のマシンバックアップは VSS を使います。Linux には VSS がないため、稼働中の Linux ホストのマシンバックアップでは、カーネルモジュールを使って、マウントされた各パーティションのある時点のスナップショットを取得します。使うモジュールは `elastio-snap`（メンテナンスされているフォーク [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)）または `dattobd` です。
 
 次の 2 点が必要です。満たされていない場合、Linux のマシンバックアップは実行を拒否します。
 
-1. **カーネルモジュールがインストールされ、読み込まれている必要があります。** ソースからビルドする場合：
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   これで読み込まれるのは現在の起動中だけです。起動のたびに読み込むには、`/etc/modules-load.d/` にエントリを追加してください。パッケージによるインストールについては、モジュール自身の [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) を参照してください。
+1. **カーネルモジュールがインストールされ、読み込まれている必要があります。** カーネル更新のたびに再ビルドされるよう DKMS でインストールし、起動のたびに読み込まれるようにしてください。GUI マニュアルの [Linux スナップショット：elastio-snap または dattobd のインストール](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) の節に、Debian、Ubuntu、Mint、Fedora でテスト済みの手順と、Secure Boot および確認方法が載っています。2026 年 11 月時点では、どちらのモジュールもカーネル 7（更新後の Fedora 44）ではビルドできません。
 
 2. **バックアップは root で実行する必要があります。** モジュールの制御インターフェースは root 専用で、一般ユーザーではスナップショットが拒否されます。バックグラウンドサービスは root で動作します。サービスを使わない場合は、アプリで **Restart as administrator**（管理者として再起動）を使うか、`proxmoxbackup-machine` を `sudo` で実行してください。通常のフォルダーバックアップには root は不要です。
 
