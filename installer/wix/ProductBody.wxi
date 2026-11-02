@@ -156,7 +156,10 @@
          (ICE38), hence INSTALLFOLDER; Win64 so it lands in the 64-bit Run
          key. -->
     <DirectoryRef Id="INSTALLFOLDER">
-      <Component Id="AutoStartRegistry" Guid="*" Win64="yes">
+      <!-- Transitive: a repair or change with another AUTOSTART adds or
+           removes the Run entry too; without it the condition counts only
+           when the component is first installed. -->
+      <Component Id="AutoStartRegistry" Guid="*" Win64="yes" Transitive="yes">
         <Condition>AUTOSTART = "1"</Condition>
         <RegistryValue Root="HKLM"
                        Key="Software\Microsoft\Windows\CurrentVersion\Run"
