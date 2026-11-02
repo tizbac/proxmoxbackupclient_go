@@ -214,6 +214,26 @@ I primi tre accettano `-keyfile` e `-keyfile-passphrase` per gli snapshot cifrat
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**Set macchina**: spunta sotto ogni disco le partizioni di cui eseguire il backup
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Temi**: sei temi di colore, scelti da ciascun utente
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**Lingue**: 18, qui francese, tedesco, italiano, spagnolo, polacco e ucraino
+
+</td>
+</tr>
 </table>
 
 ### Esclusioni di sistema intelligenti (backup di cartelle)

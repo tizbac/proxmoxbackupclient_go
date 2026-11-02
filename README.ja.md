@@ -216,6 +216,26 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**マシンの Backup Sets**：各ディスクの下で、バックアップするパーティションにチェックを入れます
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Themes**（テーマ）：6 種類の配色テーマ。ユーザーごとに選べます
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**言語**：18 言語。ここではフランス語、ドイツ語、イタリア語、スペイン語、ポーランド語、ウクライナ語
+
+</td>
+</tr>
 </table>
 
 ### スマートなシステム除外（フォルダーバックアップ）

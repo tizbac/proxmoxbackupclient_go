@@ -214,6 +214,26 @@ Les trois premiers acceptent `-keyfile` et `-keyfile-passphrase` pour les instan
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**Ensembles machine** : cochez sous chaque disque les partitions à sauvegarder
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Thèmes** : six thèmes de couleurs, choisis par chaque utilisateur
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**Langues** : 18, ici français, allemand, italien, espagnol, polonais et ukrainien
+
+</td>
+</tr>
 </table>
 
 ### Exclusions système intelligentes (sauvegardes de dossiers)

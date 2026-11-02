@@ -216,6 +216,26 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**مجموعات نسخ الأجهزة**: أشّر تحت كل قرص على الأقسام المراد نسخها
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Themes** (السمات): ست سمات لونية، يختارها كل مستخدم لنفسه
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**اللغات**: 18 لغة، وهنا الفرنسية والألمانية والإيطالية والإسبانية والبولندية والأوكرانية
+
+</td>
+</tr>
 </table>
 
 ### استثناءات النظام الذكية (نسخ المجلدات)

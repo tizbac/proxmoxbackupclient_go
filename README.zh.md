@@ -216,6 +216,26 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**机器备份集**：在每块磁盘下勾选要备份的分区
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Themes**（主题）：六种配色主题，由每个用户各自选择
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**语言**：18 种，这里是法语、德语、意大利语、西班牙语、波兰语和乌克兰语
+
+</td>
+</tr>
 </table>
 
 ### 智能系统排除（文件夹备份）

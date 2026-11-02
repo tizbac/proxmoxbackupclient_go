@@ -216,6 +216,26 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**Σύνολα μηχανήματος**: επιλέξτε κάτω από κάθε δίσκο τα διαμερίσματα που θα αντιγραφούν
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Θέματα**: έξι χρωματικά θέματα, που τα επιλέγει κάθε χρήστης
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**Γλώσσες**: 18, εδώ γαλλικά, γερμανικά, ιταλικά, ισπανικά, πολωνικά και ουκρανικά
+
+</td>
+</tr>
 </table>
 
 ### Έξυπνες εξαιρέσεις συστήματος (αντίγραφα φακέλων)

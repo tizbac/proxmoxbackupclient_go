@@ -212,6 +212,26 @@ The first three accept `-keyfile` and `-keyfile-passphrase` for encrypted snapsh
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**Machine sets**: tick the partitions to back up under each disk
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Themes**: six colour themes, chosen by each user
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**Languages**: 18, here French, German, Italian, Spanish, Polish and Ukrainian
+
+</td>
+</tr>
 </table>
 
 ### Smart system exclusions (folder backups)

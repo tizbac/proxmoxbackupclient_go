@@ -214,6 +214,26 @@ Die ersten drei nehmen `-keyfile` und `-keyfile-passphrase` für verschlüsselte
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**Maschinen-Sicherungssätze**: die zu sichernden Partitionen unter jedem Datenträger anhaken
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Farbschemata**: sechs Farbschemata, von jedem Benutzer selbst gewählt
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**Sprachen**: 18, hier Französisch, Deutsch, Italienisch, Spanisch, Polnisch und Ukrainisch
+
+</td>
+</tr>
 </table>
 
 ### Intelligente Systemausschlüsse (Ordnersicherungen)

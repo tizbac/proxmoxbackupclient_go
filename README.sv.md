@@ -216,6 +216,26 @@ De tre första tar `-keyfile` och `-keyfile-passphrase` för krypterade ögonbli
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**Uppsättningar för datorsäkerhetskopior**: markera under varje disk de partitioner som ska säkerhetskopieras
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Themes** (teman): sex färgteman, som varje användare väljer själv
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**Språk**: 18, här franska, tyska, italienska, spanska, polska och ukrainska
+
+</td>
+</tr>
 </table>
 
 ### Smarta systemundantag (mappsäkerhetskopior)

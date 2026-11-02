@@ -216,6 +216,26 @@ Primele trei acceptă `-keyfile` și `-keyfile-passphrase` pentru instantanee cr
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**Seturi de mașină**: bifați sub fiecare disc partițiile de salvat
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Teme**: șase teme de culori, alese de fiecare utilizator
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**Limbi**: 18, aici franceză, germană, italiană, spaniolă, poloneză și ucraineană
+
+</td>
+</tr>
 </table>
 
 ### Excluderi inteligente de sistem (backup-uri de foldere)

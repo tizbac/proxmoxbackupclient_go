@@ -216,6 +216,26 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**Наборы копий машин**: отметьте под каждым диском разделы, которые нужно копировать
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Themes** (темы): шесть цветовых тем, каждый пользователь выбирает свою
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**Языки**: 18, здесь французский, немецкий, итальянский, испанский, польский и украинский
+
+</td>
+</tr>
 </table>
 
 ### Умные системные исключения (копии папок)

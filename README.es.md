@@ -214,6 +214,26 @@ Las tres primeras aceptan `-keyfile` y `-keyfile-passphrase` para instantáneas 
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**Conjuntos de máquina**: marque bajo cada disco las particiones que quiere copiar
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Temas**: seis temas de color, elegidos por cada usuario
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**Idiomas**: 18, aquí francés, alemán, italiano, español, polaco y ucraniano
+
+</td>
+</tr>
 </table>
 
 ### Exclusiones inteligentes del sistema (copias de carpetas)

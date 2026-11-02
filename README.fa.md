@@ -216,6 +216,26 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-machine-partitions.png" width="280">](docs/screenshots/gui-machine-partitions.png)
+**Backup Sets دستگاه** (مجموعه‌های پشتیبان دستگاه): پارتیشن‌هایی را که باید از آن‌ها پشتیبان گرفته شود زیر هر دیسک تیک بزنید
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-themes.png" width="280">](docs/screenshots/gui-themes.png)
+**Themes** (پوسته‌ها): شش پوستهٔ رنگی که هر کاربر خودش انتخاب می‌کند
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-languages.png" width="280">](docs/screenshots/gui-languages.png)
+**زبان‌ها**: 18 زبان، اینجا فرانسوی، آلمانی، ایتالیایی، اسپانیایی، لهستانی و اوکراینی
+
+</td>
+</tr>
 </table>
 
 ### کنارگذاری هوشمند موارد سیستمی (پشتیبان‌گیری از پوشه)
