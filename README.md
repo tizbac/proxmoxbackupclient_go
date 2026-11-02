@@ -140,7 +140,7 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 | Property | Default | Meaning |
 | --- | --- | --- |
 | `SERVICEAUTOSTART` | `1` | `0` = service installed as **Manual** and left **stopped**: installed, but never enabled or autostarted |
-| `AUTOSTART` | `1` | `0` = do not start the app in the tray at each user's sign-in |
+| `AUTOSTART` | `0` | `1` = start the app in the tray at each user's sign-in (the installer's **Start Proxmox Backup Client when a user signs in** tick box). Not given, an upgrade keeps the installed version's choice |
 | `DESKTOPSHORTCUTS` | `1` | `0` = no desktop shortcut (the Start menu entry is always added) |
 | `CONFIGFILE` | | Full path of a file saved with **Preferences > Export Settings**: its PBS servers and Backup Sets are merged in before the service starts. Backup IDs made from the exporting computer's name are made from each computer's own name. See [installer/DEPLOYMENT.md](installer/DEPLOYMENT.md) |
 | `KEEP_CONFIG` | `1` | Uninstall only: `0` = also delete the `%ProgramData%\<name>` state directory |

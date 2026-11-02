@@ -77,7 +77,7 @@ Not in the file:
 ### Commands
 
 ```powershell
-msiexec /i ProxmoxBackupClient-2.0.0.msi /qn AUTOSTART=0 CONFIGFILE="\\server\deploy\pbc-settings.json" /l*v C:\Windows\Temp\pbc-install.log
+msiexec /i ProxmoxBackupClient-2.0.0.msi /qn CONFIGFILE="\\server\deploy\pbc-settings.json" /l*v C:\Windows\Temp\pbc-install.log
 ```
 
 Give the full path: a relative one is not found. The install runs as SYSTEM under GPO and
@@ -106,8 +106,8 @@ Run as an administrator, or as SYSTEM (GPO, Intune).
 # Install or upgrade
 msiexec /i ProxmoxBackupClient-2.0.0.msi /qn /norestart /l*v C:\Windows\Temp\pbc-install.log
 
-# Without the sign-in Run entry
-msiexec /i ProxmoxBackupClient-2.0.0.msi /qn AUTOSTART=0
+# With the sign-in Run entry (the app starts in the tray for every user)
+msiexec /i ProxmoxBackupClient-2.0.0.msi /qn AUTOSTART=1
 
 # Other install folder
 msiexec /i ProxmoxBackupClient-2.0.0.msi /qn INSTALLFOLDER="D:\Apps\ProxmoxBackupClient"
@@ -119,11 +119,18 @@ msiexec /x ProxmoxBackupClient-2.0.0.msi /qn
 msiexec /x ProxmoxBackupClient-2.0.0.msi /qn KEEP_CONFIG=0
 ```
 
-`AUTOSTART=1` (the default) writes the Run entry under HKLM, so the app starts in the
-tray for every user who signs in, also when GPO or Intune installed it as SYSTEM. The app
-in the tray does not ask for administrator rights at sign-in; it asks when a user opens its
-window. Use `AUTOSTART=0` for computers where nobody needs the app at sign-in (the service
-runs the schedules either way).
+The app does not start at sign-in unless asked: the service runs the schedules either
+way. `AUTOSTART=1` writes the Run entry under HKLM, so the app starts in the tray for every
+user who signs in, also when GPO or Intune installed it as SYSTEM. The app in the tray does
+not ask for administrator rights at sign-in; it asks when a user opens its window, and lets
+go of the service's token again once the window has been back in the tray for 15 minutes.
+Without the token the tray still shows whether backups are running and whether the last
+one failed.
+
+An upgrade without `AUTOSTART` keeps what the installed version did (the choice is
+remembered under `HKLM\Software\Proxmox Backup Client\ProxmoxBackupClient`, value
+`AutoStart`; a version without that value counts as on when it had the Run entry). Give
+`AUTOSTART=0` or `AUTOSTART=1` to change it.
 
 Install exit code 0 means success; 3010 means success with a restart needed.
 
@@ -131,7 +138,7 @@ Install exit code 0 means success; 3010 means success with a restart needed.
 
 Computer Configuration > Policies > Software Settings > Software Installation, new
 package, "Assigned", pointing at the MSI on a share that Domain Computers can read. To set
-an option such as `AUTOSTART=0`, use a transform (.mst) made with Orca or a similar tool.
+an option such as `AUTOSTART=1`, use a transform (.mst) made with Orca or a similar tool.
 
 ## Intune
 
@@ -170,8 +177,9 @@ logs are in `%LOCALAPPDATA%\ProxmoxBackupClient\Logs`.
   `C:\ProgramData\ProxmoxBackupClient\api-token` (SYSTEM full control, Administrators
   read). The service writes a new token every time it starts and replaces it every 24 hours
   while it runs. The app gets
-  it by asking for administrator rights (UAC) once, keeps it in memory only, and asks again
-  after it is replaced. A user who cannot give an administrator's password cannot see or
+  it by asking for administrator rights (UAC) once, keeps it in memory only while its
+  window is in use (it drops it after 15 minutes in the tray), and asks again after it is
+  replaced or dropped. A user who cannot give an administrator's password cannot see or
   change the settings in the app; the service still runs the Backup Sets on schedule. See
   [../gui/api/INTEGRATION.md](../gui/api/INTEGRATION.md).
 - The policy **Require administrator rights to add, change or delete Backup Sets** is gone:

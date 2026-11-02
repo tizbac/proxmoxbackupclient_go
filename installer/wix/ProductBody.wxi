@@ -146,14 +146,15 @@
       </Component>
     </DirectoryRef>
 
-    <!-- Auto-start registry entry (conditional). In the machine's Run key, so
-         the app starts in the tray at every user's logon, not only for the
-         user who installed it (a per-machine install wrote it for that user
-         alone). It also keeps it clear of the app's clean-up of an old
-         per-user "NimbusBackup" Run value (cleanup_legacy.go), which removed
-         the Nimbus build's own entry at every start. A machine-wide key
-         belongs to a machine folder (ICE38), hence INSTALLFOLDER; Win64 so
-         it lands in the 64-bit Run key. -->
+    <!-- Auto-start registry entry (AUTOSTART = "1": off unless chosen, see
+         AUTO-START below). In the machine's Run key, so the app starts in the
+         tray at every user's logon, not only for the user who installed it (a
+         per-machine install wrote it for that user alone). It also keeps it
+         clear of the app's clean-up of an old per-user "NimbusBackup" Run
+         value (cleanup_legacy.go), which removed the Nimbus build's own entry
+         at every start. A machine-wide key belongs to a machine folder
+         (ICE38), hence INSTALLFOLDER; Win64 so it lands in the 64-bit Run
+         key. -->
     <DirectoryRef Id="INSTALLFOLDER">
       <Component Id="AutoStartRegistry" Guid="*" Win64="yes">
         <Condition>AUTOSTART = "1"</Condition>
@@ -162,6 +163,16 @@
                        Name="$(var.ExeName)"
                        Type="string"
                        Value="&quot;[INSTALLFOLDER]$(var.ExeName).exe&quot; --minimized"
+                       KeyPath="yes"/>
+      </Component>
+      <!-- The AUTOSTART choice, remembered for the next upgrade or repair
+           (read back by PBCAUTOSTARTREMEMBERED). -->
+      <Component Id="AutoStartChoice" Guid="*" Win64="yes">
+        <RegistryValue Root="HKLM"
+                       Key="Software\$(var.VendorKey)\$(var.ExeName)"
+                       Name="AutoStart"
+                       Type="string"
+                       Value="[AUTOSTART]"
                        KeyPath="yes"/>
       </Component>
     </DirectoryRef>
@@ -175,6 +186,7 @@
       <ComponentRef Id="ServiceExecutable" />
       <ComponentRef Id="ApplicationShortcut" />
       <ComponentRef Id="AutoStartRegistry" />
+      <ComponentRef Id="AutoStartChoice" />
       <ComponentRef Id="DesktopShortcuts" />
     </Feature>
 
@@ -211,9 +223,11 @@
                            installer); 0 = installed as Manual and left
                            STOPPED after the install (SetServiceDemandStart
                            below): the service exists but nothing starts it.
-         AUTOSTART         1 (default) | 0: start the app in the tray at every
+         AUTOSTART         0 (default) | 1: start the app in the tray at every
                            user's logon (a machine Run entry starting it
-                           minimized; no UAC).
+                           minimized; no UAC). The UI's "Start ... when a
+                           user signs in" tick box. Not given, an upgrade or
+                           repair keeps the earlier choice.
          DESKTOPSHORTCUTS  1 (default) | 0: put the app, and the app as
                            administrator, on the desktop (both are always in
                            the Start menu).
@@ -243,7 +257,53 @@
                   Return="ignore" />
 
     <!-- ==================== AUTO-START CONFIGURATION ==================== -->
-    <Property Id="AUTOSTART" Value="1" />
+    <!-- AUTOSTART is off unless chosen: while the app holds the background
+         service's token, another program of the same user could take it from
+         the app's memory, so the app should not run in every session unasked.
+         Its value, in order:
+           1. AUTOSTART given on the command line (AUTOSTART=1 or 0);
+           2. the choice the installed version remembered (AutoStartChoice);
+           3. an installed version without a remembered choice (before this
+              one) that has the Run entry: kept on;
+           4. otherwise 0.
+         It has no default value here, so that the steps below can tell
+         that it was not given.
+         The UI's tick box (AutoStartDlg) shows the result and sets it again.
+         Secure: a value set in the UI must reach the elevated install. -->
+    <Property Id="AUTOSTART" Secure="yes" />
+    <Property Id="PBCAUTOSTARTREMEMBERED" Secure="yes">
+      <RegistrySearch Id="AutoStartRemembered"
+                      Root="HKLM"
+                      Key="Software\$(var.VendorKey)\$(var.ExeName)"
+                      Name="AutoStart"
+                      Type="raw"
+                      Win64="yes" />
+    </Property>
+    <Property Id="PBCAUTOSTARTRUNENTRY" Secure="yes">
+      <RegistrySearch Id="AutoStartRunEntry"
+                      Root="HKLM"
+                      Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                      Name="$(var.ExeName)"
+                      Type="raw"
+                      Win64="yes" />
+    </Property>
+    <CustomAction Id="AutoStartFromRemembered" Property="AUTOSTART" Value="[PBCAUTOSTARTREMEMBERED]" />
+    <CustomAction Id="AutoStartFromRunEntry" Property="AUTOSTART" Value="1" />
+    <CustomAction Id="AutoStartDefaultOff" Property="AUTOSTART" Value="0" />
+    <!-- The tick box shows AUTOSTART: a check box is ticked by any value, so
+         it has a property of its own, set only for AUTOSTART = "1". -->
+    <CustomAction Id="AutoStartBoxTicked" Property="PBCAUTOSTARTBOX" Value="1" />
+    <InstallUISequence>
+      <Custom Action="AutoStartFromRemembered" After="AppSearch">NOT AUTOSTART AND PBCAUTOSTARTREMEMBERED</Custom>
+      <Custom Action="AutoStartFromRunEntry" After="AutoStartFromRemembered">NOT AUTOSTART AND PBCAUTOSTARTRUNENTRY</Custom>
+      <Custom Action="AutoStartDefaultOff" After="AutoStartFromRunEntry">NOT AUTOSTART</Custom>
+      <Custom Action="AutoStartBoxTicked" After="AutoStartDefaultOff">AUTOSTART = "1"</Custom>
+    </InstallUISequence>
+    <InstallExecuteSequence>
+      <Custom Action="AutoStartFromRemembered" After="AppSearch">NOT AUTOSTART AND PBCAUTOSTARTREMEMBERED</Custom>
+      <Custom Action="AutoStartFromRunEntry" After="AutoStartFromRemembered">NOT AUTOSTART AND PBCAUTOSTARTRUNENTRY</Custom>
+      <Custom Action="AutoStartDefaultOff" After="AutoStartFromRunEntry">NOT AUTOSTART</Custom>
+    </InstallExecuteSequence>
     <Property Id="DESKTOPSHORTCUTS" Value="1" />
 
     <!-- ==================== SETTINGS FOR MANY COMPUTERS ==================== -->
@@ -315,6 +375,38 @@
 
     <!-- Custom dialogs (WiX UI extension) -->
     <UI>
+      <!-- After the installation folder: whether the app starts at sign-in
+           (AUTOSTART), unticked unless chosen before. Laid out as WiX's own
+           dialogs (InstallDirDlg). -->
+      <Dialog Id="AutoStartDlg" Width="370" Height="270" Title="!(loc.InstallDirDlg_Title)">
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Publish Property="AUTOSTART" Value="1" Order="1">PBCAUTOSTARTBOX = "1"</Publish>
+          <Publish Property="AUTOSTART" Value="0" Order="2"><![CDATA[PBCAUTOSTARTBOX <> "1"]]></Publish>
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="3">1</Publish>
+        </Control>
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="InstallDirDlg">1</Publish>
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+        </Control>
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes">
+          <Text>Choose whether the app starts when a user signs in.</Text>
+        </Control>
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes">
+          <Text>{\WixUI_Font_Title}Start at sign-in</Text>
+        </Control>
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="AutoStartCheckBox" Type="CheckBox" X="20" Y="60" Width="330" Height="18" Property="PBCAUTOSTARTBOX" CheckBoxValue="1">
+          <Text>Start [ProductName] when a user signs in</Text>
+        </Control>
+        <Control Id="AutoStartInfo" Type="Text" X="37" Y="82" Width="313" Height="80" NoPrefix="yes">
+          <Text>The app then waits in the notification area for every user who signs in. Leave it unticked to start the app only when it is needed: the background service runs the Backup Sets on their schedules either way.</Text>
+        </Control>
+      </Dialog>
+
       <Dialog Id="UninstallDlg" Width="370" Height="270" Title="[ProductName] - Uninstall">
         <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes">
           <Text>{\WixUI_Font_Title}Uninstall [ProductName]</Text>
@@ -351,7 +443,8 @@
       </Dialog>
     </UI>
 
-    <!-- WixUI_InstallDir (WiX 3.14) as it is, except: Remove goes through
+    <!-- WixUI_InstallDir (WiX 3.14) as it is, except: AutoStartDlg comes
+         between InstallDirDlg and VerifyReadyDlg, Remove goes through
          UninstallDlg, and no ARPNOMODIFY property (see SetNoModifyForPages). -->
     <UI Id="WixUI_PbcInstallDir">
       <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
@@ -387,11 +480,11 @@
       <Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
       <Publish Dialog="InstallDirDlg" Control="Next" Event="DoAction" Value="WixUIValidatePath" Order="2">NOT WIXUI_DONTVALIDATEPATH</Publish>
       <Publish Dialog="InstallDirDlg" Control="Next" Event="SpawnDialog" Value="InvalidDirDlg" Order="3"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
-      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="4">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="AutoStartDlg" Order="4">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
       <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
       <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2">1</Publish>
 
-      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1">NOT Installed</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="AutoStartDlg" Order="1">NOT Installed</Publish>
       <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2"><![CDATA[Installed AND NOT PATCH AND WixUI_InstallMode<>"Remove"]]></Publish>
       <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="UninstallDlg" Order="2">Installed AND NOT PATCH AND WixUI_InstallMode="Remove"</Publish>
       <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">Installed AND PATCH</Publish>

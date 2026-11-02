@@ -36,9 +36,15 @@ For silent installs on many computers see [DEPLOYMENT.md](DEPLOYMENT.md).
   "(Administrator)" shortcuts earlier builds installed.
 - When `DESKTOPSHORTCUTS=1` (the default): the same shortcut on the all-users desktop.
 - One entry in Programs and Features, with the brand's links (about, help, updates, contact).
-- When `AUTOSTART=1` (the default): a `Run` entry under HKLM, which starts the app
-  minimised to the tray when any user signs in (`--minimized`). The app does not ask for
+- When `AUTOSTART=1`: a `Run` entry under HKLM, which starts the app minimised to the tray
+  when any user signs in (`--minimized`). It is off by default: the "Start at sign-in" page,
+  after "Destination Folder", has the tick box **Start Proxmox Backup Client when a user
+  signs in**, unticked unless the installed version had it on. The app does not ask for
   administrator rights at sign-in; it asks the first time its window is opened (below).
+  The choice is kept in `HKLM\Software\<VendorKey>\<ExeName>`, value `AutoStart`, so an
+  upgrade or a repair keeps it unless `AUTOSTART` is given on the command line. An upgrade
+  from a version without that value keeps the sign-in start if the version had the `Run`
+  entry.
 
 The settings are not part of the MSI. The service keeps them in
 `C:\ProgramData\ProxmoxBackupClient` (servers and tokens, Backup Sets, keys, reports, its
@@ -52,8 +58,10 @@ by asking for administrator rights once (UAC; a standard user gives an administr
 and password), keeps it in memory, and asks again when the service replaces it (every 24
 hours). Until it is connected the app shows no settings and a **Connect** button. Only a
 small helper is elevated for that; the app itself stays a normal program. An app already
-running as administrator connects without a prompt. The app's own logs are in each
-user's `%LOCALAPPDATA%\ProxmoxBackupClient\Logs`.
+running as administrator connects without a prompt. Once its window has been in the tray
+for 15 minutes, the app lets go of the token and asks again when the window is next
+shown; meanwhile the tray says how many backups run and whether one failed. The app's own
+logs are in each user's `%LOCALAPPDATA%\ProxmoxBackupClient\Logs`.
 
 ## Upgrade
 
@@ -85,7 +93,7 @@ it is running from another folder) stay.
 | -------- | ------- | ------ |
 | `INSTALLFOLDER` | `C:\Program Files\ProxmoxBackupClient` | Where the two programs go. |
 | `SERVICEAUTOSTART` | `1` | `0` installs the service as Manual and leaves it stopped. |
-| `AUTOSTART` | `1` | `0` leaves out the sign-in Run entry. |
+| `AUTOSTART` | `0` | `1` adds the sign-in Run entry (the "Start at sign-in" tick box). Not given, an upgrade or repair keeps the installed version's choice. |
 | `DESKTOPSHORTCUTS` | `1` | `0` leaves out the desktop shortcut (the Start menu entry stays). |
 | `CONFIGFILE` | (none) | Full path of a settings file saved with Preferences > Export, applied before the service starts. See [DEPLOYMENT.md](DEPLOYMENT.md). |
 | `KEEP_CONFIG` | `1` | On removal, `0` deletes `C:\ProgramData\ProxmoxBackupClient`. |
