@@ -78,33 +78,32 @@ func CheckSingleInstance() bool {
 	return true
 }
 
-// activateExistingWindow finds the existing Proxmox Backup Client window and brings it to foreground
+// activateExistingWindow finds the existing client window and brings it to
+// the foreground.
 func activateExistingWindow() bool {
-	windowNamePtr, err := syscall.UTF16PtrFromString(windowName)
-	if err != nil {
-		return false
+	// The window is titled "<Brand> <version>" (main.go), e.g. "Nimbus Backup
+	// v1.3.0" or "... dev-49d96e4" for a development build, with the brand
+	// taken from the executable's name. Searching for the default name alone
+	// never found a branded build's window, so a second launch exited without
+	// showing anything (upstream's fix). Try the brand, then the default name.
+	brand := BrandFromExecutable().Title
+	titles := []string{brand + " " + versionLabel(), brand}
+	if windowName != brand {
+		titles = append(titles, windowName+" "+versionLabel(), windowName)
 	}
 
-	// Find window by title (Wails uses the app title as window title)
-	hwnd, _, _ := procFindWindow.Call(
-		0, // lpClassName - null to search all classes
-		uintptr(unsafe.Pointer(windowNamePtr)),
-	)
-
-	if hwnd == 0 {
-		// Try with the current version suffix (Wails titles the window
-		// "Proxmox Backup Client v0.7.0", or "... dev-49d96e4" for a development
-		// build). Derived from the version so it never goes stale across releases.
-		for _, suffix := range []string{" " + versionLabel()} {
-			titleWithVersion := windowName + suffix
-			titlePtr, _ := syscall.UTF16PtrFromString(titleWithVersion)
-			hwnd, _, _ = procFindWindow.Call(
-				0,
-				uintptr(unsafe.Pointer(titlePtr)),
-			)
-			if hwnd != 0 {
-				break
-			}
+	var hwnd uintptr
+	for _, title := range titles {
+		titlePtr, err := syscall.UTF16PtrFromString(title)
+		if err != nil {
+			continue
+		}
+		hwnd, _, _ = procFindWindow.Call(
+			0, // lpClassName - null to search all classes
+			uintptr(unsafe.Pointer(titlePtr)),
+		)
+		if hwnd != 0 {
+			break
 		}
 	}
 
