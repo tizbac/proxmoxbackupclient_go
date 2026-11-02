@@ -25,6 +25,21 @@ function normalizeHex(value) {
   return HEX_RE.test(withHash) ? withHash : null
 }
 
+// heroFromAccent gives the hero banner's outer stops for an accent colour: a
+// dark shade (42% of the accent, on black) and a pale tint (12%, on white),
+// which is how the green preset's own stops relate to its accent. A branded
+// build sets only its accent; without this its banner kept the default
+// theme's outer colours.
+export function heroFromAccent(accent) {
+  const hex = normalizeHex(accent || '')
+  if (!hex) return null
+  const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
+  const toHex = (v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')
+  const shade = '#' + rgb.map(v => toHex(v * 0.42)).join('')
+  const tint = '#' + rgb.map(v => toHex(255 - (255 - v) * 0.12)).join('')
+  return { heroStart: shade, heroEnd: tint }
+}
+
 function gradientFor(colors) {
   return `linear-gradient(90deg, ${colors.heroStart} 0%, ${colors.accent} 60%, ${colors.heroEnd} 100%)`
 }

@@ -11,7 +11,7 @@ import JobsLockModal from './components/JobsLockModal'
 import RadioGroup from './components/RadioGroup'
 import PassphraseModal from './components/PassphraseModal'
 import ConfirmHost, { askConfirm } from './components/ConfirmDialog'
-import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
+import ThemePicker, { hasStoredTheme, applyStoredTheme, heroFromAccent } from './components/ThemePicker'
 import EncryptionKeyField from './components/EncryptionKeyField'
 import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTools'
 import { suggestBackupId, setsSharingGroup } from './backupId'
@@ -1639,6 +1639,13 @@ function App() {
               const root = document.documentElement.style
               if (b.accent) root.setProperty('--accent', b.accent)
               if (b.accent_hover) root.setProperty('--accent-hover', b.accent_hover)
+              // The hero banner's outer stops follow the brand's accent too,
+              // so a branded banner has no default-theme colour in it.
+              const hero = b.is_default ? null : heroFromAccent(b.accent)
+              if (hero) {
+                root.setProperty('--hero-start', hero.heroStart)
+                root.setProperty('--hero-end', hero.heroEnd)
+              }
             }
             if (b.title) document.title = version ? `${b.title} v${version}` : b.title
           }
