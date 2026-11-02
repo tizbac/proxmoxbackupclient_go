@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -288,5 +290,52 @@ func TestRunDiskIDs(t *testing.T) {
 	devs, err := a.resolveRunDisks([]string{`\\.\PhysicalDrive9`}, "")
 	if err != nil || !sameList(devs, []string{`\\.\PhysicalDrive9`}) {
 		t.Errorf("one-off resolveRunDisks = %v, %v", devs, err)
+	}
+}
+
+// A set whose disk was found at a new number names it there afterwards,
+// unless the set was edited meanwhile.
+func TestKeepMovedDisks(t *testing.T) {
+	deployTestDir(t)
+	a := &App{}
+	old := []string{`\\.\PhysicalDrive1`}
+	writeJobs := func(jobs []ScheduledJob) {
+		t.Helper()
+		path, err := getScheduledJobsPath()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, _ := json.Marshal(jobs)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	drives := func(id string) []string {
+		t.Helper()
+		jobs, err := a.GetScheduledJobs()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, j := range jobs {
+			if j.ID == id {
+				return j.DriveLetters
+			}
+		}
+		t.Fatalf("set %s gone", id)
+		return nil
+	}
+
+	writeJobs([]ScheduledJob{
+		{ID: "m", Name: "Machine", BackupType: "machine", DriveLetters: old},
+		{ID: "e", Name: "Edited", BackupType: "machine", DriveLetters: []string{`\\.\PhysicalDrive3`}},
+	})
+	a.keepMovedDisks("m", old, []string{`\\.\PhysicalDrive2`})
+	if got := drives("m"); !sameList(got, []string{`\\.\PhysicalDrive2`}) {
+		t.Errorf("moved disk not saved: %v", got)
+	}
+	// "e" no longer has the paths the run started from: left alone.
+	a.keepMovedDisks("e", old, []string{`\\.\PhysicalDrive2`})
+	if got := drives("e"); !sameList(got, []string{`\\.\PhysicalDrive3`}) {
+		t.Errorf("edited set changed: %v", got)
 	}
 }
