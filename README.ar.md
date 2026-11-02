@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-أبنيه لمختبري المنزلي، ليصبح PBS نظام النسخ الاحتياطي الوحيد لمزيج من خوادم وحواسيب مكتبية ومحمولة تعمل بويندوز ولينكس، بدلًا من Backup for Workgroups ومرايا rsync وصور Clonezilla/RescueZilla. بدأ في سبتمبر 2026 كفرع (fork) من [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) ثم تجاوزه بكثير: أكثر من 350 إيداعًا منذ ذلك الحين، مع 18 إصلاحًا وميزة أُرسلت إلى المشروع الأصلي ([القائمة أدناه](#-المساهمات-في-المشروع-الأصلي)).
+أبنيه لمختبري المنزلي، ليصبح PBS نظام النسخ الاحتياطي الوحيد لمزيج من خوادم وحواسيب مكتبية ومحمولة تعمل بويندوز ولينكس، بدلًا من مرايا rsync وصور Clonezilla/RescueZilla. بدأ في سبتمبر 2026 كفرع (fork) من [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) ثم تجاوزه بكثير: أكثر من 350 إيداعًا منذ ذلك الحين، مع 18 إصلاحًا وميزة أُرسلت إلى المشروع الأصلي ([القائمة أدناه](#-المساهمات-في-المشروع-الأصلي)).
 
 **أنت مرحّب بك لاستخدامه كما هو.** إنه رسميًا **برنامج في مرحلة ألفا**، تستخدمه على مسؤوليتك الخاصة، دون أي ضمان أو كفالة من أي نوع. أختبر كل إصدار بنفسي وهو مستخدم بانتظام على أجهزتي، لكن اقرأ قسم [الحالة وبلاغات الأخطاء وطلبات الميزات](#-الحالة-وبلاغات-الأخطاء-وطلبات-الميزات) قبل الاعتماد عليه.
 
@@ -712,7 +712,6 @@ installer\wix\build-msi.ps1       # MSI (WiX 3), after building the app and the 
 
 - العميل الأصلي، [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go)، من Tiziano Bacocco (tizbac) والمساهمين فيه.
 - عميل الواجهة الرسومية Nimbus Backup من RDEM Systems، نقطة انطلاق الواجهة الرسومية لهذا التطبيق.
-- أسلوب عمل Backup for Workgroups (BFW) وطابعه، اللذان تتبعهما Backup Sets وUndelete وRoll back.
 - [Clonezilla Live](https://clonezilla.org/)، الذي بُني عليه قرص ISO للاستعادة على جهاز فارغ.
 
 ## 📄 الترخيص

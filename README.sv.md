@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-Jag bygger den för mitt eget hemmalabb, för att göra PBS till det enda backupsystemet för en blandning av Windows- och Linux-servrar, stationära datorer och bärbara datorer, i stället för Backup for Workgroups, rsync-speglar och Clonezilla/RescueZilla-avbilder. Den började i september 2026 som en fork av [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) och har vuxit långt bortom den: över 350 commits sedan dess, med 18 rättningar och funktioner skickade tillbaka till originalprojektet ([lista nedan](#-bidrag-till-originalprojektet)).
+Jag bygger den för mitt eget hemmalabb, för att göra PBS till det enda backupsystemet för en blandning av Windows- och Linux-servrar, stationära datorer och bärbara datorer, i stället för rsync-speglar och Clonezilla/RescueZilla-avbilder. Den började i september 2026 som en fork av [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) och har vuxit långt bortom den: över 350 commits sedan dess, med 18 rättningar och funktioner skickade tillbaka till originalprojektet ([lista nedan](#-bidrag-till-originalprojektet)).
 
 **Du får gärna använda den som den är.** Den är officiellt **alfaprogramvara**, som används på egen risk, utan någon garanti av något slag. Jag testar varje release själv och den används regelbundet på mina egna maskiner, men läs [Status, felrapporter och funktionsönskemål](#-status-felrapporter-och-funktionsönskemål) innan du förlitar dig på den.
 
@@ -712,7 +712,6 @@ Den ursprungliga kommandoradsklienten skrevs av Tiziano Bacocco (tizbac) från 2
 
 - Den ursprungliga klienten, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), av Tiziano Bacocco (tizbac) och dess bidragsgivare.
 - RDEM Systems grafiska klient Nimbus Backup, utgångspunkten för appens grafiska gränssnitt.
-- Arbetsflödet och känslan i Backup for Workgroups (BFW), som Backup Sets, Undelete och Roll back följer.
 - [Clonezilla Live](https://clonezilla.org/), som ISO:n för bare-metal-återställning bygger på.
 
 ## 📄 Licens

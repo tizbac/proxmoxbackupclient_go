@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-Lo sviluppo per il mio homelab, per fare di PBS l'unico sistema di backup di un insieme misto di server, desktop e portatili Windows e Linux, al posto di Backup for Workgroups, di mirror rsync e di immagini Clonezilla/RescueZilla. È nato a settembre 2026 come fork di [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) e lo ha ormai superato di molto: oltre 350 commit da allora, con 18 correzioni e funzionalità inviate al progetto originale ([elenco più sotto](#-contributi-al-progetto-originale)).
+Lo sviluppo per il mio homelab, per fare di PBS l'unico sistema di backup di un insieme misto di server, desktop e portatili Windows e Linux, al posto di mirror rsync e di immagini Clonezilla/RescueZilla. È nato a settembre 2026 come fork di [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) e lo ha ormai superato di molto: oltre 350 commit da allora, con 18 correzioni e funzionalità inviate al progetto originale ([elenco più sotto](#-contributi-al-progetto-originale)).
 
 **Siete liberi di usarlo così com'è.** È ufficialmente **software alpha**, da usare a vostro rischio, senza alcuna garanzia di alcun tipo. Collaudo personalmente ogni release e lo uso regolarmente sulle mie macchine, ma leggete [Stato, segnalazioni di bug e richieste di funzionalità](#-stato-segnalazioni-di-bug-e-richieste-di-funzionalità) prima di farci affidamento.
 
@@ -712,7 +712,6 @@ Il client a riga di comando originale è stato scritto da Tiziano Bacocco (tizba
 
 - Il client originale, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), di Tiziano Bacocco (tizbac) e dei suoi contributori.
 - Il client grafico Nimbus Backup di RDEM Systems, punto di partenza dell'interfaccia grafica di questa applicazione.
-- Il flusso di lavoro e lo stile di Backup for Workgroups (BFW), a cui si ispirano i set di backup, il Recupero e il Rollback.
 - [Clonezilla Live](https://clonezilla.org/), su cui è basata la ISO di ripristino bare-metal.
 
 ## 📄 Licenza

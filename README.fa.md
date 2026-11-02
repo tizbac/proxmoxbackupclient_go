@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-من آن را برای homelab خودم می‌سازم تا PBS تنها سیستم پشتیبان‌گیری مجموعه‌ای از سرورها، کامپیوترهای رومیزی و لپ‌تاپ‌های ویندوز و لینوکس باشد و جای Backup for Workgroups، آینه‌های rsync و ایمیج‌های Clonezilla/RescueZilla را بگیرد. این پروژه در سپتامبر 2026 به‌عنوان فورکی از [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) شروع شد و از آن زمان بسیار فراتر رفته است: بیش از 350 کامیت، که 18 رفع اشکال و قابلیت از میان آن‌ها به پروژه اصلی بازگردانده شده است ([فهرست در پایین](#-مشارکت-در-پروژه-اصلی)).
+من آن را برای homelab خودم می‌سازم تا PBS تنها سیستم پشتیبان‌گیری مجموعه‌ای از سرورها، کامپیوترهای رومیزی و لپ‌تاپ‌های ویندوز و لینوکس باشد و جای آینه‌های rsync و ایمیج‌های Clonezilla/RescueZilla را بگیرد. این پروژه در سپتامبر 2026 به‌عنوان فورکی از [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) شروع شد و از آن زمان بسیار فراتر رفته است: بیش از 350 کامیت، که 18 رفع اشکال و قابلیت از میان آن‌ها به پروژه اصلی بازگردانده شده است ([فهرست در پایین](#-مشارکت-در-پروژه-اصلی)).
 
 **می‌توانید آن را همان‌گونه که هست به کار ببرید.** این نرم‌افزار رسماً **نرم‌افزار آلفا** است و استفاده از آن کاملاً با مسئولیت خودتان است، بدون هیچ نوع ضمانت یا تعهدی. من هر نسخه را خودم آزمایش می‌کنم و روی ماشین‌های خودم به‌طور منظم از آن استفاده می‌کنم، اما پیش از تکیه بر آن بخش [وضعیت، گزارش باگ و درخواست قابلیت](#-وضعیت-گزارش-باگ-و-درخواست-قابلیت) را بخوانید.
 
@@ -695,7 +695,6 @@ ISO بازیابی یک ISO استاندارد Clonezilla Live است که با 
 
 - کلاینت اصلی، [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go)، از Tiziano Bacocco (tizbac) و مشارکت‌کنندگان آن.
 - کلاینت گرافیکی Nimbus Backup از RDEM Systems، نقطه شروع رابط گرافیکی این برنامه.
-- روند کار و حس Backup for Workgroups (BFW)، که Backup Sets، Undelete و Roll back از آن پیروی می‌کنند.
 - [Clonezilla Live](https://clonezilla.org/)، که ISO بازیابی bare-metal بر پایه آن ساخته شده است.
 
 ## 📄 مجوز

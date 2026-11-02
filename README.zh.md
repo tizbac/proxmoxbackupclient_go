@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-我为自己的家庭实验室 (homelab) 开发它，目的是让 PBS 成为 Windows 和 Linux 服务器、台式机和笔记本混合环境中唯一的备份系统，取代 Backup for Workgroups、rsync 镜像以及 Clonezilla/RescueZilla 镜像。它于 2026 年 9 月作为 [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) 的 fork 起步，如今已远远超出原项目：此后已有 350 多个 commit，其中 18 项修复和功能已回馈给原项目（[见下方列表](#-对原项目的贡献)）。
+我为自己的家庭实验室 (homelab) 开发它，目的是让 PBS 成为 Windows 和 Linux 服务器、台式机和笔记本混合环境中唯一的备份系统，取代 rsync 镜像以及 Clonezilla/RescueZilla 镜像。它于 2026 年 9 月作为 [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) 的 fork 起步，如今已远远超出原项目：此后已有 350 多个 commit，其中 18 项修复和功能已回馈给原项目（[见下方列表](#-对原项目的贡献)）。
 
 **欢迎按原样使用。** 它正式定位为 **alpha 软件**，使用风险完全由你自己承担，不提供任何形式的保证或担保。每个版本都由我亲自测试，我自己的机器也在日常使用它，但在依赖它之前，请先阅读[状态、错误报告和功能请求](#-状态错误报告和功能请求)。
 
@@ -695,7 +695,6 @@ installer\wix\build-msi.ps1       # MSI (WiX 3), after building the app and the 
 
 - 原始客户端 [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go)，作者 Tiziano Bacocco (tizbac) 及其贡献者。
 - RDEM Systems 的 Nimbus Backup 图形客户端，本应用图形界面的起点。
-- Backup for Workgroups (BFW) 的工作流程和使用感受，Backup Sets、Undelete 和 Roll back 都沿用了它。
 - [Clonezilla Live](https://clonezilla.org/)，裸机恢复 ISO 以它为基础构建。
 
 ## 📄 许可证

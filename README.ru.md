@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-Я делаю его для своей домашней лаборатории, чтобы PBS стал единственной системой резервного копирования для смеси серверов, настольных компьютеров и ноутбуков с Windows и Linux, вместо Backup for Workgroups, зеркал rsync и образов Clonezilla/RescueZilla. Он появился в сентябре 2026 года как форк [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) и с тех пор далеко его перерос: более 350 коммитов, а 18 исправлений и функций отправлены обратно в исходный проект ([список ниже](#-вклад-в-исходный-проект)).
+Я делаю его для своей домашней лаборатории, чтобы PBS стал единственной системой резервного копирования для смеси серверов, настольных компьютеров и ноутбуков с Windows и Linux, вместо зеркал rsync и образов Clonezilla/RescueZilla. Он появился в сентябре 2026 года как форк [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) и с тех пор далеко его перерос: более 350 коммитов, а 18 исправлений и функций отправлены обратно в исходный проект ([список ниже](#-вклад-в-исходный-проект)).
 
 **Вы можете пользоваться им как есть.** Официально это **альфа-версия программы**: вы используете её на свой страх и риск, без каких-либо гарантий и обязательств. Я сам тестирую каждый выпуск, и программа постоянно работает на моих машинах, но прежде чем на неё полагаться, прочитайте раздел [Статус, сообщения об ошибках и пожелания](#-статус-сообщения-об-ошибках-и-пожелания).
 
@@ -712,7 +712,6 @@ ISO для восстановления представляет собой ст
 
 - Исходный клиент, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), от Tiziano Bacocco (tizbac) и его участников.
 - Графический клиент Nimbus Backup от RDEM Systems, с которого началась графическая оболочка этого приложения.
-- Подход и ощущение от Backup for Workgroups (BFW), которым следуют Backup Sets, Undelete и Roll back.
 - [Clonezilla Live](https://clonezilla.org/), на основе которого построен ISO для восстановления на «голое железо».
 
 ## 📄 Лицензия

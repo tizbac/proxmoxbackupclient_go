@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-Lo desarrollo para mi propio homelab, para que PBS sea el único sistema de copias de seguridad de una mezcla de servidores, equipos de escritorio y portátiles Windows y Linux, en lugar de Backup for Workgroups, réplicas con rsync e imágenes de Clonezilla/RescueZilla. Empezó en septiembre de 2026 como un fork de [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) y ha ido mucho más allá: más de 350 commits desde entonces, con 18 correcciones y funciones enviadas al proyecto original ([lista más abajo](#-contribuciones-al-proyecto-original)).
+Lo desarrollo para mi propio homelab, para que PBS sea el único sistema de copias de seguridad de una mezcla de servidores, equipos de escritorio y portátiles Windows y Linux, en lugar de réplicas con rsync e imágenes de Clonezilla/RescueZilla. Empezó en septiembre de 2026 como un fork de [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) y ha ido mucho más allá: más de 350 commits desde entonces, con 18 correcciones y funciones enviadas al proyecto original ([lista más abajo](#-contribuciones-al-proyecto-original)).
 
 **Puede usarlo tal como está.** Es oficialmente **software alfa**, se usa bajo su propia responsabilidad y sin garantía de ningún tipo. Pruebo yo mismo cada versión y lo uso habitualmente en mis propios equipos, pero lea [Estado, informes de errores y solicitudes de funciones](#-estado-informes-de-errores-y-solicitudes-de-funciones) antes de confiar en él.
 
@@ -712,7 +712,6 @@ El cliente de línea de comandos original lo escribió Tiziano Bacocco (tizbac) 
 
 - El cliente original, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), de Tiziano Bacocco (tizbac) y sus colaboradores.
 - El cliente gráfico Nimbus Backup de RDEM Systems, punto de partida de la interfaz gráfica de esta aplicación.
-- El flujo de trabajo y el estilo de Backup for Workgroups (BFW), que siguen los conjuntos de copias de seguridad, Recuperación y Reversión.
 - [Clonezilla Live](https://clonezilla.org/), sobre la que se construye la ISO de restauración bare-metal.
 
 ## 📄 Licencia

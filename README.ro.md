@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-Îl dezvolt pentru propriul meu homelab, ca PBS să fie singurul sistem de backup pentru un amestec de servere, desktopuri și laptopuri Windows și Linux, în locul Backup for Workgroups, al oglindirilor rsync și al imaginilor Clonezilla/RescueZilla. A început în septembrie 2026 ca fork al [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) și a crescut mult dincolo de acesta: peste 350 de commit-uri de atunci, cu 18 corecturi și funcționalități trimise înapoi proiectului original ([lista mai jos](#-contribuții-la-proiectul-original)).
+Îl dezvolt pentru propriul meu homelab, ca PBS să fie singurul sistem de backup pentru un amestec de servere, desktopuri și laptopuri Windows și Linux, în locul oglindirilor rsync și al imaginilor Clonezilla/RescueZilla. A început în septembrie 2026 ca fork al [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) și a crescut mult dincolo de acesta: peste 350 de commit-uri de atunci, cu 18 corecturi și funcționalități trimise înapoi proiectului original ([lista mai jos](#-contribuții-la-proiectul-original)).
 
 **Îl puteți folosi așa cum este.** Este oficial **software alfa**, folosit pe propriul risc, fără nicio garanție de niciun fel. Testez personal fiecare versiune și îl folosesc în mod curent pe propriile mașini, dar citiți [Stare, raportarea erorilor și cereri de funcționalități](#-stare-raportarea-erorilor-și-cereri-de-funcționalități) înainte de a vă baza pe el.
 
@@ -712,7 +712,6 @@ Clientul original în linie de comandă a fost scris de Tiziano Bacocco (tizbac)
 
 - Clientul original, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), de Tiziano Bacocco (tizbac) și contribuitorii săi.
 - Clientul grafic Nimbus Backup al RDEM Systems, punctul de pornire al interfeței grafice a acestei aplicații.
-- Fluxul de lucru și stilul Backup for Workgroups (BFW), pe care le urmează Seturile de Backup, Recuperarea fișierelor șterse și Revenirea.
 - [Clonezilla Live](https://clonezilla.org/), pe care este construit ISO-ul de restaurare bare-metal.
 
 ## 📄 Licență

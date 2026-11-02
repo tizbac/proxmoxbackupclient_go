@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-I build it for my own homelab, to make PBS the single backup system for a mix of Windows and Linux servers, desktops and laptops, in place of Backup for Workgroups, rsync mirrors and Clonezilla/RescueZilla images. It began in September 2026 as a fork of [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) and has grown well beyond it: over 350 commits since, with 18 fixes and features sent back to the original project ([list below](#-contributions-to-the-original-project)).
+I build it for my own homelab, to make PBS the single backup system for a mix of Windows and Linux servers, desktops and laptops, in place of rsync mirrors and Clonezilla/RescueZilla images. It began in September 2026 as a fork of [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) and has grown well beyond it: over 350 commits since, with 18 fixes and features sent back to the original project ([list below](#-contributions-to-the-original-project)).
 
 **You are welcome to use it as it is.** It is officially **alpha software**, used at your own risk, with no guarantee or warranty of any kind. I test every release myself and it is in regular use on my own machines, but see [Status, bug reports and feature requests](#-status-bug-reports-and-feature-requests) before relying on it.
 
@@ -715,7 +715,6 @@ The original command-line client was written by Tiziano Bacocco (tizbac) from 20
 
 - The original client, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), by Tiziano Bacocco (tizbac) and its contributors.
 - RDEM Systems' Nimbus Backup GUI client, the starting point for this app's GUI.
-- The workflow and feel of Backup for Workgroups (BFW), which Backup Sets, Undelete and Roll back follow.
 - [Clonezilla Live](https://clonezilla.org/), which the bare-metal restore ISO is built on.
 
 ## 📄 License

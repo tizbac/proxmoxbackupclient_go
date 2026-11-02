@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-私はこれを自分のホームラボのために作っています。Windows と Linux のサーバー、デスクトップ、ノート PC が混在する環境で、Backup for Workgroups、rsync によるミラー、Clonezilla/RescueZilla のイメージに代えて、PBS を唯一のバックアップシステムにするためです。2026 年 9 月に [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) のフォークとして始まり、今では本家を大きく超えています。それ以降のコミットは 350 件を超え、18 件の修正と機能を本家プロジェクトに還元しました（[下の一覧](#-本家プロジェクトへの貢献)）。
+私はこれを自分のホームラボのために作っています。Windows と Linux のサーバー、デスクトップ、ノート PC が混在する環境で、rsync によるミラー、Clonezilla/RescueZilla のイメージに代えて、PBS を唯一のバックアップシステムにするためです。2026 年 9 月に [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) のフォークとして始まり、今では本家を大きく超えています。それ以降のコミットは 350 件を超え、18 件の修正と機能を本家プロジェクトに還元しました（[下の一覧](#-本家プロジェクトへの貢献)）。
 
 **そのままの状態でご自由にお使いください。** 正式には**アルファ版ソフトウェア**であり、使用はすべて自己責任で、いかなる種類の保証も一切ありません。各リリースは私自身がテストし、私のマシンで日常的に使っていますが、頼りにする前に[状況、バグ報告と機能要望](#-状況バグ報告と機能要望)を読んでください。
 
@@ -695,7 +695,6 @@ installer\wix\build-msi.ps1       # MSI (WiX 3), after building the app and the 
 
 - 元のクライアント [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go)。作者は Tiziano Bacocco (tizbac) とそのコントリビューター。
 - RDEM Systems の Nimbus Backup GUI クライアント。本アプリの GUI の出発点です。
-- Backup for Workgroups (BFW) のワークフローと使い心地。Backup Sets、Undelete、Roll back はこれにならっています。
 - [Clonezilla Live](https://clonezilla.org/)。ベアメタル復元 ISO のベースです。
 
 ## 📄 ライセンス

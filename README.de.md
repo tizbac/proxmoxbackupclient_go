@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-Ich entwickle ihn für mein eigenes Homelab, damit PBS das einzige Sicherungssystem für eine Mischung aus Windows- und Linux-Servern, Desktops und Laptops wird, anstelle von Backup for Workgroups, rsync-Spiegeln und Clonezilla/RescueZilla-Abbildern. Er begann im September 2026 als Fork von [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) und ist weit darüber hinausgewachsen: seitdem über 350 Commits, davon 18 Fehlerbehebungen und Funktionen, die an das Ursprungsprojekt zurückgegeben wurden ([Liste unten](#-beiträge-zum-ursprungsprojekt)).
+Ich entwickle ihn für mein eigenes Homelab, damit PBS das einzige Sicherungssystem für eine Mischung aus Windows- und Linux-Servern, Desktops und Laptops wird, anstelle von rsync-Spiegeln und Clonezilla/RescueZilla-Abbildern. Er begann im September 2026 als Fork von [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) und ist weit darüber hinausgewachsen: seitdem über 350 Commits, davon 18 Fehlerbehebungen und Funktionen, die an das Ursprungsprojekt zurückgegeben wurden ([Liste unten](#-beiträge-zum-ursprungsprojekt)).
 
 **Sie dürfen ihn gern so verwenden, wie er ist.** Er ist offiziell **Alpha-Software**, die Nutzung erfolgt auf eigenes Risiko, ohne jegliche Garantie oder Gewährleistung. Ich teste jedes Release selbst, und er ist auf meinen eigenen Rechnern regelmäßig im Einsatz, aber lesen Sie [Status, Fehlerberichte und Funktionswünsche](#-status-fehlerberichte-und-funktionswünsche), bevor Sie sich darauf verlassen.
 
@@ -712,7 +712,6 @@ Der ursprüngliche Kommandozeilen-Client wurde ab 2023 von Tiziano Bacocco (tizb
 
 - Der ursprüngliche Client, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), von Tiziano Bacocco (tizbac) und seinen Mitwirkenden.
 - Der Nimbus-Backup-GUI-Client von RDEM Systems, der Ausgangspunkt der grafischen Oberfläche dieser App.
-- Der Arbeitsablauf und das Bediengefühl von Backup for Workgroups (BFW), an denen sich Sicherungssätze, Gelöschte Dateien und Zurücksetzen orientieren.
 - [Clonezilla Live](https://clonezilla.org/), auf dem die ISO für die Bare-Metal-Wiederherstellung aufbaut.
 
 ## 📄 Lizenz

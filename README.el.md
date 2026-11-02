@@ -18,7 +18,7 @@
   <a href="docs/screenshots/overview-screenshots.png"><img src="docs/screenshots/overview-screenshots.png" width="400" alt="Screenshots of the app: Backup Sets, Reports, schedules, a whole PC as a VM, backup progress and restore"></a>
 </p>
 
-Το φτιάχνω για το δικό μου homelab, ώστε το PBS να γίνει το μοναδικό σύστημα αντιγράφων ασφαλείας για ένα μείγμα διακομιστών, επιτραπέζιων και φορητών υπολογιστών με Windows και Linux, στη θέση του Backup for Workgroups, των κατοπτρισμών rsync και των εικόνων Clonezilla/RescueZilla. Ξεκίνησε τον Σεπτέμβριο του 2026 ως fork του [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) και έχει πάει πολύ πιο πέρα από αυτό: πάνω από 350 commits από τότε, με 18 διορθώσεις και λειτουργίες να έχουν σταλεί πίσω στο αρχικό έργο ([λίστα παρακάτω](#-συνεισφορές-στο-αρχικό-έργο)).
+Το φτιάχνω για το δικό μου homelab, ώστε το PBS να γίνει το μοναδικό σύστημα αντιγράφων ασφαλείας για ένα μείγμα διακομιστών, επιτραπέζιων και φορητών υπολογιστών με Windows και Linux, στη θέση των κατοπτρισμών rsync και των εικόνων Clonezilla/RescueZilla. Ξεκίνησε τον Σεπτέμβριο του 2026 ως fork του [tizbac/proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go) και έχει πάει πολύ πιο πέρα από αυτό: πάνω από 350 commits από τότε, με 18 διορθώσεις και λειτουργίες να έχουν σταλεί πίσω στο αρχικό έργο ([λίστα παρακάτω](#-συνεισφορές-στο-αρχικό-έργο)).
 
 **Είστε ευπρόσδεκτοι να το χρησιμοποιήσετε ως έχει.** Είναι επίσημα **λογισμικό σε στάδιο alpha**, το χρησιμοποιείτε με δική σας ευθύνη, χωρίς καμία απολύτως εγγύηση. Δοκιμάζω ο ίδιος κάθε έκδοση και το χρησιμοποιώ τακτικά στα δικά μου μηχανήματα, αλλά διαβάστε την ενότητα [Κατάσταση, αναφορές σφαλμάτων και αιτήματα λειτουργιών](#-κατάσταση-αναφορές-σφαλμάτων-και-αιτήματα-λειτουργιών) πριν βασιστείτε σε αυτό.
 
@@ -712,7 +712,6 @@ installer\wix\build-msi.ps1       # MSI (WiX 3), after building the app and the 
 
 - Το αρχικό πρόγραμμα-πελάτης, [proxmoxbackupclient_go](https://github.com/tizbac/proxmoxbackupclient_go), από τον Tiziano Bacocco (tizbac) και τους συνεισφέροντές του.
 - Το γραφικό πρόγραμμα Nimbus Backup της RDEM Systems, η αφετηρία του γραφικού περιβάλλοντος αυτής της εφαρμογής.
-- Η ροή εργασίας και η αίσθηση του Backup for Workgroups (BFW), την οποία ακολουθούν τα Σύνολα Αντιγράφων Ασφαλείας, η Ανάκτηση διαγραμμένων και η Επαναφορά κατάστασης.
 - Το [Clonezilla Live](https://clonezilla.org/), πάνω στο οποίο βασίζεται το ISO επαναφοράς bare-metal.
 
 ## 📄 Άδεια
