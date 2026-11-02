@@ -69,7 +69,7 @@ func (a *App) SetupSystemTray() {
 func onReady(a *App) func() {
 	return func() {
 		// Set tray icon from embedded PNG data (icon.go)
-		systray.SetIcon(TrayIconData)
+		systray.SetIcon(TrayIconForBrand(BrandFromExecutable()))
 		name := trayName()
 		systray.SetTitle(name)
 		systray.SetTooltip(name + " - Scheduled backups active")
@@ -286,8 +286,9 @@ var (
 // still shows fine without a custom icon in that case.
 func trayIconTempPath() string {
 	trayIconTempOnce.Do(func() {
-		path := filepath.Join(os.TempDir(), "pbsgo-tray-icon.ico")
-		if err := os.WriteFile(path, TrayIconData, 0644); err != nil {
+		brand := BrandFromExecutable()
+		path := filepath.Join(os.TempDir(), normalizeBrandKey(brand.Name)+"-tray-icon.ico")
+		if err := os.WriteFile(path, TrayIconForBrand(brand), 0644); err != nil {
 			writeDebugLog(fmt.Sprintf("trayIconTempPath: write failed: %v", err))
 			return
 		}
