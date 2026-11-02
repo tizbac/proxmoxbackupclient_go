@@ -21,6 +21,7 @@ type Client struct {
 	baseURL    string
 	httpClient *http.Client
 	probe      http.RoundTripper // ProbeStatus's: the token, never the 401 hook
+	public     http.RoundTripper // PublicStatus's: no token, no 401 hook
 	answer     answerState       // whether the service answers (answer.go)
 }
 
@@ -34,6 +35,7 @@ func NewClient(tokenPath string) *Client {
 	c := &Client{baseURL: DefaultServiceURL}
 	token := &tokenTransport{tokenPath: tokenPath, base: serviceTransport}
 	c.probe = &answerTransport{c: c, base: token}
+	c.public = &answerTransport{c: c, base: serviceTransport}
 	c.httpClient = &http.Client{
 		Timeout: RequestTimeout,
 		Transport: &answerTransport{c: c, base: &reauthTransport{

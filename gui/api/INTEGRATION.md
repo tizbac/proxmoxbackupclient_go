@@ -31,6 +31,9 @@ In service mode the app:
 - lists `GET /backup/runs` every 3 seconds and shows a progress card for a run it did not
   start (a scheduled one), with Pause, Resume and Stop sent to `/backup/pause`,
   `/backup/resume` and `/backup/stop`;
+- while it holds no token (not connected yet, or after its window has been in the tray for
+  15 minutes: `gui/token_drop.go`), reads `GET /status/public` every 3 seconds instead, for
+  the tray (how many backups run and wait, whether one failed);
 - asks `GET /status` whether the service is busy (`active_jobs`);
 - reads the settings with `GET /config` (no secrets: `*_set` markers instead) and changes
   them with `POST /call/{name}`, which runs one of the app's own setters in the service
@@ -48,7 +51,7 @@ otherwise (`gui/api/server_state.go`).
 
 ## Authentication
 
-Every request must carry the header
+Every request except `GET /status/public` must carry the header
 
 ```
 X-Proxmox-Client-Token: <contents of the token file>
@@ -74,6 +77,13 @@ token into a file the app created and exits (`gui/token_elevated.go`). The app k
 token in memory only and asks again only when the user connects (`gui/service_connect.go`).
 An elevated app, or one run as root, reads the file itself.
 
+While the app holds the token, any program running as the same user could read it from the
+app's memory. So the app holds it only while its window is in use: once the window has been
+hidden in the tray for 15 minutes, the app drops the token (an elevated app also stops
+reading the file) and is not connected until its window is shown again, when it asks once
+more (`gui/token_drop.go`). Meanwhile the tray reads `GET /status/public`, which needs no
+token.
+
 The app also checks the service before it sends anything. While the service is stopped,
 another program could listen on `127.0.0.1:18765` and pose as it, to collect the token or a
 PBS secret typed into Preferences. So on each new connection to that address, before a byte
@@ -95,7 +105,8 @@ Checks on every request (`authMiddleware`):
 - request body at most 8 MiB;
 - a request with an `Origin` header gets **403** `forbidden` (browsers send it; the app
   does not);
-- a missing or wrong token gets **401** `unauthorized` (constant-time compare).
+- a missing or wrong token gets **401** `unauthorized` (constant-time compare), except on
+  `GET /status/public` (any other method there needs the token too).
 
 ## Errors
 
@@ -133,6 +144,38 @@ Whether the service is up, and what it runs with.
 
 `active_jobs` counts runs on the API that are still running. `configuration` never holds
 secrets (no token secret, no passphrase). `last_backup` exists in the type but is never set.
+
+### GET /status/public
+
+The one route that needs no token (`public_status.go`). Any program on the computer may read
+it, so it says only whether backups run and whether one failed: no Backup Set names, paths,
+servers or messages. The app's tray uses it while the app holds no token. Every field is
+always present:
+
+```json
+{
+  "running": true,
+  "version": "2.0.0",
+  "backups_running": 1,
+  "backups_waiting": 0,
+  "last_run_failed": false,
+  "last_run_ended": "2026-11-02T21:04:05Z"
+}
+```
+
+- `running` is always true (the service answered).
+- `version` is the service's build version, as in `GET /status`.
+- `backups_running` and `backups_waiting` count the service's backups in progress and those
+  queued behind another (their message starts with `Queued: `).
+- `last_run_failed` is true when the most recent run of at least one Backup Set failed
+  (from the run history, matched to the current Backup Sets by name; restores and one-off
+  backups do not count).
+- `last_run_ended` is when the most recent backup ended (RFC 3339), `""` when none is
+  recorded.
+
+The service reads the history for the last two fields at most once every 5 seconds. The
+`Origin` check still applies, and so does the app's peer check: the app reads the route only
+from the real service. An earlier service without the route answers it **401**.
 
 ### POST /backup
 
@@ -282,4 +325,10 @@ Linux, as root:
 
 ```sh
 curl -s -H "X-Proxmox-Client-Token: $(cat /var/lib/proxmoxbackupclient/api-token)" http://127.0.0.1:18765/status
+```
+
+The public status needs neither elevation nor the token:
+
+```sh
+curl -s http://127.0.0.1:18765/status/public
 ```

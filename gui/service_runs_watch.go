@@ -37,6 +37,11 @@ type followedServiceRun struct {
 // once), sending the same progress, pause and completion events as a run of
 // its own, each under its own run id: each gets its card, with Pause and
 // Stop, which go to the service.
+//
+// While the app holds no token (not connected yet, or dropped after a while
+// in the tray: token_drop.go), the run list would only be refused: it reads
+// the service's public status instead, which needs none, for the tray. Either
+// request also tells whether the service is running (gui/api/answer.go).
 func (a *App) watchServiceRuns() {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
@@ -45,7 +50,21 @@ func (a *App) watchServiceRuns() {
 		if a.ctx == nil || a.mode != api.ModeService {
 			following = map[string]*followedServiceRun{}
 			latestServiceRuns.Store(nil)
+			a.notePublicStatus(nil)
 			continue
+		}
+		if a.holdsNoToken() {
+			latestServiceRuns.Store(nil)
+			st, err := a.apiClient.PublicStatus()
+			if err != nil {
+				st = nil
+			}
+			a.notePublicStatus(st)
+			continue
+		}
+		if a.notePublicStatus(nil) {
+			// Connected again: the tray's own text (the next run) is back.
+			a.RefreshIdleTooltip()
 		}
 		fetched := time.Now()
 		resp, err := a.apiClient.GetRuns()

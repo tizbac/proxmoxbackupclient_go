@@ -40,3 +40,6 @@ func (a *App) RefreshIdleTooltip() {}
 
 // setTrayServiceDown: no tray, nothing to say it in.
 func setTrayServiceDown(bool) {}
+
+// setTrayPublicText: no tray, nothing to show the public status in.
+func setTrayPublicText(string) bool { return false }

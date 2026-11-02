@@ -35,6 +35,9 @@ const maxRequestBody = 8 << 20 // 8 MiB: a settings import goes over as base64
 var (
 	tokenOverrideMu sync.RWMutex
 	tokenOverride   string
+	// fetchedOnly: only tokenOverride counts, not the environment or the
+	// token file (SetFetchedTokenOnly).
+	fetchedOnly bool
 )
 
 // SecureTokenFile gives the token file at path its permissions. On Linux and
@@ -59,6 +62,24 @@ func GetTokenOverride() string {
 	return tokenOverride
 }
 
+// SetFetchedTokenOnly makes requests carry only the token installed by
+// SetTokenOverride (on), not one from the environment or the token file. The
+// app turns it on when it lets go of the token (its window was in the tray
+// for a while): an elevated app, which could read the file on every request,
+// is then not connected either, until it connects again (which turns it off).
+func SetFetchedTokenOnly(on bool) {
+	tokenOverrideMu.Lock()
+	fetchedOnly = on
+	tokenOverrideMu.Unlock()
+}
+
+// FetchedTokenOnly reports whether SetFetchedTokenOnly is on.
+func FetchedTokenOnly() bool {
+	tokenOverrideMu.RLock()
+	defer tokenOverrideMu.RUnlock()
+	return fetchedOnly
+}
+
 // tokenFileOwnedByProcess reports whether a process with euid may take a
 // token file owned by fileUID straight from disk: it is that owner, or root.
 // A file owned by another account means the caller is not privileged and must
@@ -69,9 +90,13 @@ func tokenFileOwnedByProcess(fileUID, euid int) bool {
 
 // resolveToken returns the token to send: the fetched one, then the
 // environment, then the token file when this process may read it directly
-// (ReadOwnTokenFile). "" means none, and the service answers 401.
+// (ReadOwnTokenFile). "" means none, and the service answers 401. With
+// SetFetchedTokenOnly on, only the fetched one.
 func resolveToken(path string) string {
-	if t := GetTokenOverride(); t != "" {
+	tokenOverrideMu.RLock()
+	t, only := tokenOverride, fetchedOnly
+	tokenOverrideMu.RUnlock()
+	if t != "" || only {
 		return t
 	}
 	if env := os.Getenv(TokenEnvVar); env != "" {
@@ -175,7 +200,9 @@ func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // authMiddleware enforces the local-token auth and request hardening on every
 // route: it bounds the body, rejects browser-originated requests (Origin set),
-// and requires the shared token (tokenAccepted).
+// and requires the shared token (tokenAccepted), except for GET
+// /status/public, which says only whether backups run or failed
+// (public_status.go).
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
@@ -183,6 +210,11 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		// Our GUI never sets Origin; a browser always does on cross-origin POST.
 		if r.Header.Get("Origin") != "" {
 			s.writeError(w, "forbidden", http.StatusForbidden)
+			return
+		}
+
+		if isPublicRequest(r) {
+			next.ServeHTTP(w, r)
 			return
 		}
 

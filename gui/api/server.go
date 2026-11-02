@@ -35,6 +35,13 @@ type Server struct {
 	prevToken      string
 	prevValidUntil time.Time
 	tokenGrace     time.Duration
+
+	// The outcome of the last runs for GET /status/public, kept for a few
+	// seconds (public_status.go).
+	publicMu     sync.Mutex
+	publicAt     time.Time
+	publicFailed bool
+	publicEnded  string
 }
 
 // RunOptionsRegistrar is optionally implemented by the BackupHandler: it
@@ -125,6 +132,7 @@ func NewServer(addr string, handler BackupHandler, token, version string) *Serve
 
 func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/status", s.handleStatus)
+	s.mux.HandleFunc(PublicStatusPath, s.handlePublicStatus) // no token (public_status.go)
 	s.mux.HandleFunc("/backup", s.handleBackup)
 	s.mux.HandleFunc("/backup/machine", s.handleMachineBackup)
 	s.mux.HandleFunc("/backup/status/", s.handleBackupStatus)

@@ -50,6 +50,7 @@ func strictTokenServer(id string) *PBSServer {
 func resetServiceGlobals() {
 	api.SetUnauthorizedHook(nil)
 	api.SetTokenOverride("")
+	api.SetFetchedTokenOnly(false)
 	messageSink.Store((func(MessageLogEntry) error)(nil))
 }
 
@@ -63,6 +64,10 @@ type strictPair struct {
 	svc    *App
 	app    *App
 	client *api.Client
+	// tokenPath is the service's token file, which this test process may
+	// read (as an elevated app reads it).
+	tokenPath string
+	url       string // where the service listens
 
 	mu   sync.Mutex
 	seen []string // "METHOD /path" of each request the service answered
@@ -85,6 +90,8 @@ func newStrictService(t *testing.T) *strictPair {
 	}))
 	t.Cleanup(hs.Close)
 	p.client = api.NewClientAt(hs.URL, tokenPath)
+	p.tokenPath = tokenPath
+	p.url = hs.URL
 	return p
 }
 

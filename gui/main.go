@@ -76,7 +76,7 @@ func main() {
 		return
 	}
 	// Parse command line flags
-	minimized := flag.Bool("minimized", false, "Start minimized to system tray")
+	minimized := flag.Bool("minimized", false, "Start minimized to system tray (the installer's optional autostart)")
 	asAdmin := flag.Bool("admin", false, "Windows: start elevated (the installer's Administrator shortcuts)")
 	flag.Parse()
 	if *asAdmin && startAsAdmin() {
@@ -130,6 +130,7 @@ func main() {
 
 	// Create app instance
 	app := NewApp()
+	app.startedHidden = *minimized
 	writeDebugLog("App instance created")
 
 	// Create application options
@@ -289,6 +290,13 @@ func (a *App) startup(ctx context.Context) {
 
 	// Setup system tray for background operation
 	go a.SetupSystemTray()
+
+	// Started in the tray: an app that connected without a prompt (elevated,
+	// or root) lets go of the token after the grace period, as when the
+	// window is hidden later (token_drop.go).
+	if a.startedHidden && a.preventCloseToTray() {
+		a.windowHiddenToTray()
+	}
 }
 
 // domReady is called after front-end resources have been loaded
@@ -805,6 +813,13 @@ func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
 	const maxConsecutiveErrors = 20 // ~60s at 3s interval
 
 	for range ticker.C {
+		// Without the token (dropped while the window was in the tray, see
+		// token_drop.go, or replaced by the service) every poll would be
+		// refused: wait until the app is connected again instead of giving
+		// the run up as lost.
+		if a.holdsNoToken() {
+			continue
+		}
 		progress, err := a.apiClient.GetBackupStatus(jobID)
 		if err != nil {
 			consecutiveErrors++

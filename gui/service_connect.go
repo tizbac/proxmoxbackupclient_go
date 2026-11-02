@@ -22,15 +22,16 @@ import (
 // keeps in memory. An elevated app, or one run as root, reads the token file
 // directly and connects without a prompt.
 //
-// Unlike upstream, the app does not ask at start: it starts in the tray at
-// every sign-in (the machine-wide autostart), and a prompt nobody asked for
-// would greet every user. It asks once on its own when its window first comes
+// Unlike upstream, the app does not ask at start: it may start in the tray at
+// sign-in (the installer's optional autostart), and a prompt nobody asked for
+// would greet the user. It asks once on its own when its window first comes
 // to the front (focus, or opened from the tray), and whenever the user clicks
 // Connect; never for a request made in the background. Until connected, or
 // after a decline, it is in service mode but not connected: calls to the
 // service fail with api.ErrUnauthorized and the window shows Connect, and
 // "Use my own settings" for a user who cannot answer the prompt
-// (UseOwnSettings).
+// (UseOwnSettings). Once its window has been in the tray for a while, the app
+// lets go of the token again (token_drop.go).
 
 // errNoPromptNow is the hook's answer: the request keeps its 401 and nobody
 // is asked.
@@ -140,8 +141,11 @@ func (a *App) serviceTokenHook(sent string) (string, error) {
 // ConnectService connects this app to the background service, asking for
 // elevation if it must. userAsked is the Connect button; without it (the
 // window came to the front) the app asks only once on its own until the
-// service replaces the token. Returns nil when connected, or why not.
+// service replaces the token. Returns nil when connected, or why not. The
+// window asks only while it is in front of the user, so the window is in use
+// again (token_drop.go).
 func (a *App) ConnectService(userAsked bool) error {
+	a.windowShownAgain()
 	return a.connect(userAsked, nil)
 }
 
@@ -201,6 +205,9 @@ func (a *App) useServiceToken(tok string, then func() error) error {
 		}
 		return fmt.Errorf("the background service did not take the token (status %d)", code)
 	}
+	// Dropped after a while in the tray (token_drop.go): an elevated app may
+	// read the token file itself again.
+	api.SetFetchedTokenOnly(false)
 	a.svcConnected.Store(true)
 	var thenErr error
 	if then != nil {

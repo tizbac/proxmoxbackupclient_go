@@ -78,6 +78,23 @@ type App struct {
 	ownSettings      atomic.Bool // the user chose their own settings over the service's (UseOwnSettings)
 	autoConnectTried atomic.Bool
 	tokenFetchMu     sync.Mutex
+
+	// The window in the tray (token_drop.go): hidden, the app lets go of the
+	// service's token after a grace period. startedHidden: it started in the
+	// tray (--minimized).
+	trayHide      trayHideState
+	startedHidden bool
+}
+
+// trayHideState is whether the window is hidden in the tray, and the timer
+// that lets go of the service's token once it has been for a while
+// (token_drop.go). gen tells a timer that fires late that the window was
+// shown, or hidden again, since it was set.
+type trayHideState struct {
+	mu     sync.Mutex
+	hidden bool
+	gen    uint64
+	timer  *time.Timer
 }
 
 // delegated reports whether this app works on the service's settings

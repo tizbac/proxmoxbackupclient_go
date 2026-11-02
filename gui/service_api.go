@@ -87,6 +87,51 @@ func (a *App) GetJobHistoryForAPI() ([]map[string]interface{}, error) {
 	return out, err
 }
 
+// LastRunOutcomeForAPI is the outcome of the last runs for the service's
+// public status (GET /status/public, api.PublicStatusAPI), which anyone on
+// the computer may read: only whether the most recent run of at least one
+// Backup Set failed, and when the most recent backup ended. No names.
+func (a *App) LastRunOutcomeForAPI() (failed bool, ended string) {
+	jobs, err := a.GetScheduledJobs()
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("[API] public status: reading the Backup Sets: %v", err))
+	}
+	hist, err := a.GetJobHistory()
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("[API] public status: reading the history: %v", err))
+		return false, ""
+	}
+	return lastRunOutcome(jobs, hist)
+}
+
+// lastRunOutcome reads hist (newest first, as stored): failed when the most
+// recent backup of at least one of the Backup Sets in jobs failed, ended the
+// time of the most recent backup of any kind. Restores, and runs still
+// marked running, do not count; a one-off backup counts only for ended.
+func lastRunOutcome(jobs []ScheduledJob, hist []JobHistory) (failed bool, ended string) {
+	sets := map[string]bool{}
+	for _, j := range jobs {
+		sets[j.Name] = true
+	}
+	seen := map[string]bool{}
+	for _, h := range hist {
+		if h.Kind == "restore" || h.Status == "running" {
+			continue
+		}
+		if ended == "" {
+			ended = h.Timestamp
+		}
+		if h.Trigger == "oneoff" || !sets[h.Name] || seen[h.Name] {
+			continue
+		}
+		seen[h.Name] = true
+		if h.Status == "failed" {
+			failed = true
+		}
+	}
+	return failed, ended
+}
+
 // AppendJobHistoryFromAPI records an entry the app made (a restore, an
 // undelete, a roll back).
 func (a *App) AppendJobHistoryFromAPI(entry map[string]interface{}) error {

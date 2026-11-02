@@ -33,6 +33,12 @@ var (
 	trayPaused     bool                         // it is paused: the item says Resume
 	trayServiceOff bool                         // the background service is installed but not running
 	trayReady      bool                         // onReady has run: the tooltip can be set
+	// trayPublicMsg is what the service's public status says while the app
+	// holds no token (token_drop.go); "" otherwise.
+	trayPublicMsg string
+	// trayViaWindow: the app holds no token, so Pause opens the window and
+	// asks for it first.
+	trayViaWindow bool
 	// trayPauseClickedAt (Unix ns) is when the item was last clicked. A service
 	// run list fetched before then may not show that click yet.
 	trayPauseClickedAt atomic.Int64
@@ -98,10 +104,7 @@ func onReady(a *App) func() {
 				select {
 				case <-menuShow.ClickedCh:
 					writeDebugLog("Tray: Show window clicked")
-					// Show the main window
-					runtime.WindowShow(a.ctx)
-					runtime.WindowUnminimise(a.ctx)
-					runtime.EventsEmit(a.ctx, "window:shown")
+					a.ShowFromTray()
 				case <-menuPause.ClickedCh:
 					a.trayPauseClicked()
 				case <-menuQuit.ClickedCh:
@@ -131,28 +134,35 @@ func onReady(a *App) func() {
 
 // trayRunState reports whether a backup runs, in this process or, with Run as
 // Service, in the service, and whether it is paused. ok is false while the
-// service's run list is older than the last click on the item.
-func (a *App) trayRunState() (running, paused, ok bool) {
+// service's run list is older than the last click on the item. viaWindow:
+// the app holds no token (token_drop.go), so what runs comes from the
+// service's public status, which does not say whether it is paused, and
+// Pause has to open the window and ask for the token first.
+func (a *App) trayRunState() (running, paused, viaWindow, ok bool) {
 	if localBackupRunning() {
 		// With several runs, Pause and Resume here act on them all.
-		return true, anyRunPaused().Paused, true
+		return true, anyRunPaused().Paused, false, true
 	}
 	if !a.serviceRunsBackups() {
-		return false, false, true
+		return false, false, false, true
+	}
+	if a.holdsNoToken() {
+		st := latestPublicStatus.Load()
+		return st != nil && st.BackupsRunning > 0, false, true, true
 	}
 	snap := latestServiceRuns.Load()
 	if snap == nil {
-		return false, false, true
+		return false, false, false, true
 	}
 	if snap.at.UnixNano() < trayPauseClickedAt.Load() {
-		return false, false, false
+		return false, false, false, false
 	}
 	for _, r := range snap.runs.Runs {
 		if r.Running && !r.Complete {
-			return true, r.Paused, true
+			return true, r.Paused, false, true
 		}
 	}
-	return false, false, true
+	return false, false, false, true
 }
 
 // trayPauseLoop keeps the Pause/Resume item in step with the backup, also
@@ -166,11 +176,11 @@ func (a *App) trayPauseLoop() {
 	defer ticker.Stop()
 	wasRunning, idlePending := false, false
 	for range ticker.C {
-		running, paused, ok := a.trayRunState()
+		running, paused, viaWindow, ok := a.trayRunState()
 		if !ok {
 			continue
 		}
-		setTrayPause(running, paused)
+		setTrayPause(running, paused, viaWindow)
 		if wasRunning && !running {
 			idlePending = true
 		}
@@ -183,19 +193,24 @@ func (a *App) trayPauseLoop() {
 }
 
 // setTrayPause shows a backup's state on the Pause/Resume item and in the
-// tooltip.
-func setTrayPause(running, paused bool) {
-	paused = running && paused
+// tooltip. viaWindow: the app holds no token, so the item opens the window
+// to connect first (pauseViaWindow).
+func setTrayPause(running, paused, viaWindow bool) {
+	paused = running && paused && !viaWindow
 	trayMu.Lock()
 	defer trayMu.Unlock()
-	if menuPause == nil || (running == trayRunning && paused == trayPaused) {
+	if menuPause == nil || (running == trayRunning && paused == trayPaused && viaWindow == trayViaWindow) {
 		return
 	}
-	trayRunning, trayPaused = running, paused
-	if paused {
+	trayRunning, trayPaused, trayViaWindow = running, paused, viaWindow
+	switch {
+	case viaWindow:
+		menuPause.SetTitle("⏸️ Pause backup...")
+		menuPause.SetTooltip("Opens the window: the app connects to the background service first, then pauses the backup")
+	case paused:
 		menuPause.SetTitle("▶️ Resume backup")
 		menuPause.SetTooltip("Carry on with the paused backup")
-	} else {
+	default:
 		menuPause.SetTitle("⏸️ Pause backup")
 		menuPause.SetTooltip("Pause the running backup; it carries on from the same place on Resume")
 	}
@@ -211,8 +226,12 @@ func setTrayPause(running, paused bool) {
 func (a *App) trayPauseClicked() {
 	trayPauseClickedAt.Store(time.Now().UnixNano())
 	trayMu.Lock()
-	resume := trayPaused
+	resume, viaWindow := trayPaused, trayViaWindow
 	trayMu.Unlock()
+	if viaWindow && a.holdsNoToken() {
+		go a.pauseViaWindow()
+		return
+	}
 	var st BackupPauseState
 	var err error
 	if resume {
@@ -226,22 +245,26 @@ func (a *App) trayPauseClicked() {
 		writeDebugLog(fmt.Sprintf("Tray: pause/resume failed: %v", err))
 		return
 	}
-	setTrayPause(true, st.Paused)
+	setTrayPause(true, st.Paused, false)
 }
 
 func onExit() {
 	writeDebugLog("System tray exiting")
 }
 
-// MinimizeToTray hides the window and minimizes to tray
+// MinimizeToTray hides the window and minimizes to tray (also the close
+// prompt's Minimize to Tray). Hidden for a while, the app lets go of the
+// service's token (token_drop.go).
 func (a *App) MinimizeToTray() {
 	writeDebugLog("Minimizing to tray")
 	runtime.WindowHide(a.ctx)
+	a.windowHiddenToTray()
 }
 
 // ShowFromTray shows the window from tray
 func (a *App) ShowFromTray() {
 	writeDebugLog("Showing from tray")
+	a.windowShownAgain()
 	runtime.WindowShow(a.ctx)
 	runtime.WindowUnminimise(a.ctx)
 	// The page reads the Backup Sets again: hidden, it may not have.
@@ -274,13 +297,32 @@ func setTrayServiceDown(down bool) {
 	}
 }
 
+// setTrayPublicText shows msg, from the service's public status, in the
+// tooltip while the app holds no token ("" goes back to the usual text). It
+// reports whether the text changed.
+func setTrayPublicText(msg string) bool {
+	trayMu.Lock()
+	defer trayMu.Unlock()
+	if trayPublicMsg == msg {
+		return false
+	}
+	trayPublicMsg = msg
+	if trayReady {
+		showTrayTooltipLocked()
+	}
+	return true
+}
+
 // showTrayTooltipLocked sets the tooltip from the last message, saying so
 // while the backup is paused, or while the background service is not
-// running. trayMu must be held.
+// running; while the app holds no token, from the service's public status.
+// trayMu must be held.
 func showTrayTooltipLocked() {
 	msg := trayTooltipMsg
 	if trayServiceOff {
 		msg = "Background service not running: Backup Sets do not run"
+	} else if trayPublicMsg != "" {
+		msg = trayPublicMsg
 	} else if trayPaused {
 		if label, ok := strings.CutPrefix(msg, "Backup running: "); ok {
 			msg = "Backup paused: " + label
@@ -352,6 +394,11 @@ func (a *App) ShowToastNotification(title, message string, isError bool) {
 // clobber that more useful "Backup running: X" tooltip.
 func (a *App) RefreshIdleTooltip() {
 	if !trayInitialized || currentOperationLabel() != "" {
+		return
+	}
+	// Without the token the Backup Sets cannot be read: the tray shows the
+	// service's public status instead (watchServiceRuns).
+	if a.holdsNoToken() {
 		return
 	}
 	jobs, err := a.GetScheduledJobs()
