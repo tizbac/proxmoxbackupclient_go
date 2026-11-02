@@ -10,3 +10,15 @@ type SnapShot struct {
 	// backup leaves its blocks out of the image.
 	CowFile string
 }
+
+// SnapControl describes the Linux block snapshot module (elastio-snap or
+// dattobd) a machine backup would use. DetectControl fills it in; on other
+// platforms it is always empty. Exported for the GUI, which shows the user
+// which module was found, or a warning when there is none.
+type SnapControl struct {
+	Name      string // "elastio-snap" or "dattobd"
+	DevPrefix string // snapshot devices are DevPrefix + minor, e.g. /dev/elastio-snap0
+	Module    string // kernel module name, as given to modprobe
+	CtlDevice string // control device the ioctls go to
+	InfoFile  string // /proc file that lists the module's snapshots
+}

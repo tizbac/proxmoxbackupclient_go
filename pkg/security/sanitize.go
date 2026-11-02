@@ -168,6 +168,17 @@ func ValidateAuthID(authID string) error {
 	return nil
 }
 
+// ValidateUsername checks a PBS login name for ticket (username + password)
+// authentication. PBS always wants the realm too (root@pam, backup@pbs), and a
+// bare name only fails later, at login, with a less helpful message.
+// Ported from upstream 87ca42c.
+func ValidateUsername(username string) error {
+	if !strings.Contains(username, "@") {
+		return fmt.Errorf("username must be user@realm")
+	}
+	return nil
+}
+
 // SecureCompare performs constant-time string comparison
 // Use this for comparing secrets to prevent timing attacks
 func SecureCompare(a, b string) bool {

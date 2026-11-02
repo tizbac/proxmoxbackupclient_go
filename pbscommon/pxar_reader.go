@@ -316,6 +316,12 @@ type PXARExtractedFile struct {
 	// because overwrite was disabled). Error skips (open/write/rename/mkdir
 	// failures) leave this false so they still fail the restore.
 	Expected bool
+	// KeepOwnTime marks a folder whose own time the restore leaves as it is:
+	// an ancestor created only to reach the selection, or a folder that was
+	// already there when the restore may not overwrite. The pass that sets
+	// folder times after the files are written (gui/restore_dirtimes.go)
+	// skips it. False, the zero value, means the snapshot's time applies.
+	KeepOwnTime bool
 	// SHA256 is the hash of the payload as written, set only for files when
 	// the reader was told to hash (SetHashFiles).
 	SHA256 []byte
@@ -1137,6 +1143,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 		}
 
 		if e.IsDir {
+			keepTime := folderKeepsOwnTime(e.Path, fullPath, includes, overwrite)
 			if err := os.MkdirAll(fullPath, 0755); err != nil {
 				extracted = append(extracted, PXARExtractedFile{
 					Path: fullPath, IsDir: true,
@@ -1147,7 +1154,7 @@ func (pr *PXARReader) ExtractWithRewriter(rewriter PathRewriter, includePaths []
 			extracted = append(extracted, PXARExtractedFile{
 				Path: fullPath, ArchivePath: e.Path, IsDir: true,
 				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos, ModTimeSet: e.ModTimeSet,
-				RawMode: e.Mode, UID: e.UID, GID: e.GID,
+				RawMode: e.Mode, UID: e.UID, GID: e.GID, KeepOwnTime: keepTime,
 			})
 			return nil
 		}
@@ -1394,6 +1401,7 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 			return nil
 		}
 		if e.IsDir {
+			keepTime := folderKeepsOwnTime(e.Path, fullPath, includes, overwrite)
 			if err := os.MkdirAll(fullPath, 0755); err != nil {
 				appendResult(PXARExtractedFile{
 					Path: fullPath, IsDir: true,
@@ -1404,7 +1412,7 @@ func (pr *PXARReader) ExtractWithRewriterParallel(rewriter PathRewriter, include
 			appendResult(PXARExtractedFile{
 				Path: fullPath, ArchivePath: e.Path, IsDir: true,
 				Mode: os.FileMode(e.Mode & 0777), ModTime: e.ModTime, ModNanos: e.ModNanos, ModTimeSet: e.ModTimeSet,
-				RawMode: e.Mode, UID: e.UID, GID: e.GID,
+				RawMode: e.Mode, UID: e.UID, GID: e.GID, KeepOwnTime: keepTime,
 			})
 			return nil
 		}
@@ -1593,4 +1601,34 @@ func pathMatches(path string, includes []string) bool {
 		}
 	}
 	return false
+}
+
+// pathSelected reports whether path lies inside the selection: an include
+// itself or something below one. Unlike pathMatches it is false for the
+// ancestors of an include, which a restore only creates to reach it.
+func pathSelected(path string, includes []string) bool {
+	if len(includes) == 0 {
+		return true
+	}
+	for _, inc := range includes {
+		if path == inc || strings.HasPrefix(path, inc+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// folderKeepsOwnTime reports whether a restored folder keeps its own time
+// (see PXARExtractedFile.KeepOwnTime): an ancestor of the selection does, and
+// so does a folder that is already there when the restore may not overwrite.
+// Call it before the folder is created, or every folder looks existing.
+func folderKeepsOwnTime(archivePath, fullPath string, includes []string, overwrite bool) bool {
+	if !pathSelected(archivePath, includes) {
+		return true
+	}
+	if overwrite {
+		return false
+	}
+	_, err := os.Lstat(fullPath)
+	return !os.IsNotExist(err)
 }

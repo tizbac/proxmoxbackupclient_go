@@ -116,6 +116,18 @@ func detectControl() (snapControl, bool) {
 	return snapControl{}, false
 }
 
+// DetectControl reports which block snapshot module a machine backup would
+// use, for the GUI to show (upstream e87213f). Like a backup, it loads the
+// module with modprobe when it is installed but not loaded yet, which needs
+// root; run as a normal user it finds only a module that is already loaded.
+func DetectControl() (SnapControl, bool) {
+	c, ok := detectControl()
+	if !ok {
+		return SnapControl{}, false
+	}
+	return SnapControl{Name: c.name, DevPrefix: c.devPrefix, Module: c.module, CtlDevice: c.ctlDevice, InfoFile: c.infoFile}, true
+}
+
 func moduleLoaded(module string) bool {
 	f, err := os.Open("/proc/modules")
 	if err != nil {

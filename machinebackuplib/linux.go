@@ -210,13 +210,28 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progres
 
 	fidxName := fmt.Sprintf("drive-sata%d.img.fidx", index)
 
-	err = snapshot.CreateVSSSnapshot(mountpoints, false, func(snapshots map[string]snapshot.SnapShot) error {
+	err = withSnapshots(mountpoints, func(snapshots map[string]snapshot.SnapShot) error {
 		return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback, jp, readFree)
 	})
 	if err != nil {
 		return true, 0, err
 	}
 	return true, total, nil
+}
+
+// withSnapshots runs read with block snapshots of mountpoints. With nothing
+// mounted there is nothing to snapshot, so read runs straight away. Asking
+// the snapshot package anyway failed the backup of a spare or unmounted disk
+// on a machine without elastio-snap or dattobd, although no snapshot would
+// have been taken; upstream reads such a disk too (0bb391c). A partition in
+// use without being mounted (swap, an LVM or RAID member) is read raw either
+// way, as before.
+func withSnapshots(mountpoints []string, read func(map[string]snapshot.SnapShot) error) error {
+	if len(mountpoints) == 0 {
+		log.Print("No partition of this disk is mounted: reading it without a snapshot")
+		return read(map[string]snapshot.SnapShot{})
+	}
+	return snapshot.CreateVSSSnapshot(mountpoints, false, read)
 }
 
 type diskSegment struct {
@@ -465,7 +480,7 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 				name, bad/sectorSize, BytesToString(int64(bad)))
 		}
 		if err == errCopyStopped {
-			return errCancelled
+			return ErrCancelled
 		}
 		if err != nil {
 			return fmt.Errorf("read %s at segment %d: %w", name, seg.start, err)
@@ -480,7 +495,7 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 		chunk := make([]byte, n)
 		copy(chunk, buffer[:n])
 		if !sendChunk(chunk) {
-			return errCancelled
+			return ErrCancelled
 		}
 		buffer = buffer[n:]
 	}

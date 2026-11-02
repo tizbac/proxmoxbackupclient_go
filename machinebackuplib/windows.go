@@ -614,7 +614,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			}
 			if err == errCopyStopped {
 				if stoppedByUser {
-					return errCancelled
+					return ErrCancelled
 				}
 				return errUploadAborted
 			}
@@ -623,7 +623,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			}
 			if pos < P.EndByte && !emitZeros(P.EndByte-pos) {
 				if stoppedByUser {
-					return errCancelled
+					return ErrCancelled
 				}
 				return errUploadAborted
 			}

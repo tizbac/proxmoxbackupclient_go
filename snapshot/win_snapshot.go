@@ -415,3 +415,9 @@ func isShadowAlreadyInProgress(err error) bool {
 		strings.Contains(msg, "snapshot_set_in_progress") ||
 		strings.Contains(msg, "0x80042316")
 }
+
+// DetectControl reports the Linux block snapshot module in use. There is
+// none on Windows, where machine backups use VSS.
+func DetectControl() (SnapControl, bool) {
+	return SnapControl{}, false
+}

@@ -13,11 +13,13 @@ import (
 // snapshot. It runs after every file is written because writing into a folder
 // changes that folder's own mtime. Deepest folders go first so the order never
 // matters, and a failure on one folder is counted, never fatal: the content is
-// already safely on disk. onProgress is called at most every 250 ms.
+// already safely on disk. onProgress is called at most every 250 ms. A folder
+// marked KeepOwnTime (an ancestor of the selection, or one that was already
+// there without overwrite) is left as it is.
 func applyDirectoryTimes(extracted []pbscommon.PXARExtractedFile, cancelled func() bool, onProgress func(done, total int)) (applied, failed int) {
 	var dirs []pbscommon.PXARExtractedFile
 	for _, f := range extracted {
-		if f.IsDir && !f.Skipped && (f.ModTimeSet || f.ModTime != 0) { // 0 from the archive = 1970-01-01
+		if f.IsDir && !f.Skipped && !f.KeepOwnTime && (f.ModTimeSet || f.ModTime != 0) { // 0 from the archive = 1970-01-01
 			dirs = append(dirs, f)
 		}
 	}

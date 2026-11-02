@@ -54,3 +54,28 @@ func TestApplyDirectoryTimes(t *testing.T) {
 		t.Errorf("cancelled run applied %d, want 0", applied)
 	}
 }
+
+// A folder the extractor marked KeepOwnTime keeps the time it has.
+func TestApplyDirectoryTimesKeepOwnTime(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "kept")
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	own := time.Unix(1700000000, 0)
+	if err := os.Chtimes(dir, own, own); err != nil {
+		t.Fatal(err)
+	}
+	applied, failed := applyDirectoryTimes([]pbscommon.PXARExtractedFile{
+		{Path: dir, IsDir: true, ModTime: 1000000000, ModTimeSet: true, KeepOwnTime: true},
+	}, nil, nil)
+	if applied != 0 || failed != 0 {
+		t.Fatalf("applied=%d failed=%d, want 0/0", applied, failed)
+	}
+	fi, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fi.ModTime().Equal(own) {
+		t.Errorf("kept folder mtime = %v, want %v", fi.ModTime(), own)
+	}
+}

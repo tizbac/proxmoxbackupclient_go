@@ -843,7 +843,13 @@ func append_u64_7bit(a []byte, v uint64) []byte {
 
 */
 
-// specialFileKind names a file that is not regular data, for the skipped list.
+// specialFileKind names a FIFO, socket or device node for the skipped list,
+// and returns "" for anything else. ModeIrregular is deliberately not here:
+// on Windows Go sets it on reparse points such as OneDrive placeholders, and
+// those open and read normally. Junctions are irregular too since Go 1.23,
+// but isLinkEntry has already skipped them as links by then. On Linux Go
+// never sets ModeIrregular, so this covers every non-regular kind that is not
+// a folder or a symbolic link.
 func specialFileKind(m os.FileMode) string {
 	switch {
 	case m&os.ModeSocket != 0:
@@ -853,7 +859,7 @@ func specialFileKind(m os.FileMode) string {
 	case m&os.ModeDevice != 0:
 		return "Device"
 	default:
-		return "Special file"
+		return ""
 	}
 }
 
@@ -910,6 +916,13 @@ func (a *PXARArchive) startPrefetch(dirPath string, files []os.DirEntry) map[str
 		}
 		info, err := file.Info()
 		if err != nil || isLinkEntry(fullPath, info) || info.Size() > maxPrefetchFileSize {
+			continue
+		}
+		// WriteFile skips a FIFO, socket or device node, so it is never read
+		// ahead either. Reading one would hold a worker for good (a FIFO with
+		// no writer) or never end (a device such as a copy of /dev/zero
+		// reports size 0), and the files queued behind it would never arrive.
+		if specialFileKind(info.Mode()) != "" {
 			continue
 		}
 		if a.reuseCandidate(fullPath, info) {
@@ -1369,17 +1382,8 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 		return CatalogFile{}, nil
 	}
 
-	if posixFidelity {
-		if fileInfo.Mode()&os.ModeSymlink != 0 {
-			return a.writeSymlink(path, basename, fileInfo)
-		}
-		// FIFOs and sockets would block on open, and device nodes are not
-		// regular data: record them as skipped rather than hang or misread.
-		if !fileInfo.Mode().IsRegular() {
-			a.SkippedFiles = append(a.SkippedFiles,
-				fmt.Sprintf("%s (skipped, holds no file data): %s", specialFileKind(fileInfo.Mode()), path))
-			return CatalogFile{}, nil
-		}
+	if posixFidelity && fileInfo.Mode()&os.ModeSymlink != 0 {
+		return a.writeSymlink(path, basename, fileInfo)
 	}
 
 	// Skip junction points and symlinks (common on Windows: "Application Data", etc.)
@@ -1387,6 +1391,18 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 		skipMsg := fmt.Sprintf("Junction point (skipped): %s", path)
 		a.SkippedFiles = append(a.SkippedFiles, skipMsg)
 		return CatalogFile{}, nil // Return nil error to continue backup
+	}
+
+	// FIFOs, sockets and device nodes hold no file data, on every platform.
+	// Opening a FIFO blocks until a writer appears, so the backup hangs; a
+	// socket cannot be opened at all. This used to apply on Linux only: on
+	// macOS and the BSDs a FIFO hung the backup, and on Windows an AF_UNIX
+	// socket file (WSL, ssh-agent) failed to open and counted as a read error.
+	// Skip them like junction points: an expected skip, not a read error.
+	if kind := specialFileKind(fileInfo.Mode()); kind != "" {
+		a.SkippedFiles = append(a.SkippedFiles,
+			fmt.Sprintf("%s (skipped, holds no file data): %s", kind, path))
+		return CatalogFile{}, nil
 	}
 
 	// Metadata change detection: an unchanged file is not read at all.

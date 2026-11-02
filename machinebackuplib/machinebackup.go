@@ -31,7 +31,13 @@ import (
 type ProgressCallback func(percentage float64, message string) bool
 
 var (
-	errCancelled     = errors.New("backup cancelled by user")
+	// ErrCancelled is what a backup returns when the user pressed Stop (a
+	// progress callback returned true). It is wrapped with %w on the way out,
+	// so a caller can tell a Stop from a failure with errors.Is (upstream
+	// fff59e0). The fork's GUI tells them apart by its own context; this is
+	// for callers that have none. The text is matched by the GUI's history
+	// ("cancelled by user"), so keep it.
+	ErrCancelled     = errors.New("backup cancelled by user")
 	errUploadAborted = errors.New("upload aborted")
 )
 
@@ -98,6 +104,45 @@ func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, kn
 	c.reusechunk = reusechunk
 	c.newchunk = newchunk
 	c.knownChunks = knownChunks
+}
+
+// physicalDriveRe picks N out of \\.\PhysicalDriveN.
+var physicalDriveRe = regexp.MustCompile(`PhysicalDrive(\d+)$`)
+
+// physicalDriveIndex returns N for \\.\PhysicalDriveN. A device that starts
+// like one but has no number at the end (a typo in -backupdev or in a config
+// file) used to crash the program with an index out of range; now the backup
+// fails and says why (upstream 155c1be).
+func physicalDriveIndex(dev string) (int, error) {
+	m := physicalDriveRe.FindStringSubmatch(dev)
+	if len(m) < 2 {
+		return 0, fmt.Errorf("invalid physical drive path %q: expected \\\\.\\PhysicalDriveN", dev)
+	}
+	idx, err := strconv.ParseInt(m[1], 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid physical drive index in %q: %w", dev, err)
+	}
+	return int(idx), nil
+}
+
+// finiteOrZero returns f, or 0 when f is NaN or infinite: what a reader that
+// does not know its size reports (0/0).
+func finiteOrZero(f float64) float64 {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0
+	}
+	return f
+}
+
+// jobProgressFraction maps one device's read fraction (0..1) onto the whole
+// job. A job whose disks all report 0 bytes, or a reader that reports 0/0,
+// gives 0 instead of reaching the GUI and the log as "NaN%" (upstream
+// 63c9bc6, 0534a79, 155c1be).
+func jobProgressFraction(baseSize, devSize uint64, fraction float64, totalSize uint64) float64 {
+	if totalSize == 0 {
+		return 0
+	}
+	return finiteOrZero((float64(baseSize) + finiteOrZero(fraction)*float64(devSize)) / float64(totalSize))
 }
 
 func BytesToString(b int64) string {
@@ -358,7 +403,7 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 			// Returning true stops the backup (user pressed Stop).
 			if progressCallback != nil &&
 				progressCallback((float64(totread)/float64(size)), blockMessage(filename, uint64(totread), uint64(size))) {
-				rerr = fmt.Errorf("backup cancelled by user")
+				rerr = ErrCancelled
 				break
 			}
 		}
@@ -536,8 +581,10 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 	jp := cfg.Progress
 	jp.setSentSource(client.SentBytes)
 	jp.setPhase("connecting")
-	if progressCallback != nil {
-		progressCallback(0, "Connecting to Proxmox Backup Server...")
+	// A Stop pressed before the backup connects ends it here, before a PBS
+	// session or a snapshot is made (upstream 155c1be).
+	if progressCallback != nil && progressCallback(0, "Connecting to Proxmox Backup Server...") {
+		return nil, ErrCancelled
 	}
 
 	//Physical drive paths will be like  "\\\\.\\PhysicalDrive0"
@@ -554,9 +601,10 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 	for i, dev := range cfg.BackupDevices {
 		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
 			// For physical drives, get the disk size
-			re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
-			matches := re.FindStringSubmatch(dev)
-			idx, _ := strconv.ParseInt(matches[1], 10, 32)
+			idx, err := physicalDriveIndex(dev)
+			if err != nil {
+				return nil, err
+			}
 
 			// Get disk size using platform-specific function
 			size, err := GetDiskSize(fmt.Sprintf("\\\\.\\PhysicalDrive%d", idx))
@@ -606,6 +654,9 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		devSize := sizes[i]
 		jp.startDisk(dev, DiskModel(dev), i+1, len(cfg.BackupDevices), devSize)
 		deviceCallback := func(fraction float64, message string) bool {
+			// A reader that does not know its size reports 0/0 (NaN): count
+			// it as no progress on this disk.
+			fraction = finiteOrZero(fraction)
 			// The snapshot step reports 0 with its own message; data comes after.
 			if fraction > 0 {
 				jp.setPhase("data")
@@ -615,19 +666,17 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			if progressCallback == nil {
 				return false
 			}
-			whole := (float64(baseSize) + fraction*float64(devSize)) / float64(totalSize)
-			return progressCallback(whole, message)
+			return progressCallback(jobProgressFraction(baseSize, devSize, fraction, totalSize), message)
 		}
 		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
-			re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
-			matches := re.FindStringSubmatch(dev)
-			idx, _ := strconv.ParseInt(matches[1], 10, 32)
+			// Already checked by the size loop above.
+			idx, _ := physicalDriveIndex(dev)
 
 			isGPT := diskHasGPT(dev)
 			jp.setPhase("snapshot")
 			size, err := BackupWindowsDisk(client, int(idx), deviceCallback, jp, cfg.ReadFreeSpace)
 			if err != nil {
-				return nil, fmt.Errorf("backup disk %s %v", dev, err)
+				return nil, fmt.Errorf("backup disk %s: %w", dev, err)
 			}
 
 			disks = append(disks, BackupDisk{
@@ -641,7 +690,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			if progressCallback != nil && totalSize > 0 {
 				percentage := float64(currentProcessedSize) / float64(totalSize)
 				if progressCallback(percentage, fmt.Sprintf("Backup complete for disk %s", dev)) {
-					return nil, fmt.Errorf("backup cancelled by user")
+					return nil, ErrCancelled
 				}
 			}
 		} else {
@@ -653,7 +702,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			jp.setPhase("snapshot")
 			handled, size, err := backupWholeDisk(client, dev, i, deviceCallback, jp, cfg.ReadFreeSpace)
 			if err != nil {
-				return nil, fmt.Errorf("backup device %s: %v", dev, err)
+				return nil, fmt.Errorf("backup device %s: %w", dev, err)
 			}
 			if handled {
 				disks = append(disks, BackupDisk{
@@ -662,21 +711,23 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 					GPT:   isGPT,
 				})
 			} else if err := BackupFileDevice(client, dev, deviceCallback, jp); err != nil {
-				return nil, fmt.Errorf("backup device %s: %v", dev, err)
+				return nil, fmt.Errorf("backup device %s: %w", dev, err)
 			}
 
-			// Update progress: the whole-disk size when handled, otherwise the file size
-			processed := int64(0)
+			// Update progress: the whole-disk size when handled, otherwise the
+			// size found before the backup started. os.Stat, used here before,
+			// gives 0 for a block device (a partition such as /dev/sda1, or
+			// /dev/mapper/...), which left every later device's share of the
+			// progress bar short (upstream 155c1be).
+			processed := int64(devSize)
 			if handled {
 				processed = size
-			} else if info, err := os.Stat(dev); err == nil {
-				processed = info.Size()
 			}
 			currentProcessedSize += uint64(processed)
 			if progressCallback != nil && totalSize > 0 {
 				percentage := float64(currentProcessedSize) / float64(totalSize)
 				if progressCallback(percentage, fmt.Sprintf("Backup complete for device %s", dev)) {
-					return nil, fmt.Errorf("backup cancelled by user")
+					return nil, ErrCancelled
 				}
 			}
 		}
