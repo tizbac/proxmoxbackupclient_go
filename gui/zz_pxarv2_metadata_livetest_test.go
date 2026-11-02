@@ -63,7 +63,9 @@ func restoreAndCompare(t *testing.T, backupID, base string, snaps []metaSnap) {
 		for _, parallel := range []bool{false, true} {
 			label := fmt.Sprintf("%s restore parallel=%v", s.label, parallel)
 			dest := filepath.Join(base, fmt.Sprintf("restore-%d-%v", s.unix, parallel))
-			os.MkdirAll(dest, 0755)
+			if err := os.MkdirAll(dest, 0755); err != nil {
+				t.Fatal(err)
+			}
 			var verified int
 			var fails []string
 			o := ropts
@@ -87,7 +89,8 @@ func restoreAndCompare(t *testing.T, backupID, base string, snaps []metaSnap) {
 
 func countRegularFiles(root string) uint64 {
 	var n uint64
-	filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+	// The callback never returns an error, so neither can the walk.
+	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 		if err == nil && info.Mode().IsRegular() {
 			n++
 		}
@@ -161,7 +164,9 @@ func TestPXARv2MetadataMode(t *testing.T) {
 		for _, s := range snaps {
 			lines = append(lines, fmt.Sprintf("%s %d %s", backupID, s.unix, archive))
 		}
-		os.WriteFile(filepath.Join(keep, "snapshots.txt"), []byte(strings.Join(lines, "\n")+"\n"), 0644)
+		if err := os.WriteFile(filepath.Join(keep, "snapshots.txt"), []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	restoreAndCompare(t, backupID, base, snaps)
 }

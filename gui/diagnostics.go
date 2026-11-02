@@ -94,9 +94,13 @@ func dumpGoroutines(reason string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	// The explicit Close at the end reports a failed write-back; this one
+	// only tidies up on the early returns.
+	defer func() { _ = f.Close() }()
 
-	fmt.Fprintf(f, "=== Goroutine dump: %s ===\nReason: %s\n\n", time.Now().Format(time.RFC3339), reason)
+	if _, err := fmt.Fprintf(f, "=== Goroutine dump: %s ===\nReason: %s\n\n", time.Now().Format(time.RFC3339), reason); err != nil {
+		return "", err
+	}
 
 	buf := make([]byte, 1<<20) // 1MB; grown below if the real dump doesn't fit
 	for {
@@ -108,6 +112,9 @@ func dumpGoroutines(reason string) (string, error) {
 		buf = make([]byte, 2*len(buf))
 	}
 	if _, err := f.Write(buf); err != nil {
+		return "", err
+	}
+	if err := f.Close(); err != nil {
 		return "", err
 	}
 	return path, nil

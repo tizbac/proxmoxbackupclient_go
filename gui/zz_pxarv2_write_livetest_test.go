@@ -87,14 +87,18 @@ func TestPXARv2WriteDataMode(t *testing.T) {
 		for _, s := range snaps {
 			lines = append(lines, fmt.Sprintf("%s %d %s", backupID, s.unix, archive))
 		}
-		os.WriteFile(filepath.Join(keep, "snapshots.txt"), []byte(strings.Join(lines, "\n")+"\n"), 0644)
+		if err := os.WriteFile(filepath.Join(keep, "snapshots.txt"), []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	for _, s := range snaps {
 		for _, parallel := range []bool{false, true} {
 			label := fmt.Sprintf("%s restore parallel=%v", s.label, parallel)
 			dest := filepath.Join(base, fmt.Sprintf("restore-%d-%v", s.unix, parallel))
-			os.MkdirAll(dest, 0755)
+			if err := os.MkdirAll(dest, 0755); err != nil {
+				t.Fatal(err)
+			}
 			var verified int
 			var fails []string
 			o := ropts
@@ -120,7 +124,8 @@ func TestPXARv2WriteDataMode(t *testing.T) {
 func writeShaManifest(t *testing.T, root, out string) {
 	t.Helper()
 	var lines []string
-	filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+	// The callback never returns an error, so neither can the walk.
+	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 		if err != nil || !info.Mode().IsRegular() {
 			return nil
 		}
@@ -129,13 +134,19 @@ func writeShaManifest(t *testing.T, root, out string) {
 			return nil
 		}
 		h := sha256.New()
-		io.Copy(h, f)
-		f.Close()
+		if _, err := io.Copy(h, f); err != nil {
+			t.Errorf("hashing %s: %v", p, err)
+		}
+		_ = f.Close()
 		rel, _ := filepath.Rel(root, p)
 		lines = append(lines, hex.EncodeToString(h.Sum(nil))+"  ./"+filepath.ToSlash(rel))
 		return nil
 	})
 	sort.Strings(lines)
-	os.MkdirAll(filepath.Dir(out), 0755)
-	os.WriteFile(out, []byte(strings.Join(lines, "\n")+"\n"), 0644)
+	if err := os.MkdirAll(filepath.Dir(out), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(out, []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 }

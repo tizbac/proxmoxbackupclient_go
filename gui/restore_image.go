@@ -747,12 +747,12 @@ func writeImageFile(opts RestoreOptions, dest string, f imagefs.FileReader, e im
 		cerr = err
 	}
 	if cerr != nil {
-		os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name()) // the copy error is the one to report
 		return skip(false, cerr.Error())
 	}
 	clearReadOnly(dest)
 	if err := os.Rename(tmp.Name(), dest); err != nil {
-		os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name())
 		return skip(false, err.Error())
 	}
 	applyImageOwnerMode(dest, e)

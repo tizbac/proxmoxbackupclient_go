@@ -174,17 +174,6 @@ func (a *App) runNoter(key string) snapshotNoter {
 	return nil
 }
 
-// runIDFor returns the API entry of the service run under key ("" if none).
-func (a *App) runIDFor(key string) string {
-	if key == "" {
-		return ""
-	}
-	if v, ok := a.pendingPostActions.Load(key); ok {
-		return v.(*pendingPostActionsEntry).runID
-	}
-	return ""
-}
-
 // TrackRequestRun registers a run the GUI asked the service for, under its
 // API entry jobID (api.RunTracker). Like RegisterRunOptions it carries the
 // run's change detection and forensic copy; the backup's own completion removes it.
@@ -194,27 +183,6 @@ func (a *App) TrackRequestRun(jobID, backupType, changeDetectionMode string, rea
 		v.(*pendingPostActionsEntry).runID = jobID
 	}
 	return key
-}
-
-// reportRun sends a service run's progress (fraction 0-1) to its API entry.
-func (a *App) reportRun(runID string, fraction float64, message string) {
-	if runID != "" && a.runReporter != nil {
-		a.runReporter.ReportProgress(runID, fraction*100, message)
-	}
-}
-
-// reportRunStats sends a service run's live statistics to its API entry.
-func (a *App) reportRunStats(runID string, stats *BackupProgressStats) {
-	if runID != "" && a.runReporter != nil && stats != nil {
-		a.runReporter.ReportStats(runID, stats.event())
-	}
-}
-
-// reportRunFile sends the file a service run is reading to its API entry.
-func (a *App) reportRunFile(runID string, path string) {
-	if runID != "" && a.runReporter != nil {
-		a.runReporter.ReportFile(runID, path)
-	}
 }
 
 // finishRun records a service run's outcome on its API entry.

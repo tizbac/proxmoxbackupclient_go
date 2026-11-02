@@ -28,7 +28,7 @@ func linuxFolderDisk(dir string) (disk string, offset int64, mount string, err e
 	if err != nil {
 		return "", 0, "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	best, majmin := "", ""
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)

@@ -34,12 +34,12 @@ type FileReader interface {
 	Extents() [][2]int64
 }
 
-// ErrBitLocker: the partition is encrypted with BitLocker. A machine backup
-// reads raw partitions without a snapshot only when it cannot take one, and a
-// BitLocker volume read that way is the encrypted data.
+// ErrBitLocker means the partition is encrypted with BitLocker. A machine
+// backup reads raw partitions without a snapshot only when it cannot take
+// one, and a BitLocker volume read that way is the encrypted data.
 var ErrBitLocker = errors.New("encrypted with BitLocker: the backup holds the encrypted data, so its files cannot be browsed (back the volume up with its snapshot, or restore the whole disk)")
 
-// ErrUnsupported: no reader for this partition's file system.
+// ErrUnsupported means there is no reader for this partition's file system.
 var ErrUnsupported = errors.New("file system not supported for browsing")
 
 // OpenVolume opens the file system fs (as Probe names it) on r, a partition

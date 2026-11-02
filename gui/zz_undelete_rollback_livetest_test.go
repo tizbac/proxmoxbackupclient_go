@@ -156,7 +156,8 @@ func undeleteRollbackLive(t *testing.T, mode string) {
 	must(t, os.MkdirAll(out, 0o755))
 	runRestores(t, "undelete elsewhere", undeleteRuns(cfg, job, bySnap, []int64{s2, s1}, out, false, false))
 	found := 0
-	filepath.Walk(out, func(p string, info os.FileInfo, err error) error {
+	// The callback never returns an error, so neither can the walk.
+	_ = filepath.Walk(out, func(p string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			found++
 		}
@@ -225,7 +226,7 @@ func undeleteRollbackLive(t *testing.T, mode string) {
 	}
 	if items, _ := os.ReadDir(filepath.Join(base, pbscommon.RollbackSafetyFolder)); len(items) > 0 {
 		left := filepath.Join(base, pbscommon.RollbackSafetyFolder)
-		filepath.Walk(left, func(p string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(left, func(p string, info os.FileInfo, err error) error {
 			if err == nil && !info.IsDir() {
 				t.Errorf("left in the safety folder after undo: %s", p)
 			}

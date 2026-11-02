@@ -87,7 +87,7 @@ func OpenNTFS(r io.ReaderAt) (v *NTFS, err error) {
 // FSName is "NTFS".
 func (v *NTFS) FSName() string { return "NTFS" }
 
-// CaseInsensitive: NTFS names match without regard to case.
+// CaseInsensitive is true: NTFS names match without regard to case.
 func (v *NTFS) CaseInsensitive() bool { return true }
 
 // Open opens a file entry from List.

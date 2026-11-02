@@ -148,7 +148,7 @@ func openLog(folder int, name string) (io.ReadCloser, error) {
 	}
 	gz, err := gzip.NewReader(f)
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, err
 	}
 	return struct {
@@ -178,7 +178,7 @@ func (a *App) ReadLog(q LogQuery) (LogView, error) {
 	if err != nil {
 		return LogView{}, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	n := q.Lines
 	if n <= 0 {
 		n = defaultLogLines

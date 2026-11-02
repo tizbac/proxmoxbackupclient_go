@@ -52,7 +52,7 @@ func pxarv2Expected(t *testing.T, label string) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	m := map[string]string{}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -77,7 +77,8 @@ func pxarv2Opts(s pxarv2Snapshot) RestoreOptions {
 func pxarv2Restored(t *testing.T, dest string) map[string]string {
 	t.Helper()
 	root := ""
-	filepath.Walk(dest, func(p string, info os.FileInfo, err error) error {
+	// Neither callback below returns an error, so neither can the walks.
+	_ = filepath.Walk(dest, func(p string, info os.FileInfo, err error) error {
 		if err == nil && root == "" && !info.IsDir() && filepath.ToSlash(p) != "" && strings.HasSuffix(filepath.ToSlash(p), "/a/hello.txt") {
 			root = filepath.Dir(filepath.Dir(p))
 		}
@@ -87,7 +88,7 @@ func pxarv2Restored(t *testing.T, dest string) map[string]string {
 	if root == "" {
 		return got
 	}
-	filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !info.Mode().IsRegular() {
 			return nil
 		}
@@ -97,8 +98,10 @@ func pxarv2Restored(t *testing.T, dest string) map[string]string {
 			return nil
 		}
 		h := sha256.New()
-		io.Copy(h, f)
-		f.Close()
+		if _, err := io.Copy(h, f); err != nil {
+			t.Errorf("hashing %s: %v", p, err)
+		}
+		_ = f.Close()
 		got[filepath.ToSlash(rel)] = hex.EncodeToString(h.Sum(nil))
 		return nil
 	})
@@ -177,7 +180,9 @@ func TestPXARv2OfficialInterop(t *testing.T) {
 		// Full restore, sequential and parallel.
 		for _, parallel := range []bool{false, true} {
 			dest := filepath.Join(base, s.label+map[bool]string{false: "-seq", true: "-par"}[parallel])
-			os.MkdirAll(dest, 0755)
+			if err := os.MkdirAll(dest, 0755); err != nil {
+				t.Fatal(err)
+			}
 			err := RestoreSnapshotInline(func() RestoreOptions {
 				o := pxarv2Opts(s)
 				o.DestPath, o.Mode, o.Overwrite, o.ParallelExtraction = dest, RestoreModeAlternateAbs, true, parallel
@@ -200,7 +205,9 @@ func TestPXARv2OfficialInterop(t *testing.T) {
 				continue
 			}
 			dest := filepath.Join(base, s.label+"-partial-"+strings.ReplaceAll(sel, "/", "_"))
-			os.MkdirAll(dest, 0755)
+			if err := os.MkdirAll(dest, 0755); err != nil {
+				t.Fatal(err)
+			}
 			err := RestoreSnapshotInline(func() RestoreOptions {
 				o := pxarv2Opts(s)
 				o.DestPath, o.Mode, o.Overwrite, o.IncludePaths = dest, RestoreModeAlternateAbs, true, []string{inc}
@@ -213,17 +220,23 @@ func TestPXARv2OfficialInterop(t *testing.T) {
 			// The restored tree has no a/hello.txt for these, so collect by
 			// the selection's own relative path below dest.
 			got := map[string]string{}
-			filepath.Walk(dest, func(p string, info os.FileInfo, err error) error {
+			_ = filepath.Walk(dest, func(p string, info os.FileInfo, err error) error {
 				if err != nil || info.IsDir() {
 					return nil
 				}
 				rel := filepath.ToSlash(p)
 				for wp := range want {
 					if strings.HasSuffix(rel, "/"+wp) {
-						f, _ := os.Open(p)
+						f, err := os.Open(p)
+						if err != nil {
+							t.Errorf("%s partial %s: %v", s.label, sel, err)
+							return nil
+						}
 						h := sha256.New()
-						io.Copy(h, f)
-						f.Close()
+						if _, err := io.Copy(h, f); err != nil {
+							t.Errorf("%s partial %s: hashing %s: %v", s.label, sel, p, err)
+						}
+						_ = f.Close()
 						got[wp] = hex.EncodeToString(h.Sum(nil))
 						return nil
 					}

@@ -80,7 +80,8 @@ func TestWrongKeyRestoreLive(t *testing.T) {
 	empty := func(label, dir string) {
 		t.Helper()
 		var files []string
-		filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		// The callback never returns an error, so neither can the walk.
+		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 			if err == nil && !d.IsDir() {
 				files = append(files, p)
 			}

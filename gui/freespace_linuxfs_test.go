@@ -29,7 +29,7 @@ func TestLinuxFreeSpaceMapsKeepEveryFile(t *testing.T) {
 			}
 			zr, _ := gzip.NewReader(f)
 			img, err := io.ReadAll(zr)
-			f.Close()
+			_ = f.Close()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -76,7 +76,10 @@ func TestLinuxFreeSpaceMapsKeepEveryFile(t *testing.T) {
 					continue
 				}
 				h := sha256.New()
-				io.Copy(h, io.NewSectionReader(fr, 0, fr.Size()))
+				if _, err := io.Copy(h, io.NewSectionReader(fr, 0, fr.Size())); err != nil {
+					t.Errorf("%s: %v", e.Path, err)
+					continue
+				}
 				if hex.EncodeToString(h.Sum(nil)) != sum {
 					t.Errorf("%s: content lost by the free-space map", e.Path)
 				}

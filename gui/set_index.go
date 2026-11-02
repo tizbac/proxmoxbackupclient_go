@@ -64,12 +64,12 @@ func (a *App) loadSetJob(jobID string) (ScheduledJob, error) {
 				return ScheduledJob{}, fmt.Errorf("machine Backup Set %q: none of its folders for Undelete and Roll back is on a disk it backs up (edit the set to choose them)", j.Name)
 			}
 			if len(setFoldersOf(j)) == 0 {
-				return ScheduledJob{}, fmt.Errorf("Backup Set %q has no folders", j.Name)
+				return ScheduledJob{}, fmt.Errorf("Backup Set %q has no folders", j.Name) //nolint:staticcheck // ST1005: starts with the feature name
 			}
 			return j, nil
 		}
 	}
-	return ScheduledJob{}, fmt.Errorf("Backup Set %s not found", jobID)
+	return ScheduledJob{}, fmt.Errorf("Backup Set %s not found", jobID) //nolint:staticcheck // ST1005: starts with the feature name
 }
 
 // setBackupID is the backup ID a set's runs write to (the hostname when the
@@ -317,12 +317,12 @@ func readIndexCache(path string) (snapshotIndex, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	zr, err := gzip.NewReader(f)
 	if err != nil {
 		return nil, err
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	var idx snapshotIndex
 	if err := gob.NewDecoder(zr).Decode(&idx); err != nil {
 		return nil, err
@@ -341,24 +341,26 @@ func writeIndexCache(path string, idx snapshotIndex) error {
 	if err != nil {
 		return err
 	}
+	// On each failure below the first error is the one returned; closing
+	// and removing the half-written temp file is only tidying up.
 	zw := gzip.NewWriter(f)
 	if err := gob.NewEncoder(zw).Encode(idx); err != nil {
-		zw.Close()
-		f.Close()
-		os.Remove(tmp)
+		_ = zw.Close()
+		_ = f.Close()
+		_ = os.Remove(tmp)
 		return err
 	}
 	if err := zw.Close(); err != nil {
-		f.Close()
-		os.Remove(tmp)
+		_ = f.Close()
+		_ = os.Remove(tmp)
 		return err
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return err
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return err
 	}
 	trimIndexCache(filepath.Dir(path), indexCacheLimit)

@@ -414,7 +414,7 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 	if archiveName == "" {
 		archiveName = "backup.pxar.didx"
 	}
-	if opts.BaseURL == "" || !((opts.AuthID != "" && opts.Secret != "") || opts.Ticket != "") {
+	if opts.BaseURL == "" || ((opts.AuthID == "" || opts.Secret == "") && opts.Ticket == "") {
 		return fmt.Errorf("PBS connection parameters required")
 	}
 	if opts.BackupID == "" {
@@ -1274,7 +1274,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	}
 	stage("preparing", "")
 
-	if opts.BaseURL == "" || !((opts.AuthID != "" && opts.Secret != "") || opts.Ticket != "") {
+	if opts.BaseURL == "" || ((opts.AuthID == "" || opts.Secret == "") && opts.Ticket == "") {
 		return fmt.Errorf("PBS connection parameters required")
 	}
 	if opts.BackupID == "" {
@@ -1332,7 +1332,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	// dest, cross-host refusal) fails fast. For alternate modes meta is unused;
 	// for in-place, meta was read above before download.
 	var rewriter pbscommon.PathRewriter
-	if !(mode == RestoreModeOriginal && opts.ArchiveRoots != nil) {
+	if mode != RestoreModeOriginal || opts.ArchiveRoots == nil {
 		var err error
 		rewriter, err = buildPathRewriter(opts, meta)
 		if err != nil {

@@ -182,7 +182,9 @@ func setField(t *testing.T, text, field string, v any) string {
 func TestKeyImportEdgeCases(t *testing.T) {
 	text, fp := newTestKey(t)
 	var m map[string]any
-	json.Unmarshal([]byte(text), &m)
+	if err := json.Unmarshal([]byte(text), &m); err != nil {
+		t.Fatal(err)
+	}
 	data := m["data"].(string)
 
 	t.Run("spare bits of the last data character", func(t *testing.T) {
@@ -265,9 +267,10 @@ func pngHeader(w, h uint32) []byte {
 	ihdr[12], ihdr[13] = 8, 6 // 8-bit RGBA
 	var b bytes.Buffer
 	b.WriteString("\x89PNG\r\n\x1a\n")
-	binary.Write(&b, binary.BigEndian, uint32(13))
+	// Writes to a bytes.Buffer cannot fail.
+	_ = binary.Write(&b, binary.BigEndian, uint32(13))
 	b.Write(ihdr)
-	binary.Write(&b, binary.BigEndian, crc32.ChecksumIEEE(ihdr))
+	_ = binary.Write(&b, binary.BigEndian, crc32.ChecksumIEEE(ihdr))
 	return b.Bytes()
 }
 

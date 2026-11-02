@@ -223,7 +223,7 @@ func readLimited(path string, max int64) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(f, max+1))
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
@@ -445,7 +445,7 @@ func saveImportedKey(dir, text, passphrase string) (path string, existed bool, e
 			werr = cerr
 		}
 		if werr != nil {
-			os.Remove(path)
+			_ = os.Remove(path) // the write error is the one to report
 			return "", false, fmt.Errorf("writing %s: %w", path, werr)
 		}
 		// Best effort, as for a generated key: a FAT/exFAT folder has no
@@ -454,7 +454,7 @@ func saveImportedKey(dir, text, passphrase string) (path string, existed bool, e
 			writeDebugLog(fmt.Sprintf("saveImportedKey: could not restrict access to %s: %v", path, err))
 		}
 		if back := inspectKeyFile(path); !back.Usable || back.Fingerprint != fp {
-			os.Remove(path)
+			_ = os.Remove(path)
 			return "", false, fmt.Errorf("the key was written to %s but did not read back as the same key (%s)", path, back.Reason)
 		}
 		return path, false, nil

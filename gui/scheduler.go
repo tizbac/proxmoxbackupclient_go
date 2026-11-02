@@ -678,14 +678,10 @@ func parseHHMM(s string) (hour, min int, err error) {
 	return hour, min, nil
 }
 
-// calculateNextRun calculates a set's next run: the earliest time any of its
-// enabled schedules gives (schedules.go), "" for a manual set.
-func calculateNextRun(job ScheduledJob) string {
-	return calculateNextRunAt(job, time.Now())
-}
-
-// calculateNextRunAt is calculateNextRun with an explicit reference time, so
-// the scheduling maths is testable without the wall clock.
+// calculateNextRunAt calculates a set's next run after now: the earliest time
+// any of its enabled schedules gives (schedules.go), "" for a manual set.
+// Taking the reference time keeps the scheduling maths testable without the
+// wall clock.
 func calculateNextRunAt(job ScheduledJob, now time.Time) string {
 	next, _ := nextRunFor(job, now)
 	return next

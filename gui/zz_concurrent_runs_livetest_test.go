@@ -375,7 +375,7 @@ func checkRunLogs(t *testing.T, longID, smallID, smallSrc, bigSrc string) {
 			if strings.HasSuffix(f, ".gz") {
 				gz, err := gzip.NewReader(fh)
 				if err != nil {
-					fh.Close()
+					_ = fh.Close()
 					t.Errorf("gunzip %s: %v", f, err)
 					continue
 				}
@@ -389,7 +389,7 @@ func checkRunLogs(t *testing.T, longID, smallID, smallSrc, bigSrc string) {
 				b.WriteString(sc.Text())
 				b.WriteByte('\n')
 			}
-			fh.Close()
+			_ = fh.Close()
 			texts = append(texts, b.String())
 		}
 		return texts

@@ -118,7 +118,7 @@ func (f *xfsFile) ReadAt(p []byte, off int64) (int, error) {
 	defer f.v.mu.Unlock()
 	if f.f == nil || off < f.pos {
 		if f.f != nil {
-			f.f.Close()
+			_ = f.f.Close() // read-only handle being reopened to seek back
 		}
 		file, err := f.v.fs.Open(f.path)
 		if err != nil {

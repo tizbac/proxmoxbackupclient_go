@@ -35,7 +35,9 @@ func TestVerifyRestoredFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	missing := writeVerifyFile(t, dir, "gone.txt", "bye")
-	os.Remove(missing.Path)
+	if err := os.Remove(missing.Path); err != nil {
+		t.Fatal(err)
+	}
 
 	files := []pbscommon.PXARExtractedFile{
 		good, empty, sameSize, wrongSize, missing,

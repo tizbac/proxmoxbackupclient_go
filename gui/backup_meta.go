@@ -44,7 +44,7 @@ func downloadCombinedBackupFileMeta(client *pbscommon.PBSClient) (*CombinedBacku
 	if err != nil {
 		return nil, err
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	payload, err := io.ReadAll(gz)
 	if err != nil {
 		return nil, err

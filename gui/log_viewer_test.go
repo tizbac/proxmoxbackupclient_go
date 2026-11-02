@@ -33,9 +33,15 @@ func writeLogLines(t *testing.T, path string, lines []string, gz bool) {
 		t.Fatal(err)
 	}
 	w := gzip.NewWriter(f)
-	w.Write(data)
-	w.Close()
-	f.Close()
+	if _, err := w.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // A run's log: 1000 lines a second apart from 10:00:00, every other one a
@@ -60,7 +66,9 @@ func TestLogFilesListed(t *testing.T) {
 	writeLogLines(t, filepath.Join(dir, "backup-gui.log"), []string{"[BACKUP] [2026-11-01 09:00:00] x"}, false)
 	writeLogLines(t, filepath.Join(dir, "service-gui.log"), []string{"[SERVICE] [2026-11-01 09:00:00] y"}, false)
 	writeLogLines(t, filepath.Join(dir, "backup-gui.log.20261031-235959.gz"), []string{"[BACKUP] [2026-10-31 23:00:00] old"}, true)
-	os.WriteFile(filepath.Join(dir, "scheduled_jobs.json"), []byte("[]"), 0o600)
+	if err := os.WriteFile(filepath.Join(dir, "scheduled_jobs.json"), []byte("[]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	files, err := (&App{}).ListLogFiles()
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +146,9 @@ func TestReadLogEndFilterChunksAround(t *testing.T) {
 
 func TestReadLogRefusesOtherFiles(t *testing.T) {
 	dir := withLogFolder(t)
-	os.WriteFile(filepath.Join(dir, "config.json"), []byte("{}"), 0o600)
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	a := &App{}
 	for _, name := range []string{"config.json", "../backup-gui.log", `..\service-gui.log`, "backup-gui.log/../../x.log", ""} {
 		if _, err := a.ReadLog(LogQuery{Name: name}); err == nil {

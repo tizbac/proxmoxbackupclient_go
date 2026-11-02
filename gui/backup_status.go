@@ -15,8 +15,9 @@ import (
 // sidecar. The ExcludedByPolicy and Corrupted buckets are defined now but stay empty
 // until Group 1 (user exclusions H-04 and mode-B corruption) fills them.
 
-// The sidecar types live in pbscommon so the directorybackup CLI writes the
-// same blob; these aliases keep the GUI code unchanged.
+// BackupStatusFilename and the sidecar types live in pbscommon so the
+// directorybackup CLI writes the same blob; these aliases keep the GUI code
+// unchanged.
 const BackupStatusFilename = pbscommon.BackupStatusFilename
 
 type (
@@ -97,45 +98,6 @@ type BackupStatus struct {
 // complete except for deliberate policy exclusions. Partial and failed are not.
 func (s *BackupStatus) Success() bool {
 	return s != nil && (s.Outcome == OutcomeVerifiedSuccess || s.Outcome == OutcomeSuccessWithExclusions)
-}
-
-// outcomeRank orders outcomes worst-to-best (failed=0 … verified=3).
-func outcomeRank(o BackupOutcome) int {
-	switch o {
-	case OutcomeFailed:
-		return 0
-	case OutcomePartial:
-		return 1
-	case OutcomeSuccessWithExclusions:
-		return 2
-	default: // OutcomeVerifiedSuccess
-		return 3
-	}
-}
-
-// worstOutcome returns the worse (lower-ranked) of two outcomes.
-func worstOutcome(a, b BackupOutcome) BackupOutcome {
-	if outcomeRank(a) <= outcomeRank(b) {
-		return a
-	}
-	return b
-}
-
-// merge folds a child run's counts, file buckets and worst outcome into agg.
-// Used to build one aggregate result for multi-folder and auto-split runs.
-func (s *BackupStatus) merge(child *BackupStatus) {
-	if child == nil {
-		return
-	}
-	s.Outcome = worstOutcome(s.Outcome, child.Outcome)
-	s.NewChunks += child.NewChunks
-	s.ReusedChunks += child.ReusedChunks
-	s.FailedChunks += child.FailedChunks
-	s.TotalBytes += child.TotalBytes
-	s.Directories = append(s.Directories, child.Directories...)
-	s.ExcludedByPolicy = append(s.ExcludedByPolicy, child.ExcludedByPolicy...)
-	s.SkippedReadError = append(s.SkippedReadError, child.SkippedReadError...)
-	s.Corrupted = append(s.Corrupted, child.Corrupted...)
 }
 
 func skippedToIssues(skipped []string) []FileIssue { return pbscommon.SkippedToIssues(skipped) }
@@ -236,7 +198,7 @@ func (s *BackupProgressStats) event() map[string]interface{} {
 		"filesTotal":    s.FilesTotal,
 		"uploadedBytes": s.UploadedBytes,
 		"sentBytes":     s.SentBytes,
-		"phase":        s.Phase,
+		"phase":         s.Phase,
 		"readReason":    s.ReadReason,
 		"changeMode":    s.ChangeMode,
 		"kind":          s.Kind,

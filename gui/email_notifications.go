@@ -43,7 +43,9 @@ func (a *App) SendTestEmail(to string) error {
 	if err != nil {
 		return fmt.Errorf("could not connect to mail server: %w", err)
 	}
-	defer client.Quit()
+	// The message is already accepted by the time QUIT is sent, so a failed
+	// QUIT does not mean the mail was lost.
+	defer func() { _ = client.Quit() }()
 
 	from := a.config.EmailFrom
 	if from == "" {
@@ -83,7 +85,7 @@ func (a *App) sendJobNotificationEmail(job ScheduledJob, success bool, message s
 		writeDebugLog(fmt.Sprintf("[PostBackup] could not connect to mail server for job %q: %v", job.Name, err))
 		return true
 	}
-	defer client.Quit()
+	defer func() { _ = client.Quit() }() // as in SendTestEmail: QUIT failing does not lose the mail
 
 	from := a.config.EmailFrom
 	if from == "" {

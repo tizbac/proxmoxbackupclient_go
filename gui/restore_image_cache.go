@@ -46,7 +46,7 @@ func loadImageVolumes(key snapshotCacheKey) ([]imageVolume, bool) {
 	if err != nil {
 		return nil, false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	zr, err := gzip.NewReader(f)
 	if err != nil {
 		return nil, false
@@ -78,11 +78,11 @@ func saveImageVolumes(key snapshotCacheKey, vols []imageVolume) error {
 		err = cerr
 	}
 	if err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp) // the write error is the one to report
 		return fmt.Errorf("image list cache: %w", err)
 	}
 	if err := os.Rename(tmp, p); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return err
 	}
 	return nil

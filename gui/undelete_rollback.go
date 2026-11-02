@@ -133,7 +133,7 @@ func (a *App) ScanUndelete(jobID string, days int) (*UndeleteScan, error) {
 		return nil, err
 	}
 	if len(snaps) == 0 {
-		return nil, fmt.Errorf("Backup Set %q has no snapshots on this server yet", job.Name)
+		return nil, fmt.Errorf("Backup Set %q has no snapshots on this server yet", job.Name) //nolint:staticcheck // ST1005: starts with the feature name
 	}
 	if days > 0 {
 		cutoff := time.Now().Add(-time.Duration(days) * 24 * time.Hour).Unix()
@@ -565,7 +565,7 @@ func (a *App) StartRollback(jobID string, snapshotUnix int64, policy string, bac
 	busy := runningJobs[job.ID]
 	runningJobsMutex.Unlock()
 	if busy {
-		return fmt.Errorf("Backup Set %q is running a backup; roll back when it has finished", job.Name)
+		return fmt.Errorf("Backup Set %q is running a backup; roll back when it has finished", job.Name) //nolint:staticcheck // ST1005: starts with the feature name
 	}
 	if _, loaded := rollbackHolds.LoadOrStore(job.ID, true); loaded {
 		return fmt.Errorf("a roll back of %q is already running", job.Name)

@@ -65,7 +65,7 @@ func e2eSnapshotState(t *testing.T, root string) map[string]e2eFile {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		h := sha256.New()
 		if _, err := io.Copy(h, f); err != nil {
 			return err
@@ -88,8 +88,11 @@ func e2eWriteRandom(t *testing.T, path string, n int64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
 	if _, err := io.CopyN(f, rand.Reader, n); err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -177,10 +180,16 @@ func e2eMutate(t *testing.T, root string) {
 		t.Fatal(err)
 	}
 	b := []byte{0}
-	f.ReadAt(b, 50*1024*1024)
+	if _, err := f.ReadAt(b, 50*1024*1024); err != nil {
+		t.Fatal(err)
+	}
 	b[0] ^= 0xFF
-	f.WriteAt(b, 50*1024*1024)
-	f.Close()
+	if _, err := f.WriteAt(b, 50*1024*1024); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Remove(filepath.Join(root, "sizes", "f511.bin")); err != nil {
 		t.Fatal(err)
 	}
@@ -188,9 +197,16 @@ func e2eMutate(t *testing.T, root string) {
 	if err := os.Rename(filepath.Join(root, "unicode", "spaces  and...dots .txt"), filepath.Join(root, "unicode", "renamed.txt")); err != nil {
 		t.Fatal(err)
 	}
-	fa, _ := os.OpenFile(filepath.Join(root, "sizes", "f4096.bin"), os.O_APPEND|os.O_WRONLY, 0644)
-	fa.Write([]byte("appended"))
-	fa.Close()
+	fa, err := os.OpenFile(filepath.Join(root, "sizes", "f4096.bin"), os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fa.Write([]byte("appended")); err != nil {
+		t.Fatal(err)
+	}
+	if err := fa.Close(); err != nil {
+		t.Fatal(err)
+	}
 	// 1/1/1970 exactly (mtime 0) must restore as 1970, not "now"
 	z := filepath.Join(root, "times", "epoch0.txt")
 	e2eWriteBytes(t, z, []byte("epoch"))
@@ -200,7 +216,8 @@ func e2eMutate(t *testing.T, root string) {
 func e2eFindRoot(t *testing.T, dest string) string {
 	t.Helper()
 	var found string
-	filepath.Walk(dest, func(p string, info os.FileInfo, err error) error {
+	// The callback never returns an error, so neither can the walk.
+	_ = filepath.Walk(dest, func(p string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() && info.Name() == "e2e-marker.txt" && found == "" {
 			found = filepath.Dir(p)
 		}
@@ -286,7 +303,9 @@ func TestE2EDirectoryModes(t *testing.T) {
 		base = t.TempDir()
 	}
 	src := filepath.Join(base, "src")
-	os.RemoveAll(base)
+	if err := os.RemoveAll(base); err != nil {
+		t.Fatal(err)
+	}
 	e2eBuildTree(t, src)
 	useVSS := os.Getenv("PBS_E2E_VSS") != "" && runtime.GOOS == "windows"
 	backupID := fmt.Sprintf("e2e-dir-%d", time.Now().Unix())
@@ -308,7 +327,7 @@ func TestE2EDirectoryModes(t *testing.T) {
 			BackupObjects: []string{src}, BackupID: backupID, BackupType: "host", Kind: "directory",
 			Compression: "fastest", UseVSS: vss, PrefetchWorkers: prefetch,
 			OnResult: func(s *BackupStatus) { rs = s },
-			OnFile: func(p string) { files = append(files, p) },
+			OnFile:   func(p string) { files = append(files, p) },
 		})
 		if err != nil {
 			t.Fatalf("%s: backup failed: %v", label, err)
@@ -358,7 +377,7 @@ func TestE2EDirectoryModes(t *testing.T) {
 				BackupID: backupID, SnapshotTime: time.Unix(s.unix, 0).UTC(), DestPath: dest,
 				Mode: RestoreModeAlternateAbs, Overwrite: true, ParallelExtraction: parallel,
 				VerifyAfterRestore: true,
-				OnVerifySummary: func(v int, f []string) { verified, verifyFails = v, f },
+				OnVerifySummary:    func(v int, f []string) { verified, verifyFails = v, f },
 				OnProgress: func(p float64, m string) {
 					if p+1e-9 < last {
 						monotonic = false
@@ -379,7 +398,7 @@ func TestE2EDirectoryModes(t *testing.T) {
 			}
 			got := e2eSnapshotState(t, e2eFindRoot(t, dest))
 			e2eCompare(t, label, s.state, got, "")
-			os.RemoveAll(dest)
+			_ = os.RemoveAll(dest)
 		}
 	}
 
@@ -435,7 +454,9 @@ func TestE2EDirectoryModes(t *testing.T) {
 	} else {
 		for _, parallel := range []bool{false, true} {
 			dest := filepath.Join(base, fmt.Sprintf("partial-%v", parallel))
-			os.MkdirAll(dest, 0755)
+			if err := os.MkdirAll(dest, 0755); err != nil {
+				t.Fatal(err)
+			}
 			err := RestoreSnapshotInline(RestoreOptions{
 				BaseURL: e2eBaseURL, AuthID: e2eAuthID, Secret: e2eSecret, Datastore: e2eStore, CertFingerprint: e2eFP,
 				BackupID: backupID, SnapshotTime: time.Unix(s2.unix, 0).UTC(), DestPath: dest,
@@ -446,7 +467,7 @@ func TestE2EDirectoryModes(t *testing.T) {
 				continue
 			}
 			var uroot string
-			filepath.Walk(dest, func(p string, info os.FileInfo, err error) error {
+			_ = filepath.Walk(dest, func(p string, info os.FileInfo, err error) error {
 				if err == nil && info.IsDir() && info.Name() == "unicode" && uroot == "" {
 					uroot = filepath.Dir(p)
 				}
@@ -464,10 +485,10 @@ func TestE2EDirectoryModes(t *testing.T) {
 					break
 				}
 			}
-			os.RemoveAll(dest)
+			_ = os.RemoveAll(dest)
 		}
 	}
 
-	os.RemoveAll(base)
+	_ = os.RemoveAll(base)
 	t.Logf("snapshots left on PBS for cleanup: type=host id=%s times=%d,%d,%d", backupID, snaps[0].unix, snaps[1].unix, snaps[2].unix)
 }

@@ -91,7 +91,7 @@ func (a *App) applySettingsFile(path string) (servers, sets int, err error) {
 		return 0, 0, err
 	}
 	raw, err := io.ReadAll(io.LimitReader(f, maxSettingsFile+1))
-	f.Close()
+	_ = f.Close()
 	if err != nil {
 		return 0, 0, err
 	}

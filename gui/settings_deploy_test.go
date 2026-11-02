@@ -213,8 +213,12 @@ func TestApplySettingsFileRefuses(t *testing.T) {
 	deployTestDir(t)
 	bad := filepath.Join(t.TempDir(), "bad.json")
 	nullServer := filepath.Join(t.TempDir(), "null.json")
-	os.WriteFile(bad, []byte(`{not json`), 0600)
-	os.WriteFile(nullServer, []byte(`{"bundleVersion":1,"config":{"pbs_servers":{"x":null}},"scheduledJobs":[{"id":"j","name":"n"}]}`), 0600)
+	if err := os.WriteFile(bad, []byte(`{not json`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nullServer, []byte(`{"bundleVersion":1,"config":{"pbs_servers":{"x":null}},"scheduledJobs":[{"id":"j","name":"n"}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 	for name, path := range map[string]string{
 		"missing file":  filepath.Join(t.TempDir(), "nope.json"),
 		"not json":      bad,

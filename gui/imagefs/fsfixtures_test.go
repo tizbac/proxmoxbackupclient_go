@@ -29,7 +29,7 @@ func loadImage(t *testing.T, name string) *bytes.Reader {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func loadExpected(t *testing.T, name string) (map[string]wantEntry, map[string]s
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		parts := strings.SplitN(sc.Text(), " ", 7)

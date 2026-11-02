@@ -78,7 +78,7 @@ func verifyOneFile(f pbscommon.PXARExtractedFile) string {
 	if err != nil {
 		return fmt.Sprintf("cannot be read back (%v)", err)
 	}
-	defer fh.Close()
+	defer func() { _ = fh.Close() }()
 	st, err := fh.Stat()
 	if err != nil {
 		return fmt.Sprintf("cannot be read back (%v)", err)

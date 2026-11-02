@@ -128,14 +128,18 @@ func TestLiveLinuxMachineBackup(t *testing.T) {
 		if out, err = os.Create(p); err != nil {
 			t.Fatal(err)
 		}
-		defer out.Close()
+		defer func() {
+			if err := out.Close(); err != nil {
+				t.Errorf("closing %s: %v", out.Name(), err)
+			}
+		}()
 	}
 	var src *os.File
 	if os.Getenv("PBS_LMB_COMPARE") == "1" {
 		if src, err = os.Open(dev); err != nil {
 			t.Fatal(err)
 		}
-		defer src.Close()
+		defer func() { _ = src.Close() }()
 	}
 	const unit = 1 << 20
 	img := make([]byte, unit)
@@ -147,7 +151,9 @@ func TestLiveLinuxMachineBackup(t *testing.T) {
 			t.Fatalf("image read at %d: %v", off, err)
 		}
 		if out != nil {
-			out.Write(img[:n])
+			if _, err := out.Write(img[:n]); err != nil {
+				t.Fatalf("writing the image copy at %d: %v", off, err)
+			}
 		}
 		for s := 0; s < n; s += 512 {
 			if inBad(uint64(off) + uint64(s)) {

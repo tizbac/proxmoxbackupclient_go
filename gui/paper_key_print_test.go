@@ -16,7 +16,7 @@ func gone(url string) bool {
 		if err != nil {
 			return true
 		}
-		r.Body.Close()
+		_ = r.Body.Close()
 		time.Sleep(50 * time.Millisecond)
 	}
 	return false
@@ -40,7 +40,7 @@ func TestServePageOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.Body.Close()
+	_ = r.Body.Close()
 	if r.StatusCode != http.StatusNotFound {
 		t.Fatalf("other path: %d, want 404", r.StatusCode)
 	}
@@ -50,7 +50,7 @@ func TestServePageOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(r.Body)
-	r.Body.Close()
+	_ = r.Body.Close()
 	if r.StatusCode != http.StatusOK || string(body) != page {
 		t.Fatalf("first fetch: %d %q", r.StatusCode, body)
 	}
