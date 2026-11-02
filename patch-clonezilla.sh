@@ -40,7 +40,9 @@ Env overrides:
   ISO_BIOS_LOAD         BIOS boot-load-size                 (default 4)
   ISO_UEFI_IMG          UEFI El Torito image path           (default boot/grub/efi.img)
   ISO_UEFI_LOAD         UEFI boot-load-size                 (default 6912)
-  ISO_MBR_SRC           isohybrid MBR prefix file           (default /usr/lib/ISOLINUX/isohdpfx.bin)
+  ISO_MBR_SRC           isohybrid MBR prefix file           (default: first found of
+                                 /usr/lib/ISOLINUX/isohdpfx.bin,
+                                 /usr/lib/syslinux/bios/isohdpfx.bin)
   ISO_PARTITION_OFFSET  partition start LBA                 (default 16)
   ISO_PARTITION_HD_CYL  heads per cylinder                  (default 64)
   ISO_PARTITION_SEC_HD  sectors per head                    (default 32)
@@ -58,7 +60,17 @@ BIOS_CAT="${ISO_BIOS_CAT:-syslinux/boot.cat}"
 BIOS_LOAD="${ISO_BIOS_LOAD:-4}"
 UEFI_IMG="${ISO_UEFI_IMG:-boot/grub/efi.img}"
 UEFI_LOAD="${ISO_UEFI_LOAD:-6912}"
-MBR_SRC="${ISO_MBR_SRC:-/usr/lib/ISOLINUX/isohdpfx.bin}"
+# isohybrid MBR prefix: explicit env wins, else search common locations
+# (isolinux package vs syslinux-common/syslinux package layout).
+if [ -n "${ISO_MBR_SRC:-}" ]; then
+  MBR_SRC="$ISO_MBR_SRC"
+else
+  MBR_SRC=""
+  for candidate in /usr/lib/ISOLINUX/isohdpfx.bin /usr/lib/syslinux/bios/isohdpfx.bin; do
+    if [ -f "$candidate" ]; then MBR_SRC="$candidate"; break; fi
+  done
+  MBR_SRC="${MBR_SRC:-/usr/lib/ISOLINUX/isohdpfx.bin}"
+fi
 PART_OFFSET="${ISO_PARTITION_OFFSET:-16}"
 PART_HD_CYL="${ISO_PARTITION_HD_CYL:-64}"
 PART_SEC_HD="${ISO_PARTITION_SEC_HD:-32}"
@@ -82,7 +94,14 @@ if [ ${#POSITIONAL[@]} -ge 2 ]; then FILES=( "${POSITIONAL[@]:1}" ); else FILES=
 [ -f "$IN" ] || { echo "error: input ISO not found: $IN" >&2; exit 1; }
 [ ${#FILES[@]} -gt 0 ] || { echo "error: at least one FILE to inject is required" >&2; usage; }
 for f in "${FILES[@]}"; do [ -f "$f" ] || { echo "error: not a file: $f" >&2; exit 1; }; done
-[ -f "$MBR_SRC" ] || { echo "error: isohybrid MBR prefix not found: $MBR_SRC" >&2; exit 1; }
+[ -f "$MBR_SRC" ] || {
+  if [ -z "${ISO_MBR_SRC:-}" ]; then
+    echo "error: isohybrid MBR prefix not found (tried /usr/lib/ISOLINUX/isohdpfx.bin and /usr/lib/syslinux/bios/isohdpfx.bin; apt install isolinux or syslinux-common, or set ISO_MBR_SRC)" >&2
+  else
+    echo "error: isohybrid MBR prefix not found: $MBR_SRC" >&2
+  fi
+  exit 1
+}
 command -v 7z >/dev/null 2>&1 || { echo "error: 7z not found (required to extract the ISO tree)" >&2; exit 1; }
 
 # A patch may declare, in its header (anything before the first "---" line is
@@ -169,10 +188,13 @@ ROOTFS="$WORK/rootfs"
 NEW_SQFS="$WORK/filesystem.new"
 SQFS="$TREE$SQFS_PATH"
 
-# Volume id: explicit env wins, else read it back from the source ISO.
+# Volume id: explicit env wins, else read it back from the source ISO with
+# xorriso (already a hard requirement; avoids depending on genisoimage's
+# isoinfo). Never let a failed pipeline abort the script silently: a missing
+# volume id only falls back to the CLONEZILLA default below.
 VOL="${ISO_VOLUME:-}"
 if [ -z "$VOL" ]; then
-  VOL="$(isoinfo -d -i "$IN" 2>/dev/null | grep -i 'volume id' | sed -E 's/.*volume id:[[:space:]]*//' | tr -d '[:space:]')"
+  VOL="$(xorriso -indev "$IN" -pvd_info 2>/dev/null | sed -n 's/.*Volume Id[[:space:]]*:[[:space:]]*//p' | head -n1 | tr -d '[:space:]' || true)"
 fi
 [ -n "$VOL" ] || VOL="CLONEZILLA"
 
