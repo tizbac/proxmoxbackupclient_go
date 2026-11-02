@@ -52,12 +52,12 @@ Versiunea 2.0 aduce în proiect un volum mare de lucru la interfața grafică, l
 
 | | Rezultat |
 |---|---|
-| **Backup-uri incrementale de foldere** | Un folder partajat de 480.9 GB cu 761,866 fișiere: prima rulare 4 h 17 min, fiecare rulare ulterioară între 10 și 15 minute. Fișierele nemodificate nici măcar nu sunt deschise (detectarea modificărilor **Metadate**, ca în clientul oficial). |
+| **Backup-uri incrementale de foldere** | Un folder partajat de 480,9 GB cu 761.866 fișiere: prima rulare 4 h 17 min, fiecare rulare ulterioară între 10 și 15 minute. Fișierele nemodificate nici măcar nu sunt deschise (detectarea modificărilor **Metadate**, ca în clientul oficial). |
 | **Backup-uri de mașină rapide** | Spațiul liber, fișierul de paginare și fișierul de hibernare nu sunt citite, iar spațiul gol de pe disc nu este trecut prin hash. Un disc de laptop de 1 TB cu 373 GB ocupați dura înainte între 1 h 23 min și 1 h 44 min, iar acum durează 38 de minute. |
-| **Conexiuni lente și cu trafic contorizat** | Se trimit doar datele noi, comprimate, iar aplicația arată ce a trecut cu adevărat prin rețea. Un mic PC Linux dintr-o locație la distanță, pe o conexiune 4G (4.8 Mbit/s la încărcare): întreaga imagine a discului de 128 GB plus folderul personal în 11 minute, cu aproximativ 172 MiB transferați. |
-| **Fișiere recuperate din backup-urile de mașini** | Unitatea C: de 127 GB a unui laptop, cu 430,000 de fișiere, se listează în 4 până la 15 secunde. Nimic nu este montat sau descărcat în prealabil. |
+| **Conexiuni lente și cu trafic contorizat** | Se trimit doar datele noi, comprimate, iar aplicația arată ce a trecut cu adevărat prin rețea. Un mic PC Linux dintr-o locație la distanță, pe o conexiune 4G (4,8 Mbit/s la încărcare): întreaga imagine a discului de 128 GB plus folderul personal în 11 minute, cu aproximativ 172 MiB transferați. |
+| **Fișiere recuperate din backup-urile de mașini** | Unitatea C: de 127 GB a unui laptop, cu 430.000 de fișiere, se listează în 4 până la 15 secunde. Nimic nu este montat sau descărcat în prealabil. |
 | **Restaurare bare-metal** | Porniți de pe ISO (stick USB, CD sau rețea), introduceți datele PBS, alegeți backup-ul: o mașină Windows de 32 GB era din nou la ecranul de autentificare la 8 minute după pornire. |
-| **Recuperare fișiere șterse** | După ștergerea a 39 GB dintr-un folder partajat cu 761,000 de fișiere, o căutare **Recuperare fișiere șterse** în backup-urile din ultimele 7 zile a găsit exact acele fișiere în aproximativ un minut și le-a pus la loc. |
+| **Recuperare fișiere șterse** | După ștergerea a 39 GB dintr-un folder partajat cu 761.000 de fișiere, o căutare **Recuperare fișiere șterse** în backup-urile din ultimele 7 zile a găsit exact acele fișiere în aproximativ un minut și le-a pus la loc. |
 | **Fidelitatea restaurării** | Permisiuni NTFS, atribute, fluxuri de date alternative, atribute extinse, ore de creare și ore ale folderelor pe Windows; moduri, proprietari, ACL-uri, atribute extinse și legături simbolice pe Linux. |
 
 ## 📖 Manuale de utilizare
@@ -244,7 +244,7 @@ Backup-urile de foldere omit singure următoarele:
 **Foldere de sistem:** `System Volume Information` (spațiul de stocare VSS, poate depăși 100 GB) și `$RECYCLE.BIN` oriunde s-ar afla; `Recovery` doar la rădăcina unei unități; `.pbs-rollback` (folderul de siguranță al funcției Revenire).
 **Fișiere de sistem:** `pagefile.sys`, `hiberfil.sys`, `swapfile.sys` și `DumpStack.log.tmp`.
 
-**De ce contează:** o unitate poate afișa 1.03 TB ocupați, în timp ce fișierele reale au ~141 GB. Fără excluderi, backup-ul ar include instantaneele VSS (spațiu și timp irosite); cu ele, dimensiunea corespunde datelor reale.
+**De ce contează:** o unitate poate afișa 1,03 TB ocupați, în timp ce fișierele reale au ~141 GB. Fără excluderi, backup-ul ar include instantaneele VSS (spațiu și timp irosite); cu ele, dimensiunea corespunde datelor reale.
 
 **Recomandare:** folosiți un backup de **foldere** pentru backup-uri la nivel de fișier; folosiți un backup de **mașină** într-un set de backup separat pentru restaurarea bare-metal și P2V (o imagine a întregului disc, în care spațiul liber și fișierele de paginare și de hibernare intră ca zerouri).
 

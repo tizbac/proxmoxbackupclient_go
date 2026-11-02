@@ -52,12 +52,12 @@ Version 2.0 för in en stor mängd arbete på det grafiska gränssnittet, bakgru
 
 | | Resultat |
 |---|---|
-| **Inkrementella mappsäkerhetskopior** | En filresurs på 480.9 GB med 761,866 filer: första körningen 4 h 17 min, varje senare körning 10 till 15 minuter. Oförändrade filer öppnas inte ens (ändringsidentifiering med **Metadata** (metadata), som i den officiella klienten). |
+| **Inkrementella mappsäkerhetskopior** | En filresurs på 480,9 GB med 761 866 filer: första körningen 4 h 17 min, varje senare körning 10 till 15 minuter. Oförändrade filer öppnas inte ens (ändringsidentifiering med **Metadata** (metadata), som i den officiella klienten). |
 | **Snabba datorsäkerhetskopior** | Ledigt utrymme, växlingsfilen och vilolägesfilen läses inte, och tomt diskutrymme hashas inte. En bärbar dators disk på 1 TB med 373 GB använt tog tidigare mellan 1 h 23 min och 1 h 44 min och tar nu 38 minuter. |
-| **Långsamma och datapriserade förbindelser** | Bara nya data skickas, komprimerade, och appen visar vad som faktiskt gick över nätverket. En liten Linux-dator på en avlägsen plats med en 4G-anslutning (4.8 Mbit/s upp): hela diskavbilden på 128 GB plus hemmappen på 11 minuter, med ungefär 172 MiB överfört. |
-| **Filer tillbaka från datorsäkerhetskopior** | En bärbar dators C:-enhet på 127 GB med 430,000 filer listas på 4 till 15 sekunder. Ingenting monteras eller laddas ned först. |
+| **Långsamma och datapriserade förbindelser** | Bara nya data skickas, komprimerade, och appen visar vad som faktiskt gick över nätverket. En liten Linux-dator på en avlägsen plats med en 4G-anslutning (4,8 Mbit/s upp): hela diskavbilden på 128 GB plus hemmappen på 11 minuter, med ungefär 172 MiB överfört. |
+| **Filer tillbaka från datorsäkerhetskopior** | En bärbar dators C:-enhet på 127 GB med 430 000 filer listas på 4 till 15 sekunder. Ingenting monteras eller laddas ned först. |
 | **Bare metal-återställning** | Starta ISO:n (USB-minne, cd eller nätverk), ange PBS-uppgifterna, välj säkerhetskopian: en Windows-dator på 32 GB var tillbaka vid inloggningsskärmen 8 minuter efter påslag. |
-| **Undelete** | Efter att 39 GB raderats från en filresurs med 761,000 filer hittade en sökning med **Undelete** (ångra borttagning) i säkerhetskopiorna från de senaste 7 dagarna exakt de filerna på ungefär en minut och lade tillbaka dem. |
+| **Undelete** | Efter att 39 GB raderats från en filresurs med 761 000 filer hittade en sökning med **Undelete** (ångra borttagning) i säkerhetskopiorna från de senaste 7 dagarna exakt de filerna på ungefär en minut och lade tillbaka dem. |
 | **Återställningens trohet** | NTFS-behörigheter, attribut, alternativa dataströmmar, utökade attribut, skapandetider och mapptider i Windows; rättigheter (mode), ägare, ACL:er, utökade attribut och symboliska länkar i Linux. |
 
 ## 📖 Användarhandböcker
@@ -244,7 +244,7 @@ Mappsäkerhetskopior utesluter följande av sig själva:
 **Systemmappar:** `System Volume Information` (VSS-lagring, kan bli 100+ GB) och `$RECYCLE.BIN` var de än finns; `Recovery` bara i roten av en enhet; `.pbs-rollback` (säkerhetsmappen för **Roll back** (återgå)).
 **Systemfiler:** `pagefile.sys`, `hiberfil.sys`, `swapfile.sys` och `DumpStack.log.tmp`.
 
-**Varför det spelar roll:** en enhet kan visa 1.03 TB använt medan de verkliga filerna är ~141 GB. Utan undantag skulle säkerhetskopian ta med VSS-ögonblicksbilder (bortkastat utrymme och tid); med dem motsvarar storleken de verkliga data.
+**Varför det spelar roll:** en enhet kan visa 1,03 TB använt medan de verkliga filerna är ~141 GB. Utan undantag skulle säkerhetskopian ta med VSS-ögonblicksbilder (bortkastat utrymme och tid); med dem motsvarar storleken de verkliga data.
 
 **Rekommendation:** använd en **mapp**säkerhetskopia för säkerhetskopiering på filnivå; använd en **dator**säkerhetskopia i en separat uppsättning för bare metal-återställning och P2V (en avbild av hela disken, där ledigt utrymme, växlingsfilen och vilolägesfilen läggs in som nollor).
 
