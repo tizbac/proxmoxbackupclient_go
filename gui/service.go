@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/kardianos/service"
@@ -23,7 +25,20 @@ type BackupService struct {
 func (s *BackupService) Start(svc service.Service) error {
 	writeDebugLog("Proxmox Backup Client service starting...")
 	s.stopChan = make(chan struct{})
-	go s.run()
+	go func() {
+		// A panic in the run loop kills the process, and the SCM (or systemd)
+		// only reports that the service stopped unexpectedly, with nothing in
+		// the log to explain it. Log the panic and its stack first, then exit
+		// so the failure is a real, diagnosable one rather than a "running"
+		// service that does nothing (upstream's service does the same).
+		defer func() {
+			if r := recover(); r != nil {
+				writeDebugLog(fmt.Sprintf("CRITICAL: service run panic: %v\n%s", r, debug.Stack()))
+				os.Exit(1)
+			}
+		}()
+		s.run()
+	}()
 	return nil
 }
 
