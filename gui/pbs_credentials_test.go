@@ -46,6 +46,26 @@ func TestUpdatePBSServerSecretOnlyForSameToken(t *testing.T) {
 	}
 }
 
+// A server keeps one login only: switching between token and username and
+// password drops the other's credentials.
+func TestUpdatePBSServerSwitchClearsTheOtherLogin(t *testing.T) {
+	c := credTestConfig(t)
+
+	if err := c.UpdatePBSServer(&PBSServer{ID: "tok", Name: "Token", BaseURL: "https://pbs.example:8007", Secret: "secret-one", Username: "carol@pbs", Password: "carol-pw", Datastore: "store"}); err != nil {
+		t.Fatalf("token to user: %v", err)
+	}
+	if got, _ := c.GetPBSServer("tok"); got.Secret != "" || got.AuthID != "" || got.Username != "carol@pbs" {
+		t.Errorf("token to user kept the token: %+v", got)
+	}
+
+	if err := c.UpdatePBSServer(&PBSServer{ID: "usr", Name: "User", BaseURL: "https://pbs.example:8007", AuthID: "backup@pbs!two", Secret: "secret-two", Username: "alice@pbs", Password: "alice-pw", Datastore: "store"}); err != nil {
+		t.Fatalf("user to token: %v", err)
+	}
+	if got, _ := c.GetPBSServer("usr"); got.Username != "" || got.Password != "" || got.Secret != "secret-two" {
+		t.Errorf("user to token kept the password login: %+v", got)
+	}
+}
+
 // A blank password keeps the stored one for the same user only.
 func TestUpdatePBSServerPasswordOnlyForSameUser(t *testing.T) {
 	c := credTestConfig(t)

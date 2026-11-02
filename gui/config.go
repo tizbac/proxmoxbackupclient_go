@@ -531,8 +531,11 @@ func (c *Config) AddPBSServer(pbs *PBSServer) error {
 	if pbs.AuthID != "" {
 		pbs.Username = ""
 		pbs.Password = ""
-	} else if pbs.Username != "" && pbs.Password == "" {
-		return fmt.Errorf("password required for username/password login")
+	} else if pbs.Username != "" {
+		if pbs.Password == "" {
+			return fmt.Errorf("password required for username/password login")
+		}
+		pbs.Secret = ""
 	}
 
 	if c.PBSServers == nil {
@@ -569,14 +572,17 @@ func (c *Config) UpdatePBSServer(pbs *PBSServer) error {
 	if pbs.AuthID != "" {
 		pbs.Username = ""
 		pbs.Password = ""
-	} else if pbs.Username != "" && pbs.Password == "" {
+	} else if pbs.Username != "" {
 		// Empty password on a user/pass edit means "keep the stored one": the
 		// frontend never receives the password, so it cannot echo it back.
 		// Only for the same user: the stored password is the old user's.
-		if existing.Password == "" || existing.Username != pbs.Username {
-			return fmt.Errorf("password required for username/password login")
+		if pbs.Password == "" {
+			if existing.Password == "" || existing.Username != pbs.Username {
+				return fmt.Errorf("password required for username/password login")
+			}
+			pbs.Password = existing.Password
 		}
-		pbs.Password = existing.Password
+		pbs.Secret = ""
 	}
 
 	c.PBSServers[pbs.ID] = pbs
