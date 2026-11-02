@@ -404,6 +404,10 @@ var apiCalls = map[string]func(a *App, args []json.RawMessage) (interface{}, err
 		}
 		return a.storeKeyFromApp(out)
 	},
+	// The disk picker: the app, unelevated, cannot open the disks.
+	"ListPhysicalDisks": func(a *App, args []json.RawMessage) (interface{}, error) {
+		return physicalDisksWithPartitions()
+	},
 	"DeleteScheduledJob": func(a *App, args []json.RawMessage) (interface{}, error) {
 		var id string
 		if err := arg(args, 0, &id); err != nil {

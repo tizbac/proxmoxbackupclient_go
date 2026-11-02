@@ -1,6 +1,31 @@
 package main
 
-import "machinebackuplib"
+import (
+	"fmt"
+
+	"machinebackuplib"
+)
+
+// physicalDisksWithPartitions lists the disks with their partitions, for the
+// disk picker. Reading them needs administrator rights or root, so an app
+// working on the service's settings asks the service (ListPhysicalDisks).
+func physicalDisksWithPartitions() ([]PhysicalDiskInfo, error) {
+	disks, err := listPhysicalDisks()
+	if err != nil {
+		return nil, err
+	}
+	// Each disk's partitions, for a machine set to leave some out. A disk
+	// whose table cannot be read is listed without them, and is backed up whole.
+	for i := range disks {
+		parts, err := machinebackuplib.ListPartitions(disks[i].DevicePath)
+		if err != nil {
+			writeDebugLog(fmt.Sprintf("Partitions of %s not listed: %v", disks[i].DevicePath, err))
+			continue
+		}
+		disks[i].Partitions = parts
+	}
+	return disks, nil
+}
 
 // PhysicalDiskInfo represents information about a physical disk.
 //

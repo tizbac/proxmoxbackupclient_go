@@ -24,7 +24,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	wailswin "github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"machinebackuplib"
 	"pbscommon"
 	"security"
 	"snapshot"
@@ -407,24 +406,25 @@ func (a *App) GetVersion() string {
 func (a *App) ListPhysicalDisks() ([]PhysicalDiskInfo, error) {
 	writeDebugLog("ListPhysicalDisks() called from frontend")
 
-	// Call platform-specific disk listing function
-	disks, err := listPhysicalDisks()
+	// Working on the service's settings, the app usually runs without
+	// administrator rights and cannot open the disks: the service lists them.
+	// If it cannot (not connected yet), the app tries itself, which works
+	// when it is elevated.
+	if a.delegated() {
+		var disks []PhysicalDiskInfo
+		if err := a.apiClient.Call("ListPhysicalDisks", &disks); err == nil {
+			writeDebugLog(fmt.Sprintf("Found %d physical disks (from the service)", len(disks)))
+			return disks, nil
+		} else {
+			writeDebugLog(fmt.Sprintf("The service did not list the disks (%v): listing them here", err))
+		}
+	}
+
+	disks, err := physicalDisksWithPartitions()
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("Error listing physical disks: %v", err))
 		return nil, err
 	}
-
-	// Each disk's partitions, for a machine set to leave some out. A disk
-	// whose table cannot be read is listed without them, and is backed up whole.
-	for i := range disks {
-		parts, err := machinebackuplib.ListPartitions(disks[i].DevicePath)
-		if err != nil {
-			writeDebugLog(fmt.Sprintf("Partitions of %s not listed: %v", disks[i].DevicePath, err))
-			continue
-		}
-		disks[i].Partitions = parts
-	}
-
 	writeDebugLog(fmt.Sprintf("Found %d physical disks", len(disks)))
 	return disks, nil
 }
