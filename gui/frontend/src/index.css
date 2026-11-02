@@ -471,6 +471,13 @@ body {
 .drive-part-warn { margin: 4px 0 0 24px; font-size: 12px; color: #9a5b00; background: #fff4e0; padding: 6px 8px; border-radius: 5px; }
 .drive-parts > .drive-part-warn { margin-left: 0; }
 
+/* Linux: which snapshot module machine backups use (MachineBackupConfig.jsx).
+   Blue when one is loaded; amber when none is, with How to install. */
+.info-box.snap-module-ok { margin-bottom: 12px; border-color: #90caf9; background: #e7f3ff; }
+.info-box.snap-module-missing { margin-bottom: 12px; border-color: #ffc107; background: #fff3cd; }
+.snap-module-missing .snap-module-howto { margin-top: 10px; }
+.snap-module-missing .snap-module-howto .btn { padding: 6px 14px; font-size: 13px; margin: 0; width: auto; }
+
 .checkbox-label {
     display: flex;
     align-items: center;

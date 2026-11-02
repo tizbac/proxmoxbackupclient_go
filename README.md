@@ -318,24 +318,11 @@ To leave a partition out, for example a games library or a data partition alread
 
 ### Linux machine backup prerequisites (VSS equivalent)
 
-Windows machine backup uses VSS. Linux has no VSS, so a machine backup of a running Linux host needs the `elastio-snap` kernel module (a fork of `dattobd`) to take a point-in-time snapshot of the block device while it is being written to. `dattobd` itself also works if it is already loaded.
-
-The original `elastio/elastio-snap` repository is archived and no longer builds on current kernels. Use the maintained fork, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap) (branch `develop`). Version 0.12.11 of that fork built and ran on Debian 13 with kernel 6.12. The `.deb` suggests the `elastio-snap-dkms` package.
+Windows machine backup uses VSS. Linux has no VSS, so a machine backup of a running Linux host takes a point-in-time snapshot of each mounted partition with a kernel module: `elastio-snap` (the maintained fork, [`Axcient/elastio-snap`](https://github.com/Axcient/elastio-snap)) or `dattobd`.
 
 Two things are required, or a Linux machine backup refuses to run:
 
-1. **The kernel module must be installed and loaded.** Building from source:
-   ```bash
-   sudo apt-get install linux-headers-$(uname -r) build-essential   # Debian/Ubuntu
-   git clone --depth 1 https://github.com/Axcient/elastio-snap.git
-   cd elastio-snap
-   sudo make
-   sudo make install
-   sudo depmod -a      # `make install` does not run depmod, and modprobe fails without it
-   sudo modprobe elastio-snap
-   lsmod | grep elastio_snap
-   ```
-   This loads it for the current boot only. Add an entry in `/etc/modules-load.d/` to load it on every boot. Its own [INSTALL.md](https://github.com/Axcient/elastio-snap/blob/develop/INSTALL.md) covers the packaged installs.
+1. **The kernel module must be installed and loaded.** Install it through DKMS, so it is rebuilt after each kernel update, and have it loaded at every start. The GUI manual's section [Linux snapshots: installing elastio-snap or dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) has tested steps for Debian, Ubuntu, Mint and Fedora, plus Secure Boot and checks. In November 2026 neither module builds on kernel 7 (Fedora 44 after its updates).
 
 2. **The backup must run as root.** The module's control interface is root only, and the snapshot is refused for a normal user. The background service runs as root; without it, use **Restart as administrator** in the app, or run `proxmoxbackup-machine` with `sudo`. A plain folder backup does not need root.
 

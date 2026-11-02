@@ -46,7 +46,7 @@ What is still open after 2.0. Finished work is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Languages and docs
 
-- [ ] **A manual section on installing elastio-snap or dattobd**, linked from the app where it says no snapshot module is loaded: the Debian family, Fedora, DKMS so the module follows kernel updates, and Secure Boot (signing the module or enrolling a key).
+- [ ] **Kernel 7 and the snapshot modules.** Neither elastio-snap 0.12.11 nor dattobd 0.12.2 builds on kernel 7.2 (Fedora 44 after its updates; elastio-snap only for want of `strncpy`). When a fixed version is out, test it and update "Linux snapshots: installing elastio-snap or dattobd" in the GUI manual. The Secure Boot steps there were not tried on a machine with Secure Boot on.
 - [ ] **The translated READMEs want a native speaker's review.** They are made from the English README.
 - [ ] Native speakers to look over the app's strings in the languages its users use. All 17 were reviewed against the English (meaning, one term per concept, menu names, plurals, quotation marks), but a native ear still catches what is correct but unidiomatic. The About page's feature lists were not part of that review.
 

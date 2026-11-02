@@ -1,11 +1,13 @@
 import { useTranslation } from '../i18n/i18nContext'
+import { SNAP_MODULE_MANUAL_ANCHOR } from '../manuals'
 
 // missingDisks are disks of the Backup Set being edited that are not
 // connected now ({ path, id }): the set's runs fail until they are back.
 // systemInfo (GetSystemInfo) drives two Linux boxes from upstream: which
 // snapshot module is loaded, and whether this window needs restarting as
 // administrator to read the disks (onRestartAsAdmin); the disks are greyed
-// out until then.
+// out until then. With no module loaded, How to install opens the GUI
+// manual's installation section on the Help page (onOpenManual).
 //
 // Under each ticked disk its partitions are listed. In a Backup Set
 // (setSkipParts given) each can be unticked to leave it out of the set
@@ -13,7 +15,7 @@ import { useTranslation } from '../i18n/i18nContext'
 // image as zeros. A one-off backup reads whole disks, so there the ticks are
 // greyed out. diskIdFor gives the identity the set saves for a disk.
 function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, selectedDrives, missingDisks = [], systemInfo = {}, onRestartAsAdmin,
-  skipParts = [], setSkipParts, diskIdFor = (d) => d.unique_id || '' }) {
+  onOpenManual, skipParts = [], setSkipParts, diskIdFor = (d) => d.unique_id || '' }) {
   const { t, language } = useTranslation()
   const tl = (key, fallback, params) => { const v = t(key, params); return v === key ? fallback : v }
   const handleDriveSelect = (drivePath) => {
@@ -116,13 +118,21 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
       <h3>{t('machineDisksTitle')}</h3>
 
       {linux && module && (
-        <div className="info-box" style={{ marginBottom: '12px', borderColor: '#90caf9', background: '#e7f3ff' }}>
+        <div className="info-box snap-module-ok">
           {tl('snapModuleActive', `Snapshot module loaded: ${module}. Mounted disks are read through a snapshot.`, { module })}
         </div>
       )}
       {linux && !module && (
-        <div className="info-box" style={{ marginBottom: '12px', borderColor: '#ffc107', background: '#fff3cd' }}>
+        <div className="info-box snap-module-missing">
           ⚠️ {tl('snapModuleMissing', 'No snapshot module loaded (elastio-snap or dattobd). A mounted disk cannot be snapshotted: install one, or turn off Use snapshots for the set and accept a backup that may be inconsistent.')}
+          {onOpenManual && (
+            <div className="snap-module-howto">
+              <button type="button" className="btn btn-secondary" title={tl('snapModuleHowToTip', 'Opens the installation guide in Help.')}
+                onClick={() => onOpenManual('gui', SNAP_MODULE_MANUAL_ANCHOR)}>
+                {tl('snapModuleHowTo', 'How to install')}
+              </button>
+            </div>
+          )}
         </div>
       )}
       {needsElevation && (

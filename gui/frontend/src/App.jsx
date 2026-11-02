@@ -5049,6 +5049,7 @@ function App() {
               missingDisks={missingSetDisks}
               systemInfo={systemInfo}
               onRestartAsAdmin={restartAsAdmin}
+              onOpenManual={openManual}
               skipParts={skipParts}
               setSkipParts={backupMode === 'scheduled' ? setSkipParts : undefined}
               diskIdFor={diskIdFor}

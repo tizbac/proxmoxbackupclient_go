@@ -13,6 +13,10 @@ export const MANUALS = [
   { id: 'restore', path: 'docs/RESTORE_GUIDE.md', label: 'manualRestore' },
 ]
 
+// Where the machine backup screen's "How to install" opens the GUI manual:
+// the heading "Linux snapshots: installing elastio-snap or dattobd".
+export const SNAP_MODULE_MANUAL_ANCHOR = 'linux-snapshots-installing-elastio-snap-or-dattobd'
+
 // GitHub's heading ids, so the manuals' own "#9-restore" links work:
 // lower case, punctuation dropped, spaces to hyphens, repeats get -1, -2.
 export function makeSlugger() {

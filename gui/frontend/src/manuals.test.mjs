@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { MANUALS, makeSlugger, renderManual, resolveLink, repoRef } from './manuals.js'
+import { MANUALS, makeSlugger, renderManual, resolveLink, repoRef, SNAP_MODULE_MANUAL_ANCHOR } from './manuals.js'
 
 const s = makeSlugger()
 assert.equal(s('9. Restore'), '9-restore')
@@ -37,4 +37,6 @@ for (const m of MANUALS) {
   }
 }
 assert.ok(links > 40, `only ${links} links between manuals found`)
+// The machine backup screen's "How to install" button opens this heading.
+assert.ok(rendered.gui.html.includes(`id="${SNAP_MODULE_MANUAL_ANCHOR}"`), `gui: no heading ${SNAP_MODULE_MANUAL_ANCHOR}`)
 console.log(`manuals: ok (${links} links between manuals checked)`)

@@ -37,6 +37,8 @@ listed under [History of the GUI before 2.0](#history-of-the-gui-before-20).
 
 - **Linux machine Backup Sets can turn snapshots off.** With **Use snapshots** unticked and "Run without a snapshot: I accept the backup may be inconsistent" ticked, mounted disks are read live, with a warning in the log; without the second box every run stops and says why. The machine backup screen says which snapshot module is loaded (or that none is), and when the app must be restarted as administrator to read the disks.
 
+- **A guide to installing elastio-snap or dattobd** in the GUI manual (section 2), tested on Linux Mint 21.3 and Fedora 44: Datto's dattobd packages or elastio-snap from source, both through DKMS so the module is rebuilt after kernel updates, loading it at every start, Secure Boot (enrolling the DKMS signing key), checks and common problems. It also says plainly that neither module builds on kernel 7 yet. The machine backup screen's "No snapshot module loaded" box has a **How to install** button that opens it in Help.
+
 - **Mail relays without a login.** An SMTP relay that needs no user name or password (often on port 25) works in the app and in the command-line tools; an incomplete mail setup now says what is missing (tizbac/proxmoxbackupclient_go#74).
 
 ### Changed

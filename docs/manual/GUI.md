@@ -59,7 +59,173 @@ Only one copy of the GUI runs at a time on Windows. Starting it again brings the
 * **Packages**: `.deb` (Debian, Ubuntu, Mint), `.rpm` (Fedora) and an Arch package (built from [packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) with `make pkgarch`), package name `proxmoxbackupclient`. They install the app in `/usr/lib/proxmoxbackupclient/`, the command line tools, the manuals, the background service (turned on by a fresh install) and one menu entry, **Proxmox Backup Client** (`proxmoxbackupclient`), which starts the app as you. With the service it asks for your password once to connect to it ([section 15](#connecting-to-the-background-service)). For the few things that need the app itself as root (machine backups without the service, restoring into folders only root may write), the app offers **Restart as administrator**, which runs `proxmoxbackupclient-root` (pkexec from the desktop, sudo from a terminal).
 * **The archive**: `ProxmoxBackupClient-<version>-linux-amd64.tar.gz`. Check it against `SHA256SUMS.txt` (`sha256sum -c`), unpack it and run the `ProxmoxBackupClient` binary.
 
-The app needs the WebKitGTK runtime that Wails programs use; most desktop distributions already have it. Folder backups run as a normal user. **Machine** backups need root. Linux has no VSS: a consistent snapshot of a mounted disk needs the `elastio-snap` (or `dattobd`) kernel module loaded and root rights. See "Linux machine backup prerequisites" in the [README](../../README.md#linux-machine-backup-prerequisites-vss-equivalent).
+The app needs the WebKitGTK runtime that Wails programs use; most desktop distributions already have it. Folder backups run as a normal user. **Machine** backups need root. Linux has no VSS: a consistent snapshot of a mounted disk needs the `elastio-snap` (or `dattobd`) kernel module loaded and root rights. Installing the module is described next.
+
+### Linux snapshots: installing elastio-snap or dattobd
+
+A machine backup of a running Linux computer reads each mounted partition through a snapshot, as Windows does with VSS, so the image is consistent. Linux has nothing built in for this, so the app uses a kernel module: `elastio-snap` or `dattobd` (elastio-snap is a fork of dattobd). Folder backups do not need either.
+
+A machine backup needs two things:
+
+1. **One of the modules loaded.** If both are loaded, the app uses elastio-snap.
+2. **Root rights.** The background service has them. Without it, use **Restart as administrator**, or run `proxmoxbackup-machine` with `sudo`.
+
+**Install the module through DKMS** (Dynamic Kernel Module Support). A kernel module is built for one kernel. DKMS builds it again for each new kernel when the kernel is updated, so the module keeps loading. A module built with plain `make install` is left behind by the next kernel update, and machine backups stop until it is built again.
+
+**Load it at every start.** A backup run as root loads an installed module by itself, but the app in your own window cannot, so the machine backup screen says no module is loaded until something has loaded it. The steps below add a file in `/etc/modules-load.d/` for this.
+
+What to install (tested in November 2026):
+
+| Distribution | Install | Tested |
+|---|---|---|
+| Ubuntu, Linux Mint, Debian | dattobd from Datto's packages ([below](#dattobd-from-datto-packages-debian-ubuntu-mint)), or elastio-snap from source with DKMS ([below](#elastio-snap-with-dkms-debian-ubuntu-mint)) | Both, on Linux Mint 21.3 (Ubuntu 22.04 base) with kernel 5.15: dattobd 0.12.2 and elastio-snap 0.12.11. An earlier test built and ran elastio-snap 0.12.11 on Debian 13 with kernel 6.12 |
+| Fedora | elastio-snap from source with DKMS ([below](#fedora-and-the-rhel-family)) | Fedora 44: builds on kernel 6.19, **but not on kernel 7.2**, which Fedora 44 has after its updates ([kernel 7](#kernel-7)) |
+| RHEL, AlmaLinux, Rocky Linux 8 to 10 | dattobd from Datto's packages, or elastio-snap from source with DKMS | Not tested |
+
+Elastio's own package repositories, named in elastio-snap's INSTALL.md, no longer answer, and no repository has the `elastio-snap-dkms` package that the app's .deb suggests. Build elastio-snap from source as below. Use the maintained fork, [Axcient/elastio-snap](https://github.com/Axcient/elastio-snap) (branch `develop`): the original `elastio/elastio-snap` is archived and does not build on current kernels.
+
+#### dattobd from Datto packages (Debian, Ubuntu, Mint)
+
+Datto publishes dattobd for Ubuntu LTS releases and for Debian (its repository has `jammy`, `noble`, `bookworm` and `trixie`, among others). The packages build the module with DKMS and load it at every start (`/etc/modules-load.d/dattobd.conf`). Linux Mint needs the name of the Ubuntu release it is based on, which `/etc/os-release` gives as `UBUNTU_CODENAME`; `lsb_release -sc` gives Mint's own name (such as `virginia`), which Datto does not have.
+
+```bash
+. /etc/os-release
+CODENAME=${UBUNTU_CODENAME:-$VERSION_CODENAME}
+curl -fsSL https://cpkg.datto.com/DATTO-PKGS-GPG-KEY | sudo gpg --dearmor -o /usr/share/keyrings/datto-archive-keyring.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/datto-archive-keyring.gpg] https://cpkg.datto.com/datto-deb/public/$CODENAME $CODENAME main" | sudo tee /etc/apt/sources.list.d/datto-linux-agent.list
+sudo apt-get update
+sudo apt-get install dattobd-dkms dattobd-utils
+sudo modprobe dattobd
+```
+
+Datto's own [INSTALL.md](https://github.com/datto/dattobd/blob/main/INSTALL.md) adds the key with `apt-key`, which is deprecated; the `signed-by` form above does the same. `dattobd-utils` adds `dbdctl`, the module's own tool. The app does not need it.
+
+#### elastio-snap with DKMS (Debian, Ubuntu, Mint)
+
+```bash
+sudo apt-get install git build-essential dkms linux-headers-$(uname -r)
+git clone --depth 1 https://github.com/Axcient/elastio-snap.git
+cd elastio-snap
+VER=$(grep -oP 'ELASTIO_SNAP_VERSION "\K[^"]+' src/elastio-snap.h)
+sudo cp -r src /usr/src/elastio-snap-$VER
+sed "s/@MODULE_VERSION@/$VER/" dist/elastio-snap-dkms-conf | sudo tee /usr/src/elastio-snap-$VER/dkms.conf > /dev/null
+sudo dkms install elastio-snap/$VER
+echo elastio-snap | sudo tee /etc/modules-load.d/elastio-snap.conf
+sudo modprobe elastio-snap
+```
+
+`dkms install` builds the module for the running kernel and installs it in `/lib/modules/<kernel>/updates/dkms/`. When a kernel update is installed, DKMS builds it for the new kernel by itself. For that it needs the new kernel's headers, so keep the headers meta-package installed (`linux-headers-generic` on Ubuntu and Mint, `linux-headers-amd64` on Debian).
+
+The module's own tool, `elioctl`, is optional. To build it, in the same folder:
+
+```bash
+sudo make application-static
+sudo install -m 0755 app/elioctl /usr/local/bin/elioctl
+```
+
+Do not run `sudo make install`: it also installs a copy of the module outside DKMS, which the next kernel update leaves behind. If an older version was installed that way, remove it first: `sudo make uninstall` in its source folder, then `sudo depmod -a`.
+
+#### Fedora and the RHEL family
+
+```bash
+sudo dnf install git gcc make dkms kernel-devel-$(uname -r) kernel-devel
+git clone --depth 1 https://github.com/Axcient/elastio-snap.git
+cd elastio-snap
+VER=$(grep -oP 'ELASTIO_SNAP_VERSION "\K[^"]+' src/elastio-snap.h)
+sudo cp -r src /usr/src/elastio-snap-$VER
+sed "s/@MODULE_VERSION@/$VER/" dist/elastio-snap-dkms-conf | sudo tee /usr/src/elastio-snap-$VER/dkms.conf > /dev/null
+sudo dkms install elastio-snap/$VER
+echo elastio-snap | sudo tee /etc/modules-load.d/elastio-snap.conf
+sudo modprobe elastio-snap
+```
+
+`kernel-devel` keeps the headers of each new kernel coming, which DKMS needs to rebuild the module after an update. Fedora's DKMS creates its own signing key the first time and signs the module with it ([Secure Boot](#secure-boot)). SELinux in enforcing mode did not stop a snapshot in our test ([kernel 7](#kernel-7)).
+
+On RHEL, AlmaLinux and Rocky Linux (not tested) DKMS comes from EPEL. Datto publishes dattobd packages for them; its INSTALL.md gives `sudo yum localinstall https://cpkg.datto.com/datto-rpm/repoconfig/datto-el-rpm-release-$(rpm -E %rhel)-latest.noarch.rpm`, then `sudo yum install dkms-dattobd dattobd-utils`. Datto has no packages for Fedora releases after 32.
+
+#### Kernel 7
+
+In November 2026 neither module builds on kernel 7.2, the kernel Fedora 44 runs after its updates:
+
+* elastio-snap 0.12.11 stops at `implicit declaration of function 'strncpy'` (in `main.c` and `nl_debug.c`): kernel 7 no longer has `strncpy`. It builds on Fedora 44's own release kernel, 6.19. In our test, with those two calls changed to `strscpy`, the module loaded on kernel 7.2 and the app's snapshot code took and read a snapshot with SELinux enforcing, so a fix should be small. That change is not in elastio-snap yet.
+* dattobd 0.12.2 (its `main` branch, April 2026) fails to build on Fedora 44 with either kernel, 6.19 or 7.2.
+
+On such a computer `dkms install` ends with "Bad return status for module build", and `dkms status` shows the module as `added`, not `installed`. Check the [elastio-snap repository](https://github.com/Axcient/elastio-snap) for a newer version. Until then a Linux machine Backup Set there can only read its mounted disks live: untick **Use snapshots** and tick "Run without a snapshot: I accept the backup may be inconsistent". Remove a module that will not build with `sudo dkms remove elastio-snap/<version> --all`, so DKMS does not try again at every kernel update.
+
+#### Secure Boot
+
+Check whether Secure Boot is on:
+
+```bash
+mokutil --sb-state
+```
+
+`SecureBoot disabled`, or `EFI variables are not supported on this system` (a computer started the legacy BIOS way), means nothing more is needed. `SecureBoot enabled` means the kernel loads only modules signed with a key it trusts. Our two test machines start without Secure Boot, so the enrolment below was not tried there.
+
+DKMS signs every module it builds, as both test machines showed. The key it uses:
+
+| Distribution | Key to enrol |
+|---|---|
+| Ubuntu, Mint | `/var/lib/shim-signed/mok/MOK.der` (tested on Mint 21.3) |
+| Fedora, and Debian 12 or later (DKMS 3) | `/var/lib/dkms/mok.pub`, created the first time DKMS builds a module (tested on Fedora 44). `dkms install` prints it as "Public certificate (MOK)" |
+
+With Secure Boot on, enrol that key once as a Machine Owner Key (MOK):
+
+```bash
+sudo mokutil --import /var/lib/dkms/mok.pub     # Ubuntu, Mint: /var/lib/shim-signed/mok/MOK.der
+```
+
+`mokutil` asks for a one-time password. Restart the computer: a blue MOK Manager screen appears before Linux starts. Choose **Enroll MOK**, **Continue**, **Yes**, type the password, then **Reboot**. Afterwards `mokutil --test-key <the same file>` says the key is already enrolled, and the module loads. DKMS signs later builds (after kernel updates) with the same key, so this is needed only once. On Ubuntu and Mint, installing a DKMS module on a computer with Secure Boot on usually asks for that password itself and sets up the enrolment for the next restart.
+
+On Fedora, akmods (the way RPM Fusion builds its modules) has its own key in `/etc/pki/akmods/`; it does not sign DKMS modules, so enrol DKMS's key as above.
+
+How a signature problem shows:
+
+* `modprobe` says `Key was rejected by service`: Secure Boot is on and the key is not enrolled.
+* `dmesg` shows `Lockdown: modprobe: unsigned module loading is restricted`: the module is not signed at all and the kernel is locked down.
+* `dmesg` shows `module verification failed: signature and/or required key missing - tainting kernel`: Secure Boot is off, and the kernel loaded the module anyway. This is harmless; the test machines show it at every start.
+
+#### Checking that it works
+
+```bash
+lsmod | grep -E 'elastio_snap|dattobd'      # loaded now
+dkms status                                  # "installed" for the running kernel
+ls /etc/modules-load.d/                      # elastio-snap.conf or dattobd.conf: loaded at every start
+cat /proc/elastio-snap-info                  # or /proc/datto-info: the version, and any snapshots in use
+```
+
+Then close the app and start it again: it looks for the module when it starts. The machine backup screen then says "Snapshot module loaded: elastio-snap. Mounted disks are read through a snapshot." instead of the yellow "No snapshot module loaded" box. A machine backup's log has a line starting `Created elastio-snap snapshot of` (or `dattobd`) for each mounted partition.
+
+To try a snapshot by hand with the module's own tool, on a small file system of its own (with dattobd, use `dbdctl` and `/dev/datto0`):
+
+```bash
+truncate -s 256M /tmp/snaptest.img
+LOOP=$(sudo losetup --find --show /tmp/snaptest.img)
+sudo mkfs.ext4 -q "$LOOP"
+sudo mkdir -p /mnt/snaptest /mnt/snapview
+sudo mount "$LOOP" /mnt/snaptest
+echo before | sudo tee /mnt/snaptest/marker.txt
+sync
+sudo elioctl setup-snapshot "$LOOP" /mnt/snaptest/.cow 0
+echo after | sudo tee /mnt/snaptest/marker.txt
+sudo mount -o ro /dev/elastio-snap0 /mnt/snapview
+cat /mnt/snaptest/marker.txt /mnt/snapview/marker.txt    # after, then before
+sudo umount /mnt/snapview
+sudo elioctl destroy 0
+sudo umount /mnt/snaptest
+sudo losetup -d "$LOOP"
+rm /tmp/snaptest.img
+```
+
+#### Snapshot module problems
+
+* **The app still says no module is loaded.** Check with `lsmod`. If the module is loaded, close the app and start it again. If not, `sudo modprobe elastio-snap` (or `dattobd`) says why.
+* **`modprobe: FATAL: Module elastio-snap not found`.** It is not installed for the running kernel. `dkms status` shows the kernels it is built for. Install the running kernel's headers (`linux-headers-$(uname -r)` or `kernel-devel-$(uname -r)`), then `sudo dkms autoinstall`.
+* **It worked until a kernel update.** It was probably installed with `make install`, not DKMS. Remove that copy and install it with DKMS as above.
+* **`dkms install` fails.** The build log is `/var/lib/dkms/<module>/<version>/build/make.log`. The usual causes are missing kernel headers and a kernel newer than the module supports ([kernel 7](#kernel-7)).
+* **`Key was rejected by service`.** See [Secure Boot](#secure-boot).
+* **Removing `dattobd-dkms` fails** with "pre-removal script subprocess returned error exit status 1" (seen with 0.12.2): its script stops when the module is not loaded. Run `sudo modprobe dattobd`, then remove it again.
+* **A machine backup stops with "no usable block snapshot module loaded".** No module is loaded, or the backup did not run as root.
 
 ### Where settings are kept
 
@@ -812,7 +978,7 @@ This client adds one small file at the root of its folder snapshots, `.proxmox_b
 
 **"Not connected to the background service."** The GUI has not had administrator rights yet in this session, or you declined. Click **Connect** and allow the prompt; on a standard account, give an administrator's name and password ([section 15](#connecting-to-the-background-service)).
 
-**Machine backup on Linux fails with a permission or snapshot error.** With the background service, the service runs it as root; without it, use **Restart as administrator** in the app. Load `elastio-snap` or `dattobd` first.
+**Machine backup on Linux fails with a permission or snapshot error.** With the background service, the service runs it as root; without it, use **Restart as administrator** in the app. Load `elastio-snap` or `dattobd` first ([installing them](#linux-snapshots-installing-elastio-snap-or-dattobd)).
 
 **Restore of an older client version shows folders without files.** That computer has a version without split-archive support. Update it.
 

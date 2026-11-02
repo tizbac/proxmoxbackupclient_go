@@ -204,7 +204,7 @@ Points to know:
 
 Plus the connection flags in [section 2](#2-connecting-to-pbs).
 
-On Windows the tool takes a VSS snapshot of every mounted partition on the disk, then stores a bootable image of the whole disk. On Linux mounted partitions are snapshotted with `elastio-snap` or `dattobd`, which must be loaded, and the tool must run as root. See "Linux machine backup prerequisites" in the [README](../../README.md#linux-machine-backup-prerequisites-vss-equivalent).
+On Windows the tool takes a VSS snapshot of every mounted partition on the disk, then stores a bootable image of the whole disk. On Linux mounted partitions are snapshotted with `elastio-snap` or `dattobd`, which must be loaded, and the tool must run as root. Installing them (DKMS, loading at boot, Secure Boot): see [Linux snapshots: installing elastio-snap or dattobd](GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) in the GUI manual.
 
 Later backups of the same disk to the same group only upload changed 4 MiB chunks.
 
