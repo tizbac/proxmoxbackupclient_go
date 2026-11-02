@@ -78,11 +78,31 @@ What to install (tested in November 2026):
 
 | Distribution | Install | Tested |
 |---|---|---|
-| Ubuntu, Linux Mint, Debian | dattobd from Datto's packages ([below](#dattobd-from-datto-packages-debian-ubuntu-mint)), or elastio-snap from source with DKMS ([below](#elastio-snap-with-dkms-debian-ubuntu-mint)) | Both, on Linux Mint 21.3 (Ubuntu 22.04 base) with kernel 5.15: dattobd 0.12.2 and elastio-snap 0.12.11. An earlier test built and ran elastio-snap 0.12.11 on Debian 13 with kernel 6.12 |
-| Fedora | elastio-snap from source with DKMS ([below](#fedora-and-the-rhel-family)) | Fedora 44: builds on kernel 6.19, **but not on kernel 7.2**, which Fedora 44 has after its updates ([kernel 7](#kernel-7)) |
-| RHEL, AlmaLinux, Rocky Linux 8 to 10 | dattobd from Datto's packages, or elastio-snap from source with DKMS | Not tested |
+| Ubuntu, Linux Mint, Debian | dattobd from Datto's packages ([below](#dattobd-from-datto-packages-debian-ubuntu-mint)), or elastio-snap with the project's script ([below](#elastio-snap-with-the-projects-script)) | Both, on Linux Mint 21.3 (Ubuntu 22.04 base) with kernel 5.15: dattobd 0.12.2, and elastio-snap 0.12.11 by hand and with the script. An earlier test built and ran elastio-snap 0.12.11 on Debian 13 with kernel 6.12 |
+| Fedora | elastio-snap with the project's script ([below](#elastio-snap-with-the-projects-script)) | Fedora 44 with kernel 7.2, the kernel it has after its updates: the script's patched build loads at every start and takes snapshots. Unpatched elastio-snap builds only on Fedora 44's release kernel, 6.19 ([kernel 7](#kernel-7)) |
+| RHEL, AlmaLinux, Rocky Linux 8 to 10 | dattobd from Datto's packages, or elastio-snap with the project's script | Not tested |
 
-Elastio's own package repositories, named in elastio-snap's INSTALL.md, no longer answer, and no repository has the `elastio-snap-dkms` package that the app's .deb suggests. Build elastio-snap from source as below. Use the maintained fork, [Axcient/elastio-snap](https://github.com/Axcient/elastio-snap) (branch `develop`): the original `elastio/elastio-snap` is archived and does not build on current kernels.
+Elastio's own package repositories, named in elastio-snap's INSTALL.md, no longer answer, and no repository has an `elastio-snap-dkms` package (the app's .deb suggests Datto's `dattobd-dkms` instead). elastio-snap is built from source: the project's script does it, and the steps by hand follow it. Use the maintained fork, [Axcient/elastio-snap](https://github.com/Axcient/elastio-snap) (branch `develop`): the original `elastio/elastio-snap` is archived and does not build on current kernels.
+
+#### elastio-snap with the project's script
+
+The project's script, [packaging/linux/elastio-snap/install-elastio-snap.sh](../../packaging/linux/elastio-snap/install-elastio-snap.sh), installs elastio-snap on Debian, Ubuntu, Linux Mint, Fedora and the RHEL family, also on kernel 7, which elastio-snap does not support yet ([kernel 7](#kernel-7)). On Fedora 44 and other kernel 7 systems, use it:
+
+```bash
+git clone --depth 1 https://github.com/tizbac/proxmoxbackupclient_go.git
+sudo proxmoxbackupclient_go/packaging/linux/elastio-snap/install-elastio-snap.sh --with-elioctl
+```
+
+The script:
+
+1. Installs git, the compiler, DKMS and the running kernel's headers with apt or dnf, and the headers meta-package (`linux-headers-generic`, `linux-headers-amd64` or `kernel-devel`) so DKMS has the headers of each new kernel.
+2. Fetches elastio-snap from Axcient at the commit the project tested (0.12.11, branch `develop`, November 2026).
+3. Applies the project's kernel 7 patch, `kernel7-strscpy.patch` next to the script. The patched module also works on older kernels, and keeps building when a kernel 7 update arrives.
+4. Builds and installs it through DKMS, loads it, and adds `/etc/modules-load.d/elastio-snap.conf`. With `--with-elioctl` it also installs the module's own tool, `elioctl`, in `/usr/local/bin`.
+
+Running it again changes nothing when that build is already installed. If an older elastio-snap is loaded and no snapshot is in use, the script loads the new build in its place; with a snapshot in use, the new build loads at the next start. `--ref <commit, tag or branch>` builds another elastio-snap version. The script checks the patch against it first: when that version already has the fix, it builds without the patch; when the patch no longer fits Axcient's code, it stops before changing anything and says so, rather than build a half-patched module. The patch is offered to Axcient as [pull request 138](https://github.com/Axcient/elastio-snap/pull/138); once Axcient releases the fix, the project drops the patch. The script does not enrol Secure Boot keys ([Secure Boot](#secure-boot)).
+
+The sections below give the same steps by hand.
 
 #### dattobd from Datto packages (Debian, Ubuntu, Mint)
 
@@ -101,6 +121,8 @@ sudo modprobe dattobd
 Datto's own [INSTALL.md](https://github.com/datto/dattobd/blob/main/INSTALL.md) adds the key with `apt-key`, which is deprecated; the `signed-by` form above does the same. `dattobd-utils` adds `dbdctl`, the module's own tool. The app does not need it.
 
 #### elastio-snap with DKMS (Debian, Ubuntu, Mint)
+
+By hand, without the kernel 7 patch (for that, see [kernel 7](#kernel-7)):
 
 ```bash
 sudo apt-get install git build-essential dkms linux-headers-$(uname -r)
@@ -127,6 +149,8 @@ Do not run `sudo make install`: it also installs a copy of the module outside DK
 
 #### Fedora and the RHEL family
 
+By hand, without the kernel 7 patch, which Fedora 44 needs ([kernel 7](#kernel-7)):
+
 ```bash
 sudo dnf install git gcc make dkms kernel-devel-$(uname -r) kernel-devel
 git clone --depth 1 https://github.com/Axcient/elastio-snap.git
@@ -145,12 +169,22 @@ On RHEL, AlmaLinux and Rocky Linux (not tested) DKMS comes from EPEL. Datto publ
 
 #### Kernel 7
 
-In November 2026 neither module builds on kernel 7.2, the kernel Fedora 44 runs after its updates:
+In November 2026 neither module builds on kernel 7.2, the kernel Fedora 44 runs after its updates, as it comes:
 
-* elastio-snap 0.12.11 stops at `implicit declaration of function 'strncpy'` (in `main.c` and `nl_debug.c`): kernel 7 no longer has `strncpy`. It builds on Fedora 44's own release kernel, 6.19. In our test, with those two calls changed to `strscpy`, the module loaded on kernel 7.2 and the app's snapshot code took and read a snapshot with SELinux enforcing, so a fix should be small. That change is not in elastio-snap yet.
+* elastio-snap 0.12.11 stops at `implicit declaration of function 'strncpy'` (in `main.c` and `nl_debug.c`): kernel 7 no longer has `strncpy`. It builds on Fedora 44's own release kernel, 6.19. The project's patch, [kernel7-strscpy.patch](../../packaging/linux/elastio-snap/kernel7-strscpy.patch), replaces each call with what that call needs (`strscpy`, `strscpy_pad` or `memcpy`). With it, elastio-snap builds through DKMS on Fedora 44 with kernel 7.2.14, loads at every start with SELinux enforcing, and both `elioctl` and the app's snapshot code take, mount and read snapshots. The same patched build passed the same tests on Linux Mint 21.3 with kernel 5.15. The [project's script](#elastio-snap-with-the-projects-script) applies the patch. It is offered to Axcient as [pull request 138](https://github.com/Axcient/elastio-snap/pull/138); when a released elastio-snap has the fix, the script finds it there and builds without the patch.
 * dattobd 0.12.2 (its `main` branch, April 2026) fails to build on Fedora 44 with either kernel, 6.19 or 7.2.
 
-On such a computer `dkms install` ends with "Bad return status for module build", and `dkms status` shows the module as `added`, not `installed`. Check the [elastio-snap repository](https://github.com/Axcient/elastio-snap) for a newer version. Until then a Linux machine Backup Set there can only read its mounted disks live: untick **Use snapshots** and tick "Run without a snapshot: I accept the backup may be inconsistent". Remove a module that will not build with `sudo dkms remove elastio-snap/<version> --all`, so DKMS does not try again at every kernel update.
+To apply the patch by hand, fetch elastio-snap at the commit the project tested, patch it, then follow the DKMS steps of [Fedora and the RHEL family](#fedora-and-the-rhel-family) from `VER=` on:
+
+```bash
+git clone --depth 1 https://github.com/tizbac/proxmoxbackupclient_go.git
+git clone https://github.com/Axcient/elastio-snap.git
+cd elastio-snap
+git checkout 971ba56a607022efc72cb3567c3cc29b2e4d10cf
+patch -p1 < ../proxmoxbackupclient_go/packaging/linux/elastio-snap/kernel7-strscpy.patch
+```
+
+Without the patch, `dkms install` ends with "Bad return status for module build" on kernel 7, and `dkms status` shows the module as `added`, not `installed`. Remove a module that will not build with `sudo dkms remove elastio-snap/<version> --all`, so DKMS does not try again at every kernel update. A Linux machine Backup Set on a computer without a snapshot module can only read its mounted disks live: untick **Use snapshots** and tick "Run without a snapshot: I accept the backup may be inconsistent".
 
 #### Secure Boot
 

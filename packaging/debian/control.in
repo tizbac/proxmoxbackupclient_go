@@ -7,7 +7,7 @@ Section: admin
 Priority: optional
 Installed-Size: @SIZE@
 Depends: @DEPENDS@, pkexec | policykit-1
-Suggests: elastio-snap-dkms
+Suggests: dattobd-dkms
 Conflicts: pbsgo
 Replaces: pbsgo
 Description: Backup client for Proxmox Backup Server (app and command line)
@@ -20,4 +20,5 @@ Description: Backup client for Proxmox Backup Server (app and command line)
   - proxmoxbackup-directory: folder backups from the command line
   - proxmoxbackup-machine: whole-disk backups from the command line
   - proxmoxbackup-nbd: attach a disk image from the server as /dev/nbdN
- Snapshots of mounted file systems use elastio-snap when it is installed.
+ Snapshots of mounted file systems use the elastio-snap or dattobd kernel
+ module when one is loaded.

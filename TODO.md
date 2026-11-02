@@ -46,7 +46,7 @@ What is still open after 2.0. Finished work is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Languages and docs
 
-- [ ] **Kernel 7 and the snapshot modules.** Neither elastio-snap 0.12.11 nor dattobd 0.12.2 builds on kernel 7.2 (Fedora 44 after its updates; elastio-snap only for want of `strncpy`). When a fixed version is out, test it and update "Linux snapshots: installing elastio-snap or dattobd" in the GUI manual. The Secure Boot steps there were not tried on a machine with Secure Boot on.
+- [ ] **Kernel 7 and the snapshot modules.** elastio-snap 0.12.11 does not build on kernel 7 (no `strncpy`); the project carries `packaging/linux/elastio-snap/kernel7-strscpy.patch`, applied by `install-elastio-snap.sh`, and has offered it to Axcient as [pull request 138](https://github.com/Axcient/elastio-snap/pull/138). When Axcient merges and releases it: move the script's pinned commit to that release, drop the patch (and the patch step from the script), and update "Linux snapshots: installing elastio-snap or dattobd" in the GUI manual. dattobd 0.12.2 does not build on Fedora 44 at all (kernels 6.19 and 7.2). The Secure Boot steps in the manual were not tried on a machine with Secure Boot on.
 - [ ] **The translated READMEs want a native speaker's review.** They are made from the English README.
 - [ ] Native speakers to look over the app's strings in the languages its users use. All 17 were reviewed against the English (meaning, one term per concept, menu names, plurals, quotation marks), but a native ear still catches what is correct but unidiomatic. The About page's feature lists were not part of that review.
 

@@ -46,7 +46,8 @@ packaging/fedora/build-rpm.sh [output-dir]      # default: dist/
 | `/usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png` | icon |
 | `/usr/share/doc/proxmoxbackupclient/` | README, CHANGELOG, the manuals (and `copyright` in the .deb) |
 
-The .deb depends on `pkexec | policykit-1` and suggests `elastio-snap-dkms`; the .rpm
+The .deb depends on `pkexec | policykit-1` and suggests `dattobd-dkms` (from Datto's
+package repository; nobody publishes an `elastio-snap-dkms` package); the .rpm
 and the Arch package require `polkit`. The app needs pkexec to connect to the background
 service (below).
 
@@ -125,6 +126,12 @@ skipped when systemd is not running (for example in a container).
 ## Snapshots
 
 Machine backups of a disk with mounted file systems need a block snapshot kernel module,
-elastio-snap (`elastio-snap-dkms`) or dattobd, see the main README. Without one loaded the
-backup refuses to run rather than copy file systems that are changing underneath it.
-Partitions that are not mounted are read directly.
+elastio-snap or dattobd. Without one loaded the backup refuses to run rather than copy
+file systems that are changing underneath it. Partitions that are not mounted are read
+directly.
+
+dattobd comes as `dattobd-dkms` from Datto's package repository. elastio-snap has no
+package anyone publishes: `sudo packaging/linux/elastio-snap/install-elastio-snap.sh`
+builds it from Axcient's source through DKMS, with the kernel 7 fix the project carries
+until Axcient releases it, and loads it at every start. The GUI manual's section "Linux
+snapshots: installing elastio-snap or dattobd" has the details and the manual steps.
