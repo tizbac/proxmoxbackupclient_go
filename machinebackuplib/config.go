@@ -1,6 +1,9 @@
 package machinebackuplib
 
-import "pbscommon"
+import (
+	"fmt"
+	"pbscommon"
+)
 
 type MailSendConfig struct {
 	From string `json:"from"`
@@ -89,15 +92,30 @@ func (c *Config) Valid() bool {
 	}
 
 	if c.SMTP != nil {
-		mailCfgValid := c.SMTP.Host != "" && c.SMTP.Port != "" && c.SMTP.Username != "" && c.SMTP.Password != ""
-		if len(c.SMTP.Mails) == 0 {
-			return false
-		}
-		for i := range c.SMTP.Mails {
-			mailCfgValid = mailCfgValid && (c.SMTP.Mails[i].From != "" && c.SMTP.Mails[i].To != "")
-		}
-		return mailCfgValid
+		return c.SMTP.Problem() == ""
 	}
 
 	return true
+}
+
+// Problem says what is missing from the mail settings, or "". A relay that
+// takes mail without a login needs no username or password: leave both empty
+// (tizbac/proxmoxbackupclient_go#74, where an empty username only printed
+// the help).
+func (s *SMTPConfig) Problem() string {
+	if s.Host == "" || s.Port == "" {
+		return `smtp: "host" and "port" are needed`
+	}
+	if s.Username == "" && s.Password != "" {
+		return `smtp: a "password" needs a "username"`
+	}
+	if len(s.Mails) == 0 {
+		return `smtp: "mails" needs at least one "from" and "to"`
+	}
+	for i, m := range s.Mails {
+		if m.From == "" || m.To == "" {
+			return fmt.Sprintf(`smtp: mails[%d] needs both "from" and "to"`, i)
+		}
+	}
+	return ""
 }

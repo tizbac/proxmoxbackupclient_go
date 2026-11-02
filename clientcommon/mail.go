@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"text/template"
@@ -20,14 +21,20 @@ func (a unencryptedAuth) Start(server *smtp.ServerInfo) (string, []byte, error) 
 	return a.Auth.Start(&s)
 }
 
+// SetupMailClient connects to the mail server and logs in. An empty username
+// means a relay that takes mail without a login (often on port 25, inside a
+// network): then no login is attempted, and there is no password to protect
+// on an unencrypted connection (tizbac/proxmoxbackupclient_go#74).
 func SetupMailClient(host, port, username, password string, allowInsecure bool) (*smtp.Client, error) {
 	var auth smtp.Auth
-	auth = smtp.PlainAuth("", username, password, host)
-	if port == "25" {
-		if !allowInsecure {
-			return nil, errors.New("sending plain password over unencrypted connection")
+	if username != "" {
+		auth = smtp.PlainAuth("", username, password, host)
+		if port == "25" {
+			if !allowInsecure {
+				return nil, errors.New("sending plain password over unencrypted connection")
+			}
+			auth = unencryptedAuth{auth}
 		}
-		auth = unencryptedAuth{auth}
 	}
 
 	var tlsconfig *tls.Config
@@ -68,9 +75,10 @@ func SetupMailClient(host, port, username, password string, allowInsecure bool) 
 		}
 	}
 
-	// Auth
-	if err = c.Auth(auth); err != nil {
-		return nil, err
+	if auth != nil {
+		if err = c.Auth(auth); err != nil {
+			return nil, err
+		}
 	}
 
 	return c, nil
@@ -83,7 +91,11 @@ func SendMail(from, to, subject, body string, c *smtp.Client) error {
 	recipients := strings.Split(to, ",")
 	recipientsStr := make([]string, 0)
 	for i := range recipients {
-		recipientsStr = append(recipientsStr, fmt.Sprintf("<%s>", recipients[i]))
+		if a, err := mail.ParseAddress(strings.TrimSpace(recipients[i])); err == nil {
+			recipientsStr = append(recipientsStr, a.String())
+		} else {
+			recipientsStr = append(recipientsStr, fmt.Sprintf("<%s>", strings.TrimSpace(recipients[i])))
+		}
 	}
 	headers["To"] = strings.Join(recipientsStr, ",")
 	headers["Subject"] = subject
@@ -95,8 +107,10 @@ func SendMail(from, to, subject, body string, c *smtp.Client) error {
 	}
 	message += "\r\n" + body
 
-	// To && From
-	if err := c.Mail(from); err != nil {
+	// To && From. The envelope takes bare addresses: "Backups <b@example.com>"
+	// as MAIL FROM is a syntax error to strict servers such as Gmail's (555
+	// 5.5.2, tizbac/proxmoxbackupclient_go#63). The headers keep the names.
+	if err := c.Mail(envelopeAddress(from)); err != nil {
 		return err
 	}
 
@@ -107,7 +121,7 @@ func SendMail(from, to, subject, body string, c *smtp.Client) error {
 		if r == "" {
 			continue
 		}
-		if err := c.Rcpt(r); err != nil {
+		if err := c.Rcpt(envelopeAddress(r)); err != nil {
 			return err
 		}
 	}
@@ -129,6 +143,16 @@ func SendMail(from, to, subject, body string, c *smtp.Client) error {
 	}
 
 	return nil
+}
+
+// envelopeAddress is the bare address in "Name <addr>" or "<addr>", for MAIL
+// FROM and RCPT TO; anything it cannot read is used as given.
+func envelopeAddress(s string) string {
+	s = strings.TrimSpace(s)
+	if a, err := mail.ParseAddress(s); err == nil {
+		return a.Address
+	}
+	return s
 }
 
 // MailFailedNote is added to a snapshot's PBS comment when its notification

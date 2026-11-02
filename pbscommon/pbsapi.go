@@ -829,6 +829,11 @@ func (pbs *PBSClient) defaultCryptMode() string {
 	return CryptModeNone
 }
 
+// chunkUploadTimeout bounds one chunk upload, answer included. Chunks are at
+// most 16 MiB, so even with a low upload speed limit (1 MB/s) this leaves
+// ample room. A variable so tests can shorten it.
+var chunkUploadTimeout = 5 * time.Minute
+
 func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []byte, dynamic bool, compressed bool) error {
 	var outBuffer []byte
 	var err error
@@ -896,7 +901,14 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 	if !dynamic {
 		suburl = "/fixed_chunk?"
 	}
-	req, err2 := http.NewRequest("POST", pbs.BaseURL+suburl+q.Encode(), bytes.NewBuffer(outBuffer))
+	// Each upload has its own deadline, as each chunk fetch has
+	// (chunkFetchTimeout): a stuck HTTP/2 stream on a healthy connection is
+	// not caught by the transport's pings, and the backup waited on it for
+	// ever (tizbac/proxmoxbackupclient_go#59). Failing lets the caller's
+	// retry send the chunk again.
+	ctx, cancel := context.WithTimeout(context.Background(), chunkUploadTimeout)
+	defer cancel()
+	req, err2 := http.NewRequestWithContext(ctx, "POST", pbs.BaseURL+suburl+q.Encode(), bytes.NewBuffer(outBuffer))
 	if err2 != nil {
 		fmt.Println("Error making request:", err2)
 		return err2
@@ -904,8 +916,12 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 	resp2, err := pbs.Client.Do(req)
 	if err != nil {
 		fmt.Println("Error making request:", err)
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("chunk upload got no answer within %v: %w", chunkUploadTimeout, err)
+		}
 		return err
 	}
+	defer resp2.Body.Close()
 
 	if resp2.StatusCode != http.StatusOK {
 		resp1, _ := io.ReadAll(resp2.Body)

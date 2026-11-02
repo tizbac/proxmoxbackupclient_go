@@ -107,8 +107,17 @@ func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, kn
 	c.knownChunks = knownChunks
 }
 
-// physicalDriveRe picks N out of \\.\PhysicalDriveN.
-var physicalDriveRe = regexp.MustCompile(`PhysicalDrive(\d+)$`)
+// physicalDriveRe picks N out of \\.\PhysicalDriveN. Windows device names
+// are not case-sensitive, and tools such as wmic print \\.\PHYSICALDRIVE0.
+var physicalDriveRe = regexp.MustCompile(`(?i)PhysicalDrive(\d+)$`)
+
+// isPhysicalDrive reports whether dev is a Windows disk, \\.\PhysicalDriveN
+// in any case. Written in capitals it used to be taken for a file and fail
+// with "seek ...: Incorrect function" (tizbac/proxmoxbackupclient_go#75).
+func isPhysicalDrive(dev string) bool {
+	const prefix = `\\.\PhysicalDrive`
+	return len(dev) >= len(prefix) && strings.EqualFold(dev[:len(prefix)], prefix)
+}
 
 // physicalDriveIndex returns N for \\.\PhysicalDriveN. A device that starts
 // like one but has no number at the end (a typo in -backupdev or in a config
@@ -602,7 +611,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 	var totalSize uint64 = 0
 	sizes := make([]uint64, len(cfg.BackupDevices))
 	for i, dev := range cfg.BackupDevices {
-		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
+		if isPhysicalDrive(dev) {
 			// For physical drives, get the disk size
 			idx, err := physicalDriveIndex(dev)
 			if err != nil {
@@ -671,7 +680,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			}
 			return progressCallback(jobProgressFraction(baseSize, devSize, fraction, totalSize), message)
 		}
-		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
+		if isPhysicalDrive(dev) {
 			// Already checked by the size loop above.
 			idx, _ := physicalDriveIndex(dev)
 

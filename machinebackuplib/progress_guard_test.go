@@ -33,9 +33,17 @@ func TestJobProgressFraction(t *testing.T) {
 
 // A malformed \\.\PhysicalDriveN used to panic with an index out of range.
 func TestPhysicalDriveIndex(t *testing.T) {
-	for dev, want := range map[string]int{`\\.\PhysicalDrive0`: 0, `\\.\PhysicalDrive12`: 12} {
+	for dev, want := range map[string]int{`\\.\PhysicalDrive0`: 0, `\\.\PhysicalDrive12`: 12, `\\.\PHYSICALDRIVE3`: 3, `\\.\physicaldrive1`: 1} {
 		if got, err := physicalDriveIndex(dev); err != nil || got != want {
 			t.Errorf("physicalDriveIndex(%q) = %d, %v; want %d", dev, got, err, want)
+		}
+		if !isPhysicalDrive(dev) {
+			t.Errorf("isPhysicalDrive(%q) = false; want true", dev)
+		}
+	}
+	for _, dev := range []string{`/dev/sda`, `disk.img`, `\\.\PhysicalDriv`, `C:\PhysicalDrive0`} {
+		if isPhysicalDrive(dev) {
+			t.Errorf("isPhysicalDrive(%q) = true; want false", dev)
 		}
 	}
 	for _, dev := range []string{`\\.\PhysicalDrive`, `\\.\PhysicalDriveX`, `\\.\PhysicalDrive1x`, `\\.\PhysicalDrive99999999999`} {

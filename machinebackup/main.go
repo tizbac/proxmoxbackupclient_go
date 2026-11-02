@@ -247,6 +247,9 @@ func main() {
 	// Errors go to stderr with a non-zero exit, never a message box: a box
 	// waits for a click that an unattended scheduled run never gets.
 	if ok := cfg.Valid(); !ok {
+		if cfg.SMTP != nil && cfg.SMTP.Problem() != "" {
+			fmt.Fprintln(os.Stderr, cfg.SMTP.Problem())
+		}
 		fmt.Fprintln(os.Stderr, "Missing or invalid options. Options:")
 		flag.CommandLine.SetOutput(os.Stderr)
 		flag.PrintDefaults()

@@ -63,3 +63,32 @@ func TestConfigDirsWithKeyFile(t *testing.T) {
 		t.Error("config with several backupdirs and a keyfile should be valid")
 	}
 }
+
+// TestSMTPRelayWithoutLogin: the smtp block of issue #74, a relay on port 25
+// with no username or password, is valid; incomplete blocks say what is
+// missing.
+func TestSMTPRelayWithoutLogin(t *testing.T) {
+	raw := `{
+		"baseurl": "https://pbs:8007", "authid": "user@pbs!tok", "secret": "s",
+		"datastore": "ds", "backupdir": "/data",
+		"smtp": {"host": "mailhost.example.com", "port": "25", "username": "", "password": "",
+			"insecure": false, "mails": [{"from": "noreply@example.com", "to": "user@example.com"}]}
+	}`
+	var cfg Config
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.valid() {
+		t.Errorf("relay without login: %s", cfg.SMTP.problem())
+	}
+	for name, s := range map[string]SMTPConfig{
+		"no host":           {Port: "25", Mails: []MailSendConfig{{From: "a@x", To: "b@x"}}},
+		"password, no user": {Host: "h", Port: "25", Password: "p", Mails: []MailSendConfig{{From: "a@x", To: "b@x"}}},
+		"no mails":          {Host: "h", Port: "25"},
+		"no to":             {Host: "h", Port: "25", Mails: []MailSendConfig{{From: "a@x"}}},
+	} {
+		if s.problem() == "" {
+			t.Errorf("%s: want a problem", name)
+		}
+	}
+}
