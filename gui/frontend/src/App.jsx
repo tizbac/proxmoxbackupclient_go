@@ -4167,7 +4167,9 @@ function App() {
         <div className={`tab-content ${activeTab === 'backup' ? 'active' : ''}`}>
           <h2>{t('backupTitle')}</h2>
 
-          {pbsServers.length === 0 && (
+          {/* Not while waiting to connect: the computer's servers are with the
+              service, and the Connect banner says so. */}
+          {pbsServers.length === 0 && systemInfo.service_connected !== false && (
             <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#fff3cd', borderLeft: '4px solid #ffc107', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'}}>
               <span>{t('noPbsServerBanner')}</span>
               <button className="btn" onClick={() => { setPrefsTab('account'); setShowPreferences(true) }}>
@@ -4393,8 +4395,12 @@ function App() {
                 </div>
               )}
               <div style={{display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '20px'}}>
+                {/* Not until connected (or on the user's own settings): the
+                    service refuses the app's changes and backups before that. */}
                 <button
                   className="btn"
+                  disabled={systemInfo.service_connected === false}
+                  title={systemInfo.service_connected === false ? t('serviceConnectBanner') : undefined}
                   onClick={() => {
                     setEditingJobId(null)
                     setJobName('')
@@ -4423,6 +4429,8 @@ function App() {
                 </button>
                 <button
                   className="btn btn-secondary"
+                  disabled={systemInfo.service_connected === false}
+                  title={systemInfo.service_connected === false ? t('serviceConnectBanner') : undefined}
                   onClick={() => {
                     setBackupMode('oneshot')
                     setOneOffComment('')
@@ -5366,7 +5374,9 @@ function App() {
         <div className={`tab-content ${activeTab === 'restore' ? 'active' : ''}`}>
           <h2>{t('restoreTitle')}</h2>
 
-          {pbsServers.length === 0 && (
+          {/* Not while waiting to connect: the computer's servers are with the
+              service, and the Connect banner says so. */}
+          {pbsServers.length === 0 && systemInfo.service_connected !== false && (
             <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#fff3cd', borderLeft: '4px solid #ffc107', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'}}>
               <span>{t('noPbsServerBanner')}</span>
               <button className="btn" onClick={() => { setPrefsTab('account'); setShowPreferences(true) }}>
