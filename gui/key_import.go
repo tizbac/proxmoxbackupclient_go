@@ -249,8 +249,14 @@ var pictureSizes = []int{1600, 1000}
 // (or, for a very large picture, at 3200 px: the full size would take
 // seconds and hundreds of MB for no gain), each with two ways of telling
 // black from white.
+//
+// Last it reads the picture as a bare QR code (PURE_BARCODE): the paper
+// key's own picture, saved or screenshotted. The detector that finds a code
+// in a photo missed about 1 in 75 of these for some keys (38 of 3,000 test
+// keys), which the bare reading reads every time.
 func decodeKeyQR(img image.Image, sizes []int) (string, bool) {
 	hints := map[gozxing.DecodeHintType]interface{}{gozxing.DecodeHintType_TRY_HARDER: true}
+	pure := map[gozxing.DecodeHintType]interface{}{gozxing.DecodeHintType_PURE_BARCODE: true}
 	try := func(im image.Image) (string, bool) {
 		src := gozxing.NewLuminanceSourceFromImage(im)
 		for _, bin := range []gozxing.Binarizer{gozxing.NewHybridBinarizer(src), gozxing.NewGlobalHistgramBinarizer(src)} {
@@ -259,6 +265,11 @@ func decodeKeyQR(img image.Image, sizes []int) (string, bool) {
 				continue
 			}
 			if res, err := qrcode.NewQRCodeReader().Decode(bmp, hints); err == nil {
+				return res.GetText(), true
+			}
+		}
+		if bmp, err := gozxing.NewBinaryBitmap(gozxing.NewHybridBinarizer(src)); err == nil {
+			if res, err := qrcode.NewQRCodeReader().Decode(bmp, pure); err == nil {
 				return res.GetText(), true
 			}
 		}

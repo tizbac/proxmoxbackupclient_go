@@ -502,6 +502,33 @@ func TestKeyImportFromPicture(t *testing.T) {
 	}
 }
 
+// testdata/qr-hard-key.json is a test key (made for this, protecting
+// nothing) whose paper-key QR code the photo detector alone cannot find:
+// about 1 key in 80 is like that. Its own picture must still read back
+// (decodeKeyQR's bare-code reading), and so must a scan of the page.
+func TestKeyImportHardQRCode(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "qr-hard-key.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// As saved (LF): a Windows checkout may have made it CRLF, which is
+	// another QR code.
+	qr := qrImage(t, strings.ReplaceAll(string(raw), "\r\n", "\n"))
+	var pngBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, qr); err != nil {
+		t.Fatal(err)
+	}
+	for name, pic := range map[string][]byte{
+		"the QR code itself (PNG)": pngBuf.Bytes(),
+		"scan of the page (JPEG)":  encodeJPEG(t, photo(qr, 1700, 2200, 820, 0.5), 85),
+	} {
+		ki, err := keyImportFromImageBytes(pic)
+		if err != nil || ki.Problem != "" || ki.KeyText == "" {
+			t.Errorf("%s: err %v problem %q %s", name, err, ki.Problem, ki.Detail)
+		}
+	}
+}
+
 func TestReadImportKeyCameraFrame(t *testing.T) {
 	text, fp := newTestKey(t)
 	a := &App{}
