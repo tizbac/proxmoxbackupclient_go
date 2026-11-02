@@ -1742,7 +1742,17 @@ function App() {
               clear_encryption_key_passphrase: false,
               backupdir: data.backupdir || '',
               'backup-id': data['backup-id'] || hn,
-              usevss: data.usevss !== undefined ? data.usevss : true
+              usevss: data.usevss !== undefined ? data.usevss : true,
+              // Backup Options, so Preferences shows what is stored: without
+              // them it showed the defaults, and saving one speed limit sent
+              // the other two as 0.
+              parallel_restore: !!data.parallel_restore,
+              parallel_backup_read: !!data.parallel_backup_read,
+              backup_read_workers: data.backup_read_workers || 0,
+              max_concurrent_runs: data.max_concurrent_runs || 3,
+              upload_limit_mbps: data.upload_limit_mbps || 0,
+              download_limit_mbps: data.download_limit_mbps || 0,
+              disk_read_limit_mbps: data.disk_read_limit_mbps || 0
             })
 
             // Initialize backupDirs from config if available
