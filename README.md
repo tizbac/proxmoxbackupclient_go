@@ -2,7 +2,7 @@
 
 [🇬🇧 English](README.md) · [🇫🇷 Français](README.fr.md) · [🇮🇹 Italiano](README.it.md) · [🇩🇪 Deutsch](README.de.md) · [🇪🇸 Español](README.es.md) · [🇷🇺 Русский](README.ru.md) · [🇨🇳 中文](README.zh.md) · [🇯🇵 日本語](README.ja.md) · [🇬🇷 Ελληνικά](README.el.md) · [🇷🇴 Română](README.ro.md) · [🇸🇪 Svenska](README.sv.md) · [🇸🇦 العربية](README.ar.md) · [🇮🇷 فارسی](README.fa.md)
 
-> ℹ️ The translated READMEs still describe version 1.2 and have not been updated for 2.0 yet. This English README and the [user manuals](docs/manual/README.md) describe the current app. Help with the translations is welcome.
+> ℹ️ The translated READMEs are made from this English README; where they differ, the English one is current.
 
 > ⚠️ **Trademark & affiliation notice.** This is an **independent community project**, not an official Proxmox product: it is **not affiliated with, endorsed by, or sponsored by Proxmox Server Solutions GmbH**. **Proxmox®** is a registered trademark of Proxmox Server Solutions GmbH in the EU, the U.S. and other countries, and it is used here **only** to describe compatibility. Following Proxmox's own trademark guidance (registered marks must not be used in product or app names, for example "XY App for Proxmox Virtual Environment" rather than "Proxmox XY App"), **a rename of the non-branded client is underway**: the product currently called *Proxmox Backup Client* is moving to a name that does not contain the Proxmox mark. See the [Proxmox media kit](https://www.proxmox.com/en/about/company-details/media-kit) for the exact rules.
 
@@ -493,9 +493,8 @@ The restore ISO is a stock Clonezilla Live ISO patched with the `pbsnbd` / `mach
 
 **Docker (when building on Linux).** `./build_gui_windows_docker.sh` builds the Windows app as `ProxmoxBackupClientGO.exe`, with proper WebView2 support, in a disposable `golang` container. It does not build the background service or the MSI.
 
-### Feature status, changelog & internal docs
+### Changelog and internal docs
 
-- **[FEATURES_STATUS.md](FEATURES_STATUS.md)**: per-feature status matrix (implemented / tested / roadmap).
 - **[CHANGELOG.md](CHANGELOG.md)**: per-version change history.
 - **[TODO.md](TODO.md)**: open roadmap and ideas.
 - **[RELEASE_NOTES.md](RELEASE_NOTES.md)**: stable product state and available builds.
