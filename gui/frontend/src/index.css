@@ -204,6 +204,9 @@ body {
 
 .form-group input[type="text"],
 .form-group input[type="password"],
+.form-group input[type="number"],
+.form-group input[type="time"],
+.form-group input[type="date"],
 .form-group select,
 .form-group textarea {
     width: 100%;
@@ -224,6 +227,90 @@ body {
 .form-group input[type="checkbox"] {
     margin-right: 8px;
 }
+
+/* Schedule tab of the Backup Set editor (ScheduleEditor.jsx). Its fields
+   are the form fields above, sized to their content to sit in a row. */
+.sched-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    border: 1px solid #d8dee9;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.sched-list-empty { padding: 10px 12px; color: #6c757d; font-size: 14px; }
+.schedule-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-top: 1px solid #e6e6e6;
+}
+.schedule-row:first-child { border-top: none; }
+.schedule-row.editing { background: rgba(61, 90, 168, 0.08); }
+.form-group .schedule-row input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
+.schedule-row .sched-text { min-width: 0; font-size: 14px; }
+.schedule-row .sched-text.off { color: #8a93a5; }
+.schedule-row .sched-note { font-size: 12px; }
+.schedule-row .sched-note.problem { color: #9a5b00; }
+.schedule-row .sched-buttons { display: flex; gap: 4px; }
+.schedule-row .sched-buttons .btn { padding: 4px 10px; font-size: 13px; margin: 0; }
+.sched-add-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: #6c757d;
+}
+.sched-modes { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 8px; }
+.form-group .sched-radio {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    font-weight: normal;
+    margin: 0;
+    cursor: pointer;
+}
+.form-group .sched-modes .sched-radio { gap: 8px; }
+.form-group .sched-radio input[type="radio"] { margin: 0; }
+.form-group .sched-startup {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-weight: normal;
+}
+.form-group .sched-startup input[type="checkbox"] { width: 20px; height: 20px; margin: 0; cursor: pointer; }
+.schedule-editor {
+    margin-top: 14px;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px;
+}
+.sched-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
+.sched-key { min-width: 110px; color: #5a6478; }
+.form-group .sched-row .sched-field { width: auto; margin: 0; }
+.form-group .sched-row .sched-field.narrow { width: 90px; }
+.sched-days { display: flex; gap: 6px; flex-wrap: wrap; }
+.sched-chip {
+    padding: 6px 10px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    background-color: #e2e8f0;
+    color: #4a5568;
+}
+.sched-chip.selected { background-color: var(--accent); color: #ffffff; font-weight: bold; }
+.sched-hint { font-size: 12px; color: #6c757d; }
+.sched-warn { font-size: 12px; color: #9a5b00; background: #fff4e0; padding: 6px 8px; border-radius: 5px; }
+.sched-next { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #d8dee9; font-size: 13px; }
+.sched-next ol { margin: 6px 0 0; padding-left: 20px; font-variant-numeric: tabular-nums; }
+.sched-done { display: flex; justify-content: flex-end; margin-top: 8px; }
+.info-box.schedule-summary { background-color: #eef2ff; }
 
 /* Disk selection styling */
 .drive-actions {
@@ -476,6 +563,33 @@ body {
     cursor: default;
 }
 
+/* Preferences > Backup Options: the three speed limits in equal columns,
+   so the fields line up with even gaps whatever their labels' lengths. */
+.speed-limits {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    align-items: end;
+}
+.speed-limit { display: flex; flex-direction: column; }
+@media (max-width: 480px) {
+    .speed-limits { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* TabStrip.jsx: one row of tabs, or evenly filled rows in equal columns. */
+.tabstrip {
+    background: #fff;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    padding: 0 10px;
+    flex: 0 0 auto;
+}
+.tabstrip .tabhead { white-space: nowrap; flex: none; }
+.tabstrip.banked { display: grid; }
+.tabstrip.banked .tabhead { text-align: center; }
+.tabstrip.measuring { display: flex; flex-wrap: nowrap; overflow: hidden; }
+.tabstrip.measuring .tabhead { text-align: left; }
+
 /* Backup Set editor's tab strip (Source/Exclusions/Schedule/Destination) —
    chevron shape per the mockup Mick preferred over flat tabheads. These are
    still independently clickable tabs, not a linear wizard's steps — there's
@@ -617,6 +731,8 @@ body {
     .form-group input[type="text"],
     .form-group input[type="password"],
     .form-group input[type="time"],
+    .form-group input[type="date"],
+    .form-group input[type="number"],
     .form-group select,
     .form-group textarea {
         padding: 10px;
@@ -712,6 +828,9 @@ body {
 
     .form-group input[type="text"],
     .form-group input[type="password"],
+    .form-group input[type="number"],
+    .form-group input[type="time"],
+    .form-group input[type="date"],
     .form-group select,
     .form-group textarea {
         padding: 8px;

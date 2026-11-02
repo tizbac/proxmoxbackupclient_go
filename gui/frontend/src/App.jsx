@@ -11,6 +11,7 @@ import JobsLockModal from './components/JobsLockModal'
 import RadioGroup from './components/RadioGroup'
 import PassphraseModal from './components/PassphraseModal'
 import ConfirmHost, { askConfirm } from './components/ConfirmDialog'
+import TabStrip from './components/TabStrip'
 import ThemePicker, { hasStoredTheme, applyStoredTheme, heroFromAccent } from './components/ThemePicker'
 import EncryptionKeyField from './components/EncryptionKeyField'
 import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTools'
@@ -3651,8 +3652,8 @@ function App() {
                 </button>
               </div>
 
-              {/* Wraps to a second row when a language's tab names do not fit. */}
-              <div style={{background: '#fff', borderBottom: '1px solid #ddd', display: 'flex', flexWrap: 'wrap', padding: '0 10px', flex: '0 0 auto'}}>
+              {/* One row, or evenly filled rows when a language's tab names do not fit. */}
+              <TabStrip>
                 <button className={`tabhead ${prefsTab === 'account' ? 'active' : ''}`} onClick={() => setPrefsTab('account')}>
                   {t('prefsAccountInfo')}
                 </button>
@@ -3680,7 +3681,7 @@ function App() {
                 <button className={`tabhead ${prefsTab === 'advanced' ? 'active' : ''}`} onClick={() => setPrefsTab('advanced')}>
                   {t('prefsAdvanced')}
                 </button>
-              </div>
+              </TabStrip>
 
               <div style={{padding: '22px 26px', overflowY: 'auto', flex: '1 1 auto'}}>
                 {prefsTab === 'account' && (
@@ -3975,7 +3976,7 @@ function App() {
                             type="number"
                             min="1"
                             max="32"
-                            style={{width: '70px'}}
+                            style={{width: '80px'}}
                             value={config.backup_read_workers || 8}
                             onChange={(e) => setConfig({...config, backup_read_workers: parseInt(e.target.value) || 8})}
                             onBlur={async (e) => {
@@ -4025,13 +4026,13 @@ function App() {
 
                     <div className="form-group" style={{marginTop: '24px'}}>
                       <h3 style={{marginBottom: '8px'}}>{t('speedLimitsTitle')}</h3>
-                      <div style={{display: 'flex', flexWrap: 'wrap', gap: '16px'}}>
+                      <div className="speed-limits">
                         {[
                           ['upload_limit_mbps', 'speedLimitUpload'],
                           ['download_limit_mbps', 'speedLimitDownload'],
                           ['disk_read_limit_mbps', 'speedLimitDiskRead'],
                         ].map(([field, label]) => (
-                          <div key={field} style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
+                          <div key={field} className="speed-limit">
                             <label htmlFor={label}>{t(label)}</label>
                             <input
                               id={label}
@@ -4039,7 +4040,6 @@ function App() {
                               min="0"
                               max="100000"
                               step="1"
-                              style={{width: '140px'}}
                               placeholder={t('speedLimitNone')}
                               value={config[field] || ''}
                               onChange={(e) => {
