@@ -2219,8 +2219,8 @@ function App() {
           <h3>{title}</h3>
           {body}
           <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
-            <button onClick={onSubmit} style={{flex: 1}}>{t('save')}</button>
-            <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>❌ {t('cancel')}</button>
+            <button className="btn" onClick={onSubmit}>{t('save')}</button>
+            <button className="btn btn-secondary" onClick={handleCancelEdit}>{t('cancel')}</button>
           </div>
         </div>
       )
