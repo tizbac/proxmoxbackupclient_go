@@ -632,9 +632,11 @@ func (a *App) AddPBSServer(pbs *PBSServer) error {
 func (a *App) UpdatePBSServer(pbs *PBSServer) error {
 	writeDebugLog(fmt.Sprintf("UpdatePBSServer(%s) called", pbs.ID))
 	// M-04: the frontend never receives the token (sanitized), so an empty secret
-	// on update means "keep the stored one", not "clear it".
+	// on update means "keep the stored one", not "clear it". Only for the same
+	// token ID, though: the stored secret belongs to the old one, so with a new
+	// ID it stays empty and validation asks for its secret (upstream b058ed0).
 	if pbs.Secret == "" {
-		if existing, err := a.config.GetPBSServer(pbs.ID); err == nil && existing != nil {
+		if existing, err := a.config.GetPBSServer(pbs.ID); err == nil && existing != nil && existing.AuthID == pbs.AuthID {
 			pbs.Secret = existing.Secret
 		}
 	}
