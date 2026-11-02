@@ -22,6 +22,8 @@
 
 > 关键词：proxmox backup client windows · PBS 客户端 · Windows VSS 备份 · 不可变异地备份 · 物理机转虚拟机（P2V） · 裸机恢复 · Proxmox Backup Server 界面。
 
+<a id="-new-in-20"></a>
+
 ## 🆕 2.0 新特性
 
 2.0 版本把大量关于 GUI、后台服务和备份引擎的工作合并进了本项目（见 [CHANGELOG](CHANGELOG.md)）。与 1.2 相比：
@@ -69,6 +71,8 @@
 | [手册索引](docs/manual/README.md) | 各手册概览 |
 
 同样的手册也内置在应用中（**Help**（帮助），F1），因此离线也能使用，并且与已安装的版本一致。
+
+<a id="-download"></a>
 
 ## 📦 下载
 
@@ -262,6 +266,8 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 在 **Metadata** 模式下，首次运行会读取全部内容；之后的运行只读取变化的部分。如果文件的改动没有改变其大小和修改时间，就不会被发现，所以备份集还可以设置**每 N 次运行读取一次所有文件**。请为每个备份集设置单独的 Backup ID（备份 ID）：Metadata 模式会与备份组中最新的快照进行比较。在命令行中请使用 `-change-detection-mode`。
 
 **在把备份集切换到 Data 或 Metadata 之前，** 请先把所有用于恢复的机器升级到 2.0：更早的版本会显示拆分归档中的文件夹，但不显示其中的文件。见 [GUI 手册第 7 节](docs/manual/GUI.md#7-incremental-folder-backups-change-detection)。
+
+<a id="-physical-machines-into-virtual-machines-p2v"></a>
 
 ## 🔄 物理机转虚拟机（P2V）
 
@@ -469,6 +475,8 @@ make clonezilla   # the bare-metal restore ISO
 - **[实现指南](MULTI_PBS_GUIDE.md)**：数据模型、从单 PBS 配置自动迁移、后端方法。
 
 旧的单 PBS 配置会在首次加载时自动迁移为名为 `default` 的服务器。
+
+<a id="-bare-metal-restore-iso"></a>
 
 ### 💿 裸机恢复 ISO
 

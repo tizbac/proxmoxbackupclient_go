@@ -22,6 +22,8 @@ Este o **suită de instrumente**:
 
 > Cuvinte cheie: proxmox backup client windows · client PBS · backup Windows cu VSS · backup-uri offsite imuabile · fizic în virtual (P2V) · restaurare bare-metal · interfață pentru Proxmox Backup Server.
 
+<a id="-new-in-20"></a>
+
 ## 🆕 Noutăți în 2.0
 
 Versiunea 2.0 aduce în proiect un volum mare de lucru la interfața grafică, la serviciul de fundal și la motorul de backup (vedeți [CHANGELOG](CHANGELOG.md)). Față de 1.2:
@@ -69,6 +71,8 @@ Versiunea 2.0 aduce în proiect un volum mare de lucru la interfața grafică, l
 | [Indexul manualelor](docs/manual/README.md) | O prezentare generală a manualelor |
 
 Aceleași manuale sunt integrate în aplicație (**Ajutor**, F1), deci funcționează offline și corespund versiunii instalate.
+
+<a id="-download"></a>
 
 ## 📦 Descărcare
 
@@ -262,6 +266,8 @@ Restaurarea unui instantaneu criptat necesită același fișier cheie; nu exist�
 În modul **Metadate**, prima rulare citește totul; rulările ulterioare citesc doar ce s-a modificat. Un fișier modificat astfel încât își păstrează dimensiunea și ora de modificare nu este observat, motiv pentru care un set poate și **Recitește toate fișierele la fiecare** N rulări. Dați fiecărui set de backup propriul ID de backup: modul **Metadate** compară cu cel mai nou instantaneu din grupul de backup. În linia de comandă folosiți `-change-detection-mode`.
 
 **Înainte de a trece un set la Date sau Metadate,** actualizați la 2.0 fiecare mașină de pe care faceți restaurări: versiunile anterioare afișează folderele unei arhive divizate fără fișierele lor. Vedeți [secțiunea 7 din manualul interfeței grafice](docs/manual/GUI.md#7-incremental-folder-backups-change-detection).
+
+<a id="-physical-machines-into-virtual-machines-p2v"></a>
 
 ## 🔄 Mașini fizice în mașini virtuale (P2V)
 
@@ -469,6 +475,8 @@ Configurați mai multe servere PBS și alegeți destinația pentru fiecare set d
 - **[Ghidul de implementare](MULTI_PBS_GUIDE.md)**: modelul de date, migrarea automată dintr-o configurație cu un singur PBS, metodele backend-ului.
 
 Configurația veche cu un singur PBS este migrată automat la un server `default` la prima încărcare.
+
+<a id="-bare-metal-restore-iso"></a>
 
 ### 💿 ISO de restaurare bare-metal
 

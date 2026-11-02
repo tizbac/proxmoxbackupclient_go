@@ -22,6 +22,8 @@ Det är en **verktygssvit**:
 
 > Nyckelord: proxmox backup client windows · PBS-klient · Windows-säkerhetskopiering med VSS · oföränderliga säkerhetskopior utanför huset · fysisk till virtuell (P2V) · bare metal-återställning · gränssnitt för Proxmox Backup Server.
 
+<a id="-new-in-20"></a>
+
 ## 🆕 Nytt i 2.0
 
 Version 2.0 för in en stor mängd arbete på det grafiska gränssnittet, bakgrundstjänsten och säkerhetskopieringsmotorn i projektet (se [CHANGELOG](CHANGELOG.md)). Jämfört med 1.2:
@@ -69,6 +71,8 @@ Version 2.0 för in en stor mängd arbete på det grafiska gränssnittet, bakgru
 | [Handboksindex](docs/manual/README.md) | En översikt över handböckerna |
 
 Samma handböcker finns inbyggda i appen (**Help** (hjälp), F1), så de fungerar offline och motsvarar den installerade versionen.
+
+<a id="-download"></a>
 
 ## 📦 Hämta
 
@@ -262,6 +266,8 @@ I standardläget **Legacy** (klassiskt) läser varje mappsäkerhetskopia varje f
 I läget **Metadata** läser den första körningen allt; senare körningar läser bara det som ändrats. En fil som ändrats på ett sätt som behåller dess storlek och ändringstid märks inte, och därför kan en uppsättning också **läsa alla filer var N:e körning** (inställningen **Read every file every**). Ge varje uppsättning ett eget säkerhetskopierings-ID (Backup ID): läget **Metadata** jämför med den senaste ögonblicksbilden i säkerhetskopieringsgruppen. På kommandoraden använder du `-change-detection-mode`.
 
 **Innan du byter en uppsättning till Data eller Metadata** ska du uppdatera varje dator du återställer från till 2.0: tidigare versioner visar mapparna i ett delat arkiv utan deras filer. Se [avsnitt 7 i handboken för det grafiska gränssnittet](docs/manual/GUI.md#7-incremental-folder-backups-change-detection).
+
+<a id="-physical-machines-into-virtual-machines-p2v"></a>
 
 ## 🔄 Fysiska datorer till virtuella maskiner (P2V)
 
@@ -469,6 +475,8 @@ Konfigurera flera PBS-servrar och välj mål per uppsättning eller engångssäk
 - **[Implementeringsguide](MULTI_PBS_GUIDE.md)**: datamodell, automatisk migrering från en konfiguration med en enda PBS, backend-metoder.
 
 En äldre konfiguration med en enda PBS migreras automatiskt till en server med namnet `default` vid första inläsningen.
+
+<a id="-bare-metal-restore-iso"></a>
 
 ### 💿 ISO för bare metal-återställning
 

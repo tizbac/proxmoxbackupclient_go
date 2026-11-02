@@ -51,7 +51,7 @@ Version 2.0 merges a large body of work on the GUI, the background service and t
 | | Result |
 |---|---|
 | **Incremental folder backups** | A 480.9 GB file share of 761,866 files: first run 4 h 17 min, each later run 10 to 15 minutes. Unchanged files are not even opened (Metadata change detection, as in the official client). |
-| **Fast machine backups** | Free space, the paging file and the hibernation file are not read, and blank disk space is not hashed. A 1 TB laptop disk with 373 GB used went from 1 h 23 min to 1 h 44 min down to 38 minutes. |
+| **Fast machine backups** | Free space, the paging file and the hibernation file are not read, and blank disk space is not hashed. A 1 TB laptop disk with 373 GB used took between 1 h 23 min and 1 h 44 min before, and takes 38 minutes now. |
 | **Slow and metered links** | Only new data is sent, compressed, and the app shows what really crossed the network. A small Linux PC at a remote site on a 4G connection (4.8 Mbit/s up): its whole 128 GB disk image plus its home folder in 11 minutes for about 172 MiB transferred. |
 | **Files back from machine backups** | A laptop's 127 GB C: drive with 430,000 files lists in 4 to 15 seconds. Nothing is mounted or downloaded first. |
 | **Bare-metal restore** | Boot the ISO (USB stick, CD or network), enter the PBS details, pick the backup: a 32 GB Windows machine was back at its login screen 8 minutes after power-on. |

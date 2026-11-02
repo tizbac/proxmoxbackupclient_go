@@ -22,6 +22,8 @@
 
 > كلمات مفتاحية: proxmox backup client windows · PBS client · Windows VSS backup · immutable offsite backups · physical to virtual (P2V) · bare-metal restore · Proxmox Backup Server interface.
 
+<a id="-new-in-20"></a>
+
 ## 🆕 الجديد في الإصدار 2.0
 
 يدمج الإصدار 2.0 في المشروع قدرًا كبيرًا من العمل على الواجهة الرسومية والخدمة الخلفية ومحرك النسخ الاحتياطي (راجع [CHANGELOG](CHANGELOG.md)). مقارنةً بالإصدار 1.2:
@@ -69,6 +71,8 @@
 | [فهرس الأدلة](docs/manual/README.md) | نظرة عامة على الأدلة |
 
 الأدلة نفسها مدمجة في التطبيق (**Help** (المساعدة)، F1)، فهي تعمل دون اتصال بالإنترنت وتطابق الإصدار المثبت.
+
+<a id="-download"></a>
 
 ## 📦 التنزيل
 
@@ -262,6 +266,8 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 في وضع **Metadata** يقرأ التشغيل الأول كل شيء؛ والتشغيلات اللاحقة تقرأ ما تغيّر فقط. الملف الذي يتغير بطريقة تحافظ على حجمه ووقت تعديله لا يُلاحَظ، ولهذا يمكن للمجموعة أيضًا أن **تقرأ كل ملف كل N تشغيلات**. امنح كل مجموعة نسخ احتياطي معرّف نسخ (Backup ID) خاصًا بها: فوضع Metadata يقارن بأحدث لقطة في مجموعة النسخ (backup group). في سطر الأوامر استخدم `-change-detection-mode`.
 
 **قبل تحويل مجموعة إلى Data أو Metadata،** حدّث إلى الإصدار 2.0 كل جهاز تستعيد منه: فالإصدارات السابقة تعرض مجلدات الأرشيف المقسوم دون ملفاتها. راجع [القسم 7 من دليل الواجهة الرسومية](docs/manual/GUI.md#7-incremental-folder-backups-change-detection).
+
+<a id="-physical-machines-into-virtual-machines-p2v"></a>
 
 ## 🔄 الأجهزة الفعلية إلى آلات افتراضية (P2V)
 
@@ -469,6 +475,8 @@ make clonezilla   # the bare-metal restore ISO
 - **[دليل التنفيذ](MULTI_PBS_GUIDE.md)**: نموذج البيانات، والترحيل التلقائي من إعداد بخادم PBS واحد، ودوال الخلفية (backend).
 
 يُرحَّل إعداد الخادم الواحد القديم تلقائيًا إلى خادم باسم `default` عند أول تحميل.
+
+<a id="-bare-metal-restore-iso"></a>
 
 ### 💿 قرص ISO للاستعادة على جهاز فارغ
 

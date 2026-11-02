@@ -22,6 +22,8 @@
 
 > キーワード：proxmox backup client windows · PBS クライアント · Windows VSS バックアップ · イミュータブルなオフサイトバックアップ · 物理から仮想へ (P2V) · ベアメタル復元 · Proxmox Backup Server インターフェース。
 
+<a id="-new-in-20"></a>
+
 ## 🆕 2.0 の新機能
 
 バージョン 2.0 では、GUI、バックグラウンドサービス、バックアップエンジンに関する大量の作業がプロジェクトに統合されました（[CHANGELOG](CHANGELOG.md) を参照）。1.2 と比べた変更点は次のとおりです。
@@ -69,6 +71,8 @@
 | [マニュアル索引](docs/manual/README.md) | マニュアルの概要 |
 
 同じマニュアルがアプリに組み込まれているため（**Help**（ヘルプ）、F1）、オフラインでも使え、インストールされているバージョンと内容が一致します。
+
+<a id="-download"></a>
 
 ## 📦 ダウンロード
 
@@ -262,6 +266,8 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 **Metadata** モードでは、初回はすべてを読み込み、以降は変更されたものだけを読み込みます。サイズと更新日時が変わらない形で変更されたファイルは検出されません。そのため、セットでは **N 回ごとにすべてのファイルを読み込む**ように設定することもできます。各 Backup Set には固有の **Backup ID**（バックアップ ID）を付けてください。Metadata モードはバックアップグループ内の最新のスナップショットと比較するためです。コマンドラインでは `-change-detection-mode` を使います。
 
 **セットを Data または Metadata に切り替える前に、** 復元に使うすべてのマシンを 2.0 に更新してください。それより前のバージョンでは、分割アーカイブのフォルダーがファイルなしで表示されます。[GUI マニュアルの第 7 節](docs/manual/GUI.md#7-incremental-folder-backups-change-detection)を参照してください。
+
+<a id="-physical-machines-into-virtual-machines-p2v"></a>
 
 ## 🔄 物理マシンから仮想マシンへ (P2V)
 
@@ -469,6 +475,8 @@ make clonezilla   # the bare-metal restore ISO
 - **[実装ガイド](MULTI_PBS_GUIDE.md)**：データモデル、単一 PBS 設定からの自動移行、バックエンドのメソッド。
 
 従来の単一 PBS 設定は、初回読み込み時に自動的に `default` サーバーへ移行されます。
+
+<a id="-bare-metal-restore-iso"></a>
 
 ### 💿 ベアメタル復元 ISO
 

@@ -1,6 +1,6 @@
 # Proxmox Backup Client: roadmap
 
-What is still open after 2.0. Finished work is in [CHANGELOG.md](CHANGELOG.md). The older, much longer list, with its design notes and findings, is kept in [docs/TODO-HISTORY.md](docs/TODO-HISTORY.md).
+What is still open after 2.0. Finished work is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Release and distribution
 

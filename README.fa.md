@@ -22,6 +22,8 @@
 
 > کلیدواژه‌ها: proxmox backup client windows · PBS client · Windows VSS backup · immutable offsite backups · physical to virtual (P2V) · bare-metal restore · Proxmox Backup Server interface.
 
+<a id="-new-in-20"></a>
+
 ## 🆕 تازه‌های نسخهٔ 2.0
 
 نسخهٔ 2.0 حجم بزرگی از کار روی رابط گرافیکی، سرویس پس‌زمینه و موتور پشتیبان‌گیری را در پروژه ادغام می‌کند ([CHANGELOG](CHANGELOG.md) را ببینید). در مقایسه با 1.2:
@@ -69,6 +71,8 @@
 | [فهرست راهنماها](docs/manual/README.md) | نمای کلی راهنماها |
 
 همین راهنماها درون برنامه نیز گنجانده شده‌اند (**Help** (راهنما)، F1)، بنابراین بدون اینترنت هم کار می‌کنند و با نسخهٔ نصب‌شده هماهنگ‌اند.
+
+<a id="-download"></a>
 
 ## 📦 دانلود
 
@@ -262,6 +266,8 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 در حالت **Metadata** اجرای نخست همه چیز را می‌خواند؛ اجراهای بعدی فقط آنچه را تغییر کرده می‌خوانند. فایلی که به گونه‌ای تغییر کند که اندازه و زمان تغییرش ثابت بماند، تشخیص داده نمی‌شود؛ به همین دلیل یک مجموعه می‌تواند **هر N اجرا یک بار همهٔ فایل‌ها را بخواند**. به هر Backup Set شناسهٔ پشتیبان (Backup ID) خودش را بدهید: حالت Metadata با جدیدترین اسنپ‌شات در گروه پشتیبان مقایسه می‌کند. در خط فرمان از `-change-detection-mode` استفاده کنید.
 
 **پیش از تغییر یک مجموعه به Data یا Metadata،** همهٔ دستگاه‌هایی را که از آن‌ها بازیابی می‌کنید به 2.0 به‌روزرسانی کنید: نسخه‌های پیشین پوشه‌های یک آرشیو دوبخشی را بدون فایل‌هایشان نشان می‌دهند. [بخش 7 راهنمای GUI](docs/manual/GUI.md#7-incremental-folder-backups-change-detection) را ببینید.
+
+<a id="-physical-machines-into-virtual-machines-p2v"></a>
 
 ## 🔄 تبدیل دستگاه‌های فیزیکی به ماشین‌های مجازی (P2V)
 
@@ -469,6 +475,8 @@ make clonezilla   # the bare-metal restore ISO
 - **[راهنمای پیاده‌سازی](MULTI_PBS_GUIDE.md)**: مدل داده، مهاجرت خودکار از پیکربندی تک‌PBS، متدهای بک‌اند.
 
 پیکربندی قدیمی تک‌PBS در نخستین بارگذاری به‌طور خودکار به یک سرور `default` منتقل می‌شود.
+
+<a id="-bare-metal-restore-iso"></a>
 
 ### 💿 ISO بازیابی bare-metal
 
