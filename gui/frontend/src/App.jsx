@@ -1677,6 +1677,12 @@ function App() {
       return
     }
 
+    // The ID is made from the name, so an empty name would only be refused
+    // later as "ID required".
+    if (!(serverFormData.name || '').trim()) {
+      showStatus(`❌ ${t('errServerNameRequired')}`, 'error')
+      return
+    }
     const isUserPass = !!(serverFormData.username || '').trim()
     try {
       // Generate ID from name if not provided
@@ -4333,7 +4339,7 @@ function App() {
                               setBackupMode('scheduled')
                               setRunAtStartup(job.runAtStartup)
                               { const js = jobScheduling(job); setScheduleMode(js.mode); setSchedules(js.schedules.map(sc => ({ ...sc, weekdays: [...(sc.weekdays || [])] }))) }
-                              setBackupDirs(job.backupDirs.join('\n'))
+                              setBackupDirs((job.backupDirs || []).join('\n'))
                               // Machine-type jobs keep their selected disks in driveLetters, not
                               // backupDirs — without restoring this, handleStartBackup's "select
                               // at least one disk" guard blocks saving ANY edit (not just a
@@ -4346,7 +4352,7 @@ function App() {
                               setBackupType(job.backupType)
                               applyVmFieldsFromJob(job)
                               setBackupPBSID(job.pbsServerId || defaultPBSID)
-                              setExcludeList(job.excludeList.join('\n'))
+                              setExcludeList((job.excludeList || []).join('\n'))
                               setTreeExcludes([])
                               setEmailOnSuccess(!!job.emailOnSuccess); setEmailOnSuccessTo(job.emailOnSuccessTo || '')
                               setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
@@ -4409,7 +4415,7 @@ function App() {
                                     setBackupMode('scheduled')
                                     setRunAtStartup(job.runAtStartup)
                                     { const js = jobScheduling(job); setScheduleMode(js.mode); setSchedules(js.schedules.map(sc => ({ ...sc, weekdays: [...(sc.weekdays || [])] }))) }
-                                    setBackupDirs(job.backupDirs.join('\n'))
+                                    setBackupDirs((job.backupDirs || []).join('\n'))
                                     setSelectedDrives(job.driveLetters || [])
                                     setImageFolders((job.imageFolders || []).join('\n'))
                                     {
@@ -4421,7 +4427,7 @@ function App() {
                                     setBackupType(job.backupType)
                                     applyVmFieldsFromJob(job)
                                     setBackupPBSID(job.pbsServerId || defaultPBSID)
-                                    setExcludeList(job.excludeList.join('\n'))
+                                    setExcludeList((job.excludeList || []).join('\n'))
                                     setTreeExcludes([])
                                     setEmailOnSuccess(!!job.emailOnSuccess); setEmailOnSuccessTo(job.emailOnSuccessTo || '')
                                     setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
