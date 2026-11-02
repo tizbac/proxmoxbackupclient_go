@@ -92,11 +92,8 @@ install -m 0644 "$LIN/proxmoxbackupclient.desktop" "$STAGE/usr/share/application
 install -m 0644 "$LIN/proxmoxbackupclient-root.desktop" "$STAGE/usr/share/applications/"
 mkdir -p "$STAGE/usr/lib/systemd/system"
 install -m 0644 "$LIN/proxmoxbackupclient.service" "$STAGE/usr/lib/systemd/system/"
-if [ -f "$ROOT/gui/build/appicon.png" ]; then
-    install -m 0644 "$ROOT/gui/build/appicon.png" "$STAGE/usr/share/icons/hicolor/256x256/apps/$PKG.png"
-else
-    install -m 0644 "$ROOT/gui/Icon.png" "$STAGE/usr/share/icons/hicolor/256x256/apps/$PKG.png"
-fi
+# gui/Icon.png is the 256 px icon (gui/build/appicon.png is the same at 1024 px).
+install -m 0644 "$ROOT/gui/Icon.png" "$STAGE/usr/share/icons/hicolor/256x256/apps/$PKG.png"
 install -m 0644 "$ROOT/README.md" "$DOC/README.md"
 gzip -9n -c "$ROOT/CHANGELOG.md" > "$DOC/CHANGELOG.md.gz"
 chmod 0644 "$DOC/CHANGELOG.md.gz"
