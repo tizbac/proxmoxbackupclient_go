@@ -11,12 +11,12 @@ import (
 func TestParseSystemctlShow(t *testing.T) {
 	out := "LoadState=loaded\nActiveState=active\nUnitFileState=enabled\n" +
 		"FragmentPath=/usr/lib/systemd/system/proxmoxbackupclient.service\n" +
-		"ExecStart={ path=/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC ; argv[]=/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n"
+		"ExecStart={ path=/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC ; argv[]=/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n"
 	u := parseSystemctlShow(out)
 	if !u.installed() || u.state() != "running" || u.startType() != "boot" {
 		t.Fatalf("got %+v state %s start %s", u, u.state(), u.startType())
 	}
-	if u.ExecPath != "/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC" {
+	if u.ExecPath != packagedServiceExe {
 		t.Fatalf("exec path %q", u.ExecPath)
 	}
 
@@ -30,6 +30,20 @@ func TestParseSystemctlShow(t *testing.T) {
 		inst := map[bool]string{true: "yes", false: "no"}[u.installed()]
 		if inst != c.installed || u.state() != c.state || u.startType() != c.start {
 			t.Errorf("%q: installed %s state %s start %s", c.show, inst, u.state(), u.startType())
+		}
+	}
+}
+
+// The packaged app's service program is the one in /usr/libexec; a copy of the
+// app run from a folder uses the one beside it.
+func TestServiceExeFor(t *testing.T) {
+	for _, c := range []struct{ app, want string }{
+		{"/usr/lib/proxmoxbackupclient/ProxmoxBackupClient", "/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC"},
+		{"/opt/pbc/ProxmoxBackupClient", "/opt/pbc/ProxmoxBackupClientSVC"},
+		{"/home/u/build/bin/ProxmoxBackupClient", "/home/u/build/bin/ProxmoxBackupClientSVC"},
+	} {
+		if got := serviceExeFor(c.app); got != c.want {
+			t.Errorf("serviceExeFor(%q) = %q, want %q", c.app, got, c.want)
 		}
 	}
 }

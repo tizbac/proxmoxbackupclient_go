@@ -58,6 +58,7 @@ export CGO_ENABLED=1
 %install
 rm -rf %{buildroot}
 install -d -m 0755 %{buildroot}%{_prefix}/lib/proxmoxbackupclient \
+                  %{buildroot}%{_libexecdir}/proxmoxbackupclient \
                   %{buildroot}%{_bindir} \
                   %{buildroot}%{_datadir}/applications \
                   %{buildroot}%{_datadir}/icons/hicolor/256x256/apps \
@@ -67,7 +68,9 @@ install -m 0755 directorybackup/proxmoxbackup-directory %{buildroot}%{_bindir}/
 install -m 0755 machinebackup/proxmoxbackup-machine %{buildroot}%{_bindir}/
 install -m 0755 nbd/proxmoxbackup-nbd %{buildroot}%{_bindir}/
 install -m 0755 gui/ProxmoxBackupClient %{buildroot}%{_prefix}/lib/proxmoxbackupclient/
-install -m 0755 gui/ProxmoxBackupClientSVC %{buildroot}%{_prefix}/lib/proxmoxbackupclient/
+# The service program in libexec: labelled bin_t, so SELinux runs the service
+# as unconfined_service_t (in /usr/lib it is lib_t and stays in init_t).
+install -m 0755 gui/ProxmoxBackupClientSVC %{buildroot}%{_libexecdir}/proxmoxbackupclient/
 install -m 0644 packaging/linux/proxmoxbackupclient.service %{buildroot}%{_prefix}/lib/systemd/system/
 install -m 0755 packaging/linux/proxmoxbackupclient %{buildroot}%{_bindir}/
 install -m 0755 packaging/linux/proxmoxbackupclient-root %{buildroot}%{_bindir}/
@@ -82,8 +85,10 @@ install -m 0644 gui/Icon.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/
 %{_bindir}/proxmoxbackup-nbd
 %{_bindir}/proxmoxbackupclient
 %{_bindir}/proxmoxbackupclient-root
+%dir %{_prefix}/lib/proxmoxbackupclient
 %{_prefix}/lib/proxmoxbackupclient/ProxmoxBackupClient
-%{_prefix}/lib/proxmoxbackupclient/ProxmoxBackupClientSVC
+%dir %{_libexecdir}/proxmoxbackupclient
+%{_libexecdir}/proxmoxbackupclient/ProxmoxBackupClientSVC
 %{_prefix}/lib/systemd/system/proxmoxbackupclient.service
 %{_datadir}/applications/proxmoxbackupclient.desktop
 %{_datadir}/icons/hicolor/256x256/apps/proxmoxbackupclient.png

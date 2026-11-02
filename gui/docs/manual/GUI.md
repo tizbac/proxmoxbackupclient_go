@@ -912,7 +912,7 @@ If the GUI is not running as administrator, a **Restart as administrator** butto
 
 ### Linux service
 
-The .deb, .rpm and Arch packages install the service program (`/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC`) and the systemd unit `proxmoxbackupclient.service`. A fresh install enables and starts the service, as the Windows installer does; an upgrade keeps your choice, so a service you turned off stays off. **Run as Service** (Preferences > Advanced, in the GUI started as administrator) turns it on again:
+The .deb, .rpm and Arch packages install the service program (`/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC`) and the systemd unit `proxmoxbackupclient.service`. A fresh install enables and starts the service, as the Windows installer does; an upgrade keeps your choice, so a service you turned off stays off. **Run as Service** (Preferences > Advanced, in the GUI started as administrator) turns it on again:
 
 | Button | What it does |
 |---|---|

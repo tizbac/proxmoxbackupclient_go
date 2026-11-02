@@ -4,7 +4,8 @@ package main
 
 // Preferences > Advanced > Run as Service on Linux: the background service is
 // the systemd unit proxmoxbackupclient.service, running ProxmoxBackupClientSVC
-// (beside the app) as root. The .deb and .rpm ship the unit, not enabled; a
+// as root: the packaged one in /usr/libexec/proxmoxbackupclient, or the one
+// beside a copy of the app run from a folder. The packages ship the unit; a
 // copy run from a folder writes its own unit to /etc/systemd/system.
 //
 // Installing moves the Backup Sets to the shared /var/lib/proxmoxbackupclient
@@ -56,9 +57,18 @@ func linuxServiceExe() string {
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return "/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC"
+		return packagedServiceExe
 	}
-	return filepath.Join(filepath.Dir(exe), "ProxmoxBackupClientSVC")
+	return serviceExeFor(exe)
+}
+
+// serviceExeFor is the service program that goes with the app at appExe: the
+// packaged one for the packaged app, else the one beside it.
+func serviceExeFor(appExe string) string {
+	if filepath.Dir(appExe) == packagedAppDir {
+		return packagedServiceExe
+	}
+	return filepath.Join(filepath.Dir(appExe), "ProxmoxBackupClientSVC")
 }
 
 // systemdUnit is what systemctl show reports about the unit.

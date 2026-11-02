@@ -17,7 +17,7 @@
 #   /usr/bin/proxmoxbackupclient       the app, as the current user
 #   /usr/bin/proxmoxbackupclient-root  the app as root (machine backups)
 #   /usr/lib/proxmoxbackupclient/ProxmoxBackupClient
-#   /usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC  the background service
+#   /usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC  the background service
 #   /usr/lib/systemd/system/proxmoxbackupclient.service  (enabled on a fresh install)
 #   /usr/share/applications/proxmoxbackupclient{,-root}.desktop
 #   /usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png
@@ -53,6 +53,7 @@ DOC=$STAGE/usr/share/doc/$PKG
 mkdir -p "$STAGE/DEBIAN" \
          "$STAGE/usr/bin" \
          "$STAGE/usr/lib/$PKG" \
+         "$STAGE/usr/libexec/$PKG" \
          "$STAGE/usr/share/applications" \
          "$STAGE/usr/share/icons/hicolor/256x256/apps" \
          "$DOC/manual"
@@ -81,7 +82,8 @@ fi
 (cd "$ROOT/gui" && go build -trimpath -tags "$GO_TAGS" -ldflags "-s -w -X main.appVersion=$VERSION" -o "$STAGE/usr/lib/$PKG/$GUI_OUTPUT" .)
 
 echo "==> building the background service"
-(cd "$ROOT/gui" && CGO_ENABLED=0 go build -trimpath -tags service -ldflags "-s -w -X main.appVersion=$VERSION" -o "$STAGE/usr/lib/$PKG/ProxmoxBackupClientSVC" .)
+# In /usr/libexec, as in the .rpm and the Arch package (they share the unit).
+(cd "$ROOT/gui" && CGO_ENABLED=0 go build -trimpath -tags service -ldflags "-s -w -X main.appVersion=$VERSION" -o "$STAGE/usr/libexec/$PKG/ProxmoxBackupClientSVC" .)
 
 echo "==> installing launchers, menu entries and docs"
 install -m 0755 "$LIN/proxmoxbackupclient" "$STAGE/usr/bin/proxmoxbackupclient"

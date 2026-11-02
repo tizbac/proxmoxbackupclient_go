@@ -40,7 +40,7 @@ packaging/fedora/build-rpm.sh [output-dir]      # default: dist/
 | `/usr/bin/proxmoxbackup-machine` | whole-disk backups from the command line |
 | `/usr/bin/proxmoxbackup-nbd` | attach a disk image from the server as `/dev/nbdN` (root) |
 | `/usr/lib/proxmoxbackupclient/ProxmoxBackupClient` | the app itself |
-| `/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC` | the background service program |
+| `/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC` | the background service program (in `/usr/libexec` so that SELinux on Fedora runs it as `unconfined_service_t`; earlier packages had it in `/usr/lib/proxmoxbackupclient`, and an upgrade moves it) |
 | `/usr/lib/systemd/system/proxmoxbackupclient.service` | its systemd unit, enabled and started on a fresh install |
 | `/usr/share/applications/proxmoxbackupclient.desktop` | menu entry "Proxmox Backup Client" |
 | `/usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png` | icon |

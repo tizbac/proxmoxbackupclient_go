@@ -60,7 +60,7 @@ func (a *App) RequestElevation() error {
 
 func elevationCommand(exe string) (*exec.Cmd, error) {
 	if launcher, err := exec.LookPath("proxmoxbackupclient-root"); err == nil &&
-		filepath.Dir(exe) == "/usr/lib/proxmoxbackupclient" {
+		filepath.Dir(exe) == packagedAppDir {
 		return exec.Command(launcher), nil
 	}
 	pkexec, err := exec.LookPath("pkexec")

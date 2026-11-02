@@ -61,7 +61,7 @@ func TestLiveLinuxServiceInstall(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("run as root")
 	}
-	serviceExeOverride = "/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC"
+	serviceExeOverride = packagedServiceExe
 	a := newLiveApp()
 	st, err := a.InstallService()
 	if err != nil {
@@ -121,7 +121,7 @@ func TestLiveLinuxServiceRemove(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("run as root")
 	}
-	serviceExeOverride = "/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC"
+	serviceExeOverride = packagedServiceExe
 	a := newLiveApp()
 	st, err := a.RemoveService()
 	if err != nil {

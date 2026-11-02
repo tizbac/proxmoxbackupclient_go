@@ -10,9 +10,13 @@ After=network-online.target
 # an earlier pbsgo install's /var/lib/pbsgo (it does so only while the folder
 # is missing). No sandboxing either: machine backups need root's full access to
 # disks and snapshot devices.
+#
+# The program is in /usr/libexec (all three packages): on Fedora, SELinux
+# then runs it as unconfined_service_t, as any service without a policy of
+# its own, rather than in systemd's own domain.
 [Service]
 Type=simple
-ExecStart=/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC
+ExecStart=/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC
 Restart=on-failure
 RestartSec=60
 TimeoutStopSec=90

@@ -8,7 +8,7 @@
 #   /usr/bin/proxmoxbackupclient       the app, as the current user
 #   /usr/bin/proxmoxbackupclient-root  the app as root (machine backups)
 #   /usr/lib/proxmoxbackupclient/ProxmoxBackupClient
-#   /usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC  the background service
+#   /usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC  the background service
 #   /usr/lib/systemd/system/proxmoxbackupclient.service  (enabled on a fresh
 #       install, see proxmoxbackupclient.install)
 #   /usr/share/applications/proxmoxbackupclient{,-root}.desktop
@@ -79,7 +79,7 @@ package() {
     fi
 
     # go build -o does not create parent directories
-    install -d "${pkgdir}/usr/bin" "${pkgdir}/usr/lib/${pkgname}"
+    install -d "${pkgdir}/usr/bin" "${pkgdir}/usr/lib/${pkgname}" "${pkgdir}/usr/libexec/${pkgname}"
 
     # --- CLI tools ------------------------------------------------------
     # directorybackup builds module-mode (GOWORK=off): its per-module go.sum
@@ -118,7 +118,7 @@ package() {
         cd "$_srcroot/gui"
         CGO_ENABLED=0 go build -trimpath -tags service \
             -ldflags "-s -w -X main.appVersion=${pkgver}" \
-            -o "${pkgdir}/usr/lib/${pkgname}/ProxmoxBackupClientSVC" .
+            -o "${pkgdir}/usr/libexec/${pkgname}/ProxmoxBackupClientSVC" .
     )
 
     # --- launchers, menu entries, unit, icon, docs ---------------------
