@@ -30,8 +30,11 @@ func TestLiveVSSProperties(t *testing.T) {
 	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ole.CoInitialize(0)
-	defer ole.CoUninitialize()
+	uninit, err := initCOM()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer uninit()
 
 	c, err := newVSSComponents()
 	if err != nil {

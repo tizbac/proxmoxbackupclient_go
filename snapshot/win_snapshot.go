@@ -112,13 +112,17 @@ func CreateVSSSnapshotCtx(ctx context.Context, paths []string, needFiles bool, b
 func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) error {
 	// A shadow copy's COM objects are made when it is created and used again
 	// at release, after the backup. Keep the whole snapshot, from creation to
-	// release, on one OS thread with COM initialised throughout (a
-	// single-threaded apartment's objects must be called from their thread).
-	// The defers run last, after the shadows are released below.
+	// release, on one OS thread with COM initialised throughout, so COM is
+	// still there at release and is uninitialised on the thread that
+	// initialised it. Multithreaded, as VSS requires (initCOM). The defers
+	// run last, after the shadows are released below.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ole.CoInitialize(0)
-	defer ole.CoUninitialize()
+	uninit, err := initCOM()
+	if err != nil {
+		return fmt.Errorf("VSS snapshot creation failed: %w", err)
+	}
+	defer uninit()
 
 	// One shadow per volume (createShadow, vss_shadow_windows.go), each held
 	// until the backup callback has consumed them, then released together.
@@ -333,8 +337,11 @@ func deleteShadow(id string) bool {
 func deleteShadowVSS(bare string) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ole.CoInitialize(0)
-	defer ole.CoUninitialize()
+	uninit, err := initCOM()
+	if err != nil {
+		return err
+	}
+	defer uninit()
 	c, err := newVSSComponents()
 	if err != nil {
 		return err

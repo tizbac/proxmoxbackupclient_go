@@ -3,8 +3,10 @@
 package snapshot
 
 import (
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/go-ole/go-ole"
@@ -29,10 +31,46 @@ import (
 //   - The snapshot properties VSS allocates were never freed
 //     (VssFreeSnapshotProperties).
 //
-// COM must be initialised on the calling thread, which must not change until
-// release (CreateVSSSnapshot locks it).
+// COM must be initialised on the calling thread (initCOM), which must not
+// change until release (CreateVSSSnapshot locks it).
 
 var procVssFreeSnapshotProperties = windows.NewLazySystemDLL("VssApi.dll").NewProc("VssFreeSnapshotProperties")
+
+// What CoInitializeEx returns when COM is already initialised on the thread:
+// in the same apartment (S_FALSE), or in the other one (RPC_E_CHANGED_MODE).
+const (
+	comSFalse          = 0x00000001
+	comRPCEChangedMode = 0x80010106
+)
+
+// initCOM initialises COM on the calling thread in the multithreaded
+// apartment and returns what undoes it; the caller must have locked the
+// thread. A VSS requestor must be multithreaded. go-vss and this package used
+// CoInitialize, a single-threaded apartment, where the writers' calls back
+// arrive through a message queue nothing here pumps: after the February 2026
+// Windows update GatherWriterMetadata took about 182 s on Server 2022
+// (tizbac/proxmoxbackupclient_go#67).
+//
+// S_FALSE (already multithreaded) still counts as a call to undo, as for any
+// successful CoInitializeEx. RPC_E_CHANGED_MODE (already single-threaded, by
+// someone else) is not ours to undo; VSS still works there, only slowly.
+func initCOM() (func(), error) {
+	err := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED)
+	if err == nil {
+		return ole.CoUninitialize, nil
+	}
+	var oe *ole.OleError
+	if errors.As(err, &oe) {
+		switch oe.Code() {
+		case comSFalse:
+			return ole.CoUninitialize, nil
+		case comRPCEChangedMode:
+			fmt.Println("VSS: COM is already single-threaded on this thread; using it as it is")
+			return func() {}, nil
+		}
+	}
+	return nil, fmt.Errorf("COM initialisation: %w", err)
+}
 
 // newVSSComponents is vss.LoadAndInitVSS without its extra reference: the
 // object it returns is freed by one Release.
@@ -48,8 +86,12 @@ func newVSSComponents() (*vss.IVssBackupComponents, error) {
 	return c, nil
 }
 
+// vssPollEvery is how often waitVSS asks again whether a step is done once
+// IVssAsync::Wait has returned with it still running.
+var vssPollEvery = 500 * time.Millisecond
+
 // waitVSS waits for one asynchronous VSS step (as go-vss's doAsyncOperation)
-// and releases it.
+// and releases it. The step may take timeoutMs in all.
 func waitVSS(step string, async *vss.IVssAsync, err error, timeoutMs int) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", step, err)
@@ -61,22 +103,45 @@ func waitVSS(step string, async *vss.IVssAsync, err error, timeoutMs int) error 
 		async.Cancel()
 		async.Release()
 	}()
+	timeout := time.Duration(timeoutMs) * time.Millisecond
+	deadline := time.Now().Add(timeout)
 	if err := async.Wait(timeoutMs); err != nil {
 		return fmt.Errorf("%s: %w", step, err)
 	}
-	status, err := async.QueryStatus()
-	if err != nil {
-		return fmt.Errorf("%s: %w", step, err)
+	return pollVSS(step, async.QueryStatus, deadline, timeout, vssPollEvery)
+}
+
+// pollVSS reads a VSS step's status (IVssAsync::QueryStatus) after
+// IVssAsync::Wait has returned, and while it is still pending asks again every
+// "every" until it ends or deadline passes. Wait can return with the step
+// still running: go-vss failed the step then ("async operation is pending"),
+// though it would have finished seconds later
+// (tizbac/proxmoxbackupclient_go#67).
+func pollVSS(step string, status func() (vss.HRESULT, error), deadline time.Time, timeout, every time.Duration) error {
+	told := false
+	for {
+		st, err := status()
+		if err != nil {
+			return fmt.Errorf("%s: %w", step, err)
+		}
+		switch st {
+		case vss.VSS_S_ASYNC_FINISHED:
+			return nil
+		case vss.VSS_S_ASYNC_CANCELLED:
+			return fmt.Errorf("%s didn't finish properly: async operation was cancelled", step)
+		case vss.VSS_S_ASYNC_PENDING:
+		default:
+			return fmt.Errorf("%s didn't finish properly: async operation returned bad status - 0x%x", step, uint32(st))
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("%s didn't finish properly: async operation is still pending after %v", step, timeout)
+		}
+		if !told {
+			fmt.Printf("VSS: %s still running after Wait returned; waiting on\n", step)
+			told = true
+		}
+		time.Sleep(every)
 	}
-	switch status {
-	case vss.VSS_S_ASYNC_FINISHED:
-		return nil
-	case vss.VSS_S_ASYNC_CANCELLED:
-		return fmt.Errorf("%s didn't finish properly: async operation was cancelled", step)
-	case vss.VSS_S_ASYNC_PENDING:
-		return fmt.Errorf("%s didn't finish properly: async operation is pending", step)
-	}
-	return fmt.Errorf("%s didn't finish properly: async operation returned bad status - 0x%x", step, status)
 }
 
 // shadowMu lets one shadow copy at a time be made or released in this

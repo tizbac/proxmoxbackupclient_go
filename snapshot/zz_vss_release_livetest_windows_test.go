@@ -12,7 +12,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/go-ole/go-ole"
 	"golang.org/x/sys/windows"
 )
 
@@ -101,8 +100,11 @@ func TestLiveVSSHandles(t *testing.T) {
 	// CreateVSSSnapshot.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ole.CoInitialize(0)
-	defer ole.CoUninitialize()
+	uninit, err := initCOM()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer uninit()
 	measure("vssadmin list writers", func() {
 		exec.Command("vssadmin", "list", "writers").CombinedOutput()
 	})
