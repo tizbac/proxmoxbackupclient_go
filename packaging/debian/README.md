@@ -95,7 +95,7 @@ The service logs to `/var/log/proxmoxbackupclient/`. See section 15 of the GUI m
 
 | | .deb | .rpm |
 | --- | --- | --- |
-| Install | `postinst`: `systemctl daemon-reload`, then `enable --now` | `%post`: the same |
+| Install (also after a removal that kept the package's files) | `preinst` marks it fresh; `postinst`: `systemctl daemon-reload`, then `enable --now` | `%post`: the same |
 | Upgrade | `postinst`: `systemctl try-restart`, so a running service restarts on the new version and a stopped one stays stopped | `%post`: the same |
 | Removal | `prerm remove`: `systemctl disable --now`; `postrm`: `daemon-reload` | `%preun` (last version removed): `disable --now`; `%postun`: `daemon-reload` |
 

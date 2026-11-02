@@ -179,17 +179,32 @@ function rep(s, ph, val,    i) {
 # Service and restarts a running service; removal stops and disables it.
 # /var/lib/proxmoxbackupclient (the Backup Sets and keys) is kept, also on
 # purge.
+#
+# "Fresh" is told in preinst: dpkg calls it with "install" for a first
+# install and for one after a removal that kept the package's files (where
+# postinst would see the old version and take it for an upgrade), and with
+# "upgrade" for an upgrade. It leaves a marker that postinst acts on.
+cat > "$STAGE/DEBIAN/preinst" <<'EOF'
+#!/bin/sh
+set -e
+if [ "$1" = install ]; then
+    mkdir -p /run/proxmoxbackupclient && touch /run/proxmoxbackupclient/fresh-install || true
+fi
+exit 0
+EOF
 cat > "$STAGE/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
+fresh=/run/proxmoxbackupclient/fresh-install
 if [ "$1" = configure ] && [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
-    if [ -z "$2" ]; then
+    if [ -e "$fresh" ]; then
         systemctl enable --now proxmoxbackupclient.service || true
     else
         systemctl try-restart proxmoxbackupclient.service || true
     fi
 fi
+rm -f "$fresh"
 exit 0
 EOF
 cat > "$STAGE/DEBIAN/prerm" <<'EOF'
@@ -208,7 +223,7 @@ if [ -d /run/systemd/system ]; then
 fi
 exit 0
 EOF
-chmod 0755 "$STAGE/DEBIAN/postinst" "$STAGE/DEBIAN/prerm" "$STAGE/DEBIAN/postrm"
+chmod 0755 "$STAGE/DEBIAN/preinst" "$STAGE/DEBIAN/postinst" "$STAGE/DEBIAN/prerm" "$STAGE/DEBIAN/postrm"
 
 echo "==> building the package"
 # Nothing group- or world-writable, whatever the build user's umask.
