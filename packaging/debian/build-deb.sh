@@ -86,8 +86,10 @@ echo "==> building the background service"
 echo "==> installing launchers, menu entries and docs"
 install -m 0755 "$LIN/proxmoxbackupclient" "$STAGE/usr/bin/proxmoxbackupclient"
 install -m 0755 "$LIN/proxmoxbackupclient-root" "$STAGE/usr/bin/proxmoxbackupclient-root"
+# One menu entry: the app asks for administrator rights itself when it needs
+# them (connecting to the service; Restart as administrator runs the root
+# launcher above).
 install -m 0644 "$LIN/proxmoxbackupclient.desktop" "$STAGE/usr/share/applications/"
-install -m 0644 "$LIN/proxmoxbackupclient-root.desktop" "$STAGE/usr/share/applications/"
 mkdir -p "$STAGE/usr/lib/systemd/system"
 install -m 0644 "$LIN/proxmoxbackupclient.service" "$STAGE/usr/lib/systemd/system/"
 # gui/Icon.png is the 256 px icon (gui/build/appicon.png is the same at 1024 px).

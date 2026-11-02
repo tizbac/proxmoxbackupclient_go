@@ -57,9 +57,7 @@ Only one copy of the GUI runs at a time on Windows. Starting it again brings the
 
 ### Linux
 
-* **Packages**: `.deb` (Debian, Ubuntu, Mint) and `.rpm` (Fedora), package name `proxmoxbackupclient`. They install the app in `/usr/lib/proxmoxbackupclient/`, the command line tools, the manuals, the background service (not turned on) and two menu entries:
-  * **Proxmox Backup Client** (`proxmoxbackupclient`): the app as you, for folder backups.
-  * **Proxmox Backup Client (administrator)** (`proxmoxbackupclient-root`): the app as root, for machine backups and block snapshots. It asks for your password (pkexec from the desktop, sudo from a terminal). Without the background service it uses your own settings folder; with the service it connects to it without asking again.
+* **Packages**: `.deb` (Debian, Ubuntu, Mint) and `.rpm` (Fedora), package name `proxmoxbackupclient`. They install the app in `/usr/lib/proxmoxbackupclient/`, the command line tools, the manuals, the background service (turned on by a fresh install) and one menu entry, **Proxmox Backup Client** (`proxmoxbackupclient`), which starts the app as you. With the service it asks for your password once to connect to it ([section 15](#connecting-to-the-background-service)). For the few things that need the app itself as root (machine backups without the service, restoring into folders only root may write), the app offers **Restart as administrator**, which runs `proxmoxbackupclient-root` (pkexec from the desktop, sudo from a terminal).
 * **The archive**: `ProxmoxBackupClient-<version>-linux-amd64.tar.gz`. Check it against `SHA256SUMS.txt` (`sha256sum -c`), unpack it and run the `ProxmoxBackupClient` binary.
 
 The app needs the WebKitGTK runtime that Wails programs use; most desktop distributions already have it. Folder backups run as a normal user. **Machine** backups need root. Linux has no VSS: a consistent snapshot of a mounted disk needs the `elastio-snap` (or `dattobd`) kernel module loaded and root rights. See "Linux machine backup prerequisites" in the [README](../../README.md#linux-machine-backup-prerequisites-vss-equivalent).
@@ -82,7 +80,7 @@ The main files are `config.json` (servers, tokens, remembered passphrases, email
 
 **Who can read them.** On Windows the service's settings folder is open to SYSTEM and Administrators only. Only the service and a program started as administrator can open it: the app started normally cannot, even on an administrator's account, so it works through the service. Earlier versions also let each local administrator account read the folder without a prompt; the service removes that when it starts, and sets the permissions again each time. On Linux `/var/lib/proxmoxbackupclient/` belongs to root alone (folders 0700, files 0600). Earlier versions let the `sudo` (or `wheel`) group read it; the service undoes that when it starts. The service's API token, which the app needs to connect, is in the same folder. A settings folder of your own, used without the service, is private to you.
 
-On Linux, **Proxmox Backup Client (administrator)** runs the GUI as root. Without the background service it uses your own settings folder, and hands the settings and log folders back to you when it closes. With the service it works on the service's settings and connects without asking. A GUI started with plain `sudo` uses root's home folder, so without the service it has its own settings.
+On Linux, **Restart as administrator** (`proxmoxbackupclient-root`) runs the GUI as root. Without the background service it uses your own settings folder, and hands the settings and log folders back to you when it closes. With the service it works on the service's settings and connects without asking. A GUI started with plain `sudo` uses root's home folder, so without the service it has its own settings.
 
 ## 3. The window
 
@@ -753,7 +751,7 @@ The GUI keeps the token in memory only, until it closes. The service replaces it
 
 **Use my own settings.** A user who cannot answer the prompt (no administrator's password to hand) can click **Use my own settings** beside **Connect**. The GUI then works on that user's own PBS servers and Backup Sets, kept in their user folder (`~/.proxmox-backup-guardian`), as it does on a computer without the service. Those Backup Sets run only while the app is open or minimised to the tray: the background service does not run them when the app is closed or the user is signed out. A banner says so, with **Connect** to go back to the computer's settings. The choice is remembered for that user. The computer's own Backup Sets carry on in the service either way.
 
-A GUI started as administrator (**Proxmox Backup Client (Administrator)** on Windows, **Proxmox Backup Client (administrator)** on Linux) or as root reads the token itself and connects without asking.
+A GUI already running as administrator (after **Restart as administrator**, or started with **Run as administrator**) or as root reads the token itself and connects without asking. Otherwise the GUI stays a normal program while connected: only a small helper is elevated to fetch the token, so mapped network drives and drag and drop from Explorer keep working.
 
 For a restore, browsing a backup or a search, the service hands the GUI only what that one operation needs: a fresh login ticket for a server with a user name and password, or the API token for a server with a token, and the encryption key when the backup is encrypted. The GUI keeps them in memory only.
 
@@ -793,7 +791,7 @@ This client adds one small file at the root of its folder snapshots, `.proxmox_b
 
 **"Not connected to the background service."** The GUI has not had administrator rights yet in this session, or you declined. Click **Connect** and allow the prompt; on a standard account, give an administrator's name and password ([section 15](#connecting-to-the-background-service)).
 
-**Machine backup on Linux fails with a permission or snapshot error.** Run the GUI as root (**Proxmox Backup Client (administrator)**) and load `elastio-snap` or `dattobd` first.
+**Machine backup on Linux fails with a permission or snapshot error.** With the background service, the service runs it as root; without it, use **Restart as administrator** in the app. Load `elastio-snap` or `dattobd` first.
 
 **Restore of an older client version shows folders without files.** That computer has a version without split-archive support. Update it.
 

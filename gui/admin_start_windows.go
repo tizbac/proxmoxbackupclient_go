@@ -12,9 +12,11 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// startAsAdmin handles --admin, which the installer's "(Administrator)"
-// shortcuts pass: Windows shortcuts made by the MSI cannot carry "Run as
-// administrator" themselves. It reports whether this process should exit.
+// startAsAdmin handles --admin, for starting the app elevated from a
+// command line or a shortcut someone makes themselves (MSI shortcuts cannot
+// carry "Run as administrator", and the installer no longer adds an
+// "(Administrator)" one: the app asks when it needs to). It reports whether
+// this process should exit.
 //
 //   - Already elevated: nothing to do, start as usual.
 //   - Another copy is running (usually the one in the tray, started at

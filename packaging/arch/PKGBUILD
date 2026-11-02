@@ -126,8 +126,6 @@ package() {
     install -Dm 0755 "$_lin/proxmoxbackupclient-root" "${pkgdir}/usr/bin/proxmoxbackupclient-root"
     install -Dm 0644 "$_lin/proxmoxbackupclient.desktop" \
         "${pkgdir}/usr/share/applications/proxmoxbackupclient.desktop"
-    install -Dm 0644 "$_lin/proxmoxbackupclient-root.desktop" \
-        "${pkgdir}/usr/share/applications/proxmoxbackupclient-root.desktop"
     install -Dm 0644 "$_lin/proxmoxbackupclient.service" \
         "${pkgdir}/usr/lib/systemd/system/proxmoxbackupclient.service"
     install -Dm 0644 "$_srcroot/gui/Icon.png" \

@@ -111,16 +111,10 @@
                   Icon="AppIcon"
                   Target="[INSTALLFOLDER]$(var.ExeName).exe"
                   WorkingDirectory="INSTALLFOLDER"/>
-        <!-- MSI shortcuts cannot carry "Run as administrator": the app
-             relaunches itself through UAC when started with -admin
-             (gui/admin_start_windows.go). -->
-        <Shortcut Id="ApplicationStartMenuShortcutAdmin"
-                  Name="$(var.ProductName) (Administrator)"
-                  Description="Backup client for Proxmox Backup Server, as administrator"
-                  Icon="AppIcon"
-                  Target="[INSTALLFOLDER]$(var.ExeName).exe"
-                  Arguments="-admin"
-                  WorkingDirectory="INSTALLFOLDER"/>
+        <!-- One shortcut: the app asks for administrator rights itself when
+             it connects to the background service, and offers Restart as
+             administrator where an operation needs the app elevated (the
+             -admin switch, gui/admin_start_windows.go). -->
         <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
         <RegistryValue Root="HKCU"
                        Key="Software\$(var.VendorKey)\$(var.ExeName)"
@@ -131,9 +125,9 @@
       </Component>
     </DirectoryRef>
 
-    <!-- Desktop shortcuts (DESKTOPSHORTCUTS = "1", the default): the app and
-         the app as administrator, as in the Start menu. The HKCU key path is
-         what ICE38 wants for a component in a profile folder. -->
+    <!-- Desktop shortcut (DESKTOPSHORTCUTS = "1", the default), as in the
+         Start menu. The HKCU key path is what ICE38 wants for a component in
+         a profile folder. -->
     <DirectoryRef Id="DesktopFolder">
       <Component Id="DesktopShortcuts" Guid="*">
         <Condition>DESKTOPSHORTCUTS = "1"</Condition>
@@ -142,13 +136,6 @@
                   Description="Backup client for Proxmox Backup Server"
                   Icon="AppIcon"
                   Target="[INSTALLFOLDER]$(var.ExeName).exe"
-                  WorkingDirectory="INSTALLFOLDER"/>
-        <Shortcut Id="DesktopShortcutAdmin"
-                  Name="$(var.ProductName) (Administrator)"
-                  Description="Backup client for Proxmox Backup Server, as administrator"
-                  Icon="AppIcon"
-                  Target="[INSTALLFOLDER]$(var.ExeName).exe"
-                  Arguments="-admin"
                   WorkingDirectory="INSTALLFOLDER"/>
         <RegistryValue Root="HKCU"
                        Key="Software\$(var.VendorKey)\$(var.ExeName)"

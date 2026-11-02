@@ -30,10 +30,11 @@ For silent installs on many computers see [DEPLOYMENT.md](DEPLOYMENT.md).
 - The Windows service `ProxmoxBackupClientSVC`, display name "Proxmox Backup Client Service".
   It runs as LocalSystem, starts automatically at boot and is started at the end of the install.
   The app finds it and hands it backups and schedules ("Run as Service" shows as on).
-- Start menu entries "Proxmox Backup Client" and "Proxmox Backup Client (Administrator)".
-  The second starts the app with `-admin`, which asks for elevation through UAC (MSI
-  shortcuts cannot carry "Run as administrator" themselves).
-- When `DESKTOPSHORTCUTS=1` (the default): the same two shortcuts on the all-users desktop.
+- A Start menu entry "Proxmox Backup Client". The app asks for administrator rights itself
+  when it connects to the service, and offers Restart as administrator (the app's `-admin`
+  switch, a UAC prompt) where an operation needs the app elevated. An upgrade removes the
+  "(Administrator)" shortcuts earlier builds installed.
+- When `DESKTOPSHORTCUTS=1` (the default): the same shortcut on the all-users desktop.
 - One entry in Programs and Features, with the brand's links (about, help, updates, contact).
 - When `AUTOSTART=1` (the default): a `Run` entry under HKLM, which starts the app
   minimised to the tray when any user signs in (`--minimized`). The app does not ask for
@@ -49,8 +50,9 @@ elevation; the service removes those entries.
 The app reaches the settings through the service's local API. It gets the service's token
 by asking for administrator rights once (UAC; a standard user gives an administrator's name
 and password), keeps it in memory, and asks again when the service replaces it (every 24
-hours). Until it is connected the app shows no settings and a **Connect** button. The
-"(Administrator)" shortcut, already elevated, connects without a second prompt. The app's own logs are in each
+hours). Until it is connected the app shows no settings and a **Connect** button. Only a
+small helper is elevated for that; the app itself stays a normal program. An app already
+running as administrator connects without a prompt. The app's own logs are in each
 user's `%LOCALAPPDATA%\ProxmoxBackupClient\Logs`.
 
 ## Upgrade

@@ -35,7 +35,7 @@ packaging/fedora/build-rpm.sh [output-dir]      # default: dist/
 | Path | |
 | ---- | --- |
 | `/usr/bin/proxmoxbackupclient` | starts the app as the current user (folder backups of your files; with `-list-sets`, `-undelete` or `-rollback`, those commands without a window) |
-| `/usr/bin/proxmoxbackupclient-root` | starts the app as root, for machine (whole-disk) backups and snapshots; without the background service it uses your own settings, with it the service's; asks for the password with pkexec (sudo from a terminal) |
+| `/usr/bin/proxmoxbackupclient-root` | starts the app as root (the app's **Restart as administrator**); without the background service it uses your own settings, with it the service's; asks for the password with pkexec (sudo from a terminal) |
 | `/usr/bin/proxmoxbackup-directory` | folder backups from the command line |
 | `/usr/bin/proxmoxbackup-machine` | whole-disk backups from the command line |
 | `/usr/bin/proxmoxbackup-nbd` | attach a disk image from the server as `/dev/nbdN` (root) |
@@ -43,7 +43,6 @@ packaging/fedora/build-rpm.sh [output-dir]      # default: dist/
 | `/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC` | the background service program |
 | `/usr/lib/systemd/system/proxmoxbackupclient.service` | its systemd unit, enabled and started on a fresh install |
 | `/usr/share/applications/proxmoxbackupclient.desktop` | menu entry "Proxmox Backup Client" |
-| `/usr/share/applications/proxmoxbackupclient-root.desktop` | menu entry "Proxmox Backup Client (administrator)" |
 | `/usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png` | icon |
 | `/usr/share/doc/proxmoxbackupclient/` | README, CHANGELOG, the manuals (and `copyright` in the .deb) |
 
@@ -51,18 +50,21 @@ The .deb depends on `pkexec | policykit-1` and suggests `elastio-snap-dkms`; the
 and the Arch package require `polkit`. The app needs pkexec to connect to the background
 service (below).
 
-## The two menu entries
+## The menu entry
 
-- **Proxmox Backup Client** runs the app as you. Folder backups of your own files work
-  this way. With the background service running, it asks once for administrator rights
-  (pkexec) to connect to the service (below).
-- **Proxmox Backup Client (administrator)** runs `proxmoxbackupclient-root`. It asks for
-  your password through polkit (pkexec), or with sudo when started from a terminal, and
-  runs the app as root with your `HOME`. Without the background service it uses your
-  settings (`~/.proxmox-backup-guardian`); with it, it reads the service's token itself and
-  connects without a second prompt. When it closes it hands your settings folder and your
-  log folder (`~/.local/state/proxmoxbackupclient`) back to you. Use it for machine
-  backups, block snapshots, and for turning the background service on or off.
+**Proxmox Backup Client** runs the app as you. Folder backups of your own files work this
+way. With the background service running, it asks once for administrator rights (pkexec)
+to connect to the service (below); the app itself stays a normal program.
+
+For what needs the app itself as root (machine backups and block snapshots without the
+service, turning the service on or off), the app offers **Restart as administrator**, which
+runs `proxmoxbackupclient-root`. It asks for your password through polkit (pkexec), or with
+sudo when started from a terminal, and runs the app as root with your `HOME`. Without the
+background service it uses your settings (`~/.proxmox-backup-guardian`); with it, it reads
+the service's token itself and connects without a second prompt. When it closes it hands
+your settings folder and your log folder (`~/.local/state/proxmoxbackupclient`) back to
+you. Earlier packages also had a "Proxmox Backup Client (administrator)" menu entry; an
+upgrade removes it.
 
 ## The background service
 

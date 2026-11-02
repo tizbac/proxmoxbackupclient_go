@@ -71,7 +71,6 @@ install -m 0644 packaging/linux/proxmoxbackupclient.service %{buildroot}%{_prefi
 install -m 0755 packaging/linux/proxmoxbackupclient %{buildroot}%{_bindir}/
 install -m 0755 packaging/linux/proxmoxbackupclient-root %{buildroot}%{_bindir}/
 install -m 0644 packaging/linux/proxmoxbackupclient.desktop %{buildroot}%{_datadir}/applications/
-install -m 0644 packaging/linux/proxmoxbackupclient-root.desktop %{buildroot}%{_datadir}/applications/
 install -m 0644 gui/Icon.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/proxmoxbackupclient.png
 
 %files
@@ -86,7 +85,6 @@ install -m 0644 gui/Icon.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/
 %{_prefix}/lib/proxmoxbackupclient/ProxmoxBackupClientSVC
 %{_prefix}/lib/systemd/system/proxmoxbackupclient.service
 %{_datadir}/applications/proxmoxbackupclient.desktop
-%{_datadir}/applications/proxmoxbackupclient-root.desktop
 %{_datadir}/icons/hicolor/256x256/apps/proxmoxbackupclient.png
 
 # A fresh install enables and starts the service, so the Backup Sets run on
