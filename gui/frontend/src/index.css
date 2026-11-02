@@ -312,6 +312,51 @@ body {
 .sched-done { display: flex; justify-content: flex-end; margin-top: 8px; }
 .info-box.schedule-summary { background-color: #eef2ff; }
 
+/* The Backup Set editor's Enabled switch, under the set's name: green while
+   the set runs on its schedule, amber while it is disabled. */
+.form-group .set-enabled {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 400px;
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    border: 1px solid;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: normal;
+    cursor: pointer;
+}
+.form-group .set-enabled.on { border-color: #b7dfc2; background: #eef8f1; color: #1e5b30; }
+.form-group .set-enabled.off { border-color: #f0cf96; background: #fff4e0; color: #9a5b00; }
+.form-group .set-enabled input[type="checkbox"] {
+    appearance: none;
+    flex: none;
+    position: relative;
+    width: 36px;
+    height: 20px;
+    margin: 0;
+    border-radius: 10px;
+    background: #c9ced6;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.form-group .set-enabled input[type="checkbox"]::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: transform 0.15s;
+}
+.form-group .set-enabled input[type="checkbox"]:checked { background: var(--accent); }
+.form-group .set-enabled input[type="checkbox"]:checked::before { transform: translateX(16px); }
+.form-group .set-enabled input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* Disk selection styling */
 .drive-actions {
     display: flex;

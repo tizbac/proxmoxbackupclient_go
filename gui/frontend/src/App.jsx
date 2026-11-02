@@ -782,6 +782,8 @@ function App() {
   const [minimizeAfter, setMinimizeAfter] = useState(false)
   const [shutdownAfter, setShutdownAfter] = useState(false)
   const [jobName, setJobName] = useState('') // User-facing name for the backup set being created/edited
+  // The set's Enabled switch under its name (the More menu's Enable/Disable).
+  const [jobEnabled, setJobEnabled] = useState(true)
   const [oneOffComment, setOneOffComment] = useState('') // Optional PBS snapshot comment for a one-off backup
   // Back a machine up as a PBS "vm" snapshot (restorable from Proxmox VE).
   const [machineAsVM, setMachineAsVM] = useState(false)
@@ -805,6 +807,7 @@ function App() {
     setReadFreeSpace(job.backupType === 'machine' && !!job.readFreeSpace)
     setMachineSnapshotsOff(job.backupType === 'machine' && !!job.snapshotsOff)
     setLiveReadAccepted(job.backupType === 'machine' && !!job.snapshotsOff && !!job.liveRead)
+    setJobEnabled(job.enabled !== false)
     if (!isVm) { setVmIdNumber(''); setVmIdStyle('range'); return }
     const id = String(job.backupId || '')
     if (/^000\d+$/.test(id)) { setVmIdStyle('zeros'); setVmIdNumber(id.slice(3)) }
@@ -2595,11 +2598,11 @@ function App() {
       // saving, with Save anyway or Go back.
       const linuxMachineSet = backupType === 'machine' && systemInfo.os === 'linux'
       const blockers = []
-      if (editingJobId && scheduledJobs.find(j => j.id === editingJobId)?.enabled === false) {
-        blockers.push(tl('saveWarnDisabled', 'The set is turned off, so it will not run until you turn it on.'))
+      if (!jobEnabled) {
+        blockers.push(tl('saveWarnDisabled', 'The set is disabled, so it does not run on its schedule until you enable it.'))
       }
       if (scheduleMode !== 'manual' && !runAtStartup && !schedules.some(sc => sc.enabled)) {
-        blockers.push(tl('saveWarnNoSchedule', 'No schedule is turned on, so it runs only when you press Run now.'))
+        blockers.push(tl('saveWarnNoSchedule', 'No schedule is on, so it runs only when you press Run Now.'))
       }
       if (linuxMachineSet && machineSnapshotsOff && !liveReadAccepted) {
         blockers.push(tl('saveWarnSnapshotsOff', 'Use snapshots is off but reading without a snapshot is not accepted, so every run stops before it starts.'))
@@ -2667,6 +2670,10 @@ function App() {
         if (editingJobId) {
           // Update existing job
           await UpdateScheduledJob(jobData)
+          // An update keeps the set's enabled state; the switch changes it.
+          if ((scheduledJobs.find(j => j.id === editingJobId)?.enabled !== false) !== jobEnabled) {
+            await SetScheduledJobEnabled(editingJobId, jobEnabled)
+          }
           // Reload rather than use the form's copy: the backend adds the
           // next run and keeps the last run and run counters.
           setScheduledJobs((await GetScheduledJobs()) || scheduledJobs.map(j => j.id === editingJobId ? jobData : j))
@@ -2675,12 +2682,14 @@ function App() {
         } else {
           // Create new job
           await SaveScheduledJob(jobData)
+          // A new set is saved enabled.
+          if (!jobEnabled) await SetScheduledJobEnabled(jobData.id, false)
           setScheduledJobs((await GetScheduledJobs()) || [...scheduledJobs, jobData])
           showStatus(`✅ ${t('statusJobScheduled')}`, 'success')
         }
         // Reset form after save
         setJobName('')
-        setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setVmIdNumber(''); setImageFolders('')
+        setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
         setRunAtStartup(false)
         setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
         setBackupDirs('')
@@ -4404,7 +4413,7 @@ function App() {
                   onClick={() => {
                     setEditingJobId(null)
                     setJobName('')
-                    setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setVmIdNumber(''); setImageFolders('')
+                    setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
                     setBackupMode('scheduled')
                     setRunAtStartup(false)
                     setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
@@ -4831,6 +4840,21 @@ function App() {
                     {tl('jobNameNotUnique', 'There is already a Backup Set called "{name}". Each set needs its own name.').replace('{name}', nameClash.name)}
                   </div>
                 )}
+                <label className={`set-enabled ${jobEnabled ? 'on' : 'off'}`}>
+                  <input
+                    id="jobEnabled"
+                    type="checkbox"
+                    role="switch"
+                    checked={jobEnabled}
+                    onChange={(e) => setJobEnabled(e.target.checked)}
+                  />
+                  <span>
+                    <strong>{jobEnabled ? tl('setEnabledBadge', 'Enabled') : tl('setDisabledBadge', 'Disabled')}:</strong>{' '}
+                    {jobEnabled
+                      ? tl('setEnabledHint', 'Runs on its schedule.')
+                      : tl('setDisabledHint', 'Does not run on its schedule until you enable it. Run Now still works.')}
+                  </span>
+                </label>
               </div>
             )}
 
@@ -5342,7 +5366,7 @@ function App() {
             <button className="btn btn-secondary" onClick={() => {
               setEditingJobId(null)
               setJobName('')
-              setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setVmIdNumber(''); setImageFolders('')
+              setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
               setChangeDetectionMode('legacy'); setFullReadEvery(0)
               setRunAtStartup(false)
               setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
