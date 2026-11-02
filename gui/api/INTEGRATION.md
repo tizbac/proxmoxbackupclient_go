@@ -51,7 +51,7 @@ otherwise (`gui/api/server_state.go`).
 
 ## Authentication
 
-Every request except `GET /status/public` must carry the header
+Every request except `GET /status/public` and `GET /servers/public` must carry the header
 
 ```
 X-Proxmox-Client-Token: <contents of the token file>
@@ -106,7 +106,8 @@ Checks on every request (`authMiddleware`):
 - a request with an `Origin` header gets **403** `forbidden` (browsers send it; the app
   does not);
 - a missing or wrong token gets **401** `unauthorized` (constant-time compare), except on
-  `GET /status/public` (any other method there needs the token too).
+  `GET /status/public` and `GET /servers/public` (any other method there needs the token
+  too).
 
 ## Errors
 
@@ -147,7 +148,7 @@ secrets (no token secret, no passphrase). `last_backup` exists in the type but i
 
 ### GET /status/public
 
-The one route that needs no token (`public_status.go`). Any program on the computer may read
+One of the two routes that need no token (`public_status.go`). Any program on the computer may read
 it, so it says only whether backups run and whether one failed: no Backup Set names, paths,
 servers or messages. The app's tray uses it while the app holds no token. Every field is
 always present:
@@ -176,6 +177,39 @@ always present:
 The service reads the history for the last two fields at most once every 5 seconds. The
 `Origin` check still applies, and so does the app's peer check: the app reads the route only
 from the real service. An earlier service without the route answers it **401**.
+
+### GET /servers/public
+
+The other route that needs no token (`public_servers.go`): the computer's PBS servers,
+without their logins. A user who works on their own settings (Use my own settings) holds
+no token; the app's Preferences offer them these servers, so they can add one with their
+own API token or username and password instead of typing its address, datastore and
+fingerprint again. So the list says where each server is and how it is reached, and
+nothing that logs in to it: no token ID, username, secret, password, passphrase or key
+file. Sorted by name; every field is always present:
+
+```json
+[
+  {
+    "id": "office",
+    "name": "Office PBS",
+    "base_url": "https://pbs.example.com:8007",
+    "datastore": "main",
+    "namespace": "office",
+    "fingerprint": "aa:bb:...",
+    "login": "token",
+    "encrypted": true
+  }
+]
+```
+
+- `login` is how the computer logs in to the server: `token` (an API token) or `password`
+  (a username and password). The app opens that tab of the server form for the user's own.
+- `encrypted` is true when the computer's backups to the server are encrypted. The key is
+  not shared.
+
+With no servers the answer is `[]`. The `Origin` check and the app's peer check apply as to
+`GET /status/public`. An earlier service without the route answers it **401**.
 
 ### POST /backup
 

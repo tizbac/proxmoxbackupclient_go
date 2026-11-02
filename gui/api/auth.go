@@ -202,7 +202,8 @@ func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // route: it bounds the body, rejects browser-originated requests (Origin set),
 // and requires the shared token (tokenAccepted), except for GET
 // /status/public, which says only whether backups run or failed
-// (public_status.go).
+// (public_status.go), and GET /servers/public, the computer's servers
+// without their logins (public_servers.go).
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)

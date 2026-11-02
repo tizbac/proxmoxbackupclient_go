@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -85,6 +86,49 @@ func (a *App) GetJobHistoryForAPI() ([]map[string]interface{}, error) {
 	var out []map[string]interface{}
 	err = remarshal(h, &out)
 	return out, err
+}
+
+// PublicServersForAPI is the computer's PBS servers for GET /servers/public
+// (api.PublicServersAPI), which anyone on the computer may read: where each
+// server is and how it is reached, sorted by name. No token ID, username,
+// secret, password or key file: a user on their own settings picks one and
+// logs in with their own.
+func (a *App) PublicServersForAPI() []api.PublicServer {
+	return publicServers(a.config)
+}
+
+// publicServers is cfg's PBS servers without their logins, sorted by name
+// (then ID).
+func publicServers(cfg *Config) []api.PublicServer {
+	list := []api.PublicServer{}
+	if cfg == nil {
+		return list
+	}
+	for id, s := range cfg.PBSServers {
+		if s == nil {
+			continue
+		}
+		login := "token"
+		if s.AuthID == "" && s.Username != "" {
+			login = "password"
+		}
+		sid := s.ID
+		if sid == "" {
+			sid = id
+		}
+		list = append(list, api.PublicServer{
+			ID: sid, Name: s.Name, BaseURL: s.BaseURL, Datastore: s.Datastore, Namespace: s.Namespace,
+			Fingerprint: s.CertFingerprint, Login: login, Encrypted: s.EncryptionKeyFile != "",
+		})
+	}
+	sort.Slice(list, func(i, j int) bool {
+		ni, nj := strings.ToLower(list[i].Name), strings.ToLower(list[j].Name)
+		if ni != nj {
+			return ni < nj
+		}
+		return list[i].ID < list[j].ID
+	})
+	return list
 }
 
 // LastRunOutcomeForAPI is the outcome of the last runs for the service's

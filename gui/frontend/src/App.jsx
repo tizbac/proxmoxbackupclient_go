@@ -54,6 +54,8 @@ let GetBackupRuns, PauseBackupRun, ResumeBackupRun, CancelBackupRun, SetMaxConcu
 let SetSpeedLimits
 // The background service's settings (upstream's strict model)
 let ConnectService, IsServiceConnected, UseOwnSettings, OwnSetsCount, ConnectServiceCopyingOwn
+// Own settings: the computer's PBS servers, without their logins
+let ComputerServers
 // Installed but not running: the banner's Start the service
 let StartServiceAndConnect
 
@@ -93,6 +95,7 @@ if (window.go) {
   UseOwnSettings = window.go.main.App.UseOwnSettings
   OwnSetsCount = window.go.main.App.OwnSetsCount
   ConnectServiceCopyingOwn = window.go.main.App.ConnectServiceCopyingOwn
+  ComputerServers = window.go.main.App.ComputerServers
   StartServiceAndConnect = window.go.main.App.StartServiceAndConnect
   GetLastBackupDirs = window.go.main.App.GetLastBackupDirs
   // Multi-PBS
@@ -639,6 +642,11 @@ function App() {
   })
   const [serverStatus, setServerStatus] = useState({}) // Map of server ID -> connection status
   const [serverTab, setServerTab] = useState('server') // active category tab in the server form
+  // On own settings: the computer's PBS servers without their logins
+  // (ComputerServers), to add one with the user's own. null: not read yet.
+  const [computerServers, setComputerServers] = useState(null)
+  const [computerServersErr, setComputerServersErr] = useState('')
+  const [computerServersOpen, setComputerServersOpen] = useState(false)
 
   const [backupType, setBackupType] = useState('directory')
   // While true, a folder Backup Set's ID follows its name (suggestBackupId):
@@ -2175,6 +2183,99 @@ function App() {
     setServerTab('server')
     setEditingServer(null)
     setShowServerForm(true)
+  }
+
+  // The computer's servers menu closes like a Backup Set's More menu: a click
+  // anywhere else, or Escape.
+  useEffect(() => {
+    if (!computerServersOpen) return undefined
+    const close = () => setComputerServersOpen(false)
+    const onKey = (e) => { if (e.key === 'Escape') close() }
+    document.addEventListener('click', close)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', onKey) }
+  }, [computerServersOpen])
+
+  // On own settings, read the computer's servers each time the servers tab
+  // opens: the service may have started, or an administrator added one.
+  useEffect(() => {
+    if (!showPreferences || prefsTab !== 'account' || !systemInfo.own_settings || !ComputerServers) return
+    let live = true
+    setComputerServers(null)
+    setComputerServersErr('')
+    ComputerServers()
+      .then(list => { if (live) setComputerServers(list || []) })
+      .catch(err => { if (live) { setComputerServers([]); setComputerServersErr(String(err?.message || err)) } })
+    return () => { live = false }
+  }, [showPreferences, prefsTab, systemInfo.own_settings])
+
+  // The add form, filled from one of the computer's servers: where it is and
+  // its fingerprint, with the login tab the computer uses, left empty for the
+  // user's own token or username and password.
+  const handleUseComputerServer = (s) => {
+    setComputerServersOpen(false)
+    setServerFormData({
+      id: pbsServers.some(p => p.id === s.id) ? '' : s.id,
+      name: s.name || '',
+      baseurl: s.base_url || '',
+      certfingerprint: s.fingerprint || '',
+      authid: '',
+      secret: '',
+      username: '',
+      password: '',
+      datastore: s.datastore || '',
+      namespace: s.namespace || '',
+      encryption_key_file: '',
+      encryption_key_passphrase_set: false,
+      encryption_key_passphrase: '',
+      clear_encryption_key_passphrase: false,
+      description: ''
+    })
+    setServerTab(s.login === 'password' ? 'userpass' : 'token')
+    setEditingServer(null)
+    setShowServerForm(true)
+  }
+
+  // "Use one of this computer's servers": shown on own settings only, greyed
+  // out with the reason while the list is being read, empty or unreadable.
+  const renderComputerServersPicker = () => {
+    if (!systemInfo.own_settings) return null
+    const list = computerServers || []
+    const reason = computerServers === null
+      ? tl('computerServersLoading', "Reading this computer's servers…")
+      : computerServersErr
+        ? tl('computerServersUnavailable', "This computer's servers cannot be read: the background service is not running.")
+        : list.length === 0
+          ? tl('computerServersNone', 'This computer has no PBS servers yet.')
+          : ''
+    return (
+      <div style={{position: 'relative', display: 'inline-block'}}>
+        <button
+          className="btn btn-secondary"
+          disabled={!!reason}
+          title={reason || tl('computerServersTip', "Add a PBS server this computer already has, with your own API token or username and password: the computer's login is not shared.")}
+          aria-haspopup="menu"
+          aria-expanded={computerServersOpen}
+          onClick={(e) => { e.stopPropagation(); setComputerServersOpen(o => !o) }}
+          style={{padding: '6px 14px', fontSize: '12.5px'}}
+        >
+          {tl('computerServersButton', "Use one of this computer's servers")} ▾
+        </button>
+        {computerServersOpen && !reason && (
+          <div role="menu" className="set-more-menu" onClick={() => setComputerServersOpen(false)}>
+            {list.map(s => (
+              <button key={s.id} role="menuitem" className="set-more-item" onClick={() => handleUseComputerServer(s)}>
+                <strong>{s.name || s.id}</strong>
+                <span style={{display: 'block', fontSize: '11px', color: '#666'}}>
+                  {s.base_url} · {s.datastore}{s.namespace ? ` / ${s.namespace}` : ''}
+                  {s.encrypted ? ` · ${tl('computerServersEncrypted', 'encrypted: choose your own key')}` : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
   }
 
   const handleCancelEdit = () => {
@@ -3812,6 +3913,11 @@ function App() {
                           )}
                         </div>
 
+                        {systemInfo.own_settings && (
+                          <div style={{display: 'flex', justifyContent: 'flex-end', marginBottom: '12px'}}>
+                            {renderComputerServersPicker()}
+                          </div>
+                        )}
                         {renderServerForm()}
                       </>
                     ) : (
@@ -3825,9 +3931,12 @@ function App() {
                           <div style={{fontSize: '13px', fontWeight: 700, color: '#333'}}>
                             {t('configuredServers')} ({pbsServers.length})
                           </div>
-                          <button className="btn btn-primary" onClick={handleShowAddServer} style={{padding: '6px 14px', fontSize: '12.5px'}}>
-                            + {t('addServer')}
-                          </button>
+                          <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                            {renderComputerServersPicker()}
+                            <button className="btn btn-primary" onClick={handleShowAddServer} style={{padding: '6px 14px', fontSize: '12.5px'}}>
+                              + {t('addServer')}
+                            </button>
+                          </div>
                         </div>
                         <div style={{border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', marginBottom: '20px'}}>
                           {pbsServers.map((server, idx) => {

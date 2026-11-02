@@ -132,7 +132,8 @@ func NewServer(addr string, handler BackupHandler, token, version string) *Serve
 
 func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/status", s.handleStatus)
-	s.mux.HandleFunc(PublicStatusPath, s.handlePublicStatus) // no token (public_status.go)
+	s.mux.HandleFunc(PublicStatusPath, s.handlePublicStatus)   // no token (public_status.go)
+	s.mux.HandleFunc(PublicServersPath, s.handlePublicServers) // no token (public_servers.go)
 	s.mux.HandleFunc("/backup", s.handleBackup)
 	s.mux.HandleFunc("/backup/machine", s.handleMachineBackup)
 	s.mux.HandleFunc("/backup/status/", s.handleBackupStatus)

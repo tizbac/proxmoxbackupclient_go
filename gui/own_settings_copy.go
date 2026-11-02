@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
 )
 
 // Connecting with own settings (UseOwnSettings): the user's own Backup Sets
@@ -29,6 +31,27 @@ func (a *App) OwnSetsCount() int {
 		return 0
 	}
 	return len(jobs)
+}
+
+// ComputerServers is the computer's PBS servers without their logins (GET
+// /servers/public), for a user on their own settings: Preferences offers
+// them so the user can add one with their own token or login instead of
+// typing its address, datastore and fingerprint. Only on own settings: on
+// the computer's the servers are the user's already. An error when the
+// service does not answer, or is older than the route.
+func (a *App) ComputerServers() ([]api.PublicServer, error) {
+	if !a.ownSettings.Load() {
+		return nil, fmt.Errorf("only while working on your own settings")
+	}
+	c := a.apiClient
+	if c == nil {
+		c = api.NewClient(getAPITokenPath())
+	}
+	list, err := c.PublicServers()
+	if err != nil {
+		return nil, fmt.Errorf("the background service did not give this computer's servers: %w", err)
+	}
+	return list, nil
 }
 
 // ConnectServiceCopyingOwn is Connect from the user's own settings, copying

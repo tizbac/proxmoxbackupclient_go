@@ -58,10 +58,11 @@ type PublicStatusAPI interface {
 	LastRunOutcomeForAPI() (failed bool, ended string)
 }
 
-// isPublicRequest reports whether r is the one request the token check lets
-// through: GET /status/public.
+// isPublicRequest reports whether r is one of the two requests the token
+// check lets through: GET /status/public and GET /servers/public
+// (public_servers.go).
 func isPublicRequest(r *http.Request) bool {
-	return r.Method == http.MethodGet && r.URL.Path == PublicStatusPath
+	return r.Method == http.MethodGet && (r.URL.Path == PublicStatusPath || r.URL.Path == PublicServersPath)
 }
 
 // handlePublicStatus serves GET /status/public.

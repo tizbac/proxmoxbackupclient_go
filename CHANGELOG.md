@@ -61,6 +61,8 @@ listed under [History of the GUI before 2.0](#history-of-the-gui-before-20).
 
 - **Use my own settings.** A user who cannot answer the administrator prompt can work on their own PBS servers and Backup Sets in their own folder instead, as without the service. Those sets run only while the app is open or in the tray, and the window says so. **Connect** goes back to the computer's settings; with own sets, it first says that they will not run while connected and offers to copy them into the computer's.
 
+- **The computer's servers on your own settings.** On their own settings, a user can add one of the PBS servers the computer already has with **Use one of this computer's servers** in Preferences: the add-server form opens filled in with its name, address, datastore, namespace and fingerprint, for the user's own API token or user name and password. The computer's login, secrets and encryption key are not shared. The list comes from a second public route, `GET /servers/public`, which needs no token and holds no logins (`gui/api/INTEGRATION.md`).
+
 - **"Run at startup" Backup Sets run when the service starts**, which is when the computer starts, whether or not anyone signs in. They ran when the app started at sign-in, and the app is no longer connected to the service at that point. Without the service they still run when the app starts.
 
 - **The "Require administrator rights to add, change or delete Backup Sets" policy is gone** (Preferences > Advanced, Windows). With the service, every change already needs administrator rights, through the connection. A value left in `HKLM\SOFTWARE\ProxmoxBackupClient\Policy` is ignored.
