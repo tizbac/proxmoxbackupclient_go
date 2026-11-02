@@ -190,8 +190,13 @@ retry() {
 	return 0
 }
 
+# `version` answers before PBS has written its keys on first boot, and
+# `datastore create` then panics on the missing authkey.key (seen on GitHub,
+# 2026-11-02), so wait for the auth key and the proxy certificate as well.
 pbs_ready() {
-	pbs_mgr version >/dev/null 2>&1
+	pbs_mgr version >/dev/null 2>&1 \
+		&& docker exec "$PBS_CONTAINER" test -s /etc/proxmox-backup/authkey.key \
+		&& docker exec "$PBS_CONTAINER" test -s /etc/proxmox-backup/proxy.pem
 }
 
 start_pbs() {
