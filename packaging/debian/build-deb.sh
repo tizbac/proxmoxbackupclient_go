@@ -18,7 +18,7 @@
 #   /usr/bin/proxmoxbackupclient-root  the app as root (machine backups)
 #   /usr/lib/proxmoxbackupclient/ProxmoxBackupClient
 #   /usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC  the background service
-#   /usr/lib/systemd/system/proxmoxbackupclient.service  (installed, not enabled)
+#   /usr/lib/systemd/system/proxmoxbackupclient.service  (enabled on a fresh install)
 #   /usr/share/applications/proxmoxbackupclient{,-root}.desktop
 #   /usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png
 #   /usr/share/doc/proxmoxbackupclient/{copyright,README.md,CHANGELOG.md.gz,manual/}
@@ -175,16 +175,22 @@ function rep(s, ph, val,    i) {
     print line
 }' "$SCRIPT_DIR/control.in" > "$STAGE/DEBIAN/control"
 
-# The service unit is installed but not enabled: the app turns it on
-# (Preferences > Advanced > Run as Service). An upgrade restarts a running
-# service; removal stops and disables it. /var/lib/proxmoxbackupclient (the
-# Backup Sets and keys) is kept, also on purge.
+# A fresh install enables and starts the service, so the Backup Sets run
+# on schedule with nobody logged in (as the Windows MSI does by default).
+# An upgrade keeps what the user chose in Preferences > Advanced > Run as
+# Service and restarts a running service; removal stops and disables it.
+# /var/lib/proxmoxbackupclient (the Backup Sets and keys) is kept, also on
+# purge.
 cat > "$STAGE/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
 if [ "$1" = configure ] && [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
-    systemctl try-restart proxmoxbackupclient.service || true
+    if [ -z "$2" ]; then
+        systemctl enable --now proxmoxbackupclient.service || true
+    else
+        systemctl try-restart proxmoxbackupclient.service || true
+    fi
 fi
 exit 0
 EOF

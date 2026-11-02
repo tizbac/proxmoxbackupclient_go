@@ -41,7 +41,7 @@ packaging/fedora/build-rpm.sh [output-dir]      # default: dist/
 | `/usr/bin/proxmoxbackup-nbd` | attach a disk image from the server as `/dev/nbdN` (root) |
 | `/usr/lib/proxmoxbackupclient/ProxmoxBackupClient` | the app itself |
 | `/usr/lib/proxmoxbackupclient/ProxmoxBackupClientSVC` | the background service program |
-| `/usr/lib/systemd/system/proxmoxbackupclient.service` | its systemd unit, installed but not enabled |
+| `/usr/lib/systemd/system/proxmoxbackupclient.service` | its systemd unit, enabled and started on a fresh install |
 | `/usr/share/applications/proxmoxbackupclient.desktop` | menu entry "Proxmox Backup Client" |
 | `/usr/share/applications/proxmoxbackupclient-root.desktop` | menu entry "Proxmox Backup Client (administrator)" |
 | `/usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png` | icon |
@@ -67,7 +67,12 @@ Without the service, scheduled Backup Sets run only while the app is open (there
 tray icon on Linux, so its window has to stay open). The service runs them as root, also
 when nobody is logged in.
 
-Turn it on in the administrator app: Preferences > Advanced > Run as Service. That:
+A fresh install enables and starts the service, as the Windows installer does. On first
+start it creates `/var/lib/proxmoxbackupclient` with the permissions described below. An
+upgrade keeps your choice: a service you turned off stays off.
+
+To turn it on later (for example after turning it off), use the administrator app:
+Preferences > Advanced > Run as Service. That:
 
 1. copies your settings (servers, keys, Backup Sets, history) to
    `/var/lib/proxmoxbackupclient`, unless that folder already holds settings; your own
@@ -90,7 +95,7 @@ The service logs to `/var/log/proxmoxbackupclient/`. See section 15 of the GUI m
 
 | | .deb | .rpm |
 | --- | --- | --- |
-| Install | `postinst`: `systemctl daemon-reload`; the unit is not enabled or started | `%post`: the same |
+| Install | `postinst`: `systemctl daemon-reload`, then `enable --now` | `%post`: the same |
 | Upgrade | `postinst`: `systemctl try-restart`, so a running service restarts on the new version and a stopped one stays stopped | `%post`: the same |
 | Removal | `prerm remove`: `systemctl disable --now`; `postrm`: `daemon-reload` | `%preun` (last version removed): `disable --now`; `%postun`: `daemon-reload` |
 

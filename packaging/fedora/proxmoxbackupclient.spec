@@ -29,8 +29,8 @@ Roll back:
  - proxmoxbackup-machine: whole-disk backups from the command line
  - proxmoxbackup-nbd: attach a disk image from the server as /dev/nbdN
  - proxmoxbackupclient.service: the background service that runs
-   scheduled Backup Sets as root (installed, not enabled; turn it on in
-   the app, Preferences > Advanced > Run as Service)
+   scheduled Backup Sets as root (enabled on a fresh install; turned on
+   and off in the app, Preferences > Advanced > Run as Service)
 Snapshots of mounted file systems use elastio-snap when it is installed.
 
 %prep
@@ -88,13 +88,18 @@ install -m 0644 gui/Icon.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/
 %{_datadir}/applications/proxmoxbackupclient-root.desktop
 %{_datadir}/icons/hicolor/256x256/apps/proxmoxbackupclient.png
 
-# The service is installed but not enabled (the app turns it on). An upgrade
-# restarts a running service; removal stops and disables it. The settings in
-# /var/lib/proxmoxbackupclient are kept.
+# A fresh install enables and starts the service, so the Backup Sets run on
+# schedule with nobody logged in; an upgrade keeps the user's choice (Run as
+# Service) and restarts a running service. Removal stops and disables it. The
+# settings in /var/lib/proxmoxbackupclient are kept.
 %post
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload || :
-    [ "$1" -gt 1 ] && systemctl try-restart proxmoxbackupclient.service || :
+    if [ "$1" -eq 1 ]; then
+        systemctl enable --now proxmoxbackupclient.service || :
+    else
+        systemctl try-restart proxmoxbackupclient.service || :
+    fi
 fi
 
 %preun
