@@ -775,6 +775,9 @@ function App() {
   const [logRequest, setLogRequest] = useState(null)
   const [editingJobId, setEditingJobId] = useState(null) // Track which job is being edited
   const [showBackupForm, setShowBackupForm] = useState(false) // Backup tab: form open vs. Backup Sets landing view
+  // For the service:connected handler, which must not reload over an open form.
+  const showBackupFormRef = useRef(false)
+  useEffect(() => { showBackupFormRef.current = showBackupForm }, [showBackupForm])
   const [backupFormTab, setBackupFormTab] = useState('source') // Backup Set editor: Source/Exclusions/Schedule/Destination/Alerts
   // Alerts tab: post-backup actions, modelled on Backup for Workgroups'
   // "Special Items" step. All independent, all off by default.
@@ -841,6 +844,11 @@ function App() {
     return () => clearInterval(id)
   }, [backupPause.paused])
   const statusTimeoutRef = useRef(null)
+  // Set while Save reconnects to the service: connecting reloads the window
+  // to read the service's settings, which would throw the open form away.
+  // A reconnect after the token was replaced brings the same settings, so
+  // that one reload is skipped.
+  const skipConnectReloadRef = useRef(false)
   // Recent stats samples ({t, bytes, files, uploaded}) for windowRate.
   const backupSamplesRef = useRef([])
   const restoreSamplesRef = useRef([])
@@ -1599,7 +1607,25 @@ function App() {
   }
   useEffect(() => {
     if (!EventsOn) return
-    const unsubConnected = EventsOn('service:connected', () => window.location.reload())
+    const unsubConnected = EventsOn('service:connected', async () => {
+      // Not over an open Backup Set form or a save that is reconnecting: the
+      // form cannot be open before the first connect, so this is a reconnect
+      // after the token was replaced, with the same settings. Refresh the
+      // banner and the list instead.
+      if (skipConnectReloadRef.current || showBackupFormRef.current) {
+        skipConnectReloadRef.current = false
+        try {
+          const info = GetSystemInfo ? await GetSystemInfo() : null
+          if (info) setSystemInfo(prev => ({ ...prev, ...info }))
+          const jobs = GetScheduledJobs ? await GetScheduledJobs() : null
+          if (jobs) setScheduledJobs(jobs)
+        } catch (err) {
+          console.error('refresh after reconnecting failed:', err)
+        }
+        return
+      }
+      window.location.reload()
+    })
     // Switched to the user's own settings (UseOwnSettings): reload with them.
     const unsubSwitched = EventsOn('settings:switched', () => window.location.reload())
     // The service replaced its token: show the Connect banner again.
@@ -2735,7 +2761,12 @@ function App() {
           // The service replaced the app's token since the form was opened
           // (it restarted, or its 24-hour renewal): Connect asks for the
           // password, then the save goes on with the form as it was.
-          if (!isNotConnectedErr(err) || !(await connectService(true))) throw err
+          if (!isNotConnectedErr(err)) throw err
+          skipConnectReloadRef.current = true
+          if (!(await connectService(true))) {
+            skipConnectReloadRef.current = false
+            throw err
+          }
           await writeJob()
         }
         if (editingJobId) {
