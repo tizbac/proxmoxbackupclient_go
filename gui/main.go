@@ -878,6 +878,10 @@ func (a *App) startMachineBackupViaService(backupType string, backupDevices []st
 		return err
 	}
 	writeDebugLog("[Service Mode] Sending machine backup request to service")
+	liveRead, err := a.runLiveRead(postActionsKey)
+	if err != nil {
+		return err
+	}
 
 	req := &api.BackupRequest{
 		BackupType:   backupType,
@@ -891,6 +895,9 @@ func (a *App) startMachineBackupViaService(backupType string, backupDevices []st
 		ReadFreeSpace: a.runReadFreeSpace(postActionsKey),
 		// A machine Backup Set's disk identities: the service finds the disks by them.
 		DiskIDs: a.runDiskIDs(postActionsKey),
+		// A Linux machine set read live, as its owner accepted (an older
+		// service ignores it and stops if no snapshot can be taken).
+		LiveRead: liveRead,
 	}
 
 	resp, err := a.apiClient.StartMachineBackup(req)
@@ -1423,6 +1430,12 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		return err
 	}
 	backupDevices = devices
+	// A Linux machine set with Use snapshots off: read live if accepted,
+	// else stop here.
+	liveRead, err := a.runLiveRead(postActionsKey)
+	if err != nil {
+		return err
+	}
 
 	// Note: Admin check for VSS is done in StartMachineBackup() routing layer
 	// If we're here via service, we're already running as LocalSystem
@@ -1489,6 +1502,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		SplitSizeBytes: a.config.SplitSizeBytes(),
 		Crypt:          pbsCfg.Crypt,
 		ReadFreeSpace:  a.runReadFreeSpace(postActionsKey),
+		LiveRead:       liveRead,
 		OnSnapshot:     func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))

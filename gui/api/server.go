@@ -62,6 +62,14 @@ type RunDiskRegistrar interface {
 	SetRunDiskIDs(runKey string, diskIDs []string)
 }
 
+// RunLiveReadRegistrar is optionally implemented by the BackupHandler: it
+// records that a machine Backup Set run the GUI asked for reads its mounted
+// disks without a snapshot (BackupRequest.LiveRead), as the set's owner
+// accepted.
+type RunLiveReadRegistrar interface {
+	SetRunLiveRead(runKey string, liveRead bool)
+}
+
 // RunController is optionally implemented by the BackupHandler: Pause,
 // Resume and Stop for a backup the service is running, so a GUI can control
 // a run it did not start (a scheduled one) as well as its own. jobID is the
@@ -242,11 +250,14 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, machine bool) 
 		runKey := ""
 		if t, ok := s.app.(RunTracker); ok {
 			runKey = t.TrackRequestRun(jobID, req.BackupType, req.ChangeDetectionMode, req.ReadFreeSpace)
-		} else if r, ok := s.app.(RunOptionsRegistrar); ok && (req.ChangeDetectionMode != "" || req.ReadFreeSpace) {
+		} else if r, ok := s.app.(RunOptionsRegistrar); ok && (req.ChangeDetectionMode != "" || req.ReadFreeSpace || req.LiveRead) {
 			runKey = r.RegisterRunOptions(req.BackupType, req.ChangeDetectionMode, req.ReadFreeSpace)
 		}
 		if d, ok := s.app.(RunDiskRegistrar); ok && machine && runKey != "" && len(req.DiskIDs) > 0 {
 			d.SetRunDiskIDs(runKey, req.DiskIDs)
+		}
+		if l, ok := s.app.(RunLiveReadRegistrar); ok && machine && runKey != "" && req.LiveRead {
+			l.SetRunLiveRead(runKey, true)
 		}
 
 		var err error

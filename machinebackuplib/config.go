@@ -67,6 +67,15 @@ type Config struct {
 	// volume, and its paging, hibernation and swap files, are sent as zeros
 	// without being read.
 	ReadFreeSpace bool `json:"readfreespace,omitempty"`
+
+	// LiveRead (Linux) reads a disk's mounted partitions live, without a
+	// block snapshot, so the image may be inconsistent: files that change
+	// during the backup can be caught half written. Set only when the user
+	// has turned snapshots off for a machine Backup Set and accepted that.
+	// Without it a mounted disk needs a snapshot (elastio-snap or dattobd,
+	// and root), and the backup stops if none can be taken. Windows always
+	// reads a volume in use through VSS and ignores it.
+	LiveRead bool `json:"liveread,omitempty"`
 }
 
 func (c *Config) Valid() bool {

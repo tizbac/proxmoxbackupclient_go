@@ -46,6 +46,10 @@ func (a *App) SetRunDiskIDs(runKey string, diskIDs []string) {
 // may find none (a process that may not open the disks); the identities the
 // editor sent are kept then.
 func pinJobDisks(job *ScheduledJob) {
+	// Turning snapshots off and reading live is a machine set's choice only.
+	if job.BackupType != "machine" {
+		job.SnapshotsOff, job.LiveRead = false, false
+	}
 	var present []PhysicalDiskInfo
 	if job.BackupType == "machine" && len(job.DriveLetters) > 0 {
 		present, _ = listPhysicalDisks()

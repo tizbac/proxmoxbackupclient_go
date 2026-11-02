@@ -274,6 +274,12 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	if err != nil {
 		return err
 	}
+	// A Linux machine set with Use snapshots off: read live if accepted,
+	// else stop here.
+	liveRead, err := a.runLiveRead(postActionsKey)
+	if err != nil {
+		return err
+	}
 
 	pbsCfg, err := a.resolvePBS(pbsServerID)
 	if err != nil {
@@ -317,6 +323,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		// A machine set's forensic copy, from the scheduler's job copy or
 		// the GUI's request (RegisterRunOptions).
 		ReadFreeSpace: a.runReadFreeSpace(postActionsKey),
+		LiveRead:      liveRead,
 		OnSnapshot:    func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent*100, message))

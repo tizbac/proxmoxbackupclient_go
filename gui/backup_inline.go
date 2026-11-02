@@ -112,6 +112,9 @@ type BackupOptions struct {
 	Crypt *pbscommon.CryptConfig
 	// ReadFreeSpace (machine backups): read free space too, a forensic copy.
 	ReadFreeSpace bool
+	// LiveRead (Linux machine backups): read mounted disks without a
+	// snapshot, as the set's owner accepted (ScheduledJob.LiveRead).
+	LiveRead bool
 	// OnSnapshot receives, before OnComplete, a way to add a note to the
 	// snapshot a successful run made (the post-backup actions use it when
 	// the notification e-mail cannot be sent).
@@ -1710,10 +1713,14 @@ func runMachineBackupInline(opts BackupOptions) error {
 		Comment:         opts.Comment,
 		Crypt:           opts.Crypt,
 		ReadFreeSpace:   opts.ReadFreeSpace,
+		LiveRead:        opts.LiveRead,
 		Progress:        &machinebackuplib.JobProgress{},
 	}
 	if opts.ReadFreeSpace {
 		runLog(opts.Ctx, "Forensic copy: free space and the paging/hibernation files are read too")
+	}
+	if opts.LiveRead && runtime.GOOS == "linux" {
+		runLog(opts.Ctx, "WARNING: Use snapshots is off for this Backup Set: mounted disks are read live and the image may be inconsistent")
 	}
 	jp := cfg.Progress
 

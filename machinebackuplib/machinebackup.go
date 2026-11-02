@@ -700,7 +700,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			// to a plain raw read of the device/file.
 			isGPT := diskHasGPT(dev)
 			jp.setPhase("snapshot")
-			handled, size, err := backupWholeDisk(client, dev, i, deviceCallback, jp, cfg.ReadFreeSpace)
+			handled, size, err := backupWholeDisk(client, dev, i, deviceCallback, jp, cfg.ReadFreeSpace, cfg.LiveRead)
 			if err != nil {
 				return nil, fmt.Errorf("backup device %s: %w", dev, err)
 			}

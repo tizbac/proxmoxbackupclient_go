@@ -22,6 +22,10 @@ type BackupRequest struct {
 	// when the system has numbered them differently since; an older service
 	// ignores it and backs up the paths.
 	DiskIDs []string `json:"disk_ids,omitempty"`
+	// LiveRead is a Linux machine Backup Set read without a snapshot, as its
+	// owner accepted; an older service ignores it and stops when a mounted
+	// disk cannot be snapshotted.
+	LiveRead bool `json:"live_read,omitempty"`
 }
 
 // BackupResponse represents the result of a backup operation

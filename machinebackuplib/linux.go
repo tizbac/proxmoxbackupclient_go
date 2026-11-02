@@ -173,7 +173,7 @@ func isBlockDevice(path string) bool {
 	return fi.Mode()&os.ModeDevice != 0 && fi.Mode()&os.ModeCharDevice == 0
 }
 
-func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress, readFree bool) (bool, int64, error) {
+func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress, readFree, liveRead bool) (bool, int64, error) {
 	if !strings.HasPrefix(dev, "/dev/") {
 		return false, 0, nil
 	}
@@ -210,7 +210,7 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progres
 
 	fidxName := fmt.Sprintf("drive-sata%d.img.fidx", index)
 
-	err = withSnapshots(mountpoints, func(snapshots map[string]snapshot.SnapShot) error {
+	err = withSnapshots(mountpoints, liveRead, func(snapshots map[string]snapshot.SnapShot) error {
 		return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback, jp, readFree)
 	})
 	if err != nil {
@@ -219,6 +219,10 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progres
 	return true, total, nil
 }
 
+// liveReadHint ends the message of a backup that stops because a mounted
+// disk cannot be snapshotted, saying how to read it live instead.
+const liveReadHint = "or turn off Use snapshots for this Backup Set and accept a backup that may be inconsistent"
+
 // withSnapshots runs read with block snapshots of mountpoints. With nothing
 // mounted there is nothing to snapshot, so read runs straight away. Asking
 // the snapshot package anyway failed the backup of a spare or unmounted disk
@@ -226,10 +230,25 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progres
 // have been taken; upstream reads such a disk too (0bb391c). A partition in
 // use without being mounted (swap, an LVM or RAID member) is read raw either
 // way, as before.
-func withSnapshots(mountpoints []string, read func(map[string]snapshot.SnapShot) error) error {
+//
+// liveRead (the set's Use snapshots turned off, and accepted) reads the
+// mounted partitions live too. Upstream also fell back to a live read when
+// the snapshot failed; here that needs the user's say-so, so a scheduled
+// backup never turns inconsistent unnoticed.
+func withSnapshots(mountpoints []string, liveRead bool, read func(map[string]snapshot.SnapShot) error) error {
 	if len(mountpoints) == 0 {
 		log.Print("No partition of this disk is mounted: reading it without a snapshot")
 		return read(map[string]snapshot.SnapShot{})
+	}
+	if liveRead {
+		log.Printf("WARNING: reading mounted %v live, without a snapshot (Use snapshots is off for this Backup Set): files that change during the backup may be inconsistent in the image", mountpoints)
+		return read(map[string]snapshot.SnapShot{})
+	}
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("a snapshot of mounted %v needs root: run the backup as root or through the service, %s", mountpoints, liveReadHint)
+	}
+	if _, ok := snapshot.DetectControl(); !ok {
+		return fmt.Errorf("a snapshot of mounted %v needs elastio-snap or dattobd loaded: install one, %s", mountpoints, liveReadHint)
 	}
 	return snapshot.CreateVSSSnapshot(mountpoints, false, read)
 }

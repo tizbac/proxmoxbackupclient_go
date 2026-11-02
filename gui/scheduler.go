@@ -46,6 +46,14 @@ type ScheduledJob struct {
 	// paging/hibernation files are read too, instead of going into the image
 	// as zeros (the CLI's -readfreespace). Ignored for folder sets.
 	ReadFreeSpace bool `json:"readFreeSpace,omitempty"`
+	// SnapshotsOff is a Linux machine set with Use snapshots turned off, and
+	// LiveRead the owner's acceptance that its image may then be
+	// inconsistent. With both, mounted disks are read live; with
+	// SnapshotsOff alone the run stops before it starts, saying the override
+	// is not ticked. With neither, a mounted disk that cannot be snapshotted
+	// stops the run. Ignored for folder sets and on Windows.
+	SnapshotsOff bool `json:"snapshotsOff,omitempty"`
+	LiveRead     bool `json:"liveRead,omitempty"`
 	// ChangeDetectionMode is the folder-backup format and change detection,
 	// as in the official client: "" or "legacy" (classic archive, every file
 	// read), "data" (split archive, every file read) or "metadata" (split

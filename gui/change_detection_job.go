@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"pbscommon"
@@ -126,6 +128,34 @@ func (a *App) runReadFreeSpace(postActionsKey string) bool {
 	}
 	e := v.(*pendingPostActionsEntry)
 	return e.job != nil && e.job.ReadFreeSpace
+}
+
+// errSnapshotsOffNotAccepted stops a Linux machine set run whose Use
+// snapshots is off without the override that accepts a live read.
+var errSnapshotsOffNotAccepted = errors.New("this Backup Set has Use snapshots off, but reading its disks without a snapshot is not accepted: tick the override in the set, or turn Use snapshots back on")
+
+// runLiveRead reports whether the run registered under postActionsKey is a
+// Linux machine set that reads its mounted disks live: Use snapshots off
+// and the override accepted (ScheduledJob.SnapshotsOff, LiveRead). Use
+// snapshots off without the override is an error, so the run stops before
+// it starts. Only the machine-backup paths call it.
+func (a *App) runLiveRead(postActionsKey string) (bool, error) {
+	job := a.runJob(postActionsKey)
+	if job == nil || runtime.GOOS != "linux" || !job.SnapshotsOff {
+		return false, nil
+	}
+	if !job.LiveRead {
+		return false, errSnapshotsOffNotAccepted
+	}
+	return true, nil
+}
+
+// SetRunLiveRead records that a machine Backup Set run the GUI handed to
+// the service reads its mounted disks live (api.RunLiveReadRegistrar).
+func (a *App) SetRunLiveRead(runKey string, liveRead bool) {
+	if job := a.runJob(runKey); job != nil {
+		job.SnapshotsOff, job.LiveRead = liveRead, liveRead
+	}
 }
 
 // paramUint reads a numeric completion parameter (see backup_inline.go,
