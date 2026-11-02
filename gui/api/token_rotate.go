@@ -97,6 +97,7 @@ type TokenRotator struct {
 
 	stop     chan struct{}
 	stopOnce sync.Once
+	running  sync.WaitGroup // the rotation loop, which Stop waits for
 }
 
 // NewTokenRotator returns a rotator for the server's token file. An interval
@@ -112,7 +113,9 @@ func (r *TokenRotator) Start() {
 		log.Printf("local API token rotation off (PBSGO_TOKEN_ROTATION=%s)", r.interval)
 		return
 	}
+	r.running.Add(1)
 	go func() {
+		defer r.running.Done()
 		ticker := time.NewTicker(r.interval)
 		defer ticker.Stop()
 		for {
@@ -147,7 +150,10 @@ func (r *TokenRotator) Rotate() error {
 	return nil
 }
 
-// Stop ends the rotation. Safe to call more than once, or without Start.
+// Stop ends the rotation and waits for one under way to finish, so the
+// server and the token file agree when it returns. Safe to call more than
+// once, or without Start.
 func (r *TokenRotator) Stop() {
 	r.stopOnce.Do(func() { close(r.stop) })
+	r.running.Wait()
 }
