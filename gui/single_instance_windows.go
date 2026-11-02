@@ -82,7 +82,7 @@ func CheckSingleInstance() bool {
 // the foreground.
 func activateExistingWindow() bool {
 	// The window is titled "<Brand> <version>" (main.go), e.g. "Nimbus Backup
-	// v1.3.0" or "... dev-49d96e4" for a development build, with the brand
+	// v2.0.0" or "... dev-49d96e4" for a development build, with the brand
 	// taken from the executable's name. Searching for the default name alone
 	// never found a branded build's window, so a second launch exited without
 	// showing anything (upstream's fix). Try the brand, then the default name.
