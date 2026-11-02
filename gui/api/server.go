@@ -22,11 +22,19 @@ var jobIDSeq atomic.Uint64
 type Server struct {
 	addr           string
 	app            BackupHandler
-	token          string // shared local-auth token required on every route (H-01)
 	version        string // build version reported by /status
 	mux            *http.ServeMux
 	backupProgress map[string]*BackupProgress
 	progressMutex  sync.RWMutex
+
+	// token is the shared local-auth token required on every route (H-01).
+	// prevToken is the one it replaced at the last rotation, still accepted
+	// until prevValidUntil (token_rotate.go).
+	tokenMu        sync.RWMutex
+	token          string
+	prevToken      string
+	prevValidUntil time.Time
+	tokenGrace     time.Duration
 }
 
 // RunOptionsRegistrar is optionally implemented by the BackupHandler: it
@@ -85,6 +93,7 @@ func NewServer(addr string, handler BackupHandler, token, version string) *Serve
 		version:        version,
 		mux:            http.NewServeMux(),
 		backupProgress: make(map[string]*BackupProgress),
+		tokenGrace:     DefaultTokenGrace,
 	}
 
 	s.setupRoutes()

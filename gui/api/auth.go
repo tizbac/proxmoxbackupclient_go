@@ -2,7 +2,6 @@ package api
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -51,21 +50,42 @@ func EnsureToken(path string) (string, error) {
 // working at the next restart. The GUI reads the file on every request, so it
 // picks the new token up without a restart.
 func NewToken(path string) (string, error) {
+	t, err := generateToken()
+	if err != nil {
+		return "", err
+	}
+	if err := replaceTokenFile(path, t, nil); err != nil {
+		return "", err
+	}
+	return t, nil
+}
+
+// generateToken returns a new random 256-bit token, hex encoded.
+func generateToken() (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		return "", fmt.Errorf("generate api token: %w", err)
 	}
-	t := hex.EncodeToString(buf)
+	return hex.EncodeToString(buf), nil
+}
+
+// replaceTokenFile writes t to path through a temporary file and a rename,
+// so a reader sees the old token or the new one, never part of one. prepare,
+// if set, runs on the temporary file before the rename (permissions).
+func replaceTokenFile(path, t string, prepare func(string)) error {
 	tmp := path + ".tmp"
 	_ = os.Remove(tmp)
 	if err := os.WriteFile(tmp, []byte(t), 0o600); err != nil {
-		return "", fmt.Errorf("write api token %q: %w", tmp, err)
+		return fmt.Errorf("write api token %q: %w", tmp, err)
+	}
+	if prepare != nil {
+		prepare(tmp)
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		return "", fmt.Errorf("replace api token %q: %w", path, err)
+		return fmt.Errorf("replace api token %q: %w", path, err)
 	}
-	return t, nil
+	return nil
 }
 
 // tokenTransport injects the shared token header into every client request,
@@ -85,7 +105,7 @@ func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // authMiddleware enforces the local-token auth and request hardening on every
 // route: it bounds the body, rejects browser-originated requests (Origin set),
-// and requires the shared token via a constant-time compare.
+// and requires the shared token (tokenAccepted).
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
@@ -96,8 +116,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		got := r.Header.Get(tokenHeader)
-		if s.token == "" || subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
+		if !s.tokenAccepted(r.Header.Get(tokenHeader)) {
 			s.writeError(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

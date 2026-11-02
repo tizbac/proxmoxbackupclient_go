@@ -16,9 +16,10 @@ import (
 // BackupService wraps the application for the background service: a Windows
 // service running as Local System, or a systemd service running as root.
 type BackupService struct {
-	app       *App
-	apiServer *api.Server
-	stopChan  chan struct{}
+	app          *App
+	apiServer    *api.Server
+	tokenRotator *api.TokenRotator
+	stopChan     chan struct{}
 }
 
 // Start is called when the service starts
@@ -98,6 +99,14 @@ func (s *BackupService) run() {
 	s.apiServer = api.NewServer("127.0.0.1:18765", s.app, apiToken, appVersion)
 	// Every run reports to its entry on the API, scheduled ones included.
 	s.app.runReporter = s.apiServer
+	// A new token every 24 hours as well as at each start (from upstream;
+	// PBSGO_TOKEN_ROTATION and PBSGO_TOKEN_GRACE change it, 0 turns it off).
+	if tokErr == nil {
+		interval, grace := api.TokenRotationFromEnv()
+		s.tokenRotator = api.NewTokenRotator(s.apiServer, getAPITokenPath(), interval, grace)
+		s.tokenRotator.Prepare = shareConfigFile
+		s.tokenRotator.Start()
+	}
 	writeDebugLog("Starting HTTP API server on 127.0.0.1:18765")
 
 	go func() {
@@ -135,6 +144,9 @@ func (s *BackupService) Stop(svc service.Service) error {
 	// Stop the scheduler gracefully
 	if s.app != nil {
 		s.app.StopScheduler()
+	}
+	if s.tokenRotator != nil {
+		s.tokenRotator.Stop()
 	}
 
 	// Give it a moment to finish current operations
