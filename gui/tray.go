@@ -426,3 +426,21 @@ func (a *App) RefreshIdleTooltip() {
 	}
 	a.UpdateTrayTooltip(fmt.Sprintf("Next: %s at %s", soonestName, soonestAt.Local().Format("02 Jan 15:04")))
 }
+
+// pauseViaWindow is the tray's Pause while the app holds no token
+// (token_drop.go): Pause needs it, so the window opens and the app asks for
+// it (one prompt), then pauses the service's backups. Declined, nothing is
+// paused and the window shows Connect.
+func (a *App) pauseViaWindow() {
+	writeDebugLog("Tray: Pause clicked while the app holds no token: opening the window to connect first")
+	// The window's own ask when it is shown would be a second prompt.
+	a.autoConnectTried.Store(true)
+	a.ShowFromTray()
+	if err := a.ConnectService(true); err != nil {
+		writeDebugLog(fmt.Sprintf("Tray: not connected (%v): the backup was not paused", err))
+		return
+	}
+	if _, err := a.PauseBackup(); err != nil {
+		writeDebugLog(fmt.Sprintf("Tray: pause after connecting failed: %v", err))
+	}
+}
