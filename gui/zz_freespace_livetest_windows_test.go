@@ -29,6 +29,7 @@ func TestLiveFreeSpaceSkip(t *testing.T) {
 	if diskN == "" || letter == "" {
 		t.Skip("set PBS_FREE_DISK and PBS_FREE_LETTER")
 	}
+	liveServer(t)
 	root := letter + `:\`
 	junk := make([]byte, 20<<20)
 	rand.Read(junk)
@@ -165,7 +166,7 @@ func fixedVHDFooter(size int64) []byte {
 	be32 := func(o int, v uint32) { f[o], f[o+1], f[o+2], f[o+3] = byte(v>>24), byte(v>>16), byte(v>>8), byte(v) }
 	be64 := func(o int, v uint64) { be32(o, uint32(v>>32)); be32(o+4, uint32(v)) }
 	copy(f[0:], "conectix")
-	be32(8, 2)          // features: reserved bit
+	be32(8, 2)           // features: reserved bit
 	be32(12, 0x00010000) // format version 1.0
 	be64(16, ^uint64(0)) // data offset: none for a fixed disk
 	be32(24, uint32(time.Now().Unix()-946684800))

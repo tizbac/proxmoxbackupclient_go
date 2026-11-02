@@ -113,6 +113,7 @@ func TestPXARv2MetadataMode(t *testing.T) {
 	if os.Getenv("PBS_PXARV2") == "" {
 		t.Skip("set PBS_PXARV2=1")
 	}
+	liveServer(t)
 	base := t.TempDir()
 	src := filepath.Join(base, "src")
 	e2eBuildTree(t, src)
@@ -178,6 +179,7 @@ func TestPXARv2MetadataModeEncrypted(t *testing.T) {
 	if os.Getenv("PBS_PXARV2") == "" {
 		t.Skip("set PBS_PXARV2=1")
 	}
+	liveServer(t)
 	newKey := func() *pbscommon.CryptConfig {
 		k, err := pbscommon.GenerateEncryptionKey()
 		if err != nil {

@@ -29,6 +29,7 @@ func TestPXARv2WriteDataMode(t *testing.T) {
 	if os.Getenv("PBS_PXARV2") == "" {
 		t.Skip("set PBS_PXARV2=1")
 	}
+	liveServer(t)
 	base := t.TempDir()
 	src := filepath.Join(base, "src")
 	e2eBuildTree(t, src)

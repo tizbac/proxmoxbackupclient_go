@@ -27,6 +27,7 @@ func TestZZProgressAggregationManual(t *testing.T) {
 	if os.Getenv("PBS_LIVE_TEST") == "" {
 		t.Skip("set PBS_LIVE_TEST=1 to run this opt-in live integration test")
 	}
+	liveServer(t)
 
 	dirA := t.TempDir()
 	dirB := t.TempDir()
@@ -37,10 +38,10 @@ func TestZZProgressAggregationManual(t *testing.T) {
 		BaseURL, AuthID, Secret, Datastore, CertFingerprint string
 	}{
 		BaseURL:         e2eBaseURL,
-		AuthID:          "testclient@pbs!testclient",
-		Secret:          "64376a7f-1aeb-42cb-a604-b75bf6a5561b",
-		Datastore:       "teststore",
-		CertFingerprint: "07:49:87:AE:76:0F:A8:E7:97:D8:1C:F0:44:1A:65:5D:2C:F3:10:49:00:EA:2C:53:E4:0B:CC:09:95:29:C5:22",
+		AuthID:          e2eAuthID,
+		Secret:          e2eSecret,
+		Datastore:       e2eStore,
+		CertFingerprint: e2eFP,
 	}
 
 	var mu sync.Mutex

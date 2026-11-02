@@ -12,18 +12,19 @@ import (
 // actually stop a running MACHINE backup, or only a directory backup?
 //
 // Drives RunBackupInline directly against the isolated test PBS
-// (PBS_E2E_URL, datastore teststore) with Kind: "machine" on this
+// (the PBS_LIVE_ variables, livetest_server_test.go) with Kind: "machine" on this
 // machine's own root block device, same pattern as TestMultiArchiveLive.
 // Cancels a few seconds in (well before a real run would finish) and checks
 // the backup actually stops early rather than running to completion.
 //
 // Run explicitly, as root, on a Linux test machine with elastio-snap loaded:
 //
-//	sudo PBS_LIVE_TEST=1 PBS_E2E_URL=https://pbs.example.com:8007 PBS_CANCEL_TEST_DEVICE=/dev/sda ./cancel_livetest.test -test.v -test.run TestCancelMachineBackupLive
+//	sudo -E PBS_LIVE_TEST=1 PBS_CANCEL_TEST_DEVICE=/dev/sda ./cancel_livetest.test -test.v -test.run TestCancelMachineBackupLive
 func TestCancelMachineBackupLive(t *testing.T) {
 	if os.Getenv("PBS_LIVE_TEST") == "" {
 		t.Skip("set PBS_LIVE_TEST=1 to run this opt-in live integration test")
 	}
+	liveServer(t)
 
 	device := os.Getenv("PBS_CANCEL_TEST_DEVICE")
 	if device == "" {
@@ -44,11 +45,11 @@ func TestCancelMachineBackupLive(t *testing.T) {
 		// cancellable context. Setting it here (as TestMultiArchiveLive
 		// does, harmlessly for a test that never cancels) would silently
 		// defeat that wiring and this test would validate nothing.
-		BaseURL: e2eBaseURL,
-		AuthID:          "testclient@pbs!testclient",
-		Secret:          "64376a7f-1aeb-42cb-a604-b75bf6a5561b",
-		Datastore:       "teststore",
-		CertFingerprint: "07:49:87:AE:76:0F:A8:E7:97:D8:1C:F0:44:1A:65:5D:2C:F3:10:49:00:EA:2C:53:E4:0B:CC:09:95:29:C5:22",
+		BaseURL:         e2eBaseURL,
+		AuthID:          e2eAuthID,
+		Secret:          e2eSecret,
+		Datastore:       e2eStore,
+		CertFingerprint: e2eFP,
 		BackupObjects:   []string{device},
 		BackupID:        "cancel-test",
 		BackupType:      "host",

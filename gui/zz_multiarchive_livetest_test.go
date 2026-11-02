@@ -13,19 +13,20 @@ import (
 // It drives RunBackupInline
 // directly — bypassing the Wails GUI/webview layer entirely, which isn't
 // practical to automate on a headless VM — against the ISOLATED test PBS
-// (PBS_E2E_URL, datastore teststore). It is gated behind an env var so it
+// (the PBS_LIVE_ variables, livetest_server_test.go). It is gated behind an env var so it
 // never runs as part of a normal `go test ./...` and never touches
 // production PBS by accident.
 //
 // Run explicitly (on a Windows test machine):
 //
 //	set PBS_LIVE_TEST=1
-//	set PBS_E2E_URL=https://pbs.example.com:8007
+//	set PBS_LIVE_URL=... (and the other PBS_LIVE_ variables)
 //	multiarchive_livetest.test.exe -test.v -test.run TestMultiArchiveLive
 func TestMultiArchiveLive(t *testing.T) {
 	if os.Getenv("PBS_LIVE_TEST") == "" {
 		t.Skip("set PBS_LIVE_TEST=1 to run this opt-in live integration test")
 	}
+	liveServer(t)
 
 	tmp := t.TempDir()
 	dirA := filepath.Join(tmp, "folderA")
@@ -54,10 +55,10 @@ func TestMultiArchiveLive(t *testing.T) {
 	opts := BackupOptions{
 		Ctx:             context.Background(),
 		BaseURL:         e2eBaseURL,
-		AuthID:          "testclient@pbs!testclient",
-		Secret:          "64376a7f-1aeb-42cb-a604-b75bf6a5561b",
-		Datastore:       "teststore",
-		CertFingerprint: "07:49:87:AE:76:0F:A8:E7:97:D8:1C:F0:44:1A:65:5D:2C:F3:10:49:00:EA:2C:53:E4:0B:CC:09:95:29:C5:22",
+		AuthID:          e2eAuthID,
+		Secret:          e2eSecret,
+		Datastore:       e2eStore,
+		CertFingerprint: e2eFP,
 		BackupObjects:   []string{dirA, dirB},
 		BackupID:        "multiarchive-livetest",
 		BackupType:      "host",

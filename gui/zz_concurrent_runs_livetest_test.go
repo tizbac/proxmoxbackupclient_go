@@ -36,6 +36,7 @@ func TestConcurrentRunsLive(t *testing.T) {
 	if os.Getenv("PBS_CONCURRENT") == "" {
 		t.Skip("set PBS_CONCURRENT=1")
 	}
+	liveServer(t)
 	bigMB := int64(3000)
 	if n, err := strconv.ParseInt(os.Getenv("PBS_CONC_BIG_MB"), 10, 64); err == nil && n > 0 {
 		bigMB = n

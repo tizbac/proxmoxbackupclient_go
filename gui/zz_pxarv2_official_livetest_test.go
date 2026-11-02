@@ -148,6 +148,7 @@ func TestPXARv2OfficialInterop(t *testing.T) {
 	if os.Getenv("PBS_PXARV2") == "" {
 		t.Skip("set PBS_PXARV2=1")
 	}
+	liveServer(t)
 	base := t.TempDir()
 
 	for _, s := range pxarv2Snapshots {

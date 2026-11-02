@@ -24,6 +24,7 @@ func TestBackupPauseLive(t *testing.T) {
 	if os.Getenv("PBS_PAUSE") == "" {
 		t.Skip("set PBS_PAUSE=1")
 	}
+	liveServer(t)
 	hold := 90 * time.Second
 	if s, err := strconv.Atoi(os.Getenv("PBS_PAUSE_SECS")); err == nil && s > 0 {
 		hold = time.Duration(s) * time.Second

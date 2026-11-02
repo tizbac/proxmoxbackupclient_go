@@ -10,7 +10,7 @@ func TestUpgradeHostHeader(t *testing.T) {
 		{"https://pbs.example.com", "pbs.example.com:443", "pbs.example.com"},
 		{"https://pbs.example.com:8007", "pbs.example.com:8007", "pbs.example.com:8007"},
 		{"https://[2001:db8::1]:8007", "[2001:db8::1]:8007", "[2001:db8::1]:8007"},
-		{"", "10.0.0.1:8007", "10.0.0.1:8007"},
+		{"", "192.168.1.10:8007", "192.168.1.10:8007"},
 	}
 	for _, c := range cases {
 		if got := upgradeHostHeader(c.baseURL, c.addr); got != c.want {

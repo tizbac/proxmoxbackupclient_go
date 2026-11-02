@@ -29,6 +29,7 @@ func TestLivePartitionSkip(t *testing.T) {
 	if n == "" {
 		t.Skip("set PBS_SKIP_SRC_DISK (not the system disk)")
 	}
+	liveServer(t)
 	dev := `\\.\PhysicalDrive` + n
 	parts, err := machinebackuplib.ListPartitions(dev)
 	if err != nil {

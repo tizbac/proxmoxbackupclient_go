@@ -27,6 +27,7 @@ func TestE2EStreamsAndEAs(t *testing.T) {
 	if os.Getenv("PBS_E2E") == "" {
 		t.Skip("set PBS_E2E=1")
 	}
+	liveServer(t)
 	useVSS := os.Getenv("PBS_E2E_VSS") != ""
 	base := os.Getenv("PBS_E2E_DIR")
 	if base == "" {

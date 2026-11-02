@@ -25,6 +25,7 @@ func TestKeyImportRestoreLive(t *testing.T) {
 	if os.Getenv("PBS_E2E") == "" {
 		t.Skip("set PBS_E2E=1")
 	}
+	liveServer(t)
 	a := &App{}
 	base := t.TempDir()
 	orig := filepath.Join(base, "orig", "encryption-key.json")

@@ -199,12 +199,12 @@ func TestParseTCPTableOwnerPID(t *testing.T) {
 
 func TestIsServiceAddr(t *testing.T) {
 	for addr, want := range map[string]bool{
-		"127.0.0.1:18765": true,
-		"localhost:18765": true,
-		"[::1]:18765":     true,
-		"127.0.0.1:18766": false,
-		"10.0.0.5:18765":  false,
-		"127.0.0.1":       false,
+		"127.0.0.1:18765":    true,
+		"localhost:18765":    true,
+		"[::1]:18765":        true,
+		"127.0.0.1:18766":    false,
+		"192.168.1.10:18765": false,
+		"127.0.0.1":          false,
 	} {
 		if got := isServiceAddr(addr); got != want {
 			t.Errorf("isServiceAddr(%q) = %v, want %v", addr, got, want)

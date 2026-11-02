@@ -24,7 +24,7 @@ func TestParseRepoURL(t *testing.T) {
 		// parse_full_with_port
 		{"admin@pam@backuphost:8008:tank", "admin@pam", "backuphost", "8008", "tank", false},
 		// parse_ipv4_with_port
-		{"192.168.1.1:1234:mystore", "root@pam", "192.168.1.1", "1234", "mystore", false},
+		{"192.168.1.10:1234:mystore", "root@pam", "192.168.1.10", "1234", "mystore", false},
 		// parse_ipv6_with_port
 		{"[ff80::1]:9007:mystore", "root@pam", "[ff80::1]", "9007", "mystore", false},
 		// parse_api_token
@@ -38,7 +38,7 @@ func TestParseRepoURL(t *testing.T) {
 		// non-numeric port
 		{"host:abc:mystore", "", "", "", "", true},
 		// port out of range
-		{"192.168.1.1:70000:mystore", "", "", "", "", true},
+		{"192.168.1.10:70000:mystore", "", "", "", "", true},
 		// trailing colon (empty datastore)
 		{":mystore", "", "", "", "", true},
 		// extra colon after port

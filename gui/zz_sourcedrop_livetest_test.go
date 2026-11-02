@@ -25,6 +25,7 @@ func TestSourceDropLive(t *testing.T) {
 	if src == "" || toggle == "" || dropFile == "" {
 		t.Skip("set PBS_SOURCEDROP_DIR, PBS_SOURCEDROP_TOGGLE and PBS_SOURCEDROP_FILE")
 	}
+	liveServer(t)
 	want := e2eSnapshotState(t, src)
 	backupID := fmt.Sprintf("sourcedrop-%d", time.Now().Unix())
 

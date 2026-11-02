@@ -14,7 +14,7 @@ package pbscommon
 //	myhost:mystore
 //	admin@pam@backuphost:8008:tank
 //	[ff80::1]:9007:mystore
-//	user@pbs!token@192.168.1.1:1234:store
+//	user@pbs!token@192.168.1.10:1234:store
 //
 // This file mirrors the Rust implementation from
 // proxmox-backup (https://git.proxmox.com/?p=proxmox-backup.git):
@@ -66,14 +66,15 @@ const (
 
 // proxmox-auth-api/src/types.rs
 const (
-	_userNameRegexStr  = `(?:[^\s:/[:cntrl:]]+)`
-	_safeIDRegexStr    = `(?:[A-Za-z0-9_][A-Za-z0-9._\-]*)`
-	_userIDRegexStr    = _userNameRegexStr + `@` + _safeIDRegexStr
+	_userNameRegexStr   = `(?:[^\s:/[:cntrl:]]+)`
+	_safeIDRegexStr     = `(?:[A-Za-z0-9_][A-Za-z0-9._\-]*)`
+	_userIDRegexStr     = _userNameRegexStr + `@` + _safeIDRegexStr
 	_apiTokenIDRegexStr = _userIDRegexStr + `!` + _safeIDRegexStr
 )
 
 // Combined regex matching pbs-api-types BACKUP_REPO_URL_REGEX:
-//   ^^(?:(?:(USER_ID|APITOKEN_ID)@)?(DNS_NAME|IPRE_BRACKET):)?(?:([0-9]{1,5}):)?(SAFE_ID)$
+//
+//	^^(?:(?:(USER_ID|APITOKEN_ID)@)?(DNS_NAME|IPRE_BRACKET):)?(?:([0-9]{1,5}):)?(SAFE_ID)$
 var repoURLRegex = regexp.MustCompile(
 	`^^(?:(?:` +
 		`(` + _userIDRegexStr + `|` + _apiTokenIDRegexStr + `)@` +

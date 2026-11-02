@@ -21,6 +21,7 @@ func TestLiveCLIMetaRestore(t *testing.T) {
 	if id == "" {
 		t.Skip("set PBS_CLI_ID")
 	}
+	liveServer(t)
 	snaps, err := ListSnapshotsInline(e2eBaseURL, e2eAuthID, e2eSecret, "", "", e2eStore, "", e2eFP, id)
 	if err != nil {
 		t.Fatal(err)

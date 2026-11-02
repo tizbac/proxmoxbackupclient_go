@@ -29,6 +29,7 @@ func TestLiveLinuxMachineBackup(t *testing.T) {
 	if dev == "" {
 		t.Skip("set PBS_LMB_DEV")
 	}
+	liveServer(t)
 	type rng struct{ a, b uint64 }
 	var bad []rng
 	for _, r := range strings.Split(os.Getenv("PBS_LMB_BAD"), ",") {

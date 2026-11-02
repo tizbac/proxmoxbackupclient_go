@@ -26,6 +26,7 @@ func TestUndeleteRollbackLive(t *testing.T) {
 	if os.Getenv("PBS_UNDELETE") == "" {
 		t.Skip("set PBS_UNDELETE=1")
 	}
+	liveServer(t)
 	for _, mode := range []string{pbscommon.ChangeDetectionLegacy, pbscommon.ChangeDetectionMetadata} {
 		t.Run(mode, func(t *testing.T) { undeleteRollbackLive(t, mode) })
 	}
@@ -281,6 +282,7 @@ func TestRestoreOriginalMultiFolderLive(t *testing.T) {
 	if os.Getenv("PBS_UNDELETE") == "" {
 		t.Skip("set PBS_UNDELETE=1")
 	}
+	liveServer(t)
 	base := t.TempDir()
 	d1 := filepath.Join(base, "alpha")
 	d2 := filepath.Join(base, "beta")

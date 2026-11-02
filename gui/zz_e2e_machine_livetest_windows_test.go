@@ -24,6 +24,7 @@ func TestE2EMachineWindows(t *testing.T) {
 	if srcN == "" || dstN == "" {
 		t.Skip("set PBS_E2E_SRC_DISK and PBS_E2E_DST_DISK")
 	}
+	liveServer(t)
 	// PBS_E2E_TYPE=vm also exercises the generated qemu-server.conf (needs a numeric ID).
 	btype := "host" // what the GUI uses for machine backups
 	backupID := fmt.Sprintf("e2e-machine-%d", time.Now().Unix())
