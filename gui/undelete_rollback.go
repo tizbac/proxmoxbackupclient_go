@@ -473,7 +473,7 @@ func (a *App) planRollbackFor(cfg *Config, job ScheduledJob, snapshotUnix int64,
 				pv.New = append(pv.New, RollbackItem{Folder: f.Dir, Path: n.Path, Size: n.Size, MTime: n.MTime})
 			}
 		}
-		safety[rollbackSafetyRoot(f.Dir)] = true
+		safety[rollbackSafetyRoot(f.Dir)] = true // where this roll back will keep its copies
 	}
 	for s := range safety {
 		pv.SafetyFolders = append(pv.SafetyFolders, s)
@@ -522,13 +522,6 @@ type rollbackMove struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 	Kind string `json:"kind"` // "replaced" or "removed"
-}
-
-// rollbackSafetyRoot is the safety folder for a set folder: at the root of its
-// volume, so moving a file there is a rename. A variable so tests can put it
-// in a temporary folder.
-var rollbackSafetyRoot = func(dir string) string {
-	return filepath.Join(rollbackVolumeRoot(dir), pbscommon.RollbackSafetyFolder)
 }
 
 var unsafeNameChars = regexp.MustCompile(`[^A-Za-z0-9._ -]+`)
@@ -712,7 +705,16 @@ func (a *App) applyRollbackMoves(ctx context.Context, p *rollbackPlan, policy st
 		if archive == "" {
 			continue
 		}
-		root := filepath.Join(rollbackSafetyRoot(f.Dir), safetyName(p.job.Name), stamp)
+		// The safety folder first, locked down, then the set's folders in it
+		// (they inherit its permissions).
+		safetyTop := rollbackSafetyRoot(f.Dir)
+		if err := os.MkdirAll(safetyTop, 0o700); err != nil {
+			return nil, "", nil, fmt.Errorf("cannot create the safety folder %s: %w. Nothing was changed", safetyTop, err)
+		}
+		if err := secureSafetyFolder(safetyTop); err != nil {
+			return nil, "", nil, fmt.Errorf("%w. Nothing was changed", err)
+		}
+		root := filepath.Join(safetyTop, safetyName(p.job.Name), stamp)
 		if err := os.MkdirAll(root, 0o700); err != nil {
 			return nil, "", nil, fmt.Errorf("cannot create the safety folder %s: %w. Nothing was changed", root, err)
 		}
@@ -911,8 +913,14 @@ func (a *App) ListRollbacks(jobID string) ([]RollbackRecord, error) {
 	}
 	seen := map[string]bool{}
 	var out []RollbackRecord
+	var bases []string
 	for _, f := range setFoldersOf(job) {
-		base := filepath.Join(rollbackSafetyRoot(f.Dir), safetyName(job.Name))
+		// Also where earlier versions kept them (rollbackSafetyRoots).
+		for _, r := range rollbackSafetyRoots(f.Dir) {
+			bases = append(bases, filepath.Join(r, safetyName(job.Name)))
+		}
+	}
+	for _, base := range bases {
 		if seen[base] {
 			continue
 		}
@@ -925,6 +933,10 @@ func (a *App) ListRollbacks(jobID string) ([]RollbackRecord, error) {
 			mp := filepath.Join(base, it.Name(), "rollback.json")
 			m, err := readRollbackManifest(mp)
 			if err != nil || m.JobID != job.ID {
+				continue
+			}
+			if err := checkRollbackRecord(job, mp, m); err != nil {
+				writeDebugLog(fmt.Sprintf("Roll back record not listed: %v", err))
 				continue
 			}
 			r := RollbackRecord{Path: mp, SnapshotID: m.SnapshotID, Policy: m.Policy, Created: m.Created.Format(time.RFC3339), Status: m.Status}
@@ -977,6 +989,13 @@ func (a *App) UndoRollback(manifestPath string) (string, error) {
 	m, err := readRollbackManifest(manifestPath)
 	if err != nil {
 		return "", err
+	}
+	job, err := a.loadSetJob(m.JobID)
+	if err != nil {
+		return "", fmt.Errorf("the Backup Set of this roll back cannot be read (%v); nothing was changed", err)
+	}
+	if err := checkRollbackRecord(job, manifestPath, m); err != nil {
+		return "", fmt.Errorf("%w; nothing was changed", err)
 	}
 	if m.Status == "undone" {
 		return "", fmt.Errorf("this roll back has already been undone")
@@ -1096,6 +1115,13 @@ func (a *App) DeleteRollbackCopies(manifestPath string) error {
 	m, err := readRollbackManifest(manifestPath)
 	if err != nil {
 		return err
+	}
+	job, err := a.loadSetJob(m.JobID)
+	if err != nil {
+		return fmt.Errorf("the Backup Set of this roll back cannot be read (%v); nothing was deleted", err)
+	}
+	if err := checkRollbackRecord(job, manifestPath, m); err != nil {
+		return fmt.Errorf("%w; nothing was deleted", err)
 	}
 	for _, r := range m.SafetyRoots {
 		if err := checkManifestPath(filepath.Join(r, "rollback.json")); err != nil {

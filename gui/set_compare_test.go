@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -146,6 +147,22 @@ func TestUndoRollbackPutsEverythingBack(t *testing.T) {
 	writeAt(t, filepath.Join(safety, "set", "added.txt"), "added since", tm.Add(time.Hour))
 	writeAt(t, filepath.Join(set, "restored.txt"), "was missing", tm)
 	writeAt(t, filepath.Join(set, "newfolder", "r.txt"), "was missing too", tm)
+
+	// Undo checks the record against its Backup Set (checkRollbackRecord):
+	// the set, saved, with its safety folder in this test's folder.
+	deployTestDir(t)
+	jobsPath, err := getScheduledJobsPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobsJSON, _ := json.Marshal([]ScheduledJob{{ID: "j", Name: "Set", BackupType: "directory", BackupDirs: []string{set}}})
+	if err := os.WriteFile(jobsPath, jobsJSON, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldRoot := rollbackSafetyRoot
+	rollbackSafetyRoot = func(string) string { return filepath.Join(base, ".pbs-rollback") }
+	t.Cleanup(func() { rollbackSafetyRoot = oldRoot })
+
 	m := &rollbackManifest{
 		JobID: "j", SetName: "Set", Status: "done",
 		Moved: []rollbackMove{
