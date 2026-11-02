@@ -35,16 +35,7 @@ func (d *ModeDetector) DetectMode() ExecutionMode {
 	return ModeStandalone
 }
 
-// Probe returns the raw service reachability: 200 (running, token accepted),
-// 401 (running, token missing/invalid) or 0 (unreachable). The GUI uses the
-// 401 result to offer a one-time elevated token fetch before falling back to
-// standalone mode.
-func (d *ModeDetector) Probe() int {
-	code, _ := d.client.ProbeStatus()
-	return code
-}
-
-// String returns a human-readable mode name
+// GetModeName returns a human-readable mode name
 func (m ExecutionMode) String() string {
 	switch m {
 	case ModeService:
@@ -72,7 +63,7 @@ func ShouldWarnVSS(useVSS bool, mode ExecutionMode, isAdmin bool) (bool, string)
 	}
 
 	if mode == ModeStandalone && !isAdmin {
-		return true, "VSS (Shadow Copy) nécessite les privilèges administrateur - veuillez redémarrer l'application en tant qu'administrateur ou désactiver VSS"
+		return true, "VSS (Shadow Copy) needs administrator rights: restart the app as administrator or turn VSS off"
 	}
 
 	return false, ""
@@ -83,17 +74,17 @@ func GetModeDescription(mode ExecutionMode) string {
 	switch mode {
 	case ModeService:
 		return fmt.Sprintf(
-			"✅ Mode Service\n" +
-				"Le service Windows gère les backups avec privilèges admin.\n" +
-				"VSS (Shadow Copy) fonctionne automatiquement.",
+			"✅ Mode Service\n"+
+				"The background service runs the backups with administrator rights.\n"+
+				"VSS (Shadow Copy) works without asking.",
 		)
 	case ModeStandalone:
 		return fmt.Sprintf(
-			"⚠️ Mode Standalone\n" +
-				"Backup direct sans service Windows.\n" +
-				"VSS nécessite de lancer l'application en tant qu'administrateur.",
+			"⚠️ Mode Standalone\n"+
+				"The app runs the backups itself, without the service.\n"+
+				"VSS needs the app to run as administrator.",
 		)
 	default:
-		return "Mode inconnu"
+		return "Unknown mode"
 	}
 }

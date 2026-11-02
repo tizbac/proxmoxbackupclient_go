@@ -12,6 +12,11 @@ import (
 	"os"
 )
 
+// RequestQuit is the GUI's real quit (main.go). The service has no window to
+// quit and never offers "Restart as administrator" (RequestElevation, its only
+// shared caller), so it does nothing here.
+func (a *App) RequestQuit() {}
+
 // GetConfigWithHostname returns the configuration with hostname
 func (a *App) GetConfigWithHostname() map[string]interface{} {
 	hostname, _ := os.Hostname()
@@ -35,6 +40,17 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 // emitAnalysisProgress is a no-op in the service process (no GUI event sink).
 func (a *App) emitAnalysisProgress(done, total int, scannedBytes uint64) {}
 
+// RefreshIdleTooltip is a no-op in the service process — a Windows Service
+// has no tray icon (tray.go/tray_stub.go, both built only for !service).
+// scheduler.go's own once-a-minute tick calls this unconditionally in every
+// build, so a stub is needed here even though there's nothing to refresh.
+func (a *App) RefreshIdleTooltip() {}
+
+// The service has no tray or window: these are no-ops there.
+func (a *App) MinimizeToTray()                                           {}
+func (a *App) UpdateTrayTooltip(message string)                          {}
+func (a *App) ShowToastNotification(title, message string, isError bool) {}
+
 // ReloadConfig reloads configuration from disk. The long-running service loads
 // config once at startup (service.go), so without this it never sees changes
 // made afterwards — a rotated PBS token, a new default PBS, or a fingerprint
@@ -48,8 +64,16 @@ func (a *App) ReloadConfig() {
 
 // StartBackup starts a backup job
 // Service implementation using RunBackupInline
-func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsID string) error {
-	writeDebugLog(fmt.Sprintf("[Service] StartBackup called: type=%s, dirs=%v, id=%s, vss=%v, compression=%s, pbsID=%s", backupType, backupDirs, backupID, useVSS, compression, pbsID))
+// postActionsKey matches main.go's StartBackup signature (required by
+// api.BackupHandler). Post-backup actions do not use it here: a scheduled/
+// Run-Now job running in service mode gets them fired by scheduler.go's own
+// service-mode branch, using its own local job variable directly — see
+// app_types.go's pendingPostActions doc comment. It does carry the run's
+// change-detection mode in, and its structured result back out.
+func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
+	writeDebugLog(fmt.Sprintf("[Service] StartBackup called: type=%s, dirs=%v, id=%s, vss=%v, compression=%s, pbsServerID=%s", backupType, backupDirs, backupID, useVSS, compression, pbsServerID))
+	// The run's entry on the service API, where a GUI follows it.
+	runID := a.runIDFor(postActionsKey)
 
 	// Re-read config from disk so this run uses the current token / default PBS /
 	// pinned fingerprint rather than the snapshot loaded when the service started.
@@ -79,22 +103,11 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		allDirs = driveLetters
 	}
 
-	// Kind/BackupType follow the GUI direct path (startBackupDirect /
-	// startMachineBackupDirect): empty Kind + "host" = directory backup,
-	// "machine" + "vm" = whole-disk machine backup (runBackupInlineInternal
-	// dispatches on Kind).
-	kind := ""
-	pbsBackupType := "host"
-	if backupType == "machine" {
-		kind = "machine"
-		pbsBackupType = "vm"
-	}
-
-	// Resolve the EFFECTIVE PBS config: a multi-PBS-only config keeps the legacy
-	// BaseURL/AuthID/Secret/Datastore fields empty, so building options from those
-	// directly yielded "PBS connection parameters required" in service mode (the GUI
-	// standalone path already used EffectivePBS — audit M-01/M-04, reported in prod).
-	pbsCfg, err := a.withAuth(a.config.EffectivePBS())
+	// Resolve which configured PBS server this run targets. Empty pbsServerID
+	// picks the configured default (same EffectivePBS fallback this used
+	// before — audit M-01/M-04, reported in prod — resolvePBS keeps that
+	// behavior for the empty case and adds picking a SPECIFIC server on top).
+	pbsCfg, err := a.resolvePBS(pbsServerID)
 	if err != nil {
 		return err
 	}
@@ -109,13 +122,33 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		return err
 	}
 
-	// Machine backups take no exclusion list (same as the GUI direct path).
-	excludes := excludeList
-	if kind == "machine" {
-		excludes = []string{}
+	// Prepare backup options. Kind/BackupType mirror the direct-mode mapping
+	// in main.go's startBackupDirect exactly (RunBackupInline branches on
+	// Kind == "machine" to decide whether to do a machine-type backup at
+	// all — this stub never set it before, so a machine backup routed
+	// through the service silently fell through to the directory path;
+	// found and fixed 2026-09-23 alongside the service build's other
+	// pre-existing compile errors).
+	// BackupType is "host" even for machine backups — see the matching
+	// comment in main.go's startBackupDirect for why "vm" is wrong here
+	// (found 2026-09-24: it requires a numeric VMID backup-id, which every
+	// machine backup here defaults to a hostname instead of).
+	kind := "directory"
+	if backupType == "machine" {
+		kind = "machine"
+	}
+	pbsBackupType := "host"
+
+	// Resolve the PBS comment — see main.go's startBackupDirect: the run's
+	// own name (the scheduler passes the set's), else the generic fallback
+	// matching this kind.
+	if comment == "" {
+		comment = fmt.Sprintf("Manual backup - %s", backupID)
+		if kind == "machine" {
+			comment = fmt.Sprintf("Backup machine - %s", backupID)
+		}
 	}
 
-	// Prepare backup options
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
 		AuthID:          pbsCfg.AuthID,
@@ -128,86 +161,131 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		Crypt:           pbsCfg.Crypt,
 		BackupObjects:   allDirs,
 		BackupID:        backupID,
+		Comment:         comment,
 		Kind:            kind,
 		BackupType:      pbsBackupType,
 		UseVSS:          useVSS,
 		Compression:     compression,
-		ExcludeList:     excludes,
+		ExcludeList:     excludeList,
 		DisableSplit:    pbsCfg.DisableSplit,
 		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
+		// Only meaningful for kind=="directory" — harmless to set unconditionally,
+		// the machine-backup path (StartMachineBackup below) never reads it.
+		PrefetchWorkers: pbsCfg.EffectivePrefetchWorkers(),
+		// The Backup Set's change detection for this run (scheduler.go), or
+		// the mode a GUI request carried (api server); "" for one-off runs.
+		ChangeDetectionMode: a.runChangeDetectionMode(postActionsKey),
+		OnSnapshot:          func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent*100, message))
-			// Feed the API server's progress map so the GUI's polling sees it.
-			a.dispatchProgress(percent, message)
+			a.reportRun(runID, percent, message)
 		},
-		OnComplete: func(success bool, message string) {
+		OnComplete: func(success bool, message string, _ MessageKey, _ msgParams) {
 			if success {
 				writeDebugLog(fmt.Sprintf("[Backup Complete] SUCCESS - %s", message))
 			} else {
 				writeDebugLog(fmt.Sprintf("[Backup Complete] FAILED - %s", message))
 			}
-			a.dispatchComplete(success, message)
+			a.finishRun(runID, success, message)
 		},
+		OnResult: func(status *BackupStatus) { a.setRunResult(postActionsKey, status) },
+		OnStats:  func(stats *BackupProgressStats) { a.reportRunStats(runID, stats) },
+		OnFile:   func(path string) { a.reportRunFile(runID, path) },
+	}
+	if kind == "machine" {
+		opts.ChangeDetectionMode = ""
+	}
+	// A key registered for a GUI request (RegisterRunOptions) has no
+	// scheduler run to consume it.
+	if v, ok := a.pendingPostActions.Load(postActionsKey); ok && v.(*pendingPostActionsEntry).job.ID == "service-request" {
+		defer a.takePendingPostActions(postActionsKey)
 	}
 
-	// Use the backup context that was set via SetBackupContext for this job
-	a.backupCtxMu.RLock()
-	opts.Ctx = a.backupCtx
-	a.backupCtxMu.RUnlock()
+	// Execute backup using inline implementation, once its turn comes (see
+	// operation_queue.go, and its doc comment for the cross-process caveat:
+	// a manual restore run from a separate GUI process isn't covered here).
+	opKindFor := opBackup
+	if kind == "machine" {
+		opKindFor = opMachine
+	}
+	return a.runServiceBackup(opts, kind, runID, opKindFor)
+}
 
-	// Execute backup using inline implementation
-	writeDebugLog("[Service] Executing backup via RunBackupInline")
+// runServiceBackup registers the service's run (so the API can pause or
+// stop it by its entry), waits for its turn and runs it, synchronously.
+func (a *App) runServiceBackup(opts BackupOptions, kind, runID string, k opKind) error {
+	run := newBackupRun(opts.Comment, kind, opts.BackupID)
+	run.apiID = runID
+	defer run.end()
+	req := opRequest{name: opts.Comment, kind: k,
+		group: opGroupKey(opts.BaseURL, opts.Datastore, opts.Namespace, opts.BackupType, opts.BackupID)}
+	h, err := acquireOperation(run.ctx, req, func(waitingFor string) {
+		run.queued.Store(true)
+		writeDebugLog(fmt.Sprintf("[Service] Queued: %s, waiting for %s", opts.Comment, waitingFor))
+		a.reportRun(runID, 0, queuedMessage(opts.Comment, waitingFor))
+	})
+	run.queued.Store(false)
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("[Service] %s was stopped while it waited its turn", opts.Comment))
+		a.finishRun(runID, false, "Backup cancelled by user")
+		return fmt.Errorf("backup cancelled by user")
+	}
+	defer h.Release()
+
+	writeDebugLog(fmt.Sprintf("[Service] Executing %s backup via RunBackupInline: %s", kind, opts.Comment))
+	opts.Run = run
 	return RunBackupInline(opts)
 }
 
-// StartMachineBackup starts a whole-disk machine backup job. The service
-// implementation mirrors the GUI direct path (startMachineBackupDirect):
-// Kind "machine" + BackupType "host" or "vm", no exclusion list.
-func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsID string, backupKind string) error {
-	writeDebugLog(fmt.Sprintf("[Service] StartMachineBackup called: type=%s, devices=%v, id=%s, vss=%v, compression=%s, pbsID=%s, backupKind=%s",
-		backupType, backupDevices, backupID, useVSS, compression, pbsID, backupKind))
+// StartMachineBackup starts a machine (whole-disk) backup job — service
+// implementation using RunBackupInline. Mirrors StartBackup's own stub
+// exactly; added 2026-09-23 (the service build previously didn't implement
+// this at all, failing api.BackupHandler's interface check).
+// postActionsKey: see StartBackup's own doc comment above.
+func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
+	writeDebugLog(fmt.Sprintf("[Service] StartMachineBackup called: type=%s, devices=%v, id=%s, vss=%v, compression=%s, pbsServerID=%s", backupType, backupDevices, backupID, useVSS, compression, pbsServerID))
+	runID := a.runIDFor(postActionsKey)
+	// A key registered for a GUI request has no scheduler run to consume it.
+	if v, ok := a.pendingPostActions.Load(postActionsKey); ok && v.(*pendingPostActionsEntry).job.ID == "service-request" {
+		defer a.takePendingPostActions(postActionsKey)
+	}
 
-	// Re-read config from disk (see StartBackup above).
 	a.ReloadConfig()
-
 	if a.config == nil {
 		return fmt.Errorf("configuration not loaded")
 	}
 
-	// Use hostname as fallback if backupID is empty
 	if backupID == "" {
 		backupID, _ = os.Hostname()
 		writeDebugLog(fmt.Sprintf("[Backup ID] Empty backup-id, using hostname: %s", backupID))
 	}
-
-	// Default to "fastest" if compression is empty
 	if compression == "" {
 		compression = "fastest"
 		writeDebugLog("[Compression] Using default: fastest")
 	}
+	for _, device := range backupDevices {
+		if device == "" {
+			return fmt.Errorf("one or more devices are empty")
+		}
+	}
 
-	// Resolve PBS config using the specified PBS ID (or default).
-	pbsCfg, err := a.resolveBackupPBS(pbsID)
+	pbsCfg, err := a.resolvePBS(pbsServerID)
 	if err != nil {
 		return err
 	}
-
-	// Unlock the configured encryption key for machine backups too.
+	// Unlock the configured encryption key, as StartBackup above does: without
+	// it a machine backup run by the service went up unencrypted although a
+	// key is configured.
 	if err := pbsCfg.loadCryptConfig(); err != nil {
 		return err
 	}
 
-	// Map the saved selection (\\.\PhysicalDriveN) onto the disks present now
-	// through Config.PinnedDisks and refresh those pins (diskpin.go). This is
-	// the path scheduled jobs take, which is exactly where a stale drive number
-	// would otherwise back up the wrong disk unattended.
-	resolvedDevices, err := a.resolveMachineBackupDevices(backupDevices)
-	if err != nil {
-		return err
+	// Resolve the PBS comment — see main.go's startMachineBackupDirect for
+	// the full reasoning.
+	if comment == "" {
+		comment = fmt.Sprintf("Backup machine - %s", backupID)
 	}
-	backupDevices = resolvedDevices
 
-	// Prepare backup options
 	opts := BackupOptions{
 		BaseURL:         pbsCfg.BaseURL,
 		AuthID:          pbsCfg.AuthID,
@@ -217,81 +295,37 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		Datastore:       pbsCfg.Datastore,
 		Namespace:       pbsCfg.Namespace,
 		CertFingerprint: pbsCfg.CertFingerprint,
-		Crypt:           pbsCfg.Crypt,
 		BackupObjects:   backupDevices,
 		BackupID:        backupID,
+		Comment:         comment,
 		Kind:            "machine",
-		BackupType:      backupKind, // "host" or "vm" based on user selection
-		UseVSS:          useVSS,
-		Compression:     compression,
-		ExcludeList:     []string{},
-		DisableSplit:    pbsCfg.DisableSplit,
-		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
+		// "host" unless the "vm" type was asked for: see
+		// machineSnapshotType.
+		BackupType:     machineSnapshotType(backupType),
+		UseVSS:         useVSS,
+		Compression:    compression,
+		ExcludeList:    []string{},
+		DisableSplit:   pbsCfg.DisableSplit,
+		SplitSizeBytes: pbsCfg.SplitSizeBytes(),
+		Crypt:          pbsCfg.Crypt,
+		// A machine set's forensic copy, from the scheduler's job copy or
+		// the GUI's request (RegisterRunOptions).
+		ReadFreeSpace: a.runReadFreeSpace(postActionsKey),
+		OnSnapshot:    func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent*100, message))
-			// Feed the API server's progress map so the GUI's polling sees it.
-			a.dispatchProgress(percent, message)
+			a.reportRun(runID, percent, message)
 		},
-		OnComplete: func(success bool, message string) {
+		OnComplete: func(success bool, message string, _ MessageKey, _ msgParams) {
 			if success {
 				writeDebugLog(fmt.Sprintf("[Machine Backup Complete] SUCCESS - %s", message))
 			} else {
 				writeDebugLog(fmt.Sprintf("[Machine Backup Complete] FAILED - %s", message))
 			}
-			a.dispatchComplete(success, message)
+			a.finishRun(runID, success, message)
 		},
+		OnStats: func(stats *BackupProgressStats) { a.reportRunStats(runID, stats) },
 	}
 
-	// Use the backup context that was set via SetBackupContext for this job
-	a.backupCtxMu.RLock()
-	opts.Ctx = a.backupCtx
-	a.backupCtxMu.RUnlock()
-
-	// Execute backup using inline implementation
-	writeDebugLog("[Service] Executing machine backup via RunBackupInline")
-	return RunBackupInline(opts)
-}
-// resolveBackupPBS picks the PBS server to use for backup operations.
-// When pbsID is empty the default PBS server is used.
-// Falls back to legacy single-server fields when no multi-PBS entry is configured.
-func (a *App) resolveBackupPBS(pbsID string) (*Config, error) {
-	var cfg *Config
-
-	// In service mode the GUI doesn't hold PBS credentials — it asks the
-	// service for a short-lived ticket and uses that for backup.
-	if a.isDelegatedToService() {
-		ticket, err := a.apiClient.MintPBSTicket(pbsID)
-		if err != nil {
-			return nil, fmt.Errorf("service failed to mint PBS ticket: %w", err)
-		}
-		// Build a Config with the ticket + non-secret connection params.
-		cfg := &Config{
-			BaseURL:         ticket.BaseURL,
-			CertFingerprint: ticket.CertFingerprint,
-			Datastore:       ticket.Datastore,
-			Namespace:       ticket.Namespace,
-			Ticket:          ticket.Ticket,
-			CSRFToken:       ticket.CSRFToken,
-		}
-		return cfg, nil
-	}
-
-	if pbsID != "" {
-		pbs, err := a.config.GetPBSServer(pbsID)
-		if err != nil {
-			return nil, err
-		}
-		cfg = pbs.ToConfig()
-	} else {
-		effective := a.config.EffectivePBS()
-		if err := effective.Validate(); err != nil {
-			return nil, err
-		}
-		cfg = effective
-	}
-	cfg, err := a.withAuth(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return cfg, nil
+	return a.runServiceBackup(opts, "machine", runID, opMachine)
 }

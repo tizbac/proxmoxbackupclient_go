@@ -1,0 +1,38 @@
+{
+  "_readme": "Template for msiexec ... CONFIGFILE=<this file>. See DEPLOYMENT.md. Replace the server details and the token secret; leave backupId empty so each computer backs up under its own name. Fields starting with _ are ignored.",
+  "bundleVersion": 1,
+  "config": {
+    "pbs_servers": {
+      "office": {
+        "id": "office",
+        "name": "Office PBS",
+        "baseurl": "https://pbs.example.lan:8007",
+        "certfingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
+        "authid": "backup@pbs!clients",
+        "secret": "00000000-0000-0000-0000-000000000000",
+        "datastore": "clients",
+        "namespace": ""
+      }
+    },
+    "default_pbs_id": "office"
+  },
+  "scheduledJobs": [
+    {
+      "id": "deploy-users",
+      "name": "Users",
+      "backupDirs": ["C:\\Users"],
+      "driveLetters": [],
+      "backupId": "",
+      "pbsServerId": "office",
+      "useVSS": true,
+      "backupType": "directory",
+      "changeDetectionMode": "metadata",
+      "excludeList": [],
+      "compression": "",
+      "enabled": true,
+      "runAtStartup": false,
+      "triggerMode": "daily",
+      "scheduleTime": "12:30"
+    }
+  ]
+}

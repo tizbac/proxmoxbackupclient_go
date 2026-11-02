@@ -6,14 +6,17 @@ package main
 import (
 	"context"
 	"embed"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	stdruntime "runtime"
 	"runtime/debug"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -58,17 +61,13 @@ func init() {
 }
 
 func main() {
-	// Elevated token-fetch child: this process was launched elevated ONLY to
-	// read the service token file and hand it back (see token_elevated.go).
-	// It must run before flag parsing, single-instance and everything else —
-	// the child never starts the GUI.
-	if handleElevatedTokenFetchChild(os.Args[1:]) {
+	// -list-sets, -undelete, -rollback (set_cli.go). On Windows the GUI has
+	// no console; the service program takes them there.
+	if stdruntime.GOOS != "windows" && runSetCLI(os.Args[1:]) {
 		return
 	}
-
 	// Parse command line flags
 	minimized := flag.Bool("minimized", false, "Start minimized to system tray")
-	forceStandalone := flag.Bool("standalone", false, "Force standalone mode (do not connect to the local service)")
 	flag.Parse()
 
 	// Check for single instance (GUI only)
@@ -90,11 +89,13 @@ func main() {
 	}()
 
 	// Logging is now handled by RotatingLogger (initialized in logging_gui.go)
-	writeDebugLog(fmt.Sprintf("=== %s v%s Starting ===", appName, appVersion))
+	writeDebugLog(fmt.Sprintf("=== %s %s Starting ===", appName, versionLabel()))
 	writeDebugLog(fmt.Sprintf("Time: %s", time.Now().Format(time.RFC3339)))
 	writeDebugLog(fmt.Sprintf("Service log: %s", GetServiceLogPath()))
 	writeDebugLog(fmt.Sprintf("Backup log: %s", GetBackupLogPath()))
 	writeDebugLog(fmt.Sprintf("Crash report path: %s", crashReportPath))
+
+	startStallWatchdog()
 
 	// Install SIGINT/SIGTERM handler so any live PBS backup session gets
 	// closed before we exit. Without this, a forced kill (e.g. "update
@@ -114,49 +115,15 @@ func main() {
 	// (Task Scheduler or Registry entries before MSI service)
 	CleanupLegacyAutoStart()
 
-	// Resolve the execution mode BEFORE building the app: it decides where
-	// the configuration lives. In service mode the service owns the
-	// privileged state dir (config.json & co. are service-only readable);
-	// in standalone mode the GUI keeps everything in the user's home.
-	execMode, standaloneReason := resolveExecutionMode(*forceStandalone)
-	// A service token that expires or is rotated mid-session must be renewed
-	// with the same elevated fetch that got it at launch, instead of turning
-	// every call into a 401. Installed here (and on the late switch to service
-	// mode) so the launch probe above still sees the raw 401 and can fall back
-	// to standalone when the prompt is declined.
-	if execMode == api.ModeService {
-		installTokenRefreshHook()
-	}
-	switch execMode {
-	case api.ModeService:
-		SetConfigDir(serviceStateDir())
-	default:
-		SetConfigDir(standaloneConfigDir())
-		migrateStandaloneFromProgramData()
-	}
-	writeDebugLog(fmt.Sprintf("Execution mode: %s (standalone reason: %q)", execMode.String(), standaloneReason))
-
 	// Create app instance
 	app := NewApp()
-	app.mode = execMode
-	app.standaloneReason = standaloneReason
 	writeDebugLog("App instance created")
-
-	// Service mode: config.json lives in a root-only state directory (0700 via
-	// systemd StateDirectoryMode=), so LoadConfig() inside NewApp() could not
-	// read it — its result is empty. Fetch the sanitized document from the
-	// service BEFORE the window opens: the frontend asks for the server list on
-	// mount, and an async hydration would race it (saved servers "not showing
-	// up" after a restart of the GUI).
-	if execMode == api.ModeService {
-		app.hydrateFromService()
-	}
 
 	// Create application options
 	appOptions := &options.App{
-		Title:     fmt.Sprintf("%s v%s", BrandFromExecutable().Title, appVersion),
-		Width:     1200,
-		Height:    840,
+		Title:     fmt.Sprintf("%s %s", BrandFromExecutable().Title, versionLabel()),
+		Width:     1080,
+		Height:    720,
 		MaxWidth:  1680, // Prevent window from being too large
 		MaxHeight: 1008, // Prevent title bar from going off-screen
 		MinWidth:  480,  // Allow very small windows for low-res screens
@@ -165,6 +132,7 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		Menu:             buildAppMenu(app),
 		StartHidden:      *minimized, // Start hidden if --minimized flag is set
 		OnStartup:        app.startup,
 		OnDomReady:       app.domReady,
@@ -204,66 +172,6 @@ func main() {
 	writeDebugLog("Application shutdown normally")
 }
 
-// resolveExecutionMode probes the local service and decides how this GUI
-// process runs:
-//
-//	HTTP 200    -> service mode (the token presented is accepted)
-//	HTTP 401    -> service running, token missing: ONE elevated token fetch,
-//	               then re-probe; any failure falls back to standalone
-//	unreachable -> standalone (no service installed/started)
-//
-// The --standalone flag forces standalone unconditionally.
-// PBSGO_TOKEN_FETCH_FAILED=1 (set by the package launcher after its own
-// failed fetch attempt) suppresses the in-GUI elevation prompt so the user
-// is never asked twice for the same token.
-func resolveExecutionMode(forceStandalone bool) (api.ExecutionMode, string) {
-	return resolveExecutionModeWith(forceStandalone,
-		api.NewModeDetector(getAPITokenPath()).Probe,
-		elevatedFetchTokenWithHandoff)
-}
-
-// resolveExecutionModeWith is resolveExecutionMode with the probe and the
-// elevated fetch injected, so the decision table can be tested without a
-// running service or a real pkexec/UAC prompt.
-func resolveExecutionModeWith(forceStandalone bool, probe func() int, fetchToken func() (string, error)) (api.ExecutionMode, string) {
-	if forceStandalone {
-		writeDebugLog("Standalone mode forced by --standalone flag")
-		return api.ModeStandalone, "forced"
-	}
-
-	switch probe() {
-	case 200:
-		writeDebugLog("Local service is running and accepted the token")
-		return api.ModeService, ""
-	case 401:
-		if os.Getenv("PBSGO_TOKEN_FETCH_FAILED") != "" {
-			writeDebugLog("Service is running but the token is missing and the launcher already attempted an elevated fetch (PBSGO_TOKEN_FETCH_FAILED): not prompting again")
-			return api.ModeStandalone, "auth_failed"
-		}
-		writeDebugLog("Service is running but the token is missing: attempting one elevated token fetch")
-		token, err := fetchToken()
-		if err != nil {
-			writeDebugLog(fmt.Sprintf("Elevated token fetch failed: %v — falling back to standalone", err))
-			return api.ModeStandalone, "auth_failed"
-		}
-		// Keep the token in memory only; the root-owned file is never
-		// copied to a user-readable location.
-		api.SetTokenOverride(token)
-		if probe() == 200 {
-			writeDebugLog("Token acquired via elevated fetch; using service mode")
-			return api.ModeService, ""
-		}
-		writeDebugLog("Token acquired but still rejected; falling back to standalone")
-		// A token the service refuses must not linger: every later request
-		// would keep presenting it instead of asking for a fresh one.
-		api.SetTokenOverride("")
-		return api.ModeStandalone, "auth_failed"
-	default:
-		writeDebugLog("Local service not reachable: standalone mode")
-		return api.ModeStandalone, "no_service"
-	}
-}
-
 func writeCrashReport(message string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
@@ -291,30 +199,42 @@ Please report this issue to the Proxmox Backup Client project:
 	}
 }
 
-// ListBackupJobs returns a list of all running/completed backup jobs from the service.
-func (a *App) ListBackupJobs() ([]*api.BackupProgress, error) {
-	if a.apiClient == nil {
-		return nil, fmt.Errorf("no API client available")
+// SetProgressCallbacks sets custom progress callbacks for API mode
+func (a *App) SetProgressCallbacks(jobID string, onProgress func(string, float64, string), onComplete func(string, bool, string)) {
+	writeDebugLog(fmt.Sprintf("[SetProgressCallbacks] Registered callbacks for jobID: %s", jobID))
+	a.callbacksMutex.Lock()
+	a.callbacksMap[jobID] = &progressCallbacks{
+		onProgress: onProgress,
+		onComplete: onComplete,
 	}
-	return a.apiClient.ListBackupJobs()
+	a.callbacksMutex.Unlock()
 }
 
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	passphrasePrompter = a.promptForPassphrase
 	writeDebugLog("App.startup() called")
 
-	// The execution mode was resolved in main() BEFORE the app was built —
-	// it determines where the configuration lives, so it cannot change once
-	// the config is loaded. If the service appears later, StartBackup()
-	// re-detects and switches to service mode lazily.
+	// An elevated GUI (or any GUI on Linux, where the folder is the user's own)
+	// locks the settings folder down; see hardenConfigDir.
+	if stdruntime.GOOS != "windows" || isAdmin() {
+		go func() {
+			if dir, err := getConfigDir(); err == nil {
+				if err := hardenConfigDir(dir); err != nil {
+					writeDebugLog(fmt.Sprintf("[ConfigACL] %v", err))
+				}
+			}
+		}()
+	}
+
+	// Detect execution mode (Service vs Standalone)
+	detector := api.NewModeDetector(getAPITokenPath())
+	a.mode = detector.DetectMode()
 	writeDebugLog(fmt.Sprintf("Execution mode: %s", a.mode.String()))
 
-	// Standalone mode: one-shot backups/restores work against the user's
-	// home config, but SCHEDULING requires the service, so the local
-	// scheduler is NOT started. The frontend shows a persistent notice and
-	// disables the scheduling UI. In service mode the scheduler runs in
-	// the service.
+	// If running in standalone mode, start local scheduler
+	// If in service mode, scheduler runs in the service
 	if a.mode == api.ModeStandalone {
 		// Cleanup any abandoned "running" jobs from previous session
 		a.CleanupAbandonedJobs()
@@ -327,9 +247,19 @@ func (a *App) startup(ctx context.Context) {
 			writeDebugLog(fmt.Sprintf("VSS cleanup at startup reported error: %v", err))
 		}
 
-		writeDebugLog("Standalone mode: local scheduler NOT started (scheduling requires the service)")
+		// Recalculate stale nextRun values (e.g. after restart or missed window)
+		a.RecalculateNextRuns()
+
+		// Start background job scheduler
+		a.StartScheduler()
+		writeDebugLog("Background scheduler started (standalone mode)")
 	} else {
-		writeDebugLog("Service mode - scheduler runs in service")
+		writeDebugLog("Service mode detected - scheduler runs in service")
+	}
+	// Show the service's own runs (scheduled ones) with Pause and Stop; idle
+	// while this app runs the schedules itself.
+	if !a.headless {
+		go a.watchServiceRuns()
 	}
 
 	// Execute startup jobs (jobs with runAtStartup=true)
@@ -339,6 +269,7 @@ func (a *App) startup(ctx context.Context) {
 	// Trim stale restore listing caches in the background (best-effort).
 	go func() {
 		trimSnapshotTreeCache(30 * 24 * time.Hour)
+		trimImageVolumeCache(30 * 24 * time.Hour)
 	}()
 
 	// Setup system tray for background operation
@@ -350,19 +281,54 @@ func (a *App) domReady(ctx context.Context) {
 	writeDebugLog("App.domReady() called - UI loaded successfully")
 }
 
+// forceQuitRequested distinguishes an EXPLICIT quit (File > Exit, the tray's
+// own "Quit" item) from an ambiguous window-close (titlebar X / Alt+F4),
+// which should keep minimizing to tray as designed (so a scheduled backup
+// isn't silently killed by an accidental close). Found 2026-09-23 — Wails'
+// runtime.Quit() funnels through this SAME beforeClose hook as the window's
+// own close button (verified against Wails' own source,
+// internal/frontend/desktop/windows/frontend.go's Quit()), so without this
+// flag EVERY quit path — including File > Exit — was silently swallowed
+// into a tray-hide, identical to clicking the X. The tray's own "Quit"
+// button masked this with a hacky 2-second delayed os.Exit(0) fallback;
+// this flag makes that fallback unnecessary (removed in tray.go) since
+// runtime.Quit() now actually completes, running normal Wails shutdown
+// (a.shutdown/pbscommon.CloseAllActive) instead of a raw process kill.
+var forceQuitRequested atomic.Bool
+
+// RequestQuit performs a genuine, unconditional quit — unlike closing the
+// window (which always minimizes to tray on Windows by design), this always
+// terminates the app. Wired to File > Exit and the tray's own "Quit" item.
+func (a *App) RequestQuit() {
+	writeDebugLog("RequestQuit() called - quitting for real, bypassing tray-hide")
+	forceQuitRequested.Store(true)
+	runtime.Quit(a.ctx)
+}
+
 // beforeClose is called when the application is about to quit.
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	if forceQuitRequested.Load() {
+		writeDebugLog("App.beforeClose() called - forced quit requested, allowing close")
+		return false
+	}
 	// Only Windows has a tray that keeps the app alive, so only there do we
-	// swallow the close and hide the window. On other platforms the tray is a
-	// no-op, so we must let the window close or the app can never be quit.
+	// intercept the close. On other platforms the tray is a no-op, so we must
+	// let the window close or the app can never be quit.
 	if !a.preventCloseToTray() {
 		writeDebugLog("App.beforeClose() called - allowing close (no tray on this platform)")
 		return false
 	}
-	writeDebugLog("App.beforeClose() called - minimizing to tray")
-	// Instead of closing, minimize to tray
-	a.MinimizeToTray()
-	return true // Prevent actual close
+	// Mick, 2026-09-30: clicking the titlebar X used to silently minimize to
+	// tray with no way to actually exit from there — File > Exit / the tray's
+	// own Quit were the only real quit paths, easy to miss. Ask instead of
+	// assuming: emit an event for the frontend's close-prompt modal (Exit vs
+	// Minimize to Tray) and always prevent the native close here — the
+	// modal's own buttons call RequestQuit()/MinimizeToTray() directly once
+	// the user actually picks one, same as File > Exit and Minimize to Tray
+	// already do.
+	writeDebugLog("App.beforeClose() called - prompting Exit vs Minimize to Tray")
+	runtime.EventsEmit(a.ctx, "nav:closeprompt")
+	return true // Prevent actual close; the modal decides what happens next
 }
 
 // shutdown is called at application termination
@@ -390,181 +356,18 @@ func (a *App) GetHostname() string {
 	return hostname
 }
 
-// needsLocalElevation reports whether THIS process has to be root/admin to do
-// privileged work (raw block devices and the kernel snapshot modules for
-// machine backups, VSS snapshots) — and, on Windows, simply to LIST the disks.
-// The rule is per platform, because what the GUI does with the disks differs:
-//
-//   - Windows: the GUI opens \\.\PhysicalDriveN itself to list and preview the
-//     disks, and that needs an elevated token — even when the backup would be
-//     executed by the service (the service can do everything else, it cannot
-//     hand the GUI a disk list it has no rights to open).
-//   - Linux: enumerating disks (sysfs) is unprivileged; only OPENING the
-//     devices for the backup needs root, which the service provides in service
-//     mode — so an unprivileged GUI is fine there.
-//
-// It is false when this process already is the privileged helper. The frontend
-// must not ask such a GUI to relaunch with pkexec — that is what made
-// "machine backup requires admin privileges" show up in service mode.
-func (a *App) needsLocalElevation() bool {
-	return needsElevationFor(stdruntime.GOOS, isAdmin(), a.isServiceProcess, a.mode)
-}
-
-// needsElevationFor is the pure decision rule behind needsLocalElevation,
-// split out so every platform combination can be tested on any host.
-func needsElevationFor(goos string, admin, serviceProcess bool, mode api.ExecutionMode) bool {
-	if serviceProcess {
-		return false // we ARE the privileged helper
-	}
-	if admin {
-		return false // already elevated
-	}
-	if goos == "windows" {
-		return true // disk listing alone demands it
-	}
-	return mode != api.ModeService
-}
-
-// switchToServiceMode flips the runtime mode after the late service
-// re-detection (the service may start after the GUI) and tells the frontend,
-// so everything derived from it — elevation warnings, the mode badge, the VSS
-// notice — updates instead of keeping the value read at startup.
-func (a *App) switchToServiceMode() {
-	if a.mode == api.ModeService {
-		return
-	}
-	a.mode = api.ModeService
-	// The "why am I standalone" reason is obsolete the moment the service
-	// takes over; leaving it set makes the frontend notice contradict itself.
-	a.standaloneReason = ""
-	// Now that this GUI talks to the service, its token can be rotated away
-	// under it: refresh through an elevated fetch instead of failing.
-	installTokenRefreshHook()
-	if a.ctx == nil {
-		return
-	}
-	runtime.EventsEmit(a.ctx, "mode:changed", a.GetSystemInfo())
-}
-
 // GetSystemInfo returns system information for UI (mode, admin status, etc.)
 func (a *App) GetSystemInfo() map[string]interface{} {
-	info := map[string]interface{}{
-		"mode":     a.mode.String(),
-		"is_admin": isAdmin(),
-		// needs_local_elevation: see needsLocalElevation. The frontend uses it
-		// (not is_admin) to decide whether to demand an elevated relaunch.
-		"needs_local_elevation": a.needsLocalElevation(),
-		"hostname":              a.GetHostname(),
-		"service_available":     a.mode == api.ModeService,
-		// standalone + standalone_reason drive the persistent top notice in
-		// the frontend ("running standalone, scheduling not available") and
-		// the disabling of the scheduling UI.
-		"standalone":        a.mode == api.ModeStandalone,
-		"standalone_reason": a.standaloneReason, // "forced" | "no_service" | "auth_failed" | ""
+	return map[string]interface{}{
+		"mode":              a.mode.String(),
+		"is_admin":          isAdmin(),
+		"hostname":          a.GetHostname(),
+		"service_available": a.mode == api.ModeService,
 		// os = runtime.GOOS ("windows", "linux", "darwin") — used by the
 		// restore UI to enable/disable the in-place mode when the snapshot
 		// was taken on a different platform.
 		"os": stdruntime.GOOS,
 	}
-
-	// On Linux, add snapshot module info for machine backups
-	if stdruntime.GOOS == "linux" {
-		if module := getSnapshotModule(); module != "" {
-			info["snapshot_module"] = module
-		}
-	}
-
-	return info
-}
-
-// getSnapshotModule detects which Linux block snapshot kernel module is available.
-// Returns "elastio-snap", "dattobd", or empty string if neither is loaded.
-// This function is only available on Linux due to build tags in snapshot package.
-func getSnapshotModule() string {
-	if stdruntime.GOOS != "linux" {
-		return ""
-	}
-	if control, ok := snapshot.DetectControl(); ok {
-		return control.Name
-	}
-	return ""
-}
-
-// RequestElevation re-launches the application with elevated privileges.
-// On Linux this uses pkexec or sudo. On Windows it uses the Wails "RunAsAdmin" mechanism.
-// On macOS it uses osascript with administrator privileges.
-// Returns an error if elevation cannot be requested or was denied.
-func (a *App) RequestElevation() error {
-	// Nothing to elevate when this process already has everything the job
-	// needs: in service mode on Linux the service runs the backup as root, so
-	// relaunching this unprivileged GUI with pkexec/sudo would only spawn a
-	// second copy of the same unprivileged process. On Windows the rule says
-	// otherwise (the GUI must open the disks itself to list them), so the
-	// relaunch happens there.
-	if !a.needsLocalElevation() {
-		writeDebugLog("RequestElevation: ignored (no local elevation needed)")
-		return nil
-	}
-	switch stdruntime.GOOS {
-	case "linux":
-		return requestElevationLinux()
-	case "windows":
-		return requestElevationWindows()
-	case "darwin":
-		return requestElevationDarwin()
-	default:
-		return fmt.Errorf("elevation not supported on %s", stdruntime.GOOS)
-	}
-}
-
-// CanModifyJobs returns true if the current user has permission to modify
-// scheduled jobs. On Windows, this requires running as administrator (UAC elevated).
-// On Linux, this requires being in the wheel/sudo group or having sudo privileges.
-//
-// In service mode neither applies: the privileged service owns the jobs file
-// and the GUI saves through its API, so an unprivileged GUI may edit jobs
-// without relaunching elevated.
-func (a *App) CanModifyJobs() bool {
-	if a.isDelegatedToService() {
-		return true
-	}
-	return canModifyJobs()
-}
-
-// RequestJobModificationElevation requests elevation specifically for job modification.
-// On Windows, this uses UAC. On Linux, this uses pkexec or sudo with a prompt for credentials.
-func (a *App) RequestJobModificationElevation() error {
-	return a.RequestElevation()
-}
-
-// requestElevationLinux re-launches the current executable with pkexec or sudo
-func requestElevationLinux() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("cannot determine executable path: %w", err)
-	}
-
-	// Try pkexec first (policykit), then sudo
-	for _, cmd := range [][]string{
-		{"pkexec", exe},
-		{"sudo", exe},
-	} {
-		// Check if the command exists
-		if _, err := exec.LookPath(cmd[0]); err == nil {
-			// Launch detached so the current process can exit
-			return exec.Command(cmd[0], cmd[1:]...).Start()
-		}
-	}
-	return fmt.Errorf("neither pkexec nor sudo found; cannot elevate")
-}
-
-// requestElevationDarwin uses osascript to request admin privileges
-func requestElevationDarwin() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("cannot determine executable path: %w", err)
-	}
-	return exec.Command("osascript", "-e", fmt.Sprintf(`do shell script "%s" with administrator privileges`, exe)).Start()
 }
 
 func (a *App) GetVersion() string {
@@ -610,10 +413,26 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		// frontend MUST round-trip this field or every config save would silently
 		// drop the key and restart encrypting with no way to read it back.
 		"encryption_key_file": cfg.EncryptionKeyFile,
-		"backupdir":           cfg.BackupDir,
-		"backup-id":           cfg.BackupID,
-		"usevss":              cfg.UseVSS,
-		"hostname":            hostname,
+		// Same pattern as secret/secret_set: only whether a passphrase is stored.
+		"encryption_key_passphrase_set": cfg.EncryptionKeyPassphrase != "",
+		"backupdir":                     cfg.BackupDir,
+		"backup-id":                     cfg.BackupID,
+		"usevss":                        cfg.UseVSS,
+		"parallel_restore":              cfg.ParallelRestore,
+		"parallel_backup_read":          cfg.ParallelBackupRead,
+		"backup_read_workers":           cfg.BackupReadWorkers,
+		"max_concurrent_runs":           clampRunLimit(cfg.MaxConcurrentRuns),
+		"hostname":                      hostname,
+		// Global SMTP account (Preferences > Advanced). Same M-04 pattern as
+		// the PBS secret above: never hand the real password to the webview,
+		// only whether one is stored — SetSMTPSettings keeps the existing
+		// password when the frontend submits an empty value.
+		"smtp_host":         cfg.SMTPHost,
+		"smtp_port":         cfg.SMTPPort,
+		"smtp_username":     cfg.SMTPUsername,
+		"smtp_password_set": cfg.SMTPPassword != "",
+		"smtp_insecure":     cfg.SMTPInsecure,
+		"email_from":        cfg.EmailFrom,
 	}
 
 	// Pre-fill backup-id with hostname if empty
@@ -647,84 +466,36 @@ func (a *App) DiagnoseConfig() map[string]interface{} {
 	}
 }
 
-// hydrateFromService replaces the in-memory config with the sanitized document
-// the service holds. In service mode the config files are root/SYSTEM-only, so
-// the service API — not the local file — is the only source the GUI can read:
-// startup, ReloadConfig and a service-mode save all go through here. Returns
-// false when the service could not be reached, leaving the current config
-// untouched.
-func (a *App) hydrateFromService() bool {
-	if a.apiClient == nil {
-		return false
-	}
-	doc, err := a.apiClient.GetFullConfig()
-	if err != nil {
-		writeDebugLog(fmt.Sprintf("hydrateFromService: %v", err))
-		return false
-	}
-	a.config = parseFullConfig(doc)
-	writeDebugLog(fmt.Sprintf("Config hydrated from the service (%d PBS server(s))", len(a.config.PBSServers)))
-	return true
-}
-
-// SaveConfig saves the configuration submitted by the legacy settings form.
-//
-// The form carries only the legacy top-level fields (the incoming value has a
-// nil PBS server map), so it is MERGED over the stored config: assigning it
-// directly would silently drop every saved server and the default server id.
-// An empty secret/password keeps the stored one (M-04).
+// SaveConfig saves the configuration
 func (a *App) SaveConfig(config *Config) error {
-	merged := a.config
-	if a.config != nil && config != nil {
-		next := *a.config
-		next.BaseURL = config.BaseURL
-		next.CertFingerprint = config.CertFingerprint
-		next.AuthID = config.AuthID
-		next.Datastore = config.Datastore
-		next.Namespace = config.Namespace
-		next.EncryptionKeyFile = config.EncryptionKeyFile
-		next.BackupDir = config.BackupDir
-		next.BackupID = config.BackupID
-		next.UseVSS = config.UseVSS
-		// M-04: the frontend never receives the stored secrets, so an empty
-		// value means "keep the existing one", not "clear it".
-		if config.Secret != "" {
-			next.Secret = config.Secret
+	// M-04: the frontend never receives the stored secrets (GetConfigWithHostname
+	// returns "" + a *_set marker), so an empty value here means "keep the existing
+	// one", not "clear it". Only overwrite when the user supplied a new value.
+	if a.config != nil {
+		if config.Secret == "" {
+			config.Secret = a.config.Secret
 		}
-		if config.SMTPPassword != "" {
-			next.SMTPPassword = config.SMTPPassword
+		if config.Theme == nil {
+			config.Theme = a.config.Theme
 		}
-		if next.AuthID != "" {
-			// One legacy method only, like every other save path.
-			next.Username = ""
-			next.Password = ""
+		if config.SMTPPassword == "" {
+			config.SMTPPassword = a.config.SMTPPassword
 		}
-		merged = &next
+		config.EncryptionKeyPassphrase = mergeStoredPassphrase(a.config.EncryptionKeyFile, a.config.EncryptionKeyPassphrase,
+			config.EncryptionKeyFile, config.EncryptionKeyPassphrase, config.ClearEncryptionKeyPassphrase)
 	}
+	config.ClearEncryptionKeyPassphrase = false
+	config.EncryptionKeyPassphraseSet = false
 
 	// Log sanitized config (no secrets)
-	if merged != nil {
-		writeDebugLog(fmt.Sprintf("SaveConfig() called: URL=%s, AuthID=%s, Datastore=%s, BackupID=%s",
-			security.SanitizeURL(merged.BaseURL),
-			merged.AuthID,
-			merged.Datastore,
-			merged.BackupID))
-	}
+	writeDebugLog(fmt.Sprintf("SaveConfig() called: URL=%s, AuthID=%s, Datastore=%s, BackupID=%s",
+		security.SanitizeURL(config.BaseURL),
+		config.AuthID,
+		config.Datastore,
+		config.BackupID))
 
-	// In service mode the GUI delegates the write to the service, which owns
-	// the privileged config file (root/SYSTEM-only) and re-validates the whole
-	// document (including the per-server credentials) before storing it.
-	if a.isDelegatedToService() {
-		a.config = merged
-		return a.pushConfigToService()
-	}
-	if merged == nil {
-		return fmt.Errorf("configuration vide")
-	}
-
-	// Validate per part: a multi-PBS-only config has no legacy BaseURL and must
-	// not be rejected for missing legacy credentials (they live per server).
-	if err := merged.validatePBSFields(); err != nil {
+	// Validate before saving
+	if err := config.Validate(); err != nil {
 		writeDebugLog(fmt.Sprintf("Config validation failed: %v", err))
 		return err
 	}
@@ -732,42 +503,22 @@ func (a *App) SaveConfig(config *Config) error {
 	// Unlock the key BEFORE persisting so the runtime-only Crypt matches what is
 	// about to be written, and so an unusable key is reported without having
 	// saved a config that cannot be used.
-	if err := merged.loadCryptConfig(); err != nil {
+	// Saving never asks for a passphrase: a protected key without a stored one
+	// is unlocked when a backup or restore first needs it.
+	if err := config.unlockCrypt(false); err != nil && !errors.Is(err, errPassphraseRequired) {
 		writeDebugLog(fmt.Sprintf("Encryption key load failed: %v", err))
 		return err
 	}
 
 	// Save to disk
-	if err := merged.Save(); err != nil {
+	if err := config.Save(); err != nil {
 		writeDebugLog(fmt.Sprintf("Config save to disk failed: %v", err))
 		return err
 	}
 
 	// Update in-memory config
-	a.config = merged
+	a.config = config
 	writeDebugLog("Config saved successfully and loaded into app")
-	return nil
-}
-
-// pushConfigToService sends the current config document to the service via
-// /config POST. Credentials this GUI knows (typed in the current session) are
-// transmitted so the service can store them; empty ones mean "keep existing"
-// there — the stored secrets never leave the service.
-func (a *App) pushConfigToService() error {
-	if a.apiClient == nil {
-		return fmt.Errorf("no API client for service mode")
-	}
-	doc := a.config.fullConfigDocument()
-	if err := a.apiClient.SaveFullConfig(doc); err != nil {
-		return err
-	}
-	// Re-fetch the sanitized document so a.config stays in sync with the service
-	fetched, err := a.apiClient.GetFullConfig()
-	if err != nil {
-		return err
-	}
-	// Rehydrate from the fetched document (same code path as startup in service mode)
-	a.config = parseFullConfig(fetched)
 	return nil
 }
 
@@ -779,17 +530,6 @@ func (a *App) TestConnection(config *Config) error {
 	testConfig := config
 	if testConfig == nil {
 		testConfig = a.config
-	}
-
-	// In service mode the GUI delegates the test to the service, which has
-	// access to the stored credentials (the GUI never holds them).
-	if a.isDelegatedToService() {
-		// Convert the Config (or draft) to a map for the API.
-		// For per-server tests, the caller passes a config with the server ID
-		// in AuthID (legacy) or we need the server ID. We'll pass the draft
-		// fields as-is; the API merges non-empty fields over the stored entry.
-		draft := configToDraftMap(testConfig)
-		return a.apiClient.TestPBSServer("", draft)
 	}
 
 	// M-04: the frontend no longer holds the secret, so an empty secret in the
@@ -843,59 +583,16 @@ func (a *App) TestConnection(config *Config) error {
 	return nil
 }
 
-// configToDraftMap extracts the PBS-relevant fields from a Config for the
-// /pbs/test endpoint. In service mode the GUI sends a draft (partial) that
-// the service merges over the stored server entry.
-func configToDraftMap(cfg *Config) map[string]interface{} {
-	if cfg == nil {
-		return map[string]interface{}{}
-	}
-	draft := map[string]interface{}{}
-	if cfg.BaseURL != "" {
-		draft["baseurl"] = cfg.BaseURL
-	}
-	if cfg.CertFingerprint != "" {
-		draft["certfingerprint"] = cfg.CertFingerprint
-	}
-	if cfg.AuthID != "" {
-		draft["authid"] = cfg.AuthID
-	}
-	if cfg.Secret != "" {
-		draft["secret"] = cfg.Secret
-	}
-	if cfg.Username != "" {
-		draft["username"] = cfg.Username
-	}
-	if cfg.Password != "" {
-		draft["password"] = cfg.Password
-	}
-	if cfg.Datastore != "" {
-		draft["datastore"] = cfg.Datastore
-	}
-	if cfg.Namespace != "" {
-		draft["namespace"] = cfg.Namespace
-	}
-	return draft
-}
-
 // GetLastBackupDirs returns the last used backup directories
 func (a *App) GetLastBackupDirs() []string {
 	writeDebugLog(fmt.Sprintf("GetLastBackupDirs() returned %d directories", len(a.config.LastBackupDirs)))
 	return a.config.LastBackupDirs
 }
 
-// ReloadConfig reloads the configuration. In service mode the state directory
-// is root-only, so reloading from disk would wipe the in-memory config (and
-// with it every saved server): the service API is the source of truth there.
+// ReloadConfig reloads configuration from disk (for service when config changes)
 func (a *App) ReloadConfig() {
-	if a.isDelegatedToService() {
-		if a.hydrateFromService() {
-			return
-		}
-		writeDebugLog("ReloadConfig: service unreachable, keeping the in-memory config")
-		return
-	}
-	a.config = LoadConfig()
+	newConfig := LoadConfig()
+	a.config = newConfig
 	writeDebugLog("Config reloaded from disk")
 }
 
@@ -903,14 +600,6 @@ func (a *App) ReloadConfig() {
 
 // ListPBSServers returns all configured PBS servers
 func (a *App) ListPBSServers() []*PBSServer {
-	// An empty list in service mode means either "the user deleted everything"
-	// or "startup hydration failed" (service restarted, token rotated…). Ask the
-	// service once more instead of reporting an empty list, so saved servers
-	// always show up after a GUI restart.
-	if a.isDelegatedToService() && len(a.config.PBSServers) == 0 {
-		a.hydrateFromService()
-	}
-	// In service mode the config is hydrated from the service; return it directly.
 	servers := a.config.ListPBSServers()
 	writeDebugLog(fmt.Sprintf("ListPBSServers() returned %d servers", len(servers)))
 	// M-04: never hand PBS tokens to the frontend — return sanitized copies.
@@ -934,61 +623,39 @@ func (a *App) GetPBSServer(id string) (*PBSServer, error) {
 // AddPBSServer adds a new PBS server to the configuration
 func (a *App) AddPBSServer(pbs *PBSServer) error {
 	writeDebugLog(fmt.Sprintf("AddPBSServer(%s) called", pbs.ID))
-
-	// In service mode the GUI modifies its in-memory config and then pushes
-	// the whole document to the service.
-	if a.isDelegatedToService() {
-		if err := a.config.AddPBSServerMem(pbs); err != nil {
-			return err
-		}
-		return a.pushConfigToService()
-	}
+	pbs.ClearEncryptionKeyPassphrase = false
 	return a.config.AddPBSServer(pbs)
 }
 
 // UpdatePBSServer updates an existing PBS server
 func (a *App) UpdatePBSServer(pbs *PBSServer) error {
 	writeDebugLog(fmt.Sprintf("UpdatePBSServer(%s) called", pbs.ID))
-
-	// The "empty = keep the stored credential" resolution happens inside
-	// UpdatePBSServerMem (normalizeServerAuth): it knows the auth method, so a
-	// switch to user/password no longer inherits the old token secret and a
-	// changed authid no longer silently reuses the old secret.
-	if a.isDelegatedToService() {
-		// This process never received the stored secret/password (M-04): an empty
-		// value here means "keep", and the service — which holds them — performs
-		// the final credential check while saving the pushed document.
-		if err := a.config.UpdatePBSServerMem(pbs, false); err != nil {
-			return err
+	// M-04: the frontend never receives the token (sanitized), so an empty secret
+	// on update means "keep the stored one", not "clear it".
+	if pbs.Secret == "" {
+		if existing, err := a.config.GetPBSServer(pbs.ID); err == nil && existing != nil {
+			pbs.Secret = existing.Secret
 		}
-		return a.pushConfigToService()
 	}
+	prevPath, prevPass := "", ""
+	if existing, err := a.config.GetPBSServer(pbs.ID); err == nil && existing != nil {
+		prevPath, prevPass = existing.EncryptionKeyFile, existing.EncryptionKeyPassphrase
+	}
+	pbs.EncryptionKeyPassphrase = mergeStoredPassphrase(prevPath, prevPass, pbs.EncryptionKeyFile, pbs.EncryptionKeyPassphrase, pbs.ClearEncryptionKeyPassphrase)
+	pbs.ClearEncryptionKeyPassphrase = false
+	pbs.EncryptionKeyPassphraseSet = false
 	return a.config.UpdatePBSServer(pbs)
 }
 
 // DeletePBSServer removes a PBS server
 func (a *App) DeletePBSServer(id string) error {
 	writeDebugLog(fmt.Sprintf("DeletePBSServer(%s) called", id))
-
-	if a.isDelegatedToService() {
-		if err := a.config.DeletePBSServerMem(id); err != nil {
-			return err
-		}
-		return a.pushConfigToService()
-	}
 	return a.config.DeletePBSServer(id)
 }
 
 // SetDefaultPBSServer sets the default PBS server
 func (a *App) SetDefaultPBSServer(id string) error {
 	writeDebugLog(fmt.Sprintf("SetDefaultPBSServer(%s) called", id))
-
-	if a.isDelegatedToService() {
-		if err := a.config.SetDefaultPBSMem(id); err != nil {
-			return err
-		}
-		return a.pushConfigToService()
-	}
 	return a.config.SetDefaultPBS(id)
 }
 
@@ -1000,11 +667,6 @@ func (a *App) GetDefaultPBSID() string {
 // TestPBSConnection tests connection to a specific PBS server
 func (a *App) TestPBSConnection(pbsID string) error {
 	writeDebugLog(fmt.Sprintf("TestPBSConnection(%s) called", pbsID))
-
-	// In service mode the GUI delegates to the service which has the credentials.
-	if a.isDelegatedToService() {
-		return a.apiClient.TestPBSServer(pbsID, map[string]interface{}{})
-	}
 
 	pbs, err := a.config.GetPBSServer(pbsID)
 	if err != nil {
@@ -1037,7 +699,7 @@ func (a *App) GetServerFingerprint(baseURL string) (string, error) {
 func (a *App) PinPBSServerFingerprint(id, fingerprint string) error {
 	writeDebugLog(fmt.Sprintf("PinPBSServerFingerprint(%s) called", id))
 	if err := security.ValidateFingerprint(fingerprint); err != nil {
-		return fmt.Errorf("empreinte certificat invalide: %w", err)
+		return fmt.Errorf("invalid certificate fingerprint: %w", err)
 	}
 	// config.json lives under ProgramData and is owned by whichever process wrote it
 	// first. When the privileged service is running it owns the file, so the
@@ -1077,8 +739,18 @@ func (a *App) emitAnalysisProgress(done, total int, scannedBytes uint64) {
 }
 
 // StartBackup starts a backup operation (routes to service or direct based on mode)
-func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsID string) error {
-	writeDebugLog(fmt.Sprintf("StartBackup() called - mode: %s, VSS: %v, compression: %s, pbsID: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsID, a.isServiceProcess))
+// postActionsKey is "" for every existing caller (the frontend's direct
+// one-off calls) except executeScheduledJob (scheduler.go), which registers
+// its own job/trigger via registerPendingPostActions (app_types.go) first and
+// passes the returned key — a plain string keeps this parameter compatible
+// with api.BackupHandler's interface (package api can't reference
+// ScheduledJob, a package-main type, without a cycle), while still avoiding
+// any single shared value for concurrent executeScheduledJob goroutines to
+// race on. Only consumed in the ModeStandalone branch below; service mode
+// already handles its own post-actions/trigger correctly via scheduler.go's
+// local variables and never needs this.
+func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
+	writeDebugLog(fmt.Sprintf("StartBackup() called - mode: %s, VSS: %v, compression: %s, pbsServerID: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsServerID, a.isServiceProcess))
 
 	// Default to "fastest" if compression is empty
 	if compression == "" {
@@ -1087,14 +759,11 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 	}
 
 	// Re-detect mode if currently Standalone (service may have started after GUI)
-	// IMPORTANT: Never re-detect if we ARE the service process (prevents
-	// infinite loop), and never when --standalone said "don't connect": the
-	// flag has to stay honoured for the whole session, otherwise the GUI would
-	// quietly join a service the user asked it to ignore.
-	if !a.isServiceProcess && a.mode == api.ModeStandalone && a.standaloneReason != "forced" {
+	// IMPORTANT: Never re-detect if we ARE the service process (prevents infinite loop)
+	if !a.isServiceProcess && a.mode == api.ModeStandalone {
 		if a.apiClient.IsServiceAvailable() {
 			writeDebugLog("[Mode Detection] Service now available, switching to Service mode")
-			a.switchToServiceMode()
+			a.mode = api.ModeService
 		}
 	}
 
@@ -1102,21 +771,22 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 	switch a.mode {
 	case api.ModeService:
 		// Use HTTP API to communicate with service (service has admin rights as LocalSystem)
-		return a.startBackupViaService(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsID)
+		return a.startBackupViaService(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID, comment, postActionsKey)
 	case api.ModeStandalone:
 		// Direct execution - check admin if VSS requested
 		if useVSS && !isAdmin() {
-			return fmt.Errorf("VSS (Shadow Copy) nécessite les privilèges administrateur - veuillez redémarrer l'application en tant qu'administrateur ou désactiver VSS")
+			return fmt.Errorf("VSS (Shadow Copy) requires administrator privileges - please restart the application as administrator or disable VSS")
 		}
-		return a.startBackupDirect(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsID)
+		return a.startBackupDirect(backupType, backupDirs, driveLetters, excludeList, backupID, useVSS, compression, pbsServerID, comment, postActionsKey)
 	default:
 		return fmt.Errorf("unknown execution mode: %v", a.mode)
 	}
 }
 
-// StartMachineBackup starts a machine backup operation
-func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsID string, backupKind string) error {
-	writeDebugLog(fmt.Sprintf("StartMachineBackup() called - mode: %s, VSS: %v, compression: %s, pbsID: %s, backupKind: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsID, backupKind, a.isServiceProcess))
+// StartMachineBackup starts a machine backup operation. See StartBackup's own
+// doc comment for postActionsKey.
+func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
+	writeDebugLog(fmt.Sprintf("StartMachineBackup() called - mode: %s, VSS: %v, compression: %s, pbsServerID: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsServerID, a.isServiceProcess))
 
 	// Default to "fastest" if compression is empty
 	if compression == "" {
@@ -1125,14 +795,11 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	}
 
 	// Re-detect mode if currently Standalone (service may have started after GUI)
-	// IMPORTANT: Never re-detect if we ARE the service process (prevents
-	// infinite loop), and never when --standalone said "don't connect": the
-	// flag has to stay honoured for the whole session, otherwise the GUI would
-	// quietly join a service the user asked it to ignore.
-	if !a.isServiceProcess && a.mode == api.ModeStandalone && a.standaloneReason != "forced" {
+	// IMPORTANT: Never re-detect if we ARE the service process (prevents infinite loop)
+	if !a.isServiceProcess && a.mode == api.ModeStandalone {
 		if a.apiClient.IsServiceAvailable() {
 			writeDebugLog("[Mode Detection] Service now available, switching to Service mode")
-			a.switchToServiceMode()
+			a.mode = api.ModeService
 		}
 	}
 
@@ -1140,20 +807,23 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 	switch a.mode {
 	case api.ModeService:
 		// Use HTTP API to communicate with service (service has admin rights as LocalSystem)
-		return a.startMachineBackupViaService(backupType, backupDevices, backupID, useVSS, compression, pbsID, backupKind)
+		return a.startMachineBackupViaService(backupType, backupDevices, backupID, useVSS, compression, pbsServerID, comment, postActionsKey)
 	case api.ModeStandalone:
 		// Direct execution - check admin if VSS requested
 		if useVSS && !isAdmin() {
-			return fmt.Errorf("VSS (Shadow Copy) nécessite les privilèges administrateur - veuillez redémarrer l'application en tant qu'administrateur ou désactiver VSS")
+			return fmt.Errorf("VSS (Shadow Copy) requires administrator privileges - please restart the application as administrator or disable VSS")
 		}
-		return a.startMachineBackupDirect(backupType, backupDevices, backupID, useVSS, compression, pbsID, backupKind)
+		return a.startMachineBackupDirect(backupType, backupDevices, backupID, useVSS, compression, pbsServerID, comment, postActionsKey)
 	default:
 		return fmt.Errorf("unknown execution mode: %v", a.mode)
 	}
 }
 
 // startBackupViaService sends backup request to the service via HTTP API
-func (a *App) startBackupViaService(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsID string) error {
+func (a *App) startBackupViaService(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
+	if err := a.checkServiceKey(pbsServerID); err != nil {
+		return err
+	}
 	writeDebugLog("[Service Mode] Sending backup request to service")
 
 	req := &api.BackupRequest{
@@ -1164,64 +834,80 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 		ExcludeList:  excludeList,
 		UseVSS:       useVSS,
 		Compression:  compression,
-		PBSID:        pbsID,
+		PBSServerID:  pbsServerID,
+		Comment:      comment,
+		// A Backup Set's change detection for this run (scheduler.go).
+		ChangeDetectionMode: a.runChangeDetectionMode(postActionsKey),
 	}
 
 	resp, err := a.apiClient.StartBackup(req)
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("[Service Mode] Backup request failed: %v", err))
-		return fmt.Errorf("échec de la communication avec le service: %w", err)
+		return fmt.Errorf("communication with the service failed: %w", err)
 	}
 
 	writeDebugLog(fmt.Sprintf("[Service Mode] Backup started: %s (JobID: %s)", resp.Message, resp.JobID))
 
-	// Remember the job so the Stop button (which calls CancelBackup with no id)
-	// can cancel this service-side run.
-	a.setDelegatedJobID(resp.JobID)
-
 	// Start polling for progress updates
-	go a.pollBackupProgress(resp.JobID)
+	go a.pollBackupProgress(resp.JobID, a.watchServiceRun(postActionsKey))
 
 	return nil
 }
 
 // startMachineBackupViaService sends machine backup request to the service via HTTP API
-func (a *App) startMachineBackupViaService(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsID string, backupKind string) error {
+func (a *App) startMachineBackupViaService(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
+	if err := a.checkServiceKey(pbsServerID); err != nil {
+		return err
+	}
 	writeDebugLog("[Service Mode] Sending machine backup request to service")
 
 	req := &api.BackupRequest{
 		BackupType:   backupType,
 		BackupID:     backupID,
-		DriveLetters: backupDevices,
+		DriveLetters: backupDevices, // Using DriveLetters field for machine backup devices
 		UseVSS:       useVSS,
 		Compression:  compression,
-		PBSID:        pbsID,
-		BackupKind:   backupKind,
+		PBSServerID:  pbsServerID,
+		Comment:      comment,
+		// A machine Backup Set's forensic copy setting (ScheduledJob.ReadFreeSpace).
+		ReadFreeSpace: a.runReadFreeSpace(postActionsKey),
 	}
 
 	resp, err := a.apiClient.StartMachineBackup(req)
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("[Service Mode] Machine backup request failed: %v", err))
-		return fmt.Errorf("échec de la communication avec le service: %w", err)
+		return fmt.Errorf("communication with the service failed: %w", err)
 	}
 
 	writeDebugLog(fmt.Sprintf("[Service Mode] Machine backup started: %s (JobID: %s)", resp.Message, resp.JobID))
 
-	// Remember the job so the Stop button (which calls CancelBackup with no id)
-	// can cancel this service-side run.
-	a.setDelegatedJobID(resp.JobID)
-
 	// Start polling for progress updates
-	go a.pollBackupProgress(resp.JobID)
+	go a.pollBackupProgress(resp.JobID, a.watchServiceRun(postActionsKey))
 
 	return nil
 }
 
-// pollBackupProgress polls the service for backup progress and emits events to GUI
-func (a *App) pollBackupProgress(jobID string) {
+// pollBackupProgress polls the service for backup progress and emits events to
+// GUI. done (may be nil) receives the run's outcome once it ends: a Backup Set
+// run waits for it before its history and post-backup actions, which would
+// otherwise fire when the run was handed over, long before it finished.
+func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
+	finish := func(success bool, message string) {
+		if done != nil {
+			done <- serviceRunOutcome{success: success, message: message}
+		}
+	}
 	writeDebugLog(fmt.Sprintf("[Service Mode] Starting progress polling for job: %s", jobID))
 	ticker := time.NewTicker(3 * time.Second) // Poll every 3 seconds
 	defer ticker.Stop()
+	// watchServiceRuns leaves this run to us.
+	polledRuns.Store(jobID, struct{}{})
+	defer polledRuns.Delete(jobID)
+	lastPaused := false
+	lastFile := ""
+	// The window tells runs apart by this id (several can run at once).
+	runID := serviceRunPrefix + jobID
+	name, backupID := "", ""
 
 	// Without a bound, a permanently-404ing job (evicted/collided entry, or a
 	// service restart that dropped the progress map) would poll forever. Give up
@@ -1236,72 +922,102 @@ func (a *App) pollBackupProgress(jobID string) {
 			writeDebugLog(fmt.Sprintf("[Service Mode] Failed to get progress (%d/%d): %v", consecutiveErrors, maxConsecutiveErrors, err))
 			if consecutiveErrors >= maxConsecutiveErrors {
 				writeDebugLog("[Service Mode] Giving up polling after repeated failures")
-				a.clearDelegatedJobID()
 				if a.ctx != nil {
 					runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
+						"runId":   runID,
+						"name":    name,
 						"success": false,
 						"message": "Lost contact with backup service (status unavailable)",
 					})
 				}
+				finish(false, "Lost contact with backup service (status unavailable)")
 				return
 			}
 			continue
 		}
 		consecutiveErrors = 0
+		if progress.Name != "" {
+			name = progress.Name
+		}
+		if progress.BackupID != "" {
+			backupID = progress.BackupID
+		}
 
 		// Emit progress event to GUI
 		if a.ctx != nil && progress.Running {
 			runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
+				"runId":   runID,
+				"name":    name,
 				"percent": progress.Progress,
 				"message": progress.Message,
 			})
+			a.emitRunDetail(progress, &lastFile, runID)
+			if progress.Paused != lastPaused {
+				lastPaused = progress.Paused
+				a.emitPause(runID, BackupPauseState{Paused: progress.Paused, Since: progress.PausedSince})
+			}
 		}
 
 		// If backup completed, emit final event and stop polling
 		if progress.Complete {
+			if lastPaused {
+				a.emitPause(runID, BackupPauseState{})
+			}
 			writeDebugLog(fmt.Sprintf("[Service Mode] Backup completed: success=%v", progress.Success))
-			a.clearDelegatedJobID()
 			if a.ctx != nil {
 				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
-					"success": progress.Success,
-					"message": progress.Message,
+					"runId":    runID,
+					"name":     name,
+					"backupId": backupID,
+					"success":  progress.Success,
+					"message":  progress.Message,
 				})
 			}
+			finish(progress.Success, progress.Message)
 			return
 		}
 	}
 }
 
 // startBackupDirect performs backup directly (standalone mode)
-func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsID string) error {
+func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	// Use hostname as fallback if backupID is empty
 	if backupID == "" {
 		backupID = a.GetHostname()
 		writeDebugLog(fmt.Sprintf("[Backup ID] Empty backup-id, using hostname: %s", backupID))
 	}
 
+	// Resolve the PBS comment: the run's own name (a Backup Set's, passed by
+	// the scheduler, or what was typed into the one-off form's "Backup Name"
+	// field), else the generic "Manual backup - X". Reports labels the run
+	// with the same name.
+	if comment == "" {
+		comment = fmt.Sprintf("Manual backup - %s", backupID)
+	}
+
 	// Sanitize backup ID for logging
 	sanitizedID := security.SanitizeForLog(backupID)
-	writeDebugLog(fmt.Sprintf("[Standalone Mode] StartBackup: type=%s, id=%s, vss=%v, compression=%s, pbsID=%s, dir_count=%d",
-		backupType, sanitizedID, useVSS, compression, pbsID, len(backupDirs)))
+	writeDebugLog(fmt.Sprintf("[Standalone Mode] StartBackup: type=%s, id=%s, vss=%v, compression=%s, pbsServerID=%s, dir_count=%d",
+		backupType, sanitizedID, useVSS, compression, pbsServerID, len(backupDirs)))
 
 	// Validate BackupID (now guaranteed to be non-empty)
 	if err := security.ValidateBackupID(backupID); err != nil {
-		return fmt.Errorf("backup ID invalide: %w", err)
+		return fmt.Errorf("invalid backup ID: %w", err)
 	}
 
 	// Validate backup directories
 	for _, dir := range backupDirs {
 		if err := security.ValidatePath(dir); err != nil {
-			return fmt.Errorf("chemin invalide '%s': %w", dir, err)
+			return fmt.Errorf("invalid path '%s': %w", dir, err)
 		}
 	}
 
 	// Note: Admin check for VSS is done in StartBackup() routing layer
 	// If we're here via service, we're already running as LocalSystem
 
-	// Resolve PBS fields from the specified PBS server (or default), minting a fresh ticket (u/p).
-	pbsCfg, err := a.resolveBackupPBS(pbsID)
+	// Resolve PBS fields — a specific server if the caller named one (a Backup
+	// Set's own Destination choice, or a one-off's dropdown), else the default.
+	pbsCfg, err := a.resolvePBS(pbsServerID)
 	if err != nil {
 		return err
 	}
@@ -1313,24 +1029,55 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 
 	// Unlock the configured encryption key, if any, so every chunk this
 	// backup uploads is AES-256-GCM and the manifest is signed.
-	if err := pbsCfg.loadCryptConfig(); err != nil {
+	// A timer or startup run has nobody to answer a passphrase dialog, so it
+	// may only use a stored or already-entered-this-session passphrase and
+	// otherwise fails straight away.
+	cryptUnlock := pbsCfg.loadCryptConfig
+	if a.isUnattendedRun(postActionsKey) {
+		cryptUnlock = func() error { return pbsCfg.unlockCrypt(false) }
+	}
+	if err := cryptUnlock(); err != nil {
 		return err
 	}
 
 	// Validate backup parameters and build target list
+	// A Backup Set's change detection for this run (scheduler.go); a one-off
+	// backup (no key) and a machine backup use neither.
+	changeMode := ""
+	scheduledFullRead, fullReadRequested := false, false
+	if backupType == "directory" {
+		changeMode = a.runChangeDetectionMode(postActionsKey)
+		scheduledFullRead = a.runScheduledFullRead(postActionsKey)
+		fullReadRequested = a.runFullReadRequested(postActionsKey)
+	}
+
 	var targetDirs []string
 	if backupType == "directory" {
 		if len(backupDirs) == 0 {
-			return fmt.Errorf("au moins un répertoire de sauvegarde requis")
+			return fmt.Errorf("at least one backup directory required")
 		}
 		targetDirs = backupDirs
 	}
 	if backupType == "machine" {
 		if len(driveLetters) == 0 {
-			return fmt.Errorf("au moins un disque physique requis")
+			return fmt.Errorf("at least one physical disk required")
 		}
 		// Physical drive paths are used directly (e.g., \\.\PhysicalDrive0)
 		targetDirs = driveLetters
+	}
+
+	// The run, registered now so the window can show and stop it while it
+	// waits its turn. Its events carry its id: several can run at once.
+	run := newBackupRun(comment, backupType, backupID)
+	runDone := a.localRunDone(postActionsKey)
+	emit := func(event string, data map[string]interface{}) {
+		if a.isServiceProcess || a.ctx == nil {
+			return
+		}
+		data["runId"] = run.id
+		data["name"] = comment
+		data["backupId"] = backupID
+		runtime.EventsEmit(a.ctx, event, data)
 	}
 
 	// Prepare backup options
@@ -1345,32 +1092,55 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		CertFingerprint: pbsCfg.CertFingerprint,
 		BackupObjects:   targetDirs,
 		BackupID:        backupID,
-		BackupType:      "host", // "host" for directory, would be "vm" for machine
-		UseVSS:          useVSS,
-		Compression:     compression,
-		ExcludeList:     excludeList,
-		DisableSplit:    a.config.DisableSplit,
-		SplitSizeBytes:  a.config.SplitSizeBytes(),
-		Crypt:           pbsCfg.Crypt,
-		// Use the backup context that was set via SetBackupContext for this job
-		Ctx: func() context.Context {
-			a.backupCtxMu.RLock()
-			defer a.backupCtxMu.RUnlock()
-			return a.backupCtx
-		}(),
+		Comment:         comment,
+		// Kind decides which backup pipeline RunBackupInline actually runs
+		// (directory walk vs. raw-disk machine backup) — added 2026-09-23
+		// after this was left unset here, silently misrouting a
+		// machine-type call into the directory pipeline (found via
+		// scheduler.go's executeScheduledJob, which used to call this
+		// function's caller, StartBackup, for machine jobs too — fixed
+		// there as well, this is defensive so a future caller doing the
+		// same thing fails safely instead of the directory path trying to
+		// treat a \\.\PhysicalDriveN device path as a folder).
+		Kind:           backupType,
+		BackupType:     "host", // "host" for directory, would be "vm" for machine
+		UseVSS:         useVSS,
+		Compression:    compression,
+		ExcludeList:    excludeList,
+		DisableSplit:   a.config.DisableSplit,
+		SplitSizeBytes: a.config.SplitSizeBytes(),
+		// Only meaningful for directory backups (PXARArchive) — harmless to
+		// set unconditionally here since the machine-backup path never reads
+		// it (no PXARArchive involved). See Config.ParallelBackupRead's doc
+		// comment.
+		PrefetchWorkers:     a.config.EffectivePrefetchWorkers(),
+		ChangeDetectionMode: changeMode,
+		ScheduledFullRead:   scheduledFullRead,
+		FullReadRequested:   fullReadRequested,
+		Crypt:               pbsCfg.Crypt,
+		OnSnapshot:          func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
-			// Forward to the API server's registered callbacks (service mode).
-			// The callback contract is a 0.0-1.0 fraction; the server scales it
-			// to 0-100 for its progress map.
-			hasCallbacks := a.dispatchProgress(percent, message)
+			// Check if there's a registered callback for any job (service mode)
+			a.callbacksMutex.RLock()
+			hasCallbacks := len(a.callbacksMap) > 0
+			if hasCallbacks {
+				// Call all registered callbacks (typically just one per backup)
+				for jobID, callbacks := range a.callbacksMap {
+					if callbacks.onProgress != nil {
+						writeDebugLog(fmt.Sprintf("[OnProgress] Calling custom callback for jobID: %s", jobID))
+						callbacks.onProgress(jobID, percent*100, message)
+					}
+				}
+			}
+			a.callbacksMutex.RUnlock()
 
 			// If no custom callbacks and we have Wails context, emit events (GUI standalone mode)
 			// NEVER emit events if we're the service process (no Wails runtime)
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnProgress] Emitting Wails event (GUI mode)")
-				runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
+				emit("backup:progress", map[string]interface{}{
 					"percent": percent * 100,
 					"message": message,
 				})
@@ -1378,38 +1148,107 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 				writeDebugLog("[OnProgress] No callbacks/context (service or headless mode)")
 			}
 		},
-		OnComplete: func(success bool, message string) {
+		OnComplete: func(success bool, message string, msgKey MessageKey, msgP msgParams) {
 			writeDebugLog(fmt.Sprintf("Backup complete: success=%v, %s", success, message))
 
-			// Forward to the API server's registered callbacks (service mode)
-			// and clean them up once the run is terminal.
-			hasCallbacks := a.dispatchComplete(success, message)
+			// Check if there's a registered callback for any job (service mode)
+			a.callbacksMutex.RLock()
+			hasCallbacks := len(a.callbacksMap) > 0
+			var jobIDsToCleanup []string
+			if hasCallbacks {
+				// Call all registered callbacks and collect jobIDs for cleanup
+				for jobID, callbacks := range a.callbacksMap {
+					if callbacks.onComplete != nil {
+						writeDebugLog(fmt.Sprintf("[OnComplete] Calling custom callback for jobID: %s", jobID))
+						callbacks.onComplete(jobID, success, message)
+					}
+					jobIDsToCleanup = append(jobIDsToCleanup, jobID)
+				}
+			}
+			a.callbacksMutex.RUnlock()
+
+			// Clean up completed callbacks
+			if len(jobIDsToCleanup) > 0 {
+				a.callbacksMutex.Lock()
+				for _, jobID := range jobIDsToCleanup {
+					delete(a.callbacksMap, jobID)
+					writeDebugLog(fmt.Sprintf("[OnComplete] Cleaned up callbacks for jobID: %s", jobID))
+				}
+				a.callbacksMutex.Unlock()
+			}
 
 			// If no custom callbacks and we have Wails context, emit events (GUI standalone mode)
 			// NEVER emit events if we're the service process (no Wails runtime)
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnComplete] Emitting Wails event (GUI mode)")
-				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
-					"success": success,
-					"message": message,
+				emit("backup:complete", map[string]interface{}{
+					"success":        success,
+					"message":        message,
+					"message_key":    msgKey,
+					"message_params": msgP,
 				})
 			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
 				writeDebugLog("[OnComplete] No callbacks/context (service or headless mode)")
 			}
 
-			// Add manual backup to history
+			// Add manual backup to history. Name reuses the SAME `comment`
+			// this function already resolved near the top (either the
+			// triggering job's real name, passed straight through as a
+			// parameter now, or the generic one-off fallback) — NOT a fresh
+			// scheduledJobNameOr() call here. This closure fires whenever the
+			// real backup actually finishes, which can be a long time after
+			// this function returned; by then, other concurrent Run
+			// Now/scheduled goroutines may have overwritten or cleared
+			// currentScheduledJobName several times over, so re-querying it
+			// here got the WRONG job's name (or the generic fallback) —
+			// found live 2026-09-27 stress-testing the queue feature.
+			// this is the ONLY history write for a standalone-mode scheduled
+			// job now (executeScheduledJob's own write is skipped in that mode,
+			// see scheduler.go), since this closure fires with the real,
+			// already-known outcome, unlike that earlier, necessarily-guessed
+			// write.
+			// One lookup, consumed exactly once — postActionsEntry is nil for
+			// a genuine one-off backup (empty key) or if the key was already
+			// taken. Race-free by construction: this key is unique to THIS
+			// specific run (registerPendingPostActions, app_types.go), not a
+			// single value other concurrent Run Now/scheduled goroutines
+			// could clobber before this closure gets around to reading it.
+			postActionsEntry := a.takePendingPostActions(postActionsKey)
+			resolvedTrigger := "oneoff"
+			if postActionsEntry != nil && postActionsEntry.trigger != "" {
+				resolvedTrigger = postActionsEntry.trigger
+			}
 			historyEntry := JobHistory{
-				ID:         fmt.Sprintf("%d", time.Now().Unix()),
-				Name:       fmt.Sprintf("Backup manuel - %s", backupID),
-				Timestamp:  time.Now().Format(time.RFC3339),
-				Status:     "success",
-				Message:    message,
-				BackupDirs: targetDirs,
-				BackupID:   backupID,
-				UseVSS:     useVSS,
+				ID:            fmt.Sprintf("%d", time.Now().Unix()),
+				Name:          comment,
+				Timestamp:     time.Now().Format(time.RFC3339),
+				Status:        "success",
+				Message:       message,
+				BackupDirs:    targetDirs,
+				BackupID:      backupID,
+				UseVSS:        useVSS,
+				Encryption:    encryptionLabel(pbsCfg.Crypt != nil),
+				BackupType:    backupType,
+				Trigger:       resolvedTrigger,
+				MessageKey:    msgKey,
+				MessageParams: msgP,
+			}
+			if backupType != "machine" {
+				historyEntry.ChangeDetection = changeDetectionLabel(changeMode)
+				historyEntry.ReusedFiles = paramUint(msgP, "reusedFiles")
+				historyEntry.ReusedBytes = paramUint(msgP, "reusedBytes")
 			}
 			if !success {
 				historyEntry.Status = "failed"
+				// A Stop is the user's choice, not a failure: Reports shows
+				// it as cancelled rather than with a red cross.
+				if isCancelledRun(message, msgKey) {
+					historyEntry.Status = "cancelled"
+				}
+			}
+			if postActionsEntry != nil && postActionsEntry.job != nil && backupType == "directory" {
+				readEveryFile, _ := msgP["readEveryFile"].(bool)
+				a.recordChangeDetectionOutcome(postActionsEntry.job.ID, success, readEveryFile)
 			}
 			if err := a.AddJobHistory(historyEntry); err != nil {
 				writeDebugLog(fmt.Sprintf("Warning: Failed to add manual backup to history: %v", err))
@@ -1424,32 +1263,36 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 					writeDebugLog(fmt.Sprintf("Saved %d backup directories to config", len(backupDirs)))
 				}
 			}
+
+			// Standalone-mode post-backup actions (email/run-app/exit/shutdown)
+			// for a scheduled job — nil for a genuine one-off backup.
+			if postActionsEntry != nil {
+				a.runPostBackupActions(*postActionsEntry.job, success, message, postActionsEntry.snapshotNoter())
+			}
+
+			if success {
+				a.ShowToastNotification("Backup Complete", comment, false)
+			} else {
+				a.ShowToastNotification("Backup Failed", fmt.Sprintf("%s: %s", comment, message), true)
+			}
+			a.RefreshIdleTooltip()
 		},
 	}
 
 	// Structured live stats + final structured result for the GUI (standalone mode).
 	// In the service process there is no Wails runtime, and the service-mode stats
 	// bridge is a separate backlog item (service-mode progress), so we only emit here.
+	opts.OnFile = func(path string) {
+		emit("backup:file", map[string]interface{}{"path": path})
+	}
 	opts.OnStats = func(stats *BackupProgressStats) {
 		if a.isServiceProcess || a.ctx == nil {
 			return
 		}
-		runtime.EventsEmit(a.ctx, "backup:stats", map[string]interface{}{
-			"percent":      stats.Percent * 100,
-			"bytesDone":    stats.BytesDone,
-			"bytesTotal":   stats.BytesTotal,
-			"newChunks":    stats.NewChunks,
-			"reusedChunks": stats.ReusedChunks,
-			"failedChunks": stats.FailedChunks,
-			"currentDir":   stats.CurrentDir,
-			"message":      stats.Message,
-		})
+		emit("backup:stats", stats.event())
 	}
 	opts.OnResult = func(status *BackupStatus) {
-		if a.isServiceProcess || a.ctx == nil {
-			return
-		}
-		runtime.EventsEmit(a.ctx, "backup:result", map[string]interface{}{
+		emit("backup:result", map[string]interface{}{
 			"outcome":      string(status.Outcome),
 			"newChunks":    status.NewChunks,
 			"reusedChunks": status.ReusedChunks,
@@ -1460,45 +1303,91 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		})
 	}
 
-	// Run backup inline (in background goroutine to not block UI)
-	go func() {
-		var err error
-		if backupType == "machine" {
-			// "host", not "vm": "vm" makes machinebackuplib generate a Proxmox VE
-			// VM config, which needs a numeric VMID as the backup ID. The GUI
-			// defaults to a hostname-style ID, so a "vm" backup transferred
-			// every disk and then failed at that last step. "host" has no such
-			// requirement and is the right type for a plain disk backup.
-			opts.BackupType = "host"
-			err = RunBackupInline(opts)
-		} else {
-			opts.BackupType = "host"
-			err = RunBackupInline(opts)
-		}
-		if err != nil {
-			writeDebugLog(fmt.Sprintf("Backup error: %v", err))
-		}
-	}()
+	// "host" (not "vm") for a machine backup too — found 2026-09-24: "vm"
+	// tells machinebackuplib to also generate a Proxmox VE VM config, which
+	// requires the backup-id to be a NUMERIC VMID (strconv.ParseInt). Every
+	// machine backup here defaults to a hostname-style backup-id, same as
+	// every other backup type, so it always failed at that exact last step —
+	// after successfully transferring the entire disk. "host" has no such
+	// requirement and is the right choice for a plain bare-metal backup (the
+	// Clonezilla/NBD restore path reads the raw disk chunks directly, not this
+	// VM config, so nothing about that workflow needs "vm" type). The "vm"
+	// type, with its own numeric-VMID input on the one-off form, is reached
+	// via StartMachineBackup instead: see machineSnapshotType. This
+	// StartBackup path always stays "host".
+	opts.BackupType = "host"
+	kind := opBackup
+	if backupType == "machine" {
+		kind = opMachine
+	}
+
+	// Run backup inline (in background goroutine to not block UI), once its
+	// turn comes — see operation_queue.go.
+	go a.runLocalBackup(run, opts, kind, runDone)
 
 	return nil
 }
 
+// runLocalBackup waits for the run's turn (operation_queue.go), runs it and
+// ends it. A Stop while it waits ends it as cancelled, with the usual
+// completion (history entry, the set's actions after a backup). runDone (may
+// be nil) is closed at the very end, for the scheduler.
+func (a *App) runLocalBackup(run *backupRun, opts BackupOptions, kind opKind, runDone chan struct{}) {
+	defer func() {
+		run.end()
+		a.refreshRunningTooltip()
+		if runDone != nil {
+			close(runDone)
+		}
+	}()
+	req := opRequest{name: run.name, kind: kind,
+		group: opGroupKey(opts.BaseURL, opts.Datastore, opts.Namespace, opts.BackupType, opts.BackupID)}
+	h, err := acquireOperation(run.ctx, req, func(waitingFor string) {
+		run.queued.Store(true)
+		writeDebugLog(fmt.Sprintf("Queued: %s, waiting for %s", run.name, waitingFor))
+		if opts.OnProgress != nil {
+			opts.OnProgress(0.01, queuedMessage(run.name, waitingFor))
+		}
+	})
+	run.queued.Store(false)
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("%s was stopped while it waited its turn", run.name))
+		if opts.OnComplete != nil {
+			opts.OnComplete(false, "Backup cancelled by user", MsgBackupCancelled, nil)
+		}
+		return
+	}
+	defer h.Release()
+	a.refreshRunningTooltip()
+
+	opts.Run = run
+	if err := RunBackupInline(opts); err != nil {
+		writeDebugLog(fmt.Sprintf("Backup error (%s): %v", run.name, err))
+	}
+}
+
 // startMachineBackupDirect performs machine backup directly (standalone mode)
-func (a *App) startMachineBackupDirect(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsID string, backupKind string) error {
+func (a *App) startMachineBackupDirect(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	// Use hostname as fallback if backupID is empty
 	if backupID == "" {
 		backupID = a.GetHostname()
 		writeDebugLog(fmt.Sprintf("[Backup ID] Empty backup-id, using hostname: %s", backupID))
 	}
 
+	// Resolve the PBS comment — see startBackupDirect's matching comment for
+	// the full reasoning (same precedence, machine-backup's own fallback text).
+	if comment == "" {
+		comment = fmt.Sprintf("Backup machine - %s", backupID)
+	}
+
 	// Sanitize backup ID for logging
 	sanitizedID := security.SanitizeForLog(backupID)
-	writeDebugLog(fmt.Sprintf("[Standalone Mode] StartMachineBackup: type=%s, id=%s, vss=%v, compression=%s, pbsID=%s, backupKind=%s, device_count=%d, devs=%v",
-		backupType, sanitizedID, useVSS, compression, pbsID, backupKind, len(backupDevices), backupDevices))
+	writeDebugLog(fmt.Sprintf("[Standalone Mode] StartMachineBackup: type=%s, id=%s, vss=%v, compression=%s, pbsServerID=%s, device_count=%d, devs=%v",
+		backupType, sanitizedID, useVSS, compression, pbsServerID, len(backupDevices), backupDevices))
 
 	// Validate BackupID (now guaranteed to be non-empty)
 	if err := security.ValidateBackupID(backupID); err != nil {
-		return fmt.Errorf("backup ID invalide: %w", err)
+		return fmt.Errorf("invalid backup ID: %w", err)
 	}
 
 	// Validate backup devices
@@ -1508,20 +1397,11 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		}
 	}
 
-	// Map the saved selection (\\.\PhysicalDriveN) onto the disks present now,
-	// through the pins recorded by earlier runs (diskpin.go), and refresh those
-	// pins. Also dedupes two saved entries that resolve to one disk.
-	resolvedDevices, err := a.resolveMachineBackupDevices(backupDevices)
-	if err != nil {
-		return err
-	}
-	backupDevices = resolvedDevices
-
 	// Note: Admin check for VSS is done in StartMachineBackup() routing layer
 	// If we're here via service, we're already running as LocalSystem
 
-	// Resolve PBS fields from the specified PBS server (or default), minting a fresh ticket (u/p).
-	pbsCfg, err := a.resolveBackupPBS(pbsID)
+	// Resolve PBS fields — a specific server if the caller named one, else the default.
+	pbsCfg, err := a.resolvePBS(pbsServerID)
 	if err != nil {
 		return err
 	}
@@ -1533,8 +1413,28 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 
 	// Unlock the configured encryption key, if any, so every chunk this
 	// backup uploads is AES-256-GCM and the manifest is signed.
-	if err := pbsCfg.loadCryptConfig(); err != nil {
+	// A timer or startup run has nobody to answer a passphrase dialog, so it
+	// may only use a stored or already-entered-this-session passphrase and
+	// otherwise fails straight away.
+	cryptUnlock := pbsCfg.loadCryptConfig
+	if a.isUnattendedRun(postActionsKey) {
+		cryptUnlock = func() error { return pbsCfg.unlockCrypt(false) }
+	}
+	if err := cryptUnlock(); err != nil {
 		return err
+	}
+
+	// The run and its events: see startBackupDirect.
+	run := newBackupRun(comment, "machine", backupID)
+	runDone := a.localRunDone(postActionsKey)
+	emit := func(event string, data map[string]interface{}) {
+		if a.isServiceProcess || a.ctx == nil {
+			return
+		}
+		data["runId"] = run.id
+		data["name"] = comment
+		data["backupId"] = backupID
+		runtime.EventsEmit(a.ctx, event, data)
 	}
 
 	// Prepare backup options
@@ -1549,33 +1449,42 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		CertFingerprint: pbsCfg.CertFingerprint,
 		BackupObjects:   backupDevices,
 		BackupID:        backupID,
+		Comment:         comment,
 		Kind:            "machine",
-		BackupType:      backupKind, // "host" or "vm" based on user selection
-		UseVSS:          useVSS,
-		Compression:     compression,
-		ExcludeList:     []string{}, // No exclude list for machine backups
-		DisableSplit:    a.config.DisableSplit,
-		SplitSizeBytes:  a.config.SplitSizeBytes(),
-		Crypt:           pbsCfg.Crypt,
-		// Use the backup context that was set via SetBackupContext for this job
-		Ctx: func() context.Context {
-			a.backupCtxMu.RLock()
-			defer a.backupCtxMu.RUnlock()
-			return a.backupCtx
-		}(),
+		// "host" unless the GUI explicitly asked for the "vm"
+		// snapshot type (backupType "machine-vm", numeric VMID in backupID):
+		// see machineSnapshotType.
+		BackupType:     machineSnapshotType(backupType),
+		UseVSS:         useVSS,
+		Compression:    compression,
+		ExcludeList:    []string{}, // No exclude list for machine backups
+		DisableSplit:   a.config.DisableSplit,
+		SplitSizeBytes: a.config.SplitSizeBytes(),
+		Crypt:          pbsCfg.Crypt,
+		ReadFreeSpace:  a.runReadFreeSpace(postActionsKey),
+		OnSnapshot:     func(n snapshotNoter) { a.setRunNoter(postActionsKey, n) },
 		OnProgress: func(percent float64, message string) {
 			writeDebugLog(fmt.Sprintf("Progress: %.1f%% - %s", percent*100, message))
 
-			// Forward to the API server's registered callbacks (service mode).
-			// The callback contract is a 0.0-1.0 fraction; the server scales it
-			// to 0-100 for its progress map.
-			hasCallbacks := a.dispatchProgress(percent, message)
+			// Check if there's a registered callback for any job (service mode)
+			a.callbacksMutex.RLock()
+			hasCallbacks := len(a.callbacksMap) > 0
+			if hasCallbacks {
+				// Call all registered callbacks (typically just one per backup)
+				for jobID, callbacks := range a.callbacksMap {
+					if callbacks.onProgress != nil {
+						writeDebugLog(fmt.Sprintf("[OnProgress] Calling custom callback for jobID: %s", jobID))
+						callbacks.onProgress(jobID, percent*100, message)
+					}
+				}
+			}
+			a.callbacksMutex.RUnlock()
 
 			// If no custom callbacks and we have Wails context, emit events (GUI standalone mode)
 			// NEVER emit events if we're the service process (no Wails runtime)
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnProgress] Emitting Wails event (GUI mode)")
-				runtime.EventsEmit(a.ctx, "backup:progress", map[string]interface{}{
+				emit("backup:progress", map[string]interface{}{
 					"percent": percent * 100,
 					"message": message,
 				})
@@ -1583,68 +1492,114 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 				writeDebugLog("[OnProgress] No callbacks/context (service or headless mode)")
 			}
 		},
-		OnComplete: func(success bool, message string) {
+		OnComplete: func(success bool, message string, msgKey MessageKey, msgP msgParams) {
 			writeDebugLog(fmt.Sprintf("Machine backup complete: success=%v, %s", success, message))
 
-			// Forward to the API server's registered callbacks (service mode)
-			// and clean them up once the run is terminal.
-			hasCallbacks := a.dispatchComplete(success, message)
+			// Check if there's a registered callback for any job (service mode)
+			a.callbacksMutex.RLock()
+			hasCallbacks := len(a.callbacksMap) > 0
+			var jobIDsToCleanup []string
+			if hasCallbacks {
+				// Call all registered callbacks and collect jobIDs for cleanup
+				for jobID, callbacks := range a.callbacksMap {
+					if callbacks.onComplete != nil {
+						writeDebugLog(fmt.Sprintf("[OnComplete] Calling custom callback for jobID: %s", jobID))
+						callbacks.onComplete(jobID, success, message)
+					}
+					jobIDsToCleanup = append(jobIDsToCleanup, jobID)
+				}
+			}
+			a.callbacksMutex.RUnlock()
+
+			// Clean up completed callbacks
+			if len(jobIDsToCleanup) > 0 {
+				a.callbacksMutex.Lock()
+				for _, jobID := range jobIDsToCleanup {
+					delete(a.callbacksMap, jobID)
+					writeDebugLog(fmt.Sprintf("[OnComplete] Cleaned up callbacks for jobID: %s", jobID))
+				}
+				a.callbacksMutex.Unlock()
+			}
 
 			// If no custom callbacks and we have Wails context, emit events (GUI standalone mode)
 			// NEVER emit events if we're the service process (no Wails runtime)
 			if !hasCallbacks && !a.isServiceProcess && a.ctx != nil {
 				writeDebugLog("[OnComplete] Emitting Wails event (GUI mode)")
-				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
-					"success": success,
-					"message": message,
+				emit("backup:complete", map[string]interface{}{
+					"success":        success,
+					"message":        message,
+					"message_key":    msgKey,
+					"message_params": msgP,
 				})
 			} else if !hasCallbacks && (a.isServiceProcess || a.ctx == nil) {
 				writeDebugLog("[OnComplete] No callbacks/context (service or headless mode)")
 			}
 
-			// Add manual backup to history
+			// Add manual backup to history. Reuses the already-resolved
+			// `comment` variable, not a fresh scheduledJobNameOr() call — see
+			// the directory-backup OnComplete's matching comment above
+			// (startBackupDirect) for the full reasoning.
+			postActionsEntry := a.takePendingPostActions(postActionsKey)
+			resolvedTrigger := "oneoff"
+			if postActionsEntry != nil && postActionsEntry.trigger != "" {
+				resolvedTrigger = postActionsEntry.trigger
+			}
 			historyEntry := JobHistory{
-				ID:         fmt.Sprintf("%d", time.Now().Unix()),
-				Name:       fmt.Sprintf("Backup machine - %s", backupID),
-				Timestamp:  time.Now().Format(time.RFC3339),
-				Status:     "success",
-				Message:    message,
-				BackupDirs: backupDevices,
-				BackupID:   backupID,
-				UseVSS:     useVSS,
+				ID:            fmt.Sprintf("%d", time.Now().Unix()),
+				Name:          comment,
+				Timestamp:     time.Now().Format(time.RFC3339),
+				Status:        "success",
+				Message:       message,
+				BackupDirs:    backupDevices,
+				BackupID:      backupID,
+				UseVSS:        useVSS,
+				Encryption:    encryptionLabel(pbsCfg.Crypt != nil),
+				BackupType:    "machine",
+				Trigger:       resolvedTrigger,
+				MessageKey:    msgKey,
+				MessageParams: msgP,
 			}
 			if !success {
 				historyEntry.Status = "failed"
+				// A Stop is the user's choice, as for a folder backup above.
+				if isCancelledRun(message, msgKey) {
+					historyEntry.Status = "cancelled"
+				}
 			}
 			if err := a.AddJobHistory(historyEntry); err != nil {
 				writeDebugLog(fmt.Sprintf("Warning: Failed to add manual backup to history: %v", err))
 			}
+
+			// Standalone-mode post-backup actions — see the directory-backup
+			// OnComplete's matching comment above (startBackupDirect) for the
+			// full reasoning.
+			if postActionsEntry != nil {
+				a.runPostBackupActions(*postActionsEntry.job, success, message, postActionsEntry.snapshotNoter())
+			}
+
+			if success {
+				a.ShowToastNotification("Backup Complete", comment, false)
+			} else {
+				a.ShowToastNotification("Backup Failed", fmt.Sprintf("%s: %s", comment, message), true)
+			}
+			a.RefreshIdleTooltip()
 		},
 	}
 
 	// Structured live stats + final structured result for the GUI (standalone mode).
 	// In the service process there is no Wails runtime, and the service-mode stats
 	// bridge is a separate backlog item (service-mode progress), so we only emit here.
+	opts.OnFile = func(path string) {
+		emit("backup:file", map[string]interface{}{"path": path})
+	}
 	opts.OnStats = func(stats *BackupProgressStats) {
 		if a.isServiceProcess || a.ctx == nil {
 			return
 		}
-		runtime.EventsEmit(a.ctx, "backup:stats", map[string]interface{}{
-			"percent":      stats.Percent * 100,
-			"bytesDone":    stats.BytesDone,
-			"bytesTotal":   stats.BytesTotal,
-			"newChunks":    stats.NewChunks,
-			"reusedChunks": stats.ReusedChunks,
-			"failedChunks": stats.FailedChunks,
-			"currentDir":   stats.CurrentDir,
-			"message":      stats.Message,
-		})
+		emit("backup:stats", stats.event())
 	}
 	opts.OnResult = func(status *BackupStatus) {
-		if a.isServiceProcess || a.ctx == nil {
-			return
-		}
-		runtime.EventsEmit(a.ctx, "backup:result", map[string]interface{}{
+		emit("backup:result", map[string]interface{}{
 			"outcome":      string(status.Outcome),
 			"newChunks":    status.NewChunks,
 			"reusedChunks": status.ReusedChunks,
@@ -1655,127 +1610,14 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		})
 	}
 
-	// Run backup inline (in background goroutine to not block UI)
-	go func() {
-		err := RunBackupInline(opts)
-		if err != nil {
-			writeDebugLog(fmt.Sprintf("Machine backup error: %v", err))
-		}
-	}()
+	// Run backup inline (in background goroutine to not block UI), once its
+	// turn comes — see operation_queue.go.
+	go a.runLocalBackup(run, opts, opMachine, runDone)
 
 	return nil
 }
 
 // ==================== RESTORE ====================
-
-// resolveRestorePBS picks the PBS server to restore from. When pbsID is empty
-// the default PBS server is used. Falls back to legacy single-server fields
-// when no multi-PBS entry is configured.
-func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
-	var cfg *Config
-
-	// In service mode the GUI doesn't hold PBS credentials — it asks the
-	// service for a short-lived ticket and uses that for restore/listing.
-	if a.isDelegatedToService() {
-		ticket, err := a.apiClient.MintPBSTicket(pbsID)
-		if err != nil {
-			return nil, fmt.Errorf("service failed to mint PBS ticket: %w", err)
-		}
-		// Build a Config with the ticket + non-secret connection params.
-		cfg := &Config{
-			BaseURL:           ticket.BaseURL,
-			CertFingerprint:   ticket.CertFingerprint,
-			Datastore:         ticket.Datastore,
-			Namespace:         ticket.Namespace,
-			Ticket:            ticket.Ticket,
-			CSRFToken:         ticket.CSRFToken,
-			EncryptionKeyFile: ticket.EncryptionKeyFile,
-		}
-		// A service older than the GUI does not send the key path: fall back
-		// to the hydrated (sanitized) config, which keeps it.
-		if cfg.EncryptionKeyFile == "" {
-			if srv, err := a.config.GetPBSServer(pbsID); err == nil {
-				cfg.EncryptionKeyFile = srv.EncryptionKeyFile
-			}
-		}
-		// Chunks are decrypted here, in the GUI process: without this every
-		// read of an encrypted snapshot failed with "no encryption key was
-		// provided".
-		if err := cfg.loadCryptConfig(); err != nil {
-			return nil, err
-		}
-		return cfg, nil
-	}
-
-	if pbsID != "" {
-		pbs, err := a.config.GetPBSServer(pbsID)
-		if err != nil {
-			return nil, err
-		}
-		cfg = pbs.ToConfig()
-	} else {
-		effective := a.config.EffectivePBS()
-		if err := effective.Validate(); err != nil {
-			return nil, err
-		}
-		cfg = effective
-	}
-	cfg, err := a.withAuth(cfg)
-	if err != nil {
-		return nil, err
-	}
-	// An encrypted snapshot's chunks are unreadable without the key, so fail
-	// here with a clear message rather than deep inside the chunk fetcher.
-	if err := cfg.loadCryptConfig(); err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
-
-// resolveBackupPBS picks the PBS server to use for backup operations.
-// When pbsID is empty the default PBS server is used.
-// Falls back to legacy single-server fields when no multi-PBS entry is configured.
-func (a *App) resolveBackupPBS(pbsID string) (*Config, error) {
-	var cfg *Config
-
-	// In service mode the GUI doesn't hold PBS credentials — it asks the
-	// service for a short-lived ticket and uses that for backup.
-	if a.isDelegatedToService() {
-		ticket, err := a.apiClient.MintPBSTicket(pbsID)
-		if err != nil {
-			return nil, fmt.Errorf("service failed to mint PBS ticket: %w", err)
-		}
-		// Build a Config with the ticket + non-secret connection params.
-		cfg := &Config{
-			BaseURL:         ticket.BaseURL,
-			CertFingerprint: ticket.CertFingerprint,
-			Datastore:       ticket.Datastore,
-			Namespace:       ticket.Namespace,
-			Ticket:          ticket.Ticket,
-			CSRFToken:       ticket.CSRFToken,
-		}
-		return cfg, nil
-	}
-
-	if pbsID != "" {
-		pbs, err := a.config.GetPBSServer(pbsID)
-		if err != nil {
-			return nil, err
-		}
-		cfg = pbs.ToConfig()
-	} else {
-		effective := a.config.EffectivePBS()
-		if err := effective.Validate(); err != nil {
-			return nil, err
-		}
-		cfg = effective
-	}
-	cfg, err := a.withAuth(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
 
 // ListSnapshots lists available snapshots on a PBS server, optionally filtered
 // by backup ID (partial match supports split backups).
@@ -1785,7 +1627,7 @@ func (a *App) resolveBackupPBS(pbsID string) (*Config, error) {
 func (a *App) ListSnapshots(pbsID, backupID string) ([]map[string]interface{}, error) {
 	writeDebugLog(fmt.Sprintf("ListSnapshots(pbs=%s, backupID=%s)", pbsID, backupID))
 
-	cfg, err := a.resolveRestorePBS(pbsID)
+	cfg, err := a.resolvePBS(pbsID)
 	if err != nil {
 		return nil, err
 	}
@@ -1794,7 +1636,7 @@ func (a *App) ListSnapshots(pbsID, backupID string) ([]map[string]interface{}, e
 		cfg.Datastore, cfg.Namespace, cfg.CertFingerprint, backupID)
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("ListSnapshotsInline failed: %v", err))
-		return nil, fmt.Errorf("échec de la liste des snapshots: %v", err)
+		return nil, fmt.Errorf("failed to list snapshots: %v", err)
 	}
 
 	result := make([]map[string]interface{}, 0, len(snaps))
@@ -1806,6 +1648,9 @@ func (a *App) ListSnapshots(pbsID, backupID string) ([]map[string]interface{}, e
 			"time":        s.BackupTime.Format("2006-01-02 15:04:05"),
 			"unix":        s.BackupTime.Unix(),
 			"files":       s.Files,
+			"size":        s.Size,
+			"owner":       s.Owner,
+			"protected":   s.Protected,
 		})
 	}
 	writeDebugLog(fmt.Sprintf("Returning %d snapshots", len(result)))
@@ -1828,7 +1673,7 @@ func (a *App) ListSnapshotContents(pbsID, backupID string, snapshotUnix int64, f
 		return nil, err
 	}
 	if backupID == "" {
-		return nil, fmt.Errorf("backup ID requis")
+		return nil, fmt.Errorf("backup ID required")
 	}
 
 	opts := RestoreOptions{
@@ -1862,7 +1707,7 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 		return nil, err
 	}
 	if backupID == "" {
-		return nil, fmt.Errorf("backup ID requis")
+		return nil, fmt.Errorf("backup ID required")
 	}
 
 	opts := RestoreOptions{
@@ -1894,25 +1739,25 @@ func (a *App) GetSnapshotMeta(pbsID, backupID string, snapshotUnix int64) (*Back
 //
 // includePaths uses archive-style paths (forward slash). When empty the entire
 // snapshot is restored. restoreACLs (NTFS ACLs/attributes on Windows, POSIX
-// ACLs/xattrs on Linux) and restoreADS (alternate data streams and NTFS
-// extended attributes, Windows) take effect; timestamps are always restored.
+// ACLs/xattrs on Linux), restoreADS (alternate data streams and NTFS extended
+// attributes, Windows) and timestamps all take effect.
 //
 // Progress is streamed to the frontend via the "restore:progress" event;
 // completion via "restore:complete".
 func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string,
-	includePaths []string, allowCrossHost, restoreACLs, restoreADS, restoreTimestamps, overwrite bool) error {
-	writeDebugLog(fmt.Sprintf("RestoreSnapshot(pbs=%s, backupID=%s, snap=%s, mode=%s, dest=%s, includes=%d, crossHost=%v, acl=%v, ads=%v, ts=%v, overwrite=%v)",
-		pbsID, backupID, snapshotID, mode, destPath, len(includePaths), allowCrossHost, restoreACLs, restoreADS, restoreTimestamps, overwrite))
+	includePaths []string, allowCrossHost, restoreACLs, restoreADS, restoreTimestamps, overwrite, verifyAfterRestore bool) error {
+	writeDebugLog(fmt.Sprintf("RestoreSnapshot(pbs=%s, backupID=%s, snap=%s, mode=%s, dest=%s, includes=%d, crossHost=%v, acl=%v, ads=%v, ts=%v, overwrite=%v, verify=%v)",
+		pbsID, backupID, snapshotID, mode, destPath, len(includePaths), allowCrossHost, restoreACLs, restoreADS, restoreTimestamps, overwrite, verifyAfterRestore))
 
 	cfg, err := a.resolveRestorePBS(pbsID)
 	if err != nil {
 		return err
 	}
 	if backupID == "" {
-		return fmt.Errorf("backup ID requis")
+		return fmt.Errorf("backup ID required")
 	}
 	if snapshotID == "" {
-		return fmt.Errorf("ID du snapshot requis")
+		return fmt.Errorf("snapshot ID required")
 	}
 
 	restoreMode := RestoreMode(mode)
@@ -1924,52 +1769,129 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 	// derives the target from the backup metadata sidecar.
 	if restoreMode != RestoreModeOriginal {
 		if destPath == "" {
-			return fmt.Errorf("chemin de destination requis")
+			return fmt.Errorf("destination path required")
 		}
 		if err := security.ValidatePath(destPath); err != nil {
-			return fmt.Errorf("chemin de destination invalide: %w", err)
+			return fmt.Errorf("invalid destination path: %w", err)
 		}
 	}
 
 	timestamp, err := time.Parse("2006-01-02T15:04:05Z", snapshotID)
 	if err != nil {
-		return fmt.Errorf("ID de snapshot invalide: %v", err)
+		return fmt.Errorf("invalid snapshot ID: %v", err)
 	}
 
+	// Reused both for the progress card's own title (so it's clear WHICH
+	// restore is running when this card is the only one on screen) and for
+	// the queued-behind-this-one message another operation would show.
+	restoreLabel := fmt.Sprintf("Restore of %s @ %s", backupID, snapshotID)
+
 	emit := func(percent float64, message string) {
+		markRestoreProgress()
 		if a.ctx == nil {
 			return
 		}
 		runtime.EventsEmit(a.ctx, "restore:progress", map[string]interface{}{
 			"percent": percent,
 			"message": message,
+			"name":    restoreLabel,
 		})
 	}
 
 	opts := RestoreOptions{
-		BaseURL:           cfg.BaseURL,
-		AuthID:            cfg.AuthID,
-		Secret:            cfg.Secret,
-		Ticket:            cfg.Ticket,
-		CSRFToken:         cfg.CSRFToken,
-		Datastore:         cfg.Datastore,
-		Namespace:         cfg.Namespace,
-		CertFingerprint:   cfg.CertFingerprint,
-		BackupID:          backupID,
-		SnapshotTime:      timestamp,
-		DestPath:          destPath,
-		Mode:              restoreMode,
-		AllowCrossHost:    allowCrossHost,
-		IncludePaths:      includePaths,
-		Overwrite:         overwrite,
-		RestoreACLs:       restoreACLs,
-		RestoreADS:        restoreADS,
-		RestoreTimestamps: restoreTimestamps,
-		Crypt:             cfg.Crypt,
-		OnProgress:        emit,
+		BaseURL:            cfg.BaseURL,
+		AuthID:             cfg.AuthID,
+		Secret:             cfg.Secret,
+		Ticket:             cfg.Ticket,
+		CSRFToken:          cfg.CSRFToken,
+		Datastore:          cfg.Datastore,
+		Namespace:          cfg.Namespace,
+		CertFingerprint:    cfg.CertFingerprint,
+		BackupID:           backupID,
+		SnapshotTime:       timestamp,
+		DestPath:           destPath,
+		Mode:               restoreMode,
+		AllowCrossHost:     allowCrossHost,
+		IncludePaths:       includePaths,
+		Overwrite:          overwrite,
+		RestoreACLs:        restoreACLs,
+		SkipStreams:        !restoreADS,
+		KeepNewTimes:       !restoreTimestamps,
+		Crypt:              cfg.Crypt,
+		OnProgress:         emit,
+		ParallelExtraction: a.config.ParallelRestore,
+		VerifyAfterRestore: verifyAfterRestore,
+	}
+	var fileEmitMu sync.Mutex
+	var lastFileEmit time.Time
+	opts.OnFile = func(path string) {
+		fileEmitMu.Lock()
+		if time.Since(lastFileEmit) < 200*time.Millisecond {
+			fileEmitMu.Unlock()
+			return
+		}
+		lastFileEmit = time.Now()
+		fileEmitMu.Unlock()
+		if a.ctx == nil {
+			return
+		}
+		runtime.EventsEmit(a.ctx, "restore:file", map[string]interface{}{"path": path})
+	}
+	opts.OnStage = func(stage, detail string) {
+		markRestoreProgress()
+		if a.ctx == nil {
+			return
+		}
+		runtime.EventsEmit(a.ctx, "restore:stage", map[string]interface{}{
+			"stage":  stage,
+			"detail": detail,
+		})
+	}
+
+	// Structured live stats for the GUI's restore transfer-rate display,
+	// mirroring the backup side's OnStats/"backup:stats" pair above.
+	opts.OnStats = func(stats *RestoreProgressStats) {
+		markRestoreProgress()
+		if a.ctx == nil {
+			return
+		}
+		runtime.EventsEmit(a.ctx, "restore:stats", map[string]interface{}{
+			"bytesDone":      stats.BytesDone,
+			"bytesTotal":     stats.BytesTotal,
+			"currentArchive": stats.CurrentArchive,
+		})
+	}
+
+	// Queues behind any backup/restore already running in this process — see
+	// operation_queue.go. markRestoreStarted (and the stall watchdog's clock)
+	// only start once this restore actually begins, not while it's waiting
+	// its turn — a long queue wait is expected, not a stall.
+	var restoredFiles int
+	var restoredBytes int64
+	opts.OnSummary = func(files, dirs int, bytes int64) {
+		restoredFiles, restoredBytes = files, bytes
+	}
+	var verifiedFiles int
+	var verifyFailures []string
+	opts.OnVerifySummary = func(verified int, failures []string) {
+		verifiedFiles, verifyFailures = verified, failures
 	}
 
 	go func() {
+		// One restore at a time, and never beside a backup of the same group.
+		release := acquireOperationSlot(opRequest{name: restoreLabel, kind: opRestore,
+			group: opGroupKey(cfg.BaseURL, cfg.Datastore, cfg.Namespace, "host", backupID)}, func(waitingFor string) {
+			emit(0.01, queuedMessage(restoreLabel, waitingFor))
+		})
+		defer func() {
+			release()
+			a.refreshRunningTooltip()
+		}()
+		a.UpdateTrayTooltip(fmt.Sprintf("Restoring: %s", restoreLabel))
+
+		markRestoreStarted()
+		defer markRestoreDone()
+		restoreStart := time.Now()
 		// A restore can fail in surprising ways (corrupt archive, disk full).
 		// Recover so a panic surfaces as an error in the UI instead of taking
 		// the whole GUI process down.
@@ -1984,58 +1906,111 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 			err = RestoreSnapshotInline(opts)
 		}()
 		success := err == nil
-		msg := "Restauration terminée"
+		msg := "Restore completed"
+		msgKey := MsgRestoreCompleted
+		var msgP msgParams
 		if err != nil {
-			msg = err.Error()
 			writeDebugLog(fmt.Sprintf("Restore failed: %v", err))
+			msgKey = MsgRestoreFailed
+			msgP = msgParams{"error": err.Error()}
+			msg = fmt.Sprintf("Restore failed: %s", err.Error())
 		}
+		restoreLevel := "info"
+		if !success {
+			restoreLevel = "error"
+		}
+		LogMessage("Restore", restoreLevel, msg, "", msgKey, msgP)
+		if verifyAfterRestore {
+			if len(verifyFailures) > 0 {
+				LogMessage("Restore", "error", fmt.Sprintf("Verification: %d restored file(s) do NOT match the snapshot (%d matched)", len(verifyFailures), verifiedFiles), "", "", nil)
+				for i, f := range verifyFailures {
+					if i >= 20 {
+						LogMessage("Restore", "error", fmt.Sprintf("... and %d more (see the backup log)", len(verifyFailures)-i), "", "", nil)
+						break
+					}
+					LogMessage("Restore", "error", "Verify failed: "+f, "", "", nil)
+				}
+			} else if success {
+				LogMessage("Restore", "info", fmt.Sprintf("Verification: all %d restored files match the snapshot", verifiedFiles), "", "", nil)
+			}
+		}
+
+		// Record the run on the Reports tab (written before restore:complete
+		// so the page's refresh on that event already sees it).
+		histStatus := "success"
+		if !success {
+			histStatus = "failed"
+			if strings.Contains(strings.ToLower(err.Error()), "cancel") {
+				histStatus = "cancelled"
+			}
+		}
+		histDest := destPath
+		if restoreMode == RestoreModeOriginal {
+			histDest = "(original location)"
+		}
+		histPaths := includePaths
+		if len(histPaths) > 50 {
+			histPaths = histPaths[:50]
+		}
+		if herr := a.appendJobHistory(JobHistory{
+			ID:                  fmt.Sprintf("restore-%d", restoreStart.UnixNano()),
+			Name:                restoreLabel,
+			NameKey:             "reportNameRestore",
+			NameParams:          msgParams{"id": backupID, "snapshot": snapshotID},
+			Timestamp:           time.Now().Format(time.RFC3339),
+			Status:              histStatus,
+			Message:             msg,
+			MessageKey:          msgKey,
+			MessageParams:       msgP,
+			BackupID:            backupID,
+			Kind:                "restore",
+			RestoreSnapshot:     snapshotID,
+			RestoreDest:         histDest,
+			RestorePaths:        histPaths,
+			RestoreFiles:        restoredFiles,
+			RestoreBytes:        restoredBytes,
+			RestoreVerified:     verifiedFiles,
+			RestoreVerifyFailed: len(verifyFailures),
+			RestoreVerifyRan:    verifyAfterRestore && (success || len(verifyFailures) > 0),
+			DurationSec:         int(time.Since(restoreStart).Seconds()),
+		}); herr != nil {
+			writeDebugLog(fmt.Sprintf("Restore: failed to record Reports history: %v", herr))
+		}
+
 		if a.ctx != nil {
 			runtime.EventsEmit(a.ctx, "restore:complete", map[string]interface{}{
-				"success": success,
-				"message": msg,
+				"success":        success,
+				"message":        msg,
+				"message_key":    msgKey,
+				"message_params": msgP,
+				"verify_ran":     verifyAfterRestore,
+				"verified":       verifiedFiles,
+				"verify_failed":  len(verifyFailures),
 			})
 		}
+
+		if success {
+			toastBody := restoreLabel
+			if verifyAfterRestore {
+				toastBody = fmt.Sprintf("%s (%d files verified)", restoreLabel, verifiedFiles)
+			}
+			a.ShowToastNotification("Restore Complete", toastBody, false)
+		} else {
+			a.ShowToastNotification("Restore Failed", fmt.Sprintf("%s: %s", restoreLabel, msg), true)
+		}
+		a.RefreshIdleTooltip()
 	}()
 	return nil
 }
 
-// OpenDirectoryPicker opens a native folder picker so the user can choose a
-// directory. Returns "" if the dialog was cancelled.
+// OpenRestoreDestDialog opens a native folder picker so the user can choose
+// where to restore files. Returns "" if the dialog was cancelled.
 //
 // Hardened against a reported crash on the client: the native Windows folder
 // picker (IFileDialog) can fault when handed an empty/invalid initial folder,
 // so we seed DefaultDirectory with a path we know exists. A recover() turns any
 // Go-level panic into an error instead of taking the process down, and the
 // surrounding logging makes the next failure diagnosable from the debug log.
-func (a *App) OpenDirectoryPicker() (dir string, err error) {
-	if a.ctx == nil {
-		return "", fmt.Errorf("runtime non disponible")
-	}
-	if a.isServiceProcess {
-		writeDebugLog("OpenDirectoryPicker: native picker skipped in the headless service process")
-		return "", fmt.Errorf("sélecteur de dossier indisponible dans le service")
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("folder picker panic: %v", r)
-			writeDebugLog(fmt.Sprintf("CRITICAL: OpenDirectoryPicker panic: %v\n%s", r, debug.Stack()))
-		}
-	}()
-
-	defaultDir, herr := os.UserHomeDir()
-	if herr != nil || defaultDir == "" {
-		defaultDir = os.TempDir()
-	}
-
-	writeDebugLog(fmt.Sprintf("OpenDirectoryPicker: opening folder picker (default=%s)", defaultDir))
-	dir, err = runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:            "Choisir un dossier",
-		DefaultDirectory: defaultDir,
-	})
-	writeDebugLog(fmt.Sprintf("OpenDirectoryPicker: returned dir=%q err=%v", dir, err))
-	return dir, err
-}
-
 func (a *App) OpenRestoreDestDialog() (dir string, err error) {
 	if a.ctx == nil {
 		return "", fmt.Errorf("runtime non disponible")
@@ -2048,7 +2023,7 @@ func (a *App) OpenRestoreDestDialog() (dir string, err error) {
 	// the previous guard disabled the picker for every GUI user with a service).
 	if a.isServiceProcess {
 		writeDebugLog("OpenRestoreDestDialog: native picker skipped in the headless service process — use manual path entry")
-		return "", fmt.Errorf("sélecteur de dossier indisponible dans le service — saisissez le chemin de destination manuellement")
+		return "", fmt.Errorf("folder picker unavailable in service mode — enter the destination path manually")
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -2066,7 +2041,7 @@ func (a *App) OpenRestoreDestDialog() (dir string, err error) {
 
 	writeDebugLog(fmt.Sprintf("OpenRestoreDestDialog: opening folder picker (default=%s)", defaultDir))
 	dir, err = runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:            "Choisir le dossier de destination",
+		Title:            "Choose the destination folder",
 		DefaultDirectory: defaultDir,
 	})
 	writeDebugLog(fmt.Sprintf("OpenRestoreDestDialog: returned dir=%q err=%v", dir, err))
@@ -2135,4 +2110,32 @@ func (a *App) SearchFiles(pbsID, hostPrefix, query, mode string, fromUnix, toUni
 func (a *App) CancelSearch() {
 	writeDebugLog("CancelSearch requested")
 	CancelFileSearch()
+}
+
+// promptForPassphrase asks the user, through the frontend dialog, for the
+// passphrase of the key file at path, and blocks until they answer.
+func (a *App) promptForPassphrase(path, fingerprint, lastErr string) (string, error) {
+	id, ch := beginPassphrasePrompt(path, fingerprint, lastErr, func(payload map[string]any) {
+		runtime.EventsEmit(a.ctx, "encryption:passphrase-required", payload)
+	})
+	return waitPassphrase(id, ch)
+}
+
+// SubmitEncryptionPassphrase answers an encryption:passphrase-required event.
+// It returns "" on success, or the reason the passphrase was refused so the
+// dialog can stay open for another try.
+func (a *App) SubmitEncryptionPassphrase(id, passphrase string, cancel bool) string {
+	if err := submitPassphrase(id, passphrase, cancel); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// VerifyEncryptionKeyPassphrase checks a passphrase against a key file without
+// storing anything. It returns "" when the passphrase unlocks the key.
+func (a *App) VerifyEncryptionKeyPassphrase(path, passphrase string) string {
+	if err := verifyKeyPassphrase(strings.TrimSpace(path), passphrase); err != nil {
+		return err.Error()
+	}
+	return ""
 }

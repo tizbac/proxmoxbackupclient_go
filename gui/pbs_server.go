@@ -5,6 +5,61 @@ import (
 	"security"
 )
 
+// resolvePBS picks which configured PBS server to use — for a restore, or a
+// backup too. When pbsID is empty the default PBS server is used. Falls back
+// to legacy single-server fields when no multi-PBS entry is configured.
+// Shared (no build tag) so both the GUI and the service build resolve a
+// destination server identically — main.go's RestoreSnapshot/StartBackup and
+// app_service_stubs.go's StartBackup both call this same implementation.
+func (a *App) resolvePBS(pbsID string) (*Config, error) {
+	if pbsID != "" {
+		pbs, err := a.config.GetPBSServer(pbsID)
+		if err != nil {
+			return nil, err
+		}
+		return a.withAuth(pbs.ToConfig())
+	}
+	// A copy, never the app's own config: with a single legacy server
+	// EffectivePBS returns the config itself, and each run unlocks its key
+	// into the result (Crypt). Shared, a run whose key could not be unlocked
+	// cleared it for another starting at the same moment, which then
+	// uploaded unencrypted.
+	cp := *a.config.EffectivePBS()
+	cfg := &cp
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return a.withAuth(cfg)
+}
+
+// checkServiceKey applies checkKeyUsableByService to the server a service-routed
+// backup will use. It only reads the stored settings, never contacts the server.
+func (a *App) checkServiceKey(pbsID string) error {
+	cfg := a.config.EffectivePBS()
+	if pbsID != "" {
+		pbs, err := a.config.GetPBSServer(pbsID)
+		if err != nil {
+			return nil
+		}
+		cfg = pbs.ToConfig()
+	}
+	return checkKeyUsableByService(cfg.EncryptionKeyFile, cfg.EncryptionKeyPassphrase)
+}
+
+// resolveRestorePBS is resolvePBS plus unlocking the configured encryption
+// key. An encrypted snapshot's chunks are unreadable without it, so fail here
+// with a clear message rather than deep inside the chunk fetcher.
+func (a *App) resolveRestorePBS(pbsID string) (*Config, error) {
+	cfg, err := a.resolvePBS(pbsID)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.loadCryptConfig(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 // PBSServer represents a single Proxmox Backup Server configuration
 type PBSServer struct {
 	ID              string `json:"id"`   // Unique identifier (e.g., "pbs1", "default")
@@ -26,12 +81,16 @@ type PBSServer struct {
 	// runtime-only Config.Crypt. Left empty, backups to this server are
 	// unencrypted (and encrypted snapshots stored there cannot be restored).
 	EncryptionKeyFile string `json:"encryption_key_file,omitempty"`
-	Datastore         string `json:"datastore"`
-	Namespace         string `json:"namespace"`
-	Description       string `json:"description,omitempty"` // Optional description
-	IsOnline          bool   `json:"is_online,omitempty"`   // Connection status (updated by GUI)
-	SecretSet         bool   `json:"secret_set,omitempty"`  // M-04: set on sanitized copies so the UI knows a token exists without receiving it
-	PasswordSet       bool   `json:"password_set,omitempty"`
+	// EncryptionKeyPassphrase / ...Set / Clear: see the same fields on Config.
+	EncryptionKeyPassphrase      string `json:"encryption_key_passphrase,omitempty"`
+	EncryptionKeyPassphraseSet   bool   `json:"encryption_key_passphrase_set,omitempty"`
+	ClearEncryptionKeyPassphrase bool   `json:"clear_encryption_key_passphrase,omitempty"`
+	Datastore                    string `json:"datastore"`
+	Namespace                    string `json:"namespace"`
+	Description                  string `json:"description,omitempty"` // Optional description
+	IsOnline                     bool   `json:"is_online,omitempty"`   // Connection status (updated by GUI)
+	SecretSet                    bool   `json:"secret_set,omitempty"`  // M-04: set on sanitized copies so the UI knows a token exists without receiving it
+	PasswordSet                  bool   `json:"password_set,omitempty"`
 }
 
 // sanitized returns a copy with the secret and password stripped (SecretSet /
@@ -42,165 +101,86 @@ func (pbs *PBSServer) sanitized() *PBSServer {
 	c.SecretSet = pbs.Secret != ""
 	c.PasswordSet = pbs.Password != ""
 	c.Secret = ""
+	c.EncryptionKeyPassphraseSet = pbs.EncryptionKeyPassphrase != ""
+	c.EncryptionKeyPassphrase = ""
 	c.Password = "" // never hand the credentials to the frontend
 	return &c
 }
 
-// normalizeServerAuth picks the authentication method of a PBS server entry
-// and applies the "empty credential = keep the stored one" convention used by
-// the whole GUI↔service config round-trip: the frontend never receives the
-// stored secret/password, so it can only ever send "" (keep) or a newly typed
-// value (replace).
-//
-// Exactly one method survives, so switching method (token ↔ user/password)
-// also drops the credentials of the other one instead of leaving a stale token
-// secret behind on a user/password entry (and vice versa):
-//
-//   - authid present → API-token method: username/password are dropped, and an
-//     empty secret keeps the stored one ONLY when the authid is unchanged — a
-//     secret belongs to exactly one token, so a changed authid without a new
-//     secret is an error, never a silent reuse of the old secret;
-//   - no authid      → user/password method: authid/secret are dropped, and an
-//     empty password keeps the stored one ONLY when the username is unchanged.
-//
-// requireCreds distinguishes the callers: the service and a standalone GUI
-// hold the stored credentials and can tell "missing" from "keep" (true). The
-// service-mode GUI never receives them (M-04), so it sends "" for an unknown
-// credential and the final presence check happens in the service, where the
-// real secrets live (false).
-func normalizeServerAuth(existing, srv *PBSServer, requireCreds bool) error {
-	if srv == nil {
-		return fmt.Errorf("serveur PBS vide")
-	}
-
-	if srv.AuthID != "" {
-		// API-token method wins: user/password must not survive on a token entry.
-		srv.Username = ""
-		srv.Password = ""
-		if srv.Secret == "" {
-			switch {
-			case existing != nil && existing.AuthID == srv.AuthID:
-				// Same token as stored: keep the stored secret (may be "" when the
-				// caller never received it — the service fills it in).
-				srv.Secret = existing.Secret
-			case requireCreds:
-				return fmt.Errorf("secret requis pour l'authentification ID %q (un secret n'est pas reutilisable avec un autre authid)", srv.AuthID)
-			}
-		}
-		if srv.Secret == "" && requireCreds {
-			return fmt.Errorf("secret requis pour l'authentification ID %q", srv.AuthID)
-		}
-		return nil
-	}
-
-	// User/password method wins: the token must not survive on a user/pass entry.
-	srv.AuthID = ""
-	srv.Secret = ""
-	if srv.Username == "" {
-		return fmt.Errorf("API token (authid/secret) ou identifiant/mot de passe requis")
-	}
-	if srv.Password == "" && existing != nil && existing.Username == srv.Username {
-		// Same user as stored: keep the stored password ("" when unknown to this
-		// caller — the service fills it in).
-		srv.Password = existing.Password
-	}
-	if srv.Password == "" && requireCreds {
-		return fmt.Errorf("mot de passe requis pour l'utilisateur %q", srv.Username)
-	}
-	return nil
-}
-
-// validateFields checks every field of a PBS server EXCEPT credential presence
-// (see normalizeServerAuth for why presence is a separate, caller-dependent
-// check): ID, name, URL, authid format, that exactly one auth method is
-// selected, datastore, fingerprint and encryption key file.
-func (pbs *PBSServer) validateFields() error {
+// Validate checks if the PBS server configuration is valid
+func (pbs *PBSServer) Validate() error {
 	// Validate ID
 	if pbs.ID == "" {
-		return fmt.Errorf("PBS server ID requis")
+		return fmt.Errorf("PBS server ID required")
 	}
 
 	// Validate Name
 	if pbs.Name == "" {
-		return fmt.Errorf("PBS server name requis")
+		return fmt.Errorf("PBS server name required")
 	}
 
 	// Validate BaseURL
 	if pbs.BaseURL == "" {
-		return fmt.Errorf("URL du serveur PBS requis")
+		return fmt.Errorf("PBS server URL required")
 	}
 	if err := security.ValidateURL(pbs.BaseURL); err != nil {
-		return fmt.Errorf("URL invalide: %w", err)
+		return fmt.Errorf("invalid URL: %w", err)
 	}
 
-	// Auth: a server authenticates with EITHER an API token (AuthID+Secret) OR
-	// a username/password — never both, and never neither.
-	if pbs.AuthID != "" {
+	// Auth: a server is configured with EITHER an API token (AuthID+Secret)
+	// OR a username (the password is stored too). At least one must be present;
+	// if a token is present its secret must be too. The password itself is
+	// checked where the server is added/updated (it may be blank on update to
+	// mean "keep the stored password").
+	hasToken := pbs.AuthID != ""
+	hasUser := pbs.Username != ""
+	if hasToken {
 		if err := security.ValidateAuthID(pbs.AuthID); err != nil {
-			return fmt.Errorf("authentication ID invalide: %w", err)
+			return fmt.Errorf("invalid authentication ID: %w", err)
 		}
-	} else if pbs.Username == "" {
-		return fmt.Errorf("API token (authid/secret) ou identifiant/mot de passe requis")
+		if pbs.Secret == "" {
+			return fmt.Errorf("secret required")
+		}
+	} else if !hasUser {
+		return fmt.Errorf("API token (authid/secret) or username/password required")
 	}
 
 	// Validate Datastore
 	if pbs.Datastore == "" {
-		return fmt.Errorf("datastore requis")
+		return fmt.Errorf("datastore required")
 	}
 	if err := security.ValidateDatastore(pbs.Datastore); err != nil {
-		return fmt.Errorf("datastore invalide: %w", err)
+		return fmt.Errorf("invalid datastore: %w", err)
 	}
 
 	// Validate Certificate Fingerprint if present
 	if pbs.CertFingerprint != "" {
 		if err := security.ValidateFingerprint(pbs.CertFingerprint); err != nil {
-			return fmt.Errorf("empreinte certificat invalide: %w", err)
+			return fmt.Errorf("invalid certificate fingerprint: %w", err)
 		}
 	}
 
 	// Reject an unusable key file at add/update time, not at backup time. Uses
 	// a throwaway Config so the per-server and legacy paths validate identically.
-	if err := (&Config{EncryptionKeyFile: pbs.EncryptionKeyFile}).validateEncryptionKeyFile(); err != nil {
+	if err := (&Config{EncryptionKeyFile: pbs.EncryptionKeyFile, EncryptionKeyPassphrase: pbs.EncryptionKeyPassphrase}).validateEncryptionKeyFile(); err != nil {
 		return err
 	}
 
-	return nil
-}
-
-// Validate checks if the PBS server configuration is valid, including that the
-// selected auth method carries its credential. It is the gate for callers that
-// hold the stored credentials (standalone GUI, service); the service-mode GUI
-// goes through normalizeServerAuth(..., false) + validate(false), because it
-// never receives the stored secret/password.
-func (pbs *PBSServer) Validate() error {
-	return pbs.validate(true)
-}
-
-// validate applies validateFields plus, when requireCreds is set, the presence
-// of the selected method's credential. A user/password entry whose password is
-// absent is reported by normalizeServerAuth (which is retention-aware), so this
-// only re-checks the token secret for callers that skipped that helper.
-func (pbs *PBSServer) validate(requireCreds bool) error {
-	if err := pbs.validateFields(); err != nil {
-		return err
-	}
-	if requireCreds && pbs.AuthID != "" && pbs.Secret == "" {
-		return fmt.Errorf("secret requis")
-	}
 	return nil
 }
 
 // ToConfig converts a PBSServer to the legacy Config format (for backward compatibility)
 func (pbs *PBSServer) ToConfig() *Config {
 	return &Config{
-		BaseURL:           pbs.BaseURL,
-		CertFingerprint:   pbs.CertFingerprint,
-		AuthID:            pbs.AuthID,
-		Secret:            pbs.Secret,
-		Username:          pbs.Username,
-		Password:          pbs.Password,
-		EncryptionKeyFile: pbs.EncryptionKeyFile,
-		Datastore:         pbs.Datastore,
-		Namespace:         pbs.Namespace,
+		BaseURL:                 pbs.BaseURL,
+		CertFingerprint:         pbs.CertFingerprint,
+		AuthID:                  pbs.AuthID,
+		Secret:                  pbs.Secret,
+		Username:                pbs.Username,
+		Password:                pbs.Password,
+		EncryptionKeyFile:       pbs.EncryptionKeyFile,
+		EncryptionKeyPassphrase: pbs.EncryptionKeyPassphrase,
+		Datastore:               pbs.Datastore,
+		Namespace:               pbs.Namespace,
 	}
 }

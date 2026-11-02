@@ -7,30 +7,43 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 
 	"github.com/kardianos/service"
 )
 
 func main() {
-	// Service configuration.
-	//
-	// On Windows the Name MUST equal the name the MSI registered the service
-	// with (see service_name_windows.go); a mismatch makes the SCM refuse the
-	// start with error 1061. On other platforms the systemd unit file names
-	// the service explicitly, so the name here is only used for
-	// install/uninstall actions.
-	svcName, svcDisplayName := serviceIdentity()
-
-	writeDebugLog(fmt.Sprintf("%s starting...", svcName))
+	// -apply-settings <file>: the installer's CONFIGFILE (settings_deploy.go).
+	if path, ok := applySettingsArg(os.Args[1:]); ok {
+		os.Exit(runApplySettings(path))
+	}
+	// -list-sets, -undelete, -rollback: a command-line run, not the service.
+	if runSetCLI(os.Args[1:]) {
+		return
+	}
+	writeDebugLog("ProxmoxBackupClientSVC starting...")
+	startStallWatchdog()
 
 	// Command-line flags for service control
 	svcFlag := flag.String("service", "", "Control the system service: install, uninstall, start, stop, restart")
 	flag.Parse()
 
+	// Service configuration. The name matches what the installers and
+	// Preferences > Run as Service use (on Windows this program's own name,
+	// ProxmoxBackupClientSVC; on Linux the packaged unit), so
+	// "-service install" does not make a second one.
+	name, display := windowsServiceIdentity()
 	svcConfig := &service.Config{
-		Name:        svcName,
-		DisplayName: svcDisplayName,
-		Description: "Executes scheduled backups to Proxmox Backup Server with VSS support",
+		Name:        name,
+		DisplayName: display,
+		Description: "Runs scheduled backups to Proxmox Backup Server with VSS support",
+	}
+	if runtime.GOOS == "linux" {
+		svcConfig.Name = linuxServiceUnit
+		svcConfig.Description = "Runs scheduled backups to Proxmox Backup Server"
 	}
 
 	backupSvc := &BackupService{}
@@ -51,10 +64,20 @@ func main() {
 	}
 
 	// Run service
-	writeDebugLog(fmt.Sprintf("Starting service %q...", svcName))
+	writeDebugLog("Starting service...")
 	err = s.Run()
 	if err != nil {
-		writeDebugLog(fmt.Sprintf("service run failed: %v", err))
 		log.Fatal(err)
 	}
+}
+
+// windowsServiceIdentity gives the Windows service name and display name for
+// this program: its exe name (ProxmoxBackupClientSVC, or a brand's own), and
+// the brand title plus "Service", as the MSI and InstallService do.
+func windowsServiceIdentity() (name, display string) {
+	name = "ProxmoxBackupClientSVC"
+	if exe, err := os.Executable(); err == nil {
+		name = strings.TrimSuffix(filepath.Base(exe), filepath.Ext(exe))
+	}
+	return name, ResolveBrand(strings.TrimSuffix(name, "SVC")).Title + " Service"
 }

@@ -17,8 +17,8 @@ type Brand struct {
 	Accent         string `json:"accent"`           // primary button/accent color (hex)
 	AccentHover    string `json:"accent_hover"`     // hover/pressed variant (hex)
 	BrandURL       string `json:"brand_url"`        // brand home page; also the fallback for Urls["about"]
-	BuyStorageURL  string `json:"buy_storage_url"`  // "" = buy-storage CTA hidden (falls back to the PBS download link)
-	BuyStorageText string `json:"buy_storage_text"` // CTA label; "" = use the i18n orderStorageCTA
+	BuyStorageURL  string `json:"buy_storage_url"`  // the brand sells storage here: a "Buy Backup Storage" button; "" = no button, the page offers the PBS download instead (frontend aboutBrand.js)
+	BuyStorageText string `json:"buy_storage_text"` // the button's label; "" = the translated buyBackupStorage
 	// Urls holds the About-tab / support links for this brand. Keys:
 	// "about", "help", "updates", "contact". Any key may be omitted; the
 	// frontend falls back to the upstream Proxmox destinations. These are the
@@ -55,14 +55,14 @@ var brandCatalog = map[string]Brand{
 		Logo:           "/brands/nimbus.svg",
 		Accent:         "#22c55e",
 		AccentHover:    "#16a34a",
-		BrandURL:       "https://nimbus.rdem-systems.com/en/",
-		BuyStorageURL:  "https://nimbus.rdem-systems.com/en/",
+		BrandURL:       "https://nimbus.example/",
+		BuyStorageURL:  "https://store.nimbus.example/backup",
 		BuyStorageText: "Get Nimbus storage",
 		Urls: map[string]string{
-			"about":   "https://nimbus.rdem-systems.com/en/",
-			"help":    "https://nimbus.rdem-systems.com/en/proxmox-backup-server/",
-			"updates": "https://nimbus.rdem-systems.com/en/blog/",
-			"contact": "https://nimbus.rdem-systems.com/en/contact/",
+			"about":   "https://nimbus.example/",
+			"help":    "https://nimbus.example/help",
+			"updates": "https://nimbus.example/releases",
+			"contact": "https://nimbus.example/contact",
 		},
 	},
 	"acmebackup": {
@@ -79,22 +79,6 @@ var brandCatalog = map[string]Brand{
 			"help":    "https://acme.example/help",
 			"updates": "https://acme.example/releases",
 			"contact": "https://acme.example/contact",
-		},
-	},
-	"etitechbackup": {
-		Name:           "etitechbackup",
-		Title:          "Etitech Backup",
-		Logo:           "/brands/etitech.webp",
-		Accent:         "#4CC1CE",
-		AccentHover:    "#3aaab6",
-		BrandURL:       "https://www.etitech.net/",
-		BuyStorageURL:  "https://www.etitech.net/servizi.php",
-		BuyStorageText: "",
-		Urls: map[string]string{
-			"about":   "https://www.etitech.net/about.php",
-			"help":    "https://www.etitech.net/servizi.php",
-			"updates": "https://www.etitech.net/",
-			"contact": "https://www.etitech.net/contatti.php",
 		},
 	},
 }

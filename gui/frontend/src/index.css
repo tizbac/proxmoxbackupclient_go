@@ -5,10 +5,16 @@ box-sizing: border-box;
 }
 
 /* Primary accent color — overridable at runtime by the active brand
-   (see App.jsx -> BrandFromExecutable) via documentElement.style.setProperty. */
+   (see App.jsx -> BrandFromExecutable) via documentElement.style.setProperty,
+   and then by the user's own Theme choice in Preferences (components/ThemePicker.jsx),
+   which takes precedence over the brand default once a theme has been saved.
+   --hero-start/--hero-end are the two outer stops of the hero banner's
+   gradient; --accent is always its middle (60%) stop. */
 :root {
     --accent: #e87003;
     --accent-hover: #d46100;
+    --hero-start: #5c3a1e;
+    --hero-end: #fbe9d7;
 }
 
 body {
@@ -20,22 +26,131 @@ body {
     flex-direction: column;
 }
 
-.header {
-    background: #000000;
-    color: var(--accent);
-    padding: 20px;
-    text-align: center;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+/* ==================== APP SHELL (sidebar + hero + status bar) ==================== */
+
+.app-shell {
+    height: 100vh;
+    width: 100%;
+    display: flex;
+    overflow: hidden;
 }
 
-.header h1 {
-    font-size: 28px;
-    margin-bottom: 5px;
+.sidenav {
+    flex: 0 0 190px;
+    display: flex;
+    flex-direction: column;
+    background: #202020;
+    overflow-y: auto;
 }
 
-.header p {
-    opacity: 0.8;
+.nav-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    cursor: pointer;
+    font: inherit;
     font-size: 14px;
+    font-weight: 600;
+    padding: 14px 18px;
+    color: #d8d8d8;
+    background: transparent;
+    border-bottom: 1px solid #2c2c2c;
+}
+
+.nav-btn:hover:not(:disabled) {
+    background: #2c2c2c;
+}
+
+.nav-btn.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+.nav-btn-disabled {
+    color: #666;
+    cursor: default;
+}
+
+.nav-btn-secondary {
+    font-weight: 500;
+    color: #a8a8a8;
+}
+
+.nav-spacer {
+    flex: 1 1 auto;
+}
+
+/* Roll back card while the set is backed up first: striped, so it reads as
+   the backup's progress, not the roll back's. */
+.progress-bar.progress-bar-backupfirst {
+    background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.18) 0 10px, transparent 10px 20px);
+}
+
+/* Divider between the tasks (Backup ... Roll back) and Reports / Message Log.
+   Tinted with the theme's accent so it suits every theme and brand; the plain
+   grey is the fallback where color-mix() is not supported. */
+.nav-sep {
+    flex: 0 0 auto;
+    margin: 8px 14px;
+    border-top: 2px solid #4a4a4a;
+    border-top-color: color-mix(in srgb, var(--accent) 45%, #3a3a3a);
+    border-radius: 1px;
+}
+
+.app-main {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: #fff;
+}
+
+.hero {
+    flex: 0 0 auto;
+    background: linear-gradient(90deg, var(--hero-start) 0%, var(--accent) 60%, var(--hero-end) 100%);
+    color: #fff;
+    padding: 18px 26px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.hero h1 {
+    font-size: 22px;
+    margin-bottom: 3px;
+}
+
+.hero p {
+    opacity: 0.85;
+    font-size: 13px;
+}
+
+.app-statusbar {
+    flex: 0 0 auto;
+    height: 26px;
+    background: #f0f0f0;
+    border-top: 1px solid #d8d8d8;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-size: 12px;
+    color: #555;
+}
+
+.statusbar-link {
+    border: none;
+    background: transparent;
+    color: #555;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    text-decoration: underline;
+}
+
+.statusbar-link:hover {
+    color: var(--accent);
 }
 
 .container {
@@ -43,59 +158,23 @@ body {
     padding: 30px;
     overflow-y: auto;
     background: #ffffff;
-    margin: 20px;
-    border-radius: 10px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
     max-width: 1200px;
     width: 100%;
     margin-left: auto;
     margin-right: auto;
 }
 
-.tabs {
-    display: flex;
-    border-bottom: 2px solid var(--accent);
-    margin-bottom: 30px;
-}
-
-.tab {
-    padding: 15px 30px;
-    cursor: pointer;
-    border-bottom: 3px solid transparent;
-    transition: all 0.3s;
-    font-weight: 500;
-    color: #000000;
-    position: relative;
-}
-
-.tab:hover {
-    background: #f7fafc;
-}
-
-.tab.active {
-    border-bottom-color: var(--accent);
-    color: var(--accent);
-}
-
-.badge {
-    display: inline-block;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 6px;
-    margin-left: 8px;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 18px;
-    text-align: center;
-    color: white;
-    background-color: #e74c3c;
-    border-radius: 9px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-}
-
 .tab-content {
     display: none;
     animation: fadeIn 0.3s;
+}
+
+/* The global reset above zeroes every element's margin, including h2 — some
+   pages happened to get visual breathing room from whatever followed the
+   heading, others (Restore/Reports/Message Log) didn't and sat almost
+   flush against it. One consistent rule instead of patching each page. */
+.tab-content > h2 {
+    margin-bottom: 20px;
 }
 
 @keyframes fadeIn {
@@ -107,23 +186,12 @@ body {
     display: block;
 }
 
-.progress {
-    width: 100%;
-    height: 8px;
-    background-color: #dee2e6;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.progress-bar {
-    height: 100%;
-    background-color: #0066cc;
-    border-radius: 4px;
-    transition: width 0.3s ease;
-}
-
 .form-group {
     margin-bottom: 20px;
+}
+
+.form-group.no-bottom-margin {
+    margin-bottom: 0;
 }
 
 .form-group label {
@@ -170,6 +238,9 @@ body {
     background: #f8fafc;
 }
 
+/* .form-group label (display: block) would otherwise win and run the
+   device, size and model together. */
+.form-group label.drive-item,
 .drive-item {
     margin-bottom: 0;
     padding: 10px 12px;
@@ -252,6 +323,14 @@ body {
     transition: all 0.3s;
     margin-right: 10px;
 }
+
+/* Backup Set card actions: compact, so the six buttons fit beside the
+   set's text on one line in a normal window (they wrap as a group when not). */
+.set-actions .btn {
+    padding: 8px 12px;
+    margin-right: 0;
+}
+
 
 .btn:hover {
     background: var(--accent-hover);
@@ -355,14 +434,73 @@ body {
     border-left: 4px solid var(--accent);
 }
 
-.card h3 {
-    margin-bottom: 10px;
+/* About tab: Features pairs a heading with a one-line description per
+   item, so two columns keep its list from running the page's height up
+   unnecessarily. */
+.feature-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px 28px;
 }
 
-.logo {
-    max-width: 200px;
-    margin: 20px auto;
+.feature-grid strong {
     display: block;
+    font-size: 13.5px;
+}
+
+/* Preferences dialog's internal tab strip (Account Information/Backup
+   Options/Theme/Message Log) — matches the mockup's own .tabhead styling. */
+.tabhead {
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    padding: 9px 16px;
+    color: #555;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+}
+
+.tabhead.active {
+    color: var(--accent);
+    font-weight: 600;
+    border-bottom: 2px solid var(--accent);
+}
+
+.tabhead.disabled {
+    color: #bbb;
+    cursor: default;
+}
+
+/* Backup Set editor's tab strip (Source/Exclusions/Schedule/Destination) —
+   chevron shape per the mockup Mick preferred over flat tabheads. These are
+   still independently clickable tabs, not a linear wizard's steps — there's
+   no "done" state, just which one is active. */
+.chev {
+    border: none;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 20px 10px 26px;
+    margin-right: -12px;
+    cursor: pointer;
+    clip-path: polygon(0 0, 88% 0, 100% 50%, 88% 100%, 0 100%, 12% 50%);
+    position: relative;
+    background: #e2e2e2;
+    color: #888;
+}
+
+.chev.active {
+    background: var(--accent);
+    color: #fff;
+    z-index: 2;
+}
+
+.card h3 {
+    margin-bottom: 10px;
 }
 
 /* ==================== RESPONSIVE DESIGN ==================== */
@@ -375,13 +513,13 @@ body {
         max-width: 100%;
     }
 
-    .header h1 {
-        font-size: 24px;
+    .hero h1 {
+        font-size: 19px;
     }
 
-    .tab {
-        padding: 12px 20px;
-        font-size: 14px;
+    .nav-btn {
+        padding: 12px 14px;
+        font-size: 13px;
     }
 
     /* Make tables horizontally scrollable */
@@ -403,15 +541,51 @@ body {
         min-height: -webkit-fill-available; /* iOS Safari fix */
     }
 
-    .header {
+    /* Below this width the sidebar can't afford its own column — collapse
+       it into a horizontal scrollable strip above the content, same as the
+       old top tab-bar it replaced. */
+    .app-shell {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+    }
+
+    .sidenav {
+        flex: 0 0 auto;
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .nav-btn {
+        flex-shrink: 0;
+        white-space: nowrap;
+        border-bottom: none;
+        border-right: 1px solid #2c2c2c;
+    }
+
+    .nav-spacer {
+        display: none;
+    }
+
+    .nav-sep {
+        margin: 8px 4px;
+        border-top: none;
+        border-left: 2px solid #4a4a4a;
+        border-left-color: color-mix(in srgb, var(--accent) 45%, #3a3a3a);
+    }
+
+    .hero {
         padding: 15px 10px;
     }
 
-    .header h1 {
-        font-size: 20px;
+    .hero h1 {
+        font-size: 18px;
     }
 
-    .header p {
+    .hero p {
         font-size: 12px;
     }
 
@@ -421,20 +595,9 @@ body {
         border-radius: 8px;
     }
 
-    /* Horizontal scrollable tabs */
-    .tabs {
-        overflow-x: auto;
-        overflow-y: hidden;
-        flex-wrap: nowrap;
-        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
-        margin-bottom: 20px;
-    }
-
-    .tab {
+    .nav-btn {
         padding: 10px 15px;
         font-size: 13px;
-        white-space: nowrap;
-        flex-shrink: 0;
     }
 
     .tab-content {
@@ -528,11 +691,11 @@ body {
 
 /* Very small mobile screens */
 @media (max-width: 480px) {
-    .header h1 {
-        font-size: 18px;
+    .hero h1 {
+        font-size: 16px;
     }
 
-    .header p {
+    .hero p {
         font-size: 11px;
     }
 
@@ -541,7 +704,7 @@ body {
         padding: 10px;
     }
 
-    .tab {
+    .nav-btn {
         padding: 8px 12px;
         font-size: 12px;
     }
@@ -586,15 +749,15 @@ body {
 
 /* Landscape mode on small screens */
 @media (max-height: 600px) and (orientation: landscape) {
-    .header {
+    .hero {
         padding: 10px;
     }
 
-    .header h1 {
+    .hero h1 {
         font-size: 16px;
     }
 
-    .header p {
+    .hero p {
         display: none; /* Hide subtitle in landscape */
     }
 
@@ -603,7 +766,7 @@ body {
         padding: 10px;
     }
 
-    .tab {
+    .nav-btn {
         padding: 6px 12px;
     }
 }
@@ -615,7 +778,7 @@ body {
         -webkit-app-region: no-drag;
     }
 
-    .header {
+    .hero {
         -webkit-app-region: drag;
     }
 
@@ -645,3 +808,106 @@ body {
 .compact-text-long {
     display: inline;
 }
+
+/* Indeterminate wait bar (WaitBar in App.jsx): a stripe sliding along a
+   track, in the progress bar's colours, for server calls with no progress
+   of their own. */
+.wait-bar {
+    position: relative;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.wait-bar-stripe {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 35%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 100%);
+    animation: wait-bar-slide 1.4s ease-in-out infinite;
+}
+
+.wait-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 100%);
+    transition: width 0.3s ease-out;
+}
+
+@keyframes wait-bar-slide {
+    0% { left: -35%; }
+    100% { left: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wait-bar-stripe { animation-duration: 4s; }
+}
+
+/* A progress-card value that is not known yet ("Calculating...") or cannot
+   exist for this run ("Not available"). */
+.pending-value {
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Backup Set card "More" menu */
+.set-more-menu {
+    position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
+    min-width: 170px; background: #fff; border: 1px solid #d5dbe3; border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12); padding: 4px 0;
+}
+.set-more-item {
+    display: block; width: 100%; text-align: left; background: none; border: none;
+    padding: 9px 14px; font-size: 14px; color: #2d3748; cursor: pointer;
+}
+.set-more-item:hover, .set-more-item:focus-visible { background: #eef2f7; outline: none; }
+.set-more-item:disabled { color: #a0aec0; cursor: default; background: none; }
+.set-more-menu { white-space: nowrap; }
+.set-more-sep { border-top: 1px solid #e2e8f0; margin: 4px 0; }
+
+/* Help page: the user manuals (components/ManualViewer.jsx) */
+.manual-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-bottom: 14px; }
+.manual-toolbar h2 { margin: 0; }
+.manual-tabs { display: flex; border: 1px solid #cbd5e0; border-radius: 6px; overflow: hidden; }
+.manual-tab {
+    background: #fff; border: none; border-right: 1px solid #cbd5e0; padding: 7px 14px;
+    font: inherit; font-size: 13px; font-weight: 600; color: #4a5568; cursor: pointer;
+}
+.manual-tab:last-child { border-right: none; }
+.manual-tab:hover { background: #f1f4f8; }
+.manual-tab.active { background: var(--accent); color: #fff; }
+.manual-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.manual-actions .btn { padding: 7px 14px; font-size: 13px; margin: 0; text-decoration: none; }
+.manual-find { width: 230px; padding: 7px 10px; border: 1px solid #cbd5e0; border-radius: 6px; font: inherit; font-size: 13px; }
+.manual-note { font-size: 12px; color: #718096; margin: -6px 0 12px; }
+.manual-layout { display: flex; align-items: flex-start; gap: 28px; }
+.manual-toc {
+    flex: 0 0 210px; position: sticky; top: 0; max-height: calc(100vh - 220px); overflow-y: auto;
+    border-right: 1px solid #e2e8f0; padding-right: 12px;
+}
+.manual-toc-title { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #a0aec0; margin-bottom: 6px; }
+.manual-toc a { display: block; padding: 4px 6px; border-radius: 4px; font-size: 13px; color: #4a5568; text-decoration: none; line-height: 1.35; }
+.manual-toc a:hover { background: #f1f4f8; color: #1a202c; }
+.manual-toc a.active { color: var(--accent); font-weight: 600; }
+.manual-body { flex: 1 1 auto; min-width: 0; max-width: 860px; font-size: 14px; line-height: 1.6; color: #2d3748; }
+.manual-body h1 { font-size: 24px; margin: 0 0 12px; }
+.manual-body h2 { font-size: 19px; margin: 30px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
+.manual-body h3 { font-size: 16px; margin: 22px 0 8px; }
+.manual-body h4 { font-size: 14px; margin: 18px 0 6px; }
+.manual-body h1, .manual-body h2, .manual-body h3, .manual-body h4 { scroll-margin-top: 8px; color: #1a202c; }
+.manual-body p { margin: 8px 0; }
+.manual-body ul, .manual-body ol { margin: 8px 0; padding-left: 24px; }
+.manual-body li { margin: 3px 0; }
+.manual-body li > ul, .manual-body li > ol { margin: 3px 0; }
+.manual-body a { color: var(--accent); }
+.manual-body code { font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 12.5px; background: #f1f3f5; padding: 1px 5px; border-radius: 3px; }
+.manual-body pre { background: #1f2329; color: #e6e6e6; padding: 12px 14px; border-radius: 6px; overflow-x: auto; margin: 10px 0; }
+.manual-body pre code { background: none; padding: 0; color: inherit; font-size: 12.5px; }
+.manual-body blockquote { border-left: 3px solid var(--accent); background: #fff8f1; margin: 10px 0; padding: 6px 12px; color: #4a5568; }
+.manual-body table { border-collapse: collapse; margin: 10px 0; font-size: 13px; display: block; overflow-x: auto; }
+.manual-body th, .manual-body td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; vertical-align: top; }
+.manual-body th { background: #f7fafc; font-weight: 600; }
+.manual-body hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }

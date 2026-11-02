@@ -118,9 +118,9 @@ type Unprotected struct {
 // manifest". Comment is therefore kept in memory but never serialized - PBS
 // does not persist it anyway, so writing it out only ever broke signing.
 type BackupManifest struct {
-	BackupID    string      `json:"backup-id"`
-	BackupTime  int64       `json:"backup-time"`
-	BackupType  string      `json:"backup-type"`
+	BackupID   string `json:"backup-id"`
+	BackupTime int64  `json:"backup-time"`
+	BackupType string `json:"backup-type"`
 	// Comment is not serialised: the manifest is signed when encrypting and PBS
 	// never reads it from index.json.blob. The snapshot comment PBS shows comes
 	// from the notes sidecar, set via SetComment.

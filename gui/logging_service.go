@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
+	"testing"
 	"time"
 )
 
@@ -16,16 +16,13 @@ var (
 	backupLogger  *RotatingLogger
 	serviceLogger *RotatingLogger
 	logDir        string
-
-	// currentBackupLogger is set for the duration of a backup run so logs for
-	// that run land in a dedicated file. writeBackupLog uses this if set.
-	currentBackupLogger   *RotatingLogger
-	currentBackupLoggerMu sync.RWMutex
 )
 
 func init() {
 	// Setup log directory for SERVICE
-	if runtime.GOOS == "windows" {
+	if testing.Testing() {
+		logDir = testLogDir()
+	} else if runtime.GOOS == "windows" {
 		programData := os.Getenv("ProgramData")
 		if programData == "" {
 			programData = "C:\\ProgramData"
@@ -72,9 +69,10 @@ func GetBackupLogPath() string {
 	return filepath.Join(logDir, "backup-service.log")
 }
 
-// StartBackupRunLog creates a dedicated log file for the current backup run and
-// installs it as the active backup logger. Returns the new logger so the caller
-// can close/compress it at the end of the run.
+// StartBackupRunLog creates a dedicated log file for a backup run. The run
+// carries it in its context (withRunLog) and writes to it with runLog, so two
+// runs at once each keep their own file. Returns the logger so the caller can
+// close/compress it at the end of the run.
 // If the backup produces > MaxLogSize bytes of log, the file is rotated internally.
 func StartBackupRunLog(backupID string) *RotatingLogger {
 	timestamp := time.Now().Format("20060102-150405")
@@ -86,10 +84,6 @@ func StartBackupRunLog(backupID string) *RotatingLogger {
 		fmt.Fprintf(os.Stderr, "Failed to create per-run backup logger %s: %v\n", path, err)
 		return nil
 	}
-
-	currentBackupLoggerMu.Lock()
-	currentBackupLogger = logger
-	currentBackupLoggerMu.Unlock()
 	return logger
 }
 
@@ -99,12 +93,6 @@ func EndBackupRunLog(logger *RotatingLogger) {
 	if logger == nil {
 		return
 	}
-
-	currentBackupLoggerMu.Lock()
-	if currentBackupLogger == logger {
-		currentBackupLogger = nil
-	}
-	currentBackupLoggerMu.Unlock()
 
 	path := logger.path
 	_ = logger.Close()
@@ -123,17 +111,10 @@ func writeDebugLog(message string) {
 	writeLogToLogger(serviceLogger, "SERVICE", message)
 }
 
-// writeBackupLog writes to backup log (backup operations).
-// Prefers the per-run logger if one is active, else falls back to the global.
+// writeBackupLog writes to the shared backup log (restores, browsing, and
+// anything outside a backup run). A backup run's own lines go to its own file
+// through runLog.
 func writeBackupLog(message string) {
-	currentBackupLoggerMu.RLock()
-	perRun := currentBackupLogger
-	currentBackupLoggerMu.RUnlock()
-
-	if perRun != nil {
-		writeLogToLogger(perRun, "BACKUP", message)
-		return
-	}
 	writeLogToLogger(backupLogger, "BACKUP", message)
 }
 

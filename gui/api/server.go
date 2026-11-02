@@ -1,15 +1,12 @@
-// Package api implements the local HTTP API shared by the Proxmox Backup
-// Client GUI and its privileged service: the routes and token authentication
-// (Server) plus the client the GUI uses to reach the service (Client).
 package api
 
 import (
-	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,50 +22,54 @@ var jobIDSeq atomic.Uint64
 type Server struct {
 	addr           string
 	app            BackupHandler
+	token          string // shared local-auth token required on every route (H-01)
 	version        string // build version reported by /status
 	mux            *http.ServeMux
 	backupProgress map[string]*BackupProgress
 	progressMutex  sync.RWMutex
+}
 
-	// token is the current shared local-auth secret (H-01). prevToken is the
-	// one it replaced during a rotation and keeps authenticating until
-	// prevValidUntil, so requests already in flight are not cut off at the
-	// exact rotation instant. tokenGrace is how long that honouring lasts.
-	tokenMu        sync.RWMutex
-	token          string
-	prevToken      string
-	prevValidUntil time.Time
-	tokenGrace     time.Duration
+// RunOptionsRegistrar is optionally implemented by the BackupHandler: it
+// records per-run options that StartBackup's fixed signature cannot carry
+// (a Backup Set's change-detection mode, a machine set's forensic copy) and
+// returns the key to pass as StartBackup's postActionsKey.
+type RunOptionsRegistrar interface {
+	RegisterRunOptions(backupType, changeDetectionMode string, readFreeSpace bool) string
+}
+
+// RunTracker is optionally implemented by the BackupHandler: it registers a
+// run the GUI asked for under its progress entry jobID, with the run's
+// options, and returns the key to pass as StartBackup's postActionsKey. The
+// backup then reports its progress and outcome to the entry (ReportProgress,
+// FinishRun).
+type RunTracker interface {
+	TrackRequestRun(jobID, backupType, changeDetectionMode string, readFreeSpace bool) string
+}
+
+// RunController is optionally implemented by the BackupHandler: Pause,
+// Resume and Stop for a backup the service is running, so a GUI can control
+// a run it did not start (a scheduled one) as well as its own. jobID is the
+// run's progress entry; "" means every run (an older GUI sends none).
+type RunController interface {
+	PauseRun(jobID string) error
+	ResumeRun(jobID string) error
+	StopRun(jobID string) error
+	// RunPauseState reports whether the backup jobID is paused, and since
+	// when (Unix ms).
+	RunPauseState(jobID string) (paused bool, sinceUnixMs int64)
 }
 
 // BackupHandler interface that the service must implement
 // NOTE: StartBackup will be called in a goroutine (async), so it must be thread-safe
 type BackupHandler interface {
-	StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsID string) error
+	StartBackup(backupType string, backupDirs, driveLetters, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error
 	GetConfigWithHostname() map[string]interface{}
 	GetScheduledJobsForAPI() []map[string]interface{}
 	SaveScheduledJobFromMap(job map[string]interface{}) error
 	UpdateScheduledJobFromMap(job map[string]interface{}) error
 	DeleteScheduledJobFromMap(jobID string) error
-	// Manual "run now": start a stored scheduled job immediately, ignoring its
-	// schedule. The run is asynchronous; the error only reports a job that
-	// cannot be started (unknown id, already running).
-	RunScheduledJobForAPI(jobID string) error
 	PinServerFingerprint(id, fingerprint string) error
-	StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsID string, backupKind string) error
-	// Config round-trip for the GUI in service mode: the service is the single
-	// privileged writer of config.json, so the GUI reads and writes the whole
-	// (sanitized) document through these two methods.
-	GetFullConfigForAPI() map[string]interface{}
-	SaveFullConfigFromAPI(doc map[string]interface{}) error
-	// Test a stored (or draft) PBS server without touching the GUI's secrets.
-	TestPBSServerForAPI(id string, draft map[string]interface{}) error
-	// Mint a short-lived PBS ticket for restore/listing operations.
-	MintPBSTicketForAPI(id string) (*PBSTicket, error)
-	// Job history as stored by the service's scheduler.
-	GetJobHistoryForAPI() ([]map[string]interface{}, error)
-	// Cancel a running backup job by ID.
-	CancelBackup(jobID string) error
+	StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error
 }
 
 // NewServer creates a new API server. token is the shared local-auth secret that
@@ -84,60 +85,10 @@ func NewServer(addr string, handler BackupHandler, token, version string) *Serve
 		version:        version,
 		mux:            http.NewServeMux(),
 		backupProgress: make(map[string]*BackupProgress),
-		tokenGrace:     DefaultTokenGrace,
 	}
 
 	s.setupRoutes()
 	return s
-}
-
-// SetToken replaces the active token and returns the one it replaced, which
-// keeps authenticating until tokenGrace has elapsed. Callers that need file
-// and memory to stay in sync (TokenRotator.Rotate) use the returned value to
-// roll back when the publication step fails.
-func (s *Server) SetToken(token string) string {
-	s.tokenMu.Lock()
-	defer s.tokenMu.Unlock()
-	prev := s.token
-	if s.token != "" && s.token != token {
-		s.prevToken = s.token
-		s.prevValidUntil = time.Now().Add(s.tokenGrace)
-	}
-	s.token = token
-	return prev
-}
-
-// SetTokenGrace overrides how long a replaced token stays accepted. It exists
-// for the rotator (configured grace) and for tests; call it before SetToken.
-func (s *Server) SetTokenGrace(grace time.Duration) {
-	s.tokenMu.Lock()
-	defer s.tokenMu.Unlock()
-	s.tokenGrace = grace
-}
-
-// tokenAccepted reports whether got authenticates against this server: the
-// current token, or — inside the rotation grace window — the token it replaced.
-// An empty current token rejects everything (fail closed: a service whose token
-// could not be initialised must not expose its privileged API — H-01).
-func (s *Server) tokenAccepted(got string) bool {
-	if got == "" {
-		return false
-	}
-	s.tokenMu.RLock()
-	cur, prev, until := s.token, s.prevToken, s.prevValidUntil
-	s.tokenMu.RUnlock()
-
-	if cur == "" {
-		return false
-	}
-	// Compare both even when the primary matched: a short-circuit here would
-	// leak which of the two a guess hit.
-	current := subtle.ConstantTimeCompare([]byte(got), []byte(cur)) == 1
-	previous := prev != "" && subtle.ConstantTimeCompare([]byte(got), []byte(prev)) == 1
-	if current {
-		return true
-	}
-	return previous && time.Now().Before(until)
 }
 
 func (s *Server) setupRoutes() {
@@ -145,32 +96,26 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/backup", s.handleBackup)
 	s.mux.HandleFunc("/backup/machine", s.handleMachineBackup)
 	s.mux.HandleFunc("/backup/status/", s.handleBackupStatus)
-	s.mux.HandleFunc("/backup/jobs", s.handleListBackupJobs)
-	s.mux.HandleFunc("/backup/cancel/", s.handleCancelBackup)
 	s.mux.HandleFunc("/jobs", s.handleJobs)
-	s.mux.HandleFunc("/jobs/full", s.handleJobsFull)
 	s.mux.HandleFunc("/jobs/create", s.handleJobCreate)
 	s.mux.HandleFunc("/jobs/update", s.handleJobUpdate)
 	s.mux.HandleFunc("/jobs/delete/", s.handleJobDelete)
-	s.mux.HandleFunc("/jobs/run/", s.handleJobRun)
 	s.mux.HandleFunc("/pbs/fingerprint", s.handlePinFingerprint)
-	s.mux.HandleFunc("/config", s.handleConfig)
-	s.mux.HandleFunc("/pbs/test", s.handleTestPBS)
-	s.mux.HandleFunc("/pbs/ticket", s.handlePBSTicket)
-	s.mux.HandleFunc("/history", s.handleHistory)
+	s.mux.HandleFunc("/backup/runs", s.handleRuns)
+	s.mux.HandleFunc("/backup/pause", s.handleRunControl)
+	s.mux.HandleFunc("/backup/resume", s.handleRunControl)
+	s.mux.HandleFunc("/backup/stop", s.handleRunControl)
+}
+
+// Handler is the API with its token check, as Start serves it (tests).
+func (s *Server) Handler() http.Handler {
+	return s.authMiddleware(s.mux)
 }
 
 // Start starts the HTTP server
 func (s *Server) Start() error {
 	log.Printf("Starting API server on %s", s.addr)
-	return http.ListenAndServe(s.addr, s.Handler())
-}
-
-// Handler returns the routed, token-authenticated handler Start() serves, so
-// the server can be mounted on an arbitrary listener (tests, embedders)
-// instead of always binding s.addr.
-func (s *Server) Handler() http.Handler {
-	return s.authMiddleware(s.mux)
+	return http.ListenAndServe(s.addr, s.authMiddleware(s.mux))
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -201,6 +146,16 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
+	s.startRun(w, r, false)
+}
+
+// handleMachineBackup serves POST /backup/machine: a disk image backup of
+// the disks in drive_letters (api.Client.StartMachineBackup).
+func (s *Server) handleMachineBackup(w http.ResponseWriter, r *http.Request) {
+	s.startRun(w, r, true)
+}
+
+func (s *Server) startRun(w http.ResponseWriter, r *http.Request, machine bool) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -212,10 +167,18 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate request
+	// An empty backup ID means the computer's name, as everywhere else (the
+	// service's own scheduled runs, a run in the app without the service).
+	// A Backup Set may have none: one the installer set up from a settings
+	// file (CONFIGFILE), or one whose ID was cleared. Run Now on such a set,
+	// handed to the service, failed with "backup_id is required".
 	if req.BackupID == "" {
-		s.writeError(w, "backup_id is required", http.StatusBadRequest)
-		return
+		host, err := os.Hostname()
+		if err != nil || host == "" {
+			s.writeError(w, "backup_id is required (the computer's name could not be read)", http.StatusBadRequest)
+			return
+		}
+		req.BackupID = host
 	}
 
 	// Reload config before backup (config may have been updated by GUI)
@@ -236,71 +199,16 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 		Progress:  0,
 		Message:   "Starting backup...",
 		StartTime: time.Now().Format(time.RFC3339),
+		// The set's (or one-off's) name, so a window showing several runs
+		// can tell them apart.
+		Name:     req.Comment,
+		BackupID: req.BackupID,
 	}
 	log.Printf("[API] Progress entry created for %s (total entries: %d)", jobID, len(s.backupProgress))
 	s.progressMutex.Unlock()
 
 	go func() {
 		log.Printf("[API] Starting async backup: %s", jobID)
-
-		// Create a cancellable context for this backup
-		ctx, cancel := context.WithCancel(context.Background())
-
-		// Set the backup context on the App so it can be cancelled
-		if appWithContext, ok := s.app.(interface {
-			SetBackupContext(context.Context, context.CancelFunc)
-			ClearBackupContext()
-		}); ok {
-			appWithContext.SetBackupContext(ctx, cancel)
-			defer appWithContext.ClearBackupContext()
-		}
-		// Also register by job ID for per-job cancellation
-		if appWithReg, ok := s.app.(interface {
-			RegisterBackupCancel(jobID string, cancel context.CancelFunc)
-		}); ok {
-			appWithReg.RegisterBackupCancel(jobID, cancel)
-		}
-
-		// Set up progress callbacks to update the progress map
-		handler, ok := s.app.(interface {
-			SetProgressCallbacks(jobID string, onProgress func(string, float64, string), onComplete func(string, bool, string))
-		})
-		if ok {
-			log.Printf("[API] SetProgressCallbacks interface found, registering callbacks for %s", jobID)
-			handler.SetProgressCallbacks(
-				jobID,
-				func(jid string, percent float64, message string) {
-					s.progressMutex.Lock()
-					if progress, exists := s.backupProgress[jid]; exists {
-						// Progress callback receives fraction (0-1), store as percentage (0-100)
-						progress.Progress = percent * 100
-						progress.Message = message
-						log.Printf("[API] Progress update %s: %.1f%% - %s", jid, progress.Progress, message)
-					} else {
-						log.Printf("[API] WARNING: Progress update for unknown job %s", jid)
-					}
-					s.progressMutex.Unlock()
-				},
-				func(jid string, success bool, message string) {
-					s.progressMutex.Lock()
-					if progress, exists := s.backupProgress[jid]; exists {
-						progress.Running = false
-						progress.Complete = true
-						progress.Success = success
-						progress.Message = message
-						if !success {
-							progress.Error = message
-						}
-						log.Printf("[API] Backup %s complete: success=%v, %s", jid, success, message)
-					} else {
-						log.Printf("[API] WARNING: Completion update for unknown job %s", jid)
-					}
-					s.progressMutex.Unlock()
-				},
-			)
-		} else {
-			log.Printf("[API] WARNING: SetProgressCallbacks interface not implemented by handler")
-		}
 
 		// Call StartBackup (service App is in standalone mode to execute directly)
 		// Default to "fastest" if compression not specified
@@ -309,16 +217,44 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 			compression = "fastest"
 		}
 
-		err := s.app.StartBackup(
-			req.BackupType,
-			req.BackupDirs,
-			req.DriveLetters,
-			req.ExcludeList,
-			req.BackupID,
-			req.UseVSS,
-			req.PBSID,
-			compression,
-		)
+		// postActionsKey never crosses the HTTP boundary — service mode fires
+		// post-actions from scheduler.go's own local job variable. The run gets
+		// a local key instead, holding its progress entry (so the backup's
+		// progress reaches it) and any run options (a Backup Set's change
+		// detection).
+		runKey := ""
+		if t, ok := s.app.(RunTracker); ok {
+			runKey = t.TrackRequestRun(jobID, req.BackupType, req.ChangeDetectionMode, req.ReadFreeSpace)
+		} else if r, ok := s.app.(RunOptionsRegistrar); ok && (req.ChangeDetectionMode != "" || req.ReadFreeSpace) {
+			runKey = r.RegisterRunOptions(req.BackupType, req.ChangeDetectionMode, req.ReadFreeSpace)
+		}
+
+		var err error
+		if machine {
+			err = s.app.StartMachineBackup(
+				req.BackupType,
+				req.DriveLetters, // the GUI sends the disks here
+				req.BackupID,
+				req.UseVSS,
+				compression,
+				req.PBSServerID,
+				req.Comment,
+				runKey,
+			)
+		} else {
+			err = s.app.StartBackup(
+				req.BackupType,
+				req.BackupDirs,
+				req.DriveLetters,
+				req.ExcludeList,
+				req.BackupID,
+				req.UseVSS,
+				compression,
+				req.PBSServerID,
+				req.Comment,
+				runKey,
+			)
+		}
 
 		// Update final status if callbacks didn't fire
 		s.progressMutex.Lock()
@@ -328,13 +264,8 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				progress.Success = false
 				progress.Error = err.Error()
-				if isCancelled(err) {
-					progress.Message = "Backup cancelled by user"
-					log.Printf("[API] Backup %s cancelled by user", jobID)
-				} else {
-					progress.Message = fmt.Sprintf("Backup failed: %v", err)
-					log.Printf("[API] Backup %s failed: %v", jobID, err)
-				}
+				progress.Message = fmt.Sprintf("Backup failed: %v", err)
+				log.Printf("[API] Backup %s failed: %v", jobID, err)
 			} else {
 				progress.Success = true
 				progress.Progress = 100
@@ -358,6 +289,148 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.writeJSON(w, resp, http.StatusOK)
+}
+
+// ReportProgress records a run's progress (percent 0-100).
+func (s *Server) ReportProgress(jobID string, percent float64, message string) {
+	s.progressMutex.Lock()
+	defer s.progressMutex.Unlock()
+	if progress, exists := s.backupProgress[jobID]; exists && !progress.Complete {
+		progress.Progress = percent
+		progress.Message = message
+	}
+}
+
+// ReportStats records a run's latest live statistics. stats is kept as given
+// and must not be changed afterwards (each report is a fresh map).
+func (s *Server) ReportStats(jobID string, stats map[string]interface{}) {
+	s.progressMutex.Lock()
+	defer s.progressMutex.Unlock()
+	if progress, exists := s.backupProgress[jobID]; exists && !progress.Complete {
+		progress.Stats = stats
+	}
+}
+
+// ReportFile records the file a run is reading.
+func (s *Server) ReportFile(jobID string, path string) {
+	s.progressMutex.Lock()
+	defer s.progressMutex.Unlock()
+	if progress, exists := s.backupProgress[jobID]; exists && !progress.Complete {
+		progress.File = path
+	}
+}
+
+// completeRun records a run's outcome, once: later calls for the same run
+// change nothing.
+func (s *Server) completeRun(jobID string, success bool, message string) {
+	s.progressMutex.Lock()
+	defer s.progressMutex.Unlock()
+	progress, exists := s.backupProgress[jobID]
+	if !exists || progress.Complete {
+		return
+	}
+	progress.Running = false
+	progress.Complete = true
+	progress.Success = success
+	progress.Message = message
+	if success {
+		progress.Progress = 100
+	} else {
+		progress.Error = message
+	}
+	log.Printf("[API] Backup %s complete: success=%v, %s", jobID, success, message)
+}
+
+// BeginRun registers a run the service starts on its own (a Backup Set's
+// schedule), so a GUI lists it and can pause or stop it like a run it asked
+// for. name is the Backup Set's name. Report with ReportProgress, end with
+// FinishRun.
+func (s *Server) BeginRun(name string) string {
+	jobID := fmt.Sprintf("scheduled-%d-%d", time.Now().Unix(), jobIDSeq.Add(1))
+	s.progressMutex.Lock()
+	s.backupProgress[jobID] = &BackupProgress{
+		JobID:     jobID,
+		Running:   true,
+		Message:   "Starting backup...",
+		StartTime: time.Now().Format(time.RFC3339),
+		Name:      name,
+		Scheduled: true,
+	}
+	s.progressMutex.Unlock()
+	return jobID
+}
+
+// FinishRun records the outcome of a run started with BeginRun (only if the
+// backup's own completion did not already) and drops it after a while.
+func (s *Server) FinishRun(jobID string, success bool, message string) {
+	s.completeRun(jobID, success, message)
+	s.scheduleEviction(jobID)
+}
+
+// withPause copies a progress entry, adding the pause state to a running one.
+func (s *Server) withPause(p BackupProgress) BackupProgress {
+	if c, ok := s.app.(RunController); ok && p.Running {
+		p.Paused, p.PausedSince = c.RunPauseState(p.JobID)
+	}
+	return p
+}
+
+// handleRuns lists the runs in progress and those finished in the last ten
+// minutes, oldest first.
+func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.progressMutex.RLock()
+	runs := make([]BackupProgress, 0, len(s.backupProgress))
+	for _, p := range s.backupProgress {
+		runs = append(runs, *p)
+	}
+	s.progressMutex.RUnlock()
+	sort.Slice(runs, func(i, j int) bool {
+		if runs[i].StartTime != runs[j].StartTime {
+			return runs[i].StartTime < runs[j].StartTime
+		}
+		return runs[i].JobID < runs[j].JobID
+	})
+	for i := range runs {
+		runs[i] = s.withPause(runs[i])
+	}
+	s.writeJSON(w, RunsResponse{Runs: runs}, http.StatusOK)
+}
+
+// handleRunControl serves POST /backup/pause, /backup/resume and
+// /backup/stop for the backup named by ?job= (every backup without it).
+func (s *Server) handleRunControl(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	c, ok := s.app.(RunController)
+	if !ok {
+		s.writeError(w, "This service cannot pause or stop backups", http.StatusNotImplemented)
+		return
+	}
+	jobID := r.URL.Query().Get("job")
+	var err error
+	switch strings.TrimPrefix(r.URL.Path, "/backup/") {
+	case "pause":
+		err = c.PauseRun(jobID)
+	case "resume":
+		err = c.ResumeRun(jobID)
+	case "stop":
+		err = c.StopRun(jobID)
+	default:
+		s.writeError(w, "Not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.writeError(w, err.Error(), http.StatusConflict)
+		return
+	}
+	paused, since := c.RunPauseState(jobID)
+	s.writeJSON(w, RunControlResponse{Paused: paused, PausedSince: since}, http.StatusOK)
 }
 
 // scheduleEviction removes a finished job's progress entry after a grace period,
@@ -411,64 +484,8 @@ func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	snapshot = s.withPause(snapshot)
 	s.writeJSON(w, &snapshot, http.StatusOK)
-}
-
-// handleListBackupJobs returns a list of currently running/completed backup jobs
-func (s *Server) handleListBackupJobs(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	s.progressMutex.RLock()
-	jobs := make([]*BackupProgress, 0, len(s.backupProgress))
-	for _, p := range s.backupProgress {
-		// Copy to avoid race
-		snapshot := *p
-		jobs = append(jobs, &snapshot)
-	}
-	s.progressMutex.RUnlock()
-
-	s.writeJSON(w, jobs, http.StatusOK)
-}
-
-// handleCancelBackup cancels a running backup job by ID
-func (s *Server) handleCancelBackup(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Extract job ID from URL path: /backup/cancel/{jobID}
-	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/backup/cancel/"), "/")
-	if len(pathParts) == 0 || pathParts[0] == "" {
-		s.writeError(w, "Job ID required", http.StatusBadRequest)
-		return
-	}
-	jobID := pathParts[0]
-
-	s.progressMutex.Lock()
-	progress, exists := s.backupProgress[jobID]
-	if !exists {
-		s.progressMutex.Unlock()
-		s.writeError(w, "Job not found", http.StatusNotFound)
-		return
-	}
-	if !progress.Running {
-		s.progressMutex.Unlock()
-		s.writeError(w, "Job is not running", http.StatusBadRequest)
-		return
-	}
-	s.progressMutex.Unlock()
-
-	// Call the app's CancelBackup method
-	if err := s.app.CancelBackup(jobID); err != nil {
-		s.writeError(w, fmt.Sprintf("Failed to cancel job: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	s.writeJSON(w, map[string]string{"status": "cancelled", "job_id": jobID}, http.StatusOK)
 }
 
 func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
@@ -499,22 +516,6 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 
 	resp := JobsResponse{Jobs: jobs}
 	s.writeJSON(w, resp, http.StatusOK)
-}
-
-// handleJobsFull returns the full ScheduledJob data (as []map) for the GUI's
-// service-mode delegation. It mirrors GetScheduledJobsForAPI but returns the
-// raw maps so the client can unmarshal into its local ScheduledJob type.
-func (s *Server) handleJobsFull(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	jobsData := s.app.GetScheduledJobsForAPI()
-	if jobsData == nil {
-		jobsData = []map[string]interface{}{}
-	}
-	s.writeJSON(w, jobsData, http.StatusOK)
 }
 
 func (s *Server) handleJobCreate(w http.ResponseWriter, r *http.Request) {
@@ -591,37 +592,6 @@ func (s *Server) handleJobDelete(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, resp, http.StatusOK)
 }
 
-// handleJobRun starts a stored scheduled job immediately (manual "run now"),
-// ignoring its schedule. It returns as soon as the job is claimed: the backup,
-// its history entry and the lastRun/nextRun update happen in the background.
-func (s *Server) handleJobRun(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Extract job ID from URL path: /jobs/run/{jobID}
-	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/jobs/run/"), "/")
-	if len(pathParts) == 0 || pathParts[0] == "" {
-		s.writeError(w, "Job ID required", http.StatusBadRequest)
-		return
-	}
-	jobID := pathParts[0]
-
-	if err := s.app.RunScheduledJobForAPI(jobID); err != nil {
-		// 409: the caller's view (job list) is stale or the job is already
-		// running — not a server-side failure of the request itself.
-		s.writeError(w, fmt.Sprintf("Failed to run job: %v", err), http.StatusConflict)
-		return
-	}
-
-	resp := map[string]interface{}{
-		"success": true,
-		"message": "Job started",
-	}
-	s.writeJSON(w, resp, http.StatusOK)
-}
-
 // handlePinFingerprint lets the unprivileged GUI delegate a TOFU certificate pin to
 // the privileged service, which is the single writer of config.json.
 func (s *Server) handlePinFingerprint(w http.ResponseWriter, r *http.Request) {
@@ -653,99 +623,6 @@ func (s *Server) handlePinFingerprint(w http.ResponseWriter, r *http.Request) {
 		"message": "Fingerprint pinned successfully",
 	}
 	s.writeJSON(w, resp, http.StatusOK)
-}
-
-// handleConfig serves the sanitized full configuration document (GET) and
-// accepts whole-document writes (POST). The document is sanitized: secrets are
-// replaced by *_set boolean markers, and an empty secret/password on write
-// means "keep the existing value" on the service side.
-func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		s.writeJSON(w, s.app.GetFullConfigForAPI(), http.StatusOK)
-	case http.MethodPost:
-		var doc map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&doc); err != nil {
-			s.writeError(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
-			return
-		}
-		if err := s.app.SaveFullConfigFromAPI(doc); err != nil {
-			s.writeError(w, fmt.Sprintf("Failed to save config: %v", err), http.StatusInternalServerError)
-			return
-		}
-		// Echo back the stored (sanitized) document so the GUI re-syncs,
-		// including any server-side adjustments (e.g. secret retention).
-		s.writeJSON(w, s.app.GetFullConfigForAPI(), http.StatusOK)
-	default:
-		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-// handleTestPBS tests connectivity to a stored PBS server, optionally merging
-// a non-empty draft first (so the GUI can test unsaved form edits).
-func (s *Server) handleTestPBS(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req struct {
-		ID    string                 `json:"id"`
-		Draft map[string]interface{} `json:"draft"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.writeError(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	if err := s.app.TestPBSServerForAPI(req.ID, req.Draft); err != nil {
-		s.writeError(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	s.writeJSON(w, map[string]interface{}{"success": true}, http.StatusOK)
-}
-
-// handlePBSTicket mints a short-lived PBS session ticket for the GUI's
-// restore/listing operations. The response carries the ticket plus only the
-// non-sensitive connection parameters (the GUI never sees PBS credentials).
-func (s *Server) handlePBSTicket(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req struct {
-		ID string `json:"id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.writeError(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	ticket, err := s.app.MintPBSTicketForAPI(req.ID)
-	if err != nil {
-		s.writeError(w, fmt.Sprintf("Failed to mint ticket: %v", err), http.StatusInternalServerError)
-		return
-	}
-	s.writeJSON(w, ticket, http.StatusOK)
-}
-
-// handleHistory returns the job history stored by the service's scheduler.
-func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	history, err := s.app.GetJobHistoryForAPI()
-	if err != nil {
-		s.writeError(w, fmt.Sprintf("Failed to read history: %v", err), http.StatusInternalServerError)
-		return
-	}
-	if history == nil {
-		history = []map[string]interface{}{}
-	}
-	s.writeJSON(w, history, http.StatusOK)
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, data interface{}, status int) {

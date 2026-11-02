@@ -1,16 +1,41 @@
 import { useTranslation } from '../i18n/i18nContext'
 import { useState } from 'react'
 
+// Flags are bundled SVG images: Windows ships no flag emoji glyphs, so the
+// emoji rendered as bare two-letter codes there while Linux showed flags.
+const flagUrls = import.meta.glob('../assets/flags/*.svg', { eager: true, query: '?url', import: 'default' })
+const Flag = ({ code }) => (
+  <img src={flagUrls[`../assets/flags/${code}.svg`]} alt="" width="20" height="15"
+    style={{ borderRadius: '2px', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)', flexShrink: 0 }} />
+)
+
 function LanguageSwitcher() {
   const { language, setLanguage } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
 
+  // Sorted alphabetically by native name — same convention as before, just
+  // extended. Portuguese/Dutch each have two plausible flags (PT/BR,
+  // NL/BE); picked the European-market one deliberately rather than
+  // leaving it arbitrary.
   const languages = [
-    { code: 'en', name: 'English', flag: '🇬🇧' },
-    { code: 'it', name: 'Italiano', flag: '🇮🇹' },
-    { code: 'fr', name: 'Français', flag: '🇫🇷' },
-    { code: 'pl', name: 'Polski', flag: '🇵🇱' },
-    { code: 'de', name: 'Deutsch', flag: '🇩🇪' }
+    { code: 'bg', name: 'Български', flag: 'bg' },
+    { code: 'cs', name: 'Čeština', flag: 'cz' },
+    { code: 'de', name: 'Deutsch', flag: 'de' },
+    { code: 'en', name: 'English', flag: 'gb' },
+    { code: 'es', name: 'Español', flag: 'es' },
+    { code: 'el', name: 'Ελληνικά', flag: 'gr' },
+    { code: 'fr', name: 'Français', flag: 'fr' },
+    { code: 'hu', name: 'Magyar', flag: 'hu' },
+    { code: 'it', name: 'Italiano', flag: 'it' },
+    { code: 'lv', name: 'Latviešu', flag: 'lv' },
+    { code: 'lt', name: 'Lietuvių', flag: 'lt' },
+    { code: 'nl', name: 'Nederlands', flag: 'nl' },
+    { code: 'pl', name: 'Polski', flag: 'pl' },
+    { code: 'pt', name: 'Português', flag: 'pt' },
+    { code: 'ro', name: 'Română', flag: 'ro' },
+    { code: 'sk', name: 'Slovenčina', flag: 'sk' },
+    { code: 'tr', name: 'Türkçe', flag: 'tr' },
+    { code: 'uk', name: 'Українська', flag: 'ua' },
   ]
 
   const currentLanguage = languages.find(lang => lang.code === language) || languages[0]
@@ -41,7 +66,7 @@ function LanguageSwitcher() {
       transition: 'all 0.2s'
     }}
     >
-    <span>{currentLanguage.flag}</span>
+    <Flag code={currentLanguage.flag} />
     <span>{currentLanguage.name}</span>
     <span>{isOpen ? '▲' : '▼'}</span>
     </button>
@@ -51,7 +76,13 @@ function LanguageSwitcher() {
         position: 'absolute',
         top: '100%',
         left: 0,
-        width: '100%',
+        // Fixed to fit the longest native name (Nederlands/Slovenčina/
+        // Українська) regardless of which language is currently selected —
+        // not tied to the trigger button's own width, so the panel never
+        // has to wrap or crowd its longest entries.
+        width: '210px',
+        maxHeight: '70vh',
+        overflowY: 'auto',
         backgroundColor: 'white',
         border: '1px solid #ddd',
         borderRadius: '8px',
@@ -68,7 +99,7 @@ function LanguageSwitcher() {
           alignItems: 'center',
           gap: '8px',
           width: '100%',
-          padding: '10px 16px',
+          padding: '5px 16px',
           border: 'none',
           backgroundColor: 'transparent',
           cursor: 'pointer',
@@ -78,7 +109,7 @@ function LanguageSwitcher() {
           transition: 'all 0.2s'
         }}
         >
-        <span>{lang.flag}</span>
+        <Flag code={lang.flag} />
         <span>{lang.name}</span>
         </button>
       ))}

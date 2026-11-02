@@ -1,4 +1,12 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<!-- Shared installer body. Included by a brand entry file (see Product.wxs /
+     NimbusBackup.wxs / AcmeBackup.wxs) that supplies the brand identity via
+     !define BEFORE the include. All identity is driven by $(var.*):
+       ProductName, ExeName, ServiceExeName, VendorKey, Manufacturer,
+       UpgradeCode, ProductVersion, ArpUrlAbout, ArpHelpLink,
+       ArpUrlUpdateInfo, ArpContact.
+     The exe is installed under the SAME name as the installer (ExeName); the
+     GUI resolves its brand from the exe base name at runtime (gui/brand.go),
+     so the installed exe name == installer name == brand key. -->
 <Include>
   <Product Id="*"
            Name="$(var.ProductName)"
@@ -22,6 +30,8 @@
 
     <!-- Application icon, selected from installer/icons/ by the ExeName -->
     <Icon Id="AppIcon" SourceFile="../icons/$(var.ExeName).ico" />
+    <!-- The icon Programs and Features shows -->
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
 
     <!-- Installation directory -->
     <Directory Id="TARGETDIR" Name="SourceDir">
@@ -90,24 +100,17 @@
                        Type="integer"
                        Value="1"
                        KeyPath="yes"/>
+      </Component>
 
-        <!-- Older versions created a per-user logon entry that started the GUI
-             elevated at boot. Autostart is no longer installed; remove the
-             stale value whenever this component is installed (including
-             upgrades) so it stops prompting at logon. This only touches the
-             value, never the shared Run key. -->
-        <RemoveRegistryValue Root="HKCU"
-                             Key="Software\Microsoft\Windows\CurrentVersion\Run"
-                             Name="$(var.ExeName)"/>
-        <!-- Hard-coded name used by very old builds. Skipped for the Nimbus
-             brand, whose ExeName is already "NimbusBackup": two
-             RemoveRegistryValue rows with the same Root/Key/Name are one
-             primary key, and light.exe rejects the duplicate (LGHT0130). -->
-        <?if $(var.ExeName) != "NimbusBackup" ?>
-        <RemoveRegistryValue Root="HKCU"
-                             Key="Software\Microsoft\Windows\CurrentVersion\Run"
-                             Name="NimbusBackup"/>
-        <?endif ?>
+      <!-- Auto-start registry entry (conditional) -->
+      <Component Id="AutoStartRegistry" Guid="*">
+        <Condition>AUTOSTART = "1"</Condition>
+        <RegistryValue Root="HKCU"
+                       Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                       Name="$(var.ExeName)"
+                       Type="string"
+                       Value="&quot;[INSTALLFOLDER]$(var.ExeName).exe&quot; --minimized"
+                       KeyPath="yes"/>
       </Component>
     </DirectoryRef>
 
@@ -119,6 +122,7 @@
       <ComponentRef Id="GUIExecutable" />
       <ComponentRef Id="ServiceExecutable" />
       <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="AutoStartRegistry" />
     </Feature>
 
     <!-- Add/Remove Programs metadata (Programs & Features). Per-brand; keep in
@@ -128,8 +132,12 @@
     <Property Id="ARPURLUPDATEINFO" Value="$(var.ArpUrlUpdateInfo)" />
     <Property Id="ARPCONTACT" Value="$(var.ArpContact)" />
 
-    <!-- UI -->
-    <UIRef Id="WixUI_InstallDir" />
+    <!-- UI: WixUI_InstallDir's dialogs (copied below as WixUI_PbcInstallDir),
+         with the keep-settings page between Remove and Ready to remove, and
+         without WixUI_InstallDir's ARPNOMODIFY: Programs and Features' plain
+         "Uninstall" runs without any pages, so "Change" (Settings: "Modify")
+         must stay to reach Remove and that question. -->
+    <UIRef Id="WixUI_PbcInstallDir" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
     <!-- License -->
@@ -138,21 +146,26 @@
     <!-- ==================== INSTALL OPTIONS (public MSI properties) ==========
          Public (UPPERCASE) properties can be set on the msiexec command line,
          which is what makes unattended installs possible. Silent install needs
-         no extra property — msiexec's own /quiet does it — e.g.:
+         no extra property (msiexec's own /quiet does it), e.g.:
 
            msiexec /i NimbusBackup.msi /quiet
            msiexec /i NimbusBackup.msi /quiet SERVICEAUTOSTART=0
+           msiexec /i NimbusBackup.msi /quiet CONFIGFILE="C:\Deploy\settings.json"
            msiexec /x NimbusBackup.msi /quiet KEEP_CONFIG=0
 
-         SERVICEAUTOSTART  1 (default) | 0 — service startup type: 1 = Auto
+         SERVICEAUTOSTART  1 (default) | 0: service startup type. 1 = Auto
                            (starts with Windows, and is started by the
                            installer); 0 = installed as Manual and left
                            STOPPED after the install (SetServiceDemandStart
-                           below), i.e. the service exists but nothing
-                           enables or autostarts it.
-         KEEP_CONFIG       1 (default) | 0 — on uninstall, keep (1) or delete
-                           (0) %ProgramData%\<ExeName>.
-         INSTALLFOLDER     Absolute path — installation directory (also the
+                           below): the service exists but nothing starts it.
+         AUTOSTART         1 (default) | 0: start the app in the tray at logon
+                           (a per-user Run entry starting it minimized; no UAC).
+         CONFIGFILE        Full path of a file saved with Preferences > Export:
+                           applied to the settings before the service starts
+                           (see below and installer/DEPLOYMENT.md).
+         KEEP_CONFIG       1 (default) | 0: on uninstall, keep (1) or delete
+                           (0) %ProgramData%\ProxmoxBackupClient.
+         INSTALLFOLDER     Absolute path: installation directory (also the
                            dir the UI's install-dir dialog edits).
          Silent logging:   msiexec /i <msi> /quiet /L*v "C:\Temp\install.log"
          Exit codes:       0 = success, 3010 = success, reboot required.
@@ -162,7 +175,7 @@
     <!-- SERVICEAUTOSTART=0: WiX's ServiceInstall/@Start is an enum, not a
          formatted field, so the start type cannot be a property. Instead the
          service is always authored as auto, and this deferred action flips it
-         to Manual and stops it right after StartServices started it — final
+         to Manual and stops it right after StartServices started it. Final
          state: installed, Manual, stopped. Return=ignore: a service that is
          not running (sc stop fails) must not fail the install. -->
     <CustomAction Id="SetServiceDemandStart"
@@ -172,8 +185,28 @@
                   Impersonate="no"
                   Return="ignore" />
 
+    <!-- ==================== AUTO-START CONFIGURATION ==================== -->
+    <Property Id="AUTOSTART" Value="1" />
+
+    <!-- ==================== SETTINGS FOR MANY COMPUTERS ==================== -->
+    <!-- CONFIGFILE=<full path of a file saved with Preferences > Export>: the
+         installed service program, run as SYSTEM before the service starts,
+         locks the settings folder down and merges the file into it as
+         Import would (-apply-settings, gui/settings_deploy.go). The file is
+         read where it is, never copied. A file that cannot be read or used
+         fails the install, which is rolled back. See installer/DEPLOYMENT.md. -->
+    <Property Id="CONFIGFILE" Secure="yes" />
+    <CustomAction Id="ApplyDeploySettings"
+                  FileKey="SvcExe"
+                  ExeCommand='-apply-settings "[CONFIGFILE]"'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
     <!-- ==================== UNINSTALL CONFIGURATION CLEANUP ==================== -->
-    <Property Id="KEEP_CONFIG" Value="1" />
+    <!-- Secure: the choice made on the uninstall page must reach the
+         elevated part of the removal. -->
+    <Property Id="KEEP_CONFIG" Value="1" Secure="yes" />
 
     <CustomAction Id="SetKeepConfigNo" Property="KEEP_CONFIG" Value="0" />
     <CustomAction Id="SetKeepConfigYes" Property="KEEP_CONFIG" Value="1" />
@@ -182,22 +215,37 @@
     <CustomAction Id="KillGUIProcesses"
                   Directory="TARGETDIR"
                   ExeCommand='cmd.exe /c "taskkill /F /IM $(var.ExeName).exe /T 2&gt;nul || exit 0"'
-                  Execute="immediate"
-                  Impersonate="no"
-                  Return="ignore" />
-
-    <!-- Custom action to delete config directory -->
-    <CustomAction Id="DeleteConfigFolder"
-                  Directory="TARGETDIR"
-                  ExeCommand='cmd.exe /c "if exist "%ProgramData%\$(var.ExeName)" rmdir /s /q "%ProgramData%\$(var.ExeName)""'
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
 
+    <!-- Custom action to delete config directory. Every brand keeps its
+         settings in C:\ProgramData\ProxmoxBackupClient (gui/config.go
+         getConfigDir), whatever its ExeName. -->
+    <CustomAction Id="DeleteConfigFolder"
+                  Directory="TARGETDIR"
+                  ExeCommand='cmd.exe /c "if exist "%ProgramData%\ProxmoxBackupClient" rmdir /s /q "%ProgramData%\ProxmoxBackupClient""'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- The maintenance pages disable their Change button when ARPNOMODIFY is
+         set, so set it for the pages only, and clear it again before the
+         product is registered so Programs and Features keeps "Change". -->
+    <CustomAction Id="SetNoModifyForPages" Property="ARPNOMODIFY" Value="1" />
+    <CustomAction Id="ClearNoModify" Property="ARPNOMODIFY" Value="[PBC_NOTHING]" />
+    <InstallUISequence>
+      <Custom Action="SetNoModifyForPages" Before="MaintenanceWelcomeDlg">Installed</Custom>
+    </InstallUISequence>
+
     <!-- Schedule custom actions -->
     <InstallExecuteSequence>
+      <Custom Action="ClearNoModify" Before="RegisterProduct">ARPNOMODIFY</Custom>
       <Custom Action="KillGUIProcesses" Before="StopServices">
         UPGRADINGPRODUCTCODE
+      </Custom>
+      <Custom Action="ApplyDeploySettings" Before="StartServices">
+        CONFIGFILE AND NOT (REMOVE="ALL")
       </Custom>
       <Custom Action="SetServiceDemandStart" After="StartServices">
         SERVICEAUTOSTART = "0"
@@ -219,13 +267,7 @@
         </Control>
 
         <Control Id="ConfigInfo" Type="Text" X="25" Y="60" Width="320" Height="60" Transparent="yes" NoPrefix="yes">
-          <Text>The configuration is stored in:\nC:\ProgramData\$(var.ExeName)\
-
-This includes:
-• config.json (PBS servers, credentials)
-• jobs.json (scheduled jobs)
-• debug-gui.log and debug-service.log
-          </Text>
+          <Text>The settings are kept in C:\ProgramData\ProxmoxBackupClient: the PBS servers and their tokens, the Backup Sets, encryption keys, reports and logs. Keep them to reinstall later with everything as it was.</Text>
         </Control>
 
         <Control Id="KeepConfigRadio" Type="RadioButtonGroup" X="25" Y="130" Width="320" Height="50" Property="KEEP_CONFIG">
@@ -241,19 +283,68 @@ This includes:
           <Publish Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
         </Control>
 
-        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Uninstall">
-          <Publish Event="EndDialog" Value="Return">1</Publish>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Next">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
         </Control>
 
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
           <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
         </Control>
       </Dialog>
-
-      <InstallUISequence>
-        <Show Dialog="UninstallDlg" Before="ProgressDlg">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Show>
-      </InstallUISequence>
     </UI>
+
+    <!-- WixUI_InstallDir (WiX 3.14) as it is, except: Remove goes through
+         UninstallDlg, and no ARPNOMODIFY property (see SetNoModifyForPages). -->
+    <UI Id="WixUI_PbcInstallDir">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <Property Id="WixUI_Mode" Value="InstallDir" />
+
+      <DialogRef Id="BrowseDlg" />
+      <DialogRef Id="DiskCostDlg" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+
+      <Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath" Order="3">1</Publish>
+      <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg">NOT Installed</Publish>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">Installed AND PATCH</Publish>
+
+      <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">1</Publish>
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg">LicenseAccepted = "1"</Publish>
+
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="DoAction" Value="WixUIValidatePath" Order="2">NOT WIXUI_DONTVALIDATEPATH</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="SpawnDialog" Value="InvalidDirDlg" Order="3"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="4">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2">1</Publish>
+
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1">NOT Installed</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2"><![CDATA[Installed AND NOT PATCH AND WixUI_InstallMode<>"Remove"]]></Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="UninstallDlg" Order="2">Installed AND NOT PATCH AND WixUI_InstallMode="Remove"</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">Installed AND PATCH</Publish>
+
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="UninstallDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+    </UI>
+    <UIRef Id="WixUI_Common" />
 
   </Product>
 </Include>

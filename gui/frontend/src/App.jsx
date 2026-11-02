@@ -1,17 +1,54 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { TabList, Tab } from '@fluentui/react-components'
 import { useTranslation } from './i18n/i18nContext'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import MachineBackupConfig from './components/MachineBackupConfig'
+import DirectoryTree from './components/DirectoryTree'
+import KnownLimitationsModal from './components/KnownLimitationsModal'
+import ManualViewer from './components/ManualViewer'
+import ClosePromptModal from './components/ClosePromptModal'
+import JobsLockModal from './components/JobsLockModal'
+import RadioGroup from './components/RadioGroup'
+import PassphraseModal from './components/PassphraseModal'
+import ConfirmHost, { askConfirm } from './components/ConfirmDialog'
+import ThemePicker, { hasStoredTheme, applyStoredTheme } from './components/ThemePicker'
 import EncryptionKeyField from './components/EncryptionKeyField'
-import logo from './assets/logo.webp'
+import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTools'
+import { suggestBackupId, setsSharingGroup } from './backupId'
+import ScheduleEditor from './components/ScheduleEditor'
+import LastRunAgo from './components/LastRunAgo'
+import LogsPage, { logRequestFor } from './components/LogsPage'
+import StorageOffer from './components/StorageOffer'
+import { aboutLinks, PROJECT_REPO } from './aboutBrand'
+import { holdEta, finishAt } from './etaHold'
+import defaultIcon from './assets/default-icon.svg'
+
+// Translation key for each About page link (aboutLinks in aboutBrand.js).
+const ABOUT_LINK_LABEL = {
+  website: 'aboutLinkWebsite', help: 'aboutLinkHelp', updates: 'aboutLinkReleases', contact: 'aboutLinkContact',
+  source: 'aboutLinkSource', issues: 'aboutLinkIssues', license: 'aboutLinkLicense',
+}
+import { newSchedule, describe as describeSchedule, badgeKey, scheduleProblem, jobScheduling } from './components/schedules'
 // Wails runtime imports (will be available when built with Wails)
-let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, OpenDirectoryPicker, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, ListBackupJobs, GetBrand, OpenBrowser, RequestElevation, CanModifyJobs, RequestJobModificationElevation
-let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, GetJobHistory, GetSystemInfo, GetLastBackupDirs, RunScheduledJobNow
+let OpenSnapshotTree, ListSnapshotChildren, SnapshotSelectionBytes
+let GetConfigWithHostname, SaveConfig, TestConnection, StartBackup, StartMachineBackup, ListSnapshots, ListSnapshotContents, GetSnapshotMeta, RestoreSnapshot, OpenRestoreDestDialog, ListPhysicalDisks, GetVersion, EventsOn, SearchFiles, CancelSearch, CancelBackup, CancelRestore, GetBrand, OpenBrowser, ListDirectory
+let SaveScheduledJob, UpdateScheduledJob, GetScheduledJobs, DeleteScheduledJob, SetScheduledJobEnabled, RunScheduledJobNow, GetJobHistory, GetMessageLog, GetSystemInfo, GetLastBackupDirs
 // Multi-PBS functions
 let ListPBSServers, GetPBSServer, AddPBSServer, UpdatePBSServer, DeletePBSServer, SetDefaultPBSServer, GetDefaultPBSID, TestPBSConnection
 let GetServerFingerprint, PinPBSServerFingerprint
+let SetParallelRestore, SetParallelBackupRead
+let GetJobPolicy, SetRequireAdminForJobs, RequestElevation, SnapshotSupport, RunScheduledJobNowRead
+let ExportSettings, ImportSettings
+let SetSMTPSettings, SendTestEmail
+let GetLogsFolder, OpenLogsFolder
 // Encryption key management
 let InspectEncryptionKeyFile, GenerateEncryptionKeyFile, OpenEncryptionKeyDialog, OpenEncryptionKeySaveDialog
+// Undelete, Roll back, Run as Service
+let ListSetSnapshots, ScanUndelete, StartUndelete, CancelSetScan, PreviewRollback, StartRollback, ListRollbacks, UndoRollback, DeleteRollbackCopies
+let GetServiceStatus, InstallService, StartBackgroundService, StopBackgroundService, RemoveService
+let PauseBackup, ResumeBackup, GetBackupPauseState
+// Several backups at once: each run's own Pause, Resume and Stop
+let GetBackupRuns, PauseBackupRun, ResumeBackupRun, CancelBackupRun, SetMaxConcurrentRuns
 
 // Check if we're running in Wails
 if (window.go) {
@@ -22,26 +59,28 @@ if (window.go) {
   StartMachineBackup = window.go.main.App.StartMachineBackup
   ListSnapshots = window.go.main.App.ListSnapshots
   ListSnapshotContents = window.go.main.App.ListSnapshotContents
+  OpenSnapshotTree = window.go.main.App.OpenSnapshotTree
+  ListSnapshotChildren = window.go.main.App.ListSnapshotChildren
+  SnapshotSelectionBytes = window.go.main.App.SnapshotSelectionBytes
   GetSnapshotMeta = window.go.main.App.GetSnapshotMeta
   RestoreSnapshot = window.go.main.App.RestoreSnapshot
   OpenRestoreDestDialog = window.go.main.App.OpenRestoreDestDialog
-  OpenDirectoryPicker = window.go.main.App.OpenDirectoryPicker
   SearchFiles = window.go.main.App.SearchFiles
   CancelSearch = window.go.main.App.CancelSearch
   CancelBackup = window.go.main.App.CancelBackup
-  ListBackupJobs = window.go.main.App.ListBackupJobs
+  CancelRestore = window.go.main.App.CancelRestore
   ListPhysicalDisks = window.go.main.App.ListPhysicalDisks
+  ListDirectory = window.go.main.App.ListDirectory
   GetVersion = window.go.main.App.GetVersion
   GetBrand = window.go.main.App.GetBrand
-  RequestElevation = window.go.main.App.RequestElevation
-  CanModifyJobs = window.go.main.App.CanModifyJobs
-  RequestJobModificationElevation = window.go.main.App.RequestJobModificationElevation
   SaveScheduledJob = window.go.main.App.SaveScheduledJob
   UpdateScheduledJob = window.go.main.App.UpdateScheduledJob
   GetScheduledJobs = window.go.main.App.GetScheduledJobs
   DeleteScheduledJob = window.go.main.App.DeleteScheduledJob
+  SetScheduledJobEnabled = window.go.main.App.SetScheduledJobEnabled
   RunScheduledJobNow = window.go.main.App.RunScheduledJobNow
   GetJobHistory = window.go.main.App.GetJobHistory
+  GetMessageLog = window.go.main.App.GetMessageLog
   GetSystemInfo = window.go.main.App.GetSystemInfo
   GetLastBackupDirs = window.go.main.App.GetLastBackupDirs
   // Multi-PBS
@@ -55,11 +94,46 @@ if (window.go) {
   TestPBSConnection = window.go.main.App.TestPBSConnection
   GetServerFingerprint = window.go.main.App.GetServerFingerprint
   PinPBSServerFingerprint = window.go.main.App.PinPBSServerFingerprint
+  SetParallelRestore = window.go.main.App.SetParallelRestore
+  GetJobPolicy = window.go.main.App.GetJobPolicy
+  SnapshotSupport = window.go.main.App.SnapshotSupport
+  RunScheduledJobNowRead = window.go.main.App.RunScheduledJobNowRead
+  SetRequireAdminForJobs = window.go.main.App.SetRequireAdminForJobs
+  RequestElevation = window.go.main.App.RequestElevation
+  SetParallelBackupRead = window.go.main.App.SetParallelBackupRead
+  ExportSettings = window.go.main.App.ExportSettings
+  ImportSettings = window.go.main.App.ImportSettings
+  GetLogsFolder = window.go.main.App.GetLogsFolder
+  OpenLogsFolder = window.go.main.App.OpenLogsFolder
+  SetSMTPSettings = window.go.main.App.SetSMTPSettings
+  SendTestEmail = window.go.main.App.SendTestEmail
   // Encryption key management
   InspectEncryptionKeyFile = window.go.main.App.InspectEncryptionKeyFile
   GenerateEncryptionKeyFile = window.go.main.App.GenerateEncryptionKeyFile
   OpenEncryptionKeyDialog = window.go.main.App.OpenEncryptionKeyDialog
   OpenEncryptionKeySaveDialog = window.go.main.App.OpenEncryptionKeySaveDialog
+  ListSetSnapshots = window.go.main.App.ListSetSnapshots
+  ScanUndelete = window.go.main.App.ScanUndelete
+  StartUndelete = window.go.main.App.StartUndelete
+  CancelSetScan = window.go.main.App.CancelSetScan
+  PreviewRollback = window.go.main.App.PreviewRollback
+  StartRollback = window.go.main.App.StartRollback
+  ListRollbacks = window.go.main.App.ListRollbacks
+  UndoRollback = window.go.main.App.UndoRollback
+  DeleteRollbackCopies = window.go.main.App.DeleteRollbackCopies
+  GetServiceStatus = window.go.main.App.GetServiceStatus
+  InstallService = window.go.main.App.InstallService
+  StartBackgroundService = window.go.main.App.StartBackgroundService
+  StopBackgroundService = window.go.main.App.StopBackgroundService
+  RemoveService = window.go.main.App.RemoveService
+  PauseBackup = window.go.main.App.PauseBackup
+  ResumeBackup = window.go.main.App.ResumeBackup
+  GetBackupPauseState = window.go.main.App.GetBackupPauseState
+  GetBackupRuns = window.go.main.App.GetBackupRuns
+  PauseBackupRun = window.go.main.App.PauseBackupRun
+  ResumeBackupRun = window.go.main.App.ResumeBackupRun
+  CancelBackupRun = window.go.main.App.CancelBackupRun
+  SetMaxConcurrentRuns = window.go.main.App.SetMaxConcurrentRuns
 }
 
 // Wails events + runtime (open external URLs in the system browser)
@@ -68,52 +142,429 @@ if (window.runtime) {
   OpenBrowser = window.runtime.BrowserOpenURL
 }
 
-// 0=Sunday … 6=Saturday, matching Go's time.Weekday (and JS Date.getDay).
-const WEEKDAYS = [
-  { value: 0, key: 'weekdaySun' },
-  { value: 1, key: 'weekdayMon' },
-  { value: 2, key: 'weekdayTue' },
-  { value: 3, key: 'weekdayWed' },
-  { value: 4, key: 'weekdayThu' },
-  { value: 5, key: 'weekdayFri' },
-  { value: 6, key: 'weekdaySat' },
-]
-
-function weekdayName(value, t) {
-  const day = WEEKDAYS.find(d => d.value === value)
-  return day ? t(day.key) : String(value)
+// Auto-scaling transfer-rate formatter: shows the conventional decimal unit
+// (KB/MB/GB, ÷1000) with the binary IEC unit (KiB/MiB/GiB, ÷1024) alongside,
+// since a hardcoded "always ÷1048576, always MB/s" badly misrepresents both
+// small rates (reads as a tiny fraction) and large ones (a burst of reused
+// chunks landing in one event previously showed 1874.7 MB/s).
+// A number with d decimals in the app's language ("44,4" in French).
+function fixed(v, d) {
+  return v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })
 }
 
-// formatRecurrence renders a job's stored frequency for the jobs list.
-// Jobs saved before frequencies existed have no field and are daily.
-function formatRecurrence(job, t) {
-  if (job.frequency === 'weekly') {
-    const days = (job.weekdays || [])
-      .slice()
-      .sort((a, b) => a - b)
-      .map(d => weekdayName(d, t))
-      .join(', ')
-    return t('scheduleSummaryWeekly', { days })
+function formatSpeed(bytesPerSec) {
+  if (!bytesPerSec || bytesPerSec <= 0) return '0 KB/s'
+  return dualUnits(bytesPerSec, '/s')
+}
+
+// An amount in decimal units with the binary figure in brackets, both at the
+// same unit step so they read as the same amount: "1.1 GB (1.0 GiB)", not
+// "1.1 GB (1004.3 MiB)". Under 1000 it is plain bytes.
+function dualUnits(n, suffix = '') {
+  const dec = ['B', 'KB', 'MB', 'GB', 'TB']
+  const bin = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+  let v = n
+  let u = 0
+  while (v >= 999.95 && u < dec.length - 1) { v /= 1000; u++ } // 999.95 would show as 1000.0
+  if (u === 0) return `${fixed(n, 0)} B${suffix}`
+  return `${fixed(v, 1)} ${dec[u]}${suffix} (${fixed(n / Math.pow(1024, u), 1)} ${bin[u]}${suffix})`
+}
+
+// Reused collator: same ordering as String.localeCompare but far cheaper per
+// call, which matters when sorting folders with 100k+ entries.
+const pathCollator = new Intl.Collator()
+
+// Shorten a long path by eliding the middle, keeping the start and the file name.
+function middleTruncate(str, max) {
+  if (!str || str.length <= max) return str
+  const keep = max - 3
+  const head = Math.ceil(keep * 0.4)
+  return str.slice(0, head) + '...' + str.slice(str.length - (keep - head))
+}
+
+// Auto-scaling duration formatter (s -> m/s -> h/m/s -> d/h/m/s), for the
+// progress card's time-remaining/elapsed-time fields — both used to show
+// raw seconds (or minutes+seconds with no hours tier), unreadable well
+// before an hour in (a real 478GB job showed "342m 37s" and "2640s").
+function formatDuration(totalSeconds) {
+  let s = Math.max(0, Math.floor(totalSeconds || 0))
+  const days = Math.floor(s / 86400); s -= days * 86400
+  const hours = Math.floor(s / 3600); s -= hours * 3600
+  const minutes = Math.floor(s / 60); s -= minutes * 60
+  const seconds = s
+  const parts = []
+  if (days > 0) parts.push(`${days}d`)
+  if (days > 0 || hours > 0) parts.push(`${hours}h`)
+  if (days > 0 || hours > 0 || minutes > 0) parts.push(`${minutes}m`)
+  parts.push(`${seconds}s`)
+  return parts.join(' ')
+}
+
+// Sizes in both units, decimal first and binary in brackets, the same
+// convention as formatSpeed: "357.9 GB (333.3 GiB)". The old formatBytes
+// divided by 1024 and labelled the result GB, so a "447.7 GB" snapshot was
+// really 480.7 GB and disagreed with PBS.
+function formatBytesDual(bytes) {
+  if (!bytes || bytes < 1000) return `${bytes || 0} B`
+  return dualUnits(bytes)
+}
+
+// "6.6:1": how much smaller new data was on the network than before
+// compression. Empty until both are known.
+function compressionRatio(raw, sent) {
+  if (!(raw > 0 && sent > 0)) return ''
+  return `${(raw / sent).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}:1`
+}
+
+// Wall-clock time with the day, in the user's locale ("Wed 07/10 19:35:51"),
+// for the progress cards' Started and Forecast finish. The day matters for a
+// run that crosses midnight.
+function formatClock(ms) {
+  if (!ms) return ''
+  const d = new Date(ms)
+  const day = d.toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: '2-digit' }).replace(',', '')
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return `${day} ${time}`
+}
+
+// Per-second rate of samples[].key over the last windowMs, or null when the
+// window holds under a second of samples. The progress cards show speeds
+// over the last few seconds (what is happening now) and forecast the finish
+// from a longer window, instead of one average since the start that hides
+// every change of pace.
+function windowRate(samples, key, windowMs, now) {
+  let first = null
+  let last = null
+  for (const s of samples) {
+    if (now - s.t > windowMs) continue
+    if (!first) first = s
+    last = s
   }
-  if (job.frequency === 'monthly') {
-    return t('scheduleSummaryMonthly', { day: job.dayOfMonth })
+  if (!first || !last || last.t - first.t < 1000) return null
+  return Math.max(0, (last[key] - first[key]) / ((last.t - first.t) / 1000))
+}
+
+// A path shortened in the middle to fit the space it has (keeping the start
+// and the file name), measured from its own width, so a long path is never
+// cut off at the end where the file name is.
+function FitPath({ path }) {
+  const ref = useRef(null)
+  const [chars, setChars] = useState(110)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const probe = document.createElement('span')
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:inherit'
+    probe.textContent = 'MMMMMMMMMMiiiiiiiiii'
+    el.appendChild(probe)
+    const charWidth = probe.getBoundingClientRect().width / 20 || 7
+    el.removeChild(probe)
+    const ro = new ResizeObserver(() => setChars(Math.max(20, Math.floor(el.clientWidth / charWidth) - 1)))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return (
+    <span ref={ref} title={path} style={{fontFamily: 'Consolas, monospace', fontSize: '12px', flex: '1 1 auto', minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', display: 'block'}}>
+      {middleTruncate(path, chars)}
+    </span>
+  )
+}
+
+// Indeterminate progress for a server call that gives no progress of its
+// own (listing snapshots, opening folders): a sliding stripe and a seconds
+// counter, with a hint once the wait is long. Stays up for the whole call;
+// the old status line faded after 5 s and left a blank screen. A caller that
+// knows how far through a step it is passes fraction (0..1) for a real bar.
+function WaitBar({ label, startedAt, slowHint, fraction }) {
+  const secs = Math.max(0, Math.floor((Date.now() - (startedAt || Date.now())) / 1000))
+  const known = typeof fraction === 'number' && fraction >= 0
+  return (
+    <div role="status" aria-live="polite" style={{margin: '12px 0'}}>
+      <div className="wait-bar">
+        {known
+          ? <div className="wait-bar-fill" style={{width: `${Math.round(Math.min(1, fraction) * 100)}%`}} />
+          : <div className="wait-bar-stripe" />}
+      </div>
+      <div style={{fontSize: '13px', color: '#475569', marginTop: '6px'}}>
+        {label} · {formatDuration(secs)}
+      </div>
+      {secs >= 15 && slowHint && (
+        <div style={{fontSize: '12px', color: '#64748b', marginTop: '2px'}}>{slowHint}</div>
+      )}
+    </div>
+  )
+}
+
+// renderLocalizedMessage renders a JobHistory/MessageLogEntry's message in the
+// user's chosen language via t(message_key, message_params) — added
+// 2026-09-24 alongside the backend's message-catalog change (see
+// gui/msgcodes.go). Falls back to the entry's plain-text `message` field
+// when: there's no message_key at all (every entry persisted before this
+// change), or the key isn't recognized by the current translations.js (t()
+// returns the key itself unchanged in that case — the one signal available
+// to detect a miss). skippedNote is spliced in for the three backup-
+// completion keys that carry a `skipped` count, so the "N files skipped"
+// detail survives translation instead of being silently dropped — see
+// MsgSkippedFilesNote's doc comment in msgcodes.go.
+//
+// Returns { text, usedKey } rather than just a string: usedKey tells a
+// caller (the Message Log row) whether to add its own "{jobName}: " prefix,
+// since the plain-text fallback already has that prefix baked in from the
+// old fmt.Sprintf("%s: %s", ...) composition and mustn't get it twice — and
+// a simple "did the output change" check isn't reliable, because an English
+// viewer's translated text can legitimately be byte-identical to the stored
+// English fallback.
+function renderLocalizedMessage(entry, t, lang) {
+  const key = entry.message_key
+  if (key) {
+    const params = entry.message_params || {}
+    const withNote = { ...params }
+    for (const [k, v] of Object.entries(params)) {
+      if (Number.isInteger(v)) withNote[k] = fmtNum(v, lang)
+    }
+    // Sizes come pre-formatted ("1284.6"); give them the language's separators.
+    if (typeof params.mb === 'string' && /^\d+(\.\d+)?$/.test(params.mb)) {
+      try { withNote.mb = Number(params.mb).toLocaleString(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) } catch { /* keep as sent */ }
+    }
+    if (typeof params.skipped === 'number') {
+      withNote.skippedNote = skippedNotes(params, t, lang).map(n => '\n' + n.text).join('')
+    }
+    const translated = t(key, withNote)
+    if (translated !== key) {
+      return { text: translated, usedKey: true }
+    }
   }
-  return t('scheduleSummaryDaily')
+  return { text: entry.message, usedKey: false }
+}
+
+// The messages of a backup that finished: 'clean' ones say nothing beyond
+// their figures, so Reports and the Message Log show the figures as fields
+// instead of the sentence; the others keep their sentence too (errors, the
+// unreadable areas of a disk).
+const COMPLETION_KEYS = {
+  logBackupCompleted: 'clean', logMachineBackupCompleted: 'clean', logMachineBackupCompletedStats: 'clean',
+  logBackupCompletedWithErrors: 'warn', logBackupPartial: 'warn', logMachineBackupUnreadable: 'warn',
+}
+const SUCCESS_KEYS = new Set(['logBackupCompleted', 'logMachineBackupCompleted', 'logMachineBackupCompletedStats', 'logBackupCompletedGeneric', 'logRestoreCompleted'])
+
+// A clean finish that also counted as one: a folder backup that could not
+// read some files keeps the "completed" message but is an error (Message
+// Log) or failed (Reports), and keeps its sentence.
+function isCleanFinish(entry) {
+  if (COMPLETION_KEYS[entry.message_key] !== 'clean') return false
+  return entry.level ? entry.level === 'info' : entry.status === 'success'
+}
+
+// The figures of a finished backup as [label, value] pairs: duration, size,
+// chunks and data uploaded, plus skipped files. Null for any other message.
+// Entries saved before the byte counts were recorded have them as text
+// ("128.0 GB (119.2 GiB)") or, for folder backups, in MB.
+function backupFacts(entry, t, lang) {
+  if (!COMPLETION_KEYS[entry.message_key]) return null
+  const p = entry.message_params || {}
+  const tl = (k, en) => { const v = t(k); return v === k ? en : v }
+  const facts = []
+  if (p.duration) facts.push([tl('reportsDuration', 'Duration'), p.duration])
+  let size = null
+  if (typeof p.readBytes === 'number') size = formatBytesDual(p.readBytes)
+  else if (typeof p.bytes === 'number') size = formatBytesDual(p.bytes)
+  else if (typeof p.read === 'string') size = p.read
+  else if (p.mb != null && Number.isFinite(Number(p.mb))) size = formatBytesDual(Math.round(Number(p.mb) * 1e6))
+  if (size) facts.push([tl('reportsBackupSize', 'Backup size'), size])
+  if (typeof p.new === 'number' && typeof p.reused === 'number') {
+    const part = (label, n) => `${label} (${fmtNum(n, lang)})`
+    const parts = [
+      part(tl('reportsChunkTotal', 'Total'), p.new + p.reused),
+      part(tl('processedNew', 'New'), p.new),
+      part(tl('processedReused', 'Reused'), p.reused),
+    ]
+    if (typeof p.blank === 'number') parts.push(part(tl('reportsChunkBlank', 'Blank'), p.blank))
+    if (p.failed > 0) parts.push(part(tl('reportsChunkFailed', 'Failed'), p.failed))
+    facts.push([tl('reportsChunks', 'Chunks'), parts.join(', ')])
+  }
+  if (typeof p.uploadedBytes === 'number') facts.push([tl('reportsUploaded', 'New/changed data'), formatBytesDual(p.uploadedBytes)])
+  else if (typeof p.uploaded === 'string') facts.push([tl('reportsUploaded', 'New/changed data'), p.uploaded])
+  // What the new data took on the network, after compression (entries
+  // saved before this was recorded have only the figure above).
+  if (typeof p.sentBytes === 'number') {
+    facts.push([tl('reportsSent', 'Data transferred'), formatBytesDual(p.sentBytes)])
+    const ratio = compressionRatio(p.uploadedBytes, p.sentBytes)
+    if (ratio) facts.push([tl('reportsRatio', 'Compression ratio'), ratio])
+  }
+  // Skipped files, unless the message is shown too (it names them).
+  if (isCleanFinish(entry)) {
+    for (const n of skippedNotes(p, t, lang)) {
+      const text = n.text.replace(/^[\s⚠️]+/, '')
+      facts.push(n.warn ? [tl('reportsWarnings', 'Warnings'), text] : [tl('reportsSkippedByDesign', 'Left out'), text])
+    }
+  }
+  return facts
+}
+
+// What a finished backup skipped, as notes for its message and Reports.
+// Files it could not read are a warning; links, sockets, pipes and system
+// files it leaves out on purpose are not. Backups recorded before the two
+// were counted apart (no `unreadable`) keep a single note with a warning.
+function skippedNotes(p, t, lang) {
+  if (!(p.skipped > 0)) return []
+  const note = (key, n, warn) => ({ text: t(key, { count: fmtNum(n, lang) }).replace(/^\n/, ''), warn })
+  if (typeof p.unreadable !== 'number') return [note('logSkippedFilesNote', p.skipped, true)]
+  const notes = []
+  if (p.unreadable > 0) notes.push(note('logUnreadableFilesNote', p.unreadable, true))
+  if (p.skipped > p.unreadable) notes.push(note('logSkippedByDesignNote', p.skipped - p.unreadable, false))
+  return notes
+}
+
+// skippedWarns is whether a finished backup skipped anything worth a warning sign.
+function skippedWarns(p) {
+  if (!p || !(p.skipped > 0)) return false
+  return typeof p.unreadable === 'number' ? p.unreadable > 0 : true
+}
+
+// A Message Log entry's icon: a tick for a backup or restore that finished
+// (a warning sign when it could not read some files), a stop sign for one the user
+// stopped, otherwise by level.
+function messageIcon(entry) {
+  if (entry.message_key === 'logBackupCancelled' || /cancelled by user/i.test(entry.message || '')) return '⏹️'
+  if (entry.level === 'error') return '❌'
+  if (entry.level === 'warning') return '⚠️'
+  if (SUCCESS_KEYS.has(entry.message_key)) return skippedWarns(entry.message_params) ? '⚠️' : '✅'
+  return 'ℹ️'
+}
+
+// A whole number with the language's thousands separators ("181,912").
+function fmtNum(n, lang) {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return String(n ?? '')
+  try { return v.toLocaleString(lang) } catch { return v.toLocaleString() }
+}
+
+// A Reports entry's name in the user's language. Restores recorded before
+// name_key existed are recognised by their English names.
+const OLD_RESTORE_NAMES = [
+  [/^Restore of (.+) @ (.+)$/, m => ['reportNameRestore', { id: m[1], snapshot: m[2] }]],
+  [/^Undelete: (.+) \((\d+) files\)$/, m => ['reportNameUndelete', { set: m[1], files: Number(m[2]) }]],
+  [/^Roll back: (.+) to (\d{4}-\d\d-\d\d \d\d:\d\d)$/, m => ['reportNameRollback', { set: m[1], at: m[2] }]],
+]
+function historyName(entry, t, lang) {
+  let key = entry.name_key
+  let params = entry.name_params
+  if (!key && entry.kind === 'restore') {
+    for (const [re, toKey] of OLD_RESTORE_NAMES) {
+      const m = (entry.name || '').match(re)
+      if (m) { [key, params] = toKey(m); break }
+    }
+  }
+  if (!key) return entry.name
+  const p = { ...params }
+  if (typeof p.files === 'number') p.files = fmtNum(p.files, lang)
+  const text = t(key, p)
+  return text === key ? entry.name : text
+}
+
+const EMPTY_BACKUP_STATS = {
+  startTime: null,
+  lastUpdate: null,
+  lastPercent: 0,
+  speed: 0,
+  eta: null,
+  // Structured live stats (from the backup:stats event)
+  bytesDone: 0,
+  bytesTotal: 0,
+  newChunks: 0,
+  reusedChunks: 0,
+  failedChunks: 0,
+  currentDir: '',
+  filesDone: 0,
+  filesTotal: 0,
+  uploadedBytes: 0,
+  // sentBytes: the new data as it went over the network (compressed).
+  sentBytes: 0,
+  filesRate: null,
+  uploadRate: null,
+  phase: '',
+  readReason: '',
+  changeMode: '',
+  // hasDetail: the run sends chunk and upload figures (every backup run by
+  // this build; a service run sends percent only, so rows read "Not available").
+  hasDetail: false,
+  // Machine (disk image) backups: kind 'machine', and where the reader is.
+  kind: '',
+  blankChunks: 0,
+  disk: '',
+  diskNo: 0,
+  diskModel: '',
+  diskCount: 0,
+  diskBytes: 0,
+  diskDone: 0,
+  partition: '',
+  unreadable: 0,
+  // A machine backup waiting to start again after a lost connection
+  // (phase 'retry_wait'): when, and which attempt comes next of how many.
+  retryAt: 0,
+  attempt: 0,
+  attempts: 0
+}
+
+const EMPTY_RESTORE_STATS = { startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0, eta: null }
+
+// cardSchedule picks the schedule a set card shows: the one that gives the
+// next run (nextRunBy), else the first one on; `on` counts those on.
+function cardSchedule(job) {
+  const js = jobScheduling(job)
+  if (js.mode === 'manual') return { manual: true, sch: null, on: 0 }
+  const on = js.schedules.filter(sc => sc.enabled)
+  return { manual: false, sch: on.find(sc => sc.id === job.nextRunBy) || on[0] || null, on: on.length }
 }
 
 function App() {
-  const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState('servers')
+  const { t, language } = useTranslation()
+  const tl = (key, fallback) => { const v = t(key); return v === key ? fallback : v }
+  const statusLabel = (s) => ({
+    success: t('reportStatusSuccess'), failed: t('reportStatusFailed'),
+    cancelled: t('reportStatusCancelled'), running: t('reportStatusRunning'),
+  }[s] || s)
+  // Backup ID for the "vm" machine backup: a numeric PBS vm/<id>.
+  // 'range' offsets into a high block so it cannot collide with a real VM's ID.
+  const computeVmBackupId = (n, style) => {
+    const digits = String(n || '').replace(/\D/g, '')
+    const num = parseInt(digits, 10)
+    if (!digits || !(num >= 1 && num <= 999999)) return ''
+    return style === 'zeros' ? '000' + String(num) : String(9000000 + num)
+  }
+  const [activeTab, setActiveTab] = useState('backup')
+  const [showLimitations, setShowLimitations] = useState(false)
+  // Help page: which manual and section. nonce makes asking for the same
+  // section again scroll back to it.
+  const [manualView, setManualView] = useState({ doc: 'gui', anchor: '', nonce: 0 })
+  const openManual = (doc, anchor = '') => {
+    setManualView((v) => ({ doc: doc || 'gui', anchor: anchor || '', nonce: v.nonce + 1 }))
+    setActiveTab('help')
+  }
+  const [showClosePrompt, setShowClosePrompt] = useState(false)
+  const [showPreferences, setShowPreferences] = useState(false)
+  const [prefsTab, setPrefsTab] = useState('account')
+  const [exportIncludeSecrets, setExportIncludeSecrets] = useState(false)
+  // Preferences > Advanced > Email notifications (global SMTP account, used
+  // by every Backup Set's own on-completion/on-failure toggle). Password is
+  // never round-tripped from the backend (see GetConfigWithHostname's
+  // smtp_password_set) — an empty smtpPassword field here just means "keep
+  // whatever's already saved" when Save is pressed, same convention as the
+  // PBS secret field.
+  const [smtpHost, setSmtpHost] = useState('')
+  const [smtpPort, setSmtpPort] = useState('587')
+  const [smtpUsername, setSmtpUsername] = useState('')
+  const [smtpPassword, setSmtpPassword] = useState('')
+  const [smtpPasswordSet, setSmtpPasswordSet] = useState(false)
+  const [smtpInsecure, setSmtpInsecure] = useState(false)
+  const [emailFrom, setEmailFrom] = useState('')
+  const [testEmailTo, setTestEmailTo] = useState('')
   const [hostname, setHostname] = useState('')
   const [appVersion, setAppVersion] = useState('dev')
+  // "v0.7.0" for a release; a development build as is ("dev-49d96e4").
+  const isDevBuild = !appVersion || appVersion.startsWith('dev')
+  const versionLabel = isDevBuild ? appVersion : `v${appVersion}`
   const [brand, setBrand] = useState({ name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', logo: '', accent: '#e87003', accent_hover: '#d46100', buy_storage_url: '', buy_storage_text: '', is_default: true })
-  // Buy-storage CTA: brand-specific when provided, otherwise the PBS download
-  // page (the /en/downloads.php URL 404s — this is the live one, and the same
-  // fallback the welcome box uses).
-  const buyStorage = {
-    url: brand.buy_storage_url || 'https://www.proxmox.com/en/downloads/proxmox-backup-server',
-    text: brand.buy_storage_text || t('orderStorageCTA')
-  }
   const [systemInfo, setSystemInfo] = useState({ mode: 'Standalone', is_admin: false, service_available: false, os: '' })
   const [config, setConfig] = useState({
     baseurl: '',
@@ -125,9 +576,13 @@ function App() {
     // Path to the PBS encryption key file (NOT the key itself). Round-tripped on
     // save because SaveConfig replaces the whole Config on the Go side.
     encryption_key_file: '',
+    encryption_key_passphrase_set: false,
+    encryption_key_passphrase: '',
+    clear_encryption_key_passphrase: false,
     backupdir: '',
     'backup-id': '',
-    usevss: true
+    usevss: true,
+    parallel_restore: false
   })
 
   // Multi-PBS states
@@ -135,6 +590,7 @@ function App() {
   const [defaultPBSID, setDefaultPBSID] = useState('')
   const [selectedPBSID, setSelectedPBSID] = useState('')
   const [editingServer, setEditingServer] = useState(null)
+  const [showServerForm, setShowServerForm] = useState(false) // Account Info: add/edit form visible below the list?
   const [serverFormData, setServerFormData] = useState({
     id: '',
     name: '',
@@ -147,61 +603,297 @@ function App() {
     datastore: '',
     namespace: '',
     encryption_key_file: '',
+    encryption_key_passphrase_set: false,
+    encryption_key_passphrase: '',
+    clear_encryption_key_passphrase: false,
     description: ''
   })
   const [serverStatus, setServerStatus] = useState({}) // Map of server ID -> connection status
   const [serverTab, setServerTab] = useState('server') // active category tab in the server form
 
   const [backupType, setBackupType] = useState('directory')
+  // While true, a folder Backup Set's ID follows its name (suggestBackupId):
+  // on for a new or cloned set until the ID is typed by hand, off when an
+  // existing set is edited (changing its ID would start a new group on PBS).
+  const [backupIdAuto, setBackupIdAuto] = useState(false)
   const [backupDirs, setBackupDirs] = useState('')
   const [selectedDrives, setSelectedDrives] = useState([])
+  // Machine sets: folders on their disks that Undelete and Roll back work on
+  // (one per line; empty = the user's Desktop, Documents, Pictures, ...).
+  const [imageFolders, setImageFolders] = useState('')
   const [physicalDisks, setPhysicalDisks] = useState([])
   const [excludeList, setExcludeList] = useState('')
+  // Root-relative excludes the folder tree picker generates (unchecking a
+  // specific subfolder/file under an included root) — kept SEPARATE from the
+  // user's own wildcard-pattern excludeList textarea above so the two stay
+  // visually distinct (mirroring BFW's two-screen split: tree for specific
+  // items, pattern box for broad rules), even though both end up merged into
+  // the one flat exclude list the backend already accepts — see
+  // getEffectiveExcludeList. No new backend field was needed: an absolute-path
+  // exclude is already anchored to its own directory's root by the existing
+  // isExcluded/relExcludePath matching (pbscommon/pxar.go), so it can never
+  // leak into a different selected folder.
+  const [treeExcludes, setTreeExcludes] = useState([])
+  const getEffectiveExcludeList = () => [
+    ...excludeList.split('\n').map(l => l.trim()).filter(Boolean),
+    ...treeExcludes,
+  ]
   const [progress, setProgress] = useState(0)
-  const [backupPBSID, setBackupPBSID] = useState('')
-  const [machineBackupKind, setMachineBackupKind] = useState('host')
   // Opt-in: split this backup into parts (for the first backup of a large volume).
   // Off by default → no size analysis, the backup starts immediately.
   const [splitFirstBackup, setSplitFirstBackup] = useState(false)
 
   // Scheduling states
   const [backupMode, setBackupMode] = useState('oneshot') // 'oneshot' or 'scheduled'
-  const [scheduleTime, setScheduleTime] = useState('02:00')
-  const [scheduleFrequency, setScheduleFrequency] = useState('daily') // 'daily', 'weekly', 'monthly'
-  const [scheduleWeekdays, setScheduleWeekdays] = useState([1]) // Monday, 0=Sunday … 6=Saturday
-  const [scheduleDayOfMonth, setScheduleDayOfMonth] = useState(1)
   const [runAtStartup, setRunAtStartup] = useState(false)
-  const [jobEnabled, setJobEnabled] = useState(true)
+  // The set's schedules (gui/schedules.go): 'scheduled' runs on the list,
+  // 'manual' only on Run Now (the list is kept).
+  const [scheduleMode, setScheduleMode] = useState('scheduled')
+  const [schedules, setSchedules] = useState(() => [newSchedule('days', 's1')])
   const [scheduledJobs, setScheduledJobs] = useState([])
-  const [runningJobs, setRunningJobs] = useState([])
+  // path -> whether it can be read through a snapshot (false = network drive,
+  // read live); filled for the folders of sets that ask for a snapshot.
+  const [snapSupport, setSnapSupport] = useState({})
+  useEffect(() => {
+    if (!SnapshotSupport) return
+    const paths = [...new Set(scheduledJobs
+      .filter(j => j.backupType !== 'machine' && j.useVSS)
+      .flatMap(j => j.backupDirs || []))]
+    if (paths.length === 0) return
+    let live = true
+    SnapshotSupport(paths).then(m => { if (live && m) setSnapSupport(prev => ({ ...prev, ...m })) }).catch(() => {})
+    return () => { live = false }
+  }, [scheduledJobs])
+  // The Backup Set the Undelete and Roll back pages work on (the set card
+  // shortcuts pick it before switching page).
+  const [setToolJobId, setSetToolJobId] = useState('')
+  // Backup IDs other sets use, so a suggestion never shares one.
+  const takenBackupIds = (exceptJobId) => scheduledJobs.filter(j => j.id !== exceptJobId).map(j => j.backupId)
+  const suggestedBackupId = (name) => suggestBackupId(name, hostname, takenBackupIds(editingJobId))
+  // Switching a new set between folder and machine: folder sets get the
+  // suggestion, machine sets the computer's name (what bare-metal restore lists).
+  useEffect(() => {
+    if (!backupIdAuto || backupMode !== 'scheduled') return
+    setConfig(c => ({...c, 'backup-id': backupType === 'machine' ? hostname : suggestedBackupId(jobName)}))
+  }, [backupType])
+  // Which Backup Set card has its More menu open (null: none).
+  // Run a Backup Set now; read is '' (as scheduled), 'quick' or 'full'.
+  const runSetNow = async (job, read) => {
+    setRunningJobId(job.id)
+    try {
+      if (read && RunScheduledJobNowRead) await RunScheduledJobNowRead(job.id, read)
+      else await RunScheduledJobNow(job.id)
+      const how = read === 'full' ? ` (${tl('runNowFullShort', 'full read')})` : read === 'quick' ? ` (${tl('runNowQuickShort', 'quick')})` : ''
+      showStatus(`▶️ ${job.name}${how}`, 'success')
+    } catch (err) {
+      showStatus(`❌ ${t('runNowError').replace('{error}', err)}`, 'error')
+    } finally {
+      setRunningJobId(null)
+    }
+  }
+  const [openSetMenu, setOpenSetMenu] = useState(null)
+  useEffect(() => {
+    if (!openSetMenu) return undefined
+    const close = () => setOpenSetMenu(null)
+    const onKey = (e) => { if (e.key === 'Escape') close() }
+    document.addEventListener('click', close)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', onKey) }
+  }, [openSetMenu])
+  // Scheduled-job protection (Windows): when require_admin is on, changing
+  // Backup Sets needs an elevated session. Defaults are the permissive "not
+  // applicable" shape until the backend answers (and on platforms without it).
+  const [jobPolicy, setJobPolicy] = useState({ supported: false, require_admin: false, is_admin: true, can_modify: true, settings_locked: false })
+  // Backup Set change refused by the lock: a modal that must be acknowledged
+  const [showJobsLock, setShowJobsLock] = useState(false)
+  // Returns true when err was the lock refusal (and shows the modal for it)
+  const handleJobsLockError = (err) => {
+    if (!String(err).includes('JOBS_ADMIN_REQUIRED')) return false
+    setShowJobsLock(true)
+    refreshJobPolicy()
+    return true
+  }
+  const refreshJobPolicy = async () => {
+    if (!GetJobPolicy) return
+    try { setJobPolicy(await GetJobPolicy()) } catch (e) { /* keep last known */ }
+  }
+  const jobErrText = (err) => String(err).includes('JOBS_ADMIN_REQUIRED')
+    ? t('jobsAdminRequired')
+    : `${t('statusError')} ${err}`
+  const restartAsAdmin = async () => {
+    if (!RequestElevation) return
+    try {
+      await RequestElevation()
+    } catch (err) {
+      showStatus(String(err).includes('ELEVATION_CANCELLED') ? `⚠️ ${t('jobsPolicyElevateCancelled')}` : `❌ ${err}`,
+        String(err).includes('ELEVATION_CANCELLED') ? 'warning' : 'error')
+    }
+  }
   const [jobHistory, setJobHistory] = useState([])
+  const [selectedHistoryId, setSelectedHistoryId] = useState(null) // Reports page: which run's detail is shown
+  const [messageLog, setMessageLog] = useState([])
+  // View Full Logs: what to open there when a report or message asks for its
+  // log ({folder, name, around, notice, nonce}).
+  const [logRequest, setLogRequest] = useState(null)
   const [editingJobId, setEditingJobId] = useState(null) // Track which job is being edited
-  const [backupStats, setBackupStats] = useState({
-    startTime: null,
-    lastUpdate: null,
-    lastPercent: 0,
-    speed: 0,
-    eta: null,
-    // Structured live stats (from the backup:stats event)
-    bytesDone: 0,
-    bytesTotal: 0,
-    lastBytes: 0,
-    newChunks: 0,
-    reusedChunks: 0,
-    failedChunks: 0,
-    currentDir: ''
-  })
+  const [showBackupForm, setShowBackupForm] = useState(false) // Backup tab: form open vs. Backup Sets landing view
+  const [backupFormTab, setBackupFormTab] = useState('source') // Backup Set editor: Source/Exclusions/Schedule/Destination/Alerts
+  // Alerts tab: post-backup actions, modelled on Backup for Workgroups'
+  // "Special Items" step. All independent, all off by default.
+  const [emailOnSuccess, setEmailOnSuccess] = useState(false)
+  const [emailOnSuccessTo, setEmailOnSuccessTo] = useState('')
+  const [emailOnFailure, setEmailOnFailure] = useState(false)
+  const [emailOnFailureTo, setEmailOnFailureTo] = useState('')
+  const [runAppBefore, setRunAppBefore] = useState('')
+  const [runAppAfter, setRunAppAfter] = useState('')
+  const [exitAppAfter, setExitAppAfter] = useState(false)
+  const [minimizeAfter, setMinimizeAfter] = useState(false)
+  const [shutdownAfter, setShutdownAfter] = useState(false)
+  const [jobName, setJobName] = useState('') // User-facing name for the backup set being created/edited
+  const [oneOffComment, setOneOffComment] = useState('') // Optional PBS snapshot comment for a one-off backup
+  // Back a machine up as a PBS "vm" snapshot (restorable from Proxmox VE).
+  const [machineAsVM, setMachineAsVM] = useState(false)
+  // A machine Backup Set that also reads free space (a forensic copy).
+  const [readFreeSpace, setReadFreeSpace] = useState(false)
+  // Change detection for a directory Backup Set ('legacy' | 'data' | 'metadata')
+  // and, for metadata, a full read every N runs (0 = never).
+  const [changeDetectionMode, setChangeDetectionMode] = useState('legacy')
+  const [fullReadEvery, setFullReadEvery] = useState(0)
+  const [vmIdNumber, setVmIdNumber] = useState('')
+  const [vmIdStyle, setVmIdStyle] = useState('range') // 'range' = 9000000+N, 'zeros' = 000N
+  // Reverse of computeVmBackupId: refill the editor from a saved Backup Set.
+  const applyVmFieldsFromJob = (job) => {
+    const isVm = job.backupType === 'machine' && !!job.machineAsVm
+    setMachineAsVM(isVm)
+    setReadFreeSpace(job.backupType === 'machine' && !!job.readFreeSpace)
+    if (!isVm) { setVmIdNumber(''); setVmIdStyle('range'); return }
+    const id = String(job.backupId || '')
+    if (/^000\d+$/.test(id)) { setVmIdStyle('zeros'); setVmIdNumber(id.slice(3)) }
+    else if (/^9\d{6}$/.test(id)) { setVmIdStyle('range'); setVmIdNumber(String(parseInt(id, 10) - 9000000)) }
+    else { setVmIdStyle('range'); setVmIdNumber(id.replace(/\D/g, '').slice(0, 6)) }
+  }
+  const [runningJobId, setRunningJobId] = useState(null) // Backup set currently running via "Run Now"
+  const [backupPBSID, setBackupPBSID] = useState('') // Destination tab: which configured PBS server this backup/set targets
+  const [backupStats, setBackupStats] = useState(EMPTY_BACKUP_STATS)
   const [status, setStatus] = useState({ message: '', type: '', visible: false })
   const [backupRunning, setBackupRunning] = useState(false)
+  const [backupFile, setBackupFile] = useState('')
+  const [backupStopRequested, setBackupStopRequested] = useState(false)
+  // Pause: since = when the current pause began (ms), 0 while running.
+  const [backupPause, setBackupPause] = useState({ paused: false, since: 0 })
+  // A machine backup sends nothing while paused: tick so "Paused for" counts.
+  const [, setPauseTick] = useState(0)
+  useEffect(() => {
+    if (!backupPause.paused) return undefined
+    const id = setInterval(() => setPauseTick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [backupPause.paused])
   const statusTimeoutRef = useRef(null)
+  // Recent stats samples ({t, bytes, files, uploaded}) for windowRate.
+  const backupSamplesRef = useRef([])
+  const restoreSamplesRef = useRef([])
+  // When the current restore stage began, for estimating the steps after the
+  // transfer (folder timestamps, ACLs, verify) from their "N of M" counts.
+  const restoreStageStartRef = useRef({ stage: '', t: 0 })
+  // The held time left of a restore's after-transfer stage (etaHold.js).
+  const restoreStageEtaRef = useRef(null)
+  // A server call in progress that has no progress of its own (WaitBar):
+  // { id, kind, label, startedAt }. waitSeqRef numbers the calls so a reply
+  // to a call that a newer one replaced is ignored.
+  const [serverWait, setServerWait] = useState(null)
+  const waitSeqRef = useRef(0)
+  const [, setWaitTick] = useState(0)
+  // The progress cards' clocks (Elapsed, Forecast finish) tick every second
+  // even when no new stats arrive.
+  const [, setCardTick] = useState(0)
+
+  // Display names of backups and restores waiting for their turn
+  // (operation_queue.go: several run at once, up to the "Maximum Concurrent Backups"
+  // setting; one waits for a free place, for its own set's earlier run, or
+  // for the machine backup or restore already running). Populated by
+  // parsing the backend's "Queued: <name> — waiting for <what> to
+  // finish..." message, and each name is taken off when that run starts or
+  // ends.
+  const [pendingQueue, setPendingQueue] = useState([])
+  const QUEUED_MSG_RE = /^Queued: (.+) — waiting for .+ to finish\.\.\.$/
+  // Every backup running or queued, by run id (each backup event carries
+  // its run's runId): { id, name, percent, message, queued, paused, since,
+  // startedAt, stopRequested }. The card below shows one of them in full
+  // (focusRun); the others are listed under it, each with its own Pause and
+  // Stop, and the card moves on to another when its run ends.
+  const [runs, setRuns] = useState({})
+  const runsRef = useRef({})
+  const [focusRun, setFocusRun] = useState(null)
+  const focusRunRef = useRef(null)
+  const updateRun = (id, patch) => {
+    const next = { ...runsRef.current, [id]: { ...(runsRef.current[id] || { id, startedAt: Date.now() }), ...patch } }
+    runsRef.current = next
+    setRuns(next)
+  }
+  const removeRun = (id) => {
+    if (!runsRef.current[id]) return
+    const next = { ...runsRef.current }
+    delete next[id]
+    runsRef.current = next
+    setRuns(next)
+  }
+  // Show run id on the card. Its figures start again from the next stats
+  // event (a second or so); its start time, percentage and pause carry over.
+  const focusOn = (id) => {
+    focusRunRef.current = id
+    setFocusRun(id)
+    const r = runsRef.current[id] || {}
+    backupSamplesRef.current = []
+    setBackupStats({ ...EMPTY_BACKUP_STATS, startTime: r.startedAt || Date.now() })
+    setBackupFile('')
+    setProgress(r.percent || 0)
+    setActiveBackupName(r.name || '')
+    setBackupPause({ paused: !!r.paused, since: r.since || 0 })
+    setBackupStopRequested(!!r.stopRequested)
+    setBackupRunning(true)
+  }
+  // Events of a run other than the one on the card only update its line.
+  const isOtherRun = (data) => !!(data && data.runId && focusRunRef.current && data.runId !== focusRunRef.current)
+  // Which Backup Set/restore is actually running right now, so the progress
+  // card's title can say so — same "name" field the backend now sends
+  // alongside every real progress tick (gui/main.go), reusing the display
+  // name already resolved via scheduledJobNameOr for the queue feature.
+  const [activeBackupName, setActiveBackupName] = useState('')
+  const [activeRestoreName, setActiveRestoreName] = useState('')
+  const backupCardRef = useRef(null)
+  // Why the last start attempt did not run (cancelled passphrase, bad config).
+  // Shown where the progress card was, because that is where the user is looking.
+  const [backupNotice, setBackupNotice] = useState(null)
+  const restoreCardRef = useRef(null)
 
   const [snapshots, setSnapshots] = useState([])
   const [restoreBackupId, setRestoreBackupId] = useState('')
+  const [showRestoreIdList, setShowRestoreIdList] = useState(false)
   const [showSnapshots, setShowSnapshots] = useState(false)
+  // Persisted per-machine (not per-artifact-viewer — this is a real desktop app,
+  // one user, so localStorage is a plain, safe preference store here) so the
+  // choice sticks across restarts instead of resetting to tiles every time.
+  const [snapshotViewMode, setSnapshotViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('snapshotViewMode') === 'list' ? 'list' : 'tile'
+    } catch {
+      return 'tile'
+    }
+  })
+  const setSnapshotViewModePersisted = (mode) => {
+    setSnapshotViewMode(mode)
+    try { localStorage.setItem('snapshotViewMode', mode) } catch { /* ignore */ }
+  }
   const [restorePBSID, setRestorePBSID] = useState('')
   const [selectedSnapshot, setSelectedSnapshot] = useState(null) // { id, unix, time }
   const [snapshotMeta, setSnapshotMeta] = useState(null)         // .proxmox_backup_client_meta.json sidecar (null if legacy)
-  const [snapshotEntries, setSnapshotEntries] = useState([])     // flat list from backend
+  const [snapshotChildren, setSnapshotChildren] = useState(() => new Map()) // dir path ('' = root) -> sorted children, loaded lazily
+  const [snapshotCount, setSnapshotCount] = useState(0)             // total entries in the open snapshot
+  const [selectionBytes, setSelectionBytes] = useState(0)
+  const [selectionSizing, setSelectionSizing] = useState(false)
+  const [testEmailSending, setTestEmailSending] = useState(null)
+  const [moreShown, setMoreShown] = useState(() => new Map())       // dir path -> how many children are rendered
+  const snapshotCtxRef = useRef(null)                               // {pbsID, backupID, unix, gen} of the open snapshot
   const [expandedDirs, setExpandedDirs] = useState(new Set())     // expanded paths in tree
   const [selectedPaths, setSelectedPaths] = useState(new Set())   // selected entry paths
   const [restoreDestPath, setRestoreDestPath] = useState('')
@@ -209,15 +901,21 @@ function App() {
   const [restoreMode, setRestoreMode] = useState('alternate_abs')
   const [restoreAllowCrossHost, setRestoreAllowCrossHost] = useState(false)
   // alternate sub-mode toggle: true = abs (keep tree), false = flat. Default flat per spec.
-  const [restoreKeepTree, setRestoreKeepTree] = useState(false)
+  const [restoreKeepTree, setRestoreKeepTree] = useState(true)
   const [restoreOptions, setRestoreOptions] = useState({
     overwrite: false,
     timestamps: true,
-    acls: false, // opt-in — off by default even though the ACL/attributes sidecar now exists
-    ads: true    // alternate data streams and NTFS extended attributes (Windows)
+    verify: false, // re-read restored files and compare with the snapshot
+    acls: false, // opt-in — off by default even though the NTFS sidecar now exists
+    ads: true    // alternate data streams and NTFS extended attributes (Windows), recorded since 0.9.0
   })
   const [restoreLoading, setRestoreLoading] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
+  const [restoreStage, setRestoreStage] = useState({ stage: '', detail: '' })
+  const [restoreFile, setRestoreFile] = useState('')
+  const [snapshotLoad, setSnapshotLoad] = useState({ phase: '', count: 0, startedAt: 0 })
+  const [, setSnapshotLoadTick] = useState(0)
+  const [restoreStats, setRestoreStats] = useState(EMPTY_RESTORE_STATS)
 
   // ===== file search across snapshots =====
   const [showSearch, setShowSearch] = useState(false)
@@ -227,6 +925,7 @@ function App() {
   const [searchTo, setSearchTo] = useState('')               // yyyy-mm-dd
   const [searchAssembleMissing, setSearchAssembleMissing] = useState(false)
   const [searchRunning, setSearchRunning] = useState(false)
+  const searchStartedRef = useRef(0)
   const [searchProgress, setSearchProgress] = useState({ percent: 0, message: '' })
   const [searchResult, setSearchResult] = useState(null)     // { hits, snapshots_*, truncated, cancelled }
 
@@ -278,6 +977,13 @@ function App() {
     }
   }, [defaultPBSID])
 
+  // Sync backup destination PBS dropdown with default once it's loaded
+  useEffect(() => {
+    if (!backupPBSID && defaultPBSID) {
+      setBackupPBSID(defaultPBSID)
+    }
+  }, [defaultPBSID])
+
   // Load physical disks when switching to machine mode
   useEffect(() => {
     if (backupType === 'machine' && ListPhysicalDisks && physicalDisks.length === 0) {
@@ -314,9 +1020,35 @@ function App() {
     if (!EventsOn) return
 
     const unsubProgress = EventsOn('backup:progress', (data) => {
+      // gui/operation_queue.go sends this exact message (English on the Go
+      // side, not through the message-key i18n system) when a backup has to
+      // wait for its turn. It goes on the waiting list, never on the card.
+      const queuedMatch = typeof data.message === 'string' && data.message.match(QUEUED_MSG_RE)
+      if (queuedMatch) {
+        const name = queuedMatch[1]
+        setPendingQueue(q => q.includes(name) ? q : [...q, name])
+        if (data.runId) updateRun(data.runId, { name, queued: true, percent: 0, message: data.message })
+        return
+      }
       const percent = Math.round(data.percent)
+      if (data.runId) {
+        const prev = runsRef.current[data.runId]
+        // Its turn has come: off the waiting list.
+        if (!prev || prev.queued) {
+          const name = data.name || (prev && prev.name)
+          if (name) setPendingQueue(q => q.filter(n => n !== name))
+        }
+        updateRun(data.runId, { name: data.name || (prev && prev.name) || '', percent, message: data.message, queued: false })
+        // The card follows this run if it follows none (or one that ended).
+        if (!focusRunRef.current || !runsRef.current[focusRunRef.current] || runsRef.current[focusRunRef.current].queued) {
+          focusOn(data.runId)
+        }
+        if (isOtherRun(data)) return
+      }
+
       setProgress(percent)
-      showStatus(`🔄 ${data.message}`, 'info', true)
+      showStatus(`${data.message}`, 'info', true)
+      if (data.name) setActiveBackupName(data.name)
 
       // Track whether a backup is running (drives the Start/Stop button state).
       setBackupRunning(true)
@@ -333,31 +1065,85 @@ function App() {
       }))
     })
 
-    // Structured live statistics (bytes + chunk counts) emitted alongside progress.
+    // File currently being archived (directory backups; throttled in the backend).
+    const unsubFile = EventsOn('backup:file', (data) => {
+      if (isOtherRun(data)) return
+      setBackupFile(data.path || '')
+    })
+
+    // Pause and Resume. On Resume the speed samples start afresh, so the
+    // finish forecast is not dragged down by the paused minutes.
+    const unsubPaused = EventsOn('backup:paused', (data) => {
+      if (data.runId && runsRef.current[data.runId]) {
+        updateRun(data.runId, { paused: !!data.paused, since: data.since || 0 })
+      }
+      if (isOtherRun(data)) return
+      setBackupPause({ paused: !!data.paused, since: data.since || 0 })
+      if (!data.paused) backupSamplesRef.current = []
+    })
+    // A window opened or reloaded while backups run picks them up, with
+    // their names, queue places and pauses.
+    if (GetBackupRuns) {
+      GetBackupRuns().then(list => {
+        (list || []).forEach(r => {
+          updateRun(r.id, { name: r.name, queued: !!r.queued, paused: !!r.paused, since: r.since || 0, startedAt: r.started || Date.now(), percent: runsRef.current[r.id] ? runsRef.current[r.id].percent : 0 })
+          if (r.queued) setPendingQueue(q => q.includes(r.name) ? q : [...q, r.name])
+        })
+        const first = (list || []).find(r => !r.queued)
+        if (first && !focusRunRef.current) focusOn(first.id)
+      }).catch(() => {})
+    } else if (GetBackupPauseState) {
+      GetBackupPauseState().then(st => st && setBackupPause({ paused: !!st.paused, since: st.since || 0 })).catch(() => {})
+    }
+
+    // Structured live statistics, on a timer while a backup runs (directory
+    // and machine backups both; machine ones add kind 'machine' and the disk).
     const unsubStats = EventsOn('backup:stats', (data) => {
+      if (isOtherRun(data)) return
       const now = Date.now()
+      // A machine backup starting again after a lost connection counts from
+      // zero: the old attempt's samples would make the rates negative.
+      if (data.phase === 'retry_wait') backupSamplesRef.current = []
+      const samples = backupSamplesRef.current
+      samples.push({ t: now, bytes: data.bytesDone || 0, files: data.filesDone || 0, uploaded: data.uploadedBytes || 0, sent: data.sentBytes || 0 })
+      while (samples.length > 0 && now - samples[0].t > 180000) samples.shift()
       setBackupStats(prev => {
         const bytesDone = data.bytesDone || 0
         const bytesTotal = data.bytesTotal || 0
         const startTime = prev.startTime || now
-        const lastUpdate = prev.lastUpdate || now
-        const timeDiff = (now - lastUpdate) / 1000 // seconds
-        const bytesDiff = bytesDone - prev.lastBytes
+        const elapsed = (now - startTime) / 1000
 
-        // Byte throughput (bytes/sec) — far more accurate for ETA than percent.
-        let speed = prev.speed
-        if (timeDiff > 0 && bytesDiff > 0) {
-          speed = bytesDiff / timeDiff
-        }
+        // Speeds over the last 10 s: what is happening now. Before 10 s of
+        // samples exist, the average since the start stands in.
+        const avg = elapsed > 0 ? bytesDone / elapsed : 0
+        const speed = windowRate(samples, 'bytes', 10000, now) ?? avg
+        const filesRate = windowRate(samples, 'files', 10000, now)
+        // Upload is the network rate: compressed bytes sent, where the
+        // backend reports them.
+        const uploadRate = windowRate(samples, data.sentBytes !== undefined ? 'sent' : 'uploaded', 10000, now)
 
-        // ETA (seconds remaining) from byte throughput. Falls back to keeping
-        // the previous ETA when we can't compute a fresh one (e.g. chunk
-        // reuse windows where bytesDone stalls momentarily).
-        let eta = prev.eta
-        if (speed > 0 && bytesTotal > bytesDone && bytesTotal > 0) {
-          const remainingBytes = bytesTotal - bytesDone
-          eta = Math.round(remainingBytes / speed)
+        // The finish forecast uses the last 2 minutes, so it follows a real
+        // change of pace without swinging with every folder of small files.
+        // It is worked out from bytes AND from files, and the longer one
+        // wins: bytes alone said "14s" with 16 GB but 178,762 small files
+        // left at the end of a change-detection run (seen 2026-10-07), where
+        // the real cost is per file (~1,700 a second); on a full read of
+        // large files the bytes decide it instead.
+        const filesDone = data.filesDone || 0
+        const filesTotal = data.filesTotal || 0
+        const byteRate = windowRate(samples, 'bytes', 120000, now) ?? avg
+        const fileRate = windowRate(samples, 'files', 120000, now) ?? (elapsed > 0 ? filesDone / elapsed : 0)
+        const candidates = []
+        if (byteRate > 0 && bytesTotal > bytesDone) candidates.push((bytesTotal - bytesDone) / byteRate)
+        if (fileRate > 0 && filesTotal > filesDone) candidates.push((filesTotal - filesDone) / fileRate)
+        let eta = null
+        if (candidates.length > 0) {
+          eta = Math.round(Math.max(...candidates))
+        } else if (bytesTotal > 0 && bytesDone >= bytesTotal) {
+          eta = 0
         }
+        // Shown for 10 s at a time (etaHold.js), not with every event.
+        const etaHold = holdEta(prev.etaHold, eta, now)
 
         return {
           ...prev,
@@ -365,30 +1151,86 @@ function App() {
           lastUpdate: now,
           bytesDone,
           bytesTotal,
-          lastBytes: bytesDone,
           newChunks: data.newChunks || 0,
           reusedChunks: data.reusedChunks || 0,
           failedChunks: data.failedChunks || 0,
           currentDir: data.currentDir || '',
+          filesDone: data.filesDone || 0,
+          filesTotal: data.filesTotal || 0,
+          uploadedBytes: data.uploadedBytes || 0,
+          sentBytes: data.sentBytes || 0,
+          // Machine backups send no phase: never keep one from another run.
+          phase: data.phase === undefined ? '' : (data.phase || prev.phase),
+          readReason: data.readReason || '',
+          changeMode: data.changeMode || '',
+          hasDetail: data.phase !== undefined,
+          kind: data.kind || '',
+          blankChunks: data.blankChunks || 0,
+          disk: data.disk || '',
+          diskModel: data.diskModel || '',
+          diskNo: data.diskNo || 0,
+          diskCount: data.diskCount || 0,
+          diskBytes: data.diskBytes || 0,
+          diskDone: data.diskDone || 0,
+          partition: data.partition || '',
+          unreadable: data.unreadable || 0,
+          retryAt: data.retryAt || 0,
+          attempt: data.attempt || 0,
+          attempts: data.attempts || 0,
           speed,
-          eta
+          filesRate: filesRate ?? prev.filesRate,
+          uploadRate: uploadRate ?? prev.uploadRate,
+          eta: etaHold.eta,
+          etaHold
         }
       })
     })
 
     const unsubComplete = EventsOn('backup:complete', (data) => {
+      const localizedMsg = renderLocalizedMessage(data, t, language).text
+      if (data.runId) {
+        const ended = runsRef.current[data.runId]
+        const name = data.name || (ended && ended.name)
+        if (name) setPendingQueue(q => q.filter(n => n !== name))
+        removeRun(data.runId)
+        const said = `${name ? name + ': ' : ''}${localizedMsg}`
+        if (isOtherRun(data)) {
+          // Another run ended: the card stays on the one it shows.
+          showStatus(data.success ? '✅ ' + said : '❌ ' + said, data.success ? 'success' : 'error')
+          return
+        }
+        // The card's run ended: it moves on to another one still running.
+        const next = Object.values(runsRef.current).filter(r => !r.queued).sort((a, b) => a.startedAt - b.startedAt)[0]
+        if (next) {
+          focusOn(next.id)
+          showStatus(data.success ? '✅ ' + said : '❌ ' + said, data.success ? 'success' : 'error')
+          return
+        }
+        focusRunRef.current = null
+        setFocusRun(null)
+      } else {
+        setPendingQueue(q => q.slice(1))
+      }
       setProgress(data.success ? 100 : 0)
       setBackupRunning(false)
-      setBackupStats({ startTime: null, lastUpdate: null, lastPercent: 0, speed: 0, eta: null, bytesDone: 0, bytesTotal: 0, lastBytes: 0, newChunks: 0, reusedChunks: 0, failedChunks: 0, currentDir: '' })
-      showStatus(data.success ? '✅ ' + data.message : '❌ ' + data.message, data.success ? 'success' : 'error')
+      setBackupFile('')
+      setActiveBackupName('')
+      setBackupStats(EMPTY_BACKUP_STATS)
+      backupSamplesRef.current = []
+      setBackupStopRequested(false)
+      setBackupPause({ paused: false, since: 0 })
+      showStatus(data.success ? '✅ ' + localizedMsg : '❌ ' + localizedMsg, data.success ? 'success' : 'error')
 
       // Add to job history
       const historyEntry = {
         id: Date.now().toString(),
         name: `Backup ${config['backup-id'] || hostname}`,
         timestamp: new Date().toISOString(),
-        status: data.success ? 'success' : 'failed',
+        // A Stop is the user's choice, not a failure.
+        status: data.success ? 'success' : (data.message_key === 'logBackupCancelled' ? 'cancelled' : 'failed'),
         message: data.message,
+        message_key: data.message_key,
+        message_params: data.message_params,
         backupDirs: backupDirs.split('\n').map(d => d.trim()).filter(d => d),
         backupId: config['backup-id'] || hostname,
         useVSS: config.usevss
@@ -398,8 +1240,51 @@ function App() {
 
     return () => {
       if (unsubProgress) unsubProgress()
+      if (unsubFile) unsubFile()
+      if (unsubPaused) unsubPaused()
       if (unsubStats) unsubStats()
       if (unsubComplete) unsubComplete()
+    }
+  }, [])
+
+  // Keep the Backup Set cards' Last run and Next run current while the
+  // Backup page is open (runs and the scheduler change them). It reads them
+  // at once on coming to the page, as the timer may not have run meanwhile.
+  useEffect(() => {
+    if (activeTab !== 'backup' || !GetScheduledJobs) return undefined
+    const refresh = () => {
+      GetScheduledJobs().then(jobs => { if (jobs) setScheduledJobs(jobs) }).catch(() => {})
+    }
+    refresh()
+    const id = setInterval(refresh, 30000)
+    return () => clearInterval(id)
+  }, [activeTab])
+
+  // The window can sit hidden in the tray for days, and a hidden page's
+  // timers may not run at all: read the sets again when it is shown or
+  // focused, and after a backup ends (its Last run is saved a moment later).
+  useEffect(() => {
+    if (!GetScheduledJobs) return undefined
+    const refresh = () => {
+      GetScheduledJobs().then(jobs => { if (jobs) setScheduledJobs(jobs) }).catch(() => {})
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', refresh)
+    const timers = []
+    let unsubShown, unsubDone
+    if (EventsOn) {
+      unsubShown = EventsOn('window:shown', refresh)
+      unsubDone = EventsOn('backup:complete', () => {
+        timers.push(setTimeout(refresh, 5000), setTimeout(refresh, 20000))
+      })
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', refresh)
+      timers.forEach(clearTimeout)
+      if (unsubShown) unsubShown()
+      if (unsubDone) unsubDone()
     }
   }, [])
 
@@ -407,19 +1292,126 @@ function App() {
   useEffect(() => {
     if (!EventsOn) return
     const unsubP = EventsOn('restore:progress', (data) => {
+      // Same routing as backup:progress above — see its comment. Shared
+      // pendingQueue since backup and restore share one process-wide slot.
+      const queuedMatch = typeof data.message === 'string' && data.message.match(QUEUED_MSG_RE)
+      if (queuedMatch) {
+        const name = queuedMatch[1]
+        setPendingQueue(q => q.includes(name) ? q : [...q, name])
+        return
+      }
+      // Its turn has come: off the waiting list.
+      if (data.name) setPendingQueue(q => q.filter(n => n !== data.name))
       setRestoreProgress(Math.round((data.percent || 0) * 100))
-      showStatus(`🔄 ${data.message || ''}`, 'info', true)
+      showStatus(`${data.message || ''}`, 'info', true)
+      if (data.name) setActiveRestoreName(data.name)
+      setRestoreStats(prev => (prev.startTime ? prev : { ...prev, startTime: Date.now() }))
+    })
+    const unsubG = EventsOn('restore:stage', (data) => {
+      if ((data.stage || '') !== restoreStageStartRef.current.stage) {
+        restoreStageStartRef.current = { stage: data.stage || '', t: Date.now() }
+      }
+      setRestoreStage({ stage: data.stage || '', detail: data.detail || '' })
+      if (data.stage !== 'transferring') setRestoreFile('')
+    })
+    const unsubF = EventsOn('restore:file', (data) => {
+      setRestoreFile(data.path || '')
+    })
+    // Structured live stats (bytes transferred), mirroring backup:stats:
+    // speed over the last 10 s, finish forecast over the last 2 minutes.
+    const unsubS = EventsOn('restore:stats', (data) => {
+      const now = Date.now()
+      const samples = restoreSamplesRef.current
+      samples.push({ t: now, bytes: data.bytesDone || 0 })
+      while (samples.length > 0 && now - samples[0].t > 180000) samples.shift()
+      setRestoreStats(prev => {
+        const bytesDone = data.bytesDone || 0
+        const bytesTotal = data.bytesTotal || 0
+        const startTime = prev.startTime || now
+        const elapsed = (now - startTime) / 1000
+        const avg = elapsed > 0 ? bytesDone / elapsed : 0
+        const speed = windowRate(samples, 'bytes', 10000, now) ?? avg
+        const etaRate = windowRate(samples, 'bytes', 120000, now) ?? avg
+        let eta = null
+        if (bytesTotal > 0 && bytesDone >= bytesTotal) {
+          eta = 0
+        } else if (etaRate > 0 && bytesTotal > bytesDone) {
+          eta = Math.round((bytesTotal - bytesDone) / etaRate)
+        }
+        // The transfer's average speed, shown once it has finished (a
+        // 10-second window then holds no movement and reads as zero).
+        const lastMoveAt = bytesDone > prev.bytesDone ? now : (prev.lastMoveAt || now)
+        const moveSecs = (lastMoveAt - startTime) / 1000
+        const avgSpeed = moveSecs > 0 ? bytesDone / moveSecs : prev.avgSpeed
+        // Shown for 10 s at a time (etaHold.js), not with every event.
+        const etaHold = holdEta(prev.etaHold, eta, now)
+        return { startTime, bytesDone, bytesTotal, speed, eta: etaHold.eta, etaHold, lastMoveAt, avgSpeed }
+      })
     })
     const unsubC = EventsOn('restore:complete', (data) => {
       setRestoreLoading(false)
+      setActiveRestoreName('')
+      setRestoreStage({ stage: '', detail: '' })
+      setRestoreFile('')
       setRestoreProgress(data.success ? 100 : 0)
-      showStatus(data.success ? `✅ ${data.message}` : `❌ ${data.message}`, data.success ? 'success' : 'error')
+      setRestoreStats(EMPTY_RESTORE_STATS)
+      restoreSamplesRef.current = []
+      let localizedMsg = renderLocalizedMessage(data, t, language).text
+      if (data.success && data.verify_ran) {
+        localizedMsg += ' (' + t('restoreVerifiedSuffix', { n: (data.verified || 0).toLocaleString(language) }) + ')'
+      }
+      showStatus(data.success ? `✅ ${localizedMsg}` : `❌ ${localizedMsg}`, data.success ? 'success' : 'error')
+      if (GetJobHistory) GetJobHistory().then(h => setJobHistory(h || []))
     })
     return () => {
       if (unsubP) unsubP()
+      if (unsubG) unsubG()
+      if (unsubF) unsubF()
+      if (unsubS) unsubS()
       if (unsubC) unsubC()
     }
   }, [])
+
+  // Scroll the relevant progress card into view the moment a backup/restore
+  // actually starts, from wherever the user currently is on the page — found
+  // live 2026-09-27: nothing drew the eye to it otherwise, easy to miss that
+  // a Run Now/Restore click did anything if you'd scrolled away.
+  // The card is shown from the moment a backup starts (backupRunning), not only
+  // once progress passes 0: machine backups report 0% for a while ("blocks
+  // read") and the card used to vanish then, leaving that status line at the
+  // bottom of the page until the first real percentage arrived.
+  const backupCardActive = progress < 100 && (backupRunning || progress > 0)
+  // The bar never reads 0% while the card is up: every backup type (directory,
+  // machine, scheduled, one-off) shares this card, so they all start at 1%.
+  const shownProgress = Math.max(1, progress)
+  useEffect(() => {
+    if (!backupCardActive && !restoreLoading) return
+    const id = setInterval(() => setCardTick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [backupCardActive, restoreLoading])
+  useEffect(() => {
+    if (!serverWait && !searchRunning) return
+    const id = setInterval(() => setWaitTick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [serverWait?.id, searchRunning])
+
+  const prevBackupActiveRef = useRef(false)
+  useEffect(() => {
+    const active = backupCardActive
+    if (active && !prevBackupActiveRef.current) {
+      setBackupNotice(null)
+      backupCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    prevBackupActiveRef.current = active
+  }, [backupCardActive])
+
+  const prevRestoreActiveRef = useRef(false)
+  useEffect(() => {
+    if (restoreLoading && !prevRestoreActiveRef.current) {
+      restoreCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    prevRestoreActiveRef.current = restoreLoading
+  }, [restoreLoading])
 
   // Listen to search progress
   useEffect(() => {
@@ -437,29 +1429,50 @@ function App() {
     const unsub = EventsOn('analysis:progress', (data) => {
       const done = data.done || 0
       const total = data.total || 0
-      const gb = ((data.bytes || 0) / (1024 * 1024 * 1024)).toFixed(1)
-      showStatus(`📊 ${t('splitAnalyzing')} ${done}/${total} (${gb} GB)`, 'info')
+      const gb = fixed((data.bytes || 0) / (1024 * 1024 * 1024), 1)
+      showStatus(`${t('splitAnalyzing')} ${done}/${total} (${gb} GB)`, 'info')
     })
     return () => { if (unsub) unsub() }
   }, [])
 
-  // The backend flips Standalone -> Service when the privileged service shows
-  // up after the GUI started (re-detected when a backup starts) and pushes the
-  // refreshed system info. Re-reading it keeps the mode badge, the VSS notice
-  // and the machine-backup elevation warning truthful: without this they kept
-  // the value read once on mount, so service mode still asked for admin rights.
+  // Native menu bar (gui/menu.go) drives navigation the same way a sidebar
+  // click does — it only ever asks us to switch tabs or open an overlay.
   useEffect(() => {
-    if (!EventsOn || !GetSystemInfo) return
-    const unsub = EventsOn('mode:changed', async (info) => {
-      try {
-        const fresh = info || (await GetSystemInfo())
-        if (fresh) setSystemInfo(prev => ({ ...prev, ...fresh }))
-      } catch (err) {
-        console.error('mode:changed refresh failed:', err)
-      }
+    if (!EventsOn) return
+    const unsubGoto = EventsOn('nav:goto', (tab) => {
+      if (tab) setActiveTab(tab)
     })
-    return () => { if (unsub) unsub() }
+    const unsubLimitations = EventsOn('nav:limitations', () => {
+      setShowLimitations(true)
+    })
+    const unsubManual = EventsOn('nav:manual', (doc) => {
+      openManual(doc)
+    })
+    const unsubClosePrompt = EventsOn('nav:closeprompt', () => {
+      setShowClosePrompt(true)
+    })
+    const unsubPreferences = EventsOn('nav:preferences', () => {
+      setPrefsTab('account')
+      setShowPreferences(true)
+    })
+    return () => {
+      if (unsubGoto) unsubGoto()
+      if (unsubLimitations) unsubLimitations()
+      if (unsubManual) unsubManual()
+      if (unsubClosePrompt) unsubClosePrompt()
+      if (unsubPreferences) unsubPreferences()
+    }
   }, [])
+
+  // Message Log is refetched each time its tab becomes active rather than
+  // kept live — it's a review/audit screen, not something the user watches
+  // update in real time while a backup runs (backup:progress covers that).
+  useEffect(() => {
+    if (activeTab !== 'messagelog' || !GetMessageLog) return
+    GetMessageLog().then(setMessageLog).catch((err) => {
+      console.error('GetMessageLog failed:', err)
+    })
+  }, [activeTab])
 
   // Load config with hostname on mount
   useEffect(() => {
@@ -478,9 +1491,22 @@ function App() {
           const b = await GetBrand()
           if (b) {
             setBrand(b)
-            const root = document.documentElement.style
-            if (b.accent) root.setProperty('--accent', b.accent)
-            if (b.accent_hover) root.setProperty('--accent-hover', b.accent_hover)
+            // A saved Theme choice (Preferences) always wins over the brand's own
+            // default accent — it's a later, more specific, explicit user choice —
+            // but only for the DEFAULT (unbranded) identity. A real brand's accent
+            // is a deliberate vendor choice, not a default to override: the Theme
+            // tab is hidden entirely for one (see the Preferences tab bar), but
+            // that alone wouldn't undo a theme saved BEFORE this build was
+            // rebranded, so ignore any stored theme outright whenever a real
+            // brand is active rather than relying only on the picker being
+            // unreachable going forward.
+            if (b.is_default && await hasStoredTheme()) {
+              await applyStoredTheme()
+            } else {
+              const root = document.documentElement.style
+              if (b.accent) root.setProperty('--accent', b.accent)
+              if (b.accent_hover) root.setProperty('--accent-hover', b.accent_hover)
+            }
             if (b.title) document.title = version ? `${b.title} v${version}` : b.title
           }
         }
@@ -515,6 +1541,9 @@ function App() {
               datastore: data.datastore || '',
               namespace: data.namespace || '',
               encryption_key_file: data.encryption_key_file || '',
+              encryption_key_passphrase_set: !!data.encryption_key_passphrase_set,
+              encryption_key_passphrase: '',
+              clear_encryption_key_passphrase: false,
               backupdir: data.backupdir || '',
               'backup-id': data['backup-id'] || hn,
               usevss: data.usevss !== undefined ? data.usevss : true
@@ -524,6 +1553,14 @@ function App() {
             if (data.backupdir) {
               setBackupDirs(data.backupdir)
             }
+
+            // Global SMTP account (Preferences > Advanced)
+            setSmtpHost(data.smtp_host || '')
+            setSmtpPort(data.smtp_port || '587')
+            setSmtpUsername(data.smtp_username || '')
+            setSmtpPasswordSet(!!data.smtp_password_set)
+            setSmtpInsecure(!!data.smtp_insecure)
+            setEmailFrom(data.email_from || '')
           }
         }
       } catch (err) {
@@ -575,6 +1612,13 @@ function App() {
         if (ListPBSServers) {
           const servers = await ListPBSServers()
           setPbsServers(servers || [])
+          // First run: nothing to back up to yet, so open Preferences straight
+          // to Account Information instead of landing the user on a Backup
+          // tab that has nothing configured behind it.
+          if (!servers || servers.length === 0) {
+            setPrefsTab('account')
+            setShowPreferences(true)
+          }
         }
 
         if (GetDefaultPBSID) {
@@ -588,7 +1632,12 @@ function App() {
     }
 
     loadPBSServers()
+    refreshJobPolicy()
   }, [])
+
+  useEffect(() => {
+    if (showPreferences || activeTab === 'backup') refreshJobPolicy()
+  }, [showPreferences, activeTab])
 
   const showStatus = (message, type, persist = false) => {
     if (statusTimeoutRef.current) {
@@ -630,13 +1679,9 @@ function App() {
 
     const isUserPass = !!(serverFormData.username || '').trim()
     try {
-      const name = (serverFormData.name || '').trim()
-      if (!name) {
-        showStatus(`❌ ${t('errServerNameRequired')}`, 'error')
-        return
-      }
-      // Generate ID from name if not provided (never dereference an empty name).
-      const id = serverFormData.id || name.toLowerCase().replace(/[^a-z0-9]/g, '-')
+      // Generate ID from name if not provided
+      const id = serverFormData.id ||
+        serverFormData.name.toLowerCase().replace(/[^a-z0-9]/g, '-')
 
       // Only one auth method is persisted: user/pass drops the token, token drops username.
       const payload = {
@@ -662,13 +1707,17 @@ function App() {
         datastore: '',
         namespace: '',
         encryption_key_file: '',
+        encryption_key_passphrase_set: false,
+        encryption_key_passphrase: '',
+        clear_encryption_key_passphrase: false,
         description: ''
       })
       setEditingServer(null)
       setServerTab('server')
+      setShowServerForm(false)
       await loadPBSServers()
     } catch (err) {
-      showStatus(`❌ Erreur: ${err}`, 'error')
+      showStatus(`❌ ${t('statusError')} ${err}`, 'error')
     }
   }
 
@@ -702,13 +1751,17 @@ function App() {
         datastore: '',
         namespace: '',
         encryption_key_file: '',
+        encryption_key_passphrase_set: false,
+        encryption_key_passphrase: '',
+        clear_encryption_key_passphrase: false,
         description: ''
       })
       setEditingServer(null)
       setServerTab('server')
+      setShowServerForm(false)
       await loadPBSServers()
     } catch (err) {
-      showStatus(`❌ Erreur: ${err}`, 'error')
+      showStatus(`❌ ${t('statusError')} ${err}`, 'error')
     }
   }
 
@@ -718,7 +1771,11 @@ function App() {
       return
     }
 
-    if (!confirm(t('confirmDeleteServer').replace('{id}', id))) {
+    if (!(await askConfirm({
+      title: tl('dlgDeleteServerTitle', 'Delete this PBS server?'),
+      message: t('confirmDeleteServer').replace('{id}', id),
+      confirmLabel: t('delete'), danger: true,
+    }))) {
       return
     }
 
@@ -727,9 +1784,12 @@ function App() {
       showStatus(`✅ ${t('statusServerDeleted')}`, 'success')
       await loadPBSServers()
     } catch (err) {
-      showStatus(`❌ Erreur: ${err}`, 'error')
+      showStatus(`❌ ${t('statusError')} ${err}`, 'error')
     }
   }
+
+  // A server's name for messages (its ID only if it has no name).
+  const serverLabel = (id) => (pbsServers.find(s => s.id === id) || {}).name || id
 
   const handleSetDefaultPBS = async (id) => {
     if (!SetDefaultPBSServer) {
@@ -740,57 +1800,11 @@ function App() {
     try {
       await SetDefaultPBSServer(id)
       setDefaultPBSID(id)
-      showStatus(`✅ ${t('statusServerSetDefault').replace('{id}', id)}`, 'success')
+      showStatus(`✅ ${t('statusServerSetDefault').replace('{id}', serverLabel(id))}`, 'success')
     } catch (err) {
-      showStatus(`❌ Erreur: ${err}`, 'error')
+      showStatus(`❌ ${t('statusError')} ${err}`, 'error')
     }
   }
-
-  // Manual "run now": starts a stored scheduled job immediately, ignoring its
-  // schedule (an overdue or disabled job still runs — this is an explicit user
-  // action). In service mode the run happens inside the service, which owns the
-  // job files and the history; the GUI only asks for it. The backup runs in the
-  // background, so a rejected start (unknown job, already running) is the only
-  // thing reported back synchronously.
-  const handleRunJobNow = async (job) => {
-    if (!RunScheduledJobNow) {
-      showStatus(t('wailsRuntimeUnavailable'), 'error')
-      return
-    }
-    try {
-      await RunScheduledJobNow(job.id)
-      showStatus(`▶️ ${t('statusJobStarted').replace('{name}', job.name)}`, 'success')
-      // lastRun/nextRun are written when the run finishes: refresh once so the
-      // list does not keep showing a stale state.
-      setTimeout(() => {
-        if (GetScheduledJobs) {
-          GetScheduledJobs().then(jobs => setScheduledJobs(jobs || [])).catch(() => {})
-        }
-      }, 2000)
-    } catch (err) {
-      showStatus(`❌ ${err}`, 'error')
-    }
-  }
-
-  // Fetch running backup jobs from service
-  const fetchRunningJobs = async () => {
-    if (!ListBackupJobs) return
-    try {
-      const jobs = await ListBackupJobs()
-      setRunningJobs(jobs || [])
-    } catch (err) {
-      console.error('Failed to fetch running jobs:', err)
-    }
-  }
-
-  // Auto-refresh running jobs when in service mode
-  useEffect(() => {
-    if (!systemInfo.standalone && systemInfo.service_available) {
-      fetchRunningJobs()
-      const interval = setInterval(fetchRunningJobs, 5000)
-      return () => clearInterval(interval)
-    }
-  }, [systemInfo.standalone, systemInfo.service_available])
 
   // True when a connection failure is an unverified-certificate error (self-signed
   // PBS with no fingerprint pinned). These are recoverable via trust-on-first-use.
@@ -807,7 +1821,7 @@ function App() {
       setServerStatus(prev => ({ ...prev, [id]: 'testing' }))
       await TestPBSConnection(id)
       setServerStatus(prev => ({ ...prev, [id]: 'online' }))
-      showStatus(`✅ ${t('statusConnectionSuccess').replace('{id}', id)}`, 'success')
+      showStatus(`✅ ${t('statusConnectionSuccess').replace('{id}', serverLabel(id))}`, 'success')
     } catch (err) {
       const server = pbsServers.find(s => s.id === id)
       // Self-signed cert + no fingerprint yet: offer to discover and pin it (TOFU).
@@ -815,7 +1829,11 @@ function App() {
           GetServerFingerprint && PinPBSServerFingerprint) {
         try {
           const fp = await GetServerFingerprint(server.baseurl)
-          if (window.confirm(t('tofuConfirm').replace('{host}', server.baseurl).replace('{fp}', fp))) {
+          if (await askConfirm({
+            title: tl('dlgTofuTitle', 'Trust this server\'s certificate?'), icon: '🔐',
+            message: t('tofuConfirm').replace('{host}', server.baseurl).replace('{fp}', fp),
+            confirmLabel: tl('dlgTofuBtn', 'Trust and connect'),
+          })) {
             await PinPBSServerFingerprint(id, fp)
             await loadPBSServers()
             await TestPBSConnection(id)
@@ -838,10 +1856,36 @@ function App() {
     setServerFormData({
       ...server,
       username: server.username || '',
-      password: ''
+      password: '',
+      encryption_key_passphrase: '',
+      clear_encryption_key_passphrase: false
     })
     setServerTab(server.username ? 'userpass' : (server.authid ? 'token' : 'server'))
     setEditingServer(server.id)
+    setShowServerForm(true)
+  }
+
+  const handleShowAddServer = () => {
+    setServerFormData({
+      id: '',
+      name: '',
+      baseurl: '',
+      certfingerprint: '',
+      authid: '',
+      secret: '',
+      username: '',
+      password: '',
+      datastore: '',
+      namespace: '',
+      encryption_key_file: '',
+      encryption_key_passphrase_set: false,
+      encryption_key_passphrase: '',
+      clear_encryption_key_passphrase: false,
+      description: ''
+    })
+    setServerTab('server')
+    setEditingServer(null)
+    setShowServerForm(true)
   }
 
   const handleCancelEdit = () => {
@@ -857,10 +1901,14 @@ function App() {
       datastore: '',
       namespace: '',
       encryption_key_file: '',
+      encryption_key_passphrase_set: false,
+      encryption_key_passphrase: '',
+      clear_encryption_key_passphrase: false,
       description: ''
     })
     setServerTab('server')
     setEditingServer(null)
+    setShowServerForm(false)
   }
 
   const switchServerTab = (key) => {
@@ -873,35 +1921,33 @@ function App() {
     }
   }
 
-  const renderServerForm = () => {
+  // asModal: false for the first-run empty-state form (inline, nothing to
+  // overlay), true for editing/adding once servers already exist (a real
+  // modal over the server list, chevron tabs matching the Backup Set editor —
+  // Mick: "might be more natural" than the old always-visible inline form).
+  // Both share the same tab content; only the surrounding chrome differs.
+  const renderServerForm = (asModal = false) => {
     // A PAM-realm user (e.g. root@pam) is a full host account: a compromised
     // backup machine could then reach the PBS host and destroy/compromise backups.
     const uname = (serverFormData.username || '').trim().toLowerCase()
     const isPamUser = uname.endsWith('@pam')
     const tabs = [
-      ['server', `🌐 ${t('srvTabServer')}`],
-      ['userpass', `👤 ${t('srvTabUserpass')}`],
-      ['token', `🔑 ${t('srvTabToken')}`]
+      ['server', `${t('srvTabServer')}`],
+      ['userpass', `${t('srvTabUserpass')}`],
+      ['token', `${t('srvTabToken')}`],
+      ['encryption', `${t('srvTabEncryption')}`]
     ]
-    return (
-      <div className="card">
-        <h3>{editingServer ? `✏️ ${t('editServer')}` : `➕ ${t('addServer')}`}</h3>
+    const title = editingServer ? t('editServer') : t('addServer')
+    const onSubmit = editingServer ? handleUpdatePBSServer : handleAddPBSServer
 
-        <div style={{display: 'flex', gap: '8px', marginBottom: '15px'}}>
+    const body = (
+      <>
+        <div style={{marginBottom: '18px'}}>
           {tabs.map(([key, label]) => (
             <button
               key={key}
+              className={`chev ${serverTab === key ? 'active' : ''}`}
               onClick={() => switchServerTab(key)}
-              style={{
-                flex: 1,
-                padding: '8px',
-                backgroundColor: serverTab === key ? 'var(--accent)' : '#e2e8f0',
-                color: serverTab === key ? 'white' : '#4a5568',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }}
             >
               {label}
             </button>
@@ -932,18 +1978,13 @@ function App() {
               <label>{t('namespace')}</label>
               <input type="text" value={serverFormData.namespace} onChange={(e) => setServerFormData({...serverFormData, namespace: e.target.value})} placeholder={t('phNamespace')} />
             </div>
-            {/* Encryption key is per-server: snapshots are encrypted per PBS target. */}
-            <EncryptionKeyField
-              value={serverFormData.encryption_key_file}
-              onChange={(v) => setServerFormData({...serverFormData, encryption_key_file: v})}
-            />
             <div className="form-group">
               <label>{t('certFingerprint')}</label>
               <input type="text" value={serverFormData.certfingerprint} onChange={(e) => setServerFormData({...serverFormData, certfingerprint: e.target.value})} placeholder={t('phCert')} />
             </div>
             <div className="form-group">
               <label>{t('description')}</label>
-              <textarea value={serverFormData.description} onChange={(e) => setServerFormData({...serverFormData, description: e.target.value})} placeholder={t('descriptionPlaceholder')} rows="2" />
+              <textarea value={serverFormData.description} onChange={(e) => setServerFormData({...serverFormData, description: e.target.value})} placeholder={t('descriptionPlaceholder')} rows="2" style={{fontFamily: 'inherit'}} />
             </div>
           </>
         )}
@@ -963,7 +2004,7 @@ function App() {
               <label>{t('password')}</label>
               <input type="password" value={serverFormData.password} onChange={(e) => setServerFormData({...serverFormData, password: e.target.value})} placeholder={serverFormData.password_set ? t('passwordKeepCurrent') : t('phPassword')} />
             </div>
-            <div className="info-box">💡 {t('userpassHint')}</div>
+            <div className="info-box">{t('userpassHint')}</div>
           </>
         )}
 
@@ -977,25 +2018,105 @@ function App() {
               <label>{t('secret')}</label>
               <input type="password" value={serverFormData.secret} onChange={(e) => setServerFormData({...serverFormData, secret: e.target.value})} placeholder={serverFormData.secret_set ? t('secretKeepCurrent') : t('phSecret')} />
             </div>
-            <div className="info-box">💡 <strong>{t('tipTitle')}</strong> {t('tipAPIToken')}<br/>{t('tipAPITokenPath')}</div>
+            <div className="info-box"><strong>{t('tipTitle')}</strong> {t('tipAPIToken')}<br/>{t('tipAPITokenPath')}</div>
           </>
         )}
 
-        <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
-          {editingServer ? (
-            <>
-              <button onClick={handleUpdatePBSServer} style={{flex: 1}}>💾 {t('update')}</button>
-              <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>❌ {t('cancel')}</button>
-            </>
-          ) : (
-            <button onClick={handleAddPBSServer} style={{flex: 1}}>➕ {t('addServer')}</button>
-          )}
+        {serverTab === 'encryption' && (
+          <>
+            {/* Encryption key is per-server: snapshots are encrypted per PBS target. */}
+            <EncryptionKeyField
+              className="no-bottom-margin"
+              value={serverFormData.encryption_key_file}
+              onChange={(v) => setServerFormData({...serverFormData, encryption_key_file: v, encryption_key_passphrase: '', clear_encryption_key_passphrase: false})}
+              passphraseSet={!!serverFormData.encryption_key_passphrase_set}
+              passphrase={serverFormData.encryption_key_passphrase || ''}
+              onPassphraseChange={(v) => setServerFormData(f => ({...f, encryption_key_passphrase: v}))}
+              clearStored={!!serverFormData.clear_encryption_key_passphrase}
+              onClearStoredChange={(v) => setServerFormData(f => ({...f, clear_encryption_key_passphrase: v}))}
+            />
+          </>
+        )}
+      </>
+    )
+
+    if (!asModal) {
+      return (
+        <div className="card">
+          <h3>{title}</h3>
+          {body}
+          <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
+            <button onClick={onSubmit} style={{flex: 1}}>{t('save')}</button>
+            <button onClick={handleCancelEdit} style={{flex: 1, backgroundColor: '#999'}}>❌ {t('cancel')}</button>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div
+        style={{position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100}}
+        onClick={handleCancelEdit}
+      >
+        <div
+          style={{width: '520px', maxWidth: '92vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', background: '#f3f3f3', borderRadius: '8px', boxShadow: '0 20px 60px rgba(0,0,0,.4)', overflow: 'hidden'}}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{height: '40px', flexShrink: 0, background: '#fff', borderBottom: '1px solid #ddd', display: 'flex', alignItems: 'center', padding: '0 16px', fontSize: '14px', fontWeight: 600, color: '#333', justifyContent: 'space-between'}}>
+            <span>{title}</span>
+            <span style={{cursor: 'pointer', color: '#888'}} onClick={handleCancelEdit}>✕</span>
+          </div>
+          {/* minHeight only sets a floor — Add's extra "Server ID" field
+              (rendered only when !editingServer, see below) made the Add
+              form taller than this floor while Edit sat right at it, so
+              the modal still visibly grew for Add vs Edit despite this.
+              Raised from 420 to cover that one extra form-group's height
+              (~60px) so both modes render at the same size.
+              Found live 2026-09-24: a flat 480px minHeight, combined with
+              the outer box's maxHeight:80vh + overflow:hidden, clipped the
+              Save/Cancel footer clean off screen whenever 80vh was shorter
+              than header+480+footer (any laptop under ~ 745px tall at 80vh).
+              Capped against the viewport with min() so the floor can never
+              push total dialog height past what the box can actually show;
+              the body's own overflowY:auto still scrolls instead of the
+              footer disappearing. Footer also pinned with flexShrink:0 so
+              it's never the flex item that gives way if space is short. */}
+          <div style={{padding: '20px 22px', overflowY: 'auto', flex: '1 1 auto', minHeight: 'min(480px, calc(80vh - 110px))'}}>
+            {body}
+          </div>
+          <div style={{display: 'flex', flexShrink: 0, justifyContent: 'flex-end', gap: '10px', padding: '14px 22px', borderTop: '1px solid #ddd', background: '#fff'}}>
+            <button className="btn btn-primary" onClick={onSubmit}>{t('save')}</button>
+            <button className="btn" onClick={handleCancelEdit}>{t('cancel')}</button>
+          </div>
         </div>
       </div>
     )
   }
 
   // ==================== END MULTI-PBS HANDLERS ====================
+
+  // Shared shape SaveConfig expects — SaveConfig REPLACES the whole stored
+  // config (aside from a few backend-preserved fields like the PBS secret),
+  // so any caller saving even one unrelated setting (e.g. the Advanced tab's
+  // parallel-restore toggle) must still round-trip every other field here or
+  // risk wiping them. Centralized so the Account Info save and any other
+  // settings save can't drift apart on this.
+  const buildTrimmedConfig = (cfg) => ({
+    baseurl: (cfg.baseurl || '').trim(),
+    certfingerprint: (cfg.certfingerprint || '').trim(),
+    authid: (cfg.authid || '').trim(),
+    secret: (cfg.secret || '').trim(),
+    datastore: (cfg.datastore || '').trim(),
+    namespace: (cfg.namespace || '').trim(),
+    encryption_key_file: (cfg.encryption_key_file || '').trim(),
+    // Empty passphrase = keep the stored one; the backend never returns it.
+    encryption_key_passphrase: cfg.encryption_key_passphrase || '',
+    clear_encryption_key_passphrase: !!cfg.clear_encryption_key_passphrase,
+    backupdir: (cfg.backupdir || '').trim(),
+    'backup-id': (cfg['backup-id'] || '').trim() || hostname, // Use hostname if empty
+    usevss: cfg.usevss !== undefined ? cfg.usevss : true,
+    parallel_restore: !!cfg.parallel_restore
+  })
 
   const handleSaveConfig = async () => {
     if (!SaveConfig) {
@@ -1004,24 +2125,21 @@ function App() {
     }
 
     try {
-      // Trim all string values to remove whitespace (with safe fallback for undefined)
-      const trimmedConfig = {
-        baseurl: (config.baseurl || '').trim(),
-        certfingerprint: (config.certfingerprint || '').trim(),
-        authid: (config.authid || '').trim(),
-        secret: (config.secret || '').trim(),
-        datastore: (config.datastore || '').trim(),
-        namespace: (config.namespace || '').trim(),
-        encryption_key_file: (config.encryption_key_file || '').trim(),
-        backupdir: (config.backupdir || '').trim(),
-        'backup-id': (config['backup-id'] || '').trim() || hostname, // Use hostname if empty
-        usevss: config.usevss !== undefined ? config.usevss : true
-      }
+      const trimmedConfig = buildTrimmedConfig(config)
       await SaveConfig(trimmedConfig)
-      setConfig(trimmedConfig)
+      // Drop the typed passphrase from state now it is saved; the backend holds it.
+      const storedNow = trimmedConfig.encryption_key_passphrase
+        ? true
+        : (trimmedConfig.clear_encryption_key_passphrase ? false : !!config.encryption_key_passphrase_set)
+      setConfig({
+        ...trimmedConfig,
+        encryption_key_passphrase: '',
+        clear_encryption_key_passphrase: false,
+        encryption_key_passphrase_set: storedNow
+      })
       showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
     } catch (err) {
-      showStatus(`❌ Erreur : ${err}`, 'error')
+      showStatus(`❌ ${t('statusError')} ${err}`, 'error')
     }
   }
 
@@ -1041,6 +2159,7 @@ function App() {
       datastore: (config.datastore || '').trim(),
       namespace: (config.namespace || '').trim(),
       encryption_key_file: (config.encryption_key_file || '').trim(),
+      encryption_key_passphrase: config.encryption_key_passphrase || '',
       backupdir: (config.backupdir || '').trim(),
       'backup-id': (config['backup-id'] || '').trim() || hostname, // Use hostname if empty
       usevss: config.usevss !== undefined ? config.usevss : true
@@ -1055,7 +2174,11 @@ function App() {
       if (isCertError(err) && !(config.certfingerprint || '').trim() && GetServerFingerprint) {
         try {
           const fp = await GetServerFingerprint((config.baseurl || '').trim())
-          if (window.confirm(t('tofuConfirm').replace('{host}', config.baseurl).replace('{fp}', fp))) {
+          if (await askConfirm({
+            title: tl('dlgTofuTitle', 'Trust this server\'s certificate?'), icon: '🔐',
+            message: t('tofuConfirm').replace('{host}', config.baseurl).replace('{fp}', fp),
+            confirmLabel: tl('dlgTofuBtn', 'Trust and connect'),
+          })) {
             // Reuse the already-normalized testConfig (trimmed fields) for the pinned retest.
             await TestConnection({ ...testConfig, certfingerprint: fp })
             setConfig(prev => ({ ...prev, certfingerprint: fp }))
@@ -1094,16 +2217,16 @@ function App() {
   // returns one job per part; we then run a backup per part.
   const executeSplitBackup = async (dirList) => {
     if (!window.go || !window.go.main.App.CreateBackupSplitPlan) {
-      showStatus('❌ Split backup not available', 'error')
+      showStatus(`❌ ${t('splitBackupUnavailable')}`, 'error')
       return
     }
 
     try {
-      showStatus(`📊 ${t('splitAnalyzing')}`, 'info')
+      showStatus(`${t('splitAnalyzing')}`, 'info')
       const splitPlan = await window.go.main.App.CreateBackupSplitPlan(
         dirList,
         config['backup-id'] || hostname,
-        excludeList.split('\n').filter(l => l.trim())
+        getEffectiveExcludeList()
       )
 
       // If the analysis didn't yield a real split (volume below threshold, scan
@@ -1112,33 +2235,39 @@ function App() {
       // selected root. Fall back to a normal full backup of the roots, which
       // always captures everything.
       if (!splitPlan || splitPlan.length <= 1) {
-        showStatus(`🚀 ${t('statusBackupStarting')}`, 'info')
+        showStatus(`${t('statusBackupStarting')}`, 'info')
         setProgress(5)
         await StartBackup(
           backupType,
           dirList,
           selectedDrives,
-          excludeList.split('\n').filter(l => l.trim()),
+          getEffectiveExcludeList(),
           config['backup-id'],
           config.usevss,
-          ''
+          '',
+          backupPBSID,
+          oneOffComment.trim(),
+          '' // postActionsKey — only the scheduler sets this, one-off calls never do
         )
         showStatus(`⏳ ${t('statusBackupRunning')}`, 'info')
         return
       }
 
-      showStatus(`🔄 Lancement de ${splitPlan.length} backups partiels...`, 'info')
+      showStatus(t('splitLaunching').replace('{n}', splitPlan.length), 'info')
 
       // Arm a one-shot listener for the next backup:complete BEFORE starting a
       // part, so a fast completion can't be missed. The backend emits this event
       // in both standalone (OnComplete) and service mode (pollBackupProgress),
       // so awaiting it gives the part's REAL outcome instead of guessing success.
-      const armBackupCompletion = () => {
+      // Other backups can run at the same time now (a Backup Set's schedule):
+      // only this part's completion counts, matched by its backup-id.
+      const armBackupCompletion = (backupId) => {
         let unsub
         const promise = new Promise((resolve) => {
           unsub = EventsOn('backup:complete', (data) => {
+            if (data && data.backupId && backupId && data.backupId !== backupId) return
             if (typeof unsub === 'function') unsub()
-            resolve(data || { success: false, message: 'completion sans données' })
+            resolve(data || { success: false, message: 'completion with no data' })
           })
         })
         return { promise, cancel: () => { if (typeof unsub === 'function') unsub() } }
@@ -1150,11 +2279,11 @@ function App() {
       for (let i = 0; i < splitPlan.length; i++) {
         const job = splitPlan[i]
         showStatus(
-          `📦 Backup ${job.index}/${job.total_jobs}: ${job.size_fmt}...`,
+          `Backup ${job.index}/${job.total_jobs}: ${job.size_fmt}...`,
           'info'
         )
 
-        const completion = armBackupCompletion()
+        const completion = armBackupCompletion(job.backup_id)
         try {
           await StartBackup(
             backupType,
@@ -1162,18 +2291,23 @@ function App() {
             selectedDrives,
             // Merge user exclusions with this job's own (a root-remainder job
             // excludes the subfolders already covered by other jobs — v2-H-01).
-            [...excludeList.split('\n').filter(l => l.trim()), ...(job.exclude_list || [])],
+            [...getEffectiveExcludeList(), ...(job.exclude_list || [])],
             job.backup_id,
             config.usevss,
-            ''
+            '',
+            backupPBSID,
+            oneOffComment.trim(),
+            '' // postActionsKey — see the other one-off StartBackup call above
           )
         } catch (err) {
           // The part never started (validation / dispatch error): no completion
           // event will arrive, so cancel the wait and offer a retry.
           completion.cancel()
-          const retry = window.confirm(
-            t('splitStartFailed', { n: job.index, total: job.total_jobs, msg: err })
-          )
+          const retry = await askConfirm({
+            title: tl('dlgPartFailedTitle', 'A backup part did not complete'),
+            message: t('splitStartFailed', { n: job.index, total: job.total_jobs, msg: err }),
+            confirmLabel: tl('dlgRetry', 'Retry'), cancelLabel: tl('dlgSkipPart', 'Skip this part'),
+          })
           if (retry) { i--; continue }
           failures.push(t('partStartFail', { n: job.index, msg: err }))
           continue
@@ -1185,22 +2319,25 @@ function App() {
           succeeded++
           showStatus(`✅ ${t('backupPartDone', { n: job.index, total: job.total_jobs })}`, 'success')
         } else {
+          const resultMsg = renderLocalizedMessage(result, t, language).text || ''
           showStatus(
-            `❌ ${t('backupPartFailed', { n: job.index, total: job.total_jobs, msg: result.message || '' })}`,
+            `❌ ${t('backupPartFailed', { n: job.index, total: job.total_jobs, msg: resultMsg })}`,
             'error'
           )
-          const retry = window.confirm(
-            t('splitRetryPrompt', { n: job.index, total: job.total_jobs, msg: result.message || '' })
-          )
+          const retry = await askConfirm({
+            title: tl('dlgPartFailedTitle', 'A backup part did not complete'),
+            message: t('splitRetryPrompt', { n: job.index, total: job.total_jobs, msg: resultMsg }),
+            confirmLabel: tl('dlgRetry', 'Retry'), cancelLabel: tl('dlgSkipPart', 'Skip this part'),
+          })
           if (retry) { i--; continue }
-          failures.push(t('partDone', { n: job.index, msg: result.message || t('partFailed') }))
+          failures.push(t('partDone', { n: job.index, msg: resultMsg || t('partFailed') }))
         }
       }
 
       // Honest aggregate: only claim success when EVERY part actually succeeded.
       if (failures.length === 0) {
         showStatus(
-          `🎉 ${t('allPartsDone', { n: succeeded, total: splitPlan.length })}`,
+          `${t('allPartsDone', { n: succeeded, total: splitPlan.length })}`,
           'success'
         )
       } else {
@@ -1214,16 +2351,19 @@ function App() {
     }
   }
 
-  // VM-kind machine backups need a numeric backup ID (Proxmox VM ID, e.g. 100).
-  // Computed here so the same rule can gate the Start/Save button, show the
-  // inline hint under the Backup ID field, and block handleStartBackup.
-  const vmBackupIdInvalid = backupType === 'machine'
-    && machineBackupKind === 'vm'
-    && !/^\d+$/.test((config['backup-id'] || '').trim())
-
   const handleStartBackup = async () => {
     if (!StartBackup) {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
+      return
+    }
+
+    // Nothing to back up to — block here rather than let StartBackup fail
+    // downstream with a raw connection error, and take the user straight to
+    // where they can fix it.
+    if (pbsServers.length === 0) {
+      showStatus(`❌ ${t('noPbsServerConfigured')}`, 'error')
+      setPrefsTab('account')
+      setShowPreferences(true)
       return
     }
 
@@ -1231,7 +2371,7 @@ function App() {
     const dirList = backupDirs.split('\n').map(d => d.trim()).filter(d => d)
 
     if (backupType === 'directory' && dirList.length === 0) {
-      showStatus('❌ Au moins un répertoire requis', 'error')
+      showStatus(`❌ ${t('atLeastOneDirectory')}`, 'error')
       return
     }
 
@@ -1240,13 +2380,10 @@ function App() {
       return
     }
 
-    // A "vm" machine backup is a P2V snapshot: Proxmox VE requires a numeric
-    // VM ID (e.g. 100), so a hostname-style ID would only fail on the PBS/
-    // Proxmox side. This guard sits BEFORE the scheduled/oneshot split below,
-    // so the same rule blocks both starting a one-shot backup and saving or
-    // updating a scheduled job.
-    if (vmBackupIdInvalid) {
-      showStatus(`❌ ${t('vmBackupIdNumeric')}`, 'error')
+    const useVmType = backupType === 'machine' && machineAsVM
+    const vmBackupID = useVmType ? computeVmBackupId(vmIdNumber, vmIdStyle) : ''
+    if (useVmType && !vmBackupID) {
+      showStatus(`❌ ${tl('machineVmIdInvalid', 'Enter a VM ID between 1 and 999999.')}`, 'error')
       return
     }
 
@@ -1264,51 +2401,56 @@ function App() {
     // Scheduled mode - save or update job instead of executing immediately
     if (backupMode === 'scheduled') {
       if (!SaveScheduledJob || !UpdateScheduledJob) {
-        showStatus('❌ Fonction de planification non disponible', 'error')
+        showStatus(`❌ ${t('schedulingUnavailable')}`, 'error')
+        return
+      }
+      // Each set needs its own name (the backend refuses a duplicate too).
+      const wantedName = (jobName.trim() || `Backup ${config['backup-id'] || hostname}`).toLowerCase()
+      const sameName = scheduledJobs.find(j => j.id !== editingJobId && (j.name || '').trim().toLowerCase() === wantedName)
+      if (sameName) {
+        showStatus(`❌ ${tl('jobNameNotUnique', 'There is already a Backup Set called "{name}". Each set needs its own name.').replace('{name}', sameName.name)}`, 'error')
         return
       }
 
-      // Check if user has permission to modify scheduled jobs
-      if (CanModifyJobs) {
-        try {
-          const canModify = await CanModifyJobs()
-          if (!canModify) {
-            // Request elevation
-            if (RequestJobModificationElevation) {
-              showStatus('⚠️ Privilèges administrateur requis pour modifier les jobs planifiés', 'warning')
-              try {
-                await RequestJobModificationElevation()
-              } catch (err) {
-                showStatus(`❌ Échec de l'élévation des privilèges: ${err}`, 'error')
-              }
-            }
-            return
-          }
-        } catch (err) {
-          showStatus(`❌ Erreur vérification privilèges: ${err}`, 'error')
-          return
-        }
+      // A schedule that cannot be saved (repeat under 5 minutes, a window that ends
+      // before it starts, a weekly one with no day) is named on the Schedule tab.
+      const badSchedule = scheduleMode === 'manual' ? null : schedules.find(sc => scheduleProblem(sc))
+      if (badSchedule) {
+        showStatus(`❌ ${describeSchedule(t, language, badSchedule)}: ${t(scheduleProblem(badSchedule), { n: 5 })}`, 'error')
+        setBackupFormTab('schedule')
+        return
       }
 
       // For machine backups, we need to use a different approach for scheduled jobs
       // We'll pass drive letters in a separate field or structure based on backup type
       const jobData = {
         id: editingJobId || Date.now().toString(),
-        name: `Backup ${config['backup-id'] || hostname}`,
-        scheduleTime: scheduleTime,
-        frequency: scheduleFrequency,
-        weekdays: scheduleFrequency === 'weekly' ? scheduleWeekdays : [],
-        dayOfMonth: scheduleFrequency === 'monthly' ? Number(scheduleDayOfMonth) : 0,
-        runAtStartup: runAtStartup,
-        enabled: jobEnabled,
+        name: jobName.trim() || `Backup ${config['backup-id'] || hostname}`,
+        runAtStartup: scheduleMode === 'manual' ? false : runAtStartup,
+        scheduleMode,
+        schedules,
         backupDirs: backupType === 'directory' ? dirList : [],
-        backupId: config['backup-id'],
+        backupId: useVmType ? vmBackupID : config['backup-id'],
         useVSS: config.usevss,
         backupType: backupType,
-        excludeList: backupType === 'directory' ? excludeList.split('\n').filter(l => l.trim()) : [],
+        machineAsVm: useVmType,
+        readFreeSpace: backupType === 'machine' && readFreeSpace,
+        excludeList: backupType === 'directory' ? getEffectiveExcludeList() : [],
         driveLetters: backupType === 'machine' ? selectedDrives : [],
-        pbs_id: backupPBSID,
-        backup_kind: machineBackupKind
+        imageFolders: backupType === 'machine' ? imageFolders.split('\n').map(d => d.trim()).filter(d => d) : [],
+        pbsServerId: backupPBSID,
+        emailOnSuccess: emailOnSuccess,
+        emailOnSuccessTo: emailOnSuccess ? emailOnSuccessTo.trim() : '',
+        emailOnFailure: emailOnFailure,
+        emailOnFailureTo: emailOnFailure ? emailOnFailureTo.trim() : '',
+        runAppBefore: runAppBefore.trim(),
+        runAppAfter: runAppAfter.trim(),
+        exitAppAfter: exitAppAfter,
+        minimizeAfter: minimizeAfter && !exitAppAfter,
+        shutdownAfter: shutdownAfter,
+        // Folder sets only: machine sets back up disk images.
+        changeDetectionMode: backupType === 'directory' && changeDetectionMode !== 'legacy' ? changeDetectionMode : '',
+        fullReadEvery: backupType === 'directory' && changeDetectionMode === 'metadata' ? fullReadEvery : 0
       }
 
       // Save or update to backend
@@ -1316,40 +2458,44 @@ function App() {
         if (editingJobId) {
           // Update existing job
           await UpdateScheduledJob(jobData)
-          setScheduledJobs(scheduledJobs.map(j => j.id === editingJobId ? jobData : j))
-          showStatus(`✅ Backup modifié pour ${scheduleTime}`, 'success')
+          // Reload rather than use the form's copy: the backend adds the
+          // next run and keeps the last run and run counters.
+          setScheduledJobs((await GetScheduledJobs()) || scheduledJobs.map(j => j.id === editingJobId ? jobData : j))
+          showStatus(`✅ ${t('statusJobUpdated')}`, 'success')
           setEditingJobId(null)
         } else {
           // Create new job
           await SaveScheduledJob(jobData)
-          setScheduledJobs([...scheduledJobs, jobData])
-          showStatus(`✅ Backup planifié pour ${scheduleTime}`, 'success')
+          setScheduledJobs((await GetScheduledJobs()) || [...scheduledJobs, jobData])
+          showStatus(`✅ ${t('statusJobScheduled')}`, 'success')
         }
         // Reset form after save
-        setScheduleTime('02:00')
-        setScheduleFrequency('daily')
-        setScheduleWeekdays([1])
-        setScheduleDayOfMonth(1)
+        setJobName('')
+        setMachineAsVM(false); setReadFreeSpace(false); setVmIdNumber(''); setImageFolders('')
         setRunAtStartup(false)
-        setJobEnabled(true)
+        setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
         setBackupDirs('')
-        setBackupPBSID('')
-        setMachineBackupKind('host')
+        setEmailOnSuccess(false); setEmailOnSuccessTo('')
+        setEmailOnFailure(false); setEmailOnFailureTo('')
+        setRunAppBefore(''); setRunAppAfter('')
+        setExitAppAfter(false); setMinimizeAfter(false); setShutdownAfter(false)
+        setChangeDetectionMode('legacy'); setFullReadEvery(0)
+        setShowBackupForm(false)
       } catch (err) {
-        showStatus(`❌ Erreur: ${err}`, 'error')
+        if (!handleJobsLockError(err)) showStatus(`❌ ${jobErrText(err)}`, 'error')
       }
       return
     }
 
     // One-shot mode - execute immediately
-    showStatus(`🚀 ${t('statusBackupStarting')}`, 'info')
+    showStatus(`${t('statusBackupStarting')}`, 'info')
     setProgress(5)
     setBackupRunning(true)
 
     try {
       // Only pass excludeList for directory backups, not for machine backups
-      const excludeListToSend = backupType === 'directory' ? 
-        excludeList.split('\n').filter(l => l.trim()) : 
+      const excludeListToSend = backupType === 'directory' ?
+        getEffectiveExcludeList() :
         []
       
       if (backupType === 'directory') {
@@ -1361,41 +2507,110 @@ function App() {
           config['backup-id'],
           config.usevss,
           '',
-          backupPBSID
+          backupPBSID,
+          oneOffComment.trim(),
+          '' // postActionsKey — one-off backups never set this
         )
       } else {
         // Filter out any empty drives to prevent empty string issues
         const validDrives = selectedDrives.filter(drive => drive && drive.trim() !== '')
         await StartMachineBackup(
-          backupType,
+          useVmType ? 'machine-vm' : backupType,
           validDrives,
-          config['backup-id'],
+          useVmType ? vmBackupID : config['backup-id'],
           config.usevss,
           '',
           backupPBSID,
-          machineBackupKind
+          oneOffComment.trim(),
+          '' // postActionsKey — one-off backups never set this
         )
       }
-      // Backup started in background - progress will be shown via events
+      // Backup started in background - progress will be shown via events.
+      // Close the form and return to the Backup Sets landing view, where the
+      // progress card (now always visible there, not nested in this form) picks up.
       showStatus(`⏳ ${t('statusBackupRunning')}`, 'info')
+      setShowBackupForm(false)
     } catch (err) {
       setProgress(0)
       setBackupRunning(false)
-      const errorMessage = err?.message || err?.toString() || 'Unknown error'
-      showStatus(`❌ ${errorMessage}`, 'error')
+      // A cancelled passphrase prompt is a deliberate choice, not a failure.
+      if (String(err).includes('passphrase entry cancelled')) {
+        setBackupNotice({ type: 'error', message: t('encryptionCancelledNoPassphrase') })
+      } else {
+        setBackupNotice({ type: 'error', message: `${err}` })
+      }
     }
   }
 
+  // Stop, Pause and Resume act on one run: the card's own, or one listed
+  // under it (or waiting). Without a run id (an older backend) they act on
+  // whatever is running.
+  const stopRun = async (id) => {
+    if (id && CancelBackupRun) {
+      await CancelBackupRun(id)
+      if (runsRef.current[id]) updateRun(id, { stopRequested: true })
+      return
+    }
+    if (!CancelBackup) throw new Error(t('stopBackupUnavailable'))
+    await CancelBackup()
+  }
+
   const handleStopBackup = async () => {
-    if (!CancelBackup) {
-      showStatus(`❌ ${t('stopBackupUnavailable')}`, 'error')
+    try {
+      await stopRun(focusRunRef.current)
+      setBackupStopRequested(true)
+      showStatus(`⏹️ ${t('stopBackupInProgress')}`, 'info')
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
+    }
+  }
+
+  const pauseResumeRun = async (id, paused) => {
+    if (id && PauseBackupRun) {
+      const st = await (paused ? ResumeBackupRun(id) : PauseBackupRun(id))
+      if (st && runsRef.current[id]) updateRun(id, { paused: !!st.paused, since: st.since || 0 })
+      return st
+    }
+    const fn = paused ? ResumeBackup : PauseBackup
+    return fn ? fn() : null
+  }
+
+  const handlePauseResumeBackup = async () => {
+    try {
+      const st = await pauseResumeRun(focusRunRef.current, backupPause.paused)
+      if (st) setBackupPause({ paused: !!st.paused, since: st.since || 0 })
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
+    }
+  }
+
+  // The other runs' lines under the card.
+  const handleOtherRunStop = async (r) => {
+    try {
+      await stopRun(r.id)
+      showStatus(`⏹️ ${r.name}: ${t('stopBackupInProgress')}`, 'info')
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
+    }
+  }
+  const handleOtherRunPause = async (r) => {
+    try {
+      await pauseResumeRun(r.id, r.paused)
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
+    }
+  }
+
+  const handleStopRestore = async () => {
+    if (!CancelRestore) {
+      showStatus(`❌ ${t('stopRestoreUnavailable')}`, 'error')
       return
     }
     try {
-      await CancelBackup()
-      showStatus(`⏹️ ${t('stopBackupInProgress')}`, 'info')
+      await CancelRestore()
+      showStatus(`⏹️ ${t('stopRestoreInProgress')}`, 'info')
     } catch (err) {
-      showStatus(`❌ ${err?.message || err?.toString() || 'Unknown error'}`, 'error')
+      showStatus(`❌ ${err}`, 'error')
     }
   }
 
@@ -1404,48 +2619,114 @@ function App() {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
-    if (!restoreBackupId) {
-      showStatus('❌ Backup ID requis', 'error')
+
+    if (pbsServers.length === 0) {
+      showStatus(`❌ ${t('noPbsServerConfigured')}`, 'error')
+      setPrefsTab('account')
+      setShowPreferences(true)
       return
     }
 
-    showStatus('🔍 Recherche des snapshots...', 'info')
+    // Backup ID is deliberately optional — the backend already supports an
+    // empty filter (returns every snapshot in the datastore, not just one
+    // host's). Needed for disaster recovery: restoring onto a REPLACEMENT
+    // host that never had this backup-id, you don't necessarily know the
+    // failed host's exact backup-id string, so browsing everything and
+    // picking it out by eye is the actual workflow, not typing a name.
+
     setSelectedSnapshot(null)
-    setSnapshotEntries([])
+    setSnapshotChildren(new Map())
+    setSnapshotCount(0)
+    snapshotCtxRef.current = null
     setSelectedPaths(new Set())
     setExpandedDirs(new Set())
 
+    const id = beginServerWait('list', t('listingSnapshots'))
     try {
       const snaps = await ListSnapshots(restorePBSID || '', restoreBackupId)
+      if (waitSeqRef.current !== id) return // a newer call replaced this one
       setSnapshots(snaps || [])
       setShowSnapshots(true)
-      showStatus(`✅ ${snaps.length} snapshot(s) trouvé(s)`, 'success')
+      showStatus(`✅ ${t('snapshotsFound').replace('{n}', snaps.length)}`, 'success')
     } catch (err) {
-      showStatus(`❌ ${err}`, 'error')
+      if (waitSeqRef.current === id) showStatus(`❌ ${err}`, 'error')
+    } finally {
+      endServerWait(id)
     }
   }
 
+  // beginServerWait shows the WaitBar for a call and returns its number;
+  // endServerWait clears it, unless a newer call has taken over.
+  const beginServerWait = (kind, label) => {
+    const id = ++waitSeqRef.current
+    setServerWait({ id, kind, label, startedAt: Date.now() })
+    return id
+  }
+  const endServerWait = (id) => {
+    setServerWait(w => (w && w.id === id ? null : w))
+  }
+  // Backup IDs used by this machine's Backup Sets (plus its hostname, the
+  // default ID of a one-off backup), each with the sets that use it, for the
+  // Restore tab's Backup ID picker.
+  const restoreIdChoices = (() => {
+    const byId = new Map()
+    for (const j of scheduledJobs || []) {
+      const id = (j.backupId || '').trim()
+      if (!id) continue
+      if (!byId.has(id)) byId.set(id, [])
+      byId.get(id).push(j.name)
+    }
+    const host = (hostname || '').trim()
+    if (host && !byId.has(host)) byId.set(host, [tl('backupIdHostOneOff', 'This computer (one-off backups)')])
+    return [...byId.entries()].map(([id, names]) => ({ id, names })).sort((a, b) => a.id.localeCompare(b.id))
+  })()
+  const slowServerHint = tl('pbsSlowHint', 'PBS is slow to respond (a verify, garbage collection or backup may be running).')
+
+  const sortChildren = (list) => (list || []).slice().sort((a, b) => {
+    if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
+    return pathCollator.compare(a.path, b.path)
+  })
+
   const handleSelectSnapshot = async (snap, forceRefresh = false) => {
-    if (!ListSnapshotContents) {
+    if (!OpenSnapshotTree) {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
     setSelectedSnapshot(snap)
     setSnapshotMeta(null)
-    setSnapshotEntries([])
+    setSnapshotChildren(new Map())
+    setSnapshotCount(0)
+    setSelectionBytes(0)
+    setMoreShown(new Map())
     setSelectedPaths(new Set())
     setExpandedDirs(new Set())
-    showStatus(`📥 ${t('loadingSnapshotContents')}`, 'info')
+    showStatus(`${t('loadingSnapshotContents')}`, 'info')
+    setSnapshotLoad({ phase: 'reading', count: 0, startedAt: Date.now() })
     const effectiveBackupId = snap.backup_id || restoreBackupId
+    const gen = (snapshotCtxRef.current?.gen || 0) + 1
+    snapshotCtxRef.current = { pbsID: restorePBSID || '', backupID: effectiveBackupId, unix: snap.unix, gen }
     try {
       // Backend uses the snapshot's actual backup_id (snap.backup_id) so split
-      // backups list their real contents, not the partial search term.
-      const entries = await ListSnapshotContents(restorePBSID || '', effectiveBackupId, snap.unix, forceRefresh)
-      setSnapshotEntries(entries || [])
-      showStatus(`✅ ${(entries || []).length} ${t('entriesLoaded')}`, 'success')
+      // backups list their real contents, not the partial search term. Only the
+      // top level crosses IPC; deeper folders are fetched when expanded.
+      const opened = await OpenSnapshotTree(restorePBSID || '', effectiveBackupId, snap.unix, forceRefresh)
+      if (snapshotCtxRef.current?.gen !== gen) return
+      const root = sortChildren(opened?.root)
+      setSnapshotChildren(new Map([['', root]]))
+      setSnapshotCount(opened?.count || 0)
+      // Default to "restore everything," represented EXPLICITLY (every
+      // top-level entry pre-checked) rather than via an empty selection —
+      // selecting a directory already implies every descendant, so this is
+      // still functionally "everything" by default, just no longer relying
+      // on emptiness to mean that.
+      setSelectedPaths(new Set(root.map(e => e.path)))
+      showStatus(`✅ ${t('entriesLoadedCount', { n: (opened?.count || 0).toLocaleString(language) })}`, 'success')
     } catch (err) {
       showStatus(`❌ ${err}`, 'error')
+    } finally {
+      if (snapshotCtxRef.current?.gen === gen) setSnapshotLoad({ phase: '', count: 0, startedAt: 0 })
     }
+    if (snapshotCtxRef.current?.gen !== gen) return
     // Meta is informational — fire-and-forget. The listing call above has
     // already populated the cache, so this is a cheap cache hit. Failure is
     // silent: legacy snapshots simply have no sidecar.
@@ -1502,6 +2783,7 @@ function App() {
     }
     const prefix = (restoreBackupId || hostname || '').trim()
     setSearchRunning(true)
+    searchStartedRef.current = Date.now()
     setSearchResult(null)
     setSearchProgress({ percent: 0, message: '' })
     try {
@@ -1554,9 +2836,17 @@ function App() {
     setExpandedDirs(dirs)
   }
 
+  // A machine backup: its only archives are disk images (.img.fidx). Its
+  // files are read out of the image's NTFS volumes and go to another folder.
+  const isDiskImageSnapshot = (snap) => {
+    const files = (snap && snap.files) || []
+    return files.some(f => f.endsWith('.img.fidx')) && !files.some(f => f.endsWith('.pxar.didx') || f.endsWith('.mpxar.didx'))
+  }
+
   // inPlaceBlocker returns a translation key (or null when in-place is OK).
   // Drives the disabled state of the in-place radio + its tooltip.
   const inPlaceBlocker = () => {
+    if (isDiskImageSnapshot(selectedSnapshot)) return 'inPlaceDiskImage'
     if (!snapshotMeta) return 'inPlaceNoMeta'
     if (!snapshotMeta.original_path) return 'inPlaceNoOriginalPath'
     if (systemInfo.os && snapshotMeta.os && systemInfo.os !== snapshotMeta.os) return 'inPlaceOsMismatch'
@@ -1594,24 +2884,32 @@ function App() {
       return
     }
 
-    // In-place: scary, get explicit confirmation. confirm() is a stopgap until
-    // we wire a real modal — for the alpha phase it's enough and the message
-    // is precise about what will happen.
+    // In-place: scary, get explicit confirmation.
     if (effectiveMode === 'original') {
       const target = snapshotMeta?.original_path || '?'
-      const msg = t('inPlaceConfirm').replace('{path}', target)
-      // eslint-disable-next-line no-alert
-      if (!window.confirm(msg)) {
+      if (!(await askConfirm({
+        title: tl('dlgInPlaceTitle', 'Restore over the original files?'),
+        message: t('inPlaceConfirm').replace('{path}', target),
+        confirmLabel: tl('dlgRestoreBtn', 'Restore'), danger: true,
+      }))) {
         return
       }
     }
 
-    // Empty selection = restore everything in the snapshot
+    // Empty selection now means "restore nothing" (inverted from the old
+    // implicit "empty = everything" behavior, which Mick flagged as
+    // unintuitive) — block it here rather than silently restoring the whole
+    // snapshot.
+    if (selectedPaths.size === 0) {
+      showStatus(`❌ ${t('noFilesSelectedError')}`, 'error')
+      return
+    }
     const includes = Array.from(selectedPaths)
 
     setRestoreLoading(true)
     setRestoreProgress(0)
-    showStatus(`🔄 ${t('statusRestoring').replace('{time}', selectedSnapshot.time)}`, 'info')
+    setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
+    showStatus(`${t('statusRestoring').replace('{time}', selectedSnapshot.time)}`, 'info')
 
     try {
       await RestoreSnapshot(
@@ -1625,7 +2923,8 @@ function App() {
         restoreOptions.acls,
         restoreOptions.ads,
         restoreOptions.timestamps,
-        restoreOptions.overwrite
+        restoreOptions.overwrite,
+        restoreOptions.verify
       )
       // Completion arrives via the restore:complete event.
     } catch (err) {
@@ -1636,41 +2935,32 @@ function App() {
 
   // ===== tree helpers (snapshot navigation) =====
 
-  // Build a map childrenByDir: dir -> [entry...] from the flat list, plus a
-  // set of all dir paths. Re-derived on every render — entries are tiny.
-  const buildTree = (entries) => {
-    const childrenByDir = new Map()
-    const dirSet = new Set([''])
-    childrenByDir.set('', [])
-    for (const e of entries) {
-      if (e.is_dir) dirSet.add(e.path)
+  // Only the folders the user has expanded are ever held here: the backend
+  // keeps the full listing and hands over one folder's children on request.
+  const loadChildren = async (path) => {
+    const ctx = snapshotCtxRef.current
+    if (!ctx || !ListSnapshotChildren) return
+    const id = beginServerWait('folder', tl('openingFolder', 'Opening folder...'))
+    try {
+      const list = sortChildren(await ListSnapshotChildren(ctx.pbsID, ctx.backupID, ctx.unix, path))
+      if (snapshotCtxRef.current?.gen !== ctx.gen) return
+      setSnapshotChildren(prev => new Map(prev).set(path, list))
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
+    } finally {
+      endServerWait(id)
     }
-    for (const e of entries) {
-      const slash = e.path.lastIndexOf('/')
-      const parent = slash < 0 ? '' : e.path.substring(0, slash)
-      // Some archives may emit a child without ever emitting the parent dir
-      // entry. Make sure such parents still exist as buckets.
-      if (!childrenByDir.has(parent)) childrenByDir.set(parent, [])
-      childrenByDir.get(parent).push(e)
-      if (e.is_dir && !childrenByDir.has(e.path)) childrenByDir.set(e.path, [])
-    }
-    // Sort each bucket: dirs first, then alphabetical
-    for (const list of childrenByDir.values()) {
-      list.sort((a, b) => {
-        if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
-        return a.path.localeCompare(b.path)
-      })
-    }
-    return childrenByDir
   }
 
   const toggleDir = (path) => {
+    const opening = !expandedDirs.has(path)
     setExpandedDirs(prev => {
       const next = new Set(prev)
       if (next.has(path)) next.delete(path)
       else next.add(path)
       return next
     })
+    if (opening && !snapshotChildren.has(path)) loadChildren(path)
   }
 
   const togglePathSelection = (path) => {
@@ -1682,23 +2972,44 @@ function App() {
     })
   }
 
+  const handleSelectAllEntries = () => {
+    setSelectedPaths(new Set((snapshotChildren.get('') || []).map(e => e.path)))
+  }
+
+  const handleSelectNoneEntries = () => {
+    setSelectedPaths(new Set())
+  }
+
+  // Compact size for list columns (file list, snapshot list, search hits):
+  // binary units, labelled as such (it used to say GB for GiB). Totals the
+  // user compares against PBS use formatBytesDual instead.
   const formatBytes = (bytes) => {
     if (!bytes || bytes < 1024) return `${bytes || 0} B`
-    const units = ['KB', 'MB', 'GB', 'TB']
+    const units = ['KiB', 'MiB', 'GiB', 'TiB']
     let n = bytes / 1024
     let i = 0
     while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
-    return `${n.toFixed(1)} ${units[i]}`
+    return `${fixed(n, 1)} ${units[i]}`
   }
 
-  const formatDuration = (seconds) => {
-    if (!seconds || seconds < 0) return '--:--'
-    const h = Math.floor(seconds / 3600)
-    const m = Math.floor((seconds % 3600) / 60)
-    const s = Math.floor(seconds % 60)
-    if (h > 0) return `${h}h ${m}m ${s}s`
-    if (m > 0) return `${m}m ${s}s`
-    return `${s}s`
+  // Opens View Full Logs at the log of a Reports entry or a Message Log
+  // line: a backup's own run log, else the backup log (a restore) or the
+  // app log around its time.
+  const openLogFor = async ({ backupId, name, at, kind }) => {
+    let id = backupId
+    if (!id && name) {
+      const set = scheduledJobs.find(j => j.name === name)
+      if (set) id = set.backupId || hostname
+      else if (/^(Manual backup|Backup machine) - /.test(name)) id = name.replace(/^(Manual backup|Backup machine) - /, '')
+    }
+    const req = await logRequestFor({ backupId: id, at, kind: id ? kind : (kind === 'restore' ? 'restore' : 'app'),
+      notice: kind === 'backup' && id ? t('logsNoRunLog') : '' })
+    if (!req) {
+      showStatus(`❌ ${t('logsNone')}`, 'error')
+      return
+    }
+    setLogRequest({ ...req, nonce: Date.now() })
+    setActiveTab('logs')
   }
 
   // Reconstruct the absolute on-disk location a file came from, by joining the
@@ -1717,48 +3028,61 @@ function App() {
 
   // Total bytes the current selection will restore. Selecting a directory pulls
   // in all its descendants, so we sum every file that is itself selected or
-  // lives under a selected path. An empty selection means "restore everything",
-  // so we sum the whole snapshot. Memoized — snapshots can hold 100k+ entries.
-  const selectionBytes = useMemo(() => {
-    if (!snapshotEntries.length) return 0
-    if (selectedPaths.size === 0) {
-      return snapshotEntries.reduce((sum, e) => e.is_dir ? sum : sum + (e.size || 0), 0)
+  // lives under a selected path. An empty selection means "restore nothing",
+  // so it sums to 0. The backend holds the full listing and does the sum;
+  // debounced so ticking boxes quickly sends one request, not one per click.
+  useEffect(() => {
+    const ctx = snapshotCtxRef.current
+    if (!ctx || !SnapshotSelectionBytes || selectedPaths.size === 0) {
+      setSelectionBytes(0)
+      return
     }
-    const sel = Array.from(selectedPaths)
-    let sum = 0
-    for (const e of snapshotEntries) {
-      if (e.is_dir) continue
-      for (const p of sel) {
-        if (e.path === p || e.path.startsWith(p + '/')) { sum += (e.size || 0); break }
+    let cancelled = false
+    setSelectionSizing(true)
+    const id = setTimeout(async () => {
+      try {
+        const n = await SnapshotSelectionBytes(ctx.pbsID, ctx.backupID, ctx.unix, Array.from(selectedPaths))
+        if (!cancelled) setSelectionBytes(n || 0)
+      } catch (_err) {
+        // size is informational; leave the previous figure
+      } finally {
+        if (!cancelled) setSelectionSizing(false)
       }
-    }
-    return sum
-  }, [snapshotEntries, selectedPaths])
+    }, 150)
+    return () => { cancelled = true; clearTimeout(id) }
+  }, [selectedPaths, snapshotCount])
+
+  const TREE_PAGE = 1000
+
+  useEffect(() => {
+    if (snapshotLoad.phase !== 'reading') return
+    const id = setInterval(() => setSnapshotLoadTick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [snapshotLoad.phase])
 
   // Recursive renderer driven by the children map. Depth is only used for the
   // visual indent.
   const renderTreeNode = (entry, childrenByDir, depth) => {
     const isExpanded = expandedDirs.has(entry.path)
     const isSelected = selectedPaths.has(entry.path)
-    const indent = { paddingLeft: `${depth * 16}px` }
+    const indent = { paddingLeft: `${8 + depth * 20}px` }
     const origin = absOriginPath(entry.path)
     const rowTitle = origin ? t('originTooltip').replace('{path}', origin) : entry.path
     return (
       <div key={entry.path}>
-        <div title={rowTitle} style={{ ...indent, display: 'flex', alignItems: 'center', padding: '4px 8px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}>
+        <div title={rowTitle} style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', ...indent, cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}>
           <input
             type="checkbox"
             checked={isSelected}
             onChange={() => togglePathSelection(entry.path)}
             style={{ marginRight: '8px' }}
           />
-          {entry.is_dir ? (
+          {entry.is_dir && (
             <span onClick={() => toggleDir(entry.path)} style={{ cursor: 'pointer', userSelect: 'none', marginRight: '4px' }}>
-              {isExpanded ? '📂' : '📁'}
+              {isExpanded ? '▾' : '▸'}
             </span>
-          ) : (
-            <span style={{ marginRight: '4px' }}>📄</span>
           )}
+          {!entry.is_dir && <span style={{ display: 'inline-block', width: '14px', marginRight: '4px' }} />}
           <span
             onClick={() => entry.is_dir && toggleDir(entry.path)}
             style={{ flex: 1, cursor: entry.is_dir ? 'pointer' : 'default', fontSize: '14px' }}
@@ -1771,468 +3095,1639 @@ function App() {
             </span>
           )}
         </div>
-        {entry.is_dir && isExpanded && (childrenByDir.get(entry.path) || []).map(child =>
-          renderTreeNode(child, childrenByDir, depth + 1)
-        )}
+        {entry.is_dir && isExpanded && renderTreeChildren(entry.path, childrenByDir, depth + 1)}
       </div>
     )
   }
 
-  return (
-    <>
-      <div className="header">
-        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-          <div>
-            <h1>🛡️ {brand.is_default ? t('appTitle') : brand.title}</h1>
-            <p>{brand.is_default ? t('appSubtitle') : brand.title}</p>
+  // Children of one folder, rendered TREE_PAGE at a time so a folder holding
+  // tens of thousands of files cannot freeze the UI.
+  const renderTreeChildren = (path, childrenByDir, depth) => {
+    const list = childrenByDir.get(path)
+    const rowStyle = { padding: '4px 8px', paddingLeft: `${8 + depth * 20}px`, color: '#64748b', fontSize: '13px' }
+    if (!list) return <div style={rowStyle}>{tl('snapshotFolderLoading', 'Loading...')}</div>
+    const limit = moreShown.get(path) || TREE_PAGE
+    return (
+      <>
+        {list.slice(0, limit).map(child => renderTreeNode(child, childrenByDir, depth))}
+        {list.length > limit && (
+          <div style={rowStyle}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: '2px 10px', fontSize: '12px' }}
+              onClick={() => setMoreShown(prev => new Map(prev).set(path, limit + TREE_PAGE))}
+            >
+              {tl('snapshotShowMore', 'Show {n} more').replace('{n}', Math.min(TREE_PAGE, list.length - limit).toLocaleString())}
+            </button>
+            {' '}{tl('snapshotOfTotal', '{shown} of {total} shown').replace('{shown}', limit.toLocaleString()).replace('{total}', list.length.toLocaleString())}
           </div>
-          <LanguageSwitcher />
+        )}
+      </>
+    )
+  }
+
+  // Shared between the Backup and Restore tabs — one queue for backups and
+  // restores (operation_queue.go), rendered identically wherever it's
+  // shown, per Mick's requested format: a count line plus a numbered list
+  // of names, not just a single generic "queued" line. A waiting backup can
+  // be stopped from here.
+  const queuePanel = pendingQueue.length > 0 ? (
+    <div style={{marginTop: '10px', padding: '10px 12px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#495057', border: '1px dashed #ced4da'}}>
+      <div style={{fontWeight: 'bold', marginBottom: '4px'}}>
+        ⏳ {pendingQueue.length === 1 ? t('queuedCountOne') : t('queuedCountMany', {n: pendingQueue.length})}
+      </div>
+      <ol style={{margin: 0, paddingLeft: '20px'}}>
+        {pendingQueue.map((name, i) => {
+          const waiting = Object.values(runs).find(r => r.queued && r.name === name)
+          return (
+            <li key={i}>
+              {name}
+              {waiting && (
+                <button className="btn btn-secondary" style={{marginLeft: '8px', padding: '0 8px', fontSize: '12px'}}
+                  disabled={!!waiting.stopRequested} title={t('stopRunHint')}
+                  onClick={() => handleOtherRunStop(waiting)}>
+                  ⏹ {t('stopBackup')}
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ol>
+    </div>
+  ) : null
+
+  // The runs going on (not waiting), oldest first: the card's ‹ 1/3 ›
+  // switcher steps through them, and the ones not on the card are listed
+  // under it.
+  const runningRuns = Object.values(runs).filter(r => !r.queued).sort((a, b) => a.startedAt - b.startedAt)
+  const focusIndex = Math.max(0, runningRuns.findIndex(r => r.id === focusRun))
+  const otherRuns = runningRuns.filter(r => r.id !== focusRun)
+  const otherRunsPanel = otherRuns.length > 0 ? (
+    <div style={{marginTop: '12px', padding: '10px 12px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#495057', border: '1px solid #e9ecef'}}>
+      <div style={{fontWeight: 'bold', marginBottom: '6px'}}>{t('otherRunsTitle', {n: otherRuns.length})}</div>
+      {otherRuns.map(r => (
+        <div key={r.id} style={{display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', minWidth: 0}}>
+          <span style={{flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}} title={r.message || ''}>{r.name}</span>
+          <div className="progress" style={{flex: '0 0 90px', height: '10px', marginBottom: 0}}>
+            <div className="progress-bar" style={{width: `${Math.max(1, Math.min(100, r.percent || 0))}%`}} />
+          </div>
+          <span style={{flex: '0 0 auto', minWidth: '52px', textAlign: 'right'}}>
+            {r.stopRequested ? tl('stageStopping', 'Stopping...') : r.paused ? tl('pausedShort', 'Paused') : `${r.percent || 0}%`}
+          </span>
+          <button className="btn btn-secondary" style={{padding: '0 8px', fontSize: '12px'}} title={t('showRunHint')} onClick={() => focusOn(r.id)}>
+            {t('showRun')}
+          </button>
+          {PauseBackupRun && (
+            <button className="btn btn-secondary" style={{padding: '0 8px', fontSize: '12px'}} disabled={!!r.stopRequested}
+              title={r.paused ? tl('resumeBackup', 'Resume') : tl('pauseBackup', 'Pause')} onClick={() => handleOtherRunPause(r)}>
+              {r.paused ? '▶' : '⏸'}
+            </button>
+          )}
+          <button className="btn btn-secondary" style={{padding: '0 8px', fontSize: '12px'}} disabled={!!r.stopRequested}
+            title={t('stopRunHint')} onClick={() => handleOtherRunStop(r)}>
+            ⏹
+          </button>
+        </div>
+      ))}
+    </div>
+  ) : null
+
+  // Another set with the name being typed (names must be unique).
+  const nameClash = jobName.trim()
+    ? scheduledJobs.find(j => j.id !== editingJobId && (j.name || '').trim().toLowerCase() === jobName.trim().toLowerCase())
+    : null
+
+  // The restore progress card, shown on whichever restore page is open
+  // (Restore, Undelete, Roll back): they all run through the same restore.
+  // A roll back that backs the set up first: until that backup ends the
+  // card follows its progress instead of sitting at 1%.
+  const backupFirstActive = restoreStage.stage === 'backupfirst' && backupRunning
+  const shownRestorePct = backupFirstActive ? progress : restoreProgress
+  const restoreCard = restoreLoading ? (
+    <div ref={restoreCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
+      <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
+        <strong style={{fontSize: '15px'}}>{t('restoring')}{activeRestoreName ? ` - ${activeRestoreName}` : ''}</strong>
+        <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{shownRestorePct}%</span>
+      </div>
+
+      <div className="progress" style={{height: '30px', marginBottom: '12px'}}>
+        <div
+          className={'progress-bar' + (backupFirstActive ? ' progress-bar-backupfirst' : '')}
+          style={{
+            width: `${shownRestorePct}%`,
+            fontSize: '14px',
+            lineHeight: '30px',
+            transition: 'width 0.3s ease',
+            fontWeight: 'bold'
+          }}
+        >
+          {shownRestorePct}%
         </div>
       </div>
 
-      <div className="container">
-        <div className="tabs">
-          <div className={`tab ${activeTab === 'servers' ? 'active' : ''}`} onClick={() => setActiveTab('servers')}>
-            {t('tabServers')}
+      {/* Same fixed layout as the backup card. */}
+      {(() => {
+        const s = restoreStats
+        const now = Date.now()
+        const calc = <span className="pending-value">{tl('calculating', 'Calculating...')}</span>
+        const row = (label, value) => (
+          <div style={{fontSize: '13px', color: '#495057', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+            <strong>{label}</strong> {value}
           </div>
-          <div className={`tab ${activeTab === 'backup' ? 'active' : ''}`} onClick={() => setActiveTab('backup')}>
-            {t('tabBackup')}
+        )
+        const stage = restoreStage.stage
+          ? <>{{
+              preparing: tl('restoreStagePreparing', 'Connecting and preparing restore...'),
+              locating: tl('restoreStageLocating', 'Reading snapshot index and locating files...'),
+              transferring: tl('restoreStageTransferring', 'Fetching chunks and writing files...'),
+              dirtimes: tl('restoreStageDirTimes', 'Setting folder timestamps...'),
+              verifying: tl('restoreStageVerifying', 'Verifying restored files...'),
+              acls: tl('restoreStageAcls', 'Restoring ACLs and attributes...'),
+              created: tl('restoreStageCreated', 'Restoring creation times...'),
+            backupfirst: backupFirstActive
+              ? tl('restoreStageBackupFirstPct', 'Backing up the set before the roll back: {pct}% (the roll back starts when it is done)').replace('{pct}', progress)
+              : tl('restoreStageBackupFirst', 'Backing up the set before the roll back...'),
+            comparing: tl('restoreStageComparing', 'Comparing the backup with the folders...'),
+            safety: tl('restoreStageSafety', 'Moving the files to be replaced or removed aside (kept for Undo)...'),
+            }[restoreStage.stage] || restoreStage.stage}{restoreStage.detail ? ` (${restoreStage.detail})` : ''}</>
+          : tl('stageStarting', 'Starting...')
+        const showFile = restoreFile && (restoreStage.stage === 'transferring' || restoreStage.stage === 'verifying')
+        // After the transfer (folder timestamps, ACLs, verify) the time
+        // left comes from the stage's own "N of M" count and how long it
+        // has taken so far; without a count it reads "Finishing...".
+        const finishing = <span className="pending-value">{tl('finishingShort', 'Finishing...')}</span>
+        const afterTransfer = ['dirtimes', 'acls', 'created', 'verifying'].includes(restoreStage.stage)
+        const transferDone = afterTransfer || (s.bytesTotal > 0 && s.bytesDone >= s.bytesTotal)
+        let remaining = afterTransfer ? null : s.eta
+        if (afterTransfer && status.message) {
+          const m = status.message.match(/([\d,]+) of ([\d,]+)/)
+          const st = restoreStageStartRef.current
+          if (m && st.stage === restoreStage.stage && st.t > 0) {
+            const n = parseInt(m[1].replace(/,/g, ''), 10)
+            const total = parseInt(m[2].replace(/,/g, ''), 10)
+            const secs = (now - st.t) / 1000
+            if (n > 0 && total >= n && secs > 1) remaining = Math.round((total - n) * secs / n)
+          }
+        }
+        // Both shown for 10 s at a time (etaHold.js): the transfer's from the
+        // stats, a later stage's held here, starting afresh with each stage.
+        let held = afterTransfer ? null : s.etaHold
+        if (afterTransfer) {
+          held = holdEta(restoreStageEtaRef.current, remaining, now, restoreStage.stage)
+          restoreStageEtaRef.current = held
+          remaining = held.eta
+        }
+        const finish = remaining === null ? null : (held && held.eta !== null ? finishAt(held) : now + remaining * 1000)
+        return (
+          <>
+            <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px', height: '20px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'}}>
+              {stage}
+            </div>
+            <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginBottom: '10px'}}>
+              {row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc)}
+              {row(tl('forecastFinishLabel', 'Forecast finish:'), finish !== null ? formatClock(finish) : (afterTransfer ? finishing : calc))}
+              {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
+              {row(t('timeRemaining'), remaining !== null ? formatDuration(remaining) : (afterTransfer ? finishing : calc))}
+              {row(t('speed'), transferDone && s.avgSpeed > 0
+                ? `${formatSpeed(s.avgSpeed)} ${tl('averageSuffix', '(average)')}`
+                : (s.speed > 0 ? formatSpeed(s.speed) : calc))}
+              {row(tl('downloadedLabel', 'Downloaded:'), s.bytesTotal > 0 ? <>{formatBytesDual(s.bytesDone)} / {formatBytesDual(s.bytesTotal)}</> : calc)}
+              <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
+                <strong style={{flex: '0 0 auto'}}>{tl('currentFileLabel', 'Current file:')}</strong>
+                {showFile
+                  ? <FitPath path={restoreFile} />
+                  : <span className="pending-value">{tl('waiting', 'Waiting...')}</span>}
+              </div>
+            </div>
+            <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef', minHeight: '18px'}}>
+              {status.message && status.type === 'info' ? status.message : calc}
+            </div>
+          </>
+        )
+      })()}
+
+      <div style={{marginTop: '12px'}}>
+        <button className="btn btn-secondary" onClick={handleStopRestore} disabled={!restoreLoading}>
+          {t('stopRestore')}
+        </button>
+      </div>
+
+      {queuePanel}
+    </div>
+  ) : null
+
+  // Helpers and bindings the Undelete, Roll back and service sections use.
+  const setToolsUi = {
+    t, tl, formatBytesDual, WaitBar, EventsOn, showStatus, restartAsAdmin,
+    ListSetSnapshots, ScanUndelete, StartUndelete, CancelSetScan, PreviewRollback, StartRollback,
+    ListRollbacks, UndoRollback, DeleteRollbackCopies, OpenRestoreDestDialog,
+    GetServiceStatus, InstallService, StartBackgroundService, StopBackgroundService, RemoveService,
+    onStartFailed: (msg) => { setRestoreLoading(false); showStatus(`❌ ${msg}`, 'error') },
+    os: systemInfo.os,
+  }
+  const startSetRestore = () => {
+    setRestoreLoading(true)
+    setRestoreProgress(0)
+    setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
+  }
+
+  return (
+    <div className="app-shell">
+      <nav className="sidenav">
+        <button className={`nav-btn ${activeTab === 'backup' ? 'active' : ''}`} onClick={() => setActiveTab('backup')}>
+          {t('tabBackup')}
+        </button>
+        <button className={`nav-btn ${activeTab === 'restore' ? 'active' : ''}`} onClick={() => setActiveTab('restore')}>
+          {t('tabRestore')}
+        </button>
+        <button className={`nav-btn ${activeTab === 'undelete' ? 'active' : ''}`} onClick={() => setActiveTab('undelete')}>
+          {tl('navUndelete', 'Undelete')}
+        </button>
+        <button className={`nav-btn ${activeTab === 'rollback' ? 'active' : ''}`} onClick={() => setActiveTab('rollback')}>
+          {tl('navRollback', 'Roll back')}
+        </button>
+        <div className="nav-sep" role="separator" />
+        <button className={`nav-btn ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>
+          {t('navReports')}
+        </button>
+        <button className={`nav-btn ${activeTab === 'messagelog' ? 'active' : ''}`} onClick={() => setActiveTab('messagelog')}>
+          {t('navMessageLog')}
+        </button>
+        <button className={`nav-btn ${activeTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveTab('logs')}>
+          {t('navFullLogs')}
+        </button>
+        <div className="nav-spacer" />
+        <button className="nav-btn nav-btn-secondary" onClick={() => { setPrefsTab('account'); setShowPreferences(true) }}>
+          {t('prefsTitle')}
+        </button>
+        <button className={`nav-btn nav-btn-secondary ${activeTab === 'help' ? 'active' : ''}`} onClick={() => setActiveTab('help')}>
+          {t('navHelp')}
+        </button>
+        <button className={`nav-btn nav-btn-secondary ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>
+          {t('tabAbout')}
+        </button>
+      </nav>
+
+      <div className="app-main">
+        <div className="hero">
+          <div>
+            <h1>{brand.is_default ? t('appTitle') : brand.title}</h1>
+            <p>{t('appSubtitle')}</p>
           </div>
-          <div className={`tab ${activeTab === 'running' ? 'active' : ''}`} onClick={() => setActiveTab('running')}>
-            {t('tabRunning')}
-            {runningJobs.filter(j => j.running).length > 0 && (
-              <span className="badge">{runningJobs.filter(j => j.running).length}</span>
-            )}
-          </div>
-          <div className={`tab ${activeTab === 'restore' ? 'active' : ''}`} onClick={() => setActiveTab('restore')}>
-            {t('tabRestore')}
-          </div>
-          <div className={`tab ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>
-            {t('tabAbout')}
-          </div>
+          <LanguageSwitcher />
         </div>
 
-        {/* Standalone mode notice banner */}
-        {systemInfo.standalone && (
-          <div className="info-box" style={{
-            backgroundColor: '#fff3cd',
-            borderColor: '#ffc107',
-            color: '#856404',
-            padding: '12px 16px',
-            marginTop: '16px',
-            marginBottom: '16px',
-            borderLeft: '4px solid #ffc107',
-            borderRadius: '4px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px'
-          }}>
-            <span style={{fontSize: '20px'}}>⚠️</span>
-            <div>
-              <strong>{t('standaloneNoticeTitle')}</strong><br/>
-              <span>{t('standaloneNoticeText')}</span>
-              {systemInfo.standalone_reason === 'forced' && <span style={{marginTop: '4px', display: 'block', fontSize: '0.9em'}}>{t('standaloneReasonForced')}</span>}
-              {systemInfo.standalone_reason === 'no_service' && <span style={{marginTop: '4px', display: 'block', fontSize: '0.9em'}}>{t('standaloneReasonNoService')}</span>}
-              {systemInfo.standalone_reason === 'auth_failed' && <span style={{marginTop: '4px', display: 'block', fontSize: '0.9em'}}>{t('standaloneReasonAuthFailed')}</span>}
-            </div>
+      <div className="container">
+        {jobPolicy.settings_locked && (
+          <div className="info-box settings-locked-banner" style={{marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap'}}>
+            <span>🔒 {t('settingsLockedBanner')}</span>
+            <button className="btn btn-secondary" onClick={restartAsAdmin}>{t('jobsPolicyElevateBtn')}</button>
           </div>
         )}
-
         {/* PBS Configuration Tab */}
-        <div className={`tab-content ${activeTab === 'servers' ? 'active' : ''}`}>
-          <h2>🖥️ {t('serversTitle')}</h2>
+        {/* Preferences is a dialog (matching the mockup), not a sidebar tab —
+            opened via the sidebar's Preferences button, Tools > Preferences,
+            or automatically on first run when no PBS server is configured. */}
+        {showPreferences && (
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+            }}
+            onClick={() => setShowPreferences(false)}
+          >
+            <div
+              style={{
+                // Fixed height so the dialog does not resize as you move between tabs:
+                // the Account tab's natural height (~1200px), capped to the window.
+                width: '760px', maxWidth: '92vw', height: 'min(88vh, 1200px)', maxHeight: '88vh',
+                display: 'flex', flexDirection: 'column',
+                background: '#f3f3f3', border: '1px solid #999', borderRadius: '4px',
+                boxShadow: '0 10px 40px rgba(0,0,0,.3)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{
+                height: '34px', flex: '0 0 auto', background: '#fff', borderBottom: '1px solid #ddd',
+                display: 'flex', alignItems: 'center', padding: '0 14px', fontSize: '14px',
+                color: '#3a3a3a', justifyContent: 'space-between',
+              }}>
+                <span>{t('prefsTitle')}</span>
+                <button
+                  onClick={() => setShowPreferences(false)}
+                  style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#555'}}
+                >
+                  ✕
+                </button>
+              </div>
 
-          {/* Show form first if no servers configured */}
-          {pbsServers.length === 0 ? (
-            <>
-              <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#eef2ff', borderLeft: '4px solid var(--accent)'}}>
-                👋 <strong>{t('welcomeMessage')}</strong> {t('welcomeText')}<br/>
-                {!config.baseurl && (
+              {/* Wraps to a second row when a language's tab names do not fit. */}
+              <div style={{background: '#fff', borderBottom: '1px solid #ddd', display: 'flex', flexWrap: 'wrap', padding: '0 10px', flex: '0 0 auto'}}>
+                <button className={`tabhead ${prefsTab === 'account' ? 'active' : ''}`} onClick={() => setPrefsTab('account')}>
+                  {t('prefsAccountInfo')}
+                </button>
+                <button className={`tabhead ${prefsTab === 'backupoptions' ? 'active' : ''}`} onClick={() => setPrefsTab('backupoptions')}>
+                  {t('prefsBackupOptions')}
+                </button>
+                {/* A real brand's own accent is a deliberate vendor choice, not a
+                    default the user is meant to override — hide the picker entirely
+                    for a branded build (brand.is_default false) rather than merely
+                    disabling it, so there is no UI path to a non-brand color at all. */}
+                {brand.is_default && (
+                  <button className={`tabhead ${prefsTab === 'theme' ? 'active' : ''}`} onClick={() => setPrefsTab('theme')}>
+                    {t('themeTitle')}
+                  </button>
+                )}
+                <button className={`tabhead ${prefsTab === 'email' ? 'active' : ''}`} onClick={() => setPrefsTab('email')}>
+                  {t('prefsEmail')}
+                </button>
+                <button className={`tabhead ${prefsTab === 'export' ? 'active' : ''}`} onClick={() => setPrefsTab('export')}>
+                  {t('prefsExportTab')}
+                </button>
+                <button className={`tabhead ${prefsTab === 'messagelog' ? 'active' : ''}`} onClick={() => setPrefsTab('messagelog')}>
+                  {t('navMessageLog')}
+                </button>
+                <button className={`tabhead ${prefsTab === 'advanced' ? 'active' : ''}`} onClick={() => setPrefsTab('advanced')}>
+                  {t('prefsAdvanced')}
+                </button>
+              </div>
+
+              <div style={{padding: '22px 26px', overflowY: 'auto', flex: '1 1 auto'}}>
+                {prefsTab === 'account' && (
                   <>
-                    <br/>
-                    <strong>📦 {t('noPBSYet')}</strong><br/>
-                    {brand.buy_storage_url ? (
-                    <a
-                      href={brand.buy_storage_url}
-                      target="_blank"
-                      data-external="true"
-                      rel="noopener noreferrer"
-                      style={{color: 'var(--accent)', fontWeight: 'bold', textDecoration: 'underline'}}
-                    >
-                      {t('orderStorage')} →
-                    </a>
+                    <h2 style={{marginTop: 0}}>{t('serversTitle')}</h2>
+
+                    {pbsServers.length === 0 ? (
+                      <>
+                        <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#eef2ff', borderLeft: '4px solid var(--accent)'}}>
+                          <strong>{t('welcomeMessage')}</strong> {t('welcomeText')}<br/>
+                          {!config.baseurl && (
+                            <>
+                              <br/>
+                              <strong>{t('noPBSYet')}</strong><br/>
+                              <StorageOffer brand={brand} style={{display: 'inline-block', marginTop: '6px'}} />
+                            </>
+                          )}
+                        </div>
+
+                        {renderServerForm()}
+                      </>
                     ) : (
-                      <a
-                      href="https://www.proxmox.com/en/downloads/proxmox-backup-server"
-                      target="_blank"
-                      data-external="true"
-                      rel="noopener noreferrer"
-                      style={{color: 'var(--accent)', fontWeight: 'bold', textDecoration: 'underline'}}
-                      >
-                      {t('downloadPBS')} →
-                      </a>
+                      <>
+                        <div className="info-box" style={{marginBottom: '20px'}}>
+                          <strong>{t('multiPBSInfo')}</strong> {t('multiPBSText')}<br/>
+                          {t('multiPBSExample')}
+                        </div>
+
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px'}}>
+                          <div style={{fontSize: '13px', fontWeight: 700, color: '#333'}}>
+                            {t('configuredServers')} ({pbsServers.length})
+                          </div>
+                          <button className="btn btn-primary" onClick={handleShowAddServer} style={{padding: '6px 14px', fontSize: '12.5px'}}>
+                            + {t('addServer')}
+                          </button>
+                        </div>
+                        <div style={{border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', marginBottom: '20px'}}>
+                          {pbsServers.map((server, idx) => {
+                            const status = serverStatus[server.id]
+                            const dotColor = status === 'online' ? '#10b981' : status === 'offline' ? '#ef4444' : status === 'testing' ? '#3b82f6' : '#cbd5e1'
+                            return (
+                              <div key={server.id} style={{
+                                display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px',
+                                borderTop: idx === 0 ? 'none' : '1px solid #e6e6e6',
+                              }}>
+                                <div style={{flex: 1, minWidth: 0}}>
+                                  <strong>{server.name}</strong>
+                                  {server.id === defaultPBSID ? (
+                                    <span style={{
+                                      display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em',
+                                      padding: '2px 7px', borderRadius: '3px', background: '#fff3cd', color: '#8a6d00',
+                                      border: '1px solid #f1d98a', verticalAlign: 'middle', marginLeft: '6px',
+                                    }}>
+                                      ⭐ {t('default').toUpperCase()}
+                                    </span>
+                                  ) : (
+                                    <a href="#" onClick={(e) => { e.preventDefault(); handleSetDefaultPBS(server.id) }} style={{fontSize: '11px', color: '#3d5aa8', textDecoration: 'none', marginLeft: '8px'}}>
+                                      ☆ {t('setDefault')}
+                                    </a>
+                                  )}
+                                  {server.description && <div style={{fontSize: '0.85em', color: '#999', marginTop: '2px'}}>{server.description}</div>}
+                                  <div style={{fontSize: '12px', color: '#6c757d', marginTop: '3px'}}>
+                                    {server.baseurl} &nbsp;·&nbsp; {server.datastore}/{server.namespace || '-'}
+                                  </div>
+                                  <div style={{fontSize: '12px', color: '#888', marginTop: '2px'}}>
+                                    <span style={{display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', marginRight: '5px', background: dotColor}}></span>
+                                    {status === 'testing' && t('testing')}
+                                    {status === 'online' && t('online')}
+                                    {status === 'offline' && t('offline')}
+                                    {!status && t('untested')}
+                                  </div>
+                                </div>
+                                <button className="btn" onClick={() => handleTestPBSConnection(server.id)} disabled={status === 'testing'} style={{padding: '6px 12px', fontSize: '12.5px'}}>
+                                  {status === 'testing' ? `⏳ ${t('testing')}` : t('testServer')}
+                                </button>
+                                <button className="btn btn-secondary" onClick={() => handleEditServer(server)} style={{padding: '6px 12px', fontSize: '12.5px'}}>
+                                  {t('editServer')}
+                                </button>
+                                <button onClick={() => handleDeletePBSServer(server.id)} style={{padding: '6px 12px', fontSize: '12.5px', backgroundColor: '#fff', color: '#c0392b', border: '1px solid #f0b4ac', borderRadius: '4px', cursor: 'pointer'}}>
+                                  {t('deleteServer')}
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+
+                        {showServerForm && renderServerForm(true)}
+                      </>
                     )}
+
+                    {status.visible && showPreferences && prefsTab === 'account' && (
+                      <div className={`status ${status.type} visible`}>{status.message}</div>
+                    )}
+                  </>
+                )}
+
+                {prefsTab === 'theme' && brand.is_default && <ThemePicker />}
+
+                {prefsTab === 'email' && (
+                  <>
+                    <h2 style={{marginTop: 0}}>{t('prefsEmail')}</h2>
+                    <div className="form-group">
+                      <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('emailNotificationsIntro')}</p>
+
+                      <div style={{display: 'flex', gap: '10px', marginBottom: '10px'}}>
+                        <div style={{flex: 2}}>
+                          <label>{t('smtpHost')}</label>
+                          <input type="text" value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.example.com" />
+                        </div>
+                        <div style={{flex: 1}}>
+                          <label>{t('smtpPort')}</label>
+                          <input type="text" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="587" />
+                        </div>
+                      </div>
+                      <div style={{display: 'flex', gap: '10px', marginBottom: '10px'}}>
+                        <div style={{flex: 1}}>
+                          <label>{t('smtpUsername')}</label>
+                          <input type="text" value={smtpUsername} onChange={(e) => setSmtpUsername(e.target.value)} />
+                        </div>
+                        <div style={{flex: 1}}>
+                          <label>{t('smtpPassword')}</label>
+                          <input
+                            type="password"
+                            value={smtpPassword}
+                            onChange={(e) => setSmtpPassword(e.target.value)}
+                            placeholder={smtpPasswordSet ? t('smtpPasswordSetPlaceholder') : ''}
+                          />
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label>{t('emailFromLabel')}</label>
+                        <input type="text" value={emailFrom} onChange={(e) => setEmailFrom(e.target.value)} placeholder="backups@example.com" />
+                      </div>
+                      <label style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer'}}>
+                        <input type="checkbox" checked={smtpInsecure} onChange={(e) => setSmtpInsecure(e.target.checked)} />
+                        <span>{t('smtpInsecureLabel')}</span>
+                      </label>
+
+                      <button
+                        className="btn"
+                        onClick={async () => {
+                          if (!SetSMTPSettings) return
+                          try {
+                            await SetSMTPSettings(smtpHost.trim(), smtpPort.trim(), smtpUsername.trim(), smtpPassword, smtpInsecure, emailFrom.trim())
+                            setSmtpPasswordSet(smtpPasswordSet || smtpPassword !== '')
+                            setSmtpPassword('')
+                            showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                          } catch (err) {
+                            showStatus(`❌ ${err}`, 'error')
+                          }
+                        }}
+                      >
+                        {t('save')}
+                      </button>
+
+                      <div style={{display: 'flex', gap: '10px', alignItems: 'center', marginTop: '16px'}}>
+                        <input
+                          type="text"
+                          value={testEmailTo}
+                          onChange={(e) => setTestEmailTo(e.target.value)}
+                          placeholder={t('testEmailPlaceholder')}
+                          style={{flex: 1}}
+                        />
+                        <button
+                          className="btn btn-secondary"
+                          disabled={!!testEmailSending}
+                          onClick={async () => {
+                            if (!SendTestEmail) return
+                            setTestEmailSending(Date.now())
+                            try {
+                              await SendTestEmail(testEmailTo.trim())
+                              showStatus(`✅ ${t('statusTestEmailSent')}`, 'success')
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                            } finally {
+                              setTestEmailSending(null)
+                            }
+                          }}
+                        >
+                          {testEmailSending ? `⏳ ${tl('sendingTestEmail', 'Sending...')}` : t('sendTestEmailBtn')}
+                        </button>
+                      </div>
+                      {testEmailSending && (
+                        <WaitBar label={tl('sendingTestEmailWait', 'Sending the test e-mail through your mail server...')} startedAt={testEmailSending} />
+                      )}
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('emailNotificationsHint')}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {prefsTab === 'advanced' && (
+                  <>
+                    <h2 style={{marginTop: 0}}>{t('prefsAdvanced')}</h2>
+                    {jobPolicy.supported && (
+                      <div className="form-group" style={{marginTop: '20px'}}>
+                        <h3 style={{marginBottom: '8px'}}>{t('jobsPolicyTitle')}</h3>
+                        {!jobPolicy.fixed && <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px', opacity: jobPolicy.is_admin ? 1 : 0.7}}>
+                          <input
+                            type="checkbox"
+                            checked={!!jobPolicy.require_admin}
+                            disabled={!jobPolicy.is_admin}
+                            onChange={async (e) => {
+                              const checked = e.target.checked
+                              try {
+                                await SetRequireAdminForJobs(checked)
+                                showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                              } catch (err) {
+                                showStatus(`❌ ${jobErrText(err)}`, 'error')
+                              }
+                              await refreshJobPolicy()
+                            }}
+                          />
+                          <span>{t('jobsPolicyLabel')}</span>
+                        </label>}
+                        <div className="info-box" style={{marginTop: '10px'}}>
+                          ℹ️ {jobPolicy.fixed ? t('jobsPolicyHintLinux') : t('jobsPolicyHint')}
+                        </div>
+                        <div style={{marginTop: '10px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap'}}>
+                          {jobPolicy.is_admin ? (
+                            <span>✅ {t('jobsPolicyIsAdmin')}</span>
+                          ) : (
+                            <>
+                              <span>🔒 {t('jobsPolicyNotAdmin')}</span>
+                              <button className="btn btn-secondary" onClick={restartAsAdmin}>{t('jobsPolicyElevateBtn')}</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <ServiceControl ui={setToolsUi} />
+                  </>
+                )}
+                {prefsTab === 'backupoptions' && (
+                  <>
+                    <h2 style={{marginTop: 0}}>{t('prefsBackupOptions')}</h2>
+                    <div className="form-group" style={{marginTop: '20px'}}>
+                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
+                        <input
+                          type="checkbox"
+                          checked={!!config.parallel_restore}
+                          onChange={async (e) => {
+                            const checked = e.target.checked
+                            setConfig({...config, parallel_restore: checked})
+                            if (!SetParallelRestore) return
+                            try {
+                              await SetParallelRestore(checked)
+                              showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                              setConfig({...config, parallel_restore: !checked}) // revert on failure
+                            }
+                          }}
+                        />
+                        <span>{t('parallelRestoreLabel')}</span>
+                      </label>
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('parallelRestoreHint')}
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{marginTop: '24px'}}>
+                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
+                        <input
+                          type="checkbox"
+                          checked={!!config.parallel_backup_read}
+                          onChange={async (e) => {
+                            const checked = e.target.checked
+                            const workers = config.backup_read_workers || 0
+                            setConfig({...config, parallel_backup_read: checked})
+                            if (!SetParallelBackupRead) return
+                            try {
+                              await SetParallelBackupRead(checked, workers)
+                              showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                              setConfig({...config, parallel_backup_read: !checked})
+                            }
+                          }}
+                        />
+                        <span>{t('parallelBackupReadLabel')}</span>
+                      </label>
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('parallelBackupReadHint')}
+                      </div>
+                      {config.parallel_backup_read && (
+                        <div style={{marginTop: '10px', display: 'flex', alignItems: 'center', gap: '10px'}}>
+                          <label htmlFor="backupReadWorkers">{t('backupReadWorkersLabel')}</label>
+                          <input
+                            id="backupReadWorkers"
+                            type="number"
+                            min="1"
+                            max="32"
+                            style={{width: '70px'}}
+                            value={config.backup_read_workers || 8}
+                            onChange={(e) => setConfig({...config, backup_read_workers: parseInt(e.target.value) || 8})}
+                            onBlur={async (e) => {
+                              const workers = Math.min(32, Math.max(1, parseInt(e.target.value) || 8))
+                              setConfig({...config, backup_read_workers: workers})
+                              if (!SetParallelBackupRead) return
+                              try {
+                                await SetParallelBackupRead(true, workers)
+                                showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                              } catch (err) {
+                                showStatus(`❌ ${err}`, 'error')
+                              }
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="form-group" style={{marginTop: '24px'}}>
+                      <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                        <label htmlFor="maxConcurrentRuns">{t('maxRunsLabel')}</label>
+                        <select
+                          id="maxConcurrentRuns"
+                          style={{width: '80px'}}
+                          value={config.max_concurrent_runs || 3}
+                          onChange={async (e) => {
+                            const n = parseInt(e.target.value) || 3
+                            const before = config.max_concurrent_runs || 3
+                            setConfig({...config, max_concurrent_runs: n})
+                            if (!SetMaxConcurrentRuns) return
+                            try {
+                              await SetMaxConcurrentRuns(n)
+                              showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                              setConfig({...config, max_concurrent_runs: before})
+                            }
+                          }}
+                        >
+                          {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </div>
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('maxRunsHint')}
+                      </div>
+                    </div>
+
+                  </>
+                )}
+                {prefsTab === 'export' && (
+                  <>
+                    <h2 style={{marginTop: 0}}>{t('prefsExportTab')}</h2>
+                    <div className="form-group" style={{marginTop: '24px'}}>
+                      <h3 style={{marginBottom: '8px'}}>{t('settingsPortabilityTitle')}</h3>
+                      <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('settingsPortabilityIntro')}</p>
+
+                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '12px'}}>
+                        <input
+                          type="checkbox"
+                          checked={exportIncludeSecrets}
+                          onChange={(e) => setExportIncludeSecrets(e.target.checked)}
+                        />
+                        <span>{t('exportIncludeSecrets')}</span>
+                      </label>
+                      {exportIncludeSecrets && (
+                        <div className="info-box" style={{marginTop: '-4px', marginBottom: '12px', borderColor: '#e53e3e'}}>
+                          ⚠️ {t('exportSecretsWarning')}
+                        </div>
+                      )}
+
+                      <div style={{display: 'flex', gap: '10px'}}>
+                        <button
+                          className="btn"
+                          onClick={async () => {
+                            if (!ExportSettings) return
+                            try {
+                              const path = await ExportSettings(exportIncludeSecrets)
+                              if (path) {
+                                showStatus(`✅ ${t('statusSettingsExported')} ${path}`, 'success')
+                              }
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                            }
+                          }}
+                        >
+                          {t('exportSettingsBtn')}
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={async () => {
+                            if (!ImportSettings) return
+                            try {
+                              const path = await ImportSettings()
+                              if (path) {
+                                showStatus(`✅ ${t('statusSettingsImported')}`, 'success')
+                                // Reflect imported servers/jobs/theme immediately without
+                                // requiring a manual app restart.
+                                if (ListPBSServers) setPbsServers(await ListPBSServers())
+                                if (GetScheduledJobs) setScheduledJobs(await GetScheduledJobs())
+                              }
+                            } catch (err) {
+                              if (!handleJobsLockError(err)) showStatus(`❌ ${err}`, 'error')
+                            }
+                          }}
+                        >
+                          {t('importSettingsBtn')}
+                        </button>
+                      </div>
+                    </div>
+
+                  </>
+                )}
+                {prefsTab === 'messagelog' && (
+                  <>
+                    <h2 style={{marginTop: 0}}>{t('navMessageLog')}</h2>
+                    <div className="form-group" style={{marginTop: '24px'}}>
+                      <h3 style={{marginBottom: '8px'}}>{t('logsTitle')}</h3>
+                      <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('logsIntro')}</p>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={async () => {
+                          if (!OpenLogsFolder) return
+                          try {
+                            await OpenLogsFolder()
+                          } catch (err) {
+                            showStatus(`❌ ${err}`, 'error')
+                          }
+                        }}
+                      >
+                        {t('viewLogsBtn')}
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
 
-          {/* Add/Edit Server Form */}
-          {renderServerForm()}
-            </>
-          ) : (
-            <>
-              {/* Multi-PBS info for users with existing servers */}
-              <div className="info-box" style={{marginBottom: '20px'}}>
-                💡 <strong>{t('multiPBSInfo')}</strong> {t('multiPBSText')}<br/>
-                {t('multiPBSExample')}
+              <div style={{display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '14px 26px', borderTop: '1px solid #ddd', flex: '0 0 auto'}}>
+                <button className="btn btn-primary" onClick={() => setShowPreferences(false)}>{t('prefsOK')}</button>
+                <button className="btn" onClick={() => setShowPreferences(false)}>{t('cancel')}</button>
+                <button className="btn" onClick={() => { setShowPreferences(false); openManual('gui', '14-preferences') }}>{t('prefsHelp')}</button>
               </div>
-
-              {/* Server List */}
-              <div className="card" style={{marginBottom: '20px'}}>
-                <h3>{t('configuredServers')} ({pbsServers.length})</h3>
-
-                <table style={{width: '100%', marginTop: '15px'}}>
-                  <thead>
-                    <tr>
-                      <th>{t('name')}</th>
-                      <th>{t('url')}</th>
-                      <th>{t('datastore')}</th>
-                      <th>{t('status')}</th>
-                      <th>{t('actions')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pbsServers.map(server => (
-                      <tr key={server.id}>
-                        <td>
-                          <strong>{server.name}</strong>
-                          {server.id === defaultPBSID && <span style={{marginLeft: '5px', color: '#fbbf24'}}>⭐ {t('default')}</span>}
-                          {server.description && <div style={{fontSize: '0.85em', color: '#999'}}>{server.description}</div>}
-                        </td>
-                        <td>{server.baseurl}</td>
-                        <td>{server.datastore}/{server.namespace || '-'}</td>
-                        <td>
-                          {serverStatus[server.id] === 'testing' && <span style={{color: '#3b82f6'}}>🔄 {t('testing')}</span>}
-                          {serverStatus[server.id] === 'online' && <span style={{color: '#10b981'}}>🟢 {t('online')}</span>}
-                          {serverStatus[server.id] === 'offline' && <span style={{color: '#ef4444'}}>🔴 {t('offline')}</span>}
-                          {!serverStatus[server.id] && <span style={{color: '#999'}}>⚪ {t('untested')}</span>}
-                        </td>
-                        <td>
-                          <button onClick={() => handleTestPBSConnection(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                            🔍 {t('testServer')}
-                          </button>
-                           <button onClick={() => handleEditServer(server)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em'}}>
-                             ✏️ {t('editServer')}
-                           </button>
-                           {server.id !== defaultPBSID && (
-                            <button onClick={() => handleSetDefaultPBS(server.id)} style={{marginRight: '5px', padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#fbbf24'}}>
-                              ⭐ {t('setDefault')}
-                            </button>
-                          )}
-                          <button onClick={() => handleDeletePBSServer(server.id)} style={{padding: '5px 10px', fontSize: '0.9em', backgroundColor: '#ef4444', color: 'white'}}>
-                            🗑️ {t('deleteServer')}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Add/Edit Server Form */}
-              {renderServerForm()}
-            </>
-          )}
-
-          {status.visible && activeTab === 'servers' && (
-            <div className={`status ${status.type} visible`}>{status.message}</div>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
 
         {/* Backup Tab */}
         <div className={`tab-content ${activeTab === 'backup' ? 'active' : ''}`}>
           <h2>{t('backupTitle')}</h2>
 
-          <div className="form-group">
-            <label>{t('backupType')}</label>
-            <select value={backupType} onChange={(e) => setBackupType(e.target.value)}>
-              <option value="directory">📁 {t('backupTypeDirectory')}</option>
-              <option value="machine">💾 {t('backupTypeMachine')}</option>
-            </select>
-          </div>
-
-          {/* PBS Server Selection */}
-          {pbsServers.length > 0 && (
-            <div className="form-group">
-              <label>{t('backupPBS')}</label>
-              <select
-                value={backupPBSID}
-                onChange={(e) => setBackupPBSID(e.target.value)}
-              >
-                <option value="">{t('defaultPBS')}</option>
-                {pbsServers.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} {s.id === defaultPBSID ? '⭐' : ''}
-                  </option>
-                ))}
-              </select>
+          {pbsServers.length === 0 && (
+            <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#fff3cd', borderLeft: '4px solid #ffc107', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'}}>
+              <span>{t('noPbsServerBanner')}</span>
+              <button className="btn" onClick={() => { setPrefsTab('account'); setShowPreferences(true) }}>
+                {t('openPreferences')}
+              </button>
             </div>
           )}
 
-          {/* Machine Backup Kind Selection */}
-          {backupType === 'machine' && (
-            <div className="form-group">
-              <label>{t('machineBackupKind')}</label>
-              <select
-                value={machineBackupKind}
-                onChange={(e) => setMachineBackupKind(e.target.value)}
-              >
-                <option value="host">{t('machineBackupKindHost')}</option>
-                <option value="vm">{t('machineBackupKindVM')}</option>
-              </select>
-              <div className="info-box" style={{marginTop: '8px', backgroundColor: '#eef2ff', borderColor: '#c7d2fe'}}>
-                ℹ️ <strong>{t('machineBackupKindInfoTitle')}</strong><br/>
-                {t('machineBackupKindInfo')}
-              </div>
-            </div>
-          )}
-
-          {/* Backup Mode Toggle */}
-          <div className="form-group">
-            <label>{t('executionMode')}</label>
-            <div style={{display: 'flex', gap: '10px', marginTop: '10px'}}>
-              <button
-                onClick={() => setBackupMode('oneshot')}
-                disabled={systemInfo.standalone}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: backupMode === 'oneshot' ? 'var(--accent)' : systemInfo.standalone ? '#e2e8f0' : '#e2e8f0',
-                  color: backupMode === 'oneshot' ? 'white' : systemInfo.standalone ? '#a0aec0' : '#4a5568',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: systemInfo.standalone ? 'not-allowed' : 'pointer',
-                  fontWeight: 'bold',
-                  opacity: systemInfo.standalone ? 0.7 : 1
-                }}
-              >
-                <span className="compact-text-long">⚡ {t('oneshotMode')}</span>
-                <span className="compact-text-short">⚡ {t('oneshotModeShort')}</span>
-              </button>
-              <button
-                onClick={() => setBackupMode('scheduled')}
-                disabled={systemInfo.standalone}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: backupMode === 'scheduled' ? 'var(--accent)' : systemInfo.standalone ? '#e2e8f0' : '#e2e8f0',
-                  color: backupMode === 'scheduled' ? 'white' : systemInfo.standalone ? '#a0aec0' : '#4a5568',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: systemInfo.standalone ? 'not-allowed' : 'pointer',
-                  fontWeight: 'bold',
-                  opacity: systemInfo.standalone ? 0.7 : 1
-                }}
-              >
-                <span className="compact-text-long">📅 {t('scheduledMode')}</span>
-                <span className="compact-text-short">📅 {t('scheduledModeShort')}</span>
-              </button>
-            </div>
-            {systemInfo.standalone && (
-              <p style={{marginTop: '8px', fontSize: '0.85em', color: '#a0aec0'}}>
-                {t('standaloneSchedulingDisabled')}
-              </p>
-            )}
-          </div>
-
-          {/* Scheduling Options */}
-          {!systemInfo.standalone && backupMode === 'scheduled' && (
-            <div className="card" style={{marginTop: '20px', padding: '20px'}}>
-              <h3 style={{marginTop: 0}}>⏰ {t('schedulingConfig')}</h3>
-
-              {editingJobId && (
-                <div className="info-box" style={{backgroundColor: '#fff3cd', borderColor: '#ffc107', marginBottom: '15px'}}>
-                  ✏️ <strong>{t('editMode')}</strong> - {t('editModeText')}
-                </div>
-              )}
-
-              <div className="form-group">
-                <label>{t('scheduleFrequency')}</label>
-                <select
-                  value={scheduleFrequency}
-                  onChange={(e) => setScheduleFrequency(e.target.value)}
-                  style={{width: '240px', padding: '10px', fontSize: '16px'}}
-                >
-                  <option value="daily">{t('frequencyDaily')}</option>
-                  <option value="weekly">{t('frequencyWeekly')}</option>
-                  <option value="monthly">{t('frequencyMonthly')}</option>
-                </select>
-              </div>
-
-              {scheduleFrequency === 'weekly' && (
-                <div className="form-group">
-                  <label>{t('weekdaysLabel')}</label>
-                  <div style={{display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px'}}>
-                    {WEEKDAYS.map(day => {
-                      const selected = scheduleWeekdays.includes(day.value)
-                      return (
-                        <label key={day.value} style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 10px',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          backgroundColor: selected ? 'var(--accent)' : '#e2e8f0',
-                          color: selected ? 'white' : '#4a5568'
-                        }}>
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={(e) => setScheduleWeekdays(prev => e.target.checked
-                              ? [...prev, day.value].sort((a, b) => a - b)
-                              : prev.filter(d => d !== day.value))}
-                          />
-                          {t(day.key)}
-                        </label>
-                      )
-                    })}
-                  </div>
-                  {scheduleWeekdays.length === 0 && (
-                    <p style={{marginTop: '6px', fontSize: '0.85em', color: '#dc3545'}}>
-                      ⚠️ {t('weekdaysRequired')}
-                    </p>
+          {/* Always visible regardless of whether the form below is open — a
+              backup started via "Run Now" on a set never opens the form at all. */}
+          {backupCardActive && (
+            <div ref={backupCardRef} style={{marginTop: '10px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '10px'}}>
+                <strong style={{fontSize: '15px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>{t('backupProgress')}{activeBackupName ? ` - ${activeBackupName}` : ''}</strong>
+                <span style={{display: 'flex', alignItems: 'center', gap: '10px', flex: '0 0 auto'}}>
+                  {/* Several backups at once: ‹ 1/3 › steps through them on this card. */}
+                  {runningRuns.length > 1 && (
+                    <span style={{display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: '#495057'}}>
+                      <button className="btn btn-secondary" style={{padding: '0 8px', fontSize: '14px'}} title={t('prevRunHint')} aria-label={t('prevRunHint')}
+                        onClick={() => focusOn(runningRuns[(focusIndex - 1 + runningRuns.length) % runningRuns.length].id)}>‹</button>
+                      <span style={{minWidth: '34px', textAlign: 'center'}}>{focusIndex + 1}/{runningRuns.length}</span>
+                      <button className="btn btn-secondary" style={{padding: '0 8px', fontSize: '14px'}} title={t('nextRunHint')} aria-label={t('nextRunHint')}
+                        onClick={() => focusOn(runningRuns[(focusIndex + 1) % runningRuns.length].id)}>›</button>
+                    </span>
                   )}
+                  <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{shownProgress}%</span>
+                </span>
+              </div>
+
+              <div className="progress" style={{height: '30px', marginBottom: '12px'}}>
+                <div
+                  className="progress-bar"
+                  style={{
+                    width: `${shownProgress}%`,
+                    fontSize: '14px',
+                    lineHeight: '30px',
+                    transition: 'width 0.3s ease',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {shownProgress}%
+                </div>
+              </div>
+
+              {/* Every row is always there, in a fixed order, so nothing moves
+                  as values arrive: "Calculating..." until a value exists,
+                  "Not available" where the run cannot provide one (a run in
+                  the background service sends its percentage only). */}
+              {(() => {
+                const s = backupStats
+                const now = Date.now()
+                const calc = <span className="pending-value">{tl('calculating', 'Calculating...')}</span>
+                const na = <span className="pending-value">{tl('notAvailable', 'Not available')}</span>
+                const row = (label, value) => (
+                  <div style={{fontSize: '13px', color: '#495057', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                    <strong>{label}</strong> {value}
+                  </div>
+                )
+                // What the run is doing, and why it is reading every file
+                // when it is.
+                const paused = backupPause.paused
+                // Machine (disk image) backups: blocks of the current disk,
+                // the disk itself and the partition stand in for the files,
+                // folder and current file rows.
+                const machine = s.kind === 'machine'
+                const BLOCK = 4 * 1024 * 1024
+                const blocks = Math.ceil(s.diskBytes / BLOCK)
+                const block = Math.min(blocks, Math.max(1, Math.ceil(s.diskDone / BLOCK)))
+                let stage
+                if (backupStopRequested) {
+                  stage = tl('stageStopping', 'Stopping...')
+                } else if (paused) {
+                  stage = `⏸ ${tl('stagePaused', 'Paused for {duration}. The connection to the server stays open: Resume carries on from here.').replace('{duration}', formatDuration(Math.max(0, (now - backupPause.since) / 1000)))}`
+                } else if (s.phase === 'retry_wait') {
+                  stage = `⚠️ ${tl('stageRetryWait', 'Connection to the server lost: starting again at {time} (attempt {n} of {count})')
+                    .replace('{time}', formatClock(s.retryAt)).replace('{n}', s.attempt).replace('{count}', s.attempts)}`
+                } else if (machine && s.phase !== 'finishing') {
+                  stage = s.phase === 'data'
+                    ? tl('stageReadingDisk', 'Reading disk {n} of {count}: {disk} ({size})')
+                        .replace('{n}', s.diskNo).replace('{count}', s.diskCount)
+                        .replace('{disk}', s.diskModel ? `${s.diskModel}, ${s.disk}` : s.disk).replace('{size}', formatBytes(s.diskBytes))
+                    : s.phase === 'snapshot'
+                      ? tl('stageSnapshotVolumes', 'Taking a snapshot of the volumes...')
+                      : tl('stageConnecting', 'Connecting to the server...')
+                } else if (machine) {
+                  stage = tl('stageFinishingImage', 'Finishing: closing the disk image and uploading the manifest...')
+                } else if (s.phase === 'finishing') {
+                  stage = tl('stageFinishing', 'Finishing: closing the catalog and uploading the manifest...')
+                } else if (s.phase === 'data') {
+                  stage = {
+                    full_read: tl('readReasonFullRead', 'Scheduled full read: reading every file'),
+                    full_read_requested: tl('readReasonRequested', 'Full read requested: reading every file'),
+                    no_previous: tl('readReasonNoPrevious', 'No previous snapshot to compare with: reading every file'),
+                    data: tl('readReasonData', 'Reading every file (change detection: data)'),
+                  }[s.readReason] || (s.changeMode === 'metadata'
+                    ? tl('stageMetadata', 'Change detection: unchanged files are reused without reading')
+                    : tl('stageReading', 'Reading and uploading files'))
+                } else if (status.message && status.type === 'info' && !status.message.startsWith('Processed:')) {
+                  stage = status.message
+                } else {
+                  stage = tl('stageStarting', 'Starting...')
+                }
+                const finishingNow = s.phase === 'finishing'
+                const finishingText = <span className="pending-value">{tl('finishingShort', 'Finishing...')}</span>
+                const pausedText = <span className="pending-value">{tl('pausedShort', 'Paused')}</span>
+                const forecast = s.eta !== null && !finishingNow ? formatClock(s.etaHold ? finishAt(s.etaHold) : now + s.eta * 1000) : null
+                const filesValue = !s.hasDetail ? na
+                  : machine ? (blocks > 0 ? <>{block.toLocaleString()} / {blocks.toLocaleString()}</> : calc)
+                  : <>{s.filesDone.toLocaleString()} / {s.filesTotal > 0 ? s.filesTotal.toLocaleString() : calc}</>
+                const processing = s.speed > 0
+                  ? `${formatSpeed(s.speed)}${s.hasDetail && !machine && s.filesRate !== null ? ` ·${Math.round(s.filesRate).toLocaleString()} ${tl('filesPerSecond', 'files/s')}` : ''}`
+                  : calc
+                const upload = !s.hasDetail ? na : (s.uploadRate !== null ? formatSpeed(s.uploadRate) : calc)
+                const folder = machine
+                  ? (s.disk ? `${s.diskModel ? s.diskModel + ', ' : ''}${s.disk} (${formatBytes(s.diskBytes)})` : calc)
+                  : s.currentDir || (s.hasDetail ? calc : na)
+                let fileLine
+                if (machine) {
+                  fileLine = s.partition
+                    ? (s.partition === 'unpartitioned space' ? tl('partitionUnpartitioned', 'Unpartitioned space') : s.partition.replace(/^partition (\d+)$/, tl('partitionNumber', 'Partition {n}').replace('{n}', '$1')))
+                    : <span className="pending-value">{s.phase === 'data' ? calc : tl('waiting', 'Waiting...')}</span>
+                } else if (backupFile) {
+                  fileLine = <FitPath path={backupFile} />
+                } else if (!s.hasDetail && s.phase === '' && s.bytesTotal > 0) {
+                  fileLine = na
+                } else {
+                  fileLine = <span className="pending-value">{s.currentDir ? `${tl('scanning', 'Scanning')} ${s.currentDir}...` : tl('waiting', 'Waiting...')}</span>
+                }
+                // Data read so far beside data sent so far (Sent: new chunks
+                // only, compressed, so far less when most of it is reused).
+                const processed = s.hasDetail || s.bytesDone > 0
+                  ? <>{formatBytesDual(s.bytesDone)} / {s.bytesTotal > 0 ? formatBytesDual(s.bytesTotal) : calc}</>
+                  : <>0 B / {calc}</>
+                // The new chunks before (New/changed data) and after
+                // compression (Data transferred): a changed block counts whole
+                // (4 MiB in a disk image), so the first overstates what
+                // crossed the network.
+                const ratio = compressionRatio(s.uploadedBytes, s.sentBytes)
+                const chunks = s.hasDetail
+                  ? <>{tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>}</>
+                  : (status.message && status.type === 'info' ? status.message : calc)
+                return (
+                  <>
+                    <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px', height: '20px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'}}>
+                      {stage}
+                    </div>
+                    <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginBottom: '10px'}}>
+                      {row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc)}
+                      {row(tl('forecastFinishLabel', 'Forecast finish:'), paused ? pausedText : (forecast || (finishingNow ? finishingText : calc)))}
+                      {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
+                      {row(t('timeRemaining'), paused ? pausedText : (finishingNow ? finishingText : (s.eta !== null ? formatDuration(s.eta) : calc)))}
+                      {row(machine ? tl('blocksLabel', 'Blocks:') : tl('filesLabel', 'Files:'), filesValue)}
+                      {row(tl('processingLabel', 'Processing:'), processing)}
+                      {row(machine ? tl('diskLabel', 'Disk:') : t('currentDirLabel'), folder)}
+                      {row(tl('uploadLabel', 'Upload:'), upload)}
+                      {row(tl('processedLabel', 'Processed:'), processed)}
+                      {row(tl('newDataLabel', 'New/changed data:'), s.hasDetail ? formatBytesDual(s.uploadedBytes) : na)}
+                      {row(tl('ratioLabel', 'Compression ratio:'), s.hasDetail ? (ratio || calc) : na)}
+                      {row(tl('sentLabel', 'Data transferred:'), s.hasDetail ? formatBytesDual(s.sentBytes) : na)}
+                      <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
+                        <strong style={{flex: '0 0 auto'}}>{machine ? tl('partitionLabel', 'Partition:') : tl('currentFileLabel', 'Current file:')}</strong> {fileLine}
+                      </div>
+                    </div>
+                    <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef', minHeight: '18px'}}>
+                      {chunks}
+                    </div>
+                  </>
+                )
+              })()}
+
+              {/* This card is the ONLY progress display for a backup started via
+                  "Run Now" on a Backup Set (the one-shot form's own Stop button,
+                  below, never even mounts for that path — setShowBackupForm(false)
+                  fires immediately once the backup starts). Found live 2026-09-26:
+                  no way at all to stop a Backup-Set-triggered run once started,
+                  for any backup type including machine/whole-disk ones. */}
+              <div style={{marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+                {PauseBackup && (
+                  <button className="btn btn-secondary" onClick={handlePauseResumeBackup}
+                    disabled={!backupRunning || backupStopRequested || (!backupPause.paused && backupStats.phase === 'finishing')}
+                    title={backupPause.paused ? '' : tl('pauseBackupHint', 'Stops reading and uploading until you press Resume. Other backups to this server wait meanwhile.')}>
+                    {backupPause.paused ? `▶ ${tl('resumeBackup', 'Resume')}` : `⏸ ${tl('pauseBackup', 'Pause')}`}
+                  </button>
+                )}
+                <button className="btn btn-secondary" onClick={handleStopBackup} disabled={!backupRunning}>
+                  {t('stopBackup')}
+                </button>
+              </div>
+
+              {/* The other backups running at the same time, each with its
+                  own Pause and Stop; Show puts one on this card. */}
+              {otherRunsPanel}
+
+              {/* Whatever's waiting for its turn, shown under the active
+                  card rather than its own big one — each appears above once
+                  its own turn actually starts. */}
+              {queuePanel}
+            </div>
+          )}
+
+          {/* Nothing else is visible for backup right now (progress is 0), but
+              something's queued behind whatever's holding the slot — most
+              often a Restore. */}
+          {!backupCardActive && pendingQueue.length > 0 && (
+            <div ref={backupCardRef} style={{marginTop: '10px', marginBottom: '20px'}}>
+              {queuePanel}
+            </div>
+          )}
+
+          {!backupCardActive && backupNotice && (
+            <div className={`status ${backupNotice.type} visible`} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '10px', marginBottom: '20px', ...(backupNotice.type === 'error' ? {borderLeft: '6px solid #d32f2f', background: '#fdecea', color: '#8a1c1c'} : {})}}>
+              <span>{backupNotice.type === 'error' ? '❌ ' : ''}{backupNotice.message}</span>
+              <button style={{background: '#d32f2f', border: 'none', color: '#fff', fontSize: '16px', lineHeight: 1, cursor: 'pointer', padding: '4px 10px', borderRadius: '4px'}} onClick={() => setBackupNotice(null)} aria-label="Dismiss">×</button>
+            </div>
+          )}
+
+          {!showBackupForm && (
+            <>
+              {jobPolicy.supported && jobPolicy.require_admin && !jobPolicy.is_admin && (
+                <div className="info-box" style={{marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap'}}>
+                  <span>🔒 {t('jobsBanner')}</span>
+                  <button className="btn btn-secondary" onClick={restartAsAdmin}>{t('jobsPolicyElevateBtn')}</button>
                 </div>
               )}
+              <div style={{display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '20px'}}>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setEditingJobId(null)
+                    setJobName('')
+                    setMachineAsVM(false); setReadFreeSpace(false); setVmIdNumber(''); setImageFolders('')
+                    setBackupMode('scheduled')
+                    setRunAtStartup(false)
+                    setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
+                    setBackupDirs('')
+                    setExcludeList('')
+                    setTreeExcludes([])
+                    setBackupType('directory')
+                    // Not the last edited set's ID: that is how two sets came
+                    // to share one backup group.
+                    setConfig({...config, 'backup-id': suggestBackupId('', hostname, takenBackupIds(null))})
+                    setBackupIdAuto(true)
+                    setBackupPBSID(defaultPBSID)
+                    setEmailOnSuccess(false); setEmailOnSuccessTo('')
+                    setEmailOnFailure(false); setEmailOnFailureTo('')
+                    setRunAppBefore(''); setRunAppAfter('')
+                    setExitAppAfter(false); setMinimizeAfter(false); setShutdownAfter(false)
+                    setChangeDetectionMode('legacy'); setFullReadEvery(0)
+                    setBackupFormTab('source'); setShowBackupForm(true)
+                  }}
+                >
+                  {t('addNewBackupSet')}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setBackupMode('oneshot')
+                    setOneOffComment('')
+                    setMachineAsVM(false)
+                    setVmIdNumber('')
+                    if (!config['backup-id']) setConfig({...config, 'backup-id': hostname})
+                    setBackupPBSID(defaultPBSID)
+                    setBackupFormTab('source'); setShowBackupForm(true)
+                  }}
+                >
+                  {t('oneOffBackup')}
+                </button>
+                <span style={{fontSize: '13px', color: '#666'}}>{t('manageBackupSetsHint')}</span>
+              </div>
 
-              {scheduleFrequency === 'monthly' && (
-                <div className="form-group">
-                  <label>{t('dayOfMonthLabel')}</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="31"
-                    value={scheduleDayOfMonth}
-                    onChange={(e) => setScheduleDayOfMonth(Number(e.target.value))}
-                    style={{width: '120px', padding: '10px', fontSize: '16px'}}
-                  />
-                  <p style={{marginTop: '6px', fontSize: '0.85em', color: '#6c757d'}}>
-                    {t('dayOfMonthHint')}
-                  </p>
-                </div>
-              )}
+              <div>
+                <div style={{fontSize: '13px', fontWeight: 700, color: '#333', marginBottom: '6px'}}>{t('yourBackupSets')}</div>
+                {scheduledJobs.length === 0 ? (
+                  <p style={{color: '#718096'}}>{t('noBackupSetsYet')}</p>
+                ) : (
+                  <div style={{border: '1px solid #e2e8f0', borderRadius: '8px'}}>
+                    <div>
+                      {scheduledJobs.map((job, idx) => (
+                        <div key={job.id} style={{
+                          display: 'flex', alignItems: 'center', gap: '10px 14px', padding: '12px 16px', flexWrap: 'wrap',
+                          borderTop: idx === 0 ? 'none' : '1px solid #e6e6e6',
+                        }}>
+                          {/* The text keeps room for its lines; on a narrow window the
+                              buttons wrap below it instead of squeezing it. */}
+                          <div style={{flex: '1 0 auto', maxWidth: '100%', minWidth: 0}}>
+                            <strong style={{color: job.enabled === false ? '#888' : undefined}}>{job.name}</strong>
+                            <div style={{fontSize: '12px', color: '#6c757d', marginTop: '2px', display: 'flex', alignItems: 'center'}}>
+                              {/* A disabled set keeps its settings but is not run by the
+                                  schedule (Run Now still works); More > Enable turns it back on. */}
+                              {job.enabled === false && (
+                                <span title={tl('setDisabledTip', 'This set does not run on its schedule. You can still run it now. Enable it again from More.')} style={{
+                                  display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
+                                  padding: '2px 7px', borderRadius: '3px', background: '#f4f4f4', color: '#666',
+                                  border: '1px solid #ccc', verticalAlign: 'middle', marginRight: '6px', cursor: 'help',
+                                }}>
+                                  {tl('setDisabledBadge', 'Disabled').toUpperCase()}
+                                </span>
+                              )}
+                              <span style={{
+                                display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
+                                padding: '2px 7px', borderRadius: '3px', background: '#eef0f4', color: '#3d5aa8',
+                                border: '1px solid #ccd4e6', verticalAlign: 'middle', marginRight: '6px',
+                              }}>
+                                {(() => { const c = cardSchedule(job); return c.sch ? t(badgeKey(c.sch)).toUpperCase() + (c.on > 1 ? ` +${c.on - 1}` : '') : t('triggerModeManual').toUpperCase() })()}
+                              </span>
+                              {/* Backup type badge — reuses the existing backupTypeDirectory/
+                                  backupTypeMachine translations (already in all 6 languages),
+                                  taking just the first word so it fits a compact badge like the
+                                  trigger-mode one above, instead of the full "Directory (specific
+                                  folder)"-style dropdown-option text. */}
+                              <span style={{
+                                display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
+                                padding: '2px 7px', borderRadius: '3px', background: '#eef3ec', color: '#2e7d47',
+                                border: '1px solid '+'#c8e0cf', verticalAlign: 'middle', marginRight: '6px',
+                              }}>
+                                {(job.backupType === 'machine' ? t('backupTypeMachine') : t('backupTypeDirectory')).split(' ')[0].toUpperCase()}{job.machineAsVm ? ' (VM)' : ''}
+                              </span>
+                              {job.backupType === 'machine' && job.readFreeSpace && (
+                                <span title={tl('machineReadFreeSpaceHint', '')} style={{
+                                  display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
+                                  padding: '2px 7px', borderRadius: '3px', background: '#f3eefa', color: '#5b3a8c',
+                                  border: '1px solid #ddd0ee', verticalAlign: 'middle', marginRight: '6px',
+                                }}>
+                                  {tl('machineForensicBadge', 'FORENSIC')}
+                                </span>
+                              )}
+                              {/* Snapshot badge: whether this set reads through a
+                                  snapshot, from the set's own setting (folder sets) or
+                                  always (machine sets snapshot every mounted volume).
+                                  "VSS" on Windows, "Snapshot" on Linux. */}
+                              {(() => {
+                                const linux = systemInfo.os === 'linux'
+                                const on = job.backupType === 'machine' || !!job.useVSS
+                                // Folders this set reads live although it asks for a
+                                // snapshot (network drives): amber, PARTLY or N/A.
+                                const liveDirs = on && job.backupType !== 'machine'
+                                  ? (job.backupDirs || []).filter(d => snapSupport[d] === false) : []
+                                const amber = liveDirs.length > 0
+                                const allLive = amber && liveDirs.length === (job.backupDirs || []).length
+                                const tip = amber
+                                  ? tl('snapshotTipSomeLive', 'These folders cannot be snapshotted (network drives) and are read live:') + '\n' + liveDirs.join('\n')
+                                  : job.backupType === 'machine'
+                                  ? (linux ? tl('snapshotTipMachineLinux', 'Mounted partitions are read through a snapshot (elastio-snap) when one can be taken; otherwise they are read live.')
+                                           : tl('vssTipMachine', 'Disk images always read the volumes through a Volume Shadow Copy.'))
+                                  : on
+                                    ? (linux ? tl('snapshotTipOnLinux', 'Files are read from a file system snapshot where the volume supports one; otherwise they are read live.')
+                                             : tl('vssTipOn', 'Files are read from a Volume Shadow Copy, so files open in other programs are backed up as they were at the start. Network drives cannot be snapshotted and are read live.'))
+                                    : (linux ? tl('snapshotTipOffLinux', 'Files are read live: files that change during the backup may be inconsistent.')
+                                             : tl('vssTipOff', 'Files are read live: files open in other programs may be skipped or inconsistent.'))
+                                return (
+                                  <span title={tip} className={'snap-badge' + (amber ? ' snap-badge-amber' : '')} style={{
+                                    display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
+                                    padding: '2px 7px', borderRadius: '3px', verticalAlign: 'middle', marginRight: '6px', cursor: 'help',
+                                    background: amber ? '#fff4e0' : on ? '#eaf4fb' : '#f4f4f4',
+                                    color: amber ? '#9a5b00' : on ? '#1f6f9f' : '#777',
+                                    border: '1px solid ' + (amber ? '#f0cf96' : on ? '#c4dfef' : '#ddd'),
+                                  }}>
+                                    {(linux ? tl('snapshotBadge', 'Snapshot') : 'VSS').toUpperCase()}{' '}
+                                    {(allLive ? tl('snapshotNA', 'N/A') : amber ? tl('snapshotPartly', 'Partly') : on ? t('vssOn') : t('vssOff')).toUpperCase()}
+                                  </span>
+                                )
+                              })()}
+                              {/* Another set writes into the same PBS group (server + ID). */}
+                              {(() => {
+                                const others = setsSharingGroup(job, scheduledJobs, defaultPBSID, hostname)
+                                if (others.length === 0) return null
+                                return (
+                                  <span className="shared-id-badge" style={{
+                                    display: 'inline-block', fontSize: '10px', fontWeight: 700, letterSpacing: '.03em', flexShrink: 0,
+                                    padding: '2px 7px', borderRadius: '3px', verticalAlign: 'middle', marginRight: '6px', cursor: 'help',
+                                    background: '#fff4e0', color: '#9a5b00', border: '1px solid #f0cf96',
+                                  }} title={tl('backupIdSharedTip', 'Backup ID {id} is also used on the same server by {names}. Edit the set to give it its own ID.')
+                                    .replace('{id}', job.backupId || hostname).replace('{names}', others.map(j => `"${j.name}"`).join(', '))}>
+                                    {tl('backupIdSharedBadge', 'Shared ID').toUpperCase()}
+                                  </span>
+                                )
+                              })()}
+                              {/* Schedule and next run as two tightly spaced lines beside the
+                                  badges, so the card gains no height. nextRun is the ISO time the
+                                  scheduler keeps on the job; manual sets have none. */}
+                              <div style={{lineHeight: 1.3, minWidth: 0, whiteSpace: 'nowrap'}}>
+                                <div>
+                                  {(() => { const c = cardSchedule(job); return c.manual ? t('manualOnDemand') : c.sch ? describeSchedule(t, language, c.sch) : t('schedNoneOnShort') })()}
+                                </div>
+                                {!cardSchedule(job).manual && job.enabled === false && (
+                                  <div>{t('schedSetNext', { time: tl('nextRunDisabled', 'disabled') })}</div>
+                                )}
+                                {!cardSchedule(job).manual && job.enabled !== false && job.nextRun && (() => {
+                                  const when = new Date(job.nextRun)
+                                  if (isNaN(when.getTime())) return null
+                                  const now = new Date()
+                                  const sameDay = when.toDateString() === now.toDateString()
+                                  const hm = { hour: '2-digit', minute: '2-digit' }
+                                  const text = when <= now
+                                    ? tl('nextRunDue', 'due now')
+                                    : sameDay
+                                    ? when.toLocaleTimeString([], hm)
+                                    : when.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', ...hm })
+                                  return <div>{t('schedSetNext', { time: text })}</div>
+                                })()}
+                              </div>
+                            </div>
+                            <div style={{fontSize: '12px', color: '#888', marginTop: '2px'}}>
+                              {t('lastRun')} {job.lastRun ? new Date(job.lastRun).toLocaleString() : t('neverRun')}
+                              {job.lastRun && <LastRunAgo when={job.lastRun} />}
+                              {job.backupType !== 'machine' && job.changeDetectionMode === 'metadata' && job.fullReadEvery > 0 && (() => {
+                                // Same rule as the backend (changeDetectionForRun):
+                                // the run that brings the count to N is a full read.
+                                const left = job.fullReadEvery - (job.metadataRunsSinceFullRead || 0) - 1
+                                return (
+                                  <span>
+                                    {' · '}
+                                    {left <= 0
+                                      ? tl('nextRunFullRead', 'Next run: full read (reads every file)')
+                                      : tl('nextFullReadIn', 'Next full read in {n} runs').replace('{n}', left + 1)}
+                                  </span>
+                                )
+                              })()}
+                            </div>
+                          </div>
+                          <div className="set-actions" style={{display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto'}}>
+                          <button
+                            className="btn"
+                            disabled={runningJobId === job.id}
+                            onClick={() => runSetNow(job, '')}
+                          >
+                            {runningJobId === job.id ? '…' : t('runNow')}
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => {
+                              setEditingJobId(job.id)
+                              setJobName(job.name || '')
+                              setBackupMode('scheduled')
+                              setRunAtStartup(job.runAtStartup)
+                              { const js = jobScheduling(job); setScheduleMode(js.mode); setSchedules(js.schedules.map(sc => ({ ...sc, weekdays: [...(sc.weekdays || [])] }))) }
+                              setBackupDirs(job.backupDirs.join('\n'))
+                              // Machine-type jobs keep their selected disks in driveLetters, not
+                              // backupDirs — without restoring this, handleStartBackup's "select
+                              // at least one disk" guard blocks saving ANY edit (not just a
+                              // rename) to a machine-type backup set, since selectedDrives looks
+                              // empty even though the job has real disks configured.
+                              setSelectedDrives(job.driveLetters || [])
+                              setImageFolders((job.imageFolders || []).join('\n'))
+                              setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
+                              setBackupIdAuto(false)
+                              setBackupType(job.backupType)
+                              applyVmFieldsFromJob(job)
+                              setBackupPBSID(job.pbsServerId || defaultPBSID)
+                              setExcludeList(job.excludeList.join('\n'))
+                              setTreeExcludes([])
+                              setEmailOnSuccess(!!job.emailOnSuccess); setEmailOnSuccessTo(job.emailOnSuccessTo || '')
+                              setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
+                              setRunAppBefore(job.runAppBefore || ''); setRunAppAfter(job.runAppAfter || '')
+                              setExitAppAfter(!!job.exitAppAfter); setMinimizeAfter(!!job.minimizeAfter); setShutdownAfter(!!job.shutdownAfter)
+                              setChangeDetectionMode(job.changeDetectionMode || 'legacy'); setFullReadEvery(job.fullReadEvery || 0)
+                              setBackupFormTab('source'); setShowBackupForm(true)
+                            }}
+                          >
+                            {t('editJob')}
+                          </button>
+                          {/* One menu for the less frequent actions, the same on every card
+                              (a machine set's Undelete and Roll back read its disk images). */}
+                          <div style={{position: 'relative'}}>
+                            <button
+                              className="btn btn-secondary"
+                              aria-haspopup="menu"
+                              aria-expanded={openSetMenu === job.id}
+                              onClick={(e) => { e.stopPropagation(); setOpenSetMenu(openSetMenu === job.id ? null : job.id) }}
+                            >
+                              {tl('setMoreMenu', 'More')} ▾
+                            </button>
+                            {openSetMenu === job.id && (
+                              <div role="menu" className="set-more-menu" onClick={() => setOpenSetMenu(null)}>
+                                {/* Metadata sets: choose this run's read. Quick reuses
+                                    unchanged files even when a full read is due (it stays
+                                    due); full read reads every file and resets the count. */}
+                                {job.backupType !== 'machine' && job.changeDetectionMode === 'metadata' && (
+                                  <>
+                                    <button role="menuitem" className="set-more-item" disabled={runningJobId === job.id} onClick={() => runSetNow(job, 'quick')}>
+                                      {tl('runNowQuick', 'Run now: quick (changed files only)')}
+                                    </button>
+                                    <button role="menuitem" className="set-more-item" disabled={runningJobId === job.id} onClick={() => runSetNow(job, 'full')}>
+                                      {tl('runNowFull', 'Run now: full read (every file)')}
+                                    </button>
+                                    <div className="set-more-sep" role="separator" />
+                                  </>
+                                )}
+                                {(
+                                  <>
+                                    <button role="menuitem" className="set-more-item" onClick={() => { setSetToolJobId(job.id); setActiveTab('undelete') }}>
+                                      {tl('undeleteShortcut', 'Undelete removed files...')}
+                                    </button>
+                                    <button role="menuitem" className="set-more-item" onClick={() => { setSetToolJobId(job.id); setActiveTab('rollback') }}>
+                                      {tl('rollbackShortcut', 'Roll back to chosen snapshot...')}
+                                    </button>
+                                  </>
+                                )}
+                                <button
+                                  role="menuitem"
+                                  className="set-more-item"
+                                  onClick={() => {
+                                    // Same field population as Edit, but editingJobId stays null so
+                                    // Save creates a brand-new job (SaveScheduledJob) instead of
+                                    // updating this one (UpdateScheduledJob) — see docs/TODO-HISTORY.md "Clone a
+                                    // Backup Set". lastRun/history naturally reset for free since the
+                                    // clone gets its own fresh ID and has never actually run yet.
+                                    setEditingJobId(null)
+                                    setJobName(t('cloneNameSuffix').replace('{name}', job.name || ''))
+                                    setBackupMode('scheduled')
+                                    setRunAtStartup(job.runAtStartup)
+                                    { const js = jobScheduling(job); setScheduleMode(js.mode); setSchedules(js.schedules.map(sc => ({ ...sc, weekdays: [...(sc.weekdays || [])] }))) }
+                                    setBackupDirs(job.backupDirs.join('\n'))
+                                    setSelectedDrives(job.driveLetters || [])
+                                    setImageFolders((job.imageFolders || []).join('\n'))
+                                    {
+                                      const cloneName = t('cloneNameSuffix').replace('{name}', job.name || '')
+                                      const ownId = job.backupType === 'machine' ? job.backupId : suggestBackupId(cloneName, hostname, takenBackupIds(null))
+                                      setConfig({...config, 'backup-id': ownId, usevss: job.useVSS})
+                                      setBackupIdAuto(job.backupType !== 'machine')
+                                    }
+                                    setBackupType(job.backupType)
+                                    applyVmFieldsFromJob(job)
+                                    setBackupPBSID(job.pbsServerId || defaultPBSID)
+                                    setExcludeList(job.excludeList.join('\n'))
+                                    setTreeExcludes([])
+                                    setEmailOnSuccess(!!job.emailOnSuccess); setEmailOnSuccessTo(job.emailOnSuccessTo || '')
+                                    setEmailOnFailure(!!job.emailOnFailure); setEmailOnFailureTo(job.emailOnFailureTo || '')
+                                    setRunAppBefore(job.runAppBefore || ''); setRunAppAfter(job.runAppAfter || '')
+                                    setExitAppAfter(!!job.exitAppAfter); setMinimizeAfter(!!job.minimizeAfter); setShutdownAfter(!!job.shutdownAfter)
+                                    setChangeDetectionMode(job.changeDetectionMode || 'legacy'); setFullReadEvery(job.fullReadEvery || 0)
+                                    setBackupFormTab('source'); setShowBackupForm(true)
+                                  }}
+                                >
+                                  {t('cloneJob')}
+                                </button>
+                                <button
+                                  role="menuitem"
+                                  className="set-more-item"
+                                  onClick={async () => {
+                                    const enable = job.enabled === false
+                                    try {
+                                      await SetScheduledJobEnabled(job.id, enable)
+                                      const jobs = await GetScheduledJobs()
+                                      setScheduledJobs(jobs || [])
+                                      showStatus(tl(enable ? 'statusSetEnabled' : 'statusSetDisabled', enable ? 'Backup set enabled' : 'Backup set disabled'), 'success')
+                                    } catch (err) {
+                                      if (!handleJobsLockError(err)) showStatus(`❌ ${jobErrText(err)}`, 'error')
+                                    }
+                                  }}
+                                >
+                                  {job.enabled === false ? tl('setEnable', 'Enable') : tl('setDisable', 'Disable')}
+                                </button>
+                                <button
+                                  role="menuitem"
+                                  className="set-more-item"
+                                  onClick={async () => {
+                                    if (!(await askConfirm({
+                                      title: tl('dlgDeleteJobTitle', 'Delete this Backup Set?'),
+                                      message: t('confirmDeleteJob').replace('{name}', job.name),
+                                      confirmLabel: t('delete'), danger: true,
+                                    }))) {
+                                      return
+                                    }
+                                    try {
+                                      await DeleteScheduledJob(job.id)
+                                      setScheduledJobs(scheduledJobs.filter(j => j.id !== job.id))
+                                      showStatus(t('statusJobDeleted'), 'success')
+                                      if (editingJobId === job.id) {
+                                        setEditingJobId(null)
+                                      }
+                                    } catch (err) {
+                                      if (!handleJobsLockError(err)) showStatus(`❌ ${jobErrText(err)}`, 'error')
+                                    }
+                                  }}
+                                >
+                                  {t('deleteJob')}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
+          {showBackupForm && (
+          <>
+          <div style={{marginTop: '10px'}}>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
+              <h3 style={{margin: 0}}>
+                {backupMode === 'oneshot' ? t('oneOffBackup') : (editingJobId ? t('editBackupSet') : t('newBackupSet'))}
+              </h3>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowBackupForm(false)
+                  setEditingJobId(null)
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {backupMode === 'oneshot' && (
               <div className="form-group">
-                <label>{t('executionTime')}</label>
+                <label>{t('backupCommentLabel')}</label>
                 <input
-                  type="time"
-                  value={scheduleTime}
-                  onChange={(e) => setScheduleTime(e.target.value)}
-                  style={{width: '200px', padding: '10px', fontSize: '16px'}}
+                  id="oneOffComment"
+                  type="text"
+                  value={oneOffComment}
+                  onChange={(e) => setOneOffComment(e.target.value)}
+                  placeholder={t('backupCommentPlaceholder')}
+                  maxLength={200}
+                  style={{width: '100%', maxWidth: '400px'}}
                 />
               </div>
+            )}
 
+            {backupMode === 'scheduled' && (
               <div className="form-group">
-                <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer'}}>
-                  <input
-                    type="checkbox"
-                    checked={jobEnabled}
-                    onChange={(e) => setJobEnabled(e.target.checked)}
-                    style={{width: '20px', height: '20px', cursor: 'pointer'}}
-                  />
-                  <span>✅ {t('jobEnabled')}</span>
-                </label>
+                <label>{t('backupSetName')}</label>
+                <input
+                  type="text"
+                  value={jobName}
+                  onChange={(e) => {
+                    setJobName(e.target.value)
+                    if (backupIdAuto && backupType !== 'machine') {
+                      setConfig(c => ({...c, 'backup-id': suggestedBackupId(e.target.value)}))
+                    }
+                  }}
+                  placeholder={t('backupSetNamePlaceholder')}
+                  style={{width: '100%', maxWidth: '400px'}}
+                  aria-invalid={nameClash ? true : undefined}
+                  aria-describedby={nameClash ? 'set-name-clash' : undefined}
+                />
+                {nameClash && (
+                  <div id="set-name-clash" role="alert" style={{color: '#c53030', fontSize: '13px', marginTop: '6px'}}>
+                    {tl('jobNameNotUnique', 'There is already a Backup Set called "{name}". Each set needs its own name.').replace('{name}', nameClash.name)}
+                  </div>
+                )}
               </div>
+            )}
 
-              <div className="form-group">
-                <label style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer'}}>
-                  <input
-                    type="checkbox"
-                    checked={runAtStartup}
-                    onChange={(e) => setRunAtStartup(e.target.checked)}
-                    style={{width: '20px', height: '20px', cursor: 'pointer'}}
-                  />
-                  <span>🚀 {t('runAtStartup')}</span>
-                </label>
-              </div>
+          {/* Backup Set editor: chevron tabs (Source/Exclusions/Schedule/Destination).
+              A one-off backup has no tabs at all — every section below just
+              renders unconditionally for it via the "backupMode === 'oneshot' ||"
+              half of each section's condition. */}
+          {backupMode === 'scheduled' && (
+            <div style={{display: 'flex', paddingTop: '4px', marginBottom: '0'}}>
+              <button className={`chev ${backupFormTab === 'source' ? 'active' : ''}`} onClick={() => setBackupFormTab('source')}>{t('tabSource')}</button>
+              <button className={`chev ${backupFormTab === 'exclusions' ? 'active' : ''}`} onClick={() => setBackupFormTab('exclusions')}>{t('tabExclusions')}</button>
+              <button className={`chev ${backupFormTab === 'schedule' ? 'active' : ''}`} onClick={() => setBackupFormTab('schedule')}>{t('tabSchedule')}</button>
+              <button className={`chev ${backupFormTab === 'destination' ? 'active' : ''}`} onClick={() => setBackupFormTab('destination')}>{t('tabDestination')}</button>
+              <button className={`chev ${backupFormTab === 'alerts' ? 'active' : ''}`} onClick={() => setBackupFormTab('alerts')}>{t('tabAlerts')}</button>
+            </div>
+          )}
+          <div className="card" style={{marginTop: backupMode === 'scheduled' ? '0' : '10px', borderRadius: backupMode === 'scheduled' ? '0 6px 6px 6px' : '8px'}}>
 
-              {jobEnabled ? (
-                <div className="info-box" style={{backgroundColor: '#eef2ff'}}>
-                  💡 {scheduleFrequency === 'weekly'
-                    ? t('schedulingInfoWeekly', {
-                        days: scheduleWeekdays.slice().sort((a, b) => a - b).map(d => weekdayName(d, t)).join(', ')
-                      })
-                    : scheduleFrequency === 'monthly'
-                      ? t('schedulingInfoMonthly', { day: scheduleDayOfMonth })
-                      : t('schedulingInfo')} <strong>{scheduleTime}</strong>
-                  {runAtStartup && <><br/>{t('andAtStartup')}</>}
-                </div>
-              ) : (
-                <div className="info-box" style={{backgroundColor: '#f1f3f5'}}>
-                  ⏸️ {t('jobDisabledInfo')}
+          {(backupMode === 'oneshot' || backupFormTab === 'source') && (
+          <div className="form-group">
+            <label id="backupTypeLabel">{t('backupType')}</label>
+            <RadioGroup
+              name="backupType"
+              labelId="backupTypeLabel"
+              value={backupType}
+              onChange={setBackupType}
+              options={[
+                { value: 'directory', label: t('backupTypeDirectory') },
+                { value: 'machine', label: t('backupTypeMachine') },
+              ]}
+            />
+          </div>
+          )}
+
+          {/* Scheduling Options */}
+          {backupMode === 'scheduled' && backupFormTab === 'schedule' && (
+            <div>
+              {editingJobId && (
+                <div className="info-box" style={{backgroundColor: '#fff3cd', borderColor: '#ffc107', marginBottom: '15px'}}>
+                  <strong>{t('editMode')}</strong> - {t('editModeText')}
                 </div>
               )}
+
+              <ScheduleEditor
+                scheduleMode={scheduleMode} setScheduleMode={setScheduleMode}
+                schedules={schedules} setSchedules={setSchedules}
+                runAtStartup={runAtStartup} setRunAtStartup={setRunAtStartup}
+              />
             </div>
           )}
 
+          {(backupMode === 'oneshot' || backupFormTab === 'source') && (
+          <>
           {backupType === 'directory' && (
             <div className="form-group">
               <label>{t('directoriesToBackup')}</label>
-              <textarea
-                value={backupDirs}
-                onChange={(e) => {
-                  setBackupDirs(e.target.value)
-                  // Update config.backupdir with first directory for compatibility
-                  const dirs = e.target.value.split('\n').map(d => d.trim()).filter(d => d)
-                  setConfig({...config, backupdir: dirs[0] || ''})
+              <DirectoryTree
+                roots={backupDirs.split('\n').map(d => d.trim()).filter(Boolean)}
+                excludes={treeExcludes}
+                onChange={({ roots, excludes }) => {
+                  setBackupDirs(roots.join('\n'))
+                  setTreeExcludes(excludes)
+                  setConfig({...config, backupdir: roots[0] || ''})
                 }}
-                rows="4"
-                placeholder="C:\Data&#10;/home/user&#10;/var/lib"
               />
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{marginTop: '8px'}}
-                onClick={async () => {
-                  if (!OpenDirectoryPicker) {
-                    showStatus('❌ File picker unavailable', 'error')
-                    return
-                  }
-                  try {
-                    const dir = await OpenDirectoryPicker()
-                    if (dir) {
-                      const dirs = backupDirs.split('\n').map(d => d.trim()).filter(d => d)
-                      if (!dirs.includes(dir)) {
-                        dirs.push(dir)
-                        const newVal = dirs.join('\n')
-                        setBackupDirs(newVal)
-                        setConfig({...config, backupdir: dirs[0] || ''})
-                        showStatus('✅ Added directory', 'success')
-                      }
-                    }
-                  } catch (err) {
-                    showStatus(`❌ ${err}`, 'error')
-                  }
-                }}
-              >
-                📁 Add directory
-              </button>
+              <details style={{marginTop: '8px'}}>
+                <summary style={{cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, fontSize: '0.95em', textDecoration: 'underline', padding: '4px 0'}}>
+                  {t('advancedEditAsText')}
+                </summary>
+                {/* Raw path entry, unchanged from before the tree picker — kept for a
+                    bare UNC path with no drive letter assigned at all (the tree picker
+                    now also lists mapped network drives, including ones invisible to
+                    an elevated process via the HKCU\Network registry fallback — see
+                    dirlist_windows.go — but a share that was never mapped to a letter
+                    still has no root node to expand into), and for copy-pasting a long
+                    list. The tree and this box share the same backupDirs state, so
+                    either one stays in sync with the other. */}
+                <textarea
+                  value={backupDirs}
+                  onChange={(e) => {
+                    setBackupDirs(e.target.value)
+                    const dirs = e.target.value.split('\n').map(d => d.trim()).filter(d => d)
+                    setConfig({...config, backupdir: dirs[0] || ''})
+                  }}
+                  rows="3"
+                  placeholder="C:\Data&#10;C:\Users&#10;D:\Documents&#10;\\server\share"
+                />
+              </details>
             </div>
           )}
           {backupType === 'machine' && (
             <MachineBackupConfig 
+              config={config}
+              setConfig={setConfig}
               backupType={backupType}
+              setBackupType={setBackupType}
               physicalDisks={physicalDisks}
               setSelectedDrives={setSelectedDrives}
               selectedDrives={selectedDrives}
-              systemInfo={systemInfo}
-              t={t}
-              RequestElevation={RequestElevation}
             />
           )}
+          {backupType === 'machine' && (
+            <div className="form-group">
+              <label id="machineBackupAsLabel">{tl('machineBackupAsLabel', 'Backup as')}</label>
+              <RadioGroup
+                name="machineBackupAs"
+                labelId="machineBackupAsLabel"
+                value={machineAsVM ? 'vm' : 'host'}
+                onChange={(v) => setMachineAsVM(v === 'vm')}
+                options={[
+                  { value: 'host', label: tl('machineBackupAsHost', 'Host backup (default)') },
+                  { value: 'vm', label: tl('machineBackupAsVm', 'Proxmox VE virtual machine') },
+                ]}
+              />
+              {machineAsVM && (
+                <div style={{marginTop: '10px'}}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap'}}>
+                    <input
+                      id="machineVmId"
+                      type="text"
+                      inputMode="numeric"
+                      value={vmIdNumber}
+                      onChange={(e) => setVmIdNumber(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder={tl('machineVmIdPlaceholder', 'VM ID, e.g. 107')}
+                      style={{width: '140px'}}
+                    />
+                    <RadioGroup
+                      name="machineVmIdStyle"
+                      value={vmIdStyle}
+                      onChange={setVmIdStyle}
+                      options={[
+                        { value: 'range', label: tl('machineVmIdStyleRange', 'Reserved range (9000000 + ID)') },
+                        { value: 'zeros', label: tl('machineVmIdStyleZeros', 'Leading zeros (000 + ID)') },
+                      ]}
+                    />
+                  </div>
+                  <div style={{fontSize: '13px', marginTop: '6px'}}>
+                    {tl('machineVmIdResult', 'Backup ID in PBS:')} <strong>{computeVmBackupId(vmIdNumber, vmIdStyle) || '-'}</strong>
+                  </div>
+                  <div style={{fontSize: '12px', color: '#b36b00', marginTop: '6px', maxWidth: '520px'}}>
+                    {tl('machineVmWarning', 'The snapshot is stored under vm/<ID> so Proxmox VE can list it. A real VM backup with the same ID would share that namespace, so the ID is offset to stay clear of yours. Restore it from Proxmox VE (pick a target Storage) or with the Clonezilla bare-metal restore. The generated VM is bare-bones: SATA disk, OVMF for GPT disks, no network card, TPM or drivers.')}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {backupType === 'machine' && backupMode === 'scheduled' && (
+            <div className="form-group">
+              <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontWeight: 'normal', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={readFreeSpace}
+                  onChange={(e) => setReadFreeSpace(e.target.checked)}
+                  style={{ width: 'auto', marginTop: '3px' }}
+                />
+                <span>
+                  <strong>{tl('machineReadFreeSpace', 'Forensic copy: read free space too')}</strong>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', maxWidth: '560px' }}>
+                    {tl('machineReadFreeSpaceHint', 'Reads every sector, including free space and the paging and hibernation files, so deleted files can be recovered from the image later. Without it they go into the image as zeros without being read. Much slower, and the backups take more space.')}
+                  </div>
+                </span>
+              </label>
+            </div>
+          )}
+          {backupType === 'machine' && backupMode === 'scheduled' && (
+            <div className="form-group">
+              <label htmlFor="imageFolders">{tl('imageFoldersLabel', 'Folders for Undelete and Roll back')}</label>
+              <textarea
+                id="imageFolders"
+                value={imageFolders}
+                onChange={(e) => setImageFolders(e.target.value)}
+                rows="3"
+                placeholder={systemInfo.os === 'linux'
+                  ? tl('imageFoldersPlaceholderLinux', 'One per line, e.g. /home/name/Documents')
+                  : tl('imageFoldersPlaceholder', 'One per line, e.g. C:\\Users\\Name\\Documents')}
+              />
+              <div style={{fontSize: '12px', color: '#64748b', marginTop: '4px', maxWidth: '560px'}}>
+                {tl('imageFoldersHint', 'Undelete and Roll back look at these folders, reading their files from the disk images. Empty: your Desktop, Documents, Pictures, Music, Videos and Downloads. Folders must be on the disks this set backs up.')}
+              </div>
+            </div>
+          )}
+          </>
+          )}
 
-              {backupType === 'directory' && (
+          {(backupMode === 'oneshot' || backupFormTab === 'exclusions') && backupType === 'directory' && (
                 <div className="form-group">
                   <label>{t('filesToExclude')}</label>
                   <textarea
@@ -2244,20 +4739,76 @@ function App() {
                 </div>
               )}
 
+          {(backupMode === 'oneshot' || backupFormTab === 'destination') && (
+          <>
+          <div className="form-group">
+            <label>{t('backupPBSServer')}</label>
+            <select
+              value={backupPBSID}
+              onChange={(e) => setBackupPBSID(e.target.value)}
+            >
+              {pbsServers.length === 0 && <option value="">{t('noPBSServer')}</option>}
+              {pbsServers.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name} {s.id === defaultPBSID ? '⭐' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          {!(backupType === 'machine' && machineAsVM) && (
           <div className="form-group">
             <label>{t('backupID')}</label>
-            <input
-              type="text"
-              value={config['backup-id']}
-              onChange={(e) => setConfig({...config, 'backup-id': e.target.value})}
-              placeholder={t('backupIDPlaceholder')}
-            />
-            {vmBackupIdInvalid && (
-              <div style={{marginTop: '6px', fontSize: '13px', color: '#dc3545'}}>
-                ⚠️ {t('vmBackupIdNumeric')}
+            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+              <input
+                type="text"
+                value={config['backup-id']}
+                onChange={(e) => { setConfig({...config, 'backup-id': e.target.value}); setBackupIdAuto(false) }}
+                placeholder={t('backupIDPlaceholder')}
+              />
+              {/* Folder sets get a suggested ID with its own note below. */}
+              {!(backupMode === 'scheduled' && backupType !== 'machine') && (
+                <span style={{fontSize: '12px', color: '#999'}}>{t('backupIdDefaultNote')}</span>
+              )}
+            </div>
+            {backupMode === 'scheduled' && backupType !== 'machine' && (() => {
+              if (backupIdAuto) {
+                return <div style={{fontSize: '12px', color: '#4a5568', marginTop: '4px'}}>
+                  {tl('backupIdSuggested', 'Made from this computer\'s name and the set\'s name, so this computer\'s sets sit together on PBS. Type to choose your own.')}
+                </div>
+              }
+              const suggestion = suggestedBackupId(jobName)
+              if (!editingJobId || !jobName.trim() || suggestion === (config['backup-id'] || '')) return null
+              // The shared-ID warning below offers the same suggestion.
+              if (setsSharingGroup({ id: editingJobId, pbsServerId: backupPBSID, backupType, machineAsVm: machineAsVM, backupId: config['backup-id'] },
+                scheduledJobs, defaultPBSID, hostname).length > 0) return null
+              return <div style={{fontSize: '12px', color: '#4a5568', marginTop: '4px'}}>
+                <button type="button" className="link-button" onClick={() => setConfig({...config, 'backup-id': suggestion})}
+                  style={{background: 'none', border: 'none', padding: 0, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px'}}>
+                  {tl('backupIdUseSuggested', 'Use {id}').replace('{id}', suggestion)}
+                </button>{' '}
+                {tl('backupIdChangeNote', '(a new ID starts a new group on PBS: its first incremental run reads every file, and earlier backups stay under the old ID)')}
               </div>
-            )}
+            })()}
+            {/* Another set writing into the same PBS group: warn, never block. */}
+            {backupMode === 'scheduled' && (() => {
+              const others = setsSharingGroup({ id: editingJobId, pbsServerId: backupPBSID, backupType, machineAsVm: machineAsVM, backupId: config['backup-id'] },
+                scheduledJobs, defaultPBSID, hostname)
+              if (others.length === 0) return null
+              const suggestion = backupType === 'machine' ? '' : suggestedBackupId(jobName)
+              return <div className="backup-id-shared" style={{fontSize: '12px', marginTop: '6px', padding: '6px 10px', borderRadius: '4px',
+                background: '#fff4e0', color: '#9a5b00', border: '1px solid #f0cf96'}}>
+                {tl('backupIdSharedWarn', 'Also used by {names} on this server. Both sets then share one group on PBS: an incremental (metadata) run compares with the newest snapshot of either set and can end up reading every file, and Undelete and Roll back list both sets\' snapshots.')
+                  .replace('{names}', others.map(j => `"${j.name}"`).join(', '))}
+                {suggestion && suggestion !== (config['backup-id'] || '') && <>{' '}
+                  <button type="button" className="link-button" onClick={() => { setConfig({...config, 'backup-id': suggestion}); setBackupIdAuto(false) }}
+                    style={{background: 'none', border: 'none', padding: 0, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px'}}>
+                    {tl('backupIdUseSuggested', 'Use {id}').replace('{id}', suggestion)}
+                  </button>
+                </>}
+              </div>
+            })()}
           </div>
+          )}
 
           <div className="form-group">
             <label>
@@ -2266,7 +4817,7 @@ function App() {
                 checked={config.usevss}
                 onChange={(e) => setConfig({...config, usevss: e.target.checked})}
               />
-              {t('useSnapshotting')}
+              {t('useVSS')}
             </label>
             {config.usevss && systemInfo.mode === 'Standalone' && !systemInfo.is_admin && (
               <div className="info-box" style={{marginTop: '10px', backgroundColor: '#fff3cd', borderColor: '#ffc107'}}>
@@ -2281,6 +4832,140 @@ function App() {
               </div>
             )}
           </div>
+          {backupMode === 'scheduled' && (
+            <div className="form-group">
+              <label id="changeDetectionLabel">{t('changeDetectionLabel')}</label>
+              <RadioGroup
+                name="changeDetectionMode"
+                labelId="changeDetectionLabel"
+                vertical
+                value={backupType === 'machine' ? 'legacy' : changeDetectionMode}
+                onChange={setChangeDetectionMode}
+                disabled={backupType === 'machine'}
+                options={[
+                  { value: 'legacy', label: t('changeDetectionLegacy') },
+                  { value: 'data', label: t('changeDetectionData') },
+                  { value: 'metadata', label: t('changeDetectionMetadata') },
+                ]}
+              />
+              {backupType === 'machine' ? (
+                <div style={{fontSize: '12px', color: '#999', marginTop: '6px', maxWidth: '520px'}}>
+                  {t('changeDetectionMachineNote')}
+                </div>
+              ) : (
+                <>
+                  {changeDetectionMode === 'metadata' && (
+                    <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', flexWrap: 'wrap'}}>
+                      <label htmlFor="fullReadEvery" style={{margin: 0}}>{t('fullReadEveryLabel')}</label>
+                      <input
+                        id="fullReadEvery"
+                        type="text"
+                        inputMode="numeric"
+                        value={fullReadEvery}
+                        onChange={(e) => {
+                          const n = parseInt(e.target.value.replace(/\D/g, '').slice(0, 3), 10)
+                          setFullReadEvery(Number.isNaN(n) ? 0 : Math.min(366, n))
+                        }}
+                        style={{width: '90px'}}
+                      />
+                      <span>{t('fullReadEveryRuns')}</span>
+                    </div>
+                  )}
+                  {changeDetectionMode === 'metadata' && fullReadEvery === 1 && (
+                    <div style={{fontSize: '12px', color: '#b36b00', marginTop: '6px'}}>{t('fullReadEveryOne')}</div>
+                  )}
+                  {changeDetectionMode !== 'legacy' && (
+                    <div style={{fontSize: '12px', color: '#666', marginTop: '6px', maxWidth: '520px'}}>
+                      {changeDetectionMode === 'metadata' ? t('changeDetectionMetadataHint') : t('changeDetectionDataHint')}
+                      {' '}{t('changeDetectionRestoreNote')}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          </>
+          )}
+
+          {backupMode === 'scheduled' && backupFormTab === 'alerts' && (
+          <>
+          <div className="form-group">
+            <label style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
+              <input type="checkbox" checked={emailOnSuccess} onChange={(e) => setEmailOnSuccess(e.target.checked)} />
+              <span>{t('emailOnSuccessLabel')}</span>
+            </label>
+            {emailOnSuccess && (
+              <input
+                type="text"
+                value={emailOnSuccessTo}
+                onChange={(e) => setEmailOnSuccessTo(e.target.value)}
+                placeholder={t('emailToPlaceholder')}
+                style={{marginTop: '8px'}}
+              />
+            )}
+          </div>
+
+          <div className="form-group">
+            <label style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
+              <input type="checkbox" checked={emailOnFailure} onChange={(e) => setEmailOnFailure(e.target.checked)} />
+              <span>{t('emailOnFailureLabel')}</span>
+            </label>
+            {emailOnFailure && (
+              <input
+                type="text"
+                value={emailOnFailureTo}
+                onChange={(e) => setEmailOnFailureTo(e.target.value)}
+                placeholder={t('emailToPlaceholder')}
+                style={{marginTop: '8px'}}
+              />
+            )}
+          </div>
+          {(emailOnSuccess || emailOnFailure) && !smtpHost && (
+            <div className="info-box" style={{backgroundColor: '#fff3cd', borderColor: '#ffc107', marginBottom: '16px'}}>
+              ⚠️ {t('emailNoSmtpWarning')}
+            </div>
+          )}
+
+          <div className="form-group">
+            <label>{t('runAppBeforeLabel')}</label>
+            <input type="text" value={runAppBefore} onChange={(e) => setRunAppBefore(e.target.value)} placeholder={t('runAppPlaceholder')} />
+          </div>
+          <div className="form-group">
+            <label>{t('runAppAfterLabel')}</label>
+            <input type="text" value={runAppAfter} onChange={(e) => setRunAppAfter(e.target.value)} placeholder={t('runAppPlaceholder')} />
+          </div>
+
+          {/* What the app window does when the backup finishes: one choice. */}
+          <div className="form-group">
+            <label>{tl('afterBackupWindowLabel', 'When the backup finishes, the app window:')}</label>
+            {[
+              ['leave', tl('afterBackupLeave', 'Stays as it is')],
+              ['tray', tl('afterBackupTray', 'Minimises to the tray')],
+              ['exit', tl('afterBackupExit', 'Closes (the app exits)')],
+            ].map(([v, label]) => (
+              <label key={v} style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'normal', marginTop: '4px'}}>
+                <input
+                  type="radio" name="afterBackupWindow" value={v}
+                  checked={(exitAppAfter ? 'exit' : minimizeAfter ? 'tray' : 'leave') === v}
+                  onChange={() => { setExitAppAfter(v === 'exit'); setMinimizeAfter(v === 'tray') }}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="form-group">
+            <label style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
+              <input type="checkbox" checked={shutdownAfter} onChange={(e) => setShutdownAfter(e.target.checked)} />
+              <span>{t('shutdownAfterLabel')}</span>
+            </label>
+            {shutdownAfter && (
+              <div className="info-box" style={{marginTop: '10px', backgroundColor: '#fff3cd', borderColor: '#ffc107'}}>
+                ⚠️ {t('shutdownAfterWarning')}
+              </div>
+            )}
+          </div>
+          </>
+          )}
 
           {backupType === 'directory' && backupMode === 'oneshot' && (
             <div className="form-group">
@@ -2298,377 +4983,59 @@ function App() {
             </div>
           )}
 
-          {progress > 0 && progress < 100 && (
-            <div style={{marginTop: '20px', marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6'}}>
-              <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
-                <strong style={{fontSize: '15px'}}>📊 {t('backupProgress')}</strong>
-                <span style={{fontSize: '18px', fontWeight: 'bold', color: '#0066cc'}}>{progress}%</span>
-              </div>
+          </div>
+          </div>
 
-              <div className="progress" style={{height: '30px', marginBottom: '12px'}}>
-                <div
-                  className="progress-bar"
-                  style={{
-                    width: `${progress}%`,
-                    fontSize: '14px',
-                    lineHeight: '30px',
-                    transition: 'width 0.3s ease',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  {progress}%
-                </div>
-              </div>
-
-              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px'}}>
-                {backupStats.eta !== null && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    ⏱️ <strong>{t('timeRemaining')}</strong> {Math.floor(backupStats.eta / 60)}m {backupStats.eta % 60}s
-                  </div>
-                )}
-                {backupStats.speed > 0 && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    ⚡ <strong>{t('speed')}</strong> {(backupStats.speed / 1048576).toFixed(1)} MB/s
-                  </div>
-                )}
-                {backupStats.startTime && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    ⏰ <strong>{t('elapsedTime')}</strong> {Math.floor((Date.now() - backupStats.startTime) / 1000)}s
-                  </div>
-                )}
-                {backupStats.bytesDone > 0 && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    📦 <strong>{t('dataSizeLabel')}</strong> {Math.round(backupStats.bytesDone / 1048576)}
-                    {backupStats.bytesTotal > 0 ? ` / ${Math.round(backupStats.bytesTotal / 1048576)}` : ''} MB
-                  </div>
-                )}
-                {(backupStats.newChunks > 0 || backupStats.reusedChunks > 0) && (
-                  <div style={{fontSize: '13px', color: '#495057'}}>
-                    🧩 <strong>{t('chunksLabel')}</strong> {backupStats.newChunks} {t('newChunksLabel')} · {backupStats.reusedChunks} {t('reusedChunksLabel')}
-                    {backupStats.failedChunks > 0 ? (
-                      <span style={{color: '#c0392b', fontWeight: 'bold'}}> · {backupStats.failedChunks} {t('failedChunksLabel')}</span>
-                    ) : ''}
-                  </div>
-                )}
-                {backupStats.currentDir && (
-                  <div style={{fontSize: '13px', color: '#495057', gridColumn: '1 / -1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                    📁 <strong>{t('currentDirLabel')}</strong> {backupStats.currentDir}
-                  </div>
-                )}
-              </div>
-
-              {status.message && status.type === 'info' && (
-                <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef'}}>
-                  {status.message}
-                </div>
-              )}
-            </div>
-          )}
-
-          <button className="btn" onClick={handleStartBackup} disabled={backupRunning || (progress > 0 && progress < 100) || vmBackupIdInvalid}>
+          <div style={{marginTop: '16px'}}>
+          {/* Saving a Backup Set's metadata (name/schedule/dirs) is a fast,
+              independent operation -- it has nothing to do with a one-shot
+              backup's live progress, so scheduled mode must never gate on
+              backupRunning/progress. Found live 2026-09-25: those are only
+              ever reset by the backup:complete event: if a one-shot run
+              anywhere else in the app ever left progress stuck between 0
+              and 100 (an interrupted run, a missed event), this button
+              stayed permanently disabled for every future Backup Set
+              add/edit, and no field in the form -- including the name --
+              could ever re-enable it, since none of them were ever part of
+              this condition to begin with. */}
+          <button className="btn" onClick={handleStartBackup} disabled={backupMode === 'oneshot' && (backupRunning || (progress > 0 && progress < 100))}>
             {backupMode === 'oneshot'
-              ? (backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `🚀 ${t('startBackup')}`)
-              : (editingJobId ? `✏️ ${t('updateSchedule')}` : `💾 ${t('saveSchedule')}`)
+              ? (backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `${t('startBackup')}`)
+              : `${t('saveSchedule')}`
             }
           </button>
           {backupMode === 'oneshot' && (
             <button className="btn btn-secondary" onClick={handleStopBackup} disabled={!backupRunning}>{t('stopBackup')}</button>
           )}
-          {backupMode === 'scheduled' && editingJobId && (
+          {backupMode === 'scheduled' && (
             <button className="btn btn-secondary" onClick={() => {
               setEditingJobId(null)
-              setScheduleTime('02:00')
-              setScheduleFrequency('daily')
-              setScheduleWeekdays([1])
-              setScheduleDayOfMonth(1)
+              setJobName('')
+              setMachineAsVM(false); setReadFreeSpace(false); setVmIdNumber(''); setImageFolders('')
+              setChangeDetectionMode('legacy'); setFullReadEvery(0)
               setRunAtStartup(false)
-              setJobEnabled(true)
+              setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
               setBackupDirs('')
               setExcludeList('')
+              setTreeExcludes([])
               setBackupType('directory')
-              setBackupPBSID('')
-              setMachineBackupKind('host')
-              setActiveTab('scheduled')
-              showStatus(`✖️ ${t('statusEditCancelled')}`, 'info')
+              setShowBackupForm(false)
+              if (editingJobId) showStatus(t('statusEditCancelled'), 'info')
             }}>
-              ✖️ {t('cancel')}
+              {t('cancel')}
             </button>
           )}
-
-          {/* Scheduled Jobs List */}
-          {backupMode === 'scheduled' && scheduledJobs.length > 0 && (
-            <div className="card" style={{marginTop: '30px'}}>
-              <h3 style={{marginTop: 0}}>📅 {t('scheduledJobs')}</h3>
-              {scheduledJobs.map(job => (
-                <div key={job.id} style={{
-                  padding: '15px',
-                  marginBottom: '10px',
-                  backgroundColor: job.enabled === false ? '#e9ecef' : '#f8f9fa',
-                  borderRadius: '8px',
-                  border: job.enabled === false ? '1px dashed #adb5bd' : '1px solid #dee2e6'
-                }}>
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                    <div style={job.enabled === false ? {opacity: 0.6} : undefined}>
-                      <strong>{job.name}</strong>
-                      {job.enabled === false && (
-                        <span style={{marginLeft: '8px', padding: '2px 8px', fontSize: '12px', borderRadius: '10px', backgroundColor: '#adb5bd', color: '#fff'}}>
-                          ⏸️ {t('jobDisabled')}
-                        </span>
-                      )}
-                      <div style={{fontSize: '14px', color: '#6c757d', marginTop: '5px'}}>
-                        ⏰ {job.scheduleTime} • {formatRecurrence(job, t)} {job.runAtStartup && `• 🚀 ${t('startupShort')}`}
-                      </div>
-                      <div style={{fontSize: '13px', color: '#6c757d', marginTop: '3px'}}>
-                        {job.backupType === 'machine'
-                          ? `💾 ${(job.driveLetters || []).join(', ')}${job.backup_kind ? ` • ${job.backup_kind}` : ''}`
-                          : `📁 ${(job.backupDirs || []).join(', ')}`}
-                      </div>
-                    </div>
-                    <div style={{display: 'flex', gap: '10px'}}>
-                      <button
-                        className="btn"
-                        style={{padding: '8px 15px', fontSize: '14px', backgroundColor: '#e6f4ea', color: '#137333'}}
-                        onClick={() => handleRunJobNow(job)}
-                      >
-                        ▶️ {t('runNow')}
-                      </button>
-                      <button
-                        className="btn"
-                        style={{padding: '8px 15px', fontSize: '14px'}}
-                        onClick={() => {
-                          // Load job data into form for editing
-                          setEditingJobId(job.id)
-                          setBackupMode('scheduled')
-                          setScheduleTime(job.scheduleTime)
-                          setScheduleFrequency(job.frequency || 'daily')
-                          setScheduleWeekdays(job.weekdays && job.weekdays.length ? job.weekdays : [1])
-                          setScheduleDayOfMonth(job.dayOfMonth && job.dayOfMonth >= 1 ? job.dayOfMonth : 1)
-                          setRunAtStartup(job.runAtStartup)
-                          setJobEnabled(job.enabled !== false)
-                          setBackupDirs((job.backupDirs || []).join('\n'))
-                          setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
-                          setBackupType(job.backupType)
-                          setBackupPBSID(job.pbs_id || '')
-                          setMachineBackupKind(job.backup_kind || 'host')
-                          setExcludeList((job.excludeList || []).join('\n'))
-                          // Switch to backup tab to show the form
-                          setActiveTab('backup')
-                          showStatus(`✏️ ${t('editModeInfo')}`, 'info')
-                          window.scrollTo({top: 0, behavior: 'smooth'})
-                        }}
-                      >
-                        ✏️ {t('editJob')}
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        style={{padding: '8px 15px', fontSize: '14px'}}
-                        onClick={async () => {
-                          try {
-                            await DeleteScheduledJob(job.id)
-                            setScheduledJobs(scheduledJobs.filter(j => j.id !== job.id))
-                            showStatus(t('statusJobDeleted'), 'success')
-                            // Cancel edit mode if deleting the job being edited
-                            if (editingJobId === job.id) {
-                              setEditingJobId(null)
-                            }
-                          } catch (err) {
-                            showStatus(`❌ Erreur: ${err}`, 'error')
-                          }
-                        }}
-                      >
-                        🗑️ {t('deleteJob')}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          </div>
+          </>
           )}
 
-          {/* Running Backup Jobs */}
-          {false && runningJobs.length > 0 && (
-            <div className="card" style={{marginTop: '30px'}}>
-              <h3 style={{marginTop: 0}}>⏳ {t('runningJobs')}</h3>
-              {[...runningJobs].sort((a, b) => {
-                  if (a.running !== b.running) return a.running ? -1 : 1
-                  const sa = a.success ? (a.complete ? 1 : 0) : -1
-                  const sb = b.success ? (b.complete ? 1 : 0) : -1
-                  if (sa !== sb) return sa - sb
-                  const ta = a.start_time ? new Date(a.start_time).getTime() : 0
-                  const tb = b.start_time ? new Date(b.start_time).getTime() : 0
-                  return tb - ta
-                }).map(job => (
-                <div key={job.job_id} style={{
-                  padding: '15px',
-                  marginBottom: '10px',
-                  backgroundColor: job.running ? '#e7f3ff' : job.success ? '#d4edda' : '#f8d7da',
-                  borderRadius: '8px',
-                  border: `1px solid ${job.running ? '#b6d7ff' : job.success ? '#c3e6cb' : '#f5c6cb'}`
-                }}>
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                    <div>
-                      <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                        <span style={{fontSize: '20px'}}>
-                          {job.running ? '⏳' : job.success ? '✅' : '❌'}
-                        </span>
-                        <strong>{job.message || `Job ${job.job_id}`}</strong>
-                      </div>
-                      <div style={{fontSize: '13px', color: '#6c757d', marginTop: '5px'}}>
-                        {job.start_time && `🕐 Started: ${new Date(job.start_time).toLocaleString()}`}
-                        {job.running && job.progress > 0 && (
-                          <span style={{marginLeft: '15px', fontWeight: 'bold', color: '#0066cc'}}>
-                            {Math.round(job.progress)}%
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {job.running && (
-                      <button
-                        className="btn btn-secondary"
-                        style={{padding: '8px 15px', fontSize: '14px'}}
-                        onClick={async () => {
-                          try {
-                            await CancelBackup(job.job_id)
-                            showStatus(`${t('statusCancelRequested')}`, 'info')
-                            fetchRunningJobs()
-                          } catch (err) {
-                            showStatus(`❌ ${err}`, 'error')
-                          }
-                        }}
-                      >
-                        🛑 {t('cancelJob')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Job History */}
-          {jobHistory.length > 0 && (
-            <div className="card" style={{marginTop: '30px'}}>
-              <h3 style={{marginTop: 0}}>📜 {t('backupHistory')}</h3>
-              <div style={{maxHeight: '400px', overflowY: 'auto'}}>
-                {jobHistory.slice(0, 6).map(job => (
-                  <div key={job.id} style={{
-                    padding: '15px',
-                    marginBottom: '10px',
-                    backgroundColor: job.status === 'success' ? '#d4edda' : job.status === 'failed' ? '#f8d7da' : '#fff3cd',
-                    borderRadius: '8px',
-                    border: `1px solid ${job.status === 'success' ? '#c3e6cb' : job.status === 'failed' ? '#f5c6cb' : '#ffeaa7'}`
-                  }}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                      <div style={{flex: 1}}>
-                        <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                          <span style={{fontSize: '20px'}}>
-                            {job.status === 'success' ? '✅' : job.status === 'failed' ? '❌' : '⏳'}
-                          </span>
-                          <strong>{job.name}</strong>
-                        </div>
-                        <div style={{fontSize: '13px', color: '#6c757d', marginTop: '5px', marginLeft: '30px'}}>
-                          🕐 {new Date(job.timestamp).toLocaleString('fr-FR')}
-                        </div>
-                        {job.message && (
-                          <div style={{fontSize: '13px', color: '#495057', marginTop: '5px', marginLeft: '30px'}}>
-                            💬 {job.message}
-                          </div>
-                        )}
-                      </div>
-                      {job.status === 'failed' && (
-                        <button
-                          className="btn"
-                          style={{padding: '8px 15px', fontSize: '14px'}}
-                          onClick={() => {
-                            // Re-run failed job
-                            setBackupDirs((job.backupDirs || []).join('\n'))
-                            setConfig({...config, 'backup-id': job.backupId, usevss: job.useVSS})
-                            showStatus(t('configLoaded'), 'success')
-                            window.scrollTo({top: 0, behavior: 'smooth'})
-                          }}
-                        >
-                          🔄 {t('rerun')}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {status.visible && activeTab === 'backup' && (
+          {/* Suppressed while the card above is already showing this same
+              status.message — found live 2026-09-27: during VSS setup
+              (progress still 0) this was the only place it showed at all,
+              then once real progress started the card ALSO started
+              rendering it, duplicating the same text in two places at once. */}
+          {status.visible && activeTab === 'backup' && !backupCardActive && (
             <div className={`status ${status.type} visible`}>{status.message}</div>
-          )}
-        </div>
-
-        {/* Running Jobs Tab */}
-        <div className={`tab-content ${activeTab === 'running' ? 'active' : ''}`}>
-          <h2>⏳ {t('tabRunning')}</h2>
-
-          {runningJobs.filter(j => j.running).length === 0 ? (
-            <div className="info-box" style={{backgroundColor: '#f8f9fa', borderColor: '#dee2e6'}}>
-              📭 {t('noRunningJobs')}
-            </div>
-          ) : (
-            <div>
-              <div style={{marginBottom: '15px', padding: '12px', backgroundColor: '#e7f3ff', borderRadius: '8px', border: '1px solid #b6d7ff'}}>
-                <strong>{runningJobs.filter(j => j.running).length}</strong> {t('of')} <strong>{runningJobs.length}</strong>
-              </div>
-              {[...runningJobs].sort((a, b) => {
-                  if (a.running !== b.running) return a.running ? -1 : 1
-                  const sa = a.success ? (a.complete ? 1 : 0) : -1
-                  const sb = b.success ? (b.complete ? 1 : 0) : -1
-                  if (sa !== sb) return sa - sb
-                  const ta = a.start_time ? new Date(a.start_time).getTime() : 0
-                  const tb = b.start_time ? new Date(b.start_time).getTime() : 0
-                  return tb - ta
-                }).map(job => (
-                <div key={job.job_id} style={{
-                  padding: '15px',
-                  marginBottom: '10px',
-                  backgroundColor: job.running ? '#e7f3ff' : job.success ? '#d4edda' : '#f8d7da',
-                  borderRadius: '8px',
-                  border: `1px solid ${job.running ? '#b6d7ff' : job.success ? '#c3e6cb' : '#f5c6cb'}`
-                }}>
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                    <div>
-                      <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                        <span style={{fontSize: '20px'}}>
-                          {job.running ? '⏳' : job.success ? '✅' : '❌'}
-                        </span>
-                        <strong>{job.message || `Job ${job.job_id}`}</strong>
-                      </div>
-                      <div style={{fontSize: '13px', color: '#6c757d', marginTop: '5px'}}>
-                        {job.start_time && `🕐 Started: ${new Date(job.start_time).toLocaleString()}`}
-                        {job.running && job.progress > 0 && (
-                          <span style={{marginLeft: '15px', fontWeight: 'bold', color: '#0066cc'}}>
-                            {Math.round(job.progress)}%
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {job.running && (
-                      <button
-                        className="btn btn-secondary"
-                        style={{padding: '8px 15px', fontSize: '14px'}}
-                        onClick={async () => {
-                          try {
-                            await CancelBackup(job.job_id)
-                            showStatus(`${t('statusCancelRequested')}`, 'info')
-                            fetchRunningJobs()
-                          } catch (err) {
-                            showStatus(`❌ ${err}`, 'error')
-                          }
-                        }}
-                      >
-                        🛑 {t('cancelJob')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
           )}
         </div>
 
@@ -2676,23 +5043,42 @@ function App() {
         <div className={`tab-content ${activeTab === 'restore' ? 'active' : ''}`}>
           <h2>{t('restoreTitle')}</h2>
 
-          {/* BETA Warning */}
-          <div style={{
-            backgroundColor: '#FEF3C7',
-            border: '2px solid #F59E0B',
-            borderRadius: '8px',
-            padding: '12px',
-            marginBottom: '20px',
-            color: '#92400E'
-          }}>
-            <strong>⚠️ {t('restoreBetaTitle')}</strong>
-            <p style={{margin: '8px 0 0 0', fontSize: '14px'}}>
-              {t('restoreBetaIntro')}
-              <br/>✅ {t('restoreBetaFilesDirs')}
-              <br/>✅ {t('restoreBetaSelective')}
-              <br/>✅ {t('restoreBetaTimestamps')}
-              <br/>❌ {t('restoreBetaACLs')}
-            </p>
+          {pbsServers.length === 0 && (
+            <div className="info-box" style={{marginBottom: '20px', backgroundColor: '#fff3cd', borderLeft: '4px solid #ffc107', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'}}>
+              <span>{t('noPbsServerBanner')}</span>
+              <button className="btn" onClick={() => { setPrefsTab('account'); setShowPreferences(true) }}>
+                {t('openPreferences')}
+              </button>
+            </div>
+          )}
+
+          {/* Always visible regardless of which snapshot is selected/open below —
+              mirrors the backup tab's own always-visible card (same reasoning:
+              this used to live nested inside the snapshot-detail view, so
+              navigating to a different snapshot while a restore ran made its
+              own progress/Stop button disappear from view entirely). */}
+          {activeTab === 'restore' && restoreCard}
+
+          {!restoreLoading && pendingQueue.length > 0 && (
+            <div ref={restoreCardRef} style={{marginTop: '10px', marginBottom: '20px'}}>
+              {queuePanel}
+            </div>
+          )}
+
+          {/* What restore covers (it was marked BETA until 2026-10-07, when
+              it had been through full, selective, multi-folder, ACL and
+              cross-machine restores on real data). */}
+          <div className="info-box" style={{marginTop: 0, marginBottom: '20px'}}>
+            <div style={{fontSize: '13px', fontWeight: 600, marginBottom: '6px'}}>{tl('restoreSupportsTitle', 'Restore supports:')}</div>
+            <div style={{display: 'flex', flexWrap: 'wrap', gap: '6px 20px', fontSize: '13px'}}>
+              <span>✅ {t('restoreBetaFilesDirs')}</span>
+              <span>✅ {t('restoreBetaSelective')}</span>
+              <span>✅ {t('restoreBetaTimestamps')}</span>
+              <span>✅ {tl('restoreSupportsCreated', 'Creation times (Windows)')}</span>
+              <span>✅ {t('restoreBetaMultiServer')}</span>
+              <span>✅ {t('restoreBetaACLsDone')}</span>
+              <span>✅ {t('restoreSupportsStreams')}</span>
+            </div>
           </div>
 
           {/* PBS server selector + Backup ID */}
@@ -2705,7 +5091,9 @@ function App() {
                   setRestorePBSID(e.target.value)
                   setShowSnapshots(false)
                   setSelectedSnapshot(null)
-                  setSnapshotEntries([])
+                  setSnapshotChildren(new Map())
+                  setSnapshotCount(0)
+                  snapshotCtxRef.current = null
                 }}
               >
                 {pbsServers.length === 0 && <option value="">{t('noPBSServer')}</option>}
@@ -2716,26 +5104,82 @@ function App() {
                 ))}
               </select>
             </div>
-            <div className="form-group" style={{flex: '2 1 320px'}}>
-              <label>{t('backupIDToRestore')}</label>
-              <input
-                type="text"
-                value={restoreBackupId || hostname}
-                onChange={(e) => setRestoreBackupId(e.target.value)}
-                placeholder={hostname || t('phBackupId')}
-              />
+            <div className="form-group" style={{flex: '2 1 320px', position: 'relative'}}>
+              <label htmlFor="restoreBackupId">{t('backupIDToRestore')}</label>
+              {/* Typed freely (another machine's ID, or empty for every
+                  backup in the datastore), or picked from the IDs this
+                  machine's Backup Sets use (the arrow), or cleared (the x). */}
+              <div style={{display: 'flex', gap: '6px', alignItems: 'stretch'}}>
+                <input
+                  id="restoreBackupId"
+                  type="text"
+                  value={restoreBackupId}
+                  onChange={(e) => setRestoreBackupId(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Escape') setShowRestoreIdList(false) }}
+                  placeholder={t('phBackupId')}
+                  style={{flex: '1 1 auto', minWidth: 0}}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  aria-label={tl('backupIdPick', 'Choose a backup ID from your Backup Sets')}
+                  title={tl('backupIdPick', 'Choose a backup ID from your Backup Sets')}
+                  aria-expanded={showRestoreIdList}
+                  onClick={() => setShowRestoreIdList(v => !v)}
+                  disabled={restoreIdChoices.length === 0}
+                  style={{padding: '0 14px', minWidth: '44px', fontSize: '18px', lineHeight: 1}}
+                >
+                  ▾
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  aria-label={tl('backupIdClear', 'Clear (list every backup in the datastore)')}
+                  title={tl('backupIdClear', 'Clear (list every backup in the datastore)')}
+                  onClick={() => { setRestoreBackupId(''); setShowRestoreIdList(false) }}
+                  disabled={!restoreBackupId}
+                  style={{padding: '0 14px', minWidth: '44px'}}
+                >
+                  ✕
+                </button>
+              </div>
+              {showRestoreIdList && restoreIdChoices.length > 0 && (
+                <div
+                  role="listbox"
+                  aria-label={tl('backupIdPick', 'Choose a backup ID from your Backup Sets')}
+                  style={{position: 'absolute', zIndex: 20, left: 0, right: 0, marginTop: '4px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)', maxHeight: '260px', overflowY: 'auto'}}
+                >
+                  {restoreIdChoices.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      role="option"
+                      aria-selected={c.id === restoreBackupId}
+                      onClick={() => { setRestoreBackupId(c.id); setShowRestoreIdList(false) }}
+                      style={{display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', minHeight: '44px', border: 'none', borderBottom: '1px solid #f1f5f9', background: c.id === restoreBackupId ? '#eef6ee' : '#fff', cursor: 'pointer'}}
+                    >
+                      <div style={{fontSize: '14px', fontWeight: 600, color: '#1f2937'}}>{c.id}</div>
+                      <div style={{fontSize: '12px', color: '#64748b'}}>{c.names.join(', ')}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
-          <button className="btn" onClick={handleListSnapshots}>📋 {t('listSnapshots')}</button>
+          <button className="btn" onClick={handleListSnapshots} disabled={serverWait?.kind === 'list'}>{t('listSnapshots')}</button>
           <button
             className="btn"
             type="button"
             onClick={() => setShowSearch(v => !v)}
+            disabled={searchRunning}
             style={{marginLeft: '8px'}}
           >
-            🔎 {t('searchTitle')}
+            {t('searchTitle')}
           </button>
+          {serverWait && serverWait.kind === 'list' && (
+            <WaitBar label={serverWait.label} startedAt={serverWait.startedAt} slowHint={slowServerHint} />
+          )}
 
           {showSearch && (
             <div style={{
@@ -2761,12 +5205,18 @@ function App() {
                   />
                 </div>
                 <div className="form-group" style={{flex: '1 1 160px', margin: 0}}>
-                  <label>{t('searchModeLabel')}</label>
-                  <select value={searchMode} onChange={(e) => setSearchMode(e.target.value)}>
-                    <option value="name">{t('searchModeName')}</option>
-                    <option value="regex">{t('searchModeRegex')}</option>
-                    <option value="path">{t('searchModePath')}</option>
-                  </select>
+                  <label id="searchModeLabel">{t('searchModeLabel')}</label>
+                  <RadioGroup
+                    name="searchMode"
+                    labelId="searchModeLabel"
+                    value={searchMode}
+                    onChange={setSearchMode}
+                    options={[
+                      { value: 'name', label: t('searchModeName') },
+                      { value: 'regex', label: t('searchModeRegex') },
+                      { value: 'path', label: t('searchModePath') },
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -2791,19 +5241,21 @@ function App() {
 
               <div style={{marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center'}}>
                 <button className="btn" type="button" onClick={handleSearch} disabled={searchRunning}>
-                  {searchRunning ? `⏳ ${t('searching')}` : `🔎 ${t('searchButton')}`}
+                  {searchRunning ? `⏳ ${t('searching')}` : `${t('searchButton')}`}
                 </button>
                 {searchRunning && (
                   <button className="btn" type="button" onClick={handleCancelSearch} style={{backgroundColor: '#ef4444'}}>
                     ✖ {t('cancel')}
                   </button>
                 )}
-                {searchRunning && (
-                  <span style={{fontSize: '13px', color: '#64748b'}}>
-                    {searchProgress.percent}% — {searchProgress.message}
-                  </span>
-                )}
               </div>
+              {searchRunning && (
+                <WaitBar
+                  label={`${t('searching')} ${searchProgress.percent}%${searchProgress.message ? ` (${searchProgress.message})` : ''}`}
+                  startedAt={searchStartedRef.current}
+                  slowHint={slowServerHint}
+                />
+              )}
 
               {searchResult && (
                 <div style={{marginTop: '14px'}}>
@@ -2817,7 +5269,7 @@ function App() {
                   </p>
                   {searchResult.snapshots_in_range === 0 && (
                     <p style={{fontSize: '12px', color: '#b45309', margin: '0 0 8px 0'}}>
-                      💡 {t('searchNoSnapshotsInRange')}
+                      {t('searchNoSnapshotsInRange')}
                     </p>
                   )}
                   {(searchResult.snapshots_skipped > 0 && !searchAssembleMissing) && (
@@ -2845,7 +5297,6 @@ function App() {
                             padding: '6px 10px', borderBottom: '1px solid #f1f5f9', fontSize: '13px'
                           }}
                         >
-                          <span style={{fontSize: '15px'}}>{hit.is_dir ? '📁' : '📄'}</span>
                           <div style={{flex: 1, minWidth: 0}}>
                             <div style={{fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
                               {hit.path.split('/').pop() || hit.path}
@@ -2877,12 +5328,87 @@ function App() {
 
           {showSnapshots && (
             <div style={{marginTop: '20px'}}>
-              <h3>{t('availableSnapshots')}</h3>
-              <div className="grid">
-                {snapshots.length === 0 ? (
-                  <p style={{color: '#718096'}}>{t('noSnapshotFound')}</p>
-                ) : (
-                  snapshots.map((snap, idx) => {
+              <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'}}>
+                <h3 style={{margin: 0}}>{t('availableSnapshots')}</h3>
+                {snapshots.length > 0 && (
+                  <div style={{display: 'flex', border: '1px solid #d0d0d0', borderRadius: '6px', overflow: 'hidden'}}>
+                    <button
+                      type="button"
+                      onClick={() => setSnapshotViewModePersisted('tile')}
+                      title={t('tileView')}
+                      style={{
+                        padding: '6px 12px', border: 'none', cursor: 'pointer',
+                        backgroundColor: snapshotViewMode === 'tile' ? 'var(--accent)' : '#f7fafc',
+                        color: snapshotViewMode === 'tile' ? '#fff' : '#333',
+                      }}
+                    >
+                      ▦ {t('tileView')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSnapshotViewModePersisted('list')}
+                      title={t('listView')}
+                      style={{
+                        padding: '6px 12px', border: 'none', cursor: 'pointer',
+                        backgroundColor: snapshotViewMode === 'list' ? 'var(--accent)' : '#f7fafc',
+                        color: snapshotViewMode === 'list' ? '#fff' : '#333',
+                      }}
+                    >
+                      {t('listView')}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {snapshots.length === 0 ? (
+                <p style={{color: '#718096'}}>{t('noSnapshotFound')}</p>
+              ) : snapshotViewMode === 'list' ? (
+                <div style={{marginTop: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden'}}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '16px',
+                    padding: '8px 14px', fontSize: '12px', fontWeight: 'bold',
+                    color: '#718096', backgroundColor: '#f7fafc', borderBottom: '1px solid #e2e8f0',
+                    textTransform: 'uppercase', letterSpacing: '0.03em',
+                  }}>
+                    <span style={{flex: '0 0 220px'}}>{t('snapshotDate')}</span>
+                    <span style={{flex: '1 1 auto'}}>{t('backupID')}</span>
+                    <span style={{flex: '0 0 80px', textAlign: 'center'}}>{t('typeLabel')}</span>
+                    <span style={{flex: '0 0 90px', textAlign: 'center'}}>{t('sizeLabel')}</span>
+                    <span style={{flex: '0 0 160px'}}></span>
+                  </div>
+                  <div style={{maxHeight: '480px', overflowY: 'auto'}}>
+                  {snapshots.map((snap, idx) => {
+                    const isActive = selectedSnapshot && selectedSnapshot.id === snap.id && selectedSnapshot.backup_id === snap.backup_id
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => handleSelectSnapshot(snap)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '16px',
+                          padding: '10px 14px', cursor: 'pointer',
+                          borderTop: idx === 0 ? 'none' : '1px solid #e2e8f0',
+                          backgroundColor: isActive ? '#eff6ff' : '#fff',
+                        }}
+                      >
+                        <span style={{flex: '0 0 220px'}}>{snap.time}</span>
+                        <span style={{flex: '1 1 auto', color: '#718096', fontSize: '14px'}}>
+                          {snap.backup_id}{snap.protected ? ' 🔒' : ''}
+                        </span>
+                        <span style={{flex: '0 0 80px', color: '#718096', fontSize: '14px', textAlign: 'center'}} title={isDiskImageSnapshot(snap) ? tl('diskImageHint', 'Machine backup: a disk image. Browse it to restore files from its NTFS volumes.') : undefined}>
+                          {snap.backup_type || 'N/A'}{isDiskImageSnapshot(snap) && <><br/><span style={{fontSize: '11px'}}>{tl('diskImageShort', 'disk image')}</span></>}
+                        </span>
+                        <span style={{flex: '0 0 90px', color: '#718096', fontSize: '14px', textAlign: 'center'}}>{formatBytes(snap.size)}</span>
+                        <button className="btn" style={{flex: '0 0 160px', padding: '4px 12px'}}>
+                          {isActive ? `✓ ${t('snapshotSelected')}` : t('selectSnapshot')}
+                        </button>
+                      </div>
+                    )
+                  })}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid" style={{marginTop: '12px', maxHeight: '600px', overflowY: 'auto'}}>
+                  {snapshots.map((snap, idx) => {
                     const isActive = selectedSnapshot && selectedSnapshot.id === snap.id && selectedSnapshot.backup_id === snap.backup_id
                     return (
                       <div
@@ -2895,19 +5421,19 @@ function App() {
                         }}
                         onClick={() => handleSelectSnapshot(snap)}
                       >
-                        <h3>📸 {snap.time}</h3>
+                        <h3>{snap.time}</h3>
                         <p style={{color: '#718096', fontSize: '14px', marginTop: '5px'}}>
-                          {snap.backup_id}<br/>
-                          {t('typeLabel')}: {snap.backup_type || 'N/A'}
+                          {snap.backup_id}{snap.protected ? ' 🔒' : ''}<br/>
+                          {t('typeLabel')}: {snap.backup_type || 'N/A'}{isDiskImageSnapshot(snap) ? ` (${tl('diskImageShort', 'disk image')})` : ''} · {formatBytes(snap.size)}
                         </p>
                         <button className="btn" style={{marginTop: '10px', width: '100%'}}>
                           {isActive ? `✓ ${t('snapshotSelected')}` : t('selectSnapshot')}
                         </button>
                       </div>
                     )
-                  })
-                )}
-              </div>
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -2926,12 +5452,19 @@ function App() {
               columnGap: '12px',
               rowGap: '4px'
             }}>
-              <strong>{t('metaOriginalPath') || 'Source d\'origine'}</strong>
+              <strong>{t('metaOriginalPath')}</strong>
               <span style={{fontFamily: 'monospace'}}>{snapshotMeta.original_path || '—'}</span>
-              <strong>{t('metaHostname') || 'Machine'}</strong>
+              <strong>{t('metaHostname')}</strong>
               <span>{snapshotMeta.hostname || '—'}{snapshotMeta.os ? ` (${snapshotMeta.os})` : ''}{snapshotMeta.vss_used ? ' · VSS' : ''}</span>
-              <strong>{t('metaBackupTime') || 'Sauvegardé le'}</strong>
+              <strong>{t('metaBackupTime')}</strong>
               <span>{snapshotMeta.backup_time || '—'}{snapshotMeta.client_version ? ` · client ${snapshotMeta.client_version}` : ''}</span>
+            </div>
+          )}
+
+          {/* A disk image: what the tree shows and what a restore brings back */}
+          {selectedSnapshot && isDiskImageSnapshot(selectedSnapshot) && (
+            <div style={{marginTop: '20px', padding: '10px 14px', border: '1px solid #c7d2fe', backgroundColor: '#eef2ff', borderRadius: '8px', fontSize: '13px', color: '#1e293b'}}>
+              💽 {tl('diskImageBanner', 'Machine backup (disk image). Each NTFS volume in the image is a folder below; only the parts of the image you open or restore are downloaded. Files are restored to another folder, with their dates and (with the permissions option) attributes; permissions themselves are not restored from a disk image yet.')}
             </div>
           )}
 
@@ -2939,15 +5472,31 @@ function App() {
           {selectedSnapshot && (
             <div style={{marginTop: '24px'}}>
               <div style={{display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'}}>
-                <h3 style={{margin: 0}}>📂 {t('snapshotContents')} — {selectedSnapshot.time}</h3>
+                <h3 style={{margin: 0}}>{t('snapshotContents')}: {selectedSnapshot.time}</h3>
                 <button
                   className="btn"
                   type="button"
                   onClick={handleReloadSnapshot}
-                  title={t('reloadTreeHint') || 'Bypass local cache and re-download the snapshot tree'}
+                  title={t('reloadTreeHint')}
                   style={{padding: '4px 10px', fontSize: '13px'}}
                 >
-                  🔄 {t('reloadTree') || 'Recharger'}
+                  {t('reloadTree')}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  onClick={handleSelectAllEntries}
+                  style={{padding: '4px 10px', fontSize: '13px'}}
+                >
+                  ☑️ {t('selectAllEntries')}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  onClick={handleSelectNoneEntries}
+                  style={{padding: '4px 10px', fontSize: '13px'}}
+                >
+                  ☐ {t('selectNoneEntries')}
                 </button>
               </div>
               <p style={{fontSize: '13px', color: '#64748b', marginBottom: '8px', marginTop: '6px'}}>
@@ -2960,22 +5509,27 @@ function App() {
                 overflowY: 'auto',
                 backgroundColor: '#fff'
               }}>
-                {snapshotEntries.length === 0 ? (
-                  <p style={{padding: '12px', color: '#718096'}}>{t('loadingOrEmpty')}</p>
+                {(snapshotChildren.get('') || []).length === 0 ? (
+                  snapshotLoad.phase === 'reading' ? (
+                    <div style={{padding: '0 12px'}}>
+                      <WaitBar label={tl('snapshotReading', 'Snapshot found, reading file list...')} startedAt={snapshotLoad.startedAt} slowHint={slowServerHint} />
+                    </div>
+                  ) : (
+                    <p style={{padding: '12px', color: '#718096'}}>{tl('snapshotEmpty', 'This snapshot has no entries.')}</p>
+                  )
                 ) : (
-                  (() => {
-                    const tree = buildTree(snapshotEntries)
-                    const roots = tree.get('') || []
-                    return roots.map(e => renderTreeNode(e, tree, 0))
-                  })()
+                  renderTreeChildren('', snapshotChildren, 0)
                 )}
               </div>
+              {serverWait && serverWait.kind === 'folder' && (
+                <WaitBar label={serverWait.label} startedAt={serverWait.startedAt} slowHint={slowServerHint} />
+              )}
               <p style={{marginTop: '6px', fontSize: '12px', color: '#64748b'}}>
                 {selectedPaths.size === 0
-                  ? t('selectionEmptyAllSize').replace('{size}', formatBytes(selectionBytes))
+                  ? t('selectionEmptyNone')
                   : t('selectionCountSize')
                       .replace('{n}', selectedPaths.size)
-                      .replace('{size}', formatBytes(selectionBytes))}
+                      .replace('{size}', selectionSizing ? tl('calculating', 'Calculating...') : formatBytesDual(selectionBytes))}
               </p>
             </div>
           )}
@@ -3015,7 +5569,7 @@ function App() {
                       disabled={!!blocker}
                       onChange={() => setRestoreMode('original')}
                     />
-                    <strong>{t('restoreModeInPlace') || 'Restaurer in-place'}</strong>
+                    <strong>{t('restoreModeInPlace')}</strong>
                     {blocker && <span style={{fontSize: '11px', color: '#dc2626'}}> ({blockerTooltip})</span>}
                   </label>
                   <label style={{display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer'}}>
@@ -3026,7 +5580,7 @@ function App() {
                       checked={restoreMode !== 'original'}
                       onChange={() => setRestoreMode('alternate_abs')}
                     />
-                    <strong>{t('restoreModeAlternate') || 'Restaurer vers un autre emplacement'}</strong>
+                    <strong>{t('restoreModeAlternate')}</strong>
                   </label>
                 </div>
 
@@ -3072,7 +5626,7 @@ function App() {
                           style={{flex: 1}}
                         />
                         <button className="btn" onClick={handleBrowseRestoreDest} type="button">
-                          📁 {t('browse')}
+                          {t('browse')}
                         </button>
                       </div>
                     </div>
@@ -3082,11 +5636,9 @@ function App() {
                         checked={restoreKeepTree}
                         onChange={(e) => setRestoreKeepTree(e.target.checked)}
                       />
-                      {t('keepTreeLabel') || 'Conserver l\'arborescence d\'origine'}
+                      {t('keepTreeLabel')}
                       <span style={{fontSize: '12px', color: '#64748b'}}>
-                        {restoreKeepTree
-                          ? (t('keepTreeOnHint') || '(dest/Users/alice/doc.txt)')
-                          : (t('keepTreeOffHint') || '(dest/doc.txt — recommandé pour un fichier seul)')}
+                        {restoreKeepTree ? t('keepTreeOnHint') : t('keepTreeOffHint')}
                       </span>
                     </label>
                   </>
@@ -3094,7 +5646,7 @@ function App() {
 
                 <div style={{display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '12px'}}>
                   <label style={{display: 'flex', alignItems: 'center', gap: '6px', opacity: isInPlace ? 0.5 : 1}}
-                         title={isInPlace ? (t('overwriteForcedInPlace') || '') : ''}>
+                         title={isInPlace ? (t('overwriteForcedInPlace')) : ''}>
                     <input
                       type="checkbox"
                       checked={isInPlace ? true : restoreOptions.overwrite}
@@ -3111,6 +5663,14 @@ function App() {
                     />
                     {t('optionTimestamps')}
                   </label>
+                  <label style={{display: 'flex', alignItems: 'center', gap: '6px'}} title={tl('optionVerifyHint', 'After restoring, re-read every restored file and compare it with the snapshot. Takes extra time; mismatches are reported, nothing is deleted.')}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.verify}
+                      onChange={(e) => setRestoreOptions(o => ({...o, verify: e.target.checked}))}
+                    />
+                    {tl('optionVerify', 'Verify after restore')}
+                  </label>
                   <label style={{display: 'flex', alignItems: 'center', gap: '6px'}} title={t('optionACLsHint')}>
                     <input
                       type="checkbox"
@@ -3119,14 +5679,16 @@ function App() {
                     />
                     {t('optionACLs')}
                   </label>
-                  <label style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.ads}
-                      onChange={(e) => setRestoreOptions(o => ({...o, ads: e.target.checked}))}
-                    />
-                    {t('optionADS')}
-                  </label>
+                  {systemInfo.os !== 'linux' && (
+                    <label style={{display: 'flex', alignItems: 'center', gap: '6px'}} title={t('optionStreamsHint')}>
+                      <input
+                        type="checkbox"
+                        checked={restoreOptions.ads}
+                        onChange={(e) => setRestoreOptions(o => ({...o, ads: e.target.checked}))}
+                      />
+                      {t('optionStreams')}
+                    </label>
+                  )}
                 </div>
 
                 <button
@@ -3136,132 +5698,398 @@ function App() {
                 >
                   {restoreLoading ? `⏳ ${t('restoring')}` : `▶️ ${t('restore')}`}
                 </button>
-
-                {restoreLoading && (
-                  <div style={{marginTop: '12px'}}>
-                    <div style={{height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden'}}>
-                      <div style={{
-                        height: '100%',
-                        width: `${restoreProgress}%`,
-                        backgroundColor: '#2563eb',
-                        transition: 'width 0.3s ease'
-                      }}/>
-                    </div>
-                    <p style={{textAlign: 'center', fontSize: '13px', color: '#64748b', marginTop: '4px'}}>
-                      {restoreProgress}%
-                    </p>
-                  </div>
-                )}
+                <button className="btn btn-secondary" onClick={handleStopRestore} disabled={!restoreLoading}>{t('stopRestore')}</button>
+                {/* Progress display itself moved to the always-visible card at
+                    the top of this tab (2026-09-27) — it used to live here,
+                    which made it (and the only Stop button that could reach
+                    it) disappear the moment you browsed to a different
+                    snapshot while a restore was running. */}
               </div>
             )
           })()}
 
           <div className="info-box" style={{marginTop: '20px'}}>
-            💡 <strong>{t('restoreInfo')}</strong> {t('restoreInfoText')}<br/>
+            <strong>{t('restoreInfo')}</strong> {t('restoreInfoText')}<br/>
             {t('restoreInfoText2')}
           </div>
 
-          {status.visible && activeTab === 'restore' && (
+          {/* Suppressed while the card above is already showing this same
+              status.message — same reasoning as the backup tab's own version
+              of this condition. */}
+          {status.visible && activeTab === 'restore' && !restoreLoading && (
             <div className={`status ${status.type} visible`}>{status.message}</div>
           )}
         </div>
 
-        {/* About Tab */}
+        <div className={`tab-content ${activeTab === 'undelete' ? 'active' : ''}`}>
+          <UndeletePage ui={setToolsUi} jobs={scheduledJobs} jobId={setToolJobId} setJobId={setSetToolJobId}
+            restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'undelete' ? restoreCard : null} />
+          {status.visible && activeTab === 'undelete' && !restoreLoading && (
+            <div className={`status ${status.type} visible`}>{status.message}</div>
+          )}
+        </div>
+
+        <div className={`tab-content ${activeTab === 'rollback' ? 'active' : ''}`}>
+          <RollbackPage ui={setToolsUi} jobs={scheduledJobs} jobId={setToolJobId} setJobId={setSetToolJobId}
+            restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'rollback' ? restoreCard : null} />
+          {status.visible && activeTab === 'rollback' && !restoreLoading && (
+            <div className={`status ${status.type} visible`}>{status.message}</div>
+          )}
+        </div>
+
+        <div className={`tab-content ${activeTab === 'help' ? 'active' : ''}`}>
+          {activeTab === 'help' && (
+            <ManualViewer doc={manualView.doc} anchor={manualView.anchor} nonce={manualView.nonce}
+              onOpen={openManual} appVersion={appVersion} />
+          )}
+        </div>
+
+        {/* About Tab. What is the brand's (logo, name, storage offer, its own
+            links) comes from GetBrand, so a branded build shows the vendor and
+            the default build the neutral icon; the features, credits and the
+            project links are the same for every brand. */}
         <div className={`tab-content ${activeTab === 'about' ? 'active' : ''}`}>
-          <h2 style={{textAlign: 'center'}}>{t('aboutTitle')}</h2>
+          <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
+            <img
+              src={brand.logo || defaultIcon}
+              alt=""
+              style={{height: '40px', width: 'auto', maxWidth: '180px', objectFit: 'contain'}}
+              onError={(e) => {
+                // A brand logo that fails to load falls back to the neutral icon.
+                if (!e.target.dataset.logoFallback) {
+                  e.target.dataset.logoFallback = '1'
+                  e.target.src = defaultIcon
+                }
+              }}
+            />
+            <h2 style={{margin: 0}}>{brand.is_default ? t('appTitle') : brand.title}</h2>
+            <span style={{fontSize: '12px', color: '#718096'}}>{t('version')} {versionLabel}</span>
+          </div>
 
-          <img
-            src={brand.logo || logo}
-            alt={brand.title}
-            className="logo"
-            onError={(e) => {
-              // A brand asset that fails to load must not leave the About tab
-              // with no icon at all: fall back to the bundled default logo,
-              // and hide the image only if even that one is gone.
-              if (!e.target.dataset.logoFallback) {
-                e.target.dataset.logoFallback = '1'
-                e.target.src = logo
-              } else {
-                e.target.style.display = 'none'
-              }
-            }}
-          />
+          <div style={{marginTop: '14px', fontSize: '14px'}}>
+            <StorageOffer brand={brand} />
+          </div>
 
-          <div style={{textAlign: 'center', marginTop: '30px'}}>
-            <h3>{brand.title}</h3>
-            <p style={{color: '#718096', margin: '10px 0'}}>{t('version')} {appVersion}</p>
+          <div className="card" style={{marginTop: '18px'}}>
+            <h3>{t('features')}</h3>
+            <ul className="feature-grid">
+              {['backupSets', 'incremental', 'machineBackups', 'p2v', 'bareMetalRestore', 'snapshotRestore',
+                'undeleteRollback', 'encryption', 'service', 'multiPbs', 'compatible', 'languages'].map((k) => (
+                <li key={k}>
+                  <strong>{t(`featuresList.${k}.title`)}</strong>
+                  {t(`featuresList.${k}.desc`)}
+                </li>
+              ))}
+            </ul>
+          </div>
 
-            {/* Upsell / buy-storage CTA (brand-specific when configured) */}
-            <div style={{margin: '20px 0'}}>
-              <a
-                className="cta-btn"
-                href={buyStorage.url}
-                target="_blank"
-                data-external="true"
-                rel="noopener noreferrer"
-              >
-                📦 {buyStorage.text}
+          <div className="card" style={{marginTop: '20px', display: 'flex', alignItems: 'center', gap: '28px'}}>
+            <h3 style={{margin: 0}}>{t('aboutLinks')}</h3>
+            {aboutLinks(brand).map(([k, u]) => (
+              <a key={k} href={u} target="_blank" data-external="true" rel="noopener noreferrer" style={{fontSize: '13px', fontWeight: 600}}>
+                {t(ABOUT_LINK_LABEL[k])}
               </a>
+            ))}
+          </div>
+
+          <div className="info-box" style={{marginTop: '20px', fontSize: '12px', lineHeight: 1.7}}>
+            <div style={{fontWeight: 600}}>{t('legalWarranty')}</div>
+            <div style={{marginTop: '6px'}}>
+              {t('copyright')} · <a href={`${PROJECT_REPO}/graphs/contributors`} style={{color: 'var(--accent)'}} target="_blank" data-external="true" rel="noopener noreferrer">{t('viewContributors')}</a>
             </div>
+            <div style={{marginTop: '6px'}}>{t('legalLicense')}</div>
+            <div style={{marginTop: '6px', color: '#718096'}}>{t('legalDisclaimer')}</div>
+          </div>
+        </div>
 
-            <div className="grid" style={{marginTop: '30px', textAlign: 'left'}}>
-              <div className="card">
-                <h3>✅ {t('features')}</h3>
-                <ul style={{lineHeight: 2, marginLeft: '20px'}}>
-                  <li>{t('featuresList.directories')}</li>
-                  <li>{t('featuresList.machine')}</li>
-                  <li>{t('featuresList.restore')}</li>
-                  <li>{t('featuresList.vss')}</li>
-                  <li>{t('featuresList.dedup')}</li>
-                  <li>{t('featuresList.modern')}</li>
-                </ul>
-              </div>
+        {/* Reports Tab — essentially the backup history, given its own page */}
+        <div className={`tab-content ${activeTab === 'reports' ? 'active' : ''}`}>
+          <h2>{t('navReports')}</h2>
 
-              <div className="card">
-                <h3>🌐 Links</h3>
-                <ul style={{lineHeight: 2, marginLeft: '20px'}}>
-                  {[
-                    ['about', 'About'],
-                    ['help', 'Help / Forum'],
-                    ['updates', 'Releases'],
-                    ['contact', 'Contact / Repo']
-                  ].map(([k, label]) => {
-                    const u = (brand.urls && brand.urls[k]) || brand.brand_url || 'https://www.proxmox.com/'
+          {jobHistory.length === 0 ? (
+            <p style={{color: '#718096'}}>{t('reportsEmpty')}</p>
+          ) : (
+            <div style={{display: 'flex', gap: '20px', alignItems: 'flex-start'}}>
+              <div style={{flex: '0 0 320px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden'}}>
+                <div style={{maxHeight: '560px', overflowY: 'auto'}}>
+                  {jobHistory.map((job, idx) => {
+                    const isSelected = (selectedHistoryId ?? jobHistory[0].id) === job.id
                     return (
-                      <li key={k}>
-                        <a href={u} target="_blank" data-external="true" rel="noopener noreferrer">{label}</a>
-                      </li>
+                      <div
+                        key={job.id}
+                        onClick={() => setSelectedHistoryId(job.id)}
+                        style={{
+                          padding: '12px 14px', cursor: 'pointer',
+                          borderTop: idx === 0 ? 'none' : '1px solid #e2e8f0',
+                          backgroundColor: isSelected ? '#eff6ff' : '#fff',
+                        }}
+                      >
+                        <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                          <span>{job.status === 'success' ? '✅' : job.status === 'failed' ? '❌' : job.status === 'cancelled' ? '⏹️' : '⏳'}</span>
+                          <strong style={{fontSize: '14px'}}>{historyName(job, t, language)}</strong>
+                        </div>
+                        <div style={{fontSize: '12px', color: '#718096', marginTop: '4px'}}>
+                          {new Date(job.timestamp).toLocaleString()}
+                          {job.encryption && (
+                            <span style={{marginLeft: '8px', color: job.encryption === 'encrypted' ? '#1a7f37' : '#a06000'}}>
+                              {job.encryption === 'encrypted' ? '🔒 ' + t('reportsEncrypted') : t('reportsUnencrypted')}
+                            </span>
+                          )}
+                          {job.changeDetection === 'metadata' && (
+                            <span style={{marginLeft: '8px', color: '#2b6cb0'}}>
+                              {job.reusedFiles ? t('reportsReusedShort', {files: fmtNum(job.reusedFiles, language)}) : t('changeDetectionShortMetadata')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     )
                   })}
-                </ul>
+                </div>
               </div>
 
-              <div className="card">
-                <h3>🚀 {t('technology')}</h3>
-                <ul style={{lineHeight: 2, marginLeft: '20px'}}>
-                  <li>{t('techList.wails')}</li>
-                  <li>{t('techList.performance')}</li>
-                  <li>{t('techList.interface')}</li>
-                  <li>{t('techList.logs')}</li>
-                  <li>{t('techList.nogpu')}</li>
-                </ul>
+              <div style={{flex: '1 1 auto'}}>
+                {(() => {
+                  const selected = jobHistory.find(j => j.id === selectedHistoryId) || jobHistory[0]
+                  if (!selected) return <p style={{color: '#718096'}}>{t('reportsSelectPrompt')}</p>
+                  return (
+                    <div className="card">
+                      <h3 style={{marginTop: 0}}>{historyName(selected, t, language)}</h3>
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '14px', rowGap: '8px',
+                        fontSize: '14px',
+                      }}>
+                        <strong>{t('status')}</strong>
+                        <span>{selected.status === 'success' ? '✅' : selected.status === 'failed' ? '❌' : selected.status === 'cancelled' ? '⏹️' : '⏳'} {statusLabel(selected.status)}</span>
+                        <strong>{t('msgColDateTime')}</strong>
+                        <span>{new Date(selected.timestamp).toLocaleString()}</span>
+                        {selected.trigger && (
+                          <>
+                            <strong>{t('reportsMode')}</strong>
+                            <span>{
+                              selected.trigger === 'scheduled' ? t('triggerScheduled') :
+                              selected.trigger === 'startup' ? t('triggerStartup') :
+                              selected.trigger === 'manual' ? t('triggerManual') :
+                              selected.trigger === 'oneoff' ? t('triggerOneoff') :
+                              selected.trigger
+                            }</span>
+                          </>
+                        )}
+                        {selected.kind === 'restore' && (
+                          <>
+                            <strong>{t('reportsType')}</strong>
+                            <span>{selected.restoreKind === 'undelete' ? tl('reportsTypeUndelete', 'Undelete')
+                              : selected.restoreKind === 'rollback' ? tl('reportsTypeRollback', 'Roll back')
+                              : tl('reportsTypeRestore', 'Restore')}</span>
+                            {selected.restoreSnapshot && (<><strong>{tl('reportsSnapshot', 'Snapshot')}</strong><span>{selected.restoreSnapshot}</span></>)}
+                            {selected.restoreDest && (<><strong>{tl('reportsDestination', 'Destination')}</strong><span>{selected.restoreDest}</span></>)}
+                            <strong>{tl('reportsPaths', 'Paths')}</strong>
+                            <span>{selected.restorePaths && selected.restorePaths.length > 0 ? selected.restorePaths.join(', ') : tl('reportsWholeSnapshot', 'Whole snapshot')}</span>
+                            <strong>{tl('reportsFiles', 'Files')}</strong>
+                            <span>{fmtNum(selected.restoreFiles || 0, language)}</span>
+                            <strong>{tl('reportsSize', 'Size')}</strong>
+                            <span>{formatBytes(selected.restoreBytes || 0)}</span>
+                            {selected.restoreVerifyRan && (<><strong>{tl('reportsVerification', 'Verification')}</strong><span style={selected.restoreVerifyFailed > 0 ? {color: '#c0392b', fontWeight: 'bold'} : undefined}>{selected.restoreVerifyFailed > 0 ? tl('reportsVerifyFailed', '{n} file(s) did not match').replace('{n}', fmtNum(selected.restoreVerifyFailed, language)) : tl('reportsVerifyOk', 'All {n} files match').replace('{n}', fmtNum(selected.restoreVerified || 0, language))}</span></>)}
+                            <strong>{tl('reportsDuration', 'Duration')}</strong>
+                            <span>{formatDuration(selected.durationSec || 0)}</span>
+                          </>
+                        )}
+                        {selected.kind !== 'restore' && selected.backupType && (
+                          <>
+                            <strong>{t('reportsType')}</strong>
+                            <span>{selected.backupType === 'machine' ? t('reportsTypeMachine') : t('reportsTypeDirectory')}</span>
+                          </>
+                        )}
+                        {selected.kind !== 'restore' && selected.encryption && (
+                          <>
+                            <strong>{t('reportsEncryption')}</strong>
+                            <span style={{color: selected.encryption === 'encrypted' ? '#1a7f37' : '#a06000', fontWeight: 600}}>
+                              {selected.encryption === 'encrypted' ? '🔒 ' + t('reportsEncrypted') : t('reportsUnencrypted')}
+                            </span>
+                          </>
+                        )}
+                        {selected.kind !== 'restore' && selected.changeDetection && (
+                          <>
+                            <strong>{t('reportsChangeDetection')}</strong>
+                            <span>
+                              {selected.changeDetection === 'metadata' ? t('changeDetectionShortMetadata')
+                                : selected.changeDetection === 'data' ? t('changeDetectionShortData')
+                                : t('changeDetectionShortLegacy')}
+                              {selected.reusedFiles ? ' (' + t('reportsReusedFiles', {files: fmtNum(selected.reusedFiles, language), size: formatBytes(selected.reusedBytes || 0)}) + ')' : ''}
+                            </span>
+                          </>
+                        )}
+                        {(backupFacts(selected, t, language) || []).map(([label, value]) => (
+                          <Fragment key={label}>
+                            <strong>{label}</strong>
+                            <span>{value}</span>
+                          </Fragment>
+                        ))}
+                        {selected.message && !isCleanFinish(selected) && (
+                          <>
+                            <strong>{t('msgColMessage')}</strong>
+                            <span style={{whiteSpace: 'pre-wrap'}}>{renderLocalizedMessage(selected, t, language).text}</span>
+                          </>
+                        )}
+                        {selected.backupId && (
+                          <>
+                            <strong>{t('backupID')}</strong>
+                            <span>{selected.backupId}</span>
+                          </>
+                        )}
+                        {selected.kind !== 'restore' && (
+                          <>
+                            <strong>VSS</strong>
+                            <span>{selected.useVSS ? t('vssOn') : t('vssOff')}</span>
+                          </>
+                        )}
+                        {selected.kind !== 'restore' && selected.backupDirs && selected.backupDirs.length > 0 && (
+                          <>
+                            <strong>{t('reportsFolders')}</strong>
+                            <span>{selected.backupDirs.join(', ')}</span>
+                          </>
+                        )}
+                      </div>
+                      {selected.status === 'failed' && selected.kind !== 'restore' && (
+                        <button
+                          className="btn"
+                          style={{marginTop: '16px'}}
+                          onClick={() => {
+                            setBackupDirs(selected.backupDirs.join('\n'))
+                            setConfig({...config, 'backup-id': selected.backupId, usevss: selected.useVSS})
+                            setActiveTab('backup')
+                            showStatus(t('configLoaded'), 'success')
+                          }}
+                        >
+                          {t('rerun')}
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-secondary"
+                        style={{marginTop: '16px', marginLeft: selected.status === 'failed' && selected.kind !== 'restore' ? '8px' : 0}}
+                        onClick={() => openLogFor({
+                          backupId: selected.backupId,
+                          name: selected.name,
+                          // A restore's entry has its end: its lines start a duration earlier.
+                          at: Date.parse(selected.timestamp) - (selected.kind === 'restore' ? (selected.durationSec || 0) * 1000 : 0),
+                          kind: selected.kind === 'restore' ? 'restore' : 'backup',
+                        })}
+                      >
+                        📄 {t('viewLog')}
+                      </button>
+                    </div>
+                  )
+                })()}
               </div>
             </div>
+          )}
+        </div>
 
-            <p style={{marginTop: '30px'}}>
-              <strong>{t('copyright')}</strong><br/>
-              <a href="https://github.com/tizbac/proxmoxbackupclient_go/graphs/contributors?all=1" style={{color: 'var(--accent)'}} target="_blank">proxmoxbackupclient_go contributors</a>
-            </p>
+        {/* Message Log Tab */}
+        <div className={`tab-content ${activeTab === 'messagelog' ? 'active' : ''}`}>
+          <h2>{t('navMessageLog')}</h2>
+          {messageLog.length === 0 ? (
+            <p style={{color: '#718096'}}>{t('messageLogEmpty')}</p>
+          ) : (
+            <div style={{border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden'}}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '16px',
+                padding: '8px 14px', fontSize: '12px', fontWeight: 'bold',
+                color: '#718096', backgroundColor: '#f7fafc', borderBottom: '1px solid #e2e8f0',
+                textTransform: 'uppercase', letterSpacing: '0.03em',
+              }}>
+                <span style={{flex: '0 0 160px'}}>{t('msgColDateTime')}</span>
+                <span style={{flex: '0 0 100px'}}>{t('msgColSource')}</span>
+                <span style={{flex: '1 1 auto'}}>{t('msgColMessage')}</span>
+              </div>
+              <div style={{maxHeight: '520px', overflowY: 'auto'}}>
+                {messageLog.map((entry, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '16px',
+                      padding: '8px 14px', fontSize: '13px',
+                      borderTop: idx === 0 ? 'none' : '1px solid #f0f0f0',
+                    }}
+                  >
+                    <span style={{flex: '0 0 160px', color: '#718096'}}>
+                      {new Date(entry.timestamp).toLocaleString()}
+                    </span>
+                    <span style={{flex: '0 0 100px', color: '#718096'}}>
+                      {entry.source === 'Backup' ? t('msgSourceBackup')
+                        : entry.source === 'Restore' ? t('msgSourceRestore')
+                        : entry.source}
+                    </span>
+                    <span style={{flex: '1 1 auto'}}>
+                      {messageIcon(entry)}{' '}
+                      {(() => {
+                        // A clean finish: what finished, then its figures as fields.
+                        const facts = isCleanFinish(entry) && backupFacts(entry, t, language)
+                        if (facts && facts.length > 0) {
+                          const what = entry.message_key === 'logBackupCompleted'
+                            ? t('logBackupCompletedGeneric')
+                            : tl('logMachineBackupCompletedShort', 'Machine backup completed')
+                          return (
+                            <>
+                              {entry.job_name ? `${entry.job_name}: ` : ''}{what}
+                              <span style={{display: 'block', fontSize: '12px', color: '#718096', marginTop: '2px'}}>
+                                {facts.map(([label, value], i) => (
+                                  <Fragment key={label}>{i > 0 && ' · '}<strong>{label}</strong> {value}</Fragment>
+                                ))}
+                              </span>
+                            </>
+                          )
+                        }
+                        const { text, usedKey } = renderLocalizedMessage(entry, t, language)
+                        return (usedKey && entry.job_name ? `${entry.job_name}: ` : '') + text
+                      })()}
+                    </span>
+                    <button className="btn btn-secondary" style={{flex: '0 0 auto', padding: '2px 8px', fontSize: '12px'}}
+                      title={t('viewLog')}
+                      onClick={() => openLogFor({
+                        name: entry.job_name,
+                        at: Date.parse(entry.timestamp),
+                        kind: entry.source === 'Restore' ? 'restore' : entry.source === 'Backup' ? 'backup' : 'app',
+                      })}>
+                      📄
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <p style={{fontSize: '11px', color: '#a0aec0', marginTop: '10px'}}>{t('msgLogCap')}</p>
+        </div>
 
-            <p style={{marginTop: '20px', color: '#718096', fontSize: '12px'}}>
-              {t('basedOn')}<br/>
-              {t('techStack')}
-            </p>
-          </div>
+        {/* View Full Logs */}
+        <div className={`tab-content ${activeTab === 'logs' ? 'active' : ''}`}>
+          <LogsPage t={t} language={language} active={activeTab === 'logs'} request={logRequest}
+            onOpenFolder={OpenLogsFolder ? () => OpenLogsFolder().catch(err => showStatus(`❌ ${err}`, 'error')) : null}
+            formatBytes={formatBytes} />
         </div>
       </div>
 
-    </>
+        <div className="app-statusbar">
+          {/* A release reads "Version v0.7.0"; only a development build
+              ("dev" or "dev-<commit>") says so. */}
+          <span>{isDevBuild ? `${t('devBuildBadge')} ${appVersion}` : `${t('version')} ${versionLabel}`}</span>
+          <button className="statusbar-link" onClick={() => setShowLimitations(true)}>
+            ℹ️ {t('knownLimitations')}
+          </button>
+        </div>
+      </div>
+
+      {showLimitations && <KnownLimitationsModal onClose={() => setShowLimitations(false)} />}
+      {showClosePrompt && <ClosePromptModal onClose={() => setShowClosePrompt(false)} />}
+      {showJobsLock && (
+        <JobsLockModal
+          t={t}
+          onClose={() => setShowJobsLock(false)}
+          onRestartAsAdmin={() => { setShowJobsLock(false); restartAsAdmin() }}
+        />
+      )}
+      <PassphraseModal EventsOn={EventsOn} />
+      <ConfirmHost />
+    </div>
   )
 }
 

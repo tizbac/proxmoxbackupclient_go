@@ -9,8 +9,14 @@ type BackupRequest struct {
 	ExcludeList  []string `json:"exclude_list,omitempty"`
 	UseVSS       bool     `json:"use_vss"`
 	Compression  string   `json:"compression,omitempty"` // "fastest", "default", "better", "best"
-	PBSID        string   `json:"pbs_id,omitempty"`       // PBS server ID to use (empty = default)
-	BackupKind   string   `json:"backup_kind,omitempty"`  // "host" or "vm" for machine backups
+	PBSServerID  string   `json:"pbs_server_id,omitempty"` // empty = the configured default server
+	Comment      string   `json:"comment,omitempty"` // sent as-is as the PBS snapshot's manifest comment
+	// ChangeDetectionMode is a directory Backup Set run's mode ("", "legacy",
+	// "data", "metadata"); an older service ignores it (classic format).
+	ChangeDetectionMode string `json:"change_detection_mode,omitempty"`
+	// ReadFreeSpace makes a machine backup a forensic copy (free space read
+	// too); an older service ignores it and skips free space.
+	ReadFreeSpace bool `json:"read_free_space,omitempty"`
 }
 
 // BackupResponse represents the result of a backup operation
@@ -23,22 +29,22 @@ type BackupResponse struct {
 
 // StatusResponse represents the service status
 type StatusResponse struct {
-	Running       bool           `json:"running"`
-	Version       string         `json:"version"`
-	ActiveJobs    int            `json:"active_jobs"`
-	LastBackup    string         `json:"last_backup,omitempty"`
+	Running       bool                 `json:"running"`
+	Version       string               `json:"version"`
+	ActiveJobs    int                  `json:"active_jobs"`
+	LastBackup    string               `json:"last_backup,omitempty"`
 	Configuration map[string]any `json:"configuration"`
 }
 
 // JobInfo represents information about a scheduled job
 type JobInfo struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	BackupType string `json:"backup_type"`
-	Schedule   string `json:"schedule"`
-	LastRun    string `json:"last_run,omitempty"`
-	Status     string `json:"status"` // "idle", "running", "error"
-	NextRun    string `json:"next_run,omitempty"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	BackupType   string `json:"backup_type"`
+	Schedule     string `json:"schedule"`
+	LastRun      string `json:"last_run,omitempty"`
+	Status       string `json:"status"` // "idle", "running", "error"
+	NextRun      string `json:"next_run,omitempty"`
 }
 
 // JobsResponse lists all configured jobs
@@ -53,31 +59,43 @@ type ErrorResponse struct {
 	Details string `json:"details,omitempty"`
 }
 
-// PBSTicket is a short-lived PBS session ticket minted by the service on
-// behalf of the GUI. The GUI never holds PBS credentials in service mode; it
-// asks the service for a ticket right before a restore/listing operation and
-// uses only the non-sensitive connection parameters below.
-type PBSTicket struct {
-	Ticket          string `json:"ticket"`
-	CSRFToken       string `json:"csrf_token,omitempty"`
-	BaseURL         string `json:"base_url"`
-	CertFingerprint string `json:"cert_fingerprint,omitempty"`
-	Datastore       string `json:"datastore,omitempty"`
-	Namespace       string `json:"namespace,omitempty"`
-	// EncryptionKeyFile is the PATH of the server's key file (not the key):
-	// the GUI unlocks it itself to decrypt encrypted snapshots, since chunks
-	// are decrypted client-side, in the process doing the restore/listing.
-	EncryptionKeyFile string `json:"encryption_key_file,omitempty"`
-}
-
 // BackupProgress represents the current state of a running backup
 type BackupProgress struct {
 	JobID     string  `json:"job_id"`
 	Running   bool    `json:"running"`
-	Progress  float64 `json:"progress"` // 0-100
+	Progress  float64 `json:"progress"`  // 0-100
 	Message   string  `json:"message"`
 	Success   bool    `json:"success"`
 	Complete  bool    `json:"complete"`
 	Error     string  `json:"error,omitempty"`
 	StartTime string  `json:"start_time,omitempty"`
+	// Name is the Backup Set's (or one-off's) name, so a GUI showing several
+	// runs can tell them apart. BackupID is the run's backup-id (a GUI's
+	// request only).
+	Name     string `json:"name,omitempty"`
+	BackupID string `json:"backup_id,omitempty"`
+	// Scheduled marks a run the service started itself.
+	Scheduled bool `json:"scheduled,omitempty"`
+	// Paused and PausedSince (Unix ms) while the run waits at a pause.
+	Paused      bool  `json:"paused,omitempty"`
+	PausedSince int64 `json:"paused_since,omitempty"`
+	// Stats is the run's latest live statistics, in the form of the app's
+	// "backup:stats" event (files, bytes, upload, new and reused chunks, the
+	// disk of a machine backup); File is the file being read. A GUI following
+	// the run passes both on as its own run's events.
+	Stats map[string]interface{} `json:"stats,omitempty"`
+	File  string                 `json:"file,omitempty"`
+}
+
+// RunsResponse lists the service's runs: those in progress and those that
+// finished in the last few minutes (their final state).
+type RunsResponse struct {
+	Runs []BackupProgress `json:"runs"`
+}
+
+// RunControlResponse answers Pause, Resume and Stop: the pause state after
+// the request.
+type RunControlResponse struct {
+	Paused      bool  `json:"paused"`
+	PausedSince int64 `json:"paused_since,omitempty"`
 }

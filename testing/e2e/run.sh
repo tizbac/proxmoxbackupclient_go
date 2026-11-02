@@ -50,10 +50,25 @@ import sys
 open(sys.argv[1], 'wb').write(bytes(range(256)) * 4096 * 3)
 " "$src/pattern.bin"
 
-	# NOTE: symlinks are deliberately NOT part of the fixture. Our pxar
-	# writer skips them (pbscommon/pxar_reader.go, walk()), so they are not
-	# restorable today. See README.md "Known gaps".
-	log "directory fixture: $(find "$src" | wc -l) entries, $(du -sh "$src" | cut -f1)"
+	make_symlinks "$src"
+	# The comparison leaves this name out at the root (lib.sh); the fixture
+	# must not have its own file there, or a difference in it would be hidden.
+	[ ! -e "$src/$BACKUP_META" ] || die "the fixture must not contain $BACKUP_META"
+	log "directory fixture: $(find "$src" | wc -l) entries ($(find "$src" -type l | wc -l) symlinks), $(du -sh "$src" | cut -f1)"
+}
+
+# Symbolic links: a Linux backup stores them as links (writeSymlink in
+# pbscommon/pxar.go) and the restore must recreate each link with its target
+# text unchanged, not the file or folder it points to. assert_tree_identical
+# compares them (tree_links).
+make_symlinks() {
+	local src="$1"
+	ln -s hello.txt "$src/link-to-file"                      # relative, to a file
+	ln -s ../hello.txt "$src/subdir/link-up"                 # relative, out of a folder
+	ln -s subdir/nested "$src/link-to-dir"                   # to a folder: must not be followed
+	ln -s does-not-exist "$src/dangling-link"                # target missing
+	ln -s /etc/hostname "$src/subdir/absolute-link"          # absolute target
+	ln -s "file with spaces & unïcode.txt" "$src/subdir/lïnk with spaces"
 }
 
 make_block_fixture() {
@@ -147,6 +162,7 @@ test_namespace_roundtrip() {
 	step "official client: restoring from namespace '$PBS_NAMESPACE'"
 	pbc_restore "host/$snap" backup.pxar.didx restore-ns --ns "$PBS_NAMESPACE"
 	assert_tree_identical "$WORK/src" "$WORK/restore-ns" "namespaced directory backup"
+	assert_backup_meta "$WORK/restore-ns" "$(cd "$WORK/src" && pwd)" "$snap"
 
 	# Guard against the exact regression above: the snapshot must NOT also be
 	# visible in the root namespace. Tests 1-5 do create root-namespace
@@ -189,6 +205,7 @@ test_directory_backup() {
 
 	pbc_restore host/e2e-dir backup.pxar.didx restore-dir
 	assert_tree_identical "$WORK/src" "$WORK/restore-dir" "directory backup"
+	assert_backup_meta "$WORK/restore-dir" "$(cd "$WORK/src" && pwd)" e2e-dir
 }
 
 # ===========================================================================
@@ -216,6 +233,7 @@ test_directory_backup_encrypted() {
 
 	pbc_restore host/e2e-dir-enc backup.pxar.didx restore-dir-enc --keyfile key.pem
 	assert_tree_identical "$WORK/src" "$WORK/restore-dir-enc" "encrypted directory backup"
+	assert_backup_meta "$WORK/restore-dir-enc" "$(cd "$WORK/src" && pwd)" e2e-dir-enc
 }
 
 # ===========================================================================

@@ -143,7 +143,7 @@ func buildMatcher(mode SearchMatchMode, query string) (entryMatcher, error) {
 		// a user who explicitly wants case-sensitivity can override with (?-i).
 		re, err := regexp.Compile("(?i)" + query)
 		if err != nil {
-			return nil, fmt.Errorf("expression régulière invalide: %v", err)
+			return nil, fmt.Errorf("invalid regular expression: %v", err)
 		}
 		return func(path string) bool { return re.MatchString(baseName(path)) }, nil
 
@@ -151,7 +151,7 @@ func buildMatcher(mode SearchMatchMode, query string) (entryMatcher, error) {
 		if hasGlob(query) {
 			re, err := compileGlob(query)
 			if err != nil {
-				return nil, fmt.Errorf("motif de recherche invalide: %v", err)
+				return nil, fmt.Errorf("invalid search pattern: %v", err)
 			}
 			return func(path string) bool { return re.MatchString(path) }, nil
 		}
@@ -162,7 +162,7 @@ func buildMatcher(mode SearchMatchMode, query string) (entryMatcher, error) {
 		if hasGlob(query) {
 			re, err := compileGlob(query)
 			if err != nil {
-				return nil, fmt.Errorf("motif de recherche invalide: %v", err)
+				return nil, fmt.Errorf("invalid search pattern: %v", err)
 			}
 			return func(path string) bool { return re.MatchString(baseName(path)) }, nil
 		}
@@ -170,7 +170,7 @@ func buildMatcher(mode SearchMatchMode, query string) (entryMatcher, error) {
 		return func(path string) bool { return strings.Contains(strings.ToLower(baseName(path)), q) }, nil
 
 	default:
-		return nil, fmt.Errorf("mode de recherche inconnu: %q", string(mode))
+		return nil, fmt.Errorf("unknown search mode: %q", string(mode))
 	}
 }
 
@@ -197,14 +197,14 @@ func joinOriginPath(meta *BackupMeta, archivePath string) string {
 // listings are searched for free; uncached snapshots are assembled only when
 // AssembleMissing is set. Results are newest-snapshot-first.
 func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
-	if opts.BaseURL == "" || ((opts.AuthID == "" || opts.Secret == "") && opts.Ticket == "") {
-		return nil, fmt.Errorf("paramètres de connexion PBS requis")
+	if opts.BaseURL == "" || !((opts.AuthID != "" && opts.Secret != "") || opts.Ticket != "") {
+		return nil, fmt.Errorf("PBS connection parameters required")
 	}
 	if opts.Datastore == "" {
-		return nil, fmt.Errorf("datastore requis")
+		return nil, fmt.Errorf("datastore required")
 	}
 	if strings.TrimSpace(opts.Query) == "" {
-		return nil, fmt.Errorf("terme de recherche requis")
+		return nil, fmt.Errorf("search term required")
 	}
 	matcher, err := buildMatcher(opts.Mode, opts.Query)
 	if err != nil {
@@ -216,7 +216,7 @@ func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
 	snaps, err := ListSnapshotsInline(opts.BaseURL, opts.AuthID, opts.Secret, opts.Ticket, opts.CSRFToken,
 		opts.Datastore, opts.Namespace, opts.CertFingerprint, opts.HostPrefix)
 	if err != nil {
-		return nil, fmt.Errorf("liste des snapshots: %v", err)
+		return nil, fmt.Errorf("listing the snapshots: %v", err)
 	}
 
 	type target struct {
@@ -253,7 +253,7 @@ func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
 		}
 		if opts.OnProgress != nil {
 			opts.OnProgress(float64(i)/float64(denom),
-				fmt.Sprintf("Recherche dans %s (%s) — %d/%d", tg.backupID, tg.at.Format("2006-01-02 15:04"), i+1, len(targets)))
+				fmt.Sprintf("Searching %s (%s), %d/%d", tg.backupID, tg.at.Format("2006-01-02 15:04"), i+1, len(targets)))
 		}
 
 		ropts := RestoreOptions{
@@ -336,7 +336,7 @@ func SearchFilesInline(opts SearchOptions) (*SearchResult, error) {
 	}
 
 	if opts.OnProgress != nil {
-		opts.OnProgress(1.0, fmt.Sprintf("Terminé : %d résultat(s)", len(result.Hits)))
+		opts.OnProgress(1.0, fmt.Sprintf("Done: %d result(s)", len(result.Hits)))
 	}
 	writeBackupLog(fmt.Sprintf("Search done: %d hits, %d searched, %d assembled, %d skipped, truncated=%v cancelled=%v",
 		len(result.Hits), result.SnapshotsSearched, result.SnapshotsAssembled, result.SnapshotsSkipped, result.Truncated, result.Cancelled))

@@ -1,0 +1,8 @@
+#!/bin/sh
+# proxmoxbackupclient: start the Proxmox Backup Client as the current user.
+# Folder backups of the user's own files work this way; machine (whole-disk)
+# backups and snapshots need root: use proxmoxbackupclient-root for those.
+#
+# With -list-sets, -undelete or -rollback it runs those on the command line
+# instead (see the CLI manual), without a window.
+exec /usr/lib/proxmoxbackupclient/ProxmoxBackupClient "$@"
