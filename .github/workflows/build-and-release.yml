@@ -34,6 +34,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
 
       - name: Check for available updates
         working-directory: gui
@@ -57,6 +58,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
 
       - name: Install dependencies
         working-directory: gui
@@ -100,6 +102,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
 
       - name: Install dependencies
         working-directory: gui
@@ -150,6 +153,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
 
       - name: Test cross-platform modules
         shell: bash
@@ -200,6 +204,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
 
       - name: Build CLI
         env:
@@ -224,6 +229,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
 
       - uses: actions/setup-node@v4
         with:

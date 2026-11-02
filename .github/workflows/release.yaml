@@ -32,6 +32,7 @@ jobs:
         with:
           go-version-file: machinebackup/go.mod #We have two go.mod but either one gonna be sort of ok
           check-latest: true
+          cache-dependency-path: "**/go.sum"
 
       - name: Log in to GHCR
         if: contains(github.repository, 'ghcr.io')
