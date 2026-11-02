@@ -17,7 +17,7 @@ import (
 // The log viewer (View Full Logs): the log files the app and the background
 // service write, listed with what each is, and read a page at a time, so a
 // "3 files skipped, see the log" can be followed up without leaving the app
-// (Mick, 2026-11-01).
+// (2026-11-01).
 
 // LogFileInfo is one log file the window can show.
 type LogFileInfo struct {

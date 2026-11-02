@@ -7,8 +7,8 @@ import (
 )
 
 func TestParseImageBase(t *testing.T) {
-	ib, ok := parseImageBase("drive-sata1.img.fidx@407896064:Users/Mick Beeby/Documents")
-	if !ok || ib.archive != "drive-sata1.img.fidx" || ib.offset != 407896064 || ib.sub != "Users/Mick Beeby/Documents" {
+	ib, ok := parseImageBase("drive-sata1.img.fidx@407896064:Users/Office User/Documents")
+	if !ok || ib.archive != "drive-sata1.img.fidx" || ib.offset != 407896064 || ib.sub != "Users/Office User/Documents" {
 		t.Fatalf("%+v %v", ib, ok)
 	}
 	if ib, ok := parseImageBase("drive-sata0.img.fidx@1048576:"); !ok || ib.sub != "" {

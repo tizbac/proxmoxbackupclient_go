@@ -75,7 +75,7 @@ func TestPauseResumeStopGoToTheService(t *testing.T) {
 	server := api.NewServer("127.0.0.1:0", svc, tok, "test")
 	hs := httptest.NewServer(server.Handler())
 	defer hs.Close()
-	runID := server.BeginRun("Deepthought - Data")
+	runID := server.BeginRun("Fileserver - Data")
 
 	a := &App{mode: api.ModeService, apiClient: api.NewClientAt(hs.URL, tokenPath)}
 

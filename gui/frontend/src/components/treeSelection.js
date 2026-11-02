@@ -46,13 +46,13 @@ export function isChecked(path, roots, excludes) {
 
 // Tri-state checkbox render value for one path: true (fully included),
 // false (not included at all), or 'mixed' (some but not all of its subtree
-// is included) — the classic Explorer/BFW convention Mick pointed out was
+// is included) — the classic Explorer/BFW convention that was
 // missing here (a parent with a selected child looked identically empty to
 // a parent with nothing selected under it at all). Two distinct ways a node
 // ends up 'mixed':
 //   1. It is NOT itself covered by any root, but some independently-checked
 //      root lives underneath it (e.g. a child folder was checked directly
-//      without ever checking this parent — the actual case in Mick's
+//      without ever checking this parent — the actual case in the reported
 //      screenshot: "TestData" unchecked, "Backup of Compaq 486 Laptop"
 //      checked underneath it).
 //   2. It IS covered by a root (isChecked would say true), but at least one

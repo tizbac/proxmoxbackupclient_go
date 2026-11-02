@@ -74,7 +74,7 @@ var (
 	// process ended. A snapshot's backup time is in whole seconds and PBS
 	// refuses a second snapshot of a group in the same second (HTTP 400 on
 	// the catalog index), which happened when a quick run of a set was
-	// followed at once by its next one (found on linuxclient, 2026-11-01).
+	// followed at once by its next one (found on a Linux test machine, 2026-11-01).
 	groupEnded = map[string]int64{}
 
 	// maxConcurrentRuns is the limit in force; the app points it at its

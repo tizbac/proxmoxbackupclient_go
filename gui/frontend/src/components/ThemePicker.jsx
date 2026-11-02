@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from '../i18n/i18nContext'
 
 // Theme = the app's accent color plus the hero banner's 3-stop gradient
-// (dark end -> accent, at 60% -> light end). Presets mirror the mockup
-// Mick approved; "green" is the default brand's own colours (brand.go,
+// (dark end -> accent, at 60% -> light end). Presets mirror the approved
+// mockup; "green" is the default brand's own colours (brand.go,
 // index.css), so it is what shows until a user chooses another. Each user
 // has their own choice (gui/theme.go).
 const DEFAULT_PRESET = 'green'

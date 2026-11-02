@@ -13,7 +13,7 @@ import (
 
 // Opt-in (PBS_OWNER_TEST=1; run elevated): applyNTFSMetadata puts back an
 // owner that is not the restoring account, even one this computer does not
-// know (seen on deepthought: "This security ID may not be assigned as the
+// know (seen on a file server: "This security ID may not be assigned as the
 // owner"), and keeps a protected DACL protected.
 func TestLiveRestoreForeignOwner(t *testing.T) {
 	if os.Getenv("PBS_OWNER_TEST") != "1" {

@@ -19,7 +19,7 @@ assert.deepEqual(resolveLink('GUI.md#9-restore', 'docs/manual/CLI.md', 'v1.0.0')
 assert.deepEqual(resolveLink('manual/BMR.md', 'docs/RESTORE_GUIDE.md', 'v1.0.0'), { doc: 'bmr', anchor: '' })
 assert.deepEqual(resolveLink('#7-x', 'docs/manual/BMR.md', 'v1.0.0'), { doc: 'bmr', anchor: '7-x' })
 assert.deepEqual(resolveLink('../../CHANGELOG.md', 'docs/manual/GUI.md', 'v1.0.0'),
-  { url: 'https://github.com/mjb-is/proxmoxbackupclient_go/blob/v1.0.0/CHANGELOG.md' })
+  { url: 'https://github.com/tizbac/proxmoxbackupclient_go/blob/v1.0.0/CHANGELOG.md' })
 assert.deepEqual(resolveLink('https://pbs.example/x', 'docs/manual/GUI.md', 'master'), { url: 'https://pbs.example/x' })
 
 const docsDir = fileURLToPath(new URL('../../', import.meta.url)) // gui/

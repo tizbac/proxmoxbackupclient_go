@@ -2213,7 +2213,7 @@ function App() {
   // asModal: false for the first-run empty-state form (inline, nothing to
   // overlay), true for editing/adding once servers already exist (a real
   // modal over the server list, chevron tabs matching the Backup Set editor —
-  // Mick: "might be more natural" than the old always-visible inline form).
+  // more natural than the old always-visible inline form).
   // Both share the same tab content; only the surrounding chrome differs.
   const renderServerForm = (asModal = false) => {
     // A PAM-realm user (e.g. root@pam) is a full host account: a compromised
@@ -3208,7 +3208,7 @@ function App() {
     }
 
     // Empty selection now means "restore nothing" (inverted from the old
-    // implicit "empty = everything" behavior, which Mick flagged as
+    // implicit "empty = everything" behavior, which was flagged as
     // unintuitive) — block it here rather than silently restoring the whole
     // snapshot.
     if (selectedPaths.size === 0) {
@@ -3440,7 +3440,7 @@ function App() {
 
   // Shared between the Backup and Restore tabs — one queue for backups and
   // restores (operation_queue.go), rendered identically wherever it's
-  // shown, per Mick's requested format: a count line plus a numbered list
+  // shown, in the requested format: a count line plus a numbered list
   // of names, not just a single generic "queued" line. A waiting backup can
   // be stopped from here.
   const queuePanel = pendingQueue.length > 0 ? (

@@ -59,7 +59,7 @@ func (a *App) SetupSystemTray() {
 		// that created it. systray locks the thread in its init, which covers
 		// a Run on the main goroutine only; this Run has a goroutine of its
 		// own, so without the lock the scheduler can move the message loop to
-		// another thread and the tray stops answering (seen on winclient
+		// another thread and the tray stops answering (seen on a test machine
 		// during a backup, 2026-10-16: right-click did nothing).
 		goruntime.LockOSThread()
 		systray.Run(onReady(a), onExit)
@@ -323,7 +323,7 @@ func trayIconTempPath() string {
 // ShowToastNotification pops a real Windows toast (Action Center), separate
 // from the tray tooltip (which only shows on hover) and from the existing
 // email-notification feature (which needs SMTP configured and only reaches
-// an inbox, not the desktop). Mick, 2026-09-30: wanted actual desktop
+// an inbox, not the desktop). Asked for 2026-09-30: actual desktop
 // notifications on backup/restore completion, not just a static tray icon.
 // go-toast/toast shells out to PowerShell's WinRT ToastNotificationManager —
 // no CGO, same mechanism Windows' own built-in apps use. Never fatal: a

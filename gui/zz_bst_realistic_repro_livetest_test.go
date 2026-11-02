@@ -18,8 +18,8 @@ import (
 // TestZZBSTRealisticReproManual is a manual, opt-in live-integration test
 // built to reproduce, against a REALISTIC tree shape (many small files across
 // many nested subdirectories, several real sibling folders), the discrepancy
-// Mick hit live on 2026-10-01 restoring "Beeby Property" out of the real
-// production "Deepthought - Data" snapshot: the client reported a 5.8GB/1698
+// hit live on 2026-10-01 restoring one folder out of a real production
+// "Fileserver - Data" snapshot: the client reported a 5.8GB/1698
 // -chunk target, fetched past that (2453 chunks, 107%) before being stopped,
 // and the actually-restored folder (stopped mid-way) measured 4.69GB —
 // nowhere near either number. The small, flat trees in
@@ -38,7 +38,7 @@ func TestZZBSTRealisticReproManual(t *testing.T) {
 	pbsOpts := struct {
 		BaseURL, AuthID, Secret, Datastore, CertFingerprint string
 	}{
-		BaseURL:         "https://192.168.0.242:8007",
+		BaseURL:         e2eBaseURL,
 		AuthID:          "testclient@pbs!testclient",
 		Secret:          "64376a7f-1aeb-42cb-a604-b75bf6a5561b",
 		Datastore:       "teststore",
@@ -81,7 +81,7 @@ func TestZZBSTRealisticReproManual(t *testing.T) {
 	// Siblings: 3 unrelated folders, smallish, BEFORE the target alphabetically.
 	makeTree(filepath.Join(root, "aaa_sibling1"), 10, 20, 1024, 8192, false)
 	makeTree(filepath.Join(root, "bbb_sibling2"), 15, 15, 2048, 16384, false)
-	// Target: realistically shaped like "Beeby Property" — many small files,
+	// Target: realistically shaped like that folder — many small files,
 	// many subdirectories (scaled down from 3737 files/495 dirs to keep this
 	// test's runtime reasonable, same PROPORTIONS: ~7-8 files per dir).
 	makeTree(filepath.Join(root, "target_folder"), 60, 8, 512, 65536, true)

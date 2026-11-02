@@ -87,7 +87,7 @@ func getAppDataFolder() (string, error) {
 // snapshot) may take, in milliseconds (go-vss passes it to IVssAsync::Wait
 // and raises anything under 180000). Three minutes was not enough on a busy
 // machine: a run of five backups in a row timed out in DoSnapshotSet while the
-// WMI writer was slow to freeze (2026-10-21, winclient).
+// WMI writer was slow to freeze (2026-10-21, on a Windows test machine).
 const vssTimeoutMs = 10 * 60 * 1000
 
 // vssBusyWait is how long a snapshot waits, in total, for another shadow copy
@@ -195,7 +195,7 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 		// the busy snapshot was this process's own, the restart could not
 		// finish (VSS waits for our in-progress call), so the backup hung for
 		// good with the service stuck stopping and every queued backup behind
-		// it (found 2026-10-21 running five backups in a row on winclient).
+		// it (found 2026-10-21 running five backups in a row on a test machine).
 		// A context left by a crashed process is released by Windows once
 		// that process is gone, so waiting covers that case too.
 		snapshot, err := retryWhileBusy(func() (*vssShadow, error) {

@@ -450,7 +450,7 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 	//
 	// effectiveSize/effectiveChunks narrow progress reporting to the actual
 	// SELECTION instead of the whole archive, when archiveIncludes resolves
-	// to exactly one clean target below — found live 2026-09-30 (Mick
+	// to exactly one clean target below — found live 2026-09-30 (a user
 	// restoring one subfolder out of a 458GB combined archive): bytesTotal
 	// was always the whole archive's size regardless of IncludePaths, making
 	// a small selection's progress bar look like it was restoring everything.
@@ -523,7 +523,7 @@ func withSnapshotReader(opts RestoreOptions, archiveName, logTag string, archive
 	// Parallel extraction: the workers and the walker each read ahead
 	// through the one cache, and with the default 32-chunk window they
 	// evicted each other's chunks before use (3,744 fetched for 3,620 needed
-	// on deepthought). Share the cache out between them instead.
+	// on a file server). Share the cache out between them instead.
 	if opts.ParallelExtraction {
 		ra.SetPrefetchWindow(parallelPrefetchWindow)
 	}

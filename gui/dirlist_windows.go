@@ -41,8 +41,8 @@ func listRoots() ([]DirEntry, error) {
 	// session. A drive mapped in the normal interactive desktop session is
 	// invisible here when the app runs elevated ("Run as Administrator"),
 	// because UAC elevation creates a separate logon session with its own
-	// network-redirector connection table — found live 2026-09-26 (Mick:
-	// "the tree picker only lists local drives ... if i map a network
+	// network-redirector connection table — found live 2026-09-26 (as
+	// reported: "the tree picker only lists local drives ... if i map a network
 	// share it doesn't present as available"). The mapping itself is still
 	// recorded per-user in the registry regardless of session, so fall back
 	// to that for any letter GetLogicalDrives missed, pointing straight at

@@ -3,7 +3,7 @@
 // other files in the repository open on GitHub at this version.
 import { Marked } from 'marked'
 
-export const REPO = 'https://github.com/mjb-is/proxmoxbackupclient_go'
+export const REPO = 'https://github.com/tizbac/proxmoxbackupclient_go'
 
 // Same ids as gui/manuals.go; path is the file's place in the repository.
 export const MANUALS = [

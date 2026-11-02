@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -21,12 +22,15 @@ import (
 // restored sequentially and in parallel and compared to the exact state of the
 // source at backup time (sha256 + size + mtime), plus a partial restore.
 
+// e2eBaseURL is the test PBS every live test uses: PBS_E2E_URL, or
+// https://pbs.example.com:8007 when it is not set.
+var e2eBaseURL = cmp.Or(os.Getenv("PBS_E2E_URL"), "https://pbs.example.com:8007")
+
 const (
-	e2eBaseURL = "https://192.168.0.242:8007"
-	e2eAuthID  = "testclient@pbs!testclient"
-	e2eSecret  = "64376a7f-1aeb-42cb-a604-b75bf6a5561b"
-	e2eStore   = "teststore"
-	e2eFP      = "07:49:87:AE:76:0F:A8:E7:97:D8:1C:F0:44:1A:65:5D:2C:F3:10:49:00:EA:2C:53:E4:0B:CC:09:95:29:C5:22"
+	e2eAuthID = "testclient@pbs!testclient"
+	e2eSecret = "64376a7f-1aeb-42cb-a604-b75bf6a5561b"
+	e2eStore  = "teststore"
+	e2eFP     = "07:49:87:AE:76:0F:A8:E7:97:D8:1C:F0:44:1A:65:5D:2C:F3:10:49:00:EA:2C:53:E4:0B:CC:09:95:29:C5:22"
 )
 
 type e2eFile struct {

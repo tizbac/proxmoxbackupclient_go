@@ -1,6 +1,6 @@
 // Suggested Backup IDs for folder Backup Sets: the computer's name, then the
 // set's name, so every set of one computer sits together on PBS
-// ("deepthought-data", "deepthought-beeby-property") and no two sets share a
+// ("fileserver-data", "fileserver-office-accounts") and no two sets share a
 // group. PBS allows letters, digits, "_", "-" and "." in a backup ID.
 
 export function slugId(s) {
@@ -36,15 +36,15 @@ function editDistance(a, b, max) {
 
 // A word of the set's name stands for a word of the computer's name when it
 // is the same, or, for longer names, a typing slip away from it:
-// "Deepthough" or "Deepthgouht" for deepthought.
+// "Fileserve" or "Fliesevrer" for fileserver.
 function sameWord(word, hostWord) {
   if (word === hostWord) return true
   if (!word || hostWord.length < 5) return false
   return editDistance(word, hostWord, hostWord.length >= 10 ? 2 : 1) <= (hostWord.length >= 10 ? 2 : 1)
 }
 
-// suggestBackupId("Deepthought - Data", "DEEPTHOUGHT") -> "deepthought-data"
-// suggestBackupId("Beeby Property", "deepthought") -> "deepthought-beeby-property"
+// suggestBackupId("Fileserver - Data", "FILESERVER") -> "fileserver-data"
+// suggestBackupId("Office Accounts", "fileserver") -> "fileserver-office-accounts"
 // The computer's name is taken out of the set's name wherever it appears
 // (start, middle or end, spelt right or nearly so) and put in front once.
 // taken: IDs already used by other sets; a clash gets "-2", "-3"...

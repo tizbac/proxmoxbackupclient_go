@@ -919,8 +919,7 @@ func RunBackupInline(opts BackupOptions) (returnErr error) {
 	// Previously, 2+ selected folders were split HERE into N independent
 	// runBackupInlineInternal() calls, each becoming its own PBS backup GROUP
 	// (own backup-id, own backup-time, own snapshot) — the "weaker" multi-folder
-	// feature documented in project_windows_pbs_client_fork.md as the thing this
-	// fork exists to replace. That splitting is now retired in favor of PBS's
+	// behaviour this project set out to replace. That splitting is now retired in favor of PBS's
 	// native multi-archive-per-snapshot capability (proven live against the
 	// isolated test PBS, 2026-09-21: `proxmox-backup-client backup
 	// dirA.pxar:/tmp/testA dirB.pxar:/tmp/testB` lands as ONE snapshot containing
@@ -1243,7 +1242,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		// network share's own size as "total" for its entire run (correct,
 		// since the local folder's scan genuinely hadn't started yet, so its
 		// size genuinely wasn't known), only growing to the true combined
-		// total once the second directory's turn began. Mick saw this as
+		// total once the second directory's turn began. It looked like
 		// "two passes ... rather than the combined progress" even though the
 		// numbers themselves were accurate at each moment. Scanning every
 		// directory up front instead means the combined total is normally
@@ -2073,7 +2072,7 @@ func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk,
 	// can't be snapshotted — VSS on Windows and the elastio-snap/dattobd
 	// block-device snapshot on Linux both operate on a real local volume,
 	// which a network share isn't. Found live 2026-09-26: a Backup Set
-	// pointed at \\DEEPTHOUGHT\backup-8000gb with VSS on failed outright
+	// pointed at \\FILESERVER\backup with VSS on failed outright
 	// ("VSS_VOLUME_SUPPORT - snapshots are not supported for drive ...").
 	// Checked per-directory (not once for the whole job) so a job mixing
 	// local and network paths still gets a real snapshot for the local

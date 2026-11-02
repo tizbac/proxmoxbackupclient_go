@@ -14,7 +14,7 @@ import (
 // TestZZRestoreProgressDenominatorManual is a manual, opt-in live-integration
 // test proving the progress-bar denominator fix in restore_inline.go's
 // withSnapshotReader: BytesTotal used to always report the WHOLE archive's
-// size regardless of IncludePaths, found live 2026-09-30 (Mick restoring one
+// size regardless of IncludePaths, found live 2026-09-30 (a user restoring one
 // subfolder out of a 458GB combined archive, progress looked like it was
 // processing the whole snapshot). Reuses the same big-sibling/small-target
 // shape as zz_selective_restore_bst_livetest_test.go, but this test checks
@@ -31,7 +31,7 @@ func TestZZRestoreProgressDenominatorManual(t *testing.T) {
 	pbsOpts := struct {
 		BaseURL, AuthID, Secret, Datastore, CertFingerprint string
 	}{
-		BaseURL:         "https://192.168.0.242:8007",
+		BaseURL:         e2eBaseURL,
 		AuthID:          "testclient@pbs!testclient",
 		Secret:          "64376a7f-1aeb-42cb-a604-b75bf6a5561b",
 		Datastore:       "teststore",

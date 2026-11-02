@@ -12,10 +12,10 @@ func TestMachineRetryable(t *testing.T) {
 		err  string
 		want bool
 	}{
-		// The vega failure of 2026-10-24, as Backup returned it.
-		{`backup device /dev/sdb: failed to upload chunk fb73...: Post "https://192.168.0.197:8007/fixed_chunk?...": http2: client connection lost`, true},
-		{"dial tcp 192.168.0.197:8007: connect: no route to host", true},
-		{"dial tcp 192.168.0.197:8007: i/o timeout", true},
+		// A failure of 2026-10-24 on a test machine, as Backup returned it.
+		{`backup device /dev/sdb: failed to upload chunk fb73...: Post "https://192.168.1.10:8007/fixed_chunk?...": http2: client connection lost`, true},
+		{"dial tcp 192.168.1.10:8007: connect: no route to host", true},
+		{"dial tcp 192.168.1.10:8007: i/o timeout", true},
 		{"Error making request: unable to acquire lock on backup group directory - another backup is already running", true},
 		{"read /dev/elastio-snap1 at segment 1048576: failed to read block: input/output error", false},
 		{"no usable block snapshot module loaded", false},

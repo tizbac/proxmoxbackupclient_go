@@ -162,11 +162,11 @@ func findRun(t *testing.T, c *Client, id string) BackupProgress {
 // progress, and keeps the first outcome reported for it.
 func TestScheduledRunListedAndFinishedOnce(t *testing.T) {
 	s, c := newTestService(t, &fakeHandler{})
-	id := s.BeginRun("Deepthought - Data")
+	id := s.BeginRun("Fileserver - Data")
 	s.ReportProgress(id, 42, "Backing up F:\\Data")
 
 	r := findRun(t, c, id)
-	if !r.Running || !r.Scheduled || r.Name != "Deepthought - Data" || r.Progress != 42 || r.Message != "Backing up F:\\Data" {
+	if !r.Running || !r.Scheduled || r.Name != "Fileserver - Data" || r.Progress != 42 || r.Message != "Backing up F:\\Data" {
 		t.Fatalf("listed as %+v", r)
 	}
 	st, err := c.GetStatus()
@@ -285,12 +285,12 @@ func TestRunControlPerRun(t *testing.T) {
 func TestRequestedRunNamed(t *testing.T) {
 	fake := &fakeHandler{}
 	s, c := newTestService(t, fake)
-	resp, err := c.StartBackup(&BackupRequest{BackupType: "directory", BackupID: "deepthought-data", BackupDirs: []string{`F:\Data`}, Comment: "Deepthought - Data"})
+	resp, err := c.StartBackup(&BackupRequest{BackupType: "directory", BackupID: "fileserver-data", BackupDirs: []string{`F:\Data`}, Comment: "Fileserver - Data"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := findRun(t, c, resp.JobID)
-	if r.Name != "Deepthought - Data" || r.BackupID != "deepthought-data" {
+	if r.Name != "Fileserver - Data" || r.BackupID != "fileserver-data" {
 		t.Fatalf("listed as name %q, backup-id %q", r.Name, r.BackupID)
 	}
 	_ = s
@@ -331,7 +331,7 @@ func TestEmptyBackupIDIsComputerName(t *testing.T) {
 func TestMachineBackupRoute(t *testing.T) {
 	fake := &fakeHandler{}
 	_, c := newTestService(t, fake)
-	resp, err := c.StartMachineBackup(&BackupRequest{BackupType: "machine", BackupID: "deepthought", DriveLetters: []string{`\\.\PhysicalDrive0`}})
+	resp, err := c.StartMachineBackup(&BackupRequest{BackupType: "machine", BackupID: "fileserver", DriveLetters: []string{`\\.\PhysicalDrive0`}})
 	if err != nil || resp.JobID == "" {
 		t.Fatalf("StartMachineBackup = %+v, %v", resp, err)
 	}

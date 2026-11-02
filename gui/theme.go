@@ -67,7 +67,7 @@ func (a *App) GetTheme() ThemeSettings {
 // BaseURL, which is genuinely empty for anyone on multi-PBS (real servers
 // live in PBSServers instead) — routing this general, connection-unrelated
 // preference through SaveConfig failed with "PBS server URL required" for
-// exactly that setup (found 2026-09-23, Mick's own multi-PBS config).
+// exactly that setup (found 2026-09-23 on a multi-PBS config).
 func (a *App) SetParallelRestore(enabled bool) error {
 	if a.delegated() {
 		return a.serviceCall("SetParallelRestore", enabled)

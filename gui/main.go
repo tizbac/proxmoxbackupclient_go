@@ -333,7 +333,7 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 		writeDebugLog("App.beforeClose() called - allowing close (no tray on this platform)")
 		return false
 	}
-	// Mick, 2026-09-30: clicking the titlebar X used to silently minimize to
+	// 2026-09-30: clicking the titlebar X used to silently minimize to
 	// tray with no way to actually exit from there — File > Exit / the tray's
 	// own Quit were the only real quit paths, easy to miss. Ask instead of
 	// assuming: emit an event for the frontend's close-prompt modal (Exit vs

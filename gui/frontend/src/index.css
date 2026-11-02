@@ -701,7 +701,7 @@ body {
 .tabstrip.measuring .tabhead { text-align: left; }
 
 /* Backup Set editor's tab strip (Source/Exclusions/Schedule/Destination) —
-   chevron shape per the mockup Mick preferred over flat tabheads. These are
+   chevron shape per the mockup preferred over flat tabheads. These are
    still independently clickable tabs, not a linear wizard's steps — there's
    no "done" state, just which one is active. */
 .chev {

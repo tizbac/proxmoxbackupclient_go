@@ -71,7 +71,7 @@ func buildAppMenu(a *App) *menu.Menu {
 	// so this never goes stale across future releases even though the ISO's
 	// filename carries a version number.
 	toolsMenu.AddText("Download Bare Metal Restore ISO…", nil, func(_ *menu.CallbackData) {
-		runtime.BrowserOpenURL(a.ctx, "https://github.com/mjb-is/proxmoxbackupclient_go/releases/latest")
+		runtime.BrowserOpenURL(a.ctx, "https://github.com/tizbac/proxmoxbackupclient_go/releases/latest")
 	})
 	// These two mirror each other's naming ("Bare Metal Restore ISO"/"Bare
 	// Metal Restore Guide") deliberately, so both halves of disaster-recovery

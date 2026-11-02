@@ -9,17 +9,18 @@ import (
 )
 
 // TestMultiArchiveLive is a manual, opt-in live-integration test for the
-// 2026-09-21 single-session multi-archive restructure of RunBackupInline
-// (see project_windows_pbs_client_fork.md). It drives RunBackupInline
+// 2026-09-21 single-session multi-archive restructure of RunBackupInline.
+// It drives RunBackupInline
 // directly — bypassing the Wails GUI/webview layer entirely, which isn't
 // practical to automate on a headless VM — against the ISOLATED test PBS
-// (192.168.0.242, datastore teststore). It is gated behind an env var so it
+// (PBS_E2E_URL, datastore teststore). It is gated behind an env var so it
 // never runs as part of a normal `go test ./...` and never touches
 // production PBS by accident.
 //
-// Run explicitly (on the test Windows client, 192.168.0.243):
+// Run explicitly (on a Windows test machine):
 //
 //	set PBS_LIVE_TEST=1
+//	set PBS_E2E_URL=https://pbs.example.com:8007
 //	multiarchive_livetest.test.exe -test.v -test.run TestMultiArchiveLive
 func TestMultiArchiveLive(t *testing.T) {
 	if os.Getenv("PBS_LIVE_TEST") == "" {
@@ -52,7 +53,7 @@ func TestMultiArchiveLive(t *testing.T) {
 	var resultStatus *BackupStatus
 	opts := BackupOptions{
 		Ctx:             context.Background(),
-		BaseURL:         "https://192.168.0.242:8007",
+		BaseURL:         e2eBaseURL,
 		AuthID:          "testclient@pbs!testclient",
 		Secret:          "64376a7f-1aeb-42cb-a604-b75bf6a5561b",
 		Datastore:       "teststore",

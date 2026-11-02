@@ -62,7 +62,7 @@ func runLogLines() []string {
 
 func TestLogFilesListed(t *testing.T) {
 	dir := withLogFolder(t)
-	writeLogLines(t, filepath.Join(dir, "backup-20261101-100000-deepthought-data.log.gz"), runLogLines(), true)
+	writeLogLines(t, filepath.Join(dir, "backup-20261101-100000-fileserver-data.log.gz"), runLogLines(), true)
 	writeLogLines(t, filepath.Join(dir, "backup-gui.log"), []string{"[BACKUP] [2026-11-01 09:00:00] x"}, false)
 	writeLogLines(t, filepath.Join(dir, "service-gui.log"), []string{"[SERVICE] [2026-11-01 09:00:00] y"}, false)
 	writeLogLines(t, filepath.Join(dir, "backup-gui.log.20261031-235959.gz"), []string{"[BACKUP] [2026-10-31 23:00:00] old"}, true)
@@ -77,13 +77,13 @@ func TestLogFilesListed(t *testing.T) {
 	for _, f := range files {
 		kinds[f.Name] = f.Kind
 		if f.Kind == "run" {
-			if f.BackupID != "deepthought-data" || time.UnixMilli(f.Started).Format("2006-01-02 15:04:05") != "2026-11-01 10:00:00" || !f.Compressed {
+			if f.BackupID != "fileserver-data" || time.UnixMilli(f.Started).Format("2006-01-02 15:04:05") != "2026-11-01 10:00:00" || !f.Compressed {
 				t.Errorf("run log listed as %+v", f)
 			}
 		}
 	}
 	want := map[string]string{
-		"backup-20261101-100000-deepthought-data.log.gz": "run",
+		"backup-20261101-100000-fileserver-data.log.gz": "run",
 		"backup-gui.log":                    "backup",
 		"service-gui.log":                   "app",
 		"backup-gui.log.20261031-235959.gz": "backup",
@@ -100,7 +100,7 @@ func TestLogFilesListed(t *testing.T) {
 
 func TestReadLogEndFilterChunksAround(t *testing.T) {
 	dir := withLogFolder(t)
-	name := "backup-20261101-100000-deepthought-data.log.gz"
+	name := "backup-20261101-100000-fileserver-data.log.gz"
 	writeLogLines(t, filepath.Join(dir, name), runLogLines(), true)
 	a := &App{}
 
@@ -163,11 +163,11 @@ func TestReadLogRefusesOtherFiles(t *testing.T) {
 func TestFindRunLog(t *testing.T) {
 	dir := withLogFolder(t)
 	for _, n := range []string{
-		"backup-20261101-080000-deepthought-data.log.gz",
-		"backup-20261101-120000-deepthought-data.log.gz",
-		"backup-20261101-120000-deepthought-data.log.20261101-130000.gz", // a rotated part
-		"backup-20261101-160000-deepthought-data.log",                    // running
-		"backup-20261101-120500-deepthought-music.log.gz",
+		"backup-20261101-080000-fileserver-data.log.gz",
+		"backup-20261101-120000-fileserver-data.log.gz",
+		"backup-20261101-120000-fileserver-data.log.20261101-130000.gz", // a rotated part
+		"backup-20261101-160000-fileserver-data.log",                    // running
+		"backup-20261101-120500-fileserver-music.log.gz",
 	} {
 		writeLogLines(t, filepath.Join(dir, n), []string{"[BACKUP] [2026-11-01 12:00:00] x"}, strings.HasSuffix(n, ".gz"))
 	}
@@ -177,17 +177,17 @@ func TestFindRunLog(t *testing.T) {
 		return tm.UnixMilli()
 	}
 	cases := map[string]string{
-		"2026-11-01 12:21:42": "backup-20261101-120000-deepthought-data.log.gz", // the 12:00 run ended at 12:21
-		"2026-11-01 09:00:00": "backup-20261101-080000-deepthought-data.log.gz",
-		"2026-11-01 16:30:00": "backup-20261101-160000-deepthought-data.log",
+		"2026-11-01 12:21:42": "backup-20261101-120000-fileserver-data.log.gz", // the 12:00 run ended at 12:21
+		"2026-11-01 09:00:00": "backup-20261101-080000-fileserver-data.log.gz",
+		"2026-11-01 16:30:00": "backup-20261101-160000-fileserver-data.log",
 	}
 	for when, want := range cases {
-		f, err := a.FindRunLog("deepthought-data", at(when))
+		f, err := a.FindRunLog("fileserver-data", at(when))
 		if err != nil || f.Name != want {
 			t.Errorf("FindRunLog at %s = %q, %v; want %q", when, f.Name, err, want)
 		}
 	}
-	if _, err := a.FindRunLog("deepthought-data", at("2026-11-01 07:00:00")); err == nil {
+	if _, err := a.FindRunLog("fileserver-data", at("2026-11-01 07:00:00")); err == nil {
 		t.Error("found a run log from after the time asked for")
 	}
 	if _, err := a.FindRunLog("no-such-set", at("2026-11-01 12:00:00")); err == nil {

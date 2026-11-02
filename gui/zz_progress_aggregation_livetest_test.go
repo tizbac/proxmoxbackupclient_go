@@ -11,7 +11,7 @@ import (
 // TestZZProgressAggregationManual is a manual, opt-in live-integration test
 // proving jobProgress correctly sums sizes across multiple directories in one
 // backup, instead of each directory's own live BytesTotal only reflecting
-// that one directory's own size (the bug found live 2026-09-26: Mick backed
+// that one directory's own size (the bug found live 2026-09-26: a run that backed
 // up one local + one network folder, the displayed total stayed at ~1.1GB —
 // one directory's own size — even though the combined output was 1.2GB).
 //
@@ -36,7 +36,7 @@ func TestZZProgressAggregationManual(t *testing.T) {
 	pbsOpts := struct {
 		BaseURL, AuthID, Secret, Datastore, CertFingerprint string
 	}{
-		BaseURL:         "https://192.168.0.242:8007",
+		BaseURL:         e2eBaseURL,
 		AuthID:          "testclient@pbs!testclient",
 		Secret:          "64376a7f-1aeb-42cb-a604-b75bf6a5561b",
 		Datastore:       "teststore",

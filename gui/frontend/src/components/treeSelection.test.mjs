@@ -17,7 +17,7 @@ import { isChecked, checkState, computeReincludeExcludes, normPath, isUnder } fr
 // snake_case — see gui/dirlist.go) rather than a JS-idiomatic isDir. A prior
 // version of this fixture used isDir and never caught that DirectoryTree.jsx
 // was reading node.isDir while the real backend sends is_dir — the mismatch
-// only showed up when Mick ran the real GUI, since this test's own fixture
+// only showed up when the real GUI was run, since this test's own fixture
 // and the mock used for browser-based verification both used the wrong
 // (consistent with each other, but wrong) field name. Lesson: a hand-written
 // mock/fixture can hide a serialization-boundary bug precisely because it
@@ -74,8 +74,8 @@ check('reinclude A\\B\\C: D untouched', isChecked('C:\\Data\\D', ['C:\\Data'], a
 const partial = computeReincludeExcludes({ 'c:/data/a': childrenByPath['c:/data/a'] }, afterExcludeA, 'C:\\Data\\A\\B\\C', 'C:\\Data\\A')
 check('missing listing for B -> walk stops after A, only excludes x.txt', [...partial].sort(), ['C:\\Data\\A\\x.txt'])
 
-// Tri-state checkbox display (checkState) — added after Mick compared our
-// tree picker against BFW's own and pointed out a checked child folder gave
+// Tri-state checkbox display (checkState) — added after comparing our
+// tree picker against BFW's own showed that a checked child folder gave
 // its unchecked parent no visual indication anything under it was selected
 // (BFW shows a partial/mixed checkbox for exactly this case).
 check('no root at all -> unchecked (not mixed)', checkState('C:\\Other', ['C:\\Data'], []), false)

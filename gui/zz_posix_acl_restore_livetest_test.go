@@ -63,7 +63,7 @@ func TestPosixACLRestoreLive(t *testing.T) {
 	pbsOpts := struct {
 		BaseURL, AuthID, Secret, Datastore, CertFingerprint string
 	}{
-		BaseURL:         "https://192.168.0.242:8007",
+		BaseURL:         e2eBaseURL,
 		AuthID:          "testclient@pbs!testclient",
 		Secret:          "64376a7f-1aeb-42cb-a604-b75bf6a5561b",
 		Datastore:       "teststore",
