@@ -10,14 +10,11 @@ import (
 	"machinebackuplib"
 
 	"os"
+	"strings"
 	"time"
-)
 
-// machinebackuplib.Backup does not report chunk counts, so unlike
-// directorybackup's the default body leaves them out.
-var defaultMailSubjectTemplate = "Backup {{.Status}}"
-var defaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}}){{else}}Error occurred while working, backup may be not completed.
-Last error is: {{.ErrorStr}}{{end}}`
+	"pbscommon"
+)
 
 type arrayFlags []string
 
@@ -47,6 +44,7 @@ func loadConfig() *machinebackuplib.Config {
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
 	backupTypeFlag := flag.String("type", "", "host|vm , vm will allow to restore as VM inside proxmox VE (Physical to Virtual), also it enables to use file restore feature, use numeric backupid")
 	flag.Var(&backupdevs, "backupdev", "Can be specified multiple times,Backup device file ( On windows it can be \\\\.\\PhysicalDriveN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever ; mounted partitions get a consistent point-in-time snapshot via the elastio-snap/dattobd kernel module (requires root)")
+	readFreeSpaceFlag := flag.Bool("readfreespace", false, "Windows: also read free space and the paging/hibernation files (a forensic copy); by default they go into the image as zeros without being read")
 	sysTrayFlag := flag.Bool("systray", false, "Enable systray( Note it can cause issues when running with no user logged in )")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
 	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
@@ -68,6 +66,7 @@ func loadConfig() *machinebackuplib.Config {
 	config := &machinebackuplib.Config{
 		BackupType: "host",
 	}
+	pbscommon.ApplyPBSEnvVars(&config.BaseURL, &config.AuthID, &config.Secret, &config.Datastore, &config.CertFingerprint)
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {
@@ -112,6 +111,9 @@ func loadConfig() *machinebackuplib.Config {
 	// otherwise the file's "backupdev" is kept.
 	if len(backupdevs) > 0 {
 		config.BackupDevices = backupdevs
+	}
+	if *readFreeSpaceFlag {
+		config.ReadFreeSpace = true
 	}
 	if *sysTrayFlag {
 		config.SysTray = true
@@ -185,44 +187,52 @@ func loadConfig() *machinebackuplib.Config {
 	return config
 }
 
-// sendMail sends the notification e-mail to every configured recipient. A
-// custom subject or body template that does not work falls back to the
-// default one.
-func sendMail(smtpCfg *machinebackuplib.SMTPConfig, mailCtx clientcommon.MailCtx) error {
-	build := func(custom, def, what string) (string, error) {
+// sendResultMail sends the notification e-mail when -mail-* (or the config
+// file's smtp section) asks for one. A mail problem is reported on stderr
+// and never changes the backup's own exit code. It returns false when a
+// mail could not be sent.
+func sendResultMail(cfg *machinebackuplib.Config, ctx clientcommon.MailCtx) bool {
+	if cfg.SMTP == nil || len(cfg.SMTP.Mails) == 0 {
+		return true
+	}
+	build := func(custom, def string) string {
 		if custom != "" {
-			s, err := mailCtx.BuildStr(custom)
-			if err == nil {
-				return s, nil
+			if s, err := ctx.BuildStr(custom); err == nil {
+				return s
+			} else {
+				fmt.Fprintln(os.Stderr, "Cannot use the custom mail template: "+err.Error())
 			}
-			fmt.Fprintf(os.Stderr, "Cannot use custom mail %s: %v\n", what, err)
 		}
-		return mailCtx.BuildStr(def)
+		s, _ := ctx.BuildStr(def)
+		return s
 	}
-	var subjectTemplate, bodyTemplate string
-	if smtpCfg.Template != nil {
-		subjectTemplate, bodyTemplate = smtpCfg.Template.Subject, smtpCfg.Template.Body
+	var subjT, bodyT string
+	if cfg.SMTP.Template != nil {
+		subjT, bodyT = cfg.SMTP.Template.Subject, cfg.SMTP.Template.Body
 	}
-	subject, err := build(subjectTemplate, defaultMailSubjectTemplate, "subject")
+	subject := build(subjT, machinebackuplib.DefaultMailSubjectTemplate)
+	body := build(bodyT, machinebackuplib.DefaultMailBodyTemplate)
+	client, err := clientcommon.SetupMailClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
 	if err != nil {
-		return err
-	}
-	body, err := build(bodyTemplate, defaultMailBodyTemplate, "body")
-	if err != nil {
-		return err
-	}
-
-	client, err := clientcommon.SetupMailClient(smtpCfg.Host, smtpCfg.Port, smtpCfg.Username, smtpCfg.Password, smtpCfg.Insecure)
-	if err != nil {
-		return fmt.Errorf("cannot connect to mail server: %w", err)
+		fmt.Fprintln(os.Stderr, "Cannot connect to the mail server: "+err.Error())
+		return false
 	}
 	defer client.Quit()
-	for _, m := range smtpCfg.Mails {
+	sent := true
+	for _, m := range cfg.SMTP.Mails {
 		if err := clientcommon.SendMail(m.From, m.To, subject, body, client); err != nil {
-			return fmt.Errorf("cannot send email to %s: %w", m.To, err)
+			fmt.Fprintln(os.Stderr, "Cannot send the notification e-mail: "+err.Error())
+			sent = false
+		} else {
+			fmt.Printf("Notification e-mail sent to %s\n", m.To)
 		}
 	}
-	return nil
+	return sent
+}
+
+func hostnameOrEmpty() string {
+	h, _ := os.Hostname()
+	return h
 }
 
 func fatalError(msg string, err error) {
@@ -280,41 +290,62 @@ func main() {
 		fatalError("encryption key", err)
 	}
 
-	begin := time.Now()
+	// One progress line per whole percent (block lines come every 4 MiB),
+	// every other message as it comes.
+	jp := &machinebackuplib.JobProgress{}
+	cfg.Progress = jp
+	counts := func() string {
+		return fmt.Sprintf("new %d, reused %d (%d blank), new/changed data %s, transferred %s, free space not read %s",
+			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(),
+			machinebackuplib.BytesToString(int64(jp.UploadedBytes.Load())), machinebackuplib.BytesToString(int64(jp.SentBytes())),
+			machinebackuplib.BytesToString(int64(jp.FreeSkipped.Load())))
+	}
+	lastPct := -1
+	start := time.Now()
 	result, err := machinebackuplib.Backup(cfg, func(percentage float64, message string) bool {
+		if !strings.Contains(message, ": Block ") {
+			fmt.Printf("%s\n", message)
+		} else if p := int(percentage * 100); p != lastPct {
+			lastPct = p
+			fmt.Printf("%3d%%  %s  (%s)\n", p, message, counts())
+		}
 		return false
 	})
-	end := time.Now()
-
-	// The notification e-mail goes out for a failed run too, so it is sent
-	// before the error exit. A mail that cannot be sent makes the run exit 1,
-	// as in directorybackup, but never hides the backup's own error.
-	mailFailed := false
-	if cfg.SMTP != nil {
-		hostname, herr := os.Hostname()
-		if herr != nil {
-			hostname = "unknown"
-		}
-		mailErr := sendMail(cfg.SMTP, clientcommon.MailCtx{
-			Error:     err,
-			Hostname:  hostname,
-			Datastore: cfg.Datastore,
-			StartTime: begin,
-			EndTime:   end,
-		})
-		if mailErr != nil {
-			fmt.Fprintf(os.Stderr, "Notification e-mail: %v\n", mailErr)
-			mailFailed = true
-		}
+	// The notification e-mail (-mail-*): sent for a failed run too, before
+	// the exit.
+	var readErrors []string
+	for _, r := range jp.Unreadable() {
+		readErrors = append(readErrors, fmt.Sprintf("%s at byte %d (%d bytes)", r.Disk, r.Offset, r.Length))
 	}
-
+	mailSent := sendResultMail(cfg, clientcommon.MailCtx{
+		NewChunks: jp.NewChunks.Load(), ReusedChunks: jp.ReusedChunks.Load(), Datastore: cfg.Datastore,
+		Error: err, ReadErrors: readErrors, Hostname: hostnameOrEmpty(), StartTime: start, EndTime: time.Now(),
+	})
 	if err != nil {
 		fatalError("backup", err)
+	}
+	// A failed backup has no snapshot to note it on; a good one gets the mail
+	// problem in its PBS comment, where it is seen when the backup is viewed.
+	if !mailSent {
+		if nerr := result.AddNote(clientcommon.MailFailedNote); nerr != nil {
+			fmt.Fprintln(os.Stderr, "Cannot add the mail warning to the PBS snapshot comment: "+nerr.Error())
+		} else {
+			fmt.Println("Mail warning added to the PBS snapshot comment.")
+		}
 	}
 	for _, disk := range result.Disks {
 		fmt.Printf("Backed up disk %d (%d bytes)\n", disk.Index, disk.Size)
 	}
-	if mailFailed {
-		os.Exit(1)
+	fmt.Printf("Done in %s: %s read; %s\n", time.Since(start).Round(time.Second),
+		machinebackuplib.BytesToString(int64(jp.BytesTotal.Load())), counts())
+	// Sectors the disk could not read are zeros in the image: the snapshot is
+	// kept, but say where and exit 3 so a scheduled run is noticed.
+	if bad := jp.Unreadable(); len(bad) > 0 {
+		fmt.Fprintf(os.Stderr, "WARNING: %s of the disk could not be read and is zeros in the image:\n",
+			machinebackuplib.BytesToString(int64(jp.UnreadableBytes.Load())))
+		for _, r := range bad {
+			fmt.Fprintf(os.Stderr, "  %s at byte %d (%d bytes)\n", r.Disk, r.Offset, r.Length)
+		}
+		os.Exit(3)
 	}
 }

@@ -1,0 +1,235 @@
+//go:build windows
+// +build windows
+
+package pbscommon
+
+import (
+	"os"
+	"path/filepath"
+	"sync"
+	"syscall"
+	"time"
+
+	"golang.org/x/sys/windows"
+)
+
+// NTFSMetaCollector implements MetaCollector for Windows (the GUI and the
+// directory CLI both use it). It captures owner/group/DACL (as an SDDL
+// string), NTFS file attributes, the creation time, alternate data streams
+// and extended attributes during the pxar walk
+// and serializes everything into a single gzipped JSON file that lives as a
+// virtual file inside the archive root.
+//
+// SDDLs are deduplicated via an index: in practice most files in a tree share
+// a handful of unique descriptors (inherited from parent), so the dedup cuts
+// output size by 5-20x.
+type NTFSMetaCollector struct {
+	root string
+
+	mu      sync.Mutex
+	sddlIdx map[string]int
+	meta    *BackupFileMeta
+	errors  int
+
+	// streamBudget is how much alternate data stream content this archive may
+	// still record (MaxStreamBytesTotal); the counters feed the run's log.
+	streamBudget   int64
+	streams        int
+	streamsSkipped int
+	eas            int
+}
+
+// NewNTFSMetaCollector creates a collector rooted at the given filesystem path.
+// Paths passed to Collect must live under this root; the collector records them
+// as relative paths (forward slashes) in the output.
+func NewNTFSMetaCollector(root, hostname string) *NTFSMetaCollector {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		absRoot = root
+	}
+	return &NTFSMetaCollector{
+		root:         absRoot,
+		sddlIdx:      make(map[string]int),
+		streamBudget: MaxStreamBytesTotal,
+		meta: &BackupFileMeta{
+			Version:  FileMetaVersion,
+			Root:     absRoot,
+			Captured: time.Now().UTC().Format(time.RFC3339),
+			Host:     hostname,
+			SDDLs:    []string{},
+			Entries:  []FileMetaEntry{},
+		},
+	}
+}
+
+// Collect captures ACL + attributes for a single entry. Best-effort: any error
+// increments the internal error counter but never fails the walk.
+func (c *NTFSMetaCollector) Collect(absPath string, info os.FileInfo, isDir bool) error {
+	rel, err := filepath.Rel(c.root, absPath)
+	if err != nil {
+		c.incErr()
+		return nil
+	}
+	rel = filepath.ToSlash(rel)
+
+	// The file's own attributes from the directory listing: a reparse point
+	// (link, junction) keeps the lookups that follow it, as before.
+	var listedAttrs uint32
+	if info != nil {
+		if d, ok := info.Sys().(*syscall.Win32FileAttributeData); ok && d != nil {
+			listedAttrs = d.FileAttributes
+		}
+	}
+
+	// Alternate data streams and extended attributes. The budget is shared,
+	// so it is read and updated under the lock; reading the streams
+	// themselves happens outside it.
+	c.mu.Lock()
+	budget := c.streamBudget
+	c.mu.Unlock()
+	start := budget
+
+	// One handle for the security descriptor (owner, group, DACL; the SACL is
+	// left out, reading it needs SE_SECURITY_NAME and audit policy should not
+	// be restored mechanically), attributes, streams and EAs. Opening each
+	// file once more for the streams nearly doubled the cost per file
+	// (190 us against 109 us on C:\Program Files); one handle for all of it
+	// costs 125 us.
+	var sddl string
+	var attrs uint32
+	var streams []StreamEntry
+	var eas []EAEntry
+	opened := false
+	if listedAttrs&windows.FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+		if h, herr := openMetaHandle(absPath); herr == nil {
+			opened = true
+			if sd, err := windows.GetSecurityInfo(h, windows.SE_FILE_OBJECT,
+				windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION); err == nil && sd != nil {
+				sddl = sd.String() // empty on an internal conversion failure
+			}
+			var bi windows.ByHandleFileInformation
+			if windows.GetFileInformationByHandle(h, &bi) == nil {
+				attrs = bi.FileAttributes
+			}
+			streams, eas = streamsAndEAsOf(h, absPath, &budget)
+			windows.CloseHandle(h)
+		}
+	}
+	if !opened {
+		// A reparse point (the lookups follow it to its target, as they
+		// always did), or a file that would not open this way.
+		sddl, attrs = securityByPath(absPath)
+		if listedAttrs&windows.FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+			streams, eas, _ = readStreamsAndEAs(absPath, &budget)
+		}
+	}
+	if sddl == "" {
+		c.incErr()
+		// Continue with empty SDDL so we at least record the file attributes
+	}
+
+	// Creation time: already in the directory listing the walk read, so this
+	// costs no extra disk access.
+	var created int64
+	if info != nil {
+		if d, ok := info.Sys().(*syscall.Win32FileAttributeData); ok && d != nil {
+			created = int64(d.CreationTime.HighDateTime)<<32 | int64(d.CreationTime.LowDateTime)
+		}
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.streamBudget -= start - budget
+	for _, s := range streams {
+		if s.Skipped == "" {
+			c.streams++
+		} else {
+			c.streamsSkipped++
+		}
+	}
+	c.eas += len(eas)
+
+	idx, ok := c.sddlIdx[sddl]
+	if !ok {
+		idx = len(c.meta.SDDLs)
+		c.meta.SDDLs = append(c.meta.SDDLs, sddl)
+		c.sddlIdx[sddl] = idx
+	}
+
+	c.meta.Entries = append(c.meta.Entries, FileMetaEntry{
+		Path:    rel,
+		IsDir:   isDir,
+		SDDLIdx: idx,
+		Attrs:   attrs,
+		Created: created,
+		Streams: streams,
+		EAs:     eas,
+	})
+	return nil
+}
+
+// StreamStats returns how many alternate data streams were recorded with
+// their content, how many only by name (too large, over the budget, or
+// unreadable), and how many extended attributes were recorded.
+func (c *NTFSMetaCollector) StreamStats() (streams, skipped, eas int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.streams, c.streamsSkipped, c.eas
+}
+
+// securityByPath reads a path's SDDL and attributes by name (following a
+// link to its target).
+func securityByPath(absPath string) (sddl string, attrs uint32) {
+	sd, err := windows.GetNamedSecurityInfo(absPath, windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err == nil && sd != nil {
+		sddl = sd.String()
+	}
+	if pathW, pErr := windows.UTF16PtrFromString(absPath); pErr == nil {
+		if a, aErr := windows.GetFileAttributes(pathW); aErr == nil {
+			attrs = a
+		}
+	}
+	return sddl, attrs
+}
+
+func (c *NTFSMetaCollector) incErr() {
+	c.mu.Lock()
+	c.errors++
+	c.mu.Unlock()
+}
+
+// Finalize serializes the collected metadata to gzipped JSON. Returns nil if
+// nothing was collected (e.g. empty directory).
+func (c *NTFSMetaCollector) Finalize() ([]byte, error) {
+	c.mu.Lock()
+	// Update finalized counters before releasing the lock on meta
+	c.meta.Collected = len(c.meta.Entries)
+	c.meta.Errors = c.errors
+	c.mu.Unlock()
+
+	return SerializeFileMeta(c.meta)
+}
+
+// FinalizeRaw finalizes the counters (same as Finalize) but returns the raw,
+// ungzipped *BackupFileMeta instead of a serialized blob. Used by the
+// multi-archive backup path, which aggregates every directory's metadata into
+// ONE combined blob per snapshot rather than uploading one blob per directory
+// (see CombinedBackupFileMeta). Returns nil if nothing was collected.
+func (c *NTFSMetaCollector) FinalizeRaw() (*BackupFileMeta, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.meta.Collected = len(c.meta.Entries)
+	c.meta.Errors = c.errors
+	if len(c.meta.Entries) == 0 {
+		return nil, nil
+	}
+	return c.meta, nil
+}
+
+// Stats returns entry count, unique SDDL count, and error count.
+func (c *NTFSMetaCollector) Stats() (entries, uniqueSDDLs, errors int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.meta.Entries), len(c.meta.SDDLs), c.errors
+}

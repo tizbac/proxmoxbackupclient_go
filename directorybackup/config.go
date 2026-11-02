@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"pbscommon"
 	"strings"
 )
 
@@ -56,10 +58,16 @@ type Config struct {
 	// Ignored for `--kdf none` key files, which need nothing.
 	KeyFilePassphrase string `json:"keyfilepassphrase"`
 
+	// ChangeDetectionMode is legacy (default), data or metadata, as for
+	// proxmox-backup-client --change-detection-mode. data and metadata write a
+	// split archive (backup.mpxar.didx + backup.ppxar.didx); metadata reads
+	// every file like data until reuse of unchanged files is implemented.
+	ChangeDetectionMode string `json:"change-detection-mode"`
+
 	// NoMTime records 0 (1970-01-01) as every file's and folder's time instead
 	// of the real one, so entries whose time changes but whose content does not
 	// leave the archive bytes, and so its chunks, unchanged. Restored items get
-	// 1970-01-01.
+	// 1970-01-01. Metadata change detection reads every file with it.
 	NoMTime bool `json:"no-mtime"`
 }
 
@@ -92,6 +100,11 @@ func (c *Config) valid() bool {
 	baseValid := c.BaseURL != "" && authOK && c.Datastore != "" && (len(c.Dirs()) > 0 || c.BackupStreamName != "")
 	if !baseValid {
 		return baseValid
+	}
+
+	if err := pbscommon.ValidateChangeDetectionMode(c.ChangeDetectionMode); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return false
 	}
 
 	if c.SMTP != nil {
@@ -138,6 +151,8 @@ func loadConfig() *Config {
 	mailSubjectTemplateFlag := flag.String("mail-subject-template", "", "mail notification system: mail subject template(optional)")
 	mailBodyTemplateFlag := flag.String("mail-body-template", "", "mail notification system: mail body template(optional)")
 
+	changeDetectionFlag := flag.String("change-detection-mode", "", "legacy (default), data or metadata: data/metadata write a split archive (backup.mpxar.didx + backup.ppxar.didx)")
+
 	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
 
 	// Parse command line flags
@@ -146,19 +161,23 @@ func loadConfig() *Config {
 	config := &Config{
 		UseVSS: true,
 	}
+	pbscommon.ApplyPBSEnvVars(&config.BaseURL, &config.AuthID, &config.Secret, &config.Datastore, &config.CertFingerprint)
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {
-			fmt.Printf("Error reading config file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
 		}
 		err = json.Unmarshal(file, config)
 		if err != nil {
-			fmt.Printf("Error parsing config file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error parsing config file: %v\n", err)
 			os.Exit(1)
 		}
 	}
 
+	if *changeDetectionFlag != "" {
+		config.ChangeDetectionMode = *changeDetectionFlag
+	}
 	if *baseURLFlag != "" {
 		config.BaseURL = *baseURLFlag
 	}

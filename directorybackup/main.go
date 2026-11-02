@@ -5,12 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"hash"
 	"io"
 	"os"
+	"path/filepath"
 	"pbscommon"
 	"snapshot"
 	"strings"
@@ -111,9 +113,67 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 	return nil
 }
 
+// SuggestBoundary cuts the current chunk here when that gives a chunk within
+// the normal size bounds (the official payload chunker's rule); used at file
+// starts in a split archive's payload stream.
+func (c *ChunkState) SuggestBoundary(client *pbscommon.PBSClient) error {
+	n := uint64(len(c.current_chunk))
+	if n < c.C.MinSize() || n > c.C.MaxSize() {
+		return nil
+	}
+	if err := c.emitCurrent(client); err != nil {
+		return err
+	}
+	c.current_chunk = make([]byte, 0)
+	c.C.Reset()
+	return nil
+}
+
+// ForceBoundary ends the chunk in progress here, whatever its size (needed
+// before metadata change detection appends reused chunks).
+func (c *ChunkState) ForceBoundary(client *pbscommon.PBSClient) error {
+	if err := c.emitCurrent(client); err != nil {
+		return err
+	}
+	c.current_chunk = make([]byte, 0)
+	c.C.Reset()
+	return nil
+}
+
+// InjectKnownChunk appends a chunk of the previous payload index without its
+// data; it must be in that index, which /previous registered with the server.
+func (c *ChunkState) InjectKnownChunk(digest [32]byte, size uint64) error {
+	if len(c.current_chunk) != 0 {
+		return fmt.Errorf("internal error: reused chunk appended while %d bytes are pending", len(c.current_chunk))
+	}
+	shahash := hex.EncodeToString(digest[:])
+	if _, ok := c.knownChunks.Get(shahash); !ok {
+		return fmt.Errorf("internal error: reused chunk %s is not in the previous index", shahash)
+	}
+	if err := binary.Write(c.chunkdigests, binary.LittleEndian, c.pos+size); err != nil {
+		return fmt.Errorf("failed to write chunk offset: %w", err)
+	}
+	if _, err := c.chunkdigests.Write(digest[:]); err != nil {
+		return fmt.Errorf("failed to write chunk digest: %w", err)
+	}
+	c.reusechunk.Add(1)
+	c.assignments_offset = append(c.assignments_offset, c.pos)
+	c.assignments = append(c.assignments, shahash)
+	c.pos += size
+	c.chunkcount += 1
+	return nil
+}
+
 func (c *ChunkState) Eof(client *pbscommon.PBSClient) error {
 	//Here we write the remainder of data for which cyclic hash did not trigger
+	if err := c.emitCurrent(client); err != nil {
+		return err
+	}
+	return c.closeIndex(client)
+}
 
+// emitCurrent publishes the pending bytes as one chunk (no-op when empty).
+func (c *ChunkState) emitCurrent(client *pbscommon.PBSClient) error {
 	if len(c.current_chunk) > 0 {
 		// Same digest rule as in HandleData: plain sha256, or
 		// sha256(plaintext || id_key) when the snapshot is encrypted.
@@ -143,6 +203,10 @@ func (c *ChunkState) Eof(client *pbscommon.PBSClient) error {
 		c.chunkcount += 1
 
 	}
+	return nil
+}
+
+func (c *ChunkState) closeIndex(client *pbscommon.PBSClient) error {
 	//Avoid incurring in request entity too large by chunking assignment PUT requests in blocks of at most 128 chunks
 	for k := 0; k < len(c.assignments); k += 128 {
 		k2 := k + 128
@@ -165,6 +229,8 @@ func main() {
 	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
 
 	cfg := loadConfig()
+	changeDetectionMode = cfg.ChangeDetectionMode
+	noMTime = cfg.NoMTime
 
 	// Errors go to stderr with a non-zero exit, never a message box: a box
 	// waits for a click that an unattended scheduled run never gets (and on
@@ -180,7 +246,7 @@ func main() {
 	// ask the user to confirm it before pinning.
 	fingerprint, err := clientcommon.ConfirmFingerprint(cfg.BaseURL, cfg.CertFingerprint)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 	cfg.CertFingerprint = fingerprint
@@ -189,7 +255,7 @@ func main() {
 	if cfg.PBSUsername != "" && cfg.PBSPassword == "" {
 		cfg.PBSPassword, err = clientcommon.PromptPassword(fmt.Sprintf("Password for %s: ", cfg.PBSUsername))
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	}
@@ -208,7 +274,7 @@ func main() {
 
 	crypt, err := clientcommon.LoadCryptConfig(cfg.KeyFile, cfg.KeyFilePassphrase)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -239,7 +305,7 @@ func main() {
 	}
 	hostname, err := os.Hostname()
 	if err != nil {
-		fmt.Println("Failed to retrieve hostname:", err)
+		fmt.Fprintln(os.Stderr, "warning: failed to retrieve hostname:", err)
 		hostname = "unknown"
 	}
 
@@ -248,21 +314,27 @@ func main() {
 	if len(dirs) <= 1 {
 		client, err = newClient(cfg.BackupID)
 		if err != nil {
-			fmt.Printf("Error: ticket login failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: ticket login failed: %v\n", err)
 			os.Exit(1)
 		}
 	}
 
 	begin := time.Now()
 	var readErrors []string
+	// snapshots holds the clients of the snapshots this run made, for the
+	// mail warning note below.
+	var snapshots []*pbscommon.PBSClient
 	if len(dirs) == 1 {
-		readErrors, err = backup(client, newchunk, reusechunk, cfg.PxarOut, dirs[0], cfg.UseVSS, cfg.NoMTime)
+		readErrors, err = backup(client, newchunk, reusechunk, cfg.PxarOut, dirs[0], cfg.UseVSS)
+		if err == nil {
+			snapshots = append(snapshots, client)
+		}
 	} else if len(dirs) > 1 {
 		baseID := cfg.BackupID
 		if baseID == "" {
 			baseID = hostname
 		}
-		readErrors, err = backup_many(newClient, newchunk, reusechunk, cfg.PxarOut, dirs, baseID, cfg.UseVSS, cfg.NoMTime)
+		readErrors, snapshots, err = backup_many(newClient, newchunk, reusechunk, cfg.PxarOut, dirs, baseID, cfg.UseVSS)
 	} else if cfg.BackupStreamName != "" {
 		sn := cfg.BackupStreamName
 		if !strings.HasSuffix(sn, ".didx") {
@@ -270,6 +342,9 @@ func main() {
 		}
 		fmt.Printf("Backing up from STDIN to %s", sn)
 		err = backup_stream(client, newchunk, reusechunk, sn, os.Stdin)
+		if err == nil {
+			snapshots = append(snapshots, client)
+		}
 
 	} else {
 		panic("No backup dir or stream name specified, exiting")
@@ -297,7 +372,7 @@ func main() {
 	var msg string
 	msg, err = mailCtx.BuildStr(mailBodyTemplate)
 	if err != nil {
-		fmt.Println("Cannot use custom mail body: " + err.Error())
+		fmt.Fprintln(os.Stderr, "Cannot use custom mail body: "+err.Error())
 		msg, err = mailCtx.BuildStr(defaultMailBodyTemplate)
 		if err != nil {
 			// this should never happen
@@ -315,24 +390,41 @@ func main() {
 
 		subject, err = mailCtx.BuildStr(mailSubjectTemplate)
 		if err != nil {
-			fmt.Println("Cannot use custom mail subject: " + err.Error())
+			fmt.Fprintln(os.Stderr, "Cannot use custom mail subject: "+err.Error())
 			subject, err = mailCtx.BuildStr(defaultMailSubjectTemplate)
 			if err != nil {
 				// this should never happen
 				panic(err)
 			}
 		}
+		// A mail problem is reported on stderr and never changes the backup's
+		// own exit code, as in machinebackup.
+		mailSent := true
 		client, err := clientcommon.SetupMailClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
 		if err != nil {
-			fmt.Println("Cannot connect to mail server: " + err.Error())
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Cannot connect to the mail server: "+err.Error())
+			mailSent = false
+		} else {
+			defer client.Quit()
+			for _, ccc := range cfg.SMTP.Mails {
+				if err := clientcommon.SendMail(ccc.From, ccc.To, subject, msg, client); err != nil {
+					fmt.Fprintln(os.Stderr, "Cannot send the notification e-mail: "+err.Error())
+					mailSent = false
+				} else {
+					fmt.Printf("Notification e-mail sent to %s\n", ccc.To)
+				}
+			}
 		}
-		defer client.Quit()
-		for _, ccc := range cfg.SMTP.Mails {
-			err = clientcommon.SendMail(ccc.From, ccc.To, subject, msg, client)
-			if err != nil {
-				fmt.Println("Cannot send email: " + err.Error())
-				os.Exit(1)
+		// The mail problem also goes in the PBS comment of every snapshot this
+		// run made, where it is seen when the backup is viewed. A failed backup
+		// has no snapshot to note it on.
+		if !mailSent {
+			for _, s := range snapshots {
+				if nerr := s.SetComment(clientcommon.MailFailedNote); nerr != nil {
+					fmt.Fprintf(os.Stderr, "Cannot add the mail warning to the PBS comment of %s: %v\n", s.Manifest.BackupID, nerr)
+				} else {
+					fmt.Printf("Mail warning added to the PBS comment of %s.\n", s.Manifest.BackupID)
+				}
 			}
 		}
 	}
@@ -355,22 +447,24 @@ func main() {
 // backup group with the id <base>_<path> (the same ids the GUI uses), so PBS
 // retention and restore treat every directory as an independent series. A
 // directory that fails does not stop the others; the failures are joined into
-// the returned error.
-func backup_many(newClient func(backupID string) (*pbscommon.PBSClient, error), newchunk, reusechunk *atomic.Uint64, pxarOut string, dirs []string, baseID string, usevss bool, noMTime bool) ([]string, error) {
+// the returned error. The clients of the snapshots that were made are returned
+// too, so a note can be added to them afterwards.
+func backup_many(newClient func(backupID string) (*pbscommon.PBSClient, error), newchunk, reusechunk *atomic.Uint64, pxarOut string, dirs []string, baseID string, usevss bool) ([]string, []*pbscommon.PBSClient, error) {
 	if pxarOut != "" {
-		return nil, fmt.Errorf("-pxarout writes a single archive and cannot be combined with several -backupdir")
+		return nil, nil, fmt.Errorf("-pxarout writes a single archive and cannot be combined with several -backupdir")
 	}
 
 	ids := make(map[string]string, len(dirs))
 	for _, dir := range dirs {
 		id := clientcommon.GenerateBackupID(baseID, dir)
 		if other, dup := ids[id]; dup {
-			return nil, fmt.Errorf("%q and %q would both be backed up as backup-id %q; pass distinct directories", other, dir, id)
+			return nil, nil, fmt.Errorf("%q and %q would both be backed up as backup-id %q; pass distinct directories", other, dir, id)
 		}
 		ids[id] = dir
 	}
 
 	var readErrors []string
+	var done []*pbscommon.PBSClient
 	var failures []error
 	for _, dir := range dirs {
 		id := clientcommon.GenerateBackupID(baseID, dir)
@@ -381,16 +475,18 @@ func backup_many(newClient func(backupID string) (*pbscommon.PBSClient, error), 
 			failures = append(failures, fmt.Errorf("%s: ticket login failed: %w", dir, err))
 			continue
 		}
-		dirReadErrors, err := backup(client, newchunk, reusechunk, "", dir, usevss, noMTime)
+		dirReadErrors, err := backup(client, newchunk, reusechunk, "", dir, usevss)
 		// Release the session even after a failure, otherwise PBS keeps the
 		// group locked until the connection times out.
 		client.Close()
 		readErrors = append(readErrors, dirReadErrors...)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", dir, err))
+		} else {
+			done = append(done, client)
 		}
 	}
-	return readErrors, errors.Join(failures...)
+	return readErrors, done, errors.Join(failures...)
 }
 
 func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, filename string, stream io.Reader) error {
@@ -454,14 +550,42 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 	return client.Finish()
 }
 
-func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, originalDir string, noMTime bool) ([]string, error) {
+// changeDetectionMode is the -change-detection-mode setting (see Config).
+var changeDetectionMode string
+
+// noMTime is the -no-mtime setting (see Config).
+var noMTime bool
+
+func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, originalPath string, vssUsed bool) ([]string, error) {
 	client.Connect(false, "host")
 	knownChunks := haxmap.New[string, bool]()
 
+	split := pbscommon.SplitArchiveMode(changeDetectionMode)
 	archive := &pbscommon.PXARArchive{}
 	archive.ArchiveName = "backup.pxar.didx"
-	archive.ExcludeRoot = originalDir // the folder as named, also when read through a VSS snapshot
+	archive.ExcludeRoot = originalPath // the folder as named, also when read through a shadow copy
+	archive.OnNotice = func(msg string) { fmt.Println(msg) }
 	archive.NoMTime = noMTime
+	if split {
+		// Metadata stream; the payload stream is backup.ppxar.didx.
+		archive.ArchiveName = "backup.mpxar.didx"
+		archive.Split = true
+	}
+
+	// Captures NTFS ACLs, attributes and creation times on Windows, extended
+	// attributes incl. POSIX ACLs on Linux; uploaded as the same side-car blob
+	// the GUI writes so a GUI restore can re-apply them.
+	hostname, _ := os.Hostname()
+	metaCollector := pbscommon.NewFileMetaCollector(backupdir, hostname)
+	archive.MetaCollector = metaCollector
+
+	// Same root-level meta file the GUI injects: lets the GUI offer "restore to
+	// original path" for CLI snapshots.
+	if metaJSON, merr := pbscommon.GenerateBackupMeta(client.Manifest.BackupID, originalPath, hostname, "directorybackup", vssUsed); merr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to generate backup metadata: %v\n", merr)
+	} else {
+		archive.VirtualFiles = map[string][]byte{pbscommon.BackupMetaFilename: metaJSON}
+	}
 
 	previousDidx, err := client.DownloadPreviousToBytes(archive.ArchiveName)
 	if err != nil {
@@ -507,6 +631,41 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	pcat1Chunk := ChunkState{}
 	pcat1Chunk.Init(newchunk, reusechunk, knownChunks)
 
+	var payloadChunk *ChunkState
+	if split {
+		payloadKnown := haxmap.New[string, bool]()
+		prevPayload, perr := client.DownloadPreviousToBytes("backup.ppxar.didx")
+		if perr == nil {
+			for _, shahash := range pbscommon.ParsePreviousDIDXChunkDigests(prevPayload) {
+				payloadKnown.Set(shahash, true)
+			}
+		}
+		fmt.Printf("Known payload chunks: %d\n", payloadKnown.Len())
+		payloadChunk = &ChunkState{}
+		payloadChunk.Init(newchunk, reusechunk, payloadKnown)
+		if payloadChunk.wrid, err = client.CreateDynamicIndex("backup.ppxar.didx"); err != nil {
+			return nil, err
+		}
+		archive.PayloadWriteCB = func(b []byte) error { return payloadChunk.HandleData(b, client) }
+		archive.OnPayloadFileStart = func() error { return payloadChunk.SuggestBoundary(client) }
+		if changeDetectionMode == pbscommon.ChangeDetectionMetadata && noMTime {
+			fmt.Println("Metadata change detection: off with -no-mtime (no times to compare), reading every file")
+		} else if changeDetectionMode == pbscommon.ChangeDetectionMetadata {
+			// Reuse unchanged files from the previous snapshot without
+			// reading them; an unusable previous snapshot means data mode.
+			prev, prevTime, lerr := client.LoadPreviousSplitArchive(archive.ArchiveName, "backup.ppxar.didx", prevPayload)
+			if lerr != nil {
+				fmt.Printf("Metadata change detection: no usable previous snapshot (%v), reading every file\n", lerr)
+			} else {
+				fmt.Printf("Metadata change detection: comparing with snapshot %s (%d files)\n",
+					time.Unix(prevTime, 0).UTC().Format(time.RFC3339), len(prev.Files))
+				archive.Reuse = pbscommon.NewPayloadReuse(prev,
+					func() error { return payloadChunk.ForceBoundary(client) },
+					payloadChunk.InjectKnownChunk)
+			}
+		}
+	}
+
 	pxarChunk.wrid, err = client.CreateDynamicIndex(archive.ArchiveName)
 	if err != nil {
 		return nil, err
@@ -541,12 +700,63 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	if _, err = archive.WriteDir(backupdir, "", true); err != nil {
 		return nil, fmt.Errorf("failed to write directory archive: %w", err)
 	}
+	if archive.Reuse != nil {
+		st := archive.Reuse.Stats
+		fmt.Printf("Metadata change detection: %d unchanged files (%d bytes) reused without reading, %d chunks reused, %d bytes padding; %d unchanged files read anyway to limit padding\n",
+			st.Files, st.Bytes, st.Chunks, st.Padding, st.OverPadding)
+	}
 
 	if err = pxarChunk.Eof(client); err != nil {
 		return nil, err
 	}
+	if payloadChunk != nil {
+		if err = payloadChunk.Eof(client); err != nil {
+			return nil, err
+		}
+	}
 	if err = pcat1Chunk.Eof(client); err != nil {
 		return nil, err
+	}
+
+	if m, merr := metaCollector.FinalizeRaw(); merr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to finalize file metadata: %v\n", merr)
+	} else if m != nil {
+		combined := &pbscommon.CombinedBackupFileMeta{
+			Version:  pbscommon.FileMetaVersion,
+			Captured: m.Captured,
+			Host:     hostname,
+			Archives: map[string]*pbscommon.BackupFileMeta{
+				"backup": m, // archive base name, same key for classic and split archives
+			},
+		}
+		entries, _, metaErrs := metaCollector.Stats()
+		blob, dropped, serr := combined.SerializeCapped(pbscommon.MaxFileMetaBlobBytes)
+		if dropped > 0 {
+			fmt.Fprintf(os.Stderr, "warning: file metadata too large for one PBS blob: the content of %d alternate data streams was left out\n", dropped)
+		}
+		if serr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to serialize file metadata: %v\n", serr)
+		} else if uerr := client.UploadBlob(pbscommon.FileMetaBlobName, blob); uerr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to upload file metadata blob: %v\n", uerr)
+		} else {
+			fmt.Printf("File metadata: %d entries, %d errors\n", entries, metaErrs)
+			if streams, skipped, eas := metaCollector.StreamStats(); streams+skipped+eas > 0 {
+				fmt.Printf("Alternate data streams: %d recorded, %d by name only; extended attributes: %d\n", streams, skipped, eas)
+			}
+		}
+	}
+
+	sidecar := &pbscommon.BackupSidecar{
+		FormatVersion:    1,
+		BackupID:         client.Manifest.BackupID,
+		Directories:      []string{originalPath},
+		GeneratedAt:      time.Now().Unix(),
+		SkippedReadError: pbscommon.SkippedToIssues(archive.ReadErrors),
+	}
+	if sb, serr := json.Marshal(sidecar); serr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to serialize status sidecar: %v\n", serr)
+	} else if uerr := client.UploadBlob(pbscommon.BackupStatusFilename, sb); uerr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to upload status sidecar: %v\n", uerr)
 	}
 
 	err = client.UploadManifest()
@@ -558,9 +768,13 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	return archive.ReadErrors, nil
 }
 
-func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, usevss bool, noMTime bool) ([]string, error) {
+func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, usevss bool) ([]string, error) {
 
 	fmt.Printf("Starting backup of %s\n", backupdir)
+	originalPath := backupdir
+	if abs, aerr := filepath.Abs(backupdir); aerr == nil {
+		originalPath = abs
+	}
 	var err error
 	var readErrors []string
 	originalDir := backupdir
@@ -572,9 +786,10 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 				snapshotDir = snap.FullPath
 				break
 			}
+			backupdir = snapshotDir
 			//Remove VSS snapshot on windows, on linux for now NOP
 			var e error
-			readErrors, e = backup_real(client, newchunk, reusechunk, pxarOut, snapshotDir, originalDir, noMTime)
+			readErrors, e = backup_real(client, newchunk, reusechunk, pxarOut, backupdir, originalPath, true)
 			return e
 
 		})
@@ -583,7 +798,7 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 			readErrors[i] = unmapSnapshotPathString(readErrors[i], snapshotDir, originalDir)
 		}
 	} else {
-		readErrors, err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir, originalDir, noMTime)
+		readErrors, err = backup_real(client, newchunk, reusechunk, pxarOut, backupdir, originalPath, false)
 	}
 
 	if err != nil {

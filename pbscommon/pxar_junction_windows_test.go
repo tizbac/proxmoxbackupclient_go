@@ -15,7 +15,7 @@ import (
 // come back from Lstat as os.ModeIrregular, not os.ModeSymlink, and were
 // opened as files. Windows' own deny-listed ones (Documents\My Music and
 // friends) then failed with "Access is denied" and counted as read errors,
-// so a backup of Documents ended partial.
+// so a backup of Documents ended partial (seen on a laptop, 2026-10-31).
 func TestJunctionsSkippedNotReadErrors(t *testing.T) {
 	root := t.TempDir()
 	target := filepath.Join(root, "target")
@@ -73,9 +73,9 @@ func TestJunctionsSkippedNotReadErrors(t *testing.T) {
 	}
 }
 
-// A plain file and a plain folder are not taken for links. (An irregular
-// entry that is not a link, such as a OneDrive placeholder, cannot be made
-// without a driver, so these stand in.)
+// An irregular entry that is not a link (here: a file whose reparse tag is
+// not a name surrogate cannot be made without a driver, so a plain file and
+// a plain folder stand in) is not taken for a link.
 func TestIsLinkEntryPlainEntries(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "f.txt")

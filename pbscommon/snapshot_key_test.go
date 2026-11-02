@@ -128,6 +128,22 @@ func TestDIDXReaderAtWrongKeyRefusedFirst(t *testing.T) {
 	}
 }
 
+// A disk image (fixed index) is checked the same way, before its index is
+// even downloaded.
+func TestFIDXReaderAtWrongKeyRefusedFirst(t *testing.T) {
+	key := testCryptConfig(t)
+	a := makeDIDX(t, key, payloadsOf(1, 64)...)
+	f := newFakePBSWithDIDX(t, "drive-scsi0.img.fidx", a, key)
+	fp := key.Fingerprint()
+	f.setManifest(t, *manifestFor("drive-scsi0.img.fidx", CryptModeEncrypt, &fp))
+	f.Crypt = otherCryptConfig(t)
+	_, _, err := f.NewFIDXReaderAt("drive-scsi0.img.fidx", 4, nil)
+	var ke *SnapshotKeyError
+	if !errors.As(err, &ke) || ke.SnapshotKey != fp {
+		t.Fatalf("got %v, want a *SnapshotKeyError", err)
+	}
+}
+
 // A manifest that cannot be read does not block the restore: it goes ahead
 // and the chunks decide, as before the check existed.
 func TestCheckArchiveKeyUnreadableManifest(t *testing.T) {

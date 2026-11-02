@@ -37,8 +37,8 @@ func setTreeTimes(t *testing.T, root string, ts time.Time) {
 	}
 }
 
-// writeTestArchive backs root up the way the CLI does and returns the PXAR
-// stream and the catalog.
+// writeTestArchive backs root up as a classic archive, the CLI's default, and
+// returns the PXAR stream and the catalog.
 func writeTestArchive(t *testing.T, root string, noMTime bool) (pxar, catalog []byte) {
 	t.Helper()
 	var p, c bytes.Buffer
@@ -75,7 +75,7 @@ func TestPXARNoMTimeArchiveIgnoresTimeChanges(t *testing.T) {
 }
 
 // What NoMTime records reads back as a time of 0, and a restore then dates
-// the items 1970-01-01.
+// the files 1970-01-01.
 func TestPXARNoMTimeRecordsEpoch(t *testing.T) {
 	root := t.TempDir()
 	makeTimedTree(t, root)
@@ -109,9 +109,51 @@ func TestPXARNoMTimeRecordsEpoch(t *testing.T) {
 	if _, err := NewPXARReader(pxar).ExtractAll(dest); err != nil {
 		t.Fatalf("ExtractAll: %v", err)
 	}
-	for _, name := range []string{"top.txt", "a/b/one.txt", "a/b", "a"} {
-		if got := mtimeOf(t, filepath.Join(dest, filepath.FromSlash(name))); !got.Equal(time.Unix(0, 0)) {
+	for _, name := range []string{"top.txt", "a/b/one.txt", "a/c/two.txt"} {
+		info, err := os.Stat(filepath.Join(dest, filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.ModTime(); !got.Equal(time.Unix(0, 0)) {
 			t.Errorf("restored %s mtime = %v, want 1970-01-01", name, got)
 		}
 	}
+}
+
+// Metadata change detection compares times, which NoMTime does not record:
+// with it a file edited in place (same size) must still be read, so every
+// file is read and nothing is reused from the previous snapshot.
+func TestPXARNoMTimeTurnsOffReuse(t *testing.T) {
+	root := reuseTree(t)
+	store := map[[32]byte][]byte{}
+
+	r1 := runSplitBackupNoMTime(t, root, store, nil)
+	checkRestore(t, "run 1", r1, root)
+
+	p := filepath.Join(root, "big", "b4.bin")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b[0] ^= 0xff
+	if err := os.WriteFile(p, b, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	r2 := runSplitBackupNoMTime(t, root, store, r1)
+	checkRestore(t, "run 2", r2, root)
+	if st := r2.reuse.Stats; st.Files != 0 {
+		t.Errorf("run 2 reused %d files with NoMTime, want 0", st.Files)
+	}
+	if r2.opened["b4.bin"] != 1 {
+		t.Errorf("run 2: edited b4.bin opened %d times, want 1", r2.opened["b4.bin"])
+	}
+}
+
+// runSplitBackupNoMTime is runSplitBackup with NoMTime set.
+func runSplitBackupNoMTime(t *testing.T, root string, store map[[32]byte][]byte, prev *splitRun) *splitRun {
+	t.Helper()
+	splitNoMTime = true
+	defer func() { splitNoMTime = false }()
+	return runSplitBackup(t, root, store, prev)
 }

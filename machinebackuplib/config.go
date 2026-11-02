@@ -38,6 +38,8 @@ type Config struct {
 	SMTP            *SMTPConfig `json:"smtp"`
 	SysTray         bool        `json:"systray"`
 	BackupType      string      `json:"backuptype"`
+	// Comment is sent as-is as the PBS snapshot's manifest comment.
+	Comment string `json:"comment,omitempty"`
 
 	// KeyFile is a Proxmox Backup Server encryption key (JSON, as produced by
 	// `proxmox-backup-client key create`). When set, every fixed-index chunk
@@ -55,10 +57,16 @@ type Config struct {
 	// serialized: a -config file carries KeyFile, not the unlocked key.
 	Crypt *pbscommon.CryptConfig `json:"-"`
 
-	// UseSnapshot controls whether to attempt creating block-level snapshots
-	// (via dattobd/elastio-snap on Linux, VSS on Windows) for crash-consistent
-	// images. When false, the backup reads raw disks (crash-consistent only).
-	UseSnapshot bool `json:"use_snapshot,omitempty"`
+	// Progress, when set, receives the job's running figures (chunks new,
+	// reused and blank, bytes uploaded, current disk and partition) for a
+	// caller to sample on its own timer. Nil for the CLI.
+	Progress *JobProgress `json:"-"`
+
+	// ReadFreeSpace reads every sector of the disk, free space included (a
+	// forensic copy). By default the free clusters of each snapshotted NTFS
+	// volume, and its paging, hibernation and swap files, are sent as zeros
+	// without being read.
+	ReadFreeSpace bool `json:"readfreespace,omitempty"`
 }
 
 func (c *Config) Valid() bool {

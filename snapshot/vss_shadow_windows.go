@@ -4,6 +4,7 @@ package snapshot
 
 import (
 	"fmt"
+	"sync"
 	"unsafe"
 
 	"github.com/go-ole/go-ole"
@@ -12,11 +13,12 @@ import (
 )
 
 // The shadow copy calls of go-vss v0.3.3 (MIT, Jerome Hadorn and Stanislau
-// Matskevich), with its object lifetimes fixed. Every snapshot left about 33
-// handles behind in the process (threads that had ended, events,
-// semaphores), so the GUI and the service, which run for weeks, kept
-// growing. The fixes below bring it to about 21 (measured by
-// TestLiveVSSHandles); the rest is inside VSS's own create and release.
+// Matskevich), with its object lifetimes fixed. Found 2026-10-21: every
+// snapshot left about 33 handles behind in the process (threads that had
+// ended, events, semaphores), so the GUI and the service, which run for
+// weeks, kept growing. The fixes below bring it to about 21 (measured by
+// TestLiveVSSHandles); the rest is inside VSS's create and release and has
+// not been found yet.
 //
 //   - vss.LoadAndInitVSS takes a QueryInterface reference on the object
 //     CreateVssBackupComponents returned and never releases the first one, so
@@ -77,6 +79,15 @@ func waitVSS(step string, async *vss.IVssAsync, err error, timeoutMs int) error 
 	return fmt.Errorf("%s didn't finish properly: async operation returned bad status - 0x%x", step, status)
 }
 
+// shadowMu lets one shadow copy at a time be made or released in this
+// process. Several backups can run at once now; Windows makes one shadow copy
+// set at a time and answers a second with "another shadow copy creation is
+// already in progress", which retryWhileBusy then waited out 30 s at a time.
+// Waiting here instead takes only as long as the other creation (seconds).
+// The shadow copies themselves are held side by side for as long as each
+// backup needs; only making and releasing them take turns.
+var shadowMu sync.Mutex
+
 // vssShadow is a shadow copy made by createShadow, held until release.
 type vssShadow struct {
 	vss.Snapshot
@@ -86,9 +97,10 @@ type vssShadow struct {
 
 // createShadow makes a shadow copy of drive (for example `C:\`) in the backup
 // context, as a copy backup, the way go-vss's Snapshotter.CreateSnapshot does.
-// Each step may take timeoutMs. On failure the VSS object is aborted and
-// freed here, so the caller has nothing to release.
+// Each step may take timeoutMs.
 func createShadow(drive string, timeoutMs int) (s *vssShadow, err error) {
+	shadowMu.Lock()
+	defer shadowMu.Unlock()
 	c, err := newVSSComponents()
 	if err != nil {
 		return nil, err
@@ -137,12 +149,29 @@ func createShadow(drive string, timeoutMs int) (s *vssShadow, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("VSS_PROPERTIES - ParseProperties: %w", err)
 	}
+	// The shadow copy's device. Windows Server 2025 build 26100.1742 was
+	// reported giving none (tizbac/proxmoxbackupclient_go#131): the path
+	// became just `\`, which passes Validate, so a folder backup read the
+	// live volume without saying so, and a machine backup failed. WMI still
+	// knows the device then. With neither, the backup must stop rather than
+	// read the live volume.
+	device := details.DeviceObject
+	if device == "" {
+		d, werr := shadowDeviceFromWMI(snapshotID.String())
+		if werr != nil || d == "" {
+			deleteShadow(snapshotID.String())
+			return nil, fmt.Errorf("VSS_PROPERTIES - VSS gave no device for shadow copy %s, and WMI none either (%v): stopping rather than reading the live volume", snapshotID.String(), werr)
+		}
+		fmt.Printf("VSS gave no device for shadow copy %s; WMI gives %s\n", snapshotID.String(), d)
+		device = d
+		details.DeviceObject = d
+	}
 	shadow := &vssShadow{
 		Snapshot: vss.Snapshot{
 			Id:               snapshotID.String(),
 			Details:          details,
 			Drive:            drive,
-			DeviceObjectPath: details.DeviceObject + `\`,
+			DeviceObjectPath: device + `\`,
 		},
 		c:         c,
 		timeoutMs: timeoutMs,
@@ -154,12 +183,13 @@ func createShadow(drive string, timeoutMs int) (s *vssShadow, err error) {
 }
 
 // release tells VSS the backup is done and frees the VSS object, whatever
-// fails on the way. The shadow copy itself is deleted afterwards by
-// deleteShadowsBestEffort.
+// fails on the way. The shadow copy itself is deleted by deleteShadow.
 func (s *vssShadow) release() error {
 	if s == nil || s.c == nil {
 		return nil
 	}
+	shadowMu.Lock()
+	defer shadowMu.Unlock()
 	defer func() {
 		s.c.Release()
 		s.c = nil

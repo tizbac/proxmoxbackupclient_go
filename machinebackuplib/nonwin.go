@@ -6,8 +6,8 @@ package machinebackuplib
 import (
 	"fmt"
 	"io"
-	"pbscommon"
 	"os"
+	"pbscommon"
 )
 
 // GetDiskSize returns the size of a disk or file path
@@ -29,8 +29,8 @@ func GetDiskSize(path string) (int64, error) {
 	return size, nil
 }
 
-func BackupWindowsDisk(client *pbscommon.PBSClient, index int,progressCallback ProgressCallback) (int64, error) {
-	return 0, fmt.Errorf("not supported on this platform")
+func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback ProgressCallback, jp *JobProgress, readFree bool) (int64, error) {
+	return 0, fmt.Errorf("Not supported on this platform")
 }
 
 func SysTraySetup() {

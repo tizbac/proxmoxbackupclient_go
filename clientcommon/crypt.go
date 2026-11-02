@@ -2,6 +2,7 @@ package clientcommon
 
 import (
 	"fmt"
+	"os"
 
 	"pbscommon"
 )
@@ -16,9 +17,10 @@ import (
 // Passphrase handling mirrors proxmox-backup-client --keyfile: a key file
 // written with `--kdf none` carries the raw key and needs nothing, while a
 // scrypt/PBKDF2 key file is unwrapped with a passphrase. If one is required
-// and passphrase is empty, the user is prompted (echo-disabled on a terminal,
-// plain line otherwise, so scripted runs keep working). Passphrase is never
-// logged or echoed back.
+// and passphrase is empty, PBS_ENCRYPTION_PASSWORD is used (the official
+// client's variable), and without that the user is prompted (echo-disabled on
+// a terminal, plain line otherwise, so scripted runs keep working). Passphrase
+// is never logged or echoed back.
 func LoadCryptConfig(keyPath, passphrase string) (*pbscommon.CryptConfig, error) {
 	if keyPath == "" {
 		return nil, nil
@@ -29,6 +31,9 @@ func LoadCryptConfig(keyPath, passphrase string) (*pbscommon.CryptConfig, error)
 		return nil, fmt.Errorf("reading key file %s: %w", keyPath, err)
 	}
 
+	if passphrase == "" && keyCfg.KDF != nil {
+		passphrase = os.Getenv("PBS_ENCRYPTION_PASSWORD")
+	}
 	if passphrase == "" && keyCfg.KDF != nil {
 		passphrase, err = PromptPassword(fmt.Sprintf("Passphrase for %s: ", keyPath))
 		if err != nil {

@@ -2,6 +2,7 @@ package pbscommon
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -37,6 +38,20 @@ const (
 	PXAR_PAYLOAD             uint64 = 0x28147a1b0b7c1a25
 	PXAR_GOODBYE             uint64 = 0x2fec4fa642d5731d
 	PXAR_GOODBYE_TAIL_MARKER uint64 = 0xef5eed5b753e1555
+
+	// pxar format version 2 ("split" archives, written by the official client's
+	// data and metadata change-detection modes). The metadata stream (.mpxar)
+	// starts with PXAR_FORMAT_VERSION (value 2) and may carry a PXAR_PRELUDE;
+	// regular files carry a PXAR_PAYLOAD_REF (offset u64, size u64) into the
+	// payload stream (.ppxar) instead of an inline PXAR_PAYLOAD. The payload
+	// stream starts with PXAR_PAYLOAD_START_MARKER, holds one PXAR_PAYLOAD
+	// record per file (header + raw bytes, possibly with unreferenced padding
+	// between them) and ends with PXAR_PAYLOAD_TAIL_MARKER.
+	PXAR_FORMAT_VERSION       uint64 = 0x730f6c75df16a40d
+	PXAR_PRELUDE              uint64 = 0xe309d79d9f7b771b
+	PXAR_PAYLOAD_REF          uint64 = 0x419d3d6bc4ba977e
+	PXAR_PAYLOAD_START_MARKER uint64 = 0x834c68c2194a4ed2
+	PXAR_PAYLOAD_TAIL_MARKER  uint64 = 0x6c72b78b984c81b5
 )
 
 var catalog_magic = []byte{145, 253, 96, 249, 196, 103, 88, 213}
@@ -47,19 +62,21 @@ var catalog_magic = []byte{145, 253, 96, 249, 196, 103, 88, 213}
 var excludedSystemFolders = []string{
 	"System Volume Information", // VSS snapshots storage
 	"$RECYCLE.BIN",              // Windows recycle bin
+	RollbackSafetyFolder,        // files Roll back moved aside (gui/rollback.go)
 }
 
-// Windows system folders excluded only at the root of a volume: Windows keeps
-// its recovery data in C:\Recovery, but a folder called Recovery anywhere else
-// (D:\Data\Recovery, a photo recovery folder...) is the user's own.
+// rootOnlySystemFolders are excluded only at the root of a volume: Windows
+// keeps its recovery data in C:\Recovery, but a folder called Recovery
+// anywhere else is the user's own (D:\Data\Recovery, a photo-recovery
+// folder...) and is backed up.
 var rootOnlySystemFolders = []string{
 	"Recovery", // Windows recovery environment data
 }
 
-// isVolumeRoot reports whether path is the root of a volume: "C:\", a shadow
-// copy's root (\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopyN), a share's
-// root (\\server\share) or "/".
-func isVolumeRoot(path string) bool {
+// IsVolumeRoot reports whether path is the root of a volume: "C:\", a
+// shadow copy's root (\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopyN), a
+// share's root (\\server\share) or "/".
+func IsVolumeRoot(path string) bool {
 	if path == "" {
 		return false
 	}
@@ -82,26 +99,61 @@ func isVolumeRoot(path string) bool {
 	return false
 }
 
+// IsAutoExcludedFolderAt is IsAutoExcludedFolder for a folder directly at a
+// volume's root (atRoot), where the root-only system folders apply too.
+func IsAutoExcludedFolderAt(name string, atRoot bool) bool {
+	return shouldSkipSystemFolderAt(name, atRoot)
+}
+
+// logicalRoot is the backed-up folder as the user named it (ExcludeRoot),
+// or the path being read when no original was given.
+func (a *PXARArchive) logicalRoot() string {
+	if a.ExcludeRoot != "" {
+		return a.ExcludeRoot
+	}
+	return a.root
+}
+
+// RollbackSafetyFolder is the folder, at the root of a volume, where Roll back
+// keeps every file it replaced or removed so the roll back can be undone.
+// Never backed up: it holds old versions that are already in the snapshots.
+const RollbackSafetyFolder = ".pbs-rollback"
+
+// IsAutoExcludedFolder and IsAutoExcludedFile report whether a backup skips an
+// entry of this name on its own (system folders and files above), so a
+// comparison with a live folder can skip the same entries.
+func IsAutoExcludedFolder(name string) bool { return shouldSkipSystemFolder(name) }
+func IsAutoExcludedFile(name string) bool   { return shouldSkipSystemFile(name) }
+
+// IsExcludedByPatterns applies a Backup Set's exclusion patterns exactly as a
+// backup does (see isExcluded): rel is the entry's path relative to the
+// backed-up folder, name its base name, root the backed-up folder.
+func IsExcludedByPatterns(rel, name, root string, patterns []string) bool {
+	return isExcluded(rel, name, root, patterns)
+}
+
 // Windows system files to exclude automatically from backups
 // These are large paging/hibernation files that should not be backed up
 var excludedSystemFiles = []string{
-	"pagefile.sys",  // Windows page file
-	"hiberfil.sys",  // Hibernation file
-	"swapfile.sys",  // Windows swap file
+	"pagefile.sys",      // Windows page file
+	"hiberfil.sys",      // Hibernation file
+	"swapfile.sys",      // Windows swap file
 	"DumpStack.log.tmp", // Crash dump temporary file
 }
 
 // shouldSkipSystemFolder checks if a folder should be automatically excluded
 // Uses case-insensitive comparison for Windows compatibility
-// atVolumeRoot is true for a folder directly at the root of a volume, where
-// the root-only system folders are excluded too
-func shouldSkipSystemFolder(name string, atVolumeRoot bool) bool {
+func shouldSkipSystemFolder(name string) bool {
+	return shouldSkipSystemFolderAt(name, false)
+}
+
+func shouldSkipSystemFolderAt(name string, atRoot bool) bool {
 	for _, excluded := range excludedSystemFolders {
 		if strings.EqualFold(name, excluded) {
 			return true
 		}
 	}
-	if atVolumeRoot {
+	if atRoot {
 		for _, excluded := range rootOnlySystemFolders {
 			if strings.EqualFold(name, excluded) {
 				return true
@@ -331,6 +383,41 @@ type PXARArchive struct {
 	pos            uint64
 	ArchiveName    string
 
+	// Ctx, when set, is checked once per file/subdirectory entry in WriteDir's
+	// main walk loop — nil is a valid, fully-working zero value (no
+	// cancellation support), so every existing caller that never sets this
+	// keeps working unchanged. Found live 2026-09-28: the ONLY existing
+	// cancellation checkpoint was between entire top-level directories
+	// (gui/backup_inline.go's runBackupInlineInternal), so Stop appeared to
+	// do nothing at all for the common case of a single folder (or a whole
+	// single disk) — the backup simply ran to completion regardless, no
+	// matter how long the click-to-stop wait. This checks at file
+	// granularity, and Flush/flushPayload check it again before every 64 KiB
+	// block they write, so a large file stops part way through too (from
+	// upstream #117). A cancel ends the walk with Ctx.Err().
+	Ctx context.Context
+
+	// Pause, when set, holds the walk while the user has the backup paused
+	// (see pause.go). It is checked at the same points as Ctx, and also
+	// between read blocks so a large file pauses part way through.
+	Pause *PauseGate
+
+	// Cancelled, if set, is checked before every write of the archive (at
+	// least every 64 KiB). Once it returns true the walk stops with
+	// ErrWriteCancelled, so a cancel no longer waits for the end of a large
+	// folder or file. Upstream's hook (#117); Ctx does the same for callers
+	// that have a context.
+	Cancelled func() bool
+
+	// OnFile, when set, is called with each file's path as WriteFile starts it
+	// (progress display only; must be cheap and non-blocking).
+	OnFile func(path string)
+
+	// OnNotice, when set, receives informational messages for the job log,
+	// such as the source disk dropping out and coming back (see
+	// source_wait.go).
+	OnNotice func(msg string)
+
 	catalog_pos  uint64
 	SkippedFiles []string // ALL skips (read errors, junctions, system auto-excludes) — for logging/sidecar display
 	// ReadErrors is the OUTCOME-affecting subset of SkippedFiles: genuine read
@@ -351,8 +438,6 @@ type PXARArchive struct {
 	// "C:\\Users\\Alice\\Temp" matches when backing up "C:\\Users\\Alice". Under VSS
 	// the walked path differs from this, which is why pattern and entry are both
 	// reduced to paths relative to their respective roots before comparison.
-	// It also tells whether the backup is of a whole volume ("C:\\"), where
-	// Recovery at the root is left out; when empty the walked path is used.
 	ExcludeRoot string
 	// root is the toplevel WALKED path, captured on the first WriteDir call, used to
 	// compute each entry's path relative to the (possibly VSS shadow-copy) root.
@@ -371,22 +456,301 @@ type PXARArchive struct {
 	// time instead of the real one. A changed time changes the archive bytes, so
 	// trees whose times move without their contents changing (a folder gains
 	// and loses temporary files) otherwise re-upload the chunks around every such
-	// entry. Restored items then get 1970-01-01.
+	// entry. Restored items then get 1970-01-01. Metadata change detection
+	// (Reuse) is off with it: a file edited in place keeps its size, and without
+	// its time nothing would show it changed.
 	NoMTime bool
 
-	// Cancelled, if set, is checked before every write of the archive (at
-	// least every 64 KiB). Once it returns true the walk stops with
-	// ErrWriteCancelled, so a cancel no longer waits for the end of a large
-	// folder or file.
-	Cancelled func() bool
+	// PrefetchWorkers > 0 enables per-directory read-ahead: before WriteDir's
+	// file loop runs, it starts up to this many concurrent background reads
+	// for the directory's own regular files (see startPrefetch), so the
+	// (still fully single-threaded) scan/chunk/hash pass in WriteFile finds
+	// bytes already in memory instead of blocking on disk for each file in
+	// turn. This changes NOTHING about chunk boundaries or dedup — WriteFile
+	// still feeds bytes into the archive in the exact same order either way,
+	// only WHERE those bytes come from changes. 0 (the default) is the
+	// original, fully synchronous behavior. See Config.ParallelBackupRead's
+	// doc comment in gui/config.go for the live CPU evidence this responds to.
+	PrefetchWorkers int
+
+	// --- Shared multi-archive catalog support ---
+	// PBS's own web-UI "browse this snapshot" feature is hardcoded server-side
+	// to read a catalog dynamic index literally named "catalog.pcat1.didx" — it
+	// is NOT per-archive-aware. A snapshot with N archives therefore needs ONE
+	// combined catalog covering all N, not N separately-named catalogs (found
+	// 2026-09-21: the per-directory-catalog design briefly used here made every
+	// multi-folder snapshot, and in fact every snapshot at all since the
+	// catalog name became archive-derived, unbrowsable in the PBS web UI).
+	//
+	// These three fields let backup_inline.go drive several PXARArchive
+	// instances (one per selected folder) through WriteDir(toplevel=true) so
+	// their catalog data lands back-to-back in ONE shared catalog stream,
+	// instead of each writing its own standalone catalog:
+	//   - SkipCatalogMagic: true for every archive AFTER the first (the magic
+	//     header is written once, by the first archive only).
+	//   - InitialCatalogPos: when SkipCatalogMagic is true, seeds catalog_pos
+	//     with the running position handed back by the previous archive
+	//     (CatalogPos(), read after that archive's WriteDir call) instead of
+	//     resetting it to 8.
+	//   - DeferCatalogRoot: true for EVERY archive taking part in a shared
+	//     catalog (including the first). Suppresses the normal single-entry
+	//     root-pointer table a standalone WriteDir(toplevel=true) writes at the
+	//     end; the caller writes ONE combined table instead, once, after every
+	//     archive is done, via WriteSharedCatalogRoot.
+	// All three default to their zero value (false / 0), which is exactly
+	// today's single-archive, standalone-catalog behavior — nothing changes
+	// for a one-folder job unless the caller explicitly opts into the shared
+	// mode.
+	SkipCatalogMagic  bool
+	InitialCatalogPos uint64
+	DeferCatalogRoot  bool
+
+	// --- Split archives (pxar format version 2) ---
+	// Split writes the archive as two streams, the way the official client's
+	// "data" and "metadata" change-detection modes do: WriteCB receives the
+	// metadata stream (.mpxar: format version entry, the directory tree, and
+	// a PXAR_PAYLOAD_REF per regular file) and PayloadWriteCB the payload
+	// stream (.ppxar: start marker, one PXAR_PAYLOAD record per file, tail
+	// marker). Entries also carry the real sub-second mtime in this mode
+	// (on Windows the classic stream keeps writing 0, so existing archives
+	// keep deduplicating against their previous snapshots).
+	Split          bool
+	PayloadWriteCB PXAROutCB
+	// OnPayloadFileStart, when set in split mode, is called right before a
+	// file's PXAR_PAYLOAD record goes into the payload stream, after all
+	// earlier payload bytes have been handed to PayloadWriteCB, so the
+	// payload chunker can cut a chunk at the file start (better reuse later).
+	OnPayloadFileStart func() error
+	// Reuse, when set in split mode, turns on metadata change detection: a
+	// file unchanged since the previous snapshot is not read, its payload is
+	// taken from the previous payload stream instead (see payload_reuse.go).
+	Reuse         *PayloadReuse
+	payloadBuffer bytes.Buffer
+	payloadPos    uint64
 }
 
-// entryMTime is the time recorded for an entry: the real one, or 0 with NoMTime.
-func (a *PXARArchive) entryMTime(info os.FileInfo) uint64 {
+// PayloadPos returns how many bytes have been written to the payload stream.
+func (a *PXARArchive) PayloadPos() uint64 { return a.payloadPos }
+
+// writeCancelled reports why an archive write has to stop: Ctx's error once
+// it is cancelled, ErrWriteCancelled once the Cancelled hook fires, else nil.
+func (a *PXARArchive) writeCancelled() error {
+	if a.Ctx != nil && a.Ctx.Err() != nil {
+		return a.Ctx.Err()
+	}
+	if a.Cancelled != nil && a.Cancelled() {
+		return ErrWriteCancelled
+	}
+	return nil
+}
+
+// flushPayload hands the pending payload-stream bytes to PayloadWriteCB.
+func (a *PXARArchive) flushPayload() error {
+	b := make([]byte, 64*1024)
+	wrote := false
+	for {
+		if err := a.writeCancelled(); err != nil {
+			return err
+		}
+		count, _ := a.payloadBuffer.Read(b)
+		if count <= 0 {
+			break
+		}
+		if err := a.PayloadWriteCB(b[:count]); err != nil {
+			return fmt.Errorf("failed to write PXAR payload data: %w", err)
+		}
+		a.payloadPos += uint64(count)
+		wrote = true
+	}
+	if wrote && a.Reuse != nil {
+		// New payload data ends any run of reused chunks.
+		a.Reuse.Break()
+	}
+	return nil
+}
+
+// archivePath is path's location inside the archive ("dir/file.txt").
+func (a *PXARArchive) archivePath(path string) string {
+	rel, err := filepath.Rel(a.root, path)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+// reuseCandidate reports whether metadata change detection would consider
+// path unchanged (used to keep read-ahead off files that will not be read).
+func (a *PXARArchive) reuseCandidate(path string, info os.FileInfo) bool {
+	if a.Reuse == nil || a.NoMTime || !a.Split || !info.Mode().IsRegular() {
+		return false
+	}
+	mode, uid, gid, secs, nanos := a.entryMetaFor(info, IFREG)
+	_, ok := a.Reuse.Lookup(a.archivePath(path), uint32(mode), uid, gid, int64(secs), nanos, uint64(info.Size()))
+	return ok
+}
+
+// writeFileHead writes a regular file's FILENAME and ENTRY records and
+// returns where the ENTRY starts in the unflushed metadata buffer.
+func (a *PXARArchive) writeFileHead(basename string, fileInfo os.FileInfo) int {
+	fname_entry := &PXARFilenameEntry{
+		hdr: PXAR_FILENAME,
+		len: uint64(16) + uint64(len(basename)) + 1,
+	}
+
+	binary.Write(&a.buffer, binary.LittleEndian, fname_entry)
+
+	a.buffer.WriteString(basename)
+	a.buffer.WriteByte(0x00)
+
+	fMode, fUID, fGID, fSecs, fNanos := a.entryMetaFor(fileInfo, IFREG)
+	entry := &PXARFileEntry{
+		hdr:   PXAR_ENTRY,
+		len:   56,
+		mode:  fMode,
+		flags: 0,
+		uid:   fUID,
+		gid:   fGID,
+		mtime: MTime{
+			secs:    fSecs,
+			nanos:   fNanos,
+			padding: 0,
+		},
+	}
+	entryAt := a.buffer.Len()
+	binary.Write(&a.buffer, binary.LittleEndian, entry)
+	return entryAt
+}
+
+// entryNanosOffset is where mtime.nanos sits in an ENTRY record: header (16),
+// mode, flags (8 each), uid, gid (4 each), mtime.secs (8).
+const entryNanosOffset = 48
+
+// markEntryIncomplete changes the recorded mtime of the ENTRY at entryAt in
+// the unflushed metadata buffer by one nanosecond. Used for a file whose
+// content had to be zero-padded: its recorded metadata then never matches
+// the file again, so metadata change detection reads it next time instead of
+// reusing the padded content for as long as the file stays unchanged.
+func (a *PXARArchive) markEntryIncomplete(entryAt int) {
+	if a.NoMTime {
+		return // no change detection to steer, and every time stays 0
+	}
+	b := a.buffer.Bytes()
+	if entryAt < 0 || entryAt+entryNanosOffset+4 > len(b) {
+		return
+	}
+	n := binary.LittleEndian.Uint32(b[entryAt+entryNanosOffset:])
+	binary.LittleEndian.PutUint32(b[entryAt+entryNanosOffset:], n^1)
+}
+
+// tryReuseFile writes path as a reused file when metadata change detection
+// finds it unchanged and the padding budget allows: FILENAME, ENTRY and a
+// PXAR_PAYLOAD_REF into the reused range, without opening the file. done is
+// false when the file must be read normally.
+func (a *PXARArchive) tryReuseFile(path, basename string, fileInfo os.FileInfo) (CatalogFile, bool, error) {
+	mode, uid, gid, secs, nanos := a.entryMetaFor(fileInfo, IFREG)
+	size := uint64(fileInfo.Size())
+	pf, ok := a.Reuse.Lookup(a.archivePath(path), uint32(mode), uid, gid, int64(secs), nanos, size)
+	if !ok {
+		return CatalogFile{}, false, nil
+	}
+	// Everything written so far must be with the chunk layer before chunks
+	// are appended behind it.
+	if err := a.flushPayload(); err != nil {
+		return CatalogFile{}, false, err
+	}
+	newOffset, injected, ok, err := a.Reuse.Reuse(pf, a.payloadPos)
+	if err != nil || !ok {
+		return CatalogFile{}, false, err
+	}
+	a.payloadPos += injected
+
+	if a.MetaCollector != nil {
+		if err := a.MetaCollector.Collect(path, fileInfo, false); err != nil {
+			a.SkippedFiles = append(a.SkippedFiles,
+				fmt.Sprintf("Metadata collect failed for file %s: %v", path, err))
+		}
+	}
+	a.writeFileHead(basename, fileInfo)
+	binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD_REF)
+	binary.Write(&a.buffer, binary.LittleEndian, uint64(32))
+	binary.Write(&a.buffer, binary.LittleEndian, newOffset)
+	binary.Write(&a.buffer, binary.LittleEndian, size)
+	if err := a.Flush(); err != nil {
+		return CatalogFile{}, false, err
+	}
+	return CatalogFile{
+		Name:  basename,
+		MTime: a.catalogMTime(fileInfo),
+		Size:  size,
+	}, true, nil
+}
+
+// entryMetaFor is entryMeta plus the real sub-second mtime for split
+// archives (entryMeta reports 0 on Windows to keep classic archives stable).
+// With NoMTime the time is 0.
+func (a *PXARArchive) entryMetaFor(info os.FileInfo, kind uint64) (mode uint64, uid, gid uint32, secs uint64, nanos uint32) {
+	mode, uid, gid, secs, nanos = entryMeta(info, kind)
+	if a.NoMTime {
+		return mode, uid, gid, 0, 0
+	}
+	if a.Split && nanos == 0 {
+		nanos = uint32(info.ModTime().Nanosecond())
+	}
+	return
+}
+
+// catalogMTime is the time the catalog records for a file: the real one, or
+// 0 with NoMTime.
+func (a *PXARArchive) catalogMTime(info os.FileInfo) uint64 {
 	if a.NoMTime {
 		return 0
 	}
 	return uint64(info.ModTime().Unix())
+}
+
+// beginPayload starts a file's content: in split mode it writes a
+// PXAR_PAYLOAD_REF into the metadata stream, flushes both streams, gives the
+// payload chunker its file-start hint, then writes the PXAR_PAYLOAD header to
+// the payload stream. In classic mode it writes the inline PXAR_PAYLOAD
+// header. It returns the buffer the content bytes must go to and the flush
+// that moves them on. holdMeta keeps a split archive's metadata unflushed
+// (the caller flushes it after the content), so the file's ENTRY can still be
+// changed once the content is known (markEntryIncomplete).
+func (a *PXARArchive) beginPayload(size uint64, holdMeta bool) (*bytes.Buffer, func() error, error) {
+	if !a.Split {
+		binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD)
+		binary.Write(&a.buffer, binary.LittleEndian, size+16)
+		return &a.buffer, a.Flush, a.Flush()
+	}
+	if err := a.flushPayload(); err != nil {
+		return nil, nil, err
+	}
+	binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD_REF)
+	binary.Write(&a.buffer, binary.LittleEndian, uint64(32))
+	binary.Write(&a.buffer, binary.LittleEndian, a.payloadPos)
+	binary.Write(&a.buffer, binary.LittleEndian, size)
+	if !holdMeta {
+		if err := a.Flush(); err != nil {
+			return nil, nil, err
+		}
+	}
+	if a.OnPayloadFileStart != nil {
+		if err := a.OnPayloadFileStart(); err != nil {
+			return nil, nil, err
+		}
+	}
+	binary.Write(&a.payloadBuffer, binary.LittleEndian, PXAR_PAYLOAD)
+	binary.Write(&a.payloadBuffer, binary.LittleEndian, size+16)
+	return &a.payloadBuffer, a.flushPayload, a.flushPayload()
+}
+
+// CatalogPos returns the archive's current catalog stream position. Used by
+// callers driving a shared multi-archive catalog to thread the running
+// position from one archive's WriteDir call to the next one's
+// InitialCatalogPos (see the field docs above), and to the final
+// WriteSharedCatalogRoot call.
+func (a *PXARArchive) CatalogPos() uint64 {
+	return a.catalog_pos
 }
 
 //This function will flush the internal buffer and update position
@@ -396,8 +760,8 @@ func (a *PXARArchive) entryMTime(info os.FileInfo) uint64 {
 func (a *PXARArchive) Flush() error {
 	b := make([]byte, 64*1024)
 	for {
-		if a.Cancelled != nil && a.Cancelled() {
-			return ErrWriteCancelled
+		if err := a.writeCancelled(); err != nil {
+			return err
 		}
 		count, _ := a.buffer.Read(b)
 		if count <= 0 {
@@ -426,6 +790,9 @@ type CatalogFile struct {
 	Name  string
 	MTime uint64
 	Size  uint64
+	// Kind is the catalog entry type byte; zero means a regular file ('f').
+	// 'l' is a symbolic link, which the catalog records by name only.
+	Kind byte
 }
 
 func append_u64_7bit(a []byte, v uint64) []byte {
@@ -476,12 +843,107 @@ func append_u64_7bit(a []byte, v uint64) []byte {
 
 */
 
+// specialFileKind names a file that is not regular data, for the skipped list.
+func specialFileKind(m os.FileMode) string {
+	switch {
+	case m&os.ModeSocket != 0:
+		return "Socket"
+	case m&os.ModeNamedPipe != 0:
+		return "Pipe (FIFO)"
+	case m&os.ModeDevice != 0:
+		return "Device"
+	default:
+		return "Special file"
+	}
+}
+
 // addReadError records a genuine read failure or content instability: it is added
 // to both SkippedFiles (display) and ReadErrors (which downgrades the backup
 // outcome below verified_success). Expected skips append to SkippedFiles directly.
 func (a *PXARArchive) addReadError(msg string) {
 	a.SkippedFiles = append(a.SkippedFiles, msg)
 	a.ReadErrors = append(a.ReadErrors, msg)
+}
+
+// prefetchEntry holds the in-flight/completed result of one background
+// read-ahead, scoped to a single WriteDir call's own files (never shared
+// across directories or goroutine-unsafe: each WriteDir call builds and owns
+// its own map, passed down to WriteFile as a plain local value).
+type prefetchEntry struct {
+	data []byte
+	err  error
+	done chan struct{}
+}
+
+// maxPrefetchFileSize bounds per-file memory use for read-ahead — a file
+// larger than this is simply never added to the prefetch set, and WriteFile
+// falls back to its normal streaming read for it, exactly as if prefetching
+// were disabled entirely for that one file.
+const maxPrefetchFileSize = 128 * 1024 * 1024 // 128MB
+
+// startPrefetch kicks off background reads for dirPath's own regular files
+// (not subdirectories — each recursive WriteDir call prefetches only its own
+// level, called again independently as the walk recurses) and returns
+// immediately with a map of path -> in-flight prefetchEntry; callers wait on
+// an individual entry's done channel only when they actually reach that file.
+// Returns nil when prefetching is disabled or nothing in this directory
+// qualifies, in which case a nil-map lookup in the caller's loop is a no-op
+// (Go's zero-value map read), identical to the prefetch-disabled path.
+func (a *PXARArchive) startPrefetch(dirPath string, files []os.DirEntry) map[string]*prefetchEntry {
+	if a.PrefetchWorkers <= 0 {
+		return nil
+	}
+
+	entries := make(map[string]*prefetchEntry)
+	var paths []string
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		if shouldSkipSystemFile(file.Name()) {
+			continue
+		}
+		fullPath := filepath.Join(dirPath, file.Name())
+		if len(a.ExcludeList) > 0 && isExcluded(relExcludePath(a.root, fullPath), file.Name(), a.ExcludeRoot, a.ExcludeList) {
+			continue
+		}
+		info, err := file.Info()
+		if err != nil || isLinkEntry(fullPath, info) || info.Size() > maxPrefetchFileSize {
+			continue
+		}
+		if a.reuseCandidate(fullPath, info) {
+			continue // unchanged: will be reused, not read
+		}
+		entries[fullPath] = &prefetchEntry{done: make(chan struct{})}
+		paths = append(paths, fullPath)
+	}
+
+	if len(paths) == 0 {
+		return nil
+	}
+
+	jobs := make(chan string, len(paths))
+	for _, p := range paths {
+		jobs <- p
+	}
+	close(jobs)
+
+	workers := a.PrefetchWorkers
+	if workers > len(paths) {
+		workers = len(paths)
+	}
+	for i := 0; i < workers; i++ {
+		go func() {
+			for p := range jobs {
+				pe := entries[p]
+				pe.data, pe.err = os.ReadFile(p)
+				close(pe.done)
+			}
+		}()
+	}
+
+	return entries
 }
 
 func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (CatalogDir, error) {
@@ -495,6 +957,12 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 
 	// Check if directory is a junction point/symlink before reading it
 	fileInfo, err := os.Lstat(path)
+	if err != nil {
+		err = a.retrySource(path, err, "reading directory", func() (e error) { fileInfo, e = os.Lstat(path); return })
+	}
+	if a.walkMustStop(err) {
+		return CatalogDir{}, err
+	}
 	if err != nil {
 		if toplevel {
 			// Toplevel directory MUST be accessible — this is a fatal error
@@ -514,6 +982,12 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 	}
 
 	files, err := os.ReadDir(path)
+	if err != nil {
+		err = a.retrySource(path, err, "reading directory", func() (e error) { files, e = os.ReadDir(path); return })
+	}
+	if a.walkMustStop(err) {
+		return CatalogDir{}, err
+	}
 	if err != nil {
 		if toplevel {
 			// Toplevel directory MUST be readable — this is a fatal error
@@ -537,11 +1011,31 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		a.buffer.WriteString(dirname)
 		a.buffer.WriteByte(0x00)
 	} else {
-		if a.CatalogWriteCB != nil {
+		if a.SkipCatalogMagic {
+			// A later archive in a shared multi-archive catalog: the magic
+			// header was already written by the first archive. Pick up the
+			// running position it (or the previous archive) left off at,
+			// instead of resetting to a fresh 8-byte catalog.
+			a.catalog_pos = a.InitialCatalogPos
+		} else if a.CatalogWriteCB != nil {
 			if err := a.CatalogWriteCB(catalog_magic); err != nil {
 				return CatalogDir{}, fmt.Errorf("failed to write catalog magic: %w", err)
 			}
 			a.catalog_pos = 8
+		}
+	}
+
+	if toplevel && a.Split {
+		// pxar format version 2: the metadata stream opens with the version
+		// entry (the root ENTRY follows it), the payload stream with its start
+		// marker.
+		binary.Write(&a.buffer, binary.LittleEndian, PXAR_FORMAT_VERSION)
+		binary.Write(&a.buffer, binary.LittleEndian, uint64(24))
+		binary.Write(&a.buffer, binary.LittleEndian, uint64(2))
+		binary.Write(&a.payloadBuffer, binary.LittleEndian, PXAR_PAYLOAD_START_MARKER)
+		binary.Write(&a.payloadBuffer, binary.LittleEndian, uint64(16))
+		if err := a.flushPayload(); err != nil {
+			return CatalogDir{}, err
 		}
 	}
 
@@ -551,16 +1045,17 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 
 	dir_start_pos := a.pos
 
+	dMode, dUID, dGID, dSecs, dNanos := a.entryMetaFor(fileInfo, IFDIR)
 	entry := &PXARFileEntry{
 		hdr:   PXAR_ENTRY,
 		len:   56,
-		mode:  IFDIR | 0o777,
+		mode:  dMode,
 		flags: 0,
-		uid:   1000, //This is fixed because this project for now targeting windows , on which execute, traverse etc permissions don't exist
-		gid:   1000,
+		uid:   dUID, // fixed 1000 off Linux: Windows has no POSIX owners or modes
+		gid:   dGID,
 		mtime: MTime{
-			secs:    a.entryMTime(fileInfo),
-			nanos:   0,
+			secs:    dSecs,
+			nanos:   dNanos,
 			padding: 0,
 		},
 	}
@@ -607,17 +1102,22 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		}
 	}
 
-	// The root-only system folders (Recovery) are skipped only among the
-	// children of a backup root that is itself a volume root. That is decided
-	// on the folder as the user named it (ExcludeRoot): under VSS the walked
-	// path is a link to the shadow copy, not "C:\".
-	logicalRoot := a.ExcludeRoot
-	if logicalRoot == "" {
-		logicalRoot = a.root
-	}
-	atVolumeRoot := toplevel && isVolumeRoot(logicalRoot)
+	prefetch := a.startPrefetch(path, files)
 
 	for _, file := range files {
+		// Checked once per entry — see Ctx's doc comment above for why this
+		// granularity (not more, not less). context.Canceled propagates up
+		// through every WriteDir/WriteFile caller on the stack; the top-level
+		// caller (gui/backup_inline.go) turns it into the same "Backup
+		// cancelled by user" handling the between-directories check already
+		// used.
+		if err := a.Pause.Wait(a.Ctx); err != nil {
+			return CatalogDir{}, err
+		}
+		if a.Ctx != nil && a.Ctx.Err() != nil {
+			return CatalogDir{}, a.Ctx.Err()
+		}
+
 		startpos := a.pos
 
 		// User-configured exclusions (H-04): prune the entry (and its subtree for
@@ -632,7 +1132,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 
 		if file.IsDir() {
 			// Skip Windows system folders (VSS snapshots, recycle bin, etc.)
-			if shouldSkipSystemFolder(file.Name(), atVolumeRoot) {
+			if shouldSkipSystemFolderAt(file.Name(), path == a.root && IsVolumeRoot(a.logicalRoot())) {
 				skipMsg := fmt.Sprintf("System folder (auto-excluded): %s", filepath.Join(path, file.Name()))
 				a.SkippedFiles = append(a.SkippedFiles, skipMsg)
 				continue
@@ -661,7 +1161,8 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 				continue
 			}
 
-			F, err := a.WriteFile(filepath.Join(path, file.Name()), file.Name())
+			fullPath := filepath.Join(path, file.Name())
+			F, err := a.WriteFile(fullPath, file.Name(), prefetch[fullPath])
 			if err != nil {
 				return CatalogDir{}, err
 			}
@@ -693,6 +1194,12 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 	}
 
 	for _, f := range catalog_files {
+		if f.Kind == 'l' {
+			tabledata = append(tabledata, 'l')
+			tabledata = append_u64_7bit(tabledata, uint64(len(f.Name)))
+			tabledata = append(tabledata, []byte(f.Name)...)
+			continue
+		}
 		tabledata = append(tabledata, 'f')
 		tabledata = append_u64_7bit(tabledata, uint64(len(f.Name)))
 		tabledata = append(tabledata, []byte(f.Name)...)
@@ -757,7 +1264,15 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		return CatalogDir{}, err
 	}
 
-	if toplevel {
+	if toplevel && a.Split {
+		binary.Write(&a.payloadBuffer, binary.LittleEndian, PXAR_PAYLOAD_TAIL_MARKER)
+		binary.Write(&a.payloadBuffer, binary.LittleEndian, uint64(16))
+		if err := a.flushPayload(); err != nil {
+			return CatalogDir{}, err
+		}
+	}
+
+	if toplevel && !a.DeferCatalogRoot {
 		//We write special pointer to root dir here
 
 		tabledata := make([]byte, 0)
@@ -781,46 +1296,90 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		}
 	}
 
+	// For a toplevel call, the caller (single-archive: nothing further needed;
+	// shared multi-archive: backup_inline.go's orchestration) identifies this
+	// archive by its ArchiveName, not the empty dirname a toplevel call is
+	// invoked with — return that instead of the unused empty string so a
+	// shared-catalog caller can build WriteSharedCatalogRoot's entry list
+	// straight from this return value.
+	name := dirname
+	if toplevel {
+		name = a.ArchiveName
+	}
 	return CatalogDir{
-		Name: dirname,
+		Name: name,
 		Pos:  oldpos,
 	}, nil
 }
 
-// openForRead opens a file for WriteFile; tests replace it to simulate read
-// errors part way through a file.
-var openForRead = func(path string) (io.ReadCloser, error) { return os.Open(path) }
-
-// specialFileKind names a FIFO, socket or device node for the skipped list,
-// and returns "" for anything else. ModeIrregular is deliberately not here:
-// on Windows Go sets it on reparse points such as OneDrive placeholders, and
-// those open and read normally. Junctions are irregular too since Go 1.23,
-// but isLinkEntry has already skipped them as links by then.
-func specialFileKind(m os.FileMode) string {
-	switch {
-	case m&os.ModeNamedPipe != 0:
-		return "Pipe (FIFO)"
-	case m&os.ModeSocket != 0:
-		return "Socket"
-	case m&os.ModeDevice != 0:
-		return "Device"
-	default:
-		return ""
+// WriteSharedCatalogRoot writes the combined catalog root-pointer table for a
+// multi-archive snapshot: one entry per archive (each from the CatalogDir a
+// WriteDir(toplevel=true, DeferCatalogRoot=true) call returned), followed by
+// the trailing 8-byte absolute pointer PBS's catalog reader seeks to first.
+// This is the generalization of the single-entry block WriteDir itself writes
+// for a standalone (single-archive) catalog — same encoding, N entries
+// instead of 1. Call it ONCE, after every archive taking part in the shared
+// catalog has been written (see the PXARArchive field docs above).
+func WriteSharedCatalogRoot(catalogWriteCB PXAROutCB, catalogPos uint64, entries []CatalogDir) error {
+	tabledata := make([]byte, 0)
+	tabledata = append_u64_7bit(tabledata, uint64(len(entries)))
+	for _, e := range entries {
+		tabledata = append(tabledata, 'd')
+		tabledata = append_u64_7bit(tabledata, uint64(len(e.Name)))
+		tabledata = append(tabledata, []byte(e.Name)...)
+		tabledata = append_u64_7bit(tabledata, catalogPos-e.Pos)
 	}
+	catalog_outdata := make([]byte, 0)
+	catalog_outdata = append_u64_7bit(catalog_outdata, uint64(len(tabledata)))
+	catalog_outdata = append(catalog_outdata, tabledata...)
+	ptr := make([]byte, 0)
+	ptr = binary.LittleEndian.AppendUint64(ptr, catalogPos)
+	if catalogWriteCB == nil {
+		return nil
+	}
+	if err := catalogWriteCB(catalog_outdata); err != nil {
+		return fmt.Errorf("failed to write shared catalog root table: %w", err)
+	}
+	if err := catalogWriteCB(ptr); err != nil {
+		return fmt.Errorf("failed to write shared catalog root pointer: %w", err)
+	}
+	return nil
 }
 
 // On pxar first item and consquently entry point must always be WriteDir , because toplevel is always a directory
 // So backing up single file is not possible
-func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, error) {
+func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefetchEntry) (CatalogFile, error) {
+	if a.OnFile != nil {
+		a.OnFile(path)
+	}
 	//fmt.Printf("Write file %s at %d\n", path, a.pos)
 
 	// Use Lstat to detect symlinks/junction points without following them
 	fileInfo, err := os.Lstat(path)
 	if err != nil {
+		err = a.retrySource(path, err, "reading", func() (e error) { fileInfo, e = os.Lstat(path); return })
+	}
+	if a.walkMustStop(err) {
+		return CatalogFile{}, err
+	}
+	if err != nil {
 		// Log stat errors but continue backup - don't fail on inaccessible files
 		skipMsg := fmt.Sprintf("Cannot stat file: %s (Error: %v)", path, err)
 		a.addReadError(skipMsg)
 		return CatalogFile{}, nil
+	}
+
+	if posixFidelity {
+		if fileInfo.Mode()&os.ModeSymlink != 0 {
+			return a.writeSymlink(path, basename, fileInfo)
+		}
+		// FIFOs and sockets would block on open, and device nodes are not
+		// regular data: record them as skipped rather than hang or misread.
+		if !fileInfo.Mode().IsRegular() {
+			a.SkippedFiles = append(a.SkippedFiles,
+				fmt.Sprintf("%s (skipped, holds no file data): %s", specialFileKind(fileInfo.Mode()), path))
+			return CatalogFile{}, nil
+		}
 	}
 
 	// Skip junction points and symlinks (common on Windows: "Application Data", etc.)
@@ -830,27 +1389,62 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 		return CatalogFile{}, nil // Return nil error to continue backup
 	}
 
-	// FIFOs, sockets and device nodes hold no file data. Opening a FIFO blocks
-	// until a writer appears, so the backup hung for good; a socket cannot be
-	// opened; a device node was opened as the device and stored as an empty
-	// regular file. Skip them, like junction points: an expected skip, not a
-	// read error.
-	if kind := specialFileKind(fileInfo.Mode()); kind != "" {
-		a.SkippedFiles = append(a.SkippedFiles,
-			fmt.Sprintf("%s (skipped, holds no file data): %s", kind, path))
-		return CatalogFile{}, nil
+	// Metadata change detection: an unchanged file is not read at all.
+	if a.Split && a.Reuse != nil && !a.NoMTime {
+		cf, done, err := a.tryReuseFile(path, basename, fileInfo)
+		if err != nil {
+			return CatalogFile{}, err
+		}
+		if done {
+			return cf, nil
+		}
 	}
 
-	file, err := openForRead(path)
+	// reader is the file's content, sourced from EITHER a background
+	// read-ahead (startPrefetch) or a fresh os.Open below — everything past
+	// this point (header writes, the read loop, shrink/grow detection) is
+	// completely unchanged either way, since both sources satisfy the same
+	// io.Reader contract. fileHandle is only set (and only deferred-closed)
+	// when we actually opened a real file here.
+	var reader io.Reader
+	var fileHandle io.ReadSeekCloser
 
-	if err != nil {
-		// Log file open errors but continue backup - don't fail on locked/system files
-		skipMsg := fmt.Sprintf("Cannot open file: %s (Error: %v)", path, err)
-		a.addReadError(skipMsg)
-		return CatalogFile{}, nil
+	if prefetched != nil {
+		<-prefetched.done
+		// Only trust the prefetched bytes if they match what THIS call's own
+		// fresh Lstat just saw — a mismatch means the file changed between
+		// being listed for prefetch and being reached here. Falling through
+		// to a normal synchronous open/read is exactly today's behavior for
+		// that case (correctness over using a stale/short read).
+		if prefetched.err == nil && uint64(len(prefetched.data)) == uint64(fileInfo.Size()) {
+			reader = bytes.NewReader(prefetched.data)
+		}
 	}
 
-	defer file.Close()
+	if reader == nil {
+		f, err := openForRead(path)
+		if err != nil {
+			err = a.retrySource(path, err, "opening", func() (e error) { f, e = openForRead(path); return })
+		}
+		if a.walkMustStop(err) {
+			return CatalogFile{}, err
+		}
+		if err != nil {
+			// Log file open errors but continue backup - don't fail on locked/system files
+			skipMsg := fmt.Sprintf("Cannot open file: %s (Error: %v)", path, err)
+			a.addReadError(skipMsg)
+			return CatalogFile{}, nil
+		}
+		fileHandle = f
+		reader = f
+	}
+	// A read that fails mid-file may swap in a reopened handle (see
+	// resumeRead), so close whichever handle is current at the end.
+	defer func() {
+		if fileHandle != nil {
+			fileHandle.Close()
+		}
+	}()
 
 	// Capture per-file metadata (NTFS ACLs on Windows). Best-effort.
 	if a.MetaCollector != nil {
@@ -860,30 +1454,7 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 		}
 	}
 
-	fname_entry := &PXARFilenameEntry{
-		hdr: PXAR_FILENAME,
-		len: uint64(16) + uint64(len(basename)) + 1,
-	}
-
-	binary.Write(&a.buffer, binary.LittleEndian, fname_entry)
-
-	a.buffer.WriteString(basename)
-	a.buffer.WriteByte(0x00)
-
-	entry := &PXARFileEntry{
-		hdr:   PXAR_ENTRY,
-		len:   56,
-		mode:  IFREG | 0o777,
-		flags: 0,
-		uid:   1000,
-		gid:   1000,
-		mtime: MTime{
-			secs:    a.entryMTime(fileInfo),
-			nanos:   0,
-			padding: 0,
-		},
-	}
-	binary.Write(&a.buffer, binary.LittleEndian, entry)
+	entryAt := a.writeFileHead(basename, fileInfo)
 
 	// The PXAR stream is a flat byte sequence: the next entry's header begins
 	// immediately after exactly declaredSize payload bytes. We commit declaredSize
@@ -892,50 +1463,89 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 	// and the read below (common for files in use WITHOUT VSS: logs, .pst, SQL .mdf)
 	// would otherwise desynchronise the whole archive and corrupt every entry that
 	// follows. So we cap reads at declaredSize and zero-pad any shortfall.
-	binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD)
 	declaredSize := uint64(fileInfo.Size())
-	filesize := declaredSize + 16 //Payload size + header size
-	binary.Write(&a.buffer, binary.LittleEndian, filesize)
-
-	if err := a.Flush(); err != nil {
+	// out/flush are the inline stream for a classic archive, the payload
+	// stream for a split one (see beginPayload).
+	out, flush, err := a.beginPayload(declaredSize, true)
+	if err != nil {
 		return CatalogFile{}, err
 	}
 
 	readbuffer := make([]byte, 1024*64)
 	var written uint64
-	// readFailed is set when the file could not be read to the end (a bad
-	// sector, a cloud placeholder that cannot be fetched, a locked range). That
-	// file is zero-padded and flagged below and the backup carries on, as it
-	// does for a file that cannot be opened.
+	// readFailed is set when the file could not be read to the end: it is
+	// zero-padded and flagged below and the backup carries on.
 	var readFailed error
+	recoveries := 0
 
 	for written < declaredSize {
+		if err := a.Pause.Wait(a.Ctx); err != nil {
+			return CatalogFile{}, err
+		}
 		toRead := uint64(len(readbuffer))
 		if remaining := declaredSize - written; remaining < toRead {
 			toRead = remaining
 		}
-		nread, err := file.Read(readbuffer[:toRead])
+		nread, err := reader.Read(readbuffer[:toRead])
+		if err != nil && err != io.EOF && nread == 0 {
+			// The source may have dropped out (see source_wait.go): wait
+			// for it, reopen the file and read on from the same offset.
+			// The retry reads the next block itself, so a handle that
+			// opens but cannot read never counts as recovered.
+			if recoveries >= maxReadRecoveries {
+				readFailed = err
+				break
+			}
+			rerr := a.retrySource(path, err, "reading", func() error {
+				f, oerr := openForRead(path)
+				if oerr != nil {
+					return oerr
+				}
+				if _, serr := f.Seek(int64(written), io.SeekStart); serr != nil {
+					f.Close()
+					return serr
+				}
+				n, rerr := f.Read(readbuffer[:toRead])
+				if n == 0 && rerr != nil && rerr != io.EOF {
+					f.Close()
+					return rerr
+				}
+				if fileHandle != nil {
+					fileHandle.Close()
+				}
+				fileHandle, reader = f, f
+				nread, err = n, rerr
+				return nil
+			})
+			if a.walkMustStop(rerr) {
+				return CatalogFile{}, fmt.Errorf("failed to read from %s: %w", path, rerr)
+			}
+			if rerr != nil {
+				readFailed = rerr
+				break
+			}
+			recoveries++
+		}
 		if nread > 0 {
-			a.buffer.Write(readbuffer[:nread])
+			out.Write(readbuffer[:nread])
 			written += uint64(nread)
-			if ferr := a.Flush(); ferr != nil {
+			if ferr := flush(); ferr != nil {
 				return CatalogFile{}, ferr
 			}
 		}
 		if err == io.EOF {
 			break
 		}
-		if err != nil {
-			readFailed = err
-			break
-		}
 	}
 
-	// File shrank since Lstat (or read short), or could not be read to the end:
-	// pad with zeros so the emitted payload matches the declared length and the
-	// stream stays aligned. Flag it as a read error so the backup is not reported
-	// as fully verified (v2-H-02) rather than silently passing.
+	// File shrank since Lstat (or read short), or could not be read to the
+	// end: pad with zeros so the emitted payload matches the declared length
+	// and the stream stays aligned. Flag it as a read error so the backup is
+	// not reported as fully verified (v2-H-02) rather than silently passing.
 	if written < declaredSize {
+		if a.Split {
+			a.markEntryIncomplete(entryAt)
+		}
 		if readFailed != nil {
 			a.addReadError(
 				fmt.Sprintf("Read failed after %d of %d bytes, zero-padded to declared size (content incomplete): %s (Error: %v)", written, declaredSize, path, readFailed))
@@ -949,9 +1559,9 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 			if remaining := declaredSize - written; remaining < n {
 				n = remaining
 			}
-			a.buffer.Write(pad[:n])
+			out.Write(pad[:n])
 			written += n
-			if ferr := a.Flush(); ferr != nil {
+			if ferr := flush(); ferr != nil {
 				return CatalogFile{}, ferr
 			}
 		}
@@ -960,8 +1570,18 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 		// tail is NOT in the snapshot. The read loop stopped exactly at declaredSize
 		// (capped), so probe one more byte to detect the growth and flag it — this
 		// silent truncation otherwise passed as success (v2-H-02).
+		//
+		// Note: when reader is prefetched bytes (bytes.Reader, exactly
+		// declaredSize long by construction), this probe can never observe
+		// growth that happened after the prefetch's own os.ReadFile — only the
+		// live-file path can catch that. The size-match check before choosing
+		// the prefetched reader already falls back to a live re-read whenever
+		// the file's size differs from what was prefetched, which covers the
+		// overwhelmingly common case; this is a narrower residual race than
+		// that, on par with the general non-VSS live-file-change risk this
+		// tool already documents elsewhere, not a new class of exposure.
 		var probe [1]byte
-		if n, _ := file.Read(probe[:]); n > 0 {
+		if n, _ := reader.Read(probe[:]); n > 0 {
 			a.addReadError(
 				fmt.Sprintf("File grew during backup, tail past %d bytes not captured (content incomplete): %s", declaredSize, path))
 		}
@@ -973,9 +1593,48 @@ func (a *PXARArchive) WriteFile(path string, basename string) (CatalogFile, erro
 
 	return CatalogFile{
 		Name:  basename,
-		MTime: a.entryMTime(fileInfo),
+		MTime: a.catalogMTime(fileInfo),
 		Size:  uint64(fileInfo.Size()),
 	}, nil
+}
+
+// writeSymlink stores a symbolic link as FILENAME, ENTRY (IFLNK) and a SYMLINK
+// record holding the NUL-terminated target, the layout Proxmox's own pxar uses.
+// The link is never followed.
+func (a *PXARArchive) writeSymlink(path, basename string, info os.FileInfo) (CatalogFile, error) {
+	target, err := os.Readlink(path)
+	if err != nil {
+		a.addReadError(fmt.Sprintf("Cannot read symlink: %s (Error: %v)", path, err))
+		return CatalogFile{}, nil
+	}
+
+	binary.Write(&a.buffer, binary.LittleEndian, &PXARFilenameEntry{
+		hdr: PXAR_FILENAME,
+		len: uint64(16) + uint64(len(basename)) + 1,
+	})
+	a.buffer.WriteString(basename)
+	a.buffer.WriteByte(0x00)
+
+	mode, uid, gid, secs, nanos := a.entryMetaFor(info, IFLNK)
+	binary.Write(&a.buffer, binary.LittleEndian, &PXARFileEntry{
+		hdr:   PXAR_ENTRY,
+		len:   56,
+		mode:  mode,
+		flags: 0,
+		uid:   uid,
+		gid:   gid,
+		mtime: MTime{secs: secs, nanos: nanos},
+	})
+
+	binary.Write(&a.buffer, binary.LittleEndian, PXAR_SYMLINK)
+	binary.Write(&a.buffer, binary.LittleEndian, uint64(16)+uint64(len(target))+1)
+	a.buffer.WriteString(target)
+	a.buffer.WriteByte(0x00)
+
+	if err := a.Flush(); err != nil {
+		return CatalogFile{}, err
+	}
+	return CatalogFile{Name: basename, Kind: 'l'}, nil
 }
 
 // WriteVirtualFile writes an in-memory file into the PXAR archive.
@@ -1004,13 +1663,13 @@ func (a *PXARArchive) WriteVirtualFile(filename string, data []byte, mtime uint6
 	}
 	binary.Write(&a.buffer, binary.LittleEndian, entry)
 
-	binary.Write(&a.buffer, binary.LittleEndian, PXAR_PAYLOAD)
-	filesize := uint64(len(data)) + 16
-	binary.Write(&a.buffer, binary.LittleEndian, filesize)
+	out, flush, err := a.beginPayload(uint64(len(data)), false)
+	if err != nil {
+		return CatalogFile{}, err
+	}
+	out.Write(data)
 
-	a.buffer.Write(data)
-
-	if err := a.Flush(); err != nil {
+	if err := flush(); err != nil {
 		return CatalogFile{}, err
 	}
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -100,7 +101,10 @@ func nbdStart(pbsclient *pbscommon.PBSClient, archive string, fidxdata []byte, n
 		os.Exit(1)
 	}
 	if len(backend.chunks) > 0 {
-		if _, err := pbsclient.GetChunkData(backend.chunks[0]); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), chunkFetchTimeout)
+		_, err := pbsclient.GetChunkData(ctx, backend.chunks[0])
+		cancel()
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "pbsnbd: cannot read the first chunk of the image: %v\n", err)
 			os.Exit(1)
 		}
@@ -183,19 +187,32 @@ func main() {
 	authIDFlag := flag.String("authid", "", "Authentication ID (PBS Api token)")
 	secretFlag := flag.String("secret", "", "Secret for authentication")
 	usernameFlag := flag.String("username", "", "Username for ticket login (used with -password; overrides -authid/-secret)")
-	passwordFlag := flag.String("password", "", "Password for ticket login (with -username)")
+	passwordFlag := flag.String("password", "", "Password for ticket login (with -username; default $PBS_PASSWORD)")
 	datastoreFlag := flag.String("datastore", "", "Datastore name")
 	namespaceFlag := flag.String("namespace", "", "Namespace (optional)")
 	nbdFlag := flag.Int("nbd", 0, "NBD number")
 	backupPath := flag.String("path", "", "Path to backup, eg. vm/100/2026-03-01T00:07:00Z/drive-scsi0.img.fidx")
 	listFlag := flag.Bool("list", false, "List available fidx images as 'type/id/time/file' lines and exit (no TUI)")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (required to restore a snapshot taken with encryption enabled)")
-	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
+	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (default $PBS_ENCRYPTION_PASSWORD; prompted for when neither is set)")
 	helpFlag := flag.Bool("help", false, "Show help")
+	// Fills any of these still at their flag default from the PBS_* environment
+	// variables before Parse() runs, so an explicit CLI flag still wins over an
+	// env var, which still wins over the built-in default.
+	pbscommon.ApplyPBSEnvVars(baseURLFlag, authIDFlag, secretFlag, datastoreFlag, certFingerprintFlag)
 	flag.Parse()
 	if *helpFlag {
 		flag.PrintDefaults()
 		return
+	}
+	// The secrets can come from the environment (the official client's names),
+	// so a caller such as the bare-metal restore wizard need not put them on
+	// the command line, where ps shows them to everyone on the system.
+	if *usernameFlag != "" && *passwordFlag == "" {
+		*passwordFlag = os.Getenv("PBS_PASSWORD")
+	}
+	if *keyFilePassphraseFlag == "" {
+		*keyFilePassphraseFlag = os.Getenv("PBS_ENCRYPTION_PASSWORD")
 	}
 
 	// An encrypted .fidx only yields plaintext through NewFIDXServer's
@@ -334,6 +351,7 @@ func main() {
 					Datastore:       ns[0],
 					Namespace:       strings.Join(ns[1:], "/"),
 					Insecure:        true,
+					Crypt:           crypt, // -keyfile: the TUI restores encrypted snapshots too
 				}
 				if err := client.ObtainTicket(); err != nil {
 					error_modal.SetText("ticket login failed: " + err.Error())
@@ -349,6 +367,7 @@ func main() {
 					Datastore:       ns[0],
 					Namespace:       strings.Join(ns[1:], "/"),
 					Insecure:        true,
+					Crypt:           crypt, // -keyfile: the TUI restores encrypted snapshots too
 				}
 			}
 

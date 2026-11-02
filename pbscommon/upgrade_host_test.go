@@ -4,7 +4,7 @@ import "testing"
 
 // The upgrade request's Host is the BaseURL host as written: a default port
 // must not appear when the URL has none, or a reverse proxy routing on the
-// exact Host misses it (#89).
+// exact Host misses it (upstream #89; test from upstream #116).
 func TestUpgradeHostHeader(t *testing.T) {
 	cases := []struct{ baseURL, addr, want string }{
 		{"https://pbs.example.com", "pbs.example.com:443", "pbs.example.com"},

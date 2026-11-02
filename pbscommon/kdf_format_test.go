@@ -34,16 +34,36 @@ func TestKeyDerivationConfigOfficialFormat(t *testing.T) {
 		t.Fatalf("scrypt marshalled in the wrong shape: %s", out)
 	}
 
-	var flat KeyDerivationConfig
-	if err := json.Unmarshal([]byte(`{"kdf":"scrypt","n":32768,"r":8,"p":1,"salt":"c2FsdHNhbHRzYWx0c2FsdA=="}`), &flat); err != nil {
-		t.Fatalf("the flat layout written by earlier versions must still be read: %v", err)
-	}
-	if flat.KDF != "scrypt" || flat.N != 32768 || flat.R != 8 || flat.P != 1 {
-		t.Fatalf("flat layout parsed wrongly: %+v", flat)
-	}
-
 	var bad KeyDerivationConfig
 	if err := json.Unmarshal([]byte(`{"kdf":"argon2"}`), &bad); err == nil {
 		t.Fatal("an unknown key derivation function must be rejected")
+	}
+}
+
+// Upstream's code before tizbac/proxmoxbackupclient_go#95 expected a flat
+// layout, {"kdf":"scrypt",...}. A key file in that layout is read, and
+// written back in the official tagged layout.
+func TestKeyDerivationConfigFlatLayoutReadWrittenTagged(t *testing.T) {
+	for _, c := range []struct {
+		flat, prefix string
+	}{
+		{`{"kdf":"scrypt","n":32768,"r":8,"p":1,"salt":"c2FsdHNhbHRzYWx0c2FsdA=="}`, `{"Scrypt":{`},
+		{`{"kdf":"PBKDF2","iter":4096,"salt":"c2FsdHNhbHRzYWx0c2FsdA=="}`, `{"PBKDF2":{`},
+	} {
+		var k KeyDerivationConfig
+		if err := json.Unmarshal([]byte(c.flat), &k); err != nil {
+			t.Fatalf("%s: the flat layout must still be read: %v", c.flat, err)
+		}
+		out, err := json.Marshal(k)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(string(out), c.prefix) {
+			t.Fatalf("%s: written as %s, want the tagged layout %s...", c.flat, out, c.prefix)
+		}
+		var again KeyDerivationConfig
+		if err := json.Unmarshal(out, &again); err != nil || again != k {
+			t.Fatalf("%s: round trip gave %+v (err %v), want %+v", c.flat, again, err, k)
+		}
 	}
 }

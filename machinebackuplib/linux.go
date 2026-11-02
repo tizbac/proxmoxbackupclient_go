@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"math"
 )
 
 const sectorSize = 512
@@ -25,6 +24,7 @@ type diskPartition struct {
 	startByte  uint64
 	endByte    uint64
 	mountpoint string
+	fstype     string // "ext4", "xfs", "vfat"... ("" when unknown)
 }
 
 func unescapeOctal(s string) string {
@@ -45,14 +45,16 @@ func unescapeOctal(s string) string {
 	return b.String()
 }
 
-func mountForMajMin(majmin string) string {
+// mountForMajMin returns where a block device (major:minor) is mounted,
+// preferring a mount of its root, and that mount's file system type.
+func mountForMajMin(majmin string) (string, string) {
 	f, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	defer f.Close()
 
-	best := ""
+	best, bestFS := "", ""
 	bestIsRoot := false
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -64,12 +66,19 @@ func mountForMajMin(majmin string) string {
 		}
 		root := fields[3]
 		mp := unescapeOctal(fields[4])
+		fs := ""
+		for i := 5; i+1 < len(fields); i++ {
+			if fields[i] == "-" {
+				fs = fields[i+1]
+				break
+			}
+		}
 		if best == "" || (!bestIsRoot && root == "/") {
-			best = mp
+			best, bestFS = mp, fs
 			bestIsRoot = root == "/"
 		}
 	}
-	return best
+	return best, bestFS
 }
 
 func readUintFile(path string) (uint64, error) {
@@ -110,12 +119,50 @@ func enumeratePartitions(diskName string) ([]diskPartition, error) {
 			endByte:   (start + size) * sectorSize,
 		}
 		if data, err := os.ReadFile(filepath.Join(pdir, "dev")); err == nil {
-			p.mountpoint = mountForMajMin(strings.TrimSpace(string(data)))
+			majmin := strings.TrimSpace(string(data))
+			p.mountpoint, p.fstype = mountForMajMin(majmin)
+			if p.fstype == "" {
+				p.fstype = udevFileSystem(majmin)
+			}
 		}
 		parts = append(parts, p)
 	}
 	sort.Slice(parts, func(i, j int) bool { return parts[i].startByte < parts[j].startByte })
 	return parts, nil
+}
+
+// segmentUsedMap is the used map of a snapshotted partition: its file
+// system's free space (unless readFree) and the snapshot's own
+// copy-on-write file, which lives on the partition and must not go into
+// the image (a restored disk would carry a stale file of a tenth of the
+// file system). nil means read everything.
+func segmentUsedMap(src io.ReaderAt, length int64, cowFile string, readFree bool, name string) *usedMap {
+	var m *usedMap
+	if !readFree {
+		var err error
+		if m, err = LinuxFreeSpaceMap(src, length); err != nil {
+			log.Printf("%s: free space will be read (%v)", name, err)
+			m = nil
+		}
+	}
+	if cowFile == "" {
+		return m
+	}
+	ext, err := fileExtents(cowFile)
+	if err != nil || len(ext) == 0 {
+		log.Printf("%s: snapshot store %s not left out (%v)", name, cowFile, err)
+		return m
+	}
+	if m == nil {
+		m = newUsedMap(4096, (length+4095)/4096)
+	}
+	var n int64
+	for _, e := range ext {
+		m.FreeBytes(e[0], e[1])
+		n += e[1]
+	}
+	log.Printf("%s: snapshot store %s (%s) left out of the image", name, cowFile, BytesToString(n))
+	return m
 }
 
 func isBlockDevice(path string) bool {
@@ -126,7 +173,7 @@ func isBlockDevice(path string) bool {
 	return fi.Mode()&os.ModeDevice != 0 && fi.Mode()&os.ModeCharDevice == 0
 }
 
-func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, useSnapshot bool, progressCallback ProgressCallback) (bool, int64, error) {
+func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress, readFree bool) (bool, int64, error) {
 	if !strings.HasPrefix(dev, "/dev/") {
 		return false, 0, nil
 	}
@@ -163,53 +210,36 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, useSnap
 
 	fidxName := fmt.Sprintf("drive-sata%d.img.fidx", index)
 
-	if useSnapshot && len(mountpoints) > 0 {
-		// Try to create snapshots for mounted partitions
-		err := snapshot.CreateVSSSnapshot(mountpoints, false, func(snapshots map[string]snapshot.SnapShot) error {
-			return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback)
-		})
-		if err != nil {
-			return false, 0, fmt.Errorf("snapshot creation failed (dattobd/elastio-snap required for crash-consistent backup): %w", err)
-		}
-		return true, total, nil
-	}
-
-	// useSnapshot is false: raw disk read (crash-consistent) - this is the explicit user choice
-	log.Printf("Reading raw disk %s (crash-consistent, snapshots disabled by user)", dev)
-	return readRawDisk(client, dev, fidxName, uint64(total), progressCallback)
-}
-
-func readRawDisk(client *pbscommon.PBSClient, dev, fidxName string, total uint64, progressCallback ProgressCallback) (bool, int64, error) {
-	// Get partitions for raw read
-	parts, err := enumeratePartitions(strings.TrimPrefix(dev, "/dev/"))
+	err = snapshot.CreateVSSSnapshot(mountpoints, false, func(snapshots map[string]snapshot.SnapShot) error {
+		return streamStitchedDisk(client, dev, fidxName, uint64(total), parts, snapshots, progressCallback, jp, readFree)
+	})
 	if err != nil {
-		return false, 0, err
+		return true, 0, err
 	}
-
-	// Create a dummy snapshot map with no valid snapshots - streamStitchedDisk
-	// will skip partitions without valid snapshots and read raw sectors
-	emptySnapshots := make(map[string]snapshot.SnapShot)
-	for _, p := range parts {
-		if p.mountpoint != "" {
-			emptySnapshots[p.mountpoint] = snapshot.SnapShot{}
-		}
-	}
-	if err := streamStitchedDisk(client, dev, fidxName, total, parts, emptySnapshots, progressCallback); err != nil {
-		return false, 0, err
-	}
-	return true, int64(total), nil
+	return true, total, nil
 }
 
 type diskSegment struct {
 	start   uint64
 	end     uint64
 	snapDev string
+	cowFile string // the snapshot's copy-on-write file on this partition
+	rawFS   bool   // an unmounted ext/XFS partition, read raw with its free-space map
 }
 
-func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total uint64, parts []diskPartition, snapshots map[string]snapshot.SnapShot, progressCallback ProgressCallback) error {
+func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total uint64, parts []diskPartition, snapshots map[string]snapshot.SnapShot, progressCallback ProgressCallback, jp *JobProgress, readFree bool) error {
 	regions := make([]diskSegment, 0)
 	for _, p := range parts {
+		end := p.endByte
+		if end > total {
+			end = total
+		}
 		if p.mountpoint == "" {
+			// Not mounted, so nothing changes it while it is read: its own
+			// free-space map is safe to use.
+			if p.fstype == "ext2" || p.fstype == "ext3" || p.fstype == "ext4" || p.fstype == "xfs" {
+				regions = append(regions, diskSegment{start: p.startByte, end: end, rawFS: true})
+			}
 			continue
 		}
 		sn, ok := snapshots[p.mountpoint]
@@ -217,16 +247,25 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 			log.Printf("Note: no snapshot for %s (%s), reading it raw (crash-consistent)", p.device, p.mountpoint)
 			continue
 		}
-		end := p.endByte
-		if end > total {
-			end = total
-		}
-		regions = append(regions, diskSegment{start: p.startByte, end: end, snapDev: sn.ObjectPath})
+		regions = append(regions, diskSegment{start: p.startByte, end: end, snapDev: sn.ObjectPath, cowFile: sn.CowFile})
 		log.Printf("Partition %s (%s) @ %s -> snapshot %s",
 			p.device, p.mountpoint, BytesToString(int64(p.startByte)), sn.ObjectPath)
 	}
 
 	segments := assembleSegments(total, regions)
+
+	// The progress card names the partition being read; the reader only
+	// reports a fraction of the disk, so look the offset up here.
+	if jp != nil {
+		inner := progressCallback
+		progressCallback = func(fraction float64, message string) bool {
+			jp.setPartition(partitionLabelAt(parts, uint64(fraction*float64(total))))
+			if inner == nil {
+				return false
+			}
+			return inner(fraction, message)
+		}
+	}
 
 	ch := make(chan []byte)
 	errCh := make(chan error, 1)
@@ -235,9 +274,9 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 
 	go func() {
 		defer close(readerDone)
-		err := readDiskSegments(dev, segments, total, ch, uploadDone, progressCallback)
-		// Publish the result BEFORE closing ch — see the ordering contract on
-		// uploadWorker. errCh is buffered, so this send never blocks.
+		err := writeSegments(dev, segments, total, ch, uploadDone, progressCallback, jp, readFree)
+		// Error first, then close: uploadWorker's non-blocking check of
+		// errCh runs after ch is drained and must find the value there.
 		errCh <- err
 		close(ch)
 	}()
@@ -249,23 +288,37 @@ func streamStitchedDisk(client *pbscommon.PBSClient, dev, fidxName string, total
 	var uploadErr error
 	go func() {
 		defer close(uploadDone)
-		uploadErr = uploadDiskImage(client, fidxName, total, ch, errCh)
+		uploadErr = uploadWorker(client, fidxName, total, ch, errCh, jp)
 	}()
 
 	<-uploadDone
 	// The reader holds the snapshot devices open until it returns (it stops at
 	// its next block once the upload has ended). Returning before then left
-	// them open while the caller destroyed the snapshots, which failed with
-	// "resource busy" after an upload error.
+	// them open while the snapshots were destroyed, which failed with
+	// "resource busy" after an upload error (seen 2026-10-24 on a 4G link).
 	<-readerDone
 	return uploadErr
 }
 
-// Test seams for streamStitchedDisk's reader and uploader.
-var (
-	readDiskSegments = writeSegments
-	uploadDiskImage  = uploadWorker
-)
+// partitionLabelAt names the partition holding byte off of the disk:
+// "/dev/sda2 (/home)", "/dev/sda1", or "unpartitioned space".
+func partitionLabelAt(parts []diskPartition, off uint64) string {
+	for _, p := range parts {
+		if off >= p.startByte && off < p.endByte {
+			var in []string
+			for _, s := range []string{p.mountpoint, p.fstype} {
+				if s != "" {
+					in = append(in, s)
+				}
+			}
+			if len(in) > 0 {
+				return p.device + " (" + strings.Join(in, ", ") + ")"
+			}
+			return p.device
+		}
+	}
+	return "unpartitioned space"
+}
 
 func assembleSegments(total uint64, regions []diskSegment) []diskSegment {
 	sort.Slice(regions, func(i, j int) bool { return regions[i].start < regions[j].start })
@@ -281,7 +334,7 @@ func assembleSegments(total uint64, regions []diskSegment) []diskSegment {
 			s = cursor
 		}
 		if r.end > s {
-			segments = append(segments, diskSegment{start: s, end: r.end, snapDev: r.snapDev})
+			segments = append(segments, diskSegment{start: s, end: r.end, snapDev: r.snapDev, cowFile: r.cowFile, rawFS: r.rawFS})
 			cursor = r.end
 		}
 	}
@@ -291,25 +344,16 @@ func assembleSegments(total uint64, regions []diskSegment) []diskSegment {
 	return segments
 }
 
-func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []byte, uploadDone <-chan struct{}, progressCallback ProgressCallback) (retErr error) {
+func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []byte, uploadDone <-chan struct{}, progressCallback ProgressCallback, jp *JobProgress, readFree bool) (retErr error) {
 	buffer := make([]byte, 0, pbscommon.PBS_FIXED_CHUNK_SIZE*2)
 
 	var pos uint64 = 0
-	var b int64 = 0
 
 	report := func() bool {
 		if progressCallback == nil {
 			return false
 		}
-		if total == 0 {
-			// Unknown total size; report with 0% to avoid NaN
-			return progressCallback(0, fmt.Sprintf("%s: Block %d", dev, b))
-		}
-		pct := float64(pos) / float64(total)
-		if math.IsNaN(pct) || math.IsInf(pct, 0) {
-			pct = 0
-		}
-		return progressCallback(pct, fmt.Sprintf("%s: Block %d", dev, b))
+		return progressCallback(float64(pos)/float64(total), blockMessage(dev, pos, total))
 	}
 
 	sendChunk := func(chunk []byte) bool {
@@ -322,7 +366,6 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 			return false // uploader stopped; drop the data
 		}
 		pos += uint64(len(chunk))
-		b++
 		return true
 	}
 
@@ -366,27 +409,66 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 	for _, seg := range segments {
 		length := seg.end - seg.start
 		var bad uint64
-		var ok bool
-		if seg.snapDev == "" {
-			bad, ok = resilientCopy(disk, seg.start, length, block, emit, emitZeros)
-			if bad > 0 {
-				log.Printf("\033[31;1mWarning: %s had %d unreadable sector(s) (~%s), zero-filled in the image\033[0m",
-					dev, bad, BytesToString(int64(bad*sectorSize)))
-			}
-		} else {
+		src, srcOff, name := io.ReaderAt(disk), seg.start, dev
+		if seg.snapDev != "" {
 			sf, err := os.Open(seg.snapDev)
 			if err != nil {
 				return err
 			}
-			bad, ok = resilientCopy(sf, 0, length, block, emit, emitZeros)
-			sf.Close()
-			if bad > 0 {
-				log.Printf("\033[31;1mWarning: snapshot %s had %d unreadable sector(s) (~%s), zero-filled in the image\033[0m",
-					seg.snapDev, bad, BytesToString(int64(bad*sectorSize)))
-			}
+			defer sf.Close()
+			src, srcOff, name = sf, 0, "snapshot "+seg.snapDev
 		}
-		if !ok {
-			return ErrCancelled
+		// onBad gets offsets in src; the report wants them on the disk.
+		onBad := func(off, n uint64) {
+			bad += n
+			jp.noteUnreadable(dev, seg.start+(off-srcOff), n)
+		}
+		var used *usedMap
+		switch {
+		case seg.snapDev != "":
+			used = segmentUsedMap(src, int64(length), seg.cowFile, readFree, name)
+		case seg.rawFS:
+			used = segmentUsedMap(io.NewSectionReader(src, int64(srcOff), int64(length)), int64(length), "", readFree, fmt.Sprintf("%s at %d", name, seg.start))
+		}
+		var err error
+		if used == nil {
+			err = readResilient(src, srcOff, length, block, sectorSize, emit, emitZeros, onBad)
+		} else {
+			// As on Windows: a 4 MiB window with no used block is zeros,
+			// the rest is read with its free blocks zeroed.
+			var skipped uint64
+			for w := uint64(0); w < length && err == nil; w += pbscommon.PBS_FIXED_CHUNK_SIZE {
+				n := min(uint64(pbscommon.PBS_FIXED_CHUNK_SIZE), length-w)
+				if used.anyUsed(int64(w), int64(n)) {
+					at := int64(w)
+					masked := func(data []byte) bool {
+						used.zeroFree(data, at)
+						at += int64(len(data))
+						return emit(data)
+					}
+					maskedZeros := func(k uint64) bool {
+						at += int64(k)
+						return emitZeros(k)
+					}
+					err = readResilient(src, srcOff+w, n, block, sectorSize, masked, maskedZeros, onBad)
+				} else if emitZeros(n) {
+					skipped += n
+					jp.FreeSkipped.Add(n)
+				} else {
+					err = errCopyStopped
+				}
+			}
+			log.Printf("%s: %s of free space not read", name, BytesToString(int64(skipped)))
+		}
+		if bad > 0 {
+			log.Printf("[31;1mWarning: %s had %d unreadable sector(s) (~%s), zero-filled in the image[0m",
+				name, bad/sectorSize, BytesToString(int64(bad)))
+		}
+		if err == errCopyStopped {
+			return errCancelled
+		}
+		if err != nil {
+			return fmt.Errorf("read %s at segment %d: %w", name, seg.start, err)
 		}
 	}
 
@@ -398,75 +480,9 @@ func writeSegments(dev string, segments []diskSegment, total uint64, ch chan []b
 		chunk := make([]byte, n)
 		copy(chunk, buffer[:n])
 		if !sendChunk(chunk) {
-			return ErrCancelled
+			return errCancelled
 		}
 		buffer = buffer[n:]
 	}
 	return nil
-}
-
-func resilientCopy(src io.ReaderAt, srcOffset, length uint64, block []byte, emit func([]byte) bool, emitZeros func(uint64) bool) (uint64, bool) {
-	var badSectors uint64
-	var pos uint64
-	for pos < length {
-		want := uint64(len(block))
-		if want > length-pos {
-			want = length - pos
-		}
-		n, err := src.ReadAt(block[:want], int64(srcOffset+pos))
-		if n > 0 {
-			if !emit(block[:n]) {
-				return badSectors, false
-			}
-			pos += uint64(n)
-		}
-		if err == nil {
-			continue
-		}
-		if err == io.EOF {
-			if pos < length {
-				if !emitZeros(length - pos) {
-					return badSectors, false
-				}
-				pos = length
-			}
-			break
-		}
-
-		winEnd := pos + (want - uint64(n))
-		for pos < winEnd {
-			s := uint64(sectorSize)
-			if s > winEnd-pos {
-				s = winEnd - pos
-			}
-			m, serr := src.ReadAt(block[:s], int64(srcOffset+pos))
-			if m > 0 {
-				if !emit(block[:m]) {
-					return badSectors, false
-				}
-				pos += uint64(m)
-			}
-			if serr == nil {
-				continue
-			}
-			if serr == io.EOF {
-				if pos < length {
-					if !emitZeros(length - pos) {
-						return badSectors, false
-					}
-					pos = length
-				}
-				winEnd = pos
-				break
-			}
-			if rem := s - uint64(m); rem > 0 {
-				if !emitZeros(rem) {
-					return badSectors, false
-				}
-				pos += rem
-				badSectors++
-			}
-		}
-	}
-	return badSectors, true
 }

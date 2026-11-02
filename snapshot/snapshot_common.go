@@ -5,15 +5,8 @@ type SnapShot struct {
 	Id         string
 	ObjectPath string
 	Valid      bool
-}
-
-// SnapControl describes a Linux block-snapshot control module
-// (elastio-snap or dattobd). Only meaningful on Linux; on other platforms
-// DetectControl always reports false.
-type SnapControl struct {
-	Name      string
-	DevPrefix string
-	Module    string
-	CtlDevice string
-	InfoFile  string
+	// CowFile (Linux block snapshots) is the copy-on-write store the
+	// snapshot keeps on the snapshotted file system itself; a machine
+	// backup leaves its blocks out of the image.
+	CowFile string
 }
