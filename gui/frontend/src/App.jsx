@@ -581,7 +581,7 @@ function App() {
   // "v0.7.0" for a release; a development build as is ("dev-49d96e4").
   const isDevBuild = !appVersion || appVersion.startsWith('dev')
   const versionLabel = isDevBuild ? appVersion : `v${appVersion}`
-  const [brand, setBrand] = useState({ name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', logo: '', accent: '#e87003', accent_hover: '#d46100', buy_storage_url: '', buy_storage_text: '', is_default: true })
+  const [brand, setBrand] = useState({ name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', logo: '', accent: '#2e8c47', accent_hover: '#256f38', buy_storage_url: '', buy_storage_text: '', is_default: true })
   const [systemInfo, setSystemInfo] = useState({ mode: 'Standalone', is_admin: false, service_available: false, os: '' })
   const [config, setConfig] = useState({
     baseurl: '',

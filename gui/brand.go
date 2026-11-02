@@ -36,11 +36,13 @@ const defaultBrandKey = "proxmoxbackupclient"
 // "NimbusBackup.msi" -> "NimbusBackup.exe" -> key "nimbusbackup".
 var brandCatalog = map[string]Brand{
 	defaultBrandKey: {
-		Name:        defaultBrandKey,
-		Title:       "Proxmox Backup Client",
-		Logo:        "", // bundled gui/frontend/src/assets/logo.webp
-		Accent:      "#e87003",
-		AccentHover: "#d46100",
+		Name:  defaultBrandKey,
+		Title: "Proxmox Backup Client",
+		Logo:  "", // bundled gui/frontend/src/assets/logo.webp
+		// Green, the Theme picker's "green" preset: the default until a user
+		// chooses another (ThemePicker.jsx).
+		Accent:      "#2e8c47",
+		AccentHover: "#256f38",
 		BrandURL:    "https://www.proxmox.com/",
 		Urls: map[string]string{
 			"about":   "https://www.proxmox.com/",

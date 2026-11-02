@@ -11,10 +11,11 @@ box-sizing: border-box;
    --hero-start/--hero-end are the two outer stops of the hero banner's
    gradient; --accent is always its middle (60%) stop. */
 :root {
-    --accent: #e87003;
-    --accent-hover: #d46100;
-    --hero-start: #5c3a1e;
-    --hero-end: #fbe9d7;
+    /* The "green" Theme preset, the default until a user chooses another. */
+    --accent: #2e8c47;
+    --accent-hover: #256f38;
+    --hero-start: #1e3a24;
+    --hero-end: #e6f5ea;
 }
 
 body {

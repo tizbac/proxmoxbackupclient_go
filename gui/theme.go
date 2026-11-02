@@ -1,32 +1,69 @@
 package main
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+)
 
-// SaveTheme persists the user's Preferences > Theme choice to config.json,
-// the same place every other setting lives — previously Theme was saved only
-// in the frontend's browser localStorage, which doesn't survive a WebView2
-// profile reset and isn't backed up alongside everything else.
+// The Preferences > Theme choice is each user's own, like the language: one
+// user's colours do not change another's. It lives in the user's own folder
+// (themeFilePath), not in the machine-wide settings. A user who has not
+// chosen yet gets the theme earlier versions saved for the whole computer,
+// if any, so nobody's colours change on upgrade; with none, the frontend
+// uses the brand's own colours (green for the default brand).
+
+// themeFilePath is the user's theme file. A variable so tests can point it
+// elsewhere.
+var themeFilePath = func() (string, error) {
+	dir, err := userThemeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "theme.json"), nil
+}
+
+// SaveTheme saves the user's Preferences > Theme choice.
 func (a *App) SaveTheme(theme ThemeSettings) error {
-	a.config.Theme = &theme
-	if err := a.config.Save(); err != nil {
+	path, err := themeFilePath()
+	if err != nil {
+		return fmt.Errorf("failed to save theme: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("failed to save theme: %w", err)
+	}
+	data, err := json.MarshalIndent(theme, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to save theme: %w", err)
+	}
+	if err := atomicWriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("failed to save theme: %w", err)
 	}
 	return nil
 }
 
-// GetTheme returns the saved Theme, or a zero-value ThemeSettings (empty
-// Preset) if none has been saved yet — the frontend treats an empty Preset
-// as "nothing saved, use the built-in default".
+// GetTheme returns the user's theme, else the one earlier versions saved
+// for the whole computer, else a zero-value ThemeSettings (empty Preset):
+// the frontend treats that as "nothing saved, use the brand's colours".
 func (a *App) GetTheme() ThemeSettings {
-	if a.config.Theme == nil {
-		return ThemeSettings{}
+	if path, err := themeFilePath(); err == nil {
+		if data, err := os.ReadFile(path); err == nil {
+			var t ThemeSettings
+			if json.Unmarshal(stripUTF8BOM(data), &t) == nil && t.Preset != "" {
+				return t
+			}
+		}
 	}
-	return *a.config.Theme
+	if a.config != nil && a.config.Theme != nil {
+		return *a.config.Theme
+	}
+	return ThemeSettings{}
 }
 
 // SetParallelRestore persists the Preferences > Advanced "parallel restore
-// extraction" toggle. Deliberately bypasses SaveConfig/Validate the same way
-// SaveTheme does: Validate() unconditionally requires a non-empty legacy
+// extraction" toggle. Deliberately bypasses SaveConfig/Validate:
+// Validate() unconditionally requires a non-empty legacy
 // BaseURL, which is genuinely empty for anyone on multi-PBS (real servers
 // live in PBSServers instead) — routing this general, connection-unrelated
 // preference through SaveConfig failed with "PBS server URL required" for

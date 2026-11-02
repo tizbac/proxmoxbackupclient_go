@@ -136,10 +136,10 @@ type Config struct {
 	EmailTo      string `json:"email_to,omitempty"`
 
 	// ==================== UI PREFERENCES ====================
-	// Theme is the user's Preferences > Theme choice. Persisted here (like
-	// every other setting) rather than in the frontend's browser localStorage,
-	// which doesn't survive a WebView2 profile reset. nil means "no theme
-	// saved yet — use the built-in default".
+	// Theme is where earlier versions kept the Preferences > Theme choice,
+	// one for the whole computer. Each user's choice now has its own file
+	// (theme.go); this is only read for a user who has not chosen yet, so
+	// nobody's colours change on upgrade.
 	Theme *ThemeSettings `json:"theme,omitempty"`
 }
 

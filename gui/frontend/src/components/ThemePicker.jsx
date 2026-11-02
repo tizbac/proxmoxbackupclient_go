@@ -3,8 +3,10 @@ import { useTranslation } from '../i18n/i18nContext'
 
 // Theme = the app's accent color plus the hero banner's 3-stop gradient
 // (dark end -> accent, at 60% -> light end). Presets mirror the mockup
-// Mick approved; "amber" matches the app's own long-standing default so
-// picking it is always a safe no-op against a brand's own accent.
+// Mick approved; "green" is the default brand's own colours (brand.go,
+// index.css), so it is what shows until a user chooses another. Each user
+// has their own choice (gui/theme.go).
+const DEFAULT_PRESET = 'green'
 const PRESETS = {
   amber: { accent: '#e87003', accentHover: '#d46100', heroStart: '#5c3a1e', heroEnd: '#fbe9d7' },
   blue: { accent: '#3d5aa8', accentHover: '#2f4680', heroStart: '#1e2a4a', heroEnd: '#e9edf7' },
@@ -35,8 +37,8 @@ function applyTheme(colors) {
   root.setProperty('--hero-end', colors.heroEnd)
 }
 
-// Theme is persisted via the Go backend (config.json, alongside every other
-// setting) rather than browser localStorage — see gui/theme.go. Accessed as
+// Theme is persisted via the Go backend (the user's own theme.json) rather
+// than browser localStorage — see gui/theme.go. Accessed as
 // a plain global rather than threaded through App.jsx's props, since Theme
 // is a self-contained concern nothing else in the app depends on.
 function backendGetTheme() {
@@ -70,10 +72,10 @@ export async function applyStoredTheme() {
   const saved = await backendGetTheme()
   if (!saved || !saved.preset) return
   const customColors = {
-    accent: saved.accent || PRESETS.amber.accent,
-    accentHover: saved.accentHover || PRESETS.amber.accentHover,
-    heroStart: saved.heroStart || PRESETS.amber.heroStart,
-    heroEnd: saved.heroEnd || PRESETS.amber.heroEnd,
+    accent: saved.accent || PRESETS[DEFAULT_PRESET].accent,
+    accentHover: saved.accentHover || PRESETS[DEFAULT_PRESET].accentHover,
+    heroStart: saved.heroStart || PRESETS[DEFAULT_PRESET].heroStart,
+    heroEnd: saved.heroEnd || PRESETS[DEFAULT_PRESET].heroEnd,
   }
   const colors = saved.preset === 'custom' ? customColors : PRESETS[saved.preset]
   if (colors) applyTheme(colors)
@@ -81,8 +83,8 @@ export async function applyStoredTheme() {
 
 export default function ThemePicker() {
   const { t } = useTranslation()
-  const [preset, setPreset] = useState('amber')
-  const [custom, setCustom] = useState(PRESETS.amber)
+  const [preset, setPreset] = useState(DEFAULT_PRESET)
+  const [custom, setCustom] = useState(PRESETS[DEFAULT_PRESET])
 
   // Load whatever was saved (if anything) once, on mount, and actually apply
   // it — App.jsx's own brand-loading effect only SKIPS setting its default
@@ -94,10 +96,10 @@ export default function ThemePicker() {
       if (cancelled || !saved || !saved.preset) return
       setPreset(saved.preset)
       const customColors = {
-        accent: saved.accent || PRESETS.amber.accent,
-        accentHover: saved.accentHover || PRESETS.amber.accentHover,
-        heroStart: saved.heroStart || PRESETS.amber.heroStart,
-        heroEnd: saved.heroEnd || PRESETS.amber.heroEnd,
+        accent: saved.accent || PRESETS[DEFAULT_PRESET].accent,
+        accentHover: saved.accentHover || PRESETS[DEFAULT_PRESET].accentHover,
+        heroStart: saved.heroStart || PRESETS[DEFAULT_PRESET].heroStart,
+        heroEnd: saved.heroEnd || PRESETS[DEFAULT_PRESET].heroEnd,
       }
       const colors = saved.preset === 'custom' ? customColors : PRESETS[saved.preset]
       if (saved.preset === 'custom') setCustom(customColors)
