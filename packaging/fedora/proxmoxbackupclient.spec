@@ -38,10 +38,9 @@ Snapshots of mounted file systems use elastio-snap when it is installed.
 
 %build
 export CGO_ENABLED=0
-# directorybackup is not part of go.work, and its go.mod has no replace
-# lines for the local modules: build it with a temporary work file.
-{ cat go.work; printf '\nuse ./directorybackup\n'; } > go.rpmwork
-GOWORK=$PWD/go.rpmwork go build -trimpath \
+# go.work lists every module, directorybackup included (appending it again
+# made go refuse the duplicate).
+go build -trimpath \
     -ldflags "-s -w -X main.version=%{version}" -o directorybackup/proxmoxbackup-directory ./directorybackup
 go build -trimpath -ldflags "-s -w -X main.version=%{version}" -o machinebackup/proxmoxbackup-machine ./machinebackup
 go build -trimpath -ldflags "-s -w -X main.version=%{version}" -o nbd/proxmoxbackup-nbd ./nbd

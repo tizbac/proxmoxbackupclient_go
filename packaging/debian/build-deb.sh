@@ -60,11 +60,9 @@ mkdir -p "$STAGE/DEBIAN" \
 CLI_LDFLAGS="-s -w -X main.version=$VERSION"
 
 echo "==> building the command-line tools"
-# directorybackup is not in go.work: build it with a temporary work file.
-TMPWORK="$ROOT/go.debwork"
-{ cat "$ROOT/go.work"; printf '\nuse ./directorybackup\n'; } > "$TMPWORK"
-trap 'rm -rf "$WORK"; rm -f "$TMPWORK" "$TMPWORK.sum"' EXIT INT TERM
-(cd "$ROOT" && GOWORK="$TMPWORK" CGO_ENABLED=0 go build -trimpath -ldflags="$CLI_LDFLAGS" -o "$STAGE/usr/bin/proxmoxbackup-directory" ./directorybackup)
+# go.work lists every module, directorybackup included (appending it again,
+# as this script once did, makes go refuse the duplicate).
+(cd "$ROOT" && CGO_ENABLED=0 go build -trimpath -ldflags="$CLI_LDFLAGS" -o "$STAGE/usr/bin/proxmoxbackup-directory" ./directorybackup)
 (cd "$ROOT" && CGO_ENABLED=0 go build -trimpath -ldflags="$CLI_LDFLAGS" -o "$STAGE/usr/bin/proxmoxbackup-machine" ./machinebackup)
 (cd "$ROOT" && CGO_ENABLED=0 go build -trimpath -ldflags="$CLI_LDFLAGS" -o "$STAGE/usr/bin/proxmoxbackup-nbd" ./nbd)
 
