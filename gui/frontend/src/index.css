@@ -438,6 +438,39 @@ body {
     background: #64748b;
 }
 
+/* A ticked disk's partitions in the disk picker (MachineBackupConfig.jsx),
+   under its row: ticked ones are backed up, unticked ones go into the image
+   as zeros. Indented to line up with the disk's name. */
+.drive-entry { border-bottom: 1px solid #e2e8f0; }
+.drive-entry:last-child { border-bottom: none; }
+.form-group .drive-entry label.drive-item { border-bottom: none; }
+.drive-parts { margin: -4px 12px 10px 42px; font-size: 13px; }
+.drive-parts-hint { font-size: 12px; color: #6c757d; margin-bottom: 4px; }
+.drive-parts-list { list-style: none; margin: 0; padding: 0; }
+.drive-part { padding: 3px 0; }
+.form-group .drive-part label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-weight: normal;
+    cursor: pointer;
+}
+.form-group .drive-part label.locked { cursor: not-allowed; }
+.form-group .drive-part input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: inherit;
+}
+.drive-part-name { font-variant-numeric: tabular-nums; }
+.drive-part.left-out .drive-part-name { color: #8a93a5; }
+.drive-part .drive-badge { font-size: 10px; padding: 1px 6px; }
+.drive-part-note { margin: 2px 0 0 24px; font-size: 12px; color: #6c757d; }
+.drive-part-warn { margin: 4px 0 0 24px; font-size: 12px; color: #9a5b00; background: #fff4e0; padding: 6px 8px; border-radius: 5px; }
+.drive-parts > .drive-part-warn { margin-left: 0; }
+
 .checkbox-label {
     display: flex;
     align-items: center;

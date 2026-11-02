@@ -800,6 +800,9 @@ function App() {
   // liveRead). Off without the override, the set's runs stop.
   const [machineSnapshotsOff, setMachineSnapshotsOff] = useState(false)
   const [liveReadAccepted, setLiveReadAccepted] = useState(false)
+  // Partitions of a machine Backup Set's disks that it leaves out
+  // (ScheduledJob.skipPartitions): { diskId, device, start, size, number, label }.
+  const [skipParts, setSkipParts] = useState([])
   // Change detection for a directory Backup Set ('legacy' | 'data' | 'metadata')
   // and, for metadata, a full read every N runs (0 = never).
   const [changeDetectionMode, setChangeDetectionMode] = useState('legacy')
@@ -813,6 +816,7 @@ function App() {
     setReadFreeSpace(job.backupType === 'machine' && !!job.readFreeSpace)
     setMachineSnapshotsOff(job.backupType === 'machine' && !!job.snapshotsOff)
     setLiveReadAccepted(job.backupType === 'machine' && !!job.snapshotsOff && !!job.liveRead)
+    setSkipParts(job.backupType === 'machine' ? (job.skipPartitions || []) : [])
     setJobEnabled(job.enabled !== false)
     if (!isVm) { setVmIdNumber(''); setVmIdStyle('range'); return }
     const id = String(job.backupId || '')
@@ -1080,6 +1084,23 @@ function App() {
     ? selectedDrives.filter(p => selectedDiskIds[p] && !physicalDisks.some(d => diskHasId(d, selectedDiskIds[p])))
       .map(p => ({ path: p, id: selectedDiskIds[p] }))
     : []
+
+  // The identity a machine set saves for a listed disk (as diskIds on save).
+  const diskIdFor = (drive) => selectedDiskIds[drive.device_path] || drive.unique_id || ''
+  // The partitions a machine set leaves out, as it is saved: only those of
+  // disks it backs up (diskIds at the same index as selectedDrives), named by
+  // the path the set gives the disk. A skip that a listed disk no longer has
+  // (its partition table changed) is forgotten; the run would back it up.
+  const skipsToSave = (diskIds) => {
+    const stable = (id) => (id && !id.startsWith('size:') ? id : '')
+    return skipParts.flatMap(s => {
+      const i = selectedDrives.findIndex((p, j) => s.diskId ? stable(diskIds[j]) === s.diskId : !stable(diskIds[j]) && p === s.device)
+      if (i < 0) return []
+      const disk = physicalDisks.find(d => d.device_path === selectedDrives[i])
+      if (disk && disk.partitions && !disk.partitions.some(p => p.start === s.start && p.size === s.size)) return []
+      return [{ ...s, device: selectedDrives[i] }]
+    })
+  }
 
   // Reset backup directories when switching from directory to machine mode
   useEffect(() => {
@@ -2607,6 +2628,18 @@ function App() {
       // Anything that would stop the set running as saved: say so before
       // saving, with Save anyway or Go back.
       const linuxMachineSet = backupType === 'machine' && systemInfo.os === 'linux'
+      // The identity of each disk, so the set's runs find it whatever number
+      // the system gives it later: the one the set saved for a disk it already
+      // had, else that of the disk listed at the path.
+      const machineDiskIds = backupType === 'machine' ? selectedDrives.map(p => selectedDiskIds[p] || physicalDisks.find(d => d.device_path === p)?.unique_id || '') : []
+      const savedSkips = backupType === 'machine' ? skipsToSave(machineDiskIds) : []
+      // A mounted partition the set backs up needs a snapshot; one it leaves
+      // out does not. A disk whose partitions are not known may need one.
+      const machineNeedsSnapshot = selectedDrives.some(p => {
+        const d = physicalDisks.find(x => x.device_path === p)
+        if (!d || d.partitions == null) return true
+        return d.partitions.some(part => part.mount && !savedSkips.some(s => s.device === p && s.start === part.start && s.size === part.size))
+      })
       const blockers = []
       if (!jobEnabled) {
         blockers.push(tl('saveWarnDisabled', 'The set is disabled, so it does not run on its schedule until you enable it.'))
@@ -2617,7 +2650,7 @@ function App() {
       if (linuxMachineSet && machineSnapshotsOff && !liveReadAccepted) {
         blockers.push(tl('saveWarnSnapshotsOff', 'Use snapshots is off but reading without a snapshot is not accepted, so every run stops before it starts.'))
       }
-      if (linuxMachineSet && !machineSnapshotsOff && !systemInfo.snapshot_module) {
+      if (linuxMachineSet && !machineSnapshotsOff && !systemInfo.snapshot_module && machineNeedsSnapshot) {
         blockers.push(tl('saveWarnNoModule', 'No snapshot module is loaded, so a run stops when one of its disks is mounted.'))
       }
       if (backupType === 'machine' && systemInfo.needs_local_elevation) {
@@ -2655,10 +2688,9 @@ function App() {
         liveRead: linuxMachineSet && machineSnapshotsOff && liveReadAccepted,
         excludeList: backupType === 'directory' ? getEffectiveExcludeList() : [],
         driveLetters: backupType === 'machine' ? selectedDrives : [],
-        // The identity of each disk, so the set's runs find it whatever number
-        // the system gives it later: the one the set saved for a disk it already
-        // had, else that of the disk listed at the path.
-        diskIds: backupType === 'machine' ? selectedDrives.map(p => selectedDiskIds[p] || physicalDisks.find(d => d.device_path === p)?.unique_id || '') : [],
+        diskIds: machineDiskIds,
+        // The partitions the set leaves out (not read, zeros in the image).
+        skipPartitions: savedSkips,
         imageFolders: backupType === 'machine' ? imageFolders.split('\n').map(d => d.trim()).filter(d => d) : [],
         pbsServerId: backupPBSID,
         emailOnSuccess: emailOnSuccess,
@@ -2708,7 +2740,7 @@ function App() {
         }
         // Reset form after save
         setJobName('')
-        setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
+        setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setSkipParts([]); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
         setRunAtStartup(false)
         setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
         setBackupDirs('')
@@ -4432,7 +4464,7 @@ function App() {
                   onClick={() => {
                     setEditingJobId(null)
                     setJobName('')
-                    setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
+                    setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setSkipParts([]); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
                     setBackupMode('scheduled')
                     setRunAtStartup(false)
                     setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
@@ -4976,6 +5008,9 @@ function App() {
               missingDisks={missingSetDisks}
               systemInfo={systemInfo}
               onRestartAsAdmin={restartAsAdmin}
+              skipParts={skipParts}
+              setSkipParts={backupMode === 'scheduled' ? setSkipParts : undefined}
+              diskIdFor={diskIdFor}
             />
           )}
           {backupType === 'machine' && (
@@ -5385,7 +5420,7 @@ function App() {
             <button className="btn btn-secondary" onClick={() => {
               setEditingJobId(null)
               setJobName('')
-              setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
+              setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setSkipParts([]); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
               setChangeDetectionMode('legacy'); setFullReadEvery(0)
               setRunAtStartup(false)
               setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
