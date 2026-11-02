@@ -79,6 +79,16 @@ type ScheduledJob struct {
 	ScheduleMode string     `json:"scheduleMode,omitempty"`
 	Schedules    []Schedule `json:"schedules,omitempty"`
 
+	// Sets saved by the project's app before the fork was merged (1.2.0-rc)
+	// keep their server, machine kind and weekly or monthly schedule in these
+	// keys. They are only read: migrateUpstreamJob moves them into the fields
+	// above when the file is loaded, and they are never written again.
+	UpstreamFrequency  string `json:"frequency,omitempty"`   // "daily" | "weekly" | "monthly"
+	UpstreamWeekdays   []int  `json:"weekdays,omitempty"`    // weekly: 0 = Sunday ... 6 = Saturday
+	UpstreamDayOfMonth int    `json:"dayOfMonth,omitempty"`  // monthly: 1-31
+	UpstreamPBSID      string `json:"pbs_id,omitempty"`      // the set's PBS server
+	UpstreamBackupKind string `json:"backup_kind,omitempty"` // "host" | "vm" (machine sets)
+
 	// TriggerMode and the fields below are the model before Schedules. They
 	// are still written, from the first enabled schedule where they can say
 	// it and "manual" where they cannot (mirrorLegacyTrigger), so an older

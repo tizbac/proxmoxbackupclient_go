@@ -100,6 +100,7 @@ func everyDayAsNone(days []string) []string {
 // fields from it, so an older app or service reading the file runs the set
 // at the right times or, where the old model cannot say it, not at all.
 func normalizeJobSchedules(job *ScheduledJob) {
+	migrateUpstreamJob(job)
 	job.ScheduleMode, job.Schedules = jobSchedules(*job)
 	used := map[string]bool{}
 	for _, s := range job.Schedules {
