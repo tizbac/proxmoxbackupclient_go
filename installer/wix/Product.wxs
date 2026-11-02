@@ -17,6 +17,9 @@
 <?define VendorKey = "Proxmox Backup Client" ?>
 <?define Manufacturer = "Proxmox Backup Client" ?>
 <?define UpgradeCode = "12345678-1234-1234-1234-123456789012" ?>
+<!-- The mjb-is fork's MSIs (0.9 and 0.10) used their own UpgradeCode; an
+     install of one is replaced by this one (see ProductBody.wxi). -->
+<?define PreviousUpgradeCode = "F15C307F-1053-46B7-BCB0-2FAAC3627ED6" ?>
 <?define ArpUrlAbout = "https://www.proxmox.com/" ?>
 <?define ArpHelpLink = "https://forum.proxmox.com/" ?>
 <?define ArpUrlUpdateInfo = "https://github.com/tizbac/proxmoxbackupclient_go/releases" ?>
