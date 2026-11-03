@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"pbscommon"
+	"retry"
 )
 
 // version is set by the build (-ldflags "-X main.version=..."); -version
@@ -23,6 +24,10 @@ var version string
 
 // usageSummary heads -help's text.
 const usageSummary = "Backs up whole disks to a Proxmox Backup Server as a host or vm snapshot."
+
+// reconnectWaits are the waits before each new attempt after a lost
+// connection (retry.ReconnectWaits; a test sets them short).
+var reconnectWaits = retry.ReconnectWaits
 
 type arrayFlags []string
 
@@ -396,7 +401,7 @@ func main() {
 	}
 	lastPct := -1
 	start := time.Now()
-	result, err := machinebackuplib.Backup(cfg, func(percentage float64, message string) bool {
+	progress := func(percentage float64, message string) bool {
 		if !strings.Contains(message, ": Block ") {
 			fmt.Printf("%s\n", message)
 		} else if p := int(percentage * 100); p != lastPct {
@@ -404,7 +409,26 @@ func main() {
 			fmt.Printf("%3d%%  %s  (%s)\n", p, message, counts())
 		}
 		return false
-	})
+	}
+	// A lost connection (a mobile link dropping, PBS restarting) ends the PBS
+	// session, and with it every chunk sent in it, so the backup starts again
+	// with a new session after a wait that grows each time, as the app does
+	// (retry.Reconnectable, retry.ReconnectWaits). The wait also lets PBS
+	// release the backup group; an attempt made while it still holds it fails
+	// at once and waits again.
+	var result *machinebackuplib.BackupResult
+	for attempt := 1; ; attempt++ {
+		result, err = machinebackuplib.Backup(cfg, progress)
+		if err == nil || attempt > len(reconnectWaits) || !retry.Reconnectable(err) {
+			break
+		}
+		wait := reconnectWaits[attempt-1]
+		fmt.Fprintf(os.Stderr, "Connection to the server lost on attempt %d of %d (%s): %v\n", attempt, len(reconnectWaits)+1, counts(), err)
+		fmt.Fprintf(os.Stderr, "Starting again at %s with a new session; chunks sent in the lost one are sent again.\n", time.Now().Add(wait).Format("15:04:05"))
+		jp.Reset()
+		lastPct = -1
+		time.Sleep(wait)
+	}
 	// The notification e-mail (-mail-*): sent for a failed run too, before
 	// the exit.
 	var readErrors []string

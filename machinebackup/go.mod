@@ -7,6 +7,7 @@ require (
 	github.com/tawesoft/golib/v2 v2.16.0
 	machinebackuplib v0.0.0
 	pbscommon v0.0.0
+	retry v0.0.0
 )
 
 require (
@@ -33,5 +34,6 @@ replace (
 	clientcommon => ../clientcommon
 	machinebackuplib => ../machinebackuplib
 	pbscommon => ../pbscommon
+	retry => ../pkg/retry
 	snapshot => ../snapshot
 )

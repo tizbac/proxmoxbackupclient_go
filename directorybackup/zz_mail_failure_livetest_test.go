@@ -11,12 +11,17 @@ import (
 	"pbscommon"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestMain runs main() itself when a test starts this test binary again with
 // DIRECTORYBACKUP_RUN_MAIN set, so a test can run the program as a whole.
 func TestMain(m *testing.M) {
 	if os.Getenv("DIRECTORYBACKUP_RUN_MAIN") == "1" {
+		// A test of a lost connection waits seconds, not 25 minutes.
+		if w, err := time.ParseDuration(os.Getenv("DIRECTORYBACKUP_TEST_RERUN_WAIT")); err == nil {
+			folderRerunWait = w
+		}
 		main()
 		os.Exit(0)
 	}

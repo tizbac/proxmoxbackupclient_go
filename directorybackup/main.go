@@ -2,6 +2,7 @@ package main
 
 import (
 	"clientcommon"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"pbscommon"
+	"retry"
 	"snapshot"
 	"strings"
 	"sync/atomic"
@@ -80,7 +82,10 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 				fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
 				c.newchunk.Add(1)
 
-				if err := client.UploadDynamicCompressedChunk(c.wrid, shahash, c.current_chunk); err != nil {
+				data := c.current_chunk
+				if err := withRetry("chunk upload", chunkRetryTime, func() error {
+					return client.UploadDynamicCompressedChunk(c.wrid, shahash, data)
+				}); err != nil {
 					return fmt.Errorf("failed to upload chunk %s: %w", shahash, err)
 				}
 			} else {
@@ -188,7 +193,10 @@ func (c *ChunkState) emitCurrent(client *pbscommon.PBSClient) error {
 
 		if _, ok := c.knownChunks.GetOrSet(shahash, true); !ok {
 			fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
-			if err := client.UploadDynamicCompressedChunk(c.wrid, shahash, c.current_chunk); err != nil {
+			data := c.current_chunk
+			if err := withRetry("chunk upload", chunkRetryTime, func() error {
+				return client.UploadDynamicCompressedChunk(c.wrid, shahash, data)
+			}); err != nil {
 				return fmt.Errorf("failed to upload final chunk %s: %w", shahash, err)
 			}
 			c.newchunk.Add(1)
@@ -212,15 +220,62 @@ func (c *ChunkState) closeIndex(client *pbscommon.PBSClient) error {
 		if k2 > len(c.assignments) {
 			k2 = len(c.assignments)
 		}
-		if err := client.AssignDynamicChunks(c.wrid, c.assignments[k:k2], c.assignments_offset[k:k2]); err != nil {
+		digests, offsets := c.assignments[k:k2], c.assignments_offset[k:k2]
+		if err := withRetry("chunk assignment", indexRetryTime, func() error {
+			return client.AssignDynamicChunks(c.wrid, digests, offsets)
+		}); err != nil {
 			return fmt.Errorf("failed to assign chunks (batch %d-%d): %w", k, k2, err)
 		}
 	}
 
-	if err := client.CloseDynamicIndex(c.wrid, hex.EncodeToString(c.chunkdigests.Sum(nil)), c.pos, c.chunkcount); err != nil {
+	digest := hex.EncodeToString(c.chunkdigests.Sum(nil))
+	if err := withRetry("closing the index", indexRetryTime, func() error {
+		return client.CloseDynamicIndex(c.wrid, digest, c.pos, c.chunkcount)
+	}); err != nil {
 		return fmt.Errorf("failed to close dynamic index: %w", err)
 	}
 	return nil
+}
+
+// How long the retries of one request may take, as in the app: a chunk
+// upload 5 minutes, the index's assignments and close 10, the manifest and
+// the session's finish 5.
+const (
+	chunkRetryTime  = 5 * time.Minute
+	indexRetryTime  = 10 * time.Minute
+	finishRetryTime = 5 * time.Minute
+)
+
+// withRetry runs one request to PBS and, if it fails in a way that passes
+// (retry.DefaultRetryable: a timeout, a reset connection, a 502, 503, 504 or
+// 429), tries it again, up to 5 times with growing waits, as the app does
+// (tizbac/proxmoxbackupclient_go#59). Each retry is printed. The error
+// returned is the request's own, so retry.SessionLost still recognises it.
+func withRetry(what string, limit time.Duration, op func() error) error {
+	cfg := retry.DefaultConfig()
+	cfg.MaxAttempts = 5
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	attempt := 0
+	var last error
+	err := retry.DoWithJitter(ctx, cfg, retry.DefaultRetryable, func() error {
+		attempt++
+		last = op()
+		if last != nil && attempt < cfg.MaxAttempts && retry.DefaultRetryable(last) {
+			fmt.Fprintf(os.Stderr, "%s failed (attempt %d of %d), trying again: %v\n", what, attempt, cfg.MaxAttempts, last)
+		}
+		return last
+	})
+	switch {
+	case err == nil:
+		return nil
+	case last == nil: // ended by the time limit before a new attempt
+		return err
+	case attempt > 1:
+		return fmt.Errorf("after %d attempts: %w", attempt, last)
+	default:
+		return last
+	}
 }
 
 func main() {
@@ -329,7 +384,7 @@ func main() {
 	// mail warning note below.
 	var snapshots []*pbscommon.PBSClient
 	if len(dirs) == 1 {
-		readErrors, err = backup(client, newchunk, reusechunk, cfg.PxarOut, dirs[0], cfg.UseVSS)
+		readErrors, err = backupWithRerun(client, newchunk, reusechunk, cfg.PxarOut, dirs[0], cfg.UseVSS)
 		if err == nil {
 			snapshots = append(snapshots, client)
 		}
@@ -480,7 +535,7 @@ func backup_many(newClient func(backupID string) (*pbscommon.PBSClient, error), 
 			failures = append(failures, fmt.Errorf("%s: ticket login failed: %w", dir, err))
 			continue
 		}
-		dirReadErrors, err := backup(client, newchunk, reusechunk, "", dir, usevss)
+		dirReadErrors, err := backupWithRerun(client, newchunk, reusechunk, "", dir, usevss)
 		// Release the session even after a failure, otherwise PBS keeps the
 		// group locked until the connection times out.
 		client.Close()
@@ -494,6 +549,33 @@ func backup_many(newClient func(backupID string) (*pbscommon.PBSClient, error), 
 	return readErrors, done, errors.Join(failures...)
 }
 
+// folderRerunWait is how long a folder whose session to PBS was lost waits
+// before it is backed up again (retry.FolderRerunWait; a test sets it short).
+var folderRerunWait = retry.FolderRerunWait
+
+// backupWithRerun is backup, run again with a new session when the
+// connection to PBS was lost (retry.SessionLost), after folderRerunWait, as
+// the app does: PBS ends the session with the connection, and the wait lets
+// it release the backup group. A loss in the last attempt, or any other
+// error, is returned. The counts carry on across attempts, as chunks sent in
+// the lost session are sent again.
+func backupWithRerun(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut, dir string, usevss bool) ([]string, error) {
+	for attempt := 1; ; attempt++ {
+		readErrors, err := backup(client, newchunk, reusechunk, pxarOut, dir, usevss)
+		if err == nil || attempt >= retry.FolderRerunAttempts || !retry.SessionLost(err) {
+			return readErrors, err
+		}
+		client.Close()
+		at := time.Now().Add(folderRerunWait)
+		fmt.Fprintf(os.Stderr, "The connection to PBS was lost while backing up %s (attempt %d of %d): %v\n", dir, attempt, retry.FolderRerunAttempts, err)
+		fmt.Fprintf(os.Stderr, "Backing it up again with a new session at %s, once PBS has let go of the backup group; chunks sent in the lost session are sent again.\n", at.Format("15:04:05"))
+		time.Sleep(folderRerunWait)
+	}
+}
+
+// backup_stream backs up standard input. Each request to PBS is retried in
+// place (withRetry), but a lost session is not run again: the input already
+// read is gone.
 func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, filename string, stream io.Reader) error {
 	knownChunks := haxmap.New[string, bool]()
 	client.Connect(false, "host")
@@ -547,12 +629,11 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 		return fmt.Errorf("failed to finalize stream: %w", err)
 	}
 
-	err = client.UploadManifest()
-	if err != nil {
+	if err := withRetry("manifest upload", finishRetryTime, client.UploadManifest); err != nil {
 		return err
 	}
 
-	return client.Finish()
+	return withRetry("finishing the backup", finishRetryTime, client.Finish)
 }
 
 // changeDetectionMode is the -change-detection-mode setting (see Config).
@@ -784,8 +865,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		fmt.Fprintf(os.Stderr, "warning: failed to upload status sidecar: %v\n", uerr)
 	}
 
-	err = client.UploadManifest()
-	if err != nil {
+	if err := withRetry("manifest upload", finishRetryTime, client.UploadManifest); err != nil {
 		return nil, err
 	}
 	// archive.ReadErrors lists files that could not be read and were skipped:
@@ -837,5 +917,5 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 
 	// Commit the snapshot even on a partial (read-error) run so the data that
 	// was readable is retained; the partial status is reported via readErrors.
-	return readErrors, client.Finish()
+	return readErrors, withRetry("finishing the backup", finishRetryTime, client.Finish)
 }

@@ -6,6 +6,7 @@ require (
 	clientcommon v0.0.0
 	github.com/alphadose/haxmap v1.4.1
 	pbscommon v0.0.0
+	retry v0.0.0
 	snapshot v0.0.0
 )
 
@@ -30,5 +31,6 @@ require (
 replace (
 	clientcommon => ../clientcommon
 	pbscommon => ../pbscommon
+	retry => ../pkg/retry
 	snapshot => ../snapshot
 )

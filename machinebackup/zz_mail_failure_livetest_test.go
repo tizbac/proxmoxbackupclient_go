@@ -11,12 +11,17 @@ import (
 	"pbscommon"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestMain runs main() itself when a test starts this test binary again with
 // MACHINEBACKUP_RUN_MAIN set, so a test can run the program as a whole.
 func TestMain(m *testing.M) {
 	if os.Getenv("MACHINEBACKUP_RUN_MAIN") == "1" {
+		// A test of a lost connection waits seconds, not minutes.
+		if w, err := time.ParseDuration(os.Getenv("MACHINEBACKUP_TEST_RECONNECT_WAIT")); err == nil {
+			reconnectWaits = []time.Duration{w, w, w, w}
+		}
 		main()
 		os.Exit(0)
 	}

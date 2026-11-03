@@ -104,6 +104,13 @@ A config file keeps the secret off the command line and out of the process list.
 
 A flag overrides the config file. The run prints the limits it uses, for example `Speed limits: upload 10 MB/s, download none, disk read 50 MB/s`. A backup goes no faster than the lower of the disk read and upload limits, and a mostly unchanged backup is held back by the disk read limit, since unchanged data is read but not uploaded. The limits apply to the one run: two tools running at once each have their own.
 
+**Lost connections.** The backup tools retry as the GUI does. A request to PBS that fails in a way that passes (a timeout, a reset connection, HTTP 502, 503, 504 or 429) is tried again, up to 5 times over about 15 seconds; each retry is printed. If the connection itself is lost, PBS ends the backup session, and the backup starts again with a new one:
+
+* `proxmoxbackup-directory` backs the folder up once more, 25 minutes later, which gives PBS time to release the backup group. In a run with several folders, only the folder that was cut off runs again. A backup of standard input (`-backupstream`) is not run again, as what was read is gone.
+* `proxmoxbackup-machine` tries again up to 4 more times, after 2, 5, 10 and 15 minutes. It also tries again when PBS cannot be reached, or still holds the backup group from the lost session.
+
+Chunks sent in the lost session are sent again. The run prints when it starts again; a scheduled task's time limit should allow for the wait.
+
 ## 3. proxmoxbackup-directory: folder backups
 
 ### Flags
