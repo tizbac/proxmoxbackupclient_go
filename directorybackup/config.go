@@ -1,6 +1,7 @@
 package main
 
 import (
+	"clientcommon"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +10,13 @@ import (
 	"pbscommon"
 	"strings"
 )
+
+// version is set by the build (-ldflags "-X main.version=..."); -version
+// prints it.
+var version string
+
+// usageSummary heads -help's text.
+const usageSummary = "Backs up folders, or standard input (-backupstream), to a Proxmox Backup Server\nas a host snapshot."
 
 type MailSendConfig struct {
 	From string `json:"from"`
@@ -92,29 +100,53 @@ type dirListFlag []string
 func (d *dirListFlag) String() string     { return strings.Join(*d, ",") }
 func (d *dirListFlag) Set(v string) error { *d = append(*d, v); return nil }
 
-func (c *Config) valid() bool {
-	// Authentication is either an API token (authid+secret) or a PBS
-	// username (ticket login). The ticket password may be omitted: in that
-	// case the CLI asks for it interactively before connecting.
-	authOK := (c.AuthID != "" && c.Secret != "") || c.PBSUsername != ""
-	baseValid := c.BaseURL != "" && authOK && c.Datastore != "" && (len(c.Dirs()) > 0 || c.BackupStreamName != "")
-	if !baseValid {
-		return baseValid
-	}
+func (c *Config) valid() bool { return len(c.problems()) == 0 }
 
+// problems says what stops a run with these settings, one line each: the
+// options that are missing, then the ones that are wrong. The missing ones are
+// named (tizbac/proxmoxbackupclient_go#55 only had "All options are
+// mandatory").
+func (c *Config) problems() []string {
+	var p []string
+	if m := c.missing(); len(m) > 0 {
+		p = append(p, "Missing options: "+strings.Join(m, ", "))
+	}
 	if err := pbscommon.ValidateChangeDetectionMode(c.ChangeDetectionMode); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return false
+		p = append(p, err.Error())
 	}
-
 	if c.SMTP != nil {
 		if problem := c.SMTP.problem(); problem != "" {
-			fmt.Fprintln(os.Stderr, problem)
-			return false
+			p = append(p, problem)
 		}
 	}
+	return p
+}
 
-	return true
+// missing names the options a run needs and does not have. Authentication is
+// either an API token (authid+secret) or a PBS username (ticket login); the
+// ticket password may be omitted, and is then asked for before connecting.
+func (c *Config) missing() []string {
+	var m []string
+	if c.BaseURL == "" {
+		m = append(m, "-baseurl")
+	}
+	if (c.AuthID == "" || c.Secret == "") && c.PBSUsername == "" {
+		switch {
+		case c.AuthID != "":
+			m = append(m, "-secret (for -authid)")
+		case c.Secret != "":
+			m = append(m, "-authid (for -secret)")
+		default:
+			m = append(m, "-authid and -secret, or -pbsusername")
+		}
+	}
+	if c.Datastore == "" {
+		m = append(m, "-datastore")
+	}
+	if len(c.Dirs()) == 0 && c.BackupStreamName == "" {
+		m = append(m, "-backupdir (or -backupstream)")
+	}
+	return m
 }
 
 // problem says what is missing from the mail settings, or "". A relay that
@@ -172,9 +204,15 @@ func loadConfig() *Config {
 	changeDetectionFlag := flag.String("change-detection-mode", "", "legacy (default), data or metadata: data/metadata write a split archive (backup.mpxar.didx + backup.ppxar.didx)")
 
 	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
+	versionFlag := flag.Bool("version", false, "Print the version and exit")
 
-	// Parse command line flags
-	flag.Parse()
+	// A stray argument, an unknown option or (on Windows) a quote in a path
+	// stops here with what is wrong; -help prints the usage.
+	clientcommon.ParseFlags(flag.CommandLine, os.Args[1:], usageSummary, "backupdir", "pxarout", "keyfile", "config")
+	if *versionFlag {
+		fmt.Println(clientcommon.VersionString(clientcommon.ToolName(), version))
+		os.Exit(0)
+	}
 
 	config := &Config{
 		UseVSS: true,

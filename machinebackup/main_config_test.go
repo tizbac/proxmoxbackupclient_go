@@ -12,7 +12,7 @@ import (
 // The devices to back up can come from the -config file alone. The run goes
 // as far as the backup itself, which fails on the non-numeric VM ID before
 // any connection to PBS; without the file's devices it stopped earlier, at
-// "Missing or invalid options".
+// "Missing or invalid options" (now "Missing options: -backupdev").
 func TestConfigFileBackupDevices(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "config.json")
 	err := os.WriteFile(cfg, []byte(`{
@@ -38,7 +38,7 @@ func TestConfigFileBackupDevices(t *testing.T) {
 	if exitErr.ExitCode() == 2 {
 		t.Skipf("another backup job holds the process lock on this machine\n%s", out)
 	}
-	if strings.Contains(string(out), "Missing or invalid options") {
+	if strings.Contains(string(out), "Missing options") {
 		t.Fatalf("the config file's backupdev was not used\n%s", out)
 	}
 	if !strings.Contains(string(out), "needs a numeric VM ID") {

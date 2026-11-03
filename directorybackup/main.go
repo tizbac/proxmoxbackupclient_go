@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"hash"
 	"io"
@@ -235,10 +234,11 @@ func main() {
 	// Errors go to stderr with a non-zero exit, never a message box: a box
 	// waits for a click that an unattended scheduled run never gets (and on
 	// Windows the run used to carry on after it with the invalid options).
-	if ok := cfg.valid(); !ok {
-		fmt.Fprintln(os.Stderr, "Missing or invalid options. Options:")
-		flag.CommandLine.SetOutput(os.Stderr)
-		flag.PrintDefaults()
+	if problems := cfg.problems(); len(problems) > 0 {
+		for _, p := range problems {
+			fmt.Fprintln(os.Stderr, p)
+		}
+		fmt.Fprintf(os.Stderr, "Options can also come from -config <file> and the PBS_* environment variables. Run %s -help for all of them.\n", clientcommon.ToolName())
 		os.Exit(1)
 	}
 

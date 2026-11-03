@@ -16,6 +16,13 @@ import (
 	"pbscommon"
 )
 
+// version is set by the build (-ldflags "-X main.version=..."); -version
+// prints it.
+var version string
+
+// usageSummary heads -help's text.
+const usageSummary = "Backs up whole disks to a Proxmox Backup Server as a host or vm snapshot."
+
 type arrayFlags []string
 
 func (i *arrayFlags) String() string {
@@ -61,9 +68,15 @@ func loadConfig() *machinebackuplib.Config {
 	mailBodyTemplateFlag := flag.String("mail-body-template", "", "mail notification system: mail body template(optional)")
 
 	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
+	versionFlag := flag.Bool("version", false, "Print the version and exit")
 
-	// Parse command line flags
-	flag.Parse()
+	// A stray argument, an unknown option or (on Windows) a quote in a path
+	// stops here with what is wrong; -help prints the usage.
+	clientcommon.ParseFlags(flag.CommandLine, os.Args[1:], usageSummary, "backupdev", "keyfile", "config")
+	if *versionFlag {
+		fmt.Println(clientcommon.VersionString(clientcommon.ToolName(), version))
+		os.Exit(0)
+	}
 
 	config := &machinebackuplib.Config{
 		BackupType: "host",
@@ -72,12 +85,12 @@ func loadConfig() *machinebackuplib.Config {
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {
-			fmt.Printf("Error reading config file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
 		}
 		err = json.Unmarshal(file, config)
 		if err != nil {
-			fmt.Printf("Error parsing config file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error parsing config file: %v\n", err)
 			os.Exit(1)
 		}
 	}
@@ -244,6 +257,44 @@ func sendResultMail(cfg *machinebackuplib.Config, ctx clientcommon.MailCtx) bool
 	return sent
 }
 
+// problems says what stops a run with cfg, one line each: the options that
+// are missing (named, tizbac/proxmoxbackupclient_go#55), then the ones that
+// are wrong. None means machinebackuplib's Valid holds too.
+func problems(cfg *machinebackuplib.Config) []string {
+	var m, p []string
+	if cfg.BaseURL == "" {
+		m = append(m, "-baseurl")
+	}
+	if (cfg.AuthID == "" || cfg.Secret == "") && cfg.PBSUsername == "" && cfg.Ticket == "" {
+		switch {
+		case cfg.AuthID != "":
+			m = append(m, "-secret (for -authid)")
+		case cfg.Secret != "":
+			m = append(m, "-authid (for -secret)")
+		default:
+			m = append(m, "-authid and -secret, or -pbsusername")
+		}
+	}
+	if cfg.Datastore == "" {
+		m = append(m, "-datastore")
+	}
+	if len(cfg.BackupDevices) == 0 {
+		m = append(m, "-backupdev")
+	}
+	if len(m) > 0 {
+		p = append(p, "Missing options: "+strings.Join(m, ", "))
+	}
+	if cfg.BackupType != "host" && cfg.BackupType != "vm" {
+		p = append(p, fmt.Sprintf("-type is %q: use host or vm", cfg.BackupType))
+	}
+	if cfg.SMTP != nil {
+		if s := cfg.SMTP.Problem(); s != "" {
+			p = append(p, s)
+		}
+	}
+	return p
+}
+
 func hostnameOrEmpty() string {
 	h, _ := os.Hostname()
 	return h
@@ -260,13 +311,11 @@ func main() {
 
 	// Errors go to stderr with a non-zero exit, never a message box: a box
 	// waits for a click that an unattended scheduled run never gets.
-	if ok := cfg.Valid(); !ok {
-		if cfg.SMTP != nil && cfg.SMTP.Problem() != "" {
-			fmt.Fprintln(os.Stderr, cfg.SMTP.Problem())
+	if p := problems(cfg); len(p) > 0 {
+		for _, line := range p {
+			fmt.Fprintln(os.Stderr, line)
 		}
-		fmt.Fprintln(os.Stderr, "Missing or invalid options. Options:")
-		flag.CommandLine.SetOutput(os.Stderr)
-		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "Options can also come from -config <file> and the PBS_* environment variables. Run %s -help for all of them.\n", clientcommon.ToolName())
 		os.Exit(1)
 	}
 

@@ -37,7 +37,9 @@ On Linux the `.deb` and `.rpm` packages (package `proxmoxbackupclient`) install 
 
 There is no command line restore tool for folder backups. Restore them with the GUI, or with the official `proxmox-backup-client` ([section 11](#11-compatibility-with-the-official-proxmox-client)). For a Backup Set defined in the GUI, Undelete and Roll back also run from the command line ([section 12](#12-undelete-and-roll-back-for-a-backup-set)).
 
-The tools are static builds and need no installation. Run the backup tools as administrator (Windows) for VSS, or as root (Linux) for snapshots and disk access.
+The tools are static builds and need no installation. Run the backup tools as administrator (Windows) for VSS, or as root (Linux) for snapshots and disk access. Each tool lists its options with `-help`, and `proxmoxbackup-directory` and `proxmoxbackup-machine` print their version with `-version`.
+
+A command split over several lines ends each line with `\` in bash, with a backtick (`` ` ``) in PowerShell and with `^` in cmd. A `\` in PowerShell or cmd is passed to the tool as an argument, and the backup tools stop there with a message rather than leave out the options after it.
 
 On Windows, `proxmoxbackup-directory` and `proxmoxbackup-machine` take a process lock, so only one of them runs at a time in a Windows session: a second one started meanwhile exits with code 2 ([section 9](#9-exit-codes)). On Linux there is no lock. The lock does not involve the GUI or the background service, which run several backups at once ([GUI manual, section 6.7](GUI.md#67-several-backups-at-once)).
 
@@ -306,7 +308,7 @@ Template fields include `.Success`, `.Status`, `.NewChunks`, `.ReusedChunks`, `.
 | 2 | Windows only: another `proxmoxbackup-directory` or `proxmoxbackup-machine` run holds the process lock ([section 1](#1-the-tools)) |
 | 3 | The snapshot was saved, but not everything could be read: `proxmoxbackup-directory`, some files are incomplete; `proxmoxbackup-machine` (version 2.0 and later), some sectors are zeros in the image |
 
-Errors go to standard error, with the list of options after "Missing or invalid options". (In version 1.1 and earlier, on Windows, missing options and "another job is running" showed a message box, which waits for a click an unattended run never gets; `proxmoxbackup-directory` even carried on after the box.)
+Errors go to standard error. Options that are missing are named, for example `Missing options: -baseurl, -datastore`. A mistyped option, an argument that is not an option (such as a value after a switch, `-novss true`) and, on Windows, a path with a quote in it (`-backupdir "C:\"` passes `C:"`; write `C:\` or `"C:\\"`) stop the run before it starts, with code 1 and what to change. (In version 1.1 and earlier, on Windows, missing options and "another job is running" showed a message box, which waits for a click an unattended run never gets; `proxmoxbackup-directory` even carried on after the box.)
 
 ## 10. Scheduling
 
