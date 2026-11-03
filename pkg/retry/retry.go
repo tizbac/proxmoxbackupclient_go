@@ -49,6 +49,11 @@ func DefaultRetryable(err error) bool {
 		"deadline exceeded",
 		"connection refused",
 		"connection reset",
+		// Windows words a reset or aborted connection its own way
+		// (WSAECONNRESET 10054, WSAECONNABORTED 10053), which "connection
+		// reset" does not match: a dropped link was not retried there.
+		"forcibly closed by the remote host",
+		"established connection was aborted",
 		"temporary failure",
 		"unexpected eof",
 		"broken pipe",
