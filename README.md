@@ -22,6 +22,16 @@ It is a **suite of tools**:
 
 > Keywords: proxmox backup client windows · PBS client · Windows VSS backup · immutable offsite backups · physical to virtual (P2V) · bare-metal restore · Proxmox Backup Server interface.
 
+## 💡 Why use this client
+
+The official `proxmox-backup-client` is a command-line tool for Linux. This client works with the same server and the same backup formats, and adds:
+
+- **Windows.** There is no official client for Windows. Here there are command-line tools and an app, folder backups through VSS snapshots, and live whole-disk backups.
+- **An app for Windows and Linux**: Backup Sets on schedules, run by a background service so nobody needs to be signed in, Restore with search, Undelete and Roll back, Reports and e-mail.
+- **Whole machines**: bootable disk images, single files back from them, and a guided bare-metal restore ISO, onto the same computer, new hardware or a Proxmox VE virtual machine.
+- **Windows file details kept**: NTFS permissions, attributes, alternate data streams, extended attributes and creation times are recorded with each folder backup, and this client's Restore puts them back.
+- **No lock-in**: what this client backs up restores with the official client, and what the official client backs up restores with this one (see below).
+
 ## 🆕 New in 2.0
 
 Version 2.0 merges a large body of work on the GUI, the background service and the backup engine into the project (see the [CHANGELOG](CHANGELOG.md)). Compared with 1.2:
@@ -300,7 +310,12 @@ Verified with `proxmox-backup-client` 3.4.9 and PBS 4.2:
 - **Legacy, Data and Metadata snapshots made by the official client restore byte-identically with this client**, fully or selectively.
 - Same split archive format (pxar version 2), same change-detection modes, same encryption key file format, same `PBS_REPOSITORY` style environment variables.
 
-Your backups are never tied to this client. The only extra is one small file at the root of a folder snapshot, `.proxmox_backup_client_meta.json` (the original path), which the official client restores as an ordinary file.
+Your backups are never tied to this client. Two extras ride alongside the standard archives, and the official client restores the files as normal without them:
+
+- `.proxmox_backup_client_meta.json`, at the root of a folder snapshot, records the original path. The official client restores it as an ordinary file.
+- `proxmox-client-acls.json.gz.blob`, stored with each folder snapshot, records what the archive has no place for on Windows (NTFS permissions, attributes, creation times, alternate data streams and extended attributes) and, on Linux, the extended attributes and POSIX ACLs. The official client and the PBS web page leave it out; this client's Restore puts them back.
+
+On Linux the official client keeps POSIX ACLs, extended attributes and file capabilities inside the archive itself. This client does not write or read those entries yet, so on Linux ACLs do not carry between the two clients in either direction. Doing it the official way, as an option, is on the [roadmap](TODO.md).
 
 ## Full machine live backup
 

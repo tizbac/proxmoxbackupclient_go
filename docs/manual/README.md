@@ -12,6 +12,16 @@ Proxmox Backup Client backs up Windows and Linux computers to a Proxmox Backup S
 
 For a quick decision on which restore to use, see [Restore scenarios](../RESTORE_GUIDE.md).
 
+## Why use this client
+
+The official `proxmox-backup-client` is a command-line tool for Linux. This client works with the same server and the same backup formats, and adds:
+
+* **Windows.** There is no official client for Windows. Here there are command-line tools and an app, folder backups through VSS snapshots, and live whole-disk backups.
+* **An app for Windows and Linux**: Backup Sets on schedules, run by a background service so nobody needs to be signed in, Restore with search, Undelete and Roll back, Reports and e-mail.
+* **Whole machines**: bootable disk images, single files back from them, and a guided bare-metal restore ISO, onto the same computer, new hardware or a Proxmox VE virtual machine.
+* **Windows file details kept**: NTFS permissions, attributes, alternate data streams, extended attributes and creation times are recorded with each folder backup, and this client's Restore puts them back.
+* **No lock-in**: see the next section.
+
 ## Compatible with the official Proxmox client, in both directions
 
 This client and the official `proxmox-backup-client` read each other's backups (verified with `proxmox-backup-client` 3.4.9 and PBS 4.2):
@@ -21,3 +31,5 @@ This client and the official `proxmox-backup-client` read each other's backups (
 * Both use the same split archive format (pxar version 2), the same change-detection modes and the same encryption key file format.
 
 So you are not locked in: every backup made with this client can be restored with Proxmox's own tools, and anything the official client makes can be restored with this one.
+
+Two extras ride alongside the standard archives in a folder snapshot, and the official client restores the files as normal without them: `.proxmox_backup_client_meta.json` (the original path), restored as an ordinary file, and `proxmox-client-acls.json.gz.blob`, the permissions and other file details (on Windows the NTFS permissions, attributes, creation times, alternate data streams and extended attributes; on Linux the extended attributes and POSIX ACLs), which only this client's Restore puts back. On Linux the official client keeps ACLs inside the archive itself, which this client does not yet write or read, so on Linux ACLs do not carry between the two clients; see the [roadmap](../../TODO.md).

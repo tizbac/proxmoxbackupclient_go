@@ -24,6 +24,16 @@ Este o **suită de instrumente**:
 
 <a id="-new-in-20"></a>
 
+## 💡 De ce acest client
+
+`proxmox-backup-client` oficial este un instrument în linie de comandă pentru Linux. Acest client lucrează cu același server și aceleași formate de backup și adaugă:
+
+- **Windows.** Nu există un client oficial pentru Windows. Aici există instrumente în linie de comandă și o aplicație, backup-uri de foldere prin instantanee VSS și backup-uri live ale discurilor întregi.
+- **O aplicație pentru Windows și Linux**: seturi de backup programate, rulate de un serviciu de fundal fără să fie nevoie ca cineva să fie autentificat, restaurare cu căutare, Recuperare fișiere șterse și Revenire, rapoarte și e-mail.
+- **Mașini întregi**: imagini de disc bootabile, fișiere individuale din ele și un ISO de restaurare bare-metal ghidată, pe același computer, pe hardware nou sau într-o mașină virtuală Proxmox VE.
+- **Detaliile fișierelor Windows păstrate**: permisiunile NTFS, atributele, fluxurile de date alternative, atributele extinse și orele de creare sunt înregistrate cu fiecare backup de folder, iar restaurarea acestui client le pune la loc.
+- **Fără blocare**: ce salvează acest client se restaurează cu clientul oficial, iar ce salvează clientul oficial se restaurează cu acesta (vedeți mai jos).
+
 ## 🆕 Noutăți în 2.0
 
 Versiunea 2.0 aduce în proiect un volum mare de lucru la interfața grafică, la serviciul de fundal și la motorul de backup (vedeți [CHANGELOG](CHANGELOG.md)). Față de 1.2:
@@ -306,7 +316,12 @@ Verificat cu `proxmox-backup-client` 3.4.9 și PBS 4.2:
 - **Instantaneele Legacy, Data și Metadata create de clientul oficial se restaurează identic, byte cu byte, cu acest client**, integral sau selectiv.
 - Același format de arhivă divizată (pxar versiunea 2), aceleași moduri de detectare a modificărilor, același format al fișierului cheie de criptare, aceleași variabile de mediu de tip `PBS_REPOSITORY`.
 
-Backup-urile dvs. nu sunt niciodată legate de acest client. Singurul element suplimentar este un mic fișier la rădăcina unui instantaneu de folder, `.proxmox_backup_client_meta.json` (calea originală), pe care clientul oficial îl restaurează ca pe un fișier obișnuit.
+Backup-urile dvs. nu sunt niciodată legate de acest client. Două elemente suplimentare însoțesc arhivele standard, iar clientul oficial restaurează fișierele normal și fără ele:
+
+- `.proxmox_backup_client_meta.json`, la rădăcina unui instantaneu de folder, înregistrează calea originală. Clientul oficial îl restaurează ca pe un fișier obișnuit.
+- `proxmox-client-acls.json.gz.blob`, salvat cu fiecare instantaneu de folder, înregistrează ce nu încape în arhivă pe Windows (permisiuni NTFS, atribute, ore de creare, fluxuri de date alternative și atribute extinse) și, pe Linux, atributele extinse și ACL-urile POSIX. Clientul oficial și interfața web PBS îl ignoră; restaurarea acestui client le pune la loc.
+
+Pe Linux, clientul oficial păstrează ACL-urile POSIX, atributele extinse și capabilitățile fișierelor în arhiva însăși. Acest client nu scrie și nu citește încă aceste intrări, așa că pe Linux ACL-urile nu trec de la un client la altul în niciun sens. Realizarea acestui lucru în modul oficial, ca opțiune, este în [planul de dezvoltare](TODO.md).
 
 ## Backup live al întregii mașini
 

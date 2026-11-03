@@ -994,7 +994,12 @@ This client and the official `proxmox-backup-client` read each other's backups. 
 * Legacy, Data and Metadata snapshots made by the official client restore byte-identically with this client, fully or selectively.
 * Both use the same split archive format (pxar version 2) and the same encryption key file format, so keys work in both.
 
-This client adds one small file at the root of its folder snapshots, `.proxmox_backup_client_meta.json`, which records the original path. The official client restores it as an ordinary file.
+This client adds two things to its folder snapshots, and the official client restores the files as normal without them:
+
+* `.proxmox_backup_client_meta.json` at the root, which records the original path. The official client restores it as an ordinary file.
+* `proxmox-client-acls.json.gz.blob`, which records the permissions and other file details: on Windows the NTFS permissions, attributes, creation times, alternate data streams and extended attributes; on Linux the extended attributes and POSIX ACLs. The official client and the PBS web page leave it out; this app's Restore puts them back.
+
+On Linux the official client keeps POSIX ACLs, extended attributes and file capabilities inside the archive itself. This client does not write or read those entries yet, so on Linux ACLs do not carry between the two clients in either direction; see the [roadmap](../../TODO.md).
 
 ## 17. Troubleshooting
 

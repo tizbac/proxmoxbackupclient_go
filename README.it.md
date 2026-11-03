@@ -23,6 +23,16 @@
 > Parole chiave: proxmox backup client windows · client PBS · backup VSS Windows · backup offsite immutabili · da fisico a virtuale (P2V) · ripristino bare-metal · interfaccia Proxmox Backup Server.
 
 <a id="-new-in-20"></a>
+## 💡 Perché usare questo client
+
+Il `proxmox-backup-client` ufficiale è uno strumento a riga di comando per Linux. Questo client funziona con lo stesso server e gli stessi formati di backup, e in più offre:
+
+- **Windows.** Non esiste un client ufficiale per Windows. Qui ci sono strumenti a riga di comando e un'app, backup di cartelle tramite snapshot VSS e backup a caldo di dischi interi.
+- **Un'app per Windows e Linux**: set di backup pianificati, eseguiti da un servizio in background senza che nessuno debba essere connesso, ripristino con ricerca, Recupero e Rollback, report ed e-mail.
+- **Macchine intere**: immagini disco avviabili, singoli file recuperati da esse e una ISO di ripristino bare-metal guidato, sullo stesso computer, su nuovo hardware o in una macchina virtuale Proxmox VE.
+- **I dettagli dei file Windows conservati**: permessi NTFS, attributi, stream di dati alternativi, attributi estesi e date di creazione vengono registrati con ogni backup di cartella, e il ripristino di questo client li rimette al loro posto.
+- **Nessun vincolo**: ciò che questo client salva si ripristina con il client ufficiale, e ciò che salva il client ufficiale si ripristina con questo (vedi sotto).
+
 ## 🆕 Novità della 2.0
 
 La versione 2.0 porta nel progetto un ampio lavoro sulla GUI, sul servizio in background e sul motore di backup (vedi il [CHANGELOG](CHANGELOG.md)). Rispetto alla 1.2:
@@ -303,7 +313,12 @@ Verificato con `proxmox-backup-client` 3.4.9 e PBS 4.2:
 - **Gli snapshot Classico, Dati e Metadati creati dal client ufficiale si ripristinano byte per byte identici con questo client**, completamente o in modo selettivo.
 - Stesso formato di archivio diviso (pxar versione 2), stesse modalità di rilevamento delle modifiche, stesso formato del file di chiave di cifratura, stesse variabili d'ambiente in stile `PBS_REPOSITORY`.
 
-I tuoi backup non sono mai vincolati a questo client. L'unica aggiunta è un piccolo file nella radice di uno snapshot di cartella, `.proxmox_backup_client_meta.json` (il percorso originale), che il client ufficiale ripristina come un normale file.
+I tuoi backup non sono mai vincolati a questo client. Due aggiunte accompagnano gli archivi standard, e il client ufficiale ripristina normalmente i file anche senza di esse:
+
+- `.proxmox_backup_client_meta.json`, nella radice di uno snapshot di cartella, registra il percorso originale. Il client ufficiale lo ripristina come un normale file.
+- `proxmox-client-acls.json.gz.blob`, salvato con ogni snapshot di cartella, registra ciò che l'archivio non può contenere su Windows (permessi NTFS, attributi, date di creazione, stream di dati alternativi e attributi estesi) e, su Linux, gli attributi estesi e le ACL POSIX. Il client ufficiale e l'interfaccia web di PBS lo ignorano; il ripristino di questo client li rimette al loro posto.
+
+Su Linux il client ufficiale conserva le ACL POSIX, gli attributi estesi e le capability dei file all'interno dell'archivio stesso. Questo client non scrive né legge ancora queste voci, quindi su Linux le ACL non passano da un client all'altro, in nessuna delle due direzioni. Farlo come il client ufficiale, come opzione, è nella [roadmap](TODO.md).
 
 ## Backup a caldo dell'intera macchina
 

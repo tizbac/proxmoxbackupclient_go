@@ -352,7 +352,7 @@ proxmox-backup-client snapshot files "host/laptop-documents/2026-10-07T20:45:51Z
 proxmox-backup-client restore "host/laptop-documents/2026-10-07T20:45:51Z" <archive> /tmp/restore
 ```
 
-Give the archive name without `.didx`: a snapshot from `proxmoxbackup-directory` holds `backup.pxar.didx` (legacy) or `backup.mpxar.didx` plus `backup.ppxar.didx` (data, metadata), so restore `backup.pxar` or `backup.mpxar`. The GUI names one archive per folder (for example `f__data.mpxar` for F:\Data), so check `snapshot files` first. Add `--keyfile` for an encrypted snapshot. The restored tree contains one extra file, `.proxmox_backup_client_meta.json`, which this client adds to record the original path.
+Give the archive name without `.didx`: a snapshot from `proxmoxbackup-directory` holds `backup.pxar.didx` (legacy) or `backup.mpxar.didx` plus `backup.ppxar.didx` (data, metadata), so restore `backup.pxar` or `backup.mpxar`. The GUI names one archive per folder (for example `f__data.mpxar` for F:\Data), so check `snapshot files` first. Add `--keyfile` for an encrypted snapshot. The restored tree contains one extra file, `.proxmox_backup_client_meta.json`, which this client adds to record the original path. The permissions and other file details this client records in the snapshot's `proxmox-client-acls.json.gz.blob` (NTFS permissions, attributes, creation times, alternate data streams and extended attributes on Windows; extended attributes and POSIX ACLs on Linux) are not applied by the official client; restore with the GUI to get them back. On Linux the official client keeps ACLs inside the archive itself, which this client does not yet write or read; see the [roadmap](../../TODO.md).
 
 ## 12. Undelete and Roll back for a Backup Set
 

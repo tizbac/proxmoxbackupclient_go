@@ -24,6 +24,16 @@ Det är en **verktygssvit**:
 
 <a id="-new-in-20"></a>
 
+## 💡 Varför använda den här klienten
+
+Den officiella `proxmox-backup-client` är ett kommandoradsverktyg för Linux. Den här klienten arbetar mot samma server med samma säkerhetskopieformat och lägger till:
+
+- **Windows.** Det finns ingen officiell klient för Windows. Här finns kommandoradsverktyg och en app, säkerhetskopior av mappar via VSS-ögonblicksbilder och livesäkerhetskopior av hela diskar.
+- **En app för Windows och Linux**: schemalagda **Backup Sets** som körs av en bakgrundstjänst, så att ingen behöver vara inloggad, återställning med sökning, **Undelete** och **Roll back**, rapporter och e-post.
+- **Hela datorer**: startbara diskavbilder, enskilda filer ur dem och en guidad ISO för återställning från grunden (bare metal), till samma dator, ny hårdvara eller en virtuell maskin i Proxmox VE.
+- **Windows filinformation bevaras**: NTFS-behörigheter, attribut, alternativa dataströmmar, utökade attribut och skapandetider registreras med varje mappsäkerhetskopia, och den här klientens återställning lägger tillbaka dem.
+- **Ingen inlåsning**: det den här klienten säkerhetskopierar kan återställas med den officiella klienten, och det den officiella klienten säkerhetskopierar kan återställas med den här (se nedan).
+
 ## 🆕 Nytt i 2.0
 
 Version 2.0 för in en stor mängd arbete på det grafiska gränssnittet, bakgrundstjänsten och säkerhetskopieringsmotorn i projektet (se [CHANGELOG](CHANGELOG.md)). Jämfört med 1.2:
@@ -306,7 +316,12 @@ Verifierat med `proxmox-backup-client` 3.4.9 och PBS 4.2:
 - **Legacy-, Data- och Metadata-ögonblicksbilder som skapats av den officiella klienten återställs byte för byte identiskt med den här klienten**, helt eller selektivt.
 - Samma format för delade arkiv (pxar version 2), samma lägen för ändringsidentifiering, samma format för krypteringsnyckelfiler, samma miljövariabler i stil med `PBS_REPOSITORY`.
 
-Dina säkerhetskopior är aldrig bundna till den här klienten. Det enda extra är en liten fil i roten av en mappögonblicksbild, `.proxmox_backup_client_meta.json` (den ursprungliga sökvägen), som den officiella klienten återställer som en vanlig fil.
+Dina säkerhetskopior är aldrig bundna till den här klienten. Två tillägg följer med standardarkiven, och den officiella klienten återställer filerna som vanligt även utan dem:
+
+- `.proxmox_backup_client_meta.json` i roten av en mappögonblicksbild registrerar den ursprungliga sökvägen. Den officiella klienten återställer den som en vanlig fil.
+- `proxmox-client-acls.json.gz.blob`, som sparas med varje mappögonblicksbild, registrerar det som arkivet inte har plats för i Windows (NTFS-behörigheter, attribut, skapandetider, alternativa dataströmmar och utökade attribut) och, i Linux, de utökade attributen och POSIX-ACL:erna. Den officiella klienten och PBS webbgränssnitt hoppar över den; den här klientens återställning lägger tillbaka dem.
+
+I Linux sparar den officiella klienten POSIX-ACL:er, utökade attribut och filkapabiliteter i själva arkivet. Den här klienten skriver och läser ännu inte de posterna, så i Linux följer ACL:er inte med mellan de två klienterna åt något håll. Att göra det på det officiella sättet, som ett val, finns i [färdplanen](TODO.md).
 
 ## Säkerhetskopiering av hela datorn under drift
 

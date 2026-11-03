@@ -23,6 +23,16 @@ Il s'agit d'une **suite d'outils** :
 > Mots-clés : client proxmox backup windows · client PBS · sauvegarde VSS Windows · sauvegardes externalisées immuables · physique vers virtuel (P2V) · restauration bare-metal · interface Proxmox Backup Server.
 
 <a id="-new-in-20"></a>
+## 💡 Pourquoi utiliser ce client
+
+Le `proxmox-backup-client` officiel est un outil en ligne de commande pour Linux. Ce client fonctionne avec le même serveur et les mêmes formats de sauvegarde, et ajoute :
+
+- **Windows.** Il n'existe pas de client officiel pour Windows. Ici, il y a des outils en ligne de commande et une application, des sauvegardes de dossiers via des instantanés VSS et des sauvegardes à chaud de disques entiers.
+- **Une application pour Windows et Linux** : des ensembles de sauvegarde planifiés, exécutés par un service d'arrière-plan sans que personne n'ait à ouvrir de session, la restauration avec recherche, Récupération et Retour arrière, les rapports et l'e-mail.
+- **Des machines entières** : des images de disque amorçables, des fichiers isolés récupérés depuis ces images, et un ISO de restauration bare-metal guidée, sur le même ordinateur, sur un nouveau matériel ou dans une machine virtuelle Proxmox VE.
+- **Les détails des fichiers Windows conservés** : permissions NTFS, attributs, flux de données alternatifs, attributs étendus et dates de création sont enregistrés avec chaque sauvegarde de dossier, et la restauration de ce client les remet en place.
+- **Aucune dépendance** : ce que ce client sauvegarde se restaure avec le client officiel, et ce que le client officiel sauvegarde se restaure avec celui-ci (voir ci-dessous).
+
 ## 🆕 Nouveautés de la 2.0
 
 La version 2.0 intègre au projet un important travail sur l'interface graphique, le service d'arrière-plan et le moteur de sauvegarde (voir le [CHANGELOG](CHANGELOG.md)). Par rapport à la 1.2 :
@@ -303,7 +313,12 @@ Vérifié avec `proxmox-backup-client` 3.4.9 et PBS 4.2 :
 - **Les instantanés Classique, Données et Métadonnées créés par le client officiel se restaurent à l'octet près avec ce client**, en totalité ou de manière sélective.
 - Même format d'archive scindée (pxar version 2), mêmes modes de détection des changements, même format de fichier de clé de chiffrement, mêmes variables d'environnement du type `PBS_REPOSITORY`.
 
-Vos sauvegardes ne sont jamais liées à ce client. Le seul ajout est un petit fichier à la racine d'un instantané de dossier, `.proxmox_backup_client_meta.json` (le chemin d'origine), que le client officiel restaure comme un fichier ordinaire.
+Vos sauvegardes ne sont jamais liées à ce client. Deux ajouts accompagnent les archives standard, et le client officiel restaure les fichiers normalement sans eux :
+
+- `.proxmox_backup_client_meta.json`, à la racine d'un instantané de dossier, enregistre le chemin d'origine. Le client officiel le restaure comme un fichier ordinaire.
+- `proxmox-client-acls.json.gz.blob`, stocké avec chaque instantané de dossier, enregistre ce que l'archive ne peut pas contenir sous Windows (permissions NTFS, attributs, dates de création, flux de données alternatifs et attributs étendus) et, sous Linux, les attributs étendus et les ACL POSIX. Le client officiel et l'interface web de PBS l'ignorent ; la restauration de ce client les remet en place.
+
+Sous Linux, le client officiel conserve les ACL POSIX, les attributs étendus et les capacités de fichier dans l'archive elle-même. Ce client n'écrit ni ne lit encore ces entrées, si bien que sous Linux les ACL ne passent pas d'un client à l'autre, dans un sens comme dans l'autre. Le faire à la manière officielle, en option, figure dans la [feuille de route](TODO.md).
 
 ## Sauvegarde à chaud d'une machine complète
 
