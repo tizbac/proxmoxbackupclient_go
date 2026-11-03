@@ -281,8 +281,9 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progres
 }
 
 // liveReadHint ends the message of a backup that stops because a mounted
-// disk cannot be snapshotted, saying how to read it live instead.
-const liveReadHint = "or turn off Use snapshots for this Backup Set and accept a backup that may be inconsistent"
+// disk cannot be snapshotted, saying how to read it live instead, in the app
+// and with proxmoxbackup-machine.
+const liveReadHint = "or turn off Use snapshots for this Backup Set (-liveread on the command line) and accept a backup that may be inconsistent"
 
 // withSnapshots runs read with block snapshots of mountpoints. With nothing
 // mounted there is nothing to snapshot, so read runs straight away. Asking
@@ -302,7 +303,7 @@ func withSnapshots(mountpoints []string, liveRead bool, read func(map[string]sna
 		return read(map[string]snapshot.SnapShot{})
 	}
 	if liveRead {
-		log.Printf("WARNING: reading mounted %v live, without a snapshot (Use snapshots is off for this Backup Set): files that change during the backup may be inconsistent in the image", mountpoints)
+		log.Printf("WARNING: reading mounted %v live, without a snapshot (Use snapshots is off for this Backup Set, or -liveread): files that change during the backup may be inconsistent in the image", mountpoints)
 		return read(map[string]snapshot.SnapShot{})
 	}
 	if os.Geteuid() != 0 {

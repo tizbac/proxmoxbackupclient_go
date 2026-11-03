@@ -224,17 +224,18 @@ Points to know:
 | `-type <host\|vm>` | `host` | `vm` stores a Proxmox VE VM snapshot (numeric `-backup-id`), which Proxmox VE can restore as a VM |
 | `-backup-id <id>` | computer name | Backup ID. Must be numeric with `-type vm` |
 | `-keyfile`, `-keyfile-passphrase` | | Encryption ([section 7](#7-encryption)) |
+| `-liveread` | off | Linux: read mounted partitions live, without a snapshot (see below). The image may be inconsistent. No effect on Windows |
 | `-readfreespace` | off | Also read free space (a forensic copy), and on Windows the paging, hibernation and swap files. By default they go into the image as zeros without being read |
 | `-skippartition <device>:<number>` | | Leave a partition out, e.g. `\\.\PhysicalDrive0:4` or `/dev/sda:3`. Repeat for more. It is not read or snapshotted and goes into the image as zeros: a restore gives it back in its place, empty and unformatted. A number the disk does not have prints a warning and leaves nothing out |
 | `-systray` | off | Does nothing at present: the tray icon was taken out of the command-line tools in an earlier version and has not come back. Still accepted, so existing commands keep working |
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
-| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `keyfile`, `keyfilepassphrase`, `upload-limit`, `download-limit`, `disk-read-limit` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
+| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `liveread`, `keyfile`, `keyfilepassphrase`, `upload-limit`, `download-limit`, `disk-read-limit` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
 | `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
 Plus the connection flags in [section 2](#2-connecting-to-pbs).
 
-On Windows the tool takes a VSS snapshot of every mounted partition on the disk, then stores a bootable image of the whole disk. On Linux mounted partitions are snapshotted with `elastio-snap` or `dattobd`, which must be loaded, and the tool must run as root. Installing them (DKMS, loading at boot, Secure Boot): see [Linux snapshots: installing elastio-snap or dattobd](GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) in the GUI manual.
+On Windows the tool takes a VSS snapshot of every mounted partition on the disk, then stores a bootable image of the whole disk. On Linux mounted partitions are snapshotted with `elastio-snap` or `dattobd`, which must be loaded, and the tool must run as root. Installing them (DKMS, loading at boot, Secure Boot): see [Linux snapshots: installing elastio-snap or dattobd](GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) in the GUI manual. Without a snapshot module the backup of a disk with a mounted partition stops and says so. `-liveread` (`"liveread": true` in the config file), the GUI's **Use snapshots** turned off and accepted, reads mounted partitions live instead, with a warning: files that change during the backup can be caught half written, so the image may be inconsistent, which matters most for a system disk. Reading the disk still needs root. A disk with nothing mounted is always read without a snapshot.
 
 Later backups of the same disk to the same group only upload changed 4 MiB chunks.
 

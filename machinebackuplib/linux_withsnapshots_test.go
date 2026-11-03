@@ -72,7 +72,7 @@ func TestWithSnapshotsRefusesWithoutSnapshot(t *testing.T) {
 	if err == nil || read {
 		t.Fatalf("mounted without a snapshot: err %v, read %v; want refused", err, read)
 	}
-	if !strings.Contains(err.Error(), "turn off Use snapshots") {
-		t.Errorf("message %q does not say how to read live", err)
+	if !strings.Contains(err.Error(), "turn off Use snapshots") || !strings.Contains(err.Error(), "-liveread") {
+		t.Errorf("message %q does not say how to read live, in the app and on the command line", err)
 	}
 }

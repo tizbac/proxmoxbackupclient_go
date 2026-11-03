@@ -6,6 +6,7 @@ import (
 	"machinebackuplib"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -69,6 +70,24 @@ func TestCLIHelp(t *testing.T) {
 	stdout, _, code := runMain(t, "-help")
 	if code != 0 || !strings.Contains(stdout, "Usage: ") || !strings.Contains(stdout, "-backupdev") {
 		t.Errorf("exit %d, stdout:\n%s", code, stdout)
+	}
+}
+
+// -liveread is taken on every system; on Windows, where VSS always reads a
+// volume in use, the run says it has no effect. The run then fails to
+// connect (nothing listens on port 1), which is not what is tested here.
+func TestCLILiveReadFlag(t *testing.T) {
+	stdout, stderr, code := runMain(t, "-liveread", "-baseurl", "https://127.0.0.1:1", "-certfingerprint", "00:11",
+		"-authid", "a@pbs!t", "-secret", "s", "-datastore", "ds", "-backupdev", "nosuchdisk.img")
+	if code == 2 {
+		t.Skip("another backup job holds the process lock on this machine")
+	}
+	if strings.Contains(stderr, "flag provided but not defined") || strings.Contains(stderr, "Missing options") {
+		t.Fatalf("-liveread not taken: exit %d\n%s", code, stderr)
+	}
+	note := strings.Contains(stdout, "-liveread has no effect on Windows")
+	if note != (runtime.GOOS == "windows") {
+		t.Errorf("Windows note shown: %v on %s\n%s", note, runtime.GOOS, stdout)
 	}
 }
 

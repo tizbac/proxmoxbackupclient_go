@@ -10,6 +10,7 @@ import (
 	"machinebackuplib"
 
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -54,6 +55,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits) {
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
 	backupTypeFlag := flag.String("type", "", "host|vm , vm will allow to restore as VM inside proxmox VE (Physical to Virtual), also it enables to use file restore feature, use numeric backupid")
 	flag.Var(&backupdevs, "backupdev", "Can be specified multiple times,Backup device file ( On windows it can be \\\\.\\PhysicalDriveN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever ; mounted partitions get a consistent point-in-time snapshot via the elastio-snap/dattobd kernel module (requires root)")
+	liveReadFlag := flag.Bool("liveread", false, "Linux: read mounted partitions live, without a snapshot, so elastio-snap or dattobd is not needed. The image may be inconsistent: files that change during the backup can be caught half written. Windows always reads a volume in use through VSS")
 	readFreeSpaceFlag := flag.Bool("readfreespace", false, "Windows: also read free space and the paging/hibernation files (a forensic copy); by default they go into the image as zeros without being read")
 	var skipparts arrayFlags
 	flag.Var(&skipparts, "skippartition", "Can be specified multiple times. Leave a partition out of a whole-disk backup: <device>:<partition number>, e.g. \\\\.\\PhysicalDrive0:4 or /dev/sda:3. It is not read or snapshotted and goes into the image as zeros: a restore gives it back empty and unformatted")
@@ -138,6 +140,9 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits) {
 	}
 	if *readFreeSpaceFlag {
 		config.ReadFreeSpace = true
+	}
+	if *liveReadFlag {
+		config.LiveRead = true
 	}
 	// -skippartition adds to the config file's "skippartitions".
 	for _, v := range skipparts {
@@ -333,6 +338,9 @@ func main() {
 	}
 	if line := limits.ApplySpeedLimits(); line != "" {
 		fmt.Println(line)
+	}
+	if cfg.LiveRead && runtime.GOOS == "windows" {
+		fmt.Println("-liveread has no effect on Windows: a volume in use is always read through VSS.")
 	}
 
 	// Without -certfingerprint, fetch the fingerprint the server presents and
