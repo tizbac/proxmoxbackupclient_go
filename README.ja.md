@@ -75,7 +75,7 @@
 | マニュアル | 内容 |
 |---|---|
 | **[GUI マニュアル](docs/manual/GUI.md)** | インストール、PBS サーバー、**Backup Sets**（バックアップセット）とスケジュール、増分バックアップ、進行状況、復元、**Undelete**（削除の取り消し）、**Roll back**（ロールバック）、**Reports**（レポート）、ログ、**Preferences**（設定）、バックグラウンドサービス、トラブルシューティング |
-| **[コマンドラインマニュアル](docs/manual/CLI.md)** | `proxmoxbackup-directory`、`proxmoxbackup-machine`、`proxmoxbackup-nbd`：すべてのフラグ、設定ファイル、終了コード、スケジュール設定。コマンドラインからの Undelete と Roll back |
+| **[コマンドラインマニュアル](docs/manual/CLI.md)** | `proxmoxbackup-directory`、`proxmoxbackup-machine`、`proxmoxbackup-nbd`：すべてのフラグ、設定ファイル、終了コード、スケジュール設定 |
 | **[ベアメタル復元マニュアル](docs/manual/BMR.md)** | 復元 ISO を手順ごとに解説。Proxmox VE への `vm` バックアップ、物理から仮想へ、異なるハードウェアへの復元 |
 | [復元シナリオ](docs/RESTORE_GUIDE.md) | どの場面でどの復元を使うか |
 | [マニュアル索引](docs/manual/README.md) | マニュアルの概要 |

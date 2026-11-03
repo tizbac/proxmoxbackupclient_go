@@ -74,7 +74,7 @@ La version 2.0 intègre au projet un important travail sur l'interface graphique
 | Manuel | Contenu |
 |---|---|
 | **[Manuel de l'interface graphique](docs/manual/GUI.md)** | Installation, serveurs PBS, ensembles de sauvegarde et planifications, sauvegardes incrémentielles, progression, restauration, Récupération, Retour arrière, Rapports, journaux, Préférences, le service d'arrière-plan, dépannage |
-| **[Manuel de la ligne de commande](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd` : toutes les options, fichiers de configuration, codes de sortie, planification ; Récupération et Retour arrière en ligne de commande |
+| **[Manuel de la ligne de commande](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd` : toutes les options, fichiers de configuration, codes de sortie, planification |
 | **[Manuel de restauration bare-metal](docs/manual/BMR.md)** | L'ISO de restauration, étape par étape ; sauvegardes `vm` sur Proxmox VE ; physique vers virtuel ; matériel différent |
 | [Scénarios de restauration](docs/RESTORE_GUIDE.md) | Quelle restauration utiliser, et quand |
 | [Index des manuels](docs/manual/README.md) | Une vue d'ensemble des manuels |

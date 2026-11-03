@@ -15,8 +15,6 @@ This manual covers the command line tools. It applies to version 2.0 (see the [c
 9. [Exit codes](#9-exit-codes)
 10. [Scheduling](#10-scheduling)
 11. [Compatibility with the official Proxmox client](#11-compatibility-with-the-official-proxmox-client)
-12. [Undelete and Roll back for a Backup Set](#12-undelete-and-roll-back-for-a-backup-set)
-13. [The background service from the command line](#13-the-background-service-from-the-command-line)
 
 ## 1. The tools
 
@@ -35,7 +33,7 @@ On Linux the `.deb` and `.rpm` packages (package `proxmoxbackupclient`) install 
 | `proxmoxbackup-machine` | Backs up whole disks as images, as a `host` or `vm` snapshot |
 | `proxmoxbackup-nbd` | Linux only. Attaches a disk image from PBS as a read-only `/dev/nbdN` block device. The bare-metal restore ISO uses it as `pbsnbd` |
 
-There is no command line restore tool for folder backups. Restore them with the GUI, or with the official `proxmox-backup-client` ([section 11](#11-compatibility-with-the-official-proxmox-client)). For a Backup Set defined in the GUI, Undelete and Roll back also run from the command line ([section 12](#12-undelete-and-roll-back-for-a-backup-set)).
+These tools only back up: none of them restores a folder backup. Restore one with the GUI, or with the official `proxmox-backup-client` ([section 11](#11-compatibility-with-the-official-proxmox-client)). Two of the GUI's restores, Undelete and Roll back, can also be run from the command line, for a Backup Set defined in the GUI, by the GUI's own programs (on Windows its service program), which come with the GUI's installer or Linux package, not with these tools: see [GUI.md, Undelete and Roll back from the command line](GUI.md#undelete-and-roll-back-from-the-command-line). The service program's other options (install, start, stop) are in [GUI.md](GUI.md#the-service-program-from-the-command-line) too.
 
 The tools are static builds and need no installation. Run the backup tools as administrator (Windows) for VSS, or as root (Linux) for snapshots and disk access. Each tool lists its options with `-help`, and `proxmoxbackup-directory` and `proxmoxbackup-machine` print their version with `-version`.
 
@@ -396,49 +394,3 @@ proxmox-backup-client restore "host/laptop-documents/2026-10-07T20:45:51Z" <arch
 ```
 
 Give the archive name without `.didx`: a snapshot from `proxmoxbackup-directory` holds `backup.pxar.didx` (legacy) or `backup.mpxar.didx` plus `backup.ppxar.didx` (data, metadata), so restore `backup.pxar` or `backup.mpxar`. The GUI names one archive per folder (for example `f__data.mpxar` for F:\Data), so check `snapshot files` first. Add `--keyfile` for an encrypted snapshot. The restored tree contains one extra file, `.proxmox_backup_client_meta.json`, which this client adds to record the original path. The permissions and other file details this client records in the snapshot's `proxmox-client-acls.json.gz.blob` (NTFS permissions, attributes, creation times, alternate data streams and extended attributes on Windows; extended attributes and POSIX ACLs on Linux) are not applied by the official client; restore with the GUI to get them back. On Linux the official client keeps ACLs inside the archive itself, which this client does not yet write or read; see the [roadmap](../../TODO.md).
-
-## 12. Undelete and Roll back for a Backup Set
-
-The service program that comes with the GUI, `ProxmoxBackupClientSVC.exe` on Windows, runs the GUI's Undelete and Roll back for a Backup Set defined in the GUI: the same servers, folders, exclusions and safety folder. On Linux the app takes the same options: run `proxmoxbackupclient` (the package's launcher in `/usr/bin`) or `/usr/lib/proxmoxbackupclient/ProxmoxBackupClient`, which then runs on the command line without a window; the package's `/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC` takes them too. On Windows the app itself has no console, so use the service program. Run it as administrator (Windows) or root (Linux), as the backups run.
-
-The service program works on the background service's Backup Sets, in `C:\ProgramData\ProxmoxBackupClient` or `/var/lib/proxmoxbackupclient`, which only administrators (Windows) or root (Linux) can open. With the background service installed, use it for the sets the service runs. The Linux app works on the sets in `~/.proxmox-backup-guardian`, as it does without the service.
-
-```
-ProxmoxBackupClientSVC.exe -list-sets
-ProxmoxBackupClientSVC.exe -undelete "Documents" [-days 7] [-to D:\Recovered] [-dry-run] [-no-verify]
-ProxmoxBackupClientSVC.exe -rollback "Documents" [-at "2026-10-10 14:30"] [-policy replace|missing|exact]
-                           [-backup-first] [-dry-run] [-yes] [-no-verify]
-```
-
-| Option | Meaning |
-|---|---|
-| `-list-sets` | Lists the Backup Sets: name, id and folders (or disks) |
-| `-undelete <set>` | Lists the set's files that are in its newest backup but not on disk, then restores them where they were (never over a file that has come back) or under `-to`. Files that look moved (same name, size and time elsewhere) are listed, not restored |
-| `-days N` | Undelete: also looks in the backups of the last N days; each file comes from the newest backup that has it |
-| `-to <folder>` | Undelete: restore under this folder instead of where the files were |
-| `-rollback <set>` | Puts the set's folders back as the newest backup (or the one at or before `-at`) has them. Shows the counts first; asks for `yes` unless `-yes`. Everything replaced or removed is moved to the safety folder first, so the GUI's Undo can put it back |
-| `-at "YYYY-MM-DD HH:MM"` | Roll back: use the newest backup at or before this local time |
-| `-policy` | `replace` (default: restore missing and changed files, keep files added since), `missing` (missing files only) or `exact` (also remove files added since) |
-| `-backup-first` | Roll back: back the set up before changing anything |
-| `-yes` | Roll back: do not ask for `yes` |
-| `-dry-run` | Only show what would be done |
-| `-no-verify` | Do not check the restored files against the backup |
-
-A set is named by its name (any case) or its id. Undelete does not ask before it restores (it never replaces a file), so use `-dry-run` to look first. The exit code is 0 when it worked, 1 on any failure (or when a roll back was not confirmed), 2 for bad options. Machine sets work too: their folders are read from the disk images.
-
-## 13. The background service from the command line
-
-The service program also installs and controls itself:
-
-```
-ProxmoxBackupClientSVC.exe -service install|uninstall|start|stop|restart
-```
-
-Run it as administrator (Windows) or root (Linux). Usually you do not need it:
-
-* **Windows.** The installer (MSI) installs the service as `ProxmoxBackupClientSVC`, and **Preferences > Advanced > Run as Service** in the GUI installs, starts, stops and removes it under the same name, and so does `-service install`. **Run as Service** also copies your own settings (`%USERPROFILE%\.proxmox-backup-guardian`) to `C:\ProgramData\ProxmoxBackupClient` if the service has none yet; `-service install` does not. Test builds from before 14 October 2026 used the name `ProxmoxBackupClient` for `-service install`; the GUI still recognises a service installed that way, but remove it (`-service uninstall` with that older program) before installing the new one, or there would be two.
-* **Linux.** The `.deb` and `.rpm` install the systemd unit `proxmoxbackupclient.service`, and a fresh install enables and starts it; an upgrade keeps your choice, so a service you turned off stays off. To turn it on again, use **Run as Service** in the GUI started as administrator: it copies your Backup Sets, servers, keys and history to `/var/lib/proxmoxbackupclient`, where the service reads them, then enables and starts the unit. `systemctl` and `/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC -service ...` act on the same unit but do not copy any settings.
-
-The service's settings folder is the service's alone: SYSTEM and Administrators on Windows, root (0700, files 0600) on Linux. The GUI reaches it through the service's local API on `127.0.0.1:18765`, which needs the token in `api-token` in that folder. The GUI gets the token by asking for administrator rights (UAC, or pkexec on Linux) and keeps it in memory. The service makes a new token each time it starts, and every 24 hours.
-
-See the GUI manual ([GUI.md](GUI.md#15-background-service-tray-and-closing-the-window)) for what the service does.

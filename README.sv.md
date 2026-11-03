@@ -75,7 +75,7 @@ Version 2.0 för in en stor mängd arbete på det grafiska gränssnittet, bakgru
 | Handbok | Innehåll |
 |---|---|
 | **[Handbok för det grafiska gränssnittet](docs/manual/GUI.md)** | Installation, PBS-servrar, **Backup Sets** (säkerhetskopieringsuppsättningar) och scheman, inkrementella säkerhetskopior, förlopp, återställning, **Undelete** (ångra borttagning), **Roll back** (återgå), **Reports** (rapporter), loggar, **Preferences** (inställningar), bakgrundstjänsten, felsökning |
-| **[Handbok för kommandoraden](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`: varje flagga, konfigurationsfiler, slutkoder, schemaläggning; Undelete och Roll back från kommandoraden |
+| **[Handbok för kommandoraden](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`: varje flagga, konfigurationsfiler, slutkoder, schemaläggning |
 | **[Handbok för bare metal-återställning](docs/manual/BMR.md)** | Återställnings-ISO:n steg för steg; `vm`-säkerhetskopior till Proxmox VE; fysisk till virtuell; annan hårdvara |
 | [Återställningsscenarier](docs/RESTORE_GUIDE.md) | Vilken återställning som ska användas när |
 | [Handboksindex](docs/manual/README.md) | En översikt över handböckerna |

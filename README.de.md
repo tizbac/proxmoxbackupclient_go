@@ -74,7 +74,7 @@ Version 2.0 übernimmt umfangreiche Arbeiten an der GUI, am Hintergrunddienst un
 | Handbuch | Inhalt |
 |---|---|
 | **[GUI-Handbuch](docs/manual/GUI.md)** | Installation, PBS-Server, Sicherungssätze und Zeitpläne, inkrementelle Sicherungen, Fortschritt, Wiederherstellung, Gelöschte Dateien wiederherstellen, Zurücksetzen, Berichte, Protokolle, Einstellungen, der Hintergrunddienst, Fehlerbehebung |
-| **[Kommandozeilen-Handbuch](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`: alle Optionen, Konfigurationsdateien, Exit-Codes, Zeitplanung; Gelöschte Dateien wiederherstellen und Zurücksetzen auf der Kommandozeile |
+| **[Kommandozeilen-Handbuch](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`: alle Optionen, Konfigurationsdateien, Exit-Codes, Zeitplanung |
 | **[Handbuch zur Bare-Metal-Wiederherstellung](docs/manual/BMR.md)** | Das Wiederherstellungs-ISO Schritt für Schritt; `vm`-Sicherungen in Proxmox VE; physisch zu virtuell; abweichende Hardware |
 | [Wiederherstellungsszenarien](docs/RESTORE_GUIDE.md) | Welche Wiederherstellung wann |
 | [Handbuchübersicht](docs/manual/README.md) | Ein Überblick über die Handbücher |

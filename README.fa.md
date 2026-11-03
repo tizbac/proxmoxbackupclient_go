@@ -75,7 +75,7 @@
 | راهنما | موضوعات |
 |---|---|
 | **[راهنمای GUI](docs/manual/GUI.md)** | نصب، سرورهای PBS، **Backup Sets** (مجموعه‌های پشتیبان) و زمان‌بندی‌ها، پشتیبان‌گیری افزایشی، پیشرفت کار، بازیابی، **Undelete** (بازگرداندن حذف‌شده‌ها)، **Roll back** (بازگشت به وضعیت قبلی)، **Reports** (گزارش‌ها)، لاگ‌ها، **Preferences** (تنظیمات)، سرویس پس‌زمینه، عیب‌یابی |
-| **[راهنمای خط فرمان](docs/manual/CLI.md)** | `proxmoxbackup-directory`، `proxmoxbackup-machine`، `proxmoxbackup-nbd`: همهٔ فلگ‌ها، فایل‌های پیکربندی، کدهای خروج، زمان‌بندی؛ Undelete و Roll back از خط فرمان |
+| **[راهنمای خط فرمان](docs/manual/CLI.md)** | `proxmoxbackup-directory`، `proxmoxbackup-machine`، `proxmoxbackup-nbd`: همهٔ فلگ‌ها، فایل‌های پیکربندی، کدهای خروج، زمان‌بندی |
 | **[راهنمای بازیابی bare-metal](docs/manual/BMR.md)** | ISO بازیابی، گام به گام؛ پشتیبان‌های `vm` روی Proxmox VE؛ تبدیل فیزیکی به مجازی؛ سخت‌افزار متفاوت |
 | [سناریوهای بازیابی](docs/RESTORE_GUIDE.md) | کدام روش بازیابی را چه زمانی به کار ببرید |
 | [فهرست راهنماها](docs/manual/README.md) | نمای کلی راهنماها |

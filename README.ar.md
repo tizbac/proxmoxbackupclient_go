@@ -75,7 +75,7 @@
 | الدليل | يغطي |
 |---|---|
 | **[دليل الواجهة الرسومية](docs/manual/GUI.md)** | التثبيت، وخوادم PBS، و**Backup Sets** (مجموعات النسخ الاحتياطي) والجداول الزمنية، والنسخ التزايدي، والتقدم، والاستعادة، و**Undelete** (استرجاع المحذوفات)، و**Roll back** (التراجع)، و**Reports** (التقارير)، والسجلات، و**Preferences** (التفضيلات)، والخدمة الخلفية، واستكشاف الأخطاء وإصلاحها |
-| **[دليل سطر الأوامر](docs/manual/CLI.md)** | `proxmoxbackup-directory` و`proxmoxbackup-machine` و`proxmoxbackup-nbd`: كل خيار، وملفات الإعداد، ورموز الخروج، والجدولة؛ وUndelete وRoll back من سطر الأوامر |
+| **[دليل سطر الأوامر](docs/manual/CLI.md)** | `proxmoxbackup-directory` و`proxmoxbackup-machine` و`proxmoxbackup-nbd`: كل خيار، وملفات الإعداد، ورموز الخروج، والجدولة |
 | **[دليل الاستعادة على جهاز فارغ](docs/manual/BMR.md)** | قرص ISO للاستعادة خطوة بخطوة؛ ونسخ `vm` على Proxmox VE؛ والتحويل من جهاز فعلي إلى افتراضي؛ والعتاد المختلف |
 | [سيناريوهات الاستعادة](docs/RESTORE_GUIDE.md) | أي نوع من الاستعادة يُستخدم ومتى |
 | [فهرس الأدلة](docs/manual/README.md) | نظرة عامة على الأدلة |

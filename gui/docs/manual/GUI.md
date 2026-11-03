@@ -819,7 +819,7 @@ Use the filter box to narrow the list, **Select all shown** and **Clear shown** 
 
 Tick **Verify after restore** to check every restored file against the backup, then click **Undelete N files**. The restore card shows the progress (several backups are restored one after another), Stop works as usual, and Reports records the run as **Undelete**.
 
-Undelete also runs from the command line for any Backup Set ([CLI.md, section 12](CLI.md#12-undelete-and-roll-back-for-a-backup-set)).
+Undelete also runs from the command line for any Backup Set ([below](#undelete-and-roll-back-from-the-command-line)).
 
 ## 11. Roll back
 
@@ -859,7 +859,37 @@ While a roll back runs, the set's own scheduled backups wait, and Run Now on tha
 | Undo | Deletes the files the roll back restored, moves every kept version back, makes removed folders again and removes folders the roll back created if they are empty. The safety folder is removed when everything went back |
 | Delete kept versions | Deletes that roll back's safety folder to free the space. It can no longer be undone |
 
-Roll back also runs from the command line ([CLI.md, section 12](CLI.md#12-undelete-and-roll-back-for-a-backup-set)).
+### Undelete and Roll back from the command line
+
+The service program, `ProxmoxBackupClientSVC.exe` on Windows, also runs Undelete and Roll back from the command line, for scripts and servers without a desktop, for a Backup Set defined in the GUI: the same servers, folders, exclusions and safety folder. On Linux the app takes the same options: run `proxmoxbackupclient` (the package's launcher in `/usr/bin`) or `/usr/lib/proxmoxbackupclient/ProxmoxBackupClient`, which then runs on the command line without a window; the package's `/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC` takes them too. On Windows the app itself has no console, so use the service program. Run it as administrator (Windows) or root (Linux), as the backups run.
+
+The service program works on the background service's Backup Sets, in `C:\ProgramData\ProxmoxBackupClient` or `/var/lib/proxmoxbackupclient`, which only administrators (Windows) or root (Linux) can open. With the background service installed, use it for the sets the service runs. The Linux app works on the sets in `~/.proxmox-backup-guardian`, as it does without the service.
+
+```
+ProxmoxBackupClientSVC.exe -list-sets
+ProxmoxBackupClientSVC.exe -undelete "Documents" [-days 7] [-to D:\Recovered] [-dry-run] [-no-verify]
+ProxmoxBackupClientSVC.exe -rollback "Documents" [-at "2026-10-10 14:30"] [-policy replace|missing|exact]
+                           [-backup-first] [-dry-run] [-yes] [-no-verify]
+```
+
+| Option | Meaning |
+|---|---|
+| `-list-sets` | Lists the Backup Sets: name, id and folders (or disks) |
+| `-undelete <set>` | Lists the set's files that are in its newest backup but not on disk, then restores them where they were (never over a file that has come back) or under `-to`. Files that look moved (same name, size and time elsewhere) are listed, not restored |
+| `-days N` | Undelete: also looks in the backups of the last N days; each file comes from the newest backup that has it |
+| `-to <folder>` | Undelete: restore under this folder instead of where the files were |
+| `-rollback <set>` | Puts the set's folders back as the newest backup (or the one at or before `-at`) has them. Shows the counts first; asks for `yes` unless `-yes`. Everything replaced or removed is moved to the safety folder first, so Undo in the GUI can put it back |
+| `-at "YYYY-MM-DD HH:MM"` | Roll back: use the newest backup at or before this local time |
+| `-policy` | `replace` (default: restore missing and changed files, keep files added since), `missing` (missing files only) or `exact` (also remove files added since) |
+| `-backup-first` | Roll back: back the set up before changing anything |
+| `-yes` | Roll back: do not ask for `yes` |
+| `-dry-run` | Only show what would be done |
+| `-no-verify` | Do not check the restored files against the backup |
+
+A set is named by its name (any case) or its id. Undelete does not ask before it restores (it never replaces a file), so use `-dry-run` to look first. The exit code is 0 when it worked, 1 on any failure (or when a roll back was not confirmed), 2 for bad options. Machine sets work too: their folders are read from the disk images.
+
+There is no command line option for a full restore; use [Restore](#9-restore), or the official client ([section 16](#16-compatibility-with-the-official-proxmox-client)).
+
 
 ## 12. Reports
 
@@ -965,6 +995,21 @@ The .deb, .rpm and Arch packages install the service program (`/usr/libexec/prox
 `/var/lib/proxmoxbackupclient/` belongs to root alone (folders 0700, files 0600), as `C:\ProgramData\ProxmoxBackupClient\` belongs to SYSTEM and Administrators. A GUI started normally works on the settings through the service once it has connected ([below](#connecting-to-the-background-service)). Earlier versions let the `sudo` (or `wheel`) group read the folder directly; the service undoes that when it starts. Backups you start from the GUI run in the service, which records them in Reports as it does its scheduled runs. An upgrade of the package restarts a running service. Removing the package stops and disables the service and keeps `/var/lib/proxmoxbackupclient/`; delete that folder yourself to remove the settings. Without systemd there is no service and the GUI runs the schedules while it is open.
 
 Runs the service makes on its own schedule show in an open GUI window, with Pause, Resume and Stop ([section 8](#8-the-backup-progress-card)); several at once each have their own. The service runs backups side by side as the app does, with the same **Maximum Concurrent Backups** setting ([section 6.7](#67-several-backups-at-once)), which it reads before each run.
+
+### The service program from the command line
+
+The service program also installs and controls itself:
+
+```
+ProxmoxBackupClientSVC.exe -service install|uninstall|start|stop|restart
+```
+
+Run it as administrator (Windows) or root (Linux). Usually you do not need to:
+
+* **Windows.** The installer (MSI) installs the service as `ProxmoxBackupClientSVC`, and **Preferences > Advanced > Run as Service** in the GUI installs, starts, stops and removes it under the same name, and so does `-service install`. **Run as Service** also copies your own settings (`%USERPROFILE%\.proxmox-backup-guardian`) to `C:\ProgramData\ProxmoxBackupClient` if the service has none yet; `-service install` does not. Test builds from before 14 October 2026 used the name `ProxmoxBackupClient` for `-service install`; the GUI still recognises a service installed that way, but remove it (`-service uninstall` with that older program) before installing the new one, or there would be two.
+* **Linux.** The `.deb` and `.rpm` install the systemd unit `proxmoxbackupclient.service`, and a fresh install enables and starts it; an upgrade keeps your choice, so a service you turned off stays off. To turn it on again, use **Run as Service** in the GUI started as administrator: it copies your Backup Sets, servers, keys and history to `/var/lib/proxmoxbackupclient`, where the service reads them, then enables and starts the unit. `systemctl` and `/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC -service ...` act on the same unit but do not copy any settings.
+
+The service's settings folder is the service's alone: SYSTEM and Administrators on Windows, root (0700, files 0600) on Linux. The GUI reaches it through the service's local API on `127.0.0.1:18765`, which needs the token in `api-token` in that folder. The GUI gets the token by asking for administrator rights (UAC, or pkexec on Linux) and keeps it in memory. The service makes a new token each time it starts, and every 24 hours.
 
 ### Connecting to the background service
 

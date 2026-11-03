@@ -74,7 +74,7 @@ La versione 2.0 porta nel progetto un ampio lavoro sulla GUI, sul servizio in ba
 | Manuale | Contenuto |
 |---|---|
 | **[Manuale della GUI](docs/manual/GUI.md)** | Installazione, server PBS, set di backup e pianificazioni, backup incrementali, avanzamento, ripristino, Recupero, Rollback, Report, registri, Preferenze, il servizio in background, risoluzione dei problemi |
-| **[Manuale della riga di comando](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`: tutte le opzioni, file di configurazione, codici di uscita, pianificazione; Recupero e Rollback da riga di comando |
+| **[Manuale della riga di comando](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`: tutte le opzioni, file di configurazione, codici di uscita, pianificazione |
 | **[Manuale del ripristino bare-metal](docs/manual/BMR.md)** | La ISO di ripristino, passo per passo; backup `vm` su Proxmox VE; da fisico a virtuale; hardware diverso |
 | [Scenari di ripristino](docs/RESTORE_GUIDE.md) | Quale ripristino usare e quando |
 | [Indice dei manuali](docs/manual/README.md) | Una panoramica dei manuali |

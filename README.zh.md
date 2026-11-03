@@ -75,7 +75,7 @@
 | 手册 | 内容 |
 |---|---|
 | **[GUI 手册](docs/manual/GUI.md)** | 安装、PBS 服务器、备份集与计划、增量备份、进度、恢复、Undelete、Roll back、Reports（报告）、日志、Preferences（首选项）、后台服务、故障排除 |
-| **[命令行手册](docs/manual/CLI.md)** | `proxmoxbackup-directory`、`proxmoxbackup-machine`、`proxmoxbackup-nbd`：所有参数、配置文件、退出代码、计划任务；命令行中的 Undelete 和 Roll back |
+| **[命令行手册](docs/manual/CLI.md)** | `proxmoxbackup-directory`、`proxmoxbackup-machine`、`proxmoxbackup-nbd`：所有参数、配置文件、退出代码、计划任务 |
 | **[裸机恢复手册](docs/manual/BMR.md)** | 恢复 ISO 的分步说明；把 `vm` 备份恢复到 Proxmox VE；物理机转虚拟机；恢复到不同硬件 |
 | [恢复场景](docs/RESTORE_GUIDE.md) | 什么情况下使用哪种恢复方式 |
 | [手册索引](docs/manual/README.md) | 各手册概览 |

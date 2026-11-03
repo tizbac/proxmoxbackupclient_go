@@ -75,7 +75,7 @@ Versiunea 2.0 aduce în proiect un volum mare de lucru la interfața grafică, l
 | Manual | Conținut |
 |---|---|
 | **[Manualul interfeței grafice](docs/manual/GUI.md)** | Instalare, servere PBS, seturi de backup și programări, backup-uri incrementale, progres, restaurare, Recuperare fișiere șterse, Revenire, Rapoarte, jurnale, Preferințe, serviciul de fundal, depanare |
-| **[Manualul liniei de comandă](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`: fiecare opțiune, fișiere de configurare, coduri de ieșire, programare; Recuperare fișiere șterse și Revenire din linia de comandă |
+| **[Manualul liniei de comandă](docs/manual/CLI.md)** | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd`: fiecare opțiune, fișiere de configurare, coduri de ieșire, programare |
 | **[Manualul de restaurare bare-metal](docs/manual/BMR.md)** | ISO-ul de restaurare, pas cu pas; backup-uri `vm` în Proxmox VE; fizic în virtual; hardware diferit |
 | [Scenarii de restaurare](docs/RESTORE_GUIDE.md) | Ce restaurare să folosiți și când |
 | [Indexul manualelor](docs/manual/README.md) | O prezentare generală a manualelor |
