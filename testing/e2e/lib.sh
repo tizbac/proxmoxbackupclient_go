@@ -219,8 +219,17 @@ start_pbs() {
 	# The datastore/config/log trees are *named volumes* rather than host
 	# bind mounts: the container runs as root and would leave root-owned files
 	# behind that the (possibly non-root) invoking user cannot clean up.
+	#
+	# A short hostname and search domain of our own: PBS names its first
+	# certificate <hostname>.<first search domain>, and a certificate name is
+	# at most 64 characters. The container id (12) plus a GitHub runner's
+	# Azure search domain (<26 random>.bx.internal.cloudapp.net) can pass
+	# that, and PBS then never starts ("ASN1_mbstring_ncopy: string too
+	# long, maxsize=64"), which failed this suite on some runners.
 	docker run -d \
 		--name "$PBS_CONTAINER" \
+		--hostname pbs-e2e \
+		--dns-search e2e.test \
 		-p "127.0.0.1:${PBS_PORT}:8007" \
 		--tmpfs /run:rw,mode=1777 \
 		-v "${PBS_CONTAINER}-etc:/etc/proxmox-backup" \
