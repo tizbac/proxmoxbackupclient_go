@@ -76,7 +76,7 @@ func TestMailFailureKeepsBackupExitCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	closedPort := fmt.Sprint(ln.Addr().(*net.TCPAddr).Port)
-	ln.Close()
+	_ = ln.Close() // only its port number was wanted: a port with nothing listening
 
 	const backupID = "machine-mail-failure-test"
 	cmd := exec.Command(os.Args[0],

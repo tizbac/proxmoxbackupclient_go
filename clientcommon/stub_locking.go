@@ -3,9 +3,8 @@
 
 package clientcommon
 
-type Locking struct {
-	mutexid uintptr
-}
+// Locking takes no process lock outside Windows; see win_locking.go.
+type Locking struct{}
 
 func (l *Locking) AcquireProcessLock() bool {
 	return true

@@ -43,7 +43,7 @@ func ConfirmFingerprint(baseURL, configured string) (string, error) {
 // terminal the input is read with echo disabled; otherwise (scripts, pipes) a
 // plain line is read so automation keeps working.
 func PromptPassword(label string) (string, error) {
-	fmt.Fprint(os.Stdout, label)
+	_, _ = fmt.Fprint(os.Stdout, label)
 	fd := int(os.Stdin.Fd())
 	if term.IsTerminal(fd) {
 		b, err := term.ReadPassword(fd)

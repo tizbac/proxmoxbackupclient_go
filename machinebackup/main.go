@@ -263,7 +263,7 @@ func sendResultMail(cfg *machinebackuplib.Config, ctx clientcommon.MailCtx) bool
 		fmt.Fprintln(os.Stderr, "Cannot connect to the mail server: "+err.Error())
 		return false
 	}
-	defer client.Quit()
+	defer func() { _ = client.Quit() }() // the mails are sent or reported by then
 	sent := true
 	for _, m := range cfg.SMTP.Mails {
 		if err := clientcommon.SendMail(m.From, m.To, subject, body, client); err != nil {

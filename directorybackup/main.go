@@ -279,8 +279,8 @@ func withRetry(what string, limit time.Duration, op func() error) error {
 }
 
 func main() {
-	var newchunk *atomic.Uint64 = new(atomic.Uint64)
-	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
+	newchunk := new(atomic.Uint64)
+	reusechunk := new(atomic.Uint64)
 
 	cfg := loadConfig()
 	changeDetectionMode = cfg.ChangeDetectionMode
@@ -464,7 +464,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "Cannot connect to the mail server: "+err.Error())
 			mailSent = false
 		} else {
-			defer client.Quit()
+			defer func() { _ = client.Quit() }() // the mails are sent or reported by then
 			for _, ccc := range cfg.SMTP.Mails {
 				if err := clientcommon.SendMail(ccc.From, ccc.To, subject, msg, client); err != nil {
 					fmt.Fprintln(os.Stderr, "Cannot send the notification e-mail: "+err.Error())
@@ -745,7 +745,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		if err != nil {
 			return nil, err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }() // a debug copy; the backup does not depend on it
 	}
 	/**/
 
