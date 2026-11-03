@@ -16,7 +16,7 @@ What is still open after 2.0. Finished work is in [CHANGELOG.md](CHANGELOG.md).
 - [ ] **The service could also run each user's own Backup Sets.** Sets made with **Use my own settings** run only while that user's app is open or in the tray; the service could run them too, so that they also run when the app is closed or the user is signed out.
 - [ ] **macOS has no check of who answers on the service's port.** On Windows and Linux the app checks that the program on `127.0.0.1:18765` is the service before it sends anything; on macOS it does not yet.
 - [ ] Test **Restart as administrator** (pkexec) from a Linux desktop session, and **Install** in the app run as root.
-- [ ] Test **Pause backup** in the Windows tray by hand with the mouse, for a run of the app and one of the service.
+- [ ] Test **Pause backup** in the Windows tray by hand for a backup the app runs itself (**Use my own settings**, or no background service). Pause and Resume from the tray work for a backup started in the app and run by the service.
 - [ ] Maybe: a "resume at" time for a paused backup.
 
 ## Backing up
