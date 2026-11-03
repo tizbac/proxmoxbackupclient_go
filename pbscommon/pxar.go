@@ -12,6 +12,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 
 	//	"io/ioutil"
 	"path/filepath"
@@ -468,8 +469,9 @@ type PXARArchive struct {
 	NoMTime bool
 
 	// PrefetchWorkers > 0 enables per-directory read-ahead: before WriteDir's
-	// file loop runs, it starts up to this many concurrent background reads
-	// for the directory's own regular files (see startPrefetch), so the
+	// file loop runs, it starts background reads of the directory's own
+	// regular files, up to this many files read and not yet archived at a
+	// time (see startPrefetch), so the
 	// (still fully single-threaded) scan/chunk/hash pass in WriteFile finds
 	// bytes already in memory instead of blocking on disk for each file in
 	// turn. This changes NOTHING about chunk boundaries or dedup — WriteFile
@@ -882,6 +884,7 @@ func (a *PXARArchive) addReadError(msg string) {
 // across directories or goroutine-unsafe: each WriteDir call builds and owns
 // its own map, passed down to WriteFile as a plain local value).
 type prefetchEntry struct {
+	path string
 	data []byte
 	err  error
 	done chan struct{}
@@ -901,7 +904,7 @@ const maxPrefetchFileSize = 128 * 1024 * 1024 // 128MB
 // Returns nil when prefetching is disabled or nothing in this directory
 // qualifies, in which case a nil-map lookup in the caller's loop is a no-op
 // (Go's zero-value map read), identical to the prefetch-disabled path.
-func (a *PXARArchive) startPrefetch(dirPath string, files []os.DirEntry) map[string]*prefetchEntry {
+func (a *PXARArchive) startPrefetch(dirPath string, files []os.DirEntry) *prefetchSet {
 	if a.PrefetchWorkers <= 0 {
 		return nil
 	}
@@ -934,7 +937,7 @@ func (a *PXARArchive) startPrefetch(dirPath string, files []os.DirEntry) map[str
 		if a.reuseCandidate(fullPath, info) {
 			continue // unchanged: will be reused, not read
 		}
-		entries[fullPath] = &prefetchEntry{done: make(chan struct{})}
+		entries[fullPath] = &prefetchEntry{path: fullPath, done: make(chan struct{})}
 		paths = append(paths, fullPath)
 	}
 
@@ -942,27 +945,91 @@ func (a *PXARArchive) startPrefetch(dirPath string, files []os.DirEntry) map[str
 		return nil
 	}
 
-	jobs := make(chan string, len(paths))
-	for _, p := range paths {
-		jobs <- p
-	}
-	close(jobs)
-
+	// PrefetchWorkers bounds the files read ahead, not only the reads at once:
+	// a file takes a slot before it is read and gives it back once WriteDir
+	// has archived it (prefetchSet.release), so at most that many files'
+	// bytes are held. Slots are taken in the walk's order, so the next file
+	// to be archived always has one or is next to get one, and the walk never
+	// waits on a file that cannot start. Reading ends when WriteDir returns
+	// (prefetchSet.stop).
 	workers := a.PrefetchWorkers
 	if workers > len(paths) {
 		workers = len(paths)
 	}
+	set := &prefetchSet{
+		entries: entries,
+		slots:   make(chan struct{}, workers),
+		stopped: make(chan struct{}),
+	}
+	jobs := make(chan *prefetchEntry, workers)
+	go func() {
+		defer close(jobs)
+		for _, p := range paths {
+			select {
+			case set.slots <- struct{}{}:
+			case <-set.stopped:
+				return
+			}
+			jobs <- entries[p] // never blocks: no more jobs than slots
+		}
+	}()
 	for i := 0; i < workers; i++ {
 		go func() {
-			for p := range jobs {
-				pe := entries[p]
-				pe.data, pe.err = readFileLimited(a.Ctx, p)
+			for pe := range jobs {
+				select {
+				case <-set.stopped:
+					pe.err = errPrefetchStopped
+				default:
+					pe.data, pe.err = readFileLimited(a.Ctx, pe.path)
+				}
 				close(pe.done)
 			}
 		}()
 	}
 
-	return entries
+	return set
+}
+
+// errPrefetchStopped marks a read ahead that was not made because its folder's
+// walk had ended.
+var errPrefetchStopped = errors.New("read-ahead stopped")
+
+// prefetchSet is one folder's read-ahead (startPrefetch). A nil set is no
+// read-ahead.
+type prefetchSet struct {
+	entries  map[string]*prefetchEntry
+	slots    chan struct{}
+	stopped  chan struct{}
+	stopOnce sync.Once
+}
+
+// entry is path's read ahead, or nil.
+func (s *prefetchSet) entry(path string) *prefetchEntry {
+	if s == nil {
+		return nil
+	}
+	return s.entries[path]
+}
+
+// release drops path's bytes once the file is archived and frees its slot
+// for a file further on. Every file read ahead has one by then: the walk
+// archives them in the order they took their slots.
+func (s *prefetchSet) release(path string) {
+	pe := s.entry(path)
+	if pe == nil {
+		return
+	}
+	<-pe.done
+	pe.data = nil
+	<-s.slots
+}
+
+// stop ends the reading ahead when the folder's walk returns, also after an
+// error: reads not started are not made, and the folder's bytes are let go.
+func (s *prefetchSet) stop() {
+	if s != nil {
+		s.stopOnce.Do(func() { close(s.stopped) })
+	}
 }
 
 func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (CatalogDir, error) {
@@ -1122,6 +1189,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 	}
 
 	prefetch := a.startPrefetch(path, files)
+	defer prefetch.stop()
 
 	for _, file := range files {
 		// Checked once per entry — see Ctx's doc comment above for why this
@@ -1181,10 +1249,11 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 			}
 
 			fullPath := filepath.Join(path, file.Name())
-			F, err := a.WriteFile(fullPath, file.Name(), prefetch[fullPath])
+			F, err := a.WriteFile(fullPath, file.Name(), prefetch.entry(fullPath))
 			if err != nil {
 				return CatalogDir{}, err
 			}
+			prefetch.release(fullPath)
 			if a.pos == startpos {
 				// WriteFile skipped this entry (unreadable/junction): nothing was
 				// written, so don't add a phantom zero-value catalog/goodbye entry (M-06).

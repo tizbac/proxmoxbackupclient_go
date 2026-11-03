@@ -111,6 +111,8 @@ listed under [History of the GUI before 2.0](#history-of-the-gui-before-20).
 
 ### Fixed
 
+- **Multi-threaded backup reading could fill the memory.** Its worker count limited how many files were read at once, not how many were held: in a folder of large files, every file (up to 128 MB each) was read ahead and kept until the backup reached it, and the reads went on after a backup stopped. A file read ahead is now let go once it is archived, at most the worker count are held per folder, and a folder's reading ahead ends with its backup. The archive is the same as before. Found in review.
+
 - **Pause, Stop and the run's log belonged to the whole app**, not to a backup, which only worked while one backup ran at a time: starting a second backup stopped the first, Pause and Stop acted on whichever had started last, and every run wrote into the newest run's log file. Each run now has its own.
 - **Runs ending together could lose each other's records**: Reports entries, Last run and the full-read count were read, changed and written back without a lock, so the second write could undo the first. They are now written one at a time.
 - **A scheduled run with a single (pre-multi-server) PBS server could go up unencrypted** if another run, without its key's passphrase, started at the same moment: both unlocked the key into the app's own settings. Each run now works on its own copy.
