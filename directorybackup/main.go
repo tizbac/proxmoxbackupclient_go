@@ -351,6 +351,8 @@ func main() {
 			Namespace:       cfg.Namespace,
 			Insecure:        insecure,
 			Crypt:           crypt,
+			// Empty is default, zstd level 3, as before.
+			CompressionLevel: pbscommon.ParseCompressionLevel(cfg.Compression),
 			Manifest: pbscommon.BackupManifest{
 				BackupID: backupID,
 			},

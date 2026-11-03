@@ -122,6 +122,8 @@ func TestProblems(t *testing.T) {
 		"no devices":   {func(c *machinebackuplib.Config) { c.BackupDevices = nil }, "Missing options: -backupdev"},
 		"vm":           {func(c *machinebackuplib.Config) { c.BackupType = "vm" }, ""},
 		"bad type":     {func(c *machinebackuplib.Config) { c.BackupType = "VM" }, `-type is "VM": use host or vm`},
+		"compression":  {func(c *machinebackuplib.Config) { c.CompressionLevel = "best" }, ""},
+		"bad level":    {func(c *machinebackuplib.Config) { c.CompressionLevel = "max" }, `-compression is "max": use fastest, default, better or best`},
 		"smtp no host": {func(c *machinebackuplib.Config) { c.SMTP = &machinebackuplib.SMTPConfig{Port: "25"} }, `smtp: "host" and "port" are needed`},
 	} {
 		cfg := full

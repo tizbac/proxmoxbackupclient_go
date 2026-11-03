@@ -130,9 +130,10 @@ Chunks sent in the lost session are sent again. The run prints when it starts ag
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
 | `-config <file>` | | JSON config file |
 | `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |
+| `-compression <level>` | `default` | How hard chunks are compressed before they go to PBS, which stores them as sent: `fastest`, `default` (zstd level 3), `better` or `best`. A higher level sends less and takes less space on the datastore, for more processor time. Only new chunks are affected, so it can change between runs. Encrypted backups are not compressed |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
-Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `exclude` (a list), `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `upload-limit`, `download-limit`, `disk-read-limit`, `smtp`.
+Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `exclude` (a list), `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `upload-limit`, `download-limit`, `disk-read-limit`, `compression`, `smtp`.
 
 ### Examples
 
@@ -236,8 +237,9 @@ Points to know:
 | `-skippartition <device>:<number>` | | Leave a partition out, e.g. `\\.\PhysicalDrive0:4` or `/dev/sda:3`. Repeat for more. It is not read or snapshotted and goes into the image as zeros: a restore gives it back in its place, empty and unformatted. A number the disk does not have prints a warning and leaves nothing out |
 | `-systray` | off | Does nothing: the tray icon was taken out of the command-line tools. Still accepted, as is `"systray"` in a config file, so existing commands keep working; the run says it does nothing |
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
-| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `liveread`, `keyfile`, `keyfilepassphrase`, `upload-limit`, `download-limit`, `disk-read-limit` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
+| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `liveread`, `compression`, `keyfile`, `keyfilepassphrase`, `upload-limit`, `download-limit`, `disk-read-limit` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
 | `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |
+| `-compression <level>` | `default` | `fastest`, `default` (zstd level 3), `better` or `best`, as for `proxmoxbackup-directory` ([section 3](#3-proxmoxbackup-directory-folder-backups)) |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
 Plus the connection flags in [section 2](#2-connecting-to-pbs).

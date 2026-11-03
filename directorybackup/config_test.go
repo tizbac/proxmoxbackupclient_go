@@ -105,6 +105,28 @@ func TestExcludeConfig(t *testing.T) {
 	}
 }
 
+// -compression takes the four levels (and empty, default); anything else
+// stops the run, rather than being taken as fastest.
+func TestCompressionOption(t *testing.T) {
+	base := Config{BaseURL: "https://pbs:8007", AuthID: "a@pbs!t", Secret: "s", Datastore: "ds", BackupSourceDir: "/data"}
+	for _, ok := range []string{"", "fastest", "default", "better", "best"} {
+		c := base
+		c.Compression = ok
+		if p := c.problems(); len(p) != 0 {
+			t.Errorf("%q: %q", ok, p)
+		}
+	}
+	c := base
+	c.Compression = "9"
+	if p := c.problems(); len(p) != 1 || !strings.Contains(p[0], `-compression is "9"`) {
+		t.Errorf("a bad level: %q", p)
+	}
+	var fromFile Config
+	if err := json.Unmarshal([]byte(`{"compression": "better"}`), &fromFile); err != nil || fromFile.Compression != "better" {
+		t.Errorf("config file: %v, %q", err, fromFile.Compression)
+	}
+}
+
 // TestSMTPRelayWithoutLogin: the smtp block of issue #74, a relay on port 25
 // with no username or password, is valid; incomplete blocks say what is
 // missing.
