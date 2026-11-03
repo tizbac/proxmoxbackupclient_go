@@ -39,7 +39,7 @@ type Config struct {
 	BackupID        string      `json:"backup-id"`
 	BackupDevices   []string    `json:"backupdev"`
 	SMTP            *SMTPConfig `json:"smtp"`
-	SysTray         bool        `json:"systray"`
+	SysTray         bool        `json:"systray"` // old -systray: read so config files keep working; there is no tray icon
 	BackupType      string      `json:"backuptype"`
 	// Comment is sent as-is as the PBS snapshot's manifest comment.
 	Comment string `json:"comment,omitempty"`

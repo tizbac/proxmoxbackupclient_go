@@ -700,10 +700,6 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 	})
 }
 
-func SysTraySetup() {
-	//TODO
-}
-
 // backupWholeDisk is Linux-only (see linux.go). On Windows whole disks are
 // handled through the \\\\.\\PhysicalDriveN path, so this reports "not handled"
 // (and liveRead does not apply: a volume in use is always read through VSS).

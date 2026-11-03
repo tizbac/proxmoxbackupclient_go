@@ -64,7 +64,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits) {
 	readFreeSpaceFlag := flag.Bool("readfreespace", false, "Windows: also read free space and the paging/hibernation files (a forensic copy); by default they go into the image as zeros without being read")
 	var skipparts arrayFlags
 	flag.Var(&skipparts, "skippartition", "Can be specified multiple times. Leave a partition out of a whole-disk backup: <device>:<partition number>, e.g. \\\\.\\PhysicalDrive0:4 or /dev/sda:3. It is not read or snapshotted and goes into the image as zeros: a restore gives it back empty and unformatted")
-	sysTrayFlag := flag.Bool("systray", false, "Enable systray( Note it can cause issues when running with no user logged in )")
+	sysTrayFlag := flag.Bool("systray", false, "Does nothing: accepted so older scripts keep working (the tray icon was taken out of the command-line tools)")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
 	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
@@ -374,8 +374,11 @@ func main() {
 	}
 	defer L.ReleaseProcessLock()
 
+	// The tray icon was taken out of the command-line tools (bfdc27f); the
+	// option and the config file's "systray" stay accepted, so a script that
+	// gives them keeps working, and the run says they do nothing.
 	if cfg.SysTray {
-		machinebackuplib.SysTraySetup()
+		fmt.Println("-systray does nothing: the command-line tools show no tray icon.")
 	}
 
 	// Read and unlock -keyfile (prompting for a passphrase when the key file

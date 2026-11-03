@@ -91,6 +91,22 @@ func TestCLILiveReadFlag(t *testing.T) {
 	}
 }
 
+// -systray is still accepted, so old scripts run, and says it does nothing.
+// The run then fails to connect (nothing listens on port 1).
+func TestCLISysTrayRetired(t *testing.T) {
+	stdout, stderr, code := runMain(t, "-systray", "-baseurl", "https://127.0.0.1:1", "-certfingerprint", "00:11",
+		"-authid", "a@pbs!t", "-secret", "s", "-datastore", "ds", "-backupdev", "nosuchdisk.img")
+	if code == 2 {
+		t.Skip("another backup job holds the process lock on this machine")
+	}
+	if strings.Contains(stderr, "flag provided but not defined") {
+		t.Fatalf("-systray refused\n%s", stderr)
+	}
+	if !strings.Contains(stdout, "-systray does nothing") {
+		t.Errorf("no word that -systray does nothing\n%s", stdout)
+	}
+}
+
 func TestProblems(t *testing.T) {
 	full := machinebackuplib.Config{BaseURL: "https://pbs:8007", AuthID: "a@pbs!t", Secret: "s", Datastore: "ds",
 		BackupDevices: []string{"/dev/sda"}, BackupType: "host"}

@@ -234,7 +234,7 @@ Points to know:
 | `-liveread` | off | Linux: read mounted partitions live, without a snapshot (see below). The image may be inconsistent. No effect on Windows |
 | `-readfreespace` | off | Also read free space (a forensic copy), and on Windows the paging, hibernation and swap files. By default they go into the image as zeros without being read |
 | `-skippartition <device>:<number>` | | Leave a partition out, e.g. `\\.\PhysicalDrive0:4` or `/dev/sda:3`. Repeat for more. It is not read or snapshotted and goes into the image as zeros: a restore gives it back in its place, empty and unformatted. A number the disk does not have prints a warning and leaves nothing out |
-| `-systray` | off | Does nothing at present: the tray icon was taken out of the command-line tools in an earlier version and has not come back. Still accepted, so existing commands keep working |
+| `-systray` | off | Does nothing: the tray icon was taken out of the command-line tools. Still accepted, as is `"systray"` in a config file, so existing commands keep working; the run says it does nothing |
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
 | `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `liveread`, `keyfile`, `keyfilepassphrase`, `upload-limit`, `download-limit`, `disk-read-limit` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
 | `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |

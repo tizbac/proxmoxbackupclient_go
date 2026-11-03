@@ -45,6 +45,8 @@ listed under [History of the GUI before 2.0](#history-of-the-gui-before-20).
 
 - **The command-line tools retry as the app does** (tizbac/proxmoxbackupclient_go#59). A chunk upload, the index's assignments and close, the manifest and the session's finish are each tried again, up to 5 times, when they fail in a way that passes (a timeout, a reset, HTTP 502, 503, 504 or 429). A lost connection, which ends the PBS session, no longer ends the run: `proxmoxbackup-directory` backs the folder up again with a new session 25 minutes later (once; not a backup of standard input), and `proxmoxbackup-machine` starts again after 2, 5, 10 and 15 minutes. Each retry and wait is printed. Tested by cutting the connection part way through a live backup: both tools started again and finished.
 
+- **`proxmoxbackup-machine -systray` says it does nothing.** The tray icon was taken out of the command-line tools earlier; the option, and `"systray"` in a config file, stay accepted so scripts keep working, and the run now says the option does nothing.
+
 - **`proxmoxbackup-directory` reads a network path without a snapshot**, as the app does: a share (`\\server\share`), a drive mapped to one, or an NFS, SMB/CIFS or FUSE mount on Linux has no volume to snapshot, and the backup failed on it unless `-novss` was given. The run says it is reading the folder live.
 
 - **`proxmoxbackup-machine -liveread`** reads a Linux disk's mounted partitions live, without a snapshot, as a machine Backup Set does with **Use snapshots** off and accepted. It was only the config file's `"liveread"`. The message of a backup that stops for want of a snapshot now names it beside the app's setting.
