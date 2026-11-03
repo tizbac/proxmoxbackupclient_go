@@ -103,6 +103,7 @@ A config file keeps the secret off the command line and out of the process list.
 | `-backupdir <path>` | | Folder to back up. Must not be a symlink. Repeat the flag for several folders ([below](#several-folders)) |
 | `-backup-id <id>` | computer name | Backup ID. Snapshots with the same ID form one group |
 | `-change-detection-mode <mode>` | `legacy` | `legacy`, `data` or `metadata` ([section 4](#4-incremental-backups-with--change-detection-mode)) |
+| `-exclude <pattern>` | | Leave out files and folders matching the pattern. Repeat for several ([below](#leaving-files-out)) |
 | `-novss` | VSS on | Do not snapshot the source first. Needed for file systems without VSS (VeraCrypt volumes, some network shares) and on Linux unless you run as root with `elastio-snap` or `dattobd` loaded |
 | `-keyfile <file>` | | Encrypt with this PBS key file ([section 7](#7-encryption)) |
 | `-keyfile-passphrase <text>` | asked | Passphrase for a protected key |
@@ -113,7 +114,7 @@ A config file keeps the secret off the command line and out of the process list.
 | `-config <file>` | | JSON config file |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
-Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `smtp`.
+Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `exclude` (a list), `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `smtp`.
 
 ### Examples
 
@@ -154,6 +155,19 @@ Besides each file's contents and modification time, the tool records on Windows 
 Every file's and folder's modification time is part of the archive, so a time that changes changes the archive bytes, and the chunks around that entry are uploaded again even though nothing in them changed. For most data that is the right trade. Some trees, though, keep touching their folders while the files stay the same: a store that files its data under hash-named folders (`aa/bb/<rest of the hash>`) can end up uploading a large part of the archive again on every run for that reason alone.
 
 `-no-mtime` (`"no-mtime": true` in the JSON config) records 1970-01-01 as every file's and folder's modification time instead, so only real content changes cost new chunks. The real modification times are not kept: a restore dates every item 1970-01-01. Creation times and permissions are still recorded with the snapshot as above. With `-change-detection-mode metadata` every file is read, as in `data` mode: without the times, a file changed in place at the same size could not be told apart. The option is off by default; use it for a source where the times do not matter.
+
+### Leaving files out
+
+`-exclude <pattern>` leaves out every file and folder that matches; a folder that matches is left out with everything in it. Repeat the flag for several patterns, or list them in the config file as `"exclude": ["*.tmp", "node_modules"]`; flags add to the file's list. The patterns are the GUI's [exclusions](GUI.md#exclusions), not case sensitive:
+
+| Pattern | Leaves out |
+|---|---|
+| `*.tmp` | every file or folder whose name ends in `.tmp`, at any depth |
+| `node_modules` | every file or folder with exactly that name, at any depth |
+| `logs/*.log` | `.log` entries directly in `logs` under the folder backed up |
+| `C:\Users\alice\Temp` | that folder and everything in it |
+
+A pattern without `\` or `/` matches a name at any depth. A pattern with one is taken from the folder backed up (each folder, with several `-backupdir`), and `*` does not cross a `\` or `/`. Put a pattern with `*` in quotes on Linux, so the shell does not expand it. The run prints each entry it left out (`Excluded: <path>`) and the count, and the snapshot's status file lists them. A pattern that can never match, such as an unclosed `[`, stops the run before it starts.
 
 ### What gets skipped
 

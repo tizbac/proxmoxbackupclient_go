@@ -26,6 +26,20 @@ func TestUnmapSnapshotPath(t *testing.T) {
 	}
 }
 
+// A drive or file system root keeps one separator: C:\Users, not C:\\Users.
+func TestUnmapSnapshotPathRoot(t *testing.T) {
+	snap := `C:\Users\u\AppData\Roaming\PBSBackupGO\VSS\{ID}`
+	if got := unmapSnapshotPathString(snap+`\Users\f`, snap, `C:\`); got != `C:\Users\f` {
+		t.Errorf("drive root: %q", got)
+	}
+	if got := unmapSnapshotPathString("open "+snap, snap, `C:\`); got != `open C:\` {
+		t.Errorf("the root itself: %q", got)
+	}
+	if got := unmapSnapshotPathString("/tmp/.snap/1/var/log", "/tmp/.snap/1", "/"); got != "/var/log" {
+		t.Errorf("Linux root: %q", got)
+	}
+}
+
 func TestUnmapSnapshotPathNoop(t *testing.T) {
 	if unmapSnapshotPath(nil, "x", "y") != nil {
 		t.Fatal("nil error must stay nil")

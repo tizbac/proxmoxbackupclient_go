@@ -43,6 +43,8 @@ listed under [History of the GUI before 2.0](#history-of-the-gui-before-20).
 
 - **elastio-snap on kernel 7 (Fedora 44).** `packaging/linux/elastio-snap/install-elastio-snap.sh` builds Axcient's elastio-snap at a tested commit through DKMS with the project's kernel 7 patch (kernel 7 removed `strncpy`), and loads it now and at every start. It skips the patch when the chosen version already has the fix and stops, changing nothing, when the patch no longer fits. Tested on Fedora 44 (kernel 7.2) and Linux Mint 21.3 (kernel 5.15). The fix is offered to Axcient as [pull request 138](https://github.com/Axcient/elastio-snap/pull/138); the .deb now suggests `dattobd-dkms`, which Datto publishes, instead of `elastio-snap-dkms`, which nobody does.
 
+- **`proxmoxbackup-directory -exclude`** leaves out files and folders matching a pattern, with the same patterns as a Backup Set's exclusions in the app (`*.tmp`, `node_modules`, `logs/*.log`, `C:\Users\alice\Temp`; not case sensitive). Repeat it for several, or list them as `"exclude"` in the config file; flags add to the file's list. The run prints each entry left out and the count, and the snapshot's status file lists them as the app's do. A malformed pattern, which would never match, stops the run before it starts (tizbac/proxmoxbackupclient_go#44).
+
 - **Mail relays without a login.** An SMTP relay that needs no user name or password (often on port 25) works in the app and in the command-line tools; an incomplete mail setup now says what is missing (tizbac/proxmoxbackupclient_go#74).
 
 ### Changed

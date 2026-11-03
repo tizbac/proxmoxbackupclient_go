@@ -230,6 +230,7 @@ func main() {
 	cfg := loadConfig()
 	changeDetectionMode = cfg.ChangeDetectionMode
 	noMTime = cfg.NoMTime
+	excludeList = cfg.ExcludeList
 
 	// Errors go to stderr with a non-zero exit, never a message box: a box
 	// waits for a click that an unattended scheduled run never gets (and on
@@ -557,6 +558,9 @@ var changeDetectionMode string
 // noMTime is the -no-mtime setting (see Config).
 var noMTime bool
 
+// excludeList is the -exclude setting (see Config).
+var excludeList []string
+
 func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, originalPath string, vssUsed bool) ([]string, error) {
 	client.Connect(false, "host")
 	knownChunks := haxmap.New[string, bool]()
@@ -567,6 +571,9 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	archive.ExcludeRoot = originalPath // the folder as named, also when read through a shadow copy
 	archive.OnNotice = func(msg string) { fmt.Println(msg) }
 	archive.NoMTime = noMTime
+	// Relative and absolute patterns are taken from ExcludeRoot, the folder as
+	// named, also when it is read through a shadow copy.
+	archive.ExcludeList = excludeList
 	if split {
 		// Metadata stream; the payload stream is backup.ppxar.didx.
 		archive.ArchiveName = "backup.mpxar.didx"
@@ -701,6 +708,19 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	if _, err = archive.WriteDir(backupdir, "", true); err != nil {
 		return nil, fmt.Errorf("failed to write directory archive: %w", err)
 	}
+	// What -exclude left out, by the names the user knows (not the shadow
+	// copy's); an excluded folder is one entry, its contents are not walked.
+	var excluded []pbscommon.FileIssue
+	for _, p := range archive.ExcludedFiles {
+		if vssUsed {
+			p = unmapSnapshotPathString(p, backupdir, originalPath)
+		}
+		fmt.Printf("Excluded: %s\n", p)
+		excluded = append(excluded, pbscommon.FileIssue{Path: p, Reason: "excluded by user policy"})
+	}
+	if len(excluded) > 0 {
+		fmt.Printf("%d files and folders excluded by -exclude\n", len(excluded))
+	}
 	if archive.Reuse != nil {
 		st := archive.Reuse.Stats
 		fmt.Printf("Metadata change detection: %d unchanged files (%d bytes) reused without reading, %d chunks reused, %d bytes padding; %d unchanged files read anyway to limit padding\n",
@@ -752,6 +772,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		BackupID:         client.Manifest.BackupID,
 		Directories:      []string{originalPath},
 		GeneratedAt:      time.Now().Unix(),
+		ExcludedByPolicy: excluded,
 		SkippedReadError: pbscommon.SkippedToIssues(archive.ReadErrors),
 	}
 	if sb, serr := json.Marshal(sidecar); serr != nil {
@@ -776,6 +797,11 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 	if abs, aerr := filepath.Abs(backupdir); aerr == nil {
 		originalPath = abs
 	}
+	// Walk the folder by its absolute, cleaned path. The archive writer takes
+	// entries' paths relative to the folder as given, and its children come
+	// cleaned from filepath.Join, so "./data" made every -exclude pattern
+	// with a separator miss.
+	backupdir = originalPath
 	var err error
 	var readErrors []string
 	originalDir := backupdir

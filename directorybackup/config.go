@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path"
+	"runtime"
 
 	"pbscommon"
 	"strings"
@@ -77,6 +79,13 @@ type Config struct {
 	// leave the archive bytes, and so its chunks, unchanged. Restored items get
 	// 1970-01-01. Metadata change detection reads every file with it.
 	NoMTime bool `json:"no-mtime"`
+
+	// ExcludeList holds the patterns of files and folders to leave out, the
+	// GUI's exclusions (pbscommon's PXARArchive.ExcludeList): a pattern
+	// without / or \ matches a name at any depth, one with a separator is
+	// taken from each folder backed up; not case sensitive. -exclude adds to
+	// the config file's list.
+	ExcludeList []string `json:"exclude"`
 }
 
 // Dirs returns every configured source directory: "backupdir" first (if set),
@@ -119,7 +128,39 @@ func (c *Config) problems() []string {
 			p = append(p, problem)
 		}
 	}
+	if len(c.ExcludeList) > 0 && len(c.Dirs()) == 0 && c.BackupStreamName != "" {
+		p = append(p, "-exclude leaves out files and folders of -backupdir; it does not apply to -backupstream")
+	}
+	for _, pat := range c.ExcludeList {
+		if problem := excludePatternProblem(pat); problem != "" {
+			p = append(p, problem)
+		}
+	}
 	return p
+}
+
+// excludePatternProblem says why an -exclude pattern can never match, or "".
+// The archive writer matches patterns with path.Match after turning \ into /
+// and ignores a malformed one, so "[abc" would leave nothing out unnoticed.
+// An empty pattern is skipped there, as a blank line in the GUI's list is.
+func excludePatternProblem(pat string) string {
+	return excludePatternProblemOn(pat, runtime.GOOS)
+}
+
+func excludePatternProblemOn(pat, goos string) string {
+	// On Windows "C:\Temp\" as the last argument passes C:\Temp" (and a
+	// later one swallows the rest of the line), which matches nothing; a
+	// file name there cannot hold a quote anyway.
+	if goos == "windows" && strings.Contains(pat, `"`) {
+		return fmt.Sprintf(`-exclude came through as [%s], with a quote in it: on Windows a path ending in \ inside quotes passes a quote and everything after it. Leave out the last \ ("C:\Temp") or the quotes`, pat)
+	}
+	if !strings.ContainsAny(pat, "*?[") {
+		return ""
+	}
+	if _, err := path.Match(strings.ToLower(strings.ReplaceAll(pat, `\`, "/")), ""); err != nil {
+		return fmt.Sprintf("-exclude %q is not a valid pattern (an unclosed [ or a bad range)", pat)
+	}
+	return ""
 }
 
 // missing names the options a run needs and does not have. Authentication is
@@ -189,6 +230,8 @@ func loadConfig() *Config {
 	noVSSFlag := flag.Bool("novss", false, "Disable VSS ( For filesystems that don't support it, for example veracrypt )")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
 	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
+	var excludeFlags dirListFlag
+	flag.Var(&excludeFlags, "exclude", "Leave out files and folders matching this pattern; repeat for several. Without / or \\ it matches a name at any depth (*.tmp, node_modules); with one it is taken from the folder backed up (logs/*.log, C:\\Users\\alice\\Temp). Not case sensitive. Adds to the config file's \"exclude\" list")
 	noMTimeFlag := flag.Bool("no-mtime", false, "Record 1970-01-01 as every file and folder time instead of the real one, so time-only changes (a folder whose contents come and go) do not change the archive and re-upload its chunks; restored items get 1970-01-01 (advanced, optional)")
 
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
@@ -284,6 +327,7 @@ func loadConfig() *Config {
 	if *noMTimeFlag {
 		config.NoMTime = true
 	}
+	config.ExcludeList = append(config.ExcludeList, excludeFlags...)
 
 	initSmtpConfigIfNeeded := func() {
 		if config.SMTP == nil {
