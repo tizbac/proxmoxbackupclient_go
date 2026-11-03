@@ -444,8 +444,9 @@ func main() {
 }
 
 // backup_many backs up several directories in one run. Each directory is its own
-// backup group with the id <base>_<path> (the same ids the GUI uses), so PBS
-// retention and restore treat every directory as an independent series. A
+// backup group with the id <base>_<path> (clientcommon.GenerateBackupID), so PBS
+// retention and restore treat every directory as an independent series; a GUI
+// Backup Set keeps its folders in one group, one archive each, instead. A
 // directory that fails does not stop the others; the failures are joined into
 // the returned error. The clients of the snapshots that were made are returned
 // too, so a note can be added to them afterwards.

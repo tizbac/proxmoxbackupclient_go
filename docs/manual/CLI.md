@@ -141,6 +141,8 @@ mysqldump mydb | proxmoxbackup-directory -backupstream mydb.sql -backup-id db1 [
 
 Repeat `-backupdir`. Each folder becomes its own backup group, with the ID `<base>_<path>`, where `<base>` is `-backup-id` (or the computer name) and `<path>` is the folder path with `\`, `/`, `:` and spaces turned into safe characters. For example `-backup-id laptop -backupdir C:\Data -backupdir "D:\My Photos"` gives `laptop_C_Data` and `laptop_D_My-Photos`. One folder failing does not stop the others; the exit code reports the failure.
 
+The GUI groups folders differently: a Backup Set with several folders makes one snapshot in one group (the set's Backup ID), with one archive per folder, for example `f__data.mpxar` for F:\Data.
+
 ### Permissions, attributes and dates
 
 Besides each file's contents and modification time, the tool records on Windows each file's and folder's permissions (owner, group and access list), attributes (read-only, hidden, system...), creation time, alternate data streams (up to 1 MB each) and NTFS extended attributes, and on Linux extended attributes and POSIX ACLs. They are stored with the snapshot, and a restore in the GUI puts them back (permissions only when **Restore permissions/ACLs** is ticked). Backups made by `proxmoxbackup-directory` in version 1.2 or earlier did not record them.
@@ -197,9 +199,9 @@ Points to know:
 | `-keyfile`, `-keyfile-passphrase` | | Encryption ([section 7](#7-encryption)) |
 | `-readfreespace` | off | Also read free space (a forensic copy), and on Windows the paging, hibernation and swap files. By default they go into the image as zeros without being read |
 | `-skippartition <device>:<number>` | | Leave a partition out, e.g. `\\.\PhysicalDrive0:4` or `/dev/sda:3`. Repeat for more. It is not read or snapshotted and goes into the image as zeros: a restore gives it back in its place, empty and unformatted. A number the disk does not have prints a warning and leaves nothing out |
-| `-systray` | off | Show a tray icon while running. Can cause problems when nobody is logged in |
+| `-systray` | off | Does nothing at present: the tray icon was taken out of the command-line tools in an earlier version and has not come back. Still accepted, so existing commands keep working |
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
-| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `systray`, `keyfile`, `keyfilepassphrase` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
+| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `keyfile`, `keyfilepassphrase` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
 Plus the connection flags in [section 2](#2-connecting-to-pbs).
@@ -281,7 +283,7 @@ Without the key an encrypted snapshot cannot be restored. Keep a copy away from 
 
 ## 8. Email reports
 
-`proxmoxbackup-directory` and `proxmoxbackup-machine` can email a report at the end of every run, failed runs included. (In version 1.1 and earlier `proxmoxbackup-machine` checked the flags but sent nothing.) A machine backup with unreadable sectors reports `Partial` and lists where they are. If the email cannot be sent, `proxmoxbackup-directory` exits with code 1; `proxmoxbackup-machine` prints the problem on standard error and keeps the backup's own exit code.
+`proxmoxbackup-directory` and `proxmoxbackup-machine` can email a report at the end of every run, failed runs included. (In version 1.1 and earlier `proxmoxbackup-machine` checked the flags but sent nothing.) A machine backup with unreadable sectors reports `Partial` and lists where they are. If the email cannot be sent, the tool prints the problem on standard error and keeps the backup's own exit code ([section 9](#9-exit-codes)). When the backup itself worked, "Error sending notification email, check client mail configuration." is also added to the snapshot's comment on PBS (to each snapshot of a run with several folders), so the problem shows in the PBS web interface.
 
 | Flag | Meaning |
 |---|---|
@@ -300,7 +302,7 @@ Template fields include `.Success`, `.Status`, `.NewChunks`, `.ReusedChunks`, `.
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Failed: bad options, connection or login failure, key problem or backup error. For `proxmoxbackup-directory` also: the report email could not be sent |
+| 1 | Failed: bad options, connection or login failure, key problem or backup error. An email report that could not be sent does not change the code ([section 8](#8-email-reports)) |
 | 2 | Windows only: another `proxmoxbackup-directory` or `proxmoxbackup-machine` run holds the process lock ([section 1](#1-the-tools)) |
 | 3 | The snapshot was saved, but not everything could be read: `proxmoxbackup-directory`, some files are incomplete; `proxmoxbackup-machine` (version 2.0 and later), some sectors are zeros in the image |
 

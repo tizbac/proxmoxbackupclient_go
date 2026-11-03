@@ -9,8 +9,10 @@ import (
 // GenerateBackupID builds a PBS backup-id for one source directory from a base
 // (the hostname or a user-chosen backup-id) and the directory path, e.g.
 // ("SERVER01", `D:\DATA\Users`) -> "SERVER01_D_DATA_Users".
-// The result always matches PBS's ^[A-Za-z0-9_][A-Za-z0-9._\-]*$. This is the
-// same id the GUI gives a folder in a multi-folder backup.
+// The result always matches PBS's ^[A-Za-z0-9_][A-Za-z0-9._\-]*$. The GUI
+// uses the same rule for the id of a Backup Set that has none (from its first
+// folder) and for the parts of a large folder it splits, but a GUI set with
+// several folders is one group with one archive per folder, not a group each.
 func GenerateBackupID(base, path string) string {
 	cleanPath := filepath.Clean(path)
 	cleanPath = strings.ReplaceAll(cleanPath, "\\", "_")
