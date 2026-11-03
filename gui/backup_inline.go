@@ -143,20 +143,9 @@ type BackupOptions struct {
 	OnFile func(path string)
 }
 
-// isFatalSessionError returns true for errors that make the current PBS session
-// unusable. These indicate the H2 connection was lost; the session state on the
-// server is gone, and all subsequent operations on this session will fail.
-// The only recovery is a fresh Connect() with a new backup-time.
-func isFatalSessionError(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	return strings.Contains(s, "PBS session cannot be resumed") ||
-		strings.Contains(s, "connection lost") ||
-		strings.Contains(s, "unexpected EOF") ||
-		strings.Contains(s, "writer '") && strings.Contains(s, "not registered")
-}
+// The rules for a lost connection to PBS (retry.SessionLost, retry.Reconnectable
+// and the waits before running a backup again) are in pkg/retry, shared with
+// the command-line tools.
 
 // skippedSummary is the plain-text tail of a folder backup's completion
 // message for what it skipped: a warning for the files it could not read,
@@ -172,31 +161,6 @@ func skippedSummary(skipped, unreadable int) string {
 		s += fmt.Sprintf("\n%d items left out by design: links, sockets, pipes and system files (the backup log lists them)", byDesign)
 	}
 	return s
-}
-
-// machineRetryWaits are the waits before each new attempt at a machine
-// backup whose connection to PBS was lost: four more attempts over about half
-// an hour. A run on a mobile link lost its session part way (2026-10-24) and
-// a manual retry 13 minutes later went through.
-var machineRetryWaits = []time.Duration{2 * time.Minute, 5 * time.Minute, 10 * time.Minute, 15 * time.Minute}
-
-// machineRetryable says whether a machine backup that failed with err is
-// worth starting again: the connection or session was lost, the server could
-// not be reached, or PBS still held the backup group's lock from the lost
-// session. Anything else (a snapshot or disk error, a refused token) fails at
-// once.
-func machineRetryable(err error) bool {
-	if isFatalSessionError(err) || retry.DefaultRetryable(err) {
-		return true
-	}
-	s := strings.ToLower(err.Error())
-	// Not plain "lock": "block" contains it, and a disk read error must not retry.
-	for _, m := range []string{"no route to host", "network is unreachable", "dial tcp", "locked", "acquire lock", "already running"} {
-		if strings.Contains(s, m) {
-			return true
-		}
-	}
-	return false
 }
 
 // waitOrCancel waits for d, or until ctx is cancelled (false).
@@ -1191,7 +1155,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	//     existing outcome machinery below — exactly what the old per-directory
 	//     model already did for one bad folder.
 	//
-	//   - A SESSION-FATAL error (isFatalSessionError — the underlying HTTP/2
+	//   - A SESSION-FATAL error (retry.SessionLost — the underlying HTTP/2
 	//     connection itself died) is different in kind. The OLD per-directory
 	//     model could retry "just this folder" because each folder had its own
 	//     complete, disposable session. That does not carry over to a shared
@@ -1212,8 +1176,8 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 	// a folder the user never asked to exclude — while an ordinary single-folder
 	// read error (already survivable/partial in the old design) still doesn't
 	// take down folders that archived fine.
-	const maxJobAttempts = 2
-	const sessionLostRetryWait = 25 * time.Minute
+	const maxJobAttempts = retry.FolderRerunAttempts
+	const sessionLostRetryWait = retry.FolderRerunWait
 
 	for jobAttempt := 1; jobAttempt <= maxJobAttempts; jobAttempt++ {
 		// A retried attempt redoes every directory from scratch (see decision
@@ -1341,7 +1305,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 					}
 					return fmt.Errorf("backup cancelled by user")
 				}
-				if isFatalSessionError(err) {
+				if retry.SessionLost(err) {
 					runLog(opts.Ctx, fmt.Sprintf("Session lost while backing up %s: %v", dir, err))
 					sessionFatal = err
 					dirErrors = append(dirErrors, fmt.Sprintf("backup of %s failed: %v (session lost)", dir, err))
@@ -1813,7 +1777,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 			Unreadable:    jp.UnreadableBytes.Load(),
 			RetryAt:       retryAt.Load(),
 			Attempt:       int(retryAttempt.Load()),
-			Attempts:      len(machineRetryWaits) + 1,
+			Attempts:      len(retry.ReconnectWaits) + 1,
 		})
 	}
 	tickerDone := make(chan struct{})
@@ -1853,14 +1817,14 @@ func runMachineBackupInline(opts BackupOptions) error {
 	var err error
 	for attempt := 1; ; attempt++ {
 		result, err = machinebackuplib.Backup(cfg, progress)
-		if err == nil || attempt > len(machineRetryWaits) || !machineRetryable(err) ||
+		if err == nil || attempt > len(retry.ReconnectWaits) || !retry.Reconnectable(err) ||
 			(opts.Ctx != nil && opts.Ctx.Err() != nil) {
 			break
 		}
-		wait := machineRetryWaits[attempt-1]
+		wait := retry.ReconnectWaits[attempt-1]
 		at := time.Now().Add(wait)
 		runLog(opts.Ctx, fmt.Sprintf("Connection to the server lost on attempt %d of %d (%s): %v. Starting again at %s with a new session; chunks sent in the lost one are sent again.",
-			attempt, len(machineRetryWaits)+1, counts(), err, at.Format("15:04:05")))
+			attempt, len(retry.ReconnectWaits)+1, counts(), err, at.Format("15:04:05")))
 		jp.Reset()
 		retryAt.Store(at.UnixMilli())
 		retryAttempt.Store(int32(attempt + 1))
