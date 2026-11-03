@@ -416,9 +416,22 @@ func main() {
 	// (retry.Reconnectable, retry.ReconnectWaits). The wait also lets PBS
 	// release the backup group; an attempt made while it still holds it fails
 	// at once and waits again.
+	// PBS refuses a second snapshot of a group in the same second (two runs
+	// chained in a script): that is waited out once, without counting as an
+	// attempt. A second refusal points at the clock, and the error says so.
 	var result *machinebackuplib.BackupResult
+	waitedSecond := false
 	for attempt := 1; ; attempt++ {
 		result, err = machinebackuplib.Backup(cfg, progress)
+		if err != nil && !waitedSecond && pbscommon.IsBackupTimeTaken(err) {
+			waitedSecond = true
+			attempt--
+			fmt.Fprintln(os.Stderr, "PBS already has a backup of this group from this second; starting again in the next second.")
+			jp.Reset()
+			lastPct = -1
+			pbscommon.WaitNextSecond()
+			continue
+		}
 		if err == nil || attempt > len(reconnectWaits) || !retry.Reconnectable(err) {
 			break
 		}

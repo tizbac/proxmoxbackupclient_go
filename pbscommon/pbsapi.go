@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -145,7 +146,48 @@ type AuthErr struct {
 }
 
 func (e *AuthErr) Error() string {
-	return fmt.Sprintf("PBS authentication failed: HTTP %s - %s", e.StatusCode, e.ResponseBody)
+	// Only a 401 is a login problem. Anything else refused on the session's
+	// upgrade (a 400 for a backup time already taken, a 403 for a missing
+	// permission) said "authentication failed" too and sent people looking
+	// at their token.
+	if strings.HasPrefix(e.StatusCode, "401") {
+		return fmt.Sprintf("PBS authentication failed: HTTP %s - %s", e.StatusCode, e.ResponseBody)
+	}
+	return fmt.Sprintf("PBS refused the backup session: HTTP %s - %s", e.StatusCode, e.ResponseBody)
+}
+
+// backupTimeTakenText is how PBS words refusing a backup session whose
+// backup time is not later than the group's newest snapshot.
+const backupTimeTakenText = "backup timestamp is older than last backup"
+
+// BackupTimeTakenErr is PBS refusing a backup session because the backup
+// group already has a snapshot at this backup time or later. Backup times
+// are whole seconds, so a backup that starts in the same second as the
+// group's last one gets it (one run started straight after a quick one, or
+// two chained in a script), and so does a computer whose clock is behind
+// the server's newest snapshot of the group.
+type BackupTimeTakenErr struct {
+	BackupTime int64
+}
+
+func (e *BackupTimeTakenErr) Error() string {
+	return fmt.Sprintf("PBS refused backup time %s for this backup group (%s): its last backup started in the same second or later; if that was not a backup a moment ago, check this computer's clock",
+		time.Unix(e.BackupTime, 0).UTC().Format(time.RFC3339), backupTimeTakenText)
+}
+
+// IsBackupTimeTaken reports whether err (or what it wraps, also as text) is a
+// BackupTimeTakenErr: the backup can start again once the next second has
+// begun.
+func IsBackupTimeTaken(err error) bool {
+	var bt *BackupTimeTakenErr
+	return err != nil && (errors.As(err, &bt) || strings.Contains(err.Error(), backupTimeTakenText))
+}
+
+// WaitNextSecond sleeps until a new whole second has begun, so a new backup
+// session gets a later backup time than one started in this second.
+func WaitNextSecond() {
+	now := time.Now()
+	time.Sleep(time.Unix(now.Unix()+1, 0).Sub(now) + 20*time.Millisecond)
 }
 
 // NamespaceNotFoundErr is returned when the server rejects a request because
@@ -1487,6 +1529,9 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 								Namespace: pbs.Namespace,
 								Datastore: pbs.Datastore,
 							}
+						}
+						if strings.Contains(responseBody, backupTimeTakenText) {
+							return nil, &BackupTimeTakenErr{BackupTime: pbs.Manifest.BackupTime}
 						}
 						return nil, &AuthErr{
 							StatusCode:   statusCode,

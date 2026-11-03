@@ -400,7 +400,7 @@ func main() {
 			sn += ".didx"
 		}
 		fmt.Printf("Backing up from STDIN to %s", sn)
-		err = backup_stream(client, newchunk, reusechunk, sn, os.Stdin)
+		err = backupStreamOnce(client, newchunk, reusechunk, sn, os.Stdin)
 		if err == nil {
 			snapshots = append(snapshots, client)
 		}
@@ -560,8 +560,16 @@ var folderRerunWait = retry.FolderRerunWait
 // error, is returned. The counts carry on across attempts, as chunks sent in
 // the lost session are sent again.
 func backupWithRerun(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut, dir string, usevss bool) ([]string, error) {
+	waitedSecond := false
 	for attempt := 1; ; attempt++ {
 		readErrors, err := backup(client, newchunk, reusechunk, pxarOut, dir, usevss)
+		if err != nil && !waitedSecond && pbscommon.IsBackupTimeTaken(err) {
+			client.Close()
+			waitedSecond = true
+			attempt--
+			sameSecondNote()
+			continue
+		}
 		if err == nil || attempt >= retry.FolderRerunAttempts || !retry.SessionLost(err) {
 			return readErrors, err
 		}
@@ -571,6 +579,30 @@ func backupWithRerun(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.U
 		fmt.Fprintf(os.Stderr, "Backing it up again with a new session at %s, once PBS has let go of the backup group; chunks sent in the lost session are sent again.\n", at.Format("15:04:05"))
 		time.Sleep(folderRerunWait)
 	}
+}
+
+// sameSecondNote says why the backup starts again, and waits for the next
+// second. PBS gives a snapshot the second its session starts as its backup
+// time and refuses a second one of a group in the same second
+// (pbscommon.BackupTimeTakenErr): two runs chained in a script, or a run
+// straight after a quick one. A second refusal is returned as it is: then
+// the clock is the likelier cause, and the error says so.
+func sameSecondNote() {
+	fmt.Fprintln(os.Stderr, "PBS already has a backup of this group from this second; starting again in the next second.")
+	pbscommon.WaitNextSecond()
+}
+
+// backupStreamOnce is backup_stream, started again once if PBS refuses the
+// session for a backup time already taken. That refusal comes with the
+// first request, before any input has been read.
+func backupStreamOnce(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, filename string, stream io.Reader) error {
+	err := backup_stream(client, newchunk, reusechunk, filename, stream)
+	if err != nil && pbscommon.IsBackupTimeTaken(err) {
+		client.Close()
+		sameSecondNote()
+		err = backup_stream(client, newchunk, reusechunk, filename, stream)
+	}
+	return err
 }
 
 // backup_stream backs up standard input. Each request to PBS is retried in
