@@ -162,19 +162,22 @@ func jobProgressFraction(baseSize, devSize uint64, fraction float64, totalSize u
 	return finiteOrZero((float64(baseSize) + finiteOrZero(fraction)*float64(devSize)) / float64(totalSize))
 }
 
+// BytesToString formats a byte count for messages: decimal units, as PBS and
+// the app show sizes, to one decimal place, rounded. It used to divide by
+// 1024 and drop the remainder under the labels MB and GB, so 3 MB sent read
+// "2MB" and a 53.7 GB disk "50GB".
 func BytesToString(b int64) string {
-	if b < 1024 {
+	if b < 1000 {
 		return fmt.Sprintf("%dB", b)
 	}
-	if b < 1024*1024 {
-		return fmt.Sprintf("%dKB", b/1024)
+	v := float64(b)
+	for _, u := range []string{"kB", "MB", "GB", "TB"} {
+		v /= 1000
+		if v < 999.95 || u == "TB" { // 999.95 would print as 1000.0
+			return fmt.Sprintf("%.1f%s", v, u)
+		}
 	}
-	if b < 1024*1024*1024 {
-		return fmt.Sprintf("%dMB", b/(1024*1024))
-	}
-
-	return fmt.Sprintf("%dGB", b/(1024*1024*1024))
-
+	return "" // not reached
 }
 
 // uploadWorker streams fixed-size chunks from ch into a PBS fixed index and

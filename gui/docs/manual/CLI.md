@@ -252,11 +252,11 @@ On Linux the snapshot's own copy-on-write file (`.pbs_snapshot_N.cow` at the top
 
 If the disk cannot read a sector, that spot goes into the image as zeros and the backup carries on. The run then prints a warning saying where, keeps the snapshot and exits with code 3.
 
-The tool prints one progress line per percent, with the chunks uploaded and reused so far, and a summary at the end. "new/changed data" is the size of the new chunks, "transferred" what they took on the network once compressed:
+The tool prints one progress line per percent, with the chunks uploaded and reused so far, and a summary at the end. "new/changed data" is the size of the new chunks, "transferred" what they took on the network once compressed. Sizes are in decimal units (1 MB = 1,000,000 bytes), as PBS shows them:
 
 ```
- 97%  \\.\PhysicalDrive1: Block 12416 / 12800  (new 101, reused 12314 (12235 blank), new/changed data 404MB, transferred 151MB, free space not read 5GB)
-Done in 3m38s: 50GB read; new 102, reused 12698 (12619 blank), new/changed data 408MB, transferred 153MB, free space not read 5GB
+ 97%  \\.\PhysicalDrive1: Block 12416 / 12800  (new 101, reused 12314 (12235 blank), new/changed data 423.6MB, transferred 158.3MB, free space not read 5.4GB)
+Done in 3m38s: 53.7GB read; new 102, reused 12698 (12619 blank), new/changed data 427.8MB, transferred 160.4MB, free space not read 5.4GB
 ```
 
 ### Examples
