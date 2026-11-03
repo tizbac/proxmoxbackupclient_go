@@ -447,6 +447,13 @@ func (r *DIDXReaderAt) triggerPrefetch(ci int) {
 	if window <= 0 {
 		window = chunkPrefetchWindow
 	}
+	// Never read further ahead than the cache holds beside the chunk just
+	// read: the later prefetches would evict the earlier ones before they
+	// are used, and those chunks would be fetched twice (a reader with a
+	// 1-chunk cache fetched the next chunk again about 1 run in 50).
+	if room := r.cache.cap - 1; window > room {
+		window = room
+	}
 	for offset := 1; offset <= window; offset++ {
 		next := ci + offset
 		if next >= total {
