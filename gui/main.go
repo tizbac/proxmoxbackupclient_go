@@ -321,10 +321,14 @@ var forceQuitRequested atomic.Bool
 
 // RequestQuit performs a genuine, unconditional quit — unlike closing the
 // window (which always minimizes to tray on Windows by design), this always
-// terminates the app. Wired to File > Exit and the tray's own "Quit" item.
+// terminates the app. Wired to File > Exit and the tray's own "Quit" item,
+// and to the tray going away (tray.go onExit). Only the first call quits:
+// the tray's Quit item also ends the tray, which calls it again.
 func (a *App) RequestQuit() {
+	if !forceQuitRequested.CompareAndSwap(false, true) {
+		return
+	}
 	writeDebugLog("RequestQuit() called - quitting for real, bypassing tray-hide")
-	forceQuitRequested.Store(true)
 	runtime.Quit(a.ctx)
 }
 

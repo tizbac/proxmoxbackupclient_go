@@ -68,7 +68,7 @@ func (a *App) SetupSystemTray() {
 		// another thread and the tray stops answering (seen on a test machine
 		// during a backup, 2026-10-16: right-click did nothing).
 		goruntime.LockOSThread()
-		systray.Run(onReady(a), onExit)
+		systray.Run(onReady(a), onExit(a))
 	}()
 
 	trayInitialized = true
@@ -248,8 +248,18 @@ func (a *App) trayPauseClicked() {
 	setTrayPause(true, st.Paused, false)
 }
 
-func onExit() {
-	writeDebugLog("System tray exiting")
+// onExit runs when the tray icon goes: after the tray's own Quit, but also
+// when Windows ends the session or closes the app for an installer. The
+// installer's Restart Manager sends the tray's window WM_ENDSESSION, on which
+// systray removes the icon and calls this; the app used to carry on with its
+// window hidden and no icon, so it could not be reached, the installer said
+// it could not close it, and it was still running after the app had been
+// removed. Without its icon the app quits.
+func onExit(a *App) func() {
+	return func() {
+		writeDebugLog("System tray exiting: quitting the app")
+		a.RequestQuit()
+	}
 }
 
 // MinimizeToTray hides the window and minimizes to tray (also the close
