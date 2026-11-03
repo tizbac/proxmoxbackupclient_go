@@ -121,6 +121,7 @@ type serviceRunReporter interface {
 	ReportStats(jobID string, stats map[string]interface{})
 	ReportFile(jobID string, path string)
 	FinishRun(jobID string, success bool, message string)
+	FinishRunKeyed(jobID string, success bool, message, key string, params map[string]interface{})
 }
 
 // pendingPostActionsEntry is what pendingPostActions actually stores — see
@@ -131,6 +132,10 @@ type pendingPostActionsEntry struct {
 	// result is the run's structured outcome, set by the service build's
 	// OnResult so the scheduler's history write can include it.
 	result atomic.Pointer[BackupStatus]
+	// outcome is the run's own completion (its summary with message code
+	// and figures), set by the service build's OnComplete so the scheduler's
+	// history write says what the run did, not just that it ended.
+	outcome atomic.Pointer[serviceRunOutcome]
 	// runID is the run's entry on the service's API (service process only).
 	runID string
 	// noter can add a note to the snapshot the run made (set by the
@@ -146,10 +151,13 @@ type pendingPostActionsEntry struct {
 	runDone chan struct{}
 }
 
-// serviceRunOutcome is how a run handed to the service ended.
+// serviceRunOutcome is how a run handed to the service ended: its summary,
+// and the same as message code and figures (empty from an older service).
 type serviceRunOutcome struct {
 	success bool
 	message string
+	key     MessageKey
+	params  msgParams
 }
 
 // watchServiceRun gives the run under key a channel for its service outcome
@@ -234,6 +242,35 @@ func (a *App) finishRun(runID string, success bool, message string) {
 	if runID != "" && a.runReporter != nil {
 		a.runReporter.FinishRun(runID, success, message)
 	}
+}
+
+// finishRunKeyed is finishRun from a backup's own completion, with its
+// message code and figures.
+func (a *App) finishRunKeyed(runID string, success bool, message string, key MessageKey, params msgParams) {
+	if runID != "" && a.runReporter != nil {
+		a.runReporter.FinishRunKeyed(runID, success, message, string(key), params)
+	}
+}
+
+// setRunOutcome stores how the run under key ended, if it is registered.
+func (a *App) setRunOutcome(key string, o serviceRunOutcome) {
+	if key == "" {
+		return
+	}
+	if v, ok := a.pendingPostActions.Load(key); ok {
+		v.(*pendingPostActionsEntry).outcome.Store(&o)
+	}
+}
+
+// runOutcome returns how the run under key ended (nil when not recorded).
+func (a *App) runOutcome(key string) *serviceRunOutcome {
+	if key == "" {
+		return nil
+	}
+	if v, ok := a.pendingPostActions.Load(key); ok {
+		return v.(*pendingPostActionsEntry).outcome.Load()
+	}
+	return nil
 }
 
 // setRunResult stores status for the run under key, if it is registered.

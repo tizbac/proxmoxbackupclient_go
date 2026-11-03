@@ -181,13 +181,17 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 			writeDebugLog(fmt.Sprintf("[Backup Progress] %.1f%% - %s", percent*100, message))
 			a.reportRun(runID, percent, message)
 		},
-		OnComplete: func(success bool, message string, _ MessageKey, _ msgParams) {
+		OnComplete: func(success bool, message string, key MessageKey, params msgParams) {
 			if success {
 				writeDebugLog(fmt.Sprintf("[Backup Complete] SUCCESS - %s", message))
 			} else {
 				writeDebugLog(fmt.Sprintf("[Backup Complete] FAILED - %s", message))
 			}
-			a.finishRun(runID, success, message)
+			// Reports and the Message Log take the run's own summary from
+			// here (scheduler.go), and a GUI that asked for the run from its
+			// API entry.
+			a.setRunOutcome(postActionsKey, serviceRunOutcome{success: success, message: message, key: key, params: params})
+			a.finishRunKeyed(runID, success, message, key, params)
 		},
 		OnResult: func(status *BackupStatus) { a.setRunResult(postActionsKey, status) },
 		OnStats:  func(stats *BackupProgressStats) { a.reportRunStats(runID, stats) },
@@ -331,13 +335,15 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 			writeDebugLog(fmt.Sprintf("[Machine Backup Progress] %.1f%% - %s", percent*100, message))
 			a.reportRun(runID, percent, message)
 		},
-		OnComplete: func(success bool, message string, _ MessageKey, _ msgParams) {
+		OnComplete: func(success bool, message string, key MessageKey, params msgParams) {
 			if success {
 				writeDebugLog(fmt.Sprintf("[Machine Backup Complete] SUCCESS - %s", message))
 			} else {
 				writeDebugLog(fmt.Sprintf("[Machine Backup Complete] FAILED - %s", message))
 			}
-			a.finishRun(runID, success, message)
+			// As for a folder backup above.
+			a.setRunOutcome(postActionsKey, serviceRunOutcome{success: success, message: message, key: key, params: params})
+			a.finishRunKeyed(runID, success, message, key, params)
 		},
 		OnStats: func(stats *BackupProgressStats) { a.reportRunStats(runID, stats) },
 	}

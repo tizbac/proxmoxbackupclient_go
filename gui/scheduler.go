@@ -667,6 +667,26 @@ func (a *App) GetJobHistory() ([]JobHistory, error) {
 	return history, nil
 }
 
+// useRunSummary puts the run's own summary ("Machine backup completed in
+// 5m 23s: 128.0 GB read ..."), with its message code so it is translated,
+// on a history entry the scheduler wrote with the generic text, as the app
+// writes it without the service (main.go's OnComplete). Found live
+// 2026-11-03: every run with the service said only "Backup completed" in
+// Reports, the Message Log and the e-mail. A cancelled run keeps its own
+// wording, and an outcome that disagrees with the run's result is ignored.
+func useRunSummary(entry *JobHistory, outcome *serviceRunOutcome, succeeded bool) {
+	if outcome == nil || outcome.message == "" || outcome.success != succeeded || entry.Status == "cancelled" {
+		return
+	}
+	entry.Message = outcome.message
+	entry.MessageKey = outcome.key
+	entry.MessageParams = outcome.params
+	if entry.BackupType != "machine" && entry.ReusedFiles == 0 {
+		entry.ReusedFiles = paramUint(outcome.params, "reusedFiles")
+		entry.ReusedBytes = paramUint(outcome.params, "reusedBytes")
+	}
+}
+
 // AddJobHistory adds a job to history. Every backup completion (scheduled or
 // interactive one-shot) funnels through here, which makes it the single safe
 // place to also feed the Message Log — no need to touch the backup control
@@ -1150,10 +1170,15 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	// Found live 2026-10-17: a Run Now in service mode wrote "success" and
 	// ran them at the start of a 5 minute machine backup.
 	noter := a.runNoter(postActionsKey)
+	// How the run ended in its own words, for Reports: from the service's
+	// API entry here, or from the backup's completion in the service.
+	outcome := a.runOutcome(postActionsKey)
 	if err == nil && !a.isServiceProcess {
 		if ch := a.serviceRunDone(postActionsKey); ch != nil {
 			writeDebugLog(fmt.Sprintf("Backup Set %s: waiting for the service to finish the run", job.Name))
-			if o := <-ch; !o.success {
+			o := <-ch
+			outcome = &o
+			if !o.success {
 				err = fmt.Errorf("%s", o.message)
 			} else {
 				// The snapshot is the service's: find it on the server if
@@ -1240,6 +1265,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 			// configured key file is what the snapshot was written with.
 			historyEntry.Encryption = encryptionLabel(pbsCfg.EncryptionKeyFile != "")
 		}
+		useRunSummary(&historyEntry, outcome, err == nil)
 
 		if err := a.AddJobHistory(historyEntry); err != nil {
 			writeDebugLog(fmt.Sprintf("Warning: Failed to add job history: %v", err))

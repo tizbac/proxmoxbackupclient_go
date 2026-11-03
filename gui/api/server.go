@@ -373,7 +373,7 @@ func (s *Server) ReportFile(jobID string, path string) {
 
 // completeRun records a run's outcome, once: later calls for the same run
 // change nothing.
-func (s *Server) completeRun(jobID string, success bool, message string) {
+func (s *Server) completeRun(jobID string, success bool, message, key string, params map[string]interface{}) {
 	s.progressMutex.Lock()
 	defer s.progressMutex.Unlock()
 	progress, exists := s.backupProgress[jobID]
@@ -384,6 +384,8 @@ func (s *Server) completeRun(jobID string, success bool, message string) {
 	progress.Complete = true
 	progress.Success = success
 	progress.Message = message
+	progress.MessageKey = key
+	progress.MessageParams = params
 	if success {
 		progress.Progress = 100
 	} else {
@@ -414,7 +416,13 @@ func (s *Server) BeginRun(name string) string {
 // FinishRun records the outcome of a run started with BeginRun (only if the
 // backup's own completion did not already) and drops it after a while.
 func (s *Server) FinishRun(jobID string, success bool, message string) {
-	s.completeRun(jobID, success, message)
+	s.FinishRunKeyed(jobID, success, message, "", nil)
+}
+
+// FinishRunKeyed is FinishRun with the summary's message code and figures,
+// which a GUI writes to Reports with the message.
+func (s *Server) FinishRunKeyed(jobID string, success bool, message, key string, params map[string]interface{}) {
+	s.completeRun(jobID, success, message, key, params)
 	s.scheduleEviction(jobID)
 }
 

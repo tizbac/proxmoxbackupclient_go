@@ -111,6 +111,11 @@ type BackupProgress struct {
 	// the run passes both on as its own run's events.
 	Stats map[string]interface{} `json:"stats,omitempty"`
 	File  string                 `json:"file,omitempty"`
+	// MessageKey and MessageParams are a finished run's summary as message
+	// code and figures (the app's msgcodes.go), so the GUI's Reports entry
+	// reads as one made without the service: translated, with the figures.
+	MessageKey    string                 `json:"message_key,omitempty"`
+	MessageParams map[string]interface{} `json:"message_params,omitempty"`
 }
 
 // RunsResponse lists the service's runs: those in progress and those that

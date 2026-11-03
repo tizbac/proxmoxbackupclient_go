@@ -789,9 +789,9 @@ func (a *App) startMachineBackupViaService(backupType string, backupDevices []st
 // run waits for it before its history and post-backup actions, which would
 // otherwise fire when the run was handed over, long before it finished.
 func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
-	finish := func(success bool, message string) {
+	finish := func(success bool, message string, key string, params map[string]interface{}) {
 		if done != nil {
-			done <- serviceRunOutcome{success: success, message: message}
+			done <- serviceRunOutcome{success: success, message: message, key: MessageKey(key), params: params}
 		}
 	}
 	writeDebugLog(fmt.Sprintf("[Service Mode] Starting progress polling for job: %s", jobID))
@@ -834,7 +834,7 @@ func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
 						"message": "Lost contact with backup service (status unavailable)",
 					})
 				}
-				finish(false, "Lost contact with backup service (status unavailable)")
+				finish(false, "Lost contact with backup service (status unavailable)", "", nil)
 				return
 			}
 			continue
@@ -870,14 +870,16 @@ func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
 			writeDebugLog(fmt.Sprintf("[Service Mode] Backup completed: success=%v", progress.Success))
 			if a.ctx != nil {
 				runtime.EventsEmit(a.ctx, "backup:complete", map[string]interface{}{
-					"runId":    runID,
-					"name":     name,
-					"backupId": backupID,
-					"success":  progress.Success,
-					"message":  progress.Message,
+					"runId":          runID,
+					"name":           name,
+					"backupId":       backupID,
+					"success":        progress.Success,
+					"message":        progress.Message,
+					"message_key":    progress.MessageKey,
+					"message_params": progress.MessageParams,
 				})
 			}
-			finish(progress.Success, progress.Message)
+			finish(progress.Success, progress.Message, progress.MessageKey, progress.MessageParams)
 			return
 		}
 	}
