@@ -225,7 +225,7 @@ Request (`BackupRequest`):
   "drive_letters": [],
   "exclude_list": ["*.tmp"],
   "use_vss": true,
-  "compression": "fastest",
+  "compression": "",
   "pbs_server_id": "",
   "comment": "",
   "change_detection_mode": ""
@@ -234,7 +234,9 @@ Request (`BackupRequest`):
 
 - `backup_id`: empty means the computer's name, as for a Backup Set without one (version
   1.2 and earlier refused an empty one with 400 `backup_id is required`).
-- `compression`: `fastest` (default when empty), `default`, `better` or `best`.
+- `compression`: `fastest`, `default` (zstd level 3), `better` or `best` for this run; empty
+  means the computer's Backup Options setting, which is `default` unless changed. Earlier
+  builds took empty as `fastest`. An encrypted backup is not compressed either way.
 - `pbs_server_id`: empty means the default server.
 - `comment` goes to the snapshot's manifest comment as is.
 - `change_detection_mode`: `""`, `legacy`, `data` or `metadata`, for a directory Backup Set run.

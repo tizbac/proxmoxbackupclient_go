@@ -413,6 +413,13 @@ var apiCalls = map[string]func(a *App, args []json.RawMessage) (interface{}, err
 		}
 		return nil, a.SetSpeedLimits(up, down, disk)
 	},
+	"SetCompressionLevel": func(a *App, args []json.RawMessage) (interface{}, error) {
+		var level string
+		if err := arg(args, 0, &level); err != nil {
+			return nil, err
+		}
+		return nil, a.SetCompressionLevel(level)
+	},
 	"SetParallelBackupRead": func(a *App, args []json.RawMessage) (interface{}, error) {
 		var on bool
 		var workers int

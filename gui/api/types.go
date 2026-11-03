@@ -8,7 +8,7 @@ type BackupRequest struct {
 	DriveLetters []string `json:"drive_letters,omitempty"`
 	ExcludeList  []string `json:"exclude_list,omitempty"`
 	UseVSS       bool     `json:"use_vss"`
-	Compression  string   `json:"compression,omitempty"`   // "fastest", "default", "better", "best"
+	Compression  string   `json:"compression,omitempty"`   // "fastest", "default", "better", "best"; "" = the Backup Options setting
 	PBSServerID  string   `json:"pbs_server_id,omitempty"` // empty = the configured default server
 	Comment      string   `json:"comment,omitempty"`       // sent as-is as the PBS snapshot's manifest comment
 	// ChangeDetectionMode is a directory Backup Set run's mode ("", "legacy",

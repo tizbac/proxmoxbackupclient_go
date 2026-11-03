@@ -252,12 +252,9 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, machine bool) 
 	go func() {
 		log.Printf("[API] Starting async backup: %s", jobID)
 
-		// Call StartBackup (service App is in standalone mode to execute directly)
-		// Default to "fastest" if compression not specified
+		// Call StartBackup (service App is in standalone mode to execute directly).
+		// An empty compression takes the service's Backup Options setting.
 		compression := req.Compression
-		if compression == "" {
-			compression = "fastest"
-		}
 
 		// postActionsKey never crosses the HTTP boundary — service mode fires
 		// post-actions from scheduler.go's own local job variable. The run gets

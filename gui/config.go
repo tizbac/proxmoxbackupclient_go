@@ -133,6 +133,12 @@ type Config struct {
 	DownloadLimitMBps int `json:"download_limit_mbps,omitempty"`
 	DiskReadLimitMBps int `json:"disk_read_limit_mbps,omitempty"`
 
+	// CompressionLevel is how hard chunks are compressed before they go to
+	// PBS, for every backup this computer makes (compression.go): fastest,
+	// default (zstd level 3), better or best. Empty means default. Backup
+	// Sets' own "compression" field is no longer read.
+	CompressionLevel string `json:"compression_level,omitempty"`
+
 	// ==================== EMAIL NOTIFICATIONS ====================
 	// Global SMTP account, used by every Backup Set's own on-completion/
 	// on-failure email toggle (see ScheduledJob) rather than each job storing

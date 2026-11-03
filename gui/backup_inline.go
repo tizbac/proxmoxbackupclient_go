@@ -861,7 +861,7 @@ func RunBackupInline(opts BackupOptions) (returnErr error) {
 		}
 		errMsg := fmt.Sprintf("PBS connection parameters required (missing: %s) — check the selected/default PBS server in the config",
 			strings.Join(missing, ", "))
-		runLog(opts.Ctx, "[ERROR] " + errMsg)
+		runLog(opts.Ctx, "[ERROR] "+errMsg)
 		return fmt.Errorf("%s", errMsg)
 	}
 	runLog(opts.Ctx, "[DEBUG] Options validated")
@@ -1665,23 +1665,24 @@ func runMachineBackupInline(opts BackupOptions) error {
 
 	// Create machine backup config from opts
 	cfg := &machinebackuplib.Config{
-		BaseURL:         opts.BaseURL,
-		CertFingerprint: opts.CertFingerprint,
-		AuthID:          opts.AuthID,
-		Secret:          opts.Secret,
-		Ticket:          opts.Ticket,
-		CSRFToken:       opts.CSRFToken,
-		Datastore:       opts.Datastore,
-		Namespace:       opts.Namespace,
-		BackupID:        opts.BackupID,
-		BackupType:      opts.BackupType,
-		BackupDevices:   opts.BackupObjects,
-		Comment:         opts.Comment,
-		Crypt:           opts.Crypt,
-		ReadFreeSpace:   opts.ReadFreeSpace,
-		LiveRead:        opts.LiveRead,
-		SkipPartitions:  opts.SkipPartitions,
-		Progress:        &machinebackuplib.JobProgress{},
+		BaseURL:          opts.BaseURL,
+		CertFingerprint:  opts.CertFingerprint,
+		AuthID:           opts.AuthID,
+		Secret:           opts.Secret,
+		Ticket:           opts.Ticket,
+		CSRFToken:        opts.CSRFToken,
+		Datastore:        opts.Datastore,
+		Namespace:        opts.Namespace,
+		BackupID:         opts.BackupID,
+		BackupType:       opts.BackupType,
+		BackupDevices:    opts.BackupObjects,
+		Comment:          opts.Comment,
+		Crypt:            opts.Crypt,
+		CompressionLevel: opts.Compression,
+		ReadFreeSpace:    opts.ReadFreeSpace,
+		LiveRead:         opts.LiveRead,
+		SkipPartitions:   opts.SkipPartitions,
+		Progress:         &machinebackuplib.JobProgress{},
 	}
 	if opts.ReadFreeSpace {
 		runLog(opts.Ctx, "Forensic copy: free space and the paging/hibernation files are read too")
@@ -1889,7 +1890,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 			where = append(where, fmt.Sprintf("%s at %s (%s)", r.Disk, formatByteSize(r.Offset), formatByteSize(r.Length)))
 		}
 		for _, w := range where {
-			runLog(opts.Ctx, "Unreadable, zeros in the image: " + w)
+			runLog(opts.Ctx, "Unreadable, zeros in the image: "+w)
 		}
 		completionMsg = fmt.Sprintf("⚠️ Machine backup completed in %s, but %s of the disk could not be read and is zeros in the image (%s). %s read (%d new, %d reused chunks; %s uploaded)",
 			formatDuration(duration), formatByteSize(badBytes), strings.Join(where, ", "), read, newC, reusedC, uploaded)

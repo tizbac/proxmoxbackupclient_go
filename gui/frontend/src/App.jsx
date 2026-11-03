@@ -50,8 +50,9 @@ let GetServiceStatus, InstallService, StartBackgroundService, StopBackgroundServ
 let PauseBackup, ResumeBackup, GetBackupPauseState
 // Several backups at once: each run's own Pause, Resume and Stop
 let GetBackupRuns, PauseBackupRun, ResumeBackupRun, CancelBackupRun, SetMaxConcurrentRuns
-// Preferences > Backup Options: speed limits shared by every run
-let SetSpeedLimits
+// Preferences > Backup Options: speed limits shared by every run, and the
+// compression level every backup uses
+let SetSpeedLimits, SetCompressionLevel
 // The background service's settings (upstream's strict model)
 let ConnectService, IsServiceConnected, UseOwnSettings, OwnSetsCount, ConnectServiceCopyingOwn
 // Own settings: the computer's PBS servers, without their logins
@@ -150,6 +151,7 @@ if (window.go) {
   CancelBackupRun = window.go.main.App.CancelBackupRun
   SetMaxConcurrentRuns = window.go.main.App.SetMaxConcurrentRuns
   SetSpeedLimits = window.go.main.App.SetSpeedLimits
+  SetCompressionLevel = window.go.main.App.SetCompressionLevel
 }
 
 // Wails events + runtime (open external URLs in the system browser)
@@ -1835,7 +1837,8 @@ function App() {
               max_concurrent_runs: data.max_concurrent_runs || 3,
               upload_limit_mbps: data.upload_limit_mbps || 0,
               download_limit_mbps: data.download_limit_mbps || 0,
-              disk_read_limit_mbps: data.disk_read_limit_mbps || 0
+              disk_read_limit_mbps: data.disk_read_limit_mbps || 0,
+              compression_level: data.compression_level || 'default'
             })
 
             // Initialize backupDirs from config if available
@@ -4282,6 +4285,39 @@ function App() {
                       </div>
                       <div className="info-box" style={{marginTop: '10px'}}>
                         ℹ️ {t('speedLimitsHint')}
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{marginTop: '24px'}}>
+                      <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                        <label htmlFor="compressionLevel">{t('compressionLabel')}</label>
+                        <select
+                          id="compressionLevel"
+                          value={config.compression_level || 'default'}
+                          onChange={async (e) => {
+                            const level = e.target.value
+                            const before = config.compression_level || 'default'
+                            setConfig({...config, compression_level: level})
+                            if (!SetCompressionLevel) return
+                            try {
+                              await SetCompressionLevel(level)
+                              showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                              setConfig({...config, compression_level: before})
+                            }
+                          }}
+                        >
+                          {[
+                            ['fastest', 'compressionFastest'],
+                            ['default', 'compressionDefault'],
+                            ['better', 'compressionBetter'],
+                            ['best', 'compressionBest'],
+                          ].map(([v, label]) => <option key={v} value={v}>{t(label)}</option>)}
+                        </select>
+                      </div>
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('compressionHint')}
                       </div>
                     </div>
 

@@ -580,6 +580,8 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		Datastore:       cfg.Datastore,
 		Namespace:       cfg.Namespace,
 		Insecure:        cfg.CertFingerprint != "",
+		// Empty is default (zstd level 3), as before.
+		CompressionLevel: pbscommon.ParseCompressionLevel(cfg.CompressionLevel),
 		// Nil for a plain snapshot, in which case pbscommon keeps the
 		// pre-encryption sha256 + magic/CRC32 framing.
 		Crypt: cfg.Crypt,

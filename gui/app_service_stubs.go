@@ -90,11 +90,9 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		writeDebugLog(fmt.Sprintf("[Backup ID] Empty backup-id, using hostname: %s", backupID))
 	}
 
-	// Default to "fastest" if compression is empty
-	if compression == "" {
-		compression = "fastest"
-		writeDebugLog("[Compression] Using default: fastest")
-	}
+	// The run's compression: the one asked for, else the service's Backup
+	// Options setting, else default (effectiveCompression).
+	compression = a.effectiveCompression(compression)
 
 	// Merge directories: backupDirs for directory backup, driveLetters for machine backup
 	var allDirs []string
@@ -264,10 +262,7 @@ func (a *App) StartMachineBackup(backupType string, backupDevices []string, back
 		backupID, _ = os.Hostname()
 		writeDebugLog(fmt.Sprintf("[Backup ID] Empty backup-id, using hostname: %s", backupID))
 	}
-	if compression == "" {
-		compression = "fastest"
-		writeDebugLog("[Compression] Using default: fastest")
-	}
+	compression = a.effectiveCompression(compression) // see StartBackup
 	for _, device := range backupDevices {
 		if device == "" {
 			return fmt.Errorf("one or more devices are empty")

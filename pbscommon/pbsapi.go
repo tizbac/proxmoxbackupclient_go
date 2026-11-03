@@ -59,6 +59,18 @@ func ParseCompressionLevel(level string) CompressionLevel {
 	}
 }
 
+// ValidCompressionLevel reports whether level is one a setting or option may
+// hold: fastest, default, better or best (any case), or empty for default.
+// ParseCompressionLevel takes anything and falls back to fastest, so a
+// setting is checked with this first.
+func ValidCompressionLevel(level string) bool {
+	switch strings.ToLower(level) {
+	case "", "fastest", "default", "better", "best":
+		return true
+	}
+	return false
+}
+
 type IndexCreateResp struct {
 	WriterID int `json:"data"`
 }

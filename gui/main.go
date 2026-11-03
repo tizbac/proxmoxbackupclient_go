@@ -481,6 +481,7 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		"upload_limit_mbps":             cfg.UploadLimitMBps,
 		"download_limit_mbps":           cfg.DownloadLimitMBps,
 		"disk_read_limit_mbps":          cfg.DiskReadLimitMBps,
+		"compression_level":             compressionSetting(cfg),
 		"hostname":                      hostname,
 		// Global SMTP account (Preferences > Advanced). Same M-04 pattern as
 		// the PBS secret above: never hand the real password to the webview,
@@ -647,11 +648,9 @@ func (a *App) emitAnalysisProgress(done, total int, scannedBytes uint64) {
 func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters []string, excludeList []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	writeDebugLog(fmt.Sprintf("StartBackup() called - mode: %s, VSS: %v, compression: %s, pbsServerID: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsServerID, a.isServiceProcess))
 
-	// Default to "fastest" if compression is empty
-	if compression == "" {
-		compression = "fastest"
-		writeDebugLog("[Compression] Using default: fastest")
-	}
+	// An empty compression stays empty here: the run takes the Backup Options
+	// setting where its options are built (effectiveCompression), in the
+	// service for a run handed to it.
 
 	// Re-detect mode if currently Standalone (service may have started after GUI)
 	// IMPORTANT: Never re-detect if we ARE the service process (prevents infinite loop)
@@ -678,11 +677,7 @@ func (a *App) StartBackup(backupType string, backupDirs []string, driveLetters [
 func (a *App) StartMachineBackup(backupType string, backupDevices []string, backupID string, useVSS bool, compression string, pbsServerID string, comment string, postActionsKey string) error {
 	writeDebugLog(fmt.Sprintf("StartMachineBackup() called - mode: %s, VSS: %v, compression: %s, pbsServerID: %s, isServiceProcess: %v", a.mode.String(), useVSS, compression, pbsServerID, a.isServiceProcess))
 
-	// Default to "fastest" if compression is empty
-	if compression == "" {
-		compression = "fastest"
-		writeDebugLog("[Compression] Using default: fastest")
-	}
+	// An empty compression stays empty: see StartBackup.
 
 	// Re-detect mode if currently Standalone (service may have started after GUI)
 	// IMPORTANT: Never re-detect if we ARE the service process (prevents infinite loop)
@@ -1011,7 +1006,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 		Kind:           backupType,
 		BackupType:     "host", // "host" for directory, would be "vm" for machine
 		UseVSS:         useVSS,
-		Compression:    compression,
+		Compression:    a.effectiveCompression(compression),
 		ExcludeList:    excludeList,
 		DisableSplit:   a.config.DisableSplit,
 		SplitSizeBytes: a.config.SplitSizeBytes(),
@@ -1375,7 +1370,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 		// see machineSnapshotType.
 		BackupType:     machineSnapshotType(backupType),
 		UseVSS:         useVSS,
-		Compression:    compression,
+		Compression:    a.effectiveCompression(compression),
 		ExcludeList:    []string{}, // No exclude list for machine backups
 		DisableSplit:   a.config.DisableSplit,
 		SplitSizeBytes: a.config.SplitSizeBytes(),

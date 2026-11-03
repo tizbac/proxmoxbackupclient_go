@@ -83,7 +83,7 @@ type ScheduledJob struct {
 	// read) asked for it (the card says so instead of "scheduled").
 	FullReadRequested bool     `json:"-"`
 	ExcludeList       []string `json:"excludeList"`
-	Compression       string   `json:"compression"`       // "fastest", "default", "better", "best"
+	Compression       string   `json:"compression"`       // kept for older sets; not read: Config.CompressionLevel applies
 	LastRun           string   `json:"lastRun,omitempty"` // ISO timestamp
 	NextRun           string   `json:"nextRun,omitempty"` // ISO timestamp
 	// NextRunBy is the ID of the schedule that gives NextRun.
@@ -1062,11 +1062,10 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	// Use StartBackup to route through mode detection (service or direct)
 	writeDebugLog(fmt.Sprintf("[Scheduled Job] Executing via StartBackup (mode: %s)", a.mode.String()))
 
-	// Default to "fastest" if compression not set in job
-	compression := job.Compression
-	if compression == "" {
-		compression = "fastest"
-	}
+	// The run takes the Backup Options compression setting: a Backup Set's
+	// own "compression" (never shown in the editor, and "fastest" in sets
+	// saved by older builds) is not read any more.
+	compression := ""
 
 	// driveLetters carries the physical disks for machine backups (empty for
 	// directory backups); it is persisted on the job so a scheduled run restores

@@ -65,6 +65,11 @@ type Config struct {
 	// caller to sample on its own timer. Nil for the CLI.
 	Progress *JobProgress `json:"-"`
 
+	// CompressionLevel is how hard each chunk is compressed before it is sent
+	// (pbscommon.CompressionLevel); empty is default, zstd level 3. Machine
+	// backups always used default before, whatever the app was set to.
+	CompressionLevel string `json:"compression,omitempty"`
+
 	// ReadFreeSpace reads every sector of the disk, free space included (a
 	// forensic copy). By default the free clusters of each snapshotted NTFS
 	// volume, and its paging, hibernation and swap files, are sent as zeros
