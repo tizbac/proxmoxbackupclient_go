@@ -131,9 +131,12 @@ Chunks sent in the lost session are sent again. The run prints when it starts ag
 | `-config <file>` | | JSON config file |
 | `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |
 | `-compression <level>` | `default` | How hard chunks are compressed before they go to PBS, which stores them as sent: `fastest`, `default` (zstd level 3), `better` or `best`. A higher level sends less and takes less space on the datastore, for more processor time. Only new chunks are affected, so it can change between runs. Encrypted backups are not compressed |
+| `-read-ahead <n>` | `0` (off) | Read up to `n` files of each folder (1 to 32) in the background, ahead of the one being archived: the app's **Multi-threaded backup reading**. It helps when reading the disk is the slow part (many small files, a network share), and the archive is the same either way. Each file read ahead, up to 128 MB, is held in memory until it is archived: at most `n` in a folder, plus those of the folders above it, which wait while it is backed up. `-disk-read-limit` counts these reads too |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
-Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `exclude` (a list), `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `upload-limit`, `download-limit`, `disk-read-limit`, `compression`, `smtp`.
+Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `exclude` (a list), `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `upload-limit`, `download-limit`, `disk-read-limit`, `compression`, `read-ahead`, `smtp`.
+
+New chunks are sent to PBS up to 8 at a time while the folder is read on, as in the app; they are compressed as they are sent, so this also spreads the compression over several processor cores.
 
 ### Examples
 

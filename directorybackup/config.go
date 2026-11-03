@@ -91,6 +91,12 @@ type Config struct {
 	// fastest, default (zstd level 3), better or best; empty is default.
 	Compression string `json:"compression"`
 
+	// ReadAhead is how many files of each folder are read in the background
+	// ahead of the one being archived (pbscommon's PXARArchive.PrefetchWorkers),
+	// 1 to MaxReadAhead; 0, the default, reads one file at a time. The app's
+	// "Multi-threaded backup reading". The archive is the same either way.
+	ReadAhead int `json:"read-ahead"`
+
 	// The speed limits, "upload-limit", "download-limit" and
 	// "disk-read-limit" in MB/s; a flag overrides the file.
 	clientcommon.SpeedLimits
@@ -116,6 +122,9 @@ type dirListFlag []string
 
 func (d *dirListFlag) String() string     { return strings.Join(*d, ",") }
 func (d *dirListFlag) Set(v string) error { *d = append(*d, v); return nil }
+
+// MaxReadAhead is the most files -read-ahead may read at once, as in the app.
+const MaxReadAhead = 32
 
 func (c *Config) valid() bool { return len(c.problems()) == 0 }
 
@@ -144,6 +153,12 @@ func (c *Config) problems() []string {
 	}
 	if len(c.ExcludeList) > 0 && len(c.Dirs()) == 0 && c.BackupStreamName != "" {
 		p = append(p, "-exclude leaves out files and folders of -backupdir; it does not apply to -backupstream")
+	}
+	if c.ReadAhead > 0 && len(c.Dirs()) == 0 && c.BackupStreamName != "" {
+		p = append(p, "-read-ahead reads the files of -backupdir; it does not apply to -backupstream")
+	}
+	if c.ReadAhead < 0 || c.ReadAhead > MaxReadAhead {
+		p = append(p, fmt.Sprintf("-read-ahead is %d: use 0 (off) to %d files", c.ReadAhead, MaxReadAhead))
 	}
 	for _, pat := range c.ExcludeList {
 		if problem := excludePatternProblem(pat); problem != "" {
@@ -247,6 +262,7 @@ func loadConfig() *Config {
 	var excludeFlags dirListFlag
 	flag.Var(&excludeFlags, "exclude", "Leave out files and folders matching this pattern; repeat for several. Without / or \\ it matches a name at any depth (*.tmp, node_modules); with one it is taken from the folder backed up (logs/*.log, C:\\Users\\alice\\Temp). Not case sensitive. Adds to the config file's \"exclude\" list")
 	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: fastest, default (zstd level 3), better or best (default: default). Encrypted backups are not compressed")
+	readAheadFlag := flag.Int("read-ahead", 0, "Read up to this many files of each folder in the background ahead of the one being archived, 1 to 32, which helps when reading from the disk is the slow part; 0 or left out reads one file at a time. Each file read ahead, up to 128 MB, is held in memory until it is archived, so a folder can hold up to this many at a time (and its parent folders theirs, while it is backed up). The archive is the same either way")
 	noMTimeFlag := flag.Bool("no-mtime", false, "Record 1970-01-01 as every file and folder time instead of the real one, so time-only changes (a folder whose contents come and go) do not change the archive and re-upload its chunks; restored items get 1970-01-01 (advanced, optional)")
 
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
@@ -347,6 +363,12 @@ func loadConfig() *Config {
 	if *compressionFlag != "" {
 		config.Compression = *compressionFlag
 	}
+	// Given at all, -read-ahead overrides the file, -read-ahead 0 too.
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "read-ahead" {
+			config.ReadAhead = *readAheadFlag
+		}
+	})
 	applySpeedLimitFlags(&config.SpeedLimits)
 
 	initSmtpConfigIfNeeded := func() {

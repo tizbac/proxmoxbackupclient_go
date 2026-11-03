@@ -17,6 +17,7 @@ import (
 	"retry"
 	"snapshot"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -42,9 +43,40 @@ type ChunkState struct {
 	newchunk           *atomic.Uint64
 	reusechunk         *atomic.Uint64
 	knownChunks        *haxmap.Map[string, bool]
+
+	// New chunks go to PBS from a pool of chunkUploadWorkers while the walk
+	// carries on chunking, as in the app; the index is built in order here.
+	// The first upload that fails is kept in fatalErr, which stops the walk
+	// at the next chunk and keeps the index from being closed. ctx ends the
+	// uploads still queued, and the retries of the ones under way, once
+	// there is a failure or the backup is abandoned (stopUploads).
+	uploadJobs chan uploadJob
+	uploadWG   sync.WaitGroup
+	closeOnce  sync.Once
+	ctx        context.Context
+	cancel     context.CancelFunc
+	fatalMu    sync.Mutex
+	fatalErr   error
 }
 
-func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool]) {
+// chunkUploadWorkers is how many chunks of one archive are sent to PBS at a
+// time: the app's count (gui/backup_inline.go), where 8 nearly doubled the
+// speed of sending new chunks one by one and more gave nothing further.
+const chunkUploadWorkers = 8
+
+// uploadJob is one new chunk for the upload pool.
+type uploadJob struct {
+	digest string
+	data   []byte
+}
+
+func (c *ChunkState) Init(client *pbscommon.PBSClient, newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool]) {
+	c.reset(newchunk, reusechunk, knownChunks)
+	c.startUploads(client.UploadDynamicCompressedChunk)
+}
+
+// reset is Init without the upload pool.
+func (c *ChunkState) reset(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool]) {
 	c.assignments = make([]string, 0)
 	c.assignments_offset = make([]uint64, 0)
 	c.pos = 0
@@ -58,7 +90,91 @@ func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, kn
 	c.knownChunks = knownChunks
 }
 
+// startUploads starts the upload pool, which sends each chunk with upload.
+// c.wrid is set after Init, by CreateDynamicIndex, and before the first chunk
+// is queued: a worker reads it only once it has a job, and the channel send
+// orders the two.
+func (c *ChunkState) startUploads(upload func(wrid uint64, digest string, data []byte) error) {
+	c.ctx, c.cancel = context.WithCancel(context.Background())
+	c.uploadJobs = make(chan uploadJob, chunkUploadWorkers*2)
+	c.uploadWG.Add(chunkUploadWorkers)
+	for i := 0; i < chunkUploadWorkers; i++ {
+		go func() {
+			defer c.uploadWG.Done()
+			for job := range c.uploadJobs {
+				if c.ctx.Err() != nil {
+					continue // failed or abandoned: send nothing more
+				}
+				if err := withRetryCtx(c.ctx, "chunk upload", chunkRetryTime, func() error {
+					return upload(c.wrid, job.digest, job.data)
+				}); err != nil {
+					if c.ctx.Err() == nil { // not just ended by an earlier failure
+						c.fail(fmt.Errorf("failed to upload chunk %s: %w", job.digest, err))
+					}
+					continue
+				}
+				c.newchunk.Add(1)
+			}
+		}()
+	}
+}
+
+// fail keeps err if it is the first upload failure, and ends the uploads
+// still to come.
+func (c *ChunkState) fail(err error) {
+	c.fatalMu.Lock()
+	if c.fatalErr == nil {
+		c.fatalErr = err
+	}
+	c.fatalMu.Unlock()
+	c.cancel()
+}
+
+// uploadErr is the first upload failure so far, or nil.
+func (c *ChunkState) uploadErr() error {
+	c.fatalMu.Lock()
+	defer c.fatalMu.Unlock()
+	return c.fatalErr
+}
+
+// stopUploads ends the upload pool and waits for its workers: Eof once every
+// chunk is queued, and a backup that stops early (deferred), which sends
+// nothing more. The workers must be gone before the session is closed or a
+// new one is started on the same client.
+func (c *ChunkState) stopUploads(abandon bool) {
+	if c.uploadJobs == nil {
+		return
+	}
+	if abandon {
+		c.cancel()
+	}
+	c.closeOnce.Do(func() { close(c.uploadJobs) })
+	c.uploadWG.Wait()
+	c.cancel()
+}
+
+// queue marks a chunk as sent and hands it to the upload pool, or counts it
+// as reused if PBS has it already. GetOrSet marks it before it is sent, so a
+// copy later in the stream is not sent twice; if the send fails, the index
+// is not closed and the snapshot not finished, so nothing refers to it.
+func (c *ChunkState) queue(shahash string, data []byte) error {
+	if err := c.uploadErr(); err != nil {
+		return err
+	}
+	if _, ok := c.knownChunks.GetOrSet(shahash, true); !ok {
+		fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(data))
+		c.uploadJobs <- uploadJob{digest: shahash, data: data}
+	} else {
+		fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(data))
+		c.reusechunk.Add(1)
+	}
+	return nil
+}
+
 func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
+	if err := c.uploadErr(); err != nil {
+		return err
+	}
 	chunkpos := c.C.Scan(b)
 
 	if chunkpos == 0 {
@@ -78,19 +194,8 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 			bindigest := client.ChunkDigest(c.current_chunk)
 			shahash := hex.EncodeToString(bindigest[:])
 
-			if _, ok := c.knownChunks.GetOrSet(shahash, true); !ok {
-				fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
-				c.newchunk.Add(1)
-
-				data := c.current_chunk
-				if err := withRetry("chunk upload", chunkRetryTime, func() error {
-					return client.UploadDynamicCompressedChunk(c.wrid, shahash, data)
-				}); err != nil {
-					return fmt.Errorf("failed to upload chunk %s: %w", shahash, err)
-				}
-			} else {
-				fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
-				c.reusechunk.Add(1)
+			if err := c.queue(shahash, c.current_chunk); err != nil {
+				return err
 			}
 
 			if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + uint64(len(c.current_chunk)))); err != nil {
@@ -147,6 +252,9 @@ func (c *ChunkState) ForceBoundary(client *pbscommon.PBSClient) error {
 // InjectKnownChunk appends a chunk of the previous payload index without its
 // data; it must be in that index, which /previous registered with the server.
 func (c *ChunkState) InjectKnownChunk(digest [32]byte, size uint64) error {
+	if err := c.uploadErr(); err != nil {
+		return err
+	}
 	if len(c.current_chunk) != 0 {
 		return fmt.Errorf("internal error: reused chunk appended while %d bytes are pending", len(c.current_chunk))
 	}
@@ -173,6 +281,12 @@ func (c *ChunkState) Eof(client *pbscommon.PBSClient) error {
 	if err := c.emitCurrent(client); err != nil {
 		return err
 	}
+	// Every chunk is queued: wait for the uploads, and close the index only
+	// if they all got there.
+	c.stopUploads(false)
+	if err := c.uploadErr(); err != nil {
+		return err
+	}
 	return c.closeIndex(client)
 }
 
@@ -191,18 +305,8 @@ func (c *ChunkState) emitCurrent(client *pbscommon.PBSClient) error {
 			return fmt.Errorf("failed to write final chunk digest: %w", err)
 		}
 
-		if _, ok := c.knownChunks.GetOrSet(shahash, true); !ok {
-			fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
-			data := c.current_chunk
-			if err := withRetry("chunk upload", chunkRetryTime, func() error {
-				return client.UploadDynamicCompressedChunk(c.wrid, shahash, data)
-			}); err != nil {
-				return fmt.Errorf("failed to upload final chunk %s: %w", shahash, err)
-			}
-			c.newchunk.Add(1)
-		} else {
-			fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(c.current_chunk))
-			c.reusechunk.Add(1)
+		if err := c.queue(shahash, c.current_chunk); err != nil {
+			return err
 		}
 		c.assignments_offset = append(c.assignments_offset, c.pos)
 		c.assignments = append(c.assignments, shahash)
@@ -252,9 +356,15 @@ const (
 // (tizbac/proxmoxbackupclient_go#59). Each retry is printed. The error
 // returned is the request's own, so retry.SessionLost still recognises it.
 func withRetry(what string, limit time.Duration, op func() error) error {
+	return withRetryCtx(context.Background(), what, limit, op)
+}
+
+// withRetryCtx is withRetry ended early, without a further attempt, once
+// parent is cancelled.
+func withRetryCtx(parent context.Context, what string, limit time.Duration, op func() error) error {
 	cfg := retry.DefaultConfig()
 	cfg.MaxAttempts = 5
-	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	ctx, cancel := context.WithTimeout(parent, limit)
 	defer cancel()
 	attempt := 0
 	var last error
@@ -286,6 +396,7 @@ func main() {
 	changeDetectionMode = cfg.ChangeDetectionMode
 	noMTime = cfg.NoMTime
 	excludeList = cfg.ExcludeList
+	readAhead = cfg.ReadAhead
 
 	// Errors go to stderr with a non-zero exit, never a message box: a box
 	// waits for a click that an unattended scheduled run never gets (and on
@@ -633,7 +744,8 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
 
 	streamChunk := ChunkState{}
-	streamChunk.Init(newchunk, reusechunk, knownChunks)
+	streamChunk.Init(client, newchunk, reusechunk, knownChunks)
+	defer streamChunk.stopUploads(true) // Eof stops it first on success
 
 	streamChunk.wrid, err = client.CreateDynamicIndex(filename)
 	if err != nil {
@@ -679,6 +791,9 @@ var noMTime bool
 // excludeList is the -exclude setting (see Config).
 var excludeList []string
 
+// readAhead is the -read-ahead setting (see Config).
+var readAhead int
+
 func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, originalPath string, vssUsed bool) ([]string, error) {
 	client.Connect(false, "host")
 	knownChunks := haxmap.New[string, bool]()
@@ -692,6 +807,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	// Relative and absolute patterns are taken from ExcludeRoot, the folder as
 	// named, also when it is read through a shadow copy.
 	archive.ExcludeList = excludeList
+	archive.PrefetchWorkers = readAhead
 	if split {
 		// Metadata stream; the payload stream is backup.ppxar.didx.
 		archive.ArchiveName = "backup.mpxar.didx"
@@ -751,11 +867,19 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	}
 	/**/
 
+	// Each stream's upload pool is stopped when the backup ends, so none is
+	// still sending when an error closes the session; Eof stops it first on
+	// success.
 	pxarChunk := ChunkState{}
-	pxarChunk.Init(newchunk, reusechunk, knownChunks)
+	pxarChunk.Init(client, newchunk, reusechunk, knownChunks)
+	defer pxarChunk.stopUploads(true)
 
+	// The catalog has its own list of chunks sent: with one list, a chunk of
+	// the archive could be marked as sent by the catalog's pool and the
+	// archive's index closed while that send is still under way.
 	pcat1Chunk := ChunkState{}
-	pcat1Chunk.Init(newchunk, reusechunk, knownChunks)
+	pcat1Chunk.Init(client, newchunk, reusechunk, haxmap.New[string, bool]())
+	defer pcat1Chunk.stopUploads(true)
 
 	var payloadChunk *ChunkState
 	if split {
@@ -768,7 +892,8 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		}
 		fmt.Printf("Known payload chunks: %d\n", payloadKnown.Len())
 		payloadChunk = &ChunkState{}
-		payloadChunk.Init(newchunk, reusechunk, payloadKnown)
+		payloadChunk.Init(client, newchunk, reusechunk, payloadKnown)
+		defer payloadChunk.stopUploads(true)
 		if payloadChunk.wrid, err = client.CreateDynamicIndex("backup.ppxar.didx"); err != nil {
 			return nil, err
 		}

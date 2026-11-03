@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -124,6 +125,34 @@ func TestCompressionOption(t *testing.T) {
 	var fromFile Config
 	if err := json.Unmarshal([]byte(`{"compression": "better"}`), &fromFile); err != nil || fromFile.Compression != "better" {
 		t.Errorf("config file: %v, %q", err, fromFile.Compression)
+	}
+}
+
+// -read-ahead takes 0 (off) to 32 files, as the app does, for folders only.
+func TestReadAheadOption(t *testing.T) {
+	base := Config{BaseURL: "https://pbs:8007", AuthID: "a@pbs!t", Secret: "s", Datastore: "ds", BackupSourceDir: "/data"}
+	for _, ok := range []int{0, 1, 8, MaxReadAhead} {
+		c := base
+		c.ReadAhead = ok
+		if p := c.problems(); len(p) != 0 {
+			t.Errorf("%d: %q", ok, p)
+		}
+	}
+	for _, bad := range []int{-1, MaxReadAhead + 1} {
+		c := base
+		c.ReadAhead = bad
+		if p := c.problems(); len(p) != 1 || !strings.Contains(p[0], fmt.Sprintf("-read-ahead is %d", bad)) {
+			t.Errorf("%d: %q", bad, p)
+		}
+	}
+	c := base
+	c.BackupSourceDir, c.BackupStreamName, c.ReadAhead = "", "db.sql", 4
+	if p := c.problems(); len(p) != 1 || !strings.Contains(p[0], "-backupstream") {
+		t.Errorf("read-ahead with a stream: %q", p)
+	}
+	var fromFile Config
+	if err := json.Unmarshal([]byte(`{"read-ahead": 8}`), &fromFile); err != nil || fromFile.ReadAhead != 8 {
+		t.Errorf("config file: %v, %d", err, fromFile.ReadAhead)
 	}
 }
 
