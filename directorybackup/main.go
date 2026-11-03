@@ -885,6 +885,13 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 	// cleaned from filepath.Join, so "./data" made every -exclude pattern
 	// with a separator miss.
 	backupdir = originalPath
+	// A network path (a share or a drive mapped to one; NFS, SMB/CIFS or FUSE
+	// on Linux) has no volume to snapshot, and VSS fails on it: read it live,
+	// as the app does, instead of failing the backup.
+	if usevss && !snapshot.PathSupportsSnapshot(backupdir) {
+		fmt.Printf("Not taking a snapshot of %s: a network path has no volume to snapshot, so it is read live\n", backupdir)
+		usevss = false
+	}
 	var err error
 	var readErrors []string
 	originalDir := backupdir
