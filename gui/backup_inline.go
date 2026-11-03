@@ -2042,7 +2042,7 @@ func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk,
 	// local and network paths still gets a real snapshot for the local
 	// ones — only the network path(s) fall back to a live, unsnapshotted
 	// read, same as if VSS had never been requested for that one directory.
-	if usevss && !pathSupportsSnapshot(backupdir) {
+	if usevss && !snapshot.PathSupportsSnapshot(backupdir) {
 		runLog(ctx, fmt.Sprintf("Skipping snapshot for %s: network/remote paths don't support volume snapshots — backing up live instead", backupdir))
 		usevss = false
 	}

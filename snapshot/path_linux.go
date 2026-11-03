@@ -1,7 +1,7 @@
 //go:build linux
 // +build linux
 
-package main
+package snapshot
 
 import "golang.org/x/sys/unix"
 
@@ -15,14 +15,14 @@ const (
 	fuseSuperMagic  = 0x65735546
 )
 
-// pathSupportsSnapshot reports whether path lives on a filesystem
+// PathSupportsSnapshot reports whether path lives on a filesystem
 // elastio-snap/dattobd can actually snapshot. See the Windows implementation
 // of this same function for the shared reasoning (network shares have no
 // local volume/block device to snapshot at all).
-func pathSupportsSnapshot(path string) bool {
+func PathSupportsSnapshot(path string) bool {
 	var st unix.Statfs_t
 	if err := unix.Statfs(path, &st); err != nil {
-		return true // couldn't determine — don't block a backup over it
+		return true // couldn't determine: don't block a backup over it
 	}
 	switch int64(st.Type) {
 	case nfsSuperMagic, smbSuperMagic, cifsMagicNumber, fuseSuperMagic:

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"snapshot"
 	"sync"
 	"time"
 )
@@ -23,7 +24,7 @@ func (a *App) SnapshotSupport(paths []string) map[string]bool {
 		go func() {
 			defer wg.Done()
 			ok := make(chan bool, 1)
-			go func() { ok <- pathSupportsSnapshot(p) }()
+			go func() { ok <- snapshot.PathSupportsSnapshot(p) }()
 			var v bool
 			select {
 			case v = <-ok:
