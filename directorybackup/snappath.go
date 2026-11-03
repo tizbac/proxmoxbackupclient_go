@@ -17,6 +17,21 @@ func unmapSnapshotPathString(s, snapshotDir, originalDir string) string {
 	return strings.ReplaceAll(s, snapshotDir, originalDir)
 }
 
+// byRealPath returns messages naming files read through a shadow copy
+// (vssUsed) by the folder the user asked for instead, for the snapshot's
+// status sidecar: the snapshot's own path cannot be looked up afterwards.
+// Without a snapshot the messages come back as they are.
+func byRealPath(msgs []string, vssUsed bool, snapshotDir, originalDir string) []string {
+	if !vssUsed {
+		return msgs
+	}
+	out := make([]string, len(msgs))
+	for i, s := range msgs {
+		out[i] = unmapSnapshotPathString(s, snapshotDir, originalDir)
+	}
+	return out
+}
+
 type unmappedError struct {
 	msg string
 	err error

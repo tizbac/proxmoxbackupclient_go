@@ -883,13 +883,14 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		}
 	}
 
+	unreadable := byRealPath(archive.ReadErrors, vssUsed, backupdir, originalPath)
 	sidecar := &pbscommon.BackupSidecar{
 		FormatVersion:    1,
 		BackupID:         client.Manifest.BackupID,
 		Directories:      []string{originalPath},
 		GeneratedAt:      time.Now().Unix(),
 		ExcludedByPolicy: excluded,
-		SkippedReadError: pbscommon.SkippedToIssues(archive.ReadErrors),
+		SkippedReadError: pbscommon.SkippedToIssues(unreadable),
 	}
 	if sb, serr := json.Marshal(sidecar); serr != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to serialize status sidecar: %v\n", serr)

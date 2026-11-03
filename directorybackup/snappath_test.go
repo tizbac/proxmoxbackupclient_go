@@ -40,6 +40,23 @@ func TestUnmapSnapshotPathRoot(t *testing.T) {
 	}
 }
 
+// The status sidecar names unreadable files by their real paths, not the
+// shadow copy's; without a snapshot the messages are left as they are.
+func TestByRealPath(t *testing.T) {
+	snap := `C:\Users\u\AppData\Roaming\PBSBackupGO\VSS\{ID}\data`
+	msgs := []string{"Cannot open file " + snap + `\locked.db: Access is denied.`, "zero-filled " + snap + `\a\b.txt`}
+	got := byRealPath(msgs, true, snap, `C:\data`)
+	if got[0] != `Cannot open file C:\data\locked.db: Access is denied.` || got[1] != `zero-filled C:\data\a\b.txt` {
+		t.Errorf("through VSS: %q", got)
+	}
+	if msgs[0] == got[0] {
+		t.Error("the input was changed in place")
+	}
+	if got := byRealPath(msgs, false, snap, `C:\data`); got[0] != msgs[0] {
+		t.Errorf("without VSS: %q", got)
+	}
+}
+
 func TestUnmapSnapshotPathNoop(t *testing.T) {
 	if unmapSnapshotPath(nil, "x", "y") != nil {
 		t.Fatal("nil error must stay nil")
