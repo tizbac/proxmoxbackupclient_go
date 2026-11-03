@@ -94,6 +94,16 @@ A secret in the environment stays out of the process list, where any user on the
 
 A config file keeps the secret off the command line and out of the process list. Restrict who can read it.
 
+**Speed limits.** `proxmoxbackup-directory` and `proxmoxbackup-machine` take the GUI's three speed limits, in MB/s (1 MB = 1,000,000 bytes), each from 0 (no limit, the default) to 100000:
+
+| Flag | JSON name | Limits |
+|---|---|---|
+| `-upload-limit <MB/s>` | `upload-limit` | what is sent to PBS |
+| `-download-limit <MB/s>` | `download-limit` | what is read from PBS: the previous backup's index, and in `metadata` mode its file list |
+| `-disk-read-limit <MB/s>` | `disk-read-limit` | what is read from the files or disks being backed up (not standard input with `-backupstream`) |
+
+A flag overrides the config file. The run prints the limits it uses, for example `Speed limits: upload 10 MB/s, download none, disk read 50 MB/s`. A backup goes no faster than the lower of the disk read and upload limits, and a mostly unchanged backup is held back by the disk read limit, since unchanged data is read but not uploaded. The limits apply to the one run: two tools running at once each have their own.
+
 ## 3. proxmoxbackup-directory: folder backups
 
 ### Flags
@@ -112,9 +122,10 @@ A config file keeps the secret off the command line and out of the process list.
 | `-pxarout <file>` | | Also write the archive to a local file (debugging). Single folder only |
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
 | `-config <file>` | | JSON config file |
+| `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
-Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `exclude` (a list), `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `smtp`.
+Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `exclude` (a list), `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `upload-limit`, `download-limit`, `disk-read-limit`, `smtp`.
 
 ### Examples
 
@@ -217,7 +228,8 @@ Points to know:
 | `-skippartition <device>:<number>` | | Leave a partition out, e.g. `\\.\PhysicalDrive0:4` or `/dev/sda:3`. Repeat for more. It is not read or snapshotted and goes into the image as zeros: a restore gives it back in its place, empty and unformatted. A number the disk does not have prints a warning and leaves nothing out |
 | `-systray` | off | Does nothing at present: the tray icon was taken out of the command-line tools in an earlier version and has not come back. Still accepted, so existing commands keep working |
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
-| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `keyfile`, `keyfilepassphrase` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
+| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `keyfile`, `keyfilepassphrase`, `upload-limit`, `download-limit`, `disk-read-limit` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
+| `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
 Plus the connection flags in [section 2](#2-connecting-to-pbs).

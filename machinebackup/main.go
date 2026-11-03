@@ -35,7 +35,10 @@ func (i *arrayFlags) Set(value string) error {
 	return nil
 }
 
-func loadConfig() *machinebackuplib.Config {
+// loadConfig reads the command line and the -config file. The speed limits
+// come back on their own: machinebackuplib.Config is the app's too, which
+// sets its limits from its own settings.
+func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits) {
 	// Define flags
 
 	var backupdevs arrayFlags
@@ -69,6 +72,7 @@ func loadConfig() *machinebackuplib.Config {
 
 	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
 	versionFlag := flag.Bool("version", false, "Print the version and exit")
+	applySpeedLimitFlags := clientcommon.SpeedLimitFlags(flag.CommandLine)
 
 	// A stray argument, an unknown option or (on Windows) a quote in a path
 	// stops here with what is wrong; -help prints the usage.
@@ -82,6 +86,7 @@ func loadConfig() *machinebackuplib.Config {
 		BackupType: "host",
 	}
 	pbscommon.ApplyPBSEnvVars(&config.BaseURL, &config.AuthID, &config.Secret, &config.Datastore, &config.CertFingerprint)
+	var limits clientcommon.SpeedLimits
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {
@@ -89,11 +94,15 @@ func loadConfig() *machinebackuplib.Config {
 			os.Exit(1)
 		}
 		err = json.Unmarshal(file, config)
+		if err == nil {
+			err = json.Unmarshal(file, &limits)
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error parsing config file: %v\n", err)
 			os.Exit(1)
 		}
 	}
+	applySpeedLimitFlags(&limits)
 
 	if *baseURLFlag != "" {
 		config.BaseURL = *baseURLFlag
@@ -211,7 +220,7 @@ func loadConfig() *machinebackuplib.Config {
 		config.SMTP.Template.Body = *mailBodyTemplateFlag
 	}
 
-	return config
+	return config, limits
 }
 
 // sendResultMail sends the notification e-mail when -mail-* (or the config
@@ -307,16 +316,23 @@ func fatalError(msg string, err error) {
 
 func main() {
 
-	cfg := loadConfig()
+	cfg, limits := loadConfig()
 
 	// Errors go to stderr with a non-zero exit, never a message box: a box
 	// waits for a click that an unattended scheduled run never gets.
-	if p := problems(cfg); len(p) > 0 {
+	p := problems(cfg)
+	if problem := limits.SpeedLimitProblem(); problem != "" {
+		p = append(p, problem)
+	}
+	if len(p) > 0 {
 		for _, line := range p {
 			fmt.Fprintln(os.Stderr, line)
 		}
 		fmt.Fprintf(os.Stderr, "Options can also come from -config <file> and the PBS_* environment variables. Run %s -help for all of them.\n", clientcommon.ToolName())
 		os.Exit(1)
+	}
+	if line := limits.ApplySpeedLimits(); line != "" {
+		fmt.Println(line)
 	}
 
 	// Without -certfingerprint, fetch the fingerprint the server presents and

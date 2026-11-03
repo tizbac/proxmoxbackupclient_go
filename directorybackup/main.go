@@ -242,6 +242,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Options can also come from -config <file> and the PBS_* environment variables. Run %s -help for all of them.\n", clientcommon.ToolName())
 		os.Exit(1)
 	}
+	if line := cfg.ApplySpeedLimits(); line != "" {
+		fmt.Println(line)
+	}
 
 	// Without -certfingerprint, fetch the fingerprint the server presents and
 	// ask the user to confirm it before pinning.

@@ -86,6 +86,10 @@ type Config struct {
 	// taken from each folder backed up; not case sensitive. -exclude adds to
 	// the config file's list.
 	ExcludeList []string `json:"exclude"`
+
+	// The speed limits, "upload-limit", "download-limit" and
+	// "disk-read-limit" in MB/s; a flag overrides the file.
+	clientcommon.SpeedLimits
 }
 
 // Dirs returns every configured source directory: "backupdir" first (if set),
@@ -127,6 +131,9 @@ func (c *Config) problems() []string {
 		if problem := c.SMTP.problem(); problem != "" {
 			p = append(p, problem)
 		}
+	}
+	if problem := c.SpeedLimitProblem(); problem != "" {
+		p = append(p, problem)
 	}
 	if len(c.ExcludeList) > 0 && len(c.Dirs()) == 0 && c.BackupStreamName != "" {
 		p = append(p, "-exclude leaves out files and folders of -backupdir; it does not apply to -backupstream")
@@ -248,6 +255,7 @@ func loadConfig() *Config {
 
 	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
 	versionFlag := flag.Bool("version", false, "Print the version and exit")
+	applySpeedLimitFlags := clientcommon.SpeedLimitFlags(flag.CommandLine)
 
 	// A stray argument, an unknown option or (on Windows) a quote in a path
 	// stops here with what is wrong; -help prints the usage.
@@ -328,6 +336,7 @@ func loadConfig() *Config {
 		config.NoMTime = true
 	}
 	config.ExcludeList = append(config.ExcludeList, excludeFlags...)
+	applySpeedLimitFlags(&config.SpeedLimits)
 
 	initSmtpConfigIfNeeded := func() {
 		if config.SMTP == nil {
