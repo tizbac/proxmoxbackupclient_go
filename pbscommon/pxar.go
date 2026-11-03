@@ -189,6 +189,12 @@ func normExcludePath(s string) string {
 func relExcludePath(root, full string) string {
 	r := normExcludePath(root)
 	f := normExcludePath(full)
+	if r == "" && strings.HasPrefix(strings.ReplaceAll(root, "\\", "/"), "/") {
+		// The root is "/" itself (a whole Linux system), which normalizes to
+		// "": every path is under it. Without this, "/var/cache" stayed
+		// absolute and matched nothing.
+		return strings.TrimPrefix(f, "/")
+	}
 	if r != "" && strings.HasPrefix(f, r+"/") {
 		return f[len(r)+1:]
 	}

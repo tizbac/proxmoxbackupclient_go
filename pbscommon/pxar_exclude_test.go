@@ -1,6 +1,9 @@
 package pbscommon
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestIsExcluded covers the user-exclusion matcher (H-04): separatorless globs
 // match the basename anywhere; patterns with a separator (incl. absolute ones,
@@ -38,6 +41,28 @@ func TestIsExcluded(t *testing.T) {
 	}
 }
 
+// A backup of / with or without a snapshot: absolute and relative patterns
+// with a separator match, where they used to match nothing.
+func TestIsExcludedRootOfFileSystem(t *testing.T) {
+	for _, c := range []struct {
+		walkRoot, entry, pattern string
+		want                     bool
+	}{
+		// Without a snapshot, walked from / itself.
+		{"/", "/var/cache", "/var/cache", true},
+		{"/", "/var/log/a.log", "var/log/*.log", true},
+		// Through a snapshot of /, walked from its mount.
+		{"/tmp/.snap/1", "/tmp/.snap/1/var/cache", "/var/cache", true},
+		{"/tmp/.snap/1", "/tmp/.snap/1/srv/var/cache", "/var/cache", false},
+	} {
+		rel := relExcludePath(c.walkRoot, c.entry)
+		base := c.entry[strings.LastIndex(c.entry, "/")+1:]
+		if got := isExcluded(rel, base, "/", []string{c.pattern}); got != c.want {
+			t.Errorf("walked from %s: %s with %q = %v, want %v", c.walkRoot, c.entry, c.pattern, got, c.want)
+		}
+	}
+}
+
 // TestRelExcludePath checks that paths are reduced relative to the backup root so
 // absolute patterns and VSS-walked entries compare on the same (root-relative) basis.
 func TestRelExcludePath(t *testing.T) {
@@ -48,6 +73,12 @@ func TestRelExcludePath(t *testing.T) {
 		{`C:\Users\Alice`, `C:\Users\Alice`, ""},
 		{`C:\Users\Alice`, `D:\Other`, "d:/other"}, // not under root: returned normalized
 		{`\\?\GLOBALROOT\Device\Shadow1`, `\\?\GLOBALROOT\Device\Shadow1\Temp`, "temp"},
+		// A backup of / (a whole Linux system): every path is under the root.
+		{"/", "/var/cache", "var/cache"},
+		{"/", "/", ""},
+		{"/", "var/log/*.log", "var/log/*.log"}, // a relative pattern stays as it is
+		{`C:\`, `C:\Users`, "users"},
+		{"", "/var/cache", "/var/cache"}, // no root given: unchanged
 	}
 	for _, c := range cases {
 		if got := relExcludePath(c.root, c.full); got != c.want {
