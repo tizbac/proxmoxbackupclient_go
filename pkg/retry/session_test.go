@@ -34,6 +34,9 @@ func TestSessionLost(t *testing.T) {
 		{`Post "https://pbs:8007/dynamic_chunk": http2: client connection lost`, true},
 		{"failed to upload chunk: unexpected EOF", true},
 		{"HTTP 400 - writer '3' not registered", true},
+		// As a machine backup returned it on 03/11/2026 when a proxy cut its
+		// connection: another upload's error came first.
+		{`backup device C:\disk.img: failed to upload chunk 7197: Post "https://127.0.0.1:65371/fixed_chunk?digest=7197": http2: client connection force closed via ClientConn.Close`, true},
 		{"HTTP 503 - service unavailable", false},
 		{"open C:\\data\\x: Access is denied.", false},
 	} {

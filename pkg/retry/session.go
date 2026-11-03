@@ -22,6 +22,10 @@ func SessionLost(err error) bool {
 	s := err.Error()
 	return strings.Contains(s, "PBS session cannot be resumed") ||
 		strings.Contains(s, "connection lost") ||
+		// The other uploads in flight when the connection goes may fail
+		// with this instead, and whichever fails first is the error a
+		// backup returns.
+		strings.Contains(s, "client connection force closed") ||
 		strings.Contains(s, "unexpected EOF") ||
 		strings.Contains(s, "writer '") && strings.Contains(s, "not registered")
 }
