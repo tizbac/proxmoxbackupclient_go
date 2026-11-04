@@ -39,12 +39,37 @@ Shared code: `pbscommon` (PBS protocol, pxar, chunking, encryption), `clientcomm
 
 ## Important Notes
 
-- GUI build requires `wails` CLI tool (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0`) on Windows; the Linux packages build the GUI with plain `go build -tags production`
+- GUI build requires `wails` CLI tool (`go install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)`) on Windows; the Linux packages build the GUI with plain `go build -tags production`. Never install it with `@latest`: `WAILS_VERSION` in the Makefile is pinned to v2.13.0 (matching `gui/go.mod`), because newer releases such as v2.17+ declare `go 1.26`
 - Build process uses security hardening flags (`-trimpath`, `-s -w`)
 - The app's Help page embeds copies of `docs/manual/GUI.md`, `CLI.md`, `BMR.md` and `docs/RESTORE_GUIDE.md` from `gui/docs/` (go:embed cannot reach outside `gui/`). Edit the files in `docs/`, then copy them over by hand (no build step does it); `TestEmbeddedManualsMatchDocs` fails while they differ, and `node src/manuals.test.mjs` in `gui/frontend` checks every link between the manuals
 - With the background service, the computer's settings live in its folder, `C:\ProgramData\Salvanza\` on Windows or `/var/lib/salvanza/` on Linux, which only the service, SYSTEM/root and elevated administrators can open; the app reaches them through the service's API (`gui/api/INTEGRATION.md`, `gui/service_connect.go`). Without a service, and for its own files, the app uses `~/.salvanza/` (`getConfigDir`). A branded build uses its brand's folders instead
 - Cross-compilation uses GOOS and GOARCH environment variables
 - Live tests are the `gui/zz_*_livetest*_test.go` files; each is skipped unless its environment variables are set (for example `PBS_LIVE_TEST=1`; the skip message names them), and most need a real PBS
+
+## Windows MSI builds (`make msi`)
+
+- `make msi` runs `installer/wix/build_msi_linux.sh`, which builds the GUI and
+  service inside a `golang:1.25` Docker container, then runs WiX under Wine.
+  The host needs Docker only; Go, Node, and Wine are not used.
+- The Wails CLI inside that container is pinned by `WAILS_CLI_VERSION` in
+  `installer/wix/build_msi_linux.sh`. Do not change it to `@latest`: newer
+  Wails releases (v2.17+) declare `go 1.26`, while the container image ships
+  Go 1.25 with `GOTOOLCHAIN=local`, so the build aborts with
+  `requires go >= 1.26.0`.
+- Keep `WAILS_CLI_VERSION` (script) and `WAILS_VERSION` (Makefile) in sync with
+  each other and compatible with `gui/go.mod` and the `golang:*` image. When
+  bumping either, actually run `make msi` before committing.
+- The script reuses `gui/build/bin/ProxmoxBackupClient.exe` and
+  `ProxmoxBackupClientSVC.exe` when they are newer than their sources, and
+  rebuilds them otherwise. Never stage host-built (Linux ELF) binaries: the
+  service must be a Windows PE or the installed service fails with 193/1053.
+- MSIs are written to `dist/<Brand>-<version>.msi` for the brands listed in
+  `installer/wix/ProductBody.wxi`.
+- The WiX/Wine image is rebuilt on every run (`docker build`), so Dockerfile
+  changes take effect without a manual `docker build`.
+- Build outputs (`gui/frontend/wailsjs/`, `gui/frontend/dist/`,
+  `gui/build/bin/`) are regenerated and may be rewritten by the build; do not
+  commit mode-only or generated churn unless the Go API actually changed.
 
 ## Testing
 
