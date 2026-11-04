@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -279,12 +278,25 @@ func calculateDirSizeFilesCtx(ctx context.Context, path string) (uint64, uint64,
 // machinebackuplib's already-proven worker count for the same reason.
 const chunkUploadWorkers = 8
 
-// uploadJob is one chunk handed from the (single-threaded) scan/hash loop in
-// HandleData/EOF to the upload worker pool started by Init.
+// uploadJob is one chunk handed from the (single-threaded) boundary search in
+// HandleData/EOF to the worker pool started by Init: its index entry, which
+// the worker completes with the digest, and its data.
 type uploadJob struct {
-	digest string
-	data   []byte
+	entry *chunkEntry
+	data  []byte
 }
+
+// chunkEntry is one chunk of the index being built: where it starts in the
+// stream, its length and its digest.
+type chunkEntry struct {
+	offset, size uint64
+	digest       [32]byte
+}
+
+// chunkBufferSize is the room a chunk's buffer is made with: the chunker's
+// average, so most chunks are built without the buffer growing and being
+// copied (a chunk can reach four times this, and then grows).
+const chunkBufferSize = 4 << 20
 
 // jobProgress is shared across every directory in one backup attempt so the
 // live progress bar reflects the WHOLE job, not just whichever directory is
@@ -358,12 +370,15 @@ func loadString(v *atomic.Value) string {
 }
 
 type ChunkState struct {
-	assignments        []string
-	assignmentsOffset  []uint64
+	// entries is the index being built, in the stream's order: each chunk's
+	// offset and size, recorded by the walk, and its digest, which a worker
+	// fills in (or the walk, for a chunk reused without its data). The index
+	// list and its checksum are made from it once every worker has finished
+	// (EOF), so they come out as if the walk had hashed each chunk.
+	entries            []*chunkEntry
 	pos                uint64
 	wrid               uint64
 	chunkcount         uint64
-	chunkdigests       hash.Hash
 	currentChunk       []byte
 	C                  pbscommon.Chunker
 	newchunk           *atomic.Uint64
@@ -378,11 +393,14 @@ type ChunkState struct {
 	uploadErrors       []string     // Collect upload errors to report at the end
 	errorsMutex        sync.Mutex   // Protect uploadErrors slice
 
-	// Pipelined chunk upload (added 2026-09-24, see chunkUploadWorkers doc
-	// comment). HandleData/EOF stay single-threaded for scanning/hashing/
-	// dedup bookkeeping (position-ordered, exactly as before) and only hand
-	// the actual network upload off to this pool, so the next chunk's scan
-	// and upload overlap instead of waiting for each other.
+	// The worker pool (added 2026-09-24 for uploads, see chunkUploadWorkers).
+	// HandleData/EOF only find the chunk boundaries and record each chunk's
+	// place in the index; a worker hashes the chunk, checks it against the
+	// chunks PBS has, and compresses and sends it if new. Hashing used to be
+	// done by the walk itself, and SHA-256 was the largest part of the time
+	// one stream took (most of all where Go has no fast SHA-256: a CPU
+	// without AVX2, or a VM given a generic CPU type), so a stream ran at one
+	// core's hashing speed with the other cores idle.
 	uploadJobs chan uploadJob
 	uploadWG   sync.WaitGroup
 	closeOnce  sync.Once
@@ -441,12 +459,10 @@ func (c *ChunkState) closeUploads() {
 }
 
 func (c *ChunkState) Init(client *pbscommon.PBSClient, newchunk *atomic.Uint64, reusechunk *atomic.Uint64, failedchunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool], onProgress func(float64, string), progress *jobProgress, onStats func(*BackupProgressStats), currentDir string) {
-	c.assignments = make([]string, 0)
-	c.assignmentsOffset = make([]uint64, 0)
+	c.entries = nil
 	c.pos = 0
 	c.chunkcount = 0
-	c.chunkdigests = sha256.New()
-	c.currentChunk = make([]byte, 0)
+	c.currentChunk = make([]byte, 0, chunkBufferSize)
 	c.C = pbscommon.Chunker{}
 	// Chunk size avg = 4MB → max = 16MB (PBS hard limit on chunk size)
 	// Was 8MB (max=32MB) as workaround for "Invalid string length" errors,
@@ -465,11 +481,13 @@ func (c *ChunkState) Init(client *pbscommon.PBSClient, newchunk *atomic.Uint64, 
 	c.startUploadWorkers(client)
 }
 
-// startUploadWorkers launches the upload pool. c.wrid isn't set yet at this
+// startUploadWorkers launches the worker pool. c.wrid isn't set yet at this
 // point (CreateDynamicIndex runs after Init, before any real data flows) —
 // safe because each worker only reads c.wrid when a job arrives, and the
 // channel send that delivers the first job happens-after c.wrid is written,
-// per the Go memory model's channel-synchronization guarantee.
+// per the Go memory model's channel-synchronization guarantee. A worker
+// writes the digest into the job's entry; the walk reads the entries only
+// after EOF has waited for every worker.
 func (c *ChunkState) startUploadWorkers(client *pbscommon.PBSClient) {
 	c.uploadJobs = make(chan uploadJob, chunkUploadWorkers*2)
 	c.uploadWG.Add(chunkUploadWorkers)
@@ -483,11 +501,37 @@ func (c *ChunkState) startUploadWorkers(client *pbscommon.PBSClient) {
 					c.latchFatal(c.cancelCtx.Err())
 					continue
 				}
+				// After a failed chunk the snapshot is not finished:
+				// hash and send nothing more.
+				if c.checkFatal() != nil {
+					continue
+				}
+				// The digest a chunk is published under: sha256(plaintext),
+				// or sha256(plaintext || id_key) when the snapshot is
+				// encrypted.
+				job.entry.digest = client.ChunkDigest(job.data)
+				shahash := hex.EncodeToString(job.entry.digest[:])
+				// GetOrSet marks the digest known BEFORE upload confirms,
+				// atomically, so a duplicate of this chunk elsewhere in the
+				// stream (common, runs of zeros for one), in another worker,
+				// is never submitted twice while the first upload is still in
+				// flight (the pattern machinebackuplib's uploadWorker uses).
+				// This is safe even though the upload could still fail: on
+				// any upload failure c.fatalErr is latched and EOF aborts
+				// before AssignDynamicChunks/CloseDynamicIndex, so an
+				// optimistically "known" chunk from a failed run never ends
+				// up referenced by a finalized snapshot (see checkFatal/EOF).
+				if _, known := c.knownChunks.GetOrSet(shahash, true); known {
+					runLog(c.logContext(), fmt.Sprintf("Reuse chunk[%s] %d bytes", shahash, len(job.data)))
+					c.reusechunk.Add(1)
+					continue
+				}
+				runLog(c.logContext(), fmt.Sprintf("New chunk[%s] %d bytes", shahash, len(job.data)))
 				retryConfig := retry.DefaultConfig()
 				retryConfig.MaxAttempts = 5
 				ctx, cancel := context.WithTimeout(c.retryParent(), 5*time.Minute)
 				err := retry.DoWithJitter(ctx, retryConfig, retry.DefaultRetryable, func() error {
-					return client.UploadDynamicCompressedChunk(c.wrid, job.digest, job.data)
+					return client.UploadDynamicCompressedChunk(c.wrid, shahash, job.data)
 				})
 				cancel()
 				if err != nil && c.stopped() {
@@ -496,7 +540,7 @@ func (c *ChunkState) startUploadWorkers(client *pbscommon.PBSClient) {
 					continue
 				}
 				if err != nil {
-					errMsg := fmt.Sprintf("⚠️  Failed to upload chunk %s after %d retries: %v", job.digest, retryConfig.MaxAttempts, err)
+					errMsg := fmt.Sprintf("⚠️  Failed to upload chunk %s after %d retries: %v", shahash, retryConfig.MaxAttempts, err)
 					runLog(c.logContext(), errMsg)
 					c.failedchunk.Add(1)
 					c.errorsMutex.Lock()
@@ -532,12 +576,11 @@ func (c *ChunkState) checkFatal() error {
 	return c.fatalErr
 }
 
-// processChunk hashes/dedups/bookkeeps c.currentChunk (the scanner's current
-// break) and, for a new chunk, hands it to the upload worker pool instead of
-// uploading inline — HandleData's caller (the pxar walk) can move on to
-// scanning the next chunk immediately instead of blocking on this one's
-// network round trip. Shared by HandleData's loop and EOF's final tail
-// chunk, which used to duplicate this whole block.
+// processChunk records c.currentChunk (the scanner's current break) in the
+// index and hands it to the worker pool, which hashes it and sends it if PBS
+// does not have it, so HandleData's caller (the pxar walk) moves on to the
+// next boundary at once. c.currentChunk is a new buffer afterwards. Shared by
+// HandleData's loop, the boundary calls and EOF's final tail chunk.
 func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
 	// A worker may have already latched a fatal error from an earlier chunk
 	// (uploads happen in the background — see uploadJobs) — check before
@@ -547,42 +590,18 @@ func (c *ChunkState) processChunk(client *pbscommon.PBSClient) error {
 		return err
 	}
 
-	// The digest a chunk is published under: sha256(plaintext), or
-	// sha256(plaintext || id_key) when the snapshot is encrypted.
-	bindigest := client.ChunkDigest(c.currentChunk)
-	shahash := hex.EncodeToString(bindigest[:])
-
-	// GetOrSet marks the digest known BEFORE upload confirms, atomically, so
-	// a duplicate of this chunk found later in the same stream (common —
-	// e.g. runs of zeros) is never submitted twice while the first upload is
-	// still in flight (same pattern machinebackuplib's uploadWorker already
-	// uses in production). This is safe even though the upload could still
-	// fail: on any upload failure c.fatalErr is latched and EOF aborts
-	// before AssignDynamicChunks/CloseDynamicIndex, so an optimistically
-	// "known" chunk from a failed run never ends up referenced by a
-	// finalized snapshot (see checkFatal/EOF).
-	if _, known := c.knownChunks.GetOrSet(shahash, true); !known {
-		runLog(c.logContext(), fmt.Sprintf("New chunk[%s] %d bytes", shahash, len(c.currentChunk)))
-		c.uploadJobs <- uploadJob{digest: shahash, data: c.currentChunk}
-	} else {
-		runLog(c.logContext(), fmt.Sprintf("Reuse chunk[%s] %d bytes", shahash, len(c.currentChunk)))
-		c.reusechunk.Add(1)
-	}
-
-	return c.recordChunk(bindigest, shahash, uint64(len(c.currentChunk)))
+	// Its place in the index now, its digest from the worker that hashes
+	// it; the next chunk starts in a new buffer.
+	e := &chunkEntry{offset: c.pos, size: uint64(len(c.currentChunk))}
+	c.uploadJobs <- uploadJob{entry: e, data: c.currentChunk}
+	c.currentChunk = make([]byte, 0, chunkBufferSize)
+	return c.recordChunk(e)
 }
 
 // recordChunk appends a chunk to the index being built and reports progress.
-func (c *ChunkState) recordChunk(bindigest [32]byte, shahash string, size uint64) error {
-	if err := binary.Write(c.chunkdigests, binary.LittleEndian, (c.pos + size)); err != nil {
-		return fmt.Errorf("failed to write chunk offset: %w", err)
-	}
-	if _, err := c.chunkdigests.Write(bindigest[:]); err != nil {
-		return fmt.Errorf("failed to write chunk digest: %w", err)
-	}
-
-	c.assignmentsOffset = append(c.assignmentsOffset, c.pos)
-	c.assignments = append(c.assignments, shahash)
+func (c *ChunkState) recordChunk(e *chunkEntry) error {
+	size := e.size
+	c.entries = append(c.entries, e)
 	c.pos += size
 	c.chunkcount += 1
 
@@ -665,7 +684,6 @@ func (c *ChunkState) HandleData(b []byte, client *pbscommon.PBSClient) error {
 				return err
 			}
 
-			c.currentChunk = make([]byte, 0)
 			b = b[chunkpos:]
 			chunkpos = c.C.Scan(b)
 		}
@@ -686,7 +704,6 @@ func (c *ChunkState) SuggestBoundary(client *pbscommon.PBSClient) error {
 	if err := c.processChunk(client); err != nil {
 		return err
 	}
-	c.currentChunk = make([]byte, 0)
 	c.C.Reset()
 	return nil
 }
@@ -699,7 +716,6 @@ func (c *ChunkState) ForceBoundary(client *pbscommon.PBSClient) error {
 		if err := c.processChunk(client); err != nil {
 			return err
 		}
-		c.currentChunk = make([]byte, 0)
 	}
 	c.C.Reset()
 	return nil
@@ -720,7 +736,24 @@ func (c *ChunkState) InjectKnownChunk(digest [32]byte, size uint64) error {
 		return fmt.Errorf("internal error: reused chunk %s is not in the previous index", shahash)
 	}
 	c.reusechunk.Add(1)
-	return c.recordChunk(digest, shahash, size)
+	return c.recordChunk(&chunkEntry{offset: c.pos, size: size, digest: digest})
+}
+
+// indexList returns the index in the stream's order, as PBS takes it (each
+// chunk's digest and offset), and the index checksum: SHA-256 over each
+// chunk's end offset (u64 little endian) and digest. Call it only once every
+// worker has finished.
+func (c *ChunkState) indexList() (digests []string, offsets []uint64, csum string) {
+	h := sha256.New()
+	var end [8]byte
+	for _, e := range c.entries {
+		binary.LittleEndian.PutUint64(end[:], e.offset+e.size)
+		h.Write(end[:])
+		h.Write(e.digest[:])
+		digests = append(digests, hex.EncodeToString(e.digest[:]))
+		offsets = append(offsets, e.offset)
+	}
+	return digests, offsets, hex.EncodeToString(h.Sum(nil))
 }
 
 func (c *ChunkState) EOF(client *pbscommon.PBSClient) error {
@@ -745,16 +778,17 @@ func (c *ChunkState) EOF(client *pbscommon.PBSClient) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	for k := 0; k < len(c.assignments); k += 128 {
+	allDigests, allOffsets, digest := c.indexList()
+	for k := 0; k < len(allDigests); k += 128 {
 		k2 := k + 128
-		if k2 > len(c.assignments) {
-			k2 = len(c.assignments)
+		if k2 > len(allDigests) {
+			k2 = len(allDigests)
 		}
 
 		// Capture loop variables for closure
 		batchStart, batchEnd := k, k2
-		assignments := c.assignments[batchStart:batchEnd]
-		offsets := c.assignmentsOffset[batchStart:batchEnd]
+		assignments := allDigests[batchStart:batchEnd]
+		offsets := allOffsets[batchStart:batchEnd]
 
 		err := retry.DoWithJitter(ctx, retryConfig, retry.DefaultRetryable, func() error {
 			return client.AssignDynamicChunks(c.wrid, assignments, offsets)
@@ -765,7 +799,6 @@ func (c *ChunkState) EOF(client *pbscommon.PBSClient) error {
 	}
 
 	// Close index with retry
-	digest := hex.EncodeToString(c.chunkdigests.Sum(nil))
 	err := retry.DoWithJitter(ctx, retryConfig, retry.DefaultRetryable, func() error {
 		return client.CloseDynamicIndex(c.wrid, digest, c.pos, c.chunkcount)
 	})

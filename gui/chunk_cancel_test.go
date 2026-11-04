@@ -19,7 +19,7 @@ func TestStoppedUploadsAreDroppedNotFailed(t *testing.T) {
 	c := &ChunkState{cancelCtx: ctx}
 	c.Init(nil, &newchunk, &reusechunk, &failedchunk, haxmap.New[string, bool](), nil, nil, nil, "")
 	for i := 0; i < 3; i++ {
-		c.uploadJobs <- uploadJob{digest: "d", data: []byte("x")}
+		c.uploadJobs <- uploadJob{entry: &chunkEntry{}, data: []byte("x")}
 	}
 	c.closeUploads()
 	c.closeUploads() // a second close (EOF after an error) must not panic
