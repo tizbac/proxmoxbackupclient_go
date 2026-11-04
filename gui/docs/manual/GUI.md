@@ -537,7 +537,7 @@ Schedules run while the GUI is running (in the tray is fine) or in the installed
 | Run an application before the backup | Path or command |
 | Run an application after the backup | Path or command |
 | When the backup finishes, the app window: | **Stays as it is** (default), **Minimises to the tray** or **Closes (the app exits)**. Minimising needs the tray, so it does nothing on Linux, and it does nothing for a run the background service makes |
-| Turn off the computer after the backup | Shuts the computer down when the set finishes. A warning shows while it is ticked |
+| Turn off the computer after the backup | Shuts the computer down when the set finishes. A warning shows while it is ticked. Programs still open are asked to close, not forced, so one with unsaved work can hold the shutdown up |
 
 The actions run in this order when the set finishes: the email, the "after" application, the window choice, then the shutdown last. Closing the app or turning the computer off waits until the other backups and restores already running or waiting at that moment have finished, so it never cuts one short ([section 6.7](#67-several-backups-at-once)); a run that starts later is not waited for.
 

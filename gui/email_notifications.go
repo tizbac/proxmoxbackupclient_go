@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"clientcommon"
+	"pbscommon"
 )
 
 // SetSMTPSettings persists the Preferences > Advanced global SMTP account
@@ -206,18 +207,16 @@ var exitAppAfterBackup = func() {
 	os.Exit(0)
 }
 
-// shutdownComputer requests an OS shutdown. Best-effort: logged on failure,
-// there is nothing more a running backup client can do if the OS itself
-// refuses the request (e.g. insufficient privilege).
+// shutdownComputer requests an OS shutdown (pbscommon.ShutdownComputer: the
+// Windows API, with shutdown.exe to fall back on; shutdown -h on Linux).
+// Best-effort: logged on failure, there is nothing more a running backup
+// client can do if the OS itself refuses the request (e.g. insufficient
+// privilege).
 func shutdownComputer() {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("shutdown", "/s", "/t", "0")
-	default:
-		cmd = exec.Command("shutdown", "-h", "now")
+	method, err := pbscommon.ShutdownComputer("Shutting down after a backup, as its Backup Set asks.")
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("[PostBackup] shutdown failed: %v", err))
+		return
 	}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		writeDebugLog(fmt.Sprintf("[PostBackup] shutdown command failed: %v: %s", err, string(out)))
-	}
+	writeDebugLog("[PostBackup] shutdown requested through " + method)
 }
