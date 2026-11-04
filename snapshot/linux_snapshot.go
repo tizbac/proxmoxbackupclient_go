@@ -327,6 +327,9 @@ func createOne(c snapControl, absPath string, needFiles bool) (*linuxSnapshot, s
 
 	if err := ioctlSetupSnapshot(c.ctlDevice, c.name, device, cowFile, minor); err != nil {
 		os.Remove(cowFile)
+		if errors.Is(err, syscall.ENOSPC) {
+			err = fmt.Errorf("%w: the snapshot keeps its copy-on-write file on the file system it snapshots (%s), which needs free space for it", err, mountpoint)
+		}
 		return nil, "", err
 	}
 
