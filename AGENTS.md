@@ -27,17 +27,45 @@ This is a Go-based backup client for Proxmox Backup Server with multiple binarie
 - `make test` - Run all tests with race detector
 - `make lint` - Run golangci-lint
 - `make security-check` - Run security checks with gosec
+- `make msi` - Build the per-brand Windows MSI installers (Docker required)
 - `make release` - Prepare release packages
 
 ## Important Notes
 
 - The GUI requires Node.js for frontend build (npm install)
-- GUI build requires `wails` CLI tool (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
+- GUI build requires the `wails` CLI. NEVER install it with `@latest`; use the
+  pinned `WAILS_VERSION` in the Makefile:
+  `go install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)`
 - Build process uses security hardening flags
 - Windows service requires admin privileges
 - Cross-compilation uses GOOS and GOARCH environment variables
 - CLI tools are built from respective directories: `directorybackup/`, `machinebackup/`, `nbd/`
 - GUI is built from `gui/` directory using wails build
+
+## Windows MSI builds (`make msi`)
+
+- `make msi` runs `installer/wix/build_msi_linux.sh`, which builds the GUI and
+  service inside a `golang:1.25` Docker container, then runs WiX under Wine.
+  The host needs Docker only; Go, Node, and Wine are not used.
+- The Wails CLI inside that container is pinned by `WAILS_CLI_VERSION` in
+  `installer/wix/build_msi_linux.sh`. Do not change it to `@latest`: newer
+  Wails releases (v2.17+) declare `go 1.26`, while the container image ships
+  Go 1.25 with `GOTOOLCHAIN=local`, so the build aborts with
+  `requires go >= 1.26.0`.
+- Keep `WAILS_CLI_VERSION` (script) and `WAILS_VERSION` (Makefile) in sync with
+  each other and compatible with `gui/go.mod` and the `golang:*` image. When
+  bumping either, actually run `make msi` before committing.
+- The script reuses `gui/build/bin/ProxmoxBackupClient.exe` and
+  `ProxmoxBackupClientSVC.exe` when they are newer than their sources, and
+  rebuilds them otherwise. Never stage host-built (Linux ELF) binaries: the
+  service must be a Windows PE or the installed service fails with 193/1053.
+- MSIs are written to `dist/<Brand>-<version>.msi` for the brands listed in
+  `installer/wix/ProductBody.wxi`.
+- The WiX/Wine image is rebuilt on every run (`docker build`), so Dockerfile
+  changes take effect without a manual `docker build`.
+- Build outputs (`gui/frontend/wailsjs/`, `gui/frontend/dist/`,
+  `gui/build/bin/`) are regenerated and may be rewritten by the build; do not
+  commit mode-only or generated churn unless the Go API actually changed.
 
 ## Testing
 

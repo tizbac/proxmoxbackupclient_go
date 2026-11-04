@@ -85,6 +85,15 @@ echo "==> Version: $VERSION (MSI ProductVersion: $PRODUCT_VERSION)"
 # status c0000135"), so wine only ever runs inside this image.
 WINE_IMAGE="proxmoxbackup-msi-wine:1"
 
+# Wails CLI used to build the GUI. PINNED, never @latest: the floating tag
+# resolves to whichever release is newest, and wails v2.17.x already requires
+# Go >= 1.26 while this script builds inside golang:1.25 with GOTOOLCHAIN=local
+# (the default in the official image). That combination used to abort with
+#     github.com/wailsapp/wails/v2@v2.17.1 requires go >= 1.26.0
+# Keep this equal to (or older than) the wails library in gui/go.mod and make
+# sure the golang:* image below satisfies the CLI's go directive.
+WAILS_CLI_VERSION=${WAILS_CLI_VERSION:-v2.13.0}
+
 WORK=$(mktemp -d)
 
 cleanup() {
@@ -166,6 +175,7 @@ else
     -e NEED_GUI="$NEED_GUI" \
     -e NEED_SVC="$NEED_SVC" \
     -e VERSION="$VERSION" \
+    -e WAILS_CLI_VERSION="$WAILS_CLI_VERSION" \
     -v "$ROOT:/src" \
     -w /src \
     golang:1.25 \
@@ -180,7 +190,9 @@ else
                 apt-get install -y -qq --no-install-recommends nodejs npm >/dev/null
             fi
             if ! command -v wails >/dev/null 2>&1; then
-                go install github.com/wailsapp/wails/v2/cmd/wails@latest
+                # Pinned (see WAILS_CLI_VERSION above): @latest is a moving
+                # target that can demand a newer Go than this image provides.
+                go install "github.com/wailsapp/wails/v2/cmd/wails@${WAILS_CLI_VERSION}"
                 export PATH="$PATH:$(go env GOPATH)/bin"
             fi
             wails build -clean -platform windows/amd64 -ldflags "-X main.appVersion=$VERSION"

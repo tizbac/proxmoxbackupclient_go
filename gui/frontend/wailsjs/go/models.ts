@@ -33,6 +33,7 @@ export namespace api {
 	    cert_fingerprint?: string;
 	    datastore?: string;
 	    namespace?: string;
+	    encryption_key_file?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PBSTicket(source);
@@ -46,6 +47,7 @@ export namespace api {
 	        this.cert_fingerprint = source["cert_fingerprint"];
 	        this.datastore = source["datastore"];
 	        this.namespace = source["namespace"];
+	        this.encryption_key_file = source["encryption_key_file"];
 	    }
 	}
 

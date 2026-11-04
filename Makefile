@@ -7,6 +7,11 @@
 # Falls back to wails.json if not in a git repo
 VERSION := $(shell bash scripts/get-version.sh 2>/dev/null || grep '"productVersion"' gui/wails.json | cut -d'"' -f4)
 
+# Wails CLI version. Pinned deliberately, never @latest: a floating tag can
+# require a newer Go than the toolchain in use (wails v2.17+ needs Go 1.26).
+# installer/wix/build_msi_linux.sh pins the same version for the Docker build.
+WAILS_VERSION ?= v2.13.0
+
 # Build directories
 BUILD_DIR := dist
 CLI_DIR := cmd
@@ -71,7 +76,7 @@ help:
 # Install build dependencies
 install-deps:
 	@echo "📦 Installing dependencies..."
-	go install github.com/wailsapp/wails/v2/cmd/wails@latest
+	go install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)
 	cd gui/frontend && npm install
 
 # CLI Builds
