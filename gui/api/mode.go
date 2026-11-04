@@ -74,14 +74,14 @@ func GetModeDescription(mode ExecutionMode) string {
 	switch mode {
 	case ModeService:
 		return fmt.Sprintf(
-			"✅ Mode Service\n"+
-				"The background service runs the backups with administrator rights.\n"+
+			"✅ Mode Service\n" +
+				"The background service runs the backups with administrator rights.\n" +
 				"VSS (Shadow Copy) works without asking.",
 		)
 	case ModeStandalone:
 		return fmt.Sprintf(
-			"⚠️ Mode Standalone\n"+
-				"The app runs the backups itself, without the service.\n"+
+			"⚠️ Mode Standalone\n" +
+				"The app runs the backups itself, without the service.\n" +
 				"VSS needs the app to run as administrator.",
 		)
 	default:

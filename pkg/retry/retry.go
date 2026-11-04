@@ -14,10 +14,10 @@ var ErrMaxRetriesExceeded = errors.New("maximum retry attempts exceeded")
 
 // Config holds retry configuration
 type Config struct {
-	MaxAttempts int           // Maximum number of retry attempts
+	MaxAttempts  int           // Maximum number of retry attempts
 	InitialDelay time.Duration // Initial delay between retries
-	MaxDelay    time.Duration // Maximum delay between retries
-	Multiplier  float64       // Backoff multiplier (e.g., 2.0 for exponential)
+	MaxDelay     time.Duration // Maximum delay between retries
+	Multiplier   float64       // Backoff multiplier (e.g., 2.0 for exponential)
 }
 
 // DefaultConfig returns a sensible default retry configuration

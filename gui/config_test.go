@@ -56,9 +56,9 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "missing datastore",
 			config: Config{
-				BaseURL:   "https://pbs.example.com:8007",
-				AuthID:    "test@pbs!token",
-				Secret:    "secret123",
+				BaseURL: "https://pbs.example.com:8007",
+				AuthID:  "test@pbs!token",
+				Secret:  "secret123",
 			},
 			wantErr: true,
 		},

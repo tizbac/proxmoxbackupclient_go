@@ -32,8 +32,8 @@ func TestFolderEntries(t *testing.T) {
 		{Path: "Users/Bob", IsDir: true},
 		{Path: "Users/bob/Documents", IsDir: true}, // other case than the set's folder
 		{Path: "Users/bob/Documents/a.txt", Size: 3, MTime: 132224078450000000},
-		{Path: "Users/bob/Documents/pagefile.sys", Size: 9},  // auto-excluded file
-		{Path: "Users/bob/Documents/$RECYCLE.BIN", IsDir: true}, // auto-excluded folder...
+		{Path: "Users/bob/Documents/pagefile.sys", Size: 9},       // auto-excluded file
+		{Path: "Users/bob/Documents/$RECYCLE.BIN", IsDir: true},   // auto-excluded folder...
 		{Path: "Users/bob/Documents/$RECYCLE.BIN/x.txt", Size: 1}, // ...and what is in it
 		{Path: "Users/bob/Documents/sub", IsDir: true},
 		{Path: "Users/bob/Documents/sub/b.tmp", Size: 2}, // set pattern

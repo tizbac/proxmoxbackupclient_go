@@ -76,13 +76,13 @@ func checkIdle(t *testing.T) {
 // free place and starts as soon as one ends.
 func TestQueueRunsDifferentSetsTogether(t *testing.T) {
 	withRunLimit(t, 3)
-	a := startOp(context.Background(),opRequest{name: "Music", kind: opBackup, group: "music"})
-	b := startOp(context.Background(),opRequest{name: "Data", kind: opBackup, group: "data"})
-	c := startOp(context.Background(),opRequest{name: "Software", kind: opBackup, group: "software"})
+	a := startOp(context.Background(), opRequest{name: "Music", kind: opBackup, group: "music"})
+	b := startOp(context.Background(), opRequest{name: "Data", kind: opBackup, group: "data"})
+	c := startOp(context.Background(), opRequest{name: "Software", kind: opBackup, group: "software"})
 	mustStart(t, a, "Music")
 	mustStart(t, b, "Data")
 	mustStart(t, c, "Software")
-	d := startOp(context.Background(),opRequest{name: "Home", kind: opBackup, group: "home"})
+	d := startOp(context.Background(), opRequest{name: "Home", kind: opBackup, group: "home"})
 	w := mustWait(t, d, "a fourth backup")
 	for _, name := range []string{"Music", "Data", "Software"} {
 		if !strings.Contains(w, name) {
@@ -100,17 +100,17 @@ func TestQueueRunsDifferentSetsTogether(t *testing.T) {
 // Two runs of the same backup group never overlap, even with places free.
 func TestQueueSameGroupTakesTurns(t *testing.T) {
 	withRunLimit(t, 3)
-	first := startOp(context.Background(),opRequest{name: "Data (Run now)", kind: opBackup, group: "data"})
+	first := startOp(context.Background(), opRequest{name: "Data (Run now)", kind: opBackup, group: "data"})
 	mustStart(t, first, "first Data run")
-	second := startOp(context.Background(),opRequest{name: "Data", kind: opBackup, group: "data"})
+	second := startOp(context.Background(), opRequest{name: "Data", kind: opBackup, group: "data"})
 	if w := mustWait(t, second, "second Data run"); w != "Data (Run now)" {
 		t.Fatalf("waiting for %q, want the first run", w)
 	}
 	// A restore of the same group waits too.
-	restore := startOp(context.Background(),opRequest{name: "Restore of data", kind: opRestore, group: "data"})
+	restore := startOp(context.Background(), opRequest{name: "Restore of data", kind: opRestore, group: "data"})
 	mustWait(t, restore, "restore of the same group")
 	// Another set is not held up by them.
-	other := startOp(context.Background(),opRequest{name: "Music", kind: opBackup, group: "music"})
+	other := startOp(context.Background(), opRequest{name: "Music", kind: opBackup, group: "music"})
 	mustStart(t, other, "Music beside Data")
 	first.handle.Release()
 	mustStart(t, second, "second Data run")
@@ -124,17 +124,17 @@ func TestQueueSameGroupTakesTurns(t *testing.T) {
 // One machine backup at a time, but it runs beside folder backups.
 func TestQueueOneMachineBackupBesideFolders(t *testing.T) {
 	withRunLimit(t, 3)
-	long := startOp(context.Background(),opRequest{name: "Music first backup", kind: opBackup, group: "music"})
+	long := startOp(context.Background(), opRequest{name: "Music first backup", kind: opBackup, group: "music"})
 	mustStart(t, long, "the long folder backup")
-	m1 := startOp(context.Background(),opRequest{name: "Full Machine", kind: opMachine, group: "machine-a"})
+	m1 := startOp(context.Background(), opRequest{name: "Full Machine", kind: opMachine, group: "machine-a"})
 	mustStart(t, m1, "machine backup beside the folder backup")
-	m2 := startOp(context.Background(),opRequest{name: "Other disk image", kind: opMachine, group: "machine-b"})
+	m2 := startOp(context.Background(), opRequest{name: "Other disk image", kind: opMachine, group: "machine-b"})
 	if w := mustWait(t, m2, "second machine backup"); w != "Full Machine" {
 		t.Fatalf("second machine backup waits for %q, want Full Machine", w)
 	}
 	// A folder backup asked after it still starts: the machine backup waits
 	// for the machine place, not for a free place.
-	f := startOp(context.Background(),opRequest{name: "Data", kind: opBackup, group: "data"})
+	f := startOp(context.Background(), opRequest{name: "Data", kind: opBackup, group: "data"})
 	mustStart(t, f, "folder backup asked after a waiting machine backup")
 	m1.handle.Release()
 	mustStart(t, m2, "second machine backup")
@@ -147,9 +147,9 @@ func TestQueueOneMachineBackupBesideFolders(t *testing.T) {
 // One restore at a time.
 func TestQueueOneRestoreAtATime(t *testing.T) {
 	withRunLimit(t, 3)
-	r1 := startOp(context.Background(),opRequest{name: "Restore A", kind: opRestore, group: "a"})
+	r1 := startOp(context.Background(), opRequest{name: "Restore A", kind: opRestore, group: "a"})
 	mustStart(t, r1, "first restore")
-	r2 := startOp(context.Background(),opRequest{name: "Restore B", kind: opRestore, group: "b"})
+	r2 := startOp(context.Background(), opRequest{name: "Restore B", kind: opRestore, group: "b"})
 	mustWait(t, r2, "second restore")
 	r1.handle.Release()
 	mustStart(t, r2, "second restore")
@@ -161,13 +161,13 @@ func TestQueueOneRestoreAtATime(t *testing.T) {
 // nothing asked after it starts before it has had its turn.
 func TestQueueExclusiveRunsAlone(t *testing.T) {
 	withRunLimit(t, 3)
-	a := startOp(context.Background(),opRequest{name: "Music", kind: opBackup, group: "music"})
+	a := startOp(context.Background(), opRequest{name: "Music", kind: opBackup, group: "music"})
 	mustStart(t, a, "Music")
-	rb := startOp(context.Background(),opRequest{name: "Roll back: Data", kind: opExclusive})
+	rb := startOp(context.Background(), opRequest{name: "Roll back: Data", kind: opExclusive})
 	if w := mustWait(t, rb, "roll back"); w != "Music" {
 		t.Fatalf("roll back waits for %q, want Music", w)
 	}
-	later := startOp(context.Background(),opRequest{name: "Software", kind: opBackup, group: "software"})
+	later := startOp(context.Background(), opRequest{name: "Software", kind: opBackup, group: "software"})
 	if w := mustWait(t, later, "backup asked after the roll back"); w != "Roll back: Data" {
 		t.Fatalf("later backup waits for %q, want the roll back", w)
 	}
@@ -187,13 +187,13 @@ func TestQueueExclusiveRunsAlone(t *testing.T) {
 // Waiting runs start in the order they asked, one place at a time.
 func TestQueueKeepsOrder(t *testing.T) {
 	withRunLimit(t, 1)
-	first := startOp(context.Background(),opRequest{name: "first", kind: opBackup, group: "1"})
+	first := startOp(context.Background(), opRequest{name: "first", kind: opBackup, group: "1"})
 	mustStart(t, first, "first")
 	var order []string
 	var mu sync.Mutex
 	var waiters []*pendingOp
 	for _, n := range []string{"second", "third", "fourth"} {
-		p := startOp(context.Background(),opRequest{name: n, kind: opBackup, group: n})
+		p := startOp(context.Background(), opRequest{name: n, kind: opBackup, group: n})
 		mustWait(t, p, n)
 		waiters = append(waiters, p)
 		n := n
@@ -223,7 +223,7 @@ func TestQueueKeepsOrder(t *testing.T) {
 // Stop on a run still waiting ends its wait at once and gives up its place.
 func TestQueueStopWhileQueued(t *testing.T) {
 	withRunLimit(t, 1)
-	a := startOp(context.Background(),opRequest{name: "Music", kind: opBackup, group: "music"})
+	a := startOp(context.Background(), opRequest{name: "Music", kind: opBackup, group: "music"})
 	mustStart(t, a, "Music")
 	ctx, cancel := context.WithCancel(context.Background())
 	b := startOp(ctx, opRequest{name: "Data", kind: opBackup, group: "data"})
@@ -237,7 +237,7 @@ func TestQueueStopWhileQueued(t *testing.T) {
 	if !errors.Is(b.err, context.Canceled) {
 		t.Fatalf("stopped run got %v, want context.Canceled", b.err)
 	}
-	c := startOp(context.Background(),opRequest{name: "Software", kind: opBackup, group: "software"})
+	c := startOp(context.Background(), opRequest{name: "Software", kind: opBackup, group: "software"})
 	mustWait(t, c, "Software")
 	a.handle.Release()
 	mustStart(t, c, "Software, not the stopped Data")
@@ -248,9 +248,9 @@ func TestQueueStopWhileQueued(t *testing.T) {
 // A limit of 1 runs everything one at a time, as before.
 func TestQueueLimitOneIsOneAtATime(t *testing.T) {
 	withRunLimit(t, 1)
-	a := startOp(context.Background(),opRequest{name: "A", kind: opBackup, group: "a"})
+	a := startOp(context.Background(), opRequest{name: "A", kind: opBackup, group: "a"})
 	mustStart(t, a, "A")
-	b := startOp(context.Background(),opRequest{name: "B", kind: opMachine, group: "b"})
+	b := startOp(context.Background(), opRequest{name: "B", kind: opMachine, group: "b"})
 	mustWait(t, b, "B")
 	a.handle.Release()
 	mustStart(t, b, "B")
@@ -263,13 +263,13 @@ func TestQueueLimitOneIsOneAtATime(t *testing.T) {
 // long backup never ends during the test.
 func TestQueueLongFirstBackupDoesNotBlockScheduledRuns(t *testing.T) {
 	withRunLimit(t, 3)
-	long := startOp(context.Background(),opRequest{name: "Music first backup", kind: opBackup, group: "music"})
+	long := startOp(context.Background(), opRequest{name: "Music first backup", kind: opBackup, group: "music"})
 	mustStart(t, long, "the first backup")
 	for i := 0; i < 10; i++ {
-		data := startOp(context.Background(),opRequest{name: "Data", kind: opBackup, group: "data"})
+		data := startOp(context.Background(), opRequest{name: "Data", kind: opBackup, group: "data"})
 		mustStart(t, data, "scheduled Data run")
 		if i%3 == 0 {
-			m := startOp(context.Background(),opRequest{name: "Full Machine", kind: opMachine, group: "machine"})
+			m := startOp(context.Background(), opRequest{name: "Full Machine", kind: opMachine, group: "machine"})
 			mustStart(t, m, "machine backup")
 			m.handle.Release()
 		}
@@ -283,7 +283,7 @@ func TestQueueLongFirstBackupDoesNotBlockScheduledRuns(t *testing.T) {
 // not for ones that ask later.
 func TestWaitForEarlierOperations(t *testing.T) {
 	withRunLimit(t, 3)
-	a := startOp(context.Background(),opRequest{name: "Music", kind: opBackup, group: "music"})
+	a := startOp(context.Background(), opRequest{name: "Music", kind: opBackup, group: "music"})
 	mustStart(t, a, "Music")
 	waited := make(chan struct{})
 	go func() {
@@ -291,7 +291,7 @@ func TestWaitForEarlierOperations(t *testing.T) {
 		close(waited)
 	}()
 	time.Sleep(50 * time.Millisecond)
-	later := startOp(context.Background(),opRequest{name: "Data", kind: opBackup, group: "data"})
+	later := startOp(context.Background(), opRequest{name: "Data", kind: opBackup, group: "data"})
 	mustStart(t, later, "Data")
 	select {
 	case <-waited:

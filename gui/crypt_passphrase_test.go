@@ -111,11 +111,11 @@ func TestSaveTimeUnlockNeverPrompts(t *testing.T) {
 
 func TestMergeStoredPassphrase(t *testing.T) {
 	cases := []struct {
-		name                          string
-		prevPath, prevPass, newPath   string
-		typed                         string
-		clear                         bool
-		want                          string
+		name                        string
+		prevPath, prevPass, newPath string
+		typed                       string
+		clear                       bool
+		want                        string
 	}{
 		{"keep when blank", "a", "old", "a", "", false, "old"},
 		{"typed replaces", "a", "old", "a", "new", false, "new"},

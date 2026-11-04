@@ -9,31 +9,31 @@ import (
 // TestChunkerNew verifies chunker initialization
 func TestChunkerNew(t *testing.T) {
 	tests := []struct {
-		name         string
-		avgSize      uint64
-		wantMinSize  uint64
-		wantMaxSize  uint64
+		name           string
+		avgSize        uint64
+		wantMinSize    uint64
+		wantMaxSize    uint64
 		wantWindowSize uint64
 	}{
 		{
-			name:         "1MB average",
-			avgSize:      1024 * 1024,
-			wantMinSize:  256 * 1024,  // avg / 4
-			wantMaxSize:  4096 * 1024, // avg * 4
+			name:           "1MB average",
+			avgSize:        1024 * 1024,
+			wantMinSize:    256 * 1024,  // avg / 4
+			wantMaxSize:    4096 * 1024, // avg * 4
 			wantWindowSize: 64,
 		},
 		{
-			name:         "4MB average",
-			avgSize:      4 * 1024 * 1024,
-			wantMinSize:  1024 * 1024,  // avg / 4
-			wantMaxSize:  16 * 1024 * 1024, // avg * 4
+			name:           "4MB average",
+			avgSize:        4 * 1024 * 1024,
+			wantMinSize:    1024 * 1024,      // avg / 4
+			wantMaxSize:    16 * 1024 * 1024, // avg * 4
 			wantWindowSize: 64,
 		},
 		{
-			name:         "Small 64KB average",
-			avgSize:      64 * 1024,
-			wantMinSize:  16 * 1024,
-			wantMaxSize:  256 * 1024,
+			name:           "Small 64KB average",
+			avgSize:        64 * 1024,
+			wantMinSize:    16 * 1024,
+			wantMaxSize:    256 * 1024,
 			wantWindowSize: 64,
 		},
 	}

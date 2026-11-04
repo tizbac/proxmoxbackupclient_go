@@ -248,4 +248,3 @@ func TestClassicPXARRejectsPayloadRef(t *testing.T) {
 		t.Fatal("payload reference in a classic archive was accepted")
 	}
 }
-

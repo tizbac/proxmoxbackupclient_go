@@ -10,9 +10,9 @@ import (
 func TestNewestSnapshotSince(t *testing.T) {
 	start := time.Unix(1_800_000_000, 0)
 	snaps := []pbscommon.BackupManifest{
-		{BackupTime: start.Add(-2 * time.Hour).Unix()},     // an earlier run
-		{BackupTime: start.Add(-30 * time.Second).Unix()},  // this run, server clock 30 s behind
-		{BackupTime: start.Add(-90 * time.Second).Unix()},  // too early even with the leeway
+		{BackupTime: start.Add(-2 * time.Hour).Unix()},    // an earlier run
+		{BackupTime: start.Add(-30 * time.Second).Unix()}, // this run, server clock 30 s behind
+		{BackupTime: start.Add(-90 * time.Second).Unix()}, // too early even with the leeway
 	}
 	got := newestSnapshotSince(snaps, start)
 	if got == nil || got.BackupTime != start.Add(-30*time.Second).Unix() {
@@ -25,8 +25,8 @@ func TestNewestSnapshotSince(t *testing.T) {
 
 func TestSnapshotGroup(t *testing.T) {
 	cases := []struct {
-		job          ScheduledJob
-		typ, wantID  string
+		job         ScheduledJob
+		typ, wantID string
 	}{
 		{ScheduledJob{BackupType: "directory", BackupID: "pc-data"}, "host", "pc-data"},
 		{ScheduledJob{BackupType: "machine", BackupID: "pc"}, "host", "pc"},
