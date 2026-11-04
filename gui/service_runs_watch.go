@@ -31,22 +31,35 @@ type followedServiceRun struct {
 	file   string
 }
 
+// serviceRunPollEvery is how often the window asks the service about a run it
+// shows; serviceRunsIdleEvery is how often it lists the runs while it shows
+// none of the service's own.
+const (
+	serviceRunPollEvery  = 200 * time.Millisecond
+	serviceRunsIdleEvery = 3 * time.Second
+)
+
 // watchServiceRuns shows the service's own runs in this window. While the
-// service runs the schedules, it lists the service's runs every 3 s and
-// follows every one this window did not start (scheduled runs, several at
-// once), sending the same progress, pause and completion events as a run of
-// its own, each under its own run id: each gets its card, with Pause and
-// Stop, which go to the service.
+// service runs the schedules, it lists the service's runs (five times a
+// second while it follows one, every 3 s otherwise) and follows every one this window
+// did not start (scheduled runs, several at once), sending the same progress,
+// pause and completion events as a run of its own, each under its own run id:
+// each gets its card, with Pause and Stop, which go to the service.
 //
 // While the app holds no token (not connected yet, or dropped after a while
 // in the tray: token_drop.go), the run list would only be refused: it reads
 // the service's public status instead, which needs none, for the tray. Either
 // request also tells whether the service is running (gui/api/answer.go).
 func (a *App) watchServiceRuns() {
-	ticker := time.NewTicker(3 * time.Second)
+	ticker := time.NewTicker(serviceRunPollEvery)
 	defer ticker.Stop()
 	following := map[string]*followedServiceRun{}
-	for range ticker.C {
+	var last time.Time
+	for now := range ticker.C {
+		if len(following) == 0 && now.Sub(last) < serviceRunsIdleEvery-serviceRunPollEvery/2 {
+			continue
+		}
+		last = now
 		if a.ctx == nil || a.mode != api.ModeService {
 			following = map[string]*followedServiceRun{}
 			latestServiceRuns.Store(nil)

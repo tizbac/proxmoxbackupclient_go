@@ -795,7 +795,9 @@ func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
 		}
 	}
 	writeDebugLog(fmt.Sprintf("[Service Mode] Starting progress polling for job: %s", jobID))
-	ticker := time.NewTicker(3 * time.Second) // Poll every 3 seconds
+	// Five times a second, so the card moves as a run of the window's own
+	// does (cardRefresh): the status is a small answer from the local service.
+	ticker := time.NewTicker(serviceRunPollEvery)
 	defer ticker.Stop()
 	// watchServiceRuns leaves this run to us.
 	polledRuns.Store(jobID, struct{}{})
@@ -810,7 +812,7 @@ func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
 	// service restart that dropped the progress map) would poll forever. Give up
 	// after a run of consecutive failures so the goroutine can't leak.
 	consecutiveErrors := 0
-	const maxConsecutiveErrors = 20 // ~60s at 3s interval
+	const maxConsecutiveErrors = int(time.Minute / serviceRunPollEvery) // ~60s
 
 	for range ticker.C {
 		// Without the token (dropped while the window was in the tray, see
@@ -823,7 +825,10 @@ func (a *App) pollBackupProgress(jobID string, done chan<- serviceRunOutcome) {
 		progress, err := a.apiClient.GetBackupStatus(jobID)
 		if err != nil {
 			consecutiveErrors++
-			writeDebugLog(fmt.Sprintf("[Service Mode] Failed to get progress (%d/%d): %v", consecutiveErrors, maxConsecutiveErrors, err))
+			// The first failure and then about every 5 s, not every poll.
+			if consecutiveErrors%25 == 1 {
+				writeDebugLog(fmt.Sprintf("[Service Mode] Failed to get progress (%d/%d): %v", consecutiveErrors, maxConsecutiveErrors, err))
+			}
 			if consecutiveErrors >= maxConsecutiveErrors {
 				writeDebugLog("[Service Mode] Giving up polling after repeated failures")
 				if a.ctx != nil {

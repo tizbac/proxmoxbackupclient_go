@@ -524,9 +524,10 @@ func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 	totalJobs := len(s.backupProgress)
 	s.progressMutex.RUnlock()
 
-	log.Printf("[API] Progress query for %s: exists=%v, total_jobs=%d", jobID, exists, totalJobs)
-
+	// The app asks five times a second while it shows a run: only a miss is
+	// logged.
 	if !exists {
+		log.Printf("[API] Progress query for %s: not found, total_jobs=%d", jobID, totalJobs)
 		log.Printf("[API] Available job IDs: %v", func() []string {
 			s.progressMutex.RLock()
 			defer s.progressMutex.RUnlock()
