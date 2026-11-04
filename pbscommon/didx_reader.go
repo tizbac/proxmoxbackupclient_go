@@ -353,6 +353,14 @@ func (r *DIDXReaderAt) ensureChunk(ci int) ([]byte, error) {
 	}
 
 	r.inflightMu.Lock()
+	// Look again: another fetch of ci may have finished between the miss above
+	// and taking the lock. fetchOnce caches before its inflight entry goes, so
+	// with ci not in flight the cache is now the whole truth. Without this the
+	// chunk was fetched twice, about 1 run in 8 of TestDIDXReaderAtCachesChunks.
+	if data, ok := r.cache.get(ci); ok {
+		r.inflightMu.Unlock()
+		return data, nil
+	}
 	if ch, ok := r.inflight[ci]; ok {
 		r.inflightMu.Unlock()
 		<-ch
