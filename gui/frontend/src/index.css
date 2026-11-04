@@ -598,12 +598,29 @@ body {
 }
 
 .progress {
+    position: relative;
     width: 100%;
     height: 24px;
     background: #e2e8f0;
     border-radius: 12px;
     overflow: hidden;
     margin: 20px 0;
+}
+
+/* The percentage, centred on the whole bar rather than inside the filled
+   part, where at a few percent it was squeezed into a sliver and could not
+   be read. A light halo keeps the dark figure readable over the fill too. */
+.progress-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+    color: #1a202c;
+    text-shadow: 0 0 3px rgba(255, 255, 255, 0.95), 0 0 6px rgba(255, 255, 255, 0.8);
+    pointer-events: none;
 }
 
 .progress-bar {

@@ -3638,14 +3638,10 @@ function App() {
           className={'progress-bar' + (backupFirstActive ? ' progress-bar-backupfirst' : '')}
           style={{
             width: `${shownRestorePct}%`,
-            fontSize: '14px',
-            lineHeight: '30px',
-            transition: 'width 0.3s ease',
-            fontWeight: 'bold'
+            transition: 'width 0.3s ease'
           }}
-        >
-          {shownRestorePct}%
-        </div>
+        />
+        <span className="progress-label">{shownRestorePct}%</span>
       </div>
 
       {/* Same fixed layout as the backup card. */}
@@ -4497,14 +4493,10 @@ function App() {
                   className="progress-bar"
                   style={{
                     width: `${shownProgress}%`,
-                    fontSize: '14px',
-                    lineHeight: '30px',
-                    transition: 'width 0.3s ease',
-                    fontWeight: 'bold'
+                    transition: 'width 0.3s ease'
                   }}
-                >
-                  {shownProgress}%
-                </div>
+                />
+                <span className="progress-label">{shownProgress}%</span>
               </div>
 
               {/* Every row is always there, in a fixed order, so nothing moves
