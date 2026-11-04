@@ -22,7 +22,7 @@ func poolChunks(upload func(wrid uint64, digest string, data []byte) error) (*Ch
 	newchunk, reusechunk := new(atomic.Uint64), new(atomic.Uint64)
 	c := &ChunkState{}
 	c.reset(newchunk, reusechunk, haxmap.New[string, bool]())
-	c.startUploads(upload)
+	c.startUploads(func(b []byte) [32]byte { return sha256.Sum256(b) }, upload)
 	return c, newchunk, reusechunk
 }
 
@@ -79,7 +79,7 @@ func TestUploadPoolSendsInParallel(t *testing.T) {
 	if err := c.uploadErr(); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(c.assignments, ","); got != strings.Join(want, ",") {
+	if digests, _, _ := c.indexList(); strings.Join(digests, ",") != strings.Join(want, ",") {
 		t.Errorf("index order differs from the stream's")
 	}
 	if len(sent) != 40 {
