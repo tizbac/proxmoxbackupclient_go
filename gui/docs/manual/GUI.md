@@ -583,6 +583,12 @@ A backup reads and then uploads, so it goes no faster than the lower of **Disk r
 
 With the background service the limits are the service's and hold for every run it makes. Restores and browsing in the app use the same limits, but the app has its own share of them, apart from the service's.
 
+### Upload threads
+
+**Preferences > Backup Options > Upload threads** is how many chunks a backup sends to PBS at a time. **Auto**, the default, starts with one and allows one more for every 4 Mbit/s of upload speed it measures, up to 8. On a local network a backup soon sends 8 at a time, which is about twice as fast as one by one; on a slow link, such as a home connection to a PBS somewhere else, it sends one or two, so each chunk arrives in seconds rather than minutes and the link is not shared out so thinly that PBS goes quiet for minutes at a time. Hashing the data and checking it against the chunks PBS already has always use all the workers, whatever this is set to.
+
+Choose a number from 1 to 8 to override Auto. A change applies at once, also to backups already running. With the background service the setting is the service's.
+
 ### Compression
 
 **Preferences > Backup Options > Compression** sets how hard backup data is compressed before it is sent to PBS: **Fastest**, **Default (zstd level 3)**, **Better** or **Best**. PBS stores the data as it arrives and does not compress it again, so a higher level sends less and uses less space on the datastore, for more processor time on this computer. Default suits most computers; Fastest helps a slow computer on a fast network, Better or Best a fast computer on a slow link.

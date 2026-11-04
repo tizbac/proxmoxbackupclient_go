@@ -51,8 +51,8 @@ let PauseBackup, ResumeBackup, GetBackupPauseState
 // Several backups at once: each run's own Pause, Resume and Stop
 let GetBackupRuns, PauseBackupRun, ResumeBackupRun, CancelBackupRun, SetMaxConcurrentRuns
 // Preferences > Backup Options: speed limits shared by every run, and the
-// compression level every backup uses
-let SetSpeedLimits, SetCompressionLevel
+// compression level every backup uses, and how many chunks go up at a time
+let SetSpeedLimits, SetCompressionLevel, SetUploadThreads
 // The background service's settings (upstream's strict model)
 let ConnectService, IsServiceConnected, UseOwnSettings, OwnSetsCount, ConnectServiceCopyingOwn
 // Own settings: the computer's PBS servers, without their logins
@@ -152,6 +152,7 @@ if (window.go) {
   SetMaxConcurrentRuns = window.go.main.App.SetMaxConcurrentRuns
   SetSpeedLimits = window.go.main.App.SetSpeedLimits
   SetCompressionLevel = window.go.main.App.SetCompressionLevel
+  SetUploadThreads = window.go.main.App.SetUploadThreads
 }
 
 // Wails events + runtime (open external URLs in the system browser)
@@ -4285,6 +4286,36 @@ function App() {
                       </div>
                       <div className="info-box" style={{marginTop: '10px'}}>
                         ℹ️ {t('speedLimitsHint')}
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{marginTop: '24px'}}>
+                      <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                        <label htmlFor="uploadThreads">{t('uploadThreadsLabel')}</label>
+                        <select
+                          id="uploadThreads"
+                          style={{width: '120px'}}
+                          value={config.upload_threads || 0}
+                          onChange={async (e) => {
+                            const n = parseInt(e.target.value) || 0
+                            const before = config.upload_threads || 0
+                            setConfig({...config, upload_threads: n})
+                            if (!SetUploadThreads) return
+                            try {
+                              await SetUploadThreads(n)
+                              showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                            } catch (err) {
+                              showStatus(`❌ ${err}`, 'error')
+                              setConfig({...config, upload_threads: before})
+                            }
+                          }}
+                        >
+                          <option value={0}>{t('uploadThreadsAuto')}</option>
+                          {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </div>
+                      <div className="info-box" style={{marginTop: '10px'}}>
+                        ℹ️ {t('uploadThreadsHint')}
                       </div>
                     </div>
 

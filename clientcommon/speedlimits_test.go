@@ -53,3 +53,30 @@ func TestSpeedLimitsApply(t *testing.T) {
 		t.Errorf("none: line %q, upload %d", line, pbscommon.SpeedLimit(pbscommon.LimitUpload))
 	}
 }
+
+// -upload-threads takes 0 (auto) to 8, overrides the file, and is printed.
+func TestUploadThreads(t *testing.T) {
+	t.Cleanup(func() { SpeedLimits{}.ApplySpeedLimits() })
+	fs := flag.NewFlagSet("tool", flag.ContinueOnError)
+	apply := SpeedLimitFlags(fs)
+	if err := fs.Parse([]string{"-upload-threads", "2"}); err != nil {
+		t.Fatal(err)
+	}
+	l := SpeedLimits{UploadMBps: 5, UploadThreads: 6} // from the file
+	apply(&l)
+	if l != (SpeedLimits{UploadMBps: 5, UploadThreads: 2}) {
+		t.Errorf("settings %+v", l)
+	}
+	if p := (SpeedLimits{UploadThreads: 9}).SpeedLimitProblem(); p != "-upload-threads is 9: use 0 (auto) to 8" {
+		t.Errorf("9: %q", p)
+	}
+	if line := l.ApplySpeedLimits(); line != "Speed limits: upload 5 MB/s, download none, disk read none; Upload threads: 2" || pbscommon.UploadThreads() != 2 {
+		t.Errorf("line %q, threads %d", line, pbscommon.UploadThreads())
+	}
+	if line := (SpeedLimits{UploadThreads: 1}).ApplySpeedLimits(); line != "Upload threads: 1" {
+		t.Errorf("threads only: %q", line)
+	}
+	if (SpeedLimits{}).ApplySpeedLimits(); pbscommon.UploadThreads() != 0 {
+		t.Errorf("auto: %d", pbscommon.UploadThreads())
+	}
+}

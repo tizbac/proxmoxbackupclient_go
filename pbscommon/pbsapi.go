@@ -278,6 +278,11 @@ type PBSClient struct {
 
 	// sentBytes totals the encoded size of every chunk uploaded (see SentBytes).
 	sentBytes atomic.Uint64
+
+	// uploads holds this client's chunk uploads to the number allowed at a
+	// time (upload_threads.go).
+	uploadsMu sync.Mutex
+	uploads   *uploadGate
 }
 
 // SentBytes is the size of the chunks this client has uploaded as they went
@@ -960,6 +965,13 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 	// not caught by the transport's pings, and the backup waited on it for
 	// ever (tizbac/proxmoxbackupclient_go#59). Failing lets the caller's
 	// retry send the chunk again.
+	//
+	// The deadline starts once the upload may go (upload_threads.go): the
+	// wait for a turn is not part of it.
+	gate := pbs.uploadGate()
+	gate.acquire()
+	sent := 0
+	defer func() { gate.release(sent) }()
 	ctx, cancel := context.WithTimeout(context.Background(), chunkUploadTimeout)
 	defer cancel()
 	req, err2 := http.NewRequestWithContext(ctx, "POST", pbs.BaseURL+suburl+q.Encode(), bytes.NewBuffer(outBuffer))
@@ -984,7 +996,19 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 	}
 
 	pbs.sentBytes.Add(uint64(len(outBuffer)))
+	sent = len(outBuffer)
 	return nil
+}
+
+// uploadGate is the session's upload gate (upload_threads.go), made with the
+// first upload.
+func (pbs *PBSClient) uploadGate() *uploadGate {
+	pbs.uploadsMu.Lock()
+	defer pbs.uploadsMu.Unlock()
+	if pbs.uploads == nil {
+		pbs.uploads = newUploadGate()
+	}
+	return pbs.uploads
 }
 
 func (pbs *PBSClient) AssignDynamicChunks(writerid uint64, digests []string, offsets []uint64) error {
@@ -1413,10 +1437,16 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 	// connections and detect dead connections quickly. Without this, a silently
 	// dropped connection (firewall, NAT timeout, etc.) only manifests when the
 	// next chunk upload fails, wasting minutes of backup time.
+	//
+	// The PING waits behind the chunk data already handed to the socket, and
+	// on a slow link that can be several MB: at 1 Mbit/s each MB is 8 s. With
+	// 15 s a working connection was given up while it uploaded (2026-11-04),
+	// so the answer may take 45 s; a dead connection is still found within
+	// about 75 s.
 	pbs.Client = http.Client{
 		Transport: &http2.Transport{
 			ReadIdleTimeout: 30 * time.Second,
-			PingTimeout:     15 * time.Second,
+			PingTimeout:     45 * time.Second,
 
 			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
 

@@ -21,14 +21,17 @@ const MaxSpeedLimitMBps = 100000
 // call it whenever their settings are loaded or replaced (start, ReloadConfig
 // before each run, the service's settings arriving in the app) and after
 // SetSpeedLimits, so a change applies at once, also to runs already going.
+//
+// Upload threads (Preferences > Backup Options) go to pbscommon the same way.
 func applySpeedLimits(c *Config) {
-	var up, down, disk int
+	var up, down, disk, threads int
 	if c != nil {
-		up, down, disk = c.UploadLimitMBps, c.DownloadLimitMBps, c.DiskReadLimitMBps
+		up, down, disk, threads = c.UploadLimitMBps, c.DownloadLimitMBps, c.DiskReadLimitMBps, c.UploadThreads
 	}
 	pbscommon.SetSpeedLimit(pbscommon.LimitUpload, mbpsToBytes(up))
 	pbscommon.SetSpeedLimit(pbscommon.LimitDownload, mbpsToBytes(down))
 	pbscommon.SetSpeedLimit(pbscommon.LimitDiskRead, mbpsToBytes(disk))
+	pbscommon.SetUploadThreads(threads) // out of range (hand-edited): auto
 }
 
 // mbpsToBytes turns a setting in MB/s into bytes per second; anything out of
@@ -62,5 +65,24 @@ func (a *App) SetSpeedLimits(upload, download, diskRead int) error {
 	}
 	applySpeedLimits(a.config)
 	writeDebugLog(fmt.Sprintf("Speed limits set: upload %d MB/s, download %d MB/s, disk read %d MB/s (0 = none)", upload, download, diskRead))
+	return nil
+}
+
+// SetUploadThreads saves Preferences > Backup Options "Upload threads": how
+// many chunks a backup sends to PBS at a time, 1 to MaxUploadThreads, or 0
+// for auto. It applies at once, also to backups already running.
+func (a *App) SetUploadThreads(n int) error {
+	if n < 0 || n > pbscommon.MaxUploadThreads {
+		return fmt.Errorf("upload threads must be auto (0) or between 1 and %d", pbscommon.MaxUploadThreads)
+	}
+	if a.delegated() {
+		return a.serviceCall("SetUploadThreads", n)
+	}
+	a.config.UploadThreads = n
+	if err := a.config.Save(); err != nil {
+		return fmt.Errorf("failed to save the upload threads setting: %w", err)
+	}
+	applySpeedLimits(a.config)
+	writeDebugLog(fmt.Sprintf("Upload threads set to %d (0 = auto)", n))
 	return nil
 }

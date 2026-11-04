@@ -133,6 +133,10 @@ type Config struct {
 	DownloadLimitMBps int `json:"download_limit_mbps,omitempty"`
 	DiskReadLimitMBps int `json:"disk_read_limit_mbps,omitempty"`
 
+	// UploadThreads is how many chunks a backup sends to PBS at a time, 1 to
+	// pbscommon.MaxUploadThreads, or 0 for auto (pbscommon/upload_threads.go).
+	UploadThreads int `json:"upload_threads,omitempty"`
+
 	// CompressionLevel is how hard chunks are compressed before they go to
 	// PBS, for every backup this computer makes (compression.go): fastest,
 	// default (zstd level 3), better or best. Empty means default. Backup
