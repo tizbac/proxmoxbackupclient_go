@@ -698,6 +698,10 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			if progressCallback == nil {
 				return false
 			}
+			// By what is read, leaving out what goes in as zeros unread.
+			if f, ok := jp.readFraction(); ok {
+				return progressCallback(f, message)
+			}
 			return progressCallback(jobProgressFraction(baseSize, devSize, fraction, totalSize), message)
 		}
 		if isPhysicalDrive(dev) {

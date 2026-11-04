@@ -175,6 +175,12 @@ type BackupProgressStats struct {
 	Partition   string `json:"partition,omitempty"`
 	// Unreadable is how much of the disk could not be read (zeros in the image).
 	Unreadable uint64 `json:"unreadable,omitempty"`
+	// ReadDone and ReadTotal leave out what goes into the image as zeros
+	// unread (free space, partitions left out): Percent and the time
+	// remaining follow them, while BytesDone/BytesTotal keep the disk sizes
+	// for "Processed".
+	ReadDone  uint64 `json:"read_done,omitempty"`
+	ReadTotal uint64 `json:"read_total,omitempty"`
 	// RetryAt (Unix ms) is set while a machine backup waits to start again
 	// after losing its connection (Phase "retry_wait"); Attempt is the one
 	// coming, of Attempts.
@@ -211,6 +217,8 @@ func (s *BackupProgressStats) event() map[string]interface{} {
 		"diskDone":      s.DiskDone,
 		"partition":     s.Partition,
 		"unreadable":    s.Unreadable,
+		"readDone":      s.ReadDone,
+		"readTotal":     s.ReadTotal,
 		"retryAt":       s.RetryAt,
 		"attempt":       s.Attempt,
 		"attempts":      s.Attempts,

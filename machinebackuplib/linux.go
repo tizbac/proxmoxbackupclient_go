@@ -510,8 +510,37 @@ func copySegments(disk io.ReaderAt, dev string, segments []diskSegment, total ui
 		return true
 	}
 
+	// Every segment's source and free-space map first, so that the progress
+	// counts only what will be read from the first block on
+	// (JobProgress.ToSkip), with the segments left out.
+	srcs := make([]io.ReaderAt, len(segments))
+	useds := make([]*usedMap, len(segments))
+	for i, seg := range segments {
+		length := seg.end - seg.start
+		if seg.skip {
+			jp.addToSkip(length)
+			continue
+		}
+		srcs[i] = disk
+		switch {
+		case seg.snapDev != "":
+			sf, err := os.Open(seg.snapDev)
+			if err != nil {
+				return err
+			}
+			defer sf.Close()
+			srcs[i] = sf
+			useds[i] = segmentUsedMap(sf, int64(length), seg.cowFile, readFree, "snapshot "+seg.snapDev)
+		case seg.rawFS:
+			useds[i] = segmentUsedMap(io.NewSectionReader(disk, int64(seg.start), int64(length)), int64(length), "", readFree, fmt.Sprintf("%s at %d", dev, seg.start))
+		}
+		if useds[i] != nil {
+			jp.addToSkip(useds[i].skippable(length))
+		}
+	}
+
 	block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
-	for _, seg := range segments {
+	for i, seg := range segments {
 		length := seg.end - seg.start
 		if seg.skip {
 			// Left out by the Backup Set: zeros, and nothing read.
@@ -522,27 +551,16 @@ func copySegments(disk io.ReaderAt, dev string, segments []diskSegment, total ui
 			continue
 		}
 		var bad uint64
-		src, srcOff, name := disk, seg.start, dev
+		src, srcOff, name := srcs[i], seg.start, dev
 		if seg.snapDev != "" {
-			sf, err := os.Open(seg.snapDev)
-			if err != nil {
-				return err
-			}
-			defer sf.Close()
-			src, srcOff, name = sf, 0, "snapshot "+seg.snapDev
+			srcOff, name = 0, "snapshot "+seg.snapDev
 		}
 		// onBad gets offsets in src; the report wants them on the disk.
 		onBad := func(off, n uint64) {
 			bad += n
 			jp.noteUnreadable(dev, seg.start+(off-srcOff), n)
 		}
-		var used *usedMap
-		switch {
-		case seg.snapDev != "":
-			used = segmentUsedMap(src, int64(length), seg.cowFile, readFree, name)
-		case seg.rawFS:
-			used = segmentUsedMap(io.NewSectionReader(src, int64(srcOff), int64(length)), int64(length), "", readFree, fmt.Sprintf("%s at %d", name, seg.start))
-		}
+		used := useds[i]
 		var err error
 		if used == nil {
 			err = readResilient(src, srcOff, length, block, sectorSize, emit, emitZeros, onBad)

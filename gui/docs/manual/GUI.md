@@ -688,7 +688,7 @@ The rows of a folder backup:
 | Started | Clock time the run started |
 | Forecast finish | Clock time it is expected to end |
 | Elapsed time | Time since the start |
-| Time remaining | Estimate. It uses the last 2 minutes of progress and takes the longer of the bytes-based and files-based estimates, so a run of many small files is not under-estimated. It and Forecast finish change at most every 10 seconds, while the speed and counts update as they go. Shows **Finishing...** during the last step |
+| Time remaining | Estimate. It uses the last 2 minutes of progress and takes the longer of the bytes-based and files-based estimates, so a run of many small files is not under-estimated. A machine backup counts only what it reads: the free space of each snapshotted volume and the partitions left out go into the image as zeros at once, so they are taken out of the total as soon as the snapshot is made, and the percentage and this estimate follow the data actually read (Processed still shows the whole disk). It and Forecast finish change at most every 10 seconds, while the speed and counts update as they go. Shows **Finishing...** during the last step |
 | Files | Files done / total files. The total comes from the previous snapshot or a scan |
 | Processing | Data processed per second over the last 10 seconds, plus files per second. Reused data counts, so this shows how fast the run is getting through the folder |
 | Folder | The folder being processed |

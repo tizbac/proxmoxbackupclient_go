@@ -32,6 +32,15 @@ type JobProgress struct {
 	// LeftOut is the size of the partitions the Backup Set leaves out, sent
 	// as zeros without being read (leaveOut).
 	LeftOut atomic.Uint64
+	// ToSkip is how much of the disks will go in as zeros without being read
+	// (free space and partitions left out), known for each disk once its
+	// snapshots are made and before its first block is read: the reader
+	// looks at every partition's free-space map first, as Clonezilla works
+	// out the used size first. ReadProgress counts it out.
+	ToSkip atomic.Uint64
+	// readHigh keeps ReadProgress from going back: a skipped window is
+	// counted in BytesDone a moment before it is in FreeSkipped.
+	readHigh atomic.Uint64
 
 	// sent reads the job's PBS client counter (see SentBytes).
 	sent atomic.Pointer[func() uint64]
@@ -156,7 +165,7 @@ func (p *JobProgress) Reset() {
 		return
 	}
 	for _, c := range []*atomic.Uint64{&p.NewChunks, &p.ReusedChunks, &p.BlankChunks, &p.UploadedBytes,
-		&p.BytesDone, &p.BytesTotal, &p.UnreadableBytes, &p.FreeSkipped, &p.LeftOut} {
+		&p.BytesDone, &p.BytesTotal, &p.UnreadableBytes, &p.FreeSkipped, &p.LeftOut, &p.ToSkip, &p.readHigh} {
 		c.Store(0)
 	}
 	p.sent.Store(nil)
@@ -166,6 +175,49 @@ func (p *JobProgress) Reset() {
 	p.phase, p.disk, p.diskModel, p.partition = "", "", "", ""
 	p.diskNo, p.diskCount = 0, 0
 	p.diskSize, p.diskPos = 0, 0
+}
+
+// addToSkip adds n bytes that will go into the image unread (ToSkip).
+func (p *JobProgress) addToSkip(n uint64) {
+	if p != nil {
+		p.ToSkip.Add(n)
+	}
+}
+
+// ReadProgress is how much of the job has been read and how much there is
+// to read in all: the disks without what goes in as zeros unread. The
+// percentage and the time remaining follow it, so a disk that is mostly
+// free space is measured by its data, not its size (found 2026-11-04: a
+// 119 GiB disk read at about 1 MB/s said 8 hours left, free space and
+// all). A disk whose free space is not
+// known yet counts whole.
+func (p *JobProgress) ReadProgress() (done, total uint64) {
+	if p == nil {
+		return 0, 0
+	}
+	all, skip := p.BytesTotal.Load(), p.ToSkip.Load()
+	total = all - min(skip, all)
+	pos, skipped := p.BytesDone.Load(), p.FreeSkipped.Load()+p.LeftOut.Load()
+	done = min(pos-min(skipped, pos), total)
+	for {
+		high := p.readHigh.Load()
+		if done <= high {
+			return min(high, total), total
+		}
+		if p.readHigh.CompareAndSwap(high, done) {
+			return done, total
+		}
+	}
+}
+
+// readFraction is ReadProgress as a fraction, or ok false before the job's
+// size is known.
+func (p *JobProgress) readFraction() (f float64, ok bool) {
+	done, total := p.ReadProgress()
+	if total == 0 {
+		return 0, false
+	}
+	return float64(done) / float64(total), true
 }
 
 // SentBytes is how much the uploaded chunks took on the network so far:

@@ -1228,7 +1228,7 @@ function App() {
       // zero: the old attempt's samples would make the rates negative.
       if (data.phase === 'retry_wait') backupSamplesRef.current = []
       const samples = backupSamplesRef.current
-      samples.push({ t: now, bytes: data.bytesDone || 0, files: data.filesDone || 0, uploaded: data.uploadedBytes || 0, sent: data.sentBytes || 0 })
+      samples.push({ t: now, bytes: data.bytesDone || 0, read: data.readDone || 0, files: data.filesDone || 0, uploaded: data.uploadedBytes || 0, sent: data.sentBytes || 0 })
       while (samples.length > 0 && now - samples[0].t > 180000) samples.shift()
       setBackupStats(prev => {
         const bytesDone = data.bytesDone || 0
@@ -1254,15 +1254,21 @@ function App() {
         // large files the bytes decide it instead.
         const filesDone = data.filesDone || 0
         const filesTotal = data.filesTotal || 0
-        const byteRate = windowRate(samples, 'bytes', 120000, now) ?? avg
+        // A machine backup's forecast counts only what it reads (readDone,
+        // readTotal): free space and partitions left out go in as zeros at
+        // once, and counting them made a mostly empty disk say hours left.
+        const byRead = (data.readTotal || 0) > 0
+        const etaDone = byRead ? data.readDone || 0 : bytesDone
+        const etaTotal = byRead ? data.readTotal : bytesTotal
+        const byteRate = windowRate(samples, byRead ? 'read' : 'bytes', 120000, now) ?? (elapsed > 0 ? etaDone / elapsed : 0)
         const fileRate = windowRate(samples, 'files', 120000, now) ?? (elapsed > 0 ? filesDone / elapsed : 0)
         const candidates = []
-        if (byteRate > 0 && bytesTotal > bytesDone) candidates.push((bytesTotal - bytesDone) / byteRate)
+        if (byteRate > 0 && etaTotal > etaDone) candidates.push((etaTotal - etaDone) / byteRate)
         if (fileRate > 0 && filesTotal > filesDone) candidates.push((filesTotal - filesDone) / fileRate)
         let eta = null
         if (candidates.length > 0) {
           eta = Math.round(Math.max(...candidates))
-        } else if (bytesTotal > 0 && bytesDone >= bytesTotal) {
+        } else if (etaTotal > 0 && etaDone >= etaTotal) {
           eta = 0
         }
         // Shown for 10 s at a time (etaHold.js), not with every event.

@@ -513,6 +513,38 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			return true
 		}
 
+		// Every snapshotted volume's free-space map, read before the first
+		// block, so that the progress counts only what will be read from the
+		// start (JobProgress.ToSkip), and the partitions left out with it.
+		usedMaps := map[string]*usedMap{}
+		for _, P := range parts {
+			if P.Skip {
+				jp.addToSkip(P.EndByte - P.StartByte)
+				continue
+			}
+			if !P.RequiresVSS || readFree {
+				continue
+			}
+			snap, ok := snapshots[P.Letter+":\\"]
+			if !ok {
+				continue // readPartition says so
+			}
+			snapPath := strings.TrimRight(snap.ObjectPath, "\\")
+			name := fmt.Sprintf("%s: (shadow copy %s)", P.Letter, snap.Id)
+			f, err := os.Open(snapPath)
+			if err != nil {
+				continue // readPartition says so
+			}
+			m, err := readUsedMap(f, snapPath)
+			f.Close()
+			if err != nil {
+				log.Printf("Reading all of %s, free space included: %v", name, err)
+				continue
+			}
+			usedMaps[P.Letter] = m
+			jp.addToSkip(m.skippable(P.EndByte - P.StartByte))
+		}
+
 		// zeroBlk stands in for free space and unreadable sectors.
 		zeroBlk := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
 		block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
@@ -553,13 +585,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 				}
 				name = fmt.Sprintf("%s: (shadow copy %s)", P.Letter, snap.Id)
 				src, srcOff = &shadowThenDisk{shadow: snapshot_file, disk: F, start: int64(P.StartByte), name: name}, 0
-				if !readFree {
-					if m, err := readUsedMap(snapshot_file, snapPath); err != nil {
-						log.Printf("Reading all of %s, free space included: %v", name, err)
-					} else {
-						used = m
-					}
-				}
+				used = usedMaps[P.Letter]
 			}
 
 			stoppedByUser := false

@@ -1,5 +1,7 @@
 package machinebackuplib
 
+import "pbscommon"
+
 // usedMap says which parts of an NTFS volume hold data: one bit per
 // cluster, set when the file system uses it. Free space is not read in a
 // machine backup; it goes into the image as zeros, which cost nothing to
@@ -33,6 +35,21 @@ func (m *usedMap) anyUsed(off, n int64) bool {
 		c++
 	}
 	return false
+}
+
+// skippable is how much of the first length bytes of the volume a backup
+// does not read: the 4 MiB windows with no used cluster, which go into the
+// image as zeros. The windows are the reader's own (windows.go, linux.go), so
+// this is what the reader will count in JobProgress.FreeSkipped.
+func (m *usedMap) skippable(length uint64) uint64 {
+	var n uint64
+	for w := uint64(0); w < length; w += pbscommon.PBS_FIXED_CHUNK_SIZE {
+		k := min(uint64(pbscommon.PBS_FIXED_CHUNK_SIZE), length-w)
+		if !m.anyUsed(int64(w), int64(k)) {
+			n += k
+		}
+	}
+	return n
 }
 
 // zeroFree zeroes the bytes of data (read from volume offset off) that lie

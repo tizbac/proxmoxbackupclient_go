@@ -1786,9 +1786,12 @@ func runMachineBackupInline(opts BackupOptions) error {
 		}
 		total := jp.BytesTotal.Load()
 		done := jp.BytesDone.Load()
+		// The percentage counts what is read: free space and partitions
+		// left out go in as zeros at once (JobProgress.ReadProgress).
+		readDone, readTotal := jp.ReadProgress()
 		pct := 0.0
-		if total > 0 {
-			pct = float64(done) / float64(total)
+		if readTotal > 0 {
+			pct = float64(readDone) / float64(readTotal)
 		}
 		opts.OnStats(&BackupProgressStats{
 			Percent:       pct,
@@ -1809,6 +1812,8 @@ func runMachineBackupInline(opts BackupOptions) error {
 			DiskDone:      w.DiskPos,
 			Partition:     w.Partition,
 			Unreadable:    jp.UnreadableBytes.Load(),
+			ReadDone:      readDone,
+			ReadTotal:     readTotal,
 			RetryAt:       retryAt.Load(),
 			Attempt:       int(retryAttempt.Load()),
 			Attempts:      len(retry.ReconnectWaits) + 1,

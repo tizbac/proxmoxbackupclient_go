@@ -125,7 +125,11 @@ func TestSkippedPartitionZeroedNotRead(t *testing.T) {
 	// disk, and the partition is counted in LeftOut.
 	jp := &JobProgress{}
 	var fractions []float64
+	var toSkipAtStart uint64
 	progress := func(f float64, _ string) bool {
+		if len(fractions) == 0 {
+			toSkipAtStart = jp.ToSkip.Load()
+		}
 		fractions = append(fractions, f)
 		return false
 	}
@@ -164,6 +168,10 @@ func TestSkippedPartitionZeroedNotRead(t *testing.T) {
 	}
 	if got := jp.LeftOut.Load(); got != skipEnd-skipStart {
 		t.Errorf("LeftOut = %d, want %d", got, skipEnd-skipStart)
+	}
+	// Known before the first block, so the progress counts it out from the start.
+	if toSkipAtStart != skipEnd-skipStart {
+		t.Errorf("ToSkip at the first block = %d, want %d", toSkipAtStart, skipEnd-skipStart)
 	}
 	if len(fractions) == 0 {
 		t.Fatal("no progress reported")
