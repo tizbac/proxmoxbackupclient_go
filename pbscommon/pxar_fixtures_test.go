@@ -30,7 +30,7 @@ func pxarFile(name string, data []byte) pxarEntry {
 
 // pxarSection builds one PXAR record: a 16-byte little-endian header
 // (type, total record size) followed by the payload.
-func pxarSection(t *testing.T, typ uint64, payload []byte) []byte {
+func pxarSection(t testing.TB, typ uint64, payload []byte) []byte {
 	t.Helper()
 	out := make([]byte, 16+len(payload))
 	binary.LittleEndian.PutUint64(out[0:8], typ)
@@ -42,7 +42,7 @@ func pxarSection(t *testing.T, typ uint64, payload []byte) []byte {
 // pxarEntryPayload builds the 40-byte PXARFileEntry body that walk() parses:
 // mode(u64) | flags(u64) | uid(u32) | gid(u32) | mtime.secs(u64) |
 // mtime.nanos(u32) | padding(u32).
-func pxarEntryPayload(t *testing.T, mode, mtime uint64) []byte {
+func pxarEntryPayload(t testing.TB, mode, mtime uint64) []byte {
 	t.Helper()
 	out := make([]byte, 40)
 	binary.LittleEndian.PutUint64(out[0:8], mode)
@@ -137,7 +137,7 @@ func pxarTree(entries []pxarEntry) []*pxarNode {
 // makePXAR serialises entries into a PXAR archive: a root directory ENTRY,
 // then FILENAME + ENTRY per entry (+ PAYLOAD for files), with a GOODBYE closing
 // every directory so the walker pops its path stack.
-func makePXAR(t *testing.T, entries ...pxarEntry) []byte {
+func makePXAR(t testing.TB, entries ...pxarEntry) []byte {
 	t.Helper()
 
 	var emit func(nodes []*pxarNode) []byte
@@ -179,7 +179,7 @@ func pxarRawEntry(t *testing.T, typ uint64, declaredSize uint64, payload []byte)
 //	sub/other.txt
 //	sub/nested/deep.txt
 //	notes/file with spaces & ünicode.txt
-func standardPXAR(t *testing.T) []byte {
+func standardPXAR(t testing.TB) []byte {
 	t.Helper()
 	return makePXAR(t,
 		pxarFile("hello.txt", []byte("hello world\n")),
