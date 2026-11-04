@@ -4,6 +4,7 @@
 package snapshot
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,31 @@ import (
 	"syscall"
 	"testing"
 )
+
+// Run as a normal user, a snapshot is refused with ErrNeedsRoot, and with
+// ErrNoSnapshotModule too when no module is loaded, each with what to do,
+// and the callback never runs.
+func TestSnapshotRefusedSaysWhy(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("must run as a normal user")
+	}
+	ran := false
+	err := CreateVSSSnapshot([]string{t.TempDir()}, true, func(map[string]SnapShot) error { ran = true; return nil })
+	if err == nil || ran {
+		t.Fatalf("err %v, callback ran %v", err, ran)
+	}
+	if !errors.Is(err, ErrNeedsRoot) || !strings.Contains(err.Error(), "run the backup as root") {
+		t.Errorf("not named as needing root: %v", err)
+	}
+	_, haveModule := detectControl()
+	if errors.Is(err, ErrNoSnapshotModule) == haveModule {
+		t.Errorf("module loaded %v, but the error says %v", haveModule, err)
+	}
+	if !haveModule && !strings.Contains(err.Error(), "installing elastio-snap or dattobd") {
+		t.Errorf("no pointer to the install guide: %v", err)
+	}
+	t.Log(err)
+}
 
 func TestSnapshotEndToEnd(t *testing.T) {
 	if os.Geteuid() != 0 {

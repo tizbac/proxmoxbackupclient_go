@@ -1,5 +1,17 @@
 package snapshot
 
+import "errors"
+
+// Why a Linux snapshot could not be taken, for the caller to say what to do
+// (errors.Is). Both can apply at once.
+var (
+	// ErrNeedsRoot: running as a normal user; a snapshot needs root.
+	ErrNeedsRoot = errors.New("this is running as a normal user, and a snapshot needs root")
+	// ErrNoSnapshotModule: neither elastio-snap nor dattobd is loaded. Run
+	// as a normal user, a module that is installed but not loaded counts.
+	ErrNoSnapshotModule = errors.New("no snapshot module (elastio-snap or dattobd) is loaded")
+)
+
 type SnapShot struct {
 	FullPath   string
 	Id         string

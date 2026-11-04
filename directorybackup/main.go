@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"pbscommon"
 	"retry"
+	"runtime"
 	"snapshot"
 	"strings"
 	"sync"
@@ -1067,6 +1068,17 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 
 		})
 		err = unmapSnapshotPath(err, snapshotDir, originalDir)
+		if err != nil && snapshotDir == "" {
+			// The snapshot itself could not be taken: say how to go on. On
+			// Linux the error already says whether root or a module is
+			// missing (snapshot.ErrNeedsRoot, ErrNoSnapshotModule) and what
+			// to do; -novss is the other way.
+			if runtime.GOOS == "windows" {
+				err = fmt.Errorf("%w (a VSS snapshot needs administrator rights: if this is not running elevated, run it so; or add -novss to read the folder without a snapshot)", err)
+			} else {
+				err = fmt.Errorf("%w (or add -novss to read the folder without a snapshot)", err)
+			}
+		}
 		for i := range readErrors {
 			readErrors[i] = unmapSnapshotPathString(readErrors[i], snapshotDir, originalDir)
 		}

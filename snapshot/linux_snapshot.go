@@ -427,12 +427,18 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 // CreateVSSSnapshotCtx is CreateVSSSnapshot for a backup that can be stopped
 // while it waits for a device another backup has snapshotted.
 func CreateVSSSnapshotCtx(ctx context.Context, paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) (retErr error) {
-	if os.Geteuid() != 0 {
-		return fmt.Errorf("consistent snapshot requires root: refusing to proceed with an inconsistent full-system snapshot")
-	}
-	control, ok := detectControl()
-	if !ok {
-		return fmt.Errorf("no usable block snapshot module loaded: install and load elastio-snap or dattobd first (see \"Linux machine backup prerequisites\" in this project's README for build/install steps) - refusing to proceed with an inconsistent full-system snapshot")
+	// Both checked, so one message names everything that is missing.
+	control, haveModule := detectControl()
+	isRoot := os.Geteuid() == 0
+	const install = "so install and load one (the GUI manual's section \"Linux snapshots: installing elastio-snap or dattobd\")"
+	const refuse = "refusing to back up without a snapshot, as files could change while they are read"
+	switch {
+	case !isRoot && !haveModule:
+		return fmt.Errorf("%s: %w, so run the backup as root; and %w, %s", refuse, ErrNeedsRoot, ErrNoSnapshotModule, install)
+	case !isRoot:
+		return fmt.Errorf("%s: %w, so run the backup as root", refuse, ErrNeedsRoot)
+	case !haveModule:
+		return fmt.Errorf("%s: %w, %s", refuse, ErrNoSnapshotModule, install)
 	}
 
 	// The block devices these paths are on, held until the snapshots are gone.
@@ -470,7 +476,7 @@ func CreateVSSSnapshotCtx(ctx context.Context, paths []string, needFiles bool, b
 		ls, subPath, err := createOne(control, absPath, needFiles)
 		setupMu.Unlock()
 		if err != nil {
-			return fmt.Errorf("could not snapshot %s: %w: refusing to proceed with an inconsistent full-system snapshot", absPath, err)
+			return fmt.Errorf("could not snapshot %s: %w: refusing to back up without a snapshot", absPath, err)
 		}
 		created = append(created, ls)
 		sn := SnapShot{
