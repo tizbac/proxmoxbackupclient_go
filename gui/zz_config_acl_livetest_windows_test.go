@@ -90,7 +90,10 @@ func TestLiveHardenConfigDir(t *testing.T) {
 				t.Errorf("%s lacks %s:\n%s", p, want, out)
 			}
 		}
-		if strings.Contains(strings.ToLower(out), strings.ToLower(meDomain+`\`+meName)) {
+		// Run as SYSTEM (a scheduled task, as the service runs), "this
+		// account" is SYSTEM, which must stay; the check is for an
+		// administrator's own account.
+		if !me.User.Sid.IsWellKnown(windows.WinLocalSystemSid) && strings.Contains(strings.ToLower(out), strings.ToLower(meDomain+`\`+meName)) {
 			t.Errorf("%s still lets in the administrator account %s\\%s itself:\n%s", p, meDomain, meName, out)
 		}
 	}
