@@ -11,7 +11,7 @@ Which restore to use, and where the steps are. Applies to version 2.0 (see the [
 | Data onto a new or replacement computer | GUI on the new computer, Backup ID field cleared to list every backup, **Restore to alternate path** | [GUI.md, Restore](manual/GUI.md#91-find-the-snapshot) |
 | Find a file when you do not know which backup has it | GUI **Search for a file** | [GUI.md, Search](manual/GUI.md#92-search-for-a-file) |
 | A few files out of a machine (disk image) backup | GUI Restore: the image's volumes open like folders (NTFS, FAT, exFAT, ext2/3/4, XFS) | [GUI.md, files from a machine backup](manual/GUI.md#96-files-from-a-machine-backup) |
-| Ransomware or mass corruption | Any method, from a snapshot taken **before** the problem. Disconnect the machine from the network first | below |
+| Ransomware or mass corruption | Any method, from a snapshot taken **before** the problem. Isolate the affected machines first | below |
 | Dead system disk, same or similar machine | Bare-metal restore ISO | [BMR.md](manual/BMR.md#4-automated-restore-step-by-step) |
 | Physical machine into a Proxmox VE VM | `vm` machine backup restored from Proxmox VE | [BMR.md, Proxmox VE](manual/BMR.md#6-restoring-a-vm-snapshot-onto-proxmox-ve) |
 | Very different hardware | Fresh OS install, then a GUI restore of the data (from a folder backup, or the files of a machine backup) | [BMR.md, different hardware](manual/BMR.md#7-restoring-onto-different-hardware-p2v-and-replacement-machines) |
@@ -21,7 +21,7 @@ Which restore to use, and where the steps are. Applies to version 2.0 (see the [
 
 ## Ransomware and corruption
 
-1. Disconnect the affected machine from the network.
+1. Stop it spreading: disconnect the affected machines from the network (unplug them, turn off Wi-Fi, or isolate their switch port or VLAN), or shut them down. A restore has to reach PBS, so bring a machine back only once it is clean, and only onto a network that holds just it and PBS: wipe it and restore the system with the bare-metal ISO, or restore onto a different, clean computer or a new disk. Keep the affected disks aside, unchanged, if they may be needed for an investigation or an insurance claim.
 2. Find the last good snapshot: Reports and the snapshot dates help, and Search can show when a file last looked normal.
 3. Prefer restoring to an alternate path first and checking the files, then move them into place. Roll back's preview also shows what changed since a backup, without writing anything.
 4. For a system that cannot be trusted any more, restore the system disk with the bare-metal ISO from a snapshot before the infection, then restore data the same way.
