@@ -82,6 +82,7 @@ require (
 // Local package replacements to use sibling directories
 replace (
 	clientcommon => ../clientcommon
+	github.com/st-matskevich/go-vss => ../third_party/go-vss
 	github.com/tizbac/proxmoxbackupclient_go/gui/api => ./api
 	machinebackuplib => ../machinebackuplib
 	pbscommon => ../pbscommon

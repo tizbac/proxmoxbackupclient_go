@@ -31,6 +31,7 @@ require (
 // Local package replacements
 replace (
 	clientcommon => ../clientcommon
+	github.com/st-matskevich/go-vss => ../third_party/go-vss
 	machinebackuplib => ../machinebackuplib
 	pbscommon => ../pbscommon
 	retry => ../pkg/retry

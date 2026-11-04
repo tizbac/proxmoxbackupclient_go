@@ -18,15 +18,15 @@ import (
 // Matskevich), with its object lifetimes fixed. Found 2026-10-21: every
 // snapshot left about 33 handles behind in the process (threads that had
 // ended, events, semaphores), so the GUI and the service, which run for
-// weeks, kept growing. The fixes below brought it to about 21; the last of
-// it was found 2026-11-04 (TestLiveVSSRefCounts, TestLiveVSSLeakHunt).
+// weeks, kept growing; on 2026-11-04 the last of it (TestLiveVSSRefCounts,
+// TestLiveVSSLeakHunt), and now none is left.
 //
-//   - vss.LoadAndInitVSS takes a QueryInterface reference on the object
-//     CreateVssBackupComponents returned and never releases the first one, so
-//     one Release never freed it (newVSSComponents).
-//   - Its five methods that start an asynchronous step do the same with the
-//     IVssAsync they return, and every async object holds a reference to
-//     the VSS object, so neither was ever freed (waitVSS).
+//   - go-vss itself, vendored in third_party/go-vss and fixed there:
+//     LoadAndInitVSS and its five methods that start an asynchronous step
+//     took a QueryInterface reference on the object VSS returned and never
+//     released the first one, so one Release never freed it. Every async
+//     object holds a reference to the VSS object, so that was never freed
+//     either, nor the thread VSS starts for it.
 //   - Snapshotter.Release returned early, without releasing the object, when
 //     BackupComplete or GatherWriterStatus failed (vssShadow.release always
 //     releases).
@@ -74,18 +74,10 @@ func initCOM() (func(), error) {
 	return nil, fmt.Errorf("COM initialisation: %w", err)
 }
 
-// newVSSComponents is vss.LoadAndInitVSS without its extra reference: the
-// object it returns is freed by one Release.
+// newVSSComponents is vss.LoadAndInitVSS: the object it returns is freed by
+// one Release (third_party/go-vss, fixed there).
 func newVSSComponents() (*vss.IVssBackupComponents, error) {
-	c, err := vss.LoadAndInitVSS()
-	if err != nil {
-		return nil, err
-	}
-	// LoadAndInitVSS asked the object for the interface it already is
-	// (IVssBackupComponents), which returns the same pointer with one more
-	// reference, and kept both. Drop one.
-	c.Release()
-	return c, nil
+	return vss.LoadAndInitVSS()
 }
 
 // vssPollEvery is how often waitVSS asks again whether a step is done once
@@ -101,15 +93,6 @@ func waitVSS(step string, async *vss.IVssAsync, err error, timeoutMs int) error 
 	if async == nil {
 		return fmt.Errorf("%s: VSS returned no IVssAsync object", step)
 	}
-	// go-vss hands each IVssAsync out with two references: the one VSS
-	// returned and one more from the QueryInterface it adds (as
-	// LoadAndInitVSS does; newVSSComponents). Drop the extra one here, or the
-	// release below never frees the object. Each async object holds a
-	// reference to the VSS object, which then outlived its own release too,
-	// with the thread VSS starts for it: every snapshot left 5 references,
-	// a live thread and about 22 handles behind (found 2026-11-04 by
-	// counting the VSS object's references after each step).
-	async.Release()
 	defer func() {
 		async.Cancel()
 		async.Release()
