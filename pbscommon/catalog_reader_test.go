@@ -174,6 +174,45 @@ func TestParseCatalogMultiArchive(t *testing.T) {
 	}
 }
 
+// A symbolic link ('l', recorded by name only) is listed as a link, so a
+// comparison with the disk knows it has no size or time to compare.
+func TestParseCatalogMarksSymlinks(t *testing.T) {
+	buf := append([]byte{}, catalog_magic...)
+	rootStart := uint64(len(buf))
+	var td []byte
+	td = append_u64_7bit(td, 2)
+	td = append(td, 'f')
+	td = append_u64_7bit(td, 5)
+	td = append(td, "a.txt"...)
+	td = append_u64_7bit(td, 3)
+	td = append_u64_7bit(td, 100)
+	td = append(td, 'l')
+	td = append_u64_7bit(td, 4)
+	td = append(td, "link"...)
+	buf = append_u64_7bit(buf, uint64(len(td)))
+	buf = append(buf, td...)
+	trailerStart := uint64(len(buf))
+	buf = append(buf, buildCatalogTable([]dirEnc{{"backup.pxar", rootStart}}, nil, trailerStart)...)
+	ptr := make([]byte, 8)
+	binary.LittleEndian.PutUint64(ptr, trailerStart)
+	buf = append(buf, ptr...)
+
+	entries, err := ParseCatalog(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]CatalogEntry{}
+	for _, e := range entries {
+		got[e.Path] = e
+	}
+	if e := got["backup.pxar/link"]; !e.IsSymlink || e.IsDir || e.Size != 0 {
+		t.Errorf("link = %+v, want a symlink", e)
+	}
+	if e := got["backup.pxar/a.txt"]; e.IsSymlink || e.Size != 3 {
+		t.Errorf("a.txt = %+v, want a file of 3 bytes", e)
+	}
+}
+
 func TestParseCatalogRejectsBadMagic(t *testing.T) {
 	buf := make([]byte, 32)
 	copy(buf, "NOTPCAT1")

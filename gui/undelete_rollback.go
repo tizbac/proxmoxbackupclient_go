@@ -63,7 +63,10 @@ func (a *App) liveFolders(job ScheduledJob, idx snapshotIndex, snap SetSnapshot,
 		expected := len(idx[archiveFor(snap, f.Base)])
 		report := func(n int) { a.scanProgress("walk", dir, n, expected) }
 		report(0)
-		li, err := walkLiveFolder(f.Dir, job.ExcludeList, cancel, report)
+		// A machine set's file list comes from the disk image, which leaves
+		// links out; a folder set's archive keeps them where its backup does.
+		keepLinks := pbscommon.KeepsSymlinks && job.BackupType != "machine"
+		li, err := walkLiveFolder(f.Dir, job.ExcludeList, keepLinks, cancel, report)
 		if err != nil {
 			if errors.Is(err, errCompareCancelled) {
 				return nil, err
@@ -946,7 +949,7 @@ func (a *App) ListRollbacks(jobID string) ([]RollbackRecord, error) {
 				} else {
 					r.Moved++
 				}
-				if fi, err := os.Stat(mv.To); err == nil {
+				if fi, err := os.Lstat(mv.To); err == nil {
 					r.Bytes += fi.Size()
 				}
 			}
@@ -1023,7 +1026,9 @@ func (a *App) UndoRollback(manifestPath string) (string, error) {
 	}
 	back := 0
 	for _, mv := range m.Moved {
-		if _, err := os.Stat(mv.To); err != nil {
+		// Lstat: a kept symbolic link is the copy itself, and a relative one
+		// no longer resolves from the safety folder.
+		if _, err := os.Lstat(mv.To); err != nil {
 			problems = append(problems, fmt.Sprintf("%s: the kept copy is gone", mv.From))
 			continue
 		}

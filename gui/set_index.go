@@ -216,7 +216,7 @@ func loadSnapshotIndex(cfg *Config, job ScheduledJob, snap SetSnapshot, cancel f
 					if e.Path == "" {
 						continue
 					}
-					entries = append(entries, IndexEntry{Path: e.Path, IsDir: e.IsDir, Size: e.Size, MTime: e.ModTime})
+					entries = append(entries, IndexEntry{Path: e.Path, IsDir: e.IsDir, Size: e.Size, MTime: e.ModTime, Link: e.IsSymlink})
 				}
 				return nil
 			})
@@ -285,7 +285,7 @@ func indexFromCatalog(opts RestoreOptions, cancel func() bool) (snapshotIndex, b
 		if !found || rest == "" {
 			continue
 		}
-		idx[archive] = append(idx[archive], IndexEntry{Path: rest, IsDir: e.IsDir, Size: e.Size, MTime: e.ModTime})
+		idx[archive] = append(idx[archive], IndexEntry{Path: rest, IsDir: e.IsDir, Size: e.Size, MTime: e.ModTime, Link: e.IsSymlink})
 	}
 	for k := range idx {
 		sortIndex(idx[k])
@@ -308,7 +308,9 @@ func indexCacheDir() string {
 }
 
 func snapshotIndexCachePath(cfg *Config, backupID string, unix int64) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%s|%d", cfg.BaseURL, cfg.Datastore, cfg.Namespace, backupID, unix)))
+	// "v2": entries mark symbolic links since 4 Nov 2026. Older cache files
+	// lack the mark, so they are not read again; trimIndexCache ages them out.
+	sum := sha256.Sum256([]byte(fmt.Sprintf("v2|%s|%s|%s|%s|%d", cfg.BaseURL, cfg.Datastore, cfg.Namespace, backupID, unix)))
 	return filepath.Join(indexCacheDir(), hex.EncodeToString(sum[:12])+".idx.gz")
 }
 

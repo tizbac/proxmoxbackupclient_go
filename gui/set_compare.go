@@ -25,6 +25,10 @@ type IndexEntry struct {
 	IsDir bool   `json:"isDir"`
 	Size  uint64 `json:"size"`
 	MTime int64  `json:"mtime"`
+	// Link marks a symbolic link (Linux folder sets). The catalog records a
+	// link by name only, so links are compared by being there, not by size
+	// or time.
+	Link bool `json:"link,omitempty"`
 }
 
 // errCompareCancelled is returned when the caller's cancel check fires.
@@ -93,11 +97,14 @@ func (li *LiveIndex) HasFile(rel string) bool {
 
 // walkLiveFolder lists root the way a backup of it would see it: the same
 // automatic exclusions (system folders and files, the Roll back safety
-// folder), the Backup Set's own exclusion patterns, and junctions/symlinked
-// folders below the top not followed. Only directory listings are read.
+// folder), the Backup Set's own exclusion patterns, and links and junctions
+// below the top never followed. keepLinks lists each symbolic link as an
+// entry of its own (Link set), for a snapshot that holds them: a Linux
+// folder backup keeps every link as a link. Otherwise links are left out,
+// as the backup leaves them out. Only directory listings are read.
 // progress, when set, is called with the number of entries found so far,
 // at most a few times a second.
-func walkLiveFolder(root string, excludes []string, cancel func() bool, progress func(n int)) (*LiveIndex, error) {
+func walkLiveFolder(root string, excludes []string, keepLinks bool, cancel func() bool, progress func(n int)) (*LiveIndex, error) {
 	root = filepath.Clean(root)
 	if fi, err := os.Stat(root); err != nil {
 		return nil, err
@@ -138,14 +145,14 @@ func walkLiveFolder(root string, excludes []string, cancel func() bool, progress
 				// Vanished between the listing and the stat: treat as absent.
 				continue
 			}
-			// On Linux a folder link is kept as a link, like any other, so it
-			// is listed below as an entry of its own and never followed.
-			if it.IsDir() || (!pbscommon.KeepsSymlinks && info.Mode()&os.ModeSymlink != 0 && isDirLink(childPath)) {
-				if pbscommon.IsAutoExcludedFolderAt(name, rel == "" && pbscommon.IsVolumeRoot(root)) {
-					continue
+			if pbscommon.IsLinkEntry(childPath, info) {
+				if keepLinks && info.Mode()&os.ModeSymlink != 0 {
+					li.Entries = append(li.Entries, IndexEntry{Path: childRel, Link: true, MTime: info.ModTime().Unix()})
 				}
-				if info.Mode()&os.ModeSymlink != 0 {
-					// A backup skips junctions and folder links below the top.
+				continue
+			}
+			if it.IsDir() {
+				if pbscommon.IsAutoExcludedFolderAt(name, rel == "" && pbscommon.IsVolumeRoot(root)) {
 					continue
 				}
 				li.Entries = append(li.Entries, IndexEntry{Path: childRel, IsDir: true, MTime: info.ModTime().Unix()})
@@ -169,12 +176,6 @@ func walkLiveFolder(root string, excludes []string, cancel func() bool, progress
 	}
 	sortIndex(li.Entries)
 	return li, nil
-}
-
-// isDirLink reports whether a symlink or junction points at a folder.
-func isDirLink(p string) bool {
-	fi, err := os.Stat(p)
-	return err == nil && fi.IsDir()
 }
 
 // underAny reports whether rel is one of prefixes or inside one of them.
@@ -245,6 +246,13 @@ func compareIndexes(snap []IndexEntry, live *LiveIndex) CompareResult {
 			j++
 			switch {
 			case s.IsDir && l.IsDir:
+			case s.Link && l.Link:
+				// Both links: the catalog has no target, size or time for a
+				// link to compare, so being there is all that can be told.
+				r.Unchanged++
+			case s.Link != l.Link && !s.IsDir && !l.IsDir:
+				// A file became a link or the other way round.
+				r.Changed = append(r.Changed, ChangedFile{Snap: *s, Live: *l})
 			case s.IsDir != l.IsDir:
 				// A file became a folder or the other way round: the snapshot's
 				// version is missing and the live one is new.

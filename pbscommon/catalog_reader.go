@@ -19,6 +19,10 @@ type CatalogEntry struct {
 	IsDir   bool
 	Size    uint64
 	ModTime int64
+
+	// IsSymlink marks a symbolic link. The catalog records a link by name
+	// only, so Size and ModTime are 0 and its target is not known here.
+	IsSymlink bool
 }
 
 // Guards against malformed or hostile catalogs: bound recursion and total work.
@@ -39,6 +43,7 @@ type catalogFileRef struct {
 	name  string
 	size  uint64
 	mtime uint64
+	link  bool
 }
 
 // readVarint decodes one unsigned LEB128 value (the append_u64_7bit encoding the
@@ -202,8 +207,8 @@ func parseCatalogTable(data []byte, tableStart uint64) ([]catalogDirRef, []catal
 			files = append(files, catalogFileRef{name: name, size: size, mtime: mtime})
 		case 'l', 'h', 'b', 'c', 'p', 's':
 			// Symlink, hardlink, block/char device, fifo, socket: recorded by
-			// name only. Listed as zero-size entries.
-			files = append(files, catalogFileRef{name: name})
+			// name only. Listed as zero-size entries, a symlink marked as one.
+			files = append(files, catalogFileRef{name: name, link: typ == 'l'})
 		default:
 			return nil, nil, fmt.Errorf("table at %d: unknown entry type %q", tableStart, typ)
 		}
@@ -230,10 +235,11 @@ func walkCatalog(data []byte, dirStart uint64, prefix string, depth int, entries
 			return fmt.Errorf("catalog exceeds %d entries", catalogMaxEntries)
 		}
 		*entries = append(*entries, CatalogEntry{
-			Path:    joinArchivePath(prefix, f.name),
-			IsDir:   false,
-			Size:    f.size,
-			ModTime: int64(f.mtime),
+			Path:      joinArchivePath(prefix, f.name),
+			IsDir:     false,
+			Size:      f.size,
+			ModTime:   int64(f.mtime),
+			IsSymlink: f.link,
 		})
 	}
 

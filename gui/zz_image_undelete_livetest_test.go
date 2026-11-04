@@ -84,7 +84,7 @@ func TestLiveImageUndelete(t *testing.T) {
 	// Restore a few unchanged files elsewhere and compare with the live ones.
 	cr := plan.compares[folders[0].Base]
 	_ = cr
-	live, err := walkLiveFolder(folder, nil, nil, nil)
+	live, err := walkLiveFolder(folder, nil, false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

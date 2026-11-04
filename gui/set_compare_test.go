@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"pbscommon"
 )
 
 func writeAt(t *testing.T, path string, body string, mtime time.Time) {
@@ -48,7 +46,7 @@ func TestWalkLiveFolderSkipsWhatABackupSkips(t *testing.T) {
 	writeAt(t, filepath.Join(root, "$RECYCLE.BIN", "r.txt"), "x", tm)
 	writeAt(t, filepath.Join(root, "pagefile.sys"), "x", tm)
 
-	li, err := walkLiveFolder(root, []string{"*.tmp", "sub/cache"}, nil, nil)
+	li, err := walkLiveFolder(root, []string{"*.tmp", "sub/cache"}, false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,29 +62,59 @@ func TestWalkLiveFolderSkipsWhatABackupSkips(t *testing.T) {
 	}
 }
 
-// A link to a folder is never followed. On Linux the backup keeps it as a
-// link, so the walk lists it as an entry of its own (else Undelete calls it
-// deleted); elsewhere the backup skips it, and so does the walk.
-func TestWalkLiveFolderFolderLink(t *testing.T) {
+// Links are never followed. With keepLinks (a Linux folder set, whose backup
+// keeps every link as a link) each is listed as an entry of its own, marked
+// Link, else Undelete calls a folder link deleted; without it they are left
+// out, as a backup that skips links leaves them out.
+func TestWalkLiveFolderLinks(t *testing.T) {
 	root := t.TempDir()
 	tm := time.Unix(1_700_000_000, 0)
 	writeAt(t, filepath.Join(root, "real", "f.txt"), "a", tm)
-	if err := os.Symlink("real", filepath.Join(root, "to-dir")); err != nil {
-		t.Skipf("cannot make a symbolic link here: %v", err)
+	for link, target := range map[string]string{"to-dir": "real", "to-file": "real/f.txt", "dangling": "nowhere"} {
+		if err := os.Symlink(target, filepath.Join(root, link)); err != nil {
+			t.Skipf("cannot make a symbolic link here: %v", err)
+		}
 	}
-	li, err := walkLiveFolder(root, nil, nil, nil)
-	if err != nil {
-		t.Fatal(err)
+	for _, keep := range []bool{false, true} {
+		li, err := walkLiveFolder(root, nil, keep, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "real,real/f.txt"
+		if keep {
+			want = "dangling,real,real/f.txt,to-dir,to-file"
+		}
+		if got := strings.Join(paths(li.Entries), ","); got != want {
+			t.Errorf("keepLinks %v: entries %s, want %s", keep, got, want)
+		}
+		for _, e := range li.Entries {
+			if e.Link != (keep && e.Path != "real" && e.Path != "real/f.txt") {
+				t.Errorf("keepLinks %v: %s marked Link %v", keep, e.Path, e.Link)
+			}
+		}
+		if keep && !li.HasFile("to-dir") {
+			t.Errorf("the folder link is not listed as an entry of its own")
+		}
 	}
-	want := []string{"real", "real/f.txt"}
-	if pbscommon.KeepsSymlinks {
-		want = []string{"real", "real/f.txt", "to-dir"}
+}
+
+// A link in the snapshot and on disk is unchanged whatever its size and time
+// (the catalog records neither); a file that became a link, or the other way
+// round, is changed.
+func TestCompareIndexesLinks(t *testing.T) {
+	snap := []IndexEntry{{Path: "a-link", Link: true}, {Path: "b-was-file", Size: 4, MTime: 9}, {Path: "c-was-link", Link: true}}
+	live := &LiveIndex{Entries: []IndexEntry{
+		{Path: "a-link", Link: true, Size: 11, MTime: 1_700_000_000},
+		{Path: "b-was-file", Link: true, MTime: 9},
+		{Path: "c-was-link", Size: 4, MTime: 9},
+	}}
+	r := compareIndexes(snap, live)
+	var changed []string
+	for _, c := range r.Changed {
+		changed = append(changed, c.Snap.Path)
 	}
-	if got := paths(li.Entries); strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("entries %v, want %v", got, want)
-	}
-	if pbscommon.KeepsSymlinks && !li.HasFile("to-dir") {
-		t.Errorf("the folder link is not listed as an entry of its own")
+	if r.Unchanged != 1 || strings.Join(changed, ",") != "b-was-file,c-was-link" || len(r.Missing)+len(r.New) != 0 {
+		t.Errorf("unchanged %d, changed %v, missing %v, new %v", r.Unchanged, changed, paths(r.Missing), paths(r.New))
 	}
 }
 
@@ -118,7 +146,7 @@ func TestCompareIndexes(t *testing.T) {
 		snap[1].Path = "SAME.txt"
 	}
 	sortIndex(snap)
-	li, err := walkLiveFolder(root, nil, nil, nil)
+	li, err := walkLiveFolder(root, nil, false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
