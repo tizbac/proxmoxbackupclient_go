@@ -61,6 +61,8 @@ listed under [History of the GUI before 2.0](#history-of-the-gui-before-20).
 
 - **`proxmoxbackup-directory -exclude`** leaves out files and folders matching a pattern, with the same patterns as a Backup Set's exclusions in the app (`*.tmp`, `node_modules`, `logs/*.log`, `C:\Users\alice\Temp`; not case sensitive). Repeat it for several, or list them as `"exclude"` in the config file; flags add to the file's list. The run prints each entry left out and the count, and the snapshot's status file lists them as the app's do. A malformed pattern, which would never match, stops the run before it starts (tizbac/proxmoxbackupclient_go#44).
 
+- **Upload threads.** How many chunks a backup sends to PBS at a time. **Auto**, the default, starts with one and allows one more for every 4 Mbit/s of upload speed it measures, up to 8: on a local network a backup soon sends 8 at a time, and on a slow link to a PBS elsewhere one or two, so each chunk arrives in seconds. A number from 1 to 8 overrides it: **Preferences > Backup Options > Upload threads** in the app (the background service's setting for its runs, applied at once), `-upload-threads` (or `"upload-threads"`) in both command-line tools. Hashing and the check against the chunks PBS has always use all the workers. All 18 languages.
+
 - **Mail relays without a login.** An SMTP relay that needs no user name or password (often on port 25) works in the app and in the command-line tools; an incomplete mail setup now says what is missing (tizbac/proxmoxbackupclient_go#74).
 
 ### Changed
@@ -118,6 +120,10 @@ listed under [History of the GUI before 2.0](#history-of-the-gui-before-20).
 - **A stored PBS secret is kept only for the same token or user.** Editing a server with the secret left blank kept the old secret even under a new token ID or user name; it now asks for the secret. A server switched to a user name login no longer keeps the old token's secret in `config.json`.
 
 ### Fixed
+
+- **Backups over a slow link lost their connection.** With 8 chunks in flight on a link of about 1 Mbit/s, PBS answered nothing for minutes, the connection check (an HTTP/2 PING) waited behind the chunk data already sent, and after 15 s the backup gave up a working connection ("http2: client connection lost") and never finished; the one-at-a-time client before managed the same 24 MB in 203 s. Upload threads (above) keep a slow link to one or two chunks, and the check now waits 45 s for its answer (a dead connection is still found within about 75 s). Found testing with the link shaped to 1 Mbit/s and with 100 ms latency and 2% loss; both now finish.
+
+- **Linux snapshot errors say why and what to do.** A folder backup that could not take a snapshot said it needed a "full-system snapshot". It now says whether it runs as a normal user (run it as root) or no snapshot module is loaded (install elastio-snap or dattobd, with the manual section), on btrfs that elastio-snap and dattobd cannot snapshot it (instead of "invalid argument"), and on a full file system that the snapshot's copy-on-write file needs free space there; the command-line tools add that `-novss` reads the folder without a snapshot. The manuals now say when folder backups take a snapshot on Linux.
 
 - **Removing the app while it was open left it running.** With the app open or in the tray, a removal from Programs and Features took the tray icon away but left the app running, hidden, with its program file gone, until ended in Task Manager (or a restart). Windows asks a program to close for an installer, a sign-out or a shutdown by closing its windows; the tray took its icon away and the app carried on. It now quits. Found clicking through the removal pages; the installer's "unable to automatically close all requested applications" message still shows while the background service runs (see the roadmap), and OK carries on.
 
