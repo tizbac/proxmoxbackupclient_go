@@ -130,9 +130,10 @@ Chunks sent in the lost session are sent again. The run prints when it starts ag
 | `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |
 | `-compression <level>` | `default` | How hard chunks are compressed before they go to PBS, which stores them as sent: `fastest`, `default` (zstd level 3), `better` or `best`. A higher level sends less and takes less space on the datastore, for more processor time. Only new chunks are affected, so it can change between runs. Encrypted backups are not compressed |
 | `-read-ahead <n>` | `0` (off) | Read up to `n` files of each folder (1 to 32) in the background, ahead of the one being archived: the app's **Multi-threaded backup reading**. It helps when reading the disk is the slow part (many small files, a network share), and the archive is the same either way. Each file read ahead, up to 128 MB, is held in memory until it is archived: at most `n` in a folder, plus those of the folders above it, which wait while it is backed up. `-disk-read-limit` counts these reads too |
+| `-shutdown-after` | off | Turn the computer off once the backup has run, whether it worked or not, after the e-mail if one is sent; the exit code still says how it went. Windows asks through the Windows API, and runs `shutdown.exe` if that fails; Linux runs `shutdown -h now`. Programs still open are asked to close, not forced. Not when the run stops before it starts (wrong options, another backup running). Needs the right to shut down: an administrator, SYSTEM or root, as for the backup |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
-Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `exclude` (a list), `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `upload-limit`, `download-limit`, `disk-read-limit`, `compression`, `read-ahead`, `smtp`.
+Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `exclude` (a list), `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `pbs-username`, `pbs-password`, `upload-limit`, `download-limit`, `disk-read-limit`, `compression`, `read-ahead`, `shutdown-after`, `smtp`.
 
 New chunks are sent to PBS up to 8 at a time while the folder is read on, as in the app; they are compressed as they are sent, so this also spreads the compression over several processor cores.
 
@@ -238,9 +239,10 @@ Points to know:
 | `-skippartition <device>:<number>` | | Leave a partition out, e.g. `\\.\PhysicalDrive0:4` or `/dev/sda:3`. Repeat for more. It is not read or snapshotted and goes into the image as zeros: a restore gives it back in its place, empty and unformatted. A number the disk does not have prints a warning and leaves nothing out |
 | `-systray` | off | Does nothing: the tray icon was taken out of the command-line tools. Still accepted, as is `"systray"` in a config file, so existing commands keep working; the run says it does nothing |
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
-| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `liveread`, `compression`, `keyfile`, `keyfilepassphrase`, `upload-limit`, `download-limit`, `disk-read-limit` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
+| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `liveread`, `compression`, `keyfile`, `keyfilepassphrase`, `upload-limit`, `download-limit`, `disk-read-limit`, `shutdown-after` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
 | `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |
 | `-compression <level>` | `default` | `fastest`, `default` (zstd level 3), `better` or `best`, as for `proxmoxbackup-directory` ([section 3](#3-proxmoxbackup-directory-folder-backups)) |
+| `-shutdown-after` | off | Turn the computer off once the backup has run, as for `proxmoxbackup-directory` ([section 3](#3-proxmoxbackup-directory-folder-backups)), also after exit code 3 (unreadable sectors) |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
 Plus the connection flags in [section 2](#2-connecting-to-pbs).

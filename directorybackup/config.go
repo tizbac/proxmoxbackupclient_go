@@ -100,6 +100,9 @@ type Config struct {
 	// The speed limits, "upload-limit", "download-limit" and
 	// "disk-read-limit" in MB/s; a flag overrides the file.
 	clientcommon.SpeedLimits
+
+	// "shutdown-after": turn the computer off once the backup has run.
+	clientcommon.AfterRun
 }
 
 // Dirs returns every configured source directory: "backupdir" first (if set),
@@ -280,6 +283,7 @@ func loadConfig() *Config {
 	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
 	versionFlag := flag.Bool("version", false, "Print the version and exit")
 	applySpeedLimitFlags := clientcommon.SpeedLimitFlags(flag.CommandLine)
+	applyShutdownAfterFlag := clientcommon.ShutdownAfterFlag(flag.CommandLine)
 
 	// A stray argument, an unknown option or (on Windows) a quote in a path
 	// stops here with what is wrong; -help prints the usage.
@@ -370,6 +374,7 @@ func loadConfig() *Config {
 		}
 	})
 	applySpeedLimitFlags(&config.SpeedLimits)
+	applyShutdownAfterFlag(&config.AfterRun)
 
 	initSmtpConfigIfNeeded := func() {
 		if config.SMTP == nil {

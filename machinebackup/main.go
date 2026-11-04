@@ -42,9 +42,9 @@ func (i *arrayFlags) Set(value string) error {
 }
 
 // loadConfig reads the command line and the -config file. The speed limits
-// come back on their own: machinebackuplib.Config is the app's too, which
-// sets its limits from its own settings.
-func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits) {
+// and -shutdown-after come back on their own: machinebackuplib.Config is the
+// app's too, which sets those from its own settings.
+func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcommon.AfterRun) {
 	// Define flags
 
 	var backupdevs arrayFlags
@@ -81,6 +81,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits) {
 	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
 	versionFlag := flag.Bool("version", false, "Print the version and exit")
 	applySpeedLimitFlags := clientcommon.SpeedLimitFlags(flag.CommandLine)
+	applyShutdownAfterFlag := clientcommon.ShutdownAfterFlag(flag.CommandLine)
 
 	// A stray argument, an unknown option or (on Windows) a quote in a path
 	// stops here with what is wrong; -help prints the usage.
@@ -95,6 +96,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits) {
 	}
 	pbscommon.ApplyPBSEnvVars(&config.BaseURL, &config.AuthID, &config.Secret, &config.Datastore, &config.CertFingerprint)
 	var limits clientcommon.SpeedLimits
+	var after clientcommon.AfterRun
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {
@@ -105,12 +107,16 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits) {
 		if err == nil {
 			err = json.Unmarshal(file, &limits)
 		}
+		if err == nil {
+			err = json.Unmarshal(file, &after)
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error parsing config file: %v\n", err)
 			os.Exit(1)
 		}
 	}
 	applySpeedLimitFlags(&limits)
+	applyShutdownAfterFlag(&after)
 
 	if *baseURLFlag != "" {
 		config.BaseURL = *baseURLFlag
@@ -234,7 +240,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits) {
 		config.SMTP.Template.Body = *mailBodyTemplateFlag
 	}
 
-	return config, limits
+	return config, limits, after
 }
 
 // sendResultMail sends the notification e-mail when -mail-* (or the config
@@ -333,7 +339,7 @@ func fatalError(msg string, err error) {
 
 func main() {
 
-	cfg, limits := loadConfig()
+	cfg, limits, after := loadConfig()
 
 	// Errors go to stderr with a non-zero exit, never a message box: a box
 	// waits for a click that an unattended scheduled run never gets.
@@ -463,7 +469,10 @@ func main() {
 		Error: err, ReadErrors: readErrors, Hostname: hostnameOrEmpty(), StartTime: start, EndTime: time.Now(),
 	})
 	if err != nil {
-		fatalError("backup", err)
+		fmt.Fprintf(os.Stderr, "Fatal error: backup: %v\n", err)
+		// -shutdown-after: the backup has run, and failed; exit 1 still says so.
+		clientcommon.ShutdownAfterRun(after)
+		os.Exit(1)
 	}
 	// A failed backup has no snapshot to note it on; a good one gets the mail
 	// problem in its PBS comment, where it is seen when the backup is viewed.
@@ -481,12 +490,17 @@ func main() {
 		machinebackuplib.BytesToString(int64(jp.BytesTotal.Load())), counts())
 	// Sectors the disk could not read are zeros in the image: the snapshot is
 	// kept, but say where and exit 3 so a scheduled run is noticed.
-	if bad := jp.Unreadable(); len(bad) > 0 {
+	bad := jp.Unreadable()
+	if len(bad) > 0 {
 		fmt.Fprintf(os.Stderr, "WARNING: %s of the disk could not be read and is zeros in the image:\n",
 			machinebackuplib.BytesToString(int64(jp.UnreadableBytes.Load())))
 		for _, r := range bad {
 			fmt.Fprintf(os.Stderr, "  %s at byte %d (%d bytes)\n", r.Disk, r.Offset, r.Length)
 		}
+	}
+	// -shutdown-after: the backup has run and the mail has gone.
+	clientcommon.ShutdownAfterRun(after)
+	if len(bad) > 0 {
 		os.Exit(3)
 	}
 }
