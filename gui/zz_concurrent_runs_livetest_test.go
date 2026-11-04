@@ -29,7 +29,10 @@ import (
 //   - PBS_CONC_DISK (Windows: a disk number, Linux: a device such as
 //     /dev/sdb) and PBS_CONC_DISK2 add machine backups beside it, the second
 //     one having to wait for the first (one machine backup at a time);
-//   - PBS_CONC_VSS=1 takes snapshots (VSS, elastio-snap) for every run.
+//   - PBS_CONC_VSS=1 takes snapshots (VSS, elastio-snap) for every run;
+//   - PBS_CONC_SMALL_DIR puts the small set under that folder instead of the
+//     temp folder: on Linux with snapshots it must be another file system,
+//     since snapshotted sets on one file system take turns there.
 //
 // Every snapshot made is then restored and compared with its source.
 func TestConcurrentRunsLive(t *testing.T) {
@@ -42,6 +45,13 @@ func TestConcurrentRunsLive(t *testing.T) {
 		bigMB = n
 	}
 	useVSS := os.Getenv("PBS_CONC_VSS") == "1"
+	// On Linux one snapshot of a file system exists at a time, so two
+	// snapshotted sets on the same one take turns (as the GUI manual says):
+	// the small set must then be on another file system.
+	smallBase := os.Getenv("PBS_CONC_SMALL_DIR")
+	if useVSS && runtime.GOOS == "linux" && smallBase == "" {
+		t.Skip("with PBS_CONC_VSS=1 on Linux, set PBS_CONC_SMALL_DIR to a folder on another file system: snapshotted sets on one file system take turns")
+	}
 	withRunLimit(t, 3)
 	a := &App{config: &Config{}}
 	stamp := time.Now().Unix()
@@ -57,6 +67,10 @@ func TestConcurrentRunsLive(t *testing.T) {
 	bigWant := e2eSnapshotState(t, bigSrc)
 	// The small set that runs again and again meanwhile.
 	smallSrc := filepath.Join(t.TempDir(), "small")
+	if smallBase != "" {
+		smallSrc = filepath.Join(smallBase, fmt.Sprintf("conc-small-%d", stamp))
+		t.Cleanup(func() { _ = os.RemoveAll(smallSrc) })
+	}
 	e2eBuildTree(t, smallSrc)
 
 	longID := fmt.Sprintf("conc-long-%d", stamp)
