@@ -46,8 +46,17 @@ asked, use "Change" or "Modify", then Remove.
   `NoModify`, so "Change" shows; service `ProxmoxBackupClientSVC` running), silent removal
   with the settings kept, silent removal with `KEEP_CONFIG=0` (DeleteConfigFolder ran; every
   file went except two logs held open by a copy of the app running from another folder).
-- Not clicked through yet (needs a desktop session): tests 3, 4, 5 and 7. The page order was
-  checked in the built MSI's ControlEvent table.
+- 3 November 2026, clicked through on a Windows 10 laptop with the service and the app
+  installed, settings backed up first: tests 3, 4 (with Back), 5 and 7 pass.
+- Found then: removing the app while it is open or in the tray left it running with no tray
+  icon and its program file gone, until ended by hand. Fixed: the app quits when Windows
+  closes its tray (the tray's exit now quits the app); afterwards nothing was left running and
+  the program folder was removed.
+- Still open: such a removal shows "The setup was unable to automatically close all requested
+  applications" (OK carries on and the removal completes). The verbose log has the app shut
+  down in the user's session, and Restart Manager in session 0 ending with error 350 (restart
+  required): the check runs while our own service is still running, before the package's
+  StopServices; RmGetList lists only `ProxmoxBackupClientSVC`. See the roadmap.
 
 ## Tests
 
@@ -70,11 +79,11 @@ Sets, so the folder holds `config.json` and `scheduled_jobs.json`.
 - `C:\ProgramData\ProxmoxBackupClient` gone (close the app first: files it holds open stay).
 - `uninstall.log` shows `DeleteConfigFolder` running.
 
-### 3. Programs and Features > Uninstall
+### 3. Programs and Features > Uninstall (passed)
 
 - Expected: no keep or delete question; programs gone; settings kept.
 
-### 4. Programs and Features > Change, Remove, keep
+### 4. Programs and Features > Change, Remove, keep (passed)
 
 Programs and Features > Change (or Settings > Apps > Modify), Next, Remove; on the keep or
 delete page leave "Keep configuration", Next, Remove.
@@ -83,7 +92,7 @@ delete page leave "Keep configuration", Next, Remove.
 - Back on "Ready to remove" returns to the keep or delete page; Back there returns to
   "Change, repair, or remove".
 
-### 5. Programs and Features > Change, Remove, delete
+### 5. Programs and Features > Change, Remove, delete (passed)
 
 As test 4, but choose "Delete configuration".
 
@@ -96,11 +105,14 @@ Install a newer build over the installed one.
 - No keep or delete question. One Programs and Features entry, with the new version.
 - Service running. Settings unchanged.
 
-### 7. Cancel
+### 7. Cancel (passed)
 
 Start test 4 and press Cancel on the keep or delete page.
 
 - App, service and settings all still there.
+- After "Are you sure?", Windows Installer's own "Setup Wizard was interrupted" page shows,
+  saying nothing was changed; Finish closes it. That is the standard ending of a cancelled
+  setup, also when installing.
 
 ## If something goes wrong
 
