@@ -305,6 +305,11 @@ func createOne(c snapControl, absPath string, needFiles bool) (*linuxSnapshot, s
 	if err != nil {
 		return nil, "", err
 	}
+	// The module would refuse with only "invalid argument" (seen on Fedora
+	// 44, whose default file system is btrfs): say what is wrong instead.
+	if fstype == "btrfs" {
+		return nil, "", fmt.Errorf("%w (btrfs, mounted at %s)", ErrUnsupportedFS, mountpoint)
+	}
 
 	if err := destroyStaleTracers(c, device, mountpoint); err != nil {
 		return nil, "", err

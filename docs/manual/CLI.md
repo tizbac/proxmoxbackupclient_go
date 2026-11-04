@@ -119,7 +119,7 @@ Chunks sent in the lost session are sent again. The run prints when it starts ag
 | `-backup-id <id>` | computer name | Backup ID. Snapshots with the same ID form one group |
 | `-change-detection-mode <mode>` | `legacy` | `legacy`, `data` or `metadata` ([section 4](#4-incremental-backups-with--change-detection-mode)) |
 | `-exclude <pattern>` | | Leave out files and folders matching the pattern. Repeat for several ([below](#leaving-files-out)) |
-| `-novss` | VSS on | Do not snapshot the source first. Needed for file systems without VSS (VeraCrypt volumes) and on Linux unless you run as root with `elastio-snap` or `dattobd` loaded. A network path (a share or a drive mapped to one; NFS, SMB/CIFS or FUSE on Linux) is read without a snapshot on its own, with a note, as in the GUI |
+| `-novss` | VSS on | Do not snapshot the source first. Needed for file systems without VSS (VeraCrypt volumes) and on Linux unless you run as root with `elastio-snap` or `dattobd` loaded, and on btrfs (Fedora's default), which neither module can snapshot. Without it the run says what is missing. A network path (a share or a drive mapped to one; NFS, SMB/CIFS or FUSE on Linux) is read without a snapshot on its own, with a note, as in the GUI |
 | `-keyfile <file>` | | Encrypt with this PBS key file ([section 7](#7-encryption)) |
 | `-keyfile-passphrase <text>` | asked | Passphrase for a protected key |
 | `-no-mtime` | off | Record 1970-01-01 as every file and folder time ([below](#leaving-times-out-of-the-archive)) |

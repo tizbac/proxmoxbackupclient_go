@@ -63,7 +63,7 @@ The app needs the WebKitGTK runtime that Wails programs use; most desktop distri
 
 ### Linux snapshots: installing elastio-snap or dattobd
 
-A machine backup of a running Linux computer reads each mounted partition through a snapshot, as Windows does with VSS, so the image is consistent. Linux has nothing built in for this, so the app uses a kernel module: `elastio-snap` or `dattobd` (elastio-snap is a fork of dattobd). Folder backups do not need either.
+A machine backup of a running Linux computer reads each mounted partition through a snapshot, as Windows does with VSS, so the image is consistent. Linux has nothing built in for this, so the app uses a kernel module: `elastio-snap` or `dattobd` (elastio-snap is a fork of dattobd). A folder backup uses the same snapshot when its Backup Set has **Use VSS (Windows Shadow Copy / Linux Snapshot)** ticked, and so needs the module and root too; unticked, it reads the folders as they are. Neither module can snapshot **btrfs**, the default file system of Fedora: there, untick it for folder sets, and a machine set needs **Use snapshots** off (with its acceptance box) for its btrfs partitions.
 
 A machine backup needs two things:
 
@@ -259,7 +259,8 @@ rm /tmp/snaptest.img
 * **`dkms install` fails.** The build log is `/var/lib/dkms/<module>/<version>/build/make.log`. The usual causes are missing kernel headers and a kernel newer than the module supports ([kernel 7](#kernel-7)).
 * **`Key was rejected by service`.** See [Secure Boot](#secure-boot).
 * **Removing `dattobd-dkms` fails** with "pre-removal script subprocess returned error exit status 1" (seen with 0.12.2): its script stops when the module is not loaded. Run `sudo modprobe dattobd`, then remove it again.
-* **A machine backup stops with "no usable block snapshot module loaded".** No module is loaded, or the backup did not run as root.
+* **A backup stops with "refusing to back up without a snapshot".** The message says why: the backup did not run as root, no module is loaded, or both, each with what to do.
+* **"elastio-snap and dattobd cannot snapshot this file system (btrfs …)".** The folder or partition is on btrfs, which neither module supports. Untick **Use VSS** for a folder set, or turn **Use snapshots** off for a machine set (`-novss` and `-liveread` on the command line).
 
 ### Where settings are kept
 

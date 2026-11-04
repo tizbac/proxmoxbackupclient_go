@@ -10,6 +10,9 @@ var (
 	// ErrNoSnapshotModule: neither elastio-snap nor dattobd is loaded. Run
 	// as a normal user, a module that is installed but not loaded counts.
 	ErrNoSnapshotModule = errors.New("no snapshot module (elastio-snap or dattobd) is loaded")
+	// ErrUnsupportedFS: the path is on a file system the modules cannot
+	// snapshot (btrfs, Fedora's default).
+	ErrUnsupportedFS = errors.New("elastio-snap and dattobd cannot snapshot this file system")
 )
 
 type SnapShot struct {
