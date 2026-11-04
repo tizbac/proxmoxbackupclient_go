@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,6 +49,16 @@ func undeleteRollbackLive(t *testing.T, mode string) {
 	job := ScheduledJob{ID: "live-" + mode, Name: "Live " + mode, BackupDirs: []string{src}, BackupID: backupID, ExcludeList: []string{"*.tmp"}}
 	cfg := &Config{BaseURL: e2eBaseURL, AuthID: e2eAuthID, Secret: e2eSecret, Datastore: e2eStore, CertFingerprint: e2eFP}
 	t.Logf("backup id %s", backupID)
+	// Undo checks the record against its Backup Set (checkRollbackRecord), so
+	// the set is saved, in this test's own settings folder.
+	deployTestDir(t)
+	jobsPath, err := getScheduledJobsPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	job.BackupType = "directory"
+	jobsJSON, _ := json.Marshal([]ScheduledJob{job})
+	must(t, os.WriteFile(jobsPath, jobsJSON, 0o600))
 
 	backup := func(label string) int64 {
 		t.Helper()
