@@ -8,8 +8,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"testing"
 	"time"
+
+	"pbscommon"
 )
 
 func writeAt(t *testing.T, path string, body string, mtime time.Time) {
@@ -58,6 +61,32 @@ func TestWalkLiveFolderSkipsWhatABackupSkips(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("entries %v, want %v", got, want)
 		}
+	}
+}
+
+// A link to a folder is never followed. On Linux the backup keeps it as a
+// link, so the walk lists it as an entry of its own (else Undelete calls it
+// deleted); elsewhere the backup skips it, and so does the walk.
+func TestWalkLiveFolderFolderLink(t *testing.T) {
+	root := t.TempDir()
+	tm := time.Unix(1_700_000_000, 0)
+	writeAt(t, filepath.Join(root, "real", "f.txt"), "a", tm)
+	if err := os.Symlink("real", filepath.Join(root, "to-dir")); err != nil {
+		t.Skipf("cannot make a symbolic link here: %v", err)
+	}
+	li, err := walkLiveFolder(root, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"real", "real/f.txt"}
+	if pbscommon.KeepsSymlinks {
+		want = []string{"real", "real/f.txt", "to-dir"}
+	}
+	if got := paths(li.Entries); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("entries %v, want %v", got, want)
+	}
+	if pbscommon.KeepsSymlinks && !li.HasFile("to-dir") {
+		t.Errorf("the folder link is not listed as an entry of its own")
 	}
 }
 

@@ -1434,6 +1434,11 @@ func WriteSharedCatalogRoot(catalogWriteCB PXAROutCB, catalogPos uint64, entries
 	return nil
 }
 
+// KeepsSymlinks reports whether a backup on this platform stores every
+// symbolic link as a link, folder links included (Linux), rather than
+// skipping links and junctions.
+const KeepsSymlinks = posixFidelity
+
 // On pxar first item and consquently entry point must always be WriteDir , because toplevel is always a directory
 // So backing up single file is not possible
 func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefetchEntry) (CatalogFile, error) {

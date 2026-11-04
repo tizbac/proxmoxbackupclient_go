@@ -138,7 +138,9 @@ func walkLiveFolder(root string, excludes []string, cancel func() bool, progress
 				// Vanished between the listing and the stat: treat as absent.
 				continue
 			}
-			if it.IsDir() || (info.Mode()&os.ModeSymlink != 0 && isDirLink(childPath)) {
+			// On Linux a folder link is kept as a link, like any other, so it
+			// is listed below as an entry of its own and never followed.
+			if it.IsDir() || (!pbscommon.KeepsSymlinks && info.Mode()&os.ModeSymlink != 0 && isDirLink(childPath)) {
 				if pbscommon.IsAutoExcludedFolderAt(name, rel == "" && pbscommon.IsVolumeRoot(root)) {
 					continue
 				}
