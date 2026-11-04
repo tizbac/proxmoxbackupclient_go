@@ -13,13 +13,20 @@ import (
 )
 
 // Opt-in interoperability test (PBS_PXARV2=1) against snapshots written by the
-// OFFICIAL proxmox-backup-client 3.4.9 on the test PBS, in each
-// change-detection mode, from the same fixture tree:
+// OFFICIAL proxmox-backup-client 4.2.6 on the test PBS, in each
+// change-detection mode, from the same fixture tree (331 files: sizes around
+// block and chunk edges, multi-chunk random, zeros, repeats, duplicates, a
+// sparse file, unicode and emoji names, symbolic links, a deep path):
 //
-//	host/pxarv2-legacy @1791337552  legacy   (fixture.pxar.didx + catalog)
-//	host/pxarv2-split  @1791337553  data     (fixture.mpxar.didx + fixture.ppxar.didx)
-//	host/pxarv2-split  @1791337554  metadata (300 of 309 files reused, padding)
-//	host/pxarv2-split  @1791337568  metadata (306 reused, 4 partially reused chunks)
+//	host/pxarv2-legacy @1793782563  legacy   (fixture.pxar.didx + catalog)
+//	host/pxarv2-split  @1793782567  data     (fixture.mpxar.didx + fixture.ppxar.didx)
+//	host/pxarv2-split  @1793782570  metadata (unchanged: every file reused)
+//	host/pxarv2-split  @1793782573  metadata (after an edit, an addition, a
+//	                                deletion, a rename, a time change and a
+//	                                region changed in a big file: 96.5% reused)
+//
+// testing/pxarv2-fixture/make-fixtures.sh writes them again (it replaced the
+// first fixtures on 4 Nov 2026, after those were deleted from the test PBS).
 //
 // testdata/pxarv2/<label>.sha256 is `sha256sum` of every regular file at the
 // moment each backup ran (recorded on the source host). Every snapshot is
@@ -37,10 +44,10 @@ type pxarv2Snapshot struct {
 }
 
 var pxarv2Snapshots = []pxarv2Snapshot{
-	{"legacy", "pxarv2-legacy", 1791337552},
-	{"data", "pxarv2-split", 1791337553},
-	{"metadata1", "pxarv2-split", 1791337554},
-	{"metadata2", "pxarv2-split", 1791337568},
+	{"legacy", "pxarv2-legacy", 1793782563},
+	{"data", "pxarv2-split", 1793782567},
+	{"metadata1", "pxarv2-split", 1793782570},
+	{"metadata2", "pxarv2-split", 1793782573},
 }
 
 // Paths the reader is known not to restore (see above).
@@ -196,10 +203,11 @@ func TestPXARv2OfficialInterop(t *testing.T) {
 			pxarv2Compare(t, s.label+map[bool]string{false: " full", true: " full parallel"}[parallel], want, pxarv2Restored(t, dest), nil)
 		}
 
-		// Partial restores: one file, one nested file and one directory. In a
-		// split archive a file's GOODBYE span overstates its size, so these
-		// also check that nothing beyond the selection is restored.
-		for _, sel := range []string{"a/hello.txt", "a/b/c/deep.txt", "small"} {
+		// Partial restores: one file, one nested file with a non-Latin name
+		// and one directory. In a split archive a file's GOODBYE span
+		// overstates its size, so these also check that nothing beyond the
+		// selection is restored.
+		for _, sel := range []string{"a/hello.txt", "unicode/русский файл.dat", "small"} {
 			inc, ok := listed[sel]
 			if !ok {
 				t.Errorf("%s: %s not in listing for partial restore", s.label, sel)
