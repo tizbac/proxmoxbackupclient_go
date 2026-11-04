@@ -26,9 +26,11 @@ func TestCancelMachineBackupLive(t *testing.T) {
 	}
 	liveServer(t)
 
+	// Opt-in on its own as well: the other live tests run with PBS_LIVE_TEST
+	// alone, and this one needs a disk to back up.
 	device := os.Getenv("PBS_CANCEL_TEST_DEVICE")
 	if device == "" {
-		t.Fatal("set PBS_CANCEL_TEST_DEVICE to the block device to back up (e.g. /dev/sda)")
+		t.Skip("set PBS_CANCEL_TEST_DEVICE to the block device to back up (e.g. /dev/sda)")
 	}
 
 	app := &App{}
