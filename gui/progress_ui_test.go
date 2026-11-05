@@ -88,3 +88,17 @@ func TestJobProgressTotals(t *testing.T) {
 		t.Errorf("after the scan: %d, %d, want the scan's 900, 9", b, f)
 	}
 }
+
+// The next folder's "Creating VSS snapshot..." reports the job's percentage
+// so far, not 0, so the bar does not fall back between folders.
+func TestJobProgressPercent(t *testing.T) {
+	var none *jobProgress
+	if got := none.percent(); got != 0 {
+		t.Errorf("nil percent = %v, want 0", got)
+	}
+	p := &jobProgress{}
+	p.lastPercent = 0.9
+	if got := p.percent(); got != 0.9 {
+		t.Errorf("percent = %v, want 0.9", got)
+	}
+}

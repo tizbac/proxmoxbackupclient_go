@@ -364,6 +364,16 @@ func (p *jobProgress) totals() (bytes, files uint64) {
 	return bytes, files
 }
 
+// percent is the job's progress so far (0..1), as last reported; 0 for nil.
+func (p *jobProgress) percent() float64 {
+	if p == nil {
+		return 0
+	}
+	p.lastPercentMu.Lock()
+	defer p.lastPercentMu.Unlock()
+	return p.lastPercent
+}
+
 func loadString(v *atomic.Value) string {
 	s, _ := v.Load().(string)
 	return s
@@ -2091,9 +2101,12 @@ func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk,
 		// a few seconds with nothing else to report — without this the UI is
 		// left showing the previous, now-stale "Connecting to PBS..." message
 		// for the whole pause. Real chunk-level progress from backupReal below
-		// naturally overwrites this once the snapshot is ready.
+		// naturally overwrites this once the snapshot is ready. It keeps the
+		// job's percentage: it used to send 0, so the bar fell back to 0% at
+		// each folder after the first (seen live 2026-11-05, 90% to 0% for the
+		// 14 s of the third folder's snapshot, then on to 92.7%).
 		if progress != nil {
-			progress(0, "Creating VSS snapshot...")
+			progress(jobProg.percent(), "Creating VSS snapshot...")
 		}
 
 		var bytesArchived uint64
