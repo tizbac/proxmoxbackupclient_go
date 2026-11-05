@@ -676,7 +676,7 @@ export function ServiceControl({ ui }) {
               : tl('serviceIntro', 'With the service installed, scheduled Backup Sets run in the background as Local System, also when nobody is signed in and this app is closed. Without it, they run only while this app is open.')}
           </p>
           {linux && !st.installed && (
-            <div className="info-box" style={{marginBottom: '8px'}}>ℹ️ {tl('serviceLinuxSettings', "Installing copies your Backup Sets and settings to {dir}, where the service keeps them; only root can open that folder. This app then works on them through the service: connecting asks for an administrator's password. Your own copy is left as it was.").replace('{dir}', st.settingsDir || '/var/lib/proxmoxbackupclient')}</div>
+            <div className="info-box" style={{marginBottom: '8px'}}>ℹ️ {tl('serviceLinuxSettings', "Installing copies your Backup Sets and settings to {dir}, where the service keeps them; only root can open that folder. This app then works on them through the service: connecting asks for an administrator's password. Your own copy is left as it was.").replace('{dir}', st.settingsDir || '/var/lib/salvanza')}</div>
           )}
           <div style={{fontSize: '14px', marginBottom: '8px'}}>
             <strong>{tl('serviceStatusLabel', 'Status:')}</strong>{' '}

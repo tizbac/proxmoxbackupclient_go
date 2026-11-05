@@ -5,11 +5,11 @@ import translations from './i18n/translations.js'
 
 // The default brand as gui/brand.go has it (GetBrand JSON).
 const def = {
-  name: 'proxmoxbackupclient', title: 'Proxmox Backup Client', is_default: true,
-  brand_url: 'https://www.proxmox.com/', buy_storage_url: '', buy_storage_text: '',
+  name: 'salvanza', title: 'Salvanza for Proxmox Backup Server', is_default: true,
+  brand_url: 'https://salvanza.org/', buy_storage_url: '', buy_storage_text: '',
   urls: {
-    about: 'https://www.proxmox.com/', help: 'https://forum.proxmox.com/',
-    updates: `${PROJECT_REPO}/releases`, contact: PROJECT_REPO,
+    about: 'https://salvanza.org/', help: PROJECT_REPO,
+    updates: `${PROJECT_REPO}/releases`, contact: `${PROJECT_REPO}/issues`,
   },
 }
 const nimbus = {
@@ -30,10 +30,13 @@ assert.deepEqual(storageOffer(def), { kind: 'selfHost', url: PBS_DOWNLOAD_URL })
 assert.deepEqual(storageOffer({ ...nimbus, buy_storage_url: '' }).kind, 'selfHost')
 assert.deepEqual(storageOffer(null).kind, 'selfHost')
 
-// Links: the default build gets no Website (its "about" is Proxmox's site) and
-// its contact, being the repo, shows once as Source code.
+// Links: the default build's Website is salvanza.org, first; its help and
+// contact, being the repository and its issues, show once as Source code and
+// Issues.
 const keys = b => aboutLinks(b).map(([k]) => k)
-assert.deepEqual(keys(def), ['help', 'updates', 'source', 'issues', 'license'])
+assert.deepEqual(keys(def), ['website', 'updates', 'source', 'issues', 'license'])
+assert.equal(aboutLinks(def)[0][1], 'https://salvanza.org/')
+assert.equal(PROJECT_REPO, 'https://github.com/salvanza/salvanza_client')
 assert.equal(aboutLinks(def).find(([k]) => k === 'updates')[1], `${PROJECT_REPO}/releases`)
 // A brand's own pages come first; source, issues and licence stay the project's.
 assert.deepEqual(keys(nimbus), ['website', 'help', 'updates', 'contact', 'source', 'issues', 'license'])

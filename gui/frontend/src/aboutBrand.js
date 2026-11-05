@@ -4,7 +4,7 @@
 
 // The project's own repository. Source code, bug reports and the licence always
 // point here, whatever the brand: the GPL source offer is the project's.
-export const PROJECT_REPO = 'https://github.com/tizbac/proxmoxbackupclient_go'
+export const PROJECT_REPO = 'https://github.com/salvanza/salvanza_client'
 export const PBS_DOWNLOAD_URL = 'https://www.proxmox.com/en/downloads/proxmox-backup-server'
 
 // A brand with a storage link is selling backup storage: a button with its own
@@ -18,11 +18,10 @@ export function storageOffer(brand) {
 }
 
 // The About page links: the brand's own pages, then the project's. The default
-// brand's "about" page is Proxmox's site, not ours, so only a real brand gets a
-// Website link. A URL is listed once, the project's copy winning.
+// brand's Website is the project's site (salvanza.org), ahead of the
+// repository. A URL is listed once, the project's copy winning.
 export function aboutLinks(brand) {
   const urls = (brand && brand.urls) || {}
-  const branded = !!brand && !brand.is_default
   const project = [
     ['source', PROJECT_REPO],
     ['issues', `${PROJECT_REPO}/issues`],
@@ -30,7 +29,7 @@ export function aboutLinks(brand) {
   ]
   const seen = new Set(project.map(([, u]) => u))
   const own = [
-    ['website', branded ? (urls.about || brand.brand_url) : ''],
+    ['website', urls.about || (brand && brand.brand_url)],
     ['help', urls.help],
     ['updates', urls.updates || `${PROJECT_REPO}/releases`],
     ['contact', urls.contact],

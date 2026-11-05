@@ -1,7 +1,7 @@
 const translations = {
   fr: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Client pour Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -260,7 +260,7 @@ const translations = {
       descriptionPlaceholder: "Stockage SSD pour les sauvegardes critiques",
       // Encryption key (per-PBS-server)
       encryptionKey: "Fichier de clé de chiffrement (optionnel)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importer...",
       encryptionKeyGenerate: "Générer...",
       encryptionKeyClear: "Effacer",
@@ -710,7 +710,7 @@ const translations = {
         compatible: { title: "Compatible avec les outils Proxmox", desc: "Les sauvegardes se restaurent avec le client officiel, et inversement" },
         languages: { title: "Interface en 18 langues", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 les contributeurs de Proxmox Backup Client - Go et RDEM Systems.",
+      copyright: "© 2024-2026 les contributeurs de Salvanza et RDEM Systems.",
       legalLicense: "Sous licence GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Non affilié à Proxmox Server Solutions GmbH. « Proxmox » et les marques associées sont la propriété de leurs détenteurs respectifs, utilisées ici uniquement pour indiquer la compatibilité.",
       legalWarranty: "Fourni tel quel, sans aucune garantie de quelque nature que ce soit ; vous l'utilisez à vos propres risques.",
@@ -1174,7 +1174,7 @@ const translations = {
   },
   en: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Client for Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -1433,7 +1433,7 @@ const translations = {
       descriptionPlaceholder: "SSD storage for critical backups",
       // Encryption key (per-PBS-server)
       encryptionKey: "Encryption key file (optional)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Import...",
       encryptionKeyGenerate: "Generate...",
       encryptionKeyClear: "Clear",
@@ -1883,7 +1883,7 @@ const translations = {
         compatible: { title: "Works with Proxmox's own tools", desc: "Backups restore with the official client, and the other way round" },
         languages: { title: "18-language interface", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 Proxmox Backup Client - Go contributors and RDEM Systems.",
+      copyright: "© 2024-2026 Salvanza contributors and RDEM Systems.",
       legalLicense: "Licensed under the GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Not affiliated with Proxmox Server Solutions GmbH. \"Proxmox\" and related marks are the property of their respective owners, used here only to state compatibility.",
       legalWarranty: "Provided as is, without guarantee or warranty of any kind; use it at your own risk.",
@@ -2337,7 +2337,7 @@ const translations = {
   },
   it: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Client per Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -2596,7 +2596,7 @@ const translations = {
       descriptionPlaceholder: "Archiviazione SSD per backup critici",
       // Encryption key (per-PBS-server)
       encryptionKey: "File chiave di cifratura (opzionale)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importa...",
       encryptionKeyGenerate: "Genera...",
       encryptionKeyClear: "Cancella",
@@ -3046,7 +3046,7 @@ const translations = {
         compatible: { title: "Compatibile con gli strumenti Proxmox", desc: "I backup si ripristinano con il client ufficiale, e viceversa" },
         languages: { title: "Interfaccia in 18 lingue", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 i contributori di Proxmox Backup Client - Go e RDEM Systems.",
+      copyright: "© 2024-2026 i contributori di Salvanza e RDEM Systems.",
       legalLicense: "Distribuito con licenza GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Non affiliato a Proxmox Server Solutions GmbH. \"Proxmox\" e i marchi correlati sono proprietà dei rispettivi titolari, usati qui solo per indicare la compatibilità.",
       legalWarranty: "Fornito così com'è, senza garanzie di alcun tipo; l'uso è a proprio rischio.",
@@ -3522,7 +3522,7 @@ const translations = {
   },
   de: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Client für Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -3781,7 +3781,7 @@ const translations = {
       descriptionPlaceholder: "SSD-Speicher für kritische Sicherungen",
       // Encryption key (per-PBS-server)
       encryptionKey: "Verschlüsselungsschlüssel-Datei (optional)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importieren...",
       encryptionKeyGenerate: "Generieren...",
       encryptionKeyClear: "Entfernen",
@@ -4231,7 +4231,7 @@ const translations = {
         compatible: { title: "Kompatibel mit Proxmox-Werkzeugen", desc: "Sicherungen lassen sich mit dem offiziellen Client wiederherstellen, und umgekehrt" },
         languages: { title: "Oberfläche in 18 Sprachen", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 die Mitwirkenden von Proxmox Backup Client - Go und RDEM Systems.",
+      copyright: "© 2024-2026 die Mitwirkenden von Salvanza und RDEM Systems.",
       legalLicense: "Lizenziert unter der GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Keine Verbindung zur Proxmox Server Solutions GmbH. „Proxmox“ und verwandte Marken sind Eigentum ihrer jeweiligen Inhaber und werden hier nur zur Angabe der Kompatibilität verwendet.",
       legalWarranty: "Bereitgestellt wie besehen, ohne Gewährleistung oder Garantie jeglicher Art; die Nutzung erfolgt auf eigenes Risiko.",
@@ -4695,7 +4695,7 @@ const translations = {
   },
   pl: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Klient dla Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -4954,7 +4954,7 @@ const translations = {
       descriptionPlaceholder: "Magazyn SSD dla krytycznych kopii zapasowych",
       // Encryption key (per-PBS-server)
       encryptionKey: "Plik klucza szyfrowania (opcjonalnie)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importuj...",
       encryptionKeyGenerate: "Generuj...",
       encryptionKeyClear: "Wyczyść",
@@ -5406,7 +5406,7 @@ const translations = {
         compatible: { title: "Współpraca z narzędziami Proxmox", desc: "Kopie przywraca się oficjalnym klientem, i odwrotnie" },
         languages: { title: "Interfejs w 18 językach", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 współtwórcy Proxmox Backup Client - Go i RDEM Systems.",
+      copyright: "© 2024-2026 współtwórcy Salvanza i RDEM Systems.",
       legalLicense: "Udostępniane na licencji GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Brak powiązania z Proxmox Server Solutions GmbH. „Proxmox” i powiązane znaki są własnością ich odpowiednich właścicieli, użyte tu wyłącznie w celu wskazania zgodności.",
       legalWarranty: "Dostarczane w stanie, w jakim jest, bez jakichkolwiek gwarancji ani rękojmi; używasz go na własne ryzyko.",
@@ -5904,7 +5904,7 @@ const translations = {
   },
   es: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Cliente para Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -6165,7 +6165,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Archivo de clave de cifrado (opcional)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importar...",
       encryptionKeyGenerate: "Generar...",
       encryptionKeyClear: "Quitar",
@@ -6615,7 +6615,7 @@ const translations = {
         compatible: { title: "Compatible con las herramientas de Proxmox", desc: "Las copias se restauran con el cliente oficial, y viceversa" },
         languages: { title: "Interfaz en 18 idiomas", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 los colaboradores de Proxmox Backup Client - Go y RDEM Systems.",
+      copyright: "© 2024-2026 los colaboradores de Salvanza y RDEM Systems.",
       legalLicense: "Licenciado bajo la GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "No afiliado a Proxmox Server Solutions GmbH. \"Proxmox\" y las marcas relacionadas son propiedad de sus respectivos titulares, usadas aquí solo para indicar compatibilidad.",
       legalWarranty: "Se proporciona tal cual, sin garantía de ningún tipo; úselo bajo su propia responsabilidad.",
@@ -7079,7 +7079,7 @@ const translations = {
   },
   bg: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Клиент за Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -7336,7 +7336,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Файл с ключ за криптиране (по избор)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Импортирай...",
       encryptionKeyGenerate: "Генерирай...",
       encryptionKeyClear: "Изчисти",
@@ -7786,7 +7786,7 @@ const translations = {
         compatible: { title: "Работи с инструментите на Proxmox", desc: "Архивите се възстановяват с официалния клиент, и обратно" },
         languages: { title: "Интерфейс на 18 езика", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 сътрудниците на Proxmox Backup Client - Go и RDEM Systems.",
+      copyright: "© 2024-2026 сътрудниците на Salvanza и RDEM Systems.",
       legalLicense: "Лицензиран под GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Не е свързан с Proxmox Server Solutions GmbH. „Proxmox“ и свързаните марки са собственост на съответните им притежатели, използвани тук само за да се посочи съвместимост.",
       legalWarranty: "Предоставя се „както е“, без каквито и да е гаранции; използвате го изцяло на свой риск.",
@@ -8250,7 +8250,7 @@ const translations = {
   },
   cs: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Klient pro Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -8507,7 +8507,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Soubor šifrovacího klíče (nepovinné)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importovat...",
       encryptionKeyGenerate: "Vygenerovat...",
       encryptionKeyClear: "Odebrat",
@@ -8957,7 +8957,7 @@ const translations = {
         compatible: { title: "Spolupracuje s nástroji Proxmox", desc: "Zálohy lze obnovit oficiálním klientem, a naopak" },
         languages: { title: "Rozhraní v 18 jazycích", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 přispěvatelé Proxmox Backup Client - Go a RDEM Systems.",
+      copyright: "© 2024-2026 přispěvatelé Salvanza a RDEM Systems.",
       legalLicense: "Šířeno pod licencí GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Nesouvisí se společností Proxmox Server Solutions GmbH. „Proxmox“ a související značky jsou majetkem jejich příslušných vlastníků, použité zde pouze k vyjádření kompatibility.",
       legalWarranty: "Poskytováno tak, jak je, bez jakékoli záruky či garance; používáte jej na vlastní riziko.",
@@ -9432,7 +9432,7 @@ const translations = {
   },
   el: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Πρόγραμμα-πελάτης για το Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -9689,7 +9689,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Αρχείο κλειδιού κρυπτογράφησης (προαιρετικό)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Εισαγωγή...",
       encryptionKeyGenerate: "Δημιουργία...",
       encryptionKeyClear: "Καθαρισμός",
@@ -10139,7 +10139,7 @@ const translations = {
         compatible: { title: "Συνεργάζεται με τα εργαλεία του Proxmox", desc: "Τα αντίγραφα επαναφέρονται με τον επίσημο πελάτη, και αντίστροφα" },
         languages: { title: "Διεπαφή σε 18 γλώσσες", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 οι συντελεστές του Proxmox Backup Client - Go και η RDEM Systems.",
+      copyright: "© 2024-2026 οι συντελεστές του Salvanza και η RDEM Systems.",
       legalLicense: "Αδειοδοτημένο υπό την GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Δεν σχετίζεται με την Proxmox Server Solutions GmbH. Το «Proxmox» και τα σχετικά σήματα είναι ιδιοκτησία των αντίστοιχων κατόχων τους, χρησιμοποιούνται εδώ μόνο για να δηλωθεί συμβατότητα.",
       legalWarranty: "Παρέχεται ως έχει, χωρίς καμία εγγύηση οποιουδήποτε είδους· η χρήση γίνεται με δική σας ευθύνη.",
@@ -10620,7 +10620,7 @@ const translations = {
   },
   hu: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Kliens a Proxmox Backup Serverhez",
 
     // Auth (user/password vs API token)
@@ -10877,7 +10877,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Titkosítókulcs-fájl (opcionális)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importálás...",
       encryptionKeyGenerate: "Létrehozás...",
       encryptionKeyClear: "Eltávolítás",
@@ -11327,7 +11327,7 @@ const translations = {
         compatible: { title: "Együttműködik a Proxmox eszközeivel", desc: "A mentések a hivatalos klienssel is visszaállíthatók, és fordítva" },
         languages: { title: "18 nyelvű felület", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 a Proxmox Backup Client - Go közreműködői és az RDEM Systems.",
+      copyright: "© 2024-2026 a Salvanza közreműködői és az RDEM Systems.",
       legalLicense: "A GNU General Public License v3.0 (GPLv3) licenc alatt érhető el.",
       legalDisclaimer: "Nem kapcsolódik a Proxmox Server Solutions GmbH-hoz. A „Proxmox” és a kapcsolódó márkák a megfelelő tulajdonosaik tulajdonát képezik, itt csak a kompatibilitás jelzésére szerepelnek.",
       legalWarranty: "Úgy, ahogy van, mindenféle garancia vagy szavatosság nélkül biztosítjuk; használata kizárólag saját felelősségre történik.",
@@ -11791,7 +11791,7 @@ const translations = {
   },
   lv: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Proxmox Backup Server klients",
 
     // Auth (user/password vs API token)
@@ -12048,7 +12048,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Šifrēšanas atslēgas fails (neobligāti)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importēt...",
       encryptionKeyGenerate: "Ģenerēt...",
       encryptionKeyClear: "Notīrīt",
@@ -12498,7 +12498,7 @@ const translations = {
         compatible: { title: "Darbojas ar Proxmox rīkiem", desc: "Dublējumus var atjaunot ar oficiālo klientu, un otrādi" },
         languages: { title: "Saskarne 18 valodās", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 Proxmox Backup Client - Go līdzautori un RDEM Systems.",
+      copyright: "© 2024-2026 Salvanza līdzautori un RDEM Systems.",
       legalLicense: "Licencēts saskaņā ar GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Nav saistīts ar Proxmox Server Solutions GmbH. „Proxmox” un saistītās zīmes ir attiecīgo īpašnieku īpašums, izmantotas šeit tikai saderības norādīšanai.",
       legalWarranty: "Tiek nodrošināta tāda, kāda tā ir, bez jebkāda veida garantijām; izmantojiet to uz savu risku.",
@@ -12973,7 +12973,7 @@ const translations = {
   },
   lt: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Proxmox Backup Server klientas",
 
     // Auth (user/password vs API token)
@@ -13230,7 +13230,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Šifravimo rakto failas (neprivaloma)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importuoti...",
       encryptionKeyGenerate: "Generuoti...",
       encryptionKeyClear: "Išvalyti",
@@ -13683,7 +13683,7 @@ const translations = {
         compatible: { title: "Veikia su Proxmox įrankiais", desc: "Atsargines kopijas galima atkurti oficialiu klientu, ir atvirkščiai" },
         languages: { title: "Sąsaja 18 kalbų", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 Proxmox Backup Client - Go bendraautoriai ir RDEM Systems.",
+      copyright: "© 2024-2026 Salvanza bendraautoriai ir RDEM Systems.",
       legalLicense: "Licencijuota pagal GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Nesusijęs su Proxmox Server Solutions GmbH. „Proxmox“ ir susiję ženklai yra atitinkamų savininkų nuosavybė, naudojami tik suderinamumui nurodyti.",
       legalWarranty: "Teikiama tokia, kokia yra, be jokių garantijų ar įsipareigojimų; naudojate savo rizika.",
@@ -14158,7 +14158,7 @@ const translations = {
   },
   nl: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Client voor Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -14415,7 +14415,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Versleutelingssleutelbestand (optioneel)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importeren...",
       encryptionKeyGenerate: "Genereren...",
       encryptionKeyClear: "Wissen",
@@ -14865,7 +14865,7 @@ const translations = {
         compatible: { title: "Werkt met de tools van Proxmox", desc: "Backups herstellen met de officiële client, en andersom" },
         languages: { title: "Interface in 18 talen", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 de bijdragers aan Proxmox Backup Client - Go en RDEM Systems.",
+      copyright: "© 2024-2026 de bijdragers aan Salvanza en RDEM Systems.",
       legalLicense: "Gelicentieerd onder de GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Niet gelieerd aan Proxmox Server Solutions GmbH. „Proxmox” en aanverwante merken zijn eigendom van hun respectievelijke eigenaren en worden hier alleen gebruikt om compatibiliteit aan te geven.",
       legalWarranty: "Geleverd zoals het is, zonder enige garantie of waarborg van welke aard ook; gebruik is op eigen risico.",
@@ -15329,7 +15329,7 @@ const translations = {
   },
   pt: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Cliente para Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -15586,7 +15586,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Ficheiro da chave de encriptação (opcional)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importar...",
       encryptionKeyGenerate: "Gerar...",
       encryptionKeyClear: "Limpar",
@@ -16036,7 +16036,7 @@ const translations = {
         compatible: { title: "Funciona com as ferramentas Proxmox", desc: "Os backups restauram-se com o cliente oficial, e vice-versa" },
         languages: { title: "Interface em 18 idiomas", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 os contribuidores do Proxmox Backup Client - Go e a RDEM Systems.",
+      copyright: "© 2024-2026 os contribuidores do Salvanza e a RDEM Systems.",
       legalLicense: "Licenciado sob a GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Não afiliado com a Proxmox Server Solutions GmbH. «Proxmox» e as marcas relacionadas são propriedade dos respetivos proprietários, usadas aqui apenas para indicar compatibilidade.",
       legalWarranty: "Fornecido tal como está, sem garantia de qualquer tipo; utilize-o por sua conta e risco.",
@@ -16512,7 +16512,7 @@ const translations = {
   },
   ro: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Client pentru Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -16769,7 +16769,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Fișier cheie de criptare (opțional)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importă...",
       encryptionKeyGenerate: "Generează...",
       encryptionKeyClear: "Elimină",
@@ -17222,7 +17222,7 @@ const translations = {
         compatible: { title: "Funcționează cu instrumentele Proxmox", desc: "Backupurile se restaurează cu clientul oficial, și invers" },
         languages: { title: "Interfață în 18 limbi", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 contribuitorii Proxmox Backup Client - Go și RDEM Systems.",
+      copyright: "© 2024-2026 contribuitorii Salvanza și RDEM Systems.",
       legalLicense: "Licențiat sub GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Nu este afiliat cu Proxmox Server Solutions GmbH. „Proxmox” și mărcile conexe sunt proprietatea respectivilor deținători, utilizate aici doar pentru a indica compatibilitatea.",
       legalWarranty: "Furnizat ca atare, fără nicio garanție de niciun fel; îl utilizați pe propriul risc.",
@@ -17697,7 +17697,7 @@ const translations = {
   },
   sk: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Klient pre Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -17954,7 +17954,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Súbor šifrovacieho kľúča (nepovinné)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Importovať...",
       encryptionKeyGenerate: "Vygenerovať...",
       encryptionKeyClear: "Odstrániť",
@@ -18404,7 +18404,7 @@ const translations = {
         compatible: { title: "Spolupracuje s nástrojmi Proxmox", desc: "Zálohy sa dajú obnoviť oficiálnym klientom, a naopak" },
         languages: { title: "Rozhranie v 18 jazykoch", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 prispievatelia Proxmox Backup Client - Go a RDEM Systems.",
+      copyright: "© 2024-2026 prispievatelia Salvanza a RDEM Systems.",
       legalLicense: "Šírené pod licenciou GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Nesúvisí so spoločnosťou Proxmox Server Solutions GmbH. „Proxmox“ a súvisiace značky sú majetkom ich príslušných vlastníkov, použité tu iba na vyjadrenie kompatibility.",
       legalWarranty: "Poskytuje sa tak, ako je, bez akejkoľvek záruky; používate ho na vlastné riziko.",
@@ -18891,7 +18891,7 @@ const translations = {
   },
   tr: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Proxmox Backup Server istemcisi",
 
     // Auth (user/password vs API token)
@@ -19148,7 +19148,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Şifreleme anahtarı dosyası (isteğe bağlı)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "İçe aktar...",
       encryptionKeyGenerate: "Oluştur...",
       encryptionKeyClear: "Temizle",
@@ -19598,7 +19598,7 @@ const translations = {
         compatible: { title: "Proxmox'un kendi araçlarıyla çalışır", desc: "Yedekler resmi istemciyle geri yüklenir, tersi de geçerlidir" },
         languages: { title: "18 dilli arayüz", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 Proxmox Backup Client - Go'ya katkıda bulunanlar ve RDEM Systems.",
+      copyright: "© 2024-2026 Salvanza'ya katkıda bulunanlar ve RDEM Systems.",
       legalLicense: "GNU General Public License v3.0 (GPLv3) altında lisanslanmıştır.",
       legalDisclaimer: "Proxmox Server Solutions GmbH ile bağlantılı değildir. “Proxmox” ve ilgili markalar, ilgili sahiplerinin mülkiyetindedir ve burada yalnızca uyumluluğu belirtmek için kullanılmaktadır.",
       legalWarranty: "Olduğu gibi, hiçbir türde garanti veya teminat olmaksızın sunulur; kullanım riski tamamen size aittir.",
@@ -20062,7 +20062,7 @@ const translations = {
   },
   uk: {
     // Header
-    appTitle: "Proxmox Backup Client - Go",
+    appTitle: "Salvanza for Proxmox Backup Server",
     appSubtitle: "Клієнт для Proxmox Backup Server",
 
     // Auth (user/password vs API token)
@@ -20319,7 +20319,7 @@ const translations = {
 
       // Encryption key (per-PBS-server)
       encryptionKey: "Файл ключа шифрування (необов'язково)",
-      phEncryptionKey: "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json",
+      phEncryptionKey: "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json",
       encryptionKeyImport: "Імпорт...",
       encryptionKeyGenerate: "Згенерувати...",
       encryptionKeyClear: "Очистити",
@@ -20772,7 +20772,7 @@ const translations = {
         compatible: { title: "Працює з інструментами Proxmox", desc: "Резервні копії відновлюються офіційним клієнтом, і навпаки" },
         languages: { title: "Інтерфейс 18 мовами", desc: "Български, Čeština, Deutsch, English, Español, Ελληνικά, Français, Magyar, Italiano, Latviešu, Lietuvių, Nederlands, Polski, Português, Română, Slovenčina, Türkçe, Українська" }
       },
-      copyright: "© 2024-2026 учасники Proxmox Backup Client - Go та RDEM Systems.",
+      copyright: "© 2024-2026 учасники Salvanza та RDEM Systems.",
       legalLicense: "Ліцензовано за GNU General Public License v3.0 (GPLv3).",
       legalDisclaimer: "Не пов'язано з Proxmox Server Solutions GmbH. «Proxmox» та пов'язані знаки є власністю відповідних власників, використовуються тут лише для позначення сумісності.",
       legalWarranty: "Надається «як є», без будь-яких гарантій чи зобов'язань; використовуйте на власний ризик.",
