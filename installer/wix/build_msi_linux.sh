@@ -161,7 +161,7 @@ source_is_newer "$GUI_EXE" "$ROOT/gui" && { NEED_GUI=1; echo "==> GUI sources ar
 source_is_newer "$SVC_EXE" "$ROOT/gui" && { NEED_SVC=1; echo "==> SVC sources are newer than $SVC_EXE: rebuild required"; }
 # The command line is built from the backup packages, not from gui.
 CLI_SOURCES=()
-for d in cli directorybackup machinebackup machinebackuplib clientcommon pbscommon snapshot nbd third_party; do
+for d in cli directorybackup machinebackup machinebackuplib clientcommon pbscommon snapshot nbd; do
     [ -d "$ROOT/$d" ] && CLI_SOURCES+=("$ROOT/$d")
 done
 source_is_newer "$CLI_EXE" "${CLI_SOURCES[@]}" && { NEED_CLI=1; echo "==> CLI sources are newer than $CLI_EXE: rebuild required"; }

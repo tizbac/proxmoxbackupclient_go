@@ -14,24 +14,18 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// The shadow copy calls of go-vss v0.3.3 (MIT, Jerome Hadorn and Stanislau
-// Matskevich), with its object lifetimes fixed. Found 2026-10-21: every
-// snapshot left about 33 handles behind in the process (threads that had
-// ended, events, semaphores), so the GUI and the service, which run for
-// weeks, kept growing; on 2026-11-04 the last of it (TestLiveVSSRefCounts,
-// TestLiveVSSLeakHunt), and now none is left.
+// The shadow copy calls of go-vss's Snapshotter.CreateSnapshot (MIT, Jerome
+// Hadorn and Stanislau Matskevich), made here step by step for what its
+// Snapshotter doesn't do: a multithreaded apartment (initCOM), a step that is
+// still running when Wait returns (pollVSS), and one shadow copy creation at a
+// time in the process (shadowMu).
 //
-//   - go-vss itself, vendored in third_party/go-vss and fixed there:
-//     LoadAndInitVSS and its five methods that start an asynchronous step
-//     took a QueryInterface reference on the object VSS returned and never
-//     released the first one, so one Release never freed it. Every async
-//     object holds a reference to the VSS object, so that was never freed
-//     either, nor the thread VSS starts for it.
-//   - Snapshotter.Release returned early, without releasing the object, when
-//     BackupComplete or GatherWriterStatus failed (vssShadow.release always
-//     releases).
-//   - The snapshot properties VSS allocates were never freed
-//     (VssFreeSnapshotProperties).
+// Found 2026-10-21: every snapshot left about 33 handles behind in the process
+// (threads that had ended, events, semaphores), so the GUI and the service,
+// which run for weeks, kept growing. go-vss up to v0.3.x took a QueryInterface
+// reference on each object VSS returned and never released the first; v0.4.2
+// returns the objects as VSS gives them (st-matskevich/go-vss#16), so one
+// Release frees each. TestLiveVSSRefCounts and TestLiveVSSLeakHunt check it.
 //
 // COM must be initialised on the calling thread (initCOM), which must not
 // change until release (CreateVSSSnapshot locks it).
@@ -75,7 +69,7 @@ func initCOM() (func(), error) {
 }
 
 // newVSSComponents is vss.LoadAndInitVSS: the object it returns is freed by
-// one Release (third_party/go-vss, fixed there).
+// one Release.
 func newVSSComponents() (*vss.IVssBackupComponents, error) {
 	return vss.LoadAndInitVSS()
 }
@@ -180,14 +174,21 @@ func createShadow(drive string, timeoutMs int) (s *vssShadow, err error) {
 	if err := waitVSS("VSS_GATHER - GatherWriterMetadata", async, err, timeoutMs); err != nil {
 		return nil, err
 	}
-	if ok, err := c.IsVolumeSupported(drive); err != nil || !ok {
+	// Nothing here reads the writers' metadata, so it is freed straight away,
+	// as go-vss does.
+	if err := c.FreeWriterMetadata(); err != nil {
+		return nil, fmt.Errorf("VSS_GATHER - FreeWriterMetadata: %w", err)
+	}
+	// GUID_NULL as the provider: VSS picks it.
+	var provider ole.GUID
+	if ok, err := c.IsVolumeSupported(provider, drive); err != nil || !ok {
 		return nil, fmt.Errorf("VSS_VOLUME_SUPPORT - snapshots are not supported for drive %s, err: %v", drive, err)
 	}
 	var setID, snapshotID ole.GUID
 	if err := c.StartSnapshotSet(&setID); err != nil {
 		return nil, fmt.Errorf("VSS_START - StartSnapshotSet: %w", err)
 	}
-	if err := c.AddToSnapshotSet(drive, &snapshotID); err != nil {
+	if err := c.AddToSnapshotSet(drive, provider, &snapshotID); err != nil {
 		return nil, fmt.Errorf("VSS_ADD - AddToSnapshotSet: %w", err)
 	}
 	async, err = c.PrepareForBackup()
@@ -199,30 +200,26 @@ func createShadow(drive string, timeoutMs int) (s *vssShadow, err error) {
 		return nil, err
 	}
 
-	var props vss.VssSnapshotProperties
-	if err := c.GetSnapshotProperties(snapshotID, &props); err != nil {
-		return nil, fmt.Errorf("VSS_PROPERTIES - GetSnapshotProperties: %w", err)
-	}
-	details, err := vss.ParseProperties(props) // copies the strings
-	procVssFreeSnapshotProperties.Call(uintptr(unsafe.Pointer(&props)))
-	if err != nil {
-		return nil, fmt.Errorf("VSS_PROPERTIES - ParseProperties: %w", err)
-	}
-	// The shadow copy's device. Windows Server 2025 build 26100.1742 was
-	// reported giving none (tizbac/proxmoxbackupclient_go#131): the path
-	// became just `\`, which passes Validate, so a folder backup read the
-	// live volume without saying so, and a machine backup failed. WMI still
-	// knows the device then. With neither, the backup must stop rather than
-	// read the live volume.
+	// The shadow copy's device. With GetSnapshotProperties, Windows Server
+	// 2025 was reported giving none (tizbac/proxmoxbackupclient_go#131): the
+	// QEMU guest agent's VSS provider answers it for any shadow copy, with
+	// empty properties (st-matskevich/go-vss#15). The path became just `\`,
+	// which passes Validate, so a folder backup read the live volume without
+	// saying so, and a machine backup failed. Query lists only what each
+	// provider made, as go-vss now reads it; WMI is asked if that has no
+	// device either. With neither, the backup must stop rather than read the
+	// live volume.
+	details, qerr := queriedSnapshotDetails(c, snapshotID)
 	device := details.DeviceObject
 	if device == "" {
 		d, werr := shadowDeviceFromWMI(snapshotID.String())
 		if werr != nil || d == "" {
 			deleteShadow(snapshotID.String())
-			return nil, fmt.Errorf("VSS_PROPERTIES - VSS gave no device for shadow copy %s, and WMI none either (%v): stopping rather than reading the live volume", snapshotID.String(), werr)
+			return nil, fmt.Errorf("VSS_PROPERTIES - VSS gave no device for shadow copy %s (%v), and WMI none either (%v): stopping rather than reading the live volume", snapshotID.String(), qerr, werr)
 		}
-		fmt.Printf("VSS gave no device for shadow copy %s; WMI gives %s\n", snapshotID.String(), d)
+		fmt.Printf("VSS gave no device for shadow copy %s (%v); WMI gives %s\n", snapshotID.String(), qerr, d)
 		device = d
+		details.Id = snapshotID.String()
 		details.DeviceObject = d
 	}
 	shadow := &vssShadow{
@@ -239,6 +236,46 @@ func createShadow(drive string, timeoutMs int) (s *vssShadow, err error) {
 		return nil, err
 	}
 	return shadow, nil
+}
+
+// vssObjectProps is go-vss's VssObjectProperties, one entry of
+// IVssBackupComponents::Query, with its fields readable here: go-vss reads the
+// entries itself only inside Snapshotter.CreateSnapshot. The layout is go-vss's
+// (TestVSSObjectPropsLayout).
+type vssObjectProps struct {
+	objectType uint32
+	_          uint32
+	snapshot   vss.VssSnapshotProperties
+	_          uint32
+}
+
+// queriedSnapshotDetails returns the properties of shadow copy id from
+// IVssBackupComponents::Query, as go-vss's own CreateSnapshot reads them.
+func queriedSnapshotDetails(c *vss.IVssBackupComponents, id ole.GUID) (vss.SnapshotDetails, error) {
+	list, err := c.Query()
+	if err != nil {
+		return vss.SnapshotDetails{}, fmt.Errorf("Query: %w", err)
+	}
+	if list == nil {
+		return vss.SnapshotDetails{}, errors.New("Query returned no list")
+	}
+	defer list.Release()
+	want := id.String()
+	for {
+		var o vssObjectProps
+		fetched, err := list.Next((*vss.VssObjectProperties)(unsafe.Pointer(&o)))
+		if err != nil {
+			return vss.SnapshotDetails{}, fmt.Errorf("Query: %w", err)
+		}
+		if !fetched {
+			return vss.SnapshotDetails{}, fmt.Errorf("Query does not list shadow copy %s", want)
+		}
+		details, err := vss.ParseProperties(o.snapshot) // copies the strings
+		procVssFreeSnapshotProperties.Call(uintptr(unsafe.Pointer(&o.snapshot)))
+		if details.Id == want {
+			return details, err
+		}
+	}
 }
 
 // release tells VSS the backup is done and frees the VSS object, whatever

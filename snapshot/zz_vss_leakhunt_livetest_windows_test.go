@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"unsafe"
 
@@ -135,44 +134,29 @@ func TestLiveVSSRefCounts(t *testing.T) {
 	}
 	must("SetContext", c.SetContext(vss.VSS_CTX_BACKUP))
 	must("SetBackupState", c.SetBackupState(false, false, vss.VSS_BT_COPY, false))
-	// PBS_VSS_FREEMETA=early|late: FreeWriterMetadata, which go-vss has in
-	// its method table but no method for, right after GatherWriterMetadata
-	// or after BackupComplete. PBS_VSS_NOSTATUS=1 leaves out
-	// GatherWriterStatus and FreeWriterStatus.
-	freeMeta := func(when string) {
-		if os.Getenv("PBS_VSS_FREEMETA") != when {
-			return
-		}
-		vtbl := (*[64]uintptr)(unsafe.Pointer(c.RawVTable))
-		r, _, _ := syscall.SyscallN(vtbl[12], uintptr(unsafe.Pointer(c)))
-		if r != 0 {
-			t.Fatalf("FreeWriterMetadata: 0x%x", r)
-		}
-		refs("FreeWriterMetadata (" + when + ")")
-	}
+	// PBS_VSS_NOSTATUS=1 leaves out GatherWriterStatus and FreeWriterStatus.
 	a, err := c.GatherWriterMetadata()
 	must("GatherWriterMetadata", waitVSS("gather", a, err, vssTimeoutMs))
-	freeMeta("early")
-	if _, err := c.IsVolumeSupported(vol); err != nil {
+	must("FreeWriterMetadata", c.FreeWriterMetadata())
+	var provider ole.GUID
+	if _, err := c.IsVolumeSupported(provider, vol); err != nil {
 		t.Fatal(err)
 	}
 	refs("IsVolumeSupported")
 	var setID, snapID ole.GUID
 	must("StartSnapshotSet", c.StartSnapshotSet(&setID))
-	must("AddToSnapshotSet", c.AddToSnapshotSet(vol, &snapID))
+	must("AddToSnapshotSet", c.AddToSnapshotSet(vol, provider, &snapID))
 	a, err = c.PrepareForBackup()
 	must("PrepareForBackup", waitVSS("prepare", a, err, vssTimeoutMs))
 	a, err = c.DoSnapshotSet()
 	must("DoSnapshotSet", waitVSS("snapshot", a, err, vssTimeoutMs))
-	var props vss.VssSnapshotProperties
-	if err := c.GetSnapshotProperties(snapID, &props); err != nil {
-		t.Fatal(err)
+	d, err := queriedSnapshotDetails(c, snapID)
+	if err != nil || d.DeviceObject == "" {
+		t.Fatalf("Query: device %q, %v", d.DeviceObject, err)
 	}
-	procVssFreeSnapshotProperties.Call(uintptr(unsafe.Pointer(&props)))
-	refs("GetSnapshotProperties")
+	refs("Query")
 	a, err = c.BackupComplete()
 	must("BackupComplete", waitVSS("complete", a, err, vssTimeoutMs))
-	freeMeta("late")
 	if os.Getenv("PBS_VSS_NOSTATUS") != "1" {
 		a, err = c.GatherWriterStatus()
 		must("GatherWriterStatus", waitVSS("status", a, err, vssTimeoutMs))

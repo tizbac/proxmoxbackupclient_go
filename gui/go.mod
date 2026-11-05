@@ -62,7 +62,7 @@ require (
 	github.com/rodolfoag/gow32 v0.0.0-20230512144032-1e896a3c51aa // indirect
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/samber/lo v1.49.1 // indirect
-	github.com/st-matskevich/go-vss v0.3.3 // indirect
+	github.com/st-matskevich/go-vss v0.4.2 // indirect
 	github.com/tawesoft/golib/v2 v2.16.0 // indirect
 	github.com/tkrajina/go-reflector v0.5.8 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
@@ -83,7 +83,6 @@ require (
 replace (
 	clientcommon => ../clientcommon
 	github.com/salvanza/salvanza_client/gui/api => ./api
-	github.com/st-matskevich/go-vss => ../third_party/go-vss
 	machinebackuplib => ../machinebackuplib
 	pbscommon => ../pbscommon
 	retry => ../pkg/retry

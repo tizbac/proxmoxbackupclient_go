@@ -64,8 +64,8 @@ func TestLiveVSSSnapshotReleased(t *testing.T) {
 // snapshot shows. The GUI and the service run for weeks, a snapshot or more
 // a day. 2026-10-21 on Server 2022: 33 per snapshot with go-vss's own
 // calls, 21 with createShadow, all in create and release (none in delete,
-// in the VSS object itself, or in vssadmin). 2026-11-04: 0, once waitVSS
-// drops the extra reference go-vss puts on each IVssAsync.
+// in the VSS object itself, or in vssadmin). 2026-11-04: 0, with go-vss's
+// extra references gone (st-matskevich/go-vss#16, in v0.4.2).
 func TestLiveVSSHandles(t *testing.T) {
 	vol := os.Getenv("PBS_VSS_VOL")
 	n, _ := strconv.Atoi(os.Getenv("PBS_VSS_HANDLES"))

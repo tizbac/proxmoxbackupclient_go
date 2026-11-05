@@ -19,9 +19,11 @@ import (
 // (for example C:\) the way createShadow does, and shows what
 // GetSnapshotProperties returned: the structure as bytes and as go-vss reads
 // it, a second call into a larger buffer filled with 0xAA (to see how many
-// bytes VSS writes), and Win32_ShadowCopy's device object for the same ID.
-// The shadow is deleted at the end. For tizbac/proxmoxbackupclient_go#131:
-// on Windows Server 2025 the device object comes back empty.
+// bytes VSS writes), then what Query gives (which createShadow uses) and
+// Win32_ShadowCopy's device object for the same ID. Query and WMI must give a
+// device, the same one. The shadow is deleted at the end. For
+// tizbac/proxmoxbackupclient_go#131: there GetSnapshotProperties gave an empty
+// device object, as the QEMU guest agent's VSS provider answers it.
 // Run elevated: PBS_VSS_PROPS=C:\ snapshot.test -test.run LiveVSSProperties -test.v
 func TestLiveVSSProperties(t *testing.T) {
 	vol := os.Getenv("PBS_VSS_PROPS")
@@ -63,9 +65,10 @@ func TestLiveVSSProperties(t *testing.T) {
 	check("SetBackupState", c.SetBackupState(false, false, vss.VSS_BT_COPY, false))
 	async, err := c.GatherWriterMetadata()
 	check("GatherWriterMetadata", waitVSS("GatherWriterMetadata", async, err, vssTimeoutMs))
+	check("FreeWriterMetadata", c.FreeWriterMetadata())
 	var setID, snapID ole.GUID
 	check("StartSnapshotSet", c.StartSnapshotSet(&setID))
-	check("AddToSnapshotSet", c.AddToSnapshotSet(vol, &snapID))
+	check("AddToSnapshotSet", c.AddToSnapshotSet(vol, ole.GUID{}, &snapID))
 	async, err = c.PrepareForBackup()
 	check("PrepareForBackup", waitVSS("PrepareForBackup", async, err, vssTimeoutMs))
 	async, err = c.DoSnapshotSet()
@@ -95,6 +98,13 @@ func TestLiveVSSProperties(t *testing.T) {
 	t.Logf("second call into 256 bytes of 0xAA: err=%v, last byte written at %d:\n%s", err, written, hex.Dump(big[:]))
 	procVssFreeSnapshotProperties.Call(uintptr(unsafe.Pointer(&big[0])))
 
+	qd, qerr := queriedSnapshotDetails(c, snapID)
+	t.Logf("Query: device=%q volume=%q machine=%q provider=%s status=%s err=%v",
+		qd.DeviceObject, qd.VolumeName, qd.OriginatingMachine, qd.ProviderID, qd.Status, qerr)
+	if qerr != nil || qd.DeviceObject == "" {
+		t.Errorf("Query gave no device for %s: %v", id, qerr)
+	}
+
 	q := "Get-CimInstance Win32_ShadowCopy -Filter \"ID='" + strings.ToUpper(id) + "'\" | Format-List ID, DeviceObject, VolumeName, ClientAccessible, Persistent, State"
 	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", q).CombinedOutput()
 	t.Logf("Win32_ShadowCopy (err=%v):\n%s", err, strings.TrimSpace(string(out)))
@@ -105,8 +115,11 @@ func TestLiveVSSProperties(t *testing.T) {
 	t.Logf("shadowDeviceFromWMI: %q, err=%v", wmiDev, err)
 	if err != nil || wmiDev == "" {
 		t.Errorf("WMI fallback found no device for %s: %v", id, err)
-	} else if d.DeviceObject != "" && !strings.EqualFold(wmiDev, d.DeviceObject) {
-		t.Errorf("WMI fallback gives %q, VSS %q", wmiDev, d.DeviceObject)
+	} else if qd.DeviceObject != "" && !strings.EqualFold(wmiDev, qd.DeviceObject) {
+		t.Errorf("WMI fallback gives %q, Query %q", wmiDev, qd.DeviceObject)
+	}
+	if d.DeviceObject != "" && !strings.EqualFold(d.DeviceObject, qd.DeviceObject) {
+		t.Errorf("GetSnapshotProperties gives %q, Query %q", d.DeviceObject, qd.DeviceObject)
 	}
 	if _, err := shadowDeviceFromWMI("{00000000-0000-0000-0000-000000000000}"); err == nil {
 		t.Error("WMI fallback found a device for a shadow copy that does not exist")

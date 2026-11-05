@@ -14,7 +14,7 @@ require (
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/rodolfoag/gow32 v0.0.0-20230512144032-1e896a3c51aa // indirect
-	github.com/st-matskevich/go-vss v0.3.3 // indirect
+	github.com/st-matskevich/go-vss v0.4.2 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/net v0.54.0 // indirect
@@ -30,7 +30,6 @@ require (
 // Local package replacements
 replace (
 	clientcommon => ../clientcommon
-	github.com/st-matskevich/go-vss => ../third_party/go-vss
 	pbscommon => ../pbscommon
 	retry => ../pkg/retry
 	snapshot => ../snapshot
