@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- ===================================================================== -->
-<!-- Brand installer entry: "Etitech Backup".                              -->
-<!-- Copy of the Product.wxs pattern with Etitech brand identity.          -->
-<!-- To activate: drop EtitechBackup.ico into installer/icons/, build the   -->
-<!-- EtitechBackup.exe + EtitechBackupSVC.exe under those names, then light  -->
-<!-- THIS file to EtitechBackup.msi. The GUI auto-brands as "etitechbackup"  -->
-<!-- at runtime (gui/brand.go).                                           -->
+<!-- Brand installer entry: Etitech Backup.                                 -->
+<!-- The Product.wxs pattern with the Etitech brand identity: the programs  -->
+<!-- are etitechbackup-gui.exe and etitechbackup-svc.exe, and the app       -->
+<!-- brands itself as "etitechbackup" at runtime (gui/brand.go).            -->
 <!-- ===================================================================== -->
 <?define ProductName = "Etitech Backup" ?>
-<?define ExeName = "EtitechBackup" ?>
-<?define ServiceExeName = "EtitechBackupSVC" ?>
+<?define ExeName = "etitechbackup-gui" ?>
+<?define ServiceExeName = "etitechbackup-svc" ?>
+<?define Folder = "EtitechBackup" ?>
 <?define VendorKey = "Etitech" ?>
 <?define Manufacturer = "Etitech" ?>
 <!-- Each brand MUST have its own UpgradeCode (distinct from Product.wxs). -->

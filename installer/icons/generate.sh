@@ -4,8 +4,8 @@
 #   ./generate.sh
 #
 # Outputs:
-#   installer/icons/{nimbusbackup,acmebackup}.ico      — branded ARP/shortcut icons
-#   gui/build/windows/brands/<brandkey>.ico            — per-brand system-tray icons
+#   installer/icons/<brand>-gui.ico                    : the installer's and shortcuts' icons
+#   gui/build/windows/brands/<brandkey>.ico            : per-brand system-tray icons
 #     (embedded into the GUI binary via gui/icon.go and selected at runtime
 #      from the executable's name, so one binary ships every brand)
 #
@@ -17,7 +17,7 @@
 #   installer/icons/src/*.svg   — glyph-only square tiles for brands whose
 #                                 logo is a wide banner (drawn from
 #                                 gui/frontend/public/brands/*.svg)
-#   installer/icons/EtitechBackup.ico — used as-is
+#   installer/icons/etitechbackup-gui.ico : used as-is
 #
 # Requires: rsvg-convert (librsvg2-bin), ImageMagick 7 (magick)
 set -euo pipefail
@@ -25,13 +25,11 @@ cd "$(dirname "$0")"
 mkdir -p ../../gui/build/windows/brands
 BRANDS=../../gui/build/windows/brands
 
-declare -A EXE=([nimbusbackup]=NimbusBackup [acmebackup]=AcmeBackup)
-for b in "${!EXE[@]}"; do
-  # CamelCase name as referenced by WiX's $(var.ExeName).ico
-  Camel="${EXE[$b]}"
+for b in nimbusbackup; do
+  # Named as WiX's $(var.ExeName).ico refers to it
   rsvg-convert -w 1024 "src/$b.svg" -o "/tmp/$b.png"
-  magick "/tmp/$b.png" -define icon:auto-resize=256,128,64,48,32,16 "$Camel.ico"
-  cp "$Camel.ico" "$BRANDS/$b.ico"
+  magick "/tmp/$b.png" -define icon:auto-resize=256,128,64,48,32,16 "$b-gui.ico"
+  cp "$b-gui.ico" "$BRANDS/$b.ico"
 done
 
 # Default tile: no Proxmox mark (their media kit rules out using it as an app
@@ -40,13 +38,13 @@ done
 for s in 256 128 64 48; do rsvg-convert -w $s -h $s src/default.svg -o /tmp/default-$s.png; done
 for s in 32 24; do rsvg-convert -w $s -h $s src/default-32.svg -o /tmp/default-$s.png; done
 rsvg-convert -w 16 -h 16 src/default-16.svg -o /tmp/default-16.png
-magick /tmp/default-{256,128,64,48,32,24,16}.png ProxmoxBackupClient.ico
-cp ProxmoxBackupClient.ico "$BRANDS/proxmoxbackupclient.ico"
+magick /tmp/default-{256,128,64,48,32,24,16}.png salvanza-gui.ico
+cp salvanza-gui.ico "$BRANDS/salvanza.ico"
 # Also the exe's resource icon (window/taskbar/Alt-Tab), shared by every
 # branded rename of the binary — better than Wails' placeholder icon.
-cp ProxmoxBackupClient.ico ../../gui/build/windows/icon.ico
+cp salvanza-gui.ico ../../gui/build/windows/icon.ico
 
 # Etitech: tray tile is the same artwork as the installer icon.
-cp EtitechBackup.ico "$BRANDS/etitechbackup.ico"
+cp etitechbackup-gui.ico "$BRANDS/etitechbackup.ico"
 
 file "$BRANDS"/*.ico *.ico

@@ -1,12 +1,12 @@
-<!-- Shared installer body. Included by a brand entry file (see Product.wxs /
-     NimbusBackup.wxs / AcmeBackup.wxs) that supplies the brand identity via
-     !define BEFORE the include. All identity is driven by $(var.*):
-       ProductName, ExeName, ServiceExeName, VendorKey, Manufacturer,
-       UpgradeCode, ProductVersion, ArpUrlAbout, ArpHelpLink,
-       ArpUrlUpdateInfo, ArpContact.
-     The exe is installed under the SAME name as the installer (ExeName); the
-     GUI resolves its brand from the exe base name at runtime (gui/brand.go),
-     so the installed exe name == installer name == brand key. -->
+<!-- Shared installer body. Included by a brand entry file (Product.wxs for
+     Salvanza, NimbusBackup.wxs, EtitechBackup.wxs) that supplies the brand
+     identity via define BEFORE the include. All identity is driven by
+     $(var.*): ProductName, ExeName, ServiceExeName, Folder, VendorKey,
+     Manufacturer, UpgradeCode, ProductVersion, ArpUrlAbout, ArpHelpLink,
+     ArpUrlUpdateInfo, ArpContact.
+     The app resolves its brand from its exe name at runtime (gui/brand.go:
+     salvanza-gui is "salvanza"), and keeps its settings in
+     C:\ProgramData\<Folder>, so those names must match the brand's there. -->
 <Include>
   <Product Id="*"
            Name="$(var.ProductName)"
@@ -28,19 +28,42 @@
       AllowSameVersionUpgrades="yes" />
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- A brand that replaces installs made under another UpgradeCode names
-         it as PreviousUpgradeCode (the default brand: the mjb-is fork's own
-         MSIs, 0.9 and 0.10). Any version of that product is removed the way
-         an older version of this one is, before this one installs, so the
-         two never sit side by side; its removal keeps the settings
-         (UPGRADINGPRODUCTCODE is set). -->
-    <?ifdef PreviousUpgradeCode ?>
-    <Upgrade Id="$(var.PreviousUpgradeCode)">
-      <UpgradeVersion Minimum="0.0.0" IncludeMinimum="yes"
-                      Maximum="255.255.65535" IncludeMaximum="yes"
-                      OnlyDetect="no" Property="PREVIOUSPRODUCTFOUND" />
+    <!-- Every installer replaces every other product of this project, for
+         now: the names before the rename to Salvanza (Proxmox Backup Client
+         with its placeholder code, and the mjb-is fork's own MSIs, 0.9 and
+         0.10), the other brands, and the Acme demo brand. Any version of any
+         of them is removed the way an older version of this one is, before
+         this one installs, so two never sit side by side; their removal keeps
+         the settings (UPGRADINGPRODUCTCODE is set), and the new service takes
+         them over (gui/identity.go). Each code but this product's own. -->
+    <?if $(var.UpgradeCode) != "12345678-1234-1234-1234-123456789012" ?>
+    <Upgrade Id="12345678-1234-1234-1234-123456789012">
+      <UpgradeVersion Minimum="0.0.0" IncludeMinimum="yes" Maximum="255.255.65535" IncludeMaximum="yes" OnlyDetect="no" Property="OTHERPRODUCT_PBC" />
     </Upgrade>
     <?endif ?>
+    <?if $(var.UpgradeCode) != "F15C307F-1053-46B7-BCB0-2FAAC3627ED6" ?>
+    <Upgrade Id="F15C307F-1053-46B7-BCB0-2FAAC3627ED6">
+      <UpgradeVersion Minimum="0.0.0" IncludeMinimum="yes" Maximum="255.255.65535" IncludeMaximum="yes" OnlyDetect="no" Property="OTHERPRODUCT_FORK" />
+    </Upgrade>
+    <?endif ?>
+    <?if $(var.UpgradeCode) != "2EAC4C12-3459-4D47-8B53-489A96ACCFE8" ?>
+    <Upgrade Id="2EAC4C12-3459-4D47-8B53-489A96ACCFE8">
+      <UpgradeVersion Minimum="0.0.0" IncludeMinimum="yes" Maximum="255.255.65535" IncludeMaximum="yes" OnlyDetect="no" Property="OTHERPRODUCT_SALVANZA" />
+    </Upgrade>
+    <?endif ?>
+    <?if $(var.UpgradeCode) != "3f7c9a1e-6b2d-4e8f-9a5c-1b0d2f3e4a5b" ?>
+    <Upgrade Id="3f7c9a1e-6b2d-4e8f-9a5c-1b0d2f3e4a5b">
+      <UpgradeVersion Minimum="0.0.0" IncludeMinimum="yes" Maximum="255.255.65535" IncludeMaximum="yes" OnlyDetect="no" Property="OTHERPRODUCT_NIMBUS" />
+    </Upgrade>
+    <?endif ?>
+    <?if $(var.UpgradeCode) != "4e8d0b2f-7c3e-5f9a-0b6d-2c1e4f5a6b7c" ?>
+    <Upgrade Id="4e8d0b2f-7c3e-5f9a-0b6d-2c1e4f5a6b7c">
+      <UpgradeVersion Minimum="0.0.0" IncludeMinimum="yes" Maximum="255.255.65535" IncludeMaximum="yes" OnlyDetect="no" Property="OTHERPRODUCT_ETITECH" />
+    </Upgrade>
+    <?endif ?>
+    <Upgrade Id="7c2e4b6d-1a8f-4d3e-b9c0-5e6f7a8b9c0d">
+      <UpgradeVersion Minimum="0.0.0" IncludeMinimum="yes" Maximum="255.255.65535" IncludeMaximum="yes" OnlyDetect="no" Property="OTHERPRODUCT_ACME" />
+    </Upgrade>
 
     <!-- Application icon, selected from installer/icons/ by the ExeName -->
     <Icon Id="AppIcon" SourceFile="../icons/$(var.ExeName).ico" />
@@ -50,7 +73,7 @@
     <!-- Installation directory -->
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
-        <Directory Id="INSTALLFOLDER" Name="$(var.ExeName)" />
+        <Directory Id="INSTALLFOLDER" Name="$(var.Folder)" />
       </Directory>
 
       <!-- Start Menu shortcut -->
@@ -72,7 +95,7 @@
               KeyPath="yes" />
       </Component>
 
-      <!-- Service Executable (shares the ExeName base with a "SVC" suffix) -->
+      <!-- Service Executable (<FileBase>-svc beside <FileBase>-gui) -->
       <Component Id="ServiceExecutable" Guid="*" Win64="yes">
         <File Id="SvcExe"
               Source="../../gui/build/bin/$(var.ServiceExeName).exe"
@@ -99,6 +122,39 @@
           Stop="both"
           Wait="yes"
           Remove="uninstall" />
+      </Component>
+
+      <!-- The command line, salvanza-cli.exe (every brand's: it is the engine
+           under each), with the install folder on the system PATH so it runs
+           from any terminal, and .cmd stand-ins under the names its tools had
+           before (proxmoxbackup-directory and so on), so scripts written for
+           them keep working. One file per component: none of them carries a
+           version resource, and WiX generates a component's GUID only for a
+           single unversioned file (LGHT0367). -->
+      <Component Id="CommandLine" Guid="*" Win64="yes">
+        <File Id="CliExe"
+              Source="../../gui/build/bin/salvanza-cli.exe"
+              KeyPath="yes" />
+        <Environment Id="CliPath" Name="PATH" Value="[INSTALLFOLDER]" Permanent="no"
+                     Part="last" Action="set" System="yes" />
+      </Component>
+      <Component Id="CliAliasDirectory" Guid="*" Win64="yes">
+        <File Id="AliasDirectory" Source="cli-aliases/proxmoxbackup-directory.cmd" KeyPath="yes" />
+      </Component>
+      <Component Id="CliAliasMachine" Guid="*" Win64="yes">
+        <File Id="AliasMachine" Source="cli-aliases/proxmoxbackup-machine.cmd" KeyPath="yes" />
+      </Component>
+      <Component Id="CliAliasPbsDirectory" Guid="*" Win64="yes">
+        <File Id="AliasPbsDirectory" Source="cli-aliases/pbsdirectorybackup.cmd" KeyPath="yes" />
+      </Component>
+      <Component Id="CliAliasPbsMachine" Guid="*" Win64="yes">
+        <File Id="AliasPbsMachine" Source="cli-aliases/pbsmachinebackup.cmd" KeyPath="yes" />
+      </Component>
+      <Component Id="CliAliasDirectoryBackup" Guid="*" Win64="yes">
+        <File Id="AliasDirectoryBackup" Source="cli-aliases/directorybackup.cmd" KeyPath="yes" />
+      </Component>
+      <Component Id="CliAliasMachineBackup" Guid="*" Win64="yes">
+        <File Id="AliasMachineBackup" Source="cli-aliases/machinebackup.cmd" KeyPath="yes" />
       </Component>
     </DirectoryRef>
 
@@ -187,6 +243,13 @@
              Description="Complete backup solution with automatic scheduling">
       <ComponentRef Id="GUIExecutable" />
       <ComponentRef Id="ServiceExecutable" />
+      <ComponentRef Id="CommandLine" />
+      <ComponentRef Id="CliAliasDirectory" />
+      <ComponentRef Id="CliAliasMachine" />
+      <ComponentRef Id="CliAliasPbsDirectory" />
+      <ComponentRef Id="CliAliasPbsMachine" />
+      <ComponentRef Id="CliAliasDirectoryBackup" />
+      <ComponentRef Id="CliAliasMachineBackup" />
       <ComponentRef Id="ApplicationShortcut" />
       <ComponentRef Id="AutoStartRegistry" />
       <ComponentRef Id="AutoStartChoice" />
@@ -238,7 +301,8 @@
                            applied to the settings before the service starts
                            (see below and installer/DEPLOYMENT.md).
          KEEP_CONFIG       1 (default) | 0: on uninstall, keep (1) or delete
-                           (0) %ProgramData%\ProxmoxBackupClient.
+                           (0) %ProgramData%\<the brand's Folder>, e.g.
+                           %ProgramData%\Salvanza.
          INSTALLFOLDER     Absolute path: installation directory (also the
                            dir the UI's install-dir dialog edits).
          Silent logging:   msiexec /i <msi> /quiet /L*v "C:\Temp\install.log"
@@ -282,6 +346,19 @@
                       Type="raw"
                       Win64="yes" />
     </Property>
+    <!-- The choice the product this install replaces remembered: one from
+         before the rename (Proxmox Backup Client, or a brand under its
+         earlier exe name) or another brand: read before that product is
+         removed (AppSearch comes first). -->
+    <Property Id="PBCAUTOSTARTLEGACY" Secure="yes">
+      <RegistrySearch Id="AutoStartLegacyPbc" Root="HKLM" Key="Software\Proxmox Backup Client\ProxmoxBackupClient" Name="AutoStart" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartLegacyNimbus" Root="HKLM" Key="Software\Nimbus\NimbusBackup" Name="AutoStart" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartLegacyEtitech" Root="HKLM" Key="Software\Etitech\EtitechBackup" Name="AutoStart" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartLegacyAcme" Root="HKLM" Key="Software\Acme\AcmeBackup" Name="AutoStart" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartBrandSalvanza" Root="HKLM" Key="Software\Salvanza\salvanza-gui" Name="AutoStart" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartBrandNimbus" Root="HKLM" Key="Software\Nimbus\nimbusbackup-gui" Name="AutoStart" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartBrandEtitech" Root="HKLM" Key="Software\Etitech\etitechbackup-gui" Name="AutoStart" Type="raw" Win64="yes" />
+    </Property>
     <Property Id="PBCAUTOSTARTRUNENTRY" Secure="yes">
       <RegistrySearch Id="AutoStartRunEntry"
                       Root="HKLM"
@@ -289,8 +366,16 @@
                       Name="$(var.ExeName)"
                       Type="raw"
                       Win64="yes" />
+      <RegistrySearch Id="AutoStartRunEntryPbc" Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="ProxmoxBackupClient" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartRunEntryNimbus" Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="NimbusBackup" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartRunEntryEtitech" Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="EtitechBackup" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartRunEntryAcme" Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="AcmeBackup" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartRunEntrySalvanzaGui" Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="salvanza-gui" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartRunEntryNimbusGui" Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="nimbusbackup-gui" Type="raw" Win64="yes" />
+      <RegistrySearch Id="AutoStartRunEntryEtitechGui" Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="etitechbackup-gui" Type="raw" Win64="yes" />
     </Property>
     <CustomAction Id="AutoStartFromRemembered" Property="AUTOSTART" Value="[PBCAUTOSTARTREMEMBERED]" />
+    <CustomAction Id="AutoStartFromLegacy" Property="AUTOSTART" Value="[PBCAUTOSTARTLEGACY]" />
     <CustomAction Id="AutoStartFromRunEntry" Property="AUTOSTART" Value="1" />
     <CustomAction Id="AutoStartDefaultOff" Property="AUTOSTART" Value="0" />
     <!-- The tick box shows AUTOSTART: a check box is ticked by any value, so
@@ -298,13 +383,15 @@
     <CustomAction Id="AutoStartBoxTicked" Property="PBCAUTOSTARTBOX" Value="1" />
     <InstallUISequence>
       <Custom Action="AutoStartFromRemembered" After="AppSearch">NOT AUTOSTART AND PBCAUTOSTARTREMEMBERED</Custom>
-      <Custom Action="AutoStartFromRunEntry" After="AutoStartFromRemembered">NOT AUTOSTART AND PBCAUTOSTARTRUNENTRY</Custom>
+      <Custom Action="AutoStartFromLegacy" After="AutoStartFromRemembered">NOT AUTOSTART AND PBCAUTOSTARTLEGACY</Custom>
+      <Custom Action="AutoStartFromRunEntry" After="AutoStartFromLegacy">NOT AUTOSTART AND PBCAUTOSTARTRUNENTRY</Custom>
       <Custom Action="AutoStartDefaultOff" After="AutoStartFromRunEntry">NOT AUTOSTART</Custom>
       <Custom Action="AutoStartBoxTicked" After="AutoStartDefaultOff">AUTOSTART = "1"</Custom>
     </InstallUISequence>
     <InstallExecuteSequence>
       <Custom Action="AutoStartFromRemembered" After="AppSearch">NOT AUTOSTART AND PBCAUTOSTARTREMEMBERED</Custom>
-      <Custom Action="AutoStartFromRunEntry" After="AutoStartFromRemembered">NOT AUTOSTART AND PBCAUTOSTARTRUNENTRY</Custom>
+      <Custom Action="AutoStartFromLegacy" After="AutoStartFromRemembered">NOT AUTOSTART AND PBCAUTOSTARTLEGACY</Custom>
+      <Custom Action="AutoStartFromRunEntry" After="AutoStartFromLegacy">NOT AUTOSTART AND PBCAUTOSTARTRUNENTRY</Custom>
       <Custom Action="AutoStartDefaultOff" After="AutoStartFromRunEntry">NOT AUTOSTART</Custom>
     </InstallExecuteSequence>
     <Property Id="DESKTOPSHORTCUTS" Value="1" />
@@ -332,7 +419,7 @@
     <CustomAction Id="SetKeepConfigNo" Property="KEEP_CONFIG" Value="0" />
     <CustomAction Id="SetKeepConfigYes" Property="KEEP_CONFIG" Value="1" />
 
-    <!-- Custom action to kill all GUI processes before upgrade -->
+    <!-- Close the app of this product before an upgrade removes it -->
     <CustomAction Id="KillGUIProcesses"
                   Directory="TARGETDIR"
                   ExeCommand='cmd.exe /c "taskkill /F /IM $(var.ExeName).exe /T 2&gt;nul || exit 0"'
@@ -340,12 +427,21 @@
                   Impersonate="no"
                   Return="ignore" />
 
-    <!-- Custom action to delete config directory. Every brand keeps its
-         settings in C:\ProgramData\ProxmoxBackupClient (gui/config.go
-         getConfigDir), whatever its ExeName. -->
+    <!-- Close the apps of earlier installs and other brands still running,
+         copies installed without an MSI among them (their service is removed
+         by the new one when it starts, gui/legacy_services_windows.go). -->
+    <CustomAction Id="KillOtherApps"
+                  Directory="TARGETDIR"
+                  ExeCommand='cmd.exe /c "taskkill /F /T /IM ProxmoxBackupClient.exe /IM NimbusBackup.exe /IM EtitechBackup.exe /IM AcmeBackup.exe /IM salvanza-gui.exe /IM nimbusbackup-gui.exe /IM etitechbackup-gui.exe 2&gt;nul || exit 0"'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Custom action to delete the brand's settings folder,
+         C:\ProgramData\<Folder> (gui/config.go serviceStateDir). -->
     <CustomAction Id="DeleteConfigFolder"
                   Directory="TARGETDIR"
-                  ExeCommand='cmd.exe /c "if exist "%ProgramData%\ProxmoxBackupClient" rmdir /s /q "%ProgramData%\ProxmoxBackupClient""'
+                  ExeCommand='cmd.exe /c "if exist "%ProgramData%\$(var.Folder)" rmdir /s /q "%ProgramData%\$(var.Folder)""'
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
@@ -364,6 +460,9 @@
       <Custom Action="ClearNoModify" Before="RegisterProduct">ARPNOMODIFY</Custom>
       <Custom Action="KillGUIProcesses" Before="StopServices">
         UPGRADINGPRODUCTCODE
+      </Custom>
+      <Custom Action="KillOtherApps" Before="StopServices">
+        NOT (REMOVE="ALL")
       </Custom>
       <Custom Action="ApplyDeploySettings" Before="StartServices">
         CONFIGFILE AND NOT (REMOVE="ALL")
@@ -420,7 +519,7 @@
         </Control>
 
         <Control Id="ConfigInfo" Type="Text" X="25" Y="60" Width="320" Height="60" Transparent="yes" NoPrefix="yes">
-          <Text>The settings are kept in C:\ProgramData\ProxmoxBackupClient: the PBS servers and their tokens, the Backup Sets, encryption keys, reports and logs. Keep them to reinstall later with everything as it was.</Text>
+          <Text>The settings are kept in C:\ProgramData\$(var.Folder): the PBS servers and their tokens, the Backup Sets, encryption keys, reports and logs. Keep them to reinstall later with everything as it was.</Text>
         </Control>
 
         <Control Id="KeepConfigRadio" Type="RadioButtonGroup" X="25" Y="130" Width="320" Height="50" Property="KEEP_CONFIG">

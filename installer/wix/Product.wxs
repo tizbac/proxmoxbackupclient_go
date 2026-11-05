@@ -1,29 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- ===================================================================== -->
-<!-- Default brand installer entry ("Proxmox Backup Client").               -->
+<!-- Default brand installer entry: Salvanza for Proxmox Backup Server.     -->
 <!--                                                                         -->
 <!-- This is a BRAND ENTRY file: it only supplies the brand identity via     -->
-<!-- !define and pulls in the shared body (ProductBody.wxi). To ship a       -->
-<!-- different vendor's build, copy this file to <Brand>.wxs, edit the       -->
-<!-- defines (the exe is installed under ExeName, which must equal the        -->
-<!-- installer/output filename), and light it to <Brand>.msi. The GUI        -->
-<!-- picks up the matching brand at runtime from gui/brand.go (brandCatalog)  -->
-<!-- — the installed exe name IS the brand key.                               -->
-<!-- Keep the GUI-side list (colors/logo/URLs) and these defines in sync.    -->
+<!-- define and pulls in the shared body (ProductBody.wxi). Another brand    -->
+<!-- copies it to <Brand>.wxs with its own defines. The programs are         -->
+<!-- installed as ExeName and ServiceExeName (<FileBase>-gui, -svc); the     -->
+<!-- app finds its brand from that name at runtime (gui/brand.go), so the    -->
+<!-- names here and the brand's FileBase and Folder there must match.        -->
 <!-- ===================================================================== -->
-<?define ProductName = "Proxmox Backup Client" ?>
-<?define ExeName = "ProxmoxBackupClient" ?>
-<?define ServiceExeName = "ProxmoxBackupClientSVC" ?>
-<?define VendorKey = "Proxmox Backup Client" ?>
-<?define Manufacturer = "Proxmox Backup Client" ?>
-<?define UpgradeCode = "12345678-1234-1234-1234-123456789012" ?>
-<!-- The mjb-is fork's MSIs (0.9 and 0.10) used their own UpgradeCode; an
-     install of one is replaced by this one (see ProductBody.wxi). -->
-<?define PreviousUpgradeCode = "F15C307F-1053-46B7-BCB0-2FAAC3627ED6" ?>
-<?define ArpUrlAbout = "https://www.proxmox.com/" ?>
-<?define ArpHelpLink = "https://forum.proxmox.com/" ?>
-<?define ArpUrlUpdateInfo = "https://github.com/tizbac/proxmoxbackupclient_go/releases" ?>
-<?define ArpContact = "https://github.com/tizbac/proxmoxbackupclient_go" ?>
+<?define ProductName = "Salvanza for Proxmox Backup Server" ?>
+<?define ExeName = "salvanza-gui" ?>
+<?define ServiceExeName = "salvanza-svc" ?>
+<!-- The brand's folder name: Program Files\<it>, C:\ProgramData\<it>. -->
+<?define Folder = "Salvanza" ?>
+<?define VendorKey = "Salvanza" ?>
+<?define Manufacturer = "Salvanza" ?>
+<?define UpgradeCode = "2EAC4C12-3459-4D47-8B53-489A96ACCFE8" ?>
+<?define ArpUrlAbout = "https://salvanza.org/" ?>
+<?define ArpHelpLink = "https://github.com/salvanza/salvanza_client" ?>
+<?define ArpUrlUpdateInfo = "https://github.com/salvanza/salvanza_client/releases" ?>
+<?define ArpContact = "https://github.com/salvanza/salvanza_client/issues" ?>
 
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <!-- ProductVersion is passed from CI via candle -dProductVersion=x.y.z;

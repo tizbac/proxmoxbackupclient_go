@@ -11,12 +11,14 @@
 #
 # Flow per brand:
 #   1. GUI via `wails build -clean -platform windows/amd64` (built ONCE, copied/renamed per brand)
-#   2. SVC via `go build -tags service -trimpath -buildmode=pie -ldflags "-s -w -X main.appVersion=$V" -o ProxmoxBackupClientSVC.exe`
+#   2. SVC via `go build -tags service -trimpath -buildmode=pie -ldflags "-s -w -X main.appVersion=$V" -o salvanza-svc.exe`,
+#      and the command line via `go build -o salvanza-cli.exe ./cli`
 #   3. WiX stage: candle + light from wix314-binaries, run under Wine INSIDE
 #      Docker (installer/wix/Dockerfile.wine: Debian + wine + wine-mono + WiX)
 #
 # Brand resolution: the GUI exe name determines the brand at runtime (see gui/brand.go).
-# The SVC exe is the SAME for all brands (ProxmoxBackupClientSVC.exe).
+# The SVC exe is the SAME binary for all brands, named <brand>-svc.exe; the
+# command line, salvanza-cli.exe, is shared by every brand.
 
 set -euo pipefail
 
@@ -83,7 +85,7 @@ echo "==> Version: $VERSION (MSI ProductVersion: $PRODUCT_VERSION)"
 # candle/light are .NET exes; running them with the HOST wine used to fail on
 # machines without a working prefix ("wine: could not load kernel32.dll,
 # status c0000135"), so wine only ever runs inside this image.
-WINE_IMAGE="proxmoxbackup-msi-wine:1"
+WINE_IMAGE="salvanza-msi-wine:1"
 
 WORK=$(mktemp -d)
 
@@ -100,11 +102,12 @@ trap cleanup EXIT INT TERM
 
 echo "==> Preparing build artifacts in $WORK"
 
-# ---- 1. Build GUI (once) and SVC via Docker (golang:1.25) ----
+# ---- 1. Build GUI (once), SVC and CLI via Docker (golang:1.25) ----
 # The docker build must mount the WHOLE repo because gui/go.mod has
 # replace directives pointing to sibling directories (machinebackuplib, pbscommon, etc.)
-GUI_EXE="$ROOT/gui/build/bin/ProxmoxBackupClient.exe"
-SVC_EXE="$ROOT/gui/build/bin/ProxmoxBackupClientSVC.exe"
+GUI_EXE="$ROOT/gui/build/bin/salvanza-gui.exe"
+SVC_EXE="$ROOT/gui/build/bin/salvanza-svc.exe"
+CLI_EXE="$ROOT/gui/build/bin/salvanza-cli.exe"
 
 # is_windows_pe <file> - true if the file is a Windows PE executable.
 # Guards against packaging a Linux ELF as the Windows service: Windows cannot
@@ -135,9 +138,9 @@ newest_source_mtime() {
 #
 # A "is it a valid PE" check alone is NOT enough: that is how an exe built
 # before gui/brand.go gained the Etitech entry kept being shipped as
-# EtitechBackup.exe — the file was a perfectly valid PE, but ResolveBrand()
+# EtitechBackup.exe: the file was a perfectly valid PE, but ResolveBrand()
 # inside it only knew the old brands, so the installed app silently ran with
-# the default Proxmox branding instead of the brand its exe name promised.
+# the default branding instead of the brand its exe name promised.
 source_is_newer() {
     local bin="$1" newest bin_mtime
     shift
@@ -150,21 +153,30 @@ source_is_newer() {
 
 NEED_GUI=0
 NEED_SVC=0
+NEED_CLI=0
 is_windows_pe "$GUI_EXE" || NEED_GUI=1
 is_windows_pe "$SVC_EXE" || NEED_SVC=1
-source_is_newer "$GUI_EXE" "$ROOT/gui" && { NEED_GUI=1; echo "==> GUI sources are newer than $GUI_EXE — rebuild required"; }
-source_is_newer "$SVC_EXE" "$ROOT/gui" && { NEED_SVC=1; echo "==> SVC sources are newer than $SVC_EXE — rebuild required"; }
+is_windows_pe "$CLI_EXE" || NEED_CLI=1
+source_is_newer "$GUI_EXE" "$ROOT/gui" && { NEED_GUI=1; echo "==> GUI sources are newer than $GUI_EXE: rebuild required"; }
+source_is_newer "$SVC_EXE" "$ROOT/gui" && { NEED_SVC=1; echo "==> SVC sources are newer than $SVC_EXE: rebuild required"; }
+# The command line is built from the backup packages, not from gui.
+CLI_SOURCES=()
+for d in cli directorybackup machinebackup machinebackuplib clientcommon pbscommon snapshot nbd third_party; do
+    [ -d "$ROOT/$d" ] && CLI_SOURCES+=("$ROOT/$d")
+done
+source_is_newer "$CLI_EXE" "${CLI_SOURCES[@]}" && { NEED_CLI=1; echo "==> CLI sources are newer than $CLI_EXE: rebuild required"; }
 
-if [ "$NEED_GUI" = 0 ] && [ "$NEED_SVC" = 0 ]; then
-    echo "==> Using up-to-date GUI and SVC binaries"
+if [ "$NEED_GUI" = 0 ] && [ "$NEED_SVC" = 0 ] && [ "$NEED_CLI" = 0 ]; then
+    echo "==> Using up-to-date GUI, SVC and CLI binaries"
 else
-    echo "==> Building missing/stale binaries via Docker (GUI=$NEED_GUI, SVC=$NEED_SVC)..."
+    echo "==> Building missing/stale binaries via Docker (GUI=$NEED_GUI, SVC=$NEED_SVC, CLI=$NEED_CLI)..."
     # Each artifact is rebuilt when it is missing, is not a Windows PE, or is
     # older than the sources that go into it. A wails rebuild needs npm (not
     # shipped by golang:1.25), so only an actually-stale GUI pays for it.
     docker run --rm \
     -e NEED_GUI="$NEED_GUI" \
     -e NEED_SVC="$NEED_SVC" \
+    -e NEED_CLI="$NEED_CLI" \
     -e VERSION="$VERSION" \
     -v "$ROOT:/src" \
     -w /src \
@@ -198,7 +210,15 @@ else
             GOOS=windows GOARCH=amd64 CGO_ENABLED=0 GOWORK=off \
                 go build -tags service -trimpath -buildmode=pie -buildvcs=false \
                 -ldflags "-s -w -X main.appVersion=$VERSION" \
-                -o build/bin/ProxmoxBackupClientSVC.exe .
+                -o build/bin/salvanza-svc.exe .
+        fi
+        if [ "${NEED_CLI:-0}" = "1" ]; then
+            git config --global --add safe.directory /src 2>/dev/null || true
+            cd /src/cli
+            GOOS=windows GOARCH=amd64 CGO_ENABLED=0 GOWORK=off \
+                go build -trimpath -buildvcs=false \
+                -ldflags "-s -w -X main.version=$VERSION" \
+                -o ../gui/build/bin/salvanza-cli.exe .
         fi
     '
     # The container runs as root on a bind mount, so everything it writes
@@ -213,17 +233,19 @@ else
 fi
 
 # Verify artifacts
-GUI_EXE="$ROOT/gui/build/bin/ProxmoxBackupClient.exe"
-SVC_EXE="$ROOT/gui/build/bin/ProxmoxBackupClientSVC.exe"
 [ -f "$GUI_EXE" ] || { echo "error: GUI exe not found at $GUI_EXE" >&2; exit 1; }
 [ -f "$SVC_EXE" ] || { echo "error: SVC exe not found at $SVC_EXE" >&2; exit 1; }
-if ! is_windows_pe "$SVC_EXE"; then
-    echo "error: $SVC_EXE is not a Windows PE binary (built for the wrong OS?)" >&2
-    file "$SVC_EXE" >&2
-    exit 1
-fi
+[ -f "$CLI_EXE" ] || { echo "error: CLI exe not found at $CLI_EXE" >&2; exit 1; }
+for exe in "$SVC_EXE" "$CLI_EXE"; do
+    if ! is_windows_pe "$exe"; then
+        echo "error: $exe is not a Windows PE binary (built for the wrong OS?)" >&2
+        file "$exe" >&2
+        exit 1
+    fi
+done
 echo "    GUI: $GUI_EXE"
 echo "    SVC: $SVC_EXE"
+echo "    CLI: $CLI_EXE"
 
 # ---- 2. Build the WiX/Wine toolchain image ----
 # All tools (wine, wine-mono, candle/light) live in this image; repeated builds
@@ -250,18 +272,21 @@ WIXSRC="$WORK/installer/wix"
 # ProductBody.wxi expects:
 #   GUI: ../../gui/build/bin/$(var.ExeName).exe   -> $WIXSRC/../../gui/build/bin
 #   SVC: ../../gui/build/bin/$(var.ServiceExeName).exe
-# Our built exes are at $GUI_EXE and $SVC_EXE. We copy them to the relative
+# Our built exes are at $GUI_EXE, $SVC_EXE and $CLI_EXE. We copy them to the relative
 # paths the .wxs files expect.
 STAGE_BIN="$WORK/gui/build/bin"
 mkdir -p "$STAGE_BIN"
 
-# Brands from ProductBody.wxi: ProxmoxBackupClient, AcmeBackup, NimbusBackup, EtitechBackup
-# The GUI exe gets copied/renamed per brand; SVC is same binary but named per brand.
-for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup EtitechBackup; do
-    cp "$GUI_EXE" "$STAGE_BIN/${BRAND}.exe"
-    # Copy SVC with brand-specific name (e.g., AcmeBackupSVC.exe, NimbusBackupSVC.exe)
-    cp "$SVC_EXE" "$STAGE_BIN/${BRAND}SVC.exe"
+# Brands: <wxs file>:<exe base (ExeName without -gui)>:<MSI name>. The GUI
+# exe is copied per brand as <base>-gui.exe, the SVC as <base>-svc.exe; the
+# command line is the same salvanza-cli.exe in every brand.
+BRANDS="Product.wxs:salvanza:Salvanza NimbusBackup.wxs:nimbusbackup:NimbusBackup EtitechBackup.wxs:etitechbackup:EtitechBackup"
+for ENTRY in $BRANDS; do
+    IFS=: read -r _ BASE _ <<<"$ENTRY"
+    cp "$GUI_EXE" "$STAGE_BIN/${BASE}-gui.exe"
+    cp "$SVC_EXE" "$STAGE_BIN/${BASE}-svc.exe"
 done
+cp "$CLI_EXE" "$STAGE_BIN/salvanza-cli.exe"
 
 # Copy icons and License.rtf to expected locations:
 #   ../icons/*.ico  -> $WIXSRC/../icons (Icon/@SourceFile in ProductBody.wxi)
@@ -286,11 +311,8 @@ run_wine() {
         "$WINE_IMAGE" "$@"
 }
 
-for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup EtitechBackup; do
-    WXS_FILE="${BRAND}.wxs"
-    if [ "$BRAND" = "ProxmoxBackupClient" ] && [ ! -f "$WXS_FILE" ]; then
-        WXS_FILE="Product.wxs"
-    fi
+for ENTRY in $BRANDS; do
+    IFS=: read -r WXS_FILE _ BRAND <<<"$ENTRY"
     [ -f "$WXS_FILE" ] || { echo "warning: $WXS_FILE not found, skipping" >&2; continue; }
 
     echo "    Building $BRAND.msi..."
@@ -309,14 +331,14 @@ for BRAND in ProxmoxBackupClient AcmeBackup NimbusBackup EtitechBackup; do
         -ext WixUIExtension \
         -ext WixUtilExtension \
         -sval \
-        -out "Z:/out/${BRAND}-${VERSION}.msi" \
+        -out "Z:/out/${BRAND}-${VERSION}-x64.msi" \
         "Z:/work/installer/wix/${BRAND}.wixobj"
 
-    echo "    ✅ $OUT_DIR/${BRAND}-${VERSION}.msi"
+    echo "    built $OUT_DIR/${BRAND}-${VERSION}-x64.msi"
 done
 
 # The wine containers run as root; hand the results back to the invoking user
-# (same pattern as the GUI/SVC build above).
+# (same pattern as the GUI/SVC/CLI build above).
 docker run --rm -v "$WORK:/work" -v "$OUT_DIR:/out" --entrypoint chown \
     "$WINE_IMAGE" -R "$(id -u):$(id -g)" /work /out || true
 

@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- ===================================================================== -->
-<!-- EXAMPLE brand installer entry: "Nimbus Backup".                        -->
-<!-- Copy of the Product.wxs pattern with a different brand identity.        -->
-<!-- To activate: drop NimbusBackup.ico into installer/icons/, build the      -->
-<!-- NimbusBackup.exe + NimbusBackupSVC.exe under those names, then light     -->
-<!-- THIS file to NimbusBackup.msi. The GUI auto-brands as "nimbusbackup"     -->
-<!-- at runtime (gui/brand.go). Replace the URLs/icon below with real ones.   -->
+<!-- Brand installer entry: Nimbus Backup.                                  -->
+<!-- The Product.wxs pattern with the Nimbus brand identity: the programs   -->
+<!-- are nimbusbackup-gui.exe and nimbusbackup-svc.exe, and the app brands  -->
+<!-- itself as "nimbusbackup" at runtime (gui/brand.go).                    -->
 <!-- ===================================================================== -->
 <?define ProductName = "Nimbus Backup" ?>
-<?define ExeName = "NimbusBackup" ?>
-<?define ServiceExeName = "NimbusBackupSVC" ?>
+<?define ExeName = "nimbusbackup-gui" ?>
+<?define ServiceExeName = "nimbusbackup-svc" ?>
+<?define Folder = "NimbusBackup" ?>
 <?define VendorKey = "Nimbus" ?>
 <?define Manufacturer = "Nimbus" ?>
 <!-- Each brand MUST have its own UpgradeCode (distinct from Product.wxs). -->
