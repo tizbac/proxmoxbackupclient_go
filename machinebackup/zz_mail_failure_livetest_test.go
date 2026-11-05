@@ -1,4 +1,4 @@
-package main
+package machinebackup
 
 import (
 	"clientcommon"
@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// TestMain runs main() itself when a test starts this test binary again with
+// TestMain runs Main() itself when a test starts this test binary again with
 // MACHINEBACKUP_RUN_MAIN set, so a test can run the program as a whole.
 func TestMain(m *testing.M) {
 	if os.Getenv("MACHINEBACKUP_RUN_MAIN") == "1" {
@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 		if w, err := time.ParseDuration(os.Getenv("MACHINEBACKUP_TEST_RECONNECT_WAIT")); err == nil {
 			reconnectWaits = []time.Duration{w, w, w, w}
 		}
-		main()
+		Main()
 		os.Exit(0)
 	}
 	os.Exit(m.Run())

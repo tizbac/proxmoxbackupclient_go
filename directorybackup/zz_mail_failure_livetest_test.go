@@ -1,4 +1,4 @@
-package main
+package directorybackup
 
 import (
 	"clientcommon"
@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// TestMain runs main() itself when a test starts this test binary again with
+// TestMain runs Main() itself when a test starts this test binary again with
 // DIRECTORYBACKUP_RUN_MAIN set, so a test can run the program as a whole.
 func TestMain(m *testing.M) {
 	if os.Getenv("DIRECTORYBACKUP_RUN_MAIN") == "1" {
@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 		if w, err := time.ParseDuration(os.Getenv("DIRECTORYBACKUP_TEST_RERUN_WAIT")); err == nil {
 			folderRerunWait = w
 		}
-		main()
+		Main()
 		os.Exit(0)
 	}
 	os.Exit(m.Run())

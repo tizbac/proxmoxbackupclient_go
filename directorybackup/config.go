@@ -1,4 +1,4 @@
-package main
+package directorybackup
 
 import (
 	"clientcommon"
@@ -13,9 +13,12 @@ import (
 	"strings"
 )
 
-// version is set by the build (-ldflags "-X main.version=..."); -version
-// prints it.
+// version is salvanza-cli's, which it sets with SetVersion (the build stamps
+// it with -ldflags "-X main.version=..."); -version prints it.
 var version string
+
+// SetVersion sets the version -version prints.
+func SetVersion(v string) { version = v }
 
 // usageSummary heads -help's text.
 const usageSummary = "Backs up folders, or standard input (-backupstream), to a Proxmox Backup Server\nas a host snapshot."

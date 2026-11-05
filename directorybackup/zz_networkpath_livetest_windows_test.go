@@ -1,7 +1,7 @@
 //go:build windows
 // +build windows
 
-package main
+package directorybackup
 
 import (
 	"errors"

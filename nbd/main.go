@@ -1,4 +1,4 @@
-package main
+package pbsnbd
 
 import (
 	"bufio"
@@ -179,7 +179,7 @@ func nbdStart(pbsclient *pbscommon.PBSClient, archive string, fidxdata []byte, n
 	}
 }
 
-func main() {
+func Main() {
 	client := &pbscommon.PBSClient{}
 
 	baseURLFlag := flag.String("baseurl", "", "Base URL for the proxmox backup server, example: https://192.168.1.10:8007")

@@ -1,4 +1,4 @@
-package main
+package directorybackup
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// runMain runs this program (main(), through TestMain) with args, with no
+// runMain runs this program (Main(), through TestMain) with args, with no
 // PBS_* variables from the environment, and returns its output and exit code.
 func runMain(t *testing.T, args ...string) (stdout, stderr string, code int) {
 	t.Helper()

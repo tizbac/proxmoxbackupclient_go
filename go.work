@@ -23,5 +23,7 @@ use (
 
 use ./gui/api
 
+use ./cli
+
 // go-vss with its COM reference counts fixed (third_party/go-vss).
 replace github.com/st-matskevich/go-vss => ./third_party/go-vss

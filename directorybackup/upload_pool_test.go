@@ -1,4 +1,4 @@
-package main
+package directorybackup
 
 import (
 	"crypto/sha256"

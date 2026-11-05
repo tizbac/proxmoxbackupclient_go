@@ -1,4 +1,4 @@
-package main
+package directorybackup
 
 import (
 	"clientcommon"
@@ -381,7 +381,7 @@ func withRetryCtx(parent context.Context, what string, limit time.Duration, op f
 	}
 }
 
-func main() {
+func Main() {
 	newchunk := new(atomic.Uint64)
 	reusechunk := new(atomic.Uint64)
 

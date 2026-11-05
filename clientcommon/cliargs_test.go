@@ -119,8 +119,8 @@ func TestParseArgsQuoteInPath(t *testing.T) {
 func TestPrintUsage(t *testing.T) {
 	fs, _, _ := testFlags()
 	var b bytes.Buffer
-	PrintUsage(&b, fs, "proxmoxbackup-directory", "Backs up folders.")
-	for _, want := range []string{"Usage: proxmoxbackup-directory [options]", "Backs up folders.", "-backupdir", "-novss", "-config"} {
+	PrintUsage(&b, fs, "salvanza-cli backup-folder", "Backs up folders.")
+	for _, want := range []string{"Usage: salvanza-cli backup-folder [options]", "Backs up folders.", "-backupdir", "-novss", "-config"} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("%q not in the usage:\n%s", want, b.String())
 		}

@@ -9,7 +9,8 @@ import (
 	"github.com/rodolfoag/gow32"
 )
 
-const MutexName = "proxmoxbackupclient_go"
+// MutexName is the command line's one-run-at-a-time lock.
+const MutexName = "salvanza-cli"
 
 type Locking struct {
 	mutexid uintptr
