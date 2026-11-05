@@ -18,6 +18,7 @@ import (
 	"clientcommon"
 	"directorybackup"
 	"machinebackup"
+	"snapshot"
 )
 
 // version is set by the build (-ldflags "-X main.version=..."); -version
@@ -49,7 +50,7 @@ func main() {
 
 	// Started under an old tool's name: that tool's subcommand.
 	if c, ok := byAlias(programName(os.Args[0])); ok {
-		c.run()
+		start(c)
 		return
 	}
 
@@ -82,6 +83,16 @@ func main() {
 	// The subcommand sees its own options only, and names itself
 	// "salvanza-cli <subcommand>" in its help and messages.
 	os.Args = append([]string{"salvanza-cli " + c.name}, os.Args[2:]...)
+	start(c)
+}
+
+// start runs a subcommand. The two backups remove their snapshots when they
+// are stopped with Ctrl+C or a signal (Linux; attach-nbd has its own
+// handling).
+func start(c command) {
+	if c.name != "attach-nbd" {
+		snapshot.CleanupOnSignal()
+	}
 	c.run()
 }
 

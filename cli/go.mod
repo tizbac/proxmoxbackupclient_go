@@ -7,6 +7,7 @@ require (
 	directorybackup v0.0.0
 	machinebackup v0.0.0
 	pbsnbd v0.0.0
+	snapshot v0.0.0
 )
 
 require (
@@ -36,7 +37,6 @@ require (
 	machinebackuplib v0.0.0 // indirect
 	pbscommon v0.0.0 // indirect
 	retry v0.0.0 // indirect
-	snapshot v0.0.0 // indirect
 )
 
 // The project's own modules, beside this one.

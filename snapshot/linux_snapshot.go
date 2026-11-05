@@ -267,7 +267,9 @@ func isOurCowFile(cowFile string) bool {
 
 // destroyStaleTracers removes tracers of a previous crashed run that are still
 // attached to device. Failing to do so means the device tracer state cannot be
-// trusted, so every failure is propagated to the caller.
+// trusted, so every failure is propagated to the caller. The caller holds the
+// device's lock file (linux_lock.go), so no live backup in another program
+// owns them; one still mounted (its run was killed) is unmounted first.
 func destroyStaleTracers(c snapControl, device, originMount string) error {
 	if c.infoFile == "" {
 		return nil
@@ -290,6 +292,7 @@ func destroyStaleTracers(c snapControl, device, originMount string) error {
 		}
 		log.Printf("Removing stale %s snapshot %d left tracing %s by a previous run",
 			c.name, d.Minor, device)
+		unmountLeftovers(fmt.Sprintf("%s%d", c.devPrefix, d.Minor))
 		if err := ioctlDestroySnapshot(c.ctlDevice, c.name, d.Minor); err != nil {
 			errs = append(errs, fmt.Errorf("could not destroy stale %s snapshot %d on %s: %w",
 				c.name, d.Minor, device, err))
@@ -467,6 +470,11 @@ func CreateVSSSnapshotCtx(ctx context.Context, paths []string, needFiles bool, b
 	if err := holdDevices(ctx, devs); err != nil {
 		return fmt.Errorf("stopped while waiting for another backup's snapshot to end: %w", err)
 	}
+	// And against other programs (linux_lock.go).
+	if err := lockDevicesAcrossPrograms(ctx, devs); err != nil {
+		releaseDevices(devs)
+		return fmt.Errorf("waiting for another program's snapshot to end: %w", err)
+	}
 
 	snapshots := make(map[string]SnapShot, len(paths))
 	var created []*linuxSnapshot
@@ -475,6 +483,7 @@ func CreateVSSSnapshotCtx(ctx context.Context, paths []string, needFiles bool, b
 		for i := len(created) - 1; i >= 0; i-- {
 			retErr = errors.Join(retErr, cleanupOne(created[i]))
 		}
+		unlockDevices(devs)
 		releaseDevices(devs)
 	}()
 
