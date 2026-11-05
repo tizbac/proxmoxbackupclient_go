@@ -1,4 +1,4 @@
-# Proxmox Backup Client: roadmap
+# Salvanza for Proxmox Backup Server: roadmap
 
 What is still open after 2.0. Finished work is in [CHANGELOG.md](CHANGELOG.md).
 
@@ -6,10 +6,10 @@ What is still open after 2.0. Finished work is in [CHANGELOG.md](CHANGELOG.md).
 
 - [ ] **Authenticode signing** of the programs and the MSIs, through SignPath Foundation (free for open source, signs builds from CI). Pending; until then SmartScreen and Defender may warn, and the checksums and the build attestation are the proof of origin. Once signed, check that the signature shows in the file properties and that a fresh Windows 11 install gives no SmartScreen warning.
 - [ ] **Build the Linux packages and the restore ISO in the release workflow.** Today the release workflows build and attest the MSIs and the command-line archives; the `.deb`, `.rpm`, Arch package and ISO are built with `make deb`, `make pkgfedora`, `make pkgarch` and `make clonezilla` (or the separate ISO workflow).
-- [ ] **Rename the unbranded client** to a name without the Proxmox mark (see the trademark notice in the README), with its own icon and header logo.
-- [ ] **One set of names for the command-line tools.** `make cli`, the release's `proxmoxbackup-cli-*` downloads and the manuals use `proxmoxbackup-directory`, `proxmoxbackup-machine` and `proxmoxbackup-nbd`, but `.goreleaser.yaml` (the `proxmoxbackupclient_go_*` archives) still builds `pbsdirectorybackup`, `pbsmachinebackup`, `directorybackup` and `pbsnbd`, so a release ships the same tools under two sets of names. Keep one; if the old names stay for existing scripts, say so in the CLI manual.
-- [ ] Maybe: **one command-line tool with subcommands**, `proxmoxbackup directory`, `proxmoxbackup machine` and `proxmoxbackup nbd`, in place of three programs. The old names keep working as links to it, which choose the subcommand from the name they were started by (as BusyBox does), and without a subcommand the kind of backup follows from the options: `-backupdir` (or `-backupstream`) for folders, `-backupdev` for disks, from the command line or the config file. Later, one run could back up both.
-- [ ] **"Unable to automatically close all requested applications" on removal.** Removing the app from a desktop (Programs and Features, or `msiexec /x` with a UI) shows it every time the background service is running; OK carries on and the removal completes. Windows Installer's Restart Manager check runs before the package stops the service, finds `ProxmoxBackupClientSVC` holding its program file and ends with error 350 (restart required). Stop the service before that check, or change how the package uses Restart Manager (`MSIRESTARTMANAGERCONTROL`, `MSIRMSHUTDOWN`), without breaking upgrades and repairs; details in [MSI_UNINSTALL_TEST.md](MSI_UNINSTALL_TEST.md), where the removal pages themselves now pass.
+- [ ] **Salvanza's own icon and header logo.** The rename to Salvanza for Proxmox Backup Server is done (programs, folders, packages, MSI, the `salvanza-cli` command line); the unbranded app still wants artwork of its own.
+- [ ] **Installer: another brand found, replace it or install beside it.** Today every brand's MSI (Salvanza, Nimbus Backup, Etitech Backup) removes any other brand's install, and the new service removes the other brands' services and takes over their settings when it has none. The installer could detect another brand and ask whether to replace it (today's behaviour) or install side by side, each with its own service, folders and settings. Side by side also needs the services not to share the local API port (`127.0.0.1:18765`) and the command line's one-run-at-a-time lock to be thought through.
+- [ ] Maybe: without a subcommand, `salvanza-cli` could choose the kind of backup from the options: `-backupdir` (or `-backupstream`) for folders, `-backupdev` for disks, from the command line or the config file. Later, one run could back up both.
+- [ ] **"Unable to automatically close all requested applications" on removal.** Removing the app from a desktop (Programs and Features, or `msiexec /x` with a UI) shows it every time the background service is running; OK carries on and the removal completes. Windows Installer's Restart Manager check runs before the package stops the service, finds `salvanza-svc` (before the rename, `ProxmoxBackupClientSVC`) holding its program file and ends with error 350 (restart required). Stop the service before that check, or change how the package uses Restart Manager (`MSIRESTARTMANAGERCONTROL`, `MSIRMSHUTDOWN`), without breaking upgrades and repairs; details in [MSI_UNINSTALL_TEST.md](MSI_UNINSTALL_TEST.md), where the removal pages themselves now pass.
 
 ## Background service
 
@@ -42,7 +42,7 @@ What is still open after 2.0. Finished work is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Security
 
-- [ ] Paper key printing from the Linux app run as root (`proxmoxbackupclient-root`): untested.
+- [ ] Paper key printing from the Linux app run as root (`salvanza-gui-root`): untested.
 - [ ] Key import with a real webcam: tested only with a camera feed played to WebView2 (Windows) and WebKit's test camera (Linux). Also untested: the camera in the Linux app run as root.
 - [ ] Restore of an encrypted snapshot through the Proxmox VE storage configuration (key given to Proxmox VE): untested.
 

@@ -15,8 +15,8 @@ Which restore to use, and where the steps are. Applies to version 2.0 (see the [
 | Dead system disk, same or similar machine | Bare-metal restore ISO | [BMR.md](manual/BMR.md#4-automated-restore-step-by-step) |
 | Physical machine into a Proxmox VE VM | `vm` machine backup restored from Proxmox VE | [BMR.md, Proxmox VE](manual/BMR.md#6-restoring-a-vm-snapshot-onto-proxmox-ve) |
 | Very different hardware | Fresh OS install, then a GUI restore of the data (from a folder backup, or the files of a machine backup) | [BMR.md, different hardware](manual/BMR.md#7-restoring-onto-different-hardware-p2v-and-replacement-machines) |
-| Mount a disk image read-only (Linux, or from the ISO) | `pbs-nbd` on the ISO, or `proxmoxbackup-nbd` on Linux, then mount read-only | [BMR.md, pbs-nbd](manual/BMR.md#5-the-manual-pbs-nbd-entry) |
-| Undelete or Roll back without the GUI (a script, a server) | `ProxmoxBackupClientSVC -undelete` / `-rollback` | [GUI.md, from the command line](manual/GUI.md#undelete-and-roll-back-from-the-command-line) |
+| Mount a disk image read-only (Linux, or from the ISO) | `pbs-nbd` on the ISO, or `salvanza-cli attach-nbd` on Linux, then mount read-only | [BMR.md, pbs-nbd](manual/BMR.md#5-the-manual-pbs-nbd-entry) |
+| Undelete or Roll back without the GUI (a script, a server) | `salvanza-svc -undelete` / `-rollback` | [GUI.md, from the command line](manual/GUI.md#undelete-and-roll-back-from-the-command-line) |
 | A folder snapshot without this client | The official `proxmox-backup-client restore` (Legacy, Data and Metadata snapshots verified) | [CLI.md, compatibility](manual/CLI.md#11-compatibility-with-the-official-proxmox-client) |
 
 ## Ransomware and corruption

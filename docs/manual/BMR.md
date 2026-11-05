@@ -22,10 +22,10 @@ The restore copies the disk image block for block, so it works the same whatever
 | Some files or folders deleted or damaged, machine still works | GUI Restore page ([GUI.md](GUI.md#9-restore)) |
 | Disk dead or system unbootable, same or similar machine | Automated bare-metal restore ([section 4](#4-automated-restore-step-by-step)) |
 | Machine gone, move it into a Proxmox VE VM | `vm` snapshot restored from Proxmox VE ([section 6](#6-restoring-a-vm-snapshot-onto-proxmox-ve)) |
-| Copy a few files out of a disk image | Manual `pbs-nbd` entry, or `proxmoxbackup-nbd` on Linux ([section 5](#5-the-manual-pbs-nbd-entry)) |
+| Copy a few files out of a disk image | Manual `pbs-nbd` entry, or `salvanza-cli attach-nbd` on Linux ([section 5](#5-the-manual-pbs-nbd-entry)) |
 | Ransomware or corruption | Any of the above, from a snapshot taken **before** the problem |
 
-A bare-metal restore needs a **machine** backup: a Backup Set or one-off backup with Backup type **Machine (full disk)**, or `proxmoxbackup-machine`. Folder backups cannot be restored this way.
+A bare-metal restore needs a **machine** backup: a Backup Set or one-off backup with Backup type **Machine (full disk)**, or `salvanza-cli backup-disk`. Folder backups cannot be restored this way.
 
 ## 2. Before disaster strikes
 
@@ -39,10 +39,10 @@ A bare-metal restore needs a **machine** backup: a Backup Set or one-off backup 
 
 The ISO is a Clonezilla Live image with this project's restore tools added.
 
-1. Download `ProxmoxBackupClient-BMR-<version>.iso` from the [releases page](https://github.com/tizbac/proxmoxbackupclient_go/releases). In the GUI, **Tools > Download Bare Metal Restore ISO…** opens that page. A release that did not change the ISO links to the one from an earlier release.
+1. Download `Salvanza-BMR-<version>.iso` from the [releases page](https://github.com/salvanza/salvanza_client/releases). In the GUI, **Tools > Download Bare Metal Restore ISO…** opens that page. A release that did not change the ISO links to the one from an earlier release.
 2. Check it against that release's `SHA256SUMS.txt`.
 3. Write it to a USB stick (everything on the stick is erased):
-   * Linux: `sudo dd if=ProxmoxBackupClient-BMR-<version>.iso of=/dev/sdX bs=4M conv=fsync status=progress`
+   * Linux: `sudo dd if=Salvanza-BMR-<version>.iso of=/dev/sdX bs=4M conv=fsync status=progress`
    * Windows: a tool that writes the image as is, for example Rufus in "DD Image" mode, or balenaEtcher.
 
    Or burn it to a DVD, or attach it to a VM as a CD.
@@ -52,7 +52,7 @@ The ISO is a Clonezilla Live image with this project's restore tools added.
 Writing the ISO as above gives the whole stick to one image. [Ventoy](https://www.ventoy.net) is a better way to keep a recovery stick: it prepares the stick once, and from then on you simply **copy ISO files onto it** like ordinary files. At boot Ventoy shows a menu of every ISO on the stick, so one stick can carry this restore ISO next to a Windows installer, a Linux live system, memtest and so on. Updating to a newer restore ISO is a matter of copying the new file over.
 
 1. Download Ventoy from [ventoy.net](https://www.ventoy.net) and install it to the stick: **Ventoy2Disk.exe** on Windows, `Ventoy2Disk.sh` or VentoyGUI on Linux. This erases the stick once.
-2. Copy `ProxmoxBackupClient-BMR-<version>.iso` onto the stick's large data partition (it shows up as a normal drive). Do not unpack it.
+2. Copy `Salvanza-BMR-<version>.iso` onto the stick's large data partition (it shows up as a normal drive). Do not unpack it.
 3. Boot from the stick and pick the ISO in Ventoy's menu, then carry on as in [section 4](#4-automated-restore-step-by-step).
 
 Ventoy starts on legacy BIOS and UEFI machines. With Secure Boot on, its first start asks you to enrol Ventoy's key once (follow its on-screen steps), or turn Secure Boot off for the restore.
@@ -69,7 +69,7 @@ This **overwrites the whole target disk**. Disconnect any disk you want to keep 
 
 ### 4.1 Boot
 
-Plug in the boot media, power on and pick it from the boot menu. The first menu entry, **"Proxmox Backup Client Go - PBS Bare Metal Restore"**, is the default: press Enter or let it start on its own. It skips Clonezilla's language and keyboard questions (it uses English with a UK keyboard layout).
+Plug in the boot media, power on and pick it from the boot menu. The first menu entry, **"Salvanza - PBS Bare Metal Restore"**, is the default: press Enter or let it start on its own. It skips Clonezilla's language and keyboard questions (it uses English with a UK keyboard layout).
 
 ### 4.2 Network
 
@@ -151,11 +151,11 @@ Clonezilla's own main menu (reached by choosing the normal Clonezilla entries at
 
 Running pbs-nbd again stops the previous background attach first.
 
-On any Linux machine the same is done with `proxmoxbackup-nbd` ([CLI.md](CLI.md#6-proxmoxbackup-nbd-attach-a-disk-image-linux)).
+On any Linux machine the same is done with `salvanza-cli attach-nbd` ([CLI.md](CLI.md#6-attach-nbd-attach-a-disk-image-linux)).
 
 ## 6. Restoring a vm snapshot onto Proxmox VE
 
-A machine backup saved with **Backup as: Proxmox VE virtual machine** (or `proxmoxbackup-machine -type vm`) is stored as `vm/<number>`. Proxmox VE sees it as an ordinary VM backup.
+A machine backup saved with **Backup as: Proxmox VE virtual machine** (or `salvanza-cli backup-disk -type vm`) is stored as `vm/<number>`. Proxmox VE sees it as an ordinary VM backup.
 
 1. In Proxmox VE, add the PBS datastore as storage (**Datacenter > Storage > Add > Proxmox Backup Server**), with the same namespace.
 2. Open that storage, **Backups**, select the `vm/<number>` snapshot, **Restore**.

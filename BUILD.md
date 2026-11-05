@@ -1,6 +1,6 @@
 # Build Instructions
 
-This builds the GUI, the background service, the command-line tools, the Windows installer (MSI), the Linux packages (.deb, .rpm and Arch, with `make deb`, `make pkgfedora` and `make pkgarch`) and the bare-metal recovery ISO (`make clonezilla`).
+This builds Salvanza for Proxmox Backup Server: the GUI (`salvanza-gui`), the background service (`salvanza-svc`), the command line (`salvanza-cli`), the Windows installer (MSI), the Linux packages (.deb, .rpm and Arch, with `make deb`, `make pkgfedora` and `make pkgarch`) and the bare-metal recovery ISO (`make clonezilla`).
 
 ## Tools
 
@@ -26,13 +26,7 @@ Then open a new, non-elevated shell and check `go version` and `gcc --version`.
 
 ## The workspace
 
-`go.work` lists `gui`, `pbscommon`, `clientcommon`, `machinebackuplib`, `machinebackup`, `snapshot` and `nbd`. `directorybackup`, `pkg/retry` and `pkg/security` are separate modules and are not in it. To build `directorybackup` from the repository root, use a temporary work file that adds it (the packaging scripts do the same):
-
-```sh
-{ cat go.work; printf '\nuse ./directorybackup\n'; } > go.tmpwork
-GOWORK=$PWD/go.tmpwork CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o dist/proxmoxbackup-directory ./directorybackup
-rm go.tmpwork go.tmpwork.sum
-```
+`go.work` lists `gui`, `gui/api`, `cli`, `pbscommon`, `clientcommon`, `machinebackuplib`, `machinebackup`, `snapshot` and `nbd`. `directorybackup`, `pkg/retry` and `pkg/security` are separate modules and are not in it. `directorybackup`, `machinebackup` and `nbd` are libraries now: the program is `cli` (`salvanza-cli`), whose `go.mod` points at all of them, so it is built with `GOWORK=off` ([below](#command-line)).
 
 ## GUI and service (Windows)
 
@@ -40,29 +34,30 @@ From `gui/`:
 
 ```powershell
 wails build -clean -ldflags "-X main.appVersion=2.0.0"
-go build -tags service -trimpath -ldflags "-s -w -X main.appVersion=2.0.0" -o build\bin\ProxmoxBackupClientSVC.exe
+go build -tags service -trimpath -ldflags "-s -w -X main.appVersion=2.0.0" -o build\bin\salvanza-svc.exe
 ```
 
-This gives `gui\build\bin\ProxmoxBackupClient.exe` (the app) and `gui\build\bin\ProxmoxBackupClientSVC.exe` (the background service, which also takes `-list-sets`, `-undelete` and `-rollback`). Keep them in the same folder. Use the version from `gui/wails.json` (`productVersion`).
+This gives `gui\build\bin\salvanza-gui.exe` (the app) and `gui\build\bin\salvanza-svc.exe` (the background service, which also takes `-list-sets`, `-undelete` and `-rollback`). Keep them in the same folder. The app finds its brand from its file name (`gui/brand.go`): `salvanza-gui.exe` is Salvanza, and a copy named `nimbusbackup-gui.exe` or `etitechbackup-gui.exe` (with the service as `nimbusbackup-svc.exe` or `etitechbackup-svc.exe`) is that brand, with its own folders. Use the version from `gui/wails.json` (`productVersion`).
 
 The app's Help page shows the manuals from `gui/docs/`, copies of `docs/manual/GUI.md`, `CLI.md`, `BMR.md` and `docs/RESTORE_GUIDE.md`. No build step copies them: after editing a manual in `docs/`, copy it over the one in `gui/docs/` yourself. `TestEmbeddedManualsMatchDocs` (`gui/manuals_test.go`, part of `make test`) fails while the copies differ.
 
-To build the Windows GUI on Linux, `./build_gui_windows_docker.sh` runs `wails build` in a `golang:1.25` container and writes `ProxmoxBackupClientGO.exe`. It does not build the service.
+To build the Windows GUI on Linux, `./build_gui_windows_docker.sh` runs `wails build` in a `golang:1.25` container. It does not build the service.
 
-## Command-line tools
+## Command line
 
-From the repository root, with `GOOS` set to `windows` or `linux`:
+`salvanza-cli` is one program with the commands `backup-folder`, `backup-disk` and `attach-nbd` (Linux only). From `cli/`, with `GOOS` set to `windows` or `linux`:
 
 ```sh
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o dist/proxmoxbackup-machine ./machinebackup
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o dist/proxmoxbackup-nbd ./nbd        # Linux only
+GOWORK=off CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=2.0.0" -o ../dist/salvanza-cli .
 ```
 
-and `proxmoxbackup-directory` as shown under [The workspace](#the-workspace). Add `.exe` to the names on Windows.
+Add `.exe` on Windows; for the MSI, write it to `gui\build\bin\salvanza-cli.exe`. `make cli` does the same for the host system. The earlier tool names ([CLI.md](docs/manual/CLI.md#earlier-names)) are not built any more: the Linux packages install `proxmoxbackup-directory`, `proxmoxbackup-machine` and `proxmoxbackup-nbd` as links to `salvanza-cli`, and the MSI installs `.cmd` files from `installer/wix/cli-aliases/`.
+
+The bare-metal restore ISO has the nbd code on its own as `pbsnbd`, built from `nbd/cmd/pbsnbd` ([below](#bare-metal-recovery-iso)).
 
 ## Windows installer (MSI)
 
-Build the app and the service first (above), then:
+Build the app, the service and `salvanza-cli.exe` into `gui\build\bin` first (above), then:
 
 ```powershell
 cd installer\wix
@@ -70,9 +65,9 @@ cd installer\wix
 .\build-msi.ps1 -Version 2.0.0 -WixDir C:\Dev\tools\wix314
 ```
 
-The result is `installer\wix\out\ProxmoxBackupClient-<version>-x64.msi`. The version must be three numbers (`x.y.z`). WiX is looked for in `-WixDir`, then on `PATH`.
+The result is `installer\wix\out\Salvanza-<version>-x64.msi`. The version must be three numbers (`x.y.z`). WiX is looked for in `-WixDir`, then on `PATH`.
 
-On Linux, `make msi` (`installer/wix/build_msi_linux.sh`) builds the app and the service in a `golang:1.25` container and runs WiX under Wine in another container, so the host needs only Docker. It writes one MSI per brand, `<brand>-<version>.msi`, to `dist/`.
+On Linux, `make msi` (`installer/wix/build_msi_linux.sh`) builds the app, the service and `salvanza-cli` in a `golang:1.25` container and runs WiX under Wine in another container, so the host needs only Docker. It writes one MSI per brand (Salvanza, Nimbus Backup, Etitech Backup), `<brand>-<version>.msi`, to `dist/`.
 
 ## Linux packages
 
@@ -87,12 +82,12 @@ The Arch package is built on Arch with `make pkgarch`: it stages a source tarbal
 
 ## Bare-metal recovery ISO
 
-`make clonezilla` downloads the stock Clonezilla live ISO (version `CLONEZILLA_VER`, 3.3.3-37 by default, cached in `dist/clonezilla/`), builds `pbsnbd`, and patches it and the restore scripts into `dist/ProxmoxBackupClient-BMR-<version>.iso`. It needs network access, `7z`, `xorriso`, `squashfs-tools`, `fakeroot`, `patch` and the isolinux MBR, and is not part of `make all`. See [PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md).
+`make clonezilla` downloads the stock Clonezilla live ISO (version `CLONEZILLA_VER`, 3.3.3-37 by default, cached in `dist/clonezilla/`), builds `pbsnbd`, and patches it and the restore scripts into `dist/Salvanza-BMR-<version>.iso`. It needs network access, `7z`, `xorriso`, `squashfs-tools`, `fakeroot`, `patch` and the isolinux MBR, and is not part of `make all`. See [PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md).
 
 ## Tests
 
-`make test` runs `go test -race` in every module (the separate modules with `GOWORK=off`). `make test-e2e` backs up with the CLIs against a real PBS in Docker and restores with the official client; see `testing/e2e/README.md`.
+`make test` runs `go test -race` in every module (the separate modules with `GOWORK=off`). `make test-e2e` backs up with `salvanza-cli` against a real PBS in Docker and restores with the official client; see `testing/e2e/README.md`.
 
 ## Makefile
 
-On Linux (or with GNU make and a POSIX shell on Windows) the Makefile runs the same commands: `make cli` (the command-line tools in `dist/`), `make gui`, then `make service` (in that order: `wails build -clean` empties `gui/build/bin`), `make all` for all three, `make deb`, `make pkgfedora`, `make pkgarch`, `make msi` (the Windows MSIs, built on Linux with Docker and Wine), `make clonezilla`, `make test`, `make test-e2e`, `make clean`. `make help` lists them. The version comes from `gui/wails.json`.
+On Linux (or with GNU make and a POSIX shell on Windows) the Makefile runs the same commands: `make cli` (`salvanza-cli` in `dist/`), `make gui`, then `make service` (in that order: `wails build -clean` empties `gui/build/bin`), `make all` for all three, `make deb`, `make pkgfedora`, `make pkgarch`, `make msi` (the Windows MSIs, built on Linux with Docker and Wine), `make clonezilla`, `make test`, `make test-e2e`, `make clean`. `make help` lists them. The version comes from `gui/wails.json`.

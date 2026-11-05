@@ -3,8 +3,9 @@
 This documents how [`patch-clonezilla.sh`](./patch-clonezilla.sh) injects extra
 binaries into a stock Clonezilla Live ISO **without breaking boot**, so the
 resulting ISO boots from CD, USB (`dd`) and UEFI exactly like the original,
-just with our ticket-enabled `pbsnbd` / `machinebackup` binaries and the two
-restore helper scripts shipped inside the live rootfs.
+just with our ticket-enabled `pbsnbd` binary and the two restore helper
+scripts shipped inside the live rootfs. `make clonezilla` names the result
+`dist/Salvanza-BMR-<version>.iso`.
 
 ## Why a full rebuild (and not an in-place patch)
 
@@ -70,9 +71,11 @@ removed on exit):
 ./patch-clonezilla.sh -o OUTPUT_ISO INPUT_ISO [FILE]...
 ```
 
-Example: add the two ticket-enabled binaries plus both helpers (their menu
+Example: add the ticket-enabled `pbsnbd` binary plus both helpers (their menu
 entries are applied as unified diffs from `clonezilla-patch/patches/`). `pbsnbd`
-is `proxmoxbackup-nbd` built from `nbd/`, under the name the helpers call.
+is the code of `salvanza-cli attach-nbd`, built on its own from
+`nbd/cmd/pbsnbd` under the name the helpers call
+(`CGO_ENABLED=0 GOOS=linux go build -o ../build/pbsnbd ./cmd/pbsnbd` in `nbd/`).
 Include `ocs-pbs-bare-metal-restore` whenever the default patch directory is
 used: patches 0003 and 0004 add a boot entry that runs it.
 
@@ -80,7 +83,7 @@ used: patches 0003 and 0004 add a boot entry that runs it.
 ./patch-clonezilla.sh \
   -o clonezilla-live-patched.iso \
   clonezilla-live-3.3.3-37-amd64.iso \
-  ./build/pbsnbd ./build/machinebackup \
+  ./build/pbsnbd \
   ./clonezilla-patch/ocs-pbs-nbd ./clonezilla-patch/ocs-pbs-bare-metal-restore
 ```
 
@@ -210,7 +213,7 @@ auto-rebooted restore.
 - Patches `0003-first-boot-bare-metal-restore-menu-grub.patch`,
   `0004-first-boot-bare-metal-restore-menu-syslinux.patch` and
   `0005-first-boot-bare-metal-restore-menu-isolinux.patch` add a new
-  **"Proxmox Backup Client Go - PBS Bare Metal Restore"** entry as the first,
+  **"Salvanza - PBS Bare Metal Restore"** entry as the first,
   default-on-timeout item in `boot/grub/grub.cfg` (UEFI),
   `syslinux/syslinux.cfg` (USB stick / PXE) and `syslinux/isolinux.cfg`
   (BIOS boot from the ISO as a CD/DVD, which reads `isolinux.cfg`, not
@@ -295,7 +298,7 @@ flow designed to have as few as possible: a real but separate piece of work, not
 login prompt, and once on physical hardware (a Linux thin client booted over
 PXE, September 2026), which started its own system again. A pre-built ISO
 (includes both this entry and `ocs-pbs-nbd`) is published with the project's
-[releases](https://github.com/tizbac/proxmoxbackupclient_go/releases)
+[releases](https://github.com/salvanza/salvanza_client/releases)
 if you'd rather try it before building your own. An ISO from an older
 release may predate some of the steps above (for example the copy-on-write
 file removal in step 6), so build your own from the current tree
@@ -335,7 +338,7 @@ xxd -s 510 -l 2 OUT
 
 # binaries inside the shipped squashfs:
 xorriso -indev OUT -osirrox on extract /live/filesystem.squashfs /tmp/f.squashfs -commit
-unsquashfs -ll /tmp/f.squashfs | grep -E 'usr/local/sbin/(pbsnbd|machinebackup)'
+unsquashfs -ll /tmp/f.squashfs | grep -E 'usr/local/sbin/(pbsnbd|ocs-pbs-)'
 ```
 
 A good ISO reports `boot-info-table isohybrid-suitable` for the BIOS image, has

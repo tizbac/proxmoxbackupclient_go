@@ -1,49 +1,66 @@
-# Command line tools: user manual
+# Command line: user manual
 
-This manual covers the command line tools. It applies to version 2.0 (see the [changelog](../../CHANGELOG.md)). For the graphical client see [GUI.md](GUI.md); for bare-metal restore see [BMR.md](BMR.md).
+This manual covers the command line, `salvanza-cli`. It applies to version 2.0 (see the [changelog](../../CHANGELOG.md)). For the graphical client see [GUI.md](GUI.md); for bare-metal restore see [BMR.md](BMR.md).
 
 ## Contents
 
-1. [The tools](#1-the-tools)
+1. [salvanza-cli and its commands](#1-salvanza-cli-and-its-commands)
 2. [Connecting to PBS](#2-connecting-to-pbs)
-3. [proxmoxbackup-directory: folder backups](#3-proxmoxbackup-directory-folder-backups)
+3. [backup-folder: folder backups](#3-backup-folder-folder-backups)
 4. [Incremental backups with -change-detection-mode](#4-incremental-backups-with--change-detection-mode)
-5. [proxmoxbackup-machine: whole-disk backups](#5-proxmoxbackup-machine-whole-disk-backups)
-6. [proxmoxbackup-nbd: attach a disk image (Linux)](#6-proxmoxbackup-nbd-attach-a-disk-image-linux)
+5. [backup-disk: whole-disk backups](#5-backup-disk-whole-disk-backups)
+6. [attach-nbd: attach a disk image (Linux)](#6-attach-nbd-attach-a-disk-image-linux)
 7. [Encryption](#7-encryption)
 8. [Email reports](#8-email-reports)
 9. [Exit codes](#9-exit-codes)
 10. [Scheduling](#10-scheduling)
 11. [Compatibility with the official Proxmox client](#11-compatibility-with-the-official-proxmox-client)
 
-## 1. The tools
+## 1. salvanza-cli and its commands
 
-The command line tools are in separate downloads on the [releases page](https://github.com/tizbac/proxmoxbackupclient_go/releases):
+The command line is one program, `salvanza-cli` (`salvanza-cli.exe` on Windows), with a command for each job:
 
-| Download | Contains |
+| Command | Purpose |
 |---|---|
-| `proxmoxbackup-cli-<version>-windows.zip` | `proxmoxbackup-directory.exe`, `proxmoxbackup-machine.exe` |
-| `proxmoxbackup-cli-<version>-linux.tar.gz` | `proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd` |
+| `salvanza-cli backup-folder` | Backs up folders (or a stream from standard input) as a `host` snapshot |
+| `salvanza-cli backup-disk` | Backs up whole disks as images, as a `host` or `vm` snapshot |
+| `salvanza-cli attach-nbd` | Linux only. Attaches a disk image from PBS as a read-only `/dev/nbdN` block device. The bare-metal restore ISO has the same code as `pbsnbd` |
+| `salvanza-cli version` | Prints the version (also `-version`) |
+| `salvanza-cli help` | Lists the commands. `salvanza-cli <command> -help` (or `salvanza-cli help <command>`) lists a command's options |
 
-On Linux the `.deb` and `.rpm` packages (package `proxmoxbackupclient`) install the same three tools in `/usr/bin`, next to the app. The Windows installer (MSI) installs the app and its service only, not the command line tools.
+Everything after the command is that command's options, for example `salvanza-cli backup-folder -backupdir C:\Data ...`. In its messages and help a command names itself `salvanza-cli <command>`.
 
-| Tool | Purpose |
+Where to get it:
+
+| You have | `salvanza-cli` is |
 |---|---|
-| `proxmoxbackup-directory` | Backs up folders (or a stream from standard input) as a `host` snapshot |
-| `proxmoxbackup-machine` | Backs up whole disks as images, as a `host` or `vm` snapshot |
-| `proxmoxbackup-nbd` | Linux only. Attaches a disk image from PBS as a read-only `/dev/nbdN` block device. The bare-metal restore ISO uses it as `pbsnbd` |
+| The Windows installer (MSI) | Installed with the app and the service, as `C:\Program Files\Salvanza\salvanza-cli.exe`. The installer adds that folder to the system `PATH`, so `salvanza-cli` runs from any new terminal. Every brand's installer installs the same `salvanza-cli` |
+| The Linux packages (`.deb`, `.rpm`, Arch; package `salvanza`) | `/usr/bin/salvanza-cli`, next to the app |
+| Neither | The per-platform `salvanza-cli` archives on the [releases page](https://github.com/salvanza/salvanza_client/releases) (Windows and Linux). It is a static build and needs no installation |
 
-These tools only back up: none of them restores a folder backup. Restore one with the GUI, or with the official `proxmox-backup-client` ([section 11](#11-compatibility-with-the-official-proxmox-client)). Two of the GUI's restores, Undelete and Roll back, can also be run from the command line, for a Backup Set defined in the GUI, by the GUI's own programs (on Windows its service program), which come with the GUI's installer or Linux package, not with these tools: see [GUI.md, Undelete and Roll back from the command line](GUI.md#undelete-and-roll-back-from-the-command-line). The service program's other options (install, start, stop) are in [GUI.md](GUI.md#the-service-program-from-the-command-line) too.
+These tools only back up: none of them restores a folder backup. Restore one with the GUI, or with the official `proxmox-backup-client` ([section 11](#11-compatibility-with-the-official-proxmox-client)). Two of the GUI's restores, Undelete and Roll back, can also be run from the command line, for a Backup Set defined in the GUI, by the GUI's own programs (on Windows its service program, `salvanza-svc.exe`), which come with the GUI's installer or Linux package: see [GUI.md, Undelete and Roll back from the command line](GUI.md#undelete-and-roll-back-from-the-command-line). The service program's other options (install, start, stop) are in [GUI.md](GUI.md#the-service-program-from-the-command-line) too.
 
-The tools are static builds and need no installation. Run the backup tools as administrator (Windows) for VSS, or as root (Linux) for snapshots and disk access. Each tool lists its options with `-help`, and `proxmoxbackup-directory` and `proxmoxbackup-machine` print their version with `-version`.
+Run the backup commands as administrator (Windows) for VSS, or as root (Linux) for snapshots and disk access. `backup-folder` and `backup-disk` also print their version with `-version`.
 
-A command split over several lines ends each line with `\` in bash, with a backtick (`` ` ``) in PowerShell and with `^` in cmd. A `\` in PowerShell or cmd is passed to the tool as an argument, and the backup tools stop there with a message rather than leave out the options after it.
+A command split over several lines ends each line with `\` in bash, with a backtick (`` ` ``) in PowerShell and with `^` in cmd. A `\` in PowerShell or cmd is passed to the tool as an argument, and the backup commands stop there with a message rather than leave out the options after it.
 
-On Windows, `proxmoxbackup-directory` and `proxmoxbackup-machine` take a process lock, so only one of them runs at a time in a Windows session: a second one started meanwhile exits with code 2 ([section 9](#9-exit-codes)). On Linux there is no lock. The lock does not involve the GUI or the background service, which run several backups at once ([GUI manual, section 6.7](GUI.md#67-several-backups-at-once)).
+On Windows, `backup-folder` and `backup-disk` take a process lock, so only one of them runs at a time in a Windows session: a second one started meanwhile exits with code 2 ([section 9](#9-exit-codes)). On Linux there is no lock. The lock does not involve the GUI or the background service, which run several backups at once ([GUI manual, section 6.7](GUI.md#67-several-backups-at-once)).
+
+### Earlier names
+
+Before version 2.0 these were three separate tools. Their names still work and run the matching command, with the same options, so existing scripts and scheduled tasks keep working:
+
+| Command | Earlier names |
+|---|---|
+| `backup-folder` | `proxmoxbackup-directory`, `pbsdirectorybackup`, `directorybackup` |
+| `backup-disk` | `proxmoxbackup-machine`, `pbsmachinebackup`, `machinebackup` |
+| `attach-nbd` | `proxmoxbackup-nbd`, `pbsnbd` |
+
+On Linux the packages install `/usr/bin/proxmoxbackup-directory`, `proxmoxbackup-machine` and `proxmoxbackup-nbd` as links to `salvanza-cli`. On Windows the installer puts small `.cmd` files with the earlier names beside `salvanza-cli.exe`, on the `PATH` too (`proxmoxbackup-directory.cmd`, `proxmoxbackup-machine.cmd`, `pbsdirectorybackup.cmd`, `pbsmachinebackup.cmd`, `directorybackup.cmd`); they pass the options and the exit code through. A command that names the program with `.exe` (`proxmoxbackup-directory.exe`) does not find a `.cmd`: drop the `.exe`, or better, change it to `salvanza-cli backup-folder`. A copy of `salvanza-cli`, or a link to it, under any of the earlier names in the table also runs that command.
 
 ## 2. Connecting to PBS
 
-All three tools take the same connection flags:
+All three commands take the same connection flags:
 
 | Flag | Meaning |
 |---|---|
@@ -54,11 +71,11 @@ All three tools take the same connection flags:
 | `-datastore` | Datastore name |
 | `-namespace` | Namespace (optional) |
 
-Instead of a token you can log in with a PBS user. The backup tools use `-pbsusername` and `-pbspassword`; `proxmoxbackup-nbd` uses `-username` and `-password`. A user login takes priority over a token. If you give a user name without a password, the backup tools ask for it on the console.
+Instead of a token you can log in with a PBS user. The backup commands use `-pbsusername` and `-pbspassword`; `attach-nbd` uses `-username` and `-password`. A user login takes priority over a token. If you give a user name without a password, the backup commands ask for it on the console.
 
-**Fingerprint.** Without `-certfingerprint` the backup tools fetch the fingerprint the server presents, print it and ask `Trust and pin this fingerprint for this run? [y/N]`. Always pass `-certfingerprint` in scripts and scheduled tasks, since nobody is there to answer. Read it from the PBS dashboard (Show Fingerprint) or with `proxmox-backup-manager cert info` on the PBS host.
+**Fingerprint.** Without `-certfingerprint` the backup commands fetch the fingerprint the server presents, print it and ask `Trust and pin this fingerprint for this run? [y/N]`. Always pass `-certfingerprint` in scripts and scheduled tasks, since nobody is there to answer. Read it from the PBS dashboard (Show Fingerprint) or with `proxmox-backup-manager cert info` on the PBS host.
 
-**Environment variables.** The tools also read the official client's variables. A flag wins over the environment.
+**Environment variables.** The commands also read the official client's variables. A flag wins over the environment.
 
 | Variable | Sets |
 |---|---|
@@ -66,13 +83,13 @@ Instead of a token you can log in with a PBS user. The backup tools use `-pbsuse
 | `PBS_SERVER`, `PBS_PORT` | Server and port (default port 8007) |
 | `PBS_DATASTORE` | Datastore |
 | `PBS_AUTH_ID` | Token ID |
-| `PBS_PASSWORD` | Token secret; for `proxmoxbackup-nbd -username`, the user's password |
+| `PBS_PASSWORD` | Token secret; for `attach-nbd -username`, the user's password |
 | `PBS_FINGERPRINT` | Certificate fingerprint |
 | `PBS_ENCRYPTION_PASSWORD` | Passphrase for a protected `-keyfile` |
 
 A secret in the environment stays out of the process list, where any user on the computer can read a command line.
 
-**JSON config file.** `proxmoxbackup-directory` and `proxmoxbackup-machine` take `-config <file>`. Flags given on the command line override values from the file. See [`config.json.example`](../../config.json.example):
+**JSON config file.** `backup-folder` and `backup-disk` take `-config <file>`. Flags given on the command line override values from the file. See [`config.json.example`](../../config.json.example):
 
 ```json
 {
@@ -92,7 +109,7 @@ A secret in the environment stays out of the process list, where any user on the
 
 A config file keeps the secret off the command line and out of the process list. Restrict who can read it.
 
-**Speed limits.** `proxmoxbackup-directory` and `proxmoxbackup-machine` take the GUI's three speed limits, in MB/s (1 MB = 1,000,000 bytes), each from 0 (no limit, the default) to 100000:
+**Speed limits.** `backup-folder` and `backup-disk` take the GUI's three speed limits, in MB/s (1 MB = 1,000,000 bytes), each from 0 (no limit, the default) to 100000:
 
 | Flag | JSON name | Limits |
 |---|---|---|
@@ -100,18 +117,18 @@ A config file keeps the secret off the command line and out of the process list.
 | `-download-limit <MB/s>` | `download-limit` | what is read from PBS: the previous backup's index, and in `metadata` mode its file list |
 | `-disk-read-limit <MB/s>` | `disk-read-limit` | what is read from the files or disks being backed up (not standard input with `-backupstream`) |
 
-A flag overrides the config file. The run prints the limits it uses, for example `Speed limits: upload 10 MB/s, download none, disk read 50 MB/s`. A backup goes no faster than the lower of the disk read and upload limits, and a mostly unchanged backup is held back by the disk read limit, since unchanged data is read but not uploaded. The limits apply to the one run: two tools running at once each have their own.
+A flag overrides the config file. The run prints the limits it uses, for example `Speed limits: upload 10 MB/s, download none, disk read 50 MB/s`. A backup goes no faster than the lower of the disk read and upload limits, and a mostly unchanged backup is held back by the disk read limit, since unchanged data is read but not uploaded. The limits apply to the one run: two runs at once each have their own.
 
 **Upload threads.** `-upload-threads <n>` (JSON `upload-threads`) is how many chunks are sent to PBS at a time, 1 to 8. Left out (or 0) it is auto: a run starts with one and allows one more for every 4 Mbit/s of upload speed it measures, so on a LAN it soon sends 8 at a time, and on a slow link (a home connection to a PBS offsite) it sends one or two, and each chunk arrives in seconds rather than minutes. Hashing and the check against the chunks PBS already has always use all the workers. Set a number to override auto; the run prints it, for example `Upload threads: 2`.
 
-**Lost connections.** The backup tools retry as the GUI does. A request to PBS that fails in a way that passes (a timeout, a reset connection, HTTP 502, 503, 504 or 429) is tried again, up to 5 times over about 15 seconds; each retry is printed. If the connection itself is lost, PBS ends the backup session, and the backup starts again with a new one:
+**Lost connections.** The backup commands retry as the GUI does. A request to PBS that fails in a way that passes (a timeout, a reset connection, HTTP 502, 503, 504 or 429) is tried again, up to 5 times over about 15 seconds; each retry is printed. If the connection itself is lost, PBS ends the backup session, and the backup starts again with a new one:
 
-* `proxmoxbackup-directory` backs the folder up once more, 25 minutes later, which gives PBS time to release the backup group. In a run with several folders, only the folder that was cut off runs again. A backup of standard input (`-backupstream`) is not run again, as what was read is gone.
-* `proxmoxbackup-machine` tries again up to 4 more times, after 2, 5, 10 and 15 minutes. It also tries again when PBS cannot be reached, or still holds the backup group from the lost session.
+* `backup-folder` backs the folder up once more, 25 minutes later, which gives PBS time to release the backup group. In a run with several folders, only the folder that was cut off runs again. A backup of standard input (`-backupstream`) is not run again, as what was read is gone.
+* `backup-disk` tries again up to 4 more times, after 2, 5, 10 and 15 minutes. It also tries again when PBS cannot be reached, or still holds the backup group from the lost session.
 
 Chunks sent in the lost session are sent again. The run prints when it starts again; a scheduled task's time limit should allow for the wait.
 
-## 3. proxmoxbackup-directory: folder backups
+## 3. backup-folder: folder backups
 
 ### Flags
 
@@ -145,7 +162,7 @@ New chunks are sent to PBS up to 8 at a time while the folder is read on, as in 
 Windows, one folder, API token:
 
 ```powershell
-proxmoxbackup-directory.exe -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... `
+salvanza-cli backup-folder -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... `
   -authid "backup@pbs!laptop" -secret "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" `
   -datastore backup -backup-id laptop-documents -backupdir "C:\Users\alice\Documents"
 ```
@@ -153,7 +170,7 @@ proxmoxbackup-directory.exe -baseurl https://pbs.example.com:8007 -certfingerpri
 Linux, as a normal user (no snapshot):
 
 ```bash
-proxmoxbackup-directory -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
+salvanza-cli backup-folder -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
   -authid 'backup@pbs!server1' -secret 'xxxxxxxx-...' \
   -datastore backup -backup-id server1-home -backupdir /home -novss
 ```
@@ -161,7 +178,7 @@ proxmoxbackup-directory -baseurl https://pbs.example.com:8007 -certfingerprint A
 A database dump as a stream:
 
 ```bash
-mysqldump mydb | proxmoxbackup-directory -backupstream mydb.sql -backup-id db1 [connection flags]
+mysqldump mydb | salvanza-cli backup-folder -backupstream mydb.sql -backup-id db1 [connection flags]
 ```
 
 ### Several folders
@@ -172,7 +189,7 @@ The GUI groups folders differently: a Backup Set with several folders makes one 
 
 ### Permissions, attributes and dates
 
-Besides each file's contents and modification time, the tool records on Windows each file's and folder's permissions (owner, group and access list), attributes (read-only, hidden, system...), creation time, alternate data streams (up to 1 MB each) and NTFS extended attributes, and on Linux extended attributes and POSIX ACLs. They are stored with the snapshot, and a restore in the GUI puts them back (permissions only when **Restore permissions/ACLs** is ticked). Backups made by `proxmoxbackup-directory` in version 1.2 or earlier did not record them.
+Besides each file's contents and modification time, the command records on Windows each file's and folder's permissions (owner, group and access list), attributes (read-only, hidden, system...), creation time, alternate data streams (up to 1 MB each) and NTFS extended attributes, and on Linux extended attributes and POSIX ACLs. They are stored with the snapshot, and a restore in the GUI puts them back (permissions only when **Restore permissions/ACLs** is ticked). Backups made by `proxmoxbackup-directory` (the earlier name of `backup-folder`) in version 1.2 or earlier did not record them.
 
 ### Leaving times out of the archive
 
@@ -201,7 +218,7 @@ On Windows, junction points and symbolic links are skipped. On Linux, symbolic l
 
 ### Unreadable files and disk drop-outs
 
-If a source disk drops out mid-backup ("device not ready"), the tool waits up to 2 minutes for it to come back, reopens the file and carries on. A file that still cannot be read is filled with zeros to its recorded size and flagged; the snapshot is kept and the tool exits with code 3. Other per-file read errors (a locked region, for example) are handled the same way.
+If a source disk drops out mid-backup ("device not ready"), the command waits up to 2 minutes for it to come back, reopens the file and carries on. A file that still cannot be read is filled with zeros to its recorded size and flagged; the snapshot is kept and the command exits with code 3. Other per-file read errors (a locked region, for example) are handled the same way.
 
 ## 4. Incremental backups with -change-detection-mode
 
@@ -211,7 +228,7 @@ If a source disk drops out mid-backup ("device not ready"), the tool waits up to
 | `data` | every file | split archive `backup.mpxar.didx` + `backup.ppxar.didx` |
 | `metadata` | only new and changed files | the same split archive |
 
-In `metadata` mode the tool reads the file list of the newest snapshot in the group. A file whose size, modification time (to the nanosecond), mode and owner match is not opened: its data is reused from that snapshot's chunks. Only new and changed files are read and uploaded, so a repeat run of a large, mostly unchanged folder takes minutes instead of hours and sends very little to PBS. With no usable previous split snapshot (the first run, or a different key), the run reads every file, like `data`.
+In `metadata` mode the command reads the file list of the newest snapshot in the group. A file whose size, modification time (to the nanosecond), mode and owner match is not opened: its data is reused from that snapshot's chunks. Only new and changed files are read and uploaded, so a repeat run of a large, mostly unchanged folder takes minutes instead of hours and sends very little to PBS. With no usable previous split snapshot (the first run, or a different key), the run reads every file, like `data`.
 
 The output reports the result in this form:
 
@@ -227,7 +244,7 @@ Points to know:
 * Reuse only happens from a snapshot encrypted with the same key (or both unencrypted).
 * Restoring split archives needs version 2.0 of this client (or the official client). Update every machine you restore from before switching.
 
-## 5. proxmoxbackup-machine: whole-disk backups
+## 5. backup-disk: whole-disk backups
 
 ### Flags
 
@@ -240,18 +257,18 @@ Points to know:
 | `-liveread` | off | Linux: read mounted partitions live, without a snapshot (see below). The image may be inconsistent. No effect on Windows |
 | `-readfreespace` | off | Also read free space (a forensic copy), and on Windows the paging, hibernation and swap files. By default they go into the image as zeros without being read |
 | `-skippartition <device>:<number>` | | Leave a partition out, e.g. `\\.\PhysicalDrive0:4` or `/dev/sda:3`. Repeat for more. It is not read or snapshotted and goes into the image as zeros: a restore gives it back in its place, empty and unformatted. A number the disk does not have prints a warning and leaves nothing out |
-| `-systray` | off | Does nothing: the tray icon was taken out of the command-line tools. Still accepted, as is `"systray"` in a config file, so existing commands keep working; the run says it does nothing |
+| `-systray` | off | Does nothing: the tray icon was taken out of the command line. Still accepted, as is `"systray"` in a config file, so existing commands keep working; the run says it does nothing |
 | `-pbsusername`, `-pbspassword` | | User login instead of a token |
 | `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `liveread`, `compression`, `keyfile`, `keyfilepassphrase`, `upload-limit`, `download-limit`, `disk-read-limit`, `upload-threads`, `shutdown-after` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
 | `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |
 | `-upload-threads <n>` | auto | Chunks sent to PBS at a time, 1 to 8; auto adds one for every 4 Mbit/s of upload speed ([section 2](#2-connecting-to-pbs)) |
-| `-compression <level>` | `default` | `fastest`, `default` (zstd level 3), `better` or `best`, as for `proxmoxbackup-directory` ([section 3](#3-proxmoxbackup-directory-folder-backups)) |
-| `-shutdown-after` | off | Turn the computer off once the backup has run, as for `proxmoxbackup-directory` ([section 3](#3-proxmoxbackup-directory-folder-backups)), also after exit code 3 (unreadable sectors) |
+| `-compression <level>` | `default` | `fastest`, `default` (zstd level 3), `better` or `best`, as for `backup-folder` ([section 3](#3-backup-folder-folder-backups)) |
+| `-shutdown-after` | off | Turn the computer off once the backup has run, as for `backup-folder` ([section 3](#3-backup-folder-folder-backups)), also after exit code 3 (unreadable sectors) |
 | `-mail-...` | | Email report ([section 8](#8-email-reports)) |
 
 Plus the connection flags in [section 2](#2-connecting-to-pbs).
 
-On Windows the tool takes a VSS snapshot of every mounted partition on the disk, then stores a bootable image of the whole disk. On Linux mounted partitions are snapshotted with `elastio-snap` or `dattobd`, which must be loaded, and the tool must run as root. Installing them (DKMS, loading at boot, Secure Boot): see [Linux snapshots: installing elastio-snap or dattobd](GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) in the GUI manual. Without a snapshot module the backup of a disk with a mounted partition stops and says so. `-liveread` (`"liveread": true` in the config file), the GUI's **Use snapshots** turned off and accepted, reads mounted partitions live instead, with a warning: files that change during the backup can be caught half written, so the image may be inconsistent, which matters most for a system disk. Reading the disk still needs root. A disk with nothing mounted is always read without a snapshot.
+On Windows the command takes a VSS snapshot of every mounted partition on the disk, then stores a bootable image of the whole disk. On Linux mounted partitions are snapshotted with `elastio-snap` or `dattobd`, which must be loaded, and the command must run as root. Installing them (DKMS, loading at boot, Secure Boot): see [Linux snapshots: installing elastio-snap or dattobd](GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) in the GUI manual. Without a snapshot module the backup of a disk with a mounted partition stops and says so. `-liveread` (`"liveread": true` in the config file), the GUI's **Use snapshots** turned off and accepted, reads mounted partitions live instead, with a warning: files that change during the backup can be caught half written, so the image may be inconsistent, which matters most for a system disk. Reading the disk still needs root. A disk with nothing mounted is always read without a snapshot.
 
 Later backups of the same disk to the same group only upload changed 4 MiB chunks.
 
@@ -261,7 +278,7 @@ On Linux the snapshot's own copy-on-write file (`.pbs_snapshot_N.cow` at the top
 
 If the disk cannot read a sector, that spot goes into the image as zeros and the backup carries on. The run then prints a warning saying where, keeps the snapshot and exits with code 3.
 
-The tool prints one progress line per percent, with the chunks uploaded and reused so far, and a summary at the end. "new/changed data" is the size of the new chunks, "transferred" what they took on the network once compressed. Sizes are in decimal units (1 MB = 1,000,000 bytes), as PBS shows them:
+The command prints one progress line per percent, with the chunks uploaded and reused so far, and a summary at the end. "new/changed data" is the size of the new chunks, "transferred" what they took on the network once compressed. Sizes are in decimal units (1 MB = 1,000,000 bytes), as PBS shows them:
 
 ```
  97%  \\.\PhysicalDrive1: Block 12416 / 12800  (new 101, reused 12314 (12235 blank), new/changed data 423.6MB, transferred 158.3MB, free space not read 5.4GB)
@@ -271,22 +288,22 @@ Done in 3m38s: 53.7GB read; new 102, reused 12698 (12619 blank), new/changed dat
 ### Examples
 
 ```powershell
-proxmoxbackup-machine.exe -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... `
+salvanza-cli backup-disk -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... `
   -authid "backup@pbs!laptop" -secret "..." -datastore backup `
   -backupdev \\.\PhysicalDrive0 -backup-id laptop-disk0
 ```
 
 ```bash
-sudo proxmoxbackup-machine -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
+sudo salvanza-cli backup-disk -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
   -authid 'backup@pbs!server1' -secret '...' -datastore backup \
   -backupdev /dev/sda -type vm -backup-id 9000107
 ```
 
 Restore a machine backup with the bare-metal restore ISO ([BMR.md](BMR.md)), or, for a `vm` snapshot, from Proxmox VE.
 
-## 6. proxmoxbackup-nbd: attach a disk image (Linux)
+## 6. attach-nbd: attach a disk image (Linux)
 
-`proxmoxbackup-nbd` attaches a disk image (`.img.fidx`) from any PBS snapshot, including Proxmox VE VM backups, as a read-only `/dev/nbdN` device. You can then mount its partitions to copy files out, or image it onto a disk.
+`salvanza-cli attach-nbd` attaches a disk image (`.img.fidx`) from any PBS snapshot, including Proxmox VE VM backups, as a read-only `/dev/nbdN` device. You can then mount its partitions to copy files out, or image it onto a disk. On other systems it stops with a message: it needs Linux's `nbd` kernel module.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -303,16 +320,16 @@ It must run as root. Load the module first with partition probing off; probing o
 
 ```bash
 sudo modprobe nbd max_part=0
-proxmoxbackup-nbd -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
+salvanza-cli attach-nbd -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
   -username backup@pbs -password '...' -datastore backup -list
-sudo proxmoxbackup-nbd -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
+sudo salvanza-cli attach-nbd -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
   -username backup@pbs -password '...' -datastore backup \
   -path "host/laptop-disk0/2026-10-07T07:15:32Z/drive-sata0.img.fidx"
 ```
 
-The tool stays in the foreground while the device is attached. Press Ctrl+C to detach. Unmount everything on the device first, or the partitions stay busy. If you see `Device or resource busy`, run `nbd-client -d /dev/nbd0` or reboot.
+The command stays in the foreground while the device is attached. Press Ctrl+C to detach. Unmount everything on the device first, or the partitions stay busy. If you see `Device or resource busy`, run `nbd-client -d /dev/nbd0` or reboot.
 
-Before it attaches the device, the tool compares the key with the one the snapshot was encrypted with (the manifest names its fingerprint) and reads the first chunk, so a missing or wrong key stops straight away with a clear message: for a wrong key, "this snapshot was encrypted with another key" and the two fingerprints.
+Before it attaches the device, the command compares the key with the one the snapshot was encrypted with (the manifest names its fingerprint) and reads the first chunk, so a missing or wrong key stops straight away with a clear message: for a wrong key, "this snapshot was encrypted with another key" and the two fingerprints.
 
 Do not use this on a machine running important services: a damaged file system on the attached image can upset the kernel.
 
@@ -328,7 +345,7 @@ Without the key an encrypted snapshot cannot be restored. Keep a copy away from 
 
 ## 8. Email reports
 
-`proxmoxbackup-directory` and `proxmoxbackup-machine` can email a report at the end of every run, failed runs included. (In version 1.1 and earlier `proxmoxbackup-machine` checked the flags but sent nothing.) A machine backup with unreadable sectors reports `Partial` and lists where they are. If the email cannot be sent, the tool prints the problem on standard error and keeps the backup's own exit code ([section 9](#9-exit-codes)). When the backup itself worked, "Error sending notification email, check client mail configuration." is also added to the snapshot's comment on PBS (to each snapshot of a run with several folders), so the problem shows in the PBS web interface.
+`backup-folder` and `backup-disk` can email a report at the end of every run, failed runs included. (In version 1.1 and earlier the machine backup tool checked the flags but sent nothing.) A machine backup with unreadable sectors reports `Partial` and lists where they are. If the email cannot be sent, the command prints the problem on standard error and keeps the backup's own exit code ([section 9](#9-exit-codes)). When the backup itself worked, "Error sending notification email, check client mail configuration." is also added to the snapshot's comment on PBS (to each snapshot of a run with several folders), so the problem shows in the PBS web interface.
 
 | Flag | Meaning |
 |---|---|
@@ -347,11 +364,11 @@ Template fields include `.Success`, `.Status`, `.NewChunks`, `.ReusedChunks`, `.
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Failed: bad options, connection or login failure, key problem or backup error. An email report that could not be sent does not change the code ([section 8](#8-email-reports)) |
-| 2 | Windows only: another `proxmoxbackup-directory` or `proxmoxbackup-machine` run holds the process lock ([section 1](#1-the-tools)) |
-| 3 | The snapshot was saved, but not everything could be read: `proxmoxbackup-directory`, some files are incomplete; `proxmoxbackup-machine` (version 2.0 and later), some sectors are zeros in the image |
+| 1 | Failed: bad options, an unknown command, connection or login failure, key problem or backup error. An email report that could not be sent does not change the code ([section 8](#8-email-reports)) |
+| 2 | Windows only: another `backup-folder` or `backup-disk` run holds the process lock ([section 1](#1-salvanza-cli-and-its-commands)) |
+| 3 | The snapshot was saved, but not everything could be read: `backup-folder`, some files are incomplete; `backup-disk` (version 2.0 and later), some sectors are zeros in the image |
 
-Errors go to standard error. Options that are missing are named, for example `Missing options: -baseurl, -datastore`. A mistyped option, an argument that is not an option (such as a value after a switch, `-novss true`) and, on Windows, a path with a quote in it (`-backupdir "C:\"` passes `C:"`; write `C:\` or `"C:\\"`) stop the run before it starts, with code 1 and what to change. (In version 1.1 and earlier, on Windows, missing options and "another job is running" showed a message box, which waits for a click an unattended run never gets; `proxmoxbackup-directory` even carried on after the box.)
+Errors go to standard error. Options that are missing are named, for example `Missing options: -baseurl, -datastore`. A mistyped option, an argument that is not an option (such as a value after a switch, `-novss true`) and, on Windows, a path with a quote in it (`-backupdir "C:\"` passes `C:"`; write `C:\` or `"C:\\"`) stop the run before it starts, with code 1 and what to change. (In version 1.1 and earlier, on Windows, missing options and "another job is running" showed a message box, which waits for a click an unattended run never gets; the folder backup tool even carried on after the box.)
 
 ## 10. Scheduling
 
@@ -359,26 +376,28 @@ Errors go to standard error. Options that are missing are named, for example `Mi
 
 1. Put the settings in a JSON file, for example `C:\ProgramData\pbs\documents.json`, and restrict it to Administrators and SYSTEM.
 2. Create a task: **Run whether user is logged on or not**, **Run with highest privileges** (for VSS), and a trigger.
-3. Action: program `C:\Tools\proxmoxbackup-directory.exe`, arguments `-config C:\ProgramData\pbs\documents.json`.
+3. Action: program `C:\Program Files\Salvanza\salvanza-cli.exe`, arguments `backup-folder -config C:\ProgramData\pbs\documents.json`.
 4. The task's "Last Run Result" shows the exit code ([section 9](#9-exit-codes)). Use `0x3` as a warning, anything else non-zero as a failure.
 
-Or from an elevated prompt:
+Or from an elevated command prompt (cmd):
 
-```powershell
-schtasks /Create /TN "PBS Documents" /SC DAILY /ST 02:00 /RU SYSTEM /RL HIGHEST `
-  /TR "C:\Tools\proxmoxbackup-directory.exe -config C:\ProgramData\pbs\documents.json"
+```bat
+schtasks /Create /TN "PBS Documents" /SC DAILY /ST 02:00 /RU SYSTEM /RL HIGHEST ^
+  /TR "\"C:\Program Files\Salvanza\salvanza-cli.exe\" backup-folder -config C:\ProgramData\pbs\documents.json"
 ```
+
+A task made for an earlier version that runs `proxmoxbackup-directory.exe` from its own folder keeps running that copy. To move it to `salvanza-cli`, change the program to `salvanza-cli.exe` and put `backup-folder` before the arguments.
 
 ### Linux cron
 
 ```cron
 # /etc/cron.d/pbs-backup
 # Daily metadata run at 02:00, full read every Sunday at 03:00
-0 2 * * 1-6 root /usr/bin/proxmoxbackup-directory -config /etc/pbs/home.json >> /var/log/pbs-home.log 2>&1
-0 3 * * 0   root /usr/bin/proxmoxbackup-directory -config /etc/pbs/home.json -change-detection-mode data >> /var/log/pbs-home.log 2>&1
+0 2 * * 1-6 root /usr/bin/salvanza-cli backup-folder -config /etc/pbs/home.json >> /var/log/pbs-home.log 2>&1
+0 3 * * 0   root /usr/bin/salvanza-cli backup-folder -config /etc/pbs/home.json -change-detection-mode data >> /var/log/pbs-home.log 2>&1
 ```
 
-`/etc/pbs/home.json` sets `"change-detection-mode": "metadata"`; the Sunday line overrides it with a flag. `/usr/bin` is where the `.deb` and `.rpm` put the tool; use your own path for the tar.gz download. A systemd timer works equally well.
+`/etc/pbs/home.json` sets `"change-detection-mode": "metadata"`; the Sunday line overrides it with a flag. `/usr/bin` is where the `.deb`, `.rpm` and Arch packages put `salvanza-cli`; use your own path for the archive download. A cron line that runs `/usr/bin/proxmoxbackup-directory` keeps working through the package's link. A systemd timer works equally well.
 
 ## 11. Compatibility with the official Proxmox client
 
@@ -399,4 +418,4 @@ proxmox-backup-client snapshot files "host/laptop-documents/2026-10-07T20:45:51Z
 proxmox-backup-client restore "host/laptop-documents/2026-10-07T20:45:51Z" <archive> /tmp/restore
 ```
 
-Give the archive name without `.didx`: a snapshot from `proxmoxbackup-directory` holds `backup.pxar.didx` (legacy) or `backup.mpxar.didx` plus `backup.ppxar.didx` (data, metadata), so restore `backup.pxar` or `backup.mpxar`. The GUI names one archive per folder (for example `f__data.mpxar` for F:\Data), so check `snapshot files` first. Add `--keyfile` for an encrypted snapshot. The restored tree contains one extra file, `.proxmox_backup_client_meta.json`, which this client adds to record the original path. The permissions and other file details this client records in the snapshot's `proxmox-client-acls.json.gz.blob` (NTFS permissions, attributes, creation times, alternate data streams and extended attributes on Windows; extended attributes and POSIX ACLs on Linux) are not applied by the official client; restore with the GUI to get them back. On Linux the official client keeps ACLs inside the archive itself, which this client does not yet write or read; see the [roadmap](../../TODO.md).
+Give the archive name without `.didx`: a snapshot from `salvanza-cli backup-folder` holds `backup.pxar.didx` (legacy) or `backup.mpxar.didx` plus `backup.ppxar.didx` (data, metadata), so restore `backup.pxar` or `backup.mpxar`. The GUI names one archive per folder (for example `f__data.mpxar` for F:\Data), so check `snapshot files` first. Add `--keyfile` for an encrypted snapshot. The restored tree contains one extra file, `.proxmox_backup_client_meta.json`, which this client adds to record the original path. The permissions and other file details this client records in the snapshot's `proxmox-client-acls.json.gz.blob` (NTFS permissions, attributes, creation times, alternate data streams and extended attributes on Windows; extended attributes and POSIX ACLs on Linux) are not applied by the official client; restore with the GUI to get them back. On Linux the official client keeps ACLs inside the archive itself, which this client does not yet write or read; see the [roadmap](../../TODO.md).

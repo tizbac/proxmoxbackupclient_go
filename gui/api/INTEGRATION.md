@@ -1,6 +1,8 @@
 # Local service API
 
-The background service (`ProxmoxBackupClientSVC`, Windows service or systemd unit) serves a
+The background service of Salvanza for Proxmox Backup Server (`salvanza-svc`, Windows
+service `salvanza-svc` or systemd unit `salvanza.service`; a branded build's has its own
+name) serves a
 small HTTP API on `127.0.0.1:18765`. The app uses it to hand backups to the service and to
 follow and control the service's runs. This package holds both sides:
 
@@ -20,7 +22,7 @@ If the service answers (200, or 401 when the app has no token yet), or is instal
 answering yet, the app is in **service mode**: the service keeps the computer's settings,
 Backup Sets, history and Message Log, runs every backup, and the app works on them only
 through this API. Otherwise it is **standalone** and keeps its own settings in
-`~/.proxmox-backup-guardian`. Preferences > Advanced > Run as Service switches between the
+`~/.salvanza`. Preferences > Advanced > Run as Service switches between the
 two (`gui/service_switch.go`). A user who cannot connect may choose **Use my own settings**
 (standalone with the service running).
 
@@ -54,15 +56,27 @@ otherwise (`gui/api/server_state.go`).
 Every request except `GET /status/public` and `GET /servers/public` must carry the header
 
 ```
-X-Proxmox-Client-Token: <contents of the token file>
+X-Salvanza-Token: <contents of the token file>
 ```
 
-The token file is `api-token` in the service's settings folder:
+The header's name before the rename to Salvanza, `X-Proxmox-Client-Token`, is still
+accepted for now, so scripts written for Proxmox Backup Client keep working; the app sends
+`X-Salvanza-Token`.
+
+The token file is `api-token` in the service's settings folder (a branded build's own
+folder, such as `C:\ProgramData\NimbusBackup`):
 
 | | Path | Who can read it |
 | --- | --- | --- |
-| Windows | `C:\ProgramData\ProxmoxBackupClient\api-token` | SYSTEM (full control) and the Administrators group (read), protected; a program without elevation cannot |
-| Linux | `/var/lib/proxmoxbackupclient/api-token` | root only (0600 in a 0700 root-owned folder) |
+| Windows | `C:\ProgramData\Salvanza\api-token` | SYSTEM (full control) and the Administrators group (read), protected; a program without elevation cannot |
+| Linux | `/var/lib/salvanza/api-token` | root only (0600 in a 0700 root-owned folder) |
+
+A launcher that already has the token can give it in the environment variable
+`SALVANZA_API_TOKEN` (`PBSGO_API_TOKEN`, its earlier name, is still read); the app itself
+never sets it. `SALVANZA_TOKEN_ROTATION` and `SALVANZA_TOKEN_GRACE` (durations such as
+`24h` and `10m`; a rotation of `0` turns it off) change the service's rotation interval and
+grace window below; the earlier `PBSGO_TOKEN_ROTATION` and `PBSGO_TOKEN_GRACE` are still
+read.
 
 The service writes a new random token (32 bytes, hex) each time it starts, before the API
 starts (`NewToken`, an atomic replace), after it has locked the settings folder down, and
@@ -138,7 +152,7 @@ Whether the service is up, and what it runs with.
     "datastore": "backup",
     "certfingerprint": "...",
     "backup-id": "PC01",
-    "encryption_key_file": "C:\\ProgramData\\ProxmoxBackupClient\\keys\\encryption-key.json"
+    "encryption_key_file": "C:\\ProgramData\\Salvanza\\keys\\encryption-key.json"
   }
 }
 ```
@@ -352,7 +366,7 @@ if it cannot be saved.
 PowerShell, run as administrator (elevated) on Windows:
 
 ```powershell
-$h = @{ 'X-Proxmox-Client-Token' = (Get-Content C:\ProgramData\ProxmoxBackupClient\api-token -Raw).Trim() }
+$h = @{ 'X-Salvanza-Token' = (Get-Content C:\ProgramData\Salvanza\api-token -Raw).Trim() }
 Invoke-RestMethod http://127.0.0.1:18765/status -Headers $h
 Invoke-RestMethod http://127.0.0.1:18765/backup/runs -Headers $h
 ```
@@ -360,7 +374,7 @@ Invoke-RestMethod http://127.0.0.1:18765/backup/runs -Headers $h
 Linux, as root:
 
 ```sh
-curl -s -H "X-Proxmox-Client-Token: $(cat /var/lib/proxmoxbackupclient/api-token)" http://127.0.0.1:18765/status
+curl -s -H "X-Salvanza-Token: $(cat /var/lib/salvanza/api-token)" http://127.0.0.1:18765/status
 ```
 
 The public status needs neither elevation nor the token:

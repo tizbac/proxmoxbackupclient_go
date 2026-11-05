@@ -1,13 +1,14 @@
 # MSI removal: keep or delete the settings (test plan)
 
-When the MSI is removed, the settings folder `C:\ProgramData\ProxmoxBackupClient` is kept
-unless the property `KEEP_CONFIG` is `0`. This note describes how that works and how to
-test it. The installer itself is described in [installer/README.md](installer/README.md).
+When the MSI is removed, the settings folder `C:\ProgramData\Salvanza` (a branded build's
+own, such as `C:\ProgramData\NimbusBackup`) is kept unless the property `KEEP_CONFIG` is
+`0`. This note describes how that works and how to test it. The installer itself is
+described in [installer/README.md](installer/README.md).
 
 ## What is in the settings folder
 
 ```
-C:\ProgramData\ProxmoxBackupClient\
+C:\ProgramData\Salvanza\
   config.json           PBS servers, API tokens, remembered passphrases, preferences
   scheduled_jobs.json   Backup Sets
   job_history.json      Reports
@@ -15,16 +16,20 @@ C:\ProgramData\ProxmoxBackupClient\
   keys\                 encryption keys made by the app
   api-token             local API token (the service writes a new one at each start)
   *.log, *.log.gz       logs (service-*.log, backup-*.log, one per backup run)
+  pre-salvanza-<date>\  after an upgrade from Proxmox Backup Client: a copy of the
+                        settings files as they were taken over
 ```
 
 ## How it works (installer/wix/ProductBody.wxi)
 
 - Property `KEEP_CONFIG`, default `1` (keep). It is a secure property, so a choice made in
   the installer's pages reaches the elevated part of the removal.
-- Custom action `DeleteConfigFolder`: `cmd.exe /c rmdir /s /q "%ProgramData%\ProxmoxBackupClient"`,
-  deferred, run as SYSTEM (`Impersonate="no"`), errors ignored. It runs before RemoveFiles
-  when `(REMOVE="ALL") AND NOT UPGRADINGPRODUCTCODE AND (KEEP_CONFIG="0")`, so never during
-  an upgrade. The folder is the same for every brand, as in the app (`gui/config.go`).
+- Custom action `DeleteConfigFolder`: `cmd.exe /c rmdir /s /q "%ProgramData%\<Folder>"`
+  (`Salvanza`, `NimbusBackup` or `EtitechBackup`, the brand's `Folder` define), deferred,
+  run as SYSTEM (`Impersonate="no"`), errors ignored. It runs before RemoveFiles when
+  `(REMOVE="ALL") AND NOT UPGRADINGPRODUCTCODE AND (KEEP_CONFIG="0")`, so never during an
+  upgrade, and never when another brand's installer removes this one. Each brand has its
+  own folder, as in the app (`gui/brand.go`, `gui/config.go`).
 - Page `UninstallDlg` ("Do you want to keep your configuration and logs?") with two radio
   buttons, "Keep configuration" (1) and "Delete configuration" (0). It sits in the
   maintenance wizard: Remove on the "Change, repair, or remove" page leads to it, its Next
@@ -58,6 +63,10 @@ asked, use "Change" or "Modify", then Remove.
   required): the check runs while our own service is still running, before the package's
   StopServices; RmGetList lists only `ProxmoxBackupClientSVC`. See the roadmap.
 
+The tests in this section ran on builds from before the rename to Salvanza, so they name
+`ProxmoxBackupClientSVC` and `C:\ProgramData\ProxmoxBackupClient`; the Salvanza builds
+have not been through them yet.
+
 ## Tests
 
 Before each test: install the MSI, start the app, add a PBS server and one or two Backup
@@ -67,16 +76,16 @@ Sets, so the folder holds `config.json` and `scheduled_jobs.json`.
 
 `msiexec /x <msi> /qn`
 
-- `C:\Program Files\ProxmoxBackupClient` gone, service `ProxmoxBackupClientSVC` gone,
-  Start menu entry gone, Programs and Features entry gone.
-- `C:\ProgramData\ProxmoxBackupClient` still there with `config.json` and `scheduled_jobs.json`.
+- `C:\Program Files\Salvanza` gone, service `salvanza-svc` gone, Start menu entry gone,
+  Programs and Features entry gone.
+- `C:\ProgramData\Salvanza` still there with `config.json` and `scheduled_jobs.json`.
 
 ### 2. Silent removal with KEEP_CONFIG=0 (passed)
 
 `msiexec /x <msi> /qn KEEP_CONFIG=0 /l*v uninstall.log`
 
 - Programs, service and entries gone as in test 1.
-- `C:\ProgramData\ProxmoxBackupClient` gone (close the app first: files it holds open stay).
+- `C:\ProgramData\Salvanza` gone (close the app first: files it holds open stay).
 - `uninstall.log` shows `DeleteConfigFolder` running.
 
 ### 3. Programs and Features > Uninstall (passed)
@@ -113,6 +122,19 @@ Start test 4 and press Cancel on the keep or delete page.
 - After "Are you sure?", Windows Installer's own "Setup Wizard was interrupted" page shows,
   saying nothing was changed; Finish closes it. That is the standard ending of a cancelled
   setup, also when installing.
+
+### 8. Upgrade from Proxmox Backup Client (not run yet)
+
+With Proxmox Backup Client installed (service `ProxmoxBackupClientSVC`, settings in
+`C:\ProgramData\ProxmoxBackupClient`), install the Salvanza MSI over it.
+
+- No keep or delete question; the earlier product's removal keeps its settings.
+- One Programs and Features entry, Salvanza for Proxmox Backup Server. `C:\Program Files\ProxmoxBackupClient`
+  and the service `ProxmoxBackupClientSVC` gone; `salvanza-svc` running.
+- `C:\ProgramData\ProxmoxBackupClient` moved to `C:\ProgramData\Salvanza`, with a
+  `pre-salvanza-<date>` copy of the settings files in it; the app shows the same PBS
+  servers and Backup Sets.
+- Removing Salvanza afterwards with `KEEP_CONFIG=0` deletes `C:\ProgramData\Salvanza`.
 
 ## If something goes wrong
 

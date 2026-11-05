@@ -1,8 +1,9 @@
 # End-to-end test suite
 
-> ⚠️ **Trademark & affiliation notice.** This is an **independent community project**, not an official Proxmox product: it is **not affiliated with, endorsed by, or sponsored by Proxmox Server Solutions GmbH**. **Proxmox®** is a registered trademark of Proxmox Server Solutions GmbH in the EU, the U.S. and other countries, and it is used here **only** to describe compatibility. Following Proxmox's own trademark guidance (registered marks must not be used in product or app names, for example "XY App for Proxmox Virtual Environment" rather than "Proxmox XY App"), **a rename of the non-branded client is underway**: the product currently called *Proxmox Backup Client* is moving to a name that does not contain the Proxmox mark. See the [Proxmox media kit](https://www.proxmox.com/en/about/company-details/media-kit) for the exact rules.
+> ⚠️ **Trademark & affiliation notice.** This is an **independent community project**, not an official Proxmox product: it is **not affiliated with, endorsed by, or sponsored by Proxmox Server Solutions GmbH**. **Proxmox®** is a registered trademark of Proxmox Server Solutions GmbH in the EU, the U.S. and other countries, and it is used here **only** to describe compatibility. Following Proxmox's own trademark guidance (registered marks must not be used in product or app names, for example "XY App for Proxmox Virtual Environment" rather than "Proxmox XY App"), **the non-branded client has been renamed**: the product formerly called *Proxmox Backup Client* is now **Salvanza for Proxmox Backup Server**, a name that does not contain the Proxmox mark. See the [Proxmox media kit](https://www.proxmox.com/en/about/company-details/media-kit) for the exact rules.
 
-Automated end-to-end tests that back up data with **our** CLIs, restore it with
+Automated end-to-end tests that back up data with **our** command line,
+`salvanza-cli` (`backup-folder` and `backup-disk`), restore it with
 the **official** `proxmox-backup-client`, and verify the result is byte-identical.
 
 The official client is the interoperability contract: if it can read our archives
@@ -26,7 +27,7 @@ From GitHub Actions, see [`../../.github/workflows/e2e.yml`](../../.github/workf
 | Docker | A PBS container is started for the duration of the run. |
 | `python3` | Used to build fixtures and to assert on JSON. |
 | `proxmox-backup-client` | The official client. By default the suite builds it in a container from Proxmox's own Debian repository ([`official-client/Dockerfile`](official-client/Dockerfile)), so it is always current. Set `PBC_BIN` to use a local binary instead. |
-| `make`, Go | `make cli` builds `dist/proxmoxbackup-directory` and `dist/proxmoxbackup-machine` (and `proxmoxbackup-nbd` on Linux). Skip with `E2E_SKIP_BUILD=1`. |
+| `make`, Go | `make cli` builds `dist/salvanza-cli`, which the suite runs as `salvanza-cli backup-folder` and `salvanza-cli backup-disk`. Skip with `E2E_SKIP_BUILD=1`. |
 
 ### Configuration
 
@@ -41,9 +42,9 @@ Every setting is an environment variable with a sensible default:
 | `PBS_USER` / `PBS_TOKEN_NAME` | `e2e@pbs` / `e2etoken` | API user and token. A dedicated token is generated per run; no admin password is needed. |
 | `PBS_NAMESPACE` | `e2e` | Namespace for the namespace round-trip test (test 8). Empty skips that test. |
 | `PBC_BIN` | unset | Path to a local official client. Unset, the suite builds and uses `PBC_IMAGE`. |
-| `PBC_IMAGE` | `proxmoxbackupclient-e2e-client:latest` | Tag of the official-client image built from `official-client/Dockerfile`. |
+| `PBC_IMAGE` | `salvanza-e2e-client:latest` | Tag of the official-client image built from `official-client/Dockerfile`. |
 | `E2E_SKIP_OFFICIAL` | `0` | Set to `1` to skip every official-client assertion (useful for a quick smoke run). |
-| `E2E_SKIP_BUILD` | `0` | Set to `1` to reuse the binaries already in `dist/`. |
+| `E2E_SKIP_BUILD` | `0` | Set to `1` to reuse the `dist/salvanza-cli` already built. |
 | `E2E_KEEP` | `0` | Set to `1` to keep the workdir and container. |
 | `WORK` | `mktemp -d` | Working directory. |
 
@@ -100,15 +101,15 @@ knowing before changing anything in `pbscommon`:
 
 * **No restore CLI exists in this project.** Restore is in the GUI
   (`gui/restore_inline.go`, plus the Undelete and Roll back command line of
-  the GUI's service program, which needs a GUI Backup Set) or delegated to `proxmoxbackup-nbd` for block
+  the GUI's service program, which needs a GUI Backup Set) or delegated to `salvanza-cli attach-nbd` for block
   devices. That is why every restore assertion here goes through the official
   client. (`docs/RESTORE_GUIDE.md` notes that the once-planned
-  `proxmoxbackupclient-restore` tool was never built.)
+  restore tool was never built.)
 * **`-novss` is mandatory for the directory backup on Linux**; the default
   consistent-snapshot path requires root.
 * **Restore is only asserted through the official client**, because this project
   ships no restore CLI. The suite therefore deliberately does *not* test the GUI
-  or `proxmoxbackup-nbd` restore paths.
+  or `salvanza-cli attach-nbd` restore paths.
 
 ## Harness gotchas
 
@@ -129,7 +130,7 @@ again:
   runtime with `permission check failed - missing Datastore.Audit|Datastore.Backup`.
 * **When the official client runs from a container, it runs as the invoking
   user** (`--user "$(id -u):$(id -g)"`). As root it would write a root-owned
-  `0600` key file into the mounted work directory that our CLIs, running as the
+  `0600` key file into the mounted work directory that `salvanza-cli`, running as the
   unprivileged host user, could not read.
 * **`docker rm -v` does not delete named volumes**; `remove_pbs()` deletes them
   explicitly, otherwise the next run fails with `datastore 'e2e' already exists`.

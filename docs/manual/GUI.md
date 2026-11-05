@@ -1,8 +1,8 @@
-# Proxmox Backup Client GUI: user manual
+# Salvanza GUI: user manual
 
-This manual covers the graphical client (the GUI) on Windows and Linux. It applies to version 2.0 (see the [changelog](../../CHANGELOG.md)).
+This manual covers the graphical client (the GUI) of Salvanza for Proxmox Backup Server, formerly Proxmox Backup Client, on Windows and Linux. It applies to version 2.0 (see the [changelog](../../CHANGELOG.md)).
 
-For the command line tools see [CLI.md](CLI.md). For restoring a whole machine onto bare metal see [BMR.md](BMR.md).
+For the command line, `salvanza-cli`, see [CLI.md](CLI.md). For restoring a whole machine onto bare metal see [BMR.md](BMR.md).
 
 ## Contents
 
@@ -40,15 +40,17 @@ The GUI backs up Windows and Linux computers to a Proxmox Backup Server (PBS) an
 
 ### Windows
 
-Each release on the [releases page](https://github.com/tizbac/proxmoxbackupclient_go/releases) has the installer, `ProxmoxBackupClient-<version>.msi` (a branded build has its own, such as `NimbusBackup-<version>.msi`). Check it against `SHA256SUMS.txt`:
+Each release on the [releases page](https://github.com/salvanza/salvanza_client/releases) has the installer, `Salvanza-<version>-x64.msi` (a branded build has its own, such as `NimbusBackup-<version>-x64.msi`). Check it against `SHA256SUMS.txt`:
 
 ```powershell
 Get-FileHash .\<downloaded file> -Algorithm SHA256
 ```
 
-The installer installs the app and its background service under `C:\Program Files\ProxmoxBackupClient\`, installs the service as `ProxmoxBackupClientSVC` and starts it, and adds a Start menu entry and an entry in Programs and Features. Its **Start Proxmox Backup Client when a user signs in** tick box, after the installation folder, starts the app in the tray for every user who signs in; it is unticked unless you turned it on in an earlier install, and the service runs the Backup Sets either way. Running a newer MSI upgrades in place and keeps that choice. To remove it and choose whether to keep the settings (servers and tokens, Backup Sets, keys, reports and logs), use **Change** in Programs and Features (**Modify** in Windows 11 Settings > Apps), then **Remove**; plain **Uninstall** keeps them without asking.
+The installer installs the app (`salvanza-gui.exe`), its background service (`salvanza-svc.exe`) and the command line (`salvanza-cli.exe`, [CLI.md](CLI.md)) under `C:\Program Files\Salvanza\`, adds that folder to the system `PATH`, installs the service as `salvanza-svc` (display name "Salvanza for Proxmox Backup Server Service") and starts it, and adds a Start menu entry and an entry in Programs and Features. Its **Start Salvanza for Proxmox Backup Server when a user signs in** tick box, after the installation folder, starts the app in the tray for every user who signs in; it is unticked unless you turned it on in an earlier install, and the service runs the Backup Sets either way. Running a newer MSI upgrades in place and keeps that choice. To remove it and choose whether to keep the settings (servers and tokens, Backup Sets, keys, reports and logs), use **Change** in Programs and Features (**Modify** in Windows 11 Settings > Apps), then **Remove**; plain **Uninstall** keeps them without asking.
 
-Start **Proxmox Backup Client** (`ProxmoxBackupClient.exe`). Without the service, start it with **Run as administrator**: administrator rights are needed for VSS (consistent snapshots of files that are open) and for machine backups. With the service running, backups go through the service, which has those rights, and the app asks for administrator rights once to connect to it ([section 15](#connecting-to-the-background-service)).
+**Upgrading from Proxmox Backup Client.** Salvanza is the new name of Proxmox Backup Client. Its installer removes an installed Proxmox Backup Client (or another brand's build, such as Nimbus Backup) as it would an older version of itself, closes its app and removes its service, `ProxmoxBackupClientSVC`. When the new service first starts, it moves the earlier settings, `C:\ProgramData\ProxmoxBackupClient`, to `C:\ProgramData\Salvanza`, so the PBS servers, keys, Backup Sets and history carry on, and keeps a copy of the settings files in `C:\ProgramData\Salvanza\pre-salvanza-<date>`. The app does the same for the folders of each user (`%APPDATA%\ProxmoxBackupClient`, `%LOCALAPPDATA%\ProxmoxBackupClient` and `%USERPROFILE%\.proxmox-backup-guardian`) the first time that user starts it. Nothing is moved when the new folder already has settings. The start-at-sign-in choice carries over too.
+
+Start **Salvanza for Proxmox Backup Server** (`salvanza-gui.exe`). Without the service, start it with **Run as administrator**: administrator rights are needed for VSS (consistent snapshots of files that are open) and for machine backups. With the service running, backups go through the service, which has those rights, and the app asks for administrator rights once to connect to it ([section 15](#connecting-to-the-background-service)).
 
 The builds are not code signed. Windows SmartScreen or Defender may warn about an unknown or machine-learning flagged program (`!ml`). This is a known false positive for unsigned Go programs. Verify the hash instead.
 
@@ -56,8 +58,7 @@ Only one copy of the GUI runs at a time on Windows. Starting it again brings the
 
 ### Linux
 
-* **Packages**: `.deb` (Debian, Ubuntu, Mint), `.rpm` (Fedora) and an Arch package (built from [packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) with `make pkgarch`), package name `proxmoxbackupclient`. They install the app in `/usr/lib/proxmoxbackupclient/`, the command line tools, the manuals, the background service (turned on by a fresh install) and one menu entry, **Proxmox Backup Client** (`proxmoxbackupclient`), which starts the app as you. With the service it asks for your password once to connect to it ([section 15](#connecting-to-the-background-service)). For the few things that need the app itself as root (machine backups without the service, restoring into folders only root may write), the app offers **Restart as administrator**, which runs `proxmoxbackupclient-root` (pkexec from the desktop, sudo from a terminal).
-* **The archive**: `ProxmoxBackupClient-<version>-linux-amd64.tar.gz`. Check it against `SHA256SUMS.txt` (`sha256sum -c`), unpack it and run the `ProxmoxBackupClient` binary.
+* **Packages**: `.deb` (Debian, Ubuntu, Mint), `.rpm` (Fedora) and an Arch package (built from [packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) with `make pkgarch`), package name `salvanza`. They install the app in `/usr/lib/salvanza/` (started by `/usr/bin/salvanza-gui`), the command line `salvanza-cli` ([CLI.md](CLI.md)), the manuals, the background service (turned on by a fresh install) and one menu entry, **Salvanza for Proxmox Backup Server**, which starts the app as you. With the service it asks for your password once to connect to it ([section 15](#connecting-to-the-background-service)). For the few things that need the app itself as root (machine backups without the service, restoring into folders only root may write), the app offers **Restart as administrator**, which runs `salvanza-gui-root` (pkexec from the desktop, sudo from a terminal). The `salvanza` package replaces the earlier `proxmoxbackupclient` (and `pbsgo`) package; the service moves the earlier settings, `/var/lib/proxmoxbackupclient`, to `/var/lib/salvanza` the first time it starts, and the app moves each user's `~/.proxmox-backup-guardian` to `~/.salvanza`, keeping a copy of the settings files in a `pre-salvanza-<date>` folder there.
 
 The app needs the WebKitGTK runtime that Wails programs use; most desktop distributions already have it. Folder backups run as a normal user. **Machine** backups need root. Linux has no VSS: a consistent snapshot of a mounted disk needs the `elastio-snap` (or `dattobd`) kernel module loaded and root rights. Installing the module is described next.
 
@@ -68,7 +69,7 @@ A machine backup of a running Linux computer reads each mounted partition throug
 A machine backup needs two things:
 
 1. **One of the modules loaded.** If both are loaded, the app uses elastio-snap.
-2. **Root rights.** The background service has them. Without it, use **Restart as administrator**, or run `proxmoxbackup-machine` with `sudo`.
+2. **Root rights.** The background service has them. Without it, use **Restart as administrator**, or run `salvanza-cli backup-disk` with `sudo`.
 
 **Install the module through DKMS** (Dynamic Kernel Module Support). A kernel module is built for one kernel. DKMS builds it again for each new kernel when the kernel is updated, so the module keeps loading. A module built with plain `make install` is left behind by the next kernel update, and machine backups stop until it is built again.
 
@@ -89,8 +90,8 @@ Elastio's own package repositories, named in elastio-snap's INSTALL.md, no longe
 The project's script, [packaging/linux/elastio-snap/install-elastio-snap.sh](../../packaging/linux/elastio-snap/install-elastio-snap.sh), installs elastio-snap on Debian, Ubuntu, Linux Mint, Fedora and the RHEL family, also on kernel 7, which elastio-snap does not support yet ([kernel 7](#kernel-7)). On Fedora 44 and other kernel 7 systems, use it:
 
 ```bash
-git clone --depth 1 https://github.com/tizbac/proxmoxbackupclient_go.git
-sudo proxmoxbackupclient_go/packaging/linux/elastio-snap/install-elastio-snap.sh --with-elioctl
+git clone --depth 1 https://github.com/salvanza/salvanza_client.git
+sudo salvanza_client/packaging/linux/elastio-snap/install-elastio-snap.sh --with-elioctl
 ```
 
 The script:
@@ -177,11 +178,11 @@ In November 2026 neither module builds on kernel 7.2, the kernel Fedora 44 runs 
 To apply the patch by hand, fetch elastio-snap at the commit the project tested, patch it, then follow the DKMS steps of [Fedora and the RHEL family](#fedora-and-the-rhel-family) from `VER=` on:
 
 ```bash
-git clone --depth 1 https://github.com/tizbac/proxmoxbackupclient_go.git
+git clone --depth 1 https://github.com/salvanza/salvanza_client.git
 git clone https://github.com/Axcient/elastio-snap.git
 cd elastio-snap
 git checkout 971ba56a607022efc72cb3567c3cc29b2e4d10cf
-patch -p1 < ../proxmoxbackupclient_go/packaging/linux/elastio-snap/kernel7-strscpy.patch
+patch -p1 < ../salvanza_client/packaging/linux/elastio-snap/kernel7-strscpy.patch
 ```
 
 Without the patch, `dkms install` ends with "Bad return status for module build" on kernel 7, and `dkms status` shows the module as `added`, not `installed`. Remove a module that will not build with `sudo dkms remove elastio-snap/<version> --all`, so DKMS does not try again at every kernel update. A Linux machine Backup Set on a computer without a snapshot module can only read its mounted disks live: untick **Use snapshots** and tick "Run without a snapshot: I accept the backup may be inconsistent".
@@ -266,11 +267,14 @@ rm /tmp/snaptest.img
 
 | | Windows | Linux |
 |---|---|---|
-| Settings, servers, Backup Sets, history, with the background service | `C:\ProgramData\ProxmoxBackupClient\` | `/var/lib/proxmoxbackupclient/` |
-| The same without the background service | `%USERPROFILE%\.proxmox-backup-guardian\` | `~/.proxmox-backup-guardian/` |
-| The app's log files | `%LOCALAPPDATA%\ProxmoxBackupClient\Logs\` | `~/.local/state/proxmoxbackupclient/` (or `$XDG_STATE_HOME/proxmoxbackupclient`) |
-| The background service's log files | `C:\ProgramData\ProxmoxBackupClient\` | `/var/log/proxmoxbackupclient/` |
+| Settings, servers, Backup Sets, history, with the background service | `C:\ProgramData\Salvanza\` | `/var/lib/salvanza/` |
+| The same without the background service | `%USERPROFILE%\.salvanza\` | `~/.salvanza/` |
+| Each user's theme (and on Windows the web view's data) | `%APPDATA%\Salvanza\` | `~/.salvanza/` |
+| The app's log files | `%LOCALAPPDATA%\Salvanza\Logs\` | `~/.local/state/salvanza/` (or `$XDG_STATE_HOME/salvanza`) |
+| The background service's log files | `C:\ProgramData\Salvanza\` | `/var/log/salvanza/` |
 | Key generated by the GUI | `keys\encryption-key.json` in the settings folder | `keys/encryption-key.json` in the settings folder |
+
+A branded build uses folders of its own, named after its brand: `C:\ProgramData\NimbusBackup`, `~/.nimbusbackup`, `/var/lib/nimbusbackup` for Nimbus Backup, `EtitechBackup` and `~/.etitechbackup` for Etitech Backup, and so on. Before the rename to Salvanza every build used `ProxmoxBackupClient`, `/var/lib/proxmoxbackupclient` and `~/.proxmox-backup-guardian`; Salvanza moves those folders to the new names the first time it starts ([install](#2-install-and-start)).
 
 With the background service installed, the settings are the computer's. The service keeps them, and the app shows and changes them through the service once it is connected ([section 15](#connecting-to-the-background-service)). Without the service, each account keeps its own settings in its own folder, as version 1.2 did. **Run as Service** copies yours to the service when it has none yet.
 
@@ -278,9 +282,9 @@ The main files are `config.json` (servers, tokens, remembered passphrases, email
 
 **Passwords in `config.json`.** On Windows the PBS tokens and passwords, remembered key passphrases and the email password are stored encrypted with Windows' own data protection (DPAPI) for this computer: they show as `"dpapi:..."` in the file. The program that keeps the settings (the background service, or the app without one) can read them; a copy of the file on another computer cannot. An older `config.json` is converted the first time the app or the service starts. This does not keep them from an administrator of this computer, who can read anything the service can; the folder permissions below keep other accounts out. If you copy `config.json` to another computer, enter the passwords again there (or use **Export settings** with secrets, which writes them in plain text). Going back to version 1.2 or older after the conversion means entering them again too. On Linux they are stored in plain text, protected by the folder permissions.
 
-**Who can read them.** On Windows the service's settings folder is open to SYSTEM and Administrators only. Only the service and a program started as administrator can open it: the app started normally cannot, even on an administrator's account, so it works through the service. Earlier versions also let each local administrator account read the folder without a prompt; the service removes that when it starts, and sets the permissions again each time. On Linux `/var/lib/proxmoxbackupclient/` belongs to root alone (folders 0700, files 0600). Earlier versions let the `sudo` (or `wheel`) group read it; the service undoes that when it starts. The service's API token, which the app needs to connect, is in the same folder. A settings folder of your own, used without the service, is private to you.
+**Who can read them.** On Windows the service's settings folder is open to SYSTEM and Administrators only. Only the service and a program started as administrator can open it: the app started normally cannot, even on an administrator's account, so it works through the service. Earlier versions also let each local administrator account read the folder without a prompt; the service removes that when it starts, and sets the permissions again each time. On Linux `/var/lib/salvanza/` belongs to root alone (folders 0700, files 0600). Earlier versions let the `sudo` (or `wheel`) group read it; the service undoes that when it starts. The service's API token, which the app needs to connect, is in the same folder. A settings folder of your own, used without the service, is private to you.
 
-On Linux, **Restart as administrator** (`proxmoxbackupclient-root`) runs the GUI as root. Without the background service it uses your own settings folder, and hands the settings and log folders back to you when it closes. With the service it works on the service's settings and connects without asking. A GUI started with plain `sudo` uses root's home folder, so without the service it has its own settings.
+On Linux, **Restart as administrator** (`salvanza-gui-root`) runs the GUI as root. Without the background service it uses your own settings folder, and hands the settings and log folders back to you when it closes. With the service it works on the service's settings and connects without asking. A GUI started with plain `sudo` uses root's home folder, so without the service it has its own settings.
 
 ## 3. The window
 
@@ -478,7 +482,7 @@ Click **Add New Backup Set** to create one. Give it a **Backup set name**, fill 
 
 **Backup type**, then the folders (Directory) or disks and **Backup as** (Machine), as for one-off backups ([section 5](#5-one-off-backups)).
 
-A machine set also has **Forensic copy: read free space too**. Ticked, every sector is read, free space and the paging and hibernation files included, so deleted files can be recovered from the image later (like `proxmoxbackup-machine -readfreespace`). Unticked (the default) they go into the image as zeros without being read ([machine backups](#machine-backups-host-or-vm)). A forensic set reads the whole disk on every run and its backups take more space. Its card shows a **FORENSIC** badge.
+A machine set also has **Forensic copy: read free space too**. Ticked, every sector is read, free space and the paging and hibernation files included, so deleted files can be recovered from the image later (like `salvanza-cli backup-disk -readfreespace`). Unticked (the default) they go into the image as zeros without being read ([machine backups](#machine-backups-host-or-vm)). A forensic set reads the whole disk on every run and its backups take more space. Its card shows a **FORENSIC** badge.
 
 A machine set can leave partitions out. Under each ticked disk its partitions are listed, each with a tick box, ticked (backed up) by default. Untick one and it is not read or snapshotted, and goes into the image as zeros, which take almost no space. The partition table is kept, so a restore gives the partition back in its place and at its size, but empty and unformatted: Windows shows it as RAW and offers to format it, Linux sees an empty partition. Leaving out the partition the system runs from, or the EFI or boot partition, shows a warning: the restored disk will not start. A partition is known by its disk and where it starts. If the disk's partitions change (one moved, resized or deleted), the run backs that partition up after all and says so in its log; edit the set to choose again. On Linux a set that leaves out every mounted partition of a disk needs no snapshot for it. One-off backups always read whole disks.
 
@@ -868,15 +872,15 @@ While a roll back runs, the set's own scheduled backups wait, and Run Now on tha
 
 ### Undelete and Roll back from the command line
 
-The service program, `ProxmoxBackupClientSVC.exe` on Windows, also runs Undelete and Roll back from the command line, for scripts and servers without a desktop, for a Backup Set defined in the GUI: the same servers, folders, exclusions and safety folder. On Linux the app takes the same options: run `proxmoxbackupclient` (the package's launcher in `/usr/bin`) or `/usr/lib/proxmoxbackupclient/ProxmoxBackupClient`, which then runs on the command line without a window; the package's `/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC` takes them too. On Windows the app itself has no console, so use the service program. Run it as administrator (Windows) or root (Linux), as the backups run.
+The service program, `salvanza-svc.exe` on Windows (in `C:\Program Files\Salvanza`), also runs Undelete and Roll back from the command line, for scripts and servers without a desktop, for a Backup Set defined in the GUI: the same servers, folders, exclusions and safety folder. On Linux the app takes the same options: run `salvanza-gui` (the package's launcher in `/usr/bin`) or `/usr/lib/salvanza/salvanza-gui`, which then runs on the command line without a window; the package's `/usr/libexec/salvanza/salvanza-svc` takes them too. On Windows the app itself has no console, so use the service program. Run it as administrator (Windows) or root (Linux), as the backups run. (These options belong to the GUI's programs, not to `salvanza-cli`, which only backs up: [CLI.md](CLI.md).)
 
-The service program works on the background service's Backup Sets, in `C:\ProgramData\ProxmoxBackupClient` or `/var/lib/proxmoxbackupclient`, which only administrators (Windows) or root (Linux) can open. With the background service installed, use it for the sets the service runs. The Linux app works on the sets in `~/.proxmox-backup-guardian`, as it does without the service.
+The service program works on the background service's Backup Sets, in `C:\ProgramData\Salvanza` or `/var/lib/salvanza`, which only administrators (Windows) or root (Linux) can open. With the background service installed, use it for the sets the service runs. The Linux app works on the sets in `~/.salvanza`, as it does without the service.
 
 ```
-ProxmoxBackupClientSVC.exe -list-sets
-ProxmoxBackupClientSVC.exe -undelete "Documents" [-days 7] [-to D:\Recovered] [-dry-run] [-no-verify]
-ProxmoxBackupClientSVC.exe -rollback "Documents" [-at "2026-10-10 14:30"] [-policy replace|missing|exact]
-                           [-backup-first] [-dry-run] [-yes] [-no-verify]
+salvanza-svc.exe -list-sets
+salvanza-svc.exe -undelete "Documents" [-days 7] [-to D:\Recovered] [-dry-run] [-no-verify]
+salvanza-svc.exe -rollback "Documents" [-at "2026-10-10 14:30"] [-policy replace|missing|exact]
+                 [-backup-first] [-dry-run] [-yes] [-no-verify]
 ```
 
 | Option | Meaning |
@@ -932,7 +936,7 @@ Each line has a **📄** button that opens the log at that message: a backup's o
 * Errors show in red and warnings and skipped files in amber. Compressed (`.gz`) logs are read as they are.
 * **Refresh** reads the list and the log again; **Open log folder** opens the folder.
 
-On Windows the app's log files are in `%LOCALAPPDATA%\ProxmoxBackupClient\Logs\`, and the background service's in `C:\ProgramData\ProxmoxBackupClient\`, which only administrators can open (Linux: [section 2](#where-settings-are-kept)). **View Full Logs** lists both: the service's come through the service, once the app is connected to it. **Preferences > Message Log > View Logs** opens the app's log folder.
+On Windows the app's log files are in `%LOCALAPPDATA%\Salvanza\Logs\`, and the background service's in `C:\ProgramData\Salvanza\`, which only administrators can open (Linux: [section 2](#where-settings-are-kept)). **View Full Logs** lists both: the service's come through the service, once the app is connected to it. **Preferences > Message Log > View Logs** opens the app's log folder.
 
 | File | Contents |
 |---|---|
@@ -983,23 +987,23 @@ With the background service installed and running, the service runs the schedule
 
 | Button | What it does |
 |---|---|
-| Install and start | Installs `ProxmoxBackupClientSVC.exe`, which must be in the same folder as `ProxmoxBackupClient.exe`, as an automatic Windows service named `ProxmoxBackupClientSVC`, running as Local System, restarted automatically if it stops unexpectedly. If the service has no settings yet, your own (servers, Backup Sets, history and Message Log) are copied to it first; your own folder is left as it was, and key files stay where they are. Then starts it. The GUI stops its own scheduler and hands schedules and backups to the service, so nothing runs twice |
+| Install and start | Installs `salvanza-svc.exe`, which must be in the same folder as `salvanza-gui.exe`, as an automatic Windows service named `salvanza-svc`, running as Local System, restarted automatically if it stops unexpectedly. If the service has no settings yet, your own (servers, Backup Sets, history and Message Log) are copied to it first; your own folder is left as it was, and key files stay where they are. Then starts it. The GUI stops its own scheduler and hands schedules and backups to the service, so nothing runs twice |
 | Start / Stop | Starts or stops the installed service. While it is stopped nothing runs the computer's Backup Sets: the GUI does not run them itself, and says that the service is not running, with **Start the service** ([connecting](#connecting-to-the-background-service)), until it is back. Stop is refused while the service is running a backup |
-| Remove | Stops and uninstalls the service. Its settings stay in `C:\ProgramData\ProxmoxBackupClient\`; the GUI works on your own settings again and runs their schedules while it is open |
+| Remove | Stops and uninstalls the service. Its settings stay in `C:\ProgramData\Salvanza\`; the GUI works on your own settings again and runs their schedules while it is open |
 
-If the GUI is not running as administrator, a **Restart as administrator** button is shown. If the installed service runs a program other than the one beside this GUI, the tab says which. A service installed by an older version under the name `ProxmoxBackupClient` is recognised too.
+If the GUI is not running as administrator, a **Restart as administrator** button is shown. If the installed service runs a program other than the one beside this GUI, the tab says which. A service installed before the rename to Salvanza (`ProxmoxBackupClientSVC`, or `ProxmoxBackupClient` from an early test build) is recognised too. **Install and start** does not reuse such a service: it installs `salvanza-svc`, and the new service removes the earlier one, and another brand's service, when it starts.
 
 ### Linux service
 
-The .deb, .rpm and Arch packages install the service program (`/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC`) and the systemd unit `proxmoxbackupclient.service`. A fresh install enables and starts the service, as the Windows installer does; an upgrade keeps your choice, so a service you turned off stays off. **Run as Service** (Preferences > Advanced, in the GUI started as administrator) turns it on again:
+The .deb, .rpm and Arch packages install the service program (`/usr/libexec/salvanza/salvanza-svc`) and the systemd unit `salvanza.service`. A fresh install enables and starts the service, as the Windows installer does; an upgrade keeps your choice, so a service you turned off stays off. **Run as Service** (Preferences > Advanced, in the GUI started as administrator) turns it on again:
 
 | Button | What it does |
 |---|---|
-| Install and start | Copies your Backup Sets, servers, keys and history to `/var/lib/proxmoxbackupclient/` (only if nothing is there yet; your own `~/.proxmox-backup-guardian/` is left as it was), then enables and starts the unit, which runs as root and starts with the computer. From then on the service keeps the settings, the GUI works on them through the service ([connecting](#connecting-to-the-background-service)), and it hands schedules and backups to the service |
+| Install and start | Copies your Backup Sets, servers, keys and history to `/var/lib/salvanza/` (only if nothing is there yet, and no earlier install's settings in `/var/lib/proxmoxbackupclient/` are there to take over; your own `~/.salvanza/` is left as it was), then enables and starts the unit, which runs as root and starts with the computer. From then on the service keeps the settings, the GUI works on them through the service ([connecting](#connecting-to-the-background-service)), and it hands schedules and backups to the service |
 | Start / Stop | `systemctl start` / `stop`. While it is stopped nothing runs the computer's Backup Sets: the GUI does not run them itself, and says that the service is not running, with **Start the service** ([connecting](#connecting-to-the-background-service)), until it is back. Stop is refused while the service is running a backup |
-| Remove | Stops and disables the unit. The settings stay in `/var/lib/proxmoxbackupclient/` for when the service is turned on again; the GUI works on your own settings again |
+| Remove | Stops and disables the unit. The settings stay in `/var/lib/salvanza/` for when the service is turned on again; the GUI works on your own settings again |
 
-`/var/lib/proxmoxbackupclient/` belongs to root alone (folders 0700, files 0600), as `C:\ProgramData\ProxmoxBackupClient\` belongs to SYSTEM and Administrators. A GUI started normally works on the settings through the service once it has connected ([below](#connecting-to-the-background-service)). Earlier versions let the `sudo` (or `wheel`) group read the folder directly; the service undoes that when it starts. Backups you start from the GUI run in the service, which records them in Reports as it does its scheduled runs. An upgrade of the package restarts a running service. Removing the package stops and disables the service and keeps `/var/lib/proxmoxbackupclient/`; delete that folder yourself to remove the settings. Without systemd there is no service and the GUI runs the schedules while it is open.
+`/var/lib/salvanza/` belongs to root alone (folders 0700, files 0600), as `C:\ProgramData\Salvanza\` belongs to SYSTEM and Administrators. A GUI started normally works on the settings through the service once it has connected ([below](#connecting-to-the-background-service)). Earlier versions let the `sudo` (or `wheel`) group read the folder directly; the service undoes that when it starts. Backups you start from the GUI run in the service, which records them in Reports as it does its scheduled runs. An upgrade of the package restarts a running service. Removing the package stops and disables the service and keeps `/var/lib/salvanza/`; delete that folder yourself to remove the settings. Without systemd there is no service and the GUI runs the schedules while it is open.
 
 Runs the service makes on its own schedule show in an open GUI window, with Pause, Resume and Stop ([section 8](#8-the-backup-progress-card)); several at once each have their own. The service runs backups side by side as the app does, with the same **Maximum Concurrent Backups** setting ([section 6.7](#67-several-backups-at-once)), which it reads before each run.
 
@@ -1008,13 +1012,13 @@ Runs the service makes on its own schedule show in an open GUI window, with Paus
 The service program also installs and controls itself:
 
 ```
-ProxmoxBackupClientSVC.exe -service install|uninstall|start|stop|restart
+salvanza-svc.exe -service install|uninstall|start|stop|restart
 ```
 
 Run it as administrator (Windows) or root (Linux). Usually you do not need to:
 
-* **Windows.** The installer (MSI) installs the service as `ProxmoxBackupClientSVC`, and **Preferences > Advanced > Run as Service** in the GUI installs, starts, stops and removes it under the same name, and so does `-service install`. **Run as Service** also copies your own settings (`%USERPROFILE%\.proxmox-backup-guardian`) to `C:\ProgramData\ProxmoxBackupClient` if the service has none yet; `-service install` does not. Test builds from before 14 October 2026 used the name `ProxmoxBackupClient` for `-service install`; the GUI still recognises a service installed that way, but remove it (`-service uninstall` with that older program) before installing the new one, or there would be two.
-* **Linux.** The `.deb` and `.rpm` install the systemd unit `proxmoxbackupclient.service`, and a fresh install enables and starts it; an upgrade keeps your choice, so a service you turned off stays off. To turn it on again, use **Run as Service** in the GUI started as administrator: it copies your Backup Sets, servers, keys and history to `/var/lib/proxmoxbackupclient`, where the service reads them, then enables and starts the unit. `systemctl` and `/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC -service ...` act on the same unit but do not copy any settings.
+* **Windows.** The installer (MSI) installs the service as `salvanza-svc` (a branded build's as its own program name, such as `nimbusbackup-svc`), and **Preferences > Advanced > Run as Service** in the GUI installs, starts, stops and removes it under the same name, and so does `-service install`. **Run as Service** also copies your own settings (`%USERPROFILE%\.salvanza`) to `C:\ProgramData\Salvanza` if the service has none yet; `-service install` does not. The services of earlier installs (`ProxmoxBackupClientSVC`, `ProxmoxBackupClient` from test builds before 14 October 2026, and the other brands' services) are stopped and removed by the new service when it starts, so there are never two.
+* **Linux.** The `.deb`, `.rpm` and Arch packages install the systemd unit `salvanza.service`, and a fresh install enables and starts it; an upgrade keeps your choice, so a service you turned off stays off. To turn it on again, use **Run as Service** in the GUI started as administrator: it copies your Backup Sets, servers, keys and history to `/var/lib/salvanza`, where the service reads them, then enables and starts the unit. `systemctl` and `/usr/libexec/salvanza/salvanza-svc -service ...` act on the same unit but do not copy any settings.
 
 The service's settings folder is the service's alone: SYSTEM and Administrators on Windows, root (0700, files 0600) on Linux. The GUI reaches it through the service's local API on `127.0.0.1:18765`, which needs the token in `api-token` in that folder. The GUI gets the token by asking for administrator rights (UAC, or pkexec on Linux) and keeps it in memory. The service makes a new token each time it starts, and every 24 hours.
 
@@ -1030,7 +1034,7 @@ Before it sends anything, the GUI checks on each connection that the program ans
 
 **The service is not running.** While the service is installed but stopped, the window says "The background service is not running, so this computer's Backup Sets do not run on their schedules." instead of offering **Connect**, and **Add New Backup Set** and **One-off Backup** stay greyed out. **Start the service** starts it with one administrator prompt, which also connects the GUI (no prompt when the GUI already runs as administrator or as root); if you decline, or the service does not start, the banner says so. The GUI notices within a few seconds when the service stops or starts again, and on Windows the tray icon's tooltip says so too.
 
-**Use my own settings.** A user who cannot answer the prompt (no administrator's password to hand) can click **Use my own settings** beside **Connect**. The GUI then works on that user's own PBS servers and Backup Sets, kept in their user folder (`~/.proxmox-backup-guardian`), as it does on a computer without the service. Those Backup Sets run only while the app is open or minimised to the tray: the background service does not run them when the app is closed or the user is signed out. A banner says so, with **Connect** to go back to the computer's settings. The choice is remembered for that user. The computer's own Backup Sets carry on in the service either way.
+**Use my own settings.** A user who cannot answer the prompt (no administrator's password to hand) can click **Use my own settings** beside **Connect**. The GUI then works on that user's own PBS servers and Backup Sets, kept in their user folder (`~/.salvanza`), as it does on a computer without the service. Those Backup Sets run only while the app is open or minimised to the tray: the background service does not run them when the app is closed or the user is signed out. A banner says so, with **Connect** to go back to the computer's settings. The choice is remembered for that user. The computer's own Backup Sets carry on in the service either way.
 
 **The computer's servers on your own settings.** On your own settings, **Preferences > Account Information** also offers **Use one of this computer's servers**: a list of the PBS servers the computer already has, by name, address and datastore. Choosing one opens the add-server form filled in with its name, address, datastore, namespace and certificate fingerprint, on the login tab the computer uses, for your own API token or user name and password. The computer's login, token secret, password and encryption key are never shared: if the computer encrypts its backups to that server, the list says so, and you choose your own key under **Encryption**. The button is greyed out, with the reason as its tooltip, while the background service is not running or the computer has no servers.
 

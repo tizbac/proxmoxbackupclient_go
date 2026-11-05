@@ -1,26 +1,29 @@
-# Proxmox Backup Client：适用于 Proxmox Backup Server 的 Windows 和 Linux 客户端
+# Salvanza for Proxmox Backup Server：适用于 Proxmox Backup Server 的 Windows 和 Linux 客户端
 
 [🇬🇧 English](README.md) · [🇫🇷 Français](README.fr.md) · [🇮🇹 Italiano](README.it.md) · [🇩🇪 Deutsch](README.de.md) · [🇪🇸 Español](README.es.md) · [🇷🇺 Русский](README.ru.md) · [🇨🇳 中文](README.zh.md) · [🇯🇵 日本語](README.ja.md) · [🇬🇷 Ελληνικά](README.el.md) · [🇷🇴 Română](README.ro.md) · [🇸🇪 Svenska](README.sv.md) · [🇸🇦 العربية](README.ar.md) · [🇮🇷 فارسی](README.fa.md)
 
 > ℹ️ 本文是[英文 README](README.md) 的译文。两者内容不一致时，以英文版为准。
 
-> ⚠️ **商标与关联声明。** 本项目是一个**独立的社区项目**，并非 Proxmox 官方产品：它**与 Proxmox Server Solutions GmbH 没有任何关联，也未获得其认可或赞助**。**Proxmox®** 是 Proxmox Server Solutions GmbH 在欧盟、美国及其他国家的注册商标，本文**仅**用它来说明兼容性。按照 Proxmox 自己的商标指引（注册商标不得用于产品或应用的名称，例如应写成“XY App for Proxmox Virtual Environment”，而不是“Proxmox XY App”），**无品牌版客户端正在更名**：目前名为 *Proxmox Backup Client* 的产品将改用不含 Proxmox 商标的名称。具体规则见 [Proxmox 媒体资料包](https://www.proxmox.com/en/about/company-details/media-kit)。
+> ⚠️ **商标与关联声明。** 本项目是一个**独立的社区项目**，并非 Proxmox 官方产品：它**与 Proxmox Server Solutions GmbH 没有任何关联，也未获得其认可或赞助**。**Proxmox®** 是 Proxmox Server Solutions GmbH 在欧盟、美国及其他国家的注册商标，本文**仅**用它来说明兼容性。按照 Proxmox 自己的商标指引（注册商标不得用于产品或应用的名称，例如应写成“XY App for Proxmox Virtual Environment”，而不是“Proxmox XY App”），**无品牌版客户端已经更名**：原名为 *Proxmox Backup Client* 的产品现在叫 **Salvanza for Proxmox Backup Server**（简称 Salvanza），这个名称不含 Proxmox 商标。具体规则见 [Proxmox 媒体资料包](https://www.proxmox.com/en/about/company-details/media-kit)。
 
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
+[![Release](https://img.shields.io/github/v/release/salvanza/salvanza_client)](https://github.com/salvanza/salvanza_client/releases)
 [![Documentation](https://img.shields.io/badge/docs-manuals-orange)](docs/manual/README.md)
 
-**Proxmox Backup Client 是一款开源（GPL-3.0）的 Proxmox Backup Server（PBS）备份客户端，支持 Windows 和 Linux。** 它可以把文件夹备份为可浏览的文件归档，把整台机器备份为可启动的磁盘映像，按计划或随时手动运行。从单个文件到整台机器，都可以恢复：恢复到同一台计算机、恢复到替换机器，或恢复为 Proxmox VE 虚拟机。
+**Salvanza for Proxmox Backup Server（原名 Proxmox Backup Client）是一款开源（GPL-3.0）的 Proxmox Backup Server（PBS）备份客户端，支持 Windows 和 Linux。** 它可以把文件夹备份为可浏览的文件归档，把整台机器备份为可启动的磁盘映像，按计划或随时手动运行。从单个文件到整台机器，都可以恢复：恢复到同一台计算机、恢复到替换机器，或恢复为 Proxmox VE 虚拟机。
+
+项目网站：**[salvanza.org](https://salvanza.org/)** · 源代码、版本发布和问题反馈：**[github.com/salvanza/salvanza_client](https://github.com/salvanza/salvanza_client)**
 
 它是一**套工具**：
 
-- **Proxmox Backup Client GUI**（最初由 RDEM Systems 开发，名为 Nimbus Backup GUI，后由 mjb-is 重新设计和扩展）：适用于 Windows 和 Linux 的应用程序。每个 Backup Set（备份集）可设置多个计划；文件夹备份和整盘备份都使用一致性快照（Windows 上用 VSS，Linux 上用 elastio-snap/dattobd）；可以从文件夹备份和机器备份中恢复文件；支持 Undelete（找回已删除文件）和 Roll back（回滚）、多台 PBS 服务器、客户端加密，以及后台服务，让计划任务在无人登录时也能运行。
-- **`proxmoxbackup-directory`**：命令行文件夹（pxar）备份，带重复数据删除和变更检测。
-- **`proxmoxbackup-machine`**：命令行在线整盘备份（fidx），适用于 Windows 和 Linux 机器。恢复后的映像可以直接启动。
-- **`proxmoxbackup-nbd`**：把磁盘备份挂接为 NBD 块设备（Linux）。
-- **裸机恢复 ISO**：基于 Clonezilla Live，从开机到重启全程引导恢复。
+- **Salvanza 应用** `salvanza-gui`（最初由 RDEM Systems 开发，名为 Nimbus Backup GUI，后由 mjb-is 重新设计和扩展）：适用于 Windows 和 Linux 的应用程序。每个 Backup Set（备份集）可设置多个计划；文件夹备份和整盘备份都使用一致性快照（Windows 上用 VSS，Linux 上用 elastio-snap/dattobd）；可以从文件夹备份和机器备份中恢复文件；支持 Undelete（找回已删除文件）和 Roll back（回滚）、多台 PBS 服务器、客户端加密，以及后台服务 `salvanza-svc`，让计划任务在无人登录时也能运行。
+- **`salvanza-cli`**：一个命令行工具，每项任务对应一个子命令：
+  - **`salvanza-cli backup-folder`**：文件夹（pxar）备份，带重复数据删除和变更检测。
+  - **`salvanza-cli backup-disk`**：在线整盘备份（fidx），适用于 Windows 和 Linux 机器。恢复后的映像可以直接启动。
+  - **`salvanza-cli attach-nbd`**：把磁盘备份挂接为 NBD 块设备（Linux）。
+- **裸机恢复 ISO**（Salvanza-BMR）：基于 Clonezilla Live，从开机到重启全程引导恢复。
 
-> 关键词：proxmox backup client windows · PBS 客户端 · Windows VSS 备份 · 不可变异地备份 · 物理机转虚拟机（P2V） · 裸机恢复 · Proxmox Backup Server 界面。
+> 关键词：salvanza · proxmox backup server client windows · PBS 客户端 · Windows VSS 备份 · 不可变异地备份 · 物理机转虚拟机（P2V） · 裸机恢复 · Proxmox Backup Server 界面。
 
 <a id="-new-in-20"></a>
 
@@ -53,10 +56,22 @@
 - **Linux 机器备份使用 elastio-snap 或 dattobd。** Linux 机器备份集可以关闭快照、直接在线读取磁盘，但前提是所有者勾选确认接受备份可能不一致。
 - **每个用户可在无品牌版应用中选择自己的配色主题。** 品牌版应用保留其品牌配色。
 - 除了在备份集菜单中，还可以在编辑器中**启用和禁用备份集**；如果备份集按保存的设置无法运行（已禁用、没有启用任何计划、快照有问题、磁盘缺失），保存时会给出警告。
-- **Linux 软件包**（`.deb`、`.rpm` 和 Arch），软件包名和服务名均为 `proxmoxbackupclient`，包含后台服务。
+- **一个命令行工具 `salvanza-cli`**，用子命令 `backup-folder`、`backup-disk` 和 `attach-nbd` 取代原来的三个独立工具；旧名称仍然可用。
+- **Linux 软件包**（`.deb`、`.rpm` 和 Arch），软件包名为 `salvanza`，服务名为 `salvanza.service`，包含后台服务。
 - **引导式裸机恢复 ISO**，也可以恢复到空的虚拟机中（P2V）。以 Proxmox VE 虚拟机形式备份的机器，也可以像 Proxmox VE 自己备份的任何虚拟机一样，在 Proxmox VE 中直接从 PBS 恢复。
-- **品牌版构建**：同一套二进制文件分别以 Proxmox Backup Client、Nimbus Backup、Acme Backup 和 Etitech Backup 安装程序发布。
+- **品牌版构建**：同一套二进制文件分别以 Salvanza、Nimbus Backup 和 Etitech Backup 安装程序发布，每个品牌都有自己的程序名称和设置文件夹。
 - **18 种界面语言。**
+
+## 🔁 从 Proxmox Backup Client 升级
+
+Salvanza 是 Proxmox Backup Client 的新名称，升级是自动完成的。安装 Salvanza（MSI 或 Linux 软件包）会卸载之前安装的 Proxmox Backup Client（或其他品牌版）及其后台服务。Salvanza 首次启动时，会把之前的设置（PBS 服务器、密钥、备份集和历史记录）从 `C:\ProgramData\ProxmoxBackupClient`、`%APPDATA%\ProxmoxBackupClient`、`~/.proxmox-backup-guardian` 或 `/var/lib/proxmoxbackupclient` 迁移过来，并在新文件夹中的 `pre-salvanza-<date>` 下保留一份带日期的设置文件副本。PBS 上的备份不会受到任何影响。
+
+| 之前 | 现在 |
+|---|---|
+| `ProxmoxBackupClient.exe`、`ProxmoxBackupClientSVC.exe` | `salvanza-gui.exe`、`salvanza-svc.exe`（Windows 服务 `salvanza-svc`） |
+| `proxmoxbackup-directory`、`proxmoxbackup-machine`、`proxmoxbackup-nbd` | `salvanza-cli backup-folder`、`salvanza-cli backup-disk`、`salvanza-cli attach-nbd`（旧名称仍然可用） |
+| `C:\Program Files\ProxmoxBackupClient`、`C:\ProgramData\ProxmoxBackupClient` | `C:\Program Files\Salvanza`、`C:\ProgramData\Salvanza` |
+| Linux 软件包和服务 `proxmoxbackupclient` | 软件包 `salvanza`，服务 `salvanza.service`，设置位于 `/var/lib/salvanza`，个人设置位于 `~/.salvanza` |
 
 ## ⭐ 功能与实测结果
 
@@ -75,7 +90,7 @@
 | 手册 | 内容 |
 |---|---|
 | **[GUI 手册](docs/manual/GUI.md)** | 安装、PBS 服务器、备份集与计划、增量备份、进度、恢复、Undelete、Roll back、Reports（报告）、日志、Preferences（首选项）、后台服务、故障排除 |
-| **[命令行手册](docs/manual/CLI.md)** | `proxmoxbackup-directory`、`proxmoxbackup-machine`、`proxmoxbackup-nbd`：所有参数、配置文件、退出代码、计划任务 |
+| **[命令行手册](docs/manual/CLI.md)** | `salvanza-cli backup-folder`、`backup-disk`、`attach-nbd`：所有参数、配置文件、退出代码、计划任务 |
 | **[裸机恢复手册](docs/manual/BMR.md)** | 恢复 ISO 的分步说明；把 `vm` 备份恢复到 Proxmox VE；物理机转虚拟机；恢复到不同硬件 |
 | [恢复场景](docs/RESTORE_GUIDE.md) | 什么情况下使用哪种恢复方式 |
 | [手册索引](docs/manual/README.md) | 各手册概览 |
@@ -86,20 +101,20 @@
 
 ## 📦 下载
 
-👉 **[下载最新版本](https://github.com/tizbac/proxmoxbackupclient_go/releases)**
+👉 **[下载最新版本](https://github.com/salvanza/salvanza_client/releases)**
 
 | 你的环境 | 使用 |
 |---|---|
-| Windows | **MSI 安装程序** `ProxmoxBackupClient-<version>.msi`。它把应用和后台服务安装到 Program Files 下，启动服务，并添加“开始”菜单项。品牌版安装程序（`NimbusBackup-<version>.msi`、`AcmeBackup-<version>.msi`、`EtitechBackup-<version>.msi`）是同一构建，只是品牌不同 |
-| Debian、Ubuntu、Mint | `sudo apt install ./proxmoxbackupclient_<version>_amd64.deb` |
-| Fedora | `sudo dnf install ./proxmoxbackupclient-<version>-*.rpm` |
+| Windows | **MSI 安装程序** `Salvanza-<version>-x64.msi`。它把应用、后台服务和 `salvanza-cli` 安装到 `C:\Program Files\Salvanza`，把该文件夹加入 PATH，启动服务，并添加“开始”菜单项。品牌版安装程序（`NimbusBackup-<version>-x64.msi`、`EtitechBackup-<version>-x64.msi`）是同一构建，只是品牌不同 |
+| Debian、Ubuntu、Mint | `sudo apt install ./salvanza_<version>_amd64.deb` |
+| Fedora | `sudo dnf install ./salvanza-<version>-*.rpm` |
 | Arch | 由 [packaging/arch/PKGBUILD](packaging/arch/PKGBUILD) 构建的软件包（`make pkgarch`） |
-| 只用命令行 | 各平台的压缩包（`proxmoxbackup-cli-*` 和 `proxmoxbackupclient_go_*`） |
+| 只用命令行 | 各平台的 `salvanza-cli` 压缩包 |
 | 需要恢复的机器 | 裸机恢复 ISO（[裸机恢复手册](docs/manual/BMR.md#3-get-the-iso-and-make-the-boot-media)），或自行构建（[见下文](#-bare-metal-restore-iso)） |
 
 如果某个版本没有提供 Linux 软件包，可以用 `make deb`、`make pkgfedora` 或 `make pkgarch` 自行构建（[BUILD.md](BUILD.md)、[packaging/debian/README.md](packaging/debian/README.md)）。
 
-Linux 软件包会安装一个菜单项 **Proxmox Backup Client**，以当前用户身份启动应用。全新安装时会启用后台服务（`proxmoxbackupclient.service`）；升级时保留你之前的选择。软件包依赖 polkit（pkexec），应用用它来连接服务。
+Linux 软件包会安装一个菜单项 **Salvanza for Proxmox Backup Server**，以当前用户身份启动应用。全新安装时会启用后台服务（`salvanza.service`）；升级时保留你之前的选择。`salvanza` 软件包取代之前的 `proxmoxbackupclient` 和 `pbsgo` 软件包。软件包依赖 polkit（pkexec），应用用它来连接服务。
 
 > ⚠️ **Windows 提示“检测到病毒”（例如 `Trojan:Win32/Sabsik.FL.A!ml`）或出现 SmartScreen 警告？**
 > 这是 Go/Wails 应用程序**已知的误报**：它*不是*病毒。后缀 `!ml` 表示这是机器学习模型的检测结果，它会标记*未签名且不常见*的可执行文件。请按下文所示验证下载的文件。
@@ -109,8 +124,8 @@ Linux 软件包会安装一个菜单项 **Proxmox Backup Client**，以当前用
 每个版本都提供 SHA-256 校验和（`SHA256SUMS.txt`，也列在发布页面上）以及一份**已签名的来源证明（provenance attestation）**：它以密码学方式证明该文件是由本仓库的 CI 从某个确切的提交构建出来的。
 
 ```powershell
-Get-FileHash .\ProxmoxBackupClient-<version>.msi -Algorithm SHA256   # compare with SHA256SUMS.txt
-gh attestation verify .\ProxmoxBackupClient-<version>.msi --repo tizbac/proxmoxbackupclient_go
+Get-FileHash .\Salvanza-<version>-x64.msi -Algorithm SHA256   # compare with SHA256SUMS.txt
+gh attestation verify .\Salvanza-<version>-x64.msi --repo salvanza/salvanza_client
 ```
 
 在 Linux 上：`sha256sum -c SHA256SUMS.txt --ignore-missing`。
@@ -122,7 +137,7 @@ gh attestation verify .\ProxmoxBackupClient-<version>.msi --repo tizbac/proxmoxb
 ## 🚀 快速入门（GUI）
 
 1. 安装：Windows 上用 MSI，Linux 上用 `.deb`、`.rpm` 或 Arch 软件包（[下载](#-download)）。
-2. 启动 **Proxmox Backup Client**。安装程序会设置好后台服务，因此应用会请求一次管理员权限来连接服务（Windows 上是 UAC，Linux 上通过 pkexec 输入你的密码）。如果无法提供管理员权限，请选择 **Use my own settings**（使用我自己的设置）。
+2. 启动 **Salvanza for Proxmox Backup Server**。安装程序会设置好后台服务，因此应用会请求一次管理员权限来连接服务（Windows 上是 UAC，Linux 上通过 pkexec 输入你的密码）。如果无法提供管理员权限，请选择 **Use my own settings**（使用我自己的设置）。
 3. 在 **Preferences > Account Information**（首选项 > 账户信息）中添加你的 PBS 服务器，并点击 **Test**（测试）。
 4. 创建一个 Backup Set（备份集）或一次性备份，选择要备份的文件夹或磁盘。
 5. 运行它。有了后台服务，无论是否有人登录，计划任务都会运行。
@@ -135,20 +150,20 @@ MSI 支持 Windows Installer 的标准静默安装参数，并为每项默认设
 
 ```powershell
 # Silent install with the defaults (service: Automatic + started)
-msiexec /i ProxmoxBackupClient-<version>.msi /quiet
+msiexec /i Salvanza-<version>-x64.msi /quiet
 
 # Silent install that installs the service but does NOT enable/autostart it
 # (created as Manual and left stopped)
-msiexec /i ProxmoxBackupClient-<version>.msi /quiet SERVICEAUTOSTART=0
+msiexec /i Salvanza-<version>-x64.msi /quiet SERVICEAUTOSTART=0
 
 # Silent install that also applies a settings file exported from another computer
-msiexec /i ProxmoxBackupClient-<version>.msi /quiet CONFIGFILE="C:\Deploy\settings.json"
+msiexec /i Salvanza-<version>-x64.msi /quiet CONFIGFILE="C:\Deploy\settings.json"
 
 # Custom directory + verbose install log
-msiexec /i ProxmoxBackupClient-<version>.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+msiexec /i Salvanza-<version>-x64.msi /quiet INSTALLFOLDER="D:\Apps\Salvanza" /L*v "C:\Temp\install.log"
 
-# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
-msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\Salvanza)
+msiexec /x Salvanza-<version>-x64.msi /quiet KEEP_CONFIG=0
 ```
 
 | 属性 | 默认值 | 含义 |
@@ -157,8 +172,8 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 | `AUTOSTART` | `1` | `0` = 每个用户登录时不在托盘中启动应用 |
 | `DESKTOPSHORTCUTS` | `1` | `0` = 不创建桌面快捷方式（“开始”菜单项总会添加） |
 | `CONFIGFILE` | | 用 **Preferences > Export Settings**（首选项 > 导出设置）保存的文件的完整路径：在服务启动前合并其中的 PBS 服务器和备份集。根据导出计算机名称生成的备份 ID，会改为根据每台计算机自己的名称生成。见 [installer/DEPLOYMENT.md](installer/DEPLOYMENT.md) |
-| `KEEP_CONFIG` | `1` | 仅用于卸载：`0` = 同时删除 `%ProgramData%\<name>` 状态目录 |
-| `INSTALLFOLDER` | `Program Files` | 安装目录（也可在安装界面中修改） |
+| `KEEP_CONFIG` | `1` | 仅用于卸载：`0` = 同时删除 `%ProgramData%\Salvanza` 状态目录（品牌版构建则删除它自己的目录，例如 `%ProgramData%\NimbusBackup`） |
+| `INSTALLFOLDER` | `C:\Program Files\Salvanza` | 安装目录（也可在安装界面中修改） |
 
 请以管理员身份（提权）运行；退出代码 `0` = 成功，`3010` = 成功但需要重启。品牌版 MSI 接受完全相同的参数。
 
@@ -175,13 +190,14 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 - 多台 PBS 服务器，支持证书指纹锁定（首次使用时信任），可用 API 令牌或用户名/密码登录
 - 五种配色主题和一种自定义颜色，由每个用户自行选择（无品牌版应用；品牌版应用保留其品牌配色）
 
-### 命令行工具
-- `proxmoxbackup-directory`：文件夹（pxar）备份，带重复数据删除和 `-change-detection-mode legacy|data|metadata`
-- `proxmoxbackup-machine`：Windows（VSS）和 Linux（elastio-snap/dattobd）机器的在线整盘备份（fidx，增量，除非使用 `-readfreespace` 否则跳过空闲空间，`-type vm` 生成 Proxmox VE 备份，`-skippartition <disk>:<number>` 排除某个分区）
-- `proxmoxbackup-nbd`：用于恢复磁盘备份的 NBD 服务器（Linux）
-- `ProxmoxBackupClientSVC`（Windows）和 `proxmoxbackupclient`（Linux 软件包）：对 GUI 中定义的备份集执行 `-list-sets`、`-undelete` 和 `-rollback`
+### 命令行：`salvanza-cli`
+- `salvanza-cli backup-folder`：文件夹（pxar）备份，带重复数据删除和 `-change-detection-mode legacy|data|metadata`
+- `salvanza-cli backup-disk`：Windows（VSS）和 Linux（elastio-snap/dattobd）机器的在线整盘备份（fidx，增量，除非使用 `-readfreespace` 否则跳过空闲空间，`-type vm` 生成 Proxmox VE 备份，`-skippartition <disk>:<number>` 排除某个分区）
+- `salvanza-cli attach-nbd`：用于恢复磁盘备份的 NBD 服务器（Linux）
+- `salvanza-cli version` 显示版本，`salvanza-cli help` 列出子命令，`salvanza-cli <command> -help` 列出某个子命令的选项
+- 服务程序 `salvanza-svc`（Windows 上为 `salvanza-svc.exe`；在 Linux 上也可以用应用 `salvanza-gui`）：对 GUI 中定义的备份集执行 `-list-sets`、`-undelete` 和 `-rollback`
 
-前三个工具接受 `-keyfile` 和 `-keyfile-passphrase`，用于加密快照。完整参考：[命令行手册](docs/manual/CLI.md)。
+这三个子命令接受 `-keyfile` 和 `-keyfile-passphrase`，用于加密快照。这些工具的旧名称 `proxmoxbackup-directory`、`proxmoxbackup-machine` 和 `proxmoxbackup-nbd`（以及 `pbsdirectorybackup`、`pbsmachinebackup`、`pbsnbd`）仍然以相同的参数运行相同的子命令，因此现有脚本可以继续使用。完整参考：[命令行手册](docs/manual/CLI.md)。
 
 ### 📸 截图
 
@@ -275,9 +291,9 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 
 **命令行：**
 ```shell
-proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -keyfile "C:\keys\pbs-key.json" -keyfile-passphrase "..."
+salvanza-cli backup-folder -baseurl ... -backupdir "C:\data" -datastore store -keyfile "C:\keys\pbs-key.json" -keyfile-passphrase "..."
 ```
-只有受保护的密钥才需要 `-keyfile-passphrase`（或 `PBS_ENCRYPTION_PASSWORD`），省略时会提示输入。`proxmoxbackup-machine` 和 `proxmoxbackup-nbd` 接受相同的参数。`proxmoxbackup-nbd` 会在操作 NBD 设备之前先用快照检验密钥，因此密钥错误时会立即失败。
+只有受保护的密钥才需要 `-keyfile-passphrase`（或 `PBS_ENCRYPTION_PASSWORD`），省略时会提示输入。`salvanza-cli backup-disk` 和 `salvanza-cli attach-nbd` 接受相同的参数。`attach-nbd` 会在操作 NBD 设备之前先用快照检验密钥，因此密钥错误时会立即失败。
 
 **裸机恢复：** 恢复 ISO 会询问密钥（无密钥、U 盘上的密钥文件，或手工输入的路径），对于受保护的密钥还会询问口令。密钥永远不会写入 ISO。
 
@@ -285,7 +301,7 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 ## 更快的文件夹备份：变更检测
 
-在默认的 Legacy 模式下，每次文件夹备份都会读取每个文件，因此即使什么都没变，一次运行的耗时也和读取整个文件夹一样。备份集和 `proxmoxbackup-directory` 可以改用官方 `proxmox-backup-client` 的变更检测模式：
+在默认的 Legacy 模式下，每次文件夹备份都会读取每个文件，因此即使什么都没变，一次运行的耗时也和读取整个文件夹一样。备份集和 `salvanza-cli backup-folder` 可以改用官方 `proxmox-backup-client` 的变更检测模式：
 
 | 模式 | 读取 | 存储形式 |
 |---|---|---|
@@ -325,11 +341,11 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 ## 整机在线备份
 
-`proxmoxbackup-machine`（以及 GUI 的机器备份）可以在不停机的情况下备份完整的 Windows 10/11 或 Windows Server 系统，或一台 Linux 机器。
+`salvanza-cli backup-disk`（以及 GUI 的机器备份）可以在不停机的情况下备份完整的 Windows 10/11 或 Windows Server 系统，或一台 Linux 机器。
 
 命令语法与文件夹备份基本相同，只是 `-backupdir` 换成了 `-backupdev`（多块磁盘时重复该参数）。例如：
 
-`proxmoxbackup-machine.exe -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
+`salvanza-cli backup-disk -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
 
 上面的命令会查看磁盘 0，检测所有已挂载的分区，对它们做 VSS 快照，然后把整块磁盘生成为 fidx 格式的可启动备份映像。空闲空间、分页文件和休眠文件不经读取，直接以零写入映像（在 Linux 上，ext2/3/4 和 XFS 的空闲空间也是如此）；`-readfreespace` 则读取全部内容，用于制作取证副本。无法读取的扇区以零写入映像，运行结果会指出其位置。加上 `-type vm`（并使用数字形式的 `-backup-id`）可把备份存储为 Proxmox VE 虚拟机备份（[P2V](#-physical-machines-into-virtual-machines-p2v)）。
 
@@ -345,7 +361,7 @@ Windows 机器备份使用 VSS。Linux 没有 VSS，因此备份正在运行的 
 
 1. **内核模块必须已安装并加载。** 请通过 DKMS 安装，这样每次内核更新后都会自动重新构建，并设置为每次启动时加载。GUI 手册中的 [Linux 快照：安装 elastio-snap 或 dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) 一节提供了在 Debian、Ubuntu、Mint 和 Fedora 上测试过的步骤，并介绍了 Secure Boot 和检查方法。截至 2026 年 11 月，这两个模块都无法在内核 7 上构建（更新后的 Fedora 44）。
 
-2. **备份必须以 root 身份运行。** 该模块的控制接口仅限 root 使用，普通用户请求快照会被拒绝。后台服务以 root 身份运行；没有后台服务时，请在应用中使用 **Restart as administrator**（以管理员身份重新启动），或用 `sudo` 运行 `proxmoxbackup-machine`。普通的文件夹备份不需要 root。
+2. **备份必须以 root 身份运行。** 该模块的控制接口仅限 root 使用，普通用户请求快照会被拒绝。后台服务以 root 身份运行；没有后台服务时，请在应用中使用 **Restart as administrator**（以管理员身份重新启动），或用 `sudo` 运行 `salvanza-cli backup-disk`。普通的文件夹备份不需要 root。
 
 在 GUI 中，Linux 机器备份集可以取消勾选 **Use snapshots**（使用快照）并在线读取磁盘，但必须同时勾选第二个复选框（“Run without a snapshot: I accept the backup may be inconsistent”，即“不使用快照运行：我接受备份可能不一致”）。否则每次运行都会停止并说明原因。未挂载的分区会被直接读取。
 
@@ -353,17 +369,17 @@ Windows 机器备份使用 VSS。Linux 没有 VSS，因此备份正在运行的 
 
 GUI 的 Restore（恢复）页面会像打开文件夹备份一样打开机器备份：映像中的每个卷（NTFS、FAT、exFAT、ext2/3/4 或 XFS）都是一个可以浏览并从中恢复的文件夹。无需挂载任何内容。
 
-在 Linux 上，也可以用 nbd 工具把磁盘备份挂接为块设备。请先运行 `modprobe nbd max_part=0`：如果 `max_part != 0`，内核可能会在探测分区时陷入无限循环。
+在 Linux 上，也可以用 `salvanza-cli attach-nbd` 把磁盘备份挂接为块设备。请先运行 `modprobe nbd max_part=0`：如果 `max_part != 0`，内核可能会在探测分区时陷入无限循环。
 
-NBD 工具可以连接任何固定磁盘备份，无论是 VM 备份还是 host 备份（因此也适用于 Proxmox VE 备份）。例如：
+`attach-nbd` 可以连接任何固定磁盘备份，无论是 VM 备份还是 host 备份（因此也适用于 Proxmox VE 备份）。例如：
 
-`./proxmoxbackup-nbd -authid 'apikey' -baseurl https://yourpbs:8007 -secret 'yoursecret' -certfingerprint 'aa:...:xx' -datastore test -namespace test1 -path "vm/107/2025-08-02T23:13:01Z/drive-virtio0.img.fidx"`
+`sudo salvanza-cli attach-nbd -authid 'apikey' -baseurl https://yourpbs:8007 -secret 'yoursecret' -certfingerprint 'aa:...:xx' -datastore test -namespace test1 -path "vm/107/2025-08-02T23:13:01Z/drive-virtio0.img.fidx"`
 
 如果省略 `-path`，会出现一个终端界面让你选择 fidx 文件；`-list` 则列出所有映像。
 
 > 不要在运行重要任务的机器上这样做：损坏的文件系统可能导致操作系统崩溃，这也是 Proxmox VE 为此使用一个 QEMU 实例的原因。
 
-在停止 `proxmoxbackup-nbd` 之前，请先卸载 nbd 磁盘上的所有内容，否则分区很可能一直处于忙碌状态。如果出现 `Device or resource busy` 错误，可用 `nbd-client -d /dev/nbd0` 强制断开，或重新启动。
+在停止 `salvanza-cli attach-nbd` 之前，请先卸载 nbd 磁盘上的所有内容，否则分区很可能一直处于忙碌状态。如果出现 `Device or resource busy` 错误，可用 `nbd-client -d /dev/nbd0` 强制断开，或重新启动。
 
 ### 恢复到物理机或虚拟机
 
@@ -374,11 +390,11 @@ NBD 工具可以连接任何固定磁盘备份，无论是 VM 备份还是 host 
 完整参考（包括 Windows 和 Linux 的示例、退出代码和计划任务）见 **[命令行手册](docs/manual/CLI.md)**。一个典型的命令：
 
 ```shell
-proxmoxbackup-directory.exe -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -backupdir "C:\path\to\backup" -datastore "datastorename"
+salvanza-cli backup-folder -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -backupdir "C:\path\to\backup" -datastore "datastorename"
 ```
 
 ```
-proxmoxbackup-directory
+salvanza-cli backup-folder
   -baseurl string            PBS URL, example: https://192.168.1.10:8007
   -certfingerprint string    Certificate fingerprint (asked for interactively when omitted)
   -authid string             API token ID (user@realm!token)
@@ -411,7 +427,7 @@ JSON 配置见 [config.json.example](config.json.example)；只需填写你需�
 重复使用 `-backupdir`，即可用一条命令备份多个目录：
 
 ```shell
-proxmoxbackup-directory.exe -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -datastore "datastorename" -backupdir "C:\Data" -backupdir "D:\Photos"
+salvanza-cli backup-folder -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -datastore "datastorename" -backupdir "C:\Data" -backupdir "D:\Photos"
 ```
 
 每个目录都作为单独的备份组进行备份，备份 ID 为 `<backup-id>_<path>`（`-backup-id` 默认为主机名）。因此，保留策略、清理（prune）和恢复都把每个目录当作独立的序列。某个目录失败不会影响其他目录，退出代码会报告失败。`-pxarout` 不能与多个目录同时使用；如果两个目录最终会得到相同的备份 ID，会在上传任何内容之前被拒绝。
@@ -449,7 +465,7 @@ proxmoxbackup-directory.exe -baseurl "https://yourpbshost:8007" -certfingerprint
 这种方式备份的是数据流，而不是 pxar 归档。例如：
 
 ```
-mysqldump yourdatabase | ./proxmoxbackup-directory -backupstream yourdatabase.sql [other options]
+mysqldump yourdatabase | salvanza-cli backup-folder -backupstream yourdatabase.sql [other options]
 ```
 
 它使用 buzhash 分块，对数据流本身（例如 tar 归档或 SQL 转储）进行重复数据删除。
@@ -458,7 +474,7 @@ mysqldump yourdatabase | ./proxmoxbackup-directory -backupstream yourdatabase.sq
 
 Windows Defender 反恶意软件处于活动状态时，备份速度可能降到可达速度的约 25%。
 
-在 Windows 上，命令行工具会使用进程锁：在一个备份运行期间启动第二个备份，会输出 "Another backup job is running" 并以代码 2 退出。Linux 上没有这样的锁，因此不要让两个命令行任务在同一时间运行。（GUI 和后台服务可以安全地同时运行多个备份，见[同时运行多个备份](docs/manual/GUI.md#67-several-backups-at-once)。）
+在 Windows 上，`salvanza-cli backup-folder` 和 `backup-disk` 会使用进程锁：在一个备份运行期间启动第二个备份，会输出 "Another backup job is running" 并以代码 2 退出。Linux 上没有这样的锁，因此不要让两个命令行任务在同一时间运行。（GUI 和后台服务可以安全地同时运行多个备份，见[同时运行多个备份](docs/manual/GUI.md#67-several-backups-at-once)。）
 
 ## 📋 系统要求
 
@@ -473,16 +489,19 @@ Windows Defender 反恶意软件处于活动状态时，备份速度可能降到
 
 ```bash
 cd gui
-wails build                                                       # the app, in gui/build/bin
-go build -tags service -o build/bin/ProxmoxBackupClientSVC.exe    # the background service
+wails build                                                       # the app, gui/build/bin/salvanza-gui.exe
+go build -tags service -o build/bin/salvanza-svc.exe              # the background service
+cd ../cli
+GOWORK=off go build -o ../gui/build/bin/salvanza-cli.exe .        # the command line
 ```
 
 ```bash
+make cli          # salvanza-cli, in dist/
 make deb          # .deb
 make pkgfedora    # .rpm (in Docker)
 make pkgarch      # Arch package (on Arch)
 make msi          # Windows MSIs on Linux (Docker + Wine + WiX), one per brand
-make clonezilla   # the bare-metal restore ISO
+make clonezilla   # the bare-metal restore ISO, dist/Salvanza-BMR-<version>.iso
 ```
 
 构建好的前端（`gui/frontend/dist`）已提交到仓库，因此只有修改前端时才需要 Node.js（在 `gui/frontend` 中运行 `npm install` 和 `npm run build`，或用 `wails dev` 进行热重载）。测试：`make test`。
@@ -502,7 +521,7 @@ make clonezilla   # the bare-metal restore ISO
 
 ### 💿 裸机恢复 ISO
 
-恢复 ISO 是在标准 Clonezilla Live ISO 的基础上，加入 `pbsnbd` / `machinebackup` 二进制文件和两个菜单项制成的。它可以从光盘、U 盘（用 `dd` 写入，或放在 Ventoy U 盘中）启动，支持 UEFI 和 BIOS 机器：
+恢复 ISO 名为 Salvanza-BMR，是在标准 Clonezilla Live ISO 的基础上，加入 `pbsnbd` 二进制文件（即 `salvanza-cli attach-nbd` 的代码，由 `nbd/cmd/pbsnbd` 单独构建）和两个菜单项制成的。它可以从光盘、U 盘（用 `dd` 写入，或放在 Ventoy U 盘中）启动，支持 UEFI 和 BIOS 机器：
 
 - **`ocs-pbs-bare-metal-restore`**：启动菜单中的第一项，也是默认项，**PBS Bare Metal Restore**（PBS 裸机恢复）。它跳过 Clonezilla 的语言和键盘提示，从输入 PBS 凭据直接走到恢复完成：先尝试 DHCP（只有失败时才提示输入静态 IP），如果备份已加密则从 U 盘读取加密密钥，检测目标磁盘时绝不会把启动用的 U 盘列为目标。它同样能恢复 Windows 和 Linux 备份（恢复在块级别进行），恢复到裸机或空的虚拟机中。
 - **`ocs-pbs-nbd`**：Clonezilla 自己的模式选择菜单中的 **pbs-nbd** 项。它会询问你的 PBS 连接信息和快照，把快照挂接到 `/dev/nbd0`，然后交给 Clonezilla 常规的磁盘恢复向导，由你手动操作。
@@ -511,17 +530,17 @@ make clonezilla   # the bare-metal restore ISO
 ./patch-clonezilla.sh \
   -o clonezilla-live-patched.iso \
   clonezilla-live-3.3.3-37-amd64.iso \
-  ./build/pbsnbd ./build/machinebackup \
+  ./build/pbsnbd \
   ./clonezilla-patch/ocs-pbs-nbd ./clonezilla-patch/ocs-pbs-bare-metal-restore
 ```
 
-`make clonezilla` 会下载标准 ISO 并完成同样的操作。完整细节（为什么要完整重建 ISO 而不是就地替换、前提条件、菜单流程、验证）见 **[PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md)**；使用方法见 **[裸机恢复手册](docs/manual/BMR.md)**。
+`make clonezilla` 会下载标准 ISO，构建 `pbsnbd`，并完成同样的操作，生成 `dist/Salvanza-BMR-<version>.iso`。完整细节（为什么要完整重建 ISO 而不是就地替换、前提条件、菜单流程、验证）见 **[PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md)**；使用方法见 **[裸机恢复手册](docs/manual/BMR.md)**。
 
 ### 构建 Windows GUI
 
 **原生 Windows**：工具链（来自 Chocolatey 的 Go 和 MinGW，以及 Wails）和构建应用、服务及 MSI 的命令见 **[BUILD.md](BUILD.md)**。
 
-**Docker（在 Linux 上构建时）。** `./build_gui_windows_docker.sh` 在一个用完即弃的 `golang` 容器中把 Windows 应用构建为 `ProxmoxBackupClientGO.exe`，并正确支持 WebView2。它不会构建后台服务或 MSI。
+**Docker（在 Linux 上构建时）。** `./build_gui_windows_docker.sh` 在一个用完即弃的 `golang` 容器中构建 Windows 应用，并正确支持 WebView2。它不会构建后台服务或 MSI。
 
 ### 更新日志和内部文档
 
@@ -541,7 +560,7 @@ make clonezilla   # the bare-metal restore ISO
 
 ## 🖥️ GUI 来源说明
 
-**Proxmox Backup Client GUI** 最初由 **[RDEM Systems](https://www.rdem-systems.com/)** 开发，名为 **[Nimbus Backup GUI](https://nimbus.rdem-systems.com)**：他们设计并构建了最初的应用，并围绕其品牌版 Nimbus Backup 提供商业支持。之后 **[mjb-is](https://github.com/mjb-is)** 借鉴其他备份系统的工作流程和使用体验，对它进行了重新设计和扩展，这些工作已合并回本仓库。整个代码库，包括 GUI 及其所有功能，仍以 GPLv3 许可证开源。
+**Salvanza 应用**（原名 Proxmox Backup Client GUI）最初由 **[RDEM Systems](https://www.rdem-systems.com/)** 开发，名为 **[Nimbus Backup GUI](https://nimbus.rdem-systems.com)**：他们设计并构建了最初的应用，并围绕其品牌版 Nimbus Backup 提供商业支持。之后 **[mjb-is](https://github.com/mjb-is)** 借鉴其他备份系统的工作流程和使用体验，对它进行了重新设计和扩展，这些工作已合并回本仓库。整个代码库，包括 GUI 及其所有功能，仍以 GPLv3 许可证开源。
 
 ## ⚠️ 警告
 
@@ -549,7 +568,7 @@ make clonezilla   # the bare-metal restore ISO
 
 本软件仍处于 alpha 质量阶段，我们对任何形式的损坏或数据丢失（甚至包括源文件）不承担任何责任。
 
-欢迎报告错误：请提交 [issue](https://github.com/tizbac/proxmoxbackupclient_go/issues)，说明你做了什么、发生了什么，并附上日志（Message Log（消息日志），或 **View Full Logs**（查看完整日志））。
+欢迎报告错误：请提交 [issue](https://github.com/salvanza/salvanza_client/issues)，说明你做了什么、发生了什么，并附上日志（Message Log（消息日志），或 **View Full Logs**（查看完整日志））。
 
 ## 📄 许可证
 
@@ -586,10 +605,10 @@ GPLv3：见 [LICENSE](LICENSE) 文件。
 5. 在更多硬件、Linux 发行版和内核上进行测试，尤其是裸机恢复
 6. 你能想到的任何有意思的东西 :)
 
-## 关于 Proxmox Backup Client GO 贡献者
+## 关于 Salvanza 贡献者
 
-Proxmox Backup Client GO 贡献者开发并维护本项目。本软件依赖 NTP/NTS 基础设施，以及社区参考列表中列出的 [11 个公共 NTS 服务器](https://github.com/jauderho/nts-servers)。
+Salvanza 贡献者（原 Proxmox Backup Client GO 贡献者）开发并维护本项目。本软件依赖 NTP/NTS 基础设施，以及社区参考列表中列出的 [11 个公共 NTS 服务器](https://github.com/jauderho/nts-servers)。
 
 ---
 
-**© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems.**
+**© 2024-2026 Salvanza contributors and RDEM Systems.**

@@ -8,10 +8,15 @@ for what the MSI installs.
 
 It does:
 
-- install the app and the service in `C:\Program Files\ProxmoxBackupClient`;
-- install and start the service `ProxmoxBackupClientSVC` (LocalSystem, automatic);
+- install the app, the service and the command line (`salvanza-cli`) in
+  `C:\Program Files\Salvanza`, and put that folder on the system `PATH`;
+- install and start the service `salvanza-svc` (LocalSystem, automatic);
 - add the Start menu entry and the Programs and Features entry;
-- upgrade an older version in place;
+- upgrade an older version in place, and replace an installed Proxmox Backup Client (the
+  name before the rename) or another brand: its service is removed, and its settings in
+  `C:\ProgramData\ProxmoxBackupClient` are moved to `C:\ProgramData\Salvanza` when the new
+  service first starts (a copy of the settings files is kept in its `pre-salvanza-<date>`
+  folder), so the computer's PBS servers and Backup Sets carry on;
 - with `CONFIGFILE`, set up the PBS servers and Backup Sets (next section).
 
 Without `CONFIGFILE` it configures nothing: each computer then needs its PBS server, token
@@ -22,7 +27,8 @@ before it shows or changes any setting).
 
 `CONFIGFILE` is the full path of a settings file made with **Preferences > Export**. Before
 the service starts, the installer runs the service program (as SYSTEM) to merge the file
-into `C:\ProgramData\ProxmoxBackupClient`, the way **Preferences > Import** does:
+into `C:\ProgramData\Salvanza`, the way **Preferences > Import** does (on a computer that
+had Proxmox Backup Client, after its settings have been taken over):
 
 - PBS servers and Backup Sets are added, or replaced when one with the same ID is already
   there. Anything else already on the computer stays, and so does a token, password or key
@@ -77,7 +83,7 @@ Not in the file:
 ### Commands
 
 ```powershell
-msiexec /i ProxmoxBackupClient-2.0.0.msi /qn CONFIGFILE="\\server\deploy\pbc-settings.json" /l*v C:\Windows\Temp\pbc-install.log
+msiexec /i Salvanza-2.0.0-x64.msi /qn CONFIGFILE="\\server\deploy\salvanza-settings.json" /l*v C:\Windows\Temp\salvanza-install.log
 ```
 
 Give the full path: a relative one is not found. The install runs as SYSTEM under GPO and
@@ -93,7 +99,7 @@ backup on.
 ### Checking it worked
 
 ```powershell
-Get-Content C:\ProgramData\ProxmoxBackupClient\service-service.log | Select-String Deploy
+Select-String -Path C:\ProgramData\Salvanza\service-service.log -Pattern Deploy
 ```
 
 Or open the app's Message Log.
@@ -104,19 +110,19 @@ Run as an administrator, or as SYSTEM (GPO, Intune).
 
 ```powershell
 # Install or upgrade
-msiexec /i ProxmoxBackupClient-2.0.0.msi /qn /norestart /l*v C:\Windows\Temp\pbc-install.log
+msiexec /i Salvanza-2.0.0-x64.msi /qn /norestart /l*v C:\Windows\Temp\salvanza-install.log
 
 # With the sign-in Run entry (the app starts in the tray for every user)
-msiexec /i ProxmoxBackupClient-2.0.0.msi /qn AUTOSTART=1
+msiexec /i Salvanza-2.0.0-x64.msi /qn AUTOSTART=1
 
 # Other install folder
-msiexec /i ProxmoxBackupClient-2.0.0.msi /qn INSTALLFOLDER="D:\Apps\ProxmoxBackupClient"
+msiexec /i Salvanza-2.0.0-x64.msi /qn INSTALLFOLDER="D:\Apps\Salvanza"
 
-# Remove, keeping C:\ProgramData\ProxmoxBackupClient
-msiexec /x ProxmoxBackupClient-2.0.0.msi /qn
+# Remove, keeping C:\ProgramData\Salvanza
+msiexec /x Salvanza-2.0.0-x64.msi /qn
 
 # Remove and delete the settings
-msiexec /x ProxmoxBackupClient-2.0.0.msi /qn KEEP_CONFIG=0
+msiexec /x Salvanza-2.0.0-x64.msi /qn KEEP_CONFIG=0
 ```
 
 The app does not start at sign-in unless asked: the service runs the schedules either
@@ -128,8 +134,9 @@ Without the token the tray still shows whether backups are running and whether t
 one failed.
 
 An upgrade without `AUTOSTART` keeps what the installed version did (the choice is
-remembered under `HKLM\Software\Proxmox Backup Client\ProxmoxBackupClient`, value
-`AutoStart`; a version without that value counts as on when it had the Run entry). Give
+remembered under `HKLM\Software\Salvanza\salvanza-gui`, value `AutoStart`; an upgrade from
+Proxmox Backup Client reads its choice from `HKLM\Software\Proxmox Backup Client\ProxmoxBackupClient`,
+and a version without that value counts as on when it had the Run entry). Give
 `AUTOSTART=0` or `AUTOSTART=1` to change it.
 
 Install exit code 0 means success; 3010 means success with a restart needed.
@@ -145,37 +152,40 @@ an option such as `AUTOSTART=1`, use a transform (.mst) made with Orca or a simi
 Add it as a Line-of-business app (the MSI as is) or as a Win32 app (packed with the
 Win32 Content Prep Tool), with:
 
-- Install: `msiexec /i ProxmoxBackupClient-2.0.0.msi /qn`
+- Install: `msiexec /i Salvanza-2.0.0-x64.msi /qn`
 - Uninstall: `msiexec /x {ProductCode} /qn`
 - Detection: the MSI product code, or the file
-  `C:\Program Files\ProxmoxBackupClient\ProxmoxBackupClientSVC.exe`.
+  `C:\Program Files\Salvanza\salvanza-svc.exe`.
 
-The product code changes with every build (`Product Id="*"`). The UpgradeCode
-`F15C307F-1053-46B7-BCB0-2FAAC3627ED6` stays the same for all versions.
+The product code changes with every build (`Product Id="*"`). Salvanza's UpgradeCode
+`2EAC4C12-3459-4D47-8B53-489A96ACCFE8` stays the same for all its versions. The installs
+made before the rename used `12345678-1234-1234-1234-123456789012` and, for the earlier
+fork's 0.9 and 0.10 MSIs, `F15C307F-1053-46B7-BCB0-2FAAC3627ED6`; the Salvanza MSI replaces
+those too. An Intune app for Proxmox Backup Client can be superseded by the Salvanza app.
 
 ## Checking a computer
 
 ```powershell
-Get-Service ProxmoxBackupClientSVC                     # Running, Automatic
-Test-Path "C:\Program Files\ProxmoxBackupClient\ProxmoxBackupClient.exe"
-Get-Content C:\ProgramData\ProxmoxBackupClient\service-service.log -Tail 50
+Get-Service salvanza-svc                               # Running, Automatic
+Test-Path "C:\Program Files\Salvanza\salvanza-gui.exe"
+Get-Content C:\ProgramData\Salvanza\service-service.log -Tail 50
 ```
 
 `service-service.log` and `backup-service.log` are the service's logs. Each backup also
 gets its own `backup-<time>-<id>.log`. These files are readable only by SYSTEM and
 elevated administrators: run PowerShell as administrator to read them. Each user's app
-logs are in `%LOCALAPPDATA%\ProxmoxBackupClient\Logs`.
+logs are in `%LOCALAPPDATA%\Salvanza\Logs`.
 
 ## Security notes
 
-- `C:\ProgramData\ProxmoxBackupClient\config.json` holds the PBS API token secrets
+- `C:\ProgramData\Salvanza\config.json` holds the PBS API token secrets
   (encrypted for the computer with DPAPI). The service restricts the folder to SYSTEM and
   Administrators every time it starts, so only the service and elevated programs can open
   it. Earlier builds also let each local administrator account read it without elevation;
   the service removes those entries.
 - The service's local API listens on 127.0.0.1:18765 only and needs the token in
-  `C:\ProgramData\ProxmoxBackupClient\api-token` (SYSTEM full control, Administrators
-  read). The service writes a new token every time it starts and replaces it every 24 hours
+  `C:\ProgramData\Salvanza\api-token` (SYSTEM full control, Administrators
+  read), sent in the `X-Salvanza-Token` header. The service writes a new token every time it starts and replaces it every 24 hours
   while it runs. The app gets
   it by asking for administrator rights (UAC) once, keeps it in memory only while its
   window is in use (it drops it after 15 minutes in the tray), and asks again after it is

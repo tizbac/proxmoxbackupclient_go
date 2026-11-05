@@ -1,26 +1,29 @@
-# Proxmox Backup Client: کلاینت ویندوز و لینوکس برای Proxmox Backup Server
+# Salvanza for Proxmox Backup Server: کلاینت ویندوز و لینوکس برای Proxmox Backup Server
 
 [🇬🇧 English](README.md) · [🇫🇷 Français](README.fr.md) · [🇮🇹 Italiano](README.it.md) · [🇩🇪 Deutsch](README.de.md) · [🇪🇸 Español](README.es.md) · [🇷🇺 Русский](README.ru.md) · [🇨🇳 中文](README.zh.md) · [🇯🇵 日本語](README.ja.md) · [🇬🇷 Ελληνικά](README.el.md) · [🇷🇴 Română](README.ro.md) · [🇸🇪 Svenska](README.sv.md) · [🇸🇦 العربية](README.ar.md) · [🇮🇷 فارسی](README.fa.md)
 
 > ℹ️ این متن ترجمه‌ای از [README انگلیسی](README.md) است؛ هر جا این دو با هم تفاوت داشته باشند، نسخهٔ انگلیسی به‌روز و معتبر است.
 
-> ⚠️ **اطلاعیهٔ علامت تجاری و وابستگی.** این یک **پروژهٔ مستقل جامعه‌محور** است، نه محصول رسمی Proxmox: **هیچ وابستگی‌ای به Proxmox Server Solutions GmbH ندارد و از سوی آن تأیید یا حمایت مالی نشده است**. **Proxmox®** علامت تجاری ثبت‌شدهٔ Proxmox Server Solutions GmbH در اتحادیهٔ اروپا، ایالات متحدهٔ آمریکا و کشورهای دیگر است و در اینجا **تنها** برای توصیف سازگاری به کار رفته است. مطابق راهنمای خود Proxmox دربارهٔ علامت‌های تجاری (علامت‌های ثبت‌شده نباید در نام محصول یا برنامه به کار روند؛ برای نمونه «XY App for Proxmox Virtual Environment» درست است و نه «Proxmox XY App»)، **تغییر نام کلاینت بدون برند در جریان است**: محصولی که اکنون *Proxmox Backup Client* نام دارد به نامی منتقل می‌شود که علامت Proxmox را در خود ندارد. برای قواعد دقیق، [کیت رسانه‌ای Proxmox](https://www.proxmox.com/en/about/company-details/media-kit) را ببینید.
+> ⚠️ **اطلاعیهٔ علامت تجاری و وابستگی.** این یک **پروژهٔ مستقل جامعه‌محور** است، نه محصول رسمی Proxmox: **هیچ وابستگی‌ای به Proxmox Server Solutions GmbH ندارد و از سوی آن تأیید یا حمایت مالی نشده است**. **Proxmox®** علامت تجاری ثبت‌شدهٔ Proxmox Server Solutions GmbH در اتحادیهٔ اروپا، ایالات متحدهٔ آمریکا و کشورهای دیگر است و در اینجا **تنها** برای توصیف سازگاری به کار رفته است. مطابق راهنمای خود Proxmox دربارهٔ علامت‌های تجاری (علامت‌های ثبت‌شده نباید در نام محصول یا برنامه به کار روند؛ برای نمونه «XY App for Proxmox Virtual Environment» درست است و نه «Proxmox XY App»)، **نام کلاینت بدون برند تغییر کرده است**: محصولی که پیش‌تر *Proxmox Backup Client* نام داشت اکنون **Salvanza for Proxmox Backup Server** (به‌اختصار Salvanza) نام دارد، نامی که علامت Proxmox را در خود ندارد. برای قواعد دقیق، [کیت رسانه‌ای Proxmox](https://www.proxmox.com/en/about/company-details/media-kit) را ببینید.
 
 [![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/tizbac/proxmoxbackupclient_go)](https://github.com/tizbac/proxmoxbackupclient_go/releases)
+[![Release](https://img.shields.io/github/v/release/salvanza/salvanza_client)](https://github.com/salvanza/salvanza_client/releases)
 [![Documentation](https://img.shields.io/badge/docs-manuals-orange)](docs/manual/README.md)
 
-**Proxmox Backup Client یک کلاینت پشتیبان‌گیری متن‌باز (GPL-3.0) برای Proxmox Backup Server (PBS)، برای ویندوز و لینوکس است.** این برنامه از پوشه‌ها به‌صورت آرشیوهای فایلی قابل مرور، و از کل دستگاه‌ها به‌صورت ایمیج‌های دیسکِ قابل بوت پشتیبان می‌گیرد، طبق زمان‌بندی یا هر وقت بخواهید. هر چیزی را، از یک فایل تنها تا یک دستگاه کامل، بازیابی می‌کند: روی همان رایانه، روی یک رایانهٔ جایگزین، یا درون یک ماشین مجازی Proxmox VE.
+**Salvanza for Proxmox Backup Server (با نام پیشین Proxmox Backup Client) یک کلاینت پشتیبان‌گیری متن‌باز (GPL-3.0) برای Proxmox Backup Server (PBS)، برای ویندوز و لینوکس است.** این برنامه از پوشه‌ها به‌صورت آرشیوهای فایلی قابل مرور، و از کل دستگاه‌ها به‌صورت ایمیج‌های دیسکِ قابل بوت پشتیبان می‌گیرد، طبق زمان‌بندی یا هر وقت بخواهید. هر چیزی را، از یک فایل تنها تا یک دستگاه کامل، بازیابی می‌کند: روی همان رایانه، روی یک رایانهٔ جایگزین، یا درون یک ماشین مجازی Proxmox VE.
+
+وب‌سایت پروژه: **[salvanza.org](https://salvanza.org/)** · کد منبع، نسخه‌ها و issueها: **[github.com/salvanza/salvanza_client](https://github.com/salvanza/salvanza_client)**
 
 این برنامه یک **مجموعه ابزار** است:
 
-- **Proxmox Backup Client GUI** (ساختهٔ اولیهٔ RDEM Systems با نام Nimbus Backup GUI، که mjb-is آن را بازنویسی و گسترش داده است): برنامهٔ ویندوز و لینوکس. **Backup Sets** (مجموعه‌های پشتیبان) که هر کدام چند زمان‌بندی دارند، پشتیبان‌گیری از پوشه و کل دیسک با اسنپ‌شات‌های سازگار (VSS در ویندوز، elastio-snap/dattobd در لینوکس)، بازیابی فایل‌ها از پشتیبان‌های پوشه و دستگاه، **Undelete** (بازگرداندن حذف‌شده‌ها) و **Roll back** (بازگشت به وضعیت قبلی)، چند سرور PBS، رمزنگاری سمت کلاینت، و یک سرویس پس‌زمینه تا زمان‌بندی‌ها بدون ورود هیچ کاربری اجرا شوند.
-- **`proxmoxbackup-directory`**: پشتیبان‌گیری خط فرمانی از پوشه‌ها (pxar) با حذف داده‌های تکراری و تشخیص تغییرات.
-- **`proxmoxbackup-machine`**: پشتیبان‌گیری زندهٔ خط فرمانی از کل دیسک (fidx) در دستگاه‌های ویندوز و لینوکس. ایمیج پس از بازیابی قابل بوت است.
-- **`proxmoxbackup-nbd`**: یک پشتیبان دیسک را به‌صورت دستگاه بلوکی NBD متصل می‌کند (لینوکس).
-- **یک ISO بازیابی bare-metal** بر پایهٔ Clonezilla Live، با بازیابی هدایت‌شده از لحظهٔ روشن کردن دستگاه تا راه‌اندازی دوباره.
+- **برنامهٔ Salvanza**، `salvanza-gui` (ساختهٔ اولیهٔ RDEM Systems با نام Nimbus Backup GUI، که mjb-is آن را بازنویسی و گسترش داده است): برنامهٔ ویندوز و لینوکس. **Backup Sets** (مجموعه‌های پشتیبان) که هر کدام چند زمان‌بندی دارند، پشتیبان‌گیری از پوشه و کل دیسک با اسنپ‌شات‌های سازگار (VSS در ویندوز، elastio-snap/dattobd در لینوکس)، بازیابی فایل‌ها از پشتیبان‌های پوشه و دستگاه، **Undelete** (بازگرداندن حذف‌شده‌ها) و **Roll back** (بازگشت به وضعیت قبلی)، چند سرور PBS، رمزنگاری سمت کلاینت، و یک سرویس پس‌زمینه، `salvanza-svc`، تا زمان‌بندی‌ها بدون ورود هیچ کاربری اجرا شوند.
+- **`salvanza-cli`**: یک ابزار خط فرمان، با یک زیرفرمان برای هر کار:
+  - **`salvanza-cli backup-folder`**: پشتیبان‌گیری از پوشه‌ها (pxar) با حذف داده‌های تکراری و تشخیص تغییرات.
+  - **`salvanza-cli backup-disk`**: پشتیبان‌گیری زنده از کل دیسک (fidx) در دستگاه‌های ویندوز و لینوکس. ایمیج پس از بازیابی قابل بوت است.
+  - **`salvanza-cli attach-nbd`**: یک پشتیبان دیسک را به‌صورت دستگاه بلوکی NBD متصل می‌کند (لینوکس).
+- **یک ISO بازیابی bare-metal** (Salvanza-BMR) بر پایهٔ Clonezilla Live، با بازیابی هدایت‌شده از لحظهٔ روشن کردن دستگاه تا راه‌اندازی دوباره.
 
-> کلیدواژه‌ها: proxmox backup client windows · PBS client · Windows VSS backup · immutable offsite backups · physical to virtual (P2V) · bare-metal restore · Proxmox Backup Server interface.
+> کلیدواژه‌ها: salvanza · proxmox backup server client windows · PBS client · Windows VSS backup · immutable offsite backups · physical to virtual (P2V) · bare-metal restore · Proxmox Backup Server interface.
 
 <a id="-new-in-20"></a>
 
@@ -53,10 +56,22 @@
 - **پشتیبان‌گیری از دستگاه‌های لینوکسی با elastio-snap یا dattobd.** یک مجموعهٔ دستگاه لینوکسی می‌تواند اسنپ‌شات‌ها را خاموش کند و دیسک‌ها را زنده بخواند، اما فقط وقتی مالک آن تیک بزند که می‌پذیرد پشتیبان ممکن است ناسازگار باشد.
 - **هر کاربر می‌تواند تم رنگی خودش را انتخاب کند** در برنامهٔ بدون برند. برنامهٔ برنددار رنگ‌های برند خود را حفظ می‌کند.
 - **فعال و غیرفعال کردن یک Backup Set** از ویرایشگر آن و همچنین از منوی آن، و هشداری هنگام ذخیره وقتی مجموعه‌ای به همان شکل ذخیره‌شده اجرا نخواهد شد (غیرفعال، بدون زمان‌بندی روشن، مشکل اسنپ‌شات، دیسک گم‌شده).
-- **بسته‌های لینوکس** (`.deb`، `.rpm` و Arch)، با نام بسته و سرویس `proxmoxbackupclient`، همراه با سرویس پس‌زمینه.
+- **یک ابزار خط فرمان، `salvanza-cli`**، با زیرفرمان‌های `backup-folder`، `backup-disk` و `attach-nbd` به‌جای سه ابزار جداگانه؛ نام‌های پیشین آن‌ها همچنان کار می‌کنند.
+- **بسته‌های لینوکس** (`.deb`، `.rpm` و Arch)، با بستهٔ `salvanza` و سرویس `salvanza.service`، همراه با سرویس پس‌زمینه.
 - **یک ISO بازیابی bare-metal هدایت‌شده**، که درون یک ماشین مجازی خالی نیز بازیابی می‌کند (P2V). دستگاهی را که به‌صورت ماشین مجازی Proxmox VE پشتیبان‌گیری شده است نیز می‌توان مستقیماً از PBS در Proxmox VE بازیابی کرد، مانند هر VM که خود Proxmox VE از آن پشتیبان گرفته است.
-- **بیلدهای برنددار**: همان فایل‌های اجرایی به‌صورت نصب‌کننده‌های Proxmox Backup Client، Nimbus Backup، Acme Backup و Etitech Backup عرضه می‌شوند.
+- **بیلدهای برنددار**: همان فایل‌های اجرایی به‌صورت نصب‌کننده‌های Salvanza، Nimbus Backup و Etitech Backup عرضه می‌شوند، هر کدام با نام‌های برنامه و پوشه‌های تنظیمات خودش.
 - **18 زبان رابط کاربری.**
+
+## 🔁 ارتقا از Proxmox Backup Client
+
+Salvanza نام تازهٔ Proxmox Backup Client است و ارتقا خودکار انجام می‌شود. نصب Salvanza (MSI یا بستهٔ لینوکس) نصب پیشین Proxmox Backup Client، یا برندی دیگر، را همراه با سرویس پس‌زمینه‌اش حذف می‌کند. نخستین باری که Salvanza اجرا می‌شود، تنظیمات پیشین (سرورهای PBS، کلیدها، **Backup Sets** (مجموعه‌های پشتیبان) و تاریخچه) را از `C:\ProgramData\ProxmoxBackupClient`، `%APPDATA%\ProxmoxBackupClient`، `~/.proxmox-backup-guardian` یا `/var/lib/proxmoxbackupclient` منتقل می‌کند و یک نسخهٔ تاریخ‌دار از فایل‌های تنظیمات را در پوشهٔ تازه، زیر `pre-salvanza-<date>`، نگه می‌دارد. به پشتیبان‌های شما روی PBS دست زده نمی‌شود.
+
+| پیش‌تر | اکنون |
+|---|---|
+| `ProxmoxBackupClient.exe`، `ProxmoxBackupClientSVC.exe` | `salvanza-gui.exe`، `salvanza-svc.exe` (سرویس ویندوز `salvanza-svc`) |
+| `proxmoxbackup-directory`، `proxmoxbackup-machine`، `proxmoxbackup-nbd` | `salvanza-cli backup-folder`، `salvanza-cli backup-disk`، `salvanza-cli attach-nbd` (نام‌های پیشین همچنان کار می‌کنند) |
+| `C:\Program Files\ProxmoxBackupClient`، `C:\ProgramData\ProxmoxBackupClient` | `C:\Program Files\Salvanza`، `C:\ProgramData\Salvanza` |
+| بسته و سرویس لینوکس `proxmoxbackupclient` | بستهٔ `salvanza`، سرویس `salvanza.service`، تنظیمات در `/var/lib/salvanza`، تنظیمات شخصی شما در `~/.salvanza` |
 
 ## ⭐ چه می‌کند، با نتایج اندازه‌گیری‌شده
 
@@ -75,7 +90,7 @@
 | راهنما | موضوعات |
 |---|---|
 | **[راهنمای GUI](docs/manual/GUI.md)** | نصب، سرورهای PBS، **Backup Sets** (مجموعه‌های پشتیبان) و زمان‌بندی‌ها، پشتیبان‌گیری افزایشی، پیشرفت کار، بازیابی، **Undelete** (بازگرداندن حذف‌شده‌ها)، **Roll back** (بازگشت به وضعیت قبلی)، **Reports** (گزارش‌ها)، لاگ‌ها، **Preferences** (تنظیمات)، سرویس پس‌زمینه، عیب‌یابی |
-| **[راهنمای خط فرمان](docs/manual/CLI.md)** | `proxmoxbackup-directory`، `proxmoxbackup-machine`، `proxmoxbackup-nbd`: همهٔ فلگ‌ها، فایل‌های پیکربندی، کدهای خروج، زمان‌بندی |
+| **[راهنمای خط فرمان](docs/manual/CLI.md)** | `salvanza-cli backup-folder`، `backup-disk`، `attach-nbd`: همهٔ فلگ‌ها، فایل‌های پیکربندی، کدهای خروج، زمان‌بندی |
 | **[راهنمای بازیابی bare-metal](docs/manual/BMR.md)** | ISO بازیابی، گام به گام؛ پشتیبان‌های `vm` روی Proxmox VE؛ تبدیل فیزیکی به مجازی؛ سخت‌افزار متفاوت |
 | [سناریوهای بازیابی](docs/RESTORE_GUIDE.md) | کدام روش بازیابی را چه زمانی به کار ببرید |
 | [فهرست راهنماها](docs/manual/README.md) | نمای کلی راهنماها |
@@ -86,20 +101,20 @@
 
 ## 📦 دانلود
 
-👉 **[دانلود آخرین نسخه](https://github.com/tizbac/proxmoxbackupclient_go/releases)**
+👉 **[دانلود آخرین نسخه](https://github.com/salvanza/salvanza_client/releases)**
 
 | آنچه دارید | از این استفاده کنید |
 |---|---|
-| ویندوز | **نصب‌کنندهٔ MSI**، `ProxmoxBackupClient-<version>.msi`. برنامه و سرویس پس‌زمینه را در Program Files نصب می‌کند، سرویس را راه می‌اندازد و یک مورد به منوی Start اضافه می‌کند. نصب‌کننده‌های برنددار (`NimbusBackup-<version>.msi`، `AcmeBackup-<version>.msi`، `EtitechBackup-<version>.msi`) همان بیلد با برندی دیگرند |
-| Debian، Ubuntu، Mint | `sudo apt install ./proxmoxbackupclient_<version>_amd64.deb` |
-| Fedora | `sudo dnf install ./proxmoxbackupclient-<version>-*.rpm` |
+| ویندوز | **نصب‌کنندهٔ MSI**، `Salvanza-<version>-x64.msi`. برنامه، سرویس پس‌زمینه و `salvanza-cli` را در `C:\Program Files\Salvanza` نصب می‌کند، آن پوشه را به PATH می‌افزاید، سرویس را راه می‌اندازد و یک مورد به منوی Start اضافه می‌کند. نصب‌کننده‌های برنددار (`NimbusBackup-<version>-x64.msi`، `EtitechBackup-<version>-x64.msi`) همان بیلد با برندی دیگرند |
+| Debian، Ubuntu، Mint | `sudo apt install ./salvanza_<version>_amd64.deb` |
+| Fedora | `sudo dnf install ./salvanza-<version>-*.rpm` |
 | Arch | بسته‌ای که از [packaging/arch/PKGBUILD](packaging/arch/PKGBUILD) ساخته می‌شود (`make pkgarch`) |
-| فقط خط فرمان | آرشیوهای ویژهٔ هر پلتفرم (`proxmoxbackup-cli-*` و `proxmoxbackupclient_go_*`) |
+| فقط خط فرمان | آرشیوهای `salvanza-cli` ویژهٔ هر پلتفرم |
 | دستگاهی برای بازیابی | ISO بازیابی bare-metal ([راهنمای بازیابی bare-metal](docs/manual/BMR.md#3-get-the-iso-and-make-the-boot-media))، یا خودتان آن را بسازید ([پایین‌تر](#-bare-metal-restore-iso)) |
 
 وقتی یک نسخه بستهٔ لینوکس ندارد، آن را با `make deb`، `make pkgfedora` یا `make pkgarch` بسازید ([BUILD.md](BUILD.md)، [packaging/debian/README.md](packaging/debian/README.md)).
 
-بسته‌های لینوکس یک مورد منو نصب می‌کنند، **Proxmox Backup Client**، که برنامه را با حساب خود شما اجرا می‌کند. نصب تازه سرویس پس‌زمینه (`proxmoxbackupclient.service`) را روشن می‌کند؛ ارتقا انتخاب قبلی شما را نگه می‌دارد. بسته‌ها به polkit (pkexec) نیاز دارند که برنامه برای اتصال به سرویس از آن استفاده می‌کند.
+بسته‌های لینوکس یک مورد منو نصب می‌کنند، **Salvanza for Proxmox Backup Server**، که برنامه را با حساب خود شما اجرا می‌کند. نصب تازه سرویس پس‌زمینه (`salvanza.service`) را روشن می‌کند؛ ارتقا انتخاب قبلی شما را نگه می‌دارد. بستهٔ `salvanza` جایگزین بسته‌های پیشین `proxmoxbackupclient` و `pbsgo` می‌شود. بسته‌ها به polkit (pkexec) نیاز دارند که برنامه برای اتصال به سرویس از آن استفاده می‌کند.
 
 > ⚠️ **ویندوز «virus detected» (برای نمونه `Trojan:Win32/Sabsik.FL.A!ml`) یا هشدار SmartScreen نشان می‌دهد؟**
 > این یک **مثبت کاذب شناخته‌شده** برای برنامه‌های Go/Wails است: ویروس *نیست*. پسوند `!ml` نشان‌دهندهٔ تشخیص یک مدل یادگیری ماشین است که فایل‌های اجرایی *بدون امضا و کم‌رایج* را علامت‌گذاری می‌کند. فایل دانلودشده را مطابق آنچه در ادامه آمده بررسی کنید.
@@ -109,8 +124,8 @@
 هر نسخه چک‌سام‌های SHA-256 (`SHA256SUMS.txt`، که در صفحهٔ انتشار نیز درج شده است) و یک **گواهی منشأ امضاشده** (signed provenance attestation) ارائه می‌کند: اثبات رمزنگارانه‌ای که نشان می‌دهد فایل را CI همین مخزن، از یک commit مشخص، تولید کرده است.
 
 ```powershell
-Get-FileHash .\ProxmoxBackupClient-<version>.msi -Algorithm SHA256   # compare with SHA256SUMS.txt
-gh attestation verify .\ProxmoxBackupClient-<version>.msi --repo tizbac/proxmoxbackupclient_go
+Get-FileHash .\Salvanza-<version>-x64.msi -Algorithm SHA256   # compare with SHA256SUMS.txt
+gh attestation verify .\Salvanza-<version>-x64.msi --repo salvanza/salvanza_client
 ```
 
 در لینوکس: `sha256sum -c SHA256SUMS.txt --ignore-missing`.
@@ -122,7 +137,7 @@ gh attestation verify .\ProxmoxBackupClient-<version>.msi --repo tizbac/proxmoxb
 ## 🚀 شروع سریع (GUI)
 
 1. آن را نصب کنید: MSI در ویندوز، بستهٔ `.deb`، `.rpm` یا Arch در لینوکس ([دانلود](#-download)).
-2. **Proxmox Backup Client** را اجرا کنید. نصب‌کننده‌ها سرویس پس‌زمینه را راه‌اندازی می‌کنند، پس برنامه یک بار برای اتصال به آن دسترسی مدیر می‌خواهد (UAC در ویندوز، گذرواژهٔ شما از طریق pkexec در لینوکس). اگر نمی‌توانید این دسترسی را بدهید، **Use my own settings** (استفاده از تنظیمات خودم) را انتخاب کنید.
+2. **Salvanza for Proxmox Backup Server** را اجرا کنید. نصب‌کننده‌ها سرویس پس‌زمینه را راه‌اندازی می‌کنند، پس برنامه یک بار برای اتصال به آن دسترسی مدیر می‌خواهد (UAC در ویندوز، گذرواژهٔ شما از طریق pkexec در لینوکس). اگر نمی‌توانید این دسترسی را بدهید، **Use my own settings** (استفاده از تنظیمات خودم) را انتخاب کنید.
 3. سرور PBS خود را در **Preferences > Account Information** (تنظیمات > اطلاعات حساب) اضافه کنید و با **Test** (آزمایش) آن را بیازمایید.
 4. یک **Backup Set** (مجموعهٔ پشتیبان) (یا یک پشتیبان‌گیری یک‌باره) بسازید و پوشه‌ها یا دیسک‌هایی را که باید از آن‌ها پشتیبان گرفته شود انتخاب کنید.
 5. آن را اجرا کنید. با سرویس پس‌زمینه، زمان‌بندی‌های آن اجرا می‌شوند، چه کسی وارد سیستم شده باشد چه نه.
@@ -135,20 +150,20 @@ MSI از سوئیچ استاندارد نصب بی‌صدای Windows Installer 
 
 ```powershell
 # Silent install with the defaults (service: Automatic + started)
-msiexec /i ProxmoxBackupClient-<version>.msi /quiet
+msiexec /i Salvanza-<version>-x64.msi /quiet
 
 # Silent install that installs the service but does NOT enable/autostart it
 # (created as Manual and left stopped)
-msiexec /i ProxmoxBackupClient-<version>.msi /quiet SERVICEAUTOSTART=0
+msiexec /i Salvanza-<version>-x64.msi /quiet SERVICEAUTOSTART=0
 
 # Silent install that also applies a settings file exported from another computer
-msiexec /i ProxmoxBackupClient-<version>.msi /quiet CONFIGFILE="C:\Deploy\settings.json"
+msiexec /i Salvanza-<version>-x64.msi /quiet CONFIGFILE="C:\Deploy\settings.json"
 
 # Custom directory + verbose install log
-msiexec /i ProxmoxBackupClient-<version>.msi /quiet INSTALLFOLDER="D:\Apps\ProxmoxBackupClient" /L*v "C:\Temp\install.log"
+msiexec /i Salvanza-<version>-x64.msi /quiet INSTALLFOLDER="D:\Apps\Salvanza" /L*v "C:\Temp\install.log"
 
-# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\<name>)
-msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
+# Silent uninstall (KEEP_CONFIG=0 also purges %ProgramData%\Salvanza)
+msiexec /x Salvanza-<version>-x64.msi /quiet KEEP_CONFIG=0
 ```
 
 | ویژگی | پیش‌فرض | معنا |
@@ -157,8 +172,8 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 | `AUTOSTART` | `1` | `0` = برنامه هنگام ورود هر کاربر در سینی سیستم (tray) اجرا نشود |
 | `DESKTOPSHORTCUTS` | `1` | `0` = بدون میان‌بر روی دسکتاپ (مورد منوی Start همیشه اضافه می‌شود) |
 | `CONFIGFILE` | | مسیر کامل فایلی که با **Preferences > Export Settings** (تنظیمات > برون‌بری تنظیمات) ذخیره شده است: سرورهای PBS و **Backup Sets** (مجموعه‌های پشتیبان) آن پیش از شروع سرویس ادغام می‌شوند. شناسه‌های پشتیبانی (Backup ID) که از نام رایانهٔ صادرکننده ساخته شده‌اند، از نام خود هر رایانه ساخته می‌شوند. [installer/DEPLOYMENT.md](installer/DEPLOYMENT.md) را ببینید |
-| `KEEP_CONFIG` | `1` | فقط هنگام حذف نصب: `0` = پوشهٔ وضعیت `%ProgramData%\<name>` نیز حذف شود |
-| `INSTALLFOLDER` | `Program Files` | پوشهٔ نصب (در رابط کاربری نیز قابل ویرایش است) |
+| `KEEP_CONFIG` | `1` | فقط هنگام حذف نصب: `0` = پوشهٔ وضعیت `%ProgramData%\Salvanza` نیز حذف شود (در یک بیلد برنددار، پوشهٔ خود آن، مانند `%ProgramData%\NimbusBackup`) |
+| `INSTALLFOLDER` | `C:\Program Files\Salvanza` | پوشهٔ نصب (در رابط کاربری نیز قابل ویرایش است) |
 
 با دسترسی بالا (مدیر) اجرا کنید؛ کد خروج `0` = موفق، `3010` = موفق + نیاز به راه‌اندازی دوباره. MSIهای برنددار دقیقاً همین سوئیچ‌ها را می‌پذیرند.
 
@@ -175,13 +190,14 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 - چند سرور PBS، با سنجاق کردن اثر انگشت گواهی (اعتماد در نخستین استفاده)، ورود با توکن API یا نام کاربری/گذرواژه
 - پنج تم رنگی و یک رنگ سفارشی، که هر کاربر خودش انتخاب می‌کند (در برنامهٔ بدون برند؛ برنامهٔ برنددار رنگ‌های برند خود را حفظ می‌کند)
 
-### ابزارهای CLI
-- `proxmoxbackup-directory`: پشتیبان‌گیری از پوشه‌ها (pxar) با حذف داده‌های تکراری و `-change-detection-mode legacy|data|metadata`
-- `proxmoxbackup-machine`: پشتیبان‌گیری زنده از کل دیسک دستگاه‌های ویندوز (VSS) و لینوکس (elastio-snap/dattobd) (fidx، افزایشی، رد شدن از فضای خالی مگر با `-readfreespace`، `-type vm` برای پشتیبان Proxmox VE، `-skippartition <disk>:<number>` برای کنار گذاشتن یک پارتیشن)
-- `proxmoxbackup-nbd`: سرور NBD برای بازیابی پشتیبان‌های دیسک (لینوکس)
-- `ProxmoxBackupClientSVC` (ویندوز) و `proxmoxbackupclient` (بسته‌های لینوکس): `-list-sets`، `-undelete` و `-rollback` برای **Backup Sets** (مجموعه‌های پشتیبان) که در GUI تعریف شده‌اند
+### خط فرمان: `salvanza-cli`
+- `salvanza-cli backup-folder`: پشتیبان‌گیری از پوشه‌ها (pxar) با حذف داده‌های تکراری و `-change-detection-mode legacy|data|metadata`
+- `salvanza-cli backup-disk`: پشتیبان‌گیری زنده از کل دیسک دستگاه‌های ویندوز (VSS) و لینوکس (elastio-snap/dattobd) (fidx، افزایشی، رد شدن از فضای خالی مگر با `-readfreespace`، `-type vm` برای پشتیبان Proxmox VE، `-skippartition <disk>:<number>` برای کنار گذاشتن یک پارتیشن)
+- `salvanza-cli attach-nbd`: سرور NBD برای بازیابی پشتیبان‌های دیسک (لینوکس)
+- `salvanza-cli version` نسخه را چاپ می‌کند، `salvanza-cli help` زیرفرمان‌ها را فهرست می‌کند و `salvanza-cli <command> -help` گزینه‌های یک زیرفرمان را فهرست می‌کند
+- برنامهٔ سرویس، `salvanza-svc` (`salvanza-svc.exe` در ویندوز؛ در لینوکس خود برنامه، `salvanza-gui`، نیز): `-list-sets`، `-undelete` و `-rollback` برای **Backup Sets** (مجموعه‌های پشتیبان) که در GUI تعریف شده‌اند
 
-سه ابزار نخست برای اسنپ‌شات‌های رمزنگاری‌شده `-keyfile` و `-keyfile-passphrase` را می‌پذیرند. مرجع کامل: [راهنمای خط فرمان](docs/manual/CLI.md).
+این سه زیرفرمان برای اسنپ‌شات‌های رمزنگاری‌شده `-keyfile` و `-keyfile-passphrase` را می‌پذیرند. نام‌های پیشین ابزارها، `proxmoxbackup-directory`، `proxmoxbackup-machine` و `proxmoxbackup-nbd` (و `pbsdirectorybackup`، `pbsmachinebackup`، `pbsnbd`)، همچنان همان زیرفرمان‌ها را با همان فلگ‌ها اجرا می‌کنند، بنابراین اسکریپت‌های موجود همچنان کار می‌کنند. مرجع کامل: [راهنمای خط فرمان](docs/manual/CLI.md).
 
 ### 📸 تصاویر صفحه
 
@@ -275,9 +291,9 @@ msiexec /x ProxmoxBackupClient-<version>.msi /quiet KEEP_CONFIG=0
 
 **CLI:**
 ```shell
-proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -keyfile "C:\keys\pbs-key.json" -keyfile-passphrase "..."
+salvanza-cli backup-folder -baseurl ... -backupdir "C:\data" -datastore store -keyfile "C:\keys\pbs-key.json" -keyfile-passphrase "..."
 ```
-`-keyfile-passphrase` (یا `PBS_ENCRYPTION_PASSWORD`) فقط برای کلید محافظت‌شده لازم است و اگر داده نشود، پرسیده می‌شود. `proxmoxbackup-machine` و `proxmoxbackup-nbd` همین فلگ‌ها را می‌پذیرند. `proxmoxbackup-nbd` پیش از دست زدن به دستگاه NBD، کلید را با اسنپ‌شات تطبیق می‌دهد، بنابراین کلید نادرست بی‌درنگ شکست می‌خورد.
+`-keyfile-passphrase` (یا `PBS_ENCRYPTION_PASSWORD`) فقط برای کلید محافظت‌شده لازم است و اگر داده نشود، پرسیده می‌شود. `salvanza-cli backup-disk` و `salvanza-cli attach-nbd` همین فلگ‌ها را می‌پذیرند. `attach-nbd` پیش از دست زدن به دستگاه NBD، کلید را با اسنپ‌شات تطبیق می‌دهد، بنابراین کلید نادرست بی‌درنگ شکست می‌خورد.
 
 **بازیابی bare-metal:** ISO بازیابی کلید را می‌پرسد (هیچ، یک فایل کلید روی حافظهٔ USB، یا یک مسیر تایپ‌شده) و برای کلید محافظت‌شده، عبارت عبور آن را. کلید هرگز روی ISO نوشته نمی‌شود.
 
@@ -285,7 +301,7 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 ## پشتیبان‌گیری سریع‌تر از پوشه‌ها: تشخیص تغییرات
 
-در حالت پیش‌فرض Legacy، هر پشتیبان‌گیری از پوشه همهٔ فایل‌ها را می‌خواند، بنابراین هر اجرا به اندازهٔ خواندن کل پوشه طول می‌کشد، حتی اگر چیزی تغییر نکرده باشد. **Backup Sets** (مجموعه‌های پشتیبان) و `proxmoxbackup-directory` می‌توانند به‌جای آن از حالت‌های تشخیص تغییرات `proxmox-backup-client` رسمی استفاده کنند:
+در حالت پیش‌فرض Legacy، هر پشتیبان‌گیری از پوشه همهٔ فایل‌ها را می‌خواند، بنابراین هر اجرا به اندازهٔ خواندن کل پوشه طول می‌کشد، حتی اگر چیزی تغییر نکرده باشد. **Backup Sets** (مجموعه‌های پشتیبان) و `salvanza-cli backup-folder` می‌توانند به‌جای آن از حالت‌های تشخیص تغییرات `proxmox-backup-client` رسمی استفاده کنند:
 
 | حالت | چه چیزی را می‌خواند | چگونه ذخیره می‌شود |
 |---|---|---|
@@ -325,11 +341,11 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 ## پشتیبان‌گیری زنده از کل دستگاه
 
-`proxmoxbackup-machine` (و پشتیبان‌گیری‌های دستگاه در GUI) از یک سیستم کامل Windows 10/11 یا Windows Server، یا یک دستگاه لینوکسی، بدون هیچ توقفی پشتیبان می‌گیرند.
+`salvanza-cli backup-disk` (و پشتیبان‌گیری‌های دستگاه در GUI) از یک سیستم کامل Windows 10/11 یا Windows Server، یا یک دستگاه لینوکسی، بدون هیچ توقفی پشتیبان می‌گیرند.
 
 نحو فرمان عمدتاً همانند پشتیبان‌گیری از پوشه است، با این تفاوت که `-backupdir` با `-backupdev` جایگزین می‌شود (برای چند دیسک آن را تکرار کنید). برای نمونه:
 
-`proxmoxbackup-machine.exe -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
+`salvanza-cli backup-disk -authid yourapikey -backupdev \\.\PhysicalDrive0 -baseurl https://yourpbs:8007 -certfingerprint xx:xx:xx... -datastore zfs -secret L4m3r -backup-id testfull1`
 
 فرمان بالا Disk 0 را بررسی می‌کند، همهٔ پارتیشن‌های mount‌شده را شناسایی می‌کند، از آن‌ها اسنپ‌شات VSS می‌گیرد و سپس یک ایمیج پشتیبان قابل بوت از کل دیسک به‌صورت fidx می‌سازد. فضای خالی و فایل‌های صفحه‌بندی و hibernation بدون خوانده شدن به‌صورت صفر در ایمیج قرار می‌گیرند (در لینوکس، فضای خالی ext2/3/4 و XFS نیز)؛ `-readfreespace` به‌جای آن همه چیز را می‌خواند، برای یک کپی جرم‌شناسی (forensic). سکتوری که خوانده نشود به‌صورت صفر در ایمیج قرار می‌گیرد و اجرا محل آن را اعلام می‌کند. برای ذخیرهٔ پشتیبان به‌صورت پشتیبان VM در Proxmox VE، `-type vm` را (با یک `-backup-id` عددی) اضافه کنید ([P2V](#-physical-machines-into-virtual-machines-p2v)).
 
@@ -345,7 +361,7 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 1. **ماژول هسته باید نصب و بارگذاری شده باشد.** آن را از طریق DKMS نصب کنید تا پس از هر به‌روزرسانی هسته دوباره ساخته شود، و ترتیبی دهید که در هر بوت بارگذاری شود. بخش [اسنپ‌شات‌های لینوکس: نصب elastio-snap یا dattobd](docs/manual/GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) در راهنمای GUI مراحل آزموده‌شده برای Debian، Ubuntu، Mint و Fedora، به‌همراه Secure Boot و بررسی‌ها را دارد. در نوامبر 2026 هیچ‌یک از دو ماژول روی هستهٔ 7 ساخته نمی‌شود (Fedora 44 پس از به‌روزرسانی‌هایش).
 
-2. **پشتیبان‌گیری باید با root اجرا شود.** رابط کنترلی ماژول فقط برای root است و اسنپ‌شات برای کاربر عادی رد می‌شود. سرویس پس‌زمینه با root اجرا می‌شود؛ بدون آن، در برنامه از **Restart as administrator** (راه‌اندازی دوباره به‌عنوان مدیر) استفاده کنید، یا `proxmoxbackup-machine` را با `sudo` اجرا کنید. پشتیبان‌گیری سادهٔ پوشه به root نیاز ندارد.
+2. **پشتیبان‌گیری باید با root اجرا شود.** رابط کنترلی ماژول فقط برای root است و اسنپ‌شات برای کاربر عادی رد می‌شود. سرویس پس‌زمینه با root اجرا می‌شود؛ بدون آن، در برنامه از **Restart as administrator** (راه‌اندازی دوباره به‌عنوان مدیر) استفاده کنید، یا `salvanza-cli backup-disk` را با `sudo` اجرا کنید. پشتیبان‌گیری سادهٔ پوشه به root نیاز ندارد.
 
 در GUI، یک **Backup Set** (مجموعهٔ پشتیبان) دستگاه لینوکسی می‌تواند تیک **Use snapshots** (استفاده از اسنپ‌شات‌ها) را بردارد و دیسک‌هایش را زنده بخواند، اما فقط وقتی کادر دوم تیک خورده باشد («Run without a snapshot: I accept the backup may be inconsistent»، یعنی اجرا بدون اسنپ‌شات: می‌پذیرم که پشتیبان ممکن است ناسازگار باشد). بدون آن، هر اجرا متوقف می‌شود و دلیلش را می‌گوید. پارتیشن‌هایی که mount نشده‌اند مستقیماً خوانده می‌شوند.
 
@@ -353,17 +369,17 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 
 صفحهٔ **Restore** (بازیابی) در GUI یک پشتیبان دستگاه را مانند پشتیبان پوشه باز می‌کند: هر حجم درون ایمیج (NTFS، FAT، exFAT، ext2/3/4 یا XFS) پوشه‌ای است که می‌توانید آن را مرور کنید و از آن بازیابی کنید. هیچ چیز mount نمی‌شود.
 
-در لینوکس می‌توانید یک پشتیبان دیسک را با ابزار nbd به‌صورت دستگاه بلوکی نیز متصل کنید. نخست `modprobe nbd max_part=0` را اجرا کنید: با `max_part != 0` ممکن است هسته هنگام کاوش پارتیشن‌ها برای همیشه در حلقه بماند.
+در لینوکس می‌توانید یک پشتیبان دیسک را با `salvanza-cli attach-nbd` به‌صورت دستگاه بلوکی نیز متصل کنید. نخست `modprobe nbd max_part=0` را اجرا کنید: با `max_part != 0` ممکن است هسته هنگام کاوش پارتیشن‌ها برای همیشه در حلقه بماند.
 
-ابزار NBD هر پشتیبان دیسک ثابت را، چه پشتیبان VM باشد چه host، متصل می‌کند (پس برای پشتیبان‌های Proxmox VE نیز کار می‌کند). برای نمونه:
+`attach-nbd` هر پشتیبان دیسک ثابت را، چه پشتیبان VM باشد چه host، متصل می‌کند (پس برای پشتیبان‌های Proxmox VE نیز کار می‌کند). برای نمونه:
 
-`./proxmoxbackup-nbd -authid 'apikey' -baseurl https://yourpbs:8007 -secret 'yoursecret' -certfingerprint 'aa:...:xx' -datastore test -namespace test1 -path "vm/107/2025-08-02T23:13:01Z/drive-virtio0.img.fidx"`
+`sudo salvanza-cli attach-nbd -authid 'apikey' -baseurl https://yourpbs:8007 -secret 'yoursecret' -certfingerprint 'aa:...:xx' -datastore test -namespace test1 -path "vm/107/2025-08-02T23:13:01Z/drive-virtio0.img.fidx"`
 
 اگر `-path` را حذف کنید، یک رابط کاربری ترمینالی به شما امکان می‌دهد فایل fidx را انتخاب کنید؛ `-list` به‌جای آن همهٔ ایمیج‌ها را چاپ می‌کند.
 
 > این ابزار را روی دستگاهی که هر چیز مهمی اجرا می‌کند به کار نبرید: یک سامانهٔ فایل خراب می‌تواند سیستم‌عامل را از کار بیندازد، و به همین دلیل Proxmox VE برای این کار از یک نمونهٔ QEMU استفاده می‌کند.
 
-پیش از متوقف کردن `proxmoxbackup-nbd`، همه چیز را روی دیسک nbd از حالت mount خارج کنید، وگرنه احتمالاً پارتیشن مشغول باقی می‌ماند. اگر خطای `Device or resource busy` گرفتید، با `nbd-client -d /dev/nbd0` قطع اتصال را اجباری کنید، یا دستگاه را دوباره راه‌اندازی کنید.
+پیش از متوقف کردن `salvanza-cli attach-nbd`، همه چیز را روی دیسک nbd از حالت mount خارج کنید، وگرنه احتمالاً پارتیشن مشغول باقی می‌ماند. اگر خطای `Device or resource busy` گرفتید، با `nbd-client -d /dev/nbd0` قطع اتصال را اجباری کنید، یا دستگاه را دوباره راه‌اندازی کنید.
 
 ### بازیابی روی یک دستگاه فیزیکی یا یک VM
 
@@ -374,11 +390,11 @@ proxmoxbackup-directory.exe -baseurl ... -backupdir "C:\data" -datastore store -
 مرجع کامل، با نمونه‌هایی برای ویندوز و لینوکس، کدهای خروج و زمان‌بندی، در **[راهنمای خط فرمان](docs/manual/CLI.md)** آمده است. یک فرمان معمول:
 
 ```shell
-proxmoxbackup-directory.exe -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -backupdir "C:\path\to\backup" -datastore "datastorename"
+salvanza-cli backup-folder -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -backupdir "C:\path\to\backup" -datastore "datastorename"
 ```
 
 ```
-proxmoxbackup-directory
+salvanza-cli backup-folder
   -baseurl string            PBS URL, example: https://192.168.1.10:8007
   -certfingerprint string    Certificate fingerprint (asked for interactively when omitted)
   -authid string             API token ID (user@realm!token)
@@ -411,7 +427,7 @@ proxmoxbackup-directory
 برای پشتیبان‌گیری از بیش از یک پوشه با یک فرمان، `-backupdir` را تکرار کنید:
 
 ```shell
-proxmoxbackup-directory.exe -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -datastore "datastorename" -backupdir "C:\Data" -backupdir "D:\Photos"
+salvanza-cli backup-folder -baseurl "https://yourpbshost:8007" -certfingerprint pbsfingerprint -authid "user@realm!apiid" -secret "apisecret" -datastore "datastorename" -backupdir "C:\Data" -backupdir "D:\Photos"
 ```
 
 از هر پوشه به‌صورت یک گروه پشتیبان جداگانه، با شناسهٔ پشتیبان `<backup-id>_<path>`، پشتیبان گرفته می‌شود (مقدار پیش‌فرض `-backup-id` نام میزبان است). بنابراین نگهداری (retention)، هرس (pruning) و بازیابی با هر پوشه به‌عنوان یک سری مستقل رفتار می‌کنند. پوشه‌ای که شکست بخورد مانع پوشه‌های دیگر نمی‌شود و کد خروج این شکست را گزارش می‌کند. `-pxarout` را نمی‌توان با چند پوشه ترکیب کرد، و دو پوشه‌ای که به شناسهٔ پشتیبان یکسانی برسند، پیش از بارگذاری هر چیزی رد می‌شوند.
@@ -449,7 +465,7 @@ proxmoxbackup-directory.exe -baseurl "https://yourpbshost:8007" -certfingerprint
 این حالت به‌جای آرشیو pxar از یک جریان داده پشتیبان می‌گیرد. برای نمونه:
 
 ```
-mysqldump yourdatabase | ./proxmoxbackup-directory -backupstream yourdatabase.sql [other options]
+mysqldump yourdatabase | salvanza-cli backup-folder -backupstream yourdatabase.sql [other options]
 ```
 
 این روش برای حذف داده‌های تکراری در خود جریان، برای نمونه یک آرشیو tar یا یک SQL dump، از قطعه‌بندی buzhash استفاده می‌کند.
@@ -458,7 +474,7 @@ mysqldump yourdatabase | ./proxmoxbackup-directory -backupstream yourdatabase.sq
 
 فعال بودن ضدبدافزار Windows Defender می‌تواند سرعت پشتیبان‌گیری را تا حدود 25% سرعت قابل دستیابی پایین بیاورد.
 
-در ویندوز، ابزارهای خط فرمان یک قفل فرایند می‌گیرند: پشتیبان‌گیری دومی که هنگام اجرای اولی شروع شود، "Another backup job is running" را چاپ می‌کند و با کد 2 خارج می‌شود. در لینوکس چنین قفلی وجود ندارد، پس دو اجرای خط فرمان را برای یک زمان برنامه‌ریزی نکنید. (GUI و سرویس پس‌زمینه چند پشتیبان‌گیری را به‌طور ایمن هم‌زمان اجرا می‌کنند؛ [چند پشتیبان‌گیری هم‌زمان](docs/manual/GUI.md#67-several-backups-at-once) را ببینید.)
+در ویندوز، `salvanza-cli backup-folder` و `backup-disk` یک قفل فرایند می‌گیرند: پشتیبان‌گیری دومی که هنگام اجرای اولی شروع شود، "Another backup job is running" را چاپ می‌کند و با کد 2 خارج می‌شود. در لینوکس چنین قفلی وجود ندارد، پس دو اجرای خط فرمان را برای یک زمان برنامه‌ریزی نکنید. (GUI و سرویس پس‌زمینه چند پشتیبان‌گیری را به‌طور ایمن هم‌زمان اجرا می‌کنند؛ [چند پشتیبان‌گیری هم‌زمان](docs/manual/GUI.md#67-several-backups-at-once) را ببینید.)
 
 ## 📋 پیش‌نیازها
 
@@ -473,16 +489,19 @@ mysqldump yourdatabase | ./proxmoxbackup-directory -backupstream yourdatabase.sq
 
 ```bash
 cd gui
-wails build                                                       # the app, in gui/build/bin
-go build -tags service -o build/bin/ProxmoxBackupClientSVC.exe    # the background service
+wails build                                                       # the app, gui/build/bin/salvanza-gui.exe
+go build -tags service -o build/bin/salvanza-svc.exe              # the background service
+cd ../cli
+GOWORK=off go build -o ../gui/build/bin/salvanza-cli.exe .        # the command line
 ```
 
 ```bash
+make cli          # salvanza-cli, in dist/
 make deb          # .deb
 make pkgfedora    # .rpm (in Docker)
 make pkgarch      # Arch package (on Arch)
 make msi          # Windows MSIs on Linux (Docker + Wine + WiX), one per brand
-make clonezilla   # the bare-metal restore ISO
+make clonezilla   # the bare-metal restore ISO, dist/Salvanza-BMR-<version>.iso
 ```
 
 فرانت‌اند ساخته‌شده (`gui/frontend/dist`) در مخزن commit شده است، بنابراین Node.js فقط برای تغییر فرانت‌اند لازم است (`npm install` و `npm run build` در `gui/frontend`، یا `wails dev` برای بارگذاری دوبارهٔ زنده). آزمون‌ها: `make test`.
@@ -502,7 +521,7 @@ make clonezilla   # the bare-metal restore ISO
 
 ### 💿 ISO بازیابی bare-metal
 
-ISO بازیابی یک ISO استاندارد Clonezilla Live است که با فایل‌های اجرایی `pbsnbd` / `machinebackup` به‌اضافهٔ دو مورد منو وصله شده است. از CD، از حافظهٔ USB (نوشته‌شده با `dd`، یا از یک حافظهٔ Ventoy) و روی دستگاه‌های UEFI یا BIOS بوت می‌شود:
+ISO بازیابی، Salvanza-BMR، یک ISO استاندارد Clonezilla Live است که با فایل اجرایی `pbsnbd` (کد `salvanza-cli attach-nbd`، که جداگانه از `nbd/cmd/pbsnbd` ساخته می‌شود) به‌اضافهٔ دو مورد منو وصله شده است. از CD، از حافظهٔ USB (نوشته‌شده با `dd`، یا از یک حافظهٔ Ventoy) و روی دستگاه‌های UEFI یا BIOS بوت می‌شود:
 
 - **`ocs-pbs-bare-metal-restore`**: نخستین مورد منوی بوت که پیش‌فرض نیز هست، **PBS Bare Metal Restore**. از پرسش‌های زبان و صفحه‌کلید Clonezilla می‌گذرد و مستقیماً از اطلاعات ورود PBS به یک بازیابی کامل می‌رسد: نخست DHCP (پرسش IP ثابت فقط اگر DHCP شکست بخورد)، کلید رمزنگاری از حافظهٔ USB اگر پشتیبان رمزنگاری شده باشد، و شناسایی دیسک مقصد که هرگز حافظه‌ای را که دستگاه از آن بوت شده پیشنهاد نمی‌کند. پشتیبان‌های ویندوز و لینوکس را به یک اندازه بازیابی می‌کند (بازیابی در سطح بلوک است)، روی سخت‌افزار خام یا درون یک VM خالی.
 - **`ocs-pbs-nbd`**: یک مورد **pbs-nbd** در منوی انتخاب حالت خود Clonezilla. مشخصات اتصال PBS و اسنپ‌شات را از شما می‌پرسد، آن را به `/dev/nbd0` متصل می‌کند و سپس کار را به ویزارد معمول بازیابی دیسک Clonezilla می‌سپارد تا خودتان آن را به‌صورت دستی پیش ببرید.
@@ -511,17 +530,17 @@ ISO بازیابی یک ISO استاندارد Clonezilla Live است که با 
 ./patch-clonezilla.sh \
   -o clonezilla-live-patched.iso \
   clonezilla-live-3.3.3-37-amd64.iso \
-  ./build/pbsnbd ./build/machinebackup \
+  ./build/pbsnbd \
   ./clonezilla-patch/ocs-pbs-nbd ./clonezilla-patch/ocs-pbs-bare-metal-restore
 ```
 
-`make clonezilla` ISO استاندارد را دانلود می‌کند و همین کار را انجام می‌دهد. جزئیات کامل (چرا بازسازی کامل ISO به‌جای جایگزینی درجا، پیش‌نیازها، روند منو، راستی‌آزمایی) در **[PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md)** آمده است؛ و نحوهٔ استفاده از آن در **[راهنمای بازیابی bare-metal](docs/manual/BMR.md)**.
+`make clonezilla` ISO استاندارد را دانلود می‌کند، `pbsnbd` را می‌سازد، همین کار را انجام می‌دهد و `dist/Salvanza-BMR-<version>.iso` را می‌نویسد. جزئیات کامل (چرا بازسازی کامل ISO به‌جای جایگزینی درجا، پیش‌نیازها، روند منو، راستی‌آزمایی) در **[PATCH-CLONEZILLA.md](PATCH-CLONEZILLA.md)** آمده است؛ و نحوهٔ استفاده از آن در **[راهنمای بازیابی bare-metal](docs/manual/BMR.md)**.
 
 ### ساخت GUI ویندوز
 
 **ویندوز بومی**: برای زنجیرهٔ ابزار (Go و MinGW از Chocolatey، Wails) و فرمان‌های ساخت برنامه، سرویس و MSI، **[BUILD.md](BUILD.md)** را ببینید.
 
-**Docker (هنگام ساخت روی لینوکس).** `./build_gui_windows_docker.sh` برنامهٔ ویندوز را با نام `ProxmoxBackupClientGO.exe`، با پشتیبانی درست از WebView2، در یک کانتینر یک‌بارمصرف `golang` می‌سازد. سرویس پس‌زمینه یا MSI را نمی‌سازد.
+**Docker (هنگام ساخت روی لینوکس).** `./build_gui_windows_docker.sh` برنامهٔ ویندوز را با پشتیبانی درست از WebView2، در یک کانتینر یک‌بارمصرف `golang` می‌سازد. سرویس پس‌زمینه یا MSI را نمی‌سازد.
 
 ### تاریخچهٔ تغییرات و مستندات داخلی
 
@@ -541,7 +560,7 @@ ISO بازیابی یک ISO استاندارد Clonezilla Live است که با 
 
 ## 🖥️ انتساب GUI
 
-**Proxmox Backup Client GUI** نخستین بار توسط **[RDEM Systems](https://www.rdem-systems.com/)** با نام **[Nimbus Backup GUI](https://nimbus.rdem-systems.com)** ساخته شد: آنان برنامهٔ اصلی را طراحی کردند و ساختند، و پیرامون Nimbus Backup، نسخهٔ برنددار آن، پشتیبانی تجاری ارائه می‌کنند. سپس **[mjb-is](https://github.com/mjb-is)** آن را با الهام از روند کار و حس‌وحال دیگر سامانه‌های پشتیبان‌گیری بازنویسی و گسترش داد، و این کار دوباره در همین مخزن ادغام شده است. کل کد منبع، از جمله GUI و همهٔ ویژگی‌های آن، تحت مجوز GPLv3 متن‌باز باقی می‌ماند.
+**برنامهٔ Salvanza** (با نام پیشین Proxmox Backup Client GUI) نخستین بار توسط **[RDEM Systems](https://www.rdem-systems.com/)** با نام **[Nimbus Backup GUI](https://nimbus.rdem-systems.com)** ساخته شد: آنان برنامهٔ اصلی را طراحی کردند و ساختند، و پیرامون Nimbus Backup، نسخهٔ برنددار آن، پشتیبانی تجاری ارائه می‌کنند. سپس **[mjb-is](https://github.com/mjb-is)** آن را با الهام از روند کار و حس‌وحال دیگر سامانه‌های پشتیبان‌گیری بازنویسی و گسترش داد، و این کار دوباره در همین مخزن ادغام شده است. کل کد منبع، از جمله GUI و همهٔ ویژگی‌های آن، تحت مجوز GPLv3 متن‌باز باقی می‌ماند.
 
 ## ⚠️ هشدار
 
@@ -549,7 +568,7 @@ ISO بازیابی یک ISO استاندارد Clonezilla Live است که با 
 
 این نرم‌افزار هنوز در کیفیت آلفا است و ما هیچ مسئولیتی در قبال هیچ نوع آسیب یا از دست رفتن داده‌ها، حتی فایل‌های منبع، نمی‌پذیریم.
 
-از گزارش اشکال‌ها استقبال می‌شود: یک [issue](https://github.com/tizbac/proxmoxbackupclient_go/issues) باز کنید و بنویسید چه کردید، چه رخ داد، و لاگ را بگذارید (**Message Log** (لاگ پیام‌ها)، یا **View Full Logs** (مشاهدهٔ لاگ‌های کامل)).
+از گزارش اشکال‌ها استقبال می‌شود: یک [issue](https://github.com/salvanza/salvanza_client/issues) باز کنید و بنویسید چه کردید، چه رخ داد، و لاگ را بگذارید (**Message Log** (لاگ پیام‌ها)، یا **View Full Logs** (مشاهدهٔ لاگ‌های کامل)).
 
 ## 📄 مجوز
 
@@ -586,10 +605,10 @@ GPLv3: فایل [LICENSE](LICENSE) را ببینید.
 5. آزمایش روی سخت‌افزارها، توزیع‌های لینوکس و هسته‌های بیشتر، به‌ویژه بازیابی‌های bare-metal
 6. هر چیز جالب دیگری که به ذهنتان برسد :)
 
-## دربارهٔ مشارکت‌کنندگان Proxmox Backup Client GO
+## دربارهٔ مشارکت‌کنندگان Salvanza
 
-مشارکت‌کنندگان Proxmox Backup Client GO این پروژه را توسعه می‌دهند و نگهداری می‌کنند. این نرم‌افزار به زیرساخت NTP/NTS و [11 سرور عمومی NTS](https://github.com/jauderho/nts-servers) فهرست‌شده در مرجع جامعه متکی است.
+مشارکت‌کنندگان Salvanza (با نام پیشین مشارکت‌کنندگان Proxmox Backup Client GO) این پروژه را توسعه می‌دهند و نگهداری می‌کنند. این نرم‌افزار به زیرساخت NTP/NTS و [11 سرور عمومی NTS](https://github.com/jauderho/nts-servers) فهرست‌شده در مرجع جامعه متکی است.
 
 ---
 
-**© 2024-2026 Proxmox Backup Client GO Contributors and RDEM Systems.**
+**© 2024-2026 Salvanza contributors and RDEM Systems.**
