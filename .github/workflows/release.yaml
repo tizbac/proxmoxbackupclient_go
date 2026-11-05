@@ -30,7 +30,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: machinebackup/go.mod #We have two go.mod but either one gonna be sort of ok
+          go-version-file: cli/go.mod # salvanza-cli, the one program goreleaser builds
           check-latest: true
           cache-dependency-path: "**/go.sum"
 
@@ -58,7 +58,7 @@ jobs:
       # external SLSA generator workflow (slsa-github-generator@v1.4.0), whose
       # reusable workflow has been failing since v1.1.3 and which only attested
       # checksums.txt rather than the files users download. Verify with
-      # `gh attestation verify <file> --repo tizbac/proxmoxbackupclient_go`.
+      # `gh attestation verify <file> --repo salvanza/salvanza_client`.
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:

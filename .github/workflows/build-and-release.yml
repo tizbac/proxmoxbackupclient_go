@@ -215,7 +215,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cli-${{ runner.os }}
-          path: dist/proxmoxbackup-*
+          path: dist/salvanza-cli*
 
   # Build GUI (Windows only for now)
   build-gui:
@@ -293,7 +293,7 @@ jobs:
       # The service is a plain `go build` from gui/ and would otherwise ship
       # with no Windows version info — a strong heuristic/ML false-positive
       # signal (Codex review). Generate a .syso with proper CompanyName /
-      # ProductName / version so ProxmoxBackupClientSVC.exe looks like normal signed-
+      # ProductName / version so salvanza-svc.exe looks like normal signed-
       # vendor software. Must run AFTER the Wails GUI build (same package dir):
       # we strip any leftover .syso first so the GUI's resource can't leak into
       # the service link and cause a duplicate-resource error.
@@ -312,13 +312,13 @@ jobs:
               "ProductVersion": { "Major": $($p[0]), "Minor": $($p[1]), "Patch": $($p[2]), "Build": 0 }
             },
             "StringFileInfo": {
-              "CompanyName": "Proxmox Backup Client",
-              "FileDescription": "Proxmox Backup Client Service",
+              "CompanyName": "Salvanza",
+              "FileDescription": "Salvanza for Proxmox Backup Server Service",
               "FileVersion": "$ver",
-              "InternalName": "ProxmoxBackupClientSVC",
-              "LegalCopyright": "Copyright (c) 2024-2026 RDEM Systems",
-              "OriginalFilename": "ProxmoxBackupClientSVC.exe",
-              "ProductName": "Proxmox Backup Client",
+              "InternalName": "salvanza-svc",
+              "LegalCopyright": "Copyright (c) 2024-2026 Salvanza contributors",
+              "OriginalFilename": "salvanza-svc.exe",
+              "ProductName": "Salvanza for Proxmox Backup Server",
               "ProductVersion": "$ver"
             },
             "VarFileInfo": { "Translation": { "LangID": "0409", "CharsetID": "04B0" } }
@@ -333,7 +333,17 @@ jobs:
         env:
           GOWORK: off
         run: |
-          go build -tags service -trimpath -buildmode=pie -ldflags "-s -w -X main.appVersion=${{ steps.version.outputs.VERSION }}" -o build/bin/ProxmoxBackupClientSVC.exe
+          go build -tags service -trimpath -buildmode=pie -ldflags "-s -w -X main.appVersion=${{ steps.version.outputs.VERSION }}" -o build/bin/salvanza-svc.exe
+        shell: pwsh
+
+      # The command line, salvanza-cli.exe, ships in every MSI next to the
+      # app (installer/wix/ProductBody.wxi, CommandLine component).
+      - name: Build command line
+        working-directory: cli
+        env:
+          GOWORK: off
+        run: |
+          go build -trimpath -ldflags "-s -w -X main.version=${{ steps.version.outputs.VERSION }}" -o ../gui/build/bin/salvanza-cli.exe .
         shell: pwsh
 
       - name: Prepare dist directory
@@ -350,7 +360,8 @@ jobs:
       # One MSI per brand, version-stamped. The GUI picks its identity from the
       # executable name (gui/brand.go), so ProductBody.wxi packages the same
       # binaries under <ExeName>.exe / <ServiceExeName>.exe; staging them per
-      # brand is what makes "NimbusBackup.msi" install Nimbus Backup.
+      # brand is what makes "NimbusBackup.msi" install Nimbus Backup. The
+      # command line (salvanza-cli.exe) is the same in every brand.
       # Brand list and naming mirror installer/wix/build_msi_linux.sh and
       # scripts/build-signpath.ps1. Only the MSIs are published: the release
       # ships no stand-alone .exe.
@@ -363,19 +374,21 @@ jobs:
           # real release version, so testers can tell 1.2.0-rc.1 from 1.2.0.
           $version = "${{ steps.version.outputs.VERSION_MSI }}"
           $fileVersion = "${{ steps.version.outputs.VERSION }}"
-          $brands = @('ProxmoxBackupClient', 'NimbusBackup', 'AcmeBackup', 'EtitechBackup')
+          # MSI name = exe base: the wxs file, and <base>-gui.exe / <base>-svc.exe.
+          $brands = [ordered]@{ 'Salvanza' = 'salvanza'; 'NimbusBackup' = 'nimbusbackup'; 'EtitechBackup' = 'etitechbackup' }
           $bin = (Resolve-Path '../../gui/build/bin').Path
           $dist = (Resolve-Path '../../dist').Path
 
-          foreach ($brand in $brands) {
+          foreach ($brand in $brands.Keys) {
+            $base = $brands[$brand]
             # The default brand ships as the generic Product.wxs.
-            $wxs = if ($brand -eq 'ProxmoxBackupClient' -and -not (Test-Path "$brand.wxs")) { 'Product.wxs' } else { "$brand.wxs" }
+            $wxs = if ($brand -eq 'Salvanza') { 'Product.wxs' } else { "$brand.wxs" }
             if (-not (Test-Path $wxs)) { throw "missing WiX source for brand ${brand}: $wxs" }
-            if (-not (Test-Path "../../installer/icons/$brand.ico")) { throw "missing icon for brand ${brand}" }
+            if (-not (Test-Path "../../installer/icons/$base-gui.ico")) { throw "missing icon for brand ${brand}" }
 
             foreach ($pair in @(
-                @((Join-Path $bin 'ProxmoxBackupClient.exe'), (Join-Path $bin "$brand.exe")),
-                @((Join-Path $bin 'ProxmoxBackupClientSVC.exe'), (Join-Path $bin "$($brand)SVC.exe"))
+                @((Join-Path $bin 'salvanza-gui.exe'), (Join-Path $bin "$base-gui.exe")),
+                @((Join-Path $bin 'salvanza-svc.exe'), (Join-Path $bin "$base-svc.exe"))
             )) {
                 # The default brand's name IS the build output name; copying a
                 # file onto itself is an error even with -Force.
@@ -384,9 +397,9 @@ jobs:
 
             candle.exe "-dProductVersion=$version" $wxs -ext WixUIExtension -ext WixUtilExtension -out "$brand.wixobj"
             if ($LASTEXITCODE -ne 0) { throw "candle failed for $brand (exit $LASTEXITCODE)" }
-            light.exe "$brand.wixobj" -ext WixUIExtension -ext WixUtilExtension -sval -out (Join-Path $dist "$brand-$fileVersion.msi")
+            light.exe "$brand.wixobj" -ext WixUIExtension -ext WixUtilExtension -sval -out (Join-Path $dist "$brand-$fileVersion-x64.msi")
             if ($LASTEXITCODE -ne 0) { throw "light failed for $brand (exit $LASTEXITCODE)" }
-            Write-Host "==> $brand-$fileVersion.msi"
+            Write-Host "==> $brand-$fileVersion-x64.msi"
           }
 
           Get-ChildItem $dist -Filter *.msi | Format-Table Name, Length
@@ -394,7 +407,7 @@ jobs:
       - name: Upload GUI artifacts
         uses: actions/upload-artifact@v4
         with:
-           name: ProxmoxBackupClient-Windows
+           name: Salvanza-Windows
            path: dist/*.msi
 
   # Create release on tag
@@ -432,21 +445,21 @@ jobs:
           mkdir -p release
 
           # CLI Windows
-          cd artifacts/cli-Windows && zip ../../release/proxmoxbackup-cli-${{ steps.version.outputs.VERSION }}-windows.zip *
+          cd artifacts/cli-Windows && zip ../../release/salvanza-cli-${{ steps.version.outputs.VERSION }}-windows.zip *
           cd ../..
 
           # CLI Linux
-          cd artifacts/cli-Linux && tar -czf ../../release/proxmoxbackup-cli-${{ steps.version.outputs.VERSION }}-linux.tar.gz *
+          cd artifacts/cli-Linux && tar -czf ../../release/salvanza-cli-${{ steps.version.outputs.VERSION }}-linux.tar.gz *
           cd ../..
 
           # CLI macOS
-          cd artifacts/cli-macOS && tar -czf ../../release/proxmoxbackup-cli-${{ steps.version.outputs.VERSION }}-macos.tar.gz *
+          cd artifacts/cli-macOS && tar -czf ../../release/salvanza-cli-${{ steps.version.outputs.VERSION }}-macos.tar.gz *
           cd ../..
 
           # GUI Windows - one version-stamped MSI per brand, and nothing else:
           # the release ships no stand-alone .exe (the MSI installs it under
           # the brand name the GUI resolves at runtime).
-          cd artifacts/ProxmoxBackupClient-Windows
+          cd artifacts/Salvanza-Windows
           cp *.msi ../../release/
           cd ../..
 
@@ -458,7 +471,7 @@ jobs:
 
       # Free, OSS-friendly cryptographic provenance: attests that these exact
       # binaries were produced by THIS workflow, from THIS commit. Verifiable
-      # with `gh attestation verify <file> --repo tizbac/proxmoxbackupclient_go`.
+      # with `gh attestation verify <file> --repo salvanza/salvanza_client`.
       # A strong trust signal for a sysadmin audience while signing is pending.
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
@@ -489,7 +502,7 @@ jobs:
           emitted=0
           VER="${{ steps.version.outputs.VERSION }}"
           # Every branded MSI in this release (the .exe is no longer published).
-           for f in release/*-${VER}.msi; do
+           for f in release/*-${VER}-x64.msi; do
             [ -f "$f" ] || continue
             name=$(basename "$f")
             sha=$(sha256sum "$f" | awk '{print $1}')
@@ -535,26 +548,28 @@ jobs:
 
           # Create release notes from RELEASE_NOTES.md + recent commits
           cat > RELEASE_BODY.md << 'EOFNOTES'
-           # 🚀 Proxmox Backup Client ${{ steps.version.outputs.VERSION }}
+           # 🚀 Salvanza for Proxmox Backup Server ${{ steps.version.outputs.VERSION }}
 
-           > ⚠️ **Windows flagged the download as a virus?** This is a known false positive (unsigned Go/Wails binaries inside the installer) — *not* a virus. See the [project repository](https://github.com/tizbac/proxmoxbackupclient_go) for how to verify the download. A code-signing certificate (SignPath Foundation) is on the way.
+           > ⚠️ **Windows flagged the download as a virus?** This is a known false positive (unsigned Go/Wails binaries inside the installer), *not* a virus. See the [project repository](https://github.com/salvanza/salvanza_client) for how to verify the download. A code-signing certificate (SignPath Foundation) is on the way.
 
           ## 📦 Downloads
 
-          One Windows installer (`.msi`) per brand — no stand-alone `.exe` is
+          One Windows installer (`.msi`) per brand; no stand-alone `.exe` is
           published. Pick the brand you are licensed for; they are the same
           build, and the installed application takes its identity from its
           executable name.
 
           | File | Brand |
           |---|---|
-          | `ProxmoxBackupClient-<version>.msi` | Proxmox Backup Client (default) |
-          | `NimbusBackup-<version>.msi` | Nimbus Backup |
-          | `AcmeBackup-<version>.msi` | Acme Backup |
-          | `EtitechBackup-<version>.msi` | Etitech Backup |
+          | `Salvanza-<version>-x64.msi` | Salvanza for Proxmox Backup Server (default) |
+          | `NimbusBackup-<version>-x64.msi` | Nimbus Backup |
+          | `EtitechBackup-<version>-x64.msi` | Etitech Backup |
 
-          The command-line tools are in the per-platform archives
-          (`proxmoxbackup-cli-*` and `proxmoxbackupclient_go_*`).
+          Each installer replaces an earlier Proxmox Backup Client install or
+          another brand, and moves its settings over.
+
+          The command line, `salvanza-cli`, is in every installer and in the
+          per-platform archives (`salvanza-cli-*` and `salvanza_client_*`).
 
           ## 📝 What's in this release
 
@@ -597,15 +612,15 @@ jobs:
           echo "" >> RELEASE_BODY.md
            echo "### Tested with Proxmox Backup Server" >> RELEASE_BODY.md
            echo "" >> RELEASE_BODY.md
-           echo "This release has been tested against Proxmox Backup Server — see the [project repository](https://github.com/tizbac/proxmoxbackupclient_go)." >> RELEASE_BODY.md
+           echo "This release has been tested against Proxmox Backup Server: see the [project repository](https://github.com/salvanza/salvanza_client)." >> RELEASE_BODY.md
 
           # Add links at the end (FR bare URL + EN /en/ variant)
           echo "" >> RELEASE_BODY.md
           echo "---" >> RELEASE_BODY.md
           echo "" >> RELEASE_BODY.md
-           echo "**Proxmox Backup Client** — [GitHub](https://github.com/tizbac/proxmoxbackupclient_go) · [Forum](https://forum.proxmox.com/)" >> RELEASE_BODY.md
+           echo "**Salvanza**: [salvanza.org](https://salvanza.org/) · [GitHub](https://github.com/salvanza/salvanza_client) · [Forum](https://forum.proxmox.com/)" >> RELEASE_BODY.md
            echo "" >> RELEASE_BODY.md
-           echo "**Proxmox Backup Client** — [Releases](https://github.com/tizbac/proxmoxbackupclient_go/releases)" >> RELEASE_BODY.md
+           echo "**Salvanza**: [Releases](https://github.com/salvanza/salvanza_client/releases)" >> RELEASE_BODY.md
 
       # The goreleaser workflow ("Release Automation") normally creates the
       # release for this tag a few minutes earlier, with the cross-platform CLI

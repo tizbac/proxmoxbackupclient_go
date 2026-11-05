@@ -1,8 +1,8 @@
 #!/bin/bash
 # ocs-pbs-bare-metal-restore - fully automated PBS bare-metal restore.
 #
-# Launched directly at boot (via the "Proxmox Backup Client Go - PBS Bare
-# Metal Restore" GRUB/isolinux menu entry's ocs_live_run= boot parameter),
+# Launched directly at boot (via the "Salvanza - PBS Bare Metal Restore"
+# GRUB/isolinux menu entry's ocs_live_run= boot parameter),
 # BEFORE Clonezilla's own interactive language/keyboard prompts or main menu
 # ever appear (those are also skipped via that same menu entry's
 # locales=/keyboard-layouts= boot params). Walks straight through: network

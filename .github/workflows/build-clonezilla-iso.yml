@@ -16,7 +16,7 @@ on:
         required: false
         default: 'clonezilla-patch'
       output_name:
-        description: 'Output ISO filename (empty: ProxmoxBackupClient-BMR-<version>.iso, the version from gui/wails.json)'
+        description: 'Output ISO filename (empty: Salvanza-BMR-<version>.iso, the version from gui/wails.json)'
         required: false
         default: ''
 
@@ -49,15 +49,17 @@ jobs:
           name="$OUTPUT_NAME"
           if [ -z "$name" ]; then
             version=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' gui/wails.json)
-            name="ProxmoxBackupClient-BMR-${version}.iso"
+            name="Salvanza-BMR-${version}.iso"
           fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "ISO: $name"
 
+      # The ISO keeps its own small pbsnbd (nbd/cmd/pbsnbd, the same code as
+      # salvanza-cli attach-nbd): the Clonezilla scripts call it by that name.
       - name: Build pbsnbd binary (linux/amd64 static)
         run: |
           cd nbd
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o pbsnbd .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o pbsnbd ./cmd/pbsnbd
 
       - name: Download Clonezilla ISO
         env:

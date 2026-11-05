@@ -20,11 +20,13 @@ fi
 
 echo "🐳 Building Windows GUI with Docker (Wails)..."
 echo "Version: ${VERSION}"
-echo "📦 Output: ${PWD}/ProxmoxBackupClientGO.exe"
+echo "📦 Output: ${PWD}/salvanza-gui.exe"
 
-OUTPUT_NAME="ProxmoxBackupClientGO.exe"
+# The app takes its brand from its own file name (gui/brand.go), so the
+# copy keeps the name the build gives it.
+OUTPUT_NAME="salvanza-gui.exe"
 OUTPUT_PATH="${PWD}/${OUTPUT_NAME}"
-CONTAINER_NAME="nimbusbackup-gui-build"
+CONTAINER_NAME="salvanza-gui-build"
 
 cleanup() {
     docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
@@ -66,9 +68,9 @@ docker run --rm \
             -ldflags "-X main.appVersion=${VERSION}"
         cd /build
 
-        if [ -f /build/gui/build/bin/ProxmoxBackupClient.exe ]; then
+        if [ -f /build/gui/build/bin/salvanza-gui.exe ]; then
             echo "✅ Build successful!"
-            cp /build/gui/build/bin/ProxmoxBackupClient.exe /build/ProxmoxBackupClientGO.exe
+            cp /build/gui/build/bin/salvanza-gui.exe /build/salvanza-gui.exe
         else
             echo "❌ Build failed - binary not found"
             ls -la /build/gui/build/bin/ 2>/dev/null || echo "No output bin directory found"

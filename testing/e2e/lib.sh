@@ -31,7 +31,7 @@ else
 	PBC_BIN="proxmox-backup-client"
 	PBC_BIN_EXPLICIT=""
 fi
-PBC_IMAGE="${PBC_IMAGE:-proxmoxbackupclient-e2e-client:latest}"
+PBC_IMAGE="${PBC_IMAGE:-salvanza-e2e-client:latest}"
 
 # Set to 1 to skip the "restore with the official client" assertions.
 E2E_SKIP_OFFICIAL="${E2E_SKIP_OFFICIAL:-0}"
@@ -447,7 +447,7 @@ slugify() {
 }
 our_directory_backup() {
 	local dir="$1"; shift
-	( cd "$REPO_ROOT" && timeout 900 "$REPO_ROOT/dist/proxmoxbackup-directory" \
+	( cd "$REPO_ROOT" && timeout 900 "$REPO_ROOT/dist/salvanza-cli" backup-folder \
 		-baseurl "$PBS_BASEURL" \
 		-certfingerprint "$PBS_FINGERPRINT" \
 		-authid "$PBS_AUTHID" \
@@ -460,7 +460,7 @@ our_directory_backup() {
 
 our_machine_backup() {
 	local dev="$1"; shift
-	( cd "$REPO_ROOT" && timeout 900 "$REPO_ROOT/dist/proxmoxbackup-machine" \
+	( cd "$REPO_ROOT" && timeout 900 "$REPO_ROOT/dist/salvanza-cli" backup-disk \
 		-baseurl "$PBS_BASEURL" \
 		-certfingerprint "$PBS_FINGERPRINT" \
 		-authid "$PBS_AUTHID" \

@@ -142,7 +142,7 @@ jobs:
             echo '### End-to-end diagnostics'
             echo
             echo '* PBS image: `ayufan/proxmox-backup-server:latest`'
-            echo '* Official client image: `proxmoxbackupclient-e2e-client:latest`'
+            echo '* Official client image: `salvanza-e2e-client:latest`'
             echo
             echo 'Re-run just this job with `E2E_KEEP=1` to keep the container and workdir.'
           } >> "$GITHUB_STEP_SUMMARY"

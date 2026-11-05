@@ -9,7 +9,7 @@ stages:
 
 variables:
   GO_VERSION: "1.25"
-  PROJECT_NAME: "ProxmoxBackupClient"
+  PROJECT_NAME: "Salvanza"
   # Disable go.work (GUI is independent module)
   GOWORK: "off"
   # Docker-in-Docker configuration

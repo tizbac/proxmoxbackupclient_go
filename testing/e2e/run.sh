@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# End-to-end test suite for proxmoxbackupclient_go against a real
+# End-to-end test suite for Salvanza against a real
 # Proxmox Backup Server.
 #
 # Every test performs a backup with one of OUR CLIs and then restores it with
@@ -350,7 +350,7 @@ main() {
 	printf '%s\n' "$C_BOLD"
 	cat <<-'BANNER'
 		===============================================================
-		 proxmoxbackupclient_go -- end-to-end test suite
+		 Salvanza -- end-to-end test suite
 		 backup with our CLIs, restore with the official client
 		===============================================================
 	BANNER
@@ -367,8 +367,7 @@ main() {
 		section "Building our CLIs"
 		make -C "$REPO_ROOT" cli || die "make cli failed"
 	fi
-	assert_file_exists "$REPO_ROOT/dist/proxmoxbackup-directory"
-	assert_file_exists "$REPO_ROOT/dist/proxmoxbackup-machine"
+	assert_file_exists "$REPO_ROOT/dist/salvanza-cli"
 
 	section "Preparing fixtures"
 	make_directory_fixture
