@@ -10,8 +10,8 @@ import (
 
 func TestParseSystemctlShow(t *testing.T) {
 	out := "LoadState=loaded\nActiveState=active\nUnitFileState=enabled\n" +
-		"FragmentPath=/usr/lib/systemd/system/proxmoxbackupclient.service\n" +
-		"ExecStart={ path=/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC ; argv[]=/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n"
+		"FragmentPath=/usr/lib/systemd/system/salvanza.service\n" +
+		"ExecStart={ path=/usr/libexec/salvanza/salvanza-svc ; argv[]=/usr/libexec/salvanza/salvanza-svc ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n"
 	u := parseSystemctlShow(out)
 	if !u.installed() || u.state() != "running" || u.startType() != "boot" {
 		t.Fatalf("got %+v state %s start %s", u, u.state(), u.startType())
@@ -38,9 +38,9 @@ func TestParseSystemctlShow(t *testing.T) {
 // app run from a folder uses the one beside it.
 func TestServiceExeFor(t *testing.T) {
 	for _, c := range []struct{ app, want string }{
-		{"/usr/lib/proxmoxbackupclient/ProxmoxBackupClient", "/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC"},
-		{"/opt/pbc/ProxmoxBackupClient", "/opt/pbc/ProxmoxBackupClientSVC"},
-		{"/home/u/build/bin/ProxmoxBackupClient", "/home/u/build/bin/ProxmoxBackupClientSVC"},
+		{"/usr/lib/salvanza/salvanza-gui", "/usr/libexec/salvanza/salvanza-svc"},
+		{"/opt/pbc/salvanza-gui", "/opt/pbc/salvanza-svc"},
+		{"/home/u/build/bin/salvanza-gui", "/home/u/build/bin/salvanza-svc"},
 	} {
 		if got := serviceExeFor(c.app); got != c.want {
 			t.Errorf("serviceExeFor(%q) = %q, want %q", c.app, got, c.want)
@@ -53,7 +53,7 @@ func TestServiceExeFor(t *testing.T) {
 func TestMoveSettingsToSharedCopiesOnce(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	src := filepath.Join(home, ".proxmox-backup-guardian")
+	src := filepath.Join(home, ".salvanza")
 	for name, body := range map[string]string{
 		"config.json":                "{\"a\":1}",
 		"scheduled_jobs.json":        "[]",
@@ -68,10 +68,12 @@ func TestMoveSettingsToSharedCopiesOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	shared := filepath.Join(t.TempDir(), "shared")
-	old := sharedConfigDir
-	sharedConfigDir = shared
-	t.Cleanup(func() { sharedConfigDir = old })
+	lib := t.TempDir()
+	shared := filepath.Join(lib, "salvanza")
+	old, oldLegacy, oldPbsgo := sharedConfigDir, legacyStateDir, pbsgoStateDir
+	// No earlier install here: the real /var/lib folders stay out of it.
+	sharedConfigDir, legacyStateDir, pbsgoStateDir = shared, filepath.Join(lib, "proxmoxbackupclient"), filepath.Join(lib, "pbsgo")
+	t.Cleanup(func() { sharedConfigDir, legacyStateDir, pbsgoStateDir = old, oldLegacy, oldPbsgo })
 
 	if err := moveSettingsToShared(); err != nil {
 		t.Fatal(err)

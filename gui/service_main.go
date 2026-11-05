@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/kardianos/service"
 )
@@ -24,7 +22,7 @@ func main() {
 	if runSetCLI(os.Args[1:]) {
 		return
 	}
-	writeDebugLog("ProxmoxBackupClientSVC starting...")
+	writeDebugLog(serviceExeBase() + " starting...")
 	startStallWatchdog()
 
 	// Command-line flags for service control
@@ -32,13 +30,12 @@ func main() {
 	flag.Parse()
 
 	// Service configuration. The name matches what the installers and
-	// Preferences > Run as Service use (on Windows this program's own name,
-	// ProxmoxBackupClientSVC; on Linux the packaged unit), so
-	// "-service install" does not make a second one.
-	name, display := windowsServiceIdentity()
+	// Preferences > Run as Service use (on Windows the service program's own
+	// name, salvanza-svc; on Linux the packaged unit), so "-service install"
+	// does not make a second one.
 	svcConfig := &service.Config{
-		Name:        name,
-		DisplayName: display,
+		Name:        serviceName(),
+		DisplayName: product().Title + " Service",
 		Description: "Runs scheduled backups to Proxmox Backup Server with VSS support",
 	}
 	if runtime.GOOS == "linux" {
@@ -69,15 +66,4 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-// windowsServiceIdentity gives the Windows service name and display name for
-// this program: its exe name (ProxmoxBackupClientSVC, or a brand's own), and
-// the brand title plus "Service", as the MSI and InstallService do.
-func windowsServiceIdentity() (name, display string) {
-	name = "ProxmoxBackupClientSVC"
-	if exe, err := os.Executable(); err == nil {
-		name = strings.TrimSuffix(filepath.Base(exe), filepath.Ext(exe))
-	}
-	return name, ResolveBrand(strings.TrimSuffix(name, "SVC")).Title + " Service"
 }

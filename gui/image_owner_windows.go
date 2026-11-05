@@ -2,7 +2,7 @@
 
 package main
 
-import "github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
+import "github.com/salvanza/salvanza_client/gui/imagefs"
 
 // applyImageOwnerMode: Linux owners and modes have no meaning on a Windows
 // restore.

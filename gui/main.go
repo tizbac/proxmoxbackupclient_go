@@ -28,15 +28,11 @@ import (
 	"security"
 	"snapshot"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
-
-const (
-	appName = "Proxmox Backup Client"
-)
 
 var (
 	crashReportPath string
@@ -102,7 +98,7 @@ func main() {
 	}()
 
 	// Logging is now handled by RotatingLogger (initialized in logging_gui.go)
-	writeDebugLog(fmt.Sprintf("=== %s %s Starting ===", appName, versionLabel()))
+	writeDebugLog(fmt.Sprintf("=== %s %s Starting ===", product().Title, versionLabel()))
 	writeDebugLog(fmt.Sprintf("Time: %s", time.Now().Format(time.RFC3339)))
 	writeDebugLog(fmt.Sprintf("Service log: %s", GetServiceLogPath()))
 	writeDebugLog(fmt.Sprintf("Backup log: %s", GetBackupLogPath()))
@@ -135,7 +131,7 @@ func main() {
 
 	// Create application options
 	appOptions := &options.App{
-		Title:     fmt.Sprintf("%s %s", BrandFromExecutable().Title, versionLabel()),
+		Title:     fmt.Sprintf("%s %s", product().Title, versionLabel()),
 		Width:     1080,
 		Height:    720,
 		MaxWidth:  1680, // Prevent window from being too large
@@ -159,7 +155,7 @@ func main() {
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
 			DisableWindowIcon:    false,
-			WebviewUserDataPath:  filepath.Join(os.Getenv("APPDATA"), "ProxmoxBackupClient"),
+			WebviewUserDataPath:  roamingAppDir(),
 		},
 	}
 
@@ -199,8 +195,8 @@ Version: %s
 Service Log: %s
 Backup Log: %s
 
-Please report this issue to the Proxmox Backup Client project:
-- Register the issue at https://github.com/tizbac/proxmoxbackupclient_go/issues
+Please report this issue to the Salvanza project:
+- Register the issue at https://github.com/salvanza/salvanza_client/issues
 - Include this crash_report.txt file
 `, timestamp, appVersion, message, GetServiceLogPath(), GetBackupLogPath())
 
@@ -230,7 +226,7 @@ func (a *App) startup(ctx context.Context) {
 	passphrasePrompter = a.promptForPassphrase
 	writeDebugLog("App.startup() called")
 
-	// The app's own folder (~/.proxmox-backup-guardian) is private to the user
+	// The app's own folder (~/.salvanza) is private to the user
 	// on Linux. On Windows it is in the user's profile, which already is; the
 	// service's folder is the service's to lock (hardenConfigDir).
 	if stdruntime.GOOS != "windows" {

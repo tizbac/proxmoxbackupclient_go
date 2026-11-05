@@ -305,7 +305,7 @@ func TestApplySettingsFileRefusesLinkedFolder(t *testing.T) {
 	pd := t.TempDir()
 	t.Setenv("ProgramData", pd)
 	elsewhere := t.TempDir()
-	if err := os.Symlink(elsewhere, filepath.Join(pd, "ProxmoxBackupClient")); err != nil {
+	if err := os.Symlink(elsewhere, filepath.Join(pd, folderName())); err != nil {
 		t.Fatal(err)
 	}
 	a := &App{}

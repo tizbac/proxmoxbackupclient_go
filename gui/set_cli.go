@@ -8,16 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // Command-line Undelete and Roll back, on the same engine as the GUI's pages,
 // for a Backup Set defined in the GUI:
 //
-//	ProxmoxBackupClientSVC -list-sets
-//	ProxmoxBackupClientSVC -undelete "<set>" [-days N] [-to DIR] [-dry-run] [-no-verify]
-//	ProxmoxBackupClientSVC -rollback "<set>" [-at "2026-10-10 14:30"] [-policy replace|missing|exact]
-//	                       [-backup-first] [-dry-run] [-yes] [-no-verify]
+//	salvanza-svc -list-sets
+//	salvanza-svc -undelete "<set>" [-days N] [-to DIR] [-dry-run] [-no-verify]
+//	salvanza-svc -rollback "<set>" [-at "2026-10-10 14:30"] [-policy replace|missing|exact]
+//	             [-backup-first] [-dry-run] [-yes] [-no-verify]
 //
 // The service program (a console program on Windows) and the Linux GUI
 // program both take them; runSetCLI returns false when none of them is on

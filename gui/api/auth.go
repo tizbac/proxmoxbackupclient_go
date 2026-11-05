@@ -14,12 +14,38 @@ import (
 // blocks browser-originated requests: a web page cannot set it on a cross-origin
 // request without a CORS preflight, which this server never approves (audit H-01
 // / v2-H-06). The token authenticates the GUI to the privileged local service.
-const tokenHeader = "X-Proxmox-Client-Token"
+const tokenHeader = "X-Salvanza-Token"
 
-// TokenEnvVar carries the local API token in the environment (upstream's name),
-// for a launcher that fetched it already. The app itself never sets it: it keeps
-// the token it fetched in memory (SetTokenOverride).
-const TokenEnvVar = "PBSGO_API_TOKEN"
+// legacyTokenHeader is the header's name before the rename to Salvanza. The
+// service still accepts it, so scripts written for Proxmox Backup Client keep
+// working; nothing here sends it.
+const legacyTokenHeader = "X-Proxmox-Client-Token"
+
+// TokenEnvVar carries the local API token in the environment, for a launcher
+// that fetched it already. The app itself never sets it: it keeps the token it
+// fetched in memory (SetTokenOverride). LegacyTokenEnvVar is the name before
+// the rename (upstream's), still read.
+const (
+	TokenEnvVar       = "SALVANZA_API_TOKEN"
+	LegacyTokenEnvVar = "PBSGO_API_TOKEN"
+)
+
+// requestToken is the token a request carries, under either header name.
+func requestToken(r *http.Request) string {
+	if t := r.Header.Get(tokenHeader); t != "" {
+		return t
+	}
+	return r.Header.Get(legacyTokenHeader)
+}
+
+// envValue reads an environment variable under its name, or else under the
+// name it had before the rename.
+func envValue(name, legacy string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return os.Getenv(legacy)
+}
 
 // maxRequestBody bounds request bodies to avoid unbounded memory from a local
 // caller (audit: "borner les tailles de body").
@@ -99,7 +125,7 @@ func resolveToken(path string) string {
 	if t != "" || only {
 		return t
 	}
-	if env := os.Getenv(TokenEnvVar); env != "" {
+	if env := envValue(TokenEnvVar, LegacyTokenEnvVar); env != "" {
 		return env
 	}
 	return ReadOwnTokenFile(path)
@@ -219,7 +245,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if !s.tokenAccepted(r.Header.Get(tokenHeader)) {
+		if !s.tokenAccepted(requestToken(r)) {
 			s.writeError(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

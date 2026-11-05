@@ -7,7 +7,7 @@ import (
 
 	"machinebackuplib"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // Disk identity for machine Backup Sets. Windows numbers its disks

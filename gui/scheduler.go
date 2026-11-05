@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // runningJobs tracks currently executing jobs to prevent duplicates
@@ -333,7 +333,7 @@ func (a *App) SaveScheduledJob(job ScheduledJob) error {
 	writeDebugLog(fmt.Sprintf("Scheduled job saved: %s (next run: %s)", job.Name, job.NextRun))
 
 	// Note: For automatic execution after reboot, use the MSI installer
-	// which installs Proxmox Backup Client as a Windows Service
+	// which installs the app's service as a Windows Service
 
 	return nil
 }

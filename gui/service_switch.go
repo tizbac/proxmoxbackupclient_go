@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // Shared by the Windows and Linux service controls (Preferences > Advanced >

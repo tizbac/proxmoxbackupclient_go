@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // elevatedTokenFetchFlag marks the elevated copy on its command line.
@@ -147,8 +147,26 @@ func fetchServiceToken() (string, error) {
 
 // newHandoffFile creates the private handoff file an elevated copy writes
 // the token into. The caller deletes it.
+//
+// The temp folder can be gone: on a Windows server each remote session has
+// its own (Temp\2 for session 2), and a clean-up that empties Temp while the
+// user stays signed in takes it away, so Connect failed with "cannot create
+// handoff file ... The system cannot find the path specified" (deepthought,
+// 2026-11-04). The folder is then made again, and failing that the app's own
+// settings folder (private to the user too) takes the file.
 func newHandoffFile() (string, error) {
-	tmp, err := os.CreateTemp("", "proxmoxbackupclient-token-*")
+	pattern := product().FileBase + "-token-*"
+	tmp, err := os.CreateTemp("", pattern)
+	if err != nil {
+		if dir := os.TempDir(); os.MkdirAll(dir, 0o700) == nil {
+			tmp, err = os.CreateTemp(dir, pattern)
+		}
+	}
+	if err != nil {
+		if dir, derr := userConfigDir(); derr == nil && os.MkdirAll(dir, 0o700) == nil {
+			tmp, err = os.CreateTemp(dir, pattern)
+		}
+	}
 	if err != nil {
 		return "", fmt.Errorf("cannot create handoff file: %w", err)
 	}

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // Connecting with own settings (UseOwnSettings): the user's own Backup Sets

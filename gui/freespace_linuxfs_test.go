@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
+	"github.com/salvanza/salvanza_client/gui/imagefs"
 )
 
 // The Linux free-space maps (machinebackuplib.LinuxFreeSpaceMap) must never

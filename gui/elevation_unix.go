@@ -14,7 +14,7 @@ import (
 )
 
 // RequestElevation starts this app again as root and closes this copy once
-// the root one is up. It uses the packaged launcher (proxmoxbackupclient-root:
+// the root one is up. It uses the packaged launcher (salvanza-gui-root:
 // pkexec, keeping the user's display and home) when the app is the installed
 // one, else pkexec directly. If the password prompt is cancelled the app keeps
 // running and ELEVATION_CANCELLED is returned.
@@ -59,7 +59,7 @@ func (a *App) RequestElevation() error {
 }
 
 func elevationCommand(exe string) (*exec.Cmd, error) {
-	if launcher, err := exec.LookPath("proxmoxbackupclient-root"); err == nil &&
+	if launcher, err := exec.LookPath(appExeBase() + "-root"); err == nil &&
 		filepath.Dir(exe) == packagedAppDir {
 		return exec.Command(launcher), nil
 	}

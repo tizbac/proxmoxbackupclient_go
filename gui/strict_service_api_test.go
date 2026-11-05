@@ -16,7 +16,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 const (

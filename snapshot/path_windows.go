@@ -11,7 +11,7 @@ import (
 // actually snapshot. VSS shadow-copies a local volume; a network share
 // (whether accessed via a raw UNC path or a drive letter mapped to one)
 // has no local volume for VSS to snapshot at all, and fails outright if
-// asked. The app's folder backups and proxmoxbackup-directory read such a
+// asked. The app's folder backups and salvanza-cli backup-folder read such a
 // path live instead.
 func PathSupportsSnapshot(path string) bool {
 	root := volumeRoot(path)

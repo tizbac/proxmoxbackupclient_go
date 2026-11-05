@@ -78,7 +78,7 @@ func TestConfigSaveLoad(t *testing.T) {
 	if serviceBuild {
 		t.Skip("the service keeps its settings in ProgramData")
 	}
-	// The app keeps its settings in the user's ~/.proxmox-backup-guardian
+	// The app keeps its settings in the user's ~/.salvanza
 	// (the service's are in ProgramData, which only the service writes).
 	// Redirect the home folder (both variables: HOME on Linux, USERPROFILE
 	// on Windows) so this never writes a real one: un-redirected, an earlier
@@ -103,7 +103,7 @@ func TestConfigSaveLoad(t *testing.T) {
 	}
 
 	// Verify file exists, at the path getConfigDir() resolves to for the app.
-	configPath := filepath.Join(tmpDir, ".proxmox-backup-guardian", "config.json")
+	configPath := filepath.Join(tmpDir, ".salvanza", "config.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Fatalf("Config file not created at %s", configPath)
 	}
@@ -139,7 +139,7 @@ func TestGetConfigPath(t *testing.T) {
 		t.Fatalf("getConfigPath() error = %v", err)
 	}
 
-	expectedPath := filepath.Join(tmpDir, ".proxmox-backup-guardian", "config.json")
+	expectedPath := filepath.Join(tmpDir, ".salvanza", "config.json")
 	if configPath != expectedPath {
 		t.Errorf("getConfigPath() = %v, want %v", configPath, expectedPath)
 	}

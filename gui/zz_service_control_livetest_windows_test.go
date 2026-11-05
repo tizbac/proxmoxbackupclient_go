@@ -6,11 +6,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
-// Opt-in (PBS_SVCTEST=1), run elevated on a test machine with the test binary
-// named ProxmoxBackupClient.exe and ProxmoxBackupClientSVC.exe beside it:
+// Opt-in (PBS_SVCTEST=1), run elevated on a test machine with salvanza-svc.exe
+// beside the test binary (any name other than a brand's gives the default):
 // install and start the service, see this app hand over to it, stop, start
 // and remove it, leaving the machine as it was.
 func TestServiceControlLive(t *testing.T) {

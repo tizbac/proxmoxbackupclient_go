@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
+	"github.com/salvanza/salvanza_client/gui/imagefs"
 	"golang.org/x/sys/windows"
 	"pbscommon"
 )

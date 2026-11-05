@@ -6,7 +6,7 @@ package main
 // the .deb installed (they install, start and remove the real systemd unit).
 //
 //   PBS_LINUX_SVC=install  (as root, HOME = the user whose settings to move):
-//       Run as Service > Install: settings copied to /var/lib/proxmoxbackupclient,
+//       Run as Service > Install: settings copied to /var/lib/salvanza,
 //       which is root's alone (0700, files 0600), unit enabled and running,
 //       app in service mode.
 //   PBS_LINUX_SVC=user     (as an ordinary account, not root): the app finds
@@ -23,7 +23,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 func liveLinuxSvc(t *testing.T, step string) {

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // newStrictPair is newStrictService with an app connected to it, as after

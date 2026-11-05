@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,8 +39,13 @@ func TestResolveTokenOrder(t *testing.T) {
 	}
 	SetTokenOverride("")
 	t.Setenv(TokenEnvVar, "")
+	t.Setenv(LegacyTokenEnvVar, "")
 	if got := resolveToken(p); got != tok {
 		t.Errorf("file: got %q, want the file's token", got)
+	}
+	t.Setenv(LegacyTokenEnvVar, "from-legacy-env")
+	if got := resolveToken(p); got != "from-legacy-env" {
+		t.Errorf("legacy env: got %q", got)
 	}
 	t.Setenv(TokenEnvVar, "from-env")
 	if got := resolveToken(p); got != "from-env" {
@@ -47,6 +54,26 @@ func TestResolveTokenOrder(t *testing.T) {
 	SetTokenOverride("fetched")
 	if got := resolveToken(p); got != "fetched" {
 		t.Errorf("override: got %q", got)
+	}
+}
+
+// The token is taken under X-Salvanza-Token and, for scripts written before
+// the rename, X-Proxmox-Client-Token; any other header is refused.
+func TestTokenHeaderNames(t *testing.T) {
+	s := NewServer("127.0.0.1:0", &fakeHandler{}, "tok", "test")
+	h := s.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	for name, want := range map[string]int{
+		"X-Salvanza-Token":       http.StatusNoContent,
+		"X-Proxmox-Client-Token": http.StatusNoContent,
+		"X-Other-Token":          http.StatusUnauthorized,
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/status", nil)
+		req.Header.Set(name, "tok")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("%s: %d, want %d", name, rec.Code, want)
+		}
 	}
 }
 

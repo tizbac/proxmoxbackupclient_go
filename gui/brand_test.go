@@ -68,13 +68,51 @@ func TestWiXExeNameResolvesToItsOwnBrand(t *testing.T) {
 	}
 }
 
-// The service is installed as the exe name plus "SVC", which is also the
-// name the service registers under (service_main.go) and the GUI looks for
-// (service_control_windows.go).
-func TestWiXServiceNameIsExeNamePlusSVC(t *testing.T) {
+var wxsFolderRe = regexp.MustCompile(`<\?define\s+Folder\s*=\s*"([^"]+)"\s*\?>`)
+
+// Each MSI installs the names the app derives from its brand (identity.go):
+// <FileBase>-gui.exe and <FileBase>-svc.exe, the service registered under
+// <FileBase>-svc (service_main.go, service_control_windows.go), in
+// C:\Program Files\<Folder>.
+func TestWiXNamesMatchTheBrand(t *testing.T) {
 	for _, w := range wixBrands(t) {
-		if want := w.exe + "SVC"; w.service != want {
+		b, ok := brandCatalog[normalizeBrandKey(w.exe)]
+		if !ok {
+			continue // reported by TestWiXExeNameResolvesToItsOwnBrand
+		}
+		if want := b.FileBase + "-gui"; w.exe != want {
+			t.Errorf("%s: ExeName %q, want %q", w.file, w.exe, want)
+		}
+		if want := b.FileBase + "-svc"; w.service != want {
 			t.Errorf("%s: ServiceExeName %q, want %q", w.file, w.service, want)
+		}
+		if m := wxsFolderRe.FindStringSubmatch(w.content); m == nil || m[1] != b.Folder {
+			t.Errorf("%s: Folder %v, want %q", w.file, m, b.Folder)
+		}
+	}
+}
+
+// Every brand's names come from its FileBase and Folder, and no two brands
+// share a program or settings folder name.
+func TestBrandNamesAreDistinct(t *testing.T) {
+	files, folders := map[string]string{}, map[string]string{}
+	for key, b := range brandCatalog {
+		if b.FileBase == "" || b.Folder == "" || b.ShortTitle == "" {
+			t.Errorf("brand %q: FileBase %q, Folder %q, ShortTitle %q: none may be empty", key, b.FileBase, b.Folder, b.ShortTitle)
+		}
+		if b.FileBase != strings.ToLower(b.FileBase) || strings.ContainsAny(b.FileBase, " .\\/") {
+			t.Errorf("brand %q: FileBase %q must be lower case, without spaces or dots", key, b.FileBase)
+		}
+		if other, dup := files[b.FileBase]; dup {
+			t.Errorf("brands %q and %q share FileBase %q", key, other, b.FileBase)
+		}
+		files[b.FileBase] = key
+		if other, dup := folders[strings.ToLower(b.Folder)]; dup {
+			t.Errorf("brands %q and %q share Folder %q", key, other, b.Folder)
+		}
+		folders[strings.ToLower(b.Folder)] = key
+		if normalizeBrandKey(b.FileBase+"-gui.exe") != key || normalizeBrandKey(b.FileBase+"-svc.exe") != key {
+			t.Errorf("brand %q: its own program names do not resolve to it", key)
 		}
 	}
 }
@@ -159,11 +197,22 @@ func requireAbsoluteHTTPURL(t *testing.T, key, field, raw string) {
 
 func TestResolveBrandNormalizesExeNames(t *testing.T) {
 	cases := map[string]string{
-		"EtitechBackup.exe": "etitechbackup",
-		"ETITECHBACKUP.EXE": "etitechbackup",
-		" AcmeBackup.exe ":  "acmebackup",
-		"nimbusbackup":      "nimbusbackup",
-		// Unknown names get the default brand, never a partial match.
+		"salvanza-gui.exe":       defaultBrandKey,
+		"salvanza-svc":           defaultBrandKey,
+		"nimbusbackup-gui.exe":   "nimbusbackup",
+		" NimbusBackup-SVC.exe ": "nimbusbackup",
+		"etitechbackup-gui.exe":  "etitechbackup",
+		"nimbusbackup":           "nimbusbackup",
+		// The names before the rename still resolve: a portable copy, or the
+		// old service started once more before the new one removes it.
+		"EtitechBackup.exe":       "etitechbackup",
+		"ETITECHBACKUP.EXE":       "etitechbackup",
+		"EtitechBackupSVC.exe":    "etitechbackup",
+		"ProxmoxBackupClient.exe": defaultBrandKey,
+		"ProxmoxBackupClientSVC":  defaultBrandKey,
+		// Unknown names (the Acme brand is gone) get the default brand, never
+		// a partial match.
+		" AcmeBackup.exe ":      defaultBrandKey,
 		"EtitechBackup (1).exe": defaultBrandKey,
 		"UnrelatedTool.exe":     defaultBrandKey,
 	}

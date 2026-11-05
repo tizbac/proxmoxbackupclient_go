@@ -20,7 +20,7 @@ import (
 
 	"pbscommon"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
+	"github.com/salvanza/salvanza_client/gui/imagefs"
 )
 
 // defaultImageFolders: the user's own folders, the ones that exist.

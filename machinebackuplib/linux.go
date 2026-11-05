@@ -282,7 +282,7 @@ func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progres
 
 // liveReadHint ends the message of a backup that stops because a mounted
 // disk cannot be snapshotted, saying how to read it live instead, in the app
-// and with proxmoxbackup-machine.
+// and with salvanza-cli backup-disk.
 const liveReadHint = "or turn off Use snapshots for this Backup Set (-liveread on the command line) and accept a backup that may be inconsistent"
 
 // withSnapshots runs read with block snapshots of mountpoints. With nothing

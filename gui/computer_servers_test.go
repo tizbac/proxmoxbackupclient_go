@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // The list holds no token ID, username, secret, password or key, even
@@ -59,7 +59,7 @@ func TestPublicServersLeaveOutLogins(t *testing.T) {
 // the service gives no list.
 func TestComputerServersOnlyOnOwnSettings(t *testing.T) {
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != api.PublicServersPath || r.Header.Get("X-Proxmox-Client-Token") != "" {
+		if r.URL.Path != api.PublicServersPath || r.Header.Get("X-Salvanza-Token") != "" {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}

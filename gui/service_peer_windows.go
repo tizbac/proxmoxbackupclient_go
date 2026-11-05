@@ -22,7 +22,7 @@ import (
 	"slices"
 	"unsafe"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 	"golang.org/x/sys/windows"
 )
 

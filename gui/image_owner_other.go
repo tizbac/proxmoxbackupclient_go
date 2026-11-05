@@ -5,7 +5,7 @@ package main
 import (
 	"os"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
+	"github.com/salvanza/salvanza_client/gui/imagefs"
 )
 
 // applyImageOwnerMode gives a file or folder restored from a Linux volume in

@@ -43,7 +43,7 @@ var (
 )
 
 // DefaultMailSubjectTemplate and DefaultMailBodyTemplate are the
-// notification e-mail of a machine backup (proxmoxbackup-machine -mail-*),
+// notification e-mail of a machine backup (salvanza-cli backup-disk -mail-*),
 // filled from a clientcommon.MailCtx.
 var DefaultMailSubjectTemplate = "Backup {{.Status}}"
 var DefaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}})

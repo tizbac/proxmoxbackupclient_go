@@ -3,7 +3,7 @@
 package main
 
 // Preferences > Advanced > Run as Service: install, start, stop and remove
-// the background Windows service (ProxmoxBackupClientSVC.exe beside the app)
+// the background Windows service (salvanza-svc.exe beside the app)
 // from the GUI, until an installer does it.
 
 import (
@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
@@ -37,21 +37,18 @@ type ServiceStatus struct {
 	Message      string `json:"message,omitempty"`
 }
 
-// serviceNames returns the service name for this app's brand (the installer's
-// convention: the app's exe name plus "SVC") and the older name the service's
-// own "-service install" uses.
+// serviceNames returns the service name for this app's brand (salvanza-svc,
+// the service program beside the app, as the installer names it), and with
+// it the names of earlier installs' services (identity.go), so an app whose
+// computer still has one sees it and can remove it.
 func serviceNames() (preferred string, all []string, expectedExe string) {
-	exe, err := os.Executable()
-	if err != nil {
-		exe = "ProxmoxBackupClient.exe"
+	preferred = serviceName()
+	dir := "."
+	if exe, err := os.Executable(); err == nil {
+		dir = filepath.Dir(exe)
 	}
-	base := strings.TrimSuffix(filepath.Base(exe), filepath.Ext(exe))
-	preferred = base + "SVC"
-	expectedExe = filepath.Join(filepath.Dir(exe), preferred+".exe")
-	all = []string{preferred}
-	if !strings.EqualFold(base, "ProxmoxBackupClientSVC") {
-		all = append(all, "ProxmoxBackupClient")
-	}
+	expectedExe = filepath.Join(dir, serviceExeBase()+".exe")
+	all = append([]string{preferred}, legacyServiceNames...)
 	return preferred, all, expectedExe
 }
 
@@ -201,21 +198,22 @@ func (a *App) InstallService() (ServiceStatus, error) {
 	if err := needAdmin(); err != nil {
 		return a.GetServiceStatus(), err
 	}
-	preferred, names, expected := serviceNames()
+	preferred, _, expected := serviceNames()
 	if _, err := os.Stat(expected); err != nil {
-		return a.GetServiceStatus(), fmt.Errorf("the service program %s is not here. It comes with the app download; put it beside %s", filepath.Base(expected), filepath.Base(strings.TrimSuffix(expected, "SVC.exe")+".exe"))
+		return a.GetServiceStatus(), fmt.Errorf("the service program %s is not here. It comes with the app download; put it beside %s", filepath.Base(expected), appExeBase()+".exe")
 	}
 	m, err := mgr.Connect()
 	if err != nil {
 		return a.GetServiceStatus(), fmt.Errorf("cannot open the Windows services: %w", err)
 	}
 	defer m.Disconnect()
-	s, name := openInstalled(m, names)
+	// Only this brand's own service is reused; an earlier install's is removed
+	// by the new service when it starts (removeOldServices).
+	s, name := openInstalled(m, []string{preferred})
 	if s == nil {
-		brand := BrandFromExecutable()
 		s, err = m.CreateService(preferred, expected, mgr.Config{
 			StartType:    mgr.StartAutomatic,
-			DisplayName:  brand.Title + " Service",
+			DisplayName:  product().Title + " Service",
 			Description:  "Runs scheduled backups to Proxmox Backup Server with VSS support",
 			Dependencies: []string{"RPCSS"},
 		})
@@ -252,11 +250,15 @@ func (a *App) InstallService() (ServiceStatus, error) {
 }
 
 // copyUserSettingsToService gives the service the settings this app used
-// without it (the user's ~/.proxmox-backup-guardian), when the service's
+// without it (the user's settings folder, userConfigDir), when the service's
 // folder has none yet: the PBS servers, Backup Sets, history and Message Log
 // carry on with the service. The user's own files are left as they were.
 // Key files stay where the settings name them (the service reads them as
 // SYSTEM); the service locks its folder down when it starts.
+//
+// An earlier install's service settings (C:\ProgramData\ProxmoxBackupClient,
+// or another brand's) are taken over first, as the service itself would on
+// its first start: they then count as the service's own.
 func copyUserSettingsToService() {
 	src, err := userConfigDir()
 	if err != nil {
@@ -266,6 +268,7 @@ func copyUserSettingsToService() {
 	if err != nil {
 		return
 	}
+	adoptServiceState(dst)
 	for _, f := range []string{"config.json", "scheduled_jobs.json"} {
 		if _, err := os.Stat(filepath.Join(dst, f)); err == nil {
 			return // the service has settings of its own

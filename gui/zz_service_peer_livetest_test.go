@@ -17,7 +17,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 func TestLiveServicePeer(t *testing.T) {

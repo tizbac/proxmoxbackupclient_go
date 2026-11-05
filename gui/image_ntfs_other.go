@@ -2,7 +2,7 @@
 
 package main
 
-import "github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
+import "github.com/salvanza/salvanza_client/gui/imagefs"
 
 // restoreImageStreams: alternate data streams have nowhere to go off Windows.
 func restoreImageStreams(vol imagefs.Volume, dest string, e imagefs.Entry, buf []byte) (int, error) {

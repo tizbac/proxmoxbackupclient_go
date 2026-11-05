@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
+	"github.com/salvanza/salvanza_client/gui/imagefs"
 )
 
 // The cached image lists round-trip through gob with everything restore

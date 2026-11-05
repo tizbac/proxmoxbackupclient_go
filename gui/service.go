@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 	"pbscommon"
 	"snapshot"
 )
@@ -24,7 +24,7 @@ type BackupService struct {
 
 // Start is called when the service starts
 func (s *BackupService) Start(svc service.Service) error {
-	writeDebugLog("Proxmox Backup Client service starting...")
+	writeDebugLog(product().Title + " service starting...")
 	s.stopChan = make(chan struct{})
 	go func() {
 		// A panic in the run loop kills the process, and the SCM (or systemd)
@@ -45,7 +45,7 @@ func (s *BackupService) Start(svc service.Service) error {
 
 // run contains the main service loop
 func (s *BackupService) run() {
-	writeDebugLog("Proxmox Backup Client service running")
+	writeDebugLog(product().Title + " service running")
 
 	// Initialize app with background context (service has no Wails runtime)
 	// IMPORTANT: Service App must be in Standalone mode to execute backups directly
@@ -72,6 +72,10 @@ func (s *BackupService) run() {
 	}
 
 	// Config will be loaded from file by each scheduled job when needed
+
+	// An earlier install's or another brand's service would run the same
+	// Backup Sets a second time (identity.go).
+	removeOldServices()
 
 	// Clean up any abandoned jobs from previous crash
 	s.app.CleanupAbandonedJobs()
@@ -139,7 +143,7 @@ func (s *BackupService) run() {
 
 // Stop is called when the service stops
 func (s *BackupService) Stop(svc service.Service) error {
-	writeDebugLog("Proxmox Backup Client service stopping...")
+	writeDebugLog(product().Title + " service stopping...")
 
 	// Close any live PBS backup session before we return, so the server
 	// releases the writer / snapshot lock instead of waiting for TCP
@@ -162,6 +166,6 @@ func (s *BackupService) Stop(svc service.Service) error {
 	// Give it a moment to finish current operations
 	time.Sleep(2 * time.Second)
 
-	writeDebugLog("Proxmox Backup Client service stopped")
+	writeDebugLog(product().Title + " service stopped")
 	return nil
 }

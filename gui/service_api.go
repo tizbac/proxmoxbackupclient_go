@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // remarshal converts in to out through JSON (a map to the app's own type).

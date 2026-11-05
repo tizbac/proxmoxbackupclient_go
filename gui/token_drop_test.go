@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // setDropGrace shortens the grace period (and the retry) for one test.

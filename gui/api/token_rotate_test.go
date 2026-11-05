@@ -29,26 +29,34 @@ func readTokenFile(t *testing.T, path string) string {
 }
 
 func TestTokenRotationFromEnv(t *testing.T) {
-	t.Setenv("PBSGO_TOKEN_ROTATION", "")
-	t.Setenv("PBSGO_TOKEN_GRACE", "")
+	for _, v := range []string{"SALVANZA_TOKEN_ROTATION", "SALVANZA_TOKEN_GRACE", "PBSGO_TOKEN_ROTATION", "PBSGO_TOKEN_GRACE"} {
+		t.Setenv(v, "")
+	}
 	if i, g := TokenRotationFromEnv(); i != DefaultTokenRotation || g != DefaultTokenGrace {
 		t.Errorf("defaults = (%s, %s), want (%s, %s)", i, g, DefaultTokenRotation, DefaultTokenGrace)
 	}
 
-	t.Setenv("PBSGO_TOKEN_ROTATION", "2h")
-	t.Setenv("PBSGO_TOKEN_GRACE", "30m")
+	t.Setenv("SALVANZA_TOKEN_ROTATION", "2h")
+	t.Setenv("SALVANZA_TOKEN_GRACE", "30m")
 	if i, g := TokenRotationFromEnv(); i != 2*time.Hour || g != 30*time.Minute {
 		t.Errorf("set = (%s, %s), want (2h, 30m)", i, g)
 	}
 
+	// The names before the rename still work, and the new ones win.
+	t.Setenv("SALVANZA_TOKEN_ROTATION", "")
+	t.Setenv("PBSGO_TOKEN_ROTATION", "3h")
+	if i, g := TokenRotationFromEnv(); i != 3*time.Hour || g != 30*time.Minute {
+		t.Errorf("legacy name = (%s, %s), want (3h, 30m)", i, g)
+	}
+
 	// An unreadable value gives the default, not rotation off.
-	t.Setenv("PBSGO_TOKEN_ROTATION", "banana")
-	t.Setenv("PBSGO_TOKEN_GRACE", "later")
+	t.Setenv("SALVANZA_TOKEN_ROTATION", "banana")
+	t.Setenv("SALVANZA_TOKEN_GRACE", "later")
 	if i, g := TokenRotationFromEnv(); i != DefaultTokenRotation || g != DefaultTokenGrace {
 		t.Errorf("unreadable = (%s, %s), want the defaults", i, g)
 	}
 
-	t.Setenv("PBSGO_TOKEN_ROTATION", "0")
+	t.Setenv("SALVANZA_TOKEN_ROTATION", "0")
 	if i, _ := TokenRotationFromEnv(); i != 0 {
 		t.Errorf("interval = %s, want 0 (off)", i)
 	}

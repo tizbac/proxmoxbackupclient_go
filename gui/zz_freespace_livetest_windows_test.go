@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
+	"github.com/salvanza/salvanza_client/gui/imagefs"
 )
 
 // Opt-in (PBS_FREE_DISK = a spare disk's number, PBS_FREE_LETTER = the

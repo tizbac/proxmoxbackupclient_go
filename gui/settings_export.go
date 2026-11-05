@@ -52,7 +52,7 @@ func (a *App) ExportSettings(includeSecrets bool) (string, error) {
 
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Export settings",
-		DefaultFilename: fmt.Sprintf("pbsgo-settings-%s.json", time.Now().Format("2006-01-02")),
+		DefaultFilename: fmt.Sprintf("%s-settings-%s.json", product().FileBase, time.Now().Format("2006-01-02")),
 		Filters: []runtime.FileFilter{
 			{DisplayName: "JSON files (*.json)", Pattern: "*.json"},
 		},

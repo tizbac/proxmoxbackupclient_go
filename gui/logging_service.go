@@ -23,13 +23,17 @@ func init() {
 	if testing.Testing() {
 		logDir = testLogDir()
 	} else if runtime.GOOS == "windows" {
-		programData := os.Getenv("ProgramData")
-		if programData == "" {
-			programData = "C:\\ProgramData"
+		// The settings folder, C:\ProgramData\<brand>. Asking for it first
+		// lets the service take over an earlier install's folder before the
+		// log file below creates the new one (serviceStateDir).
+		if dir, err := serviceStateDir(); err == nil {
+			logDir = dir
+		} else {
+			logDir = filepath.Join("C:\\ProgramData", folderName())
 		}
-		logDir = filepath.Join(programData, "ProxmoxBackupClient")
 	} else {
-		logDir = "/var/log/proxmoxbackupclient"
+		logDir = "/var/log/" + folderNameLower()
+		adoptPlainFolder(logDir, []string{"/var/log/proxmoxbackupclient"})
 	}
 	// #nosec G703 -- ProgramData is a trusted Windows system environment variable
 	_ = os.MkdirAll(logDir, 0700)

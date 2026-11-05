@@ -64,23 +64,40 @@ func SymlinkSnapshot(symlinkPath string, id string, deviceObjectPath string) (st
 	return snapshotSymLinkFolder, nil
 }
 
+// AppFolderName names the folder under the user's AppData\Roaming that holds
+// the shadow copies' links (<folder>\VSS): the brand's folder, which the app
+// sets when it starts (SetAppFolderName); Salvanza's for the command line.
+var appFolderName = "Salvanza"
+
+// legacyAppFolderName is that folder before the rename to Salvanza, which
+// VSSCleanup still looks in for shadow copies a crashed run left behind.
+const legacyAppFolderName = "PBSBackupGO"
+
+// SetAppFolderName sets the brand's folder name (see appFolderName).
+func SetAppFolderName(name string) {
+	if name != "" {
+		appFolderName = name
+	}
+}
+
 func getAppDataFolder() (string, error) {
-	// Get information about the current user
+	return roamingFolder(appFolderName, true)
+}
+
+// roamingFolder is <user profile>\AppData\Roaming\<name>, created when create
+// is set.
+func roamingFolder(name string, create bool) (string, error) {
 	currentUser, err := user.Current()
 	if err != nil {
 		return "", err
 	}
-
-	// Construct the path to the application data folder
-	appDataFolder := filepath.Join(currentUser.HomeDir, "AppData", "Roaming", "PBSBackupGO")
-
-	// Create the folder if it doesn't exist
-	err = os.MkdirAll(appDataFolder, os.ModePerm)
-	if err != nil {
-		return "", err
+	dir := filepath.Join(currentUser.HomeDir, "AppData", "Roaming", name)
+	if create {
+		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+			return "", err
+		}
 	}
-
-	return appDataFolder, nil
+	return dir, nil
 }
 
 // vssTimeoutMs is how long each step of a shadow copy (gather, prepare,
@@ -248,10 +265,11 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 
 }
 
-// VSSCleanup removes orphaned VSS snapshots left by a previously crashed Proxmox Backup Client
-// run. It deletes ONLY shadow copies Proxmox Backup Client created — recorded as the subfolder
-// names of the <appData>/VSS symlink directory — never `vssadmin delete shadows
-// /all`, which destroyed EVERY shadow copy on the host (other backup tools, DCs,
+// VSSCleanup removes orphaned VSS snapshots left by a previously crashed run.
+// It deletes ONLY shadow copies this client created, recorded as the subfolder
+// names of the <appData>\VSS symlink folder (the brand's, and PBSBackupGO's,
+// the folder before the rename), never `vssadmin delete shadows /all`, which
+// destroyed EVERY shadow copy on the host (other backup tools, DCs,
 // SQL/Exchange) on each service start (audit v2-H-05).
 //
 // Best-effort by design: the worst case here is that an orphan remains until a
@@ -261,16 +279,32 @@ func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn m
 // backup-context shadows, so the earlier vssadmin form never removed one. If a
 // delete fails, the orphan simply remains (no collateral damage).
 func VSSCleanup() error {
-	appData, err := getAppDataFolder()
-	if err != nil {
-		fmt.Printf("VSS Cleanup: cannot resolve app data folder: %v\n", err)
-		return nil
+	for _, name := range []string{appFolderName, legacyAppFolderName} {
+		dir, err := roamingFolder(name, false)
+		if err != nil {
+			fmt.Printf("VSS Cleanup: cannot resolve app data folder: %v\n", err)
+			return nil
+		}
+		cleanupShadowLinks(filepath.Join(dir, "VSS"))
 	}
-	vssDir := filepath.Join(appData, "VSS")
+
+	// NOTE: we deliberately do NOT bounce the Windows VSS service, here or
+	// anywhere. `net stop/start VSS` affects EVERY VSS consumer on the host: on
+	// a Domain Controller, or a machine running third-party backup software
+	// (Veritas Backup Exec, Windows Server Backup, SQL/Exchange agents),
+	// restarting VSS can abort their in-flight snapshots and corrupt their
+	// backup state. A context left by a crashed run is released by Windows once
+	// that process has gone; CreateVSSSnapshot waits for it ("already in
+	// progress") instead.
+	return nil
+}
+
+// cleanupShadowLinks deletes the shadow copies whose links are in vssDir
+// and still resolve, and drops the links that no longer do.
+func cleanupShadowLinks(vssDir string) {
 	entries, err := os.ReadDir(vssDir)
 	if err != nil {
-		// No VSS symlink directory ⇒ no Proxmox Backup Client-created shadows to clean.
-		return nil
+		return // no links: no shadows of ours to clean
 	}
 
 	for _, e := range entries {
@@ -290,22 +324,12 @@ func VSSCleanup() error {
 
 		// Live symlink ⇒ the shadow still exists ⇒ a genuine orphan from a crash.
 		// (vssadmin cannot delete backup-context shadows; see deleteShadowVSS.)
-		fmt.Printf("VSS Cleanup: removing orphaned Proxmox Backup Client shadow %s...\n", id)
+		fmt.Printf("VSS Cleanup: removing an orphaned shadow copy of ours, %s...\n", id)
 		if deleteShadow(id) {
 			// Keep the marker on failure so a later run retries; never /all.
 			_ = os.Remove(marker)
 		}
 	}
-
-	// NOTE: we deliberately do NOT bounce the Windows VSS service, here or
-	// anywhere. `net stop/start VSS` affects EVERY VSS consumer on the host — on
-	// a Domain Controller, or a machine running third-party backup software
-	// (Veritas Backup Exec, Windows Server Backup, SQL/Exchange agents),
-	// restarting VSS can abort their in-flight snapshots and corrupt their
-	// backup state. A context left by a crashed run is released by Windows once
-	// that process has gone; CreateVSSSnapshot waits for it ("already in
-	// progress") instead.
-	return nil
 }
 
 // deleteShadow deletes one shadow copy this client created, by ID (never

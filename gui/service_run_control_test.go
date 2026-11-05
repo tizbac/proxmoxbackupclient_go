@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // fakeService stands in for the service's App behind the local API: it

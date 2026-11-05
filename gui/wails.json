@@ -1,21 +1,21 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "ProxmoxBackupClient",
-  "outputfilename": "ProxmoxBackupClient",
+  "name": "salvanza-gui",
+  "outputfilename": "salvanza-gui",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev": "npm run dev",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "Proxmox Backup Client contributors",
+    "name": "Salvanza contributors",
     "email": ""
   },
   "info": {
-    "companyName": "Proxmox Backup Client",
-    "productName": "Proxmox Backup Client",
+    "companyName": "Salvanza",
+    "productName": "Salvanza for Proxmox Backup Server",
     "productVersion": "2.0.0",
-    "copyright": "© 2024-2026 Proxmox Backup Client - Go contributors and RDEM Systems.",
+    "copyright": "© 2024-2026 Salvanza contributors and RDEM Systems.",
     "comments": "Backup client for Proxmox Backup Server"
   },
   "webview2": {

@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 func TestMachineNeedsElevation(t *testing.T) {

@@ -111,7 +111,8 @@ type BackupHandler interface {
 }
 
 // NewServer creates a new API server. token is the shared local-auth secret that
-// every request must present in the X-Proxmox-Client-Token header (H-01).
+// every request must present in the X-Salvanza-Token header (H-01;
+// X-Proxmox-Client-Token, its name before the rename, is still taken).
 func NewServer(addr string, handler BackupHandler, token, version string) *Server {
 	if version == "" {
 		version = "dev"

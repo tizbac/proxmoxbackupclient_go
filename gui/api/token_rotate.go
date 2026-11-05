@@ -3,7 +3,6 @@ package api
 import (
 	"crypto/subtle"
 	"log"
-	"os"
 	"sync"
 	"time"
 )
@@ -17,31 +16,32 @@ import (
 
 const (
 	// DefaultTokenRotation is how often the running service replaces the
-	// token, unless PBSGO_TOKEN_ROTATION says otherwise.
+	// token, unless SALVANZA_TOKEN_ROTATION says otherwise.
 	DefaultTokenRotation = 24 * time.Hour
 	// DefaultTokenGrace is how long the replaced token is still accepted,
-	// unless PBSGO_TOKEN_GRACE says otherwise.
+	// unless SALVANZA_TOKEN_GRACE says otherwise.
 	DefaultTokenGrace = 10 * time.Minute
 )
 
-// TokenRotationFromEnv returns the rotation interval and grace window.
-// The variable names are upstream's, so a setting made for 1.2.0-rc still
-// applies. An unset or unreadable value gives the default;
-// PBSGO_TOKEN_ROTATION=0 turns rotation off.
+// TokenRotationFromEnv returns the rotation interval and grace window, from
+// SALVANZA_TOKEN_ROTATION and SALVANZA_TOKEN_GRACE, or upstream's names
+// (PBSGO_TOKEN_ROTATION, PBSGO_TOKEN_GRACE) so a setting made for 1.2.0-rc
+// still applies. An unset or unreadable value gives the default; a rotation
+// of 0 turns rotation off.
 func TokenRotationFromEnv() (interval, grace time.Duration) {
 	interval, grace = DefaultTokenRotation, DefaultTokenGrace
-	if v := os.Getenv("PBSGO_TOKEN_ROTATION"); v != "" {
+	if v := envValue("SALVANZA_TOKEN_ROTATION", "PBSGO_TOKEN_ROTATION"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			interval = d
 		} else {
-			log.Printf("PBSGO_TOKEN_ROTATION=%q is not a duration, using %s: %v", v, DefaultTokenRotation, err)
+			log.Printf("SALVANZA_TOKEN_ROTATION=%q is not a duration, using %s: %v", v, DefaultTokenRotation, err)
 		}
 	}
-	if v := os.Getenv("PBSGO_TOKEN_GRACE"); v != "" {
+	if v := envValue("SALVANZA_TOKEN_GRACE", "PBSGO_TOKEN_GRACE"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			grace = d
 		} else {
-			log.Printf("PBSGO_TOKEN_GRACE=%q is not a duration, using %s: %v", v, DefaultTokenGrace, err)
+			log.Printf("SALVANZA_TOKEN_GRACE=%q is not a duration, using %s: %v", v, DefaultTokenGrace, err)
 		}
 	}
 	return interval, grace
@@ -110,7 +110,7 @@ func NewTokenRotator(server *Server, path string, interval, grace time.Duration)
 // Start rotates on the interval until Stop.
 func (r *TokenRotator) Start() {
 	if r.interval <= 0 {
-		log.Printf("local API token rotation off (PBSGO_TOKEN_ROTATION=%s)", r.interval)
+		log.Printf("local API token rotation off (SALVANZA_TOKEN_ROTATION=%s)", r.interval)
 		return
 	}
 	r.running.Add(1)

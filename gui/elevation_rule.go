@@ -1,6 +1,6 @@
 package main
 
-import "github.com/tizbac/proxmoxbackupclient_go/gui/api"
+import "github.com/salvanza/salvanza_client/gui/api"
 
 // machineNeedsElevation reports whether a machine backup started from this
 // window needs the app relaunched as administrator first (from upstream,

@@ -1,4 +1,4 @@
-module github.com/tizbac/proxmoxbackupclient_go/gui
+module github.com/salvanza/salvanza_client/gui
 
 go 1.25.0
 
@@ -10,8 +10,8 @@ require (
 	github.com/kardianos/service v1.3.0
 	github.com/makiuchi-d/gozxing v0.1.1
 	github.com/masahiro331/go-xfs-filesystem v0.0.0-20260422061116-d21e5e4481bb
+	github.com/salvanza/salvanza_client/gui/api v0.0.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	github.com/tizbac/proxmoxbackupclient_go/gui/api v0.0.0
 	github.com/wailsapp/wails/v2 v2.13.0
 	golang.org/x/crypto v0.51.0
 	golang.org/x/image v0.40.0
@@ -82,8 +82,8 @@ require (
 // Local package replacements to use sibling directories
 replace (
 	clientcommon => ../clientcommon
+	github.com/salvanza/salvanza_client/gui/api => ./api
 	github.com/st-matskevich/go-vss => ../third_party/go-vss
-	github.com/tizbac/proxmoxbackupclient_go/gui/api => ./api
 	machinebackuplib => ../machinebackuplib
 	pbscommon => ../pbscommon
 	retry => ../pkg/retry

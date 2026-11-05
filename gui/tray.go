@@ -354,15 +354,19 @@ var (
 	trayIconTempFile string
 )
 
-// trayIconTempPath writes the embedded tray .ico out to a temp file once and
-// reuses it — go-toast/toast (unlike systray.SetIcon) needs an actual file
+// trayIconTempPath writes the embedded tray .ico out to a file once and
+// reuses it: go-toast/toast (unlike systray.SetIcon) needs an actual file
 // path on disk, not raw bytes, since it hands the path straight to
-// PowerShell's WinRT toast call. Returns "" if the write fails; the toast
-// still shows fine without a custom icon in that case.
+// PowerShell's WinRT toast call. It goes in the app's own folder
+// (%APPDATA%\Salvanza), not the temp folder, which a clean-up can take away
+// under a long sign-in (see newHandoffFile). Returns "" if the write fails;
+// the toast still shows fine without a custom icon in that case.
 func trayIconTempPath() string {
 	trayIconTempOnce.Do(func() {
-		brand := BrandFromExecutable()
-		path := filepath.Join(os.TempDir(), normalizeBrandKey(brand.Name)+"-tray-icon.ico")
+		brand := product()
+		dir := roamingAppDir()
+		_ = os.MkdirAll(dir, 0o700)
+		path := filepath.Join(dir, "tray-icon.ico")
 		if err := os.WriteFile(path, TrayIconForBrand(brand), 0644); err != nil {
 			writeDebugLog(fmt.Sprintf("trayIconTempPath: write failed: %v", err))
 			return
@@ -383,7 +387,7 @@ func trayIconTempPath() string {
 // it must never fail the backup/restore it's reporting on.
 func (a *App) ShowToastNotification(title, message string, isError bool) {
 	n := toast.Notification{
-		AppID:   "Proxmox Backup Client",
+		AppID:   product().ShortTitle,
 		Title:   title,
 		Message: message,
 		Icon:    trayIconTempPath(),

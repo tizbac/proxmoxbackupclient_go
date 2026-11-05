@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // svcStatusServer stands in for the service: it answers every request with

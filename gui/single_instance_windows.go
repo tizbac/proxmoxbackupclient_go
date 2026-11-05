@@ -13,10 +13,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const (
-	mutexName  = "Global\\ProxmoxBackupClientGUIMutex"
-	windowName = "Proxmox Backup Client"
-)
+// mutexName is the brand's single-instance lock: Global\SalvanzaGUIMutex.
+var mutexName = `Global\` + folderName() + "GUIMutex"
 
 var (
 	user32            = windows.NewLazySystemDLL("user32.dll")
@@ -85,12 +83,9 @@ func activateExistingWindow() bool {
 	// v2.0.0" or "... dev-49d96e4" for a development build, with the brand
 	// taken from the executable's name. Searching for the default name alone
 	// never found a branded build's window, so a second launch exited without
-	// showing anything (upstream's fix). Try the brand, then the default name.
-	brand := BrandFromExecutable().Title
+	// showing anything (upstream's fix).
+	brand := product().Title
 	titles := []string{brand + " " + versionLabel(), brand}
-	if windowName != brand {
-		titles = append(titles, windowName+" "+versionLabel(), windowName)
-	}
 
 	var hwnd uintptr
 	for _, title := range titles {

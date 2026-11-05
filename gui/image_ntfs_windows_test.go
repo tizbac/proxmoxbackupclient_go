@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
+	"github.com/salvanza/salvanza_client/gui/imagefs"
 	"pbscommon"
 )
 

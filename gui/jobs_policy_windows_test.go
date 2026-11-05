@@ -13,10 +13,10 @@ func useTempPolicyKey(t *testing.T) {
 	t.Helper()
 	oldRoot, oldPath := jobPolicyRoot, jobPolicyPath
 	jobPolicyRoot = registry.CURRENT_USER
-	jobPolicyPath = `SOFTWARE\ProxmoxBackupClientTest\Policy`
+	jobPolicyPath = `SOFTWARE\SalvanzaTest\Policy`
 	t.Cleanup(func() {
 		registry.DeleteKey(registry.CURRENT_USER, jobPolicyPath)
-		registry.DeleteKey(registry.CURRENT_USER, `SOFTWARE\ProxmoxBackupClientTest`)
+		registry.DeleteKey(registry.CURRENT_USER, `SOFTWARE\SalvanzaTest`)
 		jobPolicyRoot, jobPolicyPath = oldRoot, oldPath
 	})
 	registry.DeleteKey(registry.CURRENT_USER, jobPolicyPath)

@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -219,7 +219,7 @@ func (a *App) useServiceToken(tok string, then func() error) error {
 
 // UseOwnSettings is the banner's "Use my own settings": for a user who cannot
 // (or does not want to) answer the administrator prompt, the app works on
-// their own settings in ~/.proxmox-backup-guardian instead, with their own
+// their own settings in ~/.salvanza instead, with their own
 // PBS servers and Backup Sets, which run while the app runs (as upstream's
 // app does after a declined prompt). The computer's Backup Sets go on in the
 // service. The choice is kept for this user; Connect goes back.

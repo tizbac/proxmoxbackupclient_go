@@ -12,10 +12,10 @@ import (
 
 // hardenConfigDir protects a settings folder.
 //
-// A user's own folder (~/.proxmox-backup-guardian) is made private to its
+// A user's own folder (~/.salvanza) is made private to its
 // owner; files in it are already written 0600.
 //
-// The service's folder (/var/lib/proxmoxbackupclient) is root's alone: root
+// The service's folder (/var/lib/salvanza) is root's alone: root
 // owns everything, folders 0700 and files 0600, as upstream's service keeps
 // its state. Earlier builds let the sudo or wheel group read it (setgid,
 // group-readable files) so an administrator's app could read the Backup Sets

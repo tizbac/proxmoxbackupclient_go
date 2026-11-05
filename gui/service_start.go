@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // elevatedServiceStartFlag marks the elevated copy that starts the service.

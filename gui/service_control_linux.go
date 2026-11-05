@@ -3,12 +3,12 @@
 package main
 
 // Preferences > Advanced > Run as Service on Linux: the background service is
-// the systemd unit proxmoxbackupclient.service, running ProxmoxBackupClientSVC
-// as root: the packaged one in /usr/libexec/proxmoxbackupclient, or the one
+// the systemd unit salvanza.service (the brand's FileBase), running
+// salvanza-svc as root: the packaged one in /usr/libexec/salvanza, or the one
 // beside a copy of the app run from a folder. The packages ship the unit; a
 // copy run from a folder writes its own unit to /etc/systemd/system.
 //
-// Installing moves the Backup Sets to the shared /var/lib/proxmoxbackupclient
+// Installing moves the Backup Sets to the shared /var/lib/salvanza
 // (see useSharedConfigDir): it copies the current user's settings there, then
 // the app and the service both use that folder.
 
@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // ServiceStatus describes the background service for Preferences (same JSON
@@ -68,7 +68,7 @@ func serviceExeFor(appExe string) string {
 	if filepath.Dir(appExe) == packagedAppDir {
 		return packagedServiceExe
 	}
-	return filepath.Join(filepath.Dir(appExe), "ProxmoxBackupClientSVC")
+	return filepath.Join(filepath.Dir(appExe), serviceExeBase())
 }
 
 // systemdUnit is what systemctl show reports about the unit.
@@ -225,7 +225,7 @@ func waitActive(want string, timeout time.Duration) error {
 // unitFileFor is the unit written when no packaged one is installed.
 func unitFileFor(exe string) string {
 	return `[Unit]
-Description=Proxmox Backup Client service (scheduled backups)
+Description=` + product().Title + ` service (scheduled backups)
 Wants=network-online.target
 After=network-online.target
 
@@ -281,12 +281,12 @@ func (a *App) InstallService() (ServiceStatus, error) {
 
 // moveSettingsToShared creates the shared settings folder and, if it holds no
 // settings yet, copies the current user's there (the user's own folder is
-// left as it was). The root app keeps the user's HOME (proxmoxbackupclient-root),
+// left as it was). The root app keeps the user's HOME (salvanza-gui-root),
 // so that is the user who installs the service.
 func moveSettingsToShared() error {
-	// A computer that had the earlier pbsgo package keeps its service's
-	// settings rather than the user's own.
-	if err := adoptPbsgoState(); err != nil {
+	// A computer that had an earlier package (Proxmox Backup Client, pbsgo)
+	// keeps its service's settings rather than the user's own.
+	if err := adoptLinuxState(); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(sharedConfigDir, 0o750); err != nil {

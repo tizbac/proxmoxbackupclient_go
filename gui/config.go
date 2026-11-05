@@ -266,7 +266,7 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 func getAPITokenPath() string {
 	dir, err := serviceStateDir()
 	if err != nil || dir == "" {
-		return "proxmox-client-api-token"
+		return serviceExeBase() + "-api-token"
 	}
 	return filepath.Join(dir, "api-token")
 }
@@ -280,13 +280,13 @@ var useServiceStateDir atomic.Bool
 // creating it if needed.
 //
 // The background service keeps the computer's settings in its own folder
-// (serviceStateDir): C:\ProgramData\ProxmoxBackupClient, or
-// /var/lib/proxmoxbackupclient on Linux. Only the service, SYSTEM or root,
-// and elevated administrators may open it (upstream's strict model); the
-// app reaches those settings through the service's API.
+// (serviceStateDir): C:\ProgramData\Salvanza, or /var/lib/salvanza on Linux
+// (each brand its own, identity.go). Only the service, SYSTEM or root, and
+// elevated administrators may open it (upstream's strict model); the app
+// reaches those settings through the service's API.
 //
-// The app keeps its own files in the user's ~/.proxmox-backup-guardian, as
-// upstream does: all its settings when it runs without a service, and
+// The app keeps its own files in the user's ~/.salvanza, as upstream does
+// with its own folder: all its settings when it runs without a service, and
 // otherwise only what is its own (restore caches, its message log copy).
 func getConfigDir() (string, error) {
 	var (
@@ -308,16 +308,55 @@ func getConfigDir() (string, error) {
 	return dir, nil
 }
 
-// serviceStateDir is the background service's settings folder (not created).
+// serviceStateDir is the background service's settings folder (not created):
+// C:\ProgramData\<brand folder> on Windows. The service, the first time it
+// runs, takes over an earlier install's settings (adoptWindowsState).
 func serviceStateDir() (string, error) {
-	if programData := os.Getenv("ProgramData"); programData != "" {
-		return filepath.Join(programData, "ProxmoxBackupClient"), nil
+	programData := os.Getenv("ProgramData")
+	if programData == "" {
+		if systemDrive := os.Getenv("SystemDrive"); systemDrive != "" {
+			// ProgramData unset (a service started with a bare environment).
+			programData = filepath.Join(systemDrive, "ProgramData")
+		}
 	}
-	if systemDrive := os.Getenv("SystemDrive"); systemDrive != "" {
-		// ProgramData unset (a service started with a bare environment).
-		return filepath.Join(systemDrive, "ProgramData", "ProxmoxBackupClient"), nil
+	if programData == "" {
+		return unixServiceStateDir()
 	}
-	return unixServiceStateDir()
+	dir := filepath.Join(programData, folderName())
+	if serviceBuild {
+		adoptServiceState(dir)
+	}
+	return dir, nil
+}
+
+var adoptWindowsStateOnce sync.Once
+
+// adoptServiceState runs adoptWindowsState for the service's settings folder
+// dir (C:\ProgramData\<brand folder>), once per process: in the service, and
+// in the app as administrator before Run as Service gives the service the
+// user's own settings (copyUserSettingsToService), so an earlier install's
+// service settings are taken over first and win, as in the service itself.
+func adoptServiceState(dir string) {
+	adoptWindowsStateOnce.Do(func() { adoptWindowsState(filepath.Dir(dir), dir) })
+}
+
+// adoptWindowsState gives the service's settings folder an earlier install's
+// settings when it has none: the folder every brand shared before the rename
+// (C:\ProgramData\ProxmoxBackupClient), or another brand's, which an install
+// of this brand replaces for now. Logged; a failure leaves the folder empty
+// and the service starts without settings, as on a new computer.
+func adoptWindowsState(programData, dir string) {
+	candidates := []string{filepath.Join(programData, legacyFolder)}
+	for _, f := range otherBrandFolders() {
+		candidates = append(candidates, filepath.Join(programData, f))
+	}
+	from, err := adoptFolder(dir, candidates)
+	switch {
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "Settings of an earlier install not taken over: %v\n", err)
+	case from != "":
+		fmt.Fprintf(os.Stderr, "Took over the settings of an earlier install: %s is now %s\n", from, dir)
+	}
 }
 
 func getConfigPath() (string, error) {

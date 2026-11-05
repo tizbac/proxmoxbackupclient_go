@@ -12,7 +12,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// The settings folder (C:\ProgramData\ProxmoxBackupClient) holds config.json
+// The settings folder (C:\ProgramData\Salvanza) holds config.json
 // with the PBS API token secrets, the Backup Sets, encryption keys, logs, and
 // the token that lets a program drive the background service, which runs as
 // SYSTEM. It used to inherit ProgramData's defaults, which let every local

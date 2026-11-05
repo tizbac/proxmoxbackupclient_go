@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
+	"github.com/salvanza/salvanza_client/gui/imagefs"
 )
 
 // Opt-in (PBS_IMG_URL set): opens a real machine backup on a PBS server, reads

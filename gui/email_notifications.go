@@ -59,8 +59,8 @@ func (a *App) SendTestEmail(to string) error {
 	if from == "" {
 		from = a.config.SMTPUsername
 	}
-	body := fmt.Sprintf("This is a test message from Proxmox Backup Client Go, sent at %s.\n\nIf you received this, your SMTP settings are working correctly.", time.Now().Format(time.RFC1123))
-	if err := clientcommon.SendMail(from, to, "Proxmox Backup Client Go — test email", body, client); err != nil {
+	body := fmt.Sprintf("This is a test message from %s, sent at %s.\n\nIf you received this, your SMTP settings are working correctly.", product().Title, time.Now().Format(time.RFC1123))
+	if err := clientcommon.SendMail(from, to, product().ShortTitle+": test email", body, client); err != nil {
 		return fmt.Errorf("could not send test email: %w", err)
 	}
 	return nil
@@ -103,7 +103,7 @@ func (a *App) sendJobNotificationEmail(job ScheduledJob, success bool, message s
 	if !success {
 		status = "FAILED"
 	}
-	subject := fmt.Sprintf("Proxmox Backup Client Go — %q %s", job.Name, status)
+	subject := fmt.Sprintf("%s: %q %s", product().ShortTitle, job.Name, status)
 	hostname, _ := os.Hostname()
 	body := fmt.Sprintf("Backup Set %q %s on %s at %s.\n\n%s",
 		job.Name, status, hostname, time.Now().Format(time.RFC1123), message)

@@ -16,7 +16,7 @@ import (
 // Overridable so tests can point at a throwaway HKCU key instead of HKLM.
 var (
 	jobPolicyRoot = registry.LOCAL_MACHINE
-	jobPolicyPath = `SOFTWARE\ProxmoxBackupClient\Policy`
+	jobPolicyPath = `SOFTWARE\` + folderName() + `\Policy`
 )
 
 const jobPolicyValue = "RequireAdminForJobs"

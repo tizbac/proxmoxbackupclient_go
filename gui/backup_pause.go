@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 

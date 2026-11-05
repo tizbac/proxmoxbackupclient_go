@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // The real TCP table: a connection this test makes to its own listener is

@@ -33,7 +33,9 @@ func init() {
 				local = os.TempDir()
 			}
 		}
-		logDir = filepath.Join(local, "ProxmoxBackupClient", "Logs")
+		app := filepath.Join(local, folderName())
+		adoptPlainFolder(app, []string{filepath.Join(local, legacyFolder)})
+		logDir = filepath.Join(app, "Logs")
 	} else {
 		// /var/log requires root to create a new subdirectory, which this GUI
 		// build (unlike the service build, which does run as root under
@@ -54,7 +56,8 @@ func init() {
 			}
 			stateHome = filepath.Join(home, ".local", "state")
 		}
-		logDir = filepath.Join(stateHome, "proxmoxbackupclient")
+		logDir = filepath.Join(stateHome, folderNameLower())
+		adoptPlainFolder(logDir, []string{filepath.Join(stateHome, "proxmoxbackupclient")})
 	}
 	// #nosec G703 -- ProgramData is a trusted Windows system environment variable
 	_ = os.MkdirAll(logDir, 0700)

@@ -14,7 +14,7 @@ import (
 
 	"pbscommon"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/imagefs"
+	"github.com/salvanza/salvanza_client/gui/imagefs"
 )
 
 // Files from a machine (disk image) backup: a snapshot whose only archives

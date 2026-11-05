@@ -37,13 +37,14 @@ type LogFileInfo struct {
 var runLogName = regexp.MustCompile(`^backup-(\d{8})-(\d{6})-(.+?)\.log(\.\d{8}-\d{6})?(\.gz)?$`)
 
 // logFolders lists the folders logs are in: this process's, and on Linux the
-// service's (/var/log/proxmoxbackupclient) when this process can read it
-// (root; an app works through the service otherwise).
+// service's (/var/log/salvanza) when this process can read it (root; an app
+// works through the service otherwise).
 func logFolders() []string {
 	dirs := []string{logDir}
-	if runtime.GOOS == "linux" && logDir != "/var/log/proxmoxbackupclient" && os.Geteuid() == 0 {
-		if fi, err := os.Stat("/var/log/proxmoxbackupclient"); err == nil && fi.IsDir() {
-			dirs = append(dirs, "/var/log/proxmoxbackupclient")
+	serviceLogs := "/var/log/" + folderNameLower()
+	if runtime.GOOS == "linux" && logDir != serviceLogs && os.Geteuid() == 0 {
+		if fi, err := os.Stat(serviceLogs); err == nil && fi.IsDir() {
+			dirs = append(dirs, serviceLogs)
 		}
 	}
 	return dirs

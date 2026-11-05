@@ -4,7 +4,9 @@
 package main
 
 import (
+	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/windows/registry"
@@ -45,11 +47,16 @@ func cleanupTaskScheduler() {
 	}
 }
 
+// cleanupRegistryEntry removes the user's own start-at-sign-in entries that
+// earlier builds made (portable copies set them per user): NimbusBackup's
+// own, and the names before the rename to Salvanza (ProxmoxBackupClient,
+// EtitechBackup, AcmeBackup), unless one starts this very program. The
+// computer-wide entry is the installer's, which an upgrade replaces.
 func cleanupRegistryEntry() {
 	key, err := registry.OpenKey(
 		registry.CURRENT_USER,
 		`Software\Microsoft\Windows\CurrentVersion\Run`,
-		registry.SET_VALUE,
+		registry.QUERY_VALUE|registry.SET_VALUE,
 	)
 	if err != nil {
 		// Can't open key - probably fine
@@ -57,15 +64,19 @@ func cleanupRegistryEntry() {
 	}
 	defer key.Close()
 
-	// Try to delete the value (ignore error if doesn't exist)
-	err = key.DeleteValue("NimbusBackup")
-	if err == nil {
-		writeDebugLog("Removed legacy Registry auto-start entry")
-	} else if err != registry.ErrNotExist {
-		// Some other error, log it
-		writeDebugLog("Registry cleanup: " + err.Error())
-	} else {
-		// Entry doesn't exist - that's fine
-		writeDebugLog("No legacy Registry entry found (already clean)")
+	self, _ := os.Executable()
+	for _, name := range []string{"NimbusBackup", "ProxmoxBackupClient", "EtitechBackup", "AcmeBackup"} {
+		cmd, _, err := key.GetStringValue(name)
+		if err != nil {
+			continue // not there
+		}
+		if self != "" && strings.Contains(strings.ToLower(cmd), strings.ToLower(self)) {
+			continue
+		}
+		if err := key.DeleteValue(name); err == nil {
+			writeDebugLog("Removed the earlier start-at-sign-in entry " + name + " (" + cmd + ")")
+		} else {
+			writeDebugLog("Registry cleanup: " + err.Error())
+		}
 	}
 }
