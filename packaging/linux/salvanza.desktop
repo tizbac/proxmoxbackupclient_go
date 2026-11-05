@@ -1,9 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=Proxmox Backup Client
+Name=Salvanza
+GenericName=Backup for Proxmox Backup Server
 Comment=Back up to Proxmox Backup Server, restore, undelete and roll back
-Exec=proxmoxbackupclient
-Icon=proxmoxbackupclient
+Exec=salvanza-gui
+Icon=salvanza
 Terminal=false
 Categories=Utility;Archiving;
-Keywords=backup;restore;proxmox;pbs;
+Keywords=backup;restore;proxmox;pbs;salvanza;

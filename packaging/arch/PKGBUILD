@@ -1,28 +1,29 @@
-# Maintainer: Proxmox Backup Client contributors
+# Maintainer: Salvanza contributors
 #
-# proxmoxbackupclient, the same layout as the .deb and .rpm
+# salvanza, the same layout as the .deb and .rpm
 # (packaging/debian/README.md):
-#   /usr/bin/proxmoxbackup-directory   folder backup CLI
-#   /usr/bin/proxmoxbackup-machine     whole-disk backup CLI
-#   /usr/bin/proxmoxbackup-nbd         attach a disk image as /dev/nbdN (root)
-#   /usr/bin/proxmoxbackupclient       the app, as the current user
-#   /usr/bin/proxmoxbackupclient-root  the app as root (machine backups)
-#   /usr/lib/proxmoxbackupclient/ProxmoxBackupClient
-#   /usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC  the background service
-#   /usr/lib/systemd/system/proxmoxbackupclient.service  (enabled on a fresh
-#       install, see proxmoxbackupclient.install)
-#   /usr/share/applications/proxmoxbackupclient{,-root}.desktop
-#   /usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png
+#   /usr/bin/salvanza-cli          the command line: backup-folder, backup-disk,
+#                                  attach-nbd (root)
+#   /usr/bin/proxmoxbackup-{directory,machine,nbd}  its earlier names (links)
+#   /usr/bin/salvanza-gui          the app, as the current user
+#   /usr/bin/salvanza-gui-root     the app as root (machine backups)
+#   /usr/lib/salvanza/salvanza-gui
+#   /usr/libexec/salvanza/salvanza-svc  the background service
+#   /usr/lib/systemd/system/salvanza.service  (enabled on a fresh
+#       install, see salvanza.install)
+#   /usr/share/applications/salvanza.desktop
+#   /usr/share/icons/hicolor/256x256/apps/salvanza.png
 #
-# It replaces the project's earlier pbsgo package; the service adopts
-# /var/lib/pbsgo when it finds no settings of its own (gui/config_dir_unix.go).
+# It replaces the project's earlier packages, proxmoxbackupclient and pbsgo;
+# the service adopts /var/lib/proxmoxbackupclient or /var/lib/pbsgo when it
+# finds no settings of its own (gui/config_dir_unix.go).
 #
 # Build host (Arch) requirements: base-devel, go, gtk3, webkit2gtk-4.1
 # (Arch ships the cgo headers inside the same packages, no -devel split).
 # The GUI frontend is prebuilt and committed under gui/frontend/dist, so
 # Node.js is not required.
 #
-# Source: the package is built from proxmoxbackupclient-<pkgver>.tar.gz in
+# Source: the package is built from salvanza-<pkgver>.tar.gz in
 # THIS directory, produced by `make pkgarch` (packaging/stage-source.sh) from
 # the CURRENT working tree - uncommitted changes included - instead of a
 # commit fetched from GitHub. pkgver must equal the gui/wails.json
@@ -36,21 +37,22 @@
 #   The tarball checksum is SKIP on purpose: it is regenerated from the local
 #   tree on every build, so there is no fixed sum to pin.
 
-pkgname=proxmoxbackupclient
+pkgname=salvanza
 pkgver=2.0.0
 pkgrel=1
-pkgdesc='Backup client for Proxmox Backup Server (app, service and CLIs)'
+pkgdesc='Salvanza, backup for Proxmox Backup Server (app, service and command line)'
 arch=(x86_64 aarch64)
-url='https://github.com/tizbac/proxmoxbackupclient_go'
+url='https://salvanza.org/'
 license=(GPL-3.0-or-later)
 makedepends=(go gtk3 webkit2gtk-4.1)
 # polkit (pkexec): the app asks for an administrator's password through it to
 # connect to the service, whose API token is root's alone.
 depends=(glibc gtk3 webkit2gtk-4.1 gdk-pixbuf2 glib2 libsoup3 systemd polkit)
-optdepends=('sudo: proxmoxbackupclient-root from a terminal')
-conflicts=(pbsgo)
-replaces=(pbsgo)
-install=proxmoxbackupclient.install
+optdepends=('sudo: salvanza-gui-root from a terminal')
+provides=(proxmoxbackupclient)
+conflicts=(proxmoxbackupclient pbsgo)
+replaces=(proxmoxbackupclient pbsgo)
+install=salvanza.install
 options=(!strip)
 
 # Staged from the working tree by packaging/stage-source.sh (see header): the
@@ -81,24 +83,17 @@ package() {
     # go build -o does not create parent directories
     install -d "${pkgdir}/usr/bin" "${pkgdir}/usr/lib/${pkgname}" "${pkgdir}/usr/libexec/${pkgname}"
 
-    # --- CLI tools ------------------------------------------------------
-    # directorybackup builds module-mode (GOWORK=off): its per-module go.sum
-    # is only complete after a `go mod tidy` pass. machinebackup and nbd
-    # build in workspace mode (go.work from the tarball), as build-deb.sh.
-    (
-        cd "$_srcroot/directorybackup"
-        GOWORK=off go mod tidy >/dev/null && \
-        GOWORK=off CGO_ENABLED=0 go build -trimpath \
-            -ldflags "-s -w -X main.version=${pkgver}" \
-            -o "${pkgdir}/usr/bin/proxmoxbackup-directory" .
-    )
+    # --- the command line (workspace mode, go.work from the tarball, as
+    #     build-deb.sh); the earlier names are links to it ----------------
     (
         cd "$_srcroot"
         CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${pkgver}" \
-            -o "${pkgdir}/usr/bin/proxmoxbackup-machine" ./machinebackup
-        CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${pkgver}" \
-            -o "${pkgdir}/usr/bin/proxmoxbackup-nbd" ./nbd
+            -o "${pkgdir}/usr/bin/salvanza-cli" ./cli
     )
+    local old
+    for old in proxmoxbackup-directory proxmoxbackup-machine proxmoxbackup-nbd; do
+        ln -s salvanza-cli "${pkgdir}/usr/bin/${old}"
+    done
 
     # --- the app (the desktop frontend needs the production build tag;
     #     webkit2_41 selects webkit2gtk-4.1, wails defaults to 4.0) ---------
@@ -110,7 +105,7 @@ package() {
         cd "$_srcroot/gui"
         go build -trimpath -tags "${tags}" \
             -ldflags "-s -w -X main.appVersion=${pkgver}" \
-            -o "${pkgdir}/usr/lib/${pkgname}/ProxmoxBackupClient" .
+            -o "${pkgdir}/usr/lib/${pkgname}/salvanza-gui" .
     )
 
     # --- the background service ---------------------------------------
@@ -118,16 +113,16 @@ package() {
         cd "$_srcroot/gui"
         CGO_ENABLED=0 go build -trimpath -tags service \
             -ldflags "-s -w -X main.appVersion=${pkgver}" \
-            -o "${pkgdir}/usr/libexec/${pkgname}/ProxmoxBackupClientSVC" .
+            -o "${pkgdir}/usr/libexec/${pkgname}/salvanza-svc" .
     )
 
     # --- launchers, menu entries, unit, icon, docs ---------------------
-    install -Dm 0755 "$_lin/proxmoxbackupclient" "${pkgdir}/usr/bin/proxmoxbackupclient"
-    install -Dm 0755 "$_lin/proxmoxbackupclient-root" "${pkgdir}/usr/bin/proxmoxbackupclient-root"
-    install -Dm 0644 "$_lin/proxmoxbackupclient.desktop" \
-        "${pkgdir}/usr/share/applications/proxmoxbackupclient.desktop"
-    install -Dm 0644 "$_lin/proxmoxbackupclient.service" \
-        "${pkgdir}/usr/lib/systemd/system/proxmoxbackupclient.service"
+    install -Dm 0755 "$_lin/salvanza-gui" "${pkgdir}/usr/bin/salvanza-gui"
+    install -Dm 0755 "$_lin/salvanza-gui-root" "${pkgdir}/usr/bin/salvanza-gui-root"
+    install -Dm 0644 "$_lin/salvanza.desktop" \
+        "${pkgdir}/usr/share/applications/salvanza.desktop"
+    install -Dm 0644 "$_lin/salvanza.service" \
+        "${pkgdir}/usr/lib/systemd/system/salvanza.service"
     install -Dm 0644 "$_srcroot/gui/Icon.png" \
         "${pkgdir}/usr/share/icons/hicolor/256x256/apps/${pkgname}.png"
     install -Dm 0644 "$_srcroot/README.md" "${pkgdir}/usr/share/doc/${pkgname}/README.md"

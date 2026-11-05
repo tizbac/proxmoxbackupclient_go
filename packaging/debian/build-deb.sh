@@ -1,5 +1,5 @@
 #!/bin/sh
-# build-deb.sh - build the proxmoxbackupclient Debian/Ubuntu package (.deb).
+# build-deb.sh - build the salvanza Debian/Ubuntu package (.deb).
 #
 # Usage: packaging/debian/build-deb.sh [output-dir]     (default: dist/)
 #        PBS_VERSION=2.0.0 packaging/debian/build-deb.sh   (default: gui/wails.json)
@@ -10,24 +10,27 @@
 #   - GTK3 + webkit2gtk (4.1 preferred, 4.0 accepted) dev libraries
 #   - the GUI frontend already built (gui/frontend/dist, committed in git)
 #
-# Result: <output-dir>/proxmoxbackupclient_<version>_<arch>.deb containing
-#   /usr/bin/proxmoxbackup-directory   folder backup CLI
-#   /usr/bin/proxmoxbackup-machine     whole-disk backup CLI
-#   /usr/bin/proxmoxbackup-nbd         attach a disk image as /dev/nbdN (root)
-#   /usr/bin/proxmoxbackupclient       the app, as the current user
-#   /usr/bin/proxmoxbackupclient-root  the app as root (machine backups)
-#   /usr/lib/proxmoxbackupclient/ProxmoxBackupClient
-#   /usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC  the background service
-#   /usr/lib/systemd/system/proxmoxbackupclient.service  (enabled on a fresh install)
-#   /usr/share/applications/proxmoxbackupclient{,-root}.desktop
-#   /usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png
-#   /usr/share/doc/proxmoxbackupclient/{copyright,README.md,CHANGELOG.md.gz,manual/}
+# Result: <output-dir>/salvanza_<version>_<arch>.deb containing
+#   /usr/bin/salvanza-cli          the command line: backup-folder, backup-disk,
+#                                  attach-nbd (root)
+#   /usr/bin/proxmoxbackup-{directory,machine,nbd}  its earlier names (symlinks)
+#   /usr/bin/salvanza-gui          the app, as the current user
+#   /usr/bin/salvanza-gui-root     the app as root (machine backups)
+#   /usr/lib/salvanza/salvanza-gui
+#   /usr/libexec/salvanza/salvanza-svc  the background service
+#   /usr/lib/systemd/system/salvanza.service  (enabled on a fresh install)
+#   /usr/share/applications/salvanza.desktop
+#   /usr/share/icons/hicolor/256x256/apps/salvanza.png
+#   /usr/share/doc/salvanza/{copyright,README.md,CHANGELOG.md.gz,manual/}
+#
+# It replaces the proxmoxbackupclient and pbsgo packages; the service takes
+# their settings over on its first start (gui/config_dir_unix.go).
 set -eu
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 OUT_DIR=${1:-$ROOT/dist}
-PKG=proxmoxbackupclient
+PKG=salvanza
 LIN="$ROOT/packaging/linux"
 
 wails_field() {
@@ -37,7 +40,7 @@ wails_field() {
 VERSION=${PBS_VERSION:-$(wails_field productVersion)}
 [ -n "$VERSION" ] || { echo "error: no version (PBS_VERSION or gui/wails.json productVersion)" >&2; exit 1; }
 GUI_OUTPUT=$(wails_field outputfilename)
-[ -n "$GUI_OUTPUT" ] || GUI_OUTPUT=ProxmoxBackupClient
+[ -n "$GUI_OUTPUT" ] || GUI_OUTPUT=salvanza-gui
 
 ARCH=$(go env GOARCH)
 case "$ARCH" in
@@ -60,12 +63,14 @@ mkdir -p "$STAGE/DEBIAN" \
 
 CLI_LDFLAGS="-s -w -X main.version=$VERSION"
 
-echo "==> building the command-line tools"
-# go.work lists every module, directorybackup included (appending it again,
-# as this script once did, makes go refuse the duplicate).
-(cd "$ROOT" && CGO_ENABLED=0 go build -trimpath -ldflags="$CLI_LDFLAGS" -o "$STAGE/usr/bin/proxmoxbackup-directory" ./directorybackup)
-(cd "$ROOT" && CGO_ENABLED=0 go build -trimpath -ldflags="$CLI_LDFLAGS" -o "$STAGE/usr/bin/proxmoxbackup-machine" ./machinebackup)
-(cd "$ROOT" && CGO_ENABLED=0 go build -trimpath -ldflags="$CLI_LDFLAGS" -o "$STAGE/usr/bin/proxmoxbackup-nbd" ./nbd)
+echo "==> building the command line"
+# go.work lists every module, cli included.
+(cd "$ROOT" && CGO_ENABLED=0 go build -trimpath -ldflags="$CLI_LDFLAGS" -o "$STAGE/usr/bin/salvanza-cli" ./cli)
+# The earlier names keep working: salvanza-cli picks the command from the
+# name it was started by.
+for old in proxmoxbackup-directory proxmoxbackup-machine proxmoxbackup-nbd; do
+    ln -s salvanza-cli "$STAGE/usr/bin/$old"
+done
 
 echo "==> building the app"
 [ -f "$ROOT/gui/frontend/dist/index.html" ] || {
@@ -83,17 +88,17 @@ fi
 
 echo "==> building the background service"
 # In /usr/libexec, as in the .rpm and the Arch package (they share the unit).
-(cd "$ROOT/gui" && CGO_ENABLED=0 go build -trimpath -tags service -ldflags "-s -w -X main.appVersion=$VERSION" -o "$STAGE/usr/libexec/$PKG/ProxmoxBackupClientSVC" .)
+(cd "$ROOT/gui" && CGO_ENABLED=0 go build -trimpath -tags service -ldflags "-s -w -X main.appVersion=$VERSION" -o "$STAGE/usr/libexec/$PKG/salvanza-svc" .)
 
 echo "==> installing launchers, menu entries and docs"
-install -m 0755 "$LIN/proxmoxbackupclient" "$STAGE/usr/bin/proxmoxbackupclient"
-install -m 0755 "$LIN/proxmoxbackupclient-root" "$STAGE/usr/bin/proxmoxbackupclient-root"
+install -m 0755 "$LIN/salvanza-gui" "$STAGE/usr/bin/salvanza-gui"
+install -m 0755 "$LIN/salvanza-gui-root" "$STAGE/usr/bin/salvanza-gui-root"
 # One menu entry: the app asks for administrator rights itself when it needs
 # them (connecting to the service; Restart as administrator runs the root
 # launcher above).
-install -m 0644 "$LIN/proxmoxbackupclient.desktop" "$STAGE/usr/share/applications/"
+install -m 0644 "$LIN/salvanza.desktop" "$STAGE/usr/share/applications/"
 mkdir -p "$STAGE/usr/lib/systemd/system"
-install -m 0644 "$LIN/proxmoxbackupclient.service" "$STAGE/usr/lib/systemd/system/"
+install -m 0644 "$LIN/salvanza.service" "$STAGE/usr/lib/systemd/system/"
 # gui/Icon.png is the 256 px icon (gui/build/appicon.png is the same at 1024 px).
 install -m 0644 "$ROOT/gui/Icon.png" "$STAGE/usr/share/icons/hicolor/256x256/apps/$PKG.png"
 install -m 0644 "$ROOT/README.md" "$DOC/README.md"
@@ -102,8 +107,8 @@ chmod 0644 "$DOC/CHANGELOG.md.gz"
 for m in "$ROOT"/docs/manual/*.md; do install -m 0644 "$m" "$DOC/manual/"; done
 cat > "$DOC/copyright" <<EOF
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: proxmoxbackupclient_go
-Source: https://github.com/tizbac/proxmoxbackupclient_go
+Upstream-Name: salvanza_client
+Source: https://github.com/salvanza/salvanza_client
 
 Files: *
 License: GPL-3.0-or-later
@@ -181,8 +186,15 @@ function rep(s, ph, val,    i) {
 # on schedule with nobody logged in (as the Windows MSI does by default).
 # An upgrade keeps what the user chose in Preferences > Advanced > Run as
 # Service and restarts a running service; removal stops and disables it.
-# /var/lib/proxmoxbackupclient (the Backup Sets and keys) is kept, also on
-# purge.
+# /var/lib/salvanza (the Backup Sets and keys) is kept, also on purge.
+#
+# Installed in place of the proxmoxbackupclient package, the service keeps
+# that package's choice: dpkg (or apt) removes the old package before this
+# one is set up, and its removal stops and disables the old service, so
+# the journal is what still tells whether it was running a moment ago.
+# With the old settings there and the old service not stopped in the last
+# 5 minutes, the service stays off (Preferences > Advanced > Run as
+# Service turns it on).
 #
 # "Fresh" is told in preinst: dpkg calls it with "install" for a first
 # install and for one after a removal that kept the package's files (where
@@ -192,20 +204,30 @@ cat > "$STAGE/DEBIAN/preinst" <<'EOF'
 #!/bin/sh
 set -e
 if [ "$1" = install ]; then
-    mkdir -p /run/proxmoxbackupclient && touch /run/proxmoxbackupclient/fresh-install || true
+    mkdir -p /run/salvanza && touch /run/salvanza/fresh-install || true
 fi
 exit 0
 EOF
 cat > "$STAGE/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
-fresh=/run/proxmoxbackupclient/fresh-install
+fresh=/run/salvanza/fresh-install
+# old_service_was_on: the proxmoxbackupclient service was stopped in the
+# last 5 minutes, which its package's removal does when it ran.
+old_service_was_on() {
+    command -v journalctl >/dev/null 2>&1 || return 1
+    journalctl -q -o cat -u proxmoxbackupclient.service --since "-5 min" 2>/dev/null | grep -q '^Stopp'
+}
 if [ "$1" = configure ] && [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
     if [ -e "$fresh" ]; then
-        systemctl enable --now proxmoxbackupclient.service || true
+        if [ -d /var/lib/proxmoxbackupclient ] && [ ! -d /var/lib/salvanza ] && ! old_service_was_on; then
+            echo "salvanza: the earlier service was off; it stays off (Preferences > Advanced > Run as Service)"
+        else
+            systemctl enable --now salvanza.service || true
+        fi
     else
-        systemctl try-restart proxmoxbackupclient.service || true
+        systemctl try-restart salvanza.service || true
     fi
 fi
 rm -f "$fresh"
@@ -215,7 +237,7 @@ cat > "$STAGE/DEBIAN/prerm" <<'EOF'
 #!/bin/sh
 set -e
 if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
-    systemctl disable --now proxmoxbackupclient.service >/dev/null 2>&1 || true
+    systemctl disable --now salvanza.service >/dev/null 2>&1 || true
 fi
 exit 0
 EOF

@@ -1,10 +1,14 @@
 # Linux packages
 
-`packaging/debian/build-deb.sh` builds `proxmoxbackupclient_<version>_<arch>.deb`
+`packaging/debian/build-deb.sh` builds `salvanza_<version>_<arch>.deb`
 (Debian, Ubuntu, Mint; amd64 or arm64, the build host's). `packaging/fedora/build-rpm.sh`
 builds the RPM (and a source RPM) in a Fedora container. The version comes from
 `gui/wails.json` (`productVersion`), or from `PBS_VERSION`. Both packages use the
 launchers, menu entries and systemd unit in `packaging/linux/`, and install the same files.
+
+The package is `salvanza` (Salvanza for Proxmox Backup Server). It replaces the packages
+of the names before the rename, `proxmoxbackupclient` and the 1.2.0-rc `pbsgo`: installing
+it removes them, and the service takes over their settings ([below](#upgrading-from-proxmoxbackupclient-or-pbsgo)).
 
 ## .deb build host
 
@@ -34,17 +38,16 @@ packaging/fedora/build-rpm.sh [output-dir]      # default: dist/
 
 | Path | |
 | ---- | --- |
-| `/usr/bin/proxmoxbackupclient` | starts the app as the current user (folder backups of your files; with `-list-sets`, `-undelete` or `-rollback`, those commands without a window) |
-| `/usr/bin/proxmoxbackupclient-root` | starts the app as root (the app's **Restart as administrator**); without the background service it uses your own settings, with it the service's; asks for the password with pkexec (sudo from a terminal) |
-| `/usr/bin/proxmoxbackup-directory` | folder backups from the command line |
-| `/usr/bin/proxmoxbackup-machine` | whole-disk backups from the command line |
-| `/usr/bin/proxmoxbackup-nbd` | attach a disk image from the server as `/dev/nbdN` (root) |
-| `/usr/lib/proxmoxbackupclient/ProxmoxBackupClient` | the app itself |
-| `/usr/libexec/proxmoxbackupclient/ProxmoxBackupClientSVC` | the background service program (in `/usr/libexec` so that SELinux on Fedora runs it as `unconfined_service_t`; earlier packages had it in `/usr/lib/proxmoxbackupclient`, and an upgrade moves it) |
-| `/usr/lib/systemd/system/proxmoxbackupclient.service` | its systemd unit, enabled and started on a fresh install |
-| `/usr/share/applications/proxmoxbackupclient.desktop` | menu entry "Proxmox Backup Client" |
-| `/usr/share/icons/hicolor/256x256/apps/proxmoxbackupclient.png` | icon |
-| `/usr/share/doc/proxmoxbackupclient/` | README, CHANGELOG, the manuals (and `copyright` in the .deb) |
+| `/usr/bin/salvanza-gui` | starts the app as the current user (folder backups of your files; with `-list-sets`, `-undelete` or `-rollback`, those commands without a window) |
+| `/usr/bin/salvanza-gui-root` | starts the app as root (the app's **Restart as administrator**); without the background service it uses your own settings, with it the service's; asks for the password with pkexec (sudo from a terminal) |
+| `/usr/bin/salvanza-cli` | the command line: `salvanza-cli backup-folder`, `backup-disk`, `attach-nbd` (root) |
+| `/usr/bin/proxmoxbackup-directory`, `proxmoxbackup-machine`, `proxmoxbackup-nbd` | links to `salvanza-cli` under the tools' earlier names, which run the matching command, so existing scripts and cron lines keep working |
+| `/usr/lib/salvanza/salvanza-gui` | the app itself |
+| `/usr/libexec/salvanza/salvanza-svc` | the background service program (in `/usr/libexec` so that SELinux on Fedora runs it as `unconfined_service_t`) |
+| `/usr/lib/systemd/system/salvanza.service` | its systemd unit, enabled and started on a fresh install |
+| `/usr/share/applications/salvanza.desktop` | menu entry "Salvanza for Proxmox Backup Server" |
+| `/usr/share/icons/hicolor/256x256/apps/salvanza.png` | icon |
+| `/usr/share/doc/salvanza/` | README, CHANGELOG, the manuals (and `copyright` in the .deb) |
 
 The .deb depends on `pkexec | policykit-1` and suggests `dattobd-dkms` (from Datto's
 package repository; nobody publishes an `elastio-snap-dkms` package); the .rpm
@@ -53,19 +56,17 @@ service (below).
 
 ## The menu entry
 
-**Proxmox Backup Client** runs the app as you. Folder backups of your own files work this
-way. With the background service running, it asks once for administrator rights (pkexec)
-to connect to the service (below); the app itself stays a normal program.
+**Salvanza for Proxmox Backup Server** runs the app as you. Folder backups of your own
+files work this way. With the background service running, it asks once for administrator
+rights (pkexec) to connect to the service (below); the app itself stays a normal program.
 
 For what needs the app itself as root (machine backups and block snapshots without the
 service, turning the service on or off), the app offers **Restart as administrator**, which
-runs `proxmoxbackupclient-root`. It asks for your password through polkit (pkexec), or with
+runs `salvanza-gui-root`. It asks for your password through polkit (pkexec), or with
 sudo when started from a terminal, and runs the app as root with your `HOME`. Without the
-background service it uses your settings (`~/.proxmox-backup-guardian`); with it, it reads
-the service's token itself and connects without a second prompt. When it closes it hands
-your settings folder and your log folder (`~/.local/state/proxmoxbackupclient`) back to
-you. Earlier packages also had a "Proxmox Backup Client (administrator)" menu entry; an
-upgrade removes it.
+background service it uses your settings (`~/.salvanza`); with it, it reads the service's
+token itself and connects without a second prompt. When it closes it hands your settings
+folder and your log folder (`~/.local/state/salvanza`) back to you.
 
 ## The background service
 
@@ -74,7 +75,7 @@ tray icon on Linux, so its window has to stay open). The service runs them as ro
 when nobody is logged in.
 
 A fresh install enables and starts the service, as the Windows installer does. On first
-start it creates `/var/lib/proxmoxbackupclient`, root's alone: owner root, group root,
+start it creates `/var/lib/salvanza`, root's alone: owner root, group root,
 folders 0700 and files 0600. It sets these again each time it starts, which also undoes
 what earlier versions did (group `sudo`, `wheel` or `admin`, mode 2750, files readable by
 the group). An upgrade keeps your choice: a service you turned off stays off.
@@ -83,10 +84,10 @@ To turn it on later (for example after turning it off), use the administrator ap
 Preferences > Advanced > Run as Service. That:
 
 1. copies your settings (servers, keys, Backup Sets, history) to
-   `/var/lib/proxmoxbackupclient`, unless that folder already holds settings; your own
-   `~/.proxmox-backup-guardian` is left as it was;
+   `/var/lib/salvanza`, unless that folder already holds settings or an earlier install's
+   settings are there to take over; your own `~/.salvanza` is left as it was;
 2. makes that folder root's alone: owner root, group root, folders 0700, files 0600;
-3. runs `systemctl enable --now proxmoxbackupclient.service`.
+3. runs `systemctl enable --now salvanza.service`.
 
 The service repeats step 2 every time it starts, so a folder an earlier version left
 readable by the `sudo` or `wheel` group (root:sudo 2750, group-readable files) is locked
@@ -102,14 +103,14 @@ keeps it in memory only. When the service replaces the token, the window shows *
 again and asks once more the next time it comes to the front. Anyone who can give an
 administrator's password can connect, also a user outside the sudo group; a user who
 cannot can choose **Use my own settings** and keep their own servers and Backup Sets in
-`~/.proxmox-backup-guardian`. Without pkexec (polkit) the app cannot connect. The
-administrator app (`proxmoxbackupclient-root`) reads the token itself, without a prompt.
+`~/.salvanza`. Without pkexec (polkit) the app cannot connect. The administrator app
+(`salvanza-gui-root`) reads the token itself, without a prompt.
 
 The same Preferences section also starts, stops and removes the service. Removing it
-stops and disables the unit; the settings stay in `/var/lib/proxmoxbackupclient`, and the
+stops and disables the unit; the settings stay in `/var/lib/salvanza`, and the
 app goes back to your own settings and runs their schedules while it is open.
 
-The service logs to `/var/log/proxmoxbackupclient/`. See section 15 of the GUI manual.
+The service logs to `/var/log/salvanza/`. See section 15 of the GUI manual.
 
 ## Install, upgrade and removal
 
@@ -119,9 +120,21 @@ The service logs to `/var/log/proxmoxbackupclient/`. See section 15 of the GUI m
 | Upgrade | `postinst`: `systemctl try-restart`, so a running service restarts on the new version and a stopped one stays stopped | `%post`: the same |
 | Removal | `prerm remove`: `systemctl disable --now`; `postrm`: `daemon-reload` | `%preun` (last version removed): `disable --now`; `%postun`: `daemon-reload` |
 
-`/var/lib/proxmoxbackupclient` is never deleted by the package, also not on
+`/var/lib/salvanza` is never deleted by the package, also not on
 `apt purge`. Delete it by hand if you want the settings gone. The systemd steps are
 skipped when systemd is not running (for example in a container).
+
+### Upgrading from proxmoxbackupclient or pbsgo
+
+Installing `salvanza` on a computer with the `proxmoxbackupclient` (or `pbsgo`) package
+removes that package, and with it its service, `proxmoxbackupclient.service`. Its settings
+stay where they were, and the new service takes them over the first time it starts: when
+`/var/lib/salvanza` has no settings yet, it moves the newest of `/var/lib/proxmoxbackupclient`
+and `/var/lib/pbsgo` there and keeps a copy of the settings files in
+`/var/lib/salvanza/pre-salvanza-<date>`. The service's logs move from
+`/var/log/proxmoxbackupclient` to `/var/log/salvanza`. Each user's app does the same for
+their own folders the first time they start it: `~/.proxmox-backup-guardian` becomes
+`~/.salvanza`, and `~/.local/state/proxmoxbackupclient` becomes `~/.local/state/salvanza`.
 
 ## Snapshots
 

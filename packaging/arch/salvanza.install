@@ -1,0 +1,43 @@
+# salvanza.install: the service steps of the .deb and .rpm
+# (packaging/debian/README.md). A fresh install enables and starts the
+# service, so the Backup Sets run on schedule with nobody logged in; an
+# upgrade keeps the user's choice (Run as Service) and restarts a running
+# service; removal stops and disables it. /var/lib/salvanza (the Backup Sets
+# and keys) is kept.
+#
+# Installed in place of the proxmoxbackupclient package, the service keeps
+# that package's choice: pacman removes the old package first, which stops and
+# disables the old service, so the journal is what still tells whether it was
+# running a moment ago. With the old settings there and the old service not
+# stopped in the last 5 minutes, the service stays off.
+
+old_service_was_on() {
+    command -v journalctl >/dev/null 2>&1 || return 1
+    journalctl -q -o cat -u proxmoxbackupclient.service --since "-5 min" 2>/dev/null | grep -q '^Stopp'
+}
+
+post_install() {
+    [ -d /run/systemd/system ] || return 0
+    systemctl daemon-reload || true
+    if [ -d /var/lib/proxmoxbackupclient ] && [ ! -d /var/lib/salvanza ] && ! old_service_was_on; then
+        echo "salvanza: the earlier service was off; it stays off (Preferences > Advanced > Run as Service)"
+        return 0
+    fi
+    systemctl enable --now salvanza.service || true
+}
+
+post_upgrade() {
+    [ -d /run/systemd/system ] || return 0
+    systemctl daemon-reload || true
+    systemctl try-restart salvanza.service || true
+}
+
+pre_remove() {
+    [ -d /run/systemd/system ] || return 0
+    systemctl disable --now salvanza.service >/dev/null 2>&1 || true
+}
+
+post_remove() {
+    [ -d /run/systemd/system ] || return 0
+    systemctl daemon-reload || true
+}

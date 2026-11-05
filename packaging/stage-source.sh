@@ -1,5 +1,5 @@
 #!/bin/sh
-# stage-source.sh - build proxmoxbackupclient-<version>.tar.gz from the
+# stage-source.sh - build salvanza-<version>.tar.gz from the
 # CURRENT working tree.
 #
 # The Arch package (packaging/arch/PKGBUILD) is built from this tarball
@@ -9,15 +9,15 @@
 #
 # Usage: packaging/stage-source.sh [output]
 #        output: a tarball path or an existing directory
-#        (default: <repo>/dist/proxmoxbackupclient-<version>.tar.gz)
+#        (default: <repo>/dist/salvanza-<version>.tar.gz)
 #
 # The tarball always contains a single top-level directory
-# proxmoxbackupclient-<version>, which is what $_srcroot (PKGBUILD) expects.
+# salvanza-<version>, which is what $_srcroot (PKGBUILD) expects.
 set -eu
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
-PKG=proxmoxbackupclient
+PKG=salvanza
 
 # Read version from git tag (exact match) or git short SHA
 # Falls back to wails.json if not in a git repo

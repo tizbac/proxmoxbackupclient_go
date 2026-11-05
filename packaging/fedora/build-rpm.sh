@@ -1,5 +1,5 @@
 #!/bin/sh
-# build-rpm.sh - build the proxmoxbackupclient RPM inside a Fedora Docker container.
+# build-rpm.sh - build the salvanza RPM inside a Fedora Docker container.
 #
 # Usage: packaging/fedora/build-rpm.sh [output-dir]     (default: dist/)
 #
@@ -32,17 +32,17 @@ echo "==> staging source tree ($VERSION)"
 mkdir -p "$WORK/stage"
 git -C "$ROOT" archive --format=tar HEAD | tar -x -C "$WORK/stage"
 mkdir -p "$WORK/src"
-mv "$WORK/stage" "$WORK/src/proxmoxbackupclient-$VERSION"
-tar -C "$WORK/src" -czf "$WORK/proxmoxbackupclient-$VERSION.tar.gz" "proxmoxbackupclient-$VERSION"
+mv "$WORK/stage" "$WORK/src/salvanza-$VERSION"
+tar -C "$WORK/src" -czf "$WORK/salvanza-$VERSION.tar.gz" "salvanza-$VERSION"
 rmdir "$WORK/src" "$WORK/stage" 2>/dev/null || true
 
 echo "==> preparing rpmbuild tree"
 RPM=$WORK/rpmbuild
 mkdir -p "$RPM"/BUILD "$RPM"/BUILDROOT "$RPM"/RPMS "$RPM"/SOURCES \
          "$RPM"/SPECS "$RPM"/SRPMS
-cp "$WORK/proxmoxbackupclient-$VERSION.tar.gz" "$RPM/SOURCES/"
-sed "s/^Version:.*$/Version:       $VERSION/" "$SCRIPT_DIR/proxmoxbackupclient.spec" \
-    > "$RPM/SPECS/proxmoxbackupclient.spec"
+cp "$WORK/salvanza-$VERSION.tar.gz" "$RPM/SOURCES/"
+sed "s/^Version:.*$/Version:       $VERSION/" "$SCRIPT_DIR/salvanza.spec" \
+    > "$RPM/SPECS/salvanza.spec"
 
 echo "==> building in container ($IMAGE)"
 docker run --rm -i \
@@ -54,11 +54,11 @@ set -eux
 dnf -y install golang gcc gtk3-devel webkit2gtk4.1-devel tar rpm-build
 export HOME=/root
 cp -r /src /root/rpmbuild
-rpmbuild --define "_topdir /root/rpmbuild" -ba /root/rpmbuild/SPECS/proxmoxbackupclient.spec
+rpmbuild --define "_topdir /root/rpmbuild" -ba /root/rpmbuild/SPECS/salvanza.spec
 mkdir -p /out
 cp -v /root/rpmbuild/RPMS/*/*.rpm /out/
 cp -v /root/rpmbuild/SRPMS/*.src.rpm /out/
 DOCKER
 
 echo "==> done:"
-ls -la "$OUT_DIR"/proxmoxbackupclient-*.rpm
+ls -la "$OUT_DIR"/salvanza-*.rpm
