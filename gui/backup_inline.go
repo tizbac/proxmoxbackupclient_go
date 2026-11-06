@@ -2170,7 +2170,7 @@ func openableDir(dir string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, err := f.Readdirnames(1); err != nil && err != io.EOF {
 		return err
 	}
