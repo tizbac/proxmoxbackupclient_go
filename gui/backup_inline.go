@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -2141,6 +2142,19 @@ func backupDirectory(ctx context.Context, client *pbscommon.PBSClient, newchunk,
 // change detection statistics.
 var reuseStatsHook func(archiveName string, st pbscommon.ReuseStats)
 
+// openableDir reports why dir cannot be opened and listed, or nil.
+func openableDir(dir string) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := f.Readdirnames(1); err != nil && err != io.EOF {
+		return err
+	}
+	return nil
+}
+
 func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reusechunk, failedchunk *atomic.Uint64, backupdir string, originalPath string, archiveBase string, vssUsed bool, progress func(float64, string), jobProg *jobProgress, onStats func(*BackupProgressStats), excludeList []string, catalog *sharedCatalogCoordinator, prefetchWorkers int, changeMode string) (returnBytes uint64, returnMeta *BackupFileMeta, returnSkipped, returnExcluded, returnReadErrors []string, returnErr error) {
 	// Panic recovery - critical to prevent silent crashes during backup
 	defer func() {
@@ -2154,6 +2168,17 @@ func backupReal(ctx context.Context, client *pbscommon.PBSClient, newchunk, reus
 			returnErr = fmt.Errorf("backup panic: %v", r)
 		}
 	}()
+
+	// The folder must open before any of its archives does. PBS finishes no
+	// snapshot with an index left open (and the manifest lists it with no
+	// checksum), so a folder that failed after its index was created took the
+	// whole snapshot down with it, the other folders' archives too (found
+	// 2026-11-06: a share the service may not open ended in "Invalid string
+	// length" on the manifest). Failing here leaves the other folders to be
+	// kept as a partial backup.
+	if err := openableDir(backupdir); err != nil {
+		return 0, nil, nil, nil, nil, fmt.Errorf("cannot open %s: %w", originalPath, err)
+	}
 
 	// NOTE: client.Connect() is called ONCE by the caller for the whole
 	// multi-archive session (runBackupInlineInternal) — not per directory here.
