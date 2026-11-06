@@ -12,8 +12,10 @@
 #      strncpy at all. If it neither applies nor is already there, the script
 #      stops before changing anything, rather than build a half-patched module.
 #   3. Installs the build tools and kernel headers (apt or dnf), puts the source
-#      in /usr/src and builds it with DKMS, which rebuilds it for every new
-#      kernel.
+#      in /usr/src and builds it with DKMS for the running kernel and every
+#      other installed kernel with headers; DKMS rebuilds it for every new
+#      kernel. DKMS runs without a terminal, so Ubuntu's own Secure Boot
+#      prompt during the build never waits for an answer.
 #   4. With Secure Boot on: checks that the key DKMS signed the module with is
 #      enrolled, and if not, asks the firmware to enrol it at the next start
 #      (mokutil, with a one-time password the user types again then).
@@ -140,11 +142,13 @@ install_packages() {
       done
       [ "${#missing[@]}" -eq 0 ] && return 0
       say "installing: ${missing[*]}"
+      # Standard input stays out of it: a package script that asks something
+      # (shim's Secure Boot prompt) gets no answer and moves on.
       if [ "$APT_UPDATED" = "0" ]; then
-        DEBIAN_FRONTEND=noninteractive apt-get -qq update
+        DEBIAN_FRONTEND=noninteractive apt-get -qq update < /dev/null
         APT_UPDATED=1
       fi
-      DEBIAN_FRONTEND=noninteractive apt-get -y -qq install "${missing[@]}" > /dev/null
+      DEBIAN_FRONTEND=noninteractive apt-get -y -qq install "${missing[@]}" > /dev/null < /dev/null
       ;;
     fedora)
       for p in "$@"; do
@@ -153,9 +157,9 @@ install_packages() {
       [ "${#missing[@]}" -eq 0 ] && return 0
       say "installing: ${missing[*]}"
       if command -v dnf > /dev/null 2>&1; then
-        dnf -y -q install "${missing[@]}"
+        dnf -y -q install "${missing[@]}" < /dev/null
       else
-        yum -y -q install "${missing[@]}"
+        yum -y -q install "${missing[@]}" < /dev/null
       fi
       ;;
     *)
@@ -298,25 +302,27 @@ EOF
 
 step "4/6 DKMS: $MODULE/$VER for $KVER"
 DKMS_SRC="/usr/src/$MODULE-$VER"
+# DKMS without a terminal. On Ubuntu, "dkms install" with Secure Boot on runs
+# update-secureboot-policy --enroll-key, which asks for its own Secure Boot
+# password through debconf: run from the app, with no terminal, it waited for
+# ever (found 2026-11-06 on Ubuntu 24.04). Without one it leaves the key
+# alone, and step 5 enrols it with the user's password.
+dkms_q() { DEBIAN_FRONTEND=noninteractive dkms "$@" < /dev/null; }
 dkms_state() { dkms status "$MODULE/$VER" -k "$KVER" 2> /dev/null | grep -E "^${MODULE}[/,]" || true; }
 
 # Other elastio-snap versions in DKMS would fight over the same module file.
 while read -r other; do
   [ -n "$other" ] && [ "$other" != "$VER" ] || continue
   say "removing $MODULE/$other from DKMS"
-  dkms remove "$MODULE/$other" --all > /dev/null || die "dkms remove $MODULE/$other failed"
+  dkms_q remove "$MODULE/$other" --all > /dev/null || die "dkms remove $MODULE/$other failed"
 done < <(dkms status 2> /dev/null | sed -n "s|^${MODULE}[/,] *\([^,:]*\).*|\1|p" | sort -u)
 
-OTHER_KERNELS=()
 if [ -d "$DKMS_SRC" ] && diff -r -q "$STAGE" "$DKMS_SRC" > /dev/null 2>&1; then
   say "$DKMS_SRC already holds this source"
 else
   if [ -n "$(dkms status "$MODULE/$VER" 2> /dev/null)" ]; then
-    # Rebuild the new source for the other kernels it was installed for.
-    mapfile -t OTHER_KERNELS < <(dkms status "$MODULE/$VER" 2> /dev/null \
-      | sed -n "s|^${MODULE}[/,] *[^,]*, *\([^,]*\),.*: installed.*|\1|p" | grep -vxF "$KVER" || true)
     say "replacing the different $MODULE/$VER source in DKMS"
-    dkms remove "$MODULE/$VER" --all > /dev/null || die "dkms remove $MODULE/$VER failed"
+    dkms_q remove "$MODULE/$VER" --all > /dev/null || die "dkms remove $MODULE/$VER failed"
   fi
   rm -rf "$DKMS_SRC"
   cp -a "$STAGE" "$DKMS_SRC"
@@ -325,15 +331,23 @@ fi
 if dkms_state | grep -q 'installed'; then
   say "already built and installed for $KVER"
 else
-  [ -n "$(dkms status "$MODULE/$VER" 2> /dev/null)" ] || dkms add "$MODULE/$VER" > /dev/null
-  if ! dkms install "$MODULE/$VER" -k "$KVER"; then
+  [ -n "$(dkms status "$MODULE/$VER" 2> /dev/null)" ] || dkms_q add "$MODULE/$VER" > /dev/null
+  if ! dkms_q install "$MODULE/$VER" -k "$KVER"; then
     die "the DKMS build failed: see /var/lib/dkms/$MODULE/$VER/build/make.log"
   fi
 fi
-for k in ${OTHER_KERNELS[@]+"${OTHER_KERNELS[@]}"}; do
-  [ -d "/lib/modules/$k/build" ] || continue
-  say "rebuilding for the installed kernel $k"
-  dkms install "$MODULE/$VER" -k "$k" > /dev/null 2>&1 || say "warning: the build for $k failed; DKMS tries again when that kernel starts"
+# Every other installed kernel with its headers gets the module too: an
+# update may have installed a newer kernel that has not started yet, and the
+# next start (which Secure Boot needs anyway) would then come up without the
+# module (found 2026-11-06 on Ubuntu 24.04: 6.8.0-149 installed in the
+# background, the restart started it, no elastio-snap).
+for kdir in /lib/modules/*/build; do
+  k="$(basename "$(dirname "$kdir")")"
+  [ "$k" != "$KVER" ] && [ -d "$kdir" ] || continue
+  dkms status "$MODULE/$VER" -k "$k" 2> /dev/null | grep -q 'installed' && continue
+  say "building it for the installed kernel $k too"
+  dkms_q install "$MODULE/$VER" -k "$k" > /dev/null 2>&1 \
+    || say "warning: the build for $k failed (/var/lib/dkms/$MODULE/$VER/build/make.log); after starting $k, run this again"
 done
 dkms status "$MODULE/$VER"
 
