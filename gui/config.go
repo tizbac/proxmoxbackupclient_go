@@ -142,6 +142,10 @@ type Config struct {
 	// default of 90 (pbscommon/upload_stall.go).
 	ChunkTimeoutSeconds int `json:"chunk_timeout_seconds,omitempty"`
 
+	// ShareLogins are the logins for network shares, by server in lower
+	// case (share_logins.go): what the service connects to a share with.
+	ShareLogins map[string]*ShareLogin `json:"share_logins,omitempty"`
+
 	// CompressionLevel is how hard chunks are compressed before they go to
 	// PBS, for every backup this computer makes (compression.go): fastest,
 	// default (zstd level 3), better or best. Empty means default. Backup
@@ -203,6 +207,7 @@ func (c *Config) sanitized() *Config {
 			cp.PBSServers[k] = v.sanitized()
 		}
 	}
+	cp.ShareLogins = sanitizedShareLogins(c.ShareLogins)
 	return &cp
 }
 

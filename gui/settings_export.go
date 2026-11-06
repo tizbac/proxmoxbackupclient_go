@@ -98,6 +98,15 @@ func (a *App) buildSettingsExport(includeSecrets bool) ([]byte, error) {
 		cfgCopy.SMTPPassword = ""
 		cfgCopy.EncryptionKeyPassphrase = ""
 	}
+	// Network share logins: the servers and user names always, the
+	// passwords only with the other secrets.
+	cfgCopy.ShareLogins = copyShareLogins(a.config.ShareLogins)
+	for _, l := range cfgCopy.ShareLogins {
+		l.PasswordSet = false
+		if !includeSecrets {
+			l.Password = ""
+		}
+	}
 	// Never export a live session ticket — it's short-lived and per-machine,
 	// re-minted from the stored credentials on the next operation anyway.
 	cfgCopy.Ticket = ""
@@ -263,6 +272,28 @@ func (a *App) mergeSettingsBundle(bundle SettingsBundle, forDeployment bool) (se
 		if bundle.Config.SMTPPassword != "" {
 			a.config.SMTPPassword = bundle.Config.SMTPPassword
 		}
+	}
+	// Network share logins by server, as the PBS servers: a file without
+	// the password keeps the one stored here; a login with neither is left
+	// out (it could not connect).
+	for _, l := range bundle.Config.ShareLogins {
+		if l == nil || strings.TrimSpace(l.Server) == "" || l.Username == "" {
+			continue
+		}
+		key := shareKey(l.Server)
+		in := ShareLogin{Server: strings.TrimSpace(l.Server), Username: l.Username, Password: l.Password}
+		if in.Password == "" {
+			if old := a.config.ShareLogins[key]; old != nil {
+				in.Password = old.Password
+			}
+		}
+		if in.Password == "" {
+			continue
+		}
+		if a.config.ShareLogins == nil {
+			a.config.ShareLogins = map[string]*ShareLogin{}
+		}
+		a.config.ShareLogins[key] = &in
 	}
 
 	if err := a.config.Save(); err != nil {

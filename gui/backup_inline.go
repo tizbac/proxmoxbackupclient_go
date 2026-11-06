@@ -141,6 +141,10 @@ type BackupOptions struct {
 	// OnFile reports the file currently being archived (directory backups only,
 	// sampled about twice a second and only when it changed).
 	OnFile func(path string)
+
+	// ShareLogins are the settings' network share logins (share_logins.go),
+	// used for folders on \\server\share when the service runs the backup.
+	ShareLogins map[string]*ShareLogin
 }
 
 // The rules for a lost connection to PBS (retry.SessionLost, retry.Reconnectable
@@ -1006,12 +1010,26 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		}
 	}
 
+	// Folders on network shares: connect with the servers' saved logins
+	// before anything reads them (share_logins.go; the service only).
+	releaseShares, shareErrs := connectShares(opts.ShareLogins, opts.BackupObjects)
+	defer releaseShares()
+	for _, err := range shareErrs {
+		runLog(opts.Ctx, fmt.Sprintf("Network share: %v", err))
+	}
+
 	// Check if all backup directories exist
 	runLog(opts.Ctx, fmt.Sprintf("[DEBUG] Checking %d backup directories exist", len(opts.BackupObjects)))
 	for idx, dir := range opts.BackupObjects {
 		runLog(opts.Ctx, fmt.Sprintf("[DEBUG] Checking directory %d/%d: %s", idx+1, len(opts.BackupObjects), dir))
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			errMsg := fmt.Sprintf("Backup directory does not exist: %s", dir)
+			// A Backup Set saved before mapped drives were kept as the
+			// share's path (resolveMappedDrives) names the user's letter,
+			// which the service does not have.
+			if serviceBuild && len(dir) >= 2 && dir[1] == ':' && !driveExists(dir[:2]) {
+				errMsg += fmt.Sprintf(" (the background service has no drive %s: if it is a drive mapped to a network share, edit the Backup Set and save it again, which keeps the share's own path)", strings.ToUpper(dir[:2]))
+			}
 			errKey, errParams := MsgBackupDirNotExist, msgParams{"dir": dir}
 			runLog(opts.Ctx, errMsg)
 			if opts.OnComplete != nil {
@@ -1365,6 +1383,10 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 					dirErrors = append(dirErrors, fmt.Sprintf("backup of %s failed: %v (session lost)", dir, err))
 					dirResults = append(dirResults, DirResult{Path: dir, OK: false, Error: err.Error()})
 					break // shared connection is dead — abort the rest of this attempt
+				}
+				// Say why when the share's saved login did not connect.
+				if serr := shareFailure(shareErrs, dir); serr != nil {
+					err = fmt.Errorf("%w (%v)", err, serr)
 				}
 				errMsg := fmt.Sprintf("Backup failed for %s: %v", dir, err)
 				runLog(opts.Ctx, errMsg)

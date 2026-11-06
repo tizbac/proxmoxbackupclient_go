@@ -10,6 +10,7 @@ import ClosePromptModal from './components/ClosePromptModal'
 import JobsLockModal from './components/JobsLockModal'
 import RadioGroup from './components/RadioGroup'
 import PassphraseModal from './components/PassphraseModal'
+import ShareLoginDialog from './components/ShareLoginDialog'
 import ConfirmHost, { askConfirm } from './components/ConfirmDialog'
 import TabStrip from './components/TabStrip'
 import ThemePicker, { hasStoredTheme, applyStoredTheme, heroFromAccent } from './components/ThemePicker'
@@ -1632,6 +1633,52 @@ function App() {
   // reloads the page); declined or failed, the banner says why.
   const [serviceStartBusy, setServiceStartBusy] = useState(false)
   const [serviceStartError, setServiceStartError] = useState('')
+
+  // Network share logins (Preferences > Network Shares, share_logins.go):
+  // the service reads a share as this computer's own account, so a share
+  // that needs a user name and password gets a login saved for its server.
+  const [shareLogins, setShareLogins] = useState([])
+  const [shareLoginReq, setShareLoginReq] = useState(null)
+  const loadShareLogins = async () => {
+    const fn = window.go?.main?.App?.ListShareLogins
+    if (!fn) return
+    try { setShareLogins((await fn()) || []) } catch (e) { /* the list stays as it was */ }
+  }
+  // askShareLogin opens the login dialog and resolves true once a login is
+  // saved, false when it is cancelled.
+  const askShareLogin = (opts) => new Promise((resolve) => setShareLoginReq({ ...opts, resolve }))
+  // ensureShareAccess checks, before a folder set is saved or run, that the
+  // service can open each folder on a network share; for a server that
+  // refuses it for want of a login, it asks for one. It resolves false when
+  // the user goes back.
+  const ensureShareAccess = async (dirList) => {
+    const check = window.go?.main?.App?.CheckShareAccess
+    if (!check || dirList.length === 0) return true
+    let results
+    try { results = (await check(dirList)) || [] } catch (e) { return true }
+    if (results.length === 0) return true
+    const asked = new Set()
+    for (const r of results) {
+      const key = (r.server || '').toLowerCase()
+      if (r.ok || !r.need_login || asked.has(key)) continue
+      asked.add(key)
+      const known = shareLogins.find(l => (l.server || '').toLowerCase() === key)
+      if (!(await askShareLogin({ server: r.server, path: r.path, username: known ? known.username : '', change: !!known }))) return false
+    }
+    if (asked.size > 0) {
+      loadShareLogins()
+      try { results = (await check(dirList)) || [] } catch (e) { return true }
+    }
+    const bad = results.filter(r => !r.ok)
+    if (bad.length === 0) return true
+    return await askConfirm({
+      title: t('shareCannotOpenTitle'),
+      message: t('shareCannotOpenIntro') + '\n\n' + bad.map(r => `• ${r.path}: ${r.error}`).join('\n'),
+      confirmLabel: t('shareContinue'),
+      cancelLabel: t('shareGoBack'),
+      danger: true,
+    })
+  }
   const refreshSystemInfo = async () => {
     if (!GetSystemInfo) return
     try {
@@ -2737,6 +2784,12 @@ function App() {
     const vmBackupID = useVmType ? computeVmBackupId(vmIdNumber, vmIdStyle) : ''
     if (useVmType && !vmBackupID) {
       showStatus(`❌ ${tl('machineVmIdInvalid', 'Enter a VM ID between 1 and 999999.')}`, 'error')
+      return
+    }
+
+    // Folders on network shares: the service must be able to open them,
+    // with a saved login where the share needs one.
+    if (backupType === 'directory' && !(await ensureShareAccess(dirList))) {
       return
     }
 
@@ -3891,6 +3944,9 @@ function App() {
                 <button className={`tabhead ${prefsTab === 'email' ? 'active' : ''}`} onClick={() => setPrefsTab('email')}>
                   {t('prefsEmail')}
                 </button>
+                <button className={`tabhead ${prefsTab === 'shares' ? 'active' : ''}`} onClick={() => { setPrefsTab('shares'); loadShareLogins() }}>
+                  {t('prefsSharesTab')}
+                </button>
                 <button className={`tabhead ${prefsTab === 'export' ? 'active' : ''}`} onClick={() => setPrefsTab('export')}>
                   {t('prefsExportTab')}
                 </button>
@@ -4098,6 +4154,78 @@ function App() {
                         ℹ️ {t('emailNotificationsHint')}
                       </div>
                     </div>
+                  </>
+                )}
+
+                {prefsTab === 'shares' && (
+                  <>
+                    <h2 style={{marginTop: 0}}>{t('prefsSharesTab')}</h2>
+                    <p style={{color: '#4a5568', lineHeight: 1.5}}>{t('sharesIntro')}</p>
+                    {!(systemInfo.os === 'windows' && systemInfo.service_available) ? (
+                      <div className="info-box">
+                        ℹ️ {systemInfo.os === 'windows' ? t('sharesNoService') : t('sharesLinux')}
+                      </div>
+                    ) : (
+                      <>
+                        {shareLogins.length === 0 ? (
+                          <div className="info-box" style={{marginBottom: '12px'}}>{t('sharesNone')}</div>
+                        ) : (
+                          <table style={{width: '100%', borderCollapse: 'collapse', marginBottom: '12px'}}>
+                            <thead>
+                              <tr style={{textAlign: 'left', borderBottom: '1px solid #ddd'}}>
+                                <th style={{padding: '6px'}}>{t('sharesServer')}</th>
+                                <th style={{padding: '6px'}}>{t('sharesUser')}</th>
+                                <th />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {shareLogins.map(l => (
+                                <tr key={l.server} style={{borderBottom: '1px solid #eee'}}>
+                                  <td style={{padding: '6px', fontFamily: 'monospace'}}>{`\\\\${l.server}`}</td>
+                                  <td style={{padding: '6px'}}>{l.username}</td>
+                                  <td style={{padding: '6px', textAlign: 'right', whiteSpace: 'nowrap'}}>
+                                    <button
+                                      className="btn btn-secondary"
+                                      style={{margin: '0 6px 0 0'}}
+                                      onClick={() => askShareLogin({ server: l.server, username: l.username, change: true })}
+                                    >
+                                      {t('sharesChange')}
+                                    </button>
+                                    <button
+                                      className="btn btn-secondary"
+                                      style={{margin: 0}}
+                                      onClick={async () => {
+                                        const fn = window.go?.main?.App?.DeleteShareLogin
+                                        if (!fn) return
+                                        if (!(await askConfirm({
+                                          title: t('sharesRemove'),
+                                          message: t('sharesRemoveConfirm', { server: `\\\\${l.server}` }),
+                                          confirmLabel: t('sharesRemove'),
+                                          cancelLabel: t('shareLoginCancel'),
+                                          danger: true,
+                                        }))) return
+                                        try {
+                                          await fn(l.server)
+                                          loadShareLogins()
+                                          showStatus(`✅ ${t('statusConfigSaved')}`, 'success')
+                                        } catch (err) {
+                                          showStatus(`❌ ${err}`, 'error')
+                                        }
+                                      }}
+                                    >
+                                      {t('sharesRemove')}
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                        <button className="btn" onClick={() => askShareLogin({ editServer: true })}>
+                          {t('sharesAdd')}
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
 
@@ -6770,6 +6898,18 @@ function App() {
         />
       )}
       <PassphraseModal EventsOn={EventsOn} />
+      <ShareLoginDialog
+        req={shareLoginReq}
+        onClose={(saved) => {
+          const req = shareLoginReq
+          setShareLoginReq(null)
+          if (saved) {
+            loadShareLogins()
+            showStatus(`✅ ${t('shareLoginSaved')}`, 'success')
+          }
+          if (req && req.resolve) req.resolve(saved)
+        }}
+      />
       <ConfirmHost />
     </div>
   )

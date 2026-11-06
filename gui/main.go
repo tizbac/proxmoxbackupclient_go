@@ -709,9 +709,10 @@ func (a *App) startBackupViaService(backupType string, backupDirs []string, driv
 	writeDebugLog("[Service Mode] Sending backup request to service")
 
 	req := &api.BackupRequest{
-		BackupType:   backupType,
-		BackupID:     backupID,
-		BackupDirs:   backupDirs,
+		BackupType: backupType,
+		BackupID:   backupID,
+		// The service does not see the drive letters this user maps.
+		BackupDirs:   resolveMappedDrives(backupDirs),
 		DriveLetters: driveLetters,
 		ExcludeList:  excludeList,
 		UseVSS:       useVSS,

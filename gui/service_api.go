@@ -420,6 +420,29 @@ var apiCalls = map[string]func(a *App, args []json.RawMessage) (interface{}, err
 		}
 		return nil, a.SetUploadThreads(n)
 	},
+	"SetShareLogin": func(a *App, args []json.RawMessage) (interface{}, error) {
+		var server, username, password, testPath string
+		for i, p := range []*string{&server, &username, &password, &testPath} {
+			if err := arg(args, i, p); err != nil {
+				return nil, err
+			}
+		}
+		return nil, a.SetShareLogin(server, username, password, testPath)
+	},
+	"DeleteShareLogin": func(a *App, args []json.RawMessage) (interface{}, error) {
+		var server string
+		if err := arg(args, 0, &server); err != nil {
+			return nil, err
+		}
+		return nil, a.DeleteShareLogin(server)
+	},
+	"CheckShareAccess": func(a *App, args []json.RawMessage) (interface{}, error) {
+		var paths []string
+		if err := arg(args, 0, &paths); err != nil {
+			return nil, err
+		}
+		return a.CheckShareAccess(paths)
+	},
 	"SetChunkTimeout": func(a *App, args []json.RawMessage) (interface{}, error) {
 		var seconds int
 		if err := arg(args, 0, &seconds); err != nil {

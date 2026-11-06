@@ -166,6 +166,7 @@ func (a *App) StartBackup(backupType string, backupDirs, driveLetters, excludeLi
 		UseVSS:          useVSS,
 		Compression:     compression,
 		ExcludeList:     excludeList,
+		ShareLogins:     copyShareLogins(a.config.ShareLogins),
 		DisableSplit:    pbsCfg.DisableSplit,
 		SplitSizeBytes:  pbsCfg.SplitSizeBytes(),
 		// Only meaningful for kind=="directory" — harmless to set unconditionally,

@@ -34,11 +34,17 @@ func (a *App) SaveConfig(config *Config) error {
 		if config.SMTPPassword == "" {
 			config.SMTPPassword = a.config.SMTPPassword
 		}
+		// Network share logins change only through SetShareLogin and
+		// DeleteShareLogin: the window's copy has no passwords.
+		config.ShareLogins = a.config.ShareLogins
 		config.EncryptionKeyPassphrase = mergeStoredPassphrase(a.config.EncryptionKeyFile, a.config.EncryptionKeyPassphrase,
 			config.EncryptionKeyFile, config.EncryptionKeyPassphrase, config.ClearEncryptionKeyPassphrase)
 	}
 	config.ClearEncryptionKeyPassphrase = false
 	config.EncryptionKeyPassphraseSet = false
+	if a.config == nil {
+		config.ShareLogins = nil
+	}
 
 	// Log sanitized config (no secrets)
 	writeDebugLog(fmt.Sprintf("SaveConfig() called: URL=%s, AuthID=%s, Datastore=%s, BackupID=%s",

@@ -64,6 +64,12 @@ func (c *Config) secretFields() map[string]*string {
 		f["pbs_servers."+id+".password"] = &s.Password
 		f["pbs_servers."+id+".encryption_key_passphrase"] = &s.EncryptionKeyPassphrase
 	}
+	for server, l := range c.ShareLogins {
+		if l == nil {
+			continue
+		}
+		f["share_logins."+server+".password"] = &l.Password
+	}
 	return f
 }
 
@@ -81,6 +87,8 @@ func (c *Config) sealedCopy() (*Config, error) {
 			cp.PBSServers[id] = &sc
 		}
 	}
+	// Its own copies too: sealing must not touch the passwords c holds.
+	cp.ShareLogins = copyShareLogins(c.ShareLogins)
 	for name, p := range cp.secretFields() {
 		sealed, err := sealSecret(*p)
 		if err != nil {

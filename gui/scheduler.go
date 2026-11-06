@@ -280,6 +280,9 @@ func getJobHistoryPath() (string, error) {
 
 // SaveScheduledJob saves a new scheduled job
 func (a *App) SaveScheduledJob(job ScheduledJob) error {
+	// A folder on a mapped drive letter is kept as the share's path: the
+	// service does not see the letters a user maps (resolveMappedDrives).
+	job.BackupDirs = resolveMappedDrives(job.BackupDirs)
 	if a.delegated() {
 		return a.apiClient.Call("SaveScheduledJob", nil, job)
 	}
@@ -427,6 +430,7 @@ func checkUniqueJobName(jobs []ScheduledJob, job ScheduledJob) error {
 
 // UpdateScheduledJob updates an existing scheduled job
 func (a *App) UpdateScheduledJob(job ScheduledJob) error {
+	job.BackupDirs = resolveMappedDrives(job.BackupDirs) // as SaveScheduledJob
 	if a.delegated() {
 		return a.apiClient.Call("UpdateScheduledJob", nil, job)
 	}
