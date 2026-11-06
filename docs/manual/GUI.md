@@ -706,27 +706,37 @@ The line under the bar says what the run is doing:
 | Stopping... | You pressed Stop |
 | ⏸ Paused for ... | You pressed Pause; the time counts up |
 
-The rows of a folder backup:
+The rows are read down each column. The left column has the clock times, then where the backup has got to; the right column has the time spent and left, then the data on its way to the server. The rows of a folder backup:
 
 | Row | Meaning |
 |---|---|
+| **Left column** | |
 | Started | Clock time the run started |
 | Forecast finish | Clock time it is expected to end |
-| Elapsed time | Time since the start |
-| Time remaining | Estimate. It uses the last 2 minutes of progress and takes the longer of the bytes-based and files-based estimates, so a run of many small files is not under-estimated. A machine backup counts only what it reads: the free space of each snapshotted volume and the partitions left out go into the image as zeros at once, so they are taken out of the total as soon as the snapshot is made, and the percentage and this estimate follow the data actually read (Processed still shows the whole disk). It and Forecast finish change at most every 10 seconds, while the speed and counts update as they go. Shows **Finishing...** during the last step |
-| Files | Files done / total files. The total comes from the previous snapshot or a scan |
-| Processing | Data processed per second over the last 10 seconds, plus files per second. Reused data counts, so this shows how fast the run is getting through the folder |
 | Folder | The folder being processed |
-| Upload | Data actually sent to PBS per second over the last 10 seconds, compressed, as it goes over the network. Close to zero when nearly everything is reused |
-| Processed | Data done / total, in GB with GiB in brackets (1 GB = 1,000,000,000 bytes, 1 GiB = 1,073,741,824 bytes; the two figures always use the same step, so 1.1 GB shows as 1.0 GiB, not 1004.3 MiB) |
-| New/changed data | The size of the new chunks so far (new files, and the parts of files or disk blocks that changed), before compression. Only new chunks are sent, so this is usually far less than Processed |
-| Compression ratio | New/changed data divided by Data transferred, for example 6.0:1. An encrypted backup is not compressed, so it shows about 1.0:1 |
-| Data transferred | What the new chunks took on the network once compressed: the data actually sent to PBS so far in this run, without the few percent of connection overhead |
 | Current file | The file being read now, updated 5 times a second |
+| Files | Files done / total files. The total comes from the previous snapshot or a scan |
+| Processed | Data done / total, in GB with GiB in brackets (1 GB = 1,000,000,000 bytes, 1 GiB = 1,073,741,824 bytes; the two figures always use the same step, so 1.1 GB shows as 1.0 GiB, not 1004.3 MiB) |
+| **Right column** | |
+| Elapsed time | Time since the start |
+| Time remaining | Estimate. It uses the last 2 minutes of progress and takes the longer of the bytes-based and files-based estimates, so a run of many small files is not under-estimated. A machine backup counts only what it reads: the free space of each snapshotted volume and the partitions left out go into the image as zeros at once, so they are taken out of the total as soon as the snapshot is made, and the percentage and this estimate follow the data actually read (Data read; Position on disk still goes through the whole disk). It and Forecast finish change at most every 10 seconds, while the speed and counts update as they go. Shows **Finishing...** during the last step |
+| Processing | Data processed per second over the last 10 seconds, plus files per second. Reused data counts, so this shows how fast the run is getting through the folder |
+| Upload | Data actually sent to PBS per second over the last 10 seconds, compressed, as it goes over the network. Close to zero when nearly everything is reused |
+| New/changed data | The size of the new chunks so far (new files, and the parts of files or disk blocks that changed), before compression. Only new chunks are sent, so this is usually far less than Processed |
+| Data transferred | What the new chunks took on the network once compressed: the data actually sent to PBS so far in this run, without the few percent of connection overhead |
+| Compression ratio | New/changed data divided by Data transferred, for example 6.0:1. An encrypted backup is not compressed, so it shows about 1.0:1 |
 
-A machine backup has the same layout with rows for a disk: **Blocks** (4 MiB blocks of the current disk, done / total), **Disk** (model, device and size, for example "CT500MX500SSD1, \\.\PhysicalDrive0 (465.8 GiB)"), and **Partition** in place of Current file (for example "C: (NTFS)", "Partition 2" or "Unpartitioned space"; on Linux "/dev/sda2 (/, ext4)").
+A machine backup has the same right column. Its left column, under the clock times, goes from the disk down to the figure the percentage counts:
 
-The box underneath shows the number of **New** and **Reused** chunks. A machine backup adds how many of the reused chunks are blank space, and in red how much of the disk could not be read (zeros in the image). Failed chunks show in red.
+| Row | Meaning |
+|---|---|
+| Disk | Model, device and size, for example "CT500MX500SSD1, \\.\PhysicalDrive0 (465.8 GiB)" |
+| Partition | For example "C: (NTFS)", "Partition 2" or "Unpartitioned space"; on Linux "/dev/sda2 (/, ext4)" |
+| Blocks | 4 MiB blocks of the current disk, done / total |
+| Position on disk | How far through the current disk the backup is, free space included |
+| Data read | The data read so far / the data there is to read on all the disks: the disks without their free space and the partitions left out. This is what the percentage counts, so a mostly empty disk shows 99% here while Position on disk is still far from the end |
+
+The box underneath shows the number of **New** and **Reused** chunks. A machine backup adds how many of the reused chunks are blank space, how much goes into the image without being read (free space or partitions left out), and in red how much of the disk could not be read (zeros in the image). Failed chunks show in red.
 
 **Why a repeat run still sends data.** A machine backup stores a disk in 4 MiB blocks. A block in which anything changed, even a few bytes of a log or database file, is a new chunk and is counted whole as New/changed data. Compression then shrinks it before it is sent, which is why Data transferred is often several times smaller. On a metered or slow link, Data transferred and Upload are the figures to watch.
 

@@ -520,6 +520,10 @@ const EMPTY_BACKUP_STATS = {
   diskDone: 0,
   partition: '',
   unreadable: 0,
+  // What a machine backup reads, without the free space and partitions left
+  // out that go into the image as zeros: what its % counts.
+  readDone: 0,
+  readTotal: 0,
   // A machine backup waiting to start again after a lost connection
   // (phase 'retry_wait'): when, and which attempt comes next of how many.
   retryAt: 0,
@@ -1305,6 +1309,8 @@ function App() {
           diskDone: data.diskDone || 0,
           partition: data.partition || '',
           unreadable: data.unreadable || 0,
+          readDone: data.readDone || 0,
+          readTotal: data.readTotal || 0,
           retryAt: data.retryAt || 0,
           attempt: data.attempt || 0,
           attempts: data.attempts || 0,
@@ -4752,35 +4758,59 @@ function App() {
                 const processed = s.hasDetail || s.bytesDone > 0
                   ? <>{formatBytesDual(s.bytesDone)} / {s.bytesTotal > 0 ? formatBytesDual(s.bytesTotal) : calc}</>
                   : <>0 B / {calc}</>
+                // A machine backup: how far through the current disk the
+                // reader is (free space included), and how much of the data
+                // it reads is read, which is what the % counts. A mostly empty
+                // disk is at 99% read long before the end of the disk.
+                const position = !s.hasDetail ? na
+                  : s.diskBytes > 0 ? <>{formatBytesDual(s.diskDone)} / {formatBytesDual(s.diskBytes)}</> : calc
+                const dataRead = !s.hasDetail ? na
+                  : s.readTotal > 0 ? <>{formatBytesDual(s.readDone)} / {formatBytesDual(s.readTotal)}</> : calc
+                // What goes into the image as zeros without being read.
+                const notRead = machine && s.readTotal > 0 && s.bytesTotal > s.readTotal ? s.bytesTotal - s.readTotal : 0
                 // The new chunks before (New/changed data) and after
                 // compression (Data transferred): a changed block counts whole
                 // (4 MiB in a disk image), so the first overstates what
                 // crossed the network.
                 const ratio = compressionRatio(s.uploadedBytes, s.sentBytes)
                 const chunks = s.hasDetail
-                  ? <>{tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>}</>
+                  ? <>{tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{notRead > 0 && <> · {tl('processedNotRead', '{size} not read (free space or partitions left out)').replace('{size}', formatBytesDual(notRead))}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>}</>
                   : (status.message && status.type === 'info' ? status.message : calc)
+                const fileRow = (
+                  <div style={{fontSize: '13px', color: '#495057', height: '18px', minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
+                    <strong style={{flex: '0 0 auto'}}>{machine ? tl('partitionLabel', 'Partition:') : tl('currentFileLabel', 'Current file:')}</strong> {fileLine}
+                  </div>
+                )
+                // Read down each column. Left: the clock times, then where the
+                // backup has got to, from the disk or folder down to the figure
+                // the % counts. Right: the time spent and left, then the data
+                // on its way to the server.
+                const left = [
+                  row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc),
+                  row(tl('forecastFinishLabel', 'Forecast finish:'), paused ? pausedText : (forecast || (finishingNow ? finishingText : calc))),
+                  row(machine ? tl('diskLabel', 'Disk:') : t('currentDirLabel'), folder),
+                  fileRow,
+                  row(machine ? tl('blocksLabel', 'Blocks:') : tl('filesLabel', 'Files:'), filesValue),
+                  ...(machine
+                    ? [row(tl('positionOnDiskLabel', 'Position on disk:'), position), row(tl('dataReadLabel', 'Data read:'), dataRead)]
+                    : [row(tl('processedLabel', 'Processed:'), processed), <div />]),
+                ]
+                const right = [
+                  row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc),
+                  row(t('timeRemaining'), paused ? pausedText : (finishingNow ? finishingText : (s.eta !== null ? formatDuration(s.eta) : calc))),
+                  row(tl('processingLabel', 'Processing:'), processing),
+                  row(tl('uploadLabel', 'Upload:'), upload),
+                  row(tl('newDataLabel', 'New/changed data:'), s.hasDetail ? formatBytesDual(s.uploadedBytes) : na),
+                  row(tl('sentLabel', 'Data transferred:'), s.hasDetail ? formatBytesDual(s.sentBytes) : na),
+                  row(tl('ratioLabel', 'Compression ratio:'), s.hasDetail ? (ratio || calc) : na),
+                ]
                 return (
                   <>
                     <div style={{fontSize: '14px', fontWeight: 600, color: '#0066cc', marginBottom: '10px', height: '20px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'}}>
                       {stage}
                     </div>
-                    <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px', marginBottom: '10px'}}>
-                      {row(tl('startedLabel', 'Started:'), s.startTime ? formatClock(s.startTime) : calc)}
-                      {row(tl('forecastFinishLabel', 'Forecast finish:'), paused ? pausedText : (forecast || (finishingNow ? finishingText : calc)))}
-                      {row(t('elapsedTime'), s.startTime ? formatDuration((now - s.startTime) / 1000) : calc)}
-                      {row(t('timeRemaining'), paused ? pausedText : (finishingNow ? finishingText : (s.eta !== null ? formatDuration(s.eta) : calc)))}
-                      {row(machine ? tl('blocksLabel', 'Blocks:') : tl('filesLabel', 'Files:'), filesValue)}
-                      {row(tl('processingLabel', 'Processing:'), processing)}
-                      {row(machine ? tl('diskLabel', 'Disk:') : t('currentDirLabel'), folder)}
-                      {row(tl('uploadLabel', 'Upload:'), upload)}
-                      {row(tl('processedLabel', 'Processed:'), processed)}
-                      {row(tl('newDataLabel', 'New/changed data:'), s.hasDetail ? formatBytesDual(s.uploadedBytes) : na)}
-                      {row(tl('ratioLabel', 'Compression ratio:'), s.hasDetail ? (ratio || calc) : na)}
-                      {row(tl('sentLabel', 'Data transferred:'), s.hasDetail ? formatBytesDual(s.sentBytes) : na)}
-                      <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
-                        <strong style={{flex: '0 0 auto'}}>{machine ? tl('partitionLabel', 'Partition:') : tl('currentFileLabel', 'Current file:')}</strong> {fileLine}
-                      </div>
+                    <div style={{display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gridTemplateRows: `repeat(${left.length}, auto)`, gridAutoFlow: 'column', gap: '10px', marginBottom: '10px'}}>
+                      {[...left, ...right].map((cell, i) => <Fragment key={i}>{cell}</Fragment>)}
                     </div>
                     <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef', minHeight: '18px'}}>
                       {chunks}
