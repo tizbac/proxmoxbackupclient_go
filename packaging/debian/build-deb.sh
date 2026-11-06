@@ -192,9 +192,9 @@ function rep(s, ph, val,    i) {
 # that package's choice: dpkg (or apt) removes the old package before this
 # one is set up, and its removal stops and disables the old service, so
 # the journal is what still tells whether it was running a moment ago.
-# With the old settings there and the old service not stopped in the last
-# 5 minutes, the service stays off (Preferences > Advanced > Run as
-# Service turns it on).
+# With an earlier install there (earlier_install) and the old service not
+# stopped in the last 5 minutes, the service stays off (Preferences >
+# Advanced > Run as Service turns it on).
 #
 # "Fresh" is told in preinst: dpkg calls it with "install" for a first
 # install and for one after a removal that kept the package's files (where
@@ -218,10 +218,24 @@ old_service_was_on() {
     command -v journalctl >/dev/null 2>&1 || return 1
     journalctl -q -o cat -u proxmoxbackupclient.service --since "-5 min" 2>/dev/null | grep -q '^Stopp'
 }
+# earlier_install: the client was installed here before the rename. The
+# service's folder exists only once its service has run, so also the old
+# package as dpkg still knows it (removed, its files kept) and a user's own
+# settings: on a machine whose old service was never turned on, the service
+# was switched on, and the app then showed the service's empty settings
+# instead of the user's (found 2026-11-05).
+earlier_install() {
+    [ -d /var/lib/proxmoxbackupclient ] || [ -d /var/lib/pbsgo ] && return 0
+    for d in /root/.proxmox-backup-guardian /home/*/.proxmox-backup-guardian; do
+        [ -d "$d" ] && return 0
+    done
+    dpkg-query -W -f='${db:Status-Status}\n' proxmoxbackupclient pbsgo 2>/dev/null |
+        grep -qE '^(installed|config-files|half-installed|half-configured|unpacked)$'
+}
 if [ "$1" = configure ] && [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
     if [ -e "$fresh" ]; then
-        if [ -d /var/lib/proxmoxbackupclient ] && [ ! -d /var/lib/salvanza ] && ! old_service_was_on; then
+        if earlier_install && [ ! -d /var/lib/salvanza ] && ! old_service_was_on; then
             echo "salvanza: the earlier service was off; it stays off (Preferences > Advanced > Run as Service)"
         else
             systemctl enable --now salvanza.service || true

@@ -78,7 +78,10 @@ A fresh install enables and starts the service, as the Windows installer does. O
 start it creates `/var/lib/salvanza`, root's alone: owner root, group root,
 folders 0700 and files 0600. It sets these again each time it starts, which also undoes
 what earlier versions did (group `sudo`, `wheel` or `admin`, mode 2750, files readable by
-the group). An upgrade keeps your choice: a service you turned off stays off.
+the group). An upgrade keeps your choice: a service you turned off stays off. So does
+installing over the earlier `proxmoxbackupclient` package when its service was not
+running, also where it was never turned on and your settings are your own
+(`~/.proxmox-backup-guardian`, which the app takes over as `~/.salvanza`).
 
 To turn it on later (for example after turning it off), use the administrator app:
 Preferences > Advanced > Run as Service. That:
