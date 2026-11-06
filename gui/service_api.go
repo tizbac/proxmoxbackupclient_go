@@ -420,6 +420,13 @@ var apiCalls = map[string]func(a *App, args []json.RawMessage) (interface{}, err
 		}
 		return nil, a.SetUploadThreads(n)
 	},
+	"SetChunkTimeout": func(a *App, args []json.RawMessage) (interface{}, error) {
+		var seconds int
+		if err := arg(args, 0, &seconds); err != nil {
+			return nil, err
+		}
+		return nil, a.SetChunkTimeout(seconds)
+	},
 	"SetCompressionLevel": func(a *App, args []json.RawMessage) (interface{}, error) {
 		var level string
 		if err := arg(args, 0, &level); err != nil {

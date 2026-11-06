@@ -539,11 +539,21 @@ func (c *ChunkState) startUploadWorkers(client *pbscommon.PBSClient) {
 				runLog(c.logContext(), fmt.Sprintf("New chunk[%s] %d bytes", shahash, len(job.data)))
 				retryConfig := retry.DefaultConfig()
 				retryConfig.MaxAttempts = 5
-				ctx, cancel := context.WithTimeout(c.retryParent(), 5*time.Minute)
-				err := retry.DoWithJitter(ctx, retryConfig, retry.DefaultRetryable, func() error {
-					return client.UploadDynamicCompressedChunk(c.wrid, shahash, job.data)
+				// Each attempt is bounded by the upload's own watch
+				// (pbscommon/upload_stall.go): given up once it stops
+				// moving, never while it moves. So the attempts do not share
+				// one time limit: with 5 minutes for all of them, a first
+				// attempt that stalled used it all and the chunk was never
+				// sent again.
+				attempt := 0
+				err := retry.DoWithJitter(c.retryParent(), retryConfig, retry.DefaultRetryable, func() error {
+					attempt++
+					uerr := client.UploadDynamicCompressedChunk(c.wrid, shahash, job.data)
+					if uerr != nil && attempt < retryConfig.MaxAttempts && retry.DefaultRetryable(uerr) && !c.stopped() {
+						runLog(c.logContext(), fmt.Sprintf("⚠️  Chunk %s: upload attempt %d of %d failed, sending it again: %v", shahash, attempt, retryConfig.MaxAttempts, uerr))
+					}
+					return uerr
 				})
-				cancel()
 				if err != nil && c.stopped() {
 					// Ended by Stop, not a failed chunk.
 					c.latchFatal(c.cancelCtx.Err())

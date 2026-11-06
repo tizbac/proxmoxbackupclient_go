@@ -334,11 +334,14 @@ func (c *ChunkState) closeIndex(client *pbscommon.PBSClient) error {
 	return nil
 }
 
-// How long the retries of one request may take, as in the app: a chunk
-// upload 5 minutes, the index's assignments and close 10, the manifest and
-// the session's finish 5.
+// How long the retries of one request may take, as in the app: the index's
+// assignments and close 10 minutes, the manifest and the session's finish 5.
+// A chunk upload's attempts have no shared limit (0): each is bounded by the
+// upload's own watch (pbscommon/upload_stall.go), given up once it stops
+// moving and never while it moves. With 5 minutes for all of them, a first
+// attempt that stalled used it all and the chunk was never sent again.
 const (
-	chunkRetryTime  = 5 * time.Minute
+	chunkRetryTime  = time.Duration(0)
 	indexRetryTime  = 10 * time.Minute
 	finishRetryTime = 5 * time.Minute
 )
@@ -353,11 +356,19 @@ func withRetry(what string, limit time.Duration, op func() error) error {
 }
 
 // withRetryCtx is withRetry ended early, without a further attempt, once
-// parent is cancelled.
+// parent is cancelled. A limit of 0 is none: only the attempts are counted.
 func withRetryCtx(parent context.Context, what string, limit time.Duration, op func() error) error {
 	cfg := retry.DefaultConfig()
 	cfg.MaxAttempts = 5
-	ctx, cancel := context.WithTimeout(parent, limit)
+	var (
+		ctx    context.Context
+		cancel context.CancelFunc
+	)
+	if limit > 0 {
+		ctx, cancel = context.WithTimeout(parent, limit)
+	} else {
+		ctx, cancel = context.WithCancel(parent)
+	}
 	defer cancel()
 	attempt := 0
 	var last error

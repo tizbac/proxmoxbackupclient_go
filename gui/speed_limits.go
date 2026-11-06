@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"pbscommon"
 )
@@ -22,16 +23,19 @@ const MaxSpeedLimitMBps = 100000
 // before each run, the service's settings arriving in the app) and after
 // SetSpeedLimits, so a change applies at once, also to runs already going.
 //
-// Upload threads (Preferences > Backup Options) go to pbscommon the same way.
+// Upload threads and Chunk timeout (Preferences > Backup Options) go to
+// pbscommon the same way.
 func applySpeedLimits(c *Config) {
-	var up, down, disk, threads int
+	var up, down, disk, threads, chunk int
 	if c != nil {
-		up, down, disk, threads = c.UploadLimitMBps, c.DownloadLimitMBps, c.DiskReadLimitMBps, c.UploadThreads
+		up, down, disk, threads, chunk = c.UploadLimitMBps, c.DownloadLimitMBps, c.DiskReadLimitMBps, c.UploadThreads, c.ChunkTimeoutSeconds
 	}
 	pbscommon.SetSpeedLimit(pbscommon.LimitUpload, mbpsToBytes(up))
 	pbscommon.SetSpeedLimit(pbscommon.LimitDownload, mbpsToBytes(down))
 	pbscommon.SetSpeedLimit(pbscommon.LimitDiskRead, mbpsToBytes(disk))
-	pbscommon.SetUploadThreads(threads) // out of range (hand-edited): auto
+	// Out of range (hand-edited): auto, and the default chunk timeout.
+	pbscommon.SetUploadThreads(threads)
+	pbscommon.SetChunkStallTimeout(time.Duration(chunk) * time.Second)
 }
 
 // mbpsToBytes turns a setting in MB/s into bytes per second; anything out of
@@ -84,5 +88,25 @@ func (a *App) SetUploadThreads(n int) error {
 	}
 	applySpeedLimits(a.config)
 	writeDebugLog(fmt.Sprintf("Upload threads set to %d (0 = auto)", n))
+	return nil
+}
+
+// SetChunkTimeout saves Preferences > Backup Options "Chunk timeout": how many
+// seconds a chunk upload may make no progress before it is given up and sent
+// again, 30 to 1800, or 0 for the default (90). It applies to the uploads that
+// start after it, also in backups already running.
+func (a *App) SetChunkTimeout(seconds int) error {
+	if lo, hi := int(pbscommon.MinChunkStallTimeout/time.Second), int(pbscommon.MaxChunkStallTimeout/time.Second); seconds != 0 && (seconds < lo || seconds > hi) {
+		return fmt.Errorf("the chunk timeout must be the default (0) or between %d and %d seconds", lo, hi)
+	}
+	if a.delegated() {
+		return a.serviceCall("SetChunkTimeout", seconds)
+	}
+	a.config.ChunkTimeoutSeconds = seconds
+	if err := a.config.Save(); err != nil {
+		return fmt.Errorf("failed to save the chunk timeout: %w", err)
+	}
+	applySpeedLimits(a.config)
+	writeDebugLog(fmt.Sprintf("Chunk timeout set to %d s (0 = default)", seconds))
 	return nil
 }

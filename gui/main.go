@@ -482,6 +482,7 @@ func (a *App) GetConfigWithHostname() map[string]interface{} {
 		"download_limit_mbps":           cfg.DownloadLimitMBps,
 		"disk_read_limit_mbps":          cfg.DiskReadLimitMBps,
 		"upload_threads":                cfg.UploadThreads,
+		"chunk_timeout_seconds":         cfg.ChunkTimeoutSeconds,
 		"compression_level":             compressionSetting(cfg),
 		"hostname":                      hostname,
 		// Global SMTP account (Preferences > Advanced). Same M-04 pattern as

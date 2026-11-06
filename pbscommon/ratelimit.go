@@ -205,23 +205,41 @@ func (l *RateLimiter) waitPiece(ctx context.Context, done <-chan struct{}, piece
 
 // limitedConn charges what goes over a connection to PBS: writes to the
 // upload budget, reads to the download budget. Close ends any wait at once.
+// It also notes when anything last came from PBS and when the socket last
+// took something to send (upload_stall.go): the socket takes more only as the
+// link carries what it already has (as TCP acknowledgements come back), so a
+// connection that keeps taking data is moving, however slowly and however its
+// uploads share it.
 type limitedConn struct {
 	net.Conn
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx       context.Context
+	cancel    context.CancelFunc
+	lastRead  atomic.Int64 // unix nanoseconds
+	lastWrite atomic.Int64 // unix nanoseconds
 }
 
 func newLimitedConn(c net.Conn) *limitedConn {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &limitedConn{Conn: c, ctx: ctx, cancel: cancel}
+	lc := &limitedConn{Conn: c, ctx: ctx, cancel: cancel}
+	now := time.Now().UnixNano()
+	lc.lastRead.Store(now)
+	lc.lastWrite.Store(now)
+	return lc
 }
 
 func (c *limitedConn) Read(p []byte) (int, error) {
 	n, err := c.Conn.Read(p)
 	if n > 0 {
+		c.lastRead.Store(time.Now().UnixNano())
 		_ = limiters[LimitDownload].Wait(c.ctx, n)
 	}
 	return n, err
+}
+
+// quietFor is how long nothing has come from PBS on the connection and the
+// socket has taken nothing to send.
+func (c *limitedConn) quietFor() time.Duration {
+	return time.Since(time.Unix(0, max(c.lastRead.Load(), c.lastWrite.Load())))
 }
 
 // Write waits before sending, so the bytes leave at the limited pace.
@@ -229,8 +247,20 @@ func (c *limitedConn) Write(p []byte) (int, error) {
 	if err := limiters[LimitUpload].Wait(c.ctx, len(p)); err != nil {
 		return 0, net.ErrClosed
 	}
-	return c.Conn.Write(p)
+	n, err := c.Conn.Write(p)
+	// Only data counts: the transport's own small frames (a ping every 30 s
+	// on a quiet connection, flow-control updates) would otherwise make a
+	// stuck upload look as if it were moving.
+	if n >= dataWriteMin {
+		c.lastWrite.Store(time.Now().UnixNano())
+	}
+	return n, err
 }
+
+// dataWriteMin is the smallest write that counts as the connection sending
+// data: a ping or a flow-control update with TLS around it is under 100 bytes,
+// and chunk data goes in writes of kilobytes.
+const dataWriteMin = 512
 
 func (c *limitedConn) Close() error {
 	c.cancel()

@@ -10,8 +10,8 @@ import (
 // with up to eight workers and, on a fast link, send with all of them: eight
 // uploads in flight nearly doubled the speed of sending one at a time. On a
 // slow link they only share it, and each chunk takes eight times as long to
-// arrive: at 1 Mbit/s a 4 MB chunk then took over four minutes, close to
-// chunkUploadTimeout, and PBS answered nothing for so long that the
+// arrive: at 1 Mbit/s a 4 MB chunk then took over four minutes, close to the
+// 5 minute limit an upload had then, and PBS answered nothing for so long that the
 // connection's liveness check gave up on it (found 2026-11-04 on a link shaped
 // to 1 Mbit/s, which the one-at-a-time client of before managed in 203 s).
 //

@@ -888,11 +888,6 @@ func (pbs *PBSClient) defaultCryptMode() string {
 	return CryptModeNone
 }
 
-// chunkUploadTimeout bounds one chunk upload, answer included. Chunks are at
-// most 16 MiB, so even with a low upload speed limit (1 MB/s) this leaves
-// ample room. A variable so tests can shorten it.
-var chunkUploadTimeout = 5 * time.Minute
-
 func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []byte, dynamic bool, compressed bool) error {
 	var outBuffer []byte
 	var err error
@@ -960,31 +955,44 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 	if !dynamic {
 		suburl = "/fixed_chunk?"
 	}
-	// Each upload has its own deadline, as each chunk fetch has
-	// (chunkFetchTimeout): a stuck HTTP/2 stream on a healthy connection is
-	// not caught by the transport's pings, and the backup waited on it for
-	// ever (tizbac/proxmoxbackupclient_go#59). Failing lets the caller's
-	// retry send the chunk again.
+	// Each upload is watched (upload_stall.go) and given up once it stops
+	// moving: a stuck HTTP/2 stream on a healthy connection is not caught by
+	// the transport's pings, and the backup waited on it for ever
+	// (tizbac/proxmoxbackupclient_go#59), while a slow link that still moves
+	// must not be given up. Failing lets the caller's retry send the chunk
+	// again.
 	//
-	// The deadline starts once the upload may go (upload_threads.go): the
-	// wait for a turn is not part of it.
+	// The watch starts once the upload may go (upload_threads.go): the wait
+	// for a turn is not part of it.
 	gate := pbs.uploadGate()
 	gate.acquire()
 	sent := 0
 	defer func() { gate.release(sent) }()
-	ctx, cancel := context.WithTimeout(context.Background(), chunkUploadTimeout)
-	defer cancel()
-	req, err2 := http.NewRequestWithContext(ctx, "POST", pbs.BaseURL+suburl+q.Encode(), bytes.NewBuffer(outBuffer))
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	progress := newUploadProgress(len(outBuffer))
+	req, err2 := http.NewRequestWithContext(ctx, "POST", pbs.BaseURL+suburl+q.Encode(), progress.body(outBuffer))
 	if err2 != nil {
 		fmt.Println("Error making request:", err2)
 		return err2
 	}
+	req.ContentLength = int64(len(outBuffer))
+	req.GetBody = func() (io.ReadCloser, error) { return progress.body(outBuffer), nil }
+	stop := watchUpload(cancel, progress, pbs.sessionConn())
 	resp2, err := pbs.Client.Do(req)
+	stop()
 	if err != nil {
-		fmt.Println("Error making request:", err)
-		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("chunk upload got no answer within %v: %w", chunkUploadTimeout, err)
+		var stall *UploadStallError
+		if errors.As(context.Cause(ctx), &stall) {
+			// Stopped, and PBS has said nothing on the connection either:
+			// the link has gone, not this one upload.
+			if quiet, closed := pbs.closeIfQuiet(chunkStallTime()); closed {
+				err = fmt.Errorf("connection lost: nothing from PBS for %v (%w)", quiet.Round(time.Second), stall)
+			} else {
+				err = fmt.Errorf("%w (%v)", stall, err)
+			}
 		}
+		fmt.Println("Error making request:", err)
 		return err
 	}
 	defer resp2.Body.Close()
@@ -1438,15 +1446,19 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 	// dropped connection (firewall, NAT timeout, etc.) only manifests when the
 	// next chunk upload fails, wasting minutes of backup time.
 	//
-	// The PING waits behind the chunk data already handed to the socket, and
-	// on a slow link that can be several MB: at 1 Mbit/s each MB is 8 s. With
-	// 15 s a working connection was given up while it uploaded (2026-11-04),
-	// so the answer may take 45 s; a dead connection is still found within
-	// about 75 s.
+	// The PING waits behind the chunk data already handed to the socket and
+	// queued on the way, and on a slow link that can be several MB: at
+	// 400 kbit/s each MB is 20 s. With 15 s, and later 45 s, a working
+	// connection was given up while it uploaded (2026-11-04, and 2026-11-05
+	// on a slow link shared with another backup, after 75 s). So the answer
+	// may take 5 minutes. While uploads are under way a dead connection is
+	// found sooner: an upload that stops moving on a connection PBS has said
+	// nothing on for as long is taken as a lost connection (closeIfQuiet,
+	// upload_stall.go), within about the chunk stall time.
 	pbs.Client = http.Client{
 		Transport: &http2.Transport{
 			ReadIdleTimeout: 30 * time.Second,
-			PingTimeout:     45 * time.Second,
+			PingTimeout:     5 * time.Minute,
 
 			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
 

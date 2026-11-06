@@ -2,7 +2,9 @@ package clientcommon
 
 import (
 	"flag"
+	"strconv"
 	"testing"
+	"time"
 
 	"pbscommon"
 )
@@ -78,5 +80,38 @@ func TestUploadThreads(t *testing.T) {
 	}
 	if (SpeedLimits{}).ApplySpeedLimits(); pbscommon.UploadThreads() != 0 {
 		t.Errorf("auto: %d", pbscommon.UploadThreads())
+	}
+}
+
+// -chunk-timeout takes 0 (the default) or 30 to 1800 seconds, overrides the
+// file, and is printed.
+func TestChunkTimeout(t *testing.T) {
+	t.Cleanup(func() { SpeedLimits{}.ApplySpeedLimits() })
+	fs := flag.NewFlagSet("tool", flag.ContinueOnError)
+	apply := SpeedLimitFlags(fs)
+	if err := fs.Parse([]string{"-chunk-timeout", "300"}); err != nil {
+		t.Fatal(err)
+	}
+	l := SpeedLimits{UploadThreads: 2, ChunkTimeout: 60} // from the file
+	apply(&l)
+	if l != (SpeedLimits{UploadThreads: 2, ChunkTimeout: 300}) {
+		t.Errorf("settings %+v", l)
+	}
+	for _, bad := range []int{-1, 29, 1801} {
+		want := "-chunk-timeout is " + strconv.Itoa(bad) + ": use 0 (the default, 90) or 30 to 1800 seconds"
+		if p := (SpeedLimits{ChunkTimeout: bad}).SpeedLimitProblem(); p != want {
+			t.Errorf("%d: %q", bad, p)
+		}
+	}
+	for _, good := range []int{0, 30, 1800} {
+		if p := (SpeedLimits{ChunkTimeout: good}).SpeedLimitProblem(); p != "" {
+			t.Errorf("%d: %q", good, p)
+		}
+	}
+	if line := l.ApplySpeedLimits(); line != "Upload threads: 2; Chunk timeout: 300 s" || pbscommon.ChunkStallTimeout() != 300*time.Second {
+		t.Errorf("line %q, chunk timeout %v", line, pbscommon.ChunkStallTimeout())
+	}
+	if (SpeedLimits{}).ApplySpeedLimits(); pbscommon.ChunkStallTimeout() != 0 {
+		t.Errorf("default: %v", pbscommon.ChunkStallTimeout())
 	}
 }

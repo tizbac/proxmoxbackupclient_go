@@ -137,6 +137,11 @@ type Config struct {
 	// pbscommon.MaxUploadThreads, or 0 for auto (pbscommon/upload_threads.go).
 	UploadThreads int `json:"upload_threads,omitempty"`
 
+	// ChunkTimeoutSeconds is how long a chunk upload may make no progress
+	// before it is given up and sent again, 30 to 1800 seconds, or 0 for the
+	// default of 90 (pbscommon/upload_stall.go).
+	ChunkTimeoutSeconds int `json:"chunk_timeout_seconds,omitempty"`
+
 	// CompressionLevel is how hard chunks are compressed before they go to
 	// PBS, for every backup this computer makes (compression.go): fastest,
 	// default (zstd level 3), better or best. Empty means default. Backup

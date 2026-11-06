@@ -593,6 +593,12 @@ With the background service the limits are the service's and hold for every run 
 
 Choose a number from 1 to 8 to override Auto. A change applies at once, also to backups already running. With the background service the setting is the service's.
 
+### Chunk timeout
+
+A chunk upload is watched while it goes. It is given up, and the chunk sent again (up to 5 times), only when nothing has been sent for a while, or when all of it has been sent and PBS has not answered. A slow link that is still sending is never given up, however long a chunk takes, so a backup over a busy or distant connection is not cut short; a link that has stopped is noticed within a couple of minutes instead of holding the backup.
+
+**Preferences > Backup Options > Chunk timeout** is that while: **Automatic** waits 90 seconds. A longer time suits a link that often stops for a minute or two and then carries on, such as a chain of Wi-Fi links or a mobile connection; a shorter one gives up sooner. It applies to the next chunks, also in backups already running. With the background service the setting is the service's.
+
 ### Compression
 
 **Preferences > Backup Options > Compression** sets how hard backup data is compressed before it is sent to PBS: **Fastest**, **Default (zstd level 3)**, **Better** or **Best**. PBS stores the data as it arrives and does not compress it again, so a higher level sends less and uses less space on the datastore, for more processor time on this computer. Default suits most computers; Fastest helps a slow computer on a fast network, Better or Best a fast computer on a slow link.
