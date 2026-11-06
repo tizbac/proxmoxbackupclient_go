@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unicode"
@@ -88,13 +89,22 @@ func (a *App) InstallSnapshotModule(mokPassword string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var lines atomic.Int64
+	// started: the installer itself ran (its first line is "### 1/6");
+	// before that, any output is pkexec's own.
+	var started, noAgent atomic.Bool
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		snapshot.ScanLines(pr, func(line string) {
-			lines.Add(1)
+			if strings.HasPrefix(line, "### ") {
+				started.Store(true)
+			} else if !started.Load() && strings.Contains(line, "authentication agent") {
+				// "No authentication agent found", or, with no desktop
+				// agent, "Error creating textual authentication agent"
+				// (no terminal for its own prompt either).
+				noAgent.Store(true)
+			}
 			writeDebugLog("[SnapModule] " + line)
 			a.emitEvent("snapmodule:line", line)
 		})
@@ -103,12 +113,17 @@ func (a *App) InstallSnapshotModule(mokPassword string) (string, error) {
 	_ = pw.Close()
 	wg.Wait()
 
-	if elevate && lines.Load() == 0 {
+	if elevate && !started.Load() {
 		// pkexec exits 126 when its dialog is dismissed and 127 when not
-		// authorised; the installer had printed nothing by then. (127 after
-		// output is a command the installer could not find.)
+		// authorised, before the installer starts. (127 later is a command
+		// the installer could not find.) Without a polkit agent (no desktop
+		// session) it cannot ask at all, which is not a refusal.
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && (ee.ExitCode() == 126 || ee.ExitCode() == 127) {
+			if noAgent.Load() {
+				writeDebugLog("[SnapModule] pkexec found no polkit agent to ask for the password")
+				return "", errors.New("nothing here can ask for an administrator's password (no polkit agent): run sudo salvanza-cli install-snapshot-module in a terminal instead")
+			}
 			writeDebugLog("[SnapModule] the password dialog was dismissed")
 			return "", errElevationCancelled
 		}

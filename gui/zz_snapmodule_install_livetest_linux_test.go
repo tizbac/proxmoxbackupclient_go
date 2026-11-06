@@ -7,15 +7,16 @@ package main
 // /usr/share/salvanza/elastio-snap) and Secure Boot off. As root it runs the
 // installer directly and must end with the module loaded; as a normal user
 // with no desktop session, pkexec has no agent to ask for the password, which
-// must come back as a declined prompt, not as a failed install. Opt-in:
+// must say so (and name the terminal command), not report a failed install.
+// Opt-in:
 //
 //	go test -c -o snapinst_livetest.test .
 //	sudo SNAPINST_LIVE_TEST=1 ./snapinst_livetest.test -test.v -test.run TestInstallSnapshotModuleLive
 //	SNAPINST_LIVE_TEST=1 ./snapinst_livetest.test -test.v -test.run TestInstallSnapshotModuleLive
 
 import (
-	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"snapshot"
@@ -35,10 +36,10 @@ func TestInstallSnapshotModuleLive(t *testing.T) {
 	a := &App{}
 	result, err := a.InstallSnapshotModule("")
 	if os.Geteuid() != 0 {
-		if !errors.Is(err, errElevationCancelled) {
-			t.Fatalf("as a normal user without a polkit agent: got %q, %v; want the prompt counted as declined", result, err)
+		if err == nil || !strings.Contains(err.Error(), "no polkit agent") {
+			t.Fatalf("as a normal user without a polkit agent: got %q, %v; want the no-agent message", result, err)
 		}
-		t.Log("normal user: pkexec could not ask, reported as declined")
+		t.Logf("normal user: %v", err)
 		return
 	}
 	if err != nil || result != snapModuleLoaded {
