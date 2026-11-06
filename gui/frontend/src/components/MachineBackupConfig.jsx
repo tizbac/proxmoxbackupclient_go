@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { useTranslation } from '../i18n/i18nContext'
 import { SNAP_MODULE_MANUAL_ANCHOR } from '../manuals'
+import SnapModuleInstallModal, { RestartSteps } from './SnapModuleInstallModal'
 
 // missingDisks are disks of the Backup Set being edited that are not
 // connected now ({ path, id }): the set's runs fail until they are back.
@@ -7,7 +9,11 @@ import { SNAP_MODULE_MANUAL_ANCHOR } from '../manuals'
 // snapshot module is loaded, and whether this window needs restarting as
 // administrator to read the disks (onRestartAsAdmin); the disks are greyed
 // out until then. With no module loaded, How to install opens the GUI
-// manual's installation section on the Help page (onOpenManual).
+// manual's installation section on the Help page (onOpenManual), and Install
+// it for me runs the bundled installer (SnapModuleInstallModal; greyed out
+// with the reason when it cannot run here). After an install that waits for
+// Secure Boot to approve its key, the box gives the restart steps instead.
+// onSystemInfoChanged refreshes systemInfo after an install.
 //
 // Under each ticked disk its partitions are listed. In a Backup Set
 // (setSkipParts given) each can be unticked to leave it out of the set
@@ -15,9 +21,10 @@ import { SNAP_MODULE_MANUAL_ANCHOR } from '../manuals'
 // image as zeros. A one-off backup reads whole disks, so there the ticks are
 // greyed out. diskIdFor gives the identity the set saves for a disk.
 function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, selectedDrives, missingDisks = [], systemInfo = {}, onRestartAsAdmin,
-  onOpenManual, skipParts = [], setSkipParts, diskIdFor = (d) => d.unique_id || '' }) {
+  onOpenManual, onSystemInfoChanged, skipParts = [], setSkipParts, diskIdFor = (d) => d.unique_id || '' }) {
   const { t, language } = useTranslation()
   const tl = (key, fallback, params) => { const v = t(key, params); return v === key ? fallback : v }
+  const [installOpen, setInstallOpen] = useState(false)
   const handleDriveSelect = (drivePath) => {
     if (selectedDrives.includes(drivePath)) {
       setSelectedDrives(selectedDrives.filter(d => d !== drivePath))
@@ -45,6 +52,12 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
   const linux = systemInfo.os === 'linux'
   const module = systemInfo.snapshot_module
   const needsElevation = !!systemInfo.needs_local_elevation
+  const snapInstall = systemInfo.snap_install || {}
+  const snapInstallTip = snapInstall.available
+    ? tl('snapInstallBtnTip', "Builds and loads elastio-snap for this computer, after asking for an administrator's password.")
+    : snapInstall.reason === 'distribution'
+      ? tl('snapInstallDistroTip', 'The installer knows Debian, Ubuntu, Linux Mint, Fedora and the RHEL family: How to install has the steps for other distributions.')
+      : tl('snapInstallNoInstallerTip', 'This package does not include the installer: How to install has the steps.')
 
   // A partition is "1.2 GB" or "100 MB": a whole line per partition is too much.
   const shortSize = (bytes) => {
@@ -122,18 +135,37 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
           {tl('snapModuleActive', `Snapshot module loaded: ${module}. Mounted disks are read through a snapshot.`, { module })}
         </div>
       )}
-      {linux && !module && (
+      {linux && !module && snapInstall.restart_pending && (
+        <div className="info-box snap-module-missing">
+          ⚠️ {tl('snapRestartPending', 'The snapshot module is installed, but Secure Boot loads it only once you approve its signing key at a restart:')}
+          <RestartSteps tl={tl} />
+        </div>
+      )}
+      {linux && !module && !snapInstall.restart_pending && (
         <div className="info-box snap-module-missing">
           ⚠️ {tl('snapModuleMissing', 'No snapshot module loaded (elastio-snap or dattobd). A mounted disk cannot be snapshotted: install one, or turn off Use snapshots for the set and accept a backup that may be inconsistent.')}
-          {onOpenManual && (
-            <div className="snap-module-howto">
+          <div className="snap-module-howto">
+            <button type="button" className="btn" disabled={!snapInstall.available}
+              title={snapInstallTip}
+              onClick={() => setInstallOpen(true)}>
+              {tl('snapInstallBtn', 'Install it for me')}
+            </button>
+            {onOpenManual && (
               <button type="button" className="btn btn-secondary" title={tl('snapModuleHowToTip', 'Opens the installation guide in Help.')}
                 onClick={() => onOpenManual('gui', SNAP_MODULE_MANUAL_ANCHOR)}>
                 {tl('snapModuleHowTo', 'How to install')}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+      )}
+      {installOpen && (
+        <SnapModuleInstallModal
+          status={snapInstall}
+          onClose={() => setInstallOpen(false)}
+          onFinished={onSystemInfoChanged}
+          onOpenManual={onOpenManual ? () => onOpenManual('gui', SNAP_MODULE_MANUAL_ANCHOR) : undefined}
+        />
       )}
       {needsElevation && (
         <div className="info-box" style={{ marginBottom: '12px', borderColor: '#f5c6cb', background: '#f8d7da', color: '#721c24' }}>

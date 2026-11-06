@@ -410,6 +410,9 @@ func (a *App) GetSystemInfo() map[string]interface{} {
 		if control, ok := snapshot.DetectControl(); ok {
 			info["snapshot_module"] = control.Name
 		}
+		// Whether "Install it for me" can run, Secure Boot, and an install
+		// waiting for the restart that approves its key.
+		info["snap_install"] = snapModuleInstallStatus()
 	}
 	return info
 }

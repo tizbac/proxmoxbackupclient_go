@@ -12,6 +12,9 @@ packaging/linux/* text eol=lf
 packaging/arch/* text eol=lf
 packaging/debian/* text eol=lf
 packaging/fedora/* text eol=lf
+# The elastio-snap source bundled for the snapshot module installer, kept
+# byte for byte as Axcient published it.
+packaging/linux/elastio-snap/source/** -text
 # The Windows command-line aliases the MSI installs: cmd wants CRLF, also
 # when the MSI is built on Linux (installer/wix/build_msi_linux.sh).
 *.cmd text eol=crlf

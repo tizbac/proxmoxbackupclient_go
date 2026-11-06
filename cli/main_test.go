@@ -27,6 +27,15 @@ func TestAliases(t *testing.T) {
 	}
 }
 
+// A piped or typed password loses its line end, nothing else.
+func TestTrimNewline(t *testing.T) {
+	for in, want := range map[string]string{"abc\n": "abc", "abc\r\n": "abc", "abc": "abc", " a b \n": " a b ", "\n": ""} {
+		if got := trimNewline(in); got != want {
+			t.Errorf("trimNewline(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // Every command has a summary and a unique name and aliases.
 func TestCommandsListed(t *testing.T) {
 	var b bytes.Buffer

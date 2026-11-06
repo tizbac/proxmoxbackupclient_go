@@ -5437,6 +5437,7 @@ function App() {
               systemInfo={systemInfo}
               onRestartAsAdmin={restartAsAdmin}
               onOpenManual={openManual}
+              onSystemInfoChanged={refreshSystemInfo}
               skipParts={skipParts}
               setSkipParts={backupMode === 'scheduled' ? setSkipParts : undefined}
               diskIdFor={diskIdFor}

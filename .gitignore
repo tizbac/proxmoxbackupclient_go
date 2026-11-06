@@ -1,6 +1,8 @@
 # Build artifacts
 dist/
 !gui/frontend/dist/
+# The bundled elastio-snap source's DKMS config (packaging/linux/elastio-snap).
+!packaging/linux/elastio-snap/source/dist/
 build/
 
 # Node (frontend deps; gui/frontend/dist IS tracked, see above)

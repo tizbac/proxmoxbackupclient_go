@@ -5,15 +5,24 @@
 # mounted partition through a snapshot.
 #
 # What it does:
-#   1. Fetches Axcient/elastio-snap at a pinned, tested commit (or --ref).
+#   1. Takes the elastio-snap source bundled beside it (source/, Axcient's
+#      pinned, tested commit), or fetches another version with --ref/--repo.
 #   2. Applies kernel7-strscpy.patch (Linux 7 removed strncpy). The patch is
-#      skipped when the fetched version already contains it, or no longer calls
+#      skipped when the source already contains it, or no longer calls
 #      strncpy at all. If it neither applies nor is already there, the script
 #      stops before changing anything, rather than build a half-patched module.
 #   3. Installs the build tools and kernel headers (apt or dnf), puts the source
 #      in /usr/src and builds it with DKMS, which rebuilds it for every new
 #      kernel.
-#   4. Loads the module now and at every start (/etc/modules-load.d).
+#   4. With Secure Boot on: checks that the key DKMS signed the module with is
+#      enrolled, and if not, asks the firmware to enrol it at the next start
+#      (mokutil, with a one-time password the user types again then).
+#   5. Loads the module now and at every start (/etc/modules-load.d).
+#
+# The app's "Install it for me" and "salvanza-cli install-snapshot-module" run
+# this script. Exit codes: 0 installed and loaded; 10 installed, but the
+# computer must restart so the user can approve the signing key (Secure Boot);
+# anything else, failed (the output says why).
 #
 # Safe to run again: an identical source already built for the running kernel
 # is left alone. Debian, Ubuntu, Linux Mint, Fedora and the RHEL family.
@@ -23,32 +32,44 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATCH_FILE="$SCRIPT_DIR/kernel7-strscpy.patch"
+BUNDLED_SRC="$SCRIPT_DIR/source"
 
 DEFAULT_REPO="https://github.com/Axcient/elastio-snap.git"
-# Axcient/elastio-snap branch develop, version 0.12.11. Tested with the patch
-# on Fedora 44 (kernel 7.2) and Linux Mint 21.3 (kernel 5.15), November 2026.
+# Axcient/elastio-snap branch develop, version 0.12.11, the commit bundled in
+# source/. Tested with the patch on Fedora 44 (kernel 7.2) and Linux Mint 21.3
+# (kernel 5.15), November 2026.
 PINNED_REF="971ba56a607022efc72cb3567c3cc29b2e4d10cf"
 UPSTREAM_PR="https://github.com/Axcient/elastio-snap/pull/138"
 
 MODULE="elastio-snap"
 MODULE_SYS="elastio_snap"
 LOAD_CONF="/etc/modules-load.d/elastio-snap.conf"
+# Left while a key waits for approval at the next start; /run is emptied by
+# the restart, so the app stops saying "restart to finish" once it has.
+MOK_PENDING="/run/elastio-snap-mok-pending"
+EXIT_NEEDS_RESTART=10
 
-REPO="$DEFAULT_REPO"
-REF="$PINNED_REF"
+REPO=""
+REF=""
 NO_PATCH=0
 WITH_ELIOCTL=0
+MOK_PASSWORD_STDIN=0
 
 usage() {
   cat <<EOF
 Usage: sudo $0 [options]
 
-  --ref REF        elastio-snap commit, tag or branch to build
-                   (default: the tested commit $PINNED_REF)
+  --mok-password-stdin  with Secure Boot on, read the one-time password for
+                   enrolling the signing key from the first line of standard
+                   input (8 to 16 characters); without it the password is
+                   asked for on the terminal
+  --ref REF        fetch and build this elastio-snap commit, tag or branch
+                   instead of the bundled source ($PINNED_REF)
   --repo URL       git repository to fetch from (default: $DEFAULT_REPO)
-  --no-patch       build the fetched source as it is, without the kernel 7 patch
+  --no-patch       build the source as it is, without the kernel 7 patch
                    (only for kernels before 7)
   --with-elioctl   also build the module's own tool, elioctl, into /usr/local/bin
+                   (with --ref only: the bundled source has the module alone)
   -h, --help       this help
 EOF
   exit "${1:-1}"
@@ -60,6 +81,7 @@ die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --mok-password-stdin) MOK_PASSWORD_STDIN=1; shift ;;
     --ref)          REF="${2:-}"; [ -n "$REF" ] || die "--ref needs a value"; shift 2 ;;
     --repo)         REPO="${2:-}"; [ -n "$REPO" ] || die "--repo needs a value"; shift 2 ;;
     --no-patch)     NO_PATCH=1; shift ;;
@@ -71,6 +93,28 @@ done
 
 [ "$(id -u)" -eq 0 ] || die "run this as root, for example: sudo $0"
 [ "$NO_PATCH" = "1" ] || [ -f "$PATCH_FILE" ] || die "patch not found: $PATCH_FILE"
+
+# The bundled source unless another version was asked for (or it is missing,
+# in a copy of the script taken on its own).
+FETCH=0
+if [ -n "$REF" ] || [ -n "$REPO" ] || [ ! -f "$BUNDLED_SRC/src/elastio-snap.h" ]; then
+  FETCH=1
+  REPO="${REPO:-$DEFAULT_REPO}"
+  REF="${REF:-$PINNED_REF}"
+fi
+[ "$WITH_ELIOCTL" = "0" ] || [ "$FETCH" = "1" ] \
+  || die "--with-elioctl needs --ref: the bundled source has the module alone"
+
+# The password is read before anything is built, so a run from the app never
+# waits on standard input later.
+MOK_PW=""
+if [ "$MOK_PASSWORD_STDIN" = "1" ]; then
+  IFS= read -r MOK_PW || true
+  case "${#MOK_PW}" in
+    8|9|10|11|12|13|14|15|16) ;;
+    *) die "the one-time password must be 8 to 16 characters" ;;
+  esac
+fi
 
 KVER="$(uname -r)"
 
@@ -124,41 +168,59 @@ install_packages() {
   esac
 }
 
-# --------------------------------------------------------- 1. fetch source --
+# secure_boot_on: the firmware's SecureBoot variable is 1 (its fifth byte;
+# the first four are the variable's attributes).
+secure_boot_on() {
+  local var
+  var="$(ls /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c 2> /dev/null || true)"
+  [ -n "$var" ] || return 1
+  [ "$(od -An -t u1 -j 4 -N 1 "$var" 2> /dev/null | tr -d ' ')" = "1" ]
+}
 
-step "1/5 fetch elastio-snap ($REF)"
-install_packages git patch
+# ---------------------------------------------------------------- 1. source --
 
 WORK="$(mktemp -d /tmp/elastio-snap-src.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 SRC="$WORK/elastio-snap"
-git init -q "$SRC"
-git -C "$SRC" remote add origin "$REPO"
-if ! git -C "$SRC" fetch -q --depth 1 origin "$REF" 2> /dev/null; then
-  # Some servers refuse a shallow fetch of a commit id: fetch everything.
-  git -C "$SRC" fetch -q --tags origin '+refs/heads/*:refs/remotes/origin/*' \
-    || die "cannot fetch $REPO"
-  git -C "$SRC" rev-parse -q --verify "$REF^{commit}" > /dev/null 2>&1 \
-    || git -C "$SRC" rev-parse -q --verify "origin/$REF^{commit}" > /dev/null 2>&1 \
-    || die "$REF is not a commit, tag or branch of $REPO"
-  if git -C "$SRC" rev-parse -q --verify "$REF^{commit}" > /dev/null 2>&1; then
-    git -C "$SRC" -c advice.detachedHead=false checkout -q "$REF"
-  else
-    git -C "$SRC" -c advice.detachedHead=false checkout -q "origin/$REF"
-  fi
+
+if [ "$FETCH" = "0" ]; then
+  step "1/6 elastio-snap source (bundled)"
+  install_packages patch
+  cp -a "$BUNDLED_SRC" "$SRC"
+  COMMIT="$PINNED_REF"
+  REPO_NOTE="bundled with this installer ($DEFAULT_REPO)"
 else
-  git -C "$SRC" -c advice.detachedHead=false checkout -q FETCH_HEAD
+  step "1/6 fetch elastio-snap ($REF)"
+  install_packages git patch
+  git init -q "$SRC"
+  git -C "$SRC" remote add origin "$REPO"
+  if ! git -C "$SRC" fetch -q --depth 1 origin "$REF" 2> /dev/null; then
+    # Some servers refuse a shallow fetch of a commit id: fetch everything.
+    git -C "$SRC" fetch -q --tags origin '+refs/heads/*:refs/remotes/origin/*' \
+      || die "cannot fetch $REPO"
+    git -C "$SRC" rev-parse -q --verify "$REF^{commit}" > /dev/null 2>&1 \
+      || git -C "$SRC" rev-parse -q --verify "origin/$REF^{commit}" > /dev/null 2>&1 \
+      || die "$REF is not a commit, tag or branch of $REPO"
+    if git -C "$SRC" rev-parse -q --verify "$REF^{commit}" > /dev/null 2>&1; then
+      git -C "$SRC" -c advice.detachedHead=false checkout -q "$REF"
+    else
+      git -C "$SRC" -c advice.detachedHead=false checkout -q "origin/$REF"
+    fi
+  else
+    git -C "$SRC" -c advice.detachedHead=false checkout -q FETCH_HEAD
+  fi
+  COMMIT="$(git -C "$SRC" rev-parse HEAD)"
+  REPO_NOTE="$REPO"
 fi
-COMMIT="$(git -C "$SRC" rev-parse HEAD)"
 [ -f "$SRC/src/elastio-snap.h" ] && [ -f "$SRC/dist/elastio-snap-dkms-conf" ] \
-  || die "$REF has no src/elastio-snap.h or dist/elastio-snap-dkms-conf: too old, or not elastio-snap"
+  || die "$COMMIT has no src/elastio-snap.h or dist/elastio-snap-dkms-conf: too old, or not elastio-snap"
 VER="$(sed -n 's/.*ELASTIO_SNAP_VERSION "\([^"]*\)".*/\1/p' "$SRC/src/elastio-snap.h" | head -n1)"
 [ -n "$VER" ] || die "no ELASTIO_SNAP_VERSION in src/elastio-snap.h: is this elastio-snap?"
 say "commit $COMMIT, version $VER"
 
 # ------------------------------------------------------ 2. kernel 7 patch --
 
-step "2/5 kernel 7 patch"
+step "2/6 kernel 7 patch"
 uses_strncpy() { grep -q 'strncpy(' "$SRC"/src/*.c "$SRC"/src/*.h 2> /dev/null; }
 PATCH_STATE=""
 if [ "$NO_PATCH" = "1" ]; then
@@ -180,7 +242,7 @@ else
 error: kernel7-strscpy.patch does not apply to elastio-snap $VER ($COMMIT),
 and that version still calls strncpy, which kernel 7 removed.
 Axcient changed the code the patch touches, so nothing was built or installed.
-  - Run without --ref to build the tested version ($PINNED_REF).
+  - Run without --ref to build the bundled, tested version ($PINNED_REF).
   - Or check whether Axcient has released the fix: $UPSTREAM_PR
     If it has, this patch is no longer needed.
   - On a kernel before 7, --no-patch builds this version unpatched.
@@ -191,7 +253,7 @@ say "patch: $PATCH_STATE"
 
 # ------------------------------------------------- 3. build tools and DKMS --
 
-step "3/5 build tools and kernel headers for $KVER"
+step "3/6 build tools and kernel headers for $KVER"
 case "$FAMILY" in
   debian)
     pkgs=(build-essential dkms "linux-headers-$KVER")
@@ -214,18 +276,27 @@ case "$FAMILY" in
 esac
 [ -d "/lib/modules/$KVER/build" ] || die "no kernel headers for $KVER in /lib/modules/$KVER/build"
 
+SECURE_BOOT=0
+if secure_boot_on; then
+  SECURE_BOOT=1
+  say "Secure Boot is on: the module must be signed with an enrolled key"
+  install_packages mokutil openssl
+fi
+
 # The source as DKMS will see it, with a note of where it came from.
 STAGE="$WORK/stage"
 cp -a "$SRC/src" "$STAGE"
+# DKMS runs it as PRE_BUILD; a copy made on Windows can lose its mode.
+chmod 0755 "$STAGE/genconfig.sh"
 sed "s/@MODULE_VERSION@/$VER/" "$SRC/dist/elastio-snap-dkms-conf" > "$STAGE/dkms.conf"
 cat > "$STAGE/SOURCE.txt" <<EOF
 Installed by install-elastio-snap.sh
-repository: $REPO
+repository: $REPO_NOTE
 commit: $COMMIT
 kernel 7 patch: $PATCH_STATE
 EOF
 
-step "4/5 DKMS: $MODULE/$VER for $KVER"
+step "4/6 DKMS: $MODULE/$VER for $KVER"
 DKMS_SRC="/usr/src/$MODULE-$VER"
 dkms_state() { dkms status "$MODULE/$VER" -k "$KVER" 2> /dev/null | grep -E "^${MODULE}[/,]" || true; }
 
@@ -282,14 +353,113 @@ if [ "$WITH_ELIOCTL" = "1" ]; then
   say "installed /usr/local/bin/elioctl"
 fi
 
-# ------------------------------------------------------------ 5. load it --
+# ----------------------------------------------------------- 5. Secure Boot --
 
-step "5/5 load now and at every start"
+# hexid: an id as plain upper-case hex, without colons, spaces or leading
+# zeros, so a module's sig_key and a certificate's serial or key id compare.
+hexid() { tr -d ': \t\n' | tr '[:lower:]' '[:upper:]' | sed 's/^0*//'; }
+
+# signing_cert: the certificate of the key DKMS signed the module with, found
+# among the places DKMS keeps them (its own setting, Ubuntu's shim-signed key,
+# DKMS's default) by matching the module's sig_key against each one's serial
+# number and key id.
+signing_cert() {
+  local ko sig c conf cands=()
+  ko="$(modinfo -k "$KVER" -n "$MODULE" 2> /dev/null || true)"
+  [ -n "$ko" ] || return 1
+  sig="$(modinfo -F sig_key "$ko" 2> /dev/null | hexid)"
+  [ -n "$sig" ] || return 2
+  for conf in /etc/dkms/framework.conf /etc/dkms/framework.conf.d/*.conf; do
+    [ -r "$conf" ] || continue
+    c="$(sed -n 's/^[[:space:]]*mok_certificate=["]\{0,1\}\([^"]*\)["]\{0,1\}[[:space:]]*$/\1/p' "$conf" | tail -n1)"
+    [ -n "$c" ] && cands+=("$c")
+  done
+  cands+=(/var/lib/shim-signed/mok/MOK.der /var/lib/dkms/mok.pub)
+  for c in "${cands[@]}"; do
+    [ -f "$c" ] || continue
+    if [ "$(openssl x509 -inform DER -in "$c" -noout -serial 2> /dev/null | sed 's/^serial=//' | hexid)" = "$sig" ] \
+      || [ "$(openssl x509 -inform DER -in "$c" -noout -ext subjectKeyIdentifier 2> /dev/null | sed 1d | hexid)" = "$sig" ]; then
+      printf '%s\n' "$c"
+      return 0
+    fi
+  done
+  return 3
+}
+
+step "5/6 Secure Boot"
+NEEDS_RESTART=0
+if [ "$SECURE_BOOT" = "0" ]; then
+  say "Secure Boot is off: nothing to do"
+  rm -f "$MOK_PENDING"
+else
+  set +e
+  CERT="$(signing_cert)"
+  rc=$?
+  set -e
+  case "$rc" in
+    0) say "the module is signed with $CERT" ;;
+    1) die "modinfo cannot find the $MODULE module just built for $KVER" ;;
+    2) die "the module is not signed, so Secure Boot will refuse it. This version of DKMS does not sign modules: update the system (DKMS 3 signs them), or see the GUI manual, Secure Boot." ;;
+    *) die "cannot find the key the module was signed with (see the GUI manual, Secure Boot)" ;;
+  esac
+  KEY_STATE="$(mokutil --test-key "$CERT" 2>&1 || true)"
+  if printf '%s' "$KEY_STATE" | grep -q 'already enrolled'; then
+    say "the key is enrolled"
+    rm -f "$MOK_PENDING"
+  else
+    if printf '%s' "$KEY_STATE" | grep -q 'enrollment request'; then
+      if [ -z "$MOK_PW" ] && [ ! -t 0 ]; then
+        say "the key is already waiting to be enrolled at the next start"
+        NEEDS_RESTART=1
+      else
+        # A new password replaces the one asked for before, which may be
+        # forgotten by now.
+        say "the key is already waiting to be enrolled: asking again with the new password"
+        mokutil --revoke-import > /dev/null 2>&1 || true
+      fi
+    fi
+    if [ "$NEEDS_RESTART" = "0" ]; then
+      if [ -n "$MOK_PW" ]; then
+        printf '%s\n%s\n' "$MOK_PW" "$MOK_PW" | mokutil --import "$CERT" > /dev/null \
+          || die "mokutil could not ask the firmware to enrol $CERT"
+      elif [ -t 0 ]; then
+        say "Choose a one-time password (8 to 16 letters and digits). You type it once more"
+        say "after the restart, to approve the key."
+        mokutil --import "$CERT" || die "mokutil could not ask the firmware to enrol $CERT"
+      else
+        die "Secure Boot is on and the signing key is not enrolled: run this on a terminal, or give a one-time password with --mok-password-stdin"
+      fi
+      say "the firmware enrols the key at the next start, once approved"
+      NEEDS_RESTART=1
+    fi
+    : > "$MOK_PENDING"
+  fi
+fi
+
+# ------------------------------------------------------------ 6. load it --
+
+step "6/6 load now and at every start"
 if [ "$(cat "$LOAD_CONF" 2> /dev/null)" != "$MODULE" ]; then
   printf '%s\n' "$MODULE" > "$LOAD_CONF"
   say "wrote $LOAD_CONF"
 else
   say "$LOAD_CONF already there"
+fi
+
+if [ "$NEEDS_RESTART" = "1" ]; then
+  cat <<EOF
+
+Nearly done: elastio-snap $VER is built and installed through DKMS, but
+Secure Boot loads it only once its signing key is approved. To approve it:
+  1. Restart the computer.
+  2. A blue screen, "Perform MOK management", appears: press a key within
+     10 seconds (otherwise the computer starts as usual and nothing is
+     enrolled; run this again to ask again).
+  3. Choose "Enroll MOK", then "Continue", then "Yes".
+  4. Type the one-time password, then choose "Reboot".
+The module then loads at every start.
+EOF
+  exit "$EXIT_NEEDS_RESTART"
 fi
 
 NEW_SRCVER="$(modinfo -F srcversion "$MODULE" 2> /dev/null || true)"
@@ -318,6 +488,6 @@ Check it with:
   lsmod | grep $MODULE_SYS
   dkms status
   cat /proc/elastio-snap-info
-Then close the backup app and start it again: the machine backup screen
-should say "Snapshot module loaded: elastio-snap".
+The app's machine backup screen says "Snapshot module loaded: elastio-snap"
+(start the app again if it was open while this ran).
 EOF

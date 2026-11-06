@@ -475,7 +475,7 @@ body {
    Blue when one is loaded; amber when none is, with How to install. */
 .info-box.snap-module-ok { margin-bottom: 12px; border-color: #90caf9; background: #e7f3ff; }
 .info-box.snap-module-missing { margin-bottom: 12px; border-color: #ffc107; background: #fff3cd; }
-.snap-module-missing .snap-module-howto { margin-top: 10px; }
+.snap-module-missing .snap-module-howto { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
 .snap-module-missing .snap-module-howto .btn { padding: 6px 14px; font-size: 13px; margin: 0; width: auto; }
 
 .checkbox-label {

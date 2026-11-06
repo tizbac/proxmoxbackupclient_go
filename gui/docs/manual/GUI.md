@@ -75,7 +75,20 @@ A machine backup needs two things:
 
 **Load it at every start.** A backup run as root loads an installed module by itself, but the app in your own window cannot, so the machine backup screen says no module is loaded until something has loaded it. The steps below add a file in `/etc/modules-load.d/` for this.
 
-What to install (tested in November 2026):
+#### Install it from the app
+
+The easiest way, on Debian, Ubuntu, Linux Mint, Fedora and the RHEL family: when no module is loaded, the machine backup screen's yellow box has **Install it for me**. It runs the installer the `.deb` and `.rpm` packages bring, in `/usr/share/salvanza/elastio-snap/`, which builds elastio-snap from the source packaged with it ([the project's script](#elastio-snap-with-the-projects-script), below), loads it, and loads it at every start. It asks for an administrator's password, installs the build tools and kernel headers with apt or dnf (a download of a few hundred MB, so it needs the internet), and takes a few minutes; its output shows as it runs. When it ends, the box says **Snapshot module loaded: elastio-snap**.
+
+With **Secure Boot** on, the kernel loads the module only once its signing key is approved, which you do once, at the next restart. The app asks you first for a one-time password of 8 to 16 letters and digits, then:
+
+1. Restart the computer.
+2. A blue screen, **Perform MOK management**, appears: press a key within 10 seconds (if you miss it, the computer starts as usual with nothing enrolled; use **Install it for me** again to ask again).
+3. Choose **Enroll MOK**, then **Continue**, then **Yes**.
+4. Type the one-time password, then choose **Reboot**. The blue screen may read the keyboard as an American (US) one.
+
+Until that restart the box gives these steps instead of the button. From a terminal, `sudo salvanza-cli install-snapshot-module` does the same ([CLI.md](CLI.md#installing-the-snapshot-module-linux)). The Arch package does not include the installer yet: there the button is greyed out, and the steps below apply.
+
+What to install by hand (tested in November 2026):
 
 | Distribution | Install | Tested |
 |---|---|---|
@@ -87,21 +100,25 @@ Elastio's own package repositories, named in elastio-snap's INSTALL.md, no longe
 
 #### elastio-snap with the project's script
 
-The project's script, [packaging/linux/elastio-snap/install-elastio-snap.sh](../../packaging/linux/elastio-snap/install-elastio-snap.sh), installs elastio-snap on Debian, Ubuntu, Linux Mint, Fedora and the RHEL family, also on kernel 7, which elastio-snap does not support yet ([kernel 7](#kernel-7)). On Fedora 44 and other kernel 7 systems, use it:
+The project's script, [packaging/linux/elastio-snap/install-elastio-snap.sh](../../packaging/linux/elastio-snap/install-elastio-snap.sh), installs elastio-snap on Debian, Ubuntu, Linux Mint, Fedora and the RHEL family, also on kernel 7, which elastio-snap does not support yet ([kernel 7](#kernel-7)). It is what **Install it for me** runs. The `.deb` and `.rpm` packages install it in `/usr/share/salvanza/elastio-snap/`; without them, take it from the repository:
 
 ```bash
+sudo /usr/share/salvanza/elastio-snap/install-elastio-snap.sh
+# or, without the package:
 git clone --depth 1 https://github.com/salvanza/salvanza_client.git
-sudo salvanza_client/packaging/linux/elastio-snap/install-elastio-snap.sh --with-elioctl
+sudo salvanza_client/packaging/linux/elastio-snap/install-elastio-snap.sh
 ```
 
 The script:
 
-1. Installs git, the compiler, DKMS and the running kernel's headers with apt or dnf, and the headers meta-package (`linux-headers-generic`, `linux-headers-amd64` or `kernel-devel`) so DKMS has the headers of each new kernel.
-2. Fetches elastio-snap from Axcient at the commit the project tested (0.12.11, branch `develop`, November 2026).
-3. Applies the project's kernel 7 patch, `kernel7-strscpy.patch` next to the script. The patched module also works on older kernels, and keeps building when a kernel 7 update arrives.
-4. Builds and installs it through DKMS, loads it, and adds `/etc/modules-load.d/elastio-snap.conf`. With `--with-elioctl` it also installs the module's own tool, `elioctl`, in `/usr/local/bin`.
+1. Takes the elastio-snap source in `source/` beside it: Axcient's code at the commit the project tested (0.12.11, branch `develop`, November 2026), unchanged, under its own licence (GPL-2.0).
+2. Applies the project's kernel 7 patch, `kernel7-strscpy.patch` next to the script. The patched module also works on older kernels, and keeps building when a kernel 7 update arrives.
+3. Installs the compiler, DKMS and the running kernel's headers with apt or dnf, and the headers meta-package (`linux-headers-generic`, `linux-headers-amd64` or `kernel-devel`) so DKMS has the headers of each new kernel.
+4. Builds and installs it through DKMS.
+5. With Secure Boot on, finds the key DKMS signed the module with and, if it is not enrolled yet, asks the firmware to enrol it at the next start (`mokutil --import`, with a one-time password: asked on the terminal, or read from standard input with `--mok-password-stdin`). It then ends with exit code 10 and the restart steps ([Secure Boot](#secure-boot)).
+6. Loads it, and adds `/etc/modules-load.d/elastio-snap.conf`.
 
-Running it again changes nothing when that build is already installed. If an older elastio-snap is loaded and no snapshot is in use, the script loads the new build in its place; with a snapshot in use, the new build loads at the next start. `--ref <commit, tag or branch>` builds another elastio-snap version. The script checks the patch against it first: when that version already has the fix, it builds without the patch; when the patch no longer fits Axcient's code, it stops before changing anything and says so, rather than build a half-patched module. The patch is offered to Axcient as [pull request 138](https://github.com/Axcient/elastio-snap/pull/138); once Axcient releases the fix, the project drops the patch. The script does not enrol Secure Boot keys ([Secure Boot](#secure-boot)).
+Running it again changes nothing when that build is already installed. If an older elastio-snap is loaded and no snapshot is in use, the script loads the new build in its place; with a snapshot in use, the new build loads at the next start. `--ref <commit, tag or branch>` fetches and builds another elastio-snap version with git instead of the packaged source, and `--with-elioctl` (with `--ref`) also installs the module's own tool, `elioctl`, in `/usr/local/bin`. The script checks the patch against that version first: when it already has the fix, it builds without the patch; when the patch no longer fits Axcient's code, it stops before changing anything and says so, rather than build a half-patched module. The patch is offered to Axcient as [pull request 138](https://github.com/Axcient/elastio-snap/pull/138); once Axcient releases the fix, the project drops the patch.
 
 The sections below give the same steps by hand.
 
@@ -195,7 +212,7 @@ Check whether Secure Boot is on:
 mokutil --sb-state
 ```
 
-`SecureBoot disabled`, or `EFI variables are not supported on this system` (a computer started the legacy BIOS way), means nothing more is needed. `SecureBoot enabled` means the kernel loads only modules signed with a key it trusts. Our two test machines start without Secure Boot, so the enrolment below was not tried there.
+`SecureBoot disabled`, or `EFI variables are not supported on this system` (a computer started the legacy BIOS way), means nothing more is needed. `SecureBoot enabled` means the kernel loads only modules signed with a key it trusts. **Install it for me** and the project's script enrol the key for you ([Install it from the app](#install-it-from-the-app)); the steps below are the same by hand.
 
 DKMS signs every module it builds, as both test machines showed. The key it uses:
 

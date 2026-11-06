@@ -441,7 +441,7 @@ func CreateVSSSnapshotCtx(ctx context.Context, paths []string, needFiles bool, b
 	// Both checked, so one message names everything that is missing.
 	control, haveModule := detectControl()
 	isRoot := os.Geteuid() == 0
-	const install = "so install and load one (the GUI manual's section \"Linux snapshots: installing elastio-snap or dattobd\")"
+	const install = "so install and load one: \"Install it for me\" in the app's machine backup screen, or sudo salvanza-cli install-snapshot-module (the GUI manual's section \"Linux snapshots: installing elastio-snap or dattobd\" has more)"
 	const refuse = "refusing to back up without a snapshot, as files could change while they are read"
 	switch {
 	case !isRoot && !haveModule:

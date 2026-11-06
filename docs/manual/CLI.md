@@ -25,6 +25,7 @@ The command line is one program, `salvanza-cli` (`salvanza-cli.exe` on Windows),
 | `salvanza-cli backup-folder` | Backs up folders (or a stream from standard input) as a `host` snapshot |
 | `salvanza-cli backup-disk` | Backs up whole disks as images, as a `host` or `vm` snapshot |
 | `salvanza-cli attach-nbd` | Linux only. Attaches a disk image from PBS as a read-only `/dev/nbdN` block device. The bare-metal restore ISO has the same code as `pbsnbd` |
+| `salvanza-cli install-snapshot-module` | Linux only, as root. Builds and loads the elastio-snap snapshot module that `backup-disk` needs ([below](#installing-the-snapshot-module-linux)) |
 | `salvanza-cli version` | Prints the version (also `-version`) |
 | `salvanza-cli help` | Lists the commands. `salvanza-cli <command> -help` (or `salvanza-cli help <command>`) lists a command's options |
 
@@ -304,6 +305,16 @@ sudo salvanza-cli backup-disk -baseurl https://pbs.example.com:8007 -certfingerp
 ```
 
 Restore a machine backup with the bare-metal restore ISO ([BMR.md](BMR.md)), or, for a `vm` snapshot, from Proxmox VE.
+
+### Installing the snapshot module (Linux)
+
+On Linux, `backup-disk` (and `backup-folder` without `-novss`) needs the elastio-snap or dattobd module loaded to snapshot a mounted disk. `salvanza-cli install-snapshot-module` installs elastio-snap, as the app's **Install it for me** does: it runs the installer the `.deb` and `.rpm` packages bring (`/usr/share/salvanza/elastio-snap/install-elastio-snap.sh`), which installs the build tools and kernel headers with apt or dnf, builds the module from the source packaged with it through DKMS, and loads it now and at every start. Debian, Ubuntu, Linux Mint, Fedora and the RHEL family; it must run as root:
+
+```bash
+sudo salvanza-cli install-snapshot-module
+```
+
+With Secure Boot on, the module's signing key must be approved once at the next start: the command asks for a one-time password (8 to 16 characters), then ends with exit code 10 and the restart steps. For a script, `-mok-password-stdin` reads that password from the first line of standard input instead. `-script <path>` runs another copy of the installer. Exit codes: 0, installed and loaded; 10, installed, restart to approve the key; 1, failed (the output says why). The details and the steps by hand are in [GUI.md, Linux snapshots](GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd).
 
 ## 6. attach-nbd: attach a disk image (Linux)
 

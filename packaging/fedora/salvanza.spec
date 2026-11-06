@@ -6,7 +6,9 @@ Version:       0.0.1
 Release:       1%{?dist}
 Summary:       Salvanza, backup for Proxmox Backup Server (app and command line)
 
-License:       GPL-3.0-or-later
+# The bundled elastio-snap source (/usr/share/salvanza/elastio-snap/source)
+# is GPL-2.0-only.
+License:       GPL-3.0-or-later AND GPL-2.0-only
 URL:           https://salvanza.org/
 Source0:       salvanza-%{version}.tar.gz
 
@@ -37,7 +39,9 @@ Roll back:
    Sets as root (enabled on a fresh install; turned on and off in the app,
    Preferences > Advanced > Run as Service)
 It replaces the proxmoxbackupclient package and takes its settings over.
-Snapshots of mounted file systems use elastio-snap when it is installed.
+Snapshots of mounted file systems use elastio-snap when it is installed:
+the app's "Install it for me" and salvanza-cli install-snapshot-module
+build it from the source in /usr/share/salvanza/elastio-snap with DKMS.
 
 %prep
 %setup -q
@@ -78,6 +82,12 @@ install -m 0755 packaging/linux/salvanza-gui %{buildroot}%{_bindir}/
 install -m 0755 packaging/linux/salvanza-gui-root %{buildroot}%{_bindir}/
 install -m 0644 packaging/linux/salvanza.desktop %{buildroot}%{_datadir}/applications/
 install -m 0644 gui/Icon.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/salvanza.png
+# The snapshot module installer and the elastio-snap source it builds.
+install -d -m 0755 %{buildroot}%{_datadir}/salvanza/elastio-snap
+install -m 0755 packaging/linux/elastio-snap/install-elastio-snap.sh %{buildroot}%{_datadir}/salvanza/elastio-snap/
+install -m 0644 packaging/linux/elastio-snap/kernel7-strscpy.patch %{buildroot}%{_datadir}/salvanza/elastio-snap/
+cp -R packaging/linux/elastio-snap/source %{buildroot}%{_datadir}/salvanza/elastio-snap/source
+chmod -R u=rwX,go=rX %{buildroot}%{_datadir}/salvanza/elastio-snap/source
 
 %files
 %license LICENSE
@@ -95,6 +105,7 @@ install -m 0644 gui/Icon.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/
 %{_prefix}/lib/systemd/system/salvanza.service
 %{_datadir}/applications/salvanza.desktop
 %{_datadir}/icons/hicolor/256x256/apps/salvanza.png
+%{_datadir}/salvanza
 
 # A fresh install enables and starts the service, so the Backup Sets run on
 # schedule with nobody logged in; an upgrade keeps the user's choice (Run as

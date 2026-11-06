@@ -48,6 +48,7 @@ packaging/fedora/build-rpm.sh [output-dir]      # default: dist/
 | `/usr/share/applications/salvanza.desktop` | menu entry "Salvanza for Proxmox Backup Server" |
 | `/usr/share/icons/hicolor/256x256/apps/salvanza.png` | icon |
 | `/usr/share/doc/salvanza/` | README, CHANGELOG, the manuals (and `copyright` in the .deb) |
+| `/usr/share/salvanza/elastio-snap/` | the snapshot module installer and the elastio-snap source it builds ([Snapshots](#snapshots)) |
 
 The .deb depends on `pkexec | policykit-1` and suggests `dattobd-dkms` (from Datto's
 package repository; nobody publishes an `elastio-snap-dkms` package); the .rpm
@@ -147,7 +148,11 @@ file systems that are changing underneath it. Partitions that are not mounted ar
 directly.
 
 dattobd comes as `dattobd-dkms` from Datto's package repository. elastio-snap has no
-package anyone publishes: `sudo packaging/linux/elastio-snap/install-elastio-snap.sh`
-builds it from Axcient's source through DKMS, with the kernel 7 fix the project carries
-until Axcient releases it, and loads it at every start. The GUI manual's section "Linux
+package anyone publishes, so the .deb and the .rpm bring an installer for it,
+`/usr/share/salvanza/elastio-snap/install-elastio-snap.sh`, with Axcient's source beside
+it (GPL-2.0-only, named in the .deb's `copyright`). The app's **Install it for me** and
+`sudo salvanza-cli install-snapshot-module` run it: it installs the build tools and kernel
+headers, builds the module through DKMS with the kernel 7 fix the project carries until
+Axcient releases it, enrols the signing key with Secure Boot on (approved at the next
+start), and loads the module now and at every start. The GUI manual's section "Linux
 snapshots: installing elastio-snap or dattobd" has the details and the manual steps.

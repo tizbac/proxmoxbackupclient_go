@@ -41,6 +41,7 @@ func commands() []command {
 			[]string{"proxmoxbackup-machine", "pbsmachinebackup", "machinebackup"}},
 		{"attach-nbd", "attach a disk image from PBS as a read-only /dev/nbdN (Linux)", attachNBD,
 			[]string{"proxmoxbackup-nbd", "pbsnbd"}},
+		{"install-snapshot-module", "build and load elastio-snap for disk snapshots (Linux, root)", installSnapshotModule, nil},
 	}
 }
 
@@ -88,9 +89,9 @@ func main() {
 
 // start runs a subcommand. The two backups remove their snapshots when they
 // are stopped with Ctrl+C or a signal (Linux; attach-nbd has its own
-// handling).
+// handling, and install-snapshot-module takes none).
 func start(c command) {
-	if c.name != "attach-nbd" {
+	if c.name == "backup-folder" || c.name == "backup-disk" {
 		snapshot.CleanupOnSignal()
 	}
 	c.run()
@@ -132,7 +133,7 @@ func usage(w io.Writer) {
 	b.WriteString("Usage: salvanza-cli <command> [options]\n\n")
 	b.WriteString("Salvanza for Proxmox Backup Server, on the command line.\n\nCommands:\n")
 	for _, c := range commands() {
-		_, _ = fmt.Fprintf(&b, "  %-14s %s\n", c.name, c.summary)
+		_, _ = fmt.Fprintf(&b, "  %-24s %s\n", c.name, c.summary)
 	}
 	b.WriteString("\n'salvanza-cli <command> -help' lists a command's options; 'salvanza-cli -version' prints the version.\n")
 	b.WriteString("The tools' earlier names (proxmoxbackup-directory, -machine, -nbd) run the same commands.\n")

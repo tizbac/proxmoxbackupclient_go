@@ -22,6 +22,8 @@
 #   /usr/share/applications/salvanza.desktop
 #   /usr/share/icons/hicolor/256x256/apps/salvanza.png
 #   /usr/share/doc/salvanza/{copyright,README.md,CHANGELOG.md.gz,manual/}
+#   /usr/share/salvanza/elastio-snap/  the snapshot module installer, with
+#                                  the elastio-snap source it builds
 #
 # It replaces the proxmoxbackupclient and pbsgo packages; the service takes
 # their settings over on its first start (gui/config_dir_unix.go).
@@ -105,6 +107,17 @@ install -m 0644 "$ROOT/README.md" "$DOC/README.md"
 gzip -9n -c "$ROOT/CHANGELOG.md" > "$DOC/CHANGELOG.md.gz"
 chmod 0644 "$DOC/CHANGELOG.md.gz"
 for m in "$ROOT"/docs/manual/*.md; do install -m 0644 "$m" "$DOC/manual/"; done
+
+echo "==> installing the snapshot module installer"
+# The app's "Install it for me" and salvanza-cli install-snapshot-module run
+# it; it builds the elastio-snap source bundled beside it with DKMS.
+SNAP="$STAGE/usr/share/$PKG/elastio-snap"
+mkdir -p "$SNAP"
+install -m 0755 "$LIN/elastio-snap/install-elastio-snap.sh" "$SNAP/"
+install -m 0644 "$LIN/elastio-snap/kernel7-strscpy.patch" "$SNAP/"
+cp -R "$LIN/elastio-snap/source" "$SNAP/source"
+chmod -R u=rwX,go=rX "$SNAP/source"
+
 cat > "$DOC/copyright" <<EOF
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: salvanza_client
@@ -113,6 +126,13 @@ Source: https://github.com/salvanza/salvanza_client
 Files: *
 License: GPL-3.0-or-later
  On Debian systems the full text is in /usr/share/common-licenses/GPL-3.
+
+Files: usr/share/$PKG/elastio-snap/source/*
+Copyright: 2015 Datto, Inc.
+ 2020 Elastio Software Inc.
+Source: https://github.com/Axcient/elastio-snap
+License: GPL-2.0-only
+ On Debian systems the full text is in /usr/share/common-licenses/GPL-2.
 EOF
 
 echo "==> computing dependencies"
