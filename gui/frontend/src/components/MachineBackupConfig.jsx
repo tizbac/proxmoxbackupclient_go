@@ -56,7 +56,7 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
   const snapInstallTip = snapInstall.available
     ? tl('snapInstallBtnTip', "Builds and loads elastio-snap for this computer, after asking for an administrator's password.")
     : snapInstall.reason === 'distribution'
-      ? tl('snapInstallDistroTip', 'The installer knows Debian, Ubuntu, Linux Mint, Fedora and the RHEL family: How to install has the steps for other distributions.')
+      ? tl('snapInstallDistroTip', 'The installer knows Debian, Ubuntu, Linux Mint, Fedora, the RHEL family and Arch Linux: How to install has the steps for other distributions.')
       : tl('snapInstallNoInstallerTip', 'This package does not include the installer: How to install has the steps.')
 
   // A partition is "1.2 GB" or "100 MB": a whole line per partition is too much.

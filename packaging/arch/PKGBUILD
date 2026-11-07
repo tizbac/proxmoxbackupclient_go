@@ -13,6 +13,9 @@
 #       install, see salvanza.install)
 #   /usr/share/applications/salvanza.desktop
 #   /usr/share/icons/hicolor/256x256/apps/salvanza.png
+#   /usr/share/salvanza/elastio-snap/  the snapshot module installer, with
+#                                  the elastio-snap source it builds
+#                                  (GPL-2.0-only, hence the second licence)
 #
 # It replaces the project's earlier packages, proxmoxbackupclient and pbsgo;
 # the service adopts /var/lib/proxmoxbackupclient or /var/lib/pbsgo when it
@@ -43,12 +46,13 @@ pkgrel=1
 pkgdesc='Salvanza, backup for Proxmox Backup Server (app, service and command line)'
 arch=(x86_64 aarch64)
 url='https://salvanza.org/'
-license=(GPL-3.0-or-later)
+license=(GPL-3.0-or-later GPL-2.0-only)
 makedepends=(go gtk3 webkit2gtk-4.1)
 # polkit (pkexec): the app asks for an administrator's password through it to
 # connect to the service, whose API token is root's alone.
 depends=(glibc gtk3 webkit2gtk-4.1 gdk-pixbuf2 glib2 libsoup3 systemd polkit)
-optdepends=('sudo: salvanza-gui-root from a terminal')
+optdepends=('sudo: salvanza-gui-root from a terminal'
+            'dkms: the snapshot module (the installer adds it, with the kernel headers)')
 provides=(proxmoxbackupclient)
 conflicts=(proxmoxbackupclient pbsgo)
 replaces=(proxmoxbackupclient pbsgo)
@@ -129,4 +133,14 @@ package() {
     install -Dm 0644 "$_srcroot/CHANGELOG.md" "${pkgdir}/usr/share/doc/${pkgname}/CHANGELOG.md"
     install -d "${pkgdir}/usr/share/doc/${pkgname}/manual"
     install -m 0644 "$_srcroot"/docs/manual/*.md "${pkgdir}/usr/share/doc/${pkgname}/manual/"
+
+    # --- the snapshot module installer and the elastio-snap source it
+    #     builds (the app's "Install it for me") --------------------------
+    local _snap="${pkgdir}/usr/share/${pkgname}/elastio-snap"
+    install -Dm 0755 "$_lin/elastio-snap/install-elastio-snap.sh" "$_snap/install-elastio-snap.sh"
+    install -m 0644 "$_lin/elastio-snap/kernel7-strscpy.patch" "$_snap/"
+    cp -R "$_lin/elastio-snap/source" "$_snap/source"
+    chmod -R u=rwX,go=rX "$_snap/source"
+    install -Dm 0644 "$_lin/elastio-snap/source/COPYING" \
+        "${pkgdir}/usr/share/licenses/${pkgname}/elastio-snap-COPYING"
 }

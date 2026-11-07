@@ -19,7 +19,10 @@ func TestDistroFamily(t *testing.T) {
 		"ID=debian\n":                                                    "debian",
 		"ID=fedora\n":                                                    "fedora",
 		"ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n":                 "fedora",
-		"ID=arch\n":                                                      "",
+		"ID=arch\n":                                                      "arch",
+		"ID=manjaro\nID_LIKE=arch\n":                                     "arch",
+		"ID=endeavouros\nID_LIKE=arch\n":                                 "arch",
+		"ID=archarm\nID_LIKE=arch\n":                                     "arch",
 		"ID=opensuse-tumbleweed\nID_LIKE=\"opensuse suse\"\n":            "",
 		"": "",
 		// Only ID and ID_LIKE count, not a name that happens to say debian.

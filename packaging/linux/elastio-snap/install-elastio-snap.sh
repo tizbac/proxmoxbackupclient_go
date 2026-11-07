@@ -11,7 +11,7 @@
 #      skipped when the source already contains it, or no longer calls
 #      strncpy at all. If it neither applies nor is already there, the script
 #      stops before changing anything, rather than build a half-patched module.
-#   3. Installs the build tools and kernel headers (apt or dnf), puts the source
+#   3. Installs the build tools and kernel headers (apt, dnf or pacman), puts the source
 #      in /usr/src and builds it with DKMS for the running kernel and every
 #      other installed kernel with headers; DKMS rebuilds it for every new
 #      kernel. DKMS runs without a terminal, so Ubuntu's own Secure Boot
@@ -27,8 +27,8 @@
 # anything else, failed (the output says why).
 #
 # Safe to run again: an identical source already built for the running kernel
-# is left alone. Debian, Ubuntu, Linux Mint, Fedora and the RHEL family.
-# Needs root.
+# is left alone. Debian, Ubuntu, Linux Mint, Fedora, the RHEL family, and
+# Arch Linux and its derivatives. Needs root.
 
 set -euo pipefail
 
@@ -129,6 +129,7 @@ if [ -r /etc/os-release ]; then
   case " ${ID:-} ${ID_LIKE:-} " in
     *" debian "*|*" ubuntu "*)                FAMILY=debian ;;
     *" fedora "*|*" rhel "*|*" centos "*)     FAMILY=fedora ;;
+    *" arch "*)                               FAMILY=arch ;;
   esac
 fi
 
@@ -162,12 +163,23 @@ install_packages() {
         yum -y -q install "${missing[@]}" < /dev/null
       fi
       ;;
+    arch)
+      for p in "$@"; do
+        pacman -Q "$p" > /dev/null 2>&1 || missing+=("$p")
+      done
+      [ "${#missing[@]}" -eq 0 ] && return 0
+      say "installing: ${missing[*]}"
+      # No -Sy: Arch does not support refreshing the package lists without
+      # updating the system, so a stale list is the user's update to make.
+      pacman -S --needed --noconfirm "${missing[@]}" < /dev/null \
+        || die "pacman could not install ${missing[*]}: update the system (sudo pacman -Syu), restart, then run this again"
+      ;;
     *)
       for p in "$@"; do
         command -v "$p" > /dev/null 2>&1 || missing+=("$p")
       done
       [ "${#missing[@]}" -eq 0 ] && return 0
-      die "this distribution is not Debian or Fedora based: install ${missing[*]} yourself, then run this again"
+      die "this distribution is not Debian, Fedora or Arch based: install ${missing[*]} yourself, then run this again"
       ;;
   esac
 }
@@ -179,6 +191,15 @@ secure_boot_on() {
   var="$(ls /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c 2> /dev/null || true)"
   [ -n "$var" ] || return 1
   [ "$(od -An -t u1 -j 4 -N 1 "$var" 2> /dev/null | tr -d ' ')" = "1" ]
+}
+
+# started_by_shim: the computer started through shim, whose key list
+# (MokListRT) is what mokutil enrols into. Without shim (Secure Boot with the
+# owner's own keys, as sbctl sets up on Arch) an enrolment request is never
+# read, and the restart would come back without the module.
+started_by_shim() {
+  [ -e /sys/firmware/efi/mok-variables/MokListRT ] \
+    || [ -n "$(ls /sys/firmware/efi/efivars/MokListRT-605dab50-e046-4300-abb6-3dd810dd8b23 2> /dev/null || true)" ]
 }
 
 # ---------------------------------------------------------------- 1. source --
@@ -274,16 +295,34 @@ case "$FAMILY" in
     pkgs=(gcc make dkms kernel-devel "kernel-devel-$KVER")
     install_packages "${pkgs[@]}" || die "could not install ${pkgs[*]} (RHEL family: DKMS comes from EPEL; an old running kernel: update and restart first)"
     ;;
+  arch)
+    # Each kernel package (linux, linux-lts, linux-zen, Manjaro's linux612 ...)
+    # has its headers in <name>-headers. Those of every installed kernel, so
+    # DKMS's pacman hook rebuilds the module whichever kernel is updated.
+    [ -e "/usr/lib/modules/$KVER/vmlinuz" ] \
+      || die "the running kernel ($KVER) is no longer installed, as after a system update: restart, then run this again"
+    pkgs=(gcc make dkms)
+    for vmlinuz in /usr/lib/modules/*/vmlinuz; do
+      kpkg="$(pacman -Qqo "$vmlinuz" 2> /dev/null || true)"
+      [ -n "$kpkg" ] || continue
+      case " ${pkgs[*]} " in *" $kpkg-headers "*) ;; *) pkgs+=("$kpkg-headers") ;; esac
+    done
+    install_packages "${pkgs[@]}"
+    ;;
   *)
     install_packages make gcc dkms
     ;;
 esac
-[ -d "/lib/modules/$KVER/build" ] || die "no kernel headers for $KVER in /lib/modules/$KVER/build"
+if [ ! -d "/lib/modules/$KVER/build" ]; then
+  [ "$FAMILY" != "arch" ] || die "the headers installed are not those of the running kernel ($KVER): update the system (sudo pacman -Syu), restart, then run this again"
+  die "no kernel headers for $KVER in /lib/modules/$KVER/build"
+fi
 
 SECURE_BOOT=0
 if secure_boot_on; then
   SECURE_BOOT=1
   say "Secure Boot is on: the module must be signed with an enrolled key"
+  started_by_shim || die "Secure Boot is on, but this computer does not start through shim, so mokutil cannot enrol a key: sign the module with your own Secure Boot key, or turn Secure Boot off (see the GUI manual, Secure Boot)"
   install_packages mokutil openssl
 fi
 

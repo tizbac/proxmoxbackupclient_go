@@ -19,9 +19,12 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 PKG=salvanza
 
-# Read version from git tag (exact match) or git short SHA
-# Falls back to wails.json if not in a git repo
-if [ -f "$ROOT/scripts/get-version.sh" ]; then
+# $PBS_VERSION when set (make pkgarch passes the PKGBUILD's pkgver), else the
+# git tag (exact match) or git short SHA, else wails.json outside a git repo
+VERSION=${PBS_VERSION:-}
+if [ -n "$VERSION" ]; then
+    :
+elif [ -f "$ROOT/scripts/get-version.sh" ]; then
     VERSION=$(bash "$ROOT/scripts/get-version.sh" "$ROOT")
 else
     VERSION=$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \

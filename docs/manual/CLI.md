@@ -310,7 +310,7 @@ Restore a machine backup with the bare-metal restore ISO ([BMR.md](BMR.md)), or,
 
 ### Installing the snapshot module (Linux)
 
-On Linux, `backup-disk` (and `backup-folder` without `-novss`) needs the elastio-snap or dattobd module loaded to snapshot a mounted disk. `salvanza-cli install-snapshot-module` installs elastio-snap, as the app's **Install it for me** does: it runs the installer the `.deb` and `.rpm` packages bring (`/usr/share/salvanza/elastio-snap/install-elastio-snap.sh`), which installs the build tools and kernel headers with apt or dnf, builds the module from the source packaged with it through DKMS, and loads it now and at every start. Debian, Ubuntu, Linux Mint, Fedora and the RHEL family; it must run as root:
+On Linux, `backup-disk` (and `backup-folder` without `-novss`) needs the elastio-snap or dattobd module loaded to snapshot a mounted disk. `salvanza-cli install-snapshot-module` installs elastio-snap, as the app's **Install it for me** does: it runs the installer the `.deb`, `.rpm` and Arch packages bring (`/usr/share/salvanza/elastio-snap/install-elastio-snap.sh`), which installs the build tools and kernel headers with apt, dnf or pacman, builds the module from the source packaged with it through DKMS, and loads it now and at every start. Debian, Ubuntu, Linux Mint, Fedora, the RHEL family and Arch Linux; it must run as root:
 
 ```bash
 sudo salvanza-cli install-snapshot-module

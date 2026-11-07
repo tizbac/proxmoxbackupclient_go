@@ -95,8 +95,8 @@ func secureBootOn(path string) bool {
 	return err == nil && len(b) >= 5 && b[4] == 1
 }
 
-// distroFamily is "debian" or "fedora" for the distributions the installer
-// knows (as its own test of /etc/os-release), else "".
+// distroFamily is "debian", "fedora" or "arch" for the distributions the
+// installer knows (as its own test of /etc/os-release), else "".
 func distroFamily(osRelease string) string {
 	var ids []string
 	for _, line := range strings.Split(osRelease, "\n") {
@@ -116,6 +116,11 @@ func distroFamily(osRelease string) string {
 		switch id {
 		case "fedora", "rhel", "centos":
 			return "fedora"
+		}
+	}
+	for _, id := range ids {
+		if id == "arch" {
+			return "arch"
 		}
 	}
 	return ""

@@ -108,10 +108,12 @@ deb:
 # Arch Linux package (run on Arch, see packaging/arch/PKGBUILD).
 # Stages salvanza-<version>.tar.gz from the CURRENT working tree first, so the
 # package contains the source it was built from (not a GitHub commit).
+# pkgver is the app's version (gui/wails.json), which the PKGBUILD checks: an
+# untagged tree's "dev-<sha>" is no pkgver (no hyphens) and not that version.
 pkgarch:
-	@VERSION=$$(bash scripts/get-version.sh) && \
+	@VERSION=$$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' gui/wails.json) && \
 	 sed -i "s/^pkgver=.*/pkgver=$${VERSION}/" packaging/arch/PKGBUILD && \
-	 sh packaging/stage-source.sh packaging/arch && \
+	 PBS_VERSION=$${VERSION} sh packaging/stage-source.sh packaging/arch && \
 	 cd packaging/arch && makepkg -f -d
 
 # Source tarball the distro packages are built from (uncommitted changes incl.)
