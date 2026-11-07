@@ -3,7 +3,7 @@ module snapshot
 go 1.25
 
 require (
-	github.com/st-matskevich/go-vss v0.4.2
+	github.com/st-matskevich/go-vss v0.4.3
 	golang.org/x/sys v0.1.0
 )
 

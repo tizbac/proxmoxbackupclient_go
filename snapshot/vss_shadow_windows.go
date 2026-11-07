@@ -7,11 +7,9 @@ import (
 	"fmt"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/go-ole/go-ole"
 	"github.com/st-matskevich/go-vss"
-	"golang.org/x/sys/windows"
 )
 
 // The shadow copy calls of go-vss's Snapshotter.CreateSnapshot (MIT, Jerome
@@ -29,8 +27,6 @@ import (
 //
 // COM must be initialised on the calling thread (initCOM), which must not
 // change until release (CreateVSSSnapshot locks it).
-
-var procVssFreeSnapshotProperties = windows.NewLazySystemDLL("VssApi.dll").NewProc("VssFreeSnapshotProperties")
 
 // What CoInitializeEx returns when COM is already initialised on the thread:
 // in the same apartment (S_FALSE), or in the other one (RPC_E_CHANGED_MODE).
@@ -238,19 +234,9 @@ func createShadow(drive string, timeoutMs int) (s *vssShadow, err error) {
 	return shadow, nil
 }
 
-// vssObjectProps is go-vss's VssObjectProperties, one entry of
-// IVssBackupComponents::Query, with its fields readable here: go-vss reads the
-// entries itself only inside Snapshotter.CreateSnapshot. The layout is go-vss's
-// (TestVSSObjectPropsLayout).
-type vssObjectProps struct {
-	objectType uint32
-	_          uint32
-	snapshot   vss.VssSnapshotProperties
-	_          uint32
-}
-
 // queriedSnapshotDetails returns the properties of shadow copy id from
-// IVssBackupComponents::Query, as go-vss's own CreateSnapshot reads them.
+// IVssBackupComponents::Query, as go-vss's own CreateSnapshot reads them, with
+// the accessors go-vss v0.4.3 exports for it (st-matskevich/go-vss#18).
 func queriedSnapshotDetails(c *vss.IVssBackupComponents, id ole.GUID) (vss.SnapshotDetails, error) {
 	list, err := c.Query()
 	if err != nil {
@@ -262,16 +248,20 @@ func queriedSnapshotDetails(c *vss.IVssBackupComponents, id ole.GUID) (vss.Snaps
 	defer list.Release()
 	want := id.String()
 	for {
-		var o vssObjectProps
-		fetched, err := list.Next((*vss.VssObjectProperties)(unsafe.Pointer(&o)))
+		var o vss.VssObjectProperties
+		fetched, err := list.Next(&o)
 		if err != nil {
 			return vss.SnapshotDetails{}, fmt.Errorf("Query: %w", err)
 		}
 		if !fetched {
 			return vss.SnapshotDetails{}, fmt.Errorf("Query does not list shadow copy %s", want)
 		}
-		details, err := vss.ParseProperties(o.snapshot) // copies the strings
-		procVssFreeSnapshotProperties.Call(uintptr(unsafe.Pointer(&o.snapshot)))
+		if o.GetObjectType() != vss.VSS_OBJECT_SNAPSHOT {
+			return vss.SnapshotDetails{}, fmt.Errorf("Query returned object type %d, not a shadow copy", o.GetObjectType())
+		}
+		props := o.GetSnapshot()
+		details, err := vss.ParseProperties(*props) // copies the strings
+		vss.VssFreeSnapshotProperties(props)
 		if details.Id == want {
 			return details, err
 		}

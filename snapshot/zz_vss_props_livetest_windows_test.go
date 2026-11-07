@@ -84,7 +84,7 @@ func TestLiveVSSProperties(t *testing.T) {
 	d, _ := vss.ParseProperties(props)
 	t.Logf("as go-vss reads it: device=%q volume=%q machine=%q service=%q provider=%s status=%s attributes=%v",
 		d.DeviceObject, d.VolumeName, d.OriginatingMachine, d.ServiceMachine, d.ProviderID, d.Status, props.GetSnapshotAttributesVerbose())
-	procVssFreeSnapshotProperties.Call(uintptr(unsafe.Pointer(&props)))
+	vss.VssFreeSnapshotProperties(&props)
 
 	var big [256]byte
 	for i := range big {
@@ -96,7 +96,7 @@ func TestLiveVSSProperties(t *testing.T) {
 		written--
 	}
 	t.Logf("second call into 256 bytes of 0xAA: err=%v, last byte written at %d:\n%s", err, written, hex.Dump(big[:]))
-	procVssFreeSnapshotProperties.Call(uintptr(unsafe.Pointer(&big[0])))
+	vss.VssFreeSnapshotProperties((*vss.VssSnapshotProperties)(unsafe.Pointer(&big[0])))
 
 	qd, qerr := queriedSnapshotDetails(c, snapID)
 	t.Logf("Query: device=%q volume=%q machine=%q provider=%s status=%s err=%v",

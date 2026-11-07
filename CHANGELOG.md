@@ -126,6 +126,8 @@ listed under [History of the GUI before 2.0](#history-of-the-gui-before-20).
 
 - **While the app waits to connect to the service**, Backup and Restore no longer say that no PBS server is configured, and **Add New Backup Set** and **One-off Backup** wait for the connection.
 
+- **go-vss v0.4.3.** A shadow copy's details are read from VSS's Query through the accessors go-vss now exports (st-matskevich/go-vss#18, which we contributed), instead of through our own copy of its record layout. No change in behaviour.
+
 ### Security
 
 - **The settings and the service's token are no longer readable without elevation.** With the service installed, only the service reads and writes the computer's settings folder (`C:\ProgramData\Salvanza`, `/var/lib/salvanza`) and its API token. On Windows the folder is open to SYSTEM and Administrators only: earlier builds also let each local administrator account read it, PBS secrets and token included, from an app started without UAC. On Linux it is root's alone (0700, files 0600): earlier builds let the `sudo` or `wheel` group read it. The service removes the old access when it starts. `installer/DEPLOYMENT.md` and `packaging/debian/README.md` describe the new permissions.
