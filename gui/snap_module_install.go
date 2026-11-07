@@ -48,7 +48,7 @@ func checkMokPassword(pw string) error {
 		return errors.New("the one-time password must be 8 to 16 characters")
 	}
 	for _, r := range pw {
-		if r > unicode.MaxASCII || !(unicode.IsLetter(r) || unicode.IsDigit(r)) {
+		if r > unicode.MaxASCII || !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 			return errors.New("the one-time password may have letters and digits only")
 		}
 	}
