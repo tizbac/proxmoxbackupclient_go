@@ -410,11 +410,54 @@ jobs:
            name: Salvanza-Windows
            path: dist/*.msi
 
+  # Linux packages (app, service and command line): the .deb and .rpm for
+  # amd64 and arm64, and the Arch package for x86_64. Each is built in its
+  # standard container (ubuntu:22.04, fedora:44, archlinux) by
+  # packaging/build-linux-package.sh, the same script a developer runs
+  # locally, so a local build and this one are made the same way. arm64
+  # builds natively on GitHub's arm64 runners (free for public repositories).
+  # There is no official Arch Linux arm64 image, hence no aarch64 Arch package.
+  build-linux:
+    name: Linux ${{ matrix.kind }} (${{ matrix.arch }})
+    needs: [security, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { kind: deb,  arch: amd64, runner: ubuntu-24.04 }
+          - { kind: deb,  arch: arm64, runner: ubuntu-24.04-arm }
+          - { kind: rpm,  arch: amd64, runner: ubuntu-24.04 }
+          - { kind: rpm,  arch: arm64, runner: ubuntu-24.04-arm }
+          - { kind: arch, arch: amd64, runner: ubuntu-24.04 }
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the package
+        env:
+          PBS_ARCH: ${{ matrix.arch }}
+        run: |
+          # A tag gives the version (v2.0.0-rc.1 -> 2.0.0~rc.1, which sorts
+          # before 2.0.0); a branch build is <productVersion>~dev.<sha>.
+          if [ "${{ github.ref_type }}" = tag ]; then
+            PBS_VERSION=$(echo "${GITHUB_REF_NAME#v}" | tr '-' '~')
+            export PBS_VERSION
+          fi
+          sh packaging/build-linux-package.sh ${{ matrix.kind }} dist
+          ls -l dist
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.kind }}-${{ matrix.arch }}
+          path: dist/*
+
   # Create release on tag
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-cli, build-gui]
+    needs: [build-cli, build-gui, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -463,6 +506,9 @@ jobs:
           cp *.msi ../../release/
           cd ../..
 
+          # Linux packages: .deb and .rpm (amd64, arm64), Arch (x86_64).
+          cp artifacts/linux-*/* release/
+
       - name: Generate SHA256 checksums
         run: |
           cd release
@@ -478,6 +524,9 @@ jobs:
         with:
           subject-path: |
             release/*.msi
+            release/*.deb
+            release/*.rpm
+            release/*.pkg.tar.zst
             release/*.zip
             release/*.tar.gz
 
@@ -568,8 +617,19 @@ jobs:
           Each installer replaces an earlier Proxmox Backup Client install or
           another brand, and moves its settings over.
 
-          The command line, `salvanza-cli`, is in every installer and in the
-          per-platform archives (`salvanza-cli-*` and `salvanza_client_*`).
+          Linux packages (the app, the background service and the command
+          line), for x86-64 (`amd64`, `x86_64`) and ARM 64-bit (`arm64`,
+          `aarch64`):
+
+          | File | For |
+          |---|---|
+          | `salvanza_<version>_amd64.deb`, `salvanza_<version>_arm64.deb` | Debian 12+, Ubuntu 22.04+, Linux Mint 21+ |
+          | `salvanza-<version>-1.fc44.x86_64.rpm`, `...aarch64.rpm` | Fedora |
+          | `salvanza-<version>-1-x86_64.pkg.tar.zst` | Arch Linux, Manjaro, EndeavourOS |
+
+          The command line, `salvanza-cli`, is in every installer and package
+          and in the per-platform archives (`salvanza-cli-*` and
+          `salvanza_client_*`).
 
           ## 📝 What's in this release
 
