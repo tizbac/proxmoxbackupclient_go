@@ -203,7 +203,7 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 	knownChunks2, err := client.GetKnownSha265FromFIDX(filename)
 	if err == nil {
 		knownChunks = knownChunks2
-	} else {
+	} else if !jp.isQuiet() {
 		fmt.Printf("Cannot get previous: %s\n", err.Error())
 	}
 
@@ -273,7 +273,9 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 				return
 			}
 			percentage := float64(CS.processed_size) / float64(total_size) * 100
-			fmt.Printf("Chunk %d/%d/%d - Progress: %.2f%%\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load(), percentage)
+			if !jp.isQuiet() {
+				fmt.Printf("Chunk %d/%d/%d - Progress: %.2f%%\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load(), percentage)
+			}
 
 			assignment_mutex.Unlock()
 

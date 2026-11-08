@@ -420,6 +420,17 @@ type PXARArchive struct {
 	// (progress display only; must be cheap and non-blocking).
 	OnFile func(path string)
 
+	// OnData, when set, is called with the number of file-content bytes just
+	// written to the archive: bytes read from the file, bytes of a file reused
+	// from the previous snapshot, and any zero padding. Progress display only;
+	// must be cheap and non-blocking.
+	OnData func(n int)
+
+	// OnFileDone, when set, is called once as WriteFile returns for a path,
+	// whether its content was archived, reused or skipped (progress display
+	// only; must be cheap and non-blocking).
+	OnFileDone func(path string)
+
 	// OnNotice, when set, receives informational messages for the job log,
 	// such as the source disk dropping out and coming back (see
 	// source_wait.go).
@@ -685,6 +696,9 @@ func (a *PXARArchive) tryReuseFile(path, basename string, fileInfo os.FileInfo) 
 	binary.Write(&a.buffer, binary.LittleEndian, size)
 	if err := a.Flush(); err != nil {
 		return CatalogFile{}, false, err
+	}
+	if a.OnData != nil {
+		a.OnData(int(size))
 	}
 	return CatalogFile{
 		Name:  basename,
@@ -1449,6 +1463,9 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 	if a.OnFile != nil {
 		a.OnFile(path)
 	}
+	if a.OnFileDone != nil {
+		defer a.OnFileDone(path)
+	}
 	//fmt.Printf("Write file %s at %d\n", path, a.pos)
 
 	// Use Lstat to detect symlinks/junction points without following them
@@ -1629,6 +1646,9 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 		if nread > 0 {
 			out.Write(readbuffer[:nread])
 			written += uint64(nread)
+			if a.OnData != nil {
+				a.OnData(nread)
+			}
 			if ferr := flush(); ferr != nil {
 				return CatalogFile{}, ferr
 			}
@@ -1661,6 +1681,9 @@ func (a *PXARArchive) WriteFile(path string, basename string, prefetched *prefet
 			}
 			out.Write(pad[:n])
 			written += n
+			if a.OnData != nil {
+				a.OnData(int(n))
+			}
 			if ferr := flush(); ferr != nil {
 				return CatalogFile{}, ferr
 			}

@@ -45,6 +45,10 @@ type JobProgress struct {
 	// sent reads the job's PBS client counter (see SentBytes).
 	sent atomic.Pointer[func() uint64]
 
+	// quiet suppresses the per-chunk status lines the upload workers print to
+	// standard output. A caller that draws its own progress bar sets it.
+	quiet atomic.Bool
+
 	mu        sync.Mutex
 	bad       []BadRange
 	phase     string
@@ -236,6 +240,19 @@ func (p *JobProgress) setSentSource(f func() uint64) {
 	if p != nil {
 		p.sent.Store(&f)
 	}
+}
+
+// SetQuiet tells the upload workers to leave out the per-chunk status lines
+// they print to standard output, for a caller that draws its own progress bar.
+func (p *JobProgress) SetQuiet(quiet bool) {
+	if p != nil {
+		p.quiet.Store(quiet)
+	}
+}
+
+// isQuiet reports whether the per-chunk status lines are suppressed.
+func (p *JobProgress) isQuiet() bool {
+	return p != nil && p.quiet.Load()
 }
 
 // countChunk records one chunk of an image. blank is true for an all-zero

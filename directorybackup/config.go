@@ -100,6 +100,11 @@ type Config struct {
 	// "Multi-threaded backup reading". The archive is the same either way.
 	ReadAhead int `json:"read-ahead"`
 
+	// Progress draws a progress bar while the backup runs. The folder is
+	// walked once beforehand to count its files and bytes; a stream
+	// (-backupstream) has no size to count, so its bar is indeterminate.
+	Progress bool `json:"progress"`
+
 	// The speed limits, "upload-limit", "download-limit" and
 	// "disk-read-limit" in MB/s; a flag overrides the file.
 	clientcommon.SpeedLimits
@@ -270,6 +275,7 @@ func loadConfig() *Config {
 	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: fastest, default (zstd level 3), better or best (default: default). Encrypted backups are not compressed")
 	readAheadFlag := flag.Int("read-ahead", 0, "Read up to this many files of each folder in the background ahead of the one being archived, 1 to 32, which helps when reading from the disk is the slow part; 0 or left out reads one file at a time. Each file read ahead, up to 128 MB, is held in memory until it is archived, so a folder can hold up to this many at a time (and its parent folders theirs, while it is backed up). The archive is the same either way")
 	noMTimeFlag := flag.Bool("no-mtime", false, "Record 1970-01-01 as every file and folder time instead of the real one, so time-only changes (a folder whose contents come and go) do not change the archive and re-upload its chunks; restored items get 1970-01-01 (advanced, optional)")
+	progressFlag := flag.Bool("progress", false, "Draw a progress bar on standard error while the backup runs. The folder is walked once beforehand to count its files and bytes (-backupstream has no size to count: its bar is indeterminate). The per-chunk lines are left out; other messages go above the bar")
 
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
 	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")
@@ -365,6 +371,9 @@ func loadConfig() *Config {
 	}
 	if *noMTimeFlag {
 		config.NoMTime = true
+	}
+	if *progressFlag {
+		config.Progress = true
 	}
 	config.ExcludeList = append(config.ExcludeList, excludeFlags...)
 	if *compressionFlag != "" {

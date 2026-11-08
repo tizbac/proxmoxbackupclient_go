@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 
 	"machinebackuplib"
 
@@ -47,7 +48,7 @@ func (i *arrayFlags) Set(value string) error {
 // loadConfig reads the command line and the -config file. The speed limits
 // and -shutdown-after come back on their own: machinebackuplib.Config is the
 // app's too, which sets those from its own settings.
-func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcommon.AfterRun) {
+func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcommon.AfterRun, bool) {
 	// Define flags
 
 	var backupdevs arrayFlags
@@ -66,6 +67,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcom
 	liveReadFlag := flag.Bool("liveread", false, "Linux: read mounted partitions live, without a snapshot, so elastio-snap or dattobd is not needed. The image may be inconsistent: files that change during the backup can be caught half written. Windows always reads a volume in use through VSS")
 	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: fastest, default (zstd level 3), better or best (default: default). Encrypted backups are not compressed")
 	readFreeSpaceFlag := flag.Bool("readfreespace", false, "Windows: also read free space and the paging/hibernation files (a forensic copy); by default they go into the image as zeros without being read")
+	progressFlag := flag.Bool("progress", false, "Draw a progress bar on standard error while the backup runs, with the percentage of the data actually read (free space and partitions left out are counted as done at once, as in the app). Before the size is known the bar is indeterminate. The per-chunk lines are left out; other messages go above the bar")
 	var skipparts arrayFlags
 	flag.Var(&skipparts, "skippartition", "Can be specified multiple times. Leave a partition out of a whole-disk backup: <device>:<partition number>, e.g. \\\\.\\PhysicalDrive0:4 or /dev/sda:3. It is not read or snapshotted and goes into the image as zeros: a restore gives it back empty and unformatted")
 	sysTrayFlag := flag.Bool("systray", false, "Does nothing: accepted so older scripts keep working (the tray icon was taken out of the command-line tools)")
@@ -243,7 +245,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcom
 		config.SMTP.Template.Body = *mailBodyTemplateFlag
 	}
 
-	return config, limits, after
+	return config, limits, after, *progressFlag
 }
 
 // sendResultMail sends the notification e-mail when -mail-* (or the config
@@ -335,6 +337,37 @@ func hostnameOrEmpty() string {
 	return h
 }
 
+// machineProgressLocation is the line under the bar: what the job is doing and
+// where it is reading, from the same figures the app's progress card shows.
+func machineProgressLocation(jp *machinebackuplib.JobProgress) string {
+	w := jp.Where()
+	switch w.Phase {
+	case "connecting":
+		return "connecting to PBS"
+	case "snapshot":
+		if w.Disk != "" {
+			return "taking a snapshot of " + w.Disk
+		}
+		return "taking a snapshot"
+	case "finishing":
+		return "finishing"
+	}
+	if w.Disk == "" {
+		return "preparing"
+	}
+	s := w.Disk
+	if w.DiskCount > 1 {
+		s = fmt.Sprintf("disk %d/%d %s", w.DiskNo, w.DiskCount, w.Disk)
+	}
+	if w.DiskModel != "" {
+		s += " (" + w.DiskModel + ")"
+	}
+	if w.Partition != "" {
+		s += " · " + w.Partition
+	}
+	return s
+}
+
 func fatalError(msg string, err error) {
 	fmt.Fprintf(os.Stderr, "Fatal error: %s: %v\n", msg, err)
 	os.Exit(1)
@@ -342,7 +375,7 @@ func fatalError(msg string, err error) {
 
 func Main() {
 
-	cfg, limits, after := loadConfig()
+	cfg, limits, after, showProgress := loadConfig()
 
 	// Errors go to stderr with a non-zero exit, never a message box: a box
 	// waits for a click that an unattended scheduled run never gets.
@@ -408,6 +441,25 @@ func Main() {
 	// every other message as it comes.
 	jp := &machinebackuplib.JobProgress{}
 	cfg.Progress = jp
+	// -progress: the FastCopy bar, on standard error (standard output stays
+	// as it was), fed the same read percentage the app's progress card uses
+	// (JobProgress.ReadProgress), so free space and partitions left out count
+	// as done at once. Until the disk sizes are known the bar is
+	// indeterminate. SetQuiet drops the per-chunk lines.
+	var progressBar *clientcommon.Progress
+	var restoreProgress func()
+	var restoreLog func()
+	if showProgress {
+		progressBar = clientcommon.NewProgress(os.Stderr, true)
+		restoreProgress = progressBar.CaptureStdout()
+		if progressBar.Active() {
+			oldLog := log.Writer()
+			log.SetOutput(progressBar.Writer())
+			restoreLog = func() { log.SetOutput(oldLog) }
+		}
+		progressBar.StartCopy(0, 0)
+		jp.SetQuiet(true)
+	}
 	counts := func() string {
 		s := fmt.Sprintf("new %d, reused %d (%d blank), new/changed data %s, transferred %s, free space not read %s",
 			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(),
@@ -421,6 +473,14 @@ func Main() {
 	lastPct := -1
 	start := time.Now()
 	progress := func(percentage float64, message string) bool {
+		if progressBar != nil && progressBar.Active() {
+			// The bar shows the percentage and its own counters; the block
+			// lines would only scroll it.
+			if !strings.Contains(message, ": Block ") {
+				progressBar.Line("%s", message)
+			}
+			return false
+		}
 		if !strings.Contains(message, ": Block ") {
 			fmt.Printf("%s\n", message)
 		} else if p := int(percentage * 100); p != lastPct {
@@ -428,6 +488,51 @@ func Main() {
 			fmt.Printf("%3d%%  %s  (%s)\n", p, message, counts())
 		}
 		return false
+	}
+
+	// With the bar on, a ticker samples the job's figures and feeds the bar,
+	// as the app's progress card does.
+	sampleProgress := func() {
+		done, total := jp.ReadProgress()
+		if total > 0 {
+			progressBar.SetTotal(0, int64(total))
+		}
+		progressBar.SetBytesDone(int64(done))
+		progressBar.Current(machineProgressLocation(jp))
+	}
+	var tickerDone chan struct{}
+	var tickerExited chan struct{}
+	if progressBar != nil {
+		tickerDone = make(chan struct{})
+		tickerExited = make(chan struct{})
+		go func() {
+			defer close(tickerExited)
+			t := time.NewTicker(250 * time.Millisecond)
+			defer t.Stop()
+			for {
+				select {
+				case <-tickerDone:
+					return
+				case <-t.C:
+					sampleProgress()
+				}
+			}
+		}()
+	}
+	stopTicker := func() {
+		if tickerDone == nil {
+			return
+		}
+		select {
+		case <-tickerDone:
+		default:
+			close(tickerDone)
+		}
+		<-tickerExited
+		tickerDone = nil
+		if progressBar != nil {
+			sampleProgress() // the last tick may be older than the end of the run
+		}
 	}
 	// A lost connection (a mobile link dropping, PBS restarting) ends the PBS
 	// session, and with it every chunk sent in it, so the backup starts again
@@ -445,8 +550,15 @@ func Main() {
 		if err != nil && !waitedSecond && pbscommon.IsBackupTimeTaken(err) {
 			waitedSecond = true
 			attempt--
-			fmt.Fprintln(os.Stderr, "PBS already has a backup of this group from this second; starting again in the next second.")
+			if progressBar != nil && progressBar.Active() {
+				progressBar.Line("PBS already has a backup of this group from this second; starting again in the next second.")
+			} else {
+				fmt.Fprintln(os.Stderr, "PBS already has a backup of this group from this second; starting again in the next second.")
+			}
 			jp.Reset()
+			if progressBar != nil {
+				progressBar.StartCopy(0, 0)
+			}
 			lastPct = -1
 			pbscommon.WaitNextSecond()
 			continue
@@ -455,11 +567,30 @@ func Main() {
 			break
 		}
 		wait := reconnectWaits[attempt-1]
-		fmt.Fprintf(os.Stderr, "Connection to the server lost on attempt %d of %d (%s): %v\n", attempt, len(reconnectWaits)+1, counts(), err)
-		fmt.Fprintf(os.Stderr, "Starting again at %s with a new session; chunks sent in the lost one are sent again.\n", time.Now().Add(wait).Format("15:04:05"))
+		if progressBar != nil && progressBar.Active() {
+			progressBar.Line("Connection to the server lost on attempt %d of %d (%s): %v", attempt, len(reconnectWaits)+1, counts(), err)
+			progressBar.Line("Starting again at %s with a new session; chunks sent in the lost one are sent again.", time.Now().Add(wait).Format("15:04:05"))
+			progressBar.StartCopy(0, 0)
+		} else {
+			fmt.Fprintf(os.Stderr, "Connection to the server lost on attempt %d of %d (%s): %v\n", attempt, len(reconnectWaits)+1, counts(), err)
+			fmt.Fprintf(os.Stderr, "Starting again at %s with a new session; chunks sent in the lost one are sent again.\n", time.Now().Add(wait).Format("15:04:05"))
+		}
 		jp.Reset()
 		lastPct = -1
 		time.Sleep(wait)
+	}
+	stopTicker()
+	if progressBar != nil {
+		// A good run is shown complete; a failed one keeps the figures it
+		// reached, which say where it stopped.
+		if err == nil {
+			progressBar.Complete()
+		}
+		if restoreLog != nil {
+			restoreLog()
+		}
+		restoreProgress()
+		progressBar.Finish()
 	}
 	// The notification e-mail (-mail-*): sent for a failed run too, before
 	// the exit.

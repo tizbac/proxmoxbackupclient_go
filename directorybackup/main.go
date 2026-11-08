@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"pbscommon"
@@ -137,11 +138,11 @@ func (c *ChunkState) startUploads(digest func([]byte) [32]byte, upload func(wrid
 				// if the send fails, the index is not closed and the snapshot
 				// not finished, so nothing refers to it.
 				if _, known := c.knownChunks.GetOrSet(shahash, true); known {
-					fmt.Printf("Reuse chunk[%s] %d bytes\n", shahash, len(job.data))
+					chunkNotice("Reuse chunk[%s] %d bytes\n", shahash, len(job.data))
 					c.reusechunk.Add(1)
 					continue
 				}
-				fmt.Printf("New chunk[%s] %d bytes\n", shahash, len(job.data))
+				chunkNotice("New chunk[%s] %d bytes\n", shahash, len(job.data))
 				if err := withRetryCtx(c.ctx, "chunk upload", chunkRetryTime, func() error {
 					return upload(c.wrid, shahash, job.data)
 				}); err != nil {
@@ -495,6 +496,21 @@ func Main() {
 		}
 	}
 
+	// -progress: the bar is created once every prompt and login is done, so
+	// nothing of the setup has to share the terminal with it. It is drawn on
+	// standard error, so standard output stays as it was.
+	var restoreProgress func()
+	var restoreLog func()
+	if cfg.Progress {
+		progressBar = clientcommon.NewProgress(os.Stderr, true)
+		restoreProgress = progressBar.CaptureStdout()
+		if progressBar.Active() {
+			oldLog := log.Writer()
+			log.SetOutput(progressBar.Writer())
+			restoreLog = func() { log.SetOutput(oldLog) }
+		}
+	}
+
 	begin := time.Now()
 	var readErrors []string
 	// snapshots holds the clients of the snapshots this run made, for the
@@ -516,7 +532,7 @@ func Main() {
 		if !strings.HasSuffix(sn, ".didx") {
 			sn += ".didx"
 		}
-		fmt.Printf("Backing up from STDIN to %s", sn)
+		notice("Backing up from STDIN to %s", sn)
 		err = backupStreamOnce(client, newchunk, reusechunk, sn, os.Stdin)
 		if err == nil {
 			snapshots = append(snapshots, client)
@@ -527,6 +543,20 @@ func Main() {
 	}
 
 	end := time.Now()
+
+	if progressBar != nil {
+		// A good run is shown complete even if a few files could not be read:
+		// the backup itself is over, and the final message says so.
+		if err == nil {
+			progressBar.Complete()
+		}
+		if restoreLog != nil {
+			restoreLog()
+		}
+		restoreProgress()
+		progressBar.Finish()
+		progressBar = nil
+	}
 
 	mailCtx := clientcommon.MailCtx{
 		NewChunks:    newchunk.Load(),
@@ -544,7 +574,7 @@ func Main() {
 		mailBodyTemplate = cfg.SMTP.Template.Body
 	}
 
-	fmt.Printf("New %d, Reused %d, backup took %s.\n", newchunk.Load(), reusechunk.Load(), end.Sub(begin))
+	notice("New %d, Reused %d, backup took %s.", newchunk.Load(), reusechunk.Load(), end.Sub(begin))
 	var msg string
 	msg, err = mailCtx.BuildStr(mailBodyTemplate)
 	if err != nil {
@@ -649,7 +679,7 @@ func backup_many(newClient func(backupID string) (*pbscommon.PBSClient, error), 
 	var failures []error
 	for _, dir := range dirs {
 		id := clientcommon.GenerateBackupID(baseID, dir)
-		fmt.Printf("Backing up %s as backup group %s\n", dir, id)
+		notice("Backing up %s as backup group %s", dir, id)
 
 		client, err := newClient(id)
 		if err != nil {
@@ -732,24 +762,30 @@ func backupStreamOnce(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.
 func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, filename string, stream io.Reader) error {
 	knownChunks := haxmap.New[string, bool]()
 	client.Connect(false, "host")
+	// -progress: standard input cannot be counted beforehand, so the bar is
+	// indeterminate: it slides a pulse and counts the bytes as they arrive.
+	if progressBar != nil {
+		progressBar.StartCopy(0, 0)
+		progressBar.Current("standard input (size unknown)")
+	}
 	previousDidx, err := client.DownloadPreviousToBytes(filename)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Downloaded previous DIDX: %d bytes\n", len(previousDidx))
+	notice("Downloaded previous DIDX: %d bytes", len(previousDidx))
 
 	// Defensive parse: a truncated/short/odd-length previous index (or a sub-8-byte
 	// error body) must not panic — fall back to no dedup (re-upload everything).
 	prevDigests := pbscommon.ParsePreviousDIDXChunkDigests(previousDidx)
 	if len(prevDigests) == 0 {
-		fmt.Printf("Previous index unusable or empty (%d bytes), uploading all chunks\n", len(previousDidx))
+		notice("Previous index unusable or empty (%d bytes), uploading all chunks", len(previousDidx))
 	}
 	for _, shahash := range prevDigests {
 		knownChunks.Set(shahash, true)
 	}
 
-	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
+	notice("Known chunks: %d!", knownChunks.Len())
 
 	streamChunk := ChunkState{}
 	streamChunk.Init(client, newchunk, reusechunk, knownChunks)
@@ -768,6 +804,9 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 		if err := streamChunk.HandleData(b, client); err != nil {
 			return fmt.Errorf("failed to handle stream data: %w", err)
 		}
+		if progressBar != nil {
+			progressBar.AddBytes(int64(n))
+		}
 
 		if rerr != nil {
 			if rerr == io.EOF {
@@ -779,6 +818,9 @@ func backup_stream(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uin
 
 	// Eof() already closes the dynamic index; closing it again fails the request
 	// and aborts the snapshot before UploadManifest/Finish.
+	if progressBar != nil {
+		progressBar.Current("finishing")
+	}
 	if err := streamChunk.Eof(client); err != nil {
 		return fmt.Errorf("failed to finalize stream: %w", err)
 	}
@@ -810,7 +852,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	archive := &pbscommon.PXARArchive{}
 	archive.ArchiveName = "backup.pxar.didx"
 	archive.ExcludeRoot = originalPath // the folder as named, also when read through a shadow copy
-	archive.OnNotice = func(msg string) { fmt.Println(msg) }
+	archive.OnNotice = func(msg string) { notice("%s", msg) }
 	archive.NoMTime = noMTime
 	// Relative and absolute patterns are taken from ExcludeRoot, the folder as
 	// named, also when it is read through a shadow copy.
@@ -820,6 +862,20 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		// Metadata stream; the payload stream is backup.ppxar.didx.
 		archive.ArchiveName = "backup.mpxar.didx"
 		archive.Split = true
+	}
+
+	// -progress: walk the folder once to know how much there is, then draw the
+	// bar from the file content as it is archived. Standard input has no
+	// pre-pass; its bar is indeterminate (see backup_stream).
+	if progressBar != nil {
+		files, bytes := countBackupEntries(backupdir, originalPath)
+		notice("%d files, %s to back up", files, clientcommon.FormatBytes(bytes))
+		progressBar.StartCopy(files, bytes)
+		archive.OnFile = func(path string) {
+			progressBar.Current(progressPath(backupdir, originalPath, path))
+		}
+		archive.OnData = func(n int) { progressBar.AddBytes(int64(n)) }
+		archive.OnFileDone = func(string) { progressBar.AddFile() }
 	}
 
 	// Captures NTFS ACLs, attributes and creation times on Windows, extended
@@ -842,7 +898,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		return nil, err
 	}
 
-	fmt.Printf("Downloaded previous DIDX: %d bytes\n", len(previousDidx))
+	notice("Downloaded previous DIDX: %d bytes", len(previousDidx))
 
 	/*f2, _ := os.Create("test.didx")
 	defer f2.Close()
@@ -858,13 +914,13 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	// error body) must not panic — fall back to no dedup (re-upload everything).
 	prevDigests := pbscommon.ParsePreviousDIDXChunkDigests(previousDidx)
 	if len(prevDigests) == 0 {
-		fmt.Printf("Previous index unusable or empty (%d bytes), uploading all chunks\n", len(previousDidx))
+		notice("Previous index unusable or empty (%d bytes), uploading all chunks", len(previousDidx))
 	}
 	for _, shahash := range prevDigests {
 		knownChunks.Set(shahash, true)
 	}
 
-	fmt.Printf("Known chunks: %d!\n", knownChunks.Len())
+	notice("Known chunks: %d!", knownChunks.Len())
 	f := &os.File{}
 	if pxarOut != "" {
 		f, err = os.Create(pxarOut)
@@ -898,7 +954,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 				payloadKnown.Set(shahash, true)
 			}
 		}
-		fmt.Printf("Known payload chunks: %d\n", payloadKnown.Len())
+		notice("Known payload chunks: %d", payloadKnown.Len())
 		payloadChunk = &ChunkState{}
 		payloadChunk.Init(client, newchunk, reusechunk, payloadKnown)
 		defer payloadChunk.stopUploads(true)
@@ -908,15 +964,15 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		archive.PayloadWriteCB = func(b []byte) error { return payloadChunk.HandleData(b, client) }
 		archive.OnPayloadFileStart = func() error { return payloadChunk.SuggestBoundary(client) }
 		if changeDetectionMode == pbscommon.ChangeDetectionMetadata && noMTime {
-			fmt.Println("Metadata change detection: off with -no-mtime (no times to compare), reading every file")
+			notice("Metadata change detection: off with -no-mtime (no times to compare), reading every file")
 		} else if changeDetectionMode == pbscommon.ChangeDetectionMetadata {
 			// Reuse unchanged files from the previous snapshot without
 			// reading them; an unusable previous snapshot means data mode.
 			prev, prevTime, lerr := client.LoadPreviousSplitArchive(archive.ArchiveName, "backup.ppxar.didx", prevPayload)
 			if lerr != nil {
-				fmt.Printf("Metadata change detection: no usable previous snapshot (%v), reading every file\n", lerr)
+				notice("Metadata change detection: no usable previous snapshot (%v), reading every file", lerr)
 			} else {
-				fmt.Printf("Metadata change detection: comparing with snapshot %s (%d files)\n",
+				notice("Metadata change detection: comparing with snapshot %s (%d files)",
 					time.Unix(prevTime, 0).UTC().Format(time.RFC3339), len(prev.Files))
 				archive.Reuse = pbscommon.NewPayloadReuse(prev,
 					func() error { return payloadChunk.ForceBoundary(client) },
@@ -966,18 +1022,21 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		if vssUsed {
 			p = unmapSnapshotPathString(p, backupdir, originalPath)
 		}
-		fmt.Printf("Excluded: %s\n", p)
+		notice("Excluded: %s", p)
 		excluded = append(excluded, pbscommon.FileIssue{Path: p, Reason: "excluded by user policy"})
 	}
 	if len(excluded) > 0 {
-		fmt.Printf("%d files and folders excluded by -exclude\n", len(excluded))
+		notice("%d files and folders excluded by -exclude", len(excluded))
 	}
 	if archive.Reuse != nil {
 		st := archive.Reuse.Stats
-		fmt.Printf("Metadata change detection: %d unchanged files (%d bytes) reused without reading, %d chunks reused, %d bytes padding; %d unchanged files read anyway to limit padding\n",
+		notice("Metadata change detection: %d unchanged files (%d bytes) reused without reading, %d chunks reused, %d bytes padding; %d unchanged files read anyway to limit padding",
 			st.Files, st.Bytes, st.Chunks, st.Padding, st.OverPadding)
 	}
 
+	if progressBar != nil {
+		progressBar.Current("finishing")
+	}
 	if err = pxarChunk.Eof(client); err != nil {
 		return nil, err
 	}
@@ -1011,9 +1070,9 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		} else if uerr := client.UploadBlob(pbscommon.FileMetaBlobName, blob); uerr != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to upload file metadata blob: %v\n", uerr)
 		} else {
-			fmt.Printf("File metadata: %d entries, %d errors\n", entries, metaErrs)
+			notice("File metadata: %d entries, %d errors", entries, metaErrs)
 			if streams, skipped, eas := metaCollector.StreamStats(); streams+skipped+eas > 0 {
-				fmt.Printf("Alternate data streams: %d recorded, %d by name only; extended attributes: %d\n", streams, skipped, eas)
+				notice("Alternate data streams: %d recorded, %d by name only; extended attributes: %d", streams, skipped, eas)
 			}
 		}
 	}
@@ -1043,7 +1102,7 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 
 func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, pxarOut string, backupdir string, usevss bool) ([]string, error) {
 
-	fmt.Printf("Starting backup of %s\n", backupdir)
+	notice("Starting backup of %s", backupdir)
 	originalPath := backupdir
 	if abs, aerr := filepath.Abs(backupdir); aerr == nil {
 		originalPath = abs
@@ -1057,7 +1116,7 @@ func backup(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint64, px
 	// on Linux) has no volume to snapshot, and VSS fails on it: read it live,
 	// as the app does, instead of failing the backup.
 	if usevss && !snapshot.PathSupportsSnapshot(backupdir) {
-		fmt.Printf("Not taking a snapshot of %s: a network path has no volume to snapshot, so it is read live\n", backupdir)
+		notice("Not taking a snapshot of %s: a network path has no volume to snapshot, so it is read live", backupdir)
 		usevss = false
 	}
 	var err error
