@@ -15,7 +15,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"path"
 	"runtime"
 	"strings"
 )
@@ -57,9 +57,10 @@ type ModuleInstallStatus struct {
 }
 
 // ModuleInstallerPath is where the packages of the product named fileBase
-// ("salvanza") put the installer.
+// ("salvanza") put the installer. It is a Linux path on every OS, so path,
+// not filepath, builds and checks it.
 func ModuleInstallerPath(fileBase string) string {
-	return filepath.Join("/usr/share", fileBase, "elastio-snap", "install-elastio-snap.sh")
+	return path.Join("/usr/share", fileBase, "elastio-snap", "install-elastio-snap.sh")
 }
 
 // InspectModuleInstall reports whether the installer at script can run on
@@ -159,7 +160,7 @@ func (m ModuleInstall) Run(ctx context.Context) (needsRestart bool, err error) {
 // itself (the packages install it executable); otherwise bash runs it, which
 // needs root already.
 func (m ModuleInstall) Command(ctx context.Context, elevate bool) (*exec.Cmd, error) {
-	if !filepath.IsAbs(m.Script) {
+	if !path.IsAbs(m.Script) {
 		return nil, fmt.Errorf("the installer's path is not absolute: %q", m.Script)
 	}
 	var flags []string
