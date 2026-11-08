@@ -3,8 +3,8 @@ import RadioGroup from './RadioGroup'
 import { askConfirm } from './ConfirmDialog'
 import { WizardSteps, WizardSummary, WizardNav } from './WizardSteps.jsx'
 import { openSteps, clampStep, undeleteReached, rollbackReached } from './stepRules.mjs'
-import { ListPagerBar, ListMore, useListShow, useFitCount } from './ListPager.jsx'
-import { newestFirst, pageLimit, pageItems, unixFromLocal, MORE_STEP } from './listPaging.mjs'
+import { ListPagerBar, ListPagerFoot, useListShow } from './ListPager.jsx'
+import { newestFirst, pageSize, pageItems, pageOf, unixFromLocal } from './listPaging.mjs'
 
 // Undelete and Roll back pages (side menu) and the Run as Service section of
 // Preferences > Advanced. Backend: gui/undelete_rollback.go,
@@ -54,6 +54,16 @@ function useScanProgress(ui, active) {
     return () => { if (typeof off === 'function') off() }
   }, [])
   return [active ? line : '', setLine, active ? fraction : null]
+}
+
+// useReportBusy tells App when the page is busy with something of its own
+// (listing, comparing, an Undo), so choosing it in the sidebar then only
+// shows it instead of starting it afresh.
+function useReportBusy(onBusy, tab, busy) {
+  useEffect(() => {
+    if (onBusy) onBusy(tab, busy)
+  }, [onBusy, tab, busy])
+  useEffect(() => () => { if (onBusy) onBusy(tab, false) }, [onBusy, tab])
 }
 
 export function SetPicker({ ui, jobs, value, onChange }) {
@@ -188,7 +198,7 @@ function TreeNode({ ui, node, depth, expanded, toggleExpand, selected, setSelect
   )
 }
 
-export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStarted, restoreCard, lastResult }) {
+export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStarted, restoreCard, lastResult, onBusy }) {
   const { t, tl, formatBytesDual, WaitBar } = ui
   const [days, setDays] = useState('0')
   const [scan, setScan] = useState(null)
@@ -211,6 +221,7 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
     return () => clearInterval(id)
   }, [scanning])
   useEffect(() => { setScan(null); setSelected(new Set()); setError('') }, [jobId])
+  useReportBusy(onBusy, 'undelete', !!scanning)
   useEffect(() => {
     if (!ui.EventsOn) return undefined
     const off = ui.EventsOn('restore:complete', (d) => { if (d && d.kind === 'undelete') setStale(true) })
@@ -258,6 +269,14 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, openKey])
 
+  // What the next undelete would do. Once an undelete of exactly that has
+  // finished, the button says Completed and is greyed; a change of files or
+  // destination makes it Undelete again.
+  const ranRef = useRef('')
+  const choiceKey = useMemo(() => JSON.stringify([jobId, chosen.map(fileKey).sort(), dest, dest === 'other' ? destPath : '', verify]),
+    [jobId, chosen, dest, destPath, verify])
+  const done = !!lastResult && lastResult.type !== 'error' && !restoreLoading && ranRef.current === choiceKey
+
   const start = async () => {
     if (chosen.length === 0) return
     if (dest === 'other' && !destPath) { setError(t('destinationRequired')); return }
@@ -270,6 +289,7 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
       confirmLabel: tl('dlgRestoreBtn', 'Restore'),
     }))) return
     setError('')
+    ranRef.current = choiceKey
     try {
       onStarted()
       await ui.StartUndelete(jobId, chosen.map(f => ({ archive: f.archive, path: f.path, snapshotUnix: f.snapshotUnix })), dest === 'original' ? '' : destPath, verify)
@@ -419,8 +439,11 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
               <button className="btn btn-secondary" onClick={runScan} disabled={!!scanning}>{tl('undeleteFind', 'Find deleted files')}</button>
             )}
             next={(
-              <button className="btn btn-primary" onClick={start} disabled={chosen.length === 0 || restoreLoading || (dest === 'other' && !destPath)}>
-                {tl('undeleteStart', 'Undelete {n} files ({size})').replace('{n}', chosen.length.toLocaleString()).replace('{size}', formatBytesDual(chosenSize))}
+              <button className="btn btn-primary" onClick={start} disabled={done || chosen.length === 0 || restoreLoading || (dest === 'other' && !destPath)}
+                title={done ? tl('wizCompletedHint', 'Done. Change a choice to run it again.') : undefined}>
+                {done
+                  ? `✓ ${tl('wizCompleted', 'Completed')}`
+                  : tl('undeleteStart', 'Undelete {n} files ({size})').replace('{n}', chosen.length.toLocaleString()).replace('{size}', formatBytesDual(chosenSize))}
               </button>
             )}
           />
@@ -449,7 +472,7 @@ function ItemList({ ui, items, total, live }) {
   )
 }
 
-export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStarted, restoreCard, lastResult, active }) {
+export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStarted, restoreCard, lastResult, onBusy }) {
   const { t, tl, formatBytesDual, WaitBar } = ui
   const [snaps, setSnaps] = useState(null)
   const [loadingSnaps, setLoadingSnaps] = useState(null)
@@ -505,30 +528,40 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   }, [])
   const jobIdRef = useRef(jobId)
   useEffect(() => { jobIdRef.current = jobId }, [jobId])
+  useReportBusy(onBusy, 'rollback', !!loadingSnaps || !!previewing || !!busyRecord)
   useEffect(() => { setPreview(null); setConfirmText('') }, [snapUnix])
 
   // The backups, newest first; the date box keeps only those at or before it
-  // and picks the newest of them; the list shows as many as fit, or the
-  // chosen number, plus "Show more" (listPaging.mjs). The list itself says
-  // when none is at or before the date.
+  // and picks the newest of them; the list shows a page at a time of the
+  // chosen size (listPaging.mjs). The list itself says when none is at or
+  // before the date.
   const sorted = useMemo(() => newestFirst(snaps), [snaps])
   const newestUnix = sorted.length ? sorted[0].unix : 0
   const [show, setShow] = useListShow()
-  const [more, setMore] = useState(0)
-  const listRef = useRef(null)
-  // active: the page stays mounted while another tab shows; measured again
-  // when it comes back.
-  const fit = useFitCount(listRef, [active, step, snaps, atTime])
-  const page = pageItems(sorted, { limit: pageLimit(show, fit, more), before: unixFromLocal(atTime), isSelected: s => s.unix === snapUnix })
-  useEffect(() => { setMore(0) }, [jobId])
+  const [pageNo, setPageNo] = useState(0)
+  const isSelected = s => s.unix === snapUnix
+  const page = pageItems(sorted, { size: pageSize(show), page: pageNo, before: unixFromLocal(atTime) })
+  useEffect(() => { setPageNo(0) }, [jobId])
 
+  // The date picks the newest backup at or before it: the first of the list.
+  // Cleared, the list opens at the page with the chosen backup.
   const pickAt = (value) => {
     setAtTime(value)
-    if (!value) return
+    if (!value) {
+      setPageNo(Math.max(0, pageOf(sorted, { size: pageSize(show), isSelected })))
+      return
+    }
+    setPageNo(0)
     const want = unixFromLocal(value)
     const s = sorted.find(x => x.unix <= want)
     setSnapUnix(s ? s.unix : 0)
   }
+  // A new page size (chosen here or in Restore's list, which shares it): the
+  // page with the chosen backup, or the first.
+  useEffect(() => {
+    setPageNo(Math.max(0, pageOf(sorted, { size: pageSize(show), before: unixFromLocal(atTime), isSelected })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [show])
 
   const runPreview = async () => {
     setError(''); setPreview(null); setProgressLine(''); setConfirmText('')
@@ -678,16 +711,16 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
         ) : (
           <>
             {/* The date box picks the newest backup at or before it and
-                lists only those; the list shows as many as fit (listPaging.mjs). */}
-            <ListPagerBar tl={tl} page={page} idPrefix="rollback-snaps"
-              show={show} onShow={(v) => { setShow(v); setMore(0) }}
-              before={atTime} onBefore={(v) => { pickAt(v); setMore(0) }}
+                lists only those; the list shows a page at a time (listPaging.mjs). */}
+            <ListPagerBar tl={tl} page={page} onPage={setPageNo} idPrefix="rollback-snaps"
+              show={show} onShow={setShow}
+              before={atTime} onBefore={pickAt}
               beforeLabel={tl('rollbackAtTime', 'The backup at or before:')} />
             {/* No scroll box of its own: on its own step the page scrolls. */}
             {page.matching === 0 ? (
               <p style={{fontSize: '13px', color: '#718096'}}>{tl('rollbackNoneBefore', 'There is no backup at or before that time.')}</p>
             ) : (
-              <div role="radiogroup" aria-labelledby="rollback-snap-label" ref={listRef} style={{marginTop: '8px', border: '1px solid #e2e8f0', borderRadius: '6px', background: '#fff'}}>
+              <div role="radiogroup" aria-labelledby="rollback-snap-label" style={{marginTop: '8px', border: '1px solid #e2e8f0', borderRadius: '6px', background: '#fff'}}>
                 {page.shown.map((s, i) => (
                   <label key={s.unix} style={{display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', margin: 0, fontWeight: 'normal', cursor: 'pointer', borderTop: i === 0 ? 'none' : '1px solid #edf2f7', background: snapUnix === s.unix ? '#eff6ff' : undefined}}>
                     <input type="radio" name="rollback-snap" checked={snapUnix === s.unix} onChange={() => setSnapUnix(s.unix)} style={{width: 'auto', margin: 0}} />
@@ -697,7 +730,7 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
                 ))}
               </div>
             )}
-            <ListMore tl={tl} page={page} onMore={() => setMore(m => m + MORE_STEP)} />
+            {page.matching > 0 && <ListPagerFoot tl={tl} page={page} onPage={setPageNo} />}
           </>
         )}
       </div>

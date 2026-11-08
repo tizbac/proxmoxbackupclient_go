@@ -1290,9 +1290,7 @@ func (a *App) runSetRestore(op setRestoreOp) {
 				o.OnStats = func(s *RestoreProgressStats) {
 					markRestoreProgress()
 					if a.ctx != nil {
-						a.emitEvent("restore:stats", map[string]interface{}{
-							"bytesDone": s.BytesDone, "bytesTotal": s.BytesTotal, "currentArchive": s.CurrentArchive,
-						})
+						a.emitEvent("restore:stats", restoreStatsEvent(s))
 					}
 				}
 				o.OnSummary = func(f, d int, b int64) { files += f; bytes += b }

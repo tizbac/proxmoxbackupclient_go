@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { newestFirst, pageLimit, pageItems, fitCount, unixFromLocal, FIT_FALLBACK, MORE_STEP } from './listPaging.mjs'
+import { newestFirst, showChoice, pageSize, pageItems, pageOf, unixFromLocal, DEFAULT_SHOW } from './listPaging.mjs'
 
 const snaps = [30, 10, 50, 20, 40].map(unix => ({ unix, id: String(unix) }))
 
@@ -11,47 +11,56 @@ test('newestFirst sorts a copy by time, newest first', () => {
   assert.deepEqual(newestFirst(null), [])
 })
 
-test('pageLimit: fit uses the measured count, or the fallback before it is measured', () => {
-  assert.equal(pageLimit('fit', 9), 9)
-  assert.equal(pageLimit('fit', 0), FIT_FALLBACK)
-  assert.equal(pageLimit('25', 9), 25)
-  assert.equal(pageLimit('100', 9), 100)
-  assert.equal(pageLimit('all', 9), Infinity)
-  assert.equal(pageLimit('fit', 9, MORE_STEP), 9 + MORE_STEP)
-  assert.equal(pageLimit('bogus', 9), MORE_STEP)
+test('showChoice keeps the choices and maps the old ones', () => {
+  for (const v of ['5', '10', '25', '50', 'all']) assert.equal(showChoice(v), v)
+  assert.equal(showChoice('fit'), DEFAULT_SHOW)
+  assert.equal(showChoice('100'), '50')
+  assert.equal(showChoice(null), DEFAULT_SHOW)
+  assert.equal(showChoice('bogus'), DEFAULT_SHOW)
 })
 
-test('pageItems shows the newest up to the limit', () => {
-  const p = pageItems(newestFirst(snaps), { limit: 2 })
-  assert.deepEqual(p.shown.map(s => s.unix), [50, 40])
-  assert.equal(p.matching, 5)
-  assert.equal(p.total, 5)
+test('pageSize: the number, or Infinity for all', () => {
+  assert.equal(pageSize('5'), 5)
+  assert.equal(pageSize('50'), 50)
+  assert.equal(pageSize('all'), Infinity)
+  assert.equal(pageSize('fit'), 10)
 })
 
-test('pageItems: at or before a time, then the limit', () => {
-  const p = pageItems(newestFirst(snaps), { limit: 2, before: 35 })
+test('pageItems: pages of the newest, numbered from 1', () => {
+  const sorted = newestFirst(snaps)
+  const p0 = pageItems(sorted, { size: 2, page: 0 })
+  assert.deepEqual(p0.shown.map(s => s.unix), [50, 40])
+  assert.deepEqual([p0.page, p0.pages, p0.from, p0.to, p0.matching, p0.total], [0, 3, 1, 2, 5, 5])
+  const p2 = pageItems(sorted, { size: 2, page: 2 })
+  assert.deepEqual(p2.shown.map(s => s.unix), [10])
+  assert.deepEqual([p2.from, p2.to], [5, 5])
+})
+
+test('pageItems keeps the page within range', () => {
+  const sorted = newestFirst(snaps)
+  assert.equal(pageItems(sorted, { size: 2, page: 9 }).page, 2)
+  assert.equal(pageItems(sorted, { size: 2, page: -3 }).page, 0)
+  const all = pageItems(sorted, { size: Infinity, page: 4 })
+  assert.deepEqual([all.page, all.pages, all.from, all.to], [0, 1, 1, 5])
+})
+
+test('pageItems: at or before a time, then the pages', () => {
+  const sorted = newestFirst(snaps)
+  const p = pageItems(sorted, { size: 2, before: 35 })
   assert.deepEqual(p.shown.map(s => s.unix), [30, 20])
-  assert.equal(p.matching, 3)
-  assert.equal(p.total, 5)
-  const none = pageItems(newestFirst(snaps), { limit: 2, before: 5 })
-  assert.equal(none.shown.length, 0)
-  assert.equal(none.matching, 0)
+  assert.deepEqual([p.matching, p.total, p.pages], [3, 5, 2])
+  const none = pageItems(sorted, { size: 2, before: 5 })
+  assert.deepEqual([none.shown.length, none.matching, none.pages, none.from, none.to], [0, 0, 1, 0, 0])
 })
 
-test('pageItems never hides the selected one below the cut', () => {
-  const p = pageItems(newestFirst(snaps), { limit: 2, isSelected: s => s.unix === 20 })
-  assert.deepEqual(p.shown.map(s => s.unix), [50, 40, 30, 20])
-  // Selected but filtered out by the date: not brought back (Restore lets
-  // such a selection go when the date is set; Roll back re-picks).
-  const q = pageItems(newestFirst(snaps), { limit: 2, before: 15, isSelected: s => s.unix === 40 })
-  assert.deepEqual(q.shown.map(s => s.unix), [10])
-})
-
-test('fitCount: whole rows times columns, at least one row', () => {
-  assert.equal(fitCount({ available: 500, rowHeight: 180, columns: 3 }), 6)
-  assert.equal(fitCount({ available: 50, rowHeight: 180, columns: 3 }), 3)
-  assert.equal(fitCount({ available: 600, rowHeight: 45 }), 13)
-  assert.equal(fitCount({ available: 600, rowHeight: 0, columns: 3 }), FIT_FALLBACK)
+test('pageOf finds the page with the selected one', () => {
+  const sorted = newestFirst(snaps)
+  assert.equal(pageOf(sorted, { size: 2, isSelected: s => s.unix === 20 }), 1)
+  assert.equal(pageOf(sorted, { size: 2, isSelected: s => s.unix === 50 }), 0)
+  assert.equal(pageOf(sorted, { size: 2, before: 35, isSelected: s => s.unix === 10 }), 1)
+  assert.equal(pageOf(sorted, { size: 2, before: 35, isSelected: s => s.unix === 40 }), -1)
+  assert.equal(pageOf(sorted, { size: Infinity, isSelected: s => s.unix === 10 }), 0)
+  assert.equal(pageOf(sorted, { size: 2 }), -1)
 })
 
 test('unixFromLocal reads a datetime-local value', () => {

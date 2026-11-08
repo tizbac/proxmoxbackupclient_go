@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'
 import { TabList, Tab } from '@fluentui/react-components'
 import { useTranslation } from './i18n/i18nContext'
 import LanguageSwitcher from './components/LanguageSwitcher'
@@ -18,8 +18,8 @@ import EncryptionKeyField from './components/EncryptionKeyField'
 import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTools'
 import { WizardSteps, WizardSummary, WizardNav } from './components/WizardSteps.jsx'
 import { openSteps, clampStep, restoreReached } from './components/stepRules.mjs'
-import { ListPagerBar, ListMore, useListShow, useFitCount } from './components/ListPager.jsx'
-import { newestFirst, pageLimit, pageItems, unixFromLocal, MORE_STEP } from './components/listPaging.mjs'
+import { ListPagerBar, ListPagerFoot, useListShow } from './components/ListPager.jsx'
+import { newestFirst, pageSize, pageItems, pageOf, unixFromLocal } from './components/listPaging.mjs'
 import { suggestBackupId, setsSharingGroup } from './backupId'
 import ScheduleEditor from './components/ScheduleEditor'
 import LastRunAgo from './components/LastRunAgo'
@@ -271,8 +271,9 @@ function windowRate(samples, key, windowMs, now) {
 
 // A path shortened in the middle to fit the space it has (keeping the start
 // and the file name), measured from its own width, so a long path is never
-// cut off at the end where the file name is.
-function FitPath({ path }) {
+// cut off at the end where the file name is. suffix (plain text, such as
+// "(2 of 3)") follows the path and always stays in view.
+function FitPath({ path, suffix = '' }) {
   const ref = useRef(null)
   const [chars, setChars] = useState(110)
   useEffect(() => {
@@ -290,7 +291,8 @@ function FitPath({ path }) {
   }, [])
   return (
     <span ref={ref} title={path} style={{fontFamily: 'Consolas, monospace', fontSize: '12px', flex: '1 1 auto', minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', display: 'block'}}>
-      {middleTruncate(path, chars)}
+      {middleTruncate(path, Math.max(12, chars - (suffix ? suffix.length + 1 : 0)))}
+      {suffix && <span className="fit-path-suffix"> {suffix}</span>}
     </span>
   )
 }
@@ -718,9 +720,14 @@ function App() {
     SnapshotSupport(paths).then(m => { if (live && m) setSnapSupport(prev => ({ ...prev, ...m })) }).catch(() => {})
     return () => { live = false }
   }, [scheduledJobs])
-  // The Backup Set the Undelete and Roll back pages work on (the set card
-  // shortcuts pick it before switching page).
-  const [setToolJobId, setSetToolJobId] = useState('')
+  // The Backup Set the Undelete and the Roll back page each work on (a set
+  // card's shortcuts pick it before switching page).
+  const [undeleteJobId, setUndeleteJobId] = useState('')
+  const [rollbackJobId, setRollbackJobId] = useState('')
+  // Whether the Undelete or Roll back page is in the middle of something of
+  // its own (listing, comparing, an Undo): it is not started afresh then.
+  const setToolBusyRef = useRef({ undelete: false, rollback: false })
+  const reportSetToolBusy = useCallback((tab, busy) => { setToolBusyRef.current[tab] = busy }, [])
   // Backup IDs other sets use, so a suggestion never shares one.
   const takenBackupIds = (exceptJobId) => scheduledJobs.filter(j => j.id !== exceptJobId).map(j => j.backupId)
   const suggestedBackupId = (name) => suggestBackupId(name, hostname, takenBackupIds(editingJobId))
@@ -929,6 +936,7 @@ function App() {
     setBackupStats({ ...EMPTY_BACKUP_STATS, startTime: r.startedAt || Date.now() })
     setBackupFile('')
     setProgress(r.percent || 0)
+    setBackupMessage(r.message || '')
     setActiveBackupName(r.name || '')
     setBackupPause({ paused: !!r.paused, since: r.since || 0 })
     setBackupStopRequested(!!r.stopRequested)
@@ -966,13 +974,12 @@ function App() {
     setSnapshotViewMode(mode)
     try { localStorage.setItem('snapshotViewMode', mode) } catch { /* ignore */ }
   }
-  // The snapshot step shows the newest ones that fit the window (or 25, 100,
-  // all), "Show more" adding MORE_STEP each time, optionally only those at or
-  // before a time (listPaging.mjs).
+  // The snapshot step shows them a page at a time, newest first (5, 10, 25,
+  // 50 or all to a page), optionally only those at or before a time
+  // (listPaging.mjs). snapPageNo is the page, from 0.
   const [snapShow, setSnapShow] = useListShow()
-  const [snapMore, setSnapMore] = useState(0)
+  const [snapPageNo, setSnapPageNo] = useState(0)
   const [snapBefore, setSnapBefore] = useState('')
-  const snapListRef = useRef(null)
   const [restorePBSID, setRestorePBSID] = useState('')
   const [selectedSnapshot, setSelectedSnapshot] = useState(null) // { id, unix, time }
   const [snapshotMeta, setSnapshotMeta] = useState(null)         // .proxmox_backup_client_meta.json sidecar (null if legacy)
@@ -1006,10 +1013,15 @@ function App() {
   // line goes after 5 seconds, which left the last step looking as if
   // nothing had happened.
   const [lastRestoreResult, setLastRestoreResult] = useState(null)
+  // restoreChoiceKey of the last restore started (see restoreDone).
+  const restoreRanRef = useRef('')
   const [restoreLoading, setRestoreLoading] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
   const [restoreStage, setRestoreStage] = useState({ stage: '', detail: '' })
   const [restoreFile, setRestoreFile] = useState('')
+  const [restoreMessage, setRestoreMessage] = useState('')
+  // The backup card's own progress line, as restoreMessage is the restore card's.
+  const [backupMessage, setBackupMessage] = useState('')
   const [snapshotLoad, setSnapshotLoad] = useState({ phase: '', count: 0, startedAt: 0 })
   const [, setSnapshotLoadTick] = useState(0)
   const [restoreStats, setRestoreStats] = useState(EMPTY_RESTORE_STATS)
@@ -1195,6 +1207,8 @@ function App() {
       }
 
       setProgress(percent)
+      // The card's own line (the status line is shared with restores).
+      setBackupMessage(data.message || '')
       showStatus(`${data.message}`, 'info', true)
       if (data.name) setActiveBackupName(data.name)
 
@@ -1369,6 +1383,7 @@ function App() {
       }
       setProgress(data.success ? 100 : 0)
       setBackupRunning(false)
+      setBackupMessage('')
       setBackupFile('')
       setActiveBackupName('')
       setBackupStats(EMPTY_BACKUP_STATS)
@@ -1459,6 +1474,9 @@ function App() {
       // Its turn has come: off the waiting list.
       if (data.name) setPendingQueue(q => q.filter(n => n !== data.name))
       setRestoreProgress(Math.round((data.percent || 0) * 100))
+      // The card's own detail line: the status line is shared, and a backup
+      // running at the same time writes its own lines there.
+      setRestoreMessage(data.message || '')
       showStatus(`${data.message || ''}`, 'info', true)
       if (data.name) setActiveRestoreName(data.name)
       setRestoreStats(prev => (prev.startTime ? prev : { ...prev, startTime: Date.now() }))
@@ -1468,7 +1486,10 @@ function App() {
         restoreStageStartRef.current = { stage: data.stage || '', t: Date.now() }
       }
       setRestoreStage({ stage: data.stage || '', detail: data.detail || '' })
-      if (data.stage !== 'transferring') setRestoreFile('')
+      // The last file written stays shown while the next folder (or, for
+      // Undelete, the next snapshot) is located; it goes once the files are
+      // all written.
+      if (!['transferring', 'locating', 'verifying'].includes(data.stage)) setRestoreFile('')
     })
     const unsubF = EventsOn('restore:file', (data) => {
       setRestoreFile(data.path || '')
@@ -1501,7 +1522,13 @@ function App() {
         const avgSpeed = moveSecs > 0 ? bytesDone / moveSecs : prev.avgSpeed
         // Shown for 10 s at a time (etaHold.js), not with every event.
         const etaHold = holdEta(prev.etaHold, eta, now)
-        return { startTime, bytesDone, bytesTotal, speed, eta: etaHold.eta, etaHold, lastMoveAt, avgSpeed }
+        // The folder being restored now, when the restore has several
+        // (folderCount 0 otherwise); the figures above are the whole restore.
+        const folder = {
+          folderIndex: data.folderIndex || 0, folderCount: data.folderCount || 0, folderPath: data.folderPath || '',
+          folderDone: data.folderDone || 0, folderTotal: data.folderTotal || 0,
+        }
+        return { startTime, bytesDone, bytesTotal, speed, eta: etaHold.eta, etaHold, lastMoveAt, avgSpeed, ...folder }
       })
     })
     const unsubC = EventsOn('restore:complete', (data) => {
@@ -1509,6 +1536,7 @@ function App() {
       setActiveRestoreName('')
       setRestoreStage({ stage: '', detail: '' })
       setRestoreFile('')
+      setRestoreMessage('')
       setRestoreProgress(data.success ? 100 : 0)
       setRestoreStats(EMPTY_RESTORE_STATS)
       restoreSamplesRef.current = []
@@ -2416,7 +2444,7 @@ function App() {
 
     const body = (
       <>
-        <div style={{marginBottom: '18px'}}>
+        <div className="chev-strip">
           {tabs.map(([key, label]) => (
             <button
               key={key}
@@ -3127,7 +3155,7 @@ function App() {
     snapshotCtxRef.current = null
     setSelectedPaths(new Set())
     setExpandedDirs(new Set())
-    setSnapMore(0)
+    setSnapPageNo(0)
     setSnapBefore('')
   }
 
@@ -3143,12 +3171,14 @@ function App() {
 
   // The snapshot step's date: only the snapshots at or before it are listed,
   // and a chosen snapshot newer than it is let go, so Next never opens one
-  // the list no longer shows.
+  // the list no longer shows. The list opens at the page with the one still
+  // chosen, or the first.
   const setSnapBeforeAndDrop = (value) => {
     setSnapBefore(value)
-    setSnapMore(0)
     const before = unixFromLocal(value)
-    if (before > 0 && selectedSnapshot && (selectedSnapshot.unix || 0) > before) clearSelectedSnapshot()
+    const drop = before > 0 && selectedSnapshot && (selectedSnapshot.unix || 0) > before
+    if (drop) clearSelectedSnapshot()
+    setSnapPageNo(drop ? 0 : Math.max(0, pageOf(snapSorted, { size: pageSize(snapShow), before, isSelected: isSnapSelected })))
   }
 
   const handleListSnapshots = async () => {
@@ -3173,7 +3203,7 @@ function App() {
 
     clearSelectedSnapshot()
     // A fresh list starts from the newest again.
-    setSnapMore(0)
+    setSnapPageNo(0)
     setSnapBefore('')
 
     const id = beginServerWait('list', t('listingSnapshots'))
@@ -3423,12 +3453,27 @@ function App() {
     .replace('{size}', selectionSizing ? tl('calculating', 'Calculating...') : formatBytesDual(selectionBytes))
   // The snapshots the snapshot step shows (listPaging.mjs).
   const snapSorted = useMemo(() => newestFirst(snapshots), [snapshots])
-  const snapFit = useFitCount(snapListRef, [activeTab, restoreStep, snapshotViewMode, showSnapshots, snapshots.length, snapBefore])
+  // What the next restore would do. Once a restore of exactly that has
+  // finished, step 5's Restore button says Completed and is greyed; any change
+  // (files, destination, an option) makes it Restore again.
+  const restoreChoiceKey = useMemo(() => JSON.stringify([
+    restorePBSID, selectedSnapshot && selectedSnapshot.backup_id, selectedSnapshot && selectedSnapshot.id,
+    [...selectedPaths].sort(), restoreDestPath, restoreMode, restoreKeepTree, restoreAllowCrossHost, restoreOptions,
+  ]), [restorePBSID, selectedSnapshot, selectedPaths, restoreDestPath, restoreMode, restoreKeepTree, restoreAllowCrossHost, restoreOptions])
+  const restoreDone = !!lastRestoreResult && lastRestoreResult.kind === 'restore' && lastRestoreResult.type !== 'error'
+    && !restoreLoading && restoreRanRef.current === restoreChoiceKey
+  const isSnapSelected = s => !!selectedSnapshot && s.id === selectedSnapshot.id && s.backup_id === selectedSnapshot.backup_id
   const snapPage = pageItems(snapSorted, {
-    limit: pageLimit(snapShow, snapFit, snapMore),
+    size: pageSize(snapShow),
+    page: snapPageNo,
     before: unixFromLocal(snapBefore),
-    isSelected: s => !!selectedSnapshot && s.id === selectedSnapshot.id && s.backup_id === selectedSnapshot.backup_id,
   })
+  // A new page size (chosen here or in Roll back's list, which shares it):
+  // the page with the chosen snapshot, or the first.
+  useEffect(() => {
+    setSnapPageNo(Math.max(0, pageOf(snapSorted, { size: pageSize(snapShow), before: unixFromLocal(snapBefore), isSelected: isSnapSelected })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapShow])
 
   const handleRestoreSnapshot = async () => {
     if (!RestoreSnapshot) {
@@ -3475,9 +3520,11 @@ function App() {
     }
     const includes = Array.from(selectedPaths)
 
+    restoreRanRef.current = restoreChoiceKey
     setRestoreLoading(true)
     setRestoreProgress(0)
     setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
+    setRestoreMessage('')
     showStatus(`${t('statusRestoring').replace('{time}', selectedSnapshot.time)}`, 'info')
 
     try {
@@ -3817,7 +3864,7 @@ function App() {
             safety: tl('restoreStageSafety', 'Moving the files to be replaced or removed aside (kept for Undo)...'),
             }[restoreStage.stage] || restoreStage.stage}{restoreStage.detail ? ` (${restoreStage.detail})` : ''}</>
           : tl('stageStarting', 'Starting...')
-        const showFile = restoreFile && (restoreStage.stage === 'transferring' || restoreStage.stage === 'verifying')
+        const showFile = restoreFile && ['transferring', 'locating', 'verifying'].includes(restoreStage.stage)
         // After the transfer (folder timestamps, ACLs, verify) the time
         // left comes from the stage's own "N of M" count and how long it
         // has taken so far; without a count it reads "Finishing...".
@@ -3825,8 +3872,8 @@ function App() {
         const afterTransfer = ['dirtimes', 'acls', 'created', 'verifying'].includes(restoreStage.stage)
         const transferDone = afterTransfer || (s.bytesTotal > 0 && s.bytesDone >= s.bytesTotal)
         let remaining = afterTransfer ? null : s.eta
-        if (afterTransfer && status.message) {
-          const m = status.message.match(/([\d,]+) of ([\d,]+)/)
+        if (afterTransfer && restoreMessage) {
+          const m = restoreMessage.match(/([\d,]+) of ([\d,]+)/)
           const st = restoreStageStartRef.current
           if (m && st.stage === restoreStage.stage && st.t > 0) {
             const n = parseInt(m[1].replace(/,/g, ''), 10)
@@ -3858,15 +3905,29 @@ function App() {
                 ? `${formatSpeed(s.avgSpeed)} ${tl('averageSuffix', '(average)')}`
                 : (s.speed > 0 ? formatSpeed(s.speed) : calc))}
               {row(tl('downloadedLabel', 'Downloaded:'), s.bytesTotal > 0 ? <>{formatBytesDual(s.bytesDone)} / {formatBytesDual(s.bytesTotal)}</> : calc)}
-              <div style={{gridColumn: '1 / -1', fontSize: '13px', color: '#495057', height: '18px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
+              {/* Several folders: the one being restored now (its full
+                  original path, cut in the middle when long) and how far
+                  through it is; the figures above are the whole restore. */}
+              {s.folderCount > 1 && (<>
+                <div className="restore-row-path">
+                  <strong style={{flex: '0 0 auto'}}>{tl('currentFolderLabel', 'Current folder:')}</strong>
+                  <FitPath path={s.folderPath} suffix={tl('folderNofM', '({n} of {count})').replace('{n}', s.folderIndex).replace('{count}', s.folderCount)} />
+                </div>
+                {row(tl('thisFolderLabel', 'This folder:'), s.folderTotal > 0
+                  ? <>{formatBytesDual(Math.min(s.folderDone, s.folderTotal))} / {formatBytesDual(s.folderTotal)} · {Math.floor(Math.min(100, s.folderDone * 100 / s.folderTotal))}%</>
+                  : calc)}
+              </>)}
+              <div className="restore-row-path" style={{gridColumn: '1 / -1'}}>
                 <strong style={{flex: '0 0 auto'}}>{tl('currentFileLabel', 'Current file:')}</strong>
                 {showFile
                   ? <FitPath path={restoreFile} />
                   : <span className="pending-value">{tl('waiting', 'Waiting...')}</span>}
               </div>
             </div>
-            <div style={{marginTop: '10px', padding: '8px', backgroundColor: '#fff', borderRadius: '4px', fontSize: '13px', color: '#666', border: '1px solid #e9ecef', minHeight: '18px'}}>
-              {status.message && status.type === 'info' ? status.message : calc}
+            {/* Always two lines tall, so the card does not jump as the text
+                wraps; longer text is cut, and shown whole on hover. */}
+            <div className="restore-detail" title={restoreMessage || undefined}>
+              <span>{restoreMessage || calc}</span>
             </div>
           </>
         )
@@ -3896,6 +3957,49 @@ function App() {
     setRestoreLoading(true)
     setRestoreProgress(0)
     setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
+    setRestoreMessage('')
+  }
+
+  // The Restore wizard as it is when the app opens: the default server and
+  // this computer's backup ID, nothing listed or chosen, the usual options.
+  const resetRestoreWizard = () => {
+    clearRestoreListing()
+    setSnapshots([])
+    setSnapshotMeta(null)
+    setRestorePBSID(defaultPBSID || '')
+    setRestoreBackupId(config['backup-id'] || hostname || '')
+    setShowRestoreIdList(false)
+    setRestoreDestPath('')
+    setRestoreMode('alternate_abs')
+    setRestoreAllowCrossHost(false)
+    setRestoreKeepTree(true)
+    setRestoreOptions({ overwrite: false, timestamps: true, verify: false, acls: false, ads: true })
+    setShowSearch(false)
+    setSearchQuery('')
+    setSearchResult(null)
+    setRestoreStep(1)
+  }
+
+  // Restore, Undelete and Roll back start afresh each time they are chosen
+  // (the sidebar, or a set's Undelete / Roll back), not with the choices left
+  // from before. While a restore, undelete or roll back runs, or the page is
+  // busy with something of its own (Restore listing snapshots or searching,
+  // Undelete or Roll back comparing or undoing), the page is only shown, so
+  // that keeps going in view. jobId: the set a set's menu opens Undelete or
+  // Roll back with (taken even when busy, as before).
+  const [wizardFresh, setWizardFresh] = useState({ undelete: 0, rollback: 0 })
+  const openWizard = (tab, jobId = '') => {
+    const setJob = tab === 'undelete' ? setUndeleteJobId : setRollbackJobId
+    if (tab === 'restore') {
+      if (!restoreLoading && !searchRunning && !serverWait) resetRestoreWizard()
+    } else if (!restoreLoading && !setToolBusyRef.current[tab]) {
+      setLastRestoreResult(r => (r && r.kind === tab ? null : r))
+      setJob(jobId)
+      setWizardFresh(k => ({ ...k, [tab]: k[tab] + 1 }))
+    } else if (jobId) {
+      setJob(jobId)
+    }
+    setActiveTab(tab)
   }
 
   return (
@@ -3904,13 +4008,13 @@ function App() {
         <button className={`nav-btn ${activeTab === 'backup' ? 'active' : ''}`} onClick={() => setActiveTab('backup')}>
           {t('tabBackup')}
         </button>
-        <button className={`nav-btn ${activeTab === 'restore' ? 'active' : ''}`} onClick={() => setActiveTab('restore')}>
+        <button className={`nav-btn ${activeTab === 'restore' ? 'active' : ''}`} onClick={() => openWizard('restore')}>
           {t('tabRestore')}
         </button>
-        <button className={`nav-btn ${activeTab === 'undelete' ? 'active' : ''}`} onClick={() => setActiveTab('undelete')}>
+        <button className={`nav-btn ${activeTab === 'undelete' ? 'active' : ''}`} onClick={() => openWizard('undelete')}>
           {tl('navUndelete', 'Undelete')}
         </button>
-        <button className={`nav-btn ${activeTab === 'rollback' ? 'active' : ''}`} onClick={() => setActiveTab('rollback')}>
+        <button className={`nav-btn ${activeTab === 'rollback' ? 'active' : ''}`} onClick={() => openWizard('rollback')}>
           {tl('navRollback', 'Roll back')}
         </button>
         <div className="nav-sep" role="separator" />
@@ -4810,8 +4914,8 @@ function App() {
                   }[s.readReason] || (s.changeMode === 'metadata'
                     ? tl('stageMetadata', 'Change detection: unchanged files are reused without reading')
                     : tl('stageReading', 'Reading and uploading files'))
-                } else if (status.message && status.type === 'info' && !status.message.startsWith('Processed:')) {
-                  stage = status.message
+                } else if (backupMessage && !backupMessage.startsWith('Processed:')) {
+                  stage = backupMessage
                 } else {
                   stage = tl('stageStarting', 'Starting...')
                 }
@@ -4863,7 +4967,7 @@ function App() {
                 const ratio = compressionRatio(s.uploadedBytes, s.sentBytes)
                 const chunks = s.hasDetail
                   ? <>{tl('processedNew', 'New')}: {s.newChunks.toLocaleString()}, {tl('processedReused', 'Reused')}: {s.reusedChunks.toLocaleString()} {tl('chunksWord', 'chunks')}{machine && s.blankChunks > 0 && <>, {tl('processedBlank', '{n} of them blank space').replace('{n}', s.blankChunks.toLocaleString())}</>}{notRead > 0 && <> · {tl('processedNotRead', '{size} not read (free space or partitions left out)').replace('{size}', formatBytesDual(notRead))}</>}{machine && s.unreadable > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {tl('processedUnreadable', '{size} unreadable (zeros in the image)').replace('{size}', formatBytes(s.unreadable))}</span>}{s.failedChunks > 0 && <span style={{color: '#c0392b', fontWeight: 'bold'}}>, {s.failedChunks.toLocaleString()} {t('failedChunksLabel')}</span>}</>
-                  : (status.message && status.type === 'info' ? status.message : calc)
+                  : (backupMessage || calc)
                 const fileRow = (
                   <div style={{fontSize: '13px', color: '#495057', height: '18px', minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', display: 'flex', alignItems: 'baseline', gap: '4px'}}>
                     <strong style={{flex: '0 0 auto'}}>{machine ? tl('partitionLabel', 'Partition:') : tl('currentFileLabel', 'Current file:')}</strong> {fileLine}
@@ -5250,10 +5354,10 @@ function App() {
                                 )}
                                 {(
                                   <>
-                                    <button role="menuitem" className="set-more-item" onClick={() => { setSetToolJobId(job.id); setActiveTab('undelete') }}>
+                                    <button role="menuitem" className="set-more-item" onClick={() => openWizard('undelete', job.id)}>
                                       {tl('undeleteShortcut', 'Undelete removed files...')}
                                     </button>
-                                    <button role="menuitem" className="set-more-item" onClick={() => { setSetToolJobId(job.id); setActiveTab('rollback') }}>
+                                    <button role="menuitem" className="set-more-item" onClick={() => openWizard('rollback', job.id)}>
                                       {tl('rollbackShortcut', 'Roll back to chosen snapshot...')}
                                     </button>
                                   </>
@@ -5430,7 +5534,7 @@ function App() {
               renders unconditionally for it via the "backupMode === 'oneshot' ||"
               half of each section's condition. */}
           {backupMode === 'scheduled' && (
-            <div style={{display: 'flex', paddingTop: '4px', marginBottom: '0'}}>
+            <div className="chev-strip">
               <button className={`chev ${backupFormTab === 'source' ? 'active' : ''}`} onClick={() => setBackupFormTab('source')}>{t('tabSource')}</button>
               <button className={`chev ${backupFormTab === 'exclusions' ? 'active' : ''}`} onClick={() => setBackupFormTab('exclusions')}>{t('tabExclusions')}</button>
               <button className={`chev ${backupFormTab === 'schedule' ? 'active' : ''}`} onClick={() => setBackupFormTab('schedule')}>{t('tabSchedule')}</button>
@@ -6331,8 +6435,8 @@ function App() {
                 )}
               </div>
               {snapshots.length > 0 && (
-                <ListPagerBar tl={tl} page={snapPage} idPrefix="restore-snaps"
-                  show={snapShow} onShow={(v) => { setSnapShow(v); setSnapMore(0) }}
+                <ListPagerBar tl={tl} page={snapPage} onPage={setSnapPageNo} idPrefix="restore-snaps"
+                  show={snapShow} onShow={setSnapShow}
                   before={snapBefore} onBefore={setSnapBeforeAndDrop} />
               )}
 
@@ -6356,7 +6460,7 @@ function App() {
                   </div>
                   {/* No scroll box of its own: the snapshots are their own step,
                       so the page scrolls (a box inside it was a second scrollbar). */}
-                  <div ref={snapListRef}>
+                  <div>
                   {snapPage.shown.map((snap, idx) => {
                     const isActive = selectedSnapshot && selectedSnapshot.id === snap.id && selectedSnapshot.backup_id === snap.backup_id
                     return (
@@ -6378,7 +6482,7 @@ function App() {
                           {snap.backup_type || 'N/A'}{isDiskImageSnapshot(snap) && <><br/><span style={{fontSize: '11px'}}>{tl('diskImageShort', 'disk image')}</span></>}
                         </span>
                         <span style={{flex: '0 0 90px', color: '#718096', fontSize: '14px', textAlign: 'center'}}>{formatBytes(snap.size)}</span>
-                        <button className="btn" style={{flex: '0 0 160px', padding: '4px 12px'}}>
+                        <button className="btn" style={{flex: '0 0 160px'}}>
                           {isActive ? `✓ ${t('snapshotSelected')}` : t('selectSnapshot')}
                         </button>
                       </div>
@@ -6387,7 +6491,7 @@ function App() {
                   </div>
                 </div>
               ) : (
-                <div className="grid" style={{marginTop: '12px'}} ref={snapListRef}>
+                <div className="grid" style={{marginTop: '12px'}}>
                   {snapPage.shown.map((snap) => {
                     const isActive = selectedSnapshot && selectedSnapshot.id === snap.id && selectedSnapshot.backup_id === snap.backup_id
                     return (
@@ -6414,7 +6518,7 @@ function App() {
                   })}
                 </div>
               )}
-              <ListMore tl={tl} page={snapPage} onMore={() => setSnapMore(m => m + MORE_STEP)} />
+              {snapPage.matching > 0 && <ListPagerFoot tl={tl} page={snapPage} onPage={setSnapPageNo} />}
             </div>
           )}
           <WizardNav
@@ -6479,7 +6583,6 @@ function App() {
                   type="button"
                   onClick={handleReloadSnapshot}
                   title={t('reloadTreeHint')}
-                  style={{padding: '4px 10px', fontSize: '13px'}}
                 >
                   {t('reloadTree')}
                 </button>
@@ -6487,7 +6590,6 @@ function App() {
                   className="btn btn-secondary"
                   type="button"
                   onClick={handleSelectAllEntries}
-                  style={{padding: '4px 10px', fontSize: '13px'}}
                 >
                   ☑️ {t('selectAllEntries')}
                 </button>
@@ -6495,7 +6597,6 @@ function App() {
                   className="btn btn-secondary"
                   type="button"
                   onClick={handleSelectNoneEntries}
-                  style={{padding: '4px 10px', fontSize: '13px'}}
                 >
                   ☐ {t('selectNoneEntries')}
                 </button>
@@ -6750,9 +6851,10 @@ function App() {
                     <button
                       className="btn btn-primary"
                       onClick={handleRestoreSnapshot}
-                      disabled={restoreLoading || (isInPlace && crossHost && !restoreAllowCrossHost)}
+                      disabled={restoreLoading || restoreDone || (isInPlace && crossHost && !restoreAllowCrossHost)}
+                      title={restoreDone ? tl('wizCompletedHint', 'Done. Change a choice to run it again.') : undefined}
                     >
-                      {restoreLoading ? `⏳ ${t('restoring')}` : `▶️ ${t('restore')}`}
+                      {restoreLoading ? `⏳ ${t('restoring')}` : restoreDone ? `✓ ${tl('wizCompleted', 'Completed')}` : `▶️ ${t('restore')}`}
                     </button>
                   </>
                 )}
@@ -6771,7 +6873,8 @@ function App() {
         </div>
 
         <div className={`tab-content ${activeTab === 'undelete' ? 'active' : ''}`}>
-          <UndeletePage ui={setToolsUi} jobs={scheduledJobs} jobId={setToolJobId} setJobId={setSetToolJobId}
+          <UndeletePage key={wizardFresh.undelete} ui={setToolsUi} jobs={scheduledJobs} jobId={undeleteJobId} setJobId={setUndeleteJobId}
+            onBusy={reportSetToolBusy}
             restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'undelete' ? restoreCard : null}
             lastResult={lastRestoreResult && lastRestoreResult.kind === 'undelete' ? lastRestoreResult : null} />
           {status.visible && activeTab === 'undelete' && !restoreLoading && !(lastRestoreResult && status.message === lastRestoreResult.message) && (
@@ -6780,9 +6883,9 @@ function App() {
         </div>
 
         <div className={`tab-content ${activeTab === 'rollback' ? 'active' : ''}`}>
-          <RollbackPage ui={setToolsUi} jobs={scheduledJobs} jobId={setToolJobId} setJobId={setSetToolJobId}
+          <RollbackPage key={wizardFresh.rollback} ui={setToolsUi} jobs={scheduledJobs} jobId={rollbackJobId} setJobId={setRollbackJobId}
+            onBusy={reportSetToolBusy}
             restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'rollback' ? restoreCard : null}
-            active={activeTab === 'rollback'}
             lastResult={lastRestoreResult && lastRestoreResult.kind === 'rollback' ? lastRestoreResult : null} />
           {status.visible && activeTab === 'rollback' && !restoreLoading && !(lastRestoreResult && status.message === lastRestoreResult.message) && (
             <div className={`status ${status.type} visible`}>{status.message}</div>

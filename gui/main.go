@@ -1782,11 +1782,7 @@ func (a *App) RestoreSnapshot(pbsID, backupID, snapshotID, destPath, mode string
 		if a.ctx == nil {
 			return
 		}
-		runtime.EventsEmit(a.ctx, "restore:stats", map[string]interface{}{
-			"bytesDone":      stats.BytesDone,
-			"bytesTotal":     stats.BytesTotal,
-			"currentArchive": stats.CurrentArchive,
-		})
+		runtime.EventsEmit(a.ctx, "restore:stats", restoreStatsEvent(stats))
 	}
 
 	// Queues behind any backup/restore already running in this process — see

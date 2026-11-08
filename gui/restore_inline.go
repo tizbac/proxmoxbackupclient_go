@@ -180,10 +180,35 @@ type RestoreOptions struct {
 // archive's total size (chunks vary somewhat in size, so this is an
 // approximation, not an exact byte count) — good enough for a progress UI's
 // transfer-rate display, the same standard BackupProgressStats is held to.
+//
+// For a directory restore BytesDone/BytesTotal cover every folder being
+// restored (restorePlan), and the Folder fields the one being restored now:
+// its number of FolderCount (from 1), its original path, and how much of it is
+// written. FolderCount is 0 when there are no folders to tell apart (a disk
+// image restore).
 type RestoreProgressStats struct {
 	BytesDone      uint64 `json:"bytes_done"`
 	BytesTotal     uint64 `json:"bytes_total"`
 	CurrentArchive string `json:"current_archive,omitempty"`
+	FolderIndex    int    `json:"folder_index,omitempty"`
+	FolderCount    int    `json:"folder_count,omitempty"`
+	FolderPath     string `json:"folder_path,omitempty"`
+	FolderDone     uint64 `json:"folder_done,omitempty"`
+	FolderTotal    uint64 `json:"folder_total,omitempty"`
+}
+
+// restoreStatsEvent is the restore:stats event's payload for the GUI.
+func restoreStatsEvent(s *RestoreProgressStats) map[string]interface{} {
+	return map[string]interface{}{
+		"bytesDone":      s.BytesDone,
+		"bytesTotal":     s.BytesTotal,
+		"currentArchive": s.CurrentArchive,
+		"folderIndex":    s.FolderIndex,
+		"folderCount":    s.FolderCount,
+		"folderPath":     s.FolderPath,
+		"folderDone":     s.FolderDone,
+		"folderTotal":    s.FolderTotal,
+	}
 }
 
 var (
@@ -360,6 +385,77 @@ func archiveBaseOf(name string) string {
 }
 
 func resolveArchiveNames(opts RestoreOptions) ([]string, error) {
+	names, _, err := resolveArchives(opts)
+	return names, err
+}
+
+// archiveSelection is one archive's share of a restore's selection, as paths
+// relative to the archive, and whether the selection touches it at all.
+//
+// The GUI's browse tree shows every path prefixed with the archive's display
+// name (wrapper; see resolveArchiveDisplayNames), but the archive itself only
+// holds raw, unprefixed paths (PXAR's own root is always unnamed), so passing
+// the wrapped paths straight to ExtractWithRewriter would never match anything
+// and restore nothing. That applies to every restore mode. An empty overall
+// selection means everything, in every archive. opts.ArchiveIncludes, when
+// set, gives each archive's paths directly instead.
+//
+// An archive the selection does not touch must be skipped, not given an empty
+// list: ExtractWithRewriter takes an empty list as "extract everything".
+func archiveSelection(opts RestoreOptions, wrapper, archiveName string, includes []string) ([]string, bool) {
+	if opts.ArchiveIncludes != nil {
+		own := opts.ArchiveIncludes[archiveName]
+		return own, len(own) > 0
+	}
+	referenced := len(includes) == 0
+	var own []string
+	for _, inc := range includes {
+		norm := strings.ReplaceAll(inc, "\\", "/")
+		switch {
+		case norm == wrapper:
+			own = append(own, "")
+			referenced = true
+		case strings.HasPrefix(norm, wrapper+"/"):
+			own = append(own, strings.TrimPrefix(norm, wrapper+"/"))
+			referenced = true
+		}
+	}
+	return own, referenced
+}
+
+// wholeArchiveSelected reports whether an archive's own selection (from
+// archiveSelection) is the whole archive: everything was selected (no paths
+// at all), or the archive's own top folder is. raw: the paths were given per
+// archive (ArchiveIncludes), where an empty list never means everything.
+func wholeArchiveSelected(own, overall []string, raw bool) bool {
+	if !raw && len(overall) == 0 {
+		return true
+	}
+	for _, p := range own {
+		if p == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// wrappedIncludesFor is the part of a GUI selection (paths as the browse
+// tree shows them, under each archive's display name) inside one archive.
+func wrappedIncludesFor(paths []string, wrapper string) []string {
+	var out []string
+	for _, p := range paths {
+		norm := strings.ReplaceAll(p, "\\", "/")
+		if norm == wrapper || strings.HasPrefix(norm, wrapper+"/") {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// resolveArchives is resolveArchiveNames plus each archive's size from the
+// manifest: for a split archive, its metadata and payload streams together.
+// A restore weighs each folder's share of the progress bar by it.
+func resolveArchives(opts RestoreOptions) ([]string, map[string]int64, error) {
 	client := &pbscommon.PBSClient{
 		BaseURL:          opts.BaseURL,
 		CertFingerPrint:  opts.CertFingerprint,
@@ -374,7 +470,7 @@ func resolveArchiveNames(opts RestoreOptions) ([]string, error) {
 	}
 	manifests, err := client.ListSnapshots()
 	if err != nil {
-		return nil, fmt.Errorf("failed to look up snapshot manifest: %w", err)
+		return nil, nil, fmt.Errorf("failed to look up snapshot manifest: %w", err)
 	}
 	target := opts.SnapshotTime.Unix()
 	for _, m := range manifests {
@@ -382,17 +478,26 @@ func resolveArchiveNames(opts RestoreOptions) ([]string, error) {
 			continue
 		}
 		names := make([]string, 0, len(m.Files))
+		fileSize := make(map[string]int64, len(m.Files))
 		for _, f := range m.Files {
+			fileSize[f.Filename] = f.Size
 			if isDataArchive(f.Filename) {
 				names = append(names, f.Filename)
 			}
 		}
 		if len(names) == 0 {
-			return nil, fmt.Errorf("snapshot manifest has no data archive (.pxar.didx or .mpxar.didx) — nothing to restore")
+			return nil, nil, fmt.Errorf("snapshot manifest has no data archive (.pxar.didx or .mpxar.didx) — nothing to restore")
 		}
-		return names, nil
+		sizes := make(map[string]int64, len(names))
+		for _, n := range names {
+			sizes[n] = fileSize[n]
+			if isSplitArchive(n) {
+				sizes[n] += fileSize[splitPayloadName(n)]
+			}
+		}
+		return names, sizes, nil
 	}
-	return nil, fmt.Errorf("snapshot %s/%s not found while resolving its archive name",
+	return nil, nil, fmt.Errorf("snapshot %s/%s not found while resolving its archive name",
 		opts.BackupID, opts.SnapshotTime.Format(time.RFC3339))
 }
 
@@ -1366,7 +1471,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	// multi-archive backend restructure, and each needs its own extraction
 	// pass. Ordinary single-folder backups (the common case) just resolve to
 	// one name and loop once, exactly as before.
-	archiveNames, err := resolveArchiveNames(opts)
+	archiveNames, archiveSizes, err := resolveArchives(opts)
 	if err != nil {
 		return err
 	}
@@ -1427,47 +1532,59 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	if opts.VerifyAfterRestore {
 		extractEnd = 0.80
 	}
-	archiveSpan := (extractEnd - 0.05) / float64(len(archiveNames))
-	for i, archiveName := range archiveNames {
-		archiveBase := 0.05 + float64(i)*archiveSpan
-		wrapper := displayNames[archiveName]
+	extractSpan := extractEnd - 0.05
 
-		// Translate this archive's slice of opts.IncludePaths back to real
-		// archive-relative paths. The GUI's browse tree now shows every path
-		// prefixed with the SAME display-name wrapper (see
-		// resolveArchiveDisplayNames) — but the archive itself only ever
-		// contains raw, unprefixed paths (PXAR's own root is always unnamed),
-		// so passing the wrapped paths straight to ExtractWithRewriter would
-		// never match anything via pathMatches, silently restoring nothing.
-		// This applies to every restore mode, not just alternate_abs.
-		var archiveIncludes []string
-		referencedThisArchive := len(includesToCheck) == 0 // empty overall selection = everything, in every archive, unchanged from before this fix
-		if opts.ArchiveIncludes != nil {
-			// Raw archive name and archive-relative paths, given directly.
-			archiveIncludes = opts.ArchiveIncludes[archiveName]
-			referencedThisArchive = len(archiveIncludes) > 0
-			includesToCheck = nil
-		}
-		for _, inc := range includesToCheck {
-			norm := strings.ReplaceAll(inc, "\\", "/")
-			switch {
-			case norm == wrapper:
-				archiveIncludes = append(archiveIncludes, "")
-				referencedThisArchive = true
-			case strings.HasPrefix(norm, wrapper+"/"):
-				archiveIncludes = append(archiveIncludes, strings.TrimPrefix(norm, wrapper+"/"))
-				referencedThisArchive = true
-			}
-		}
-		if !referencedThisArchive {
-			// Nothing in the user's selection touches this archive at all —
-			// skip it entirely. Passing an empty archiveIncludes here instead
-			// would be wrong: ExtractWithRewriter treats an empty list as
-			// "extract everything" (the pre-existing, unchanged convention
-			// for a genuinely empty overall selection), which would silently
-			// restore an archive the user never selected anything from.
+	// The archives this restore takes files from, with each one's own
+	// selection (archiveSelection), in manifest order. An archive nothing in
+	// the selection touches is skipped entirely.
+	type plannedArchive struct {
+		name     string
+		includes []string
+	}
+	var planned []plannedArchive
+	for _, archiveName := range archiveNames {
+		wrapper := displayNames[archiveName]
+		includes, referenced := archiveSelection(opts, wrapper, archiveName, includesToCheck)
+		if !referenced {
 			writeBackupLog(fmt.Sprintf("Skipping archive %s (%s): nothing in the selection references it", archiveName, wrapper))
 			continue
+		}
+		if mode == RestoreModeOriginal && opts.ArchiveRoots != nil && opts.ArchiveRoots[archiveName] == "" {
+			writeBackupLog(fmt.Sprintf("Skipping archive %s: no folder given for it", archiveName))
+			continue
+		}
+		planned = append(planned, plannedArchive{name: archiveName, includes: includes})
+	}
+	if opts.ArchiveIncludes != nil {
+		// Raw archive-relative paths were given: there are no wrapped paths
+		// to check against what was extracted (the check below the loop).
+		includesToCheck = nil
+	}
+	// Each folder's share of the bar, the bytes and the time left is its size
+	// (restorePlan): a whole folder's from the manifest; part of one from the
+	// browse tree the selection was made in (its sizes are still in memory);
+	// otherwise unknown, and the plan falls back to equal shares.
+	planSizes := make([]int64, len(planned))
+	var treeIdx *snapshotTreeIndex
+	if len(planned) > 1 && opts.ArchiveIncludes == nil {
+		treeIdx = peekSnapshotIndex(opts)
+	}
+	for i, pa := range planned {
+		if wholeArchiveSelected(pa.includes, includesToCheck, opts.ArchiveIncludes != nil) {
+			planSizes[i] = archiveSizes[pa.name]
+		} else if treeIdx != nil {
+			planSizes[i] = int64(treeIdx.selectionBytes(wrappedIncludesFor(opts.IncludePaths, displayNames[pa.name])))
+		}
+	}
+	plan := newRestorePlan(planSizes)
+	writeBackupLog(fmt.Sprintf("Restore plan: %d folder(s), sizes %v, weighted by size: %v", len(planned), planSizes, plan.weighted()))
+
+	for i, pa := range planned {
+		archiveName, archiveIncludes := pa.name, pa.includes
+		wrapper := displayNames[archiveName]
+		folderPath := wrapper
+		if m := metaByArchive[archiveName]; m != nil && m.OriginalPath != "" {
+			folderPath = m.OriginalPath
 		}
 
 		// Reconstruct THIS archive's own originally-selected folder name on
@@ -1491,12 +1608,8 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			}
 		}
 		if mode == RestoreModeOriginal && opts.ArchiveRoots != nil {
-			root, ok := opts.ArchiveRoots[archiveName]
-			if !ok || root == "" {
-				writeBackupLog(fmt.Sprintf("Skipping archive %s: no folder given for it", archiveName))
-				continue
-			}
-			root = filepath.Clean(root)
+			// Archives without a folder were left out of planned above.
+			root := filepath.Clean(opts.ArchiveRoots[archiveName])
 			archiveRewriter = func(archivePath string) string {
 				if archivePath == "" {
 					return root
@@ -1507,36 +1620,57 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 
 		var extractedHere []pbscommon.PXARExtractedFile
 		archiveDetail := ""
-		if len(archiveNames) > 1 {
-			archiveDetail = fmt.Sprintf("%d/%d", i+1, len(archiveNames))
+		if len(planned) > 1 {
+			archiveDetail = fmt.Sprintf("%d/%d", i+1, len(planned))
 		}
 		stage("locating", archiveDetail)
 
 		// The bar tracks bytes WRITTEN to disk (reported by the extractors as
 		// each file completes), not chunks fetched: download runs ahead of
 		// the writers, so a fetch-driven bar parked at its ceiling while
-		// files were still being created. This archive's slice of the
-		// 0.05–0.95 range fills evenly across N archives and reaches its end
-		// only when its last file is on disk. Chunk counts stay in the
-		// message (and the speed/Data line) as the separate download
-		// indicator.
+		// files were still being created. Each archive's share of the
+		// 0.05-0.95 range is its share of the bytes (restorePlan), and
+		// reaches its end only when its last file is on disk. Chunk counts
+		// stay in the message (and the speed/Data line) as the separate
+		// download indicator.
 		var (
 			uiMu          sync.Mutex
-			uiPct         = archiveBase
+			uiPct         = 0.05 + extractSpan*plan.fraction(i, 0)
 			uiTotal       int64
 			uiWritten     int64
+			uiFetched     int64
 			uiChunksDone  int
 			uiChunksTotal int
 			uiLastEmit    time.Time
 		)
-		// Caller holds uiMu.
-		emitUI := func(force bool) {
+		// statsNow: the figures for the GUI. Downloaded is the folders before
+		// this one in full plus this one's share fetched so far, of every
+		// folder's size (this folder's own when the sizes are not all known);
+		// the Folder fields are this folder's. Caller holds uiMu.
+		statsNow := func() *RestoreProgressStats {
+			done, total := uiFetched, uiTotal
+			if plan.weighted() {
+				done, total = plan.bytesAt(i, ratio(uiFetched, uiTotal)), plan.total()
+			}
+			return &RestoreProgressStats{
+				BytesDone:      uint64(done),
+				BytesTotal:     uint64(total),
+				CurrentArchive: archiveName,
+				FolderIndex:    i + 1,
+				FolderCount:    len(planned),
+				FolderPath:     folderPath,
+				FolderDone:     uint64(uiWritten),
+				FolderTotal:    uint64(uiTotal),
+			}
+		}
+		// emitUI reports whether it sent anything. Caller holds uiMu.
+		emitUI := func(force bool) bool {
 			if uiTotal <= 0 {
-				return
+				return false
 			}
 			now := time.Now()
 			if !force && now.Sub(uiLastEmit) < 250*time.Millisecond {
-				return
+				return false
 			}
 			uiLastEmit = now
 			// Name the stream the file contents come from: for a split
@@ -1547,6 +1681,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			}
 			progress(uiPct, fmt.Sprintf("Restoring %s: %s of %s written (%d/%d chunks downloaded)",
 				shownName, formatByteSize(uint64(uiWritten)), formatByteSize(uint64(uiTotal)), uiChunksDone, uiChunksTotal))
+			return true
 		}
 
 		err = withSnapshotReader(opts, archiveName, "Restore", archiveIncludes, func(done, total int, bytesDone, bytesTotal int64) {
@@ -1555,15 +1690,13 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			}
 			uiMu.Lock()
 			uiTotal = bytesTotal
+			uiFetched = bytesDone
 			uiChunksDone, uiChunksTotal = done, total
 			emitUI(false)
+			st := statsNow()
 			uiMu.Unlock()
 			if opts.OnStats != nil {
-				opts.OnStats(&RestoreProgressStats{
-					BytesDone:      uint64(bytesDone),
-					BytesTotal:     uint64(bytesTotal),
-					CurrentArchive: archiveName,
-				})
+				opts.OnStats(st)
 			}
 		}, nil, func(reader *pbscommon.PXARReader) error {
 			stage("transferring", archiveDetail)
@@ -1581,13 +1714,13 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 				}
 				uiWritten = doneBytes
 				if uiTotal > 0 {
-					frac := float64(doneBytes) / float64(uiTotal)
-					if frac > 1 {
-						frac = 1
-					}
-					uiPct = archiveBase + archiveSpan*frac
+					uiPct = 0.05 + extractSpan*plan.fraction(i, ratio(doneBytes, uiTotal))
 				}
-				emitUI(false)
+				// Writing goes on after the last chunk is fetched, so this
+				// folder's written figure is sent from here too.
+				if emitUI(false) && opts.OnStats != nil {
+					opts.OnStats(statsNow())
+				}
 			})
 			var eerr error
 			if opts.ParallelExtraction {
@@ -1601,9 +1734,13 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 			}
 			// Extraction returned, so this archive's last file is on disk.
 			uiMu.Lock()
-			uiPct = archiveBase + archiveSpan
+			uiPct = 0.05 + extractSpan*plan.fraction(i, 1)
 			uiWritten = uiTotal
+			uiFetched = uiTotal
 			emitUI(true)
+			if opts.OnStats != nil && uiTotal > 0 {
+				opts.OnStats(statsNow())
+			}
 			uiMu.Unlock()
 			return nil
 		})

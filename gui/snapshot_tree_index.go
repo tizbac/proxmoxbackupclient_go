@@ -128,6 +128,18 @@ func snapshotIndexFor(opts RestoreOptions, forceRefresh bool) (*snapshotTreeInde
 	return idx, nil
 }
 
+// peekSnapshotIndex is the snapshot's index when it is already in memory (the
+// browse tree the selection was made in), else nil; it never fetches.
+func peekSnapshotIndex(opts RestoreOptions) *snapshotTreeIndex {
+	key := buildSnapshotCacheKey(opts)
+	snapshotIndexMu.Lock()
+	defer snapshotIndexMu.Unlock()
+	if snapshotIndexCur != nil && snapshotIndexCur.key == key {
+		return snapshotIndexCur
+	}
+	return nil
+}
+
 func (a *App) snapshotOpts(pbsID, backupID string, snapshotUnix int64) (RestoreOptions, error) {
 	cfg, err := a.resolveRestorePBS(pbsID)
 	if err != nil {

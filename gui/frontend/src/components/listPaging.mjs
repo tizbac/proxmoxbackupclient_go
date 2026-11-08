@@ -1,48 +1,60 @@
 // Which part of a long list of backups to show (Restore's snapshots, Roll
-// back's backups): the newest first, as many as the chosen size ("fit" the
-// window, 25, 100 or all) plus any "Show more", optionally only those at or
-// before a time. The selected one is always shown, so a choice made earlier
-// (or by Roll back's date box) is never hidden below the cut.
+// back's backups): the newest first, a page at a time of the chosen size (5,
+// 10, 25, 50 or all), optionally only those at or before a time. The page
+// with the selected one can be found, so a choice made earlier (or by Roll
+// back's date box) is brought into view rather than left on another page.
 
-export const SHOW_CHOICES = ['fit', '25', '100', 'all']
-export const MORE_STEP = 25
-// Shown before the window has been measured, and when it cannot be.
-export const FIT_FALLBACK = 6
+export const SHOW_CHOICES = ['5', '10', '25', '50', 'all']
+export const DEFAULT_SHOW = '10'
 
 // newestFirst: a copy, newest first by its unix time.
 export function newestFirst(items) {
   return [...(items || [])].sort((a, b) => (b.unix || 0) - (a.unix || 0))
 }
 
-// pageLimit: how many to show for the choice, the measured fit and the
-// "Show more" clicks so far.
-export function pageLimit(show, fit, extra = 0) {
-  let base
-  if (show === 'all') base = Infinity
-  else if (show === 'fit') base = fit > 0 ? Math.floor(fit) : FIT_FALLBACK
-  else base = Math.max(1, parseInt(show, 10) || MORE_STEP)
-  return base + Math.max(0, extra | 0)
+// showChoice: a stored choice as one of SHOW_CHOICES. Choices from before the
+// pages ("fit", "100") become the nearest one.
+export function showChoice(v) {
+  if (SHOW_CHOICES.includes(v)) return v
+  if (v === '100') return '50'
+  return DEFAULT_SHOW
 }
 
-// pageItems: items newest first; before: unix seconds, 0 for no limit;
-// isSelected: the selected item, which stretches the page down to it.
-export function pageItems(items, { limit, before = 0, isSelected } = {}) {
+// pageSize: how many a page holds for the choice (Infinity for all).
+export function pageSize(show) {
+  const v = showChoice(show)
+  return v === 'all' ? Infinity : parseInt(v, 10)
+}
+
+function matchingItems(items, before) {
   const all = items || []
-  const matching = before > 0 ? all.filter(s => (s.unix || 0) <= before) : all
-  let n = Math.min(limit ?? Infinity, matching.length)
-  if (isSelected) {
-    const i = matching.findIndex(isSelected)
-    if (i >= n) n = i + 1
-  }
-  return { shown: matching.slice(0, n), matching: matching.length, total: all.length }
+  return before > 0 ? all.filter(s => (s.unix || 0) <= before) : all
 }
 
-// fitCount: whole rows of rowHeight in the available height (at least one),
-// times the columns.
-export function fitCount({ available, rowHeight, columns = 1 }) {
-  const cols = Math.max(1, Math.floor(columns) || 1)
-  if (!(rowHeight > 0)) return FIT_FALLBACK
-  return Math.max(1, Math.floor(available / rowHeight)) * cols
+// pageItems: items newest first; size: from pageSize; page: 0-based, kept
+// within the pages there are; before: unix seconds, 0 for no limit. from and
+// to number the shown items from 1 (both 0 when none).
+export function pageItems(items, { size = Infinity, page = 0, before = 0 } = {}) {
+  const all = items || []
+  const list = matchingItems(all, before)
+  const per = size > 0 ? size : Infinity
+  const pages = per === Infinity || list.length === 0 ? 1 : Math.ceil(list.length / per)
+  const p = Math.min(Math.max(0, Math.floor(page) || 0), pages - 1)
+  const start = per === Infinity ? 0 : p * per
+  const shown = per === Infinity ? list : list.slice(start, start + per)
+  return {
+    shown, matching: list.length, total: all.length, page: p, pages,
+    from: shown.length ? start + 1 : 0, to: start + shown.length,
+  }
+}
+
+// pageOf: the page holding the item isSelected picks out, or -1 when no
+// matching item is selected.
+export function pageOf(items, { size = Infinity, before = 0, isSelected } = {}) {
+  if (!isSelected) return -1
+  const i = matchingItems(items, before).findIndex(isSelected)
+  if (i < 0) return -1
+  return size > 0 && size !== Infinity ? Math.floor(i / size) : 0
 }
 
 // unixFromLocal: a datetime-local value ("2026-11-07T14:30") as unix seconds,

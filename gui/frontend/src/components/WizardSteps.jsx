@@ -15,7 +15,7 @@ import React from 'react'
 // steps: [{ label, open, need }] in order; current: 1-based.
 export function WizardSteps({ steps, current, onSelect, label }) {
   return (
-    <nav className="wiz-chevs" aria-label={label}>
+    <nav className="chev-strip" aria-label={label}>
       {steps.map((s, i) => {
         const n = i + 1
         const finished = s.open && i + 1 < steps.length && steps[i + 1].open
