@@ -5,7 +5,13 @@ All notable changes to Salvanza for Proxmox Backup Server (formerly Proxmox Back
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - not yet released
+## [Unreleased]
+
+### Fixed
+
+- **Release notes written by hand are kept.** The release workflow no longer replaces the text of a release that already has some: it only adds its installers and packages. Generated release notes read well on the release page (their wrapped lines are joined) and link CHANGELOG.md and the comparison with the previous tag instead of listing every commit. The bare-metal restore ISO workflow, run on a tag, only adds the ISO.
+
+## [2.0.0] - 2026-11-08
 
 This release merges the reworked GUI (RDEM Systems' Nimbus Backup GUI, reworked and
 extended by mjb-is), its background service and its backup engine into the project:
