@@ -5552,41 +5552,45 @@ function App() {
 
             {backupMode === 'scheduled' && (
               <div className="form-group">
-                <label>{t('backupSetName')}</label>
-                <input
-                  type="text"
-                  value={jobName}
-                  onChange={(e) => {
-                    setJobName(e.target.value)
-                    if (backupIdAuto && backupType !== 'machine') {
-                      setConfig(c => ({...c, 'backup-id': suggestedBackupId(e.target.value)}))
-                    }
-                  }}
-                  placeholder={t('backupSetNamePlaceholder')}
-                  style={{width: '100%', maxWidth: '400px'}}
-                  aria-invalid={nameClash ? true : undefined}
-                  aria-describedby={nameClash ? 'set-name-clash' : undefined}
-                />
+                <label htmlFor="jobName">{t('backupSetName')}</label>
+                <div className="set-name-row">
+                  <input
+                    id="jobName"
+                    type="text"
+                    value={jobName}
+                    onChange={(e) => {
+                      setJobName(e.target.value)
+                      if (backupIdAuto && backupType !== 'machine') {
+                        setConfig(c => ({...c, 'backup-id': suggestedBackupId(e.target.value)}))
+                      }
+                    }}
+                    placeholder={t('backupSetNamePlaceholder')}
+                    aria-invalid={nameClash ? true : undefined}
+                    aria-describedby={nameClash ? 'set-name-clash' : undefined}
+                  />
+                  {/* Beside the name, not under it: the word and colour say the
+                      state, the hint is the tooltip. */}
+                  <label
+                    className={`set-enabled ${jobEnabled ? 'on' : 'off'}`}
+                    title={jobEnabled
+                      ? tl('setEnabledHint', 'Runs on its schedule.')
+                      : tl('setDisabledHint', 'Does not run on its schedule until you enable it. Run Now still works.')}
+                  >
+                    <input
+                      id="jobEnabled"
+                      type="checkbox"
+                      role="switch"
+                      checked={jobEnabled}
+                      onChange={(e) => setJobEnabled(e.target.checked)}
+                    />
+                    <strong>{jobEnabled ? tl('setEnabledBadge', 'Enabled') : tl('setDisabledBadge', 'Disabled')}</strong>
+                  </label>
+                </div>
                 {nameClash && (
                   <div id="set-name-clash" role="alert" style={{color: '#c53030', fontSize: '13px', marginTop: '6px'}}>
                     {tl('jobNameNotUnique', 'There is already a Backup Set called "{name}". Each set needs its own name.').replace('{name}', nameClash.name)}
                   </div>
                 )}
-                <label className={`set-enabled ${jobEnabled ? 'on' : 'off'}`}>
-                  <input
-                    id="jobEnabled"
-                    type="checkbox"
-                    role="switch"
-                    checked={jobEnabled}
-                    onChange={(e) => setJobEnabled(e.target.checked)}
-                  />
-                  <span>
-                    <strong>{jobEnabled ? tl('setEnabledBadge', 'Enabled') : tl('setDisabledBadge', 'Disabled')}:</strong>{' '}
-                    {jobEnabled
-                      ? tl('setEnabledHint', 'Runs on its schedule.')
-                      : tl('setDisabledHint', 'Does not run on its schedule until you enable it. Run Now still works.')}
-                  </span>
-                </label>
               </div>
             )}
 

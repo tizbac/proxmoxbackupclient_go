@@ -312,23 +312,37 @@ body {
 .sched-done { display: flex; justify-content: flex-end; margin-top: 8px; }
 .info-box.schedule-summary { background-color: #eef2ff; }
 
-/* The Backup Set editor's Enabled switch, under the set's name: green while
-   the set runs on its schedule, amber while it is disabled. */
+/* The Backup Set editor's name, with its Enabled switch on the same row:
+   the name takes the room the switch leaves. The switch is green while the
+   set runs on its schedule, amber while it is disabled, and keeps one width
+   for either word so switching does not move the name's edge. */
+.set-name-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 10px;
+    max-width: 640px;
+}
+.form-group .set-name-row input[type="text"] {
+    flex: 1 1 240px;
+    min-width: 0;
+    width: auto;
+}
 .form-group .set-enabled {
     display: flex;
     align-items: center;
-    gap: 10px;
-    max-width: 400px;
-    /* Two lines high either way, so switching does not move the page. */
+    gap: 8px;
+    flex: none;
+    min-width: 128px;
     box-sizing: border-box;
-    min-height: calc(3em + 18px);
-    margin: 10px 0 0;
-    padding: 8px 12px;
+    margin: 0;
+    padding: 0 12px;
     border: 1px solid;
     border-radius: 6px;
     font-size: 13px;
     line-height: 1.5;
     font-weight: normal;
+    white-space: nowrap;
     cursor: pointer;
 }
 .form-group .set-enabled.on { border-color: #b7dfc2; background: #eef8f1; color: #1e5b30; }
