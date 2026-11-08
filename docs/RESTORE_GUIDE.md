@@ -4,12 +4,12 @@ Which restore to use, and where the steps are. Applies to version 2.0 (see the [
 
 | Scenario | Method | Steps |
 |---|---|---|
-| A file or folder deleted or damaged | GUI selective restore: tick just what you need | [GUI.md, Restore](manual/GUI.md#9-restore) |
+| A file or folder deleted or damaged | GUI Restore wizard, selective: tick just what you need on its Files step | [GUI.md, Restore](manual/GUI.md#9-restore) |
 | Files deleted from a Backup Set's folders, and you do not know exactly which | GUI **Undelete**: lists what is in the backups but gone from disk | [GUI.md, Undelete](manual/GUI.md#10-undelete) |
 | A Backup Set's folders should be as they were at a certain backup | GUI **Roll back**: preview first, Undo afterwards | [GUI.md, Roll back](manual/GUI.md#11-roll-back) |
 | A whole folder backup back to where it came from | GUI, **Restore to original path** | [GUI.md, Restore](manual/GUI.md#94-choose-where-and-how) |
-| Data onto a new or replacement computer | GUI on the new computer, Backup ID field cleared to list every backup, **Restore to alternate path** | [GUI.md, Restore](manual/GUI.md#91-find-the-snapshot) |
-| Find a file when you do not know which backup has it | GUI **Search for a file** | [GUI.md, Search](manual/GUI.md#92-search-for-a-file) |
+| Data onto a new or replacement computer | GUI on the new computer, Backup ID field cleared to list every backup, **Restore to alternate path** (a Windows folder backup restores on Linux too) | [GUI.md, Restore](manual/GUI.md#91-find-the-snapshot) |
+| Find a file when you do not know which backup has it | GUI Restore, **Find a file instead** on the first step | [GUI.md, Search](manual/GUI.md#92-search-for-a-file) |
 | A few files out of a machine (disk image) backup | GUI Restore: the image's volumes open like folders (NTFS, FAT, exFAT, ext2/3/4, XFS) | [GUI.md, files from a machine backup](manual/GUI.md#96-files-from-a-machine-backup) |
 | Ransomware or mass corruption | Any method, from a snapshot taken **before** the problem. Isolate the affected machines first | below |
 | Dead system disk, same or similar machine | Bare-metal restore ISO | [BMR.md](manual/BMR.md#4-automated-restore-step-by-step) |

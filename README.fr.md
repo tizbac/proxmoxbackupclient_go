@@ -260,6 +260,26 @@ Les trois sous-commandes acceptent `-keyfile` et `-keyfile-passphrase` pour les 
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Récupération** : retrouve les fichiers disparus du disque depuis les dernières sauvegardes et les remet en place
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Retour arrière** : montre ce qui changerait avant de remettre les dossiers d'un ensemble comme à une sauvegarde antérieure
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**Éditeur d'ensemble de sauvegarde** : Retour et Suivant d'un onglet à l'autre ; un nouvel ensemble ignore les fichiers inchangés et relit tous les fichiers toutes les 30 exécutions
+
+</td>
+</tr>
 </table>
 
 ### Exclusions système intelligentes (sauvegardes de dossiers)

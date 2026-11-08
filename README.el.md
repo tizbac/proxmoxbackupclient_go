@@ -262,6 +262,26 @@ msiexec /x Salvanza-<version>-x64.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Ανάκτηση διαγραμμένων**: βρίσκει τα αρχεία που λείπουν από τον δίσκο μετά τα τελευταία αντίγραφα και τα επαναφέρει
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Επαναφορά κατάστασης**: δείχνει τι θα αλλάξει πριν οι φάκελοι ενός συνόλου επιστρέψουν σε ένα παλαιότερο αντίγραφο
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**Επεξεργασία συνόλου αντιγράφων**: Πίσω και Επόμενο ανάμεσα στις καρτέλες· ένα νέο σύνολο παραλείπει τα αμετάβλητα αρχεία και διαβάζει όλα τα αρχεία κάθε 30 εκτελέσεις
+
+</td>
+</tr>
 </table>
 
 ### Έξυπνες εξαιρέσεις συστήματος (αντίγραφα φακέλων)

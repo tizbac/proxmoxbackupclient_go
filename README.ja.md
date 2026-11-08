@@ -262,6 +262,26 @@ msiexec /x Salvanza-<version>-x64.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Undelete**（削除の取り消し）：最近のバックアップ以降にディスクから消えたファイルを見つけて元に戻します
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Roll back**（ロールバック）：セットのフォルダーを以前のバックアップの状態に戻す前に、何が変わるかを表示します
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**Backup Set エディター**：Back と Next でタブを移動。新しいセットは変更のないファイルを読み飛ばし、30 回の実行ごとにすべてのファイルを読みます
+
+</td>
+</tr>
 </table>
 
 ### スマートなシステム除外（フォルダーバックアップ）

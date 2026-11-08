@@ -258,6 +258,26 @@ The three subcommands accept `-keyfile` and `-keyfile-passphrase` for encrypted 
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Undelete**: finds the files gone from disk since the latest backups and puts them back
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Roll back**: shows what would change before a set's folders go back to an earlier backup
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**Backup Set editor**: Back and Next through the tabs; a new set skips unchanged files and reads every file every 30 runs
+
+</td>
+</tr>
 </table>
 
 ### Smart system exclusions (folder backups)

@@ -262,6 +262,26 @@ msiexec /x Salvanza-<version>-x64.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Undelete** (استرجاع المحذوفات): يعثر على الملفات التي اختفت من القرص منذ آخر النسخ ويعيدها إلى مكانها
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Roll back** (التراجع): يعرض ما سيتغيّر قبل إعادة مجلدات المجموعة إلى نسخة سابقة
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**محرّر Backup Set**: التنقّل بين الألسنة بزرّي Back وNext؛ المجموعة الجديدة تتخطّى الملفات غير المتغيّرة وتقرأ كل الملفات مرة كل 30 تشغيلًا
+
+</td>
+</tr>
 </table>
 
 ### استثناءات النظام الذكية (نسخ المجلدات)

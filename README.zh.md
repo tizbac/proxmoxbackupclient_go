@@ -262,6 +262,26 @@ msiexec /x Salvanza-<version>-x64.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Undelete**（找回已删除文件）：找出自最近几次备份以来从磁盘上消失的文件，并放回原处
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Roll back**（回滚）：在把备份集的文件夹恢复到较早的备份之前，先显示会有哪些变化
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**Backup Set 编辑器**：用 Back 和 Next 在各选项卡之间切换；新的备份集跳过未更改的文件，每运行 30 次读取一次全部文件
+
+</td>
+</tr>
 </table>
 
 ### 智能系统排除（文件夹备份）

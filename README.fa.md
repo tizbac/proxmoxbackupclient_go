@@ -262,6 +262,26 @@ msiexec /x Salvanza-<version>-x64.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Undelete** (بازگرداندن حذف‌شده‌ها): فایل‌هایی را که از آخرین پشتیبان‌ها به این سو از دیسک رفته‌اند پیدا می‌کند و سر جایشان برمی‌گرداند
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Roll back** (بازگشت به وضعیت قبلی): پیش از برگرداندن پوشه‌های یک مجموعه به پشتیبانی قدیمی‌تر، نشان می‌دهد چه چیزی تغییر می‌کند
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**ویرایشگر Backup Set**: جابه‌جایی میان زبانه‌ها با Back و Next؛ مجموعهٔ تازه از فایل‌های تغییرنکرده می‌گذرد و هر 30 اجرا یک بار همهٔ فایل‌ها را می‌خواند
+
+</td>
+</tr>
 </table>
 
 ### کنارگذاری هوشمند موارد سیستمی (پشتیبان‌گیری از پوشه)

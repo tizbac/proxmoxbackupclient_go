@@ -262,6 +262,26 @@ Cele trei subcomenzi acceptă `-keyfile` și `-keyfile-passphrase` pentru instan
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Recuperare fișiere șterse**: găsește fișierele dispărute de pe disc de la ultimele backupuri și le pune la loc
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Revenire**: arată ce s-ar schimba înainte ca folderele unui set să revină la un backup anterior
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**Editorul setului de backup**: Înapoi și Înainte prin file; un set nou sare peste fișierele neschimbate și citește toate fișierele o dată la 30 de rulări
+
+</td>
+</tr>
 </table>
 
 ### Excluderi inteligente de sistem (backup-uri de foldere)

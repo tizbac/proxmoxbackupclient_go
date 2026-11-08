@@ -260,6 +260,26 @@ I tre sottocomandi accettano `-keyfile` e `-keyfile-passphrase` per gli snapshot
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Recupero**: trova i file spariti dal disco dagli ultimi backup e li rimette al loro posto
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Rollback**: mostra cosa cambierebbe prima di riportare le cartelle di un set a un backup precedente
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**Editor dei set di backup**: Indietro e Avanti tra le schede; un nuovo set salta i file invariati e rilegge tutti i file ogni 30 esecuzioni
+
+</td>
+</tr>
 </table>
 
 ### Esclusioni di sistema intelligenti (backup di cartelle)

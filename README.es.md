@@ -260,6 +260,26 @@ Los tres subcomandos aceptan `-keyfile` y `-keyfile-passphrase` para instantáne
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Recuperación**: encuentra los archivos que faltan en el disco desde las últimas copias y los devuelve a su sitio
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Reversión**: muestra qué cambiaría antes de devolver las carpetas de un conjunto a una copia anterior
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**Editor de conjuntos de copia de seguridad**: Atrás y Siguiente entre las pestañas; un conjunto nuevo omite los archivos sin cambios y lee todos los archivos cada 30 ejecuciones
+
+</td>
+</tr>
 </table>
 
 ### Exclusiones inteligentes del sistema (copias de carpetas)

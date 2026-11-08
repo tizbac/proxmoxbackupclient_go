@@ -262,6 +262,26 @@ De tre underkommandona tar `-keyfile` och `-keyfile-passphrase` för krypterade 
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Undelete** (ångra borttagning): hittar filerna som försvunnit från disken sedan de senaste säkerhetskopiorna och lägger tillbaka dem
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Roll back** (återgå): visar vad som skulle ändras innan en uppsättnings mappar återgår till en tidigare säkerhetskopia
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**Redigeraren för Backup Sets**: Back och Next genom flikarna; en ny uppsättning hoppar över oförändrade filer och läser alla filer var 30:e körning
+
+</td>
+</tr>
 </table>
 
 ### Smarta systemundantag (mappsäkerhetskopior)

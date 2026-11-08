@@ -262,6 +262,26 @@ msiexec /x Salvanza-<version>-x64.msi /quiet KEEP_CONFIG=0
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Undelete** (восстановление удалённых файлов): находит файлы, пропавшие с диска после последних копий, и возвращает их на место
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Roll back** (откат): показывает, что изменится, прежде чем папки набора вернутся к более ранней копии
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**Редактор набора**: кнопки Back и Next по вкладкам; новый набор пропускает неизменённые файлы и читает все файлы раз в 30 запусков
+
+</td>
+</tr>
 </table>
 
 ### Умные системные исключения (копии папок)

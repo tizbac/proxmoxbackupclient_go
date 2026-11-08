@@ -260,6 +260,26 @@ Die drei Unterbefehle nehmen `-keyfile` und `-keyfile-passphrase` für verschlü
 
 </td>
 </tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-undelete.png" width="280">](docs/screenshots/gui-undelete.png)
+**Gelöschte Dateien wiederherstellen**: findet die seit den letzten Sicherungen von der Festplatte verschwundenen Dateien und legt sie zurück
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-rollback.png" width="280">](docs/screenshots/gui-rollback.png)
+**Zurücksetzen**: zeigt, was sich ändern würde, bevor die Ordner eines Sicherungssatzes auf eine frühere Sicherung zurückgesetzt werden
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/gui-set-editor-nav.png" width="280">](docs/screenshots/gui-set-editor-nav.png)
+**Sicherungssatz-Editor**: mit Zurück und Weiter durch die Reiter; ein neuer Satz überspringt unveränderte Dateien und liest alle 30 Läufe jede Datei
+
+</td>
+</tr>
 </table>
 
 ### Intelligente Systemausschlüsse (Ordnersicherungen)

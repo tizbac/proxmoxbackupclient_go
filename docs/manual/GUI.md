@@ -482,7 +482,7 @@ A Backup Set is a saved backup with a name, its schedules and options. The **Bac
 | SHARED ID (amber) | Another set writes into the same backup group on PBS ([section 6.4](#64-destination-tab)). Hover it for the other set's name |
 | DISABLED (grey) | The set is out of its schedule (**More > Disable**, or the **Enabled** switch in its editor); Run Now still works |
 
-A Metadata set with a full read set up also shows **Next full read in N runs** or **Next run: full read (reads every file)** after Last run.
+A Metadata set with a full read set up also shows, after Last run, when its last full read finished (**Last full read:** and the date, or "not recorded yet" until one has run with this version) and **Next full read in N runs** or **Next run: full read (reads every file)**.
 
 Each card has **Run Now**, **Edit** and a **More ▾** menu:
 
@@ -495,10 +495,10 @@ Each card has **Run Now**, **Edit** and a **More ▾** menu:
 | More > Undelete removed files... | Opens Undelete with this set picked ([section 10](#10-undelete)) |
 | More > Roll back to chosen snapshot... | Opens Roll back with this set picked ([section 11](#11-roll-back)) |
 | More > Clone this Backup Set | Opens the editor with a copy, named "<name> (copy)" |
-| More > Disable / Enable | Disable takes the set out of its schedule but keeps it and its settings: the card shows **DISABLED** and "Next run: disabled", and Run Now still works. Enable puts it back on its schedule from the next due time, without catching up the runs it missed. The set's editor has the same choice as the **Enabled** switch under its name |
+| More > Disable / Enable | Disable takes the set out of its schedule but keeps it and its settings: the card shows **DISABLED** and "Next run: disabled", and Run Now still works. Enable puts it back on its schedule from the next due time, without catching up the runs it missed. The set's editor has the same choice as the **Enabled** switch beside its name |
 | More > Delete this Backup Set | Asks for confirmation, then deletes the set (not its snapshots) |
 
-Click **Add New Backup Set** to create one. Give it a **Backup set name**, fill in the five tabs (**Source**, **Exclusions**, **Schedule**, **Destination**, **Alerts**), then click **Save Backup Set**. Each set needs its own name: a name another set already has (in any mix of capitals) is flagged under the name box and the set is not saved.
+Click **Add New Backup Set** to create one. Give it a **Backup set name** (the **Enabled** switch sits beside it), then fill in the five tabs: **Source**, **Exclusions**, **Schedule**, **Destination**, **Alerts**. The tabs can be clicked in any order. Under them is a row of buttons, all one width: **← Back** on the left (greyed on the first tab), then **Cancel**, **Save** and **Next →** on the right (the last tab has no Next). For a new set **Next** is the main (coloured) button, leading you through the tabs, until the last tab, where **Save** is. When you edit a set, **Save** is the main button throughout, since an edit is usually one or two changes. **Save** is also at the top of the editor, beside **✕**, which closes it. **Cancel** closes the editor and forgets what was typed. Each set needs its own name: a name another set already has (in any mix of capitals) is flagged under the name box and the set is not saved.
 
 ### 6.1 Source tab
 
@@ -549,7 +549,7 @@ Schedules run while the GUI is running (in the tray is fine) or in the installed
 | Destination PBS server | Which server the set backs up to |
 | Backup ID | Not shown for a vm set (the VM ID decides it). A folder set gets a suggested ID made from the computer's and the set's name (below); a machine set defaults to the computer name |
 | Use VSS (Windows Shadow Copy / Linux Snapshot) | As for one-off backups |
-| Change detection | **Legacy: read every file (default)**, **Data: read every file, split archive** or **Metadata: skip unchanged files (fastest)**, with **Read every file every N runs** for Metadata. See [section 7](#7-incremental-folder-backups-change-detection). Greyed out for machine sets |
+| Change detection | **Legacy: read every file**, **Data: read every file, split archive** or **Metadata: skip unchanged files (fastest, default)**, with **Read every file every N runs** for Metadata. A new folder set starts on Metadata, reading every file every 30 runs; an existing set keeps the mode it was saved with. See [section 7](#7-incremental-folder-backups-change-detection). Greyed out for machine sets |
 
 **Give every Backup Set its own Backup ID.** All snapshots with the same type and ID form one group in PBS. Metadata mode compares with the newest snapshot in the group, and Legacy mode reuses chunks from it. If two sets share an ID, each run compares with the other set's snapshot and reads every file, and Undelete and Roll back list both sets' snapshots. A good pattern is `<computer>-<set>`, for example `fileserver-data`. The editor does this for you: a new folder set's Backup ID follows its name as you type it, the computer's name first and then the set's name without it. On `fileserver`, "Fileserver - Data" becomes `fileserver-data` and "Accounts" becomes `fileserver-accounts`, so every set of one computer sits together in PBS's list. An ID another set already uses gets `-2`, `-3` and so on, and typing your own ID stops the suggestion. A clone gets its own ID from the copy's name. Editing an existing set whose ID differs from the suggestion offers **Use <suggestion>**: a new ID starts a new group on PBS, so its first incremental run reads every file and its earlier backups stay under the old ID.
 
@@ -576,7 +576,7 @@ The set's name is written to PBS as the snapshot comment, so it shows in the PBS
 
 ### 6.7 Several backups at once
 
-Up to three backups and restores run at the same time (**Preferences > Backup Options > Maximum Concurrent Backups**, 1 to 8). A long first backup of a large set, which can take a day or more, no longer holds up the other sets: a set of documents that runs every hour keeps its hourly runs, and a machine backup still runs at its time. Whatever the number:
+Up to three backups and restores run at the same time (**Preferences > Backup Options > Maximum Concurrent Backups**, 1 to 8). A long first backup of a large set, which can take a day or more, or a set's full read ([section 7](#read-every-file-every-n-runs)), no longer holds up the other sets: a set of documents that runs every hour keeps its hourly runs, and a machine backup still runs at its time. Whatever the number:
 
 | Rule | Why |
 |---|---|
@@ -656,9 +656,11 @@ Folder Backup Sets can use the same change-detection modes as the official `prox
 
 | Mode (as shown in the editor) | Reads | Stored as |
 |---|---|---|
-| Legacy: read every file (default) | every file | one `<name>.pxar.didx` per folder, as in earlier versions |
+| Legacy: read every file | every file | one `<name>.pxar.didx` per folder, as in earlier versions |
 | Data: read every file, split archive | every file | a split archive: `<name>.mpxar.didx` (metadata) and `<name>.ppxar.didx` (file contents) |
-| Metadata: skip unchanged files (fastest) | only new and changed files | the same split archive |
+| Metadata: skip unchanged files (fastest, default) | only new and changed files | the same split archive |
+
+A new folder Backup Set starts on Metadata, with a full read every 30 runs ([below](#read-every-file-every-n-runs)). Sets saved by an earlier version keep the mode they had, Legacy included, until you change it. Machine sets and one-off backups are not affected.
 
 ### How Metadata mode works
 
@@ -686,9 +688,13 @@ Real example, a 480.9 GB data share with 761,866 files on USB disks, to a PBS on
 
 A file changed in a way that keeps its size and modification time is not noticed in Metadata mode. To catch such changes, set **Read every file every N runs** (0 = never, otherwise 2 to 366). Every Nth run then reads every file, like Data mode. It also drops the small amount of unused data (padding) that reuse leaves behind.
 
-Only runs that finish successfully count. A stopped or failed run does not bring the next full read closer. The set's card shows **Next full read in N runs**, or **Next run: full read (reads every file)**.
+A new set starts at 30, which is about once a month for a daily set. When you save a Metadata set, a note under the editor says how often it reads every file and that **Read every file every** on the Destination tab changes it; at 0 it warns that a change which keeps a file's size and time is then never backed up. The note stays until you close it.
 
-As a guide: for a set that runs every 4 hours, 42 means about once a week. For a daily set, 7 means once a week.
+Only runs that finish successfully count. A stopped or failed run does not bring the next full read closer. The set's card shows **Last full read:** with the date it last finished (or "not recorded yet"), and **Next full read in N runs**, or **Next run: full read (reads every file)**.
+
+**One scheduled full read a day.** A full read of a large set can take hours, so the computer's sets take turns: only one set a day has its scheduled full read. A set whose full read falls due on a day another set has already had one reads only changed files that time, and its full read is due again on its next run. **Run now: full read (every file)** is never held back. Together with several backups running at once ([section 6.7](#67-several-backups-at-once)), a long full read does not hold up the other sets.
+
+As a guide: for a set that runs every 4 hours, 42 means about once a week. For a daily set, 7 means once a week and 30 about once a month.
 
 To choose for one run, use the card's **More** menu: **Run now: quick (changed files only)** skips a full read that is due (it stays due for the next run), and **Run now: full read (every file)** reads every file now and restarts the count. The progress card then says "Full read requested: reading every file". Plain **Run Now** does what the schedule would.
 
@@ -696,7 +702,7 @@ To choose for one run, use the card's **More** menu: **Run now: quick (changed f
 
 1. Update every computer you restore from to version 2.0 or later first. Versions before split-archive support show the folders of a Data or Metadata snapshot without their files.
 2. Give the set its own Backup ID if it shares one ([section 6.4](#64-destination-tab)).
-3. Edit the set, **Destination** tab, choose **Metadata: skip unchanged files (fastest)**, set **Read every file every N runs**, and save.
+3. Edit the set, **Destination** tab, choose **Metadata: skip unchanged files (fastest, default)**, check **Read every file every N runs** (it starts at 30), and save.
 
 The first split backup of a folder shares little with its older Legacy snapshots. Expect it to use roughly one more full copy of that folder on the datastore until the old Legacy snapshots are pruned and garbage collection runs.
 
@@ -788,20 +794,36 @@ Anything waiting for its turn is listed under the card, each backup with a **Sto
 
 ## 9. Restore
 
-Open the **Restore** page. The box at the top lists what restore supports: files and folders (full tree), selective restore, modification times, creation times (Windows), several PBS servers, NTFS ACLs (Windows) or POSIX ACLs (Linux), and alternate data streams and NTFS extended attributes (Windows; folder backups made by version 1.1 or earlier, or by a test build from before 14 October 2026, lack them).
+Open the **Restore** page. It is a wizard of five steps, shown as chevrons across the top: **1 Source**, **2 Snapshot**, **3 Files**, **4 Destination** and **5 Options and restore**. Each step asks for one thing:
+
+* **Next** (for example **Next: list snapshots →**) goes on, and **← Back** goes back. Next is greyed, with what is missing as its tooltip, until the step is filled in.
+* From the second step on, a summary bar names what you have chosen so far (server, Backup ID, snapshot, files), with a **Change** link back to that step.
+* A step not reached yet is greyed, with what it needs as its tooltip. Any step already open, before or after the one shown, can be clicked. A step gets a tick once the step after it is open.
+* Changing an earlier choice (another server, Backup ID or snapshot) clears what depended on it, and the wizard goes back to the step that is still valid.
+* The restore card ([section 9.5](#95-the-restore-card)) and the list of restores waiting their turn stay above the steps on every step.
+* Clicking **Restore** in the side menu starts the wizard afresh, unless it is busy listing or searching or a restore is running.
+
+The box on the first step lists what restore supports: files and folders (full tree), selective restore, modification times, creation times (Windows), several PBS servers, NTFS ACLs (Windows) or POSIX ACLs (Linux), and alternate data streams and NTFS extended attributes (Windows; folder backups made by version 1.1 or earlier, or by a test build from before 14 October 2026, lack them).
+
+A folder backup made on Windows can be restored on Linux too (to another folder). Where the app gives an example path, it gives a Linux one on Linux (`/home/name/Restore`).
 
 ### 9.1 Find the snapshot
+
+**Step 1, Source** ("Where is the backup?"):
 
 1. **Source PBS server**: pick the server.
 2. **Backup ID to restore (optional)**: type an ID, or use the buttons beside it:
    * **▾** lists the Backup IDs your Backup Sets use (with the set names), plus this computer's name for one-off backups.
    * **✕** clears the field. An empty field lists every backup in the datastore, which is what you want when restoring onto a replacement computer.
-3. Click **List available snapshots**. A moving bar shows while PBS answers. If it takes more than 15 seconds the GUI says PBS is slow to respond (a verify, garbage collection or backup may be running on the server).
-4. **Available snapshots** shows date, Backup ID, type and size, in **Tile** or **List** view. 🔒 marks a protected snapshot, and a machine backup is marked "disk image". Click **Select** on one.
+3. Click **Next: list snapshots**. A moving bar shows while PBS answers. If it takes more than 15 seconds the GUI says PBS is slow to respond (a verify, garbage collection or backup may be running on the server).
+
+**Step 2, Snapshot** ("Choose a snapshot") lists the snapshots, newest first, with date, Backup ID, type and size, in **Tile** or **List** view. 🔒 marks a protected snapshot, and a machine backup is marked "disk image". Click a snapshot (or its **Select**) to choose it; the wizard goes on to its files.
+
+The list shows a page at a time. Above it, and again below it when there is more than one page, the arrows **«** **‹** **›** **»** go to the first, previous, next and last page either side of "Showing 11-20 of 120". **Show** sets how many a page holds: 5, 10 (the default), 25, 50 or All; the choice is kept, and Roll back's list uses the same one. **At or before:** takes a date and time and lists only the snapshots at or before it; **✕** clears it and goes back to the page with the chosen snapshot.
 
 ### 9.2 Search for a file
 
-Click **Search for a file** to open the search panel. It searches every snapshot whose Backup ID starts with the ID in the box, over a date range.
+On step 1, click **🔍 Find a file instead** to open the search panel. It searches every snapshot whose Backup ID starts with the ID in the box, over a date range.
 
 | Setting | Notes |
 |---|---|
@@ -810,19 +832,21 @@ Click **Search for a file** to open the search panel. It searches every snapshot
 | From / To | Date range of snapshots to search |
 | Also assemble snapshots not yet browsed | Slower: downloads the file lists of snapshots not already cached |
 
-Click **Search**. Results stop at 5,000; refine the search if you reach it. **Prepare restore** on a result selects that snapshot and file.
+Click **Search**. Each result shows the file's name, its original path (for example `D:\Data\Documents\Invoices\INV-0412.pdf`), the Backup ID and the snapshot's date. Results stop at 5,000; refine the search if you reach it. **Prepare restore** on a result chooses that snapshot and ticks that file, and the wizard goes straight to step 4, Destination.
 
 ### 9.3 Choose what to restore
 
-After you select a snapshot, the panel shows the snapshot's **Original source**, **Machine** and **Backed up at**, and **Snapshot contents** as a tree. Folders load one level at a time; a folder with many entries shows the first 1,000 with **Show N more**.
+**Step 3, Files** ("Choose what to restore") shows the snapshot's **Original source**, **Machine** and **Backed up at**, and the snapshot's contents as a tree. Folders load one level at a time; a folder with many entries shows the first 1,000 with **Show N more**.
 
 * Tick the files and folders to restore. **Select all** and **Select none** help. Nothing ticked means nothing is restored.
 * The line under the tree shows how many entries are ticked and their total size.
 * **Reload** downloads the tree again from PBS instead of the local cache.
 
-Selective restore reads only the chunks that hold the ticked files, so restoring a few folders from a large snapshot is quick.
+Selective restore reads only the chunks that hold the ticked files, so restoring a few folders from a large snapshot is quick. Click **Next: destination**.
 
 ### 9.4 Choose where and how
+
+**Step 4, Destination** ("Where should the files go?") has the first three settings below; **Next: options** opens **step 5, Options and restore**, with the rest, and **Ready to restore**, a list of everything chosen.
 
 | Setting | Notes |
 |---|---|
@@ -837,11 +861,13 @@ Selective restore reads only the chunks that hold the ticked files, so restoring
 
 On Windows the **creation time** (Explorer's "Date created") of every file and folder is put back too, whether or not permissions are restored, for backups made by version 1.2 or later; version 1.1, and test builds from before 11 October 2026, did not record it.
 
-Click **▶️ Restore**.
+Click **▶️ Restore** (with **Stop** beside it). The result shows under the options until another restore starts. Once a restore has finished, its button reads **✓ Completed** and is greyed, so the same restore is not started twice by mistake; change any choice (files, destination, an option) and it reads **Restore** again.
 
 ### 9.5 The restore card
 
-The restore card works like the backup card. Its stage line shows **Connecting and preparing restore...**, **Reading snapshot index and locating files...**, **Fetching chunks and writing files...**, then, after the data, **Setting folder timestamps...**, **Restoring ACLs and attributes...** (or **Restoring creation times...** when permissions are not being restored) and **Verifying restored files...** as they apply. The rows are Started, Forecast finish, Elapsed time, Time remaining, Speed (shown as the average once the transfer is done), Downloaded (data done / total) and Current file. **Stop** ends the restore.
+The restore card works like the backup card and stays at the top of the page, whichever step is open. Its stage line shows **Connecting and preparing restore...**, **Reading snapshot index and locating files...**, **Fetching chunks and writing files...**, then, after the data, **Setting folder timestamps...**, **Restoring ACLs and attributes...** (or **Restoring creation times...** when permissions are not being restored) and **Verifying restored files...** as they apply. The rows are Started, Forecast finish, Elapsed time, Time remaining, Speed (shown as the average once the transfer is done), Downloaded (data done / total) and Current file. Under them a box of two lines gives the restore's own detail ("Restoring Photos.ppxar.didx: 12.5 GB ... written"); it keeps its height, so the card does not jump as the text changes, and longer text shows whole on hover. **Stop** ends the restore.
+
+A restore of several backed-up folders is followed as one: the bar, Downloaded, Time remaining and Forecast finish cover the whole restore, each folder weighed by its size (a partly ticked folder by the size of what is ticked). Two more rows show the folder being restored: **Current folder:** with its full original path, cut in the middle with "..." when long, and which it is ("(2 of 3)"), and **This folder:** with how much of it is done.
 
 The finished restore is recorded in Reports with its snapshot, destination, paths, file count, size, verification result and duration.
 
@@ -858,7 +884,9 @@ The same reading is what Undelete and Roll back use for machine sets.
 
 ## 10. Undelete
 
-**Undelete** (side menu, or **More > Undelete removed files...** on a Backup Set's card) finds files that are in a Backup Set's backups but no longer on disk, and puts them back.
+**Undelete** (side menu, or **More > Undelete removed files...** on a Backup Set's card) finds files that are in a Backup Set's backups but no longer on disk, and puts them back. Like Restore it is a wizard ([section 9](#9-restore)), with three steps: **1 Set**, **2 Deleted files** and **3 Destination and undelete**, a summary bar with **Change**, and **← Back** and **Next** buttons. Choosing Undelete in the side menu, or on a card, starts it afresh unless it is busy.
+
+**Step 1, Set** ("Which files went missing?"):
 
 1. Pick the **Backup Set**. A machine set is listed with the folders it covers ([section 6.1](#61-source-tab)); their file lists are read from the disk images (NTFS on Windows; ext4 or XFS on Linux, where folders on LVM or RAID are left out with the reason).
 2. Choose how far to **Look back**:
@@ -868,20 +896,22 @@ The same reading is what Undelete and Roll back use for machine sets.
    | Latest backup | Files in the newest backup that are not on disk now |
    | Last 7 days / Last 30 days | Every backup of that period. Each missing file is offered from the **newest** backup that still has it |
 
-3. Click **Find deleted files**. The GUI reads each backup's file list (its catalog, a few MB even for hundreds of thousands of files, kept on this computer afterwards so the next search is quicker) and lists the set's folders on disk. No file is opened or read. The set's exclusions apply, so excluded files never show up.
+3. Click **Find deleted files →**. The GUI reads each backup's file list (its catalog, a few MB even for hundreds of thousands of files, kept on this computer afterwards so the next search is quicker) and lists the set's folders on disk. No file is opened or read. The set's exclusions apply, so excluded files never show up.
 
    The bar shows where it is: **Reading the file list of snapshot 2 of 6**, then **Reading the folder F:\Data: 312,400 of about 868,592 files and folders** (the total is what the newest backup had there, so it is an estimate), with the time taken. As a guide, for a set of 760,000 files on USB disks: a backup's file list takes about 10 seconds the first time and a second or two after that, and listing the folders takes from about 30 seconds (just after a backup) to 3 or 4 minutes (disk not read for a while). A 7-day search typically takes 1 to 5 minutes.
 
-The result is a folder tree of the missing files with a tick box on every file and folder. Each file shows its size and when it went: **deleted since** the newest backup, or **deleted between** two backups. A file whose name, size and time match a file somewhere else in the folder is marked **probably moved to ...** and is not ticked, since it most likely still exists under another name or folder. Files under a folder that cannot be read now (permissions) are not listed as missing; a note says how many.
+When the search ends the wizard moves on to **step 2, Deleted files**: a folder tree of the missing files with a tick box on every file and folder. Each file shows its size and when it went: **deleted since** the newest backup, or **deleted between** two backups. A file whose name, size and time match a file somewhere else in the folder is marked **probably moved to ...** and is not ticked, since it most likely still exists under another name or folder. Files under a folder that cannot be read now (permissions) are not listed as missing; a note says how many.
 
-Use the filter box to narrow the list, **Select all shown** and **Clear shown** for what is visible, then choose **Restore to**:
+**A set folder the logged in user cannot open.** Undelete runs in the app, as you, while the backups may run in the background service with a login saved for a network share ([section 6.10](#610-folders-on-network-shares)). A set folder you cannot open yourself is left out, and the others are still checked, with a note: "Couldn't open `\\server\share\Photos` as the logged in user, so nothing there was checked. If it is a network share, open it once in File Explorer, then try again." (on Linux: "in the file manager"). Only when no folder of the set opens is it an error, with the same wording. A folder that does not exist at all is still an error.
+
+Use the filter box to narrow the list, and **Select all shown** and **Clear shown** for what is visible. The line under the tree counts the files ticked and their size. Click **Next: destination →** for **step 3, Destination and undelete** ("Where should they go?"), and choose **Restore to**:
 
 | Choice | What happens |
 |---|---|
 | Where they were | Each file goes back to its original place. A file that exists there again is left alone and reported as skipped |
-| Another folder | The files go under the folder you choose, keeping their folder structure |
+| Another folder | The files go under the folder you choose (**Browse...**), keeping their folder structure |
 
-Tick **Verify after restore** to check every restored file against the backup, then click **Undelete N files**. The restore card shows the progress (several backups are restored one after another), Stop works as usual, and Reports records the run as **Undelete**.
+Tick **Verify after restore** to check every restored file against the backup. **Ready to undelete** lists the set, the files and the destination. Click **Undelete N files (size)**. The restore card shows the progress (several backups are restored one after another), Stop works as usual, and Reports records the run as **Undelete**. When it has finished the result shows above the buttons, with **Find deleted files** to search again, and the button reads **✓ Completed**, greyed, until you change the files, the destination or **Verify after restore**.
 
 Undelete also runs from the command line for any Backup Set ([below](#undelete-and-roll-back-from-the-command-line)).
 
@@ -889,9 +919,11 @@ Undelete also runs from the command line for any Backup Set ([below](#undelete-a
 
 **Roll back** (side menu, or **More > Roll back to chosen snapshot...** on a Backup Set's card) puts a Backup Set's folders back as they were at a chosen backup. You see what would change first, and everything it replaces or removes is kept, so the roll back can be undone. For a machine set it works on the set's **Folders for Undelete and Roll back**, reading them from the disk images.
 
-1. Pick the **Backup Set**. Its backups are listed newest first with their size; 🔒 marks a protected snapshot.
-2. Pick a backup from the list, or enter a date and time in **The backup at or before** to pick the newest backup at or before it.
-3. Click **Show what would change**. Nothing is written. The preview compares the backup with the folders now:
+Like Restore it is a wizard ([section 9](#9-restore)), with four steps: **1 Set**, **2 Backup**, **3 Changes** and **4 Roll back**, a summary bar with **Change** (or **Change backup**), and **← Back** and **Next** buttons. Choosing Roll back in the side menu, or on a card, starts it afresh unless it is busy listing, comparing or undoing.
+
+1. **Step 1, Set** ("Which folders?"): pick the **Backup Set**. Its earlier roll backs are listed here, with **Undo** (see **Earlier roll backs of this set** below). Click **Next: choose a backup →**.
+2. **Step 2, Backup** ("Roll back to which backup?"): the set's backups, newest first, with their size; 🔒 marks a protected snapshot. The list is paged as Restore's snapshot list is ([section 9.1](#91-find-the-snapshot)), with the same **Show** choice. Pick a backup, or enter a date and time in **The backup at or before:** to pick the newest backup at or before it and list only those.
+3. Click **Show what would change →**. Nothing is written. **Step 3, Changes** compares the backup with the folders now:
 
    | Box | Meaning |
    |---|---|
@@ -900,9 +932,11 @@ Undelete also runs from the command line for any Backup Set ([below](#undelete-a
    | Added since | On disk but not in the backup: kept, unless you choose an exact roll back |
    | Unchanged | Left as they are |
 
-   The files of each group are listed underneath (the first 2,000 of each).
+   The files of each group are listed underneath (the first 2,000 of each); click a group's name to open its list.
 
-4. Choose **What to do**:
+   A set folder the logged in user cannot open (a network share only the service's saved login reaches, as for Undelete above) is left alone: nothing in it is compared, moved or restored, and the preview says "Couldn't open ... as the logged in user, so it is left alone.", with the same hint. Only when no folder of the set opens is it an error. If such a folder opens by the time you start, the roll back stops without changing anything, since that folder was never compared: show what would change again.
+
+4. Click **Next: roll back options →**. On **step 4, Roll back**, choose **What to do**:
 
    | Choice | Effect |
    |---|---|
@@ -910,13 +944,13 @@ Undelete also runs from the command line for any Backup Set ([below](#undelete-a
    | Restore missing files only | Nothing on disk is replaced; changed files keep their current version |
    | Exact roll back: also remove files added since | The folders end up exactly as in the backup. You confirm by typing the number of files that will be removed |
 
-5. **Back up the set first** runs the Backup Set once before anything changes, so today's state is a backup too. It is on by default for a folder set and off for a machine set, whose backup is a whole-disk image and takes about as long as its usual backup. While that backup runs, the card reads "Backing up the set before the roll back: 37%". **Verify after restore** checks the restored files. Then click **Roll back to ...**.
+5. **Back up the set first** runs the Backup Set once before anything changes, so today's state is a backup too. It is on by default for a folder set and off for a machine set, whose backup is a whole-disk image and takes about as long as its usual backup. While that backup runs, the card reads "Backing up the set before the roll back: 37%". **Verify after restore** checks the restored files. Then click **Roll back to ...** (the backup's date). When it has finished, the wizard goes back to step 1, with the result above the set's roll backs and the new one's **Undo**.
 
 **The safety net.** Before a file is replaced or removed it is moved, not deleted, into a hidden `.pbs-rollback` folder on the same drive. Moving within a drive is instant, whatever the file size. For folders inside a user's own profile or home (`C:\Users\<name>\...`, `/home/<name>/...`) it is in that profile (`C:\Users\<name>\.pbs-rollback\<set name>\<date-time>\`), so a user rolling back their own files needs no administrator rights; for anything else it is at the root of the drive (`F:\.pbs-rollback\...`). Only SYSTEM (root), the administrators and the account that ran the roll back can open it: it holds copies of the set's files. The folder also holds `rollback.json`, the record of what was moved, restored and removed; Undo and Delete kept versions refuse a record that names anything outside the set's folders or its own safety folder. `.pbs-rollback` is never backed up. Files that are open in another program cannot be moved; they are left as they are and listed in the result, with the reason.
 
 While a roll back runs, the set's own scheduled backups wait, and Run Now on that set is refused. Reports records the run as **Roll back**.
 
-**Earlier roll backs of this set** are listed under the page, with what each restored, replaced and removed and how much the kept versions take up:
+**Earlier roll backs of this set** are listed on step 1, under the set, with what each restored, replaced and removed and how much the kept versions take up:
 
 | Button | What it does |
 |---|---|
@@ -1144,3 +1178,5 @@ On Linux the official client keeps POSIX ACLs, extended attributes and file capa
 **Restore of an older client version shows folders without files.** That computer has a version without split-archive support. Update it.
 
 **Hard links.** When a file has two names (a hard link), only one name is restored.
+
+**A restore of many small files is slow (Windows).** Restoring many small files takes longer than a few large ones of the same total size. Most of the time per file goes on Windows Defender (or another virus scanner) checking each new file, and then on putting back its permissions; writing several files at once was measured and gave no gain. Restoring without **Restore permissions/ACLs**, when you do not need them, saves part of it.
