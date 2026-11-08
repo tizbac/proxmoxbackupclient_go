@@ -16,6 +16,10 @@ import TabStrip from './components/TabStrip'
 import ThemePicker, { hasStoredTheme, applyStoredTheme, heroFromAccent } from './components/ThemePicker'
 import EncryptionKeyField from './components/EncryptionKeyField'
 import { UndeletePage, RollbackPage, ServiceControl } from './components/SetTools'
+import { WizardSteps, WizardSummary, WizardNav } from './components/WizardSteps.jsx'
+import { openSteps, clampStep, restoreReached } from './components/stepRules.mjs'
+import { ListPagerBar, ListMore, useListShow, useFitCount } from './components/ListPager.jsx'
+import { newestFirst, pageLimit, pageItems, unixFromLocal, MORE_STEP } from './components/listPaging.mjs'
 import { suggestBackupId, setsSharingGroup } from './backupId'
 import ScheduleEditor from './components/ScheduleEditor'
 import LastRunAgo from './components/LastRunAgo'
@@ -962,6 +966,13 @@ function App() {
     setSnapshotViewMode(mode)
     try { localStorage.setItem('snapshotViewMode', mode) } catch { /* ignore */ }
   }
+  // The snapshot step shows the newest ones that fit the window (or 25, 100,
+  // all), "Show more" adding MORE_STEP each time, optionally only those at or
+  // before a time (listPaging.mjs).
+  const [snapShow, setSnapShow] = useListShow()
+  const [snapMore, setSnapMore] = useState(0)
+  const [snapBefore, setSnapBefore] = useState('')
+  const snapListRef = useRef(null)
   const [restorePBSID, setRestorePBSID] = useState('')
   const [selectedSnapshot, setSelectedSnapshot] = useState(null) // { id, unix, time }
   const [snapshotMeta, setSnapshotMeta] = useState(null)         // .proxmox_backup_client_meta.json sidecar (null if legacy)
@@ -987,6 +998,14 @@ function App() {
     acls: false, // opt-in — off by default even though the NTFS sidecar now exists
     ads: true    // alternate data streams and NTFS extended attributes (Windows), recorded since 1.2
   })
+  // The Restore page's step (1 Source, 2 Snapshot, 3 Files, 4 Destination,
+  // 5 Options and restore); which steps are open follows from the choices.
+  const [restoreStep, setRestoreStep] = useState(1)
+  // The last restore's result ({ kind, type, message }; kind 'restore',
+  // 'undelete' or 'rollback'), kept on that wizard's last step: the status
+  // line goes after 5 seconds, which left the last step looking as if
+  // nothing had happened.
+  const [lastRestoreResult, setLastRestoreResult] = useState(null)
   const [restoreLoading, setRestoreLoading] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState(0)
   const [restoreStage, setRestoreStage] = useState({ stage: '', detail: '' })
@@ -1498,6 +1517,7 @@ function App() {
         localizedMsg += ' (' + t('restoreVerifiedSuffix', { n: (data.verified || 0).toLocaleString(language) }) + ')'
       }
       showStatus(data.success ? `✅ ${localizedMsg}` : `❌ ${localizedMsg}`, data.success ? 'success' : 'error')
+      setLastRestoreResult({ kind: data.kind || 'restore', type: data.success ? 'success' : 'error', message: data.success ? `✅ ${localizedMsg}` : `❌ ${localizedMsg}` })
       if (GetJobHistory) GetJobHistory().then(h => setJobHistory(h || []))
     })
     return () => {
@@ -3096,6 +3116,41 @@ function App() {
     }
   }
 
+  // A new server or backup ID: the listed snapshots and the open one no
+  // longer apply, so the Restore wizard goes back to its first step.
+  const clearRestoreListing = () => {
+    setLastRestoreResult(r => (r && r.kind === 'restore' ? null : r))
+    setShowSnapshots(false)
+    setSelectedSnapshot(null)
+    setSnapshotChildren(new Map())
+    setSnapshotCount(0)
+    snapshotCtxRef.current = null
+    setSelectedPaths(new Set())
+    setExpandedDirs(new Set())
+    setSnapMore(0)
+    setSnapBefore('')
+  }
+
+  // No snapshot chosen: its file tree and the ticked files go with it.
+  const clearSelectedSnapshot = () => {
+    setSelectedSnapshot(null)
+    setSnapshotChildren(new Map())
+    setSnapshotCount(0)
+    snapshotCtxRef.current = null
+    setSelectedPaths(new Set())
+    setExpandedDirs(new Set())
+  }
+
+  // The snapshot step's date: only the snapshots at or before it are listed,
+  // and a chosen snapshot newer than it is let go, so Next never opens one
+  // the list no longer shows.
+  const setSnapBeforeAndDrop = (value) => {
+    setSnapBefore(value)
+    setSnapMore(0)
+    const before = unixFromLocal(value)
+    if (before > 0 && selectedSnapshot && (selectedSnapshot.unix || 0) > before) clearSelectedSnapshot()
+  }
+
   const handleListSnapshots = async () => {
     if (!ListSnapshots) {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
@@ -3116,12 +3171,10 @@ function App() {
     // failed host's exact backup-id string, so browsing everything and
     // picking it out by eye is the actual workflow, not typing a name.
 
-    setSelectedSnapshot(null)
-    setSnapshotChildren(new Map())
-    setSnapshotCount(0)
-    snapshotCtxRef.current = null
-    setSelectedPaths(new Set())
-    setExpandedDirs(new Set())
+    clearSelectedSnapshot()
+    // A fresh list starts from the newest again.
+    setSnapMore(0)
+    setSnapBefore('')
 
     const id = beginServerWait('list', t('listingSnapshots'))
     try {
@@ -3129,6 +3182,7 @@ function App() {
       if (waitSeqRef.current !== id) return // a newer call replaced this one
       setSnapshots(snaps || [])
       setShowSnapshots(true)
+      setRestoreStep(2)
       showStatus(`✅ ${t('snapshotsFound').replace('{n}', snaps.length)}`, 'success')
     } catch (err) {
       if (waitSeqRef.current === id) showStatus(`❌ ${err}`, 'error')
@@ -3170,11 +3224,13 @@ function App() {
   })
 
   const handleSelectSnapshot = async (snap, forceRefresh = false) => {
+    setLastRestoreResult(r => (r && r.kind === 'restore' ? null : r))
     if (!OpenSnapshotTree) {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
       return
     }
     setSelectedSnapshot(snap)
+    setRestoreStep(3)
     setSnapshotMeta(null)
     setSnapshotChildren(new Map())
     setSnapshotCount(0)
@@ -3316,6 +3372,8 @@ function App() {
       dirs.add(acc)
     }
     setExpandedDirs(dirs)
+    // The snapshot and the file are chosen: on to where it goes.
+    if (snapshotCtxRef.current?.unix === snap.unix) setRestoreStep(4)
   }
 
   // A machine backup: its only archives are disk images (.img.fidx). Its
@@ -3344,6 +3402,34 @@ function App() {
     return norm(snapshotMeta.hostname) !== norm(hostname)
   }
 
+  // The Restore page's steps: what each needs (stepRules.mjs), and the step
+  // shown falls back when an earlier choice changes (a new server or backup
+  // ID clears the list, so the later steps close).
+  const restoreDestOK = restoreMode === 'original'
+    ? !inPlaceBlocker() && !(crossHostMismatch() && !restoreAllowCrossHost)
+    : restoreDestPath.trim() !== ''
+  const restoreOpen = openSteps(restoreReached({
+    listed: showSnapshots, snapshot: !!selectedSnapshot, files: selectedPaths.size, destination: restoreDestOK,
+  }))
+  const restoreOpenKey = restoreOpen.join()
+  useEffect(() => {
+    const s = clampStep(restoreStep, restoreOpen)
+    if (s !== restoreStep) setRestoreStep(s)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreStep, restoreOpenKey])
+  const restoreServerName = (pbsServers.find(s => s.id === (restorePBSID || defaultPBSID)) || {}).name || ''
+  const restoreSelectionText = selectedPaths.size === 0 ? '' : t('selectionCountSize')
+    .replace('{n}', selectedPaths.size)
+    .replace('{size}', selectionSizing ? tl('calculating', 'Calculating...') : formatBytesDual(selectionBytes))
+  // The snapshots the snapshot step shows (listPaging.mjs).
+  const snapSorted = useMemo(() => newestFirst(snapshots), [snapshots])
+  const snapFit = useFitCount(snapListRef, [activeTab, restoreStep, snapshotViewMode, showSnapshots, snapshots.length, snapBefore])
+  const snapPage = pageItems(snapSorted, {
+    limit: pageLimit(snapShow, snapFit, snapMore),
+    before: unixFromLocal(snapBefore),
+    isSelected: s => !!selectedSnapshot && s.id === selectedSnapshot.id && s.backup_id === selectedSnapshot.backup_id,
+  })
+
   const handleRestoreSnapshot = async () => {
     if (!RestoreSnapshot) {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
@@ -3353,6 +3439,7 @@ function App() {
       showStatus('❌ ' + t('selectSnapshotFirst'), 'error')
       return
     }
+    setLastRestoreResult(null)
 
     // Resolve effective mode. The UI radio is binary (in-place / alternate);
     // the alternate sub-mode comes from the "keep tree" toggle.
@@ -3805,6 +3892,7 @@ function App() {
     os: systemInfo.os,
   }
   const startSetRestore = () => {
+    setLastRestoreResult(null)
     setRestoreLoading(true)
     setRestoreProgress(0)
     setRestoreStats({ startTime: null, bytesDone: 0, bytesTotal: 0, speed: 0 })
@@ -5906,6 +5994,23 @@ function App() {
             </div>
           )}
 
+          {/* The page is a wizard: one choice per step, the Backup Set
+              editor's chevrons on top (WizardSteps.jsx). The restore card and
+              queue above stay in view on every step. */}
+          <WizardSteps
+            label={tl('wizRestoreSteps', 'Restore steps')}
+            current={restoreStep}
+            onSelect={setRestoreStep}
+            steps={[
+              { label: tl('wizStepSource', 'Source'), open: restoreOpen[0] },
+              { label: tl('wizStepSnapshot', 'Snapshot'), open: restoreOpen[1], need: tl('wizNeedList', 'List the snapshots first') },
+              { label: tl('wizStepFiles', 'Files'), open: restoreOpen[2], need: tl('wizNeedSnapshot', 'Choose a snapshot first') },
+              { label: tl('wizStepDestination', 'Destination'), open: restoreOpen[3], need: tl('wizNeedFiles', 'Choose the files first') },
+              { label: tl('wizStepOptionsRestore', 'Options and restore'), open: restoreOpen[4], need: tl('wizNeedDestination', 'Choose where they go first') },
+            ]}
+          />
+
+          {restoreStep === 1 && (<>
           {/* What restore covers (it was marked BETA until 2026-10-07, when
               it had been through full, selective, multi-folder, ACL and
               cross-machine restores on real data). */}
@@ -5923,6 +6028,8 @@ function App() {
           </div>
 
           {/* PBS server selector + Backup ID */}
+          <div className="wiz-panel">
+          <h3>{tl('wizWhereFrom', 'Where is the backup?')}</h3>
           <div style={{display: 'flex', gap: '15px', flexWrap: 'wrap'}}>
             <div className="form-group" style={{flex: '1 1 240px'}}>
               <label>{t('restorePBSServer')}</label>
@@ -5930,11 +6037,7 @@ function App() {
                 value={restorePBSID}
                 onChange={(e) => {
                   setRestorePBSID(e.target.value)
-                  setShowSnapshots(false)
-                  setSelectedSnapshot(null)
-                  setSnapshotChildren(new Map())
-                  setSnapshotCount(0)
-                  snapshotCtxRef.current = null
+                  clearRestoreListing()
                 }}
               >
                 {pbsServers.length === 0 && <option value="">{t('noPBSServer')}</option>}
@@ -5955,7 +6058,7 @@ function App() {
                   id="restoreBackupId"
                   type="text"
                   value={restoreBackupId}
-                  onChange={(e) => setRestoreBackupId(e.target.value)}
+                  onChange={(e) => { setRestoreBackupId(e.target.value); clearRestoreListing() }}
                   onKeyDown={(e) => { if (e.key === 'Escape') setShowRestoreIdList(false) }}
                   placeholder={t('phBackupId')}
                   style={{flex: '1 1 auto', minWidth: 0}}
@@ -5977,7 +6080,7 @@ function App() {
                   className="btn btn-secondary"
                   aria-label={tl('backupIdClear', 'Clear (list every backup in the datastore)')}
                   title={tl('backupIdClear', 'Clear (list every backup in the datastore)')}
-                  onClick={() => { setRestoreBackupId(''); setShowRestoreIdList(false) }}
+                  onClick={() => { setRestoreBackupId(''); setShowRestoreIdList(false); clearRestoreListing() }}
                   disabled={!restoreBackupId}
                   style={{padding: '0 14px', minWidth: '44px'}}
                 >
@@ -5996,7 +6099,7 @@ function App() {
                       type="button"
                       role="option"
                       aria-selected={c.id === restoreBackupId}
-                      onClick={() => { setRestoreBackupId(c.id); setShowRestoreIdList(false) }}
+                      onClick={() => { setRestoreBackupId(c.id); setShowRestoreIdList(false); if (c.id !== restoreBackupId) clearRestoreListing() }}
                       style={{display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', minHeight: '44px', border: 'none', borderBottom: '1px solid #f1f5f9', background: c.id === restoreBackupId ? '#eef6ee' : '#fff', cursor: 'pointer'}}
                     >
                       <div style={{fontSize: '14px', fontWeight: 600, color: '#1f2937'}}>{c.id}</div>
@@ -6008,16 +6111,26 @@ function App() {
             </div>
           </div>
 
-          <button className="btn" onClick={handleListSnapshots} disabled={serverWait?.kind === 'list'}>{t('listSnapshots')}</button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => setShowSearch(v => !v)}
-            disabled={searchRunning}
-            style={{marginLeft: '8px'}}
-          >
-            {t('searchTitle')}
-          </button>
+          </div>
+
+          <WizardNav
+            extra={(
+              <button
+                className="btn btn-secondary"
+                type="button"
+                aria-expanded={showSearch}
+                onClick={() => setShowSearch(v => !v)}
+                disabled={searchRunning}
+              >
+                🔍 {tl('wizFindFile', 'Find a file instead')}
+              </button>
+            )}
+            next={{
+              label: tl('wizNextListSnapshots', 'Next: list snapshots'),
+              onClick: handleListSnapshots,
+              disabled: serverWait?.kind === 'list',
+            }}
+          />
           {serverWait && serverWait.kind === 'list' && (
             <WaitBar label={serverWait.label} startedAt={serverWait.startedAt} slowHint={slowServerHint} />
           )}
@@ -6167,10 +6280,25 @@ function App() {
             </div>
           )}
 
+          <div className="info-box" style={{marginTop: '20px'}}>
+            <strong>{t('restoreInfo')}</strong> {t('restoreInfoText')}<br/>
+            {t('restoreInfoText2')}
+          </div>
+          </>)}
+
+          {restoreStep === 2 && (<>
+          <WizardSummary
+            items={[
+              [tl('wizServer', 'Server'), restoreServerName],
+              [tl('wizBackupId', 'Backup ID'), restoreBackupId || tl('wizEveryBackup', 'every backup in the datastore')],
+              [tl('wizSnapshots', 'Snapshots'), String(snapshots.length)],
+            ]}
+            action={{ label: tl('wizChange', 'Change'), onClick: () => setRestoreStep(1) }}
+          />
           {showSnapshots && (
-            <div style={{marginTop: '20px'}}>
+            <div className="wiz-panel">
               <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'}}>
-                <h3 style={{margin: 0}}>{t('availableSnapshots')}</h3>
+                <h3 style={{margin: 0}}>{tl('wizChooseSnapshot', 'Choose a snapshot')}</h3>
                 {snapshots.length > 0 && (
                   <div style={{display: 'flex', border: '1px solid #d0d0d0', borderRadius: '6px', overflow: 'hidden'}}>
                     <button
@@ -6200,9 +6328,16 @@ function App() {
                   </div>
                 )}
               </div>
+              {snapshots.length > 0 && (
+                <ListPagerBar tl={tl} page={snapPage} idPrefix="restore-snaps"
+                  show={snapShow} onShow={(v) => { setSnapShow(v); setSnapMore(0) }}
+                  before={snapBefore} onBefore={setSnapBeforeAndDrop} />
+              )}
 
               {snapshots.length === 0 ? (
                 <p style={{color: '#718096'}}>{t('noSnapshotFound')}</p>
+              ) : snapPage.matching === 0 ? (
+                <p style={{color: '#718096'}}>{tl('listNoneBefore', 'No snapshot at or before that time.')}</p>
               ) : snapshotViewMode === 'list' ? (
                 <div style={{marginTop: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden'}}>
                   <div style={{
@@ -6217,12 +6352,14 @@ function App() {
                     <span style={{flex: '0 0 90px', textAlign: 'center'}}>{t('sizeLabel')}</span>
                     <span style={{flex: '0 0 160px'}}></span>
                   </div>
-                  <div style={{maxHeight: '480px', overflowY: 'auto'}}>
-                  {snapshots.map((snap, idx) => {
+                  {/* No scroll box of its own: the snapshots are their own step,
+                      so the page scrolls (a box inside it was a second scrollbar). */}
+                  <div ref={snapListRef}>
+                  {snapPage.shown.map((snap, idx) => {
                     const isActive = selectedSnapshot && selectedSnapshot.id === snap.id && selectedSnapshot.backup_id === snap.backup_id
                     return (
                       <div
-                        key={idx}
+                        key={`${snap.backup_type}/${snap.backup_id}/${snap.id}`}
                         onClick={() => handleSelectSnapshot(snap)}
                         style={{
                           display: 'flex', alignItems: 'center', gap: '16px',
@@ -6248,12 +6385,12 @@ function App() {
                   </div>
                 </div>
               ) : (
-                <div className="grid" style={{marginTop: '12px', maxHeight: '600px', overflowY: 'auto'}}>
-                  {snapshots.map((snap, idx) => {
+                <div className="grid" style={{marginTop: '12px'}} ref={snapListRef}>
+                  {snapPage.shown.map((snap) => {
                     const isActive = selectedSnapshot && selectedSnapshot.id === snap.id && selectedSnapshot.backup_id === snap.backup_id
                     return (
                       <div
-                        key={idx}
+                        key={`${snap.backup_type}/${snap.backup_id}/${snap.id}`}
                         className="card"
                         style={{
                           cursor: 'pointer',
@@ -6275,13 +6412,34 @@ function App() {
                   })}
                 </div>
               )}
+              <ListMore tl={tl} page={snapPage} onMore={() => setSnapMore(m => m + MORE_STEP)} />
             </div>
           )}
+          <WizardNav
+            back={{ label: tl('wizBack', 'Back'), onClick: () => setRestoreStep(1) }}
+            next={{
+              label: tl('wizNextFiles', 'Next: choose files'),
+              onClick: () => setRestoreStep(3),
+              disabled: !restoreOpen[2],
+              title: restoreOpen[2] ? undefined : tl('wizNeedSnapshot', 'Choose a snapshot first'),
+            }}
+          />
+          </>)}
+
+          {restoreStep === 3 && selectedSnapshot && (<>
+          <WizardSummary
+            items={[
+              [tl('wizServer', 'Server'), restoreServerName],
+              [tl('wizBackupId', 'Backup ID'), selectedSnapshot.backup_id || restoreBackupId],
+              [tl('wizSnapshot', 'Snapshot'), selectedSnapshot.time],
+            ]}
+            action={{ label: tl('wizChangeSnapshot', 'Change snapshot'), onClick: () => setRestoreStep(2) }}
+          />
 
           {/* Backup origin banner — driven by the .nimbus_backup_meta.json sidecar */}
           {selectedSnapshot && snapshotMeta && (
             <div style={{
-              marginTop: '20px',
+              marginBottom: '14px',
               padding: '10px 14px',
               border: '1px solid #c7d2fe',
               backgroundColor: '#eef2ff',
@@ -6304,16 +6462,16 @@ function App() {
 
           {/* A disk image: what the tree shows and what a restore brings back */}
           {selectedSnapshot && isDiskImageSnapshot(selectedSnapshot) && (
-            <div style={{marginTop: '20px', padding: '10px 14px', border: '1px solid #c7d2fe', backgroundColor: '#eef2ff', borderRadius: '8px', fontSize: '13px', color: '#1e293b'}}>
+            <div style={{marginBottom: '14px', padding: '10px 14px', border: '1px solid #c7d2fe', backgroundColor: '#eef2ff', borderRadius: '8px', fontSize: '13px', color: '#1e293b'}}>
               💽 {tl('diskImageBanner', 'Machine backup (disk image). Each NTFS volume in the image is a folder below; only the parts of the image you open or restore are downloaded. Files are restored to another folder, with their dates and (with the permissions option) attributes; permissions themselves are not restored from a disk image yet.')}
             </div>
           )}
 
           {/* Snapshot navigation tree */}
           {selectedSnapshot && (
-            <div style={{marginTop: '24px'}}>
+            <div className="wiz-panel">
               <div style={{display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'}}>
-                <h3 style={{margin: 0}}>{t('snapshotContents')}: {selectedSnapshot.time}</h3>
+                <h3 style={{margin: 0}}>{tl('wizChooseFiles', 'Choose what to restore')}</h3>
                 <button
                   className="btn"
                   type="button"
@@ -6374,15 +6532,35 @@ function App() {
               </p>
             </div>
           )}
+          <WizardNav
+            back={{ label: tl('wizBack', 'Back'), onClick: () => setRestoreStep(2) }}
+            next={{
+              label: tl('wizNextDestination', 'Next: destination'),
+              onClick: () => setRestoreStep(4),
+              disabled: !restoreOpen[3],
+              title: restoreOpen[3] ? undefined : tl('wizNeedFiles', 'Choose the files first'),
+            }}
+          />
+          </>)}
 
-          {/* Restore mode picker + destination + options + restore button */}
-          {selectedSnapshot && (() => {
+          {/* Steps 4 and 5: restore mode, destination, options, restore button */}
+          {selectedSnapshot && restoreStep >= 4 && (() => {
             const blocker = inPlaceBlocker()
             const isInPlace = restoreMode === 'original'
             const crossHost = isInPlace && crossHostMismatch()
             const blockerTooltip = blocker ? (t(blocker) || '') : ''
+            const summary = [
+              [tl('wizServer', 'Server'), restoreServerName],
+              [tl('wizBackupId', 'Backup ID'), selectedSnapshot.backup_id || restoreBackupId],
+              [tl('wizSnapshot', 'Snapshot'), selectedSnapshot.time],
+              [tl('wizFiles', 'Files'), restoreSelectionText],
+            ]
             return (
-              <div style={{marginTop: '20px'}}>
+              <>
+              {restoreStep === 4 && (<>
+              <WizardSummary items={summary} action={{ label: tl('wizChangeFiles', 'Change files'), onClick: () => setRestoreStep(3) }} />
+              <div className="wiz-panel">
+                <h3>{tl('wizWhereTo', 'Where should the files go?')}</h3>
                 {/* Mode picker */}
                 <div style={{
                   display: 'flex',
@@ -6484,7 +6662,21 @@ function App() {
                     </label>
                   </>
                 )}
+              </div>
+              <WizardNav
+                back={{ label: tl('wizBack', 'Back'), onClick: () => setRestoreStep(3) }}
+                next={{
+                  label: tl('wizNextOptions', 'Next: options'),
+                  onClick: () => setRestoreStep(5),
+                  disabled: !restoreOpen[4],
+                  title: restoreOpen[4] ? undefined : (blockerTooltip || tl('wizNeedDestination', 'Choose where they go first')),
+                }}
+              />
+              </>)}
 
+              {restoreStep === 5 && (<>
+              <div className="wiz-panel">
+                <h3>{tl('wizOptions', 'Options')}</h3>
                 <div style={{display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '12px'}}>
                   <label style={{display: 'flex', alignItems: 'center', gap: '6px', opacity: isInPlace ? 0.5 : 1}}
                          title={isInPlace ? (t('overwriteForcedInPlace')) : ''}>
@@ -6531,49 +6723,66 @@ function App() {
                     </label>
                   )}
                 </div>
-
-                <button
-                  className="btn btn-primary"
-                  onClick={handleRestoreSnapshot}
-                  disabled={restoreLoading || (isInPlace && crossHost && !restoreAllowCrossHost)}
-                >
-                  {restoreLoading ? `⏳ ${t('restoring')}` : `▶️ ${t('restore')}`}
-                </button>
-                <button className="btn btn-secondary" onClick={handleStopRestore} disabled={!restoreLoading}>{t('stopRestore')}</button>
-                {/* Progress display itself moved to the always-visible card at
-                    the top of this tab (2026-09-27) — it used to live here,
-                    which made it (and the only Stop button that could reach
-                    it) disappear the moment you browsed to a different
-                    snapshot while a restore was running. */}
+                <h3 style={{marginBottom: 0}}>{tl('wizReadyRestore', 'Ready to restore')}</h3>
+                <dl className="wiz-sum-list">
+                  {summary.filter(([, v]) => v).map(([k, v]) => (
+                    <Fragment key={k}><dt>{k}</dt><dd>{v}</dd></Fragment>
+                  ))}
+                  <dt>{tl('wizDestination', 'Destination')}</dt>
+                  <dd>{isInPlace
+                    ? `${t('restoreModeInPlace')}: ${snapshotMeta?.original_path || '?'}`
+                    : `${restoreDestPath}${restoreKeepTree ? tl('wizKeepingTree', ', keeping the folder tree') : ''}`}</dd>
+                </dl>
               </div>
+              {/* Progress is shown in the always-visible card at the top of
+                  this tab (2026-09-27), with its Stop button, whichever step
+                  is open while a restore runs. */}
+              {lastRestoreResult && lastRestoreResult.kind === 'restore' && !restoreLoading && (
+                <div className={`status ${lastRestoreResult.type} visible wiz-result`}>{lastRestoreResult.message}</div>
+              )}
+              <WizardNav
+                back={{ label: tl('wizBack', 'Back'), onClick: () => setRestoreStep(4) }}
+                next={(
+                  <>
+                    <button className="btn btn-secondary" onClick={handleStopRestore} disabled={!restoreLoading}>{t('stopRestore')}</button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleRestoreSnapshot}
+                      disabled={restoreLoading || (isInPlace && crossHost && !restoreAllowCrossHost)}
+                    >
+                      {restoreLoading ? `⏳ ${t('restoring')}` : `▶️ ${t('restore')}`}
+                    </button>
+                  </>
+                )}
+              />
+              </>)}
+              </>
             )
           })()}
-
-          <div className="info-box" style={{marginTop: '20px'}}>
-            <strong>{t('restoreInfo')}</strong> {t('restoreInfoText')}<br/>
-            {t('restoreInfoText2')}
-          </div>
 
           {/* Suppressed while the card above is already showing this same
               status.message — same reasoning as the backup tab's own version
               of this condition. */}
-          {status.visible && activeTab === 'restore' && !restoreLoading && (
+          {status.visible && activeTab === 'restore' && !restoreLoading && !(restoreStep === 5 && lastRestoreResult && status.message === lastRestoreResult.message) && (
             <div className={`status ${status.type} visible`}>{status.message}</div>
           )}
         </div>
 
         <div className={`tab-content ${activeTab === 'undelete' ? 'active' : ''}`}>
           <UndeletePage ui={setToolsUi} jobs={scheduledJobs} jobId={setToolJobId} setJobId={setSetToolJobId}
-            restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'undelete' ? restoreCard : null} />
-          {status.visible && activeTab === 'undelete' && !restoreLoading && (
+            restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'undelete' ? restoreCard : null}
+            lastResult={lastRestoreResult && lastRestoreResult.kind === 'undelete' ? lastRestoreResult : null} />
+          {status.visible && activeTab === 'undelete' && !restoreLoading && !(lastRestoreResult && status.message === lastRestoreResult.message) && (
             <div className={`status ${status.type} visible`}>{status.message}</div>
           )}
         </div>
 
         <div className={`tab-content ${activeTab === 'rollback' ? 'active' : ''}`}>
           <RollbackPage ui={setToolsUi} jobs={scheduledJobs} jobId={setToolJobId} setJobId={setSetToolJobId}
-            restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'rollback' ? restoreCard : null} />
-          {status.visible && activeTab === 'rollback' && !restoreLoading && (
+            restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'rollback' ? restoreCard : null}
+            active={activeTab === 'rollback'}
+            lastResult={lastRestoreResult && lastRestoreResult.kind === 'rollback' ? lastRestoreResult : null} />
+          {status.visible && activeTab === 'rollback' && !restoreLoading && !(lastRestoreResult && status.message === lastRestoreResult.message) && (
             <div className={`status ${status.type} visible`}>{status.message}</div>
           )}
         </div>

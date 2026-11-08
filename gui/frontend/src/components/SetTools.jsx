@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import RadioGroup from './RadioGroup'
 import { askConfirm } from './ConfirmDialog'
+import { WizardSteps, WizardSummary, WizardNav } from './WizardSteps.jsx'
+import { openSteps, clampStep, undeleteReached, rollbackReached } from './stepRules.mjs'
+import { ListPagerBar, ListMore, useListShow, useFitCount } from './ListPager.jsx'
+import { newestFirst, pageLimit, pageItems, unixFromLocal, MORE_STEP } from './listPaging.mjs'
 
 // Undelete and Roll back pages (side menu) and the Run as Service section of
 // Preferences > Advanced. Backend: gui/undelete_rollback.go,
@@ -184,7 +188,7 @@ function TreeNode({ ui, node, depth, expanded, toggleExpand, selected, setSelect
   )
 }
 
-export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStarted, restoreCard }) {
+export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStarted, restoreCard, lastResult }) {
   const { t, tl, formatBytesDual, WaitBar } = ui
   const [days, setDays] = useState('0')
   const [scan, setScan] = useState(null)
@@ -197,6 +201,7 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   const [dest, setDest] = useState('original')
   const [destPath, setDestPath] = useState('')
   const [verify, setVerify] = useState(true)
+  const [step, setStep] = useState(1) // 1 Set, 2 Deleted files, 3 Destination and undelete
   const [progressLine, setProgressLine, progressFraction] = useScanProgress(ui, !!scanning)
   const [, tick] = useState(0)
 
@@ -224,6 +229,7 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
       const exp = new Set([...new Set(files.map(f => f.folder))])
       if (files.length <= 200) buildTree(files).forEach(function walk(n) { exp.add(n.key); n.dirs.forEach(walk) })
       setExpanded(exp)
+      setStep(2)
     } catch (err) {
       setError(String(err))
     } finally {
@@ -239,7 +245,18 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   const tree = useMemo(() => buildTree(visible), [visible])
   const chosen = useMemo(() => ((scan && scan.files) || []).filter(f => selected.has(fileKey(f))), [scan, selected])
   const chosenSize = chosen.reduce((s, f) => s + f.size, 0)
+  const chosenText = tl('undeleteChosen', '{n} files selected, {size}').replace('{n}', chosen.length.toLocaleString()).replace('{size}', formatBytesDual(chosenSize))
   const toggleExpand = (k) => { const next = new Set(expanded); if (next.has(k)) next.delete(k); else next.add(k); setExpanded(next) }
+
+  // The steps open in turn (stepRules.mjs); a new set or look-back clears
+  // the scan, so the page goes back to step 1.
+  const open = openSteps(undeleteReached({ scanned: !!scan && !scanning, files: chosen.length }))
+  const openKey = open.join()
+  useEffect(() => {
+    const s = clampStep(step, open)
+    if (s !== step) setStep(s)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, openKey])
 
   const start = async () => {
     if (chosen.length === 0) return
@@ -261,6 +278,10 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
     }
   }
 
+  const lookBackLabel = { '0': tl('undeleteLatest', 'Latest backup'), '7': tl('undeleteDays7', 'Last 7 days'), '30': tl('undeleteDays30', 'Last 30 days') }[days]
+  const setName = ((jobs || []).find(j => j.id === jobId) || {}).name || ''
+  const errorBox = error && <div className="info-box" style={{borderColor: '#e53e3e', color: '#c53030', margin: '0 0 12px'}}>❌ {error}</div>
+
   return (
     <div className="card">
       <h2 style={{marginTop: 0}}>{tl('undeleteTitle', 'Undelete')}</h2>
@@ -268,26 +289,57 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
         {tl('undeleteIntro', 'Finds files that are in a Backup Set\'s backups but no longer on disk, and puts them back. Only folder listings are read; no file is opened.')}
       </p>
       {restoreCard}
-      <SetPicker ui={{...ui, idSuffix: 'undelete'}} jobs={jobs} value={jobId} onChange={setJobId} />
-      <div className="form-group">
-        <label id="undelete-days-label">{tl('undeleteLookBack', 'Look back')}</label>
-        <RadioGroup name="undelete-days" labelId="undelete-days-label" value={days} onChange={setDays} disabled={!!scanning}
-          options={[
-            { value: '0', label: tl('undeleteLatest', 'Latest backup') },
-            { value: '7', label: tl('undeleteDays7', 'Last 7 days') },
-            { value: '30', label: tl('undeleteDays30', 'Last 30 days') },
-          ]} />
+      <WizardSteps
+        label={tl('wizUndeleteSteps', 'Undelete steps')}
+        current={step}
+        onSelect={setStep}
+        steps={[
+          { label: tl('wizStepSet', 'Set'), open: open[0] },
+          { label: tl('wizStepDeleted', 'Deleted files'), open: open[1], need: tl('wizNeedScan', 'Find the deleted files first') },
+          { label: tl('wizStepDestUndelete', 'Destination and undelete'), open: open[2], need: tl('wizNeedFiles', 'Choose the files first') },
+        ]}
+      />
+
+      {step === 1 && (<>
+      <div className="wiz-panel">
+        <h3>{tl('wizWhichMissing', 'Which files went missing?')}</h3>
+        <SetPicker ui={{...ui, idSuffix: 'undelete'}} jobs={jobs} value={jobId} onChange={setJobId} />
+        <div className="form-group" style={{marginBottom: 0}}>
+          <label id="undelete-days-label">{tl('undeleteLookBack', 'Look back')}</label>
+          <RadioGroup name="undelete-days" labelId="undelete-days-label" value={days} onChange={(v) => { setDays(v); setScan(null); setSelected(new Set()) }} disabled={!!scanning}
+            options={[
+              { value: '0', label: tl('undeleteLatest', 'Latest backup') },
+              { value: '7', label: tl('undeleteDays7', 'Last 7 days') },
+              { value: '30', label: tl('undeleteDays30', 'Last 30 days') },
+            ]} />
+        </div>
       </div>
-      <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap'}}>
-        <button className="btn" onClick={runScan} disabled={!jobId || !!scanning || restoreLoading}>{tl('undeleteFind', 'Find deleted files')}</button>
-        {scanning && <button className="btn btn-secondary" onClick={() => ui.CancelSetScan()}>{t('cancel') !== 'cancel' ? t('cancel') : 'Cancel'}</button>}
-      </div>
+      {errorBox}
+      <WizardNav
+        extra={scanning && <button className="btn btn-secondary" onClick={() => ui.CancelSetScan()}>{t('cancel') !== 'cancel' ? t('cancel') : 'Cancel'}</button>}
+        next={{
+          label: tl('undeleteFind', 'Find deleted files'),
+          onClick: runScan,
+          disabled: !jobId || !!scanning || restoreLoading,
+          title: jobId ? undefined : tl('wizNeedSet', 'Choose a set first'),
+        }}
+      />
       {scanning && <WaitBar label={progressLine || tl('undeleteScanning', 'Looking for deleted files...')} startedAt={scanning} fraction={progressFraction}
         slowHint={tl('undeleteSlowHint', 'A large set takes a few minutes: every folder is listed, and each snapshot\'s file list is read once and kept on this computer.')} />}
-      {error && <div className="info-box" style={{borderColor: '#e53e3e', color: '#c53030', marginTop: '12px'}}>❌ {error}</div>}
+      </>)}
 
-      {scan && (
-        <div style={{marginTop: '16px'}}>
+      {step >= 2 && scan && (
+        <div>
+          <WizardSummary
+            items={[
+              [tl('wizStepSet', 'Set'), setName],
+              [tl('undeleteLookBack', 'Look back'), lookBackLabel],
+            ]}
+            action={{ label: tl('wizChange', 'Change'), onClick: () => setStep(1) }}
+          />
+          {errorBox}
+          {step === 2 && (<>
+          <div className="wiz-panel">
           <div style={{fontSize: '14px', marginBottom: '8px'}}>
             <strong>
               {(scan.files || []).length === 0
@@ -316,31 +368,63 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
                   <TreeNode key={n.key} ui={ui} node={n} depth={0} expanded={expanded} toggleExpand={toggleExpand} selected={selected} setSelected={setSelected} />
                 ))}
               </div>
-              <div className="form-group" style={{marginTop: '14px'}}>
-                <label id="undelete-dest-label">{tl('undeleteRestoreTo', 'Restore to')}</label>
-                <RadioGroup name="undelete-dest" labelId="undelete-dest-label" value={dest} onChange={setDest}
-                  options={[
-                    { value: 'original', label: tl('undeleteToOriginal', 'Where they were') },
-                    { value: 'other', label: tl('undeleteToOther', 'Another folder') },
-                  ]} />
-                {dest === 'other' && (
-                  <div style={{display: 'flex', gap: '8px', marginTop: '8px'}}>
-                    <input type="text" value={destPath} onChange={(e) => setDestPath(e.target.value)} placeholder="D:\\Recovered" aria-label={tl('undeleteDestFolder', 'Destination folder')} />
-                    <button className="btn btn-secondary" onClick={async () => { try { const d = await ui.OpenRestoreDestDialog(); if (d) setDestPath(d) } catch (e) { setError(String(e)) } }}>{t('browse') !== 'browse' ? t('browse') : 'Browse...'}</button>
-                  </div>
-                )}
-              </div>
-              <label style={{display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal'}}>
-                <input type="checkbox" checked={verify} onChange={(e) => setVerify(e.target.checked)} style={{width: 'auto', margin: 0}} />
-                {tl('verifyAfterRestore', 'Verify after restore')}
-              </label>
-              <div style={{marginTop: '12px'}}>
-                <button className="btn" onClick={start} disabled={chosen.length === 0 || restoreLoading}>
-                  {tl('undeleteStart', 'Undelete {n} files ({size})').replace('{n}', chosen.length.toLocaleString()).replace('{size}', formatBytesDual(chosenSize))}
-                </button>
-              </div>
+              <p style={{fontSize: '13px', fontWeight: 600, margin: '8px 0 0'}}>{chosenText}</p>
             </>
           )}
+          </div>
+          <WizardNav
+            back={{ label: tl('wizBack', 'Back'), onClick: () => setStep(1) }}
+            next={{
+              label: tl('wizNextDestination', 'Next: destination'),
+              onClick: () => setStep(3),
+              disabled: !open[2],
+              title: open[2] ? undefined : tl('wizNeedFiles', 'Choose the files first'),
+            }}
+          />
+          </>)}
+
+          {step === 3 && (<>
+          <div className="wiz-panel">
+            <h3>{tl('wizWhereThey', 'Where should they go?')}</h3>
+            <div className="form-group">
+              <label id="undelete-dest-label">{tl('undeleteRestoreTo', 'Restore to')}</label>
+              <RadioGroup name="undelete-dest" labelId="undelete-dest-label" value={dest} onChange={setDest}
+                options={[
+                  { value: 'original', label: tl('undeleteToOriginal', 'Where they were') },
+                  { value: 'other', label: tl('undeleteToOther', 'Another folder') },
+                ]} />
+              {dest === 'other' && (
+                <div style={{display: 'flex', gap: '8px', marginTop: '8px'}}>
+                  <input type="text" value={destPath} onChange={(e) => setDestPath(e.target.value)} placeholder="D:\\Recovered" aria-label={tl('undeleteDestFolder', 'Destination folder')} />
+                  <button className="btn btn-secondary" onClick={async () => { try { const d = await ui.OpenRestoreDestDialog(); if (d) setDestPath(d) } catch (e) { setError(String(e)) } }}>{t('browse') !== 'browse' ? t('browse') : 'Browse...'}</button>
+                </div>
+              )}
+            </div>
+            <label style={{display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal'}}>
+              <input type="checkbox" checked={verify} onChange={(e) => setVerify(e.target.checked)} style={{width: 'auto', margin: 0}} />
+              {tl('verifyAfterRestore', 'Verify after restore')}
+            </label>
+            <h3 style={{margin: '16px 0 0'}}>{tl('wizReadyUndelete', 'Ready to undelete')}</h3>
+            <dl className="wiz-sum-list">
+              <dt>{tl('wizStepSet', 'Set')}</dt><dd>{setName}</dd>
+              <dt>{tl('wizFiles', 'Files')}</dt><dd>{chosenText}</dd>
+              <dt>{tl('wizDestination', 'Destination')}</dt>
+              <dd>{dest === 'original' ? tl('undeleteToOriginal', 'Where they were') : (destPath || '?')}</dd>
+            </dl>
+          </div>
+          {lastResult && !restoreLoading && <div className={`status ${lastResult.type} visible wiz-result`}>{lastResult.message}</div>}
+          <WizardNav
+            back={{ label: tl('wizBack', 'Back'), onClick: () => setStep(2) }}
+            extra={lastResult && !restoreLoading && (
+              <button className="btn btn-secondary" onClick={runScan} disabled={!!scanning}>{tl('undeleteFind', 'Find deleted files')}</button>
+            )}
+            next={(
+              <button className="btn btn-primary" onClick={start} disabled={chosen.length === 0 || restoreLoading || (dest === 'other' && !destPath)}>
+                {tl('undeleteStart', 'Undelete {n} files ({size})').replace('{n}', chosen.length.toLocaleString()).replace('{size}', formatBytesDual(chosenSize))}
+              </button>
+            )}
+          />
+          </>)}
         </div>
       )}
     </div>
@@ -365,7 +449,7 @@ function ItemList({ ui, items, total, live }) {
   )
 }
 
-export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStarted, restoreCard }) {
+export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStarted, restoreCard, lastResult, active }) {
   const { t, tl, formatBytesDual, WaitBar } = ui
   const [snaps, setSnaps] = useState(null)
   const [loadingSnaps, setLoadingSnaps] = useState(null)
@@ -380,6 +464,7 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   const [error, setError] = useState('')
   const [records, setRecords] = useState([])
   const [busyRecord, setBusyRecord] = useState('')
+  const [step, setStep] = useState(1) // 1 Set, 2 Backup, 3 Changes, 4 Roll back
   const [progressLine, setProgressLine, progressFraction] = useScanProgress(ui, !!previewing)
   const [, tick] = useState(0)
   const isMachineSet = (jobs || []).some(j => j.id === jobId && j.backupType === 'machine')
@@ -412,7 +497,9 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   useEffect(() => {
     if (!ui.EventsOn) return undefined
     const off = ui.EventsOn('restore:complete', (d) => {
-      if (d && d.kind === 'rollback') { setPreview(null); setConfirmText(''); loadRecords(jobIdRef.current) }
+      // Back to the first step, where the result shows above the new roll
+      // back's Undo (the comparison is out of date now).
+      if (d && d.kind === 'rollback') { setPreview(null); setConfirmText(''); loadRecords(jobIdRef.current); setStep(1) }
     })
     return () => { if (typeof off === 'function') off() }
   }, [])
@@ -420,19 +507,33 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   useEffect(() => { jobIdRef.current = jobId }, [jobId])
   useEffect(() => { setPreview(null); setConfirmText('') }, [snapUnix])
 
+  // The backups, newest first; the date box keeps only those at or before it
+  // and picks the newest of them; the list shows as many as fit, or the
+  // chosen number, plus "Show more" (listPaging.mjs). The list itself says
+  // when none is at or before the date.
+  const sorted = useMemo(() => newestFirst(snaps), [snaps])
+  const newestUnix = sorted.length ? sorted[0].unix : 0
+  const [show, setShow] = useListShow()
+  const [more, setMore] = useState(0)
+  const listRef = useRef(null)
+  // active: the page stays mounted while another tab shows; measured again
+  // when it comes back.
+  const fit = useFitCount(listRef, [active, step, snaps, atTime])
+  const page = pageItems(sorted, { limit: pageLimit(show, fit, more), before: unixFromLocal(atTime), isSelected: s => s.unix === snapUnix })
+  useEffect(() => { setMore(0) }, [jobId])
+
   const pickAt = (value) => {
     setAtTime(value)
-    if (!value || !snaps) return
-    const want = Math.floor(new Date(value).getTime() / 1000)
-    const s = snaps.find(x => x.unix <= want)
+    if (!value) return
+    const want = unixFromLocal(value)
+    const s = sorted.find(x => x.unix <= want)
     setSnapUnix(s ? s.unix : 0)
-    if (!s) setError(tl('rollbackNoneBefore', 'There is no backup at or before that time.'))
-    else setError('')
   }
 
   const runPreview = async () => {
     setError(''); setPreview(null); setProgressLine(''); setConfirmText('')
     setPreviewing(Date.now())
+    setStep(3)
     try {
       setPreview(await ui.PreviewRollback(jobId, snapUnix))
     } catch (e) {
@@ -446,6 +547,16 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
   const willRemove = preview && policy === 'exact' ? preview.newCount : 0
   const exactOk = policy !== 'exact' || String(preview?.newCount ?? '') === confirmText.trim()
   const nothingToDo = preview && willRestore === 0 && willRemove === 0
+
+  // The steps open in turn (stepRules.mjs): a new set clears its backups,
+  // a new backup clears the preview, and the page falls back to match.
+  const open = openSteps(rollbackReached({ set: !!jobId && !!snaps && !loadingSnaps, backup: snapUnix > 0, preview: !!preview }))
+  const openKey = open.join()
+  useEffect(() => {
+    const s = clampStep(step, open)
+    if (s !== step) setStep(s)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, openKey])
 
   const start = async () => {
     const msg = tl('rollbackConfirm', 'Roll back {set} to {when}? {restore} files will be restored or replaced and {remove} removed. Everything replaced or removed is kept first, so Undo can put it back.')
@@ -492,6 +603,11 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
     exact: tl('rollbackPolicyExactShort', 'exact'),
   }[p] || p)
 
+  const setName = ((jobs || []).find(j => j.id === jobId) || {}).name || ''
+  const errorBox = error && <div className="info-box" style={{borderColor: '#e53e3e', color: '#c53030', margin: '0 0 12px'}}>❌ {error}</div>
+  const summarySet = [tl('wizStepSet', 'Set'), setName]
+  const summaryBackup = [tl('wizStepBackup', 'Backup'), snapUnix ? fmtDate(snapUnix) : '']
+
   return (
     <div className="card">
       <h2 style={{marginTop: 0}}>{tl('rollbackTitle', 'Roll back')}</h2>
@@ -499,46 +615,122 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
         {tl('rollbackIntro', 'Puts a Backup Set\'s folders back as they were at a chosen backup. You see what would change first, and everything it replaces or removes is kept so the roll back can be undone.')}
       </p>
       {restoreCard}
-      <SetPicker ui={{...ui, idSuffix: 'rollback'}} jobs={jobs} value={jobId} onChange={setJobId} />
-      {loadingSnaps && <WaitBar label={tl('rollbackListing', 'Listing the set\'s backups...')} startedAt={loadingSnaps} slowHint={t('listSlowHint') !== 'listSlowHint' ? t('listSlowHint') : ''} />}
-      {error && <div className="info-box" style={{borderColor: '#e53e3e', color: '#c53030', marginTop: '12px'}}>❌ {error}</div>}
+      <WizardSteps
+        label={tl('wizRollbackSteps', 'Roll back steps')}
+        current={step}
+        onSelect={setStep}
+        steps={[
+          { label: tl('wizStepSet', 'Set'), open: open[0] },
+          { label: tl('wizStepBackup', 'Backup'), open: open[1], need: tl('wizNeedSet', 'Choose a set first') },
+          { label: tl('wizStepChanges', 'Changes'), open: open[2], need: tl('wizNeedBackup', 'Choose a backup first') },
+          { label: tl('wizStepRollBack', 'Roll back'), open: open[3], need: tl('wizNeedPreview', 'See what would change first') },
+        ]}
+      />
 
-      {snaps && (
-        <div className="form-group">
-          <label id="rollback-snap-label">{tl('rollbackPickBackup', 'Roll back to')}</label>
-          {snaps.length === 0 ? (
-            <p style={{fontSize: '13px', color: '#718096'}}>{tl('rollbackNoBackups', 'This set has no backups on its server yet.')}</p>
-          ) : (
-            <>
-              <div style={{display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px'}}>
-                <label htmlFor="rollback-at" style={{margin: 0, fontWeight: 'normal'}}>{tl('rollbackAtTime', 'The backup at or before:')}</label>
-                <input id="rollback-at" type="datetime-local" value={atTime} onChange={(e) => pickAt(e.target.value)} style={{maxWidth: '230px'}} />
-              </div>
-              <div role="radiogroup" aria-labelledby="rollback-snap-label" style={{maxHeight: '260px', overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px', background: '#fff'}}>
-                {snaps.map((s, i) => (
+      {step === 1 && (<>
+      {lastResult && !restoreLoading && <div className={`status ${lastResult.type} visible wiz-result`}>{lastResult.message}</div>}
+      <div className="wiz-panel">
+        <h3>{tl('wizWhichFolders', 'Which folders?')}</h3>
+        <SetPicker ui={{...ui, idSuffix: 'rollback'}} jobs={jobs} value={jobId} onChange={setJobId} />
+        {loadingSnaps && <WaitBar label={tl('rollbackListing', 'Listing the set\'s backups...')} startedAt={loadingSnaps} slowHint={t('listSlowHint') !== 'listSlowHint' ? t('listSlowHint') : ''} />}
+        {records.length > 0 && (
+          <div style={{marginTop: '8px', paddingTop: '12px', borderTop: '1px dashed #d5dde8'}}>
+            <h3 style={{margin: '0 0 8px', fontSize: '15px'}}>{tl('rollbackEarlier', 'Earlier roll backs of this set')}</h3>
+            <div style={{border: '1px solid #e2e8f0', borderRadius: '6px', background: '#fff'}}>
+              {records.map((r, i) => (
+                <div key={r.path} style={{display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '8px 10px', borderTop: i === 0 ? 'none' : '1px solid #edf2f7'}}>
+                  <div style={{flex: '1 1 300px', fontSize: '13px'}}>
+                    <strong>{new Date(r.created).toLocaleString()}</strong>{' '}
+                    {tl('rollbackRecordTo', 'to the backup of {when}').replace('{when}', r.snapshotId ? new Date(r.snapshotId).toLocaleString() : '?')}
+                    {' · '}{policyName(r.policy)}{' · '}{r.status}
+                    <div style={{color: '#718096'}}>
+                      {tl('rollbackRecordCounts', 'restored {a}, replaced {b}, removed {c}; kept {size}')
+                        .replace('{a}', Math.max(0, r.restored - r.moved)).replace('{b}', r.moved).replace('{c}', r.removed).replace('{size}', formatBytesDual(r.bytes))}
+                    </div>
+                  </div>
+                  {r.status !== 'undone' && (
+                    <button className="btn btn-secondary" onClick={() => undo(r)} disabled={!!busyRecord || restoreLoading}>{tl('rollbackUndo', 'Undo')}</button>
+                  )}
+                  <button className="btn btn-secondary" onClick={() => del(r)} disabled={!!busyRecord || restoreLoading}>{tl('rollbackDeleteKept', 'Delete kept versions')}</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      {errorBox}
+      <WizardNav
+        next={{
+          label: tl('wizNextBackup', 'Next: choose a backup'),
+          onClick: () => setStep(2),
+          disabled: !open[1],
+          title: open[1] ? undefined : tl('wizNeedSet', 'Choose a set first'),
+        }}
+      />
+      </>)}
+
+      {step === 2 && snaps && (<>
+      <WizardSummary items={[summarySet, [tl('wizBackups', 'Backups'), String(snaps.length)]]} action={{ label: tl('wizChange', 'Change'), onClick: () => setStep(1) }} />
+      <div className="wiz-panel">
+        <h3 id="rollback-snap-label">{tl('wizWhichBackup', 'Roll back to which backup?')}</h3>
+        {snaps.length === 0 ? (
+          <p style={{fontSize: '13px', color: '#718096'}}>{tl('rollbackNoBackups', 'This set has no backups on its server yet.')}</p>
+        ) : (
+          <>
+            {/* The date box picks the newest backup at or before it and
+                lists only those; the list shows as many as fit (listPaging.mjs). */}
+            <ListPagerBar tl={tl} page={page} idPrefix="rollback-snaps"
+              show={show} onShow={(v) => { setShow(v); setMore(0) }}
+              before={atTime} onBefore={(v) => { pickAt(v); setMore(0) }}
+              beforeLabel={tl('rollbackAtTime', 'The backup at or before:')} />
+            {/* No scroll box of its own: on its own step the page scrolls. */}
+            {page.matching === 0 ? (
+              <p style={{fontSize: '13px', color: '#718096'}}>{tl('rollbackNoneBefore', 'There is no backup at or before that time.')}</p>
+            ) : (
+              <div role="radiogroup" aria-labelledby="rollback-snap-label" ref={listRef} style={{marginTop: '8px', border: '1px solid #e2e8f0', borderRadius: '6px', background: '#fff'}}>
+                {page.shown.map((s, i) => (
                   <label key={s.unix} style={{display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', margin: 0, fontWeight: 'normal', cursor: 'pointer', borderTop: i === 0 ? 'none' : '1px solid #edf2f7', background: snapUnix === s.unix ? '#eff6ff' : undefined}}>
-                    <input type="radio" name="rollback-snap" checked={snapUnix === s.unix} onChange={() => { setSnapUnix(s.unix); setAtTime('') }} style={{width: 'auto', margin: 0}} />
+                    <input type="radio" name="rollback-snap" checked={snapUnix === s.unix} onChange={() => setSnapUnix(s.unix)} style={{width: 'auto', margin: 0}} />
                     <span>{fmtDate(s.unix)}</span>
-                    <span style={{fontSize: '12px', color: '#718096'}}>{formatBytesDual(s.size)}{i === 0 ? ' · ' + tl('rollbackNewest', 'newest') : ''}{s.protected ? ' · 🔒' : ''}</span>
+                    <span style={{fontSize: '12px', color: '#718096'}}>{formatBytesDual(s.size)}{s.unix === newestUnix ? ' · ' + tl('rollbackNewest', 'newest') : ''}{s.protected ? ' · 🔒' : ''}</span>
                   </label>
                 ))}
               </div>
-            </>
-          )}
+            )}
+            <ListMore tl={tl} page={page} onMore={() => setMore(m => m + MORE_STEP)} />
+          </>
+        )}
+      </div>
+      {errorBox}
+      <WizardNav
+        back={{ label: tl('wizBack', 'Back'), onClick: () => setStep(1) }}
+        next={{
+          label: tl('rollbackPreview', 'Show what would change'),
+          onClick: runPreview,
+          disabled: !snapUnix || !!previewing || restoreLoading,
+          title: snapUnix ? undefined : tl('wizNeedBackup', 'Choose a backup first'),
+        }}
+      />
+      </>)}
+
+      {step === 3 && (<>
+      <WizardSummary items={[summarySet, summaryBackup]} action={{ label: tl('wizChangeBackup', 'Change backup'), onClick: () => setStep(2) }} />
+      {errorBox}
+      {previewing && (
+        <div className="wiz-panel">
+          <WaitBar label={progressLine || tl('rollbackComparing', 'Comparing the backup with the folders...')} startedAt={previewing} fraction={progressFraction}
+            slowHint={tl('undeleteSlowHint', 'A large set takes a few minutes: every folder is listed, and each snapshot\'s file list is read once and kept on this computer.')} />
+          <button className="btn btn-secondary" onClick={() => ui.CancelSetScan()}>{t('cancel') !== 'cancel' ? t('cancel') : 'Cancel'}</button>
         </div>
       )}
-
-      {snapUnix > 0 && (
-        <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap'}}>
-          <button className="btn" onClick={runPreview} disabled={!!previewing || restoreLoading}>{tl('rollbackPreview', 'Show what would change')}</button>
-          {previewing && <button className="btn btn-secondary" onClick={() => ui.CancelSetScan()}>{t('cancel') !== 'cancel' ? t('cancel') : 'Cancel'}</button>}
+      {!previewing && !preview && (
+        <div className="wiz-panel">
+          <p style={{margin: '0 0 10px'}}>{tl('wizCompareAgain', 'Compare this backup with the folders as they are now.')}</p>
+          <button className="btn" onClick={runPreview} disabled={!snapUnix || restoreLoading}>{tl('rollbackPreview', 'Show what would change')}</button>
         </div>
       )}
-      {previewing && <WaitBar label={progressLine || tl('rollbackComparing', 'Comparing the backup with the folders...')} startedAt={previewing} fraction={progressFraction}
-        slowHint={tl('undeleteSlowHint', 'A large set takes a few minutes: every folder is listed, and each snapshot\'s file list is read once and kept on this computer.')} />}
-
       {preview && (
-        <div style={{marginTop: '16px'}}>
+        <div className="wiz-panel">
           <h3 style={{marginBottom: '8px'}}>{tl('rollbackPreviewTitle', 'Compared with the backup of {when}').replace('{when}', fmtDate(preview.snapshotUnix))}</h3>
           <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px'}}>
             <div className="info-box" style={{margin: 0}}>
@@ -567,75 +759,67 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
           <details style={{marginTop: '10px'}}><summary>{tl('rollbackShowMissing', 'Missing files')} ({preview.missingCount.toLocaleString()})</summary><ItemList ui={ui} items={preview.missing} total={preview.missingCount} /></details>
           <details><summary>{tl('rollbackShowChanged', 'Changed files')} ({preview.changedCount.toLocaleString()})</summary><ItemList ui={ui} items={preview.changed} total={preview.changedCount} live /></details>
           <details><summary>{tl('rollbackShowAdded', 'Files added since')} ({preview.newCount.toLocaleString()})</summary><ItemList ui={ui} items={preview.new} total={preview.newCount} /></details>
-
-          <div className="form-group" style={{marginTop: '14px'}}>
-            <label id="rollback-policy-label">{tl('rollbackWhat', 'What to do')}</label>
-            <RadioGroup name="rollback-policy" labelId="rollback-policy-label" value={policy} onChange={(v) => { setPolicy(v); setConfirmText('') }} vertical
-              options={[
-                { value: 'replace', label: tl('rollbackPolicyReplace', 'Restore missing files and replace changed ones; keep files added since') },
-                { value: 'missing', label: tl('rollbackPolicyMissing', 'Restore missing files only') },
-                { value: 'exact', label: tl('rollbackPolicyExact', 'Exact roll back: also remove files added since') },
-              ]} />
-          </div>
-          {policy === 'exact' && preview.newCount > 0 && (
-            <div className="form-group">
-              <label htmlFor="rollback-confirm">{tl('rollbackTypeCount', 'Type {n} to confirm that {n} files added since will be removed (kept for Undo)').replace(/\{n\}/g, preview.newCount.toLocaleString())}</label>
-              <input id="rollback-confirm" type="text" inputMode="numeric" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} style={{maxWidth: '160px'}} />
-            </div>
-          )}
-          <label style={{display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal'}}>
-            <input type="checkbox" checked={backupFirst} onChange={(e) => setBackupFirst(e.target.checked)} style={{width: 'auto', margin: 0}} />
-            {tl('rollbackBackupFirst', 'Back up the set first (keeps today\'s state as a backup too)')}
-          </label>
-          {backupFirst && isMachineSet && (
-            <div style={{fontSize: '12px', color: '#718096', margin: '2px 0 6px 22px'}}>
-              {tl('rollbackBackupFirstMachine', 'This set backs up whole disks: the backup first takes about as long as its usual backup.')}
-            </div>
-          )}
-          <label style={{display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal'}}>
-            <input type="checkbox" checked={verify} onChange={(e) => setVerify(e.target.checked)} style={{width: 'auto', margin: 0}} />
-            {tl('verifyAfterRestore', 'Verify after restore')}
-          </label>
-          <div className="info-box" style={{marginTop: '10px'}}>
-            ↩️ {tl('rollbackSafetyNote', 'Before anything is replaced or removed it is moved to {folder} on the same disk, so Undo below can put it back. While the roll back runs, this set\'s scheduled backups wait.').replace('{folder}', (preview.safetyFolders || []).join(', '))}
-          </div>
-          <div style={{marginTop: '12px'}}>
-            <button className="btn" onClick={start} disabled={restoreLoading || nothingToDo || (policy === 'exact' && preview.newCount > 0 && !exactOk)}>
-              {nothingToDo ? tl('rollbackNothing', 'Nothing to roll back') : tl('rollbackStart', 'Roll back to {when}').replace('{when}', fmtDate(preview.snapshotUnix))}
-            </button>
-          </div>
         </div>
       )}
+      <WizardNav
+        back={{ label: tl('wizBack', 'Back'), onClick: () => setStep(2) }}
+        next={{
+          label: tl('wizNextRollbackOptions', 'Next: roll back options'),
+          onClick: () => setStep(4),
+          disabled: !open[3],
+          title: open[3] ? undefined : tl('wizNeedPreview', 'See what would change first'),
+        }}
+      />
+      </>)}
 
-      {records.length > 0 && (
-        <div style={{marginTop: '24px'}}>
-          <h3 style={{marginBottom: '8px'}}>{tl('rollbackEarlier', 'Earlier roll backs of this set')}</h3>
-          <div style={{border: '1px solid #e2e8f0', borderRadius: '6px', background: '#fff'}}>
-            {records.map((r, i) => (
-              <div key={r.path} style={{display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '8px 10px', borderTop: i === 0 ? 'none' : '1px solid #edf2f7'}}>
-                <div style={{flex: '1 1 300px', fontSize: '13px'}}>
-                  <strong>{new Date(r.created).toLocaleString()}</strong>{' '}
-                  {tl('rollbackRecordTo', 'to the backup of {when}').replace('{when}', r.snapshotId ? new Date(r.snapshotId).toLocaleString() : '?')}
-                  {' · '}{policyName(r.policy)}{' · '}{r.status}
-                  <div style={{color: '#718096'}}>
-                    {tl('rollbackRecordCounts', 'restored {a}, replaced {b}, removed {c}; kept {size}')
-                      .replace('{a}', Math.max(0, r.restored - r.moved)).replace('{b}', r.moved).replace('{c}', r.removed).replace('{size}', formatBytesDual(r.bytes))}
-                  </div>
-                </div>
-                {r.status !== 'undone' && (
-                  <button className="btn btn-secondary" onClick={() => undo(r)} disabled={!!busyRecord || restoreLoading}>{tl('rollbackUndo', 'Undo')}</button>
-                )}
-                <button className="btn btn-secondary" onClick={() => del(r)} disabled={!!busyRecord || restoreLoading}>{tl('rollbackDeleteKept', 'Delete kept versions')}</button>
-              </div>
-            ))}
-          </div>
+      {step === 4 && preview && (<>
+      <WizardSummary items={[summarySet, summaryBackup]} action={{ label: tl('wizChangeBackup', 'Change backup'), onClick: () => setStep(2) }} />
+      {errorBox}
+      <div className="wiz-panel">
+        <div className="form-group">
+          <label id="rollback-policy-label">{tl('rollbackWhat', 'What to do')}</label>
+          <RadioGroup name="rollback-policy" labelId="rollback-policy-label" value={policy} onChange={(v) => { setPolicy(v); setConfirmText('') }} vertical
+            options={[
+              { value: 'replace', label: tl('rollbackPolicyReplace', 'Restore missing files and replace changed ones; keep files added since') },
+              { value: 'missing', label: tl('rollbackPolicyMissing', 'Restore missing files only') },
+              { value: 'exact', label: tl('rollbackPolicyExact', 'Exact roll back: also remove files added since') },
+            ]} />
         </div>
-      )}
+        {policy === 'exact' && preview.newCount > 0 && (
+          <div className="form-group">
+            <label htmlFor="rollback-confirm">{tl('rollbackTypeCount', 'Type {n} to confirm that {n} files added since will be removed (kept for Undo)').replace(/\{n\}/g, preview.newCount.toLocaleString())}</label>
+            <input id="rollback-confirm" type="text" inputMode="numeric" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} style={{maxWidth: '160px'}} />
+          </div>
+        )}
+        <label style={{display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal'}}>
+          <input type="checkbox" checked={backupFirst} onChange={(e) => setBackupFirst(e.target.checked)} style={{width: 'auto', margin: 0}} />
+          {tl('rollbackBackupFirst', 'Back up the set first (keeps today\'s state as a backup too)')}
+        </label>
+        {backupFirst && isMachineSet && (
+          <div style={{fontSize: '12px', color: '#718096', margin: '2px 0 6px 22px'}}>
+            {tl('rollbackBackupFirstMachine', 'This set backs up whole disks: the backup first takes about as long as its usual backup.')}
+          </div>
+        )}
+        <label style={{display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'normal'}}>
+          <input type="checkbox" checked={verify} onChange={(e) => setVerify(e.target.checked)} style={{width: 'auto', margin: 0}} />
+          {tl('verifyAfterRestore', 'Verify after restore')}
+        </label>
+        <div className="info-box" style={{marginTop: '10px', marginBottom: 0}}>
+          ↩️ {tl('wizRollbackSafetyNote', 'Before anything is replaced or removed it is moved to {folder} on the same disk, so Undo on the first step can put it back. While the roll back runs, this set\'s scheduled backups wait.').replace('{folder}', (preview.safetyFolders || []).join(', '))}
+        </div>
+      </div>
+      <WizardNav
+        back={{ label: tl('wizBack', 'Back'), onClick: () => setStep(3) }}
+        next={(
+          <button className="btn btn-primary" onClick={start} disabled={restoreLoading || nothingToDo || (policy === 'exact' && preview.newCount > 0 && !exactOk)}>
+            {nothingToDo ? tl('rollbackNothing', 'Nothing to roll back') : tl('rollbackStart', 'Roll back to {when}').replace('{when}', fmtDate(preview.snapshotUnix))}
+          </button>
+        )}
+      />
+      </>)}
     </div>
   )
 }
-
-// ---- Run as Service (Preferences > Advanced) -------------------------------
 
 export function ServiceControl({ ui }) {
   const { tl } = ui
