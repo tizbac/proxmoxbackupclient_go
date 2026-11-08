@@ -6505,17 +6505,16 @@ function App() {
                 <p style={{color: '#718096'}}>{tl('listNoneBefore', 'No snapshot at or before that time.')}</p>
               ) : snapshotViewMode === 'list' ? (
                 <div style={{marginTop: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden'}}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: '16px',
+                  <div className="snap-list-row" style={{
                     padding: '8px 14px', fontSize: '12px', fontWeight: 'bold',
                     color: '#718096', backgroundColor: '#f7fafc', borderBottom: '1px solid #e2e8f0',
                     textTransform: 'uppercase', letterSpacing: '0.03em',
                   }}>
-                    <span style={{flex: '0 0 220px'}}>{t('snapshotDate')}</span>
-                    <span style={{flex: '1 1 auto'}}>{t('backupID')}</span>
-                    <span style={{flex: '0 0 80px', textAlign: 'center'}}>{t('typeLabel')}</span>
-                    <span style={{flex: '0 0 90px', textAlign: 'center'}}>{t('sizeLabel')}</span>
-                    <span style={{flex: '0 0 160px'}}></span>
+                    <span>{t('snapshotDate')}</span>
+                    <span>{t('backupID')}</span>
+                    <span style={{textAlign: 'center'}}>{t('typeLabel')}</span>
+                    <span style={{textAlign: 'center'}}>{t('sizeLabel')}</span>
+                    <span></span>
                   </div>
                   {/* No scroll box of its own: the snapshots are their own step,
                       so the page scrolls (a box inside it was a second scrollbar). */}
@@ -6526,22 +6525,22 @@ function App() {
                       <div
                         key={`${snap.backup_type}/${snap.backup_id}/${snap.id}`}
                         onClick={() => handleSelectSnapshot(snap)}
+                        className="snap-list-row"
                         style={{
-                          display: 'flex', alignItems: 'center', gap: '16px',
                           padding: '10px 14px', cursor: 'pointer',
                           borderTop: idx === 0 ? 'none' : '1px solid #e2e8f0',
                           backgroundColor: isActive ? '#eff6ff' : '#fff',
                         }}
                       >
-                        <span style={{flex: '0 0 220px'}}>{snap.time}</span>
-                        <span style={{flex: '1 1 auto', color: '#718096', fontSize: '14px'}}>
+                        <span>{snap.time}</span>
+                        <span className="snap-list-id" style={{color: '#718096', fontSize: '14px'}}>
                           {snap.backup_id}{snap.protected ? ' 🔒' : ''}
                         </span>
-                        <span style={{flex: '0 0 80px', color: '#718096', fontSize: '14px', textAlign: 'center'}} title={isDiskImageSnapshot(snap) ? tl('diskImageHint', 'Machine backup: a disk image. Browse it to restore files from its NTFS volumes.') : undefined}>
+                        <span style={{color: '#718096', fontSize: '14px', textAlign: 'center'}} title={isDiskImageSnapshot(snap) ? tl('diskImageHint', 'Machine backup: a disk image. Browse it to restore files from its NTFS volumes.') : undefined}>
                           {snap.backup_type || 'N/A'}{isDiskImageSnapshot(snap) && <><br/><span style={{fontSize: '11px'}}>{tl('diskImageShort', 'disk image')}</span></>}
                         </span>
-                        <span style={{flex: '0 0 90px', color: '#718096', fontSize: '14px', textAlign: 'center'}}>{formatBytes(snap.size)}</span>
-                        <button className="btn" style={{flex: '0 0 160px'}}>
+                        <span style={{color: '#718096', fontSize: '14px', textAlign: 'center'}}>{formatBytes(snap.size)}</span>
+                        <button className="btn" style={{justifyContent: 'center'}}>
                           {isActive ? `✓ ${t('snapshotSelected')}` : t('selectSnapshot')}
                         </button>
                       </div>

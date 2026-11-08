@@ -312,6 +312,17 @@ body {
 .sched-done { display: flex; justify-content: flex-end; margin-top: 8px; }
 .info-box.schedule-summary { background-color: #eef2ff; }
 
+/* Restore's snapshot list (List view): the header and every row share one
+   set of columns, so Type, Size and Select line up whatever the Backup ID's
+   length. Only the ID column flexes, and a long ID wraps inside it. */
+.snap-list-row {
+    display: grid;
+    grid-template-columns: 160px minmax(0, 1fr) 80px 90px 140px;
+    align-items: center;
+    gap: 16px;
+}
+.snap-list-id { overflow-wrap: anywhere; }
+
 /* The Backup Set editor's name, with its Enabled switch on the same row:
    the name takes the room the switch leaves. The switch is green while the
    set runs on its schedule, amber while it is disabled, and keeps one width
