@@ -824,6 +824,9 @@ body {
 .wiz-nav { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin: 6px 0 16px; }
 .wiz-nav-side { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .wiz-nav .btn { margin: 0; }
+/* Backup Set editor: Back, Cancel, Save and Next one width, so nothing
+   shifts as you click through the tabs. */
+.set-nav .btn { min-width: 100px; justify-content: center; }
 .wiz-sum-list {
     display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 18px;
     background: #fff; border: 1px solid #d5dde8; border-radius: 8px; padding: 12px 16px; margin: 8px 0 0;

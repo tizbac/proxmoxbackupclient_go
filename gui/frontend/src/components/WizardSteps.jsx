@@ -55,10 +55,11 @@ export function WizardSummary({ items, action }) {
 }
 
 // back / next: { label, onClick, disabled, title }; next may instead be any
-// element (the Restore button and Stop). extra sits beside Back.
-export function WizardNav({ back, next, extra }) {
+// element (the Restore button and Stop). extra sits beside Back. className
+// is added to the row's own.
+export function WizardNav({ back, next, extra, className }) {
   return (
-    <div className="wiz-nav">
+    <div className={className ? `wiz-nav ${className}` : 'wiz-nav'}>
       <div className="wiz-nav-side">
         {back && (
           <button type="button" className="btn btn-secondary" onClick={back.onClick} disabled={back.disabled}>

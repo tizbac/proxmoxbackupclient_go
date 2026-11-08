@@ -2805,6 +2805,33 @@ function App() {
     }
   }
 
+  // The Backup Set editor's tabs in order, for its Back / Next buttons.
+  const SET_TABS = [
+    ['source', 'tabSource'], ['exclusions', 'tabExclusions'], ['schedule', 'tabSchedule'],
+    ['destination', 'tabDestination'], ['alerts', 'tabAlerts'],
+  ]
+
+  const setTabIdx = Math.max(0, SET_TABS.findIndex(([k]) => k === backupFormTab))
+  // Save is the main button when editing (one or two changes, then Save) and
+  // on the last tab of a new set; before that, Next leads a new set through.
+  const setSaveIsMain = !!editingJobId || setTabIdx === SET_TABS.length - 1
+
+  // Cancel in the Backup Set editor: close it and forget what was typed.
+  const cancelSetEditor = () => {
+    setEditingJobId(null)
+    setJobName('')
+    setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setSkipParts([]); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
+    setChangeDetectionMode('legacy'); setFullReadEvery(0)
+    setRunAtStartup(false)
+    setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
+    setBackupDirs('')
+    setExcludeList('')
+    setTreeExcludes([])
+    setBackupType('directory')
+    setShowBackupForm(false)
+    if (editingJobId) showStatus(t('statusEditCancelled'), 'info')
+  }
+
   const handleStartBackup = async () => {
     if (!StartBackup) {
       showStatus(t('wailsRuntimeUnavailable'), 'error')
@@ -5463,15 +5490,26 @@ function App() {
               <h3 style={{margin: 0}}>
                 {backupMode === 'oneshot' ? t('oneOffBackup') : (editingJobId ? t('editBackupSet') : t('newBackupSet'))}
               </h3>
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setShowBackupForm(false)
-                  setEditingJobId(null)
-                }}
-              >
-                ✕
-              </button>
+              <div style={{display: 'flex', gap: '10px'}}>
+                {/* Save at the top too: an edit is usually one or two changes
+                    and then Save. */}
+                {backupMode === 'scheduled' && (
+                  <button className={`btn${setSaveIsMain ? '' : ' btn-secondary'}`} onClick={async () => {
+                    await handleStartBackup()
+                    // The outcome shows below the form: bring it into view.
+                    setTimeout(() => document.getElementById('backup-tab-status')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50)
+                  }}>{t('save')}</button>
+                )}
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowBackupForm(false)
+                    setEditingJobId(null)
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             {backupMode === 'oneshot' && (
@@ -6019,46 +6057,35 @@ function App() {
           </div>
           </div>
 
-          <div style={{marginTop: '16px'}}>
-          {/* Saving a Backup Set's metadata (name/schedule/dirs) is a fast,
-              independent operation -- it has nothing to do with a one-shot
-              backup's live progress, so scheduled mode must never gate on
-              backupRunning/progress. Found live 2026-09-25: those are only
-              ever reset by the backup:complete event: if a one-shot run
-              anywhere else in the app ever left progress stuck between 0
-              and 100 (an interrupted run, a missed event), this button
-              stayed permanently disabled for every future Backup Set
-              add/edit, and no field in the form -- including the name --
-              could ever re-enable it, since none of them were ever part of
-              this condition to begin with. */}
-          <button className="btn" onClick={handleStartBackup} disabled={backupMode === 'oneshot' && (backupRunning || (progress > 0 && progress < 100))}>
-            {backupMode === 'oneshot'
-              ? (backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `${t('startBackup')}`)
-              : `${t('saveSchedule')}`
-            }
-          </button>
-          {backupMode === 'oneshot' && (
-            <button className="btn btn-secondary" onClick={handleStopBackup} disabled={!backupRunning}>{t('stopBackup')}</button>
-          )}
           {backupMode === 'scheduled' && (
-            <button className="btn btn-secondary" onClick={() => {
-              setEditingJobId(null)
-              setJobName('')
-              setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setSkipParts([]); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
-              setChangeDetectionMode('legacy'); setFullReadEvery(0)
-              setRunAtStartup(false)
-              setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
-              setBackupDirs('')
-              setExcludeList('')
-              setTreeExcludes([])
-              setBackupType('directory')
-              setShowBackupForm(false)
-              if (editingJobId) showStatus(t('statusEditCancelled'), 'info')
-            }}>
-              {t('cancel')}
-            </button>
+            <WizardNav
+              className="set-nav"
+              back={{ label: tl('wizBack', 'Back'), disabled: setTabIdx === 0, onClick: () => setBackupFormTab(SET_TABS[setTabIdx - 1][0]) }}
+              next={(
+                <div className="wiz-nav-side">
+                  <button className="btn btn-secondary" onClick={cancelSetEditor}>{t('cancel')}</button>
+                  <button className={`btn${setSaveIsMain ? '' : ' btn-secondary'}`} onClick={handleStartBackup}>{t('save')}</button>
+                  {setTabIdx < SET_TABS.length - 1 && (
+                    <button className={`btn${setSaveIsMain ? ' btn-secondary' : ''}`} onClick={() => setBackupFormTab(SET_TABS[setTabIdx + 1][0])}>
+                      {tl('wizNextPlain', 'Next')} →
+                    </button>
+                  )}
+                </div>
+              )}
+            />
           )}
+          {backupMode === 'oneshot' && (
+          <div style={{marginTop: '16px'}}>
+          {/* Only a one-off backup waits on a run in progress. Saving a Backup
+              Set (the Save buttons above) never gates on backupRunning/progress:
+              found live 2026-09-25, a run that left progress stuck between 0
+              and 100 kept Save disabled for every later add/edit. */}
+          <button className="btn" onClick={handleStartBackup} disabled={backupRunning || (progress > 0 && progress < 100)}>
+            {backupRunning || (progress > 0 && progress < 100) ? `⏳ ${t('backupInProgress')}` : `${t('startBackup')}`}
+          </button>
+          <button className="btn btn-secondary" onClick={handleStopBackup} disabled={!backupRunning}>{t('stopBackup')}</button>
           </div>
+          )}
           </>
           )}
 
@@ -6068,7 +6095,7 @@ function App() {
               then once real progress started the card ALSO started
               rendering it, duplicating the same text in two places at once. */}
           {status.visible && activeTab === 'backup' && !backupCardActive && (
-            <div className={`status ${status.type} visible`}>{status.message}</div>
+            <div id="backup-tab-status" className={`status ${status.type} visible`}>{status.message}</div>
           )}
         </div>
 

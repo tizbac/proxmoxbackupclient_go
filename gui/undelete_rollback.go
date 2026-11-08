@@ -70,7 +70,7 @@ func (a *App) liveFolders(job ScheduledJob, idx snapshotIndex, snap SetSnapshot,
 		// A machine set's file list comes from the disk image, which leaves
 		// links out; a folder set's archive keeps them where its backup does.
 		keepLinks := pbscommon.KeepsSymlinks && job.BackupType != "machine"
-		li, err := walkLiveFolder(f.Dir, job.ExcludeList, keepLinks, cancel, report)
+		li, err := walkLive(f.Dir, job.ExcludeList, keepLinks, cancel, report)
 		if err != nil {
 			if errors.Is(err, errCompareCancelled) {
 				return nil, err
@@ -93,6 +93,10 @@ func (a *App) liveFolders(job ScheduledJob, idx snapshotIndex, snap SetSnapshot,
 	}
 	return out, nil
 }
+
+// walkLive is walkLiveFolder; tests replace it to stand for a folder the
+// user may not open, whatever account they run as.
+var walkLive = walkLiveFolder
 
 // notOpenedError says which folders the logged in user could not open and
 // what usually cures it.
@@ -521,6 +525,11 @@ func (a *App) planRollbackFor(cfg *Config, job ScheduledJob, snapshotUnix int64,
 		}
 		safety[rollbackSafetyRoot(f.Dir)] = true // where this roll back will keep its copies
 	}
+	if len(p.compares) == 0 && len(pv.NotOpened) > 0 {
+		// The folders that opened are not in this snapshot: the ones that
+		// matter are the ones that did not open.
+		return nil, notOpenedError(pv.NotOpened)
+	}
 	for s := range safety {
 		pv.SafetyFolders = append(pv.SafetyFolders, s)
 	}
@@ -536,7 +545,32 @@ func (a *App) PreviewRollback(jobID string, snapshotUnix int64) (*RollbackPrevie
 	if err != nil {
 		return nil, err
 	}
+	previewNotOpened.Store(previewKey(jobID, snapshotUnix), p.preview.NotOpened)
 	return p.preview, nil
+}
+
+// previewNotOpened holds, by set and snapshot, the folders the last preview
+// left alone because they did not open. The roll back itself compares
+// again; a folder that opens by then was never previewed, so it stops.
+var previewNotOpened sync.Map
+
+func previewKey(jobID string, snapshotUnix int64) string {
+	return fmt.Sprintf("%s@%d", jobID, snapshotUnix)
+}
+
+// openedSincePreview lists the folders the preview left alone that now open.
+func openedSincePreview(previewed, now []string) []string {
+	still := map[string]bool{}
+	for _, d := range now {
+		still[d] = true
+	}
+	var opened []string
+	for _, d := range previewed {
+		if !still[d] {
+			opened = append(opened, d)
+		}
+	}
+	return opened
 }
 
 // Roll back policies.
@@ -654,6 +688,11 @@ func (a *App) StartRollback(jobID string, snapshotUnix int64, policy string, bac
 			}
 			if policy == rollbackExact && plan.preview.NewCount != confirmRemove {
 				return nil, fmt.Errorf("the folders have changed since the preview: %d files would now be removed, not %d. Nothing was changed; preview again", plan.preview.NewCount, confirmRemove)
+			}
+			if v, ok := previewNotOpened.Load(previewKey(job.ID, snapshotUnix)); ok {
+				if opened := openedSincePreview(v.([]string), plan.preview.NotOpened); len(opened) > 0 {
+					return nil, fmt.Errorf("the folders have changed since the preview: %s can be opened now, and the preview left it alone. Nothing was changed; preview again", strings.Join(opened, ", "))
+				}
 			}
 			stage("safety", "")
 			m, mpath, runs, err := a.applyRollbackMoves(ctx, plan, policy, verify, emit)
