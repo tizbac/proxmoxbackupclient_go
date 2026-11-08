@@ -22,6 +22,14 @@ const (
 	MaxLogFiles = 5
 )
 
+// testLogDir is where a test binary writes its logs instead of the computer's
+// log folder (the logging init checks testing.Testing()): test runs used to
+// fill the real backup and service logs, and compress the real app's per-run
+// logs at start (RecoverOrphanLogs). TestMain removes it.
+func testLogDir() string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("pbs-gui-test-logs-%d", os.Getpid()))
+}
+
 // RotatingLogger manages a log file with automatic rotation and compression
 type RotatingLogger struct {
 	path        string

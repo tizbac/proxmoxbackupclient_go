@@ -1,6 +1,9 @@
 package machinebackuplib
 
-import "pbscommon"
+import (
+	"fmt"
+	"pbscommon"
+)
 
 type MailSendConfig struct {
 	From string `json:"from"`
@@ -36,8 +39,10 @@ type Config struct {
 	BackupID        string      `json:"backup-id"`
 	BackupDevices   []string    `json:"backupdev"`
 	SMTP            *SMTPConfig `json:"smtp"`
-	SysTray         bool        `json:"systray"`
+	SysTray         bool        `json:"systray"` // old -systray: read so config files keep working; there is no tray icon
 	BackupType      string      `json:"backuptype"`
+	// Comment is sent as-is as the PBS snapshot's manifest comment.
+	Comment string `json:"comment,omitempty"`
 
 	// KeyFile is a Proxmox Backup Server encryption key (JSON, as produced by
 	// `proxmox-backup-client key create`). When set, every fixed-index chunk
@@ -55,10 +60,35 @@ type Config struct {
 	// serialized: a -config file carries KeyFile, not the unlocked key.
 	Crypt *pbscommon.CryptConfig `json:"-"`
 
-	// UseSnapshot controls whether to attempt creating block-level snapshots
-	// (via dattobd/elastio-snap on Linux, VSS on Windows) for crash-consistent
-	// images. When false, the backup reads raw disks (crash-consistent only).
-	UseSnapshot bool `json:"use_snapshot,omitempty"`
+	// Progress, when set, receives the job's running figures (chunks new,
+	// reused and blank, bytes uploaded, current disk and partition) for a
+	// caller to sample on its own timer. Nil for the CLI.
+	Progress *JobProgress `json:"-"`
+
+	// CompressionLevel is how hard each chunk is compressed before it is sent
+	// (pbscommon.CompressionLevel); empty is default, zstd level 3. Machine
+	// backups always used default before, whatever the app was set to.
+	CompressionLevel string `json:"compression,omitempty"`
+
+	// ReadFreeSpace reads every sector of the disk, free space included (a
+	// forensic copy). By default the free clusters of each snapshotted NTFS
+	// volume, and its paging, hibernation and swap files, are sent as zeros
+	// without being read.
+	ReadFreeSpace bool `json:"readfreespace,omitempty"`
+
+	// LiveRead (Linux) reads a disk's mounted partitions live, without a
+	// block snapshot, so the image may be inconsistent: files that change
+	// during the backup can be caught half written. Set only when the user
+	// has turned snapshots off for a machine Backup Set and accepted that.
+	// Without it a mounted disk needs a snapshot (elastio-snap or dattobd,
+	// and root), and the backup stops if none can be taken. Windows always
+	// reads a volume in use through VSS and ignores it.
+	LiveRead bool `json:"liveread,omitempty"`
+
+	// SkipPartitions are the partitions to leave out of each disk, keyed by
+	// the device as BackupDevices gives it. A partition left out is not read
+	// or snapshotted and goes into the image as zeros (PartitionSkip).
+	SkipPartitions map[string][]PartitionSkip `json:"skippartitions,omitempty"`
 }
 
 func (c *Config) Valid() bool {
@@ -72,15 +102,30 @@ func (c *Config) Valid() bool {
 	}
 
 	if c.SMTP != nil {
-		mailCfgValid := c.SMTP.Host != "" && c.SMTP.Port != "" && c.SMTP.Username != "" && c.SMTP.Password != ""
-		if len(c.SMTP.Mails) == 0 {
-			return false
-		}
-		for i := range c.SMTP.Mails {
-			mailCfgValid = mailCfgValid && (c.SMTP.Mails[i].From != "" && c.SMTP.Mails[i].To != "")
-		}
-		return mailCfgValid
+		return c.SMTP.Problem() == ""
 	}
 
 	return true
+}
+
+// Problem says what is missing from the mail settings, or "". A relay that
+// takes mail without a login needs no username or password: leave both empty
+// (tizbac/proxmoxbackupclient_go#74, where an empty username only printed
+// the help).
+func (s *SMTPConfig) Problem() string {
+	if s.Host == "" || s.Port == "" {
+		return `smtp: "host" and "port" are needed`
+	}
+	if s.Username == "" && s.Password != "" {
+		return `smtp: a "password" needs a "username"`
+	}
+	if len(s.Mails) == 0 {
+		return `smtp: "mails" needs at least one "from" and "to"`
+	}
+	for i, m := range s.Mails {
+		if m.From == "" || m.To == "" {
+			return fmt.Sprintf(`smtp: mails[%d] needs both "from" and "to"`, i)
+		}
+	}
+	return ""
 }

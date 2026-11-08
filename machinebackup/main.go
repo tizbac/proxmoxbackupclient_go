@@ -1,4 +1,4 @@
-package main
+package machinebackup
 
 import (
 	"clientcommon"
@@ -6,18 +6,32 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 
 	"machinebackuplib"
 
 	"os"
+	"runtime"
+	"strings"
 	"time"
+
+	"pbscommon"
+	"retry"
 )
 
-// machinebackuplib.Backup does not report chunk counts, so unlike
-// directorybackup's the default body leaves them out.
-var defaultMailSubjectTemplate = "Backup {{.Status}}"
-var defaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}}){{else}}Error occurred while working, backup may be not completed.
-Last error is: {{.ErrorStr}}{{end}}`
+// version is salvanza-cli's, which it sets with SetVersion (the build stamps
+// it with -ldflags "-X main.version=..."); -version prints it.
+var version string
+
+// SetVersion sets the version -version prints.
+func SetVersion(v string) { version = v }
+
+// usageSummary heads -help's text.
+const usageSummary = "Backs up whole disks to a Proxmox Backup Server as a host or vm snapshot."
+
+// reconnectWaits are the waits before each new attempt after a lost
+// connection (retry.ReconnectWaits; a test sets them short).
+var reconnectWaits = retry.ReconnectWaits
 
 type arrayFlags []string
 
@@ -31,7 +45,10 @@ func (i *arrayFlags) Set(value string) error {
 	return nil
 }
 
-func loadConfig() *machinebackuplib.Config {
+// loadConfig reads the command line and the -config file. The speed limits
+// and -shutdown-after come back on their own: machinebackuplib.Config is the
+// app's too, which sets those from its own settings.
+func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcommon.AfterRun, bool) {
 	// Define flags
 
 	var backupdevs arrayFlags
@@ -47,7 +64,13 @@ func loadConfig() *machinebackuplib.Config {
 	backupIDFlag := flag.String("backup-id", "", "Backup ID (optional - if not specified, the hostname is used as the default)")
 	backupTypeFlag := flag.String("type", "", "host|vm , vm will allow to restore as VM inside proxmox VE (Physical to Virtual), also it enables to use file restore feature, use numeric backupid")
 	flag.Var(&backupdevs, "backupdev", "Can be specified multiple times,Backup device file ( On windows it can be \\\\.\\PhysicalDriveN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever ; mounted partitions get a consistent point-in-time snapshot via the elastio-snap/dattobd kernel module (requires root)")
-	sysTrayFlag := flag.Bool("systray", false, "Enable systray( Note it can cause issues when running with no user logged in )")
+	liveReadFlag := flag.Bool("liveread", false, "Linux: read mounted partitions live, without a snapshot, so elastio-snap or dattobd is not needed. The image may be inconsistent: files that change during the backup can be caught half written. Windows always reads a volume in use through VSS")
+	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: fastest, default (zstd level 3), better or best (default: default). Encrypted backups are not compressed")
+	readFreeSpaceFlag := flag.Bool("readfreespace", false, "Windows: also read free space and the paging/hibernation files (a forensic copy); by default they go into the image as zeros without being read")
+	progressFlag := flag.Bool("progress", false, "Draw a progress bar on standard error while the backup runs, with the percentage of the data actually read (free space and partitions left out are counted as done at once, as in the app). Before the size is known the bar is indeterminate. The per-chunk lines are left out; other messages go above the bar")
+	var skipparts arrayFlags
+	flag.Var(&skipparts, "skippartition", "Can be specified multiple times. Leave a partition out of a whole-disk backup: <device>:<partition number>, e.g. \\\\.\\PhysicalDrive0:4 or /dev/sda:3. It is not read or snapshotted and goes into the image as zeros: a restore gives it back empty and unformatted")
+	sysTrayFlag := flag.Bool("systray", false, "Does nothing: accepted so older scripts keep working (the tray icon was taken out of the command-line tools)")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
 	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
@@ -61,25 +84,44 @@ func loadConfig() *machinebackuplib.Config {
 	mailBodyTemplateFlag := flag.String("mail-body-template", "", "mail notification system: mail body template(optional)")
 
 	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
+	versionFlag := flag.Bool("version", false, "Print the version and exit")
+	applySpeedLimitFlags := clientcommon.SpeedLimitFlags(flag.CommandLine)
+	applyShutdownAfterFlag := clientcommon.ShutdownAfterFlag(flag.CommandLine)
 
-	// Parse command line flags
-	flag.Parse()
+	// A stray argument, an unknown option or (on Windows) a quote in a path
+	// stops here with what is wrong; -help prints the usage.
+	clientcommon.ParseFlags(flag.CommandLine, os.Args[1:], usageSummary, "backupdev", "keyfile", "config")
+	if *versionFlag {
+		fmt.Println(clientcommon.VersionString(clientcommon.ToolName(), version))
+		os.Exit(0)
+	}
 
 	config := &machinebackuplib.Config{
 		BackupType: "host",
 	}
+	pbscommon.ApplyPBSEnvVars(&config.BaseURL, &config.AuthID, &config.Secret, &config.Datastore, &config.CertFingerprint)
+	var limits clientcommon.SpeedLimits
+	var after clientcommon.AfterRun
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {
-			fmt.Printf("Error reading config file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
 		}
 		err = json.Unmarshal(file, config)
+		if err == nil {
+			err = json.Unmarshal(file, &limits)
+		}
+		if err == nil {
+			err = json.Unmarshal(file, &after)
+		}
 		if err != nil {
-			fmt.Printf("Error parsing config file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error parsing config file: %v\n", err)
 			os.Exit(1)
 		}
 	}
+	applySpeedLimitFlags(&limits)
+	applyShutdownAfterFlag(&after)
 
 	if *baseURLFlag != "" {
 		config.BaseURL = *baseURLFlag
@@ -112,6 +154,27 @@ func loadConfig() *machinebackuplib.Config {
 	// otherwise the file's "backupdev" is kept.
 	if len(backupdevs) > 0 {
 		config.BackupDevices = backupdevs
+	}
+	if *readFreeSpaceFlag {
+		config.ReadFreeSpace = true
+	}
+	if *liveReadFlag {
+		config.LiveRead = true
+	}
+	if *compressionFlag != "" {
+		config.CompressionLevel = *compressionFlag
+	}
+	// -skippartition adds to the config file's "skippartitions".
+	for _, v := range skipparts {
+		dev, skip, err := machinebackuplib.ParseSkipPartition(v)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if config.SkipPartitions == nil {
+			config.SkipPartitions = map[string][]machinebackuplib.PartitionSkip{}
+		}
+		config.SkipPartitions[dev] = append(config.SkipPartitions[dev], skip)
 	}
 	if *sysTrayFlag {
 		config.SysTray = true
@@ -182,47 +245,127 @@ func loadConfig() *machinebackuplib.Config {
 		config.SMTP.Template.Body = *mailBodyTemplateFlag
 	}
 
-	return config
+	return config, limits, after, *progressFlag
 }
 
-// sendMail sends the notification e-mail to every configured recipient. A
-// custom subject or body template that does not work falls back to the
-// default one.
-func sendMail(smtpCfg *machinebackuplib.SMTPConfig, mailCtx clientcommon.MailCtx) error {
-	build := func(custom, def, what string) (string, error) {
+// sendResultMail sends the notification e-mail when -mail-* (or the config
+// file's smtp section) asks for one. A mail problem is reported on stderr
+// and never changes the backup's own exit code. It returns false when a
+// mail could not be sent.
+func sendResultMail(cfg *machinebackuplib.Config, ctx clientcommon.MailCtx) bool {
+	if cfg.SMTP == nil || len(cfg.SMTP.Mails) == 0 {
+		return true
+	}
+	build := func(custom, def string) string {
 		if custom != "" {
-			s, err := mailCtx.BuildStr(custom)
-			if err == nil {
-				return s, nil
+			if s, err := ctx.BuildStr(custom); err == nil {
+				return s
+			} else {
+				fmt.Fprintln(os.Stderr, "Cannot use the custom mail template: "+err.Error())
 			}
-			fmt.Fprintf(os.Stderr, "Cannot use custom mail %s: %v\n", what, err)
 		}
-		return mailCtx.BuildStr(def)
+		s, _ := ctx.BuildStr(def)
+		return s
 	}
-	var subjectTemplate, bodyTemplate string
-	if smtpCfg.Template != nil {
-		subjectTemplate, bodyTemplate = smtpCfg.Template.Subject, smtpCfg.Template.Body
+	var subjT, bodyT string
+	if cfg.SMTP.Template != nil {
+		subjT, bodyT = cfg.SMTP.Template.Subject, cfg.SMTP.Template.Body
 	}
-	subject, err := build(subjectTemplate, defaultMailSubjectTemplate, "subject")
+	subject := build(subjT, machinebackuplib.DefaultMailSubjectTemplate)
+	body := build(bodyT, machinebackuplib.DefaultMailBodyTemplate)
+	client, err := clientcommon.SetupMailClient(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Insecure)
 	if err != nil {
-		return err
+		fmt.Fprintln(os.Stderr, "Cannot connect to the mail server: "+err.Error())
+		return false
 	}
-	body, err := build(bodyTemplate, defaultMailBodyTemplate, "body")
-	if err != nil {
-		return err
-	}
-
-	client, err := clientcommon.SetupMailClient(smtpCfg.Host, smtpCfg.Port, smtpCfg.Username, smtpCfg.Password, smtpCfg.Insecure)
-	if err != nil {
-		return fmt.Errorf("cannot connect to mail server: %w", err)
-	}
-	defer client.Quit()
-	for _, m := range smtpCfg.Mails {
+	defer func() { _ = client.Quit() }() // the mails are sent or reported by then
+	sent := true
+	for _, m := range cfg.SMTP.Mails {
 		if err := clientcommon.SendMail(m.From, m.To, subject, body, client); err != nil {
-			return fmt.Errorf("cannot send email to %s: %w", m.To, err)
+			fmt.Fprintln(os.Stderr, "Cannot send the notification e-mail: "+err.Error())
+			sent = false
+		} else {
+			fmt.Printf("Notification e-mail sent to %s\n", m.To)
 		}
 	}
-	return nil
+	return sent
+}
+
+// problems says what stops a run with cfg, one line each: the options that
+// are missing (named, tizbac/proxmoxbackupclient_go#55), then the ones that
+// are wrong. None means machinebackuplib's Valid holds too.
+func problems(cfg *machinebackuplib.Config) []string {
+	var m, p []string
+	if cfg.BaseURL == "" {
+		m = append(m, "-baseurl")
+	}
+	if (cfg.AuthID == "" || cfg.Secret == "") && cfg.PBSUsername == "" && cfg.Ticket == "" {
+		switch {
+		case cfg.AuthID != "":
+			m = append(m, "-secret (for -authid)")
+		case cfg.Secret != "":
+			m = append(m, "-authid (for -secret)")
+		default:
+			m = append(m, "-authid and -secret, or -pbsusername")
+		}
+	}
+	if cfg.Datastore == "" {
+		m = append(m, "-datastore")
+	}
+	if len(cfg.BackupDevices) == 0 {
+		m = append(m, "-backupdev")
+	}
+	if len(m) > 0 {
+		p = append(p, "Missing options: "+strings.Join(m, ", "))
+	}
+	if cfg.BackupType != "host" && cfg.BackupType != "vm" {
+		p = append(p, fmt.Sprintf("-type is %q: use host or vm", cfg.BackupType))
+	}
+	if !pbscommon.ValidCompressionLevel(cfg.CompressionLevel) {
+		p = append(p, fmt.Sprintf("-compression is %q: use fastest, default, better or best", cfg.CompressionLevel))
+	}
+	if cfg.SMTP != nil {
+		if s := cfg.SMTP.Problem(); s != "" {
+			p = append(p, s)
+		}
+	}
+	return p
+}
+
+func hostnameOrEmpty() string {
+	h, _ := os.Hostname()
+	return h
+}
+
+// machineProgressLocation is the line under the bar: what the job is doing and
+// where it is reading, from the same figures the app's progress card shows.
+func machineProgressLocation(jp *machinebackuplib.JobProgress) string {
+	w := jp.Where()
+	switch w.Phase {
+	case "connecting":
+		return "connecting to PBS"
+	case "snapshot":
+		if w.Disk != "" {
+			return "taking a snapshot of " + w.Disk
+		}
+		return "taking a snapshot"
+	case "finishing":
+		return "finishing"
+	}
+	if w.Disk == "" {
+		return "preparing"
+	}
+	s := w.Disk
+	if w.DiskCount > 1 {
+		s = fmt.Sprintf("disk %d/%d %s", w.DiskNo, w.DiskCount, w.Disk)
+	}
+	if w.DiskModel != "" {
+		s += " (" + w.DiskModel + ")"
+	}
+	if w.Partition != "" {
+		s += " · " + w.Partition
+	}
+	return s
 }
 
 func fatalError(msg string, err error) {
@@ -230,17 +373,28 @@ func fatalError(msg string, err error) {
 	os.Exit(1)
 }
 
-func main() {
+func Main() {
 
-	cfg := loadConfig()
+	cfg, limits, after, showProgress := loadConfig()
 
 	// Errors go to stderr with a non-zero exit, never a message box: a box
 	// waits for a click that an unattended scheduled run never gets.
-	if ok := cfg.Valid(); !ok {
-		fmt.Fprintln(os.Stderr, "Missing or invalid options. Options:")
-		flag.CommandLine.SetOutput(os.Stderr)
-		flag.PrintDefaults()
+	p := problems(cfg)
+	if problem := limits.SpeedLimitProblem(); problem != "" {
+		p = append(p, problem)
+	}
+	if len(p) > 0 {
+		for _, line := range p {
+			fmt.Fprintln(os.Stderr, line)
+		}
+		fmt.Fprintf(os.Stderr, "Options can also come from -config <file> and the PBS_* environment variables. Run %s -help for all of them.\n", clientcommon.ToolName())
 		os.Exit(1)
+	}
+	if line := limits.ApplySpeedLimits(); line != "" {
+		fmt.Println(line)
+	}
+	if cfg.LiveRead && runtime.GOOS == "windows" {
+		fmt.Println("-liveread has no effect on Windows: a volume in use is always read through VSS.")
 	}
 
 	// Without -certfingerprint, fetch the fingerprint the server presents and
@@ -269,8 +423,11 @@ func main() {
 	}
 	defer L.ReleaseProcessLock()
 
+	// The tray icon was taken out of the command-line tools (bfdc27f); the
+	// option and the config file's "systray" stay accepted, so a script that
+	// gives them keeps working, and the run says they do nothing.
 	if cfg.SysTray {
-		machinebackuplib.SysTraySetup()
+		fmt.Println("-systray does nothing: the command-line tools show no tray icon.")
 	}
 
 	// Read and unlock -keyfile (prompting for a passphrase when the key file
@@ -280,41 +437,204 @@ func main() {
 		fatalError("encryption key", err)
 	}
 
-	begin := time.Now()
-	result, err := machinebackuplib.Backup(cfg, func(percentage float64, message string) bool {
+	// One progress line per whole percent (block lines come every 4 MiB),
+	// every other message as it comes.
+	jp := &machinebackuplib.JobProgress{}
+	cfg.Progress = jp
+	// -progress: the FastCopy bar, on standard error (standard output stays
+	// as it was), fed the same read percentage the app's progress card uses
+	// (JobProgress.ReadProgress), so free space and partitions left out count
+	// as done at once. Until the disk sizes are known the bar is
+	// indeterminate. SetQuiet drops the per-chunk lines.
+	var progressBar *clientcommon.Progress
+	var restoreProgress func()
+	var restoreLog func()
+	if showProgress {
+		progressBar = clientcommon.NewProgress(os.Stderr, true)
+		restoreProgress = progressBar.CaptureStdout()
+		if progressBar.Active() {
+			oldLog := log.Writer()
+			log.SetOutput(progressBar.Writer())
+			restoreLog = func() { log.SetOutput(oldLog) }
+		}
+		progressBar.StartCopy(0, 0)
+		jp.SetQuiet(true)
+	}
+	counts := func() string {
+		s := fmt.Sprintf("new %d, reused %d (%d blank), new/changed data %s, transferred %s, free space not read %s",
+			jp.NewChunks.Load(), jp.ReusedChunks.Load(), jp.BlankChunks.Load(),
+			machinebackuplib.BytesToString(int64(jp.UploadedBytes.Load())), machinebackuplib.BytesToString(int64(jp.SentBytes())),
+			machinebackuplib.BytesToString(int64(jp.FreeSkipped.Load())))
+		if n := jp.LeftOut.Load(); n > 0 {
+			s += ", partitions left out " + machinebackuplib.BytesToString(int64(n))
+		}
+		return s
+	}
+	lastPct := -1
+	start := time.Now()
+	progress := func(percentage float64, message string) bool {
+		if progressBar != nil && progressBar.Active() {
+			// The bar shows the percentage and its own counters; the block
+			// lines would only scroll it.
+			if !strings.Contains(message, ": Block ") {
+				progressBar.Line("%s", message)
+			}
+			return false
+		}
+		if !strings.Contains(message, ": Block ") {
+			fmt.Printf("%s\n", message)
+		} else if p := int(percentage * 100); p != lastPct {
+			lastPct = p
+			fmt.Printf("%3d%%  %s  (%s)\n", p, message, counts())
+		}
 		return false
-	})
-	end := time.Now()
-
-	// The notification e-mail goes out for a failed run too, so it is sent
-	// before the error exit. A mail that cannot be sent makes the run exit 1,
-	// as in directorybackup, but never hides the backup's own error.
-	mailFailed := false
-	if cfg.SMTP != nil {
-		hostname, herr := os.Hostname()
-		if herr != nil {
-			hostname = "unknown"
-		}
-		mailErr := sendMail(cfg.SMTP, clientcommon.MailCtx{
-			Error:     err,
-			Hostname:  hostname,
-			Datastore: cfg.Datastore,
-			StartTime: begin,
-			EndTime:   end,
-		})
-		if mailErr != nil {
-			fmt.Fprintf(os.Stderr, "Notification e-mail: %v\n", mailErr)
-			mailFailed = true
-		}
 	}
 
+	// With the bar on, a ticker samples the job's figures and feeds the bar,
+	// as the app's progress card does.
+	sampleProgress := func() {
+		done, total := jp.ReadProgress()
+		if total > 0 {
+			progressBar.SetTotal(0, int64(total))
+		}
+		progressBar.SetBytesDone(int64(done))
+		progressBar.Current(machineProgressLocation(jp))
+	}
+	var tickerDone chan struct{}
+	var tickerExited chan struct{}
+	if progressBar != nil {
+		tickerDone = make(chan struct{})
+		tickerExited = make(chan struct{})
+		go func() {
+			defer close(tickerExited)
+			t := time.NewTicker(250 * time.Millisecond)
+			defer t.Stop()
+			for {
+				select {
+				case <-tickerDone:
+					return
+				case <-t.C:
+					sampleProgress()
+				}
+			}
+		}()
+	}
+	stopTicker := func() {
+		if tickerDone == nil {
+			return
+		}
+		select {
+		case <-tickerDone:
+		default:
+			close(tickerDone)
+		}
+		<-tickerExited
+		tickerDone = nil
+		if progressBar != nil {
+			sampleProgress() // the last tick may be older than the end of the run
+		}
+	}
+	// A lost connection (a mobile link dropping, PBS restarting) ends the PBS
+	// session, and with it every chunk sent in it, so the backup starts again
+	// with a new session after a wait that grows each time, as the app does
+	// (retry.Reconnectable, retry.ReconnectWaits). The wait also lets PBS
+	// release the backup group; an attempt made while it still holds it fails
+	// at once and waits again.
+	// PBS refuses a second snapshot of a group in the same second (two runs
+	// chained in a script): that is waited out once, without counting as an
+	// attempt. A second refusal points at the clock, and the error says so.
+	var result *machinebackuplib.BackupResult
+	waitedSecond := false
+	for attempt := 1; ; attempt++ {
+		result, err = machinebackuplib.Backup(cfg, progress)
+		if err != nil && !waitedSecond && pbscommon.IsBackupTimeTaken(err) {
+			waitedSecond = true
+			attempt--
+			if progressBar != nil && progressBar.Active() {
+				progressBar.Line("PBS already has a backup of this group from this second; starting again in the next second.")
+			} else {
+				fmt.Fprintln(os.Stderr, "PBS already has a backup of this group from this second; starting again in the next second.")
+			}
+			jp.Reset()
+			if progressBar != nil {
+				progressBar.StartCopy(0, 0)
+			}
+			lastPct = -1
+			pbscommon.WaitNextSecond()
+			continue
+		}
+		if err == nil || attempt > len(reconnectWaits) || !retry.Reconnectable(err) {
+			break
+		}
+		wait := reconnectWaits[attempt-1]
+		if progressBar != nil && progressBar.Active() {
+			progressBar.Line("Connection to the server lost on attempt %d of %d (%s): %v", attempt, len(reconnectWaits)+1, counts(), err)
+			progressBar.Line("Starting again at %s with a new session; chunks sent in the lost one are sent again.", time.Now().Add(wait).Format("15:04:05"))
+			progressBar.StartCopy(0, 0)
+		} else {
+			fmt.Fprintf(os.Stderr, "Connection to the server lost on attempt %d of %d (%s): %v\n", attempt, len(reconnectWaits)+1, counts(), err)
+			fmt.Fprintf(os.Stderr, "Starting again at %s with a new session; chunks sent in the lost one are sent again.\n", time.Now().Add(wait).Format("15:04:05"))
+		}
+		jp.Reset()
+		lastPct = -1
+		time.Sleep(wait)
+	}
+	stopTicker()
+	if progressBar != nil {
+		// A good run is shown complete; a failed one keeps the figures it
+		// reached, which say where it stopped.
+		if err == nil {
+			progressBar.Complete()
+		}
+		if restoreLog != nil {
+			restoreLog()
+		}
+		restoreProgress()
+		progressBar.Finish()
+	}
+	// The notification e-mail (-mail-*): sent for a failed run too, before
+	// the exit.
+	var readErrors []string
+	for _, r := range jp.Unreadable() {
+		readErrors = append(readErrors, fmt.Sprintf("%s at byte %d (%d bytes)", r.Disk, r.Offset, r.Length))
+	}
+	mailSent := sendResultMail(cfg, clientcommon.MailCtx{
+		NewChunks: jp.NewChunks.Load(), ReusedChunks: jp.ReusedChunks.Load(), Datastore: cfg.Datastore,
+		Error: err, ReadErrors: readErrors, Hostname: hostnameOrEmpty(), StartTime: start, EndTime: time.Now(),
+	})
 	if err != nil {
-		fatalError("backup", err)
+		fmt.Fprintf(os.Stderr, "Fatal error: backup: %v\n", err)
+		// -shutdown-after: the backup has run, and failed; exit 1 still says so.
+		clientcommon.ShutdownAfterRun(after)
+		os.Exit(1)
+	}
+	// A failed backup has no snapshot to note it on; a good one gets the mail
+	// problem in its PBS comment, where it is seen when the backup is viewed.
+	if !mailSent {
+		if nerr := result.AddNote(clientcommon.MailFailedNote); nerr != nil {
+			fmt.Fprintln(os.Stderr, "Cannot add the mail warning to the PBS snapshot comment: "+nerr.Error())
+		} else {
+			fmt.Println("Mail warning added to the PBS snapshot comment.")
+		}
 	}
 	for _, disk := range result.Disks {
 		fmt.Printf("Backed up disk %d (%d bytes)\n", disk.Index, disk.Size)
 	}
-	if mailFailed {
-		os.Exit(1)
+	fmt.Printf("Done in %s: %s read; %s\n", time.Since(start).Round(time.Second),
+		machinebackuplib.BytesToString(int64(jp.BytesTotal.Load())), counts())
+	// Sectors the disk could not read are zeros in the image: the snapshot is
+	// kept, but say where and exit 3 so a scheduled run is noticed.
+	bad := jp.Unreadable()
+	if len(bad) > 0 {
+		fmt.Fprintf(os.Stderr, "WARNING: %s of the disk could not be read and is zeros in the image:\n",
+			machinebackuplib.BytesToString(int64(jp.UnreadableBytes.Load())))
+		for _, r := range bad {
+			fmt.Fprintf(os.Stderr, "  %s at byte %d (%d bytes)\n", r.Disk, r.Offset, r.Length)
+		}
+	}
+	// -shutdown-after: the backup has run and the mail has gone.
+	clientcommon.ShutdownAfterRun(after)
+	if len(bad) > 0 {
+		os.Exit(3)
 	}
 }

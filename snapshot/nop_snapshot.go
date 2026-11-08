@@ -3,7 +3,15 @@
 
 package snapshot
 
-import "log"
+import (
+	"context"
+	"log"
+)
+
+// CreateVSSSnapshotCtx is CreateVSSSnapshot; nothing here waits.
+func CreateVSSSnapshotCtx(_ context.Context, paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) error {
+	return CreateVSSSnapshot(paths, needFiles, backup_callback)
+}
 
 func CreateVSSSnapshot(paths []string, needFiles bool, backup_callback func(sn map[string]SnapShot) error) error {
 	log.Print("\033[31;1mWarning, on linux snapshots are not supported builtin, proceeding without!\033[0m")
@@ -21,8 +29,8 @@ func VSSCleanup() error {
 	return nil
 }
 
-// DetectControl reports whether a Linux block-snapshot control module is
-// available. Always false on this platform.
+// DetectControl reports the Linux block snapshot module in use. There is
+// none on this platform.
 func DetectControl() (SnapControl, bool) {
 	return SnapControl{}, false
 }

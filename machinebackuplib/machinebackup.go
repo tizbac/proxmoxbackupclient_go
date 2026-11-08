@@ -2,6 +2,7 @@ package machinebackuplib
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -31,19 +32,34 @@ import (
 type ProgressCallback func(percentage float64, message string) bool
 
 var (
-	// ErrCancelled is the sentinel a backup run returns when the user pressed
-	// Stop. Callers match it with errors.Is to report a cancellation as such
-	// instead of as a failure.
+	// ErrCancelled is what a backup returns when the user pressed Stop (a
+	// progress callback returned true). It is wrapped with %w on the way out,
+	// so a caller can tell a Stop from a failure with errors.Is (upstream
+	// fff59e0). The fork's GUI tells them apart by its own context; this is
+	// for callers that have none. The text is matched by the GUI's history
+	// ("cancelled by user"), so keep it.
 	ErrCancelled     = errors.New("backup cancelled by user")
 	errUploadAborted = errors.New("upload aborted")
-	didxMagic        = []byte{28, 145, 78, 165, 25, 186, 179, 205}
 )
+
+// DefaultMailSubjectTemplate and DefaultMailBodyTemplate are the
+// notification e-mail of a machine backup (salvanza-cli backup-disk -mail-*),
+// filled from a clientcommon.MailCtx.
+var DefaultMailSubjectTemplate = "Backup {{.Status}}"
+var DefaultMailBodyTemplate = `{{if .Success}}Backup complete ({{.FromattedDuration}})
+Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else if .Partial}}Backup complete ({{.FromattedDuration}}), but parts of the disk could not be read and are zeros in the image:
+{{range .ReadErrors}}  {{.}}
+{{end}}Chunks New {{.NewChunks}}, Reused {{.ReusedChunks}}.{{else}}Error occurred while working, backup may be not completed.
+Last error is: {{.ErrorStr}}{{end}}`
+
+var didxMagic = []byte{28, 145, 78, 165, 25, 186, 179, 205}
 
 type ChunkState struct {
 	assignments        []string
 	index_hash_data    map[uint64][]byte
 	assignments_offset []uint64
 	processed_size     uint64
+	wrid               uint64
 	chunkcount         uint64
 	current_chunk      []byte
 	C                  pbscommon.Chunker
@@ -58,6 +74,30 @@ type Partition struct {
 	RequiresVSS bool
 	Skip        bool
 	Letter      string
+	Number      int    // partition number on the disk; 0 for the space between partitions
+	FileSystem  string // "NTFS", "FAT32"... for a lettered volume, else ""
+}
+
+// label names a partition for the progress card: "C: (NTFS)", "partition 2"
+// or "unpartitioned space".
+func (p Partition) label() string {
+	if p.Skip {
+		return p.baseLabel() + ", left out"
+	}
+	return p.baseLabel()
+}
+
+func (p Partition) baseLabel() string {
+	switch {
+	case p.Letter != "" && p.FileSystem != "":
+		return p.Letter + ": (" + p.FileSystem + ")"
+	case p.Letter != "":
+		return p.Letter + ":"
+	case p.Number > 0:
+		return fmt.Sprintf("partition %d", p.Number)
+	default:
+		return "unpartitioned space"
+	}
 }
 
 func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, knownChunks *haxmap.Map[string, bool]) {
@@ -74,78 +114,70 @@ func (c *ChunkState) Init(newchunk *atomic.Uint64, reusechunk *atomic.Uint64, kn
 	c.knownChunks = knownChunks
 }
 
-// deviceSizeBytes returns the size in bytes of a backup device.
-//
-// os.Stat alone is not enough: on Linux a block device (and the
-// /dev/disk/by-id symlink to it) reports st_size == 0. That made the job-wide
-// progress fraction divide by a zero total, collapse to NaN and clamp to 0%,
-// pinning the GUI progress bar at 0 for the whole run even though bytes were
-// clearly flowing. Regular files use stat; block devices and Windows
-// PhysicalDrive paths ask the platform for the real length.
-func deviceSizeBytes(dev string) (uint64, error) {
-	if strings.HasPrefix(dev, `\\.\PhysicalDrive`) {
-		re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
-		matches := re.FindStringSubmatch(dev)
-		if len(matches) < 2 {
-			return 0, fmt.Errorf("invalid physical drive path %q", dev)
-		}
-		idx, err := strconv.ParseInt(matches[1], 10, 32)
-		if err != nil {
-			return 0, fmt.Errorf("invalid physical drive index in %q: %w", dev, err)
-		}
-		size, err := GetDiskSize(fmt.Sprintf(`\\.\PhysicalDrive%d`, idx))
-		if err != nil {
-			return 0, fmt.Errorf("failed to get disk size for %s: %w", dev, err)
-		}
-		if size <= 0 {
-			return 0, fmt.Errorf("device %s reported a non-positive size (%d)", dev, size)
-		}
-		return uint64(size), nil
-	}
+// physicalDriveRe picks N out of \\.\PhysicalDriveN. Windows device names
+// are not case-sensitive, and tools such as wmic print \\.\PHYSICALDRIVE0.
+var physicalDriveRe = regexp.MustCompile(`(?i)PhysicalDrive(\d+)$`)
 
-	// Regular files: stat is exact and avoids opening the file.
-	if info, err := os.Stat(dev); err == nil && info.Mode().IsRegular() {
-		return uint64(info.Size()), nil
-	}
-
-	// Block devices / other special files.
-	size, err := GetDiskSize(dev)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get size of %s: %w", dev, err)
-	}
-	if size <= 0 {
-		return 0, fmt.Errorf("device %s reported a non-positive size (%d)", dev, size)
-	}
-	return uint64(size), nil
+// isPhysicalDrive reports whether dev is a Windows disk, \\.\PhysicalDriveN
+// in any case. Written in capitals it used to be taken for a file and fail
+// with "seek ...: Incorrect function" (tizbac/proxmoxbackupclient_go#75).
+func isPhysicalDrive(dev string) bool {
+	const prefix = `\\.\PhysicalDrive`
+	return len(dev) >= len(prefix) && strings.EqualFold(dev[:len(prefix)], prefix)
 }
 
-// jobProgressFraction maps a single device's completion fraction (0.0-1.0) to
-// the fraction of the whole job. An unknown total (0 bytes) reports 0 instead
-// of a NaN so the caller can never render a bogus percentage.
+// physicalDriveIndex returns N for \\.\PhysicalDriveN. A device that starts
+// like one but has no number at the end (a typo in -backupdev or in a config
+// file) used to crash the program with an index out of range; now the backup
+// fails and says why (upstream 155c1be).
+func physicalDriveIndex(dev string) (int, error) {
+	m := physicalDriveRe.FindStringSubmatch(dev)
+	if len(m) < 2 {
+		return 0, fmt.Errorf("invalid physical drive path %q: expected \\\\.\\PhysicalDriveN", dev)
+	}
+	idx, err := strconv.ParseInt(m[1], 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid physical drive index in %q: %w", dev, err)
+	}
+	return int(idx), nil
+}
+
+// finiteOrZero returns f, or 0 when f is NaN or infinite: what a reader that
+// does not know its size reports (0/0).
+func finiteOrZero(f float64) float64 {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0
+	}
+	return f
+}
+
+// jobProgressFraction maps one device's read fraction (0..1) onto the whole
+// job. A job whose disks all report 0 bytes, or a reader that reports 0/0,
+// gives 0 instead of reaching the GUI and the log as "NaN%" (upstream
+// 63c9bc6, 0534a79, 155c1be).
 func jobProgressFraction(baseSize, devSize uint64, fraction float64, totalSize uint64) float64 {
 	if totalSize == 0 {
 		return 0
 	}
-	whole := (float64(baseSize) + fraction*float64(devSize)) / float64(totalSize)
-	if math.IsNaN(whole) || math.IsInf(whole, 0) {
-		return 0
-	}
-	return whole
+	return finiteOrZero((float64(baseSize) + finiteOrZero(fraction)*float64(devSize)) / float64(totalSize))
 }
 
+// BytesToString formats a byte count for messages: decimal units, as PBS and
+// the app show sizes, to one decimal place, rounded. It used to divide by
+// 1024 and drop the remainder under the labels MB and GB, so 3 MB sent read
+// "2MB" and a 53.7 GB disk "50GB".
 func BytesToString(b int64) string {
-	if b < 1024 {
+	if b < 1000 {
 		return fmt.Sprintf("%dB", b)
 	}
-	if b < 1024*1024 {
-		return fmt.Sprintf("%dKB", b/1024)
+	v := float64(b)
+	for _, u := range []string{"kB", "MB", "GB", "TB"} {
+		v /= 1000
+		if v < 999.95 || u == "TB" { // 999.95 would print as 1000.0
+			return fmt.Sprintf("%.1f%s", v, u)
+		}
 	}
-	if b < 1024*1024*1024 {
-		return fmt.Sprintf("%dMB", b/(1024*1024))
-	}
-
-	return fmt.Sprintf("%dGB", b/(1024*1024*1024))
-
+	return "" // not reached
 }
 
 // uploadWorker streams fixed-size chunks from ch into a PBS fixed index and
@@ -157,26 +189,21 @@ func BytesToString(b int64) string {
 //
 // uploadWorker is the ONLY consumer of readErrCh: it is the sole reader of
 // that channel and reports the reader's error through its own return value.
-// Letting the caller read the channel a second time races this function for
-// the single buffered value: if the caller wins, uploadWorker sees an empty
-// channel and commits an index that only holds the chunks read before the
-// cancellation (PBS then fails the close with "unexpected chunk count"); if
-// uploadWorker wins, the caller blocks forever on a channel nobody sends to
-// again.
+// Letting the caller read the channel a second time deadlocks — the value is
+// buffered, so whoever arrives first wins, and the loser's receive blocks
+// forever once the reader goroutine has exited.
 //
-// Contract for the reader goroutine: send exactly one value to readErrCh
-// BEFORE closing ch (readErrCh is buffered, so the send never blocks). The
-// drain below can only run once ch is closed, which is what makes the receive
-// deterministic.
-func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint64, ch chan []byte, readErrCh <-chan error) error {
-	var newchunk = new(atomic.Uint64)
-	var reusechunk = new(atomic.Uint64)
+// jp, when non-nil, gets every chunk counted (new, reused, blank).
+func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint64, ch chan []byte, readErrCh <-chan error, jp *JobProgress) error {
+	zero := newZeroChunkDetector(client)
+	var newchunk *atomic.Uint64 = new(atomic.Uint64)
+	var reusechunk *atomic.Uint64 = new(atomic.Uint64)
 	knownChunks := haxmap.New[string, bool]()
 
 	knownChunks2, err := client.GetKnownSha265FromFIDX(filename)
 	if err == nil {
 		knownChunks = knownChunks2
-	} else {
+	} else if !jp.isQuiet() {
 		fmt.Printf("Cannot get previous: %s\n", err.Error())
 	}
 
@@ -192,7 +219,9 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 
 	var assignment_mutex sync.Mutex
 
-	errch := make(chan error)
+	// One slot per worker: after the first error nobody receives any more,
+	// and the other workers must still be able to report and exit.
+	errch := make(chan error, 8)
 	digests := make(map[int64][]byte)
 
 	type PosSeg struct {
@@ -202,15 +231,16 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 
 	ch2 := make(chan PosSeg)
 
-	zero := newZeroChunkDetector(client)
 	workerfn := func() {
 		for seg := range ch2 {
 			// Digest of the *plaintext*, in whichever scheme this snapshot
 			// uses: plain sha256, or sha256(plaintext || id_key) when an
 			// encryption key is configured. This is the value the fixed index
 			// stores and the value the chunk store is keyed by, so it must be
-			// derived the same way on every restore.
-			chunkdigest := zero.digestOf(seg.Data, client.ChunkDigest)
+			// derived the same way on every restore. Blank chunks (free space
+			// above all) take the digest worked out once at the start: a zero
+			// check is over ten times quicker than hashing 4 MiB of zeros.
+			chunkdigest, blank := zero.digestOf(seg.Data, client.ChunkDigest)
 			shahash := hex.EncodeToString(chunkdigest[:])
 			//binary.Write(CS.chunkdigests, binary.LittleEndian, (CS.pos + uint64(nread)))
 
@@ -224,27 +254,26 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 			if exists {
 				reusechunk.Add(1)
 			} else {
-				err = client.UploadFixedCompressedChunk(wrid, shahash, seg.Data)
-				if err != nil {
-					errch <- fmt.Errorf("failed to upload chunk %s: %w", shahash, err)
-					break
+				// A local error, not the function's err: eight workers run this.
+				if uerr := client.UploadFixedCompressedChunk(wrid, shahash, seg.Data); uerr != nil {
+					errch <- fmt.Errorf("failed to upload chunk %s: %w", shahash, uerr)
+					return
 				}
-
+				newchunk.Add(1)
 			}
+			jp.countChunk(len(seg.Data), blank, !exists)
 			assignment_mutex.Lock()
 			CS.assignments = append(CS.assignments, shahash)
 			CS.assignments_offset = append(CS.assignments_offset, seg.Pos)
 			CS.processed_size += uint64(len(seg.Data))
 			CS.chunkcount++
 			if CS.processed_size > total_size {
-				errch <- fmt.Errorf("fatal: tried to backup more data than specified size")
-				break
+				assignment_mutex.Unlock()
+				errch <- fmt.Errorf("Fatal: tried to backup more data than specified size!")
+				return
 			}
-			if total_size > 0 {
-				percentage := float64(CS.processed_size) / float64(total_size) * 100
-				if math.IsNaN(percentage) || math.IsInf(percentage, 0) {
-					percentage = 0
-				}
+			percentage := float64(CS.processed_size) / float64(total_size) * 100
+			if !jp.isQuiet() {
 				fmt.Printf("Chunk %d/%d/%d - Progress: %.2f%%\n", CS.chunkcount, int(math.Ceil(float64(total_size)/float64(pbscommon.PBS_FIXED_CHUNK_SIZE))), reusechunk.Load(), percentage)
 			}
 
@@ -282,22 +311,15 @@ func uploadWorker(client *pbscommon.PBSClient, filename string, total_size uint6
 	// The reader reported an error (or the user cancelled): the data in this
 	// fixed index is partial, so leave it unclosed instead of committing it.
 	// Consuming readErrCh here — and only here — is what makes the ownership
-	// note on uploadWorker hold.
-	//
-	// This receive is deliberately BLOCKING rather than a `select` with a
-	// `default` branch. Callers publish their terminal error to readErrCh
-	// *before* closing the data channel, and we only get here once that
-	// channel has been drained and closed, so the value is already buffered
-	// and this cannot block. The old non-blocking `default:` branch is what
-	// let a cancelled Windows machine backup fall through to
-	// AssignFixedChunks + CloseFixedIndex: BackupWindowsDisk was reading the
-	// same channel as a second consumer and won the race, so uploadWorker
-	// took the `default:` path, committed the partial index and PBS rejected
-	// it with "fixed writer close failed - unexpected chunk count".
+	// note on uploadWorker hold; see also the deterministic-ordering note on
+	// the reader goroutine in BackupFileDevice.
 	if readErrCh != nil {
-		rerr := <-readErrCh
-		if rerr != nil {
-			return rerr
+		select {
+		case rerr := <-readErrCh:
+			if rerr != nil {
+				return rerr
+			}
+		default:
 		}
 	}
 
@@ -359,7 +381,7 @@ func Slugify(input string) string {
 
 //TODO: Perhaps on linux we could use that https://github.com/datto/dattobd for block devices
 
-func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCallback ProgressCallback) error {
+func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCallback ProgressCallback, jp *JobProgress) error {
 	slug := Slugify(filename)
 
 	f, err := os.Open(filename)
@@ -369,7 +391,6 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 	}
 
 	size, err := f.Seek(0, io.SeekEnd)
-	var b int64 = 0
 	var totread int64 = 0
 	if err != nil {
 		return err
@@ -389,9 +410,11 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 			rerr = fmt.Errorf("failed to seek to start: %w", err)
 			return
 		}
+		// Charged to the disk read speed limit, as readResilient is for disks.
+		src := pbscommon.LimitReader(context.Background(), pbscommon.LimitDiskRead, f)
 		for {
 			block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE) //PBS block size is fixed 4MB
-			nread, err := f.Read(block)
+			nread, err := src.Read(block)
 			if err == io.EOF {
 				break
 			} else if err != nil {
@@ -402,29 +425,18 @@ func BackupFileDevice(client *pbscommon.PBSClient, filename string, progressCall
 			ch <- block[:nread]
 			totread = totread + int64(nread)
 			// Returning true stops the backup (user pressed Stop).
-			if progressCallback != nil {
-				var pct float64
-				if size <= 0 {
-					pct = 0
-				} else {
-					pct = float64(totread) / float64(size)
-					if math.IsNaN(pct) || math.IsInf(pct, 0) {
-						pct = 0
-					}
-				}
-				if progressCallback(pct, fmt.Sprintf("%s: Block %d", filename, b)) {
-					rerr = ErrCancelled
-					break
-				}
+			if progressCallback != nil &&
+				progressCallback((float64(totread)/float64(size)), blockMessage(filename, uint64(totread), uint64(size))) {
+				rerr = ErrCancelled
+				break
 			}
-			b++
 		}
 	}()
 
 	// uploadWorker owns errCh and surfaces both the upload error and the
 	// reader error through its return value, so there is deliberately no
 	// second receive here.
-	return uploadWorker(client, slug+".fidx", uint64(size), ch, errCh)
+	return uploadWorker(client, slug+".fidx", uint64(size), ch, errCh, jp)
 }
 
 type BackupDisk struct {
@@ -473,6 +485,21 @@ func bootDiskIsGPT(disks []BackupDisk) bool {
 // BackupResult represents the result of a backup operation
 type BackupResult struct {
 	Disks []BackupDisk
+
+	client  *pbscommon.PBSClient // the finished snapshot, for AddNote
+	comment string               // the comment the backup set, if any
+}
+
+// AddNote adds note to the snapshot's PBS comment (the notes the PBS web UI
+// shows in its Comment column), after the comment the backup set, if any.
+func (r *BackupResult) AddNote(note string) error {
+	if r == nil || r.client == nil {
+		return errors.New("no snapshot to add a note to")
+	}
+	if r.comment != "" {
+		note = r.comment + " | " + note
+	}
+	return r.client.SetComment(note)
 }
 
 // qemuConfigData is the input to qemuConfigTemplate.
@@ -555,11 +582,14 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		Datastore:       cfg.Datastore,
 		Namespace:       cfg.Namespace,
 		Insecure:        cfg.CertFingerprint != "",
+		// Empty is default (zstd level 3), as before.
+		CompressionLevel: pbscommon.ParseCompressionLevel(cfg.CompressionLevel),
 		// Nil for a plain snapshot, in which case pbscommon keeps the
 		// pre-encryption sha256 + magic/CRC32 framing.
 		Crypt: cfg.Crypt,
 		Manifest: pbscommon.BackupManifest{
 			BackupID: cfg.BackupID,
+			Comment:  cfg.Comment,
 		},
 	}
 	// A pre-obtained session ticket (GUI login) wins; otherwise exchange
@@ -569,18 +599,25 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			return nil, fmt.Errorf("ticket login failed: %w", err)
 		}
 	}
-	if progressCallback != nil {
-		if progressCallback(0, "Connecting to Proxmox Backup Server...") {
-			return nil, ErrCancelled
-		}
+	// Callers that do not watch the figures pass none; the backup still
+	// keeps them.
+	if cfg.Progress == nil {
+		cfg.Progress = &JobProgress{}
+	}
+	jp := cfg.Progress
+	jp.setSentSource(client.SentBytes)
+	jp.setPhase("connecting")
+	// A Stop pressed before the backup connects ends it here, before a PBS
+	// session or a snapshot is made (upstream 155c1be).
+	if progressCallback != nil && progressCallback(0, "Connecting to Proxmox Backup Server...") {
+		return nil, ErrCancelled
 	}
 
 	//Physical drive paths will be like  "\\\\.\\PhysicalDrive0"
 	client.Connect(false, cfg.BackupType)
 	// A failed or stopped backup must drop its session too (Finish does it
 	// for a good one): left open, PBS keeps the backup task running and the
-	// group locked, so the next backup of the same group fails for as long
-	// as this process lives.
+	// group locked, and the set's next run fails until the app exits.
 	defer client.Close()
 	disks := make([]BackupDisk, 0)
 
@@ -588,35 +625,94 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 	var totalSize uint64 = 0
 	sizes := make([]uint64, len(cfg.BackupDevices))
 	for i, dev := range cfg.BackupDevices {
-		size, err := deviceSizeBytes(dev)
-		if err != nil {
-			return nil, err
+		if isPhysicalDrive(dev) {
+			// For physical drives, get the disk size
+			idx, err := physicalDriveIndex(dev)
+			if err != nil {
+				return nil, err
+			}
+
+			// Get disk size using platform-specific function
+			size, err := GetDiskSize(fmt.Sprintf("\\\\.\\PhysicalDrive%d", idx))
+			if err != nil {
+				return nil, fmt.Errorf("failed to get disk size for %s: %v", dev, err)
+			}
+			sizes[i] = uint64(size)
+			totalSize += uint64(size)
+		} else {
+			// Covers both a Linux/Unix block device (e.g. /dev/sda) and a
+			// plain regular file (e.g. a disk-image test fixture). os.Stat's
+			// Size() is the wrong tool for the block-device case: stat(2)
+			// reports 0 for a block special file's own inode, not the
+			// device's actual capacity. Confirmed live 2026-09-24: this
+			// silently zeroed totalSize for a real /dev/sda machine backup,
+			// making every progress report divide 0/0 (logged as "NaN%")
+			// despite the backup itself running and completing correctly --
+			// backupWholeDisk (linux.go) gets the real size via this same
+			// Open+Seek approach, entirely independently of this size-only
+			// lookup, which is why the actual backup was never affected,
+			// only its reported progress. Seek-to-end after Open works
+			// correctly for both a block device and a regular file, so one
+			// code path covers both instead of needing a platform/file-type
+			// branch here.
+			f, err := os.Open(dev)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open %s for size lookup: %v", dev, err)
+			}
+			size, serr := f.Seek(0, io.SeekEnd)
+			f.Close()
+			if serr != nil {
+				return nil, fmt.Errorf("failed to get size for %s: %v", dev, serr)
+			}
+			sizes[i] = uint64(size)
+			totalSize += uint64(size)
 		}
-		sizes[i] = size
-		totalSize += size
+	}
+
+	// Partitions to leave out of a device that is not backed up are not
+	// applied anywhere: say so rather than drop them quietly.
+	for dev := range cfg.SkipPartitions {
+		if !slices.ContainsFunc(cfg.BackupDevices, func(d string) bool { return sameDevice(d, dev) }) && progressCallback != nil {
+			progressCallback(0, fmt.Sprintf("WARNING: partitions of %s are to be left out, but %s is not backed up", dev, dev))
+		}
 	}
 
 	// Track progress for each device
 	currentProcessedSize := uint64(0)
+	jp.BytesTotal.Store(totalSize)
 
 	for i, dev := range cfg.BackupDevices {
 		// Wrap the job-wide callback so a device can keep reporting its own
 		// 0..1 read fraction and it maps to the fraction of the whole job.
 		baseSize := currentProcessedSize
 		devSize := sizes[i]
+		jp.startDisk(dev, DiskModel(dev), i+1, len(cfg.BackupDevices), devSize)
 		deviceCallback := func(fraction float64, message string) bool {
+			// A reader that does not know its size reports 0/0 (NaN): count
+			// it as no progress on this disk.
+			fraction = finiteOrZero(fraction)
+			// The snapshot step reports 0 with its own message; data comes after.
+			if fraction > 0 {
+				jp.setPhase("data")
+			}
+			pos := uint64(fraction * float64(devSize))
+			jp.setDiskPos(pos, baseSize+pos)
 			if progressCallback == nil {
 				return false
 			}
+			// By what is read, leaving out what goes in as zeros unread.
+			if f, ok := jp.readFraction(); ok {
+				return progressCallback(f, message)
+			}
 			return progressCallback(jobProgressFraction(baseSize, devSize, fraction, totalSize), message)
 		}
-		if strings.HasPrefix(dev, "\\\\.\\PhysicalDrive") {
-			re := regexp.MustCompile(`PhysicalDrive(\d+)$`)
-			matches := re.FindStringSubmatch(dev)
-			idx, _ := strconv.ParseInt(matches[1], 10, 32)
+		if isPhysicalDrive(dev) {
+			// Already checked by the size loop above.
+			idx, _ := physicalDriveIndex(dev)
 
 			isGPT := diskHasGPT(dev)
-			size, err := BackupWindowsDisk(client, int(idx), deviceCallback)
+			jp.setPhase("snapshot")
+			size, err := BackupWindowsDisk(client, int(idx), deviceCallback, jp, cfg.ReadFreeSpace, skipsFor(cfg.SkipPartitions, dev))
 			if err != nil {
 				return nil, fmt.Errorf("backup disk %s: %w", dev, err)
 			}
@@ -627,10 +723,14 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 				GPT:   isGPT,
 			})
 
+			// Update progress for this disk
 			currentProcessedSize += uint64(size)
+			// The reader reports each 4 MiB block it hands on; the short
+			// last one goes out after that, so mark the disk done here.
+			jp.setDiskPos(uint64(size), currentProcessedSize)
 			if progressCallback != nil && totalSize > 0 {
-				pct := jobProgressFraction(baseSize, devSize, 1.0, totalSize)
-				if progressCallback(pct, fmt.Sprintf("Backup complete for disk %s", dev)) {
+				percentage := float64(currentProcessedSize) / float64(totalSize)
+				if progressCallback(percentage, fmt.Sprintf("Backup complete for disk %s", dev)) {
 					return nil, ErrCancelled
 				}
 			}
@@ -640,9 +740,19 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 			// partition, mounted ones snapshotted). Anything else falls back
 			// to a plain raw read of the device/file.
 			isGPT := diskHasGPT(dev)
-			handled, size, err := backupWholeDisk(client, dev, i, cfg.UseSnapshot, deviceCallback)
+			jp.setPhase("snapshot")
+			skips := skipsFor(cfg.SkipPartitions, dev)
+			handled, size, err := backupWholeDisk(client, dev, i, deviceCallback, jp, cfg.ReadFreeSpace, cfg.LiveRead, skips)
 			if err != nil {
 				return nil, fmt.Errorf("backup device %s: %w", dev, err)
+			}
+			if !handled {
+				jp.setPhase("data") // a file or a single partition, read with no snapshot
+			}
+			if !handled && len(skips) > 0 {
+				// A file or a single partition is read whole: it has no
+				// partitions of its own to leave out.
+				deviceCallback(0, fmt.Sprintf("WARNING: %s is not a whole disk, so no partition of it is left out: backing it all up", dev))
 			}
 			if handled {
 				disks = append(disks, BackupDisk{
@@ -650,30 +760,31 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 					Size:  size,
 					GPT:   isGPT,
 				})
-			} else if err := BackupFileDevice(client, dev, deviceCallback); err != nil {
+			} else if err := BackupFileDevice(client, dev, deviceCallback, jp); err != nil {
 				return nil, fmt.Errorf("backup device %s: %w", dev, err)
 			}
 
-			// Update progress: the whole-disk size when handled, otherwise the file size
-			processed := int64(0)
+			// Update progress: the whole-disk size when handled, otherwise the
+			// size found before the backup started. os.Stat, used here before,
+			// gives 0 for a block device (a partition such as /dev/sda1, or
+			// /dev/mapper/...), which left every later device's share of the
+			// progress bar short (upstream 155c1be).
+			processed := int64(devSize)
 			if handled {
 				processed = size
-			} else {
-				ps, perr := deviceSizeBytes(dev)
-				if perr == nil {
-					processed = int64(ps)
-				}
 			}
 			currentProcessedSize += uint64(processed)
+			jp.setDiskPos(uint64(processed), currentProcessedSize) // as for a Windows disk above
 			if progressCallback != nil && totalSize > 0 {
-				pct := jobProgressFraction(baseSize, devSize, 1.0, totalSize)
-				if progressCallback(pct, fmt.Sprintf("Backup complete for device %s", dev)) {
+				percentage := float64(currentProcessedSize) / float64(totalSize)
+				if progressCallback(percentage, fmt.Sprintf("Backup complete for device %s", dev)) {
 					return nil, ErrCancelled
 				}
 			}
 		}
 	}
 
+	jp.setPhase("finishing")
 	if cfg.BackupType == "vm" {
 		vmid, err := strconv.ParseInt(cfg.BackupID, 10, 32)
 		if err != nil {
@@ -712,8 +823,21 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		return nil, fmt.Errorf("finish: %v", err)
 	}
 
+	// PBS's own "Comment" column reads from the dedicated notes API, not from
+	// anything in the manifest just uploaded — verified live against a real
+	// PBS instance (see gui/backup_inline.go's matching call for detail).
+	// Best-effort: the backup already succeeded, so a failure here is
+	// reported via progressCallback, not returned as a backup error.
+	if cfg.Comment != "" {
+		if commentErr := client.SetComment(cfg.Comment); commentErr != nil {
+			progressCallback(100, fmt.Sprintf("WARNING: failed to set PBS snapshot comment: %v", commentErr))
+		}
+	}
+
 	return &BackupResult{
-		Disks: disks,
+		Disks:   disks,
+		client:  client,
+		comment: cfg.Comment,
 	}, nil
 }
 

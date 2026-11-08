@@ -14,10 +14,10 @@ var ErrMaxRetriesExceeded = errors.New("maximum retry attempts exceeded")
 
 // Config holds retry configuration
 type Config struct {
-	MaxAttempts int           // Maximum number of retry attempts
+	MaxAttempts  int           // Maximum number of retry attempts
 	InitialDelay time.Duration // Initial delay between retries
-	MaxDelay    time.Duration // Maximum delay between retries
-	Multiplier  float64       // Backoff multiplier (e.g., 2.0 for exponential)
+	MaxDelay     time.Duration // Maximum delay between retries
+	Multiplier   float64       // Backoff multiplier (e.g., 2.0 for exponential)
 }
 
 // DefaultConfig returns a sensible default retry configuration
@@ -49,6 +49,11 @@ func DefaultRetryable(err error) bool {
 		"deadline exceeded",
 		"connection refused",
 		"connection reset",
+		// Windows words a reset or aborted connection its own way
+		// (WSAECONNRESET 10054, WSAECONNABORTED 10053), which "connection
+		// reset" does not match: a dropped link was not retried there.
+		"forcibly closed by the remote host",
+		"established connection was aborted",
 		"temporary failure",
 		"unexpected eof",
 		"broken pipe",

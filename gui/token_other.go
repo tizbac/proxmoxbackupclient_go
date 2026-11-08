@@ -1,12 +1,14 @@
 //go:build !windows && !linux
-// +build !windows,!linux
 
 package main
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
-// elevatedFetchToken is unavailable on unsupported platforms: the GUI falls
-// back to standalone mode instead of prompting.
-func elevatedFetchToken(handoffFile string) (string, error) {
-	return "", errors.New("elevated token fetch is not supported on this platform")
+// runElevatedHandoff: no elevation helper on this system; an app run as the
+// service's own account reads the token file directly (fetchServiceToken).
+func runElevatedHandoff(string, string, time.Duration) (string, error) {
+	return "", errors.New("connecting to the background service needs the app run as administrator on this system")
 }

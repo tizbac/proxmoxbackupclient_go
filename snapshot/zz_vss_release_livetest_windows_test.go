@@ -12,7 +12,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/go-ole/go-ole"
 	"golang.org/x/sys/windows"
 )
 
@@ -63,9 +62,10 @@ func TestLiveVSSSnapshotReleased(t *testing.T) {
 // that many snapshots one after another and reports how many handles the
 // process gained, for the whole snapshot and its parts, so a leak per
 // snapshot shows. The GUI and the service run for weeks, a snapshot or more
-// a day. On Server 2022: 33 per snapshot with go-vss's own calls, about 21
-// with createShadow, all in create and release (none in delete, in the VSS
-// object itself, or in vssadmin).
+// a day. 2026-10-21 on Server 2022: 33 per snapshot with go-vss's own
+// calls, 21 with createShadow, all in create and release (none in delete,
+// in the VSS object itself, or in vssadmin). 2026-11-04: 0, with go-vss's
+// extra references gone (st-matskevich/go-vss#16, in v0.4.2).
 func TestLiveVSSHandles(t *testing.T) {
 	vol := os.Getenv("PBS_VSS_VOL")
 	n, _ := strconv.Atoi(os.Getenv("PBS_VSS_HANDLES"))
@@ -101,8 +101,11 @@ func TestLiveVSSHandles(t *testing.T) {
 	// CreateVSSSnapshot.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ole.CoInitialize(0)
-	defer ole.CoUninitialize()
+	uninit, err := initCOM()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer uninit()
 	measure("vssadmin list writers", func() {
 		exec.Command("vssadmin", "list", "writers").CombinedOutput()
 	})
@@ -120,8 +123,8 @@ func TestLiveVSSHandles(t *testing.T) {
 	measure("delete", func() {
 		id := ids[0]
 		ids = ids[1:]
-		if err := deleteShadowVSS(normalizeShadowID(id)); err != nil {
-			t.Fatalf("could not delete %s: %v", id, err)
+		if !deleteShadow(id) {
+			t.Fatalf("could not delete %s", id)
 		}
 	})
 	measure("components only", func() {

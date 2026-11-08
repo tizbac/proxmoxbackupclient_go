@@ -199,6 +199,10 @@ func TestDefaultRetryable(t *testing.T) {
 		{"timeout error", errors.New("connection timeout"), true},
 		{"connection refused", errors.New("connection refused"), true},
 		{"connection reset", errors.New("connection reset by peer"), true},
+		// As Windows gave them on 03/11/2026 when a proxy cut a backup's connection.
+		{"windows reset, write", errors.New(`Post "https://127.0.0.1:65070/fixed_chunk": write tcp 127.0.0.1:65071->127.0.0.1:65070: wsasend: An existing connection was forcibly closed by the remote host.`), true},
+		{"windows reset, read", errors.New("read tcp 127.0.0.1:65071->127.0.0.1:65070: wsarecv: An existing connection was forcibly closed by the remote host."), true},
+		{"windows aborted", errors.New("wsasend: An established connection was aborted by the software in your host machine."), true},
 		{"temporary failure", errors.New("temporary failure in name resolution"), true},
 		{"permanent error", errors.New("invalid credentials"), false},
 		{"not found", errors.New("404 not found"), false},

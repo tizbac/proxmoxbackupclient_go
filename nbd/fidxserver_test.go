@@ -1,7 +1,8 @@
-package main
+package pbsnbd
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -35,7 +36,7 @@ func newFakeChunks() *fakeChunks {
 	}
 }
 
-func (f *fakeChunks) GetChunkData(digest string) ([]byte, error) {
+func (f *fakeChunks) GetChunkData(_ context.Context, digest string) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls[digest]++

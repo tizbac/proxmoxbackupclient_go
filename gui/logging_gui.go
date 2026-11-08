@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
+	"testing"
 	"time"
 )
 
@@ -16,23 +16,48 @@ var (
 	backupLogger  *RotatingLogger
 	serviceLogger *RotatingLogger
 	logDir        string
-
-	// currentBackupLogger is set for the duration of a backup run so logs for
-	// that run land in a dedicated file. writeBackupLog uses this if set.
-	currentBackupLogger   *RotatingLogger
-	currentBackupLoggerMu sync.RWMutex
 )
 
 func init() {
 	// Setup log directory for GUI
-	if runtime.GOOS == "windows" {
-		programData := os.Getenv("ProgramData")
-		if programData == "" {
-			programData = "C:\\ProgramData"
+	if testing.Testing() {
+		logDir = testLogDir()
+	} else if runtime.GOOS == "windows" {
+		// The user's own folder: the service's (ProgramData) is the
+		// service's alone, and only an elevated app could write there.
+		local := os.Getenv("LOCALAPPDATA")
+		if local == "" {
+			if home, herr := os.UserHomeDir(); herr == nil {
+				local = filepath.Join(home, "AppData", "Local")
+			} else {
+				local = os.TempDir()
+			}
 		}
-		logDir = filepath.Join(programData, "ProxmoxBackupClient")
+		app := filepath.Join(local, folderName())
+		adoptPlainFolder(app, []string{filepath.Join(local, legacyFolder)})
+		logDir = filepath.Join(app, "Logs")
 	} else {
-		logDir = "/var/log/proxmoxbackupclient"
+		// /var/log requires root to create a new subdirectory, which this GUI
+		// build (unlike the service build, which does run as root under
+		// systemd) is not guaranteed to have. Confirmed live 2026-09-24: on a
+		// normal desktop session the os.MkdirAll below failed silently (its
+		// error is discarded), so backup/debug logging was completely dead
+		// for the entire session with no visible sign beyond one line printed
+		// to a terminal the app wasn't even launched from — made a real
+		// restore bug impossible to diagnose from logs alone. Use a per-user
+		// location that works regardless of privilege (including when
+		// deliberately run via sudo, e.g. for machine/VSS backups), matching
+		// the XDG Base Directory convention for log-like state data.
+		stateHome := os.Getenv("XDG_STATE_HOME")
+		if stateHome == "" {
+			home, herr := os.UserHomeDir()
+			if herr != nil {
+				home = "/tmp"
+			}
+			stateHome = filepath.Join(home, ".local", "state")
+		}
+		logDir = filepath.Join(stateHome, folderNameLower())
+		adoptPlainFolder(logDir, []string{filepath.Join(stateHome, "proxmoxbackupclient")})
 	}
 	// #nosec G703 -- ProgramData is a trusted Windows system environment variable
 	_ = os.MkdirAll(logDir, 0700)
@@ -72,9 +97,10 @@ func GetBackupLogPath() string {
 	return filepath.Join(logDir, "backup-gui.log")
 }
 
-// StartBackupRunLog creates a dedicated log file for the current backup run and
-// installs it as the active backup logger. Returns the new logger so the caller
-// can close/compress it at the end of the run.
+// StartBackupRunLog creates a dedicated log file for a backup run. The run
+// carries it in its context (withRunLog) and writes to it with runLog, so two
+// runs at once each keep their own file. Returns the logger so the caller can
+// close/compress it at the end of the run.
 // If the backup produces > MaxLogSize bytes of log, the file is rotated internally.
 func StartBackupRunLog(backupID string) *RotatingLogger {
 	timestamp := time.Now().Format("20060102-150405")
@@ -86,10 +112,6 @@ func StartBackupRunLog(backupID string) *RotatingLogger {
 		fmt.Fprintf(os.Stderr, "Failed to create per-run backup logger %s: %v\n", path, err)
 		return nil
 	}
-
-	currentBackupLoggerMu.Lock()
-	currentBackupLogger = logger
-	currentBackupLoggerMu.Unlock()
 	return logger
 }
 
@@ -99,12 +121,6 @@ func EndBackupRunLog(logger *RotatingLogger) {
 	if logger == nil {
 		return
 	}
-
-	currentBackupLoggerMu.Lock()
-	if currentBackupLogger == logger {
-		currentBackupLogger = nil
-	}
-	currentBackupLoggerMu.Unlock()
 
 	path := logger.path
 	_ = logger.Close()
@@ -123,17 +139,10 @@ func writeDebugLog(message string) {
 	writeLogToLogger(serviceLogger, "SERVICE", message)
 }
 
-// writeBackupLog writes to backup log (backup operations).
-// Prefers the per-run logger if one is active, else falls back to the global.
+// writeBackupLog writes to the shared backup log (restores, browsing, and
+// anything outside a backup run). A backup run's own lines go to its own file
+// through runLog.
 func writeBackupLog(message string) {
-	currentBackupLoggerMu.RLock()
-	perRun := currentBackupLogger
-	currentBackupLoggerMu.RUnlock()
-
-	if perRun != nil {
-		writeLogToLogger(perRun, "BACKUP", message)
-		return
-	}
 	writeLogToLogger(backupLogger, "BACKUP", message)
 }
 

@@ -1,17 +1,26 @@
-package main
+package pbsnbd
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"pbscommon"
+	"retry"
 	"slices"
 	"sync"
+	"time"
 )
 
 const LRU_CACHE_LIFE = 16 //will be 16*4MB usage
+
+// chunkFetchTimeout bounds a SINGLE chunk fetch attempt — see the retry loop
+// in ReadAt. Matches pbscommon/didx_reader.go's DIDXReaderAt.chunkFetchTimeout
+// (the GUI restore path's own equivalent), for the same reason: chunks are at
+// most ~16MB, so even a slow link should comfortably finish well inside this.
+const chunkFetchTimeout = 60 * time.Second
 
 type CachedChunk struct {
 	Data  []byte
@@ -21,9 +30,9 @@ type CachedChunk struct {
 
 // chunkSource is the slice of *pbscommon.PBSClient that FIDXServer actually
 // needs. Keeping it an interface lets the tests drive ReadAt without a live
-// PBS server.
+// PBS server. The ctx bounds each fetch (see chunkFetchTimeout).
 type chunkSource interface {
-	GetChunkData(digest string) ([]byte, error)
+	GetChunkData(ctx context.Context, digest string) ([]byte, error)
 }
 
 type FIDXServer struct {
@@ -32,6 +41,65 @@ type FIDXServer struct {
 	chunks []string
 	lock   sync.Mutex
 	client chunkSource
+
+	// reconnectMu/reconnectGen serialize and coalesce reconnects — see
+	// reconnect's doc comment.
+	reconnectMu  sync.Mutex
+	reconnectGen int
+}
+
+// reconnectGeneration returns the current reconnect generation, to be passed
+// back into reconnect after a failed fetch — see reconnect's doc comment.
+func (f *FIDXServer) reconnectGeneration() int {
+	f.reconnectMu.Lock()
+	defer f.reconnectMu.Unlock()
+	return f.reconnectGen
+}
+
+// reconnect tears down and re-establishes the PBS reader session (fresh
+// HTTP/2 connection, fresh server-side reader task) on f.client in place,
+// then bumps reconnectGen. Added 2026-09-24 after a real bare-metal restore
+// test stalled four separate times in one session, at different chunks each
+// time, and a SAME-connection retry (chunkFetchTimeout + 5 attempts, see
+// ReadAt) demonstrably was not enough — it helped some cases but the exact
+// same class of stall kept recurring. Every single manual recovery that
+// night was the same fix: kill pbsnbd, reattach fresh, retry — a full
+// reconnect, not a retry on the same connection — and it worked every time.
+// This automates exactly that, in place, without restarting the whole
+// attach/NBD session: the diagnosis is that the degradation is
+// connection/session-level, not a single bad chunk, so retrying on the same
+// connection just reproduces the same hang.
+//
+// observedGen is the generation the caller saw before its fetch failed; if
+// another goroutine already completed a newer reconnect by the time this one
+// acquires the lock, this is a no-op — N concurrent failures on the same bad
+// connection trigger one reconnect, not N pointless ones back-to-back.
+func (f *FIDXServer) reconnect(observedGen int) {
+	// Only a live PBS session can be reconnected; test doubles cannot.
+	pbsClient, ok := f.client.(*pbscommon.PBSClient)
+	if !ok {
+		return
+	}
+	f.reconnectMu.Lock()
+	defer f.reconnectMu.Unlock()
+	if f.reconnectGen != observedGen {
+		return
+	}
+	fmt.Printf("[%s] Reconnecting to PBS after a chunk fetch failure...\n", time.Now().Format(time.RFC3339))
+	pbsClient.Close()
+	// ocs-pbs-nbd always authenticates with username/password (ticket) auth,
+	// never an API token — refresh the ticket too, in case a long enough
+	// run with enough reconnects ever outlives its original ticket. Cheap
+	// and correct to do unconditionally when a username was configured;
+	// a no-op for token auth (Username is empty in that case).
+	if pbsClient.Username != "" {
+		if err := pbsClient.ObtainTicket(); err != nil {
+			fmt.Printf("Reconnect: ObtainTicket failed: %v\n", err)
+		}
+	}
+	pbsClient.Connect(true, pbsClient.Manifest.BackupType)
+	f.reconnectGen++
+	fmt.Printf("[%s] Reconnected.\n", time.Now().Format(time.RFC3339))
 }
 
 func NewFIDXServer(data []byte, client chunkSource) (*FIDXServer, error) {
@@ -122,9 +190,74 @@ func (f *FIDXServer) ReadAt(p []byte, off int64) (n int, err error) {
 		}
 		ch, ok := f.cached[idx.Index]
 		if !ok {
-			data, cerr := f.client.GetChunkData(f.chunks[idx.Index])
-			if cerr != nil {
-				return 0, cerr
+			// A per-attempt timeout, not a deadline on the whole session
+			// (pbsnbd serves reads for however long the NBD device stays
+			// attached — a Clonezilla restore can run for hours): each
+			// individual chunk fetch gets chunkFetchTimeout, retried up to
+			// 5 times, mirroring pbscommon/didx_reader.go's DIDXReaderAt
+			// (the GUI restore path's own equivalent protection). Added
+			// 2026-09-24 after a real bare-metal restore test hung
+			// indefinitely mid-partition-clone: GetChunkData(context.
+			// Background()) has no deadline at all, so one stuck HTTP/2
+			// stream (the exact class of hang seen earlier the same night
+			// in the GUI, root cause still unconfirmed server-side) blocked
+			// this ReadAt — and therefore Clonezilla's partclone — forever,
+			// with the only recovery being to kill pbsnbd and restart the
+			// whole attach+restore from scratch. A retried, bounded fetch
+			// gives a stuck stream a real chance to recover on its own
+			// before that drastic step is needed.
+			//
+			// EXTENDED same night, after that same-connection retry alone
+			// proved insufficient — a real restore stalled four separate
+			// times in one session, at different chunks, and every manual
+			// recovery was a full reconnect (kill pbsnbd, reattach fresh),
+			// never just a retry. So a failed attempt now reconnects (see
+			// FIDXServer.reconnect) BEFORE the next retry, instead of
+			// retrying on what's likely the same degraded connection.
+			var data []byte
+			var lastErr error
+			attempt := 0
+			retryCfg := retry.DefaultConfig()
+			retryCfg.MaxAttempts = 5
+			fetchErr := retry.DoWithJitter(context.Background(), retryCfg, retry.DefaultRetryable, func() error {
+				attempt++
+				// Diagnostic logging added 2026-09-24 after a live stall where
+				// NEITHER a new "Got" line NOR a "Reconnecting..." line
+				// appeared for far longer than chunkFetchTimeout x 5 should
+				// allow, with pbsnbd still alive throughout - i.e. no visible
+				// evidence the timeout/retry/reconnect logic was firing AT
+				// ALL, not just failing to recover. Without this, that is
+				// unfalsifiable from the log alone. With it, the next
+				// occurrence will show exactly: whether an attempt started,
+				// how long it actually ran before returning (vs the intended
+				// chunkFetchTimeout bound), and the exact error returned.
+				attemptStart := time.Now()
+				fmt.Printf("[%s] Fetching chunk %s (attempt %d/%d)...\n", attemptStart.Format(time.RFC3339), f.chunks[idx.Index], attempt, retryCfg.MaxAttempts)
+				fetchCtx, cancel := context.WithTimeout(context.Background(), chunkFetchTimeout)
+				defer cancel()
+				d, ferr := f.client.GetChunkData(fetchCtx, f.chunks[idx.Index])
+				elapsed := time.Since(attemptStart)
+				if ferr != nil {
+					fmt.Printf("[%s] Attempt %d/%d for chunk %s FAILED after %s: %v\n", time.Now().Format(time.RFC3339), attempt, retryCfg.MaxAttempts, f.chunks[idx.Index], elapsed, ferr)
+					lastErr = ferr
+					gen := f.reconnectGeneration()
+					f.reconnect(gen)
+					return ferr
+				}
+				if elapsed > 5*time.Second {
+					fmt.Printf("[%s] Attempt %d for chunk %s succeeded but took %s\n", time.Now().Format(time.RFC3339), attempt, f.chunks[idx.Index], elapsed)
+				}
+				data = d
+				return nil
+			})
+			if fetchErr != nil {
+				// All retries (each preceded by a reconnect) exhausted: report
+				// the failure to the NBD layer as a read error rather than
+				// crashing the process.
+				if lastErr != nil {
+					return 0, fmt.Errorf("chunk %s: %w (%v)", f.chunks[idx.Index], lastErr, fetchErr)
+				}
+				return 0, fetchErr
 			}
 
 			for _, idx2 := range f.cached {

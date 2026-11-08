@@ -2,11 +2,14 @@ package pbscommon
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+// Ported from upstream #117, plus the fork's Ctx and split archive cases.
 
 // A cancel stops the walk inside a file, not at the end of the folder: the
 // write fails with ErrWriteCancelled long before the whole file is written.
@@ -42,6 +45,69 @@ func TestPXARCancelStopsInsideAFile(t *testing.T) {
 	}
 }
 
+// The GUI cancels through Ctx: the same stop part way through a file, ending
+// with context.Canceled, which the GUI reports as a stopped backup.
+func TestPXARCtxCancelStopsInsideAFile(t *testing.T) {
+	root := t.TempDir()
+	big := bytes.Repeat([]byte("x"), 4<<20)
+	if err := os.WriteFile(filepath.Join(root, "big.bin"), big, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var written int
+	archive := &PXARArchive{ArchiveName: "backup.pxar.didx", Ctx: ctx}
+	archive.WriteCB = func(b []byte) error {
+		written += len(b)
+		if written > 1<<20 {
+			cancel()
+		}
+		return nil
+	}
+	archive.Create()
+
+	_, err := archive.WriteDir(root, "", true)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("WriteDir error = %v, want context.Canceled", err)
+	}
+	if written > 1<<20+64*1024 {
+		t.Errorf("%d bytes written, want no more than one 64 KiB block after the cancel", written)
+	}
+}
+
+// A split archive writes file contents to the payload stream: a cancel stops
+// that stream part way through a file too.
+func TestPXARCancelStopsInsideASplitPayload(t *testing.T) {
+	root := t.TempDir()
+	big := bytes.Repeat([]byte("p"), 4<<20)
+	if err := os.WriteFile(filepath.Join(root, "big.bin"), big, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var payload int
+	archive := &PXARArchive{ArchiveName: "t.mpxar.didx", Split: true, Ctx: ctx}
+	archive.WriteCB = func(b []byte) error { return nil }
+	archive.PayloadWriteCB = func(b []byte) error {
+		payload += len(b)
+		if payload > 1<<20 {
+			cancel()
+		}
+		return nil
+	}
+	archive.Create()
+
+	_, err := archive.WriteDir(root, "", true)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("WriteDir error = %v, want context.Canceled", err)
+	}
+	if payload > 1<<20+64*1024 {
+		t.Errorf("%d payload bytes written, want no more than one 64 KiB block after the cancel", payload)
+	}
+}
+
 // A write buffered in one go (a virtual file here) is cut at the next 64 KiB
 // block too, not drained to the end.
 func TestPXARCancelStopsInsideABufferedWrite(t *testing.T) {
@@ -50,27 +116,29 @@ func TestPXARCancelStopsInsideABufferedWrite(t *testing.T) {
 	var written int
 	archive := &PXARArchive{ArchiveName: "backup.pxar.didx"}
 	archive.WriteCB = func(b []byte) error { written += len(b); return nil }
-	// The first block goes out, the cancel lands during it.
-	archive.Cancelled = func() bool { return written > 0 }
+	// The entry's headers go out in a flush of their own here (beginPayload),
+	// then the data: the cancel lands during the data's first block.
+	const headers = 1024
+	archive.Cancelled = func() bool { return written > headers }
 	archive.Create()
 
 	_, err := archive.WriteVirtualFile("meta.json", payload, 0)
 	if !errors.Is(err, ErrWriteCancelled) {
 		t.Fatalf("WriteVirtualFile error = %v, want ErrWriteCancelled", err)
 	}
-	if written != 64*1024 {
-		t.Errorf("%d bytes written, want exactly one 64 KiB block before the cancel", written)
+	if written > headers+64*1024 {
+		t.Errorf("%d bytes written, want no more than one 64 KiB block of the data before the cancel", written)
 	}
 }
 
-// Without a cancel the hook changes nothing.
+// Without a cancel the hook and a live Ctx change nothing.
 func TestPXARCancelHookUnsetOrFalse(t *testing.T) {
 	root := t.TempDir()
 	makeTimedTree(t, root)
 	want, _ := writeTestArchive(t, root, false)
 
 	var p bytes.Buffer
-	archive := &PXARArchive{ArchiveName: "backup.pxar.didx"}
+	archive := &PXARArchive{ArchiveName: "backup.pxar.didx", Ctx: context.Background()}
 	archive.WriteCB = func(b []byte) error { p.Write(b); return nil }
 	archive.CatalogWriteCB = func(b []byte) error { return nil }
 	archive.Cancelled = func() bool { return false }

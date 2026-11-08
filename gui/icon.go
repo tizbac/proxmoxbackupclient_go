@@ -1,37 +1,36 @@
 package main
 
-import "embed"
+import (
+	"embed"
+)
 
-// TrayIconData embeds the default icon.ico file used by the application.
-// It is the ultimate fallback; the tray normally shows the brand icon.
+// TrayIconData embeds the default icon.ico, the same icon as the executable.
+// It is the last fallback; the tray normally shows the brand's own icon.
 //
 //go:embed build/windows/icon.ico
 var TrayIconData []byte
 
-// brandTrayIconDir is where the per-brand tray icons live inside the binary.
+// brandTrayIconDir is where the per-brand tray icons live in the binary.
 const brandTrayIconDir = "build/windows/brands"
 
-// brandTrayIcons embeds the per-brand tray icons (regenerate them with
-// installer/icons/generate.sh). The active brand is resolved at runtime from
-// the executable's base name — the MSI ships one binary renamed per brand —
-// so the tray icon has to be selected at runtime from this embedded set.
+// brandTrayIcons holds one tray icon per brand, named by brand key
+// (regenerate them with installer/icons/generate.sh). One binary ships under
+// each brand's executable name, so the icon is picked at runtime.
 //
 //go:embed build/windows/brands
 var brandTrayIcons embed.FS
 
-// TrayIconForBrand returns the embedded tray icon for a brand. When the brand
-// has no icon of its own it falls back to the default brand's icon, and
-// ultimately to TrayIconData.
+// TrayIconForBrand returns the brand's tray icon, else the default brand's,
+// else TrayIconData.
 func TrayIconForBrand(b Brand) []byte {
 	key := normalizeBrandKey(b.Name)
 	if key == "" {
 		key = defaultBrandKey
 	}
-	if data, err := brandTrayIcons.ReadFile(brandTrayIconDir + "/" + key + ".ico"); err == nil && len(data) > 0 {
-		return data
-	}
-	if data, err := brandTrayIcons.ReadFile(brandTrayIconDir + "/" + defaultBrandKey + ".ico"); err == nil && len(data) > 0 {
-		return data
+	for _, k := range []string{key, defaultBrandKey} {
+		if data, err := brandTrayIcons.ReadFile(brandTrayIconDir + "/" + k + ".ico"); err == nil && len(data) > 0 {
+			return data
+		}
 	}
 	return TrayIconData
 }

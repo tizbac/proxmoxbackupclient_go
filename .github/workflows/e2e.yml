@@ -36,6 +36,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
+          # The "Cache Go modules" step below caches the modules.
+          cache: false
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -102,6 +104,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
+          # The "Cache Go modules" step below caches the modules.
+          cache: false
 
       # The reference client is built from Proxmox's own Debian repository by
       # testing/e2e/run.sh itself (see testing/e2e/official-client/Dockerfile),
@@ -138,7 +142,7 @@ jobs:
             echo '### End-to-end diagnostics'
             echo
             echo '* PBS image: `ayufan/proxmox-backup-server:latest`'
-            echo '* Official client image: `proxmoxbackupclient-e2e-client:latest`'
+            echo '* Official client image: `salvanza-e2e-client:latest`'
             echo
             echo 'Re-run just this job with `E2E_KEEP=1` to keep the container and workdir.'
           } >> "$GITHUB_STEP_SUMMARY"

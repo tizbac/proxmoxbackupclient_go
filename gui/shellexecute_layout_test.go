@@ -7,8 +7,8 @@ import (
 
 // The struct is passed straight to ShellExecuteExW, so its layout must match
 // SHELLEXECUTEINFOW exactly: cbSize is validated first, so a wrong size makes
-// the call fail with ERROR_INVALID_PARAMETER and no UAC prompt — the failure
-// mode reported as "elevation asks nothing at all".
+// the call fail with ERROR_INVALID_PARAMETER and no UAC prompt: the failure
+// reported as "elevation asks nothing at all".
 func TestShellExecInfoLayout(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		t.Skip("layout assertions cover the 64-bit build")

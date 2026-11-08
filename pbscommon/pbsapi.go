@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -56,6 +57,18 @@ func ParseCompressionLevel(level string) CompressionLevel {
 	default:
 		return CompressionFastest // Default to fastest
 	}
+}
+
+// ValidCompressionLevel reports whether level is one a setting or option may
+// hold: fastest, default, better or best (any case), or empty for default.
+// ParseCompressionLevel takes anything and falls back to fastest, so a
+// setting is checked with this first.
+func ValidCompressionLevel(level string) bool {
+	switch strings.ToLower(level) {
+	case "", "fastest", "default", "better", "best":
+		return true
+	}
+	return false
 }
 
 type IndexCreateResp struct {
@@ -118,13 +131,25 @@ type Unprotected struct {
 // manifest". Comment is therefore kept in memory but never serialized - PBS
 // does not persist it anyway, so writing it out only ever broke signing.
 type BackupManifest struct {
-	BackupID    string      `json:"backup-id"`
-	BackupTime  int64       `json:"backup-time"`
-	BackupType  string      `json:"backup-type"`
+	BackupID   string `json:"backup-id"`
+	BackupTime int64  `json:"backup-time"`
+	BackupType string `json:"backup-type"`
+	// Comment is not serialised: the manifest is signed when encrypting and PBS
+	// never reads it from index.json.blob. The snapshot comment PBS shows comes
+	// from the notes sidecar, set via SetComment.
 	Comment     string      `json:"-"`
 	Files       []File      `json:"files"`
 	Signature   interface{} `json:"signature"`
 	Unprotected Unprotected `json:"unprotected"`
+	// Size/Owner/Protected are only ever populated when this struct is used to
+	// decode a snapshot LISTING response (ListSnapshots) — PBS's real API
+	// returns them there, but they are not part of the manifest THIS client
+	// builds and uploads during a backup (client.Manifest reuses this same
+	// struct for that outgoing side). omitempty keeps them out of the uploaded
+	// index.json in that case, where they're always zero-valued anyway.
+	Size      int64  `json:"size,omitempty"`
+	Owner     string `json:"owner,omitempty"`
+	Protected bool   `json:"protected,omitempty"`
 }
 
 type AuthErr struct {
@@ -133,7 +158,48 @@ type AuthErr struct {
 }
 
 func (e *AuthErr) Error() string {
-	return fmt.Sprintf("PBS authentication failed: HTTP %s - %s", e.StatusCode, e.ResponseBody)
+	// Only a 401 is a login problem. Anything else refused on the session's
+	// upgrade (a 400 for a backup time already taken, a 403 for a missing
+	// permission) said "authentication failed" too and sent people looking
+	// at their token.
+	if strings.HasPrefix(e.StatusCode, "401") {
+		return fmt.Sprintf("PBS authentication failed: HTTP %s - %s", e.StatusCode, e.ResponseBody)
+	}
+	return fmt.Sprintf("PBS refused the backup session: HTTP %s - %s", e.StatusCode, e.ResponseBody)
+}
+
+// backupTimeTakenText is how PBS words refusing a backup session whose
+// backup time is not later than the group's newest snapshot.
+const backupTimeTakenText = "backup timestamp is older than last backup"
+
+// BackupTimeTakenErr is PBS refusing a backup session because the backup
+// group already has a snapshot at this backup time or later. Backup times
+// are whole seconds, so a backup that starts in the same second as the
+// group's last one gets it (one run started straight after a quick one, or
+// two chained in a script), and so does a computer whose clock is behind
+// the server's newest snapshot of the group.
+type BackupTimeTakenErr struct {
+	BackupTime int64
+}
+
+func (e *BackupTimeTakenErr) Error() string {
+	return fmt.Sprintf("PBS refused backup time %s for this backup group (%s): its last backup started in the same second or later; if that was not a backup a moment ago, check this computer's clock",
+		time.Unix(e.BackupTime, 0).UTC().Format(time.RFC3339), backupTimeTakenText)
+}
+
+// IsBackupTimeTaken reports whether err (or what it wraps, also as text) is a
+// BackupTimeTakenErr: the backup can start again once the next second has
+// begun.
+func IsBackupTimeTaken(err error) bool {
+	var bt *BackupTimeTakenErr
+	return err != nil && (errors.As(err, &bt) || strings.Contains(err.Error(), backupTimeTakenText))
+}
+
+// WaitNextSecond sleeps until a new whole second has begun, so a new backup
+// session gets a later backup time than one started in this second.
+func WaitNextSecond() {
+	now := time.Now()
+	time.Sleep(time.Unix(now.Unix()+1, 0).Sub(now) + 20*time.Millisecond)
 }
 
 // NamespaceNotFoundErr is returned when the server rejects a request because
@@ -209,6 +275,22 @@ type PBSClient struct {
 	// alone is a no-op while streams are open.
 	activeConn   net.Conn
 	activeConnMu sync.Mutex
+
+	// sentBytes totals the encoded size of every chunk uploaded (see SentBytes).
+	sentBytes atomic.Uint64
+
+	// uploads holds this client's chunk uploads to the number allowed at a
+	// time (upload_threads.go).
+	uploadsMu sync.Mutex
+	uploads   *uploadGate
+}
+
+// SentBytes is the size of the chunks this client has uploaded as they went
+// over the network: compressed (or encrypted) and framed for PBS, without
+// the TLS and HTTP overhead. New data is counted before compression, so on
+// compressible data this is several times smaller.
+func (pbs *PBSClient) SentBytes() uint64 {
+	return pbs.sentBytes.Load()
 }
 
 // activeClients tracks every PBSClient currently holding an open HTTP/2
@@ -380,6 +462,18 @@ func (pbs *PBSClient) authHeaderLines() []string {
 	return []string{fmt.Sprintf("Authorization: PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret)}
 }
 
+// upgradeHostHeader is the Host header of the hand-written HTTP/1.1 upgrade
+// request: the host of BaseURL as written, like net/http and
+// proxmox-backup-client send it, and not the dial address, which always
+// carries the port. "pbs.example.com:443" defeats a reverse proxy routing on
+// an exact Host match (upstream #89, fixed there in #116).
+func upgradeHostHeader(baseURL, addr string) string {
+	if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return addr
+}
+
 // redactRequest masks the credential from a fully-built raw request string so
 // it can be logged without leaking the ticket / CSRF token / API secret.
 func (pbs *PBSClient) redactRequest(s string) string {
@@ -393,18 +487,6 @@ func (pbs *PBSClient) redactRequest(s string) string {
 	return strings.Replace(s,
 		fmt.Sprintf("PBSAPIToken=%s:%s", pbs.AuthID, pbs.Secret),
 		fmt.Sprintf("PBSAPIToken=%s:<redacted>", pbs.AuthID), 1)
-}
-
-// upgradeHostHeader is the Host header of the hand-written HTTP/1.1 upgrade
-// request: the host of BaseURL as written, like net/http and
-// proxmox-backup-client send it, and not the dial address, which always
-// carries the port. "pbs.example.com:443" defeats a reverse proxy routing on
-// an exact Host match (#89).
-func upgradeHostHeader(baseURL, addr string) string {
-	if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
-		return u.Host
-	}
-	return addr
 }
 
 // ticketResp mirrors the JSON returned by POST /api2/json/access/ticket.
@@ -469,9 +551,20 @@ func (pbs *PBSClient) ObtainTicket() error {
 // NamespaceHint in missingNamespaceErr.
 
 func (pbs *PBSClient) ListSnapshots() ([]BackupManifest, error) {
-	// PBS reads every snapshot's manifest in the datastore (or namespace) to
-	// answer this. With a cold cache over spinning disks that takes longer
-	// than 10 s on a datastore of a few hundred snapshots.
+	return pbs.listSnapshots(url.Values{})
+}
+
+// ListGroupSnapshots lists the snapshots of one backup group (type and ID),
+// newest first, without PBS reading the rest of the datastore.
+func (pbs *PBSClient) ListGroupSnapshots(backupType, backupID string) ([]BackupManifest, error) {
+	params := url.Values{}
+	params.Add("backup-type", backupType)
+	params.Add("backup-id", backupID)
+	return pbs.listSnapshots(params)
+}
+
+func (pbs *PBSClient) listSnapshots(params url.Values) ([]BackupManifest, error) {
+	// PBS reads every manifest in the datastore; on a cold cache over a spinning disk that exceeds 10s.
 	client := &http.Client{
 		Timeout:   120 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: pbs.buildTLSConfig()},
@@ -479,7 +572,6 @@ func (pbs *PBSClient) ListSnapshots() ([]BackupManifest, error) {
 
 	ret := make([]BackupManifest, 0)
 	var r SnapshotsResp
-	params := url.Values{}
 	if pbs.Namespace != "" {
 		params.Add("ns", pbs.Namespace)
 	}
@@ -769,6 +861,22 @@ func (pbs *PBSClient) ChunkDigestHex(chunkdata []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// ChunkMatchesDigest reports whether a fetched chunk's plaintext is the one
+// digestHex names. With a key configured, a plain sha256 also matches: an
+// unencrypted snapshot (taken before the key was set up) read with the key
+// loaded. Choosing the right one per snapshot would need its manifest at
+// every reader; a match of the other kind would need a sha256 preimage.
+func (pbs *PBSClient) ChunkMatchesDigest(chunkdata []byte, digestHex string) bool {
+	if pbs.ChunkDigestHex(chunkdata) == digestHex {
+		return true
+	}
+	if pbs.Crypt == nil {
+		return false
+	}
+	sum := sha256.Sum256(chunkdata)
+	return hex.EncodeToString(sum[:]) == digestHex
+}
+
 // defaultCryptMode is the crypt-mode a freshly created index archive entry
 // gets. UploadManifest re-derives it for every archive before signing, so
 // this is only about keeping the in-memory manifest honest between creation
@@ -847,16 +955,47 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 	if !dynamic {
 		suburl = "/fixed_chunk?"
 	}
-	req, err2 := http.NewRequest("POST", pbs.BaseURL+suburl+q.Encode(), bytes.NewBuffer(outBuffer))
+	// Each upload is watched (upload_stall.go) and given up once it stops
+	// moving: a stuck HTTP/2 stream on a healthy connection is not caught by
+	// the transport's pings, and the backup waited on it for ever
+	// (tizbac/proxmoxbackupclient_go#59), while a slow link that still moves
+	// must not be given up. Failing lets the caller's retry send the chunk
+	// again.
+	//
+	// The watch starts once the upload may go (upload_threads.go): the wait
+	// for a turn is not part of it.
+	gate := pbs.uploadGate()
+	gate.acquire()
+	sent := 0
+	defer func() { gate.release(sent) }()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	progress := newUploadProgress(len(outBuffer))
+	req, err2 := http.NewRequestWithContext(ctx, "POST", pbs.BaseURL+suburl+q.Encode(), progress.body(outBuffer))
 	if err2 != nil {
 		fmt.Println("Error making request:", err2)
 		return err2
 	}
+	req.ContentLength = int64(len(outBuffer))
+	req.GetBody = func() (io.ReadCloser, error) { return progress.body(outBuffer), nil }
+	stop := watchUpload(cancel, progress, pbs.sessionConn())
 	resp2, err := pbs.Client.Do(req)
+	stop()
 	if err != nil {
+		var stall *UploadStallError
+		if errors.As(context.Cause(ctx), &stall) {
+			// Stopped, and PBS has said nothing on the connection either:
+			// the link has gone, not this one upload.
+			if quiet, closed := pbs.closeIfQuiet(chunkStallTime()); closed {
+				err = fmt.Errorf("connection lost: nothing from PBS for %v (%w)", quiet.Round(time.Second), stall)
+			} else {
+				err = fmt.Errorf("%w (%v)", stall, err)
+			}
+		}
 		fmt.Println("Error making request:", err)
 		return err
 	}
+	defer resp2.Body.Close()
 
 	if resp2.StatusCode != http.StatusOK {
 		resp1, _ := io.ReadAll(resp2.Body)
@@ -864,7 +1003,20 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 		return fmt.Errorf("Error making request: %s %s", string(resp1), string(resp2.Proto))
 	}
 
+	pbs.sentBytes.Add(uint64(len(outBuffer)))
+	sent = len(outBuffer)
 	return nil
+}
+
+// uploadGate is the session's upload gate (upload_threads.go), made with the
+// first upload.
+func (pbs *PBSClient) uploadGate() *uploadGate {
+	pbs.uploadsMu.Lock()
+	defer pbs.uploadsMu.Unlock()
+	if pbs.uploads == nil {
+		pbs.uploads = newUploadGate()
+	}
+	return pbs.uploads
 }
 
 func (pbs *PBSClient) AssignDynamicChunks(writerid uint64, digests []string, offsets []uint64) error {
@@ -1086,6 +1238,93 @@ func (pbs *PBSClient) UploadManifest() error {
 	return pbs.uploadBlob(ManifestBlobName, manifestBin, false)
 }
 
+// SetComment sets a snapshot's comment via PBS's dedicated notes API (PUT
+// .../admin/datastore/{store}/notes) — the actual field the PBS web UI's
+// snapshot list "Comment" column reads from. BackupManifest.Comment (above)
+// is NOT this: it only round-trips when this struct decodes an existing
+// ListSnapshots response, and verified live against a real PBS instance,
+// that response never includes a "comment" key either — PBS keeps notes in
+// a separate sidecar, not in index.json.blob. Call after Finish() succeeds,
+// using its own plain HTTP client like TestConnection/ListSnapshots do,
+// since pbs.Client's H2 backup-session transport is already torn down by
+// Finish() by the time this runs.
+func (pbs *PBSClient) SetComment(comment string) error {
+	client := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: pbs.buildTLSConfig()},
+	}
+
+	form := url.Values{}
+	form.Set("backup-type", pbs.Manifest.BackupType)
+	form.Set("backup-id", pbs.Manifest.BackupID)
+	form.Set("backup-time", fmt.Sprintf("%d", pbs.Manifest.BackupTime))
+	form.Set("notes", comment)
+	if pbs.Namespace != "" {
+		form.Set("ns", pbs.Namespace)
+	}
+
+	fullURL := fmt.Sprintf("%s/api2/json/admin/datastore/%s/notes", pbs.BaseURL, pbs.Datastore)
+	req, err := http.NewRequest(http.MethodPut, fullURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	pbs.setAuth(req)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("HTTP error setting comment: %d - %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// GetComment reads the snapshot's comment (its PBS notes), the snapshot
+// being the one Manifest names, as SetComment writes it.
+func (pbs *PBSClient) GetComment() (string, error) {
+	client := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: pbs.buildTLSConfig()},
+	}
+
+	params := url.Values{}
+	params.Set("backup-type", pbs.Manifest.BackupType)
+	params.Set("backup-id", pbs.Manifest.BackupID)
+	params.Set("backup-time", fmt.Sprintf("%d", pbs.Manifest.BackupTime))
+	if pbs.Namespace != "" {
+		params.Set("ns", pbs.Namespace)
+	}
+
+	fullURL := fmt.Sprintf("%s/api2/json/admin/datastore/%s/notes?%s", pbs.BaseURL, pbs.Datastore, params.Encode())
+	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/json")
+	pbs.setAuth(req)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("HTTP error reading comment: %d - %s", resp.StatusCode, string(body))
+	}
+	var r struct {
+		Data string `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return "", err
+	}
+	return r.Data, nil
+}
+
 func (pbs *PBSClient) Finish() error {
 	req, err := http.NewRequest("POST", pbs.BaseURL+"/finish", nil)
 	if err != nil {
@@ -1206,10 +1445,20 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 	// connections and detect dead connections quickly. Without this, a silently
 	// dropped connection (firewall, NAT timeout, etc.) only manifests when the
 	// next chunk upload fails, wasting minutes of backup time.
+	//
+	// The PING waits behind the chunk data already handed to the socket and
+	// queued on the way, and on a slow link that can be several MB: at
+	// 400 kbit/s each MB is 20 s. With 15 s, and later 45 s, a working
+	// connection was given up while it uploaded (2026-11-04, and 2026-11-05
+	// on a slow link shared with another backup, after 75 s). So the answer
+	// may take 5 minutes. While uploads are under way a dead connection is
+	// found sooner: an upload that stops moving on a connection PBS has said
+	// nothing on for as long is taken as a lost connection (closeIfQuiet,
+	// upload_stall.go), within about the chunk stall time.
 	pbs.Client = http.Client{
 		Transport: &http2.Transport{
 			ReadIdleTimeout: 30 * time.Second,
-			PingTimeout:     15 * time.Second,
+			PingTimeout:     5 * time.Minute,
 
 			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
 
@@ -1225,10 +1474,13 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 				//So to achieve that the function to create SSL socket has been hijacked here
 				//Here an http 1.1 request to authenticate, start the backup and require upgrade to HTTP2 is done then the socket is passed to
 				// http2.Transport handler
-				conn, err := tls.Dial(network, addr, &pbs.TLSConfig)
+				tlsConn, err := tls.Dial(network, addr, &pbs.TLSConfig)
 				if err != nil {
 					return nil, err
 				}
+				// Everything the session sends and receives is charged to
+				// the upload and download speed limits (ratelimit.go).
+				conn := newLimitedConn(tlsConn)
 				// Stash the raw socket so Close() can force-terminate the
 				// session on shutdown even while an H2 stream is in flight.
 				pbs.activeConnMu.Lock()
@@ -1331,6 +1583,9 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 								Namespace: pbs.Namespace,
 								Datastore: pbs.Datastore,
 							}
+						}
+						if strings.Contains(responseBody, backupTimeTakenText) {
+							return nil, &BackupTimeTakenErr{BackupTime: pbs.Manifest.BackupTime}
 						}
 						return nil, &AuthErr{
 							StatusCode:   statusCode,
@@ -1466,20 +1721,29 @@ func (pbs *PBSClient) GetKnownSha265FromFIDX(archivename string) (*haxmap.Map[st
 
 }
 
-func (pbs *PBSClient) GetChunkData(digest string) ([]byte, error) {
+// GetChunkData fetches one chunk by digest, bounded by ctx. Found 2026-09-22
+// (a real live restore hung forever at chunk 18/91, both the client's TCP
+// connection and the server's own task list still showing "active" — a single
+// stuck HTTP/2 stream, not a dead connection, which the transport's
+// ReadIdleTimeout/PingTimeout never catches because those only detect a fully
+// dead connection): this request previously had NO deadline of its own at
+// all, so if the server accepted it but never answered, this blocked forever
+// with no error and no way to recover short of killing the whole process.
+// Callers should pass a context with a reasonable timeout (and/or one tied to
+// a cancel button) — see DIDXReaderAt.chunkAt.
+func (pbs *PBSClient) GetChunkData(ctx context.Context, digest string) ([]byte, error) {
 	q := &url.Values{}
 
 	q.Add("digest", digest)
 
-	req, err := http.NewRequest("GET", pbs.BaseURL+"/chunk?"+q.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", pbs.BaseURL+"/chunk?"+q.Encode(), nil)
 	pbs.setAuth(req)
 	if err != nil {
 		return nil, err
 	}
 	resp2, err := pbs.Client.Do(req)
 	if err != nil {
-		fmt.Println("Error making request:", err)
-		return nil, err
+		return nil, fmt.Errorf("chunk fetch failed (digest %s): %w", digest, err)
 	}
 	defer resp2.Body.Close()
 

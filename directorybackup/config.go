@@ -1,12 +1,27 @@
-package main
+package directorybackup
 
 import (
+	"clientcommon"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"path"
+	"runtime"
+
+	"pbscommon"
 	"strings"
 )
+
+// version is salvanza-cli's, which it sets with SetVersion (the build stamps
+// it with -ldflags "-X main.version=..."); -version prints it.
+var version string
+
+// SetVersion sets the version -version prints.
+func SetVersion(v string) { version = v }
+
+// usageSummary heads -help's text.
+const usageSummary = "Backs up folders, or standard input (-backupstream), to a Proxmox Backup Server\nas a host snapshot."
 
 type MailSendConfig struct {
 	From string `json:"from"`
@@ -56,11 +71,46 @@ type Config struct {
 	// Ignored for `--kdf none` key files, which need nothing.
 	KeyFilePassphrase string `json:"keyfilepassphrase"`
 
+	// ChangeDetectionMode is legacy (default), data or metadata, as for
+	// proxmox-backup-client --change-detection-mode. data and metadata write a
+	// split archive (backup.mpxar.didx + backup.ppxar.didx); metadata reads
+	// every file like data until reuse of unchanged files is implemented.
+	ChangeDetectionMode string `json:"change-detection-mode"`
+
 	// NoMTime records 0 (1970-01-01) as every file's and folder's time instead
 	// of the real one, so entries whose time changes but whose content does not
 	// leave the archive bytes, and so its chunks, unchanged. Restored items get
-	// 1970-01-01.
+	// 1970-01-01. Metadata change detection reads every file with it.
 	NoMTime bool `json:"no-mtime"`
+
+	// ExcludeList holds the patterns of files and folders to leave out, the
+	// GUI's exclusions (pbscommon's PXARArchive.ExcludeList): a pattern
+	// without / or \ matches a name at any depth, one with a separator is
+	// taken from each folder backed up; not case sensitive. -exclude adds to
+	// the config file's list.
+	ExcludeList []string `json:"exclude"`
+
+	// Compression is how hard chunks are compressed before they go to PBS:
+	// fastest, default (zstd level 3), better or best; empty is default.
+	Compression string `json:"compression"`
+
+	// ReadAhead is how many files of each folder are read in the background
+	// ahead of the one being archived (pbscommon's PXARArchive.PrefetchWorkers),
+	// 1 to MaxReadAhead; 0, the default, reads one file at a time. The app's
+	// "Multi-threaded backup reading". The archive is the same either way.
+	ReadAhead int `json:"read-ahead"`
+
+	// Progress draws a progress bar while the backup runs. The folder is
+	// walked once beforehand to count its files and bytes; a stream
+	// (-backupstream) has no size to count, so its bar is indeterminate.
+	Progress bool `json:"progress"`
+
+	// The speed limits, "upload-limit", "download-limit" and
+	// "disk-read-limit" in MB/s; a flag overrides the file.
+	clientcommon.SpeedLimits
+
+	// "shutdown-after": turn the computer off once the backup has run.
+	clientcommon.AfterRun
 }
 
 // Dirs returns every configured source directory: "backupdir" first (if set),
@@ -84,28 +134,122 @@ type dirListFlag []string
 func (d *dirListFlag) String() string     { return strings.Join(*d, ",") }
 func (d *dirListFlag) Set(v string) error { *d = append(*d, v); return nil }
 
-func (c *Config) valid() bool {
-	// Authentication is either an API token (authid+secret) or a PBS
-	// username (ticket login). The ticket password may be omitted: in that
-	// case the CLI asks for it interactively before connecting.
-	authOK := (c.AuthID != "" && c.Secret != "") || c.PBSUsername != ""
-	baseValid := c.BaseURL != "" && authOK && c.Datastore != "" && (len(c.Dirs()) > 0 || c.BackupStreamName != "")
-	if !baseValid {
-		return baseValid
-	}
+// MaxReadAhead is the most files -read-ahead may read at once, as in the app.
+const MaxReadAhead = 32
 
+func (c *Config) valid() bool { return len(c.problems()) == 0 }
+
+// problems says what stops a run with these settings, one line each: the
+// options that are missing, then the ones that are wrong. The missing ones are
+// named (tizbac/proxmoxbackupclient_go#55 only had "All options are
+// mandatory").
+func (c *Config) problems() []string {
+	var p []string
+	if m := c.missing(); len(m) > 0 {
+		p = append(p, "Missing options: "+strings.Join(m, ", "))
+	}
+	if err := pbscommon.ValidateChangeDetectionMode(c.ChangeDetectionMode); err != nil {
+		p = append(p, err.Error())
+	}
 	if c.SMTP != nil {
-		mailCfgValid := c.SMTP.Host != "" && c.SMTP.Port != "" && c.SMTP.Username != "" && c.SMTP.Password != ""
-		if len(c.SMTP.Mails) == 0 {
-			return false
+		if problem := c.SMTP.problem(); problem != "" {
+			p = append(p, problem)
 		}
-		for i := range c.SMTP.Mails {
-			mailCfgValid = mailCfgValid && (c.SMTP.Mails[i].From != "" && c.SMTP.Mails[i].To != "")
-		}
-		return mailCfgValid
 	}
+	if problem := c.SpeedLimitProblem(); problem != "" {
+		p = append(p, problem)
+	}
+	if !pbscommon.ValidCompressionLevel(c.Compression) {
+		p = append(p, fmt.Sprintf("-compression is %q: use fastest, default, better or best", c.Compression))
+	}
+	if len(c.ExcludeList) > 0 && len(c.Dirs()) == 0 && c.BackupStreamName != "" {
+		p = append(p, "-exclude leaves out files and folders of -backupdir; it does not apply to -backupstream")
+	}
+	if c.ReadAhead > 0 && len(c.Dirs()) == 0 && c.BackupStreamName != "" {
+		p = append(p, "-read-ahead reads the files of -backupdir; it does not apply to -backupstream")
+	}
+	if c.ReadAhead < 0 || c.ReadAhead > MaxReadAhead {
+		p = append(p, fmt.Sprintf("-read-ahead is %d: use 0 (off) to %d files", c.ReadAhead, MaxReadAhead))
+	}
+	for _, pat := range c.ExcludeList {
+		if problem := excludePatternProblem(pat); problem != "" {
+			p = append(p, problem)
+		}
+	}
+	return p
+}
 
-	return true
+// excludePatternProblem says why an -exclude pattern can never match, or "".
+// The archive writer matches patterns with path.Match after turning \ into /
+// and ignores a malformed one, so "[abc" would leave nothing out unnoticed.
+// An empty pattern is skipped there, as a blank line in the GUI's list is.
+func excludePatternProblem(pat string) string {
+	return excludePatternProblemOn(pat, runtime.GOOS)
+}
+
+func excludePatternProblemOn(pat, goos string) string {
+	// On Windows "C:\Temp\" as the last argument passes C:\Temp" (and a
+	// later one swallows the rest of the line), which matches nothing; a
+	// file name there cannot hold a quote anyway.
+	if goos == "windows" && strings.Contains(pat, `"`) {
+		return fmt.Sprintf(`-exclude came through as [%s], with a quote in it: on Windows a path ending in \ inside quotes passes a quote and everything after it. Leave out the last \ ("C:\Temp") or the quotes`, pat)
+	}
+	if !strings.ContainsAny(pat, "*?[") {
+		return ""
+	}
+	if _, err := path.Match(strings.ToLower(strings.ReplaceAll(pat, `\`, "/")), ""); err != nil {
+		return fmt.Sprintf("-exclude %q is not a valid pattern (an unclosed [ or a bad range)", pat)
+	}
+	return ""
+}
+
+// missing names the options a run needs and does not have. Authentication is
+// either an API token (authid+secret) or a PBS username (ticket login); the
+// ticket password may be omitted, and is then asked for before connecting.
+func (c *Config) missing() []string {
+	var m []string
+	if c.BaseURL == "" {
+		m = append(m, "-baseurl")
+	}
+	if (c.AuthID == "" || c.Secret == "") && c.PBSUsername == "" {
+		switch {
+		case c.AuthID != "":
+			m = append(m, "-secret (for -authid)")
+		case c.Secret != "":
+			m = append(m, "-authid (for -secret)")
+		default:
+			m = append(m, "-authid and -secret, or -pbsusername")
+		}
+	}
+	if c.Datastore == "" {
+		m = append(m, "-datastore")
+	}
+	if len(c.Dirs()) == 0 && c.BackupStreamName == "" {
+		m = append(m, "-backupdir (or -backupstream)")
+	}
+	return m
+}
+
+// problem says what is missing from the mail settings, or "". A relay that
+// takes mail without a login needs no username or password: leave both empty
+// (tizbac/proxmoxbackupclient_go#74, where an empty username only printed
+// the help).
+func (s *SMTPConfig) problem() string {
+	if s.Host == "" || s.Port == "" {
+		return `smtp: "host" and "port" are needed`
+	}
+	if s.Username == "" && s.Password != "" {
+		return `smtp: a "password" needs a "username"`
+	}
+	if len(s.Mails) == 0 {
+		return `smtp: "mails" needs at least one "from" and "to"`
+	}
+	for i, m := range s.Mails {
+		if m.From == "" || m.To == "" {
+			return fmt.Sprintf(`smtp: mails[%d] needs both "from" and "to"`, i)
+		}
+	}
+	return ""
 }
 
 func loadConfig() *Config {
@@ -126,7 +270,12 @@ func loadConfig() *Config {
 	noVSSFlag := flag.Bool("novss", false, "Disable VSS ( For filesystems that don't support it, for example veracrypt )")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
 	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
+	var excludeFlags dirListFlag
+	flag.Var(&excludeFlags, "exclude", "Leave out files and folders matching this pattern; repeat for several. Without / or \\ it matches a name at any depth (*.tmp, node_modules); with one it is taken from the folder backed up (logs/*.log, C:\\Users\\alice\\Temp). Not case sensitive. Adds to the config file's \"exclude\" list")
+	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: fastest, default (zstd level 3), better or best (default: default). Encrypted backups are not compressed")
+	readAheadFlag := flag.Int("read-ahead", 0, "Read up to this many files of each folder in the background ahead of the one being archived, 1 to 32, which helps when reading from the disk is the slow part; 0 or left out reads one file at a time. Each file read ahead, up to 128 MB, is held in memory until it is archived, so a folder can hold up to this many at a time (and its parent folders theirs, while it is backed up). The archive is the same either way")
 	noMTimeFlag := flag.Bool("no-mtime", false, "Record 1970-01-01 as every file and folder time instead of the real one, so time-only changes (a folder whose contents come and go) do not change the archive and re-upload its chunks; restored items get 1970-01-01 (advanced, optional)")
+	progressFlag := flag.Bool("progress", false, "Draw a progress bar on standard error while the backup runs. The folder is walked once beforehand to count its files and bytes (-backupstream has no size to count: its bar is indeterminate). The per-chunk lines are left out; other messages go above the bar")
 
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
 	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")
@@ -138,27 +287,41 @@ func loadConfig() *Config {
 	mailSubjectTemplateFlag := flag.String("mail-subject-template", "", "mail notification system: mail subject template(optional)")
 	mailBodyTemplateFlag := flag.String("mail-body-template", "", "mail notification system: mail body template(optional)")
 
-	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
+	changeDetectionFlag := flag.String("change-detection-mode", "", "legacy (default), data or metadata: data/metadata write a split archive (backup.mpxar.didx + backup.ppxar.didx)")
 
-	// Parse command line flags
-	flag.Parse()
+	configFile := flag.String("config", "", "Path to JSON config file. If this flag is provided all the others will override the loaded config file")
+	versionFlag := flag.Bool("version", false, "Print the version and exit")
+	applySpeedLimitFlags := clientcommon.SpeedLimitFlags(flag.CommandLine)
+	applyShutdownAfterFlag := clientcommon.ShutdownAfterFlag(flag.CommandLine)
+
+	// A stray argument, an unknown option or (on Windows) a quote in a path
+	// stops here with what is wrong; -help prints the usage.
+	clientcommon.ParseFlags(flag.CommandLine, os.Args[1:], usageSummary, "backupdir", "pxarout", "keyfile", "config")
+	if *versionFlag {
+		fmt.Println(clientcommon.VersionString(clientcommon.ToolName(), version))
+		os.Exit(0)
+	}
 
 	config := &Config{
 		UseVSS: true,
 	}
+	pbscommon.ApplyPBSEnvVars(&config.BaseURL, &config.AuthID, &config.Secret, &config.Datastore, &config.CertFingerprint)
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
 		if err != nil {
-			fmt.Printf("Error reading config file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error reading config file: %v\n", err)
 			os.Exit(1)
 		}
 		err = json.Unmarshal(file, config)
 		if err != nil {
-			fmt.Printf("Error parsing config file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error parsing config file: %v\n", err)
 			os.Exit(1)
 		}
 	}
 
+	if *changeDetectionFlag != "" {
+		config.ChangeDetectionMode = *changeDetectionFlag
+	}
 	if *baseURLFlag != "" {
 		config.BaseURL = *baseURLFlag
 	}
@@ -209,6 +372,21 @@ func loadConfig() *Config {
 	if *noMTimeFlag {
 		config.NoMTime = true
 	}
+	if *progressFlag {
+		config.Progress = true
+	}
+	config.ExcludeList = append(config.ExcludeList, excludeFlags...)
+	if *compressionFlag != "" {
+		config.Compression = *compressionFlag
+	}
+	// Given at all, -read-ahead overrides the file, -read-ahead 0 too.
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "read-ahead" {
+			config.ReadAhead = *readAheadFlag
+		}
+	})
+	applySpeedLimitFlags(&config.SpeedLimits)
+	applyShutdownAfterFlag(&config.AfterRun)
 
 	initSmtpConfigIfNeeded := func() {
 		if config.SMTP == nil {

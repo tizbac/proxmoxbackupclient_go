@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from '../i18n/i18nContext'
+import { askConfirm, showNotice } from './ConfirmDialog'
+import PaperKeyDialog from './PaperKeyDialog'
+import KeyImportDialog from './KeyImportDialog'
 
 // Wails bindings are resolved by App.jsx on window.go; this component receives
 // them as props so it stays testable/usable when the runtime is absent (the dev
@@ -13,45 +16,117 @@ function resolve(name, prop) {
 /**
  * EncryptionKeyField edits the path to a PBS encryption key file.
  *
- * The GUI only ever sees the PATH (never key material) and only supports
- * passphrase-less key files, because it has no console to prompt on. The
- * fingerprint is surfaced on every change so the user can confirm the key that
+ * The GUI only ever sees the PATH (never key material). A passphrase-protected
+ * key file is unlocked either by asking once per session (a modal, see
+ * PassphraseModal) or by a passphrase stored in the config on this computer,
+ * which is what lets scheduled jobs run unattended. The fingerprint is surfaced on every change so the user can confirm the key that
  * will actually be used, and an unusable path is reported inline instead of
  * failing later during a backup or a restore.
  */
-export default function EncryptionKeyField({ value, onChange, className = '' }) {
+export default function EncryptionKeyField({
+  value,
+  onChange,
+  passphraseSet = false,
+  passphrase = '',
+  onPassphraseChange,
+  clearStored = false,
+  onClearStoredChange,
+  className = '',
+}) {
   const { t } = useTranslation()
+  const tl = (key, fallback) => { const v = t(key); return v === key ? fallback : v }
   const [info, setInfo] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState(passphraseSet && !clearStored ? 'remember' : 'ask')
+  const [verifyMsg, setVerifyMsg] = useState(null)
 
   const inspect = useCallback(resolve('InspectEncryptionKeyFile'), [])
   const generate = useCallback(resolve('GenerateEncryptionKeyFile'), [])
-  const openExisting = useCallback(resolve('OpenEncryptionKeyDialog'), [])
+  const importKey = resolve('SaveImportedKey')
+  const [importing, setImporting] = useState(false)
   const openNew = useCallback(resolve('OpenEncryptionKeySaveDialog'), [])
+  const verify = useCallback(resolve('VerifyEncryptionKeyPassphrase'), [])
+  const restrict = useCallback(resolve('RestrictEncryptionKeyFileAccess'), [])
+  const saveCopy = useCallback(resolve('SaveEncryptionKeyCopy'), [])
+  const paper = useCallback(resolve('EncryptionPaperKey'), [])
+  const pathExample = useCallback(resolve('EncryptionKeyPathExample'), [])
+  const [paperKey, setPaperKey] = useState(null)
+  // The example in the empty field: this computer's own keys folder (the
+  // translated example is a Windows path).
+  const [example, setExample] = useState('')
+  useEffect(() => {
+    if (!pathExample) return undefined
+    let live = true
+    Promise.resolve().then(() => pathExample()).then((p) => { if (live && p) setExample(p) }).catch(() => {})
+    return () => { live = false }
+  }, [pathExample])
 
-  // Re-inspect whenever the path changes. inspect() is synchronous in Go and
-  // cheap (one stat + a small JSON read), and doing it here means the user
-  // always sees the fingerprint of the key that will be used.
+  // Re-inspect whenever the path changes. Wails bindings always return a
+  // Promise, so the result has to be awaited; a stale answer from a previous
+  // path must not overwrite the current one.
   useEffect(() => {
     if (!inspect) {
       setInfo(null)
-      return
+      return undefined
     }
-    try {
-      setInfo(inspect(value || ''))
-    } catch {
-      setInfo(null)
-    }
+    let live = true
+    Promise.resolve()
+      .then(() => inspect(value || ''))
+      .then((r) => { if (live) setInfo(r || null) })
+      .catch(() => { if (live) setInfo(null) })
+    return () => { live = false }
   }, [value, inspect])
 
-  const handleBrowse = async () => {
-    if (!openExisting) return
-    try {
-      const p = await openExisting()
-      if (p) onChange(p)
-    } catch (err) {
-      console.error('encryption key browse failed', err)
+  // A different key file or a freshly loaded server resets the unlock choice to
+  // what the backend actually holds (it drops a stored passphrase on path change).
+  useEffect(() => {
+    setMode(passphraseSet && !clearStored ? 'remember' : 'ask')
+    setVerifyMsg(null)
+  }, [value, passphraseSet]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const chooseMode = (m) => {
+    setMode(m)
+    setVerifyMsg(null)
+    if (m === 'ask') {
+      if (onPassphraseChange) onPassphraseChange('')
+      if (onClearStoredChange) onClearStoredChange(!!passphraseSet)
+    } else if (onClearStoredChange) {
+      onClearStoredChange(false)
     }
+  }
+
+  const handleVerify = async () => {
+    if (!verify) return
+    if (!passphrase) {
+      setVerifyMsg({ ok: false, text: t('encryptionPassphraseEnter') })
+      return
+    }
+    setBusy(true)
+    try {
+      const err = await verify(value || '', passphrase)
+      const text = String(err || '')
+      setVerifyMsg(text
+        ? { ok: false, text: text.includes('wrong password') ? t('encryptionPassphraseWrong') : text }
+        : { ok: true, text: t('encryptionPassphraseVerified') })
+    } catch (e) {
+      setVerifyMsg({ ok: false, text: String(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // A key brought back by Import (a copy of the key file, or a paper key) is
+  // saved in the keys folder; the field then points at that file.
+  const handleImported = async (result) => {
+    setImporting(false)
+    const saved = result && result.info
+    if (!saved || !saved.path) return
+    onChange(saved.path)
+    setInfo(saved)
+    let message = t(result.already_there ? 'keyImportAlready' : 'keyImportSaved')
+      .replace('{path}', () => saved.path).replace('{fp}', () => saved.fingerprint || '?')
+    if (saved.passphrase_protected) message += ' ' + t('keyImportSavedProtected')
+    await showNotice({ title: t('keyImportDoneTitle'), icon: '🔑', message })
   }
 
   const handleGenerate = async () => {
@@ -60,21 +135,70 @@ export default function EncryptionKeyField({ value, onChange, className = '' }) 
     try {
       let path = await openNew()
       if (!path) return
-      const msg = t('encryptionKeyConfirm').replace('{path}', path)
-      if (!window.confirm(msg)) return
+      if (!(await askConfirm({
+        title: tl('dlgKeyCreateTitle', 'Create an encryption key?'), icon: '🔑',
+        message: t('encryptionKeyConfirm').replace('{path}', path),
+        confirmLabel: tl('dlgKeyCreateBtn', 'Create key'),
+      }))) return
       const result = await generate(path)
       onChange(path)
       // Trust the backend's own view: it only returns a usable key file.
       if (result) setInfo(result)
-      window.alert(t('encryptionKeyCreated').replace('{path}', path).replace('{fp}', result?.fingerprint || '?'))
+      await showNotice({
+        title: tl('dlgKeyCreatedTitle', 'Encryption key created'), icon: '🔑',
+        message: t('encryptionKeyCreated').replace('{path}', path).replace('{fp}', result?.fingerprint || '?'),
+      })
     } catch (err) {
-      window.alert(t('encryptionKeyGenerateFailed').replace('{err}', err))
+      await showNotice({
+        title: tl('dlgKeyFailedTitle', 'The key could not be created'), icon: '❌',
+        message: t('encryptionKeyGenerateFailed').replace('{err}', () => String(err)),
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleRestrict = async () => {
+    if (!restrict) return
+    setBusy(true)
+    try {
+      const r = await restrict(value || '')
+      if (r) setInfo(r)
+      await showNotice({ title: t('encryptionKeyRestrict'), icon: '🔒', message: r && r.open_to_others ? t('encryptionKeyOpenToOthers') : t('encryptionKeyRestricted') })
+    } catch (err) {
+      await showNotice({ title: t('encryptionKeyRestrict'), icon: '❌', message: t('encryptionKeyRestrictFailed').replace('{err}', () => String(err)) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleSaveCopy = async () => {
+    if (!saveCopy) return
+    setBusy(true)
+    try {
+      const dest = await saveCopy(value || '')
+      if (dest) await showNotice({ title: t('encryptionKeySaveCopy'), icon: '🔑', message: t('encryptionKeyCopySaved').replace('{path}', dest) })
+    } catch (err) {
+      await showNotice({ title: t('encryptionKeySaveCopy'), icon: '❌', message: t('encryptionKeyCopyFailed').replace('{err}', () => String(err)) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handlePaper = async () => {
+    if (!paper) return
+    setBusy(true)
+    try {
+      setPaperKey(await paper(value || ''))
+    } catch (err) {
+      await showNotice({ title: t('paperKeyTitle'), icon: '❌', message: String(err) })
     } finally {
       setBusy(false)
     }
   }
 
   const reason = info && !info.usable ? info.reason : ''
+  const haveKey = !!(info && info.usable && info.exists && info.fingerprint)
 
   return (
     <div className={`form-group ${className}`.trim()}>
@@ -84,18 +208,20 @@ export default function EncryptionKeyField({ value, onChange, className = '' }) 
           type="text"
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={t('phEncryptionKey')}
+          placeholder={example || t('phEncryptionKey')}
           spellCheck={false}
+          style={{ flex: '1 1 auto', minWidth: 0, width: 'auto' }}
         />
-        <button type="button" className="btn btn-secondary" onClick={handleBrowse} disabled={!openExisting || busy}>
-          {t('encryptionKeyBrowse')}
+        <button type="button" className="btn btn-secondary" style={{ whiteSpace: 'nowrap', padding: '8px 12px' }} onClick={() => setImporting(true)} disabled={!importKey || busy}>
+          {t('encryptionKeyImport')}
         </button>
-        <button type="button" className="btn btn-secondary" onClick={handleGenerate} disabled={!generate || busy}>
+        <button type="button" className="btn btn-secondary" style={{ whiteSpace: 'nowrap', padding: '8px 12px' }} onClick={handleGenerate} disabled={!generate || busy}>
           {t('encryptionKeyGenerate')}
         </button>
         <button
           type="button"
           className="btn btn-secondary"
+          style={{ whiteSpace: 'nowrap', padding: '8px 12px' }}
           onClick={() => onChange('')}
           disabled={busy || !(value || '')}
         >
@@ -114,7 +240,88 @@ export default function EncryptionKeyField({ value, onChange, className = '' }) 
         {reason && (
           <div style={{ color: '#c62828', wordBreak: 'break-word' }}>{reason}</div>
         )}
+        {info && info.open_to_others && (
+          <div style={{ color: '#c62828', marginTop: '4px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>⚠️ {t('encryptionKeyOpenToOthers')}</span>
+            <button type="button" className="btn btn-secondary" style={{ margin: 0, padding: '4px 10px', fontSize: '12px' }} onClick={handleRestrict} disabled={!restrict || busy}>
+              🔒 {t('encryptionKeyRestrict')}
+            </button>
+          </div>
+        )}
       </div>
+
+      {haveKey && (
+        <div style={{ marginTop: '10px', fontSize: '13px' }}>
+          <div style={{ fontWeight: 600, marginBottom: '4px' }}>{t('encryptionKeyBackupTitle')}</div>
+          <div style={{ color: '#666', fontSize: '12px', marginBottom: '6px' }}>{t('encryptionKeyBackupIntro')}</div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-secondary" style={{ margin: 0, padding: '6px 12px' }} onClick={handleSaveCopy} disabled={!saveCopy || busy}>
+              💾 {t('encryptionKeySaveCopy')}
+            </button>
+            <button type="button" className="btn btn-secondary" style={{ margin: 0, padding: '6px 12px' }} onClick={handlePaper} disabled={!paper || busy}>
+              🖨️ {t('encryptionKeyPaper')}
+            </button>
+          </div>
+        </div>
+      )}
+      {paperKey && <PaperKeyDialog paperKey={paperKey} onClose={() => setPaperKey(null)} />}
+      {importing && <KeyImportDialog onClose={() => setImporting(false)} onImported={handleImported} />}
+
+      {info && info.passphrase_protected && (
+        <div style={{ marginTop: '10px', fontSize: '13px' }}>
+          <div style={{ fontWeight: 600, marginBottom: '4px' }}>{t('encryptionPassphraseTitle')}</div>
+          <div style={{ color: '#666', fontSize: '12px', marginBottom: '6px' }}>{t('encryptionPassphraseIntro')}</div>
+          <label style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', marginBottom: '4px', fontWeight: 'normal' }}>
+            <input
+              type="radio"
+              name="encryption-unlock-mode"
+              checked={mode === 'ask'}
+              onChange={() => chooseMode('ask')}
+              style={{ width: 'auto', marginTop: '3px' }}
+            />
+            <span>{t('encryptionPassphraseAsk')}</span>
+          </label>
+          <label style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', marginBottom: '4px', fontWeight: 'normal' }}>
+            <input
+              type="radio"
+              name="encryption-unlock-mode"
+              checked={mode === 'remember'}
+              onChange={() => chooseMode('remember')}
+              style={{ width: 'auto', marginTop: '3px' }}
+            />
+            <span>{t('encryptionPassphraseRemember')}</span>
+          </label>
+          {mode === 'ask' && (
+            <div style={{ color: '#a06000', fontSize: '12px' }}>{t('encryptionPassphraseAskNote')}</div>
+          )}
+          {mode === 'remember' && (
+            <div style={{ marginTop: '6px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+                <input
+                  type="password"
+                  value={passphrase || ''}
+                  onChange={(e) => {
+                    setVerifyMsg(null)
+                    if (onPassphraseChange) onPassphraseChange(e.target.value)
+                  }}
+                  placeholder={passphraseSet ? t('encryptionPassphraseKeep') : t('encryptionPassphrasePlaceholder')}
+                  autoComplete="new-password"
+                  spellCheck={false}
+                />
+                <button type="button" className="btn btn-secondary" onClick={handleVerify} disabled={!verify || busy}>
+                  {t('encryptionPassphraseVerify')}
+                </button>
+              </div>
+              {verifyMsg && (
+                <div style={{ color: verifyMsg.ok ? '#1a7f37' : '#c62828', fontSize: '13px', fontWeight: 600, marginTop: '6px', wordBreak: 'break-word' }}>
+                  {verifyMsg.text}
+                </div>
+              )}
+              <div style={{ color: '#a06000', fontSize: '12px', marginTop: '4px' }}>{t('encryptionPassphraseRememberNote')}</div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

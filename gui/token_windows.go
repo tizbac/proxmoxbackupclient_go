@@ -1,5 +1,4 @@
 //go:build windows
-// +build windows
 
 package main
 
@@ -13,34 +12,24 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const (
-	// seeMaskNoCloseProcess asks ShellExecuteEx to hand back a handle to the
-	// started process in HProcess (0 when the call fails or the verb does not
-	// start a process).
-	seeMaskNoCloseProcess = 0x00000040
-	// swShownormal is SW_SHOWNORMAL: show the new process' window normally.
-	swShownormal = 1
-)
+// From upstream (token_windows.go).
 
-// ErrElevationDeclined is returned when the user dismisses the UAC prompt.
-var ErrElevationDeclined = errors.New("UAC elevation prompt was declined")
+const (
+	// seeMaskNoCloseProcess makes ShellExecuteEx hand back the started
+	// process in HProcess.
+	seeMaskNoCloseProcess = 0x00000040
+	swShownormal          = 1
+)
 
 var (
 	shell32DLL         = windows.NewLazySystemDLL("shell32.dll")
 	shellExecuteExProc = shell32DLL.NewProc("ShellExecuteExW")
 )
 
-// shellExecuteRunas starts exe with the given command line under the UAC
-// "runas" verb and returns a handle to the elevated process (0 when the shell
-// did not hand one back), or an error. Declining the prompt surfaces as
-// ErrElevationDeclined; a missing/failed elevation mechanism (UAC disabled, no
-// shell) as a plain error — callers turn both into "run standalone / give up",
-// never a hang.
-//
-// The shellExecInfo layout (and therefore this function) is pinned by
-// TestShellExecInfoLayout: a wrong cbSize makes ShellExecuteExW fail with
-// ERROR_INVALID_PARAMETER before it even looks at the verb, so no UAC prompt
-// ever appears.
+// shellExecuteRunas starts exe with params under the UAC "runas" verb and
+// returns the elevated process (0 when the shell hands none back). A
+// declined prompt is ErrElevationDeclined. shellExecInfo's layout is pinned
+// by TestShellExecInfoLayout: a wrong size fails the call before any prompt.
 func shellExecuteRunas(exe, params string) (windows.Handle, error) {
 	file, err := windows.UTF16PtrFromString(exe)
 	if err != nil {
@@ -50,7 +39,6 @@ func shellExecuteRunas(exe, params string) (windows.Handle, error) {
 	if err != nil {
 		return 0, fmt.Errorf("cannot encode verb: %w", err)
 	}
-
 	var p *uint16
 	if params != "" {
 		if p, err = windows.UTF16PtrFromString(params); err != nil {
@@ -68,7 +56,7 @@ func shellExecuteRunas(exe, params string) (windows.Handle, error) {
 
 	ret, _, callErr := shellExecuteExProc.Call(uintptr(unsafe.Pointer(&sei)))
 	if ret == 0 {
-		if errors.Is(callErr, windows.ERROR_CANCELLED) { // 1223: user declined UAC
+		if errors.Is(callErr, windows.ERROR_CANCELLED) { // 1223: UAC declined
 			return 0, ErrElevationDeclined
 		}
 		if callErr != nil {
@@ -79,36 +67,33 @@ func shellExecuteRunas(exe, params string) (windows.Handle, error) {
 	return windows.Handle(sei.HProcess), nil
 }
 
-// elevatedFetchToken launches this same executable elevated (UAC, verb
-// "runas") as the token-fetch child and waits for the handoff file. The GUI
-// runs asInvoker now, so this is the normal launch-time path whenever the
-// service is up and the token file is not ours to read — the child is the
-// same GUI exe, which handles --elevated-token-fetch before starting any UI.
-func elevatedFetchToken(handoffFile string) (string, error) {
+// runElevatedHandoff starts this program elevated (UAC) with flag and the
+// handoff file, waits for it (timeout, then as long again polling the file),
+// and returns the token it wrote into the file: the token-fetch copy
+// (elevatedFetchToken), or the copy that starts the service first
+// (service_start.go).
+func runElevatedHandoff(flag, handoffFile string, timeout time.Duration) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("cannot resolve own executable: %w", err)
 	}
 
-	h, err := shellExecuteRunas(exe, `--elevated-token-fetch "`+handoffFile+`"`)
+	h, err := shellExecuteRunas(exe, flag+` "`+handoffFile+`"`)
 	if err != nil {
 		return "", err
 	}
 	if h == 0 {
-		return waitForHandoff(handoffFile, elevatedChildTimeout)
+		return waitForHandoff(handoffFile, timeout)
 	}
 	defer func() { _ = windows.CloseHandle(h) }()
 
-	// Wait for the child instead of polling for the full timeout. It only
-	// reads the token file and exits, so a failure (token unreadable even
-	// elevated, handoff not writable from the elevated context, ...) shows up
-	// here immediately, WITH its real reason, instead of costing the caller a
-	// silent minute and then reporting a bare timeout.
-	ev, werr := windows.WaitForSingleObject(h, uint32(elevatedChildTimeout/time.Millisecond))
+	// Wait for the copy rather than polling the whole time: a failure shows
+	// at once, with its reason.
+	ev, werr := windows.WaitForSingleObject(h, uint32(timeout/time.Millisecond))
 	if werr != nil || ev != windows.WAIT_OBJECT_0 {
-		writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child still running after %s (wait error %v, event %d); polling the handoff file",
-			elevatedChildTimeout, werr, ev))
-		return waitForHandoff(handoffFile, elevatedChildTimeout)
+		writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] %s: child still running after %s (wait error %v, event %d); polling the handoff file",
+			flag, timeout, werr, ev))
+		return waitForHandoff(handoffFile, timeout)
 	}
 
 	var code uint32
@@ -117,14 +102,11 @@ func elevatedFetchToken(handoffFile string) (string, error) {
 		haveCode = true
 		writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child exited with code %d", code))
 	}
-
 	if token, err := readHandoff(handoffFile); err == nil {
 		return token, nil
 	}
-
 	if haveCode && code != 0 {
-		return "", fmt.Errorf("elevated token fetch failed: child exited with code %s — %s",
-			elevatedChildExitLabel(code), elevatedChildExitHint(code))
+		return "", &elevatedChildError{code: code}
 	}
-	return "", errors.New("elevated token fetch failed: the child exited without writing the token")
+	return "", errors.New("the elevated process exited without writing the token")
 }

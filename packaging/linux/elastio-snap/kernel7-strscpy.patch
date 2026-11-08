@@ -1,0 +1,99 @@
+# elastio-snap: build on Linux kernel 7 (strncpy was removed).
+#
+# Linux 7 no longer has strncpy(), and elastio-snap 0.12.11 still calls it, so
+# the module stops at "implicit declaration of function 'strncpy'". Each call
+# is replaced by what it really does:
+#   - main.c, the two copies of a whole path including its terminating NUL
+#     (dentry_get_relative_pathname, path_get_absolute_pathname):
+#     elastio_strscpy(), the module's own wrapper (strscpy, or strlcpy on
+#     kernels before 4.3). Same result.
+#   - main.c, the copies of an exact number of bytes into a buffer that is
+#     terminated elsewhere (pathname_concat, and the old-kernel
+#     dentry_get_relative_pathname): memcpy(). strscpy would be wrong there:
+#     it would overwrite the last character with a NUL.
+#   - nl_debug.c, a fixed 32-byte field sent to user space: strscpy_pad(),
+#     which keeps the NUL padding and always terminates. A new configure test
+#     (HAVE_STRSCPY_PAD) falls back to memset() and strlcpy() on kernels
+#     before 5.2.
+#
+# Offered upstream as https://github.com/Axcient/elastio-snap/pull/138
+# install-elastio-snap.sh applies this patch, skips it when the chosen
+# elastio-snap version already contains it, and stops if it no longer applies.
+# Drop this file once Axcient releases the fix.
+#
+diff --git a/src/configure-tests/feature-tests/strscpy_pad.c b/src/configure-tests/feature-tests/strscpy_pad.c
+new file mode 100644
+index 0000000..6ae7ba8
+--- /dev/null
++++ b/src/configure-tests/feature-tests/strscpy_pad.c
+@@ -0,0 +1,9 @@
++// SPDX-License-Identifier: GPL-2.0-only
++
++#include "includes.h"
++MODULE_LICENSE("GPL");
++
++static inline void dummy(void){
++	char dst[16];
++	strscpy_pad(dst, "test", sizeof(dst));
++}
+diff --git a/src/main.c b/src/main.c
+index 3852305..467cbb6 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -1659,7 +1659,7 @@ static int dentry_get_relative_pathname(struct dentry *dentry, char **buf, int *
+ 	while(parent->d_parent != parent){
+ 		len -= parent->d_name.len + 1;
+ 		pathname[len] = '/';
+-		strncpy(&pathname[len + 1], parent->d_name.name, parent->d_name.len);
++		memcpy(&pathname[len + 1], parent->d_name.name, parent->d_name.len);
+ 		parent = parent->d_parent;
+ 	}
+ 
+@@ -1698,7 +1698,7 @@ static int dentry_get_relative_pathname(struct dentry *dentry, char **buf, int *
+ 		goto error;
+ 	}
+ 
+-	strncpy(final_buf, pathname, len);
++	elastio_strscpy(final_buf, pathname, len);
+ 	free_page((unsigned long)page_buf);
+ 
+ 	*buf = final_buf;
+@@ -1743,7 +1743,7 @@ static int path_get_absolute_pathname(const struct path *path, char **buf, int *
+ 		goto error;
+ 	}
+ 
+-	strncpy(final_buf, pathname, len);
++	elastio_strscpy(final_buf, pathname, len);
+ 	free_page((unsigned long)page_buf);
+ 
+ 	*buf = final_buf;
+@@ -1820,9 +1820,9 @@ static int pathname_concat(const char *pathname1, const char *pathname2, char **
+ 	}
+ 	full_pathname[pathname1_len + need_leading_slash + pathname2_len] = '\0';
+ 
+-	strncpy(full_pathname, pathname1, pathname1_len);
++	memcpy(full_pathname, pathname1, pathname1_len);
+ 	if(need_leading_slash) full_pathname[pathname1_len] = '/';
+-	strncpy(full_pathname + pathname1_len + need_leading_slash, pathname2, pathname2_len);
++	memcpy(full_pathname + pathname1_len + need_leading_slash, pathname2, pathname2_len);
+ 
+ 	*path_out = full_pathname;
+ 	return 0;
+diff --git a/src/nl_debug.c b/src/nl_debug.c
+index f9cfabd..688c524 100644
+--- a/src/nl_debug.c
++++ b/src/nl_debug.c
+@@ -31,7 +31,12 @@ int nl_send_event(enum nl_msg_type type, const char *func, int line, struct nl_p
+ 
+ 	if (func) {
+ 		msg->source.line = line;
+-		strncpy(msg->source.func, func, sizeof(msg->source.func));
++#ifdef HAVE_STRSCPY_PAD
++		strscpy_pad(msg->source.func, func, sizeof(msg->source.func));
++#else
++		memset(msg->source.func, 0, sizeof(msg->source.func));
++		strlcpy(msg->source.func, func, sizeof(msg->source.func));
++#endif
+ 	}
+ 
+ 	memcpy(&msg->params, params, sizeof(*params));

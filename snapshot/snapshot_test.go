@@ -117,10 +117,10 @@ func TestSnapshotPathHandling(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name         string
-		inputPath    string
-		wantVolume   string
-		wantSubPath  string
+		name        string
+		inputPath   string
+		wantVolume  string
+		wantSubPath string
 	}{
 		{
 			name:       "C drive with path",

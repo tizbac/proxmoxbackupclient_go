@@ -1,4 +1,30 @@
-function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, selectedDrives, systemInfo, t, RequestElevation }) {
+import { useState } from 'react'
+import { useTranslation } from '../i18n/i18nContext'
+import { SNAP_MODULE_MANUAL_ANCHOR } from '../manuals'
+import SnapModuleInstallModal, { RestartSteps } from './SnapModuleInstallModal'
+
+// missingDisks are disks of the Backup Set being edited that are not
+// connected now ({ path, id }): the set's runs fail until they are back.
+// systemInfo (GetSystemInfo) drives two Linux boxes from upstream: which
+// snapshot module is loaded, and whether this window needs restarting as
+// administrator to read the disks (onRestartAsAdmin); the disks are greyed
+// out until then. With no module loaded, How to install opens the GUI
+// manual's installation section on the Help page (onOpenManual), and Install
+// it for me runs the bundled installer (SnapModuleInstallModal; greyed out
+// with the reason when it cannot run here). After an install that waits for
+// Secure Boot to approve its key, the box gives the restart steps instead.
+// onSystemInfoChanged refreshes systemInfo after an install.
+//
+// Under each ticked disk its partitions are listed. In a Backup Set
+// (setSkipParts given) each can be unticked to leave it out of the set
+// (skipParts, ScheduledJob.skipPartitions): it is not read and goes into the
+// image as zeros. A one-off backup reads whole disks, so there the ticks are
+// greyed out. diskIdFor gives the identity the set saves for a disk.
+function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, selectedDrives, missingDisks = [], systemInfo = {}, onRestartAsAdmin,
+  onOpenManual, onSystemInfoChanged, skipParts = [], setSkipParts, diskIdFor = (d) => d.unique_id || '' }) {
+  const { t, language } = useTranslation()
+  const tl = (key, fallback, params) => { const v = t(key, params); return v === key ? fallback : v }
+  const [installOpen, setInstallOpen] = useState(false)
   const handleDriveSelect = (drivePath) => {
     if (selectedDrives.includes(drivePath)) {
       setSelectedDrives(selectedDrives.filter(d => d !== drivePath))
@@ -15,116 +41,184 @@ function MachineBackupConfig({ backupType, physicalDisks, setSelectedDrives, sel
     setSelectedDrives([])
   }
 
-  const handleElevation = async () => {
-    if (RequestElevation) {
-      try {
-        await RequestElevation()
-        // The app will relaunch elevated, so we don't need to do anything else here
-      } catch (err) {
-        console.error('Elevation failed:', err)
-        alert(t('elevationFailed', { error: err.message || err }))
-      }
-    }
-  }
-
   // Ensure this component is only rendered when backupType is 'machine'
   if (backupType !== 'machine') return null
 
-  // On Linux, show snapshot module info
-  const snapshotModule = systemInfo?.snapshot_module
-  const isAdmin = systemInfo?.is_admin === true
-  const isLinux = systemInfo?.os === 'linux'
+  const size = (bytes) => {
+    const fmt = (v) => { try { return v.toLocaleString(language, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) } catch { return v.toFixed(1) } }
+    return `${fmt(bytes / 1e9)} GB (${fmt(bytes / 2 ** 30)} GiB)`
+  }
 
-  // Local elevation is needed only when THIS process has to open the disks
-  // itself, i.e. standalone and unprivileged. With the privileged service
-  // running, the backup is executed by the service (root / SYSTEM), so an
-  // unprivileged GUI must not be blocked (nor told to relaunch with pkexec or
-  // UAC).
-  // needs_local_elevation is computed by the backend on every platform; the ??
-  // falls back to the old Linux-only is_admin test if the binary behind the
-  // frontend is older.
-  const flagPresent = typeof systemInfo?.needs_local_elevation === 'boolean'
-  const needsElevation = flagPresent ? systemInfo.needs_local_elevation : (isLinux && !isAdmin)
-  // Same, but only when the backend reported the flag and this process really
-  // is unprivileged: the service performs the machine backup on our behalf.
-  const handledByService = flagPresent && !needsElevation && !isAdmin
+  const linux = systemInfo.os === 'linux'
+  const module = systemInfo.snapshot_module
+  const needsElevation = !!systemInfo.needs_local_elevation
+  const snapInstall = systemInfo.snap_install || {}
+  const snapInstallTip = snapInstall.available
+    ? tl('snapInstallBtnTip', "Builds and loads elastio-snap for this computer, after asking for an administrator's password.")
+    : snapInstall.reason === 'distribution'
+      ? tl('snapInstallDistroTip', 'The installer knows Debian, Ubuntu, Linux Mint, Fedora, the RHEL family and Arch Linux: How to install has the steps for other distributions.')
+      : tl('snapInstallNoInstallerTip', 'This package does not include the installer: How to install has the steps.')
+
+  // A partition is "1.2 GB" or "100 MB": a whole line per partition is too much.
+  const shortSize = (bytes) => {
+    const fmt = (v, d) => { try { return v.toLocaleString(language, { maximumFractionDigits: d }) } catch { return v.toFixed(d) } }
+    return bytes >= 1e9 ? `${fmt(bytes / 1e9, 1)} GB` : `${fmt(bytes / 1e6, 0)} MB`
+  }
+  const partLabel = (p) => [tl('partitionNumber', `Partition ${p.number}`, { n: p.number }), p.mount, p.file_system || p.type, shortSize(p.size)].filter(Boolean).join(' · ')
+  // How the run log names it if the partition table changes (in English, as the log is).
+  const logLabel = (p) => `partition ${p.number}` + ([p.mount, p.file_system || p.type].filter(Boolean).length ? ` (${[p.mount, p.file_system || p.type].filter(Boolean).join(', ')})` : '')
+  // Only an identity the disk carries itself is saved (as the backend does).
+  const stableId = (id) => (id && !id.startsWith('size:') ? id : '')
+  const skipsOn = (drive) => {
+    const id = stableId(diskIdFor(drive))
+    return skipParts.filter(s => s.diskId
+      ? s.diskId === id || drive.unique_id === s.diskId || (drive.other_ids || []).includes(s.diskId)
+      : !id && s.device === drive.device_path)
+  }
+  const sameStart = (s, p) => s.start === p.start && s.size === p.size
+  const setPartBackedUp = (drive, p, backedUp) => {
+    const mine = skipsOn(drive).filter(s => sameStart(s, p))
+    const rest = skipParts.filter(s => !mine.includes(s))
+    setSkipParts(backedUp ? rest : [...rest, { diskId: stableId(diskIdFor(drive)), device: drive.device_path, start: p.start, size: p.size, number: p.number, label: logLabel(p) }])
+  }
+  const setOnlyTip = tl('machinePartsSetOnly', 'Only a Backup Set can leave partitions out.')
+
+  const renderParts = (drive) => {
+    if (drive.partitions == null) {
+      return <div className="drive-parts"><div className="drive-parts-hint">{tl('machinePartsUnknown', 'The partitions of this disk could not be read: the whole disk is backed up.')}</div></div>
+    }
+    if (drive.partitions.length === 0) return null
+    const skips = skipsOn(drive)
+    // Saved skips the disk no longer has (its partition table changed).
+    const gone = setSkipParts ? skips.filter(s => !drive.partitions.some(p => sameStart(s, p))) : []
+    return (
+      <div className="drive-parts">
+        {setSkipParts && <div className="drive-parts-hint">{tl('machinePartsHint', 'Untick a partition to leave it out of this set. It is not read and goes into the image as zeros, which take almost no space.')}</div>}
+        <ul className="drive-parts-list">
+          {drive.partitions.map(p => {
+            const out = !!setSkipParts && skips.some(s => sameStart(s, p))
+            const needed = p.role === 'system' || p.role === 'boot'
+            return (
+              <li key={p.start} className={'drive-part' + (out ? ' left-out' : '')}>
+                <label className={setSkipParts ? undefined : 'locked'} title={setSkipParts ? undefined : setOnlyTip}>
+                  <input
+                    type="checkbox"
+                    checked={!out}
+                    disabled={!setSkipParts || needsElevation}
+                    onChange={(e) => setPartBackedUp(drive, p, e.target.checked)}
+                  />
+                  <span className="drive-part-name">{partLabel(p)}</span>
+                  {p.role === 'system' && <span className="drive-badge drive-badge-system">{t('machineDiskBadgeSystem')}</span>}
+                  {p.role === 'boot' && <span className="drive-badge">{t('machineDiskBadgeBoot')}</span>}
+                </label>
+                {out && <div className="drive-part-note">{tl('machinePartLeftOut', 'Left out: it goes into the image empty and comes back unformatted when restored.')}</div>}
+                {out && needed && <div className="drive-part-warn">⚠️ {tl('machinePartNoStart', 'The disk restored from this backup will not start without this partition.')}</div>}
+              </li>
+            )
+          })}
+        </ul>
+        {gone.map(s => (
+          <div key={`${s.start}-${s.size}`} className="drive-part-warn">
+            {tl('machinePartGone', `${s.label} is no longer on this disk, so it is backed up. Saving the set forgets it.`, { label: s.label || `partition ${s.number}` })}
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="machine-backup-config">
-      <h3>{t('machineBackupConfig')}</h3>
+      <h3>{t('machineDisksTitle')}</h3>
 
-      {snapshotModule && (
-        <div className="info-box" style={{ marginBottom: '16px', backgroundColor: '#e7f3ff', borderColor: '#90caf9' }}>
-          <strong>{t('snapshotModuleActive')}: </strong>
-          {t('snapshotModuleInfo', { module: snapshotModule })}
+      {linux && module && (
+        <div className="info-box snap-module-ok">
+          {tl('snapModuleActive', `Snapshot module loaded: ${module}. Mounted disks are read through a snapshot.`, { module })}
         </div>
       )}
-
-      {!snapshotModule && isLinux && (
-        <div className="info-box" style={{ marginBottom: '16px', backgroundColor: '#fff3cd', borderColor: '#ffc107' }}>
-          <strong>⚠️ {t('snapshotModuleMissing')}</strong><br/>
-          {t('snapshotModuleHint')}
+      {linux && !module && snapInstall.restart_pending && (
+        <div className="info-box snap-module-missing">
+          ⚠️ {tl('snapRestartPending', 'The snapshot module is installed, but Secure Boot loads it only once you approve its signing key at a restart:')}
+          <RestartSteps tl={tl} />
         </div>
       )}
-
-      {needsElevation && (
-        <div className="info-box" style={{ marginBottom: '16px', backgroundColor: '#f8d7da', borderColor: '#f5c6cb' }}>
-          <strong>⚠️ {t('elevationRequired')}</strong><br/>
-          {t(isLinux ? 'elevationHint' : 'elevationHintWin')}
-          <div style={{ marginTop: '12px' }}>
-            <button className="btn" onClick={handleElevation}>
-              {t('runAsAdmin')}
+      {linux && !module && !snapInstall.restart_pending && (
+        <div className="info-box snap-module-missing">
+          ⚠️ {tl('snapModuleMissing', 'No snapshot module loaded (elastio-snap or dattobd). A mounted disk cannot be snapshotted: install one, or turn off Use snapshots for the set and accept a backup that may be inconsistent.')}
+          <div className="snap-module-howto">
+            <button type="button" className="btn" disabled={!snapInstall.available}
+              title={snapInstallTip}
+              onClick={() => setInstallOpen(true)}>
+              {tl('snapInstallBtn', 'Install it for me')}
             </button>
+            {onOpenManual && (
+              <button type="button" className="btn btn-secondary" title={tl('snapModuleHowToTip', 'Opens the installation guide in Help.')}
+                onClick={() => onOpenManual('gui', SNAP_MODULE_MANUAL_ANCHOR)}>
+                {tl('snapModuleHowTo', 'How to install')}
+              </button>
+            )}
           </div>
         </div>
       )}
-
-      {handledByService && (
-        <div className="info-box" style={{ marginBottom: '16px', backgroundColor: '#d1ecf1', borderColor: '#bee5eb' }}>
-          ℹ️ <strong>{t('machineBackupServiceInfo')}</strong>
+      {installOpen && (
+        <SnapModuleInstallModal
+          status={snapInstall}
+          onClose={() => setInstallOpen(false)}
+          onFinished={onSystemInfoChanged}
+          onOpenManual={onOpenManual ? () => onOpenManual('gui', SNAP_MODULE_MANUAL_ANCHOR) : undefined}
+        />
+      )}
+      {needsElevation && (
+        <div className="info-box" style={{ marginBottom: '12px', borderColor: '#f5c6cb', background: '#f8d7da', color: '#721c24' }}>
+          <strong>⚠️ {tl('elevNeededTitle', 'Administrator rights needed')}</strong>
+          <div style={{ marginTop: '4px' }}>
+            {tl('elevNeededHint', 'Reading disks needs root, and the service is not running. Restart this app as administrator, or turn on Run as Service in Preferences.')}
+          </div>
+          {onRestartAsAdmin && (
+            <button className="btn" style={{ marginTop: '10px' }} onClick={onRestartAsAdmin}>{t('jobsPolicyElevateBtn')}</button>
+          )}
         </div>
       )}
 
       <div className="form-group">
-        <label>{t('selectDisksToBackup')}</label>
+        <label>{t('machineDisksSelect')}</label>
         <div className="drive-selection">
           <div className="drive-actions">
-            <button 
-              className="btn" 
-              onClick={handleSelectAll} 
-              disabled={needsElevation}
-            >{t('selectAll')}</button>
-            <button 
-              className="btn btn-secondary" 
-              onClick={handleDeselectAll} 
-              disabled={needsElevation}
-            >{t('deselectAll')}</button>
+            <button className="btn" onClick={handleSelectAll} disabled={needsElevation}>{t('machineDisksSelectAll')}</button>
+            <button className="btn btn-secondary" onClick={handleDeselectAll} disabled={needsElevation}>{t('machineDisksDeselectAll')}</button>
           </div>
-          <div className="drives-list" style={{ opacity: needsElevation ? 0.6 : 1, pointerEvents: needsElevation ? 'none' : 'auto' }}>
+          <div className="drives-list" style={needsElevation ? { opacity: 0.6, pointerEvents: 'none' } : undefined}>
             {physicalDisks.length === 0 && (
-              <div style={{ padding: '12px', color: '#718096' }}>{t('noPhysicalDisksFound')}</div>
+              <div style={{ padding: '12px', color: '#718096' }}>{t('machineDisksNone')}</div>
             )}
             {physicalDisks.map((drive) => (
-              <label className="drive-item" key={drive.device_path} style={{ opacity: needsElevation ? 0.6 : 1 }}>
-                <input
-                  type="checkbox"
-                  checked={selectedDrives.includes(drive.device_path)}
-                  onChange={() => handleDriveSelect(drive.device_path)}
-                  disabled={needsElevation}
-                />
-                <span className="drive-device">
-                  {drive.device_path}
-                  {drive.drive_letters && drive.drive_letters.length > 0 && (
-                    <span style={{ color: '#718096' }}>{` (${drive.drive_letters.join(',')})`}</span>
-                  )}
-                </span>
-                <span className="drive-size">{(drive.size / (1024 * 1024 * 1024)).toFixed(2)} GB</span>
-                <span className="drive-model">{drive.model}</span>
-                {drive.is_boot_disk && <span className="drive-badge">{t('boot')}</span>}
-                {drive.is_system_disk && <span className="drive-badge drive-badge-system">{t('system')}</span>}
-              </label>
+              <div className="drive-entry" key={drive.device_path}>
+                <label className="drive-item">
+                  <input
+                    type="checkbox"
+                    checked={selectedDrives.includes(drive.device_path)}
+                    onChange={() => handleDriveSelect(drive.device_path)}
+                    disabled={needsElevation}
+                  />
+                  <span className="drive-device">
+                    {drive.device_path}
+                    {drive.drive_letters && drive.drive_letters.length > 0 && (
+                      <span style={{ color: '#718096' }}>{` (${drive.drive_letters.join(' ')})`}</span>
+                    )}
+                  </span>
+                  <span className="drive-size">{size(drive.size)}</span>
+                  <span className="drive-model">{drive.model}</span>
+                  {drive.is_boot_disk && <span className="drive-badge">{t('machineDiskBadgeBoot')}</span>}
+                  {drive.is_system_disk && <span className="drive-badge drive-badge-system">{t('machineDiskBadgeSystem')}</span>}
+                </label>
+                {selectedDrives.includes(drive.device_path) && renderParts(drive)}
+              </div>
             ))}
           </div>
+          {missingDisks.map(m => (
+            <div key={m.path} className="info-box" style={{ marginTop: '10px', borderColor: '#ef4444', background: '#fef2f2', color: '#991b1b' }}>
+              {t('machineDiskNotConnected', { path: m.path, id: m.id })}
+            </div>
+          ))}
         </div>
       </div>
     </div>

@@ -109,6 +109,19 @@ func (f *fakePBSWithDIDX) setManifest(t *testing.T, m BackupManifest) {
 	f.manifest = mustEncodeBlob(t, raw, nil)
 }
 
+// readerTestClient returns srv's HTTP client with room to keep a connection
+// per prefetch slot. With the default of two idle connections per host,
+// every parallel chunk fetch beyond two dialled a new connection and closed
+// it straight after: about 4000 per run of the prefetch window test, each
+// holding a local port for two minutes on Windows (TIME_WAIT), until a run
+// with -count=30 failed all over the package with "Only one usage of each
+// socket address". Real reader sessions use one HTTP/2 connection.
+func readerTestClient(srv *httptest.Server) http.Client {
+	c := srv.Client()
+	c.Transport.(*http.Transport).MaxIdleConnsPerHost = 4 * chunkPrefetchConcurrency
+	return *c
+}
+
 func newFakePBSWithDIDX(t *testing.T, name string, a *didxArchive, crypt *CryptConfig) *fakePBSWithDIDX {
 	t.Helper()
 	f := &fakePBSWithDIDX{
@@ -154,7 +167,7 @@ func newFakePBSWithDIDX(t *testing.T, name string, a *didxArchive, crypt *CryptC
 	f.PBSClient = &PBSClient{
 		BaseURL:   srv.URL,
 		Datastore: "teststore",
-		Client:    *http.DefaultClient,
+		Client:    readerTestClient(srv),
 		Crypt:     crypt,
 	}
 	return f

@@ -1,5 +1,4 @@
 //go:build linux
-// +build linux
 
 package main
 
@@ -11,68 +10,51 @@ import (
 	"time"
 )
 
-// elevatedFetchToken launches this same executable as root (pkexec, with sudo
-// as fallback) as the token-fetch child and waits for the handoff file. The
-// package launcher (pbsgo-gui) already performs this dance before exec'ing
-// the GUI and exports PBSGO_API_TOKEN; this in-GUI path is the self-healing
-// fallback for direct binary launches (developer builds, running the binary
-// by hand).
-func elevatedFetchToken(handoffFile string) (string, error) {
+// runElevatedHandoff starts this program as root through pkexec with flag
+// and the handoff file, waits for it (timeout, then as long again polling
+// the file), and returns the token it wrote into the file: the token-fetch
+// copy (elevatedFetchToken, from upstream's token_linux.go), or the copy
+// that starts the service first (service_start.go). Upstream fell back to
+// "sudo --non-interactive", which only works with passwordless sudo; without
+// pkexec this says so instead.
+func runElevatedHandoff(flag, handoffFile string, timeout time.Duration) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("cannot resolve own executable: %w", err)
 	}
-
-	var cmd *exec.Cmd
-	switch {
-	case executableAvailable("pkexec"):
-		cmd = exec.Command("pkexec", exe, elevatedTokenFetchFlag, handoffFile)
-	case executableAvailable("sudo"):
-		cmd = exec.Command("sudo", "--non-interactive", exe, elevatedTokenFetchFlag, handoffFile)
-	default:
-		return "", fmt.Errorf("neither pkexec nor sudo is available for elevation")
+	if _, err := exec.LookPath("pkexec"); err != nil {
+		return "", errors.New("asking for administrator rights needs pkexec (polkit), which is not installed")
 	}
-
+	cmd := exec.Command("pkexec", exe, flag, handoffFile) // #nosec G204 -- this program, and the file it created
 	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("cannot launch elevated token fetch: %w", err)
+		return "", fmt.Errorf("cannot start the elevated copy: %w", err)
 	}
+	writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] %s: started the elevated copy, waiting for the handoff", flag))
 
-	writeDebugLog("[ElevatedTokenFetch] launched elevated child, waiting for handoff")
-	waitDone := make(chan error, 1)
-	go func() { waitDone <- cmd.Wait() }()
-
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
 	select {
-	case err := <-waitDone:
-		// The child is done (it only reads the token file and exits, unless a
-		// pkexec/sudo prompt was up), so its result is final: report the real
-		// reason instead of polling a handoff file that will never be filled.
+	case err := <-done:
 		token, readErr := readHandoff(handoffFile)
+		if readErr == nil {
+			return token, nil
+		}
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			// pkexec exits 126 when the dialog is dismissed, 127 when not
+			// authorised.
+			if c := ee.ExitCode(); c == 126 || c == 127 {
+				return "", ErrElevationDeclined
+			}
+			return "", &elevatedChildError{code: uint32(ee.ExitCode())} // #nosec G115 -- an exit status, 0 to 255
+		}
 		if err != nil {
-			var ee *exec.ExitError
-			if errors.As(err, &ee) && readErr != nil {
-				code := uint32(ee.ExitCode())
-				return "", fmt.Errorf("elevated token fetch failed: child exited with code %s — %s",
-					elevatedChildExitLabel(code), elevatedChildExitHint(code))
-			}
-			if readErr == nil {
-				return token, nil
-			}
-			return "", fmt.Errorf("elevated token fetch failed: %w", err)
+			return "", fmt.Errorf("the elevated process failed: %w", err)
 		}
-		if readErr != nil {
-			return "", errors.New("elevated token fetch failed: the child exited without writing the token")
-		}
-		return token, nil
-	case <-time.After(elevatedChildTimeout):
-		// Still running — typically a credential prompt the user is taking
-		// their time with. Keep waiting on the handoff file instead of
-		// abandoning a prompt that may still succeed.
-		writeDebugLog("[ElevatedTokenFetch] child still running after the wait budget; polling the handoff file")
-		return waitForHandoff(handoffFile, elevatedChildTimeout)
+		return "", errors.New("the elevated process exited without writing the token")
+	case <-time.After(timeout):
+		// Still running: most likely the password dialog is still open.
+		writeDebugLog("[ElevatedTokenFetch] the elevated copy is still running; polling the handoff file")
+		return waitForHandoff(handoffFile, timeout)
 	}
-}
-
-func executableAvailable(name string) bool {
-	_, err := exec.LookPath(name)
-	return err == nil
 }

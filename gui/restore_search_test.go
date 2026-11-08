@@ -197,12 +197,12 @@ func TestSearchBuildMatcherRegex(t *testing.T) {
 func TestSearchBuildMatcherRejectsBadInput(t *testing.T) {
 	if _, err := buildMatcher(SearchModeRegex, "("); err == nil {
 		t.Error("expected an error for an invalid regexp")
-	} else if !strings.Contains(err.Error(), "expression régulière invalide") {
+	} else if !strings.Contains(err.Error(), "invalid regular expression") {
 		t.Errorf("error = %q, want it to mention the regexp", err)
 	}
 	if _, err := buildMatcher(SearchMatchMode("nope"), "x"); err == nil {
 		t.Error("expected an error for an unknown mode")
-	} else if !strings.Contains(err.Error(), "mode de recherche inconnu") {
+	} else if !strings.Contains(err.Error(), "unknown search mode") {
 		t.Errorf("error = %q, want it to mention the mode", err)
 	}
 }
@@ -250,6 +250,10 @@ func TestSearchJoinOriginPath(t *testing.T) {
 		{"unix root archive path", unix, "", "/home/tiziano/data"},
 		{"windows meta", &BackupMeta{OS: "windows", OriginalPath: `C:\Users\tiz\data\`}, "a/b.txt", `C:\Users\tiz\data\a\b.txt`},
 		{"backslash implies windows", &BackupMeta{OS: "", OriginalPath: `D:\x\`}, "p/q", `D:\x\p\q`},
+		// Browse-tree paths start with the folder's own name: not doubled.
+		{"tree path, windows", &BackupMeta{OS: "windows", OriginalPath: `C:\TestData\Backup of Compaq 486 Laptop`}, "Backup of Compaq 486 Laptop/CPC/SMARTCHK.CPS", `C:\TestData\Backup of Compaq 486 Laptop\CPC\SMARTCHK.CPS`},
+		{"tree path, the folder itself", unix, "data", "/home/tiziano/data"},
+		{"tree path, unix", unix, "data/a/b.txt", "/home/tiziano/data/a/b.txt"},
 		{"no meta", nil, "a.txt", ""},
 		{"empty original path", &BackupMeta{OS: "linux", OriginalPath: ""}, "a.txt", ""},
 	}
@@ -292,11 +296,11 @@ func TestSearchFilesInlineValidatesOptions(t *testing.T) {
 		mutate  func(o *SearchOptions)
 		wantErr string
 	}{
-		{"no base url", func(o *SearchOptions) { o.BaseURL = "" }, "paramètres de connexion"},
-		{"no authid", func(o *SearchOptions) { o.AuthID = "" }, "paramètres de connexion"},
-		{"no secret", func(o *SearchOptions) { o.Secret = "" }, "paramètres de connexion"},
-		{"no datastore", func(o *SearchOptions) { o.Datastore = "" }, "datastore requis"},
-		{"blank query", func(o *SearchOptions) { o.Query = "   " }, "terme de recherche requis"},
+		{"no base url", func(o *SearchOptions) { o.BaseURL = "" }, "PBS connection parameters required"},
+		{"no authid", func(o *SearchOptions) { o.AuthID = "" }, "PBS connection parameters required"},
+		{"no secret", func(o *SearchOptions) { o.Secret = "" }, "PBS connection parameters required"},
+		{"no datastore", func(o *SearchOptions) { o.Datastore = "" }, "datastore required"},
+		{"blank query", func(o *SearchOptions) { o.Query = "   " }, "search term required"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -324,7 +328,7 @@ func TestSearchFilesInlineAcceptsTicketAuth(t *testing.T) {
 	}
 	if _, err := SearchFilesInline(o); err == nil {
 		t.Fatal("expected the snapshot listing to fail")
-	} else if strings.Contains(err.Error(), "paramètres de connexion") {
+	} else if strings.Contains(err.Error(), "PBS connection parameters required") {
 		t.Errorf("ticket auth was rejected as missing credentials: %v", err)
 	}
 }
@@ -342,7 +346,7 @@ func TestSearchFilesInlineRejectsBadQueryBeforeNetwork(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	if strings.Contains(err.Error(), "liste des snapshots") {
+	if strings.Contains(err.Error(), "listing the snapshots") {
 		t.Errorf("an invalid regexp reached the network call: %v", err)
 	}
 }

@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -170,9 +174,15 @@ func TestDIDXReaderAtCachesChunks(t *testing.T) {
 
 	f := newFakePBSWithDIDX(t, "a.didx", a, nil)
 
+	// The read-ahead fetches chunks on other goroutines, and fetchOnce calls
+	// the callback outside its lock, so the calls are recorded under a mutex
+	// and may come in any order.
+	var mu sync.Mutex
 	var progressCalls []int
 	r, _, err := f.NewDIDXReaderAt("a.didx", 8, func(fetched, total int) {
+		mu.Lock()
 		progressCalls = append(progressCalls, fetched)
+		mu.Unlock()
 	})
 	if err != nil {
 		t.Fatalf("NewDIDXReaderAt: %v", err)
@@ -190,12 +200,25 @@ func TestDIDXReaderAtCachesChunks(t *testing.T) {
 	if got := f.totalFetches(); got != 4 {
 		t.Errorf("fetched %d chunks, want 4 (cache is not being used)", got)
 	}
-	if len(progressCalls) != 4 {
-		t.Errorf("progress callback fired %d times, want 4 (only on new fetches)", len(progressCalls))
+	// A read-ahead fetch reports just after it caches its chunk: give the
+	// last one a moment.
+	var calls []int
+	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		mu.Lock()
+		calls = append(calls[:0], progressCalls...)
+		mu.Unlock()
+		if len(calls) >= 4 || time.Now().After(deadline) {
+			break
+		}
 	}
-	for i, got := range progressCalls {
+	if len(calls) != 4 {
+		t.Errorf("progress callback fired %d times, want 4 (only on new fetches)", len(calls))
+	}
+	sort.Ints(calls)
+	for i, got := range calls {
 		if got != i+1 {
-			t.Errorf("progress call %d reported fetched=%d, want %d", i, got, i+1)
+			t.Errorf("progress calls reported fetched=%v, want 1, 2, 3 and 4 once each", calls)
+			break
 		}
 	}
 }
@@ -376,11 +399,11 @@ func TestDIDXReaderAtCancelBetweenChunks(t *testing.T) {
 		t.Fatalf("NewDIDXReaderAt: %v", err)
 	}
 
-	calls := 0
+	// The check also runs on the prefetch goroutines, so the count is atomic.
+	var calls atomic.Int32
 	r.SetCancelCheck(func() bool {
-		calls++
 		// Let the first couple of chunk fetches through, then abort.
-		return calls > 4
+		return calls.Add(1) > 4
 	})
 
 	// One read spanning every chunk.
@@ -454,46 +477,6 @@ func TestDIDXReaderAtEncryptedArchive(t *testing.T) {
 	}
 }
 
-// The GUI/service directory backup used to encrypt its chunks but index them
-// under the bare SHA-256. Such snapshots must stay restorable with the key.
-func TestDIDXReaderAtLegacyEncryptedArchive(t *testing.T) {
-	crypt := testCryptConfig(t)
-	payloads := payloadsOf(3, 128)
-	a := makeDIDX(t, nil, payloads...) // bare SHA-256 digests...
-	want := bytes.Join(payloads, nil)
-
-	f := newFakePBSWithDIDX(t, "legacy.didx", a, crypt) // ...over encrypted blobs
-	r, _, err := f.NewDIDXReaderAt("legacy.didx", 8, nil)
-	if err != nil {
-		t.Fatalf("NewDIDXReaderAt: %v", err)
-	}
-	got := make([]byte, len(want))
-	if _, err := r.ReadAt(got, 0); err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("ReadAt: %v", err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Error("decrypted stream differs from the original chunks")
-	}
-}
-
-// The legacy fallback must not turn the integrity check off.
-func TestDIDXReaderAtLegacyEncryptedArchiveRejectsMismatch(t *testing.T) {
-	crypt := testCryptConfig(t)
-	payloads := payloadsOf(2, 64)
-	a := makeDIDX(t, nil, payloads...)
-	f := newFakePBSWithDIDX(t, "legacy.didx", a, crypt)
-	f.corrupt[a.order[0]] = bytes.Repeat([]byte{0xAB}, len(payloads[0]))
-
-	r, _, err := f.NewDIDXReaderAt("legacy.didx", 4, nil)
-	if err != nil {
-		t.Fatalf("NewDIDXReaderAt: %v", err)
-	}
-	_, err = r.ReadAt(make([]byte, 8), 0)
-	if err == nil || !strings.Contains(err.Error(), "content hash mismatch") {
-		t.Errorf("error = %v, want a content hash mismatch", err)
-	}
-}
-
 // Without the key, an encrypted archive must fail loudly rather than serve
 // ciphertext.
 func TestDIDXReaderAtEncryptedArchiveWithoutKey(t *testing.T) {
@@ -509,6 +492,36 @@ func TestDIDXReaderAtEncryptedArchiveWithoutKey(t *testing.T) {
 	}
 	if _, err := r.ReadAt(make([]byte, 8), 0); err == nil {
 		t.Fatal("expected an error when reading an encrypted archive without the key")
+	}
+}
+
+// An unencrypted archive (a snapshot taken before the key was set up) must
+// still read with the key loaded: its chunks carry plain sha256 digests.
+// Found live 2026-10-17: Undelete on a machine set failed with "content hash
+// mismatch" on its older, unencrypted snapshots once a key was configured.
+func TestDIDXReaderAtPlainArchiveWithKeyLoaded(t *testing.T) {
+	payloads := payloadsOf(3, 64)
+	a := makeDIDX(t, nil, payloads...)
+	f := newFakePBSWithDIDX(t, "plain.didx", a, nil)
+	f.Crypt = testCryptConfig(t)
+
+	r, size, err := f.NewDIDXReaderAt("plain.didx", 4, nil)
+	if err != nil {
+		t.Fatalf("NewDIDXReaderAt: %v", err)
+	}
+	got := make([]byte, size)
+	if _, err := r.ReadAt(got, 0); err != nil {
+		t.Fatalf("reading a plain archive with a key loaded: %v", err)
+	}
+	if !bytes.Equal(got, bytes.Join(payloads, nil)) {
+		t.Fatal("wrong content")
+	}
+
+	// A tampered chunk is still caught.
+	f.corrupt[a.order[1]] = bytes.Repeat([]byte{0xCD}, len(payloads[1]))
+	r2, _, _ := f.NewDIDXReaderAt("plain.didx", 4, nil)
+	if _, err := r2.ReadAt(make([]byte, 8), 64); err == nil {
+		t.Fatal("a tampered chunk was accepted with a key loaded")
 	}
 }
 

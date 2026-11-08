@@ -1,0 +1,117 @@
+//go:build !service
+// +build !service
+
+package main
+
+import (
+	"github.com/wailsapp/wails/v2/pkg/menu"
+	"github.com/wailsapp/wails/v2/pkg/menu/keys"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+)
+
+// buildAppMenu constructs the native OS menu bar. Every action is wired
+// through a "nav:*" Wails event rather than calling App methods directly,
+// so the frontend's existing activeTab state machine stays the single
+// source of truth for what's on screen — the menu only ever asks it to
+// switch tabs or open an overlay, the same way a sidebar click would.
+func buildAppMenu(a *App) *menu.Menu {
+	appMenu := menu.NewMenu()
+
+	fileMenu := appMenu.AddSubmenu("File")
+	fileMenu.AddText("Backup Now", keys.CmdOrCtrl("b"), func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "backup")
+	})
+	fileMenu.AddSeparator()
+	fileMenu.AddText("Minimize to Tray", nil, func(_ *menu.CallbackData) {
+		a.MinimizeToTray()
+	})
+	fileMenu.AddSeparator()
+	fileMenu.AddText("Exit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+		// RequestQuit (not a bare runtime.Quit) — closing the window normally
+		// minimizes to tray by design; Exit here means a real, unconditional
+		// quit. See forceQuitRequested's doc comment in main.go for why a
+		// plain runtime.Quit() alone doesn't actually exit.
+		a.RequestQuit()
+	})
+
+	viewMenu := appMenu.AddSubmenu("View")
+	viewMenu.AddText("Reports", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "reports")
+	})
+	viewMenu.AddText("Message Log", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "messagelog")
+	})
+	viewMenu.AddText("Full Logs", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "logs")
+	})
+
+	// Backup/Restore live here rather than View — the Backup tab IS the
+	// backup-sets manager now, which reads more like a tool you open than a
+	// view you switch to. This also retires the old disabled "Manage Backup
+	// Sets…" placeholder that predated the real Backup Sets UI.
+	toolsMenu := appMenu.AddSubmenu("Tools")
+	toolsMenu.AddText("Backup", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "backup")
+	})
+	toolsMenu.AddText("Restore", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "restore")
+	})
+	toolsMenu.AddText("Undelete", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "undelete")
+	})
+	toolsMenu.AddText("Roll back", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "rollback")
+	})
+	toolsMenu.AddSeparator()
+	toolsMenu.AddText("Preferences…", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:preferences")
+	})
+	toolsMenu.AddSeparator()
+	// Points at /releases/latest rather than a specific version's asset URL,
+	// so this never goes stale across future releases even though the ISO's
+	// filename carries a version number.
+	toolsMenu.AddText("Download Bare Metal Restore ISO…", nil, func(_ *menu.CallbackData) {
+		runtime.BrowserOpenURL(a.ctx, projectRepo+"/releases/latest")
+	})
+	// These two mirror each other's naming ("Bare Metal Restore ISO"/"Bare
+	// Metal Restore Guide") deliberately, so both halves of disaster-recovery
+	// prep sit together in the menu. View opens the bare-metal restore manual
+	// on the Help page; Save calls straight into the App method, same as the
+	// ISO's BrowserOpenURL call above: an action, not a navigation.
+	toolsMenu.AddText("View Bare Metal Restore Guide", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:manual", "bmr")
+	})
+	toolsMenu.AddText("Save Bare Metal Restore Guide…", nil, func(_ *menu.CallbackData) {
+		if _, err := a.SaveManual("bmr"); err != nil {
+			writeDebugLog("SaveManual bmr (menu): " + err.Error())
+		}
+	})
+
+	helpMenu := appMenu.AddSubmenu("Help")
+	helpMenu.AddText("User Manual", keys.Key("f1"), func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:manual", "gui")
+	})
+	helpMenu.AddText("Command-Line Manual", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:manual", "cli")
+	})
+	helpMenu.AddText("Bare-Metal Restore Manual", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:manual", "bmr")
+	})
+	helpMenu.AddText("Which Restore Do I Need?", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:manual", "restore")
+	})
+	helpMenu.AddSeparator()
+	// The full logs, for when a report or a message says to look in the log.
+	helpMenu.AddText("View Full Logs", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "logs")
+	})
+	helpMenu.AddText("Known Limitations", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:limitations")
+	})
+	helpMenu.AddSeparator()
+	helpMenu.AddText("About", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "nav:goto", "about")
+	})
+
+	return appMenu
+}

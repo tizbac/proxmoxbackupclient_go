@@ -2,13 +2,37 @@ package pbscommon
 
 import (
 	"container/list"
-	"crypto/sha256"
-	"encoding/hex"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"sort"
 	"sync"
+	"sync/atomic"
+	"time"
+)
+
+// chunkFetchTimeout bounds a SINGLE chunk fetch (see GetChunkData's doc
+// comment for why this exists — a stuck HTTP/2 stream on an otherwise-healthy
+// connection can hang forever with no other protection). Chunks are at most
+// ~16MB (the chunker's own max size), so even a slow link should comfortably
+// finish well inside this.
+const chunkFetchTimeout = 60 * time.Second
+
+// chunkPrefetchWindow/chunkPrefetchConcurrency bound the background read-ahead
+// added 2026-09-23 after a restore measured at ~6MB/s: chunkAt used to fetch
+// exactly one chunk at a time, fully sequential (request, wait for the full
+// round-trip, only then request the next), so throughput was bounded by
+// per-chunk latency rather than link bandwidth. Since PXAR extraction walks
+// the stream in mostly-linear order, whichever chunk chunkAt just resolved
+// triggers background fetches of the next few indices into the same LRU
+// cache, so by the time the sequential reader actually asks for them they are
+// often already there. HTTP/2 (already in use for the PBS connection)
+// multiplexes concurrent streams over the one connection, so this needs no
+// extra connections, just extra goroutines issuing concurrent requests.
+const (
+	chunkPrefetchWindow      = 32 // how many chunks ahead of the one just resolved to prefetch
+	chunkPrefetchConcurrency = 16 // max background prefetch fetches in flight at once
 )
 
 // ErrReadCancelled is returned by a DIDXReaderAt read once its cancel predicate
@@ -37,8 +61,96 @@ type DIDXReaderAt struct {
 	progress func(fetched, total int)
 	cancel   func() bool // optional; when it returns true, reads abort with ErrReadCancelled
 
-	mu      sync.Mutex // serializes fetch bookkeeping (fetched counter)
+	// ctx is the parent for each chunk fetch's own chunkFetchTimeout deadline
+	// (see that const's doc comment). Cancelling ctx (e.g. a user-triggered
+	// restore cancel) aborts an in-flight fetch immediately, same as the
+	// timeout firing on its own if nothing cancels it first. Defaults to
+	// context.Background() when the caller has none to offer (e.g. plain
+	// browsing calls that don't go through a cancellable restore).
+	ctx context.Context
+
+	mu      sync.Mutex // serializes fetch bookkeeping (fetched counter, prefetch bound)
 	fetched int
+
+	// prefetchOff disables read-ahead entirely; prefetchLimit, when > 0, is an
+	// EXCLUSIVE upper bound on the chunk index triggerPrefetch may fetch — see
+	// LimitPrefetchTo. Zero values mean unbounded read-ahead (the original,
+	// whole-archive-restore behavior), so a DIDXReaderAt built without
+	// NewDIDXReaderAt still prefetches.
+	prefetchOff   bool
+	prefetchLimit int
+	// prefetchWindow is how many chunks ahead to read (0 = chunkPrefetchWindow).
+	prefetchWindow int
+	// seen marks every chunk index fetched at least once, so a second fetch
+	// of the same chunk (it fell out of the cache before it was used again)
+	// is counted as a refetch.
+	seen      []bool
+	refetched int
+	// prefetchAllowed, when non-nil, restricts read-ahead to these inclusive
+	// [first, last] chunk-index runs, sorted — see LimitPrefetchToRanges.
+	prefetchAllowed [][2]int
+
+	// inflight coalesces concurrent requests for the SAME chunk index (from
+	// ReadAt's own caller racing a background prefetch worker, or two
+	// prefetch triggers overlapping) into a single network fetch instead of
+	// issuing duplicate requests. Keyed by chunk index; the channel is closed
+	// once that chunk's fetch attempt finishes (success or failure).
+	inflightMu sync.Mutex
+	inflight   map[int]chan struct{}
+
+	// prefetchSem bounds how many background prefetch fetches run at once,
+	// independent of however many ReadAt callers exist.
+	prefetchSem chan struct{}
+
+	// fetchNanos/hashNanos accumulate wall-clock time spent in GetChunkData
+	// (network round-trip + zstd decompression) and in the SHA-256 digest
+	// check, across every chunk this reader has fetched — including
+	// background prefetch workers, all summing into the same counters.
+	// Diagnostic only (see Stats' doc comment): added 2026-09-23 to find out
+	// where restore time actually goes once network latency was no longer
+	// the dominant cost after prefetching landed.
+	fetchNanos atomic.Int64
+	hashNanos  atomic.Int64
+}
+
+// DIDXReaderAtStats is a snapshot of where this reader's cumulative fetch
+// time went. Nanos are SUMMED across however many chunks/goroutines did the
+// work, not wall-clock — with prefetch running several fetches concurrently,
+// this can exceed the restore's real elapsed time. That's fine for its
+// purpose: comparing FetchNanos against HashNanos (and, in the caller, against
+// the extraction/write side's own totals) shows which phase dominates the
+// real work, without needing per-chunk log spam.
+type DIDXReaderAtStats struct {
+	FetchNanos    int64 // cumulative time inside GetChunkData (network + decompress)
+	HashNanos     int64 // cumulative time verifying each chunk's SHA-256
+	ChunksFetched int   // count of chunks actually fetched from the server (cache hits don't count)
+	// ChunksRefetched is the part of ChunksFetched that fetched a chunk a
+	// second (or later) time because it had left the cache.
+	ChunksRefetched int
+}
+
+// Stats returns a snapshot of this reader's cumulative fetch/hash time so far.
+func (r *DIDXReaderAt) Stats() DIDXReaderAtStats {
+	r.mu.Lock()
+	fetched, refetched := r.fetched, r.refetched
+	r.mu.Unlock()
+	return DIDXReaderAtStats{
+		FetchNanos:      r.fetchNanos.Load(),
+		HashNanos:       r.hashNanos.Load(),
+		ChunksFetched:   fetched,
+		ChunksRefetched: refetched,
+	}
+}
+
+// SetPrefetchWindow sets how many chunks ahead of each read are fetched in the
+// background. Several readers sharing one cache (parallel extraction workers)
+// each read ahead, so with the default window they push each other's chunks
+// out before they are used; a smaller window keeps all of them inside the
+// cache. n <= 0 restores the default.
+func (r *DIDXReaderAt) SetPrefetchWindow(n int) {
+	r.mu.Lock()
+	r.prefetchWindow = n
+	r.mu.Unlock()
 }
 
 // SetCancelCheck installs a predicate polled before each read and chunk fetch;
@@ -46,6 +158,17 @@ type DIDXReaderAt struct {
 // disable. Set it immediately after construction and before the first read —
 // it is read without locking and is not safe to change concurrently with reads.
 func (r *DIDXReaderAt) SetCancelCheck(fn func() bool) { r.cancel = fn }
+
+// SetContext installs the parent context each chunk fetch's own
+// chunkFetchTimeout deadline derives from (see the ctx field's doc comment).
+// Pass nil to reset to context.Background(). Set immediately after
+// construction and before the first read, same rule as SetCancelCheck.
+func (r *DIDXReaderAt) SetContext(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	r.ctx = ctx
+}
 
 // NewDIDXReaderAt downloads and parses the .didx index for archiveName and
 // returns a lazy reader over the reconstructed stream plus its total size. The
@@ -67,11 +190,103 @@ func (pbs *PBSClient) NewDIDXReaderAt(archiveName string, cacheChunks int, progr
 		return nil, 0, err
 	}
 	return &DIDXReaderAt{
-		pbs:      pbs,
-		idx:      idx,
-		cache:    newChunkCache(cacheChunks),
-		progress: progress,
+		pbs:         pbs,
+		idx:         idx,
+		cache:       newChunkCache(cacheChunks),
+		progress:    progress,
+		ctx:         context.Background(),
+		inflight:    make(map[int]chan struct{}),
+		prefetchSem: make(chan struct{}, chunkPrefetchConcurrency),
 	}, int64(idx.total), nil
+}
+
+// SetPrefetchEnabled turns background read-ahead off (false) or back on,
+// unbounded (true). Used around ResolveArchivePathBST, whose GOODBYE-table
+// lookups are random access: each one would otherwise trigger a useless
+// 32-chunk prefetch past the table it just read.
+func (r *DIDXReaderAt) SetPrefetchEnabled(enabled bool) {
+	r.mu.Lock()
+	r.prefetchOff = !enabled
+	r.prefetchLimit = 0
+	r.prefetchAllowed = nil
+	r.mu.Unlock()
+}
+
+// LimitPrefetchToRanges restricts background read-ahead to chunks that
+// overlap one of the byte ranges [start, end), and returns how many distinct
+// chunks those ranges cover. A selective restore passes the ranges it will
+// read (PXARReader.SelectionRanges), so read-ahead never fetches a chunk that
+// holds only unselected data, and the returned count is the restore's real
+// chunk total. Reads outside the ranges still work (fetched on demand); they
+// just never trigger read-ahead into chunks the ranges do not reach. No
+// ranges disables read-ahead.
+func (r *DIDXReaderAt) LimitPrefetchToRanges(ranges [][2]int64) int {
+	total := int64(r.idx.total)
+	sorted := append([][2]int64(nil), ranges...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i][0] < sorted[j][0] })
+	runs := make([][2]int, 0, len(sorted))
+	for _, rg := range sorted {
+		start, end := rg[0], rg[1]
+		if start < 0 {
+			start = 0
+		}
+		if end > total {
+			end = total
+		}
+		if end <= start {
+			continue
+		}
+		first := r.chunkIndexAt(uint64(start))
+		last := r.chunkIndexAt(uint64(end - 1))
+		if n := len(runs); n > 0 && first <= runs[n-1][1]+1 {
+			if last > runs[n-1][1] {
+				runs[n-1][1] = last
+			}
+			continue
+		}
+		runs = append(runs, [2]int{first, last})
+	}
+	count := 0
+	for _, run := range runs {
+		count += run[1] - run[0] + 1
+	}
+	r.mu.Lock()
+	r.prefetchOff = len(runs) == 0
+	r.prefetchLimit = 0
+	r.prefetchAllowed = runs
+	r.mu.Unlock()
+	return count
+}
+
+// prefetchAllowedAt reports whether chunk ci lies in one of the allowed runs.
+func prefetchAllowedAt(runs [][2]int, ci int) bool {
+	i := sort.Search(len(runs), func(i int) bool { return runs[i][1] >= ci })
+	return i < len(runs) && runs[i][0] <= ci
+}
+
+// LimitPrefetchTo restricts background read-ahead so it never fetches chunks
+// lying wholly past byte offset endOffset (exclusive). Added 2026-10-01 after
+// a real selective restore of one ~5.8GB folder out of a 458GB archive showed
+// its fetched-chunk counter running past the folder's own chunk count (2453
+// of 1698, ~107%) and the restored output still short when stopped:
+// triggerPrefetch (2026-09-23) was written when a DIDXReaderAt only ever
+// served a whole-archive walk, so it kept prefetching up to chunkPrefetchWindow
+// chunks past the one just read even after the BST fast path had narrowed
+// the walk to a small span, spending bandwidth and the shared HTTP/2
+// connection on chunks that walk would never read, and counting every one of
+// them toward progress. Call this after a successful ResolveArchivePathBST,
+// passing the resolved targetEnd. endOffset <= 0 or >= the archive size
+// restores unbounded prefetch.
+func (r *DIDXReaderAt) LimitPrefetchTo(endOffset int64) {
+	limit := 0
+	if endOffset > 0 && endOffset < int64(r.idx.total) {
+		limit = r.chunkIndexAt(uint64(endOffset-1)) + 1
+	}
+	r.mu.Lock()
+	r.prefetchOff = false
+	r.prefetchLimit = limit
+	r.prefetchAllowed = nil
+	r.mu.Unlock()
 }
 
 // chunkIndexAt returns the index of the chunk whose [start,end) span contains pos.
@@ -83,17 +298,107 @@ func (r *DIDXReaderAt) chunkIndexAt(pos uint64) int {
 	})
 }
 
+// ChunkCountInRange returns how many of the archive's indexed chunks cover
+// any part of the byte range [start, end) — added 2026-10-01 for selective
+// restore's progress reporting, which used to report progress against
+// len(digests) (the WHOLE archive's chunk count) even when only a small
+// selection within it was being restored, making a small selection's
+// progress bar look stuck near zero while chunk-for-chunk it was actually
+// nearly done. Uses the exact same chunkIndexAt lookup chunkAt itself uses,
+// so this is precise, not an estimate.
+func (r *DIDXReaderAt) ChunkCountInRange(start, end int64) int {
+	if start < 0 {
+		start = 0
+	}
+	total := int64(r.idx.total)
+	if end > total {
+		end = total
+	}
+	if end <= start {
+		return 0
+	}
+	first := r.chunkIndexAt(uint64(start))
+	last := r.chunkIndexAt(uint64(end - 1))
+	count := last - first + 1
+	if count < 1 {
+		count = 1
+	}
+	return count
+}
+
 // chunkAt returns the decompressed bytes of chunk ci, from cache or by fetching
 // it from the server (verifying size and SHA-256 against the index digest).
+// On a cache miss it also kicks off background prefetch of the next several
+// chunks, so a mostly-linear walk (the common case) turns most subsequent
+// fetches into cache hits instead of a fresh network round-trip each time.
 func (r *DIDXReaderAt) chunkAt(ci int) ([]byte, error) {
 	if r.cancel != nil && r.cancel() {
 		return nil, ErrReadCancelled
 	}
+	data, err := r.ensureChunk(ci)
+	if err != nil {
+		return nil, err
+	}
+	r.triggerPrefetch(ci)
+	return data, nil
+}
+
+// ensureChunk returns chunk ci's bytes, from cache if present, otherwise by
+// fetching it — coalescing concurrent requests for the SAME index (ReadAt's
+// caller racing a background prefetch worker, or two overlapping prefetch
+// triggers) into a single network fetch via the inflight map.
+func (r *DIDXReaderAt) ensureChunk(ci int) ([]byte, error) {
 	if data, ok := r.cache.get(ci); ok {
 		return data, nil
 	}
+
+	r.inflightMu.Lock()
+	// Look again: another fetch of ci may have finished between the miss above
+	// and taking the lock. fetchOnce caches before its inflight entry goes, so
+	// with ci not in flight the cache is now the whole truth. Without this the
+	// chunk was fetched twice, about 1 run in 8 of TestDIDXReaderAtCachesChunks.
+	if data, ok := r.cache.get(ci); ok {
+		r.inflightMu.Unlock()
+		return data, nil
+	}
+	if ch, ok := r.inflight[ci]; ok {
+		r.inflightMu.Unlock()
+		<-ch
+		if data, ok := r.cache.get(ci); ok {
+			return data, nil
+		}
+		// The in-flight attempt failed and isn't propagated to a second
+		// waiter by design (keeps this simple) — retry once, synchronously.
+		return r.fetchOnce(ci)
+	}
+	ch := make(chan struct{})
+	r.inflight[ci] = ch
+	r.inflightMu.Unlock()
+
+	data, err := r.fetchOnce(ci)
+
+	r.inflightMu.Lock()
+	delete(r.inflight, ci)
+	r.inflightMu.Unlock()
+	close(ch)
+
+	return data, err
+}
+
+// fetchOnce does the actual network fetch, validation, cache population and
+// progress bump for chunk ci. Callers arrange for it to run at most once per
+// index at a time (see ensureChunk) — this does no coalescing of its own.
+func (r *DIDXReaderAt) fetchOnce(ci int) ([]byte, error) {
 	digest := r.idx.digests[ci]
-	chunk, err := r.pbs.GetChunkData(digest)
+	ctx := r.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	fetchStart := time.Now()
+	fetchCtx, cancelFetch := context.WithTimeout(ctx, chunkFetchTimeout)
+	chunk, err := r.pbs.GetChunkData(fetchCtx, digest)
+	cancelFetch()
+	r.fetchNanos.Add(int64(time.Since(fetchStart)))
 	if err != nil {
 		return nil, fmt.Errorf("fetch chunk %s (index %d/%d): %w", digest, ci, len(r.idx.digests), err)
 	}
@@ -101,23 +406,99 @@ func (r *DIDXReaderAt) chunkAt(ci int) ([]byte, error) {
 	if uint64(len(chunk)) != end-start {
 		return nil, fmt.Errorf("chunk %s (index %d): decompressed size %d != expected %d", digest, ci, len(chunk), end-start)
 	}
+	hashStart := time.Now()
 	// PBS dynamic-index digests are the SHA-256 of the chunk plaintext, or the
-	// id_key-salted digest for an encrypted snapshot (see PBSClient.ChunkDigest).
-	// A mismatch means a corrupted or tampered chunk — fail rather than serve
+	// id_key-salted digest for an encrypted snapshot (see PBSClient.ChunkDigest;
+	// with a key loaded both are accepted, for snapshots taken without it).
+	// A mismatch means a corrupted or tampered chunk, so fail rather than serve
 	// wrong data.
-	if r.pbs.ChunkDigestHex(chunk) != digest && !legacyEncryptedDigest(r.pbs, chunk, digest) {
+	digestOK := r.pbs.ChunkMatchesDigest(chunk, digest)
+	r.hashNanos.Add(int64(time.Since(hashStart)))
+	if !digestOK {
 		return nil, fmt.Errorf("chunk %s (index %d): content hash mismatch", digest, ci)
 	}
 	r.cache.put(ci, chunk)
 
 	r.mu.Lock()
 	r.fetched++
+	if r.seen == nil {
+		r.seen = make([]bool, len(r.idx.digests))
+	}
+	if r.seen[ci] {
+		r.refetched++
+	}
+	r.seen[ci] = true
 	fetched := r.fetched
 	r.mu.Unlock()
 	if r.progress != nil {
 		r.progress(fetched, len(r.idx.digests))
 	}
 	return chunk, nil
+}
+
+// triggerPrefetch schedules background fetches for the chunkPrefetchWindow
+// indices following ci, skipping any already cached or already in flight,
+// bounded by prefetchSem so at most chunkPrefetchConcurrency run at once. A
+// full semaphore just means this call schedules fewer than the full window —
+// the next chunkAt along the walk tries again from its own position.
+func (r *DIDXReaderAt) triggerPrefetch(ci int) {
+	total := len(r.idx.digests)
+	r.mu.Lock()
+	off, limit, allowed, window := r.prefetchOff, r.prefetchLimit, r.prefetchAllowed, r.prefetchWindow
+	r.mu.Unlock()
+	if off {
+		return
+	}
+	if limit > 0 && limit < total {
+		total = limit
+	}
+	if window <= 0 {
+		window = chunkPrefetchWindow
+	}
+	// Never read further ahead than the cache holds beside the chunk just
+	// read: the later prefetches would evict the earlier ones before they
+	// are used, and those chunks would be fetched twice (a reader with a
+	// 1-chunk cache fetched the next chunk again about 1 run in 50).
+	if room := r.cache.cap - 1; window > room {
+		window = room
+	}
+	for offset := 1; offset <= window; offset++ {
+		next := ci + offset
+		if next >= total {
+			break
+		}
+		if allowed != nil && !prefetchAllowedAt(allowed, next) {
+			continue
+		}
+		if _, ok := r.cache.get(next); ok {
+			continue
+		}
+		r.inflightMu.Lock()
+		_, already := r.inflight[next]
+		r.inflightMu.Unlock()
+		if already {
+			continue
+		}
+		select {
+		case r.prefetchSem <- struct{}{}:
+		default:
+			return // worker pool full — try again from a later chunkAt call
+		}
+		go func(idx int) {
+			defer func() { <-r.prefetchSem }()
+			if r.ctx != nil {
+				select {
+				case <-r.ctx.Done():
+					return
+				default:
+				}
+			}
+			if r.cancel != nil && r.cancel() {
+				return
+			}
+			_, _ = r.ensureChunk(idx) // best-effort; the real consumer surfaces any error when it gets here
+		}(next)
+	}
 }
 
 // ReadAt implements io.ReaderAt over the reconstructed stream, fetching only the
@@ -204,19 +585,4 @@ func (c *chunkCache) put(idx int, data []byte) {
 		c.ll.Remove(oldest)
 		delete(c.items, oldest.Value.(*chunkCacheEntry).idx)
 	}
-}
-
-// legacyEncryptedDigest accepts an encrypted snapshot's chunk indexed under the
-// bare sha256(plaintext) instead of sha256(plaintext || id_key). The GUI and
-// service directory backup wrote such snapshots until it went through
-// PBSClient.ChunkDigest; without this they could not be restored at all.
-// Accepting it keeps the check meaningful: the bare sha256 still binds
-// the chunk to the index, and an encrypted chunk has also passed AES-GCM
-// authentication under the key on its way here.
-func legacyEncryptedDigest(pbs *PBSClient, chunk []byte, digest string) bool {
-	if pbs.Crypt == nil {
-		return false
-	}
-	sum := sha256.Sum256(chunk)
-	return hex.EncodeToString(sum[:]) == digest
 }

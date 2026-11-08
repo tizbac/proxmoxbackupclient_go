@@ -1,0 +1,438 @@
+# Command line: user manual
+
+This manual covers the command line, `salvanza-cli`. It applies to version 2.0 (see the [changelog](../../CHANGELOG.md)). For the graphical client see [GUI.md](GUI.md); for bare-metal restore see [BMR.md](BMR.md).
+
+## Contents
+
+1. [salvanza-cli and its commands](#1-salvanza-cli-and-its-commands)
+2. [Connecting to PBS](#2-connecting-to-pbs)
+3. [backup-folder: folder backups](#3-backup-folder-folder-backups)
+4. [Incremental backups with -change-detection-mode](#4-incremental-backups-with--change-detection-mode)
+5. [backup-disk: whole-disk backups](#5-backup-disk-whole-disk-backups)
+6. [attach-nbd: attach a disk image (Linux)](#6-attach-nbd-attach-a-disk-image-linux)
+7. [Encryption](#7-encryption)
+8. [Email reports](#8-email-reports)
+9. [Exit codes](#9-exit-codes)
+10. [Scheduling](#10-scheduling)
+11. [Compatibility with the official Proxmox client](#11-compatibility-with-the-official-proxmox-client)
+
+## 1. salvanza-cli and its commands
+
+The command line is one program, `salvanza-cli` (`salvanza-cli.exe` on Windows), with a command for each job:
+
+| Command | Purpose |
+|---|---|
+| `salvanza-cli backup-folder` | Backs up folders (or a stream from standard input) as a `host` snapshot |
+| `salvanza-cli backup-disk` | Backs up whole disks as images, as a `host` or `vm` snapshot |
+| `salvanza-cli attach-nbd` | Linux only. Attaches a disk image from PBS as a read-only `/dev/nbdN` block device. The bare-metal restore ISO has the same code as `pbsnbd` |
+| `salvanza-cli install-snapshot-module` | Linux only, as root. Builds and loads the elastio-snap snapshot module that `backup-disk` needs ([below](#installing-the-snapshot-module-linux)) |
+| `salvanza-cli version` | Prints the version (also `-version`) |
+| `salvanza-cli help` | Lists the commands. `salvanza-cli <command> -help` (or `salvanza-cli help <command>`) lists a command's options |
+
+Everything after the command is that command's options, for example `salvanza-cli backup-folder -backupdir C:\Data ...`. In its messages and help a command names itself `salvanza-cli <command>`.
+
+Where to get it:
+
+| You have | `salvanza-cli` is |
+|---|---|
+| The Windows installer (MSI) | Installed with the app and the service, as `C:\Program Files\Salvanza\salvanza-cli.exe`. The installer adds that folder to the system `PATH`, so `salvanza-cli` runs from any new terminal. Every brand's installer installs the same `salvanza-cli` |
+| The Linux packages (`.deb`, `.rpm`, Arch; package `salvanza`) | `/usr/bin/salvanza-cli`, next to the app |
+| Neither | The per-platform `salvanza-cli` archives on the [releases page](https://github.com/salvanza/salvanza_client/releases) (Windows and Linux). It is a static build and needs no installation |
+
+These tools only back up: none of them restores a folder backup. Restore one with the GUI, or with the official `proxmox-backup-client` ([section 11](#11-compatibility-with-the-official-proxmox-client)). Two of the GUI's restores, Undelete and Roll back, can also be run from the command line, for a Backup Set defined in the GUI, by the GUI's own programs (on Windows its service program, `salvanza-svc.exe`), which come with the GUI's installer or Linux package: see [GUI.md, Undelete and Roll back from the command line](GUI.md#undelete-and-roll-back-from-the-command-line). The service program's other options (install, start, stop) are in [GUI.md](GUI.md#the-service-program-from-the-command-line) too.
+
+Run the backup commands as administrator (Windows) for VSS, or as root (Linux) for snapshots and disk access. `backup-folder` and `backup-disk` also print their version with `-version`.
+
+A command split over several lines ends each line with `\` in bash, with a backtick (`` ` ``) in PowerShell and with `^` in cmd. A `\` in PowerShell or cmd is passed to the tool as an argument, and the backup commands stop there with a message rather than leave out the options after it.
+
+On Windows, `backup-folder` and `backup-disk` take a process lock, so only one of them runs at a time in a Windows session: a second one started meanwhile exits with code 2 ([section 9](#9-exit-codes)). On Linux there is no lock. The lock does not involve the GUI or the background service, which run several backups at once ([GUI manual, section 6.7](GUI.md#67-several-backups-at-once)).
+
+### Earlier names
+
+Before version 2.0 these were three separate tools. Their names still work and run the matching command, with the same options, so existing scripts and scheduled tasks keep working:
+
+| Command | Earlier names |
+|---|---|
+| `backup-folder` | `proxmoxbackup-directory`, `pbsdirectorybackup`, `directorybackup` |
+| `backup-disk` | `proxmoxbackup-machine`, `pbsmachinebackup`, `machinebackup` |
+| `attach-nbd` | `proxmoxbackup-nbd`, `pbsnbd` |
+
+On Linux the packages install `/usr/bin/proxmoxbackup-directory`, `proxmoxbackup-machine` and `proxmoxbackup-nbd` as links to `salvanza-cli`. On Windows the installer puts small `.cmd` files with the earlier names beside `salvanza-cli.exe`, on the `PATH` too (`proxmoxbackup-directory.cmd`, `proxmoxbackup-machine.cmd`, `pbsdirectorybackup.cmd`, `pbsmachinebackup.cmd`, `directorybackup.cmd`); they pass the options and the exit code through. A command that names the program with `.exe` (`proxmoxbackup-directory.exe`) does not find a `.cmd`: drop the `.exe`, or better, change it to `salvanza-cli backup-folder`. A copy of `salvanza-cli`, or a link to it, under any of the earlier names in the table also runs that command.
+
+## 2. Connecting to PBS
+
+All three commands take the same connection flags:
+
+| Flag | Meaning |
+|---|---|
+| `-baseurl` | PBS URL with port, for example `https://192.168.1.10:8007` |
+| `-certfingerprint` | The server certificate's SHA-256 fingerprint, `aa:bb:...` |
+| `-authid` | API token ID, for example `backup@pbs!laptop` |
+| `-secret` | API token secret |
+| `-datastore` | Datastore name |
+| `-namespace` | Namespace (optional) |
+
+Instead of a token you can log in with a PBS user. The backup commands use `-pbsusername` and `-pbspassword`; `attach-nbd` uses `-username` and `-password`. A user login takes priority over a token. If you give a user name without a password, the backup commands ask for it on the console.
+
+**Fingerprint.** Without `-certfingerprint` the backup commands fetch the fingerprint the server presents, print it and ask `Trust and pin this fingerprint for this run? [y/N]`. Always pass `-certfingerprint` in scripts and scheduled tasks, since nobody is there to answer. Read it from the PBS dashboard (Show Fingerprint) or with `proxmox-backup-manager cert info` on the PBS host.
+
+**Environment variables.** The commands also read the official client's variables. A flag wins over the environment.
+
+| Variable | Sets |
+|---|---|
+| `PBS_REPOSITORY` | `[[auth-id@]server[:port]:]datastore`, as in the official client. Takes priority over `PBS_SERVER`, `PBS_PORT`, `PBS_DATASTORE` and `PBS_AUTH_ID` |
+| `PBS_SERVER`, `PBS_PORT` | Server and port (default port 8007) |
+| `PBS_DATASTORE` | Datastore |
+| `PBS_AUTH_ID` | Token ID |
+| `PBS_PASSWORD` | Token secret; for `attach-nbd -username`, the user's password |
+| `PBS_FINGERPRINT` | Certificate fingerprint |
+| `PBS_ENCRYPTION_PASSWORD` | Passphrase for a protected `-keyfile` |
+
+A secret in the environment stays out of the process list, where any user on the computer can read a command line.
+
+**JSON config file.** `backup-folder` and `backup-disk` take `-config <file>`. Flags given on the command line override values from the file. See [`config.json.example`](../../config.json.example):
+
+```json
+{
+  "baseurl": "https://pbs.example.com:8007",
+  "certfingerprint": "AA:BB:...",
+  "authid": "backup@pbs!laptop",
+  "secret": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "datastore": "backup",
+  "namespace": "",
+  "backup-id": "laptop-documents",
+  "backupdir": "C:\\Users\\alice\\Documents",
+  "change-detection-mode": "metadata",
+  "keyfile": "",
+  "keyfilepassphrase": ""
+}
+```
+
+A config file keeps the secret off the command line and out of the process list. Restrict who can read it.
+
+**Speed limits.** `backup-folder` and `backup-disk` take the GUI's three speed limits, in MB/s (1 MB = 1,000,000 bytes), each from 0 (no limit, the default) to 100000:
+
+| Flag | JSON name | Limits |
+|---|---|---|
+| `-upload-limit <MB/s>` | `upload-limit` | what is sent to PBS |
+| `-download-limit <MB/s>` | `download-limit` | what is read from PBS: the previous backup's index, and in `metadata` mode its file list |
+| `-disk-read-limit <MB/s>` | `disk-read-limit` | what is read from the files or disks being backed up (not standard input with `-backupstream`) |
+
+A flag overrides the config file. The run prints the limits it uses, for example `Speed limits: upload 10 MB/s, download none, disk read 50 MB/s`. A backup goes no faster than the lower of the disk read and upload limits, and a mostly unchanged backup is held back by the disk read limit, since unchanged data is read but not uploaded. The limits apply to the one run: two runs at once each have their own.
+
+**Upload threads.** `-upload-threads <n>` (JSON `upload-threads`) is how many chunks are sent to PBS at a time, 1 to 8. Left out (or 0) it is auto: a run starts with one and allows one more for every 4 Mbit/s of upload speed it measures, so on a LAN it soon sends 8 at a time, and on a slow link (a home connection to a PBS offsite) it sends one or two, and each chunk arrives in seconds rather than minutes. Hashing and the check against the chunks PBS already has always use all the workers. Set a number to override auto; the run prints it, for example `Upload threads: 2`.
+
+**Chunk timeout.** A chunk upload is watched while it goes, and given up (then sent again, as below) only once nothing has been sent for 90 seconds, or, once all of it is sent, PBS has not answered in that time plus a little for each MB. A slow link that is still sending is never given up, however long a chunk takes; a stopped one is found within a couple of minutes. `-chunk-timeout <seconds>` (JSON `chunk-timeout`) changes the 90 seconds, 30 to 1800: longer for a link that often pauses for a while, shorter to give up sooner. Left out (or 0) it is 90. The run prints it when set, for example `Chunk timeout: 300 s`.
+
+**Lost connections.** The backup commands retry as the GUI does. A request to PBS that fails in a way that passes (a timeout, a reset connection, HTTP 502, 503, 504 or 429) is tried again, up to 5 times over about 15 seconds; each retry is printed. If the connection itself is lost, PBS ends the backup session, and the backup starts again with a new one:
+
+* `backup-folder` backs the folder up once more, 25 minutes later, which gives PBS time to release the backup group. In a run with several folders, only the folder that was cut off runs again. A backup of standard input (`-backupstream`) is not run again, as what was read is gone.
+* `backup-disk` tries again up to 4 more times, after 2, 5, 10 and 15 minutes. It also tries again when PBS cannot be reached, or still holds the backup group from the lost session.
+
+Chunks sent in the lost session are sent again. The run prints when it starts again; a scheduled task's time limit should allow for the wait.
+
+## 3. backup-folder: folder backups
+
+### Flags
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-backupdir <path>` | | Folder to back up. Must not be a symlink. Repeat the flag for several folders ([below](#several-folders)) |
+| `-backup-id <id>` | computer name | Backup ID. Snapshots with the same ID form one group |
+| `-change-detection-mode <mode>` | `legacy` | `legacy`, `data` or `metadata` ([section 4](#4-incremental-backups-with--change-detection-mode)) |
+| `-exclude <pattern>` | | Leave out files and folders matching the pattern. Repeat for several ([below](#leaving-files-out)) |
+| `-novss` | VSS on | Do not snapshot the source first. Needed for file systems without VSS (VeraCrypt volumes) and on Linux unless you run as root with `elastio-snap` or `dattobd` loaded, and on btrfs (Fedora's default), which neither module can snapshot. Without it the run says what is missing. A network path (a share or a drive mapped to one; NFS, SMB/CIFS or FUSE on Linux) is read without a snapshot on its own, with a note, as in the GUI |
+| `-keyfile <file>` | | Encrypt with this PBS key file ([section 7](#7-encryption)) |
+| `-keyfile-passphrase <text>` | asked | Passphrase for a protected key |
+| `-no-mtime` | off | Record 1970-01-01 as every file and folder time ([below](#leaving-times-out-of-the-archive)) |
+| `-backupstream <name>` | | Back up standard input as `<name>.didx` instead of a folder |
+| `-pxarout <file>` | | Also write the archive to a local file (debugging). Single folder only |
+| `-pbsusername`, `-pbspassword` | | User login instead of a token |
+| `-config <file>` | | JSON config file |
+| `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |
+| `-upload-threads <n>` | auto | Chunks sent to PBS at a time, 1 to 8; auto adds one for every 4 Mbit/s of upload speed ([section 2](#2-connecting-to-pbs)) |
+| `-chunk-timeout <s>` | 90 | Seconds a chunk upload may send nothing before it is given up and sent again, 30 to 1800; a slow link that still sends is never given up ([section 2](#2-connecting-to-pbs)) |
+| `-compression <level>` | `default` | How hard chunks are compressed before they go to PBS, which stores them as sent: `fastest`, `default` (zstd level 3), `better` or `best`. A higher level sends less and takes less space on the datastore, for more processor time. Only new chunks are affected, so it can change between runs. Encrypted backups are not compressed |
+| `-read-ahead <n>` | `0` (off) | Read up to `n` files of each folder (1 to 32) in the background, ahead of the one being archived: the app's **Multi-threaded backup reading**. It helps when reading the disk is the slow part (many small files, a network share), and the archive is the same either way. Each file read ahead, up to 128 MB, is held in memory until it is archived: at most `n` in a folder, plus those of the folders above it, which wait while it is backed up. `-disk-read-limit` counts these reads too |
+| `-progress` | off | Draw a progress bar (files, bytes, MB/s, ETA) on standard error while the backup runs. The folder is walked once beforehand to count its files and size, so the bar knows where it is; that pre-pass is skipped with `-backupstream`, whose size cannot be known, and its bar then shows the bytes read with a moving (indeterminate) bar. With the bar on, the per-chunk lines are left out and other messages are printed above it; when standard output is redirected it is left alone. Without a terminal the bar prints one summary line at the end instead |
+| `-shutdown-after` | off | Turn the computer off once the backup has run, whether it worked or not, after the e-mail if one is sent; the exit code still says how it went. Windows asks through the Windows API, and runs `shutdown.exe` if that fails; Linux runs `shutdown -h now`. Programs still open are asked to close, not forced. Not when the run stops before it starts (wrong options, another backup running). Needs the right to shut down: an administrator, SYSTEM or root, as for the backup |
+| `-mail-...` | | Email report ([section 8](#8-email-reports)) |
+
+Plus the connection flags in [section 2](#2-connecting-to-pbs). JSON names: `backupdir` (one folder), `backupdirs` (a list), `backup-id`, `change-detection-mode`, `exclude` (a list), `usevss`, `keyfile`, `keyfilepassphrase`, `no-mtime`, `backupstreamname`, `pxarout`, `progress`, `pbs-username`, `pbs-password`, `upload-limit`, `download-limit`, `disk-read-limit`, `upload-threads`, `chunk-timeout`, `compression`, `read-ahead`, `shutdown-after`, `smtp`.
+
+New chunks are sent to PBS up to 8 at a time while the folder is read on, as in the app; they are compressed as they are sent, so this also spreads the compression over several processor cores.
+
+### Examples
+
+Windows, one folder, API token:
+
+```powershell
+salvanza-cli backup-folder -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... `
+  -authid "backup@pbs!laptop" -secret "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" `
+  -datastore backup -backup-id laptop-documents -backupdir "C:\Users\alice\Documents"
+```
+
+Linux, as a normal user (no snapshot):
+
+```bash
+salvanza-cli backup-folder -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
+  -authid 'backup@pbs!server1' -secret 'xxxxxxxx-...' \
+  -datastore backup -backup-id server1-home -backupdir /home -novss
+```
+
+A database dump as a stream:
+
+```bash
+mysqldump mydb | salvanza-cli backup-folder -backupstream mydb.sql -backup-id db1 [connection flags]
+```
+
+### Several folders
+
+Repeat `-backupdir`. Each folder becomes its own backup group, with the ID `<base>_<path>`, where `<base>` is `-backup-id` (or the computer name) and `<path>` is the folder path with `\`, `/`, `:` and spaces turned into safe characters. For example `-backup-id laptop -backupdir C:\Data -backupdir "D:\My Photos"` gives `laptop_C_Data` and `laptop_D_My-Photos`. One folder failing does not stop the others; the exit code reports the failure.
+
+The GUI groups folders differently: a Backup Set with several folders makes one snapshot in one group (the set's Backup ID), with one archive per folder, for example `f__data.mpxar` for F:\Data.
+
+### Permissions, attributes and dates
+
+Besides each file's contents and modification time, the command records on Windows each file's and folder's permissions (owner, group and access list), attributes (read-only, hidden, system...), creation time, alternate data streams (up to 1 MB each) and NTFS extended attributes, and on Linux extended attributes and POSIX ACLs. They are stored with the snapshot, and a restore in the GUI puts them back (permissions only when **Restore permissions/ACLs** is ticked). Backups made by `proxmoxbackup-directory` (the earlier name of `backup-folder`) in version 1.2 or earlier did not record them.
+
+### Leaving times out of the archive
+
+Every file's and folder's modification time is part of the archive, so a time that changes changes the archive bytes, and the chunks around that entry are uploaded again even though nothing in them changed. For most data that is the right trade. Some trees, though, keep touching their folders while the files stay the same: a store that files its data under hash-named folders (`aa/bb/<rest of the hash>`) can end up uploading a large part of the archive again on every run for that reason alone.
+
+`-no-mtime` (`"no-mtime": true` in the JSON config) records 1970-01-01 as every file's and folder's modification time instead, so only real content changes cost new chunks. The real modification times are not kept: a restore dates every item 1970-01-01. Creation times and permissions are still recorded with the snapshot as above. With `-change-detection-mode metadata` every file is read, as in `data` mode: without the times, a file changed in place at the same size could not be told apart. The option is off by default; use it for a source where the times do not matter.
+
+### Leaving files out
+
+`-exclude <pattern>` leaves out every file and folder that matches; a folder that matches is left out with everything in it. Repeat the flag for several patterns, or list them in the config file as `"exclude": ["*.tmp", "node_modules"]`; flags add to the file's list. The patterns are the GUI's [exclusions](GUI.md#exclusions), not case sensitive:
+
+| Pattern | Leaves out |
+|---|---|
+| `*.tmp` | every file or folder whose name ends in `.tmp`, at any depth |
+| `node_modules` | every file or folder with exactly that name, at any depth |
+| `logs/*.log` | `.log` entries directly in `logs` under the folder backed up |
+| `C:\Users\alice\Temp` | that folder and everything in it |
+
+A pattern without `\` or `/` matches a name at any depth. A pattern with one is taken from the folder backed up (each folder, with several `-backupdir`), and `*` does not cross a `\` or `/`. Put a pattern with `*` in quotes on Linux, so the shell does not expand it. The run prints each entry it left out (`Excluded: <path>`) and the count, and the snapshot's status file lists them. A pattern that can never match, such as an unclosed `[`, stops the run before it starts.
+
+### What gets skipped
+
+These names are always skipped, at any depth: the folders `System Volume Information`, `$RECYCLE.BIN` and `.pbs-rollback` (the Roll back safety folder), and the files `pagefile.sys`, `hiberfil.sys`, `swapfile.sys` and `DumpStack.log.tmp`. A folder called `Recovery` is skipped only at the root of a drive (Windows' own `C:\Recovery`); anywhere else it is backed up.
+
+On Windows, junction points and symbolic links are skipped. On Linux, symbolic links are stored as links; FIFOs, sockets and device nodes are skipped.
+
+### Unreadable files and disk drop-outs
+
+If a source disk drops out mid-backup ("device not ready"), the command waits up to 2 minutes for it to come back, reopens the file and carries on. A file that still cannot be read is filled with zeros to its recorded size and flagged; the snapshot is kept and the command exits with code 3. Other per-file read errors (a locked region, for example) are handled the same way.
+
+## 4. Incremental backups with -change-detection-mode
+
+| Mode | Reads | Stored as |
+|---|---|---|
+| `legacy` (default) | every file | `backup.pxar.didx` |
+| `data` | every file | split archive `backup.mpxar.didx` + `backup.ppxar.didx` |
+| `metadata` | only new and changed files | the same split archive |
+
+In `metadata` mode the command reads the file list of the newest snapshot in the group. A file whose size, modification time (to the nanosecond), mode and owner match is not opened: its data is reused from that snapshot's chunks. Only new and changed files are read and uploaded, so a repeat run of a large, mostly unchanged folder takes minutes instead of hours and sends very little to PBS. With no usable previous split snapshot (the first run, or a different key), the run reads every file, like `data`.
+
+The output reports the result in this form:
+
+```
+Metadata change detection: comparing with snapshot <time> (<N> files)
+Metadata change detection: <N> unchanged files (<bytes> bytes) reused without reading, <N> chunks reused, <bytes> bytes padding; <N> unchanged files read anyway to limit padding
+```
+
+Points to know:
+
+* **Give each job its own `-backup-id`.** Metadata mode compares with the newest snapshot in the group, whichever job made it.
+* **Run a full read now and then.** A change that keeps the size and modification time is not noticed. The GUI's "read every file every N runs" has no CLI flag; schedule a second task that runs the same command with `-change-detection-mode data`, for example weekly. Later `metadata` runs compare with that snapshot as normal.
+* Reuse only happens from a snapshot encrypted with the same key (or both unencrypted).
+* Restoring split archives needs version 2.0 of this client (or the official client). Update every machine you restore from before switching.
+
+## 5. backup-disk: whole-disk backups
+
+### Flags
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-backupdev <device>` | | Disk to back up. Repeat for several disks. Windows: `\\.\PhysicalDrive0`. Linux: `/dev/sda`, `/dev/nvme0n1` |
+| `-type <host\|vm>` | `host` | `vm` stores a Proxmox VE VM snapshot (numeric `-backup-id`), which Proxmox VE can restore as a VM |
+| `-backup-id <id>` | computer name | Backup ID. Must be numeric with `-type vm` |
+| `-keyfile`, `-keyfile-passphrase` | | Encryption ([section 7](#7-encryption)) |
+| `-liveread` | off | Linux: read mounted partitions live, without a snapshot (see below). The image may be inconsistent. No effect on Windows |
+| `-readfreespace` | off | Also read free space (a forensic copy), and on Windows the paging, hibernation and swap files. By default they go into the image as zeros without being read |
+| `-progress` | off | Draw a progress bar (files, bytes, MB/s, ETA) on standard error while the backup runs. Its percentage is the data actually read, as in the app: free space and partitions left out count as done at once, so a mostly empty disk is not measured by its size. Before the disk sizes are known the bar is indeterminate. With the bar on, the per-chunk lines are left out and other messages are printed above it; when standard output is redirected it is left alone. Without a terminal the bar prints one summary line at the end instead |
+| `-skippartition <device>:<number>` | | Leave a partition out, e.g. `\\.\PhysicalDrive0:4` or `/dev/sda:3`. Repeat for more. It is not read or snapshotted and goes into the image as zeros: a restore gives it back in its place, empty and unformatted. A number the disk does not have prints a warning and leaves nothing out |
+| `-systray` | off | Does nothing: the tray icon was taken out of the command line. Still accepted, as is `"systray"` in a config file, so existing commands keep working; the run says it does nothing |
+| `-pbsusername`, `-pbspassword` | | User login instead of a token |
+| `-config <file>` | | JSON config file (`backupdev` is a list, the type is `backuptype`, and `readfreespace`, `liveread`, `compression`, `keyfile`, `keyfilepassphrase`, `upload-limit`, `download-limit`, `disk-read-limit`, `upload-threads`, `chunk-timeout`, `shutdown-after` and `smtp` as in the flags; `skippartitions` maps a device to a list of `{"number": N}`) |
+| `-upload-limit`, `-download-limit`, `-disk-read-limit` | no limit | Speed limits in MB/s ([section 2](#2-connecting-to-pbs)) |
+| `-upload-threads <n>` | auto | Chunks sent to PBS at a time, 1 to 8; auto adds one for every 4 Mbit/s of upload speed ([section 2](#2-connecting-to-pbs)) |
+| `-chunk-timeout <s>` | 90 | Seconds a chunk upload may send nothing before it is given up and sent again, 30 to 1800; a slow link that still sends is never given up ([section 2](#2-connecting-to-pbs)) |
+| `-compression <level>` | `default` | `fastest`, `default` (zstd level 3), `better` or `best`, as for `backup-folder` ([section 3](#3-backup-folder-folder-backups)) |
+| `-shutdown-after` | off | Turn the computer off once the backup has run, as for `backup-folder` ([section 3](#3-backup-folder-folder-backups)), also after exit code 3 (unreadable sectors) |
+| `-mail-...` | | Email report ([section 8](#8-email-reports)) |
+
+Plus the connection flags in [section 2](#2-connecting-to-pbs).
+
+On Windows the command takes a VSS snapshot of every mounted partition on the disk, then stores a bootable image of the whole disk. On Linux mounted partitions are snapshotted with `elastio-snap` or `dattobd`, which must be loaded, and the command must run as root. Installing them (DKMS, loading at boot, Secure Boot): see [Linux snapshots: installing elastio-snap or dattobd](GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd) in the GUI manual. Without a snapshot module the backup of a disk with a mounted partition stops and says so. `-liveread` (`"liveread": true` in the config file), the GUI's **Use snapshots** turned off and accepted, reads mounted partitions live instead, with a warning: files that change during the backup can be caught half written, so the image may be inconsistent, which matters most for a system disk. Reading the disk still needs root. A disk with nothing mounted is always read without a snapshot.
+
+Later backups of the same disk to the same group only upload changed 4 MiB chunks.
+
+Free space is not read. On Windows each NTFS volume's cluster bitmap is read from its snapshot. On Linux the free-space maps of ext2/3/4 and XFS file systems are read from the snapshot (or straight from the partition when it is not mounted). Empty stretches go into the image as zeros, so a half-empty disk takes about half the time, and deleted data never reaches the backup. The image is still a complete, bootable disk. Use `-readfreespace` to read everything.
+
+On Linux the snapshot's own copy-on-write file (`.pbs_snapshot_N.cow` at the top of each snapshotted file system, about a tenth of its size) is always left out of the image, also with `-readfreespace`. The bare-metal restore ISO deletes the file after a restore ([BMR.md](BMR.md)).
+
+If the disk cannot read a sector, that spot goes into the image as zeros and the backup carries on. The run then prints a warning saying where, keeps the snapshot and exits with code 3.
+
+The command prints one progress line per percent, with the chunks uploaded and reused so far, and a summary at the end. "new/changed data" is the size of the new chunks, "transferred" what they took on the network once compressed. Sizes are in decimal units (1 MB = 1,000,000 bytes), as PBS shows them:
+
+```
+ 97%  \\.\PhysicalDrive1: Block 12416 / 12800  (new 101, reused 12314 (12235 blank), new/changed data 423.6MB, transferred 158.3MB, free space not read 5.4GB)
+Done in 3m38s: 53.7GB read; new 102, reused 12698 (12619 blank), new/changed data 427.8MB, transferred 160.4MB, free space not read 5.4GB
+```
+
+### Examples
+
+```powershell
+salvanza-cli backup-disk -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... `
+  -authid "backup@pbs!laptop" -secret "..." -datastore backup `
+  -backupdev \\.\PhysicalDrive0 -backup-id laptop-disk0
+```
+
+```bash
+sudo salvanza-cli backup-disk -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
+  -authid 'backup@pbs!server1' -secret '...' -datastore backup \
+  -backupdev /dev/sda -type vm -backup-id 9000107
+```
+
+Restore a machine backup with the bare-metal restore ISO ([BMR.md](BMR.md)), or, for a `vm` snapshot, from Proxmox VE.
+
+### Installing the snapshot module (Linux)
+
+On Linux, `backup-disk` (and `backup-folder` without `-novss`) needs the elastio-snap or dattobd module loaded to snapshot a mounted disk. `salvanza-cli install-snapshot-module` installs elastio-snap, as the app's **Install it for me** does: it runs the installer the `.deb`, `.rpm` and Arch packages bring (`/usr/share/salvanza/elastio-snap/install-elastio-snap.sh`), which installs the build tools and kernel headers with apt, dnf or pacman, builds the module from the source packaged with it through DKMS, and loads it now and at every start. Debian, Ubuntu, Linux Mint, Fedora, the RHEL family and Arch Linux; it must run as root:
+
+```bash
+sudo salvanza-cli install-snapshot-module
+```
+
+With Secure Boot on, the module's signing key must be approved once at the next start: the command asks for a one-time password (8 to 16 characters), then ends with exit code 10 and the restart steps. For a script, `-mok-password-stdin` reads that password from the first line of standard input instead. `-script <path>` runs another copy of the installer. Exit codes: 0, installed and loaded; 10, installed, restart to approve the key; 1, failed (the output says why). The details and the steps by hand are in [GUI.md, Linux snapshots](GUI.md#linux-snapshots-installing-elastio-snap-or-dattobd).
+
+## 6. attach-nbd: attach a disk image (Linux)
+
+`salvanza-cli attach-nbd` attaches a disk image (`.img.fidx`) from any PBS snapshot, including Proxmox VE VM backups, as a read-only `/dev/nbdN` device. You can then mount its partitions to copy files out, or image it onto a disk. On other systems it stops with a message: it needs Linux's `nbd` kernel module.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-path <type/id/time/file>` | | The image to attach, for example `vm/107/2026-03-01T00:07:00Z/drive-scsi0.img.fidx`. A trailing `#comment` (as printed by `-list`) is ignored |
+| `-list` | | Print every image as `type/id/time/file[#comment]` and exit. Needs no root |
+| `-nbd <n>` | `0` | Use `/dev/nbd<n>` |
+| `-username`, `-password` | | User login instead of a token. Without `-password`, `PBS_PASSWORD` is used |
+| `-keyfile`, `-keyfile-passphrase` | | Key for an encrypted snapshot |
+| `-help` | | Show the flags |
+
+Plus `-baseurl`, `-certfingerprint`, `-authid`, `-secret`, `-datastore` and `-namespace`. Without `-path` (and without `-list`) a text menu asks for the connection details and lets you pick an image. The menu uses the `-keyfile` and `-keyfile-passphrase` given on the command line, so it opens encrypted images too.
+
+It must run as root. Load the module first with partition probing off; probing on an NBD device can loop:
+
+```bash
+sudo modprobe nbd max_part=0
+salvanza-cli attach-nbd -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
+  -username backup@pbs -password '...' -datastore backup -list
+sudo salvanza-cli attach-nbd -baseurl https://pbs.example.com:8007 -certfingerprint AA:BB:... \
+  -username backup@pbs -password '...' -datastore backup \
+  -path "host/laptop-disk0/2026-10-07T07:15:32Z/drive-sata0.img.fidx"
+```
+
+The command stays in the foreground while the device is attached. Press Ctrl+C to detach. Unmount everything on the device first, or the partitions stay busy. If you see `Device or resource busy`, run `nbd-client -d /dev/nbd0` or reboot.
+
+Before it attaches the device, the command compares the key with the one the snapshot was encrypted with (the manifest names its fingerprint) and reads the first chunk, so a missing or wrong key stops straight away with a clear message: for a wrong key, "this snapshot was encrypted with another key" and the two fingerprints.
+
+Do not use this on a machine running important services: a damaged file system on the attached image can upset the kernel.
+
+## 7. Encryption
+
+`-keyfile <file>` encrypts every chunk with AES-256-GCM and signs the manifest. The key file format is the official one: a key made with `proxmox-backup-client key create` works here, and a key made by this client (GUI **Generate...**) works with the official client.
+
+For a passphrase-protected key (scrypt or PBKDF2), pass `-keyfile-passphrase` or set `PBS_ENCRYPTION_PASSWORD`, or leave both out to be asked on the console. Unattended runs need the passphrase in the environment, the command or the config file.
+
+Key files from the original project's tools and GUI work too. A protected key in the flat layout that its code expected before October 2026 (`"kdf": {"kdf": "scrypt", ...}`) is read as well. A key file this client writes is always in the official layout.
+
+Without the key an encrypted snapshot cannot be restored. Keep a copy away from the computer.
+
+## 8. Email reports
+
+`backup-folder` and `backup-disk` can email a report at the end of every run, failed runs included. (In version 1.1 and earlier the machine backup tool checked the flags but sent nothing.) A machine backup with unreadable sectors reports `Partial` and lists where they are. If the email cannot be sent, the command prints the problem on standard error and keeps the backup's own exit code ([section 9](#9-exit-codes)). When the backup itself worked, "Error sending notification email, check client mail configuration." is also added to the snapshot's comment on PBS (to each snapshot of a run with several folders), so the problem shows in the PBS web interface.
+
+| Flag | Meaning |
+|---|---|
+| `-mail-host`, `-mail-port` | SMTP server and port |
+| `-mail-username`, `-mail-password` | SMTP login |
+| `-mail-insecure` | Allow an unencrypted connection |
+| `-mail-from`, `-mail-to` | Sender and recipient (the config file's `smtp.mails` list allows several pairs) |
+| `-mail-subject-template`, `-mail-body-template` | Go [text/template](https://pkg.go.dev/text/template) templates |
+
+For a relay that takes mail without a login, leave out `-mail-username` and `-mail-password` (or `username` and `password` in the `smtp` block). The sender may include a name, for example `-mail-from "Backups <backup@example.com>"`.
+
+Template fields include `.Success`, `.Status`, `.NewChunks`, `.ReusedChunks`, `.Datastore`, `.Hostname`, `.StartTime`, `.EndTime`, `.Duration`, `.FromattedDuration` (spelt like that), `.ErrorStr`, `.Partial` and `.ReadErrorCount`. The default subject is `Backup {{.Status}}`.
+
+## 9. Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Failed: bad options, an unknown command, connection or login failure, key problem or backup error. An email report that could not be sent does not change the code ([section 8](#8-email-reports)) |
+| 2 | Windows only: another `backup-folder` or `backup-disk` run holds the process lock ([section 1](#1-salvanza-cli-and-its-commands)) |
+| 3 | The snapshot was saved, but not everything could be read: `backup-folder`, some files are incomplete; `backup-disk` (version 2.0 and later), some sectors are zeros in the image |
+
+Errors go to standard error. Options that are missing are named, for example `Missing options: -baseurl, -datastore`. A mistyped option, an argument that is not an option (such as a value after a switch, `-novss true`) and, on Windows, a path with a quote in it (`-backupdir "C:\"` passes `C:"`; write `C:\` or `"C:\\"`) stop the run before it starts, with code 1 and what to change. (In version 1.1 and earlier, on Windows, missing options and "another job is running" showed a message box, which waits for a click an unattended run never gets; the folder backup tool even carried on after the box.)
+
+## 10. Scheduling
+
+### Windows Task Scheduler
+
+1. Put the settings in a JSON file, for example `C:\ProgramData\pbs\documents.json`, and restrict it to Administrators and SYSTEM.
+2. Create a task: **Run whether user is logged on or not**, **Run with highest privileges** (for VSS), and a trigger.
+3. Action: program `C:\Program Files\Salvanza\salvanza-cli.exe`, arguments `backup-folder -config C:\ProgramData\pbs\documents.json`.
+4. The task's "Last Run Result" shows the exit code ([section 9](#9-exit-codes)). Use `0x3` as a warning, anything else non-zero as a failure.
+
+Or from an elevated command prompt (cmd):
+
+```bat
+schtasks /Create /TN "PBS Documents" /SC DAILY /ST 02:00 /RU SYSTEM /RL HIGHEST ^
+  /TR "\"C:\Program Files\Salvanza\salvanza-cli.exe\" backup-folder -config C:\ProgramData\pbs\documents.json"
+```
+
+A task made for an earlier version that runs `proxmoxbackup-directory.exe` from its own folder keeps running that copy. To move it to `salvanza-cli`, change the program to `salvanza-cli.exe` and put `backup-folder` before the arguments.
+
+### Linux cron
+
+```cron
+# /etc/cron.d/pbs-backup
+# Daily metadata run at 02:00, full read every Sunday at 03:00
+0 2 * * 1-6 root /usr/bin/salvanza-cli backup-folder -config /etc/pbs/home.json >> /var/log/pbs-home.log 2>&1
+0 3 * * 0   root /usr/bin/salvanza-cli backup-folder -config /etc/pbs/home.json -change-detection-mode data >> /var/log/pbs-home.log 2>&1
+```
+
+`/etc/pbs/home.json` sets `"change-detection-mode": "metadata"`; the Sunday line overrides it with a flag. `/usr/bin` is where the `.deb`, `.rpm` and Arch packages put `salvanza-cli`; use your own path for the archive download. A cron line that runs `/usr/bin/proxmoxbackup-directory` keeps working through the package's link. A systemd timer works equally well.
+
+## 11. Compatibility with the official Proxmox client
+
+This client and the official `proxmox-backup-client` read each other's backups. Tested with `proxmox-backup-client` 3.4.9 and PBS 4.2:
+
+* `legacy`, `data` and `metadata` snapshots made by this client (command line and GUI, Windows and Linux) restore byte-identically with the official client, and PBS 4.2's file browser opens them. On Linux, mode, nanosecond modification time and symlink targets come back exactly too.
+* `legacy`, `data` and `metadata` snapshots made by the official client restore byte-identically with this client.
+* Both use the same split archive format (pxar version 2) and the same key file format.
+* The modes have the same names and meaning as the official `--change-detection-mode`, and the same `PBS_*` environment variables are read.
+
+To restore a folder snapshot made by this client with the official tool, list the snapshot's archives, then restore one:
+
+```bash
+export PBS_REPOSITORY='backup@pbs!restore@pbs.example.com:backup'
+export PBS_PASSWORD='token-secret'
+export PBS_FINGERPRINT='AA:BB:...'
+proxmox-backup-client snapshot files "host/laptop-documents/2026-10-07T20:45:51Z"
+proxmox-backup-client restore "host/laptop-documents/2026-10-07T20:45:51Z" <archive> /tmp/restore
+```
+
+Give the archive name without `.didx`: a snapshot from `salvanza-cli backup-folder` holds `backup.pxar.didx` (legacy) or `backup.mpxar.didx` plus `backup.ppxar.didx` (data, metadata), so restore `backup.pxar` or `backup.mpxar`. The GUI names one archive per folder (for example `f__data.mpxar` for F:\Data), so check `snapshot files` first. Add `--keyfile` for an encrypted snapshot. The restored tree contains one extra file, `.proxmox_backup_client_meta.json`, which this client adds to record the original path. The permissions and other file details this client records in the snapshot's `proxmox-client-acls.json.gz.blob` (NTFS permissions, attributes, creation times, alternate data streams and extended attributes on Windows; extended attributes and POSIX ACLs on Linux) are not applied by the official client; restore with the GUI to get them back. On Linux the official client keeps ACLs inside the archive itself, which this client does not yet write or read; see the [roadmap](../../TODO.md).

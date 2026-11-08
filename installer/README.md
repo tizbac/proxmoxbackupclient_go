@@ -1,193 +1,179 @@
-# Proxmox Backup Client - Installateur MSI
+# Salvanza for Proxmox Backup Server: Windows installer (MSI)
 
-> ⚠️ **Avis relatif à la marque et à l'affiliation.** Ce projet est un **projet communautaire indépendant**, et non un produit Proxmox officiel : il n'est **affilié ni à Proxmox Server Solutions GmbH, ni approuvé, ni sponsorisé par cette société**. **Proxmox®** est une marque déposée de Proxmox Server Solutions GmbH dans l'UE, aux États-Unis et dans d'autres pays ; elle n'est utilisée ici **que** pour décrire la compatibilité. Conformément aux règles d'usage de la marque de Proxmox (les marques déposées ne doivent pas être utilisées dans les noms de produits ou d'applications — par exemple « XY App for Proxmox Virtual Environment » plutôt que « Proxmox XY App »), **un renommage du client non marqué est en cours** : le produit actuellement appelé *Proxmox Backup Client* va recevoir un nom qui ne contient pas la marque Proxmox. Voir le [kit média Proxmox](https://www.proxmox.com/en/about/company-details/media-kit) pour les règles exactes.
+> ⚠️ **Trademark & affiliation notice.** This is an **independent community project**, not an official Proxmox product: it is **not affiliated with, endorsed by, or sponsored by Proxmox Server Solutions GmbH**. **Proxmox®** is a registered trademark of Proxmox Server Solutions GmbH in the EU, the U.S. and other countries, and it is used here **only** to describe compatibility. Following Proxmox's own trademark guidance (registered marks must not be used in product or app names, for example "XY App for Proxmox Virtual Environment" rather than "Proxmox XY App"), **the non-branded client has been renamed**: the product formerly called *Proxmox Backup Client* is now **Salvanza for Proxmox Backup Server**, a name that does not contain the Proxmox mark. See the [Proxmox media kit](https://www.proxmox.com/en/about/company-details/media-kit) for the exact rules.
 
-Ce dossier contient les fichiers nécessaires pour créer l'installateur MSI de Proxmox Backup Client avec support du service Windows.
+This folder builds the Windows installers: one MSI per brand (Salvanza, Nimbus Backup,
+Etitech Backup). It uses WiX Toolset 3 (tested with 3.14). The release workflow
+(`.github/workflows/build-and-release.yml`) builds every brand's MSI;
+`wix/build_msi_linux.sh` does the same in Docker with Wine, and `wix/build-msi.ps1` builds
+the default brand on Windows, `Salvanza-<version>-x64.msi`.
 
-## Prérequis
+For step-by-step build and test instructions see [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md).
+For silent installs on many computers see [DEPLOYMENT.md](DEPLOYMENT.md).
 
-- **WiX Toolset 3.x ou 4.x** : https://wixtoolset.org/
-- **Visual Studio Build Tools** (optionnel mais recommandé)
-- **ProxmoxBackupClient.exe compilé** dans `gui/build/bin/`
+## Files
 
-## Installation WiX Toolset
+| File | What it is |
+| ---- | ---------- |
+| `wix/build-msi.ps1` | Builds the default brand's MSI on Windows. |
+| `wix/build_msi_linux.sh` | Builds every brand's MSI in Docker (WiX under Wine). |
+| `wix/Product.wxs` | The default brand, "Salvanza for Proxmox Backup Server": name, program names, folder, UpgradeCode and Programs and Features links. |
+| `wix/ProductBody.wxi` | The installer itself, shared by every brand: files, service, command line, shortcut, dialogs, upgrade and uninstall actions. |
+| `wix/NimbusBackup.wxs`, `wix/EtitechBackup.wxs` | The other brands. |
+| `wix/cli-aliases/*.cmd` | The command line's earlier names (`proxmoxbackup-directory.cmd` and so on), installed beside `salvanza-cli.exe`. |
+| `wix/License.rtf` | The licence page shown during install. |
+| `icons/<ExeName>.ico` | The icon for each brand, picked by the brand's `ExeName` (`salvanza-gui.ico`, `nimbusbackup-gui.ico`, `etitechbackup-gui.ico`). |
 
-### Option 1: Via winget (Windows 11/10)
-```powershell
-winget install --id WiXToolset.WiX
-```
+## What the MSI installs
 
-### Option 2: Téléchargement direct
-1. Télécharger depuis https://github.com/wixtoolset/wix3/releases
-2. Installer le fichier `.exe`
-3. Ajouter `C:\Program Files (x86)\WiX Toolset v3.x\bin` au PATH
+- `C:\Program Files\Salvanza\salvanza-gui.exe` (the app), `salvanza-svc.exe` (the
+  background service) and `salvanza-cli.exe` (the command line, the same in every brand).
+  The folder can be changed on the "Destination Folder" page.
+- The install folder on the system `PATH`, so `salvanza-cli` runs from any new terminal,
+  and beside it `.cmd` files under the command line's earlier names
+  (`proxmoxbackup-directory`, `proxmoxbackup-machine`, `pbsdirectorybackup`,
+  `pbsmachinebackup`, `directorybackup`), so scripts written for the earlier tools keep
+  working.
+- The Windows service `salvanza-svc`, display name "Salvanza for Proxmox Backup Server Service".
+  It runs as LocalSystem, starts automatically at boot and is started at the end of the install.
+  The app finds it and hands it backups and schedules ("Run as Service" shows as on).
+- A Start menu entry "Salvanza for Proxmox Backup Server". The app asks for administrator
+  rights itself when it connects to the service, and offers Restart as administrator (the
+  app's `-admin` switch, a UAC prompt) where an operation needs the app elevated. An upgrade
+  removes the "(Administrator)" shortcuts earlier builds installed.
+- When `DESKTOPSHORTCUTS=1` (the default): the same shortcut on the all-users desktop.
+- One entry in Programs and Features, with the brand's links (about: https://salvanza.org/,
+  help: https://github.com/salvanza/salvanza_client, updates: its releases page, contact:
+  its issues page).
+- When `AUTOSTART=1`: a `Run` entry under HKLM, which starts the app minimised to the tray
+  when any user signs in (`--minimized`). It is off by default: the "Start at sign-in" page,
+  after "Destination Folder", has the tick box **Start Salvanza for Proxmox Backup Server
+  when a user signs in**, unticked unless the installed version had it on. The app does not
+  ask for administrator rights at sign-in; it asks the first time its window is opened
+  (below). The choice is kept in `HKLM\Software\<VendorKey>\<ExeName>`
+  (`HKLM\Software\Salvanza\salvanza-gui`), value `AutoStart`, so an upgrade or a repair
+  keeps it unless `AUTOSTART` is given on the command line. An upgrade from Proxmox Backup
+  Client, or from a version without that value, keeps the sign-in start the earlier install
+  had (its remembered choice, or its `Run` entry).
 
-## Structure du MSI
+The settings are not part of the MSI. The service keeps them in
+`C:\ProgramData\Salvanza` (servers and tokens, Backup Sets, keys, reports, its logs). It
+gives that folder its own permissions when it starts: SYSTEM and Administrators full
+control, nobody else, so only the service and a program started as administrator can open
+it. Earlier builds also let each local administrator account read the folder without
+elevation; the service removes those entries.
 
-```
-ProxmoxBackupClient.msi
-├── Service Windows "ProxmoxBackupClient"
-│   ├── Démarre automatiquement au boot
-│   ├── Tourne avec privilèges LocalSystem (admin)
-│   ├── Exécute les backups planifiés
-│   └── Support VSS garanti
-├── Raccourci Menu Démarrer
-└── Désinstallation propre
-```
+The app reaches the settings through the service's local API. It gets the service's token
+by asking for administrator rights once (UAC; a standard user gives an administrator's name
+and password), keeps it in memory, and asks again when the service replaces it (every 24
+hours). Until it is connected the app shows no settings and a **Connect** button. Only a
+small helper is elevated for that; the app itself stays a normal program. An app already
+running as administrator connects without a prompt. Once its window has been in the tray
+for 15 minutes, the app lets go of the token and asks again when the window is next
+shown; meanwhile the tray says how many backups run and whether one failed. The app's own
+logs are in each user's `%LOCALAPPDATA%\Salvanza\Logs`.
 
-## Build du MSI
+## Upgrade
 
-### Méthode 1: Script automatique
-```batch
-cd installer/wix
-build.bat
-```
+Installing a newer MSI replaces the installed one in place (MajorUpgrade, same UpgradeCode).
+A rebuilt MSI of the same version also replaces it. The installer stops the service and
+closes any running copy of the app first, then starts the new service. The settings in
+ProgramData are not touched. Installing an older version over a newer one is refused.
 
-### Méthode 2: Manuel
-```batch
-cd installer/wix
+### Upgrading from Proxmox Backup Client, and other brands
 
-# Compilation
-candle.exe Product.wxs -ext WixUIExtension -ext WixUtilExtension
+Every brand's MSI also removes, the same way, any install of the other products of this
+project: Proxmox Backup Client (the name before the rename, including the earlier fork's
+0.9 and 0.10 MSIs), and the other brands. So installing Salvanza over Proxmox Backup Client,
+or over Nimbus Backup, replaces it; two never sit side by side. Their removal keeps their
+settings (it is part of an upgrade), and the installer closes their apps (`ProxmoxBackupClient.exe`,
+`nimbusbackup-gui.exe` and so on) first.
 
-# Création du MSI
-light.exe Product.wixobj -ext WixUIExtension -ext WixUtilExtension -out ProxmoxBackupClient.msi
-```
+When the new service first starts, it:
 
-## Fichiers générés
+- stops and removes the services of earlier installs (`ProxmoxBackupClientSVC`,
+  `ProxmoxBackupClient`, `NimbusBackupSVC`, `EtitechBackupSVC`) and the other brands'
+  services, also copies installed without an MSI;
+- if `C:\ProgramData\Salvanza` has no settings yet, moves the newest of
+  `C:\ProgramData\ProxmoxBackupClient` and the other brands' folders there (or copies it,
+  if it cannot be moved), and keeps a copy of the settings files in
+  `C:\ProgramData\Salvanza\pre-salvanza-<date>`.
 
-- `ProxmoxBackupClient.msi` : Installateur final (à distribuer)
-- `*.wixobj` : Fichiers objets intermédiaires (à ignorer)
-- `*.wixpdb` : Symboles de debug (à ignorer)
+The app does the same for each user's own folders the first time that user starts it:
+`%APPDATA%\ProxmoxBackupClient`, `%LOCALAPPDATA%\ProxmoxBackupClient` and
+`%USERPROFILE%\.proxmox-backup-guardian` become `%APPDATA%\Salvanza`,
+`%LOCALAPPDATA%\Salvanza` and `%USERPROFILE%\.salvanza`.
 
-## Configuration du service
+An option to keep another brand and install beside it is on the [roadmap](../TODO.md).
 
-Le service Windows créé par le MSI :
-- **Nom** : ProxmoxBackupClient
-- **Nom d'affichage** : Proxmox Backup Client Service
-- **Compte** : LocalSystem (privilèges admin)
-- **Démarrage** : Automatique (ou Manuel + arrêté si installé avec `SERVICEAUTOSTART=0`, cf. ci-dessous)
-- **Argument** : `--service` (mode service)
+## Removal and the settings
 
-## Installation silencieuse (paramètres MSI)
+On removal the service is stopped and deleted, and the programs and the Start menu entry go.
+`C:\ProgramData\Salvanza` is kept unless the property `KEEP_CONFIG` is `0`.
 
-Le MSI supporte le mode silencieux standard de Windows Installer (`/quiet` ou `/qn`, sans propriété dédiée) et ces propriétés publiques (en MAJUSCULES) :
+- Programs and Features > Change (Windows 11 Settings > Apps > Modify), then Remove, shows a
+  page that asks "Keep configuration" or "Delete configuration". Keep is the default. Running
+  the MSI again and choosing Remove does the same.
+- Programs and Features > Uninstall runs without the installer's own pages, so the question
+  is not asked and the settings are kept.
+- Silent: `msiexec /x <msi> /qn` keeps the settings; add `KEEP_CONFIG=0` to delete them.
 
-| Propriété | Défaut | Effet |
-| --- | --- | --- |
-| `SERVICEAUTOSTART` | `1` | `0` = service installé en **Manuel** et laissé **arrêté** — installé, mais jamais activé ni autodémarré |
-| `KEEP_CONFIG` | `1` | Uniquement à la désinstallation : `0` = supprime aussi `%ProgramData%\<ExeName>` |
-| `INSTALLFOLDER` | `Program Files` | Répertoire d'installation |
+The silent paths and the pages have been tested on builds from before the rename (see
+[../MSI_UNINSTALL_TEST.md](../MSI_UNINSTALL_TEST.md)).
 
-```powershell
-# Installation silencieuse, réglages par défaut
-msiexec /i ProxmoxBackupClient.msi /quiet
+"Delete configuration" removes what it can: files the app holds open (its logs, if a copy of
+it is running from another folder) stay.
 
-# Installer le service SANS l'activer ni l'autodémarrer
-msiexec /i ProxmoxBackupClient.msi /quiet SERVICEAUTOSTART=0
+## Public properties
 
-# Désinstallation silencieuse qui purge la configuration
-msiexec /x ProxmoxBackupClient.msi /quiet KEEP_CONFIG=0
-```
+| Property | Default | Effect |
+| -------- | ------- | ------ |
+| `INSTALLFOLDER` | `C:\Program Files\Salvanza` | Where the programs go. |
+| `SERVICEAUTOSTART` | `1` | `0` installs the service as Manual and leaves it stopped. |
+| `AUTOSTART` | `0` | `1` adds the sign-in Run entry (the "Start at sign-in" tick box). Not given, an upgrade or repair keeps the installed version's choice. |
+| `DESKTOPSHORTCUTS` | `1` | `0` leaves out the desktop shortcut (the Start menu entry stays). |
+| `CONFIGFILE` | (none) | Full path of a settings file saved with Preferences > Export, applied before the service starts. See [DEPLOYMENT.md](DEPLOYMENT.md). |
+| `KEEP_CONFIG` | `1` | On removal, `0` deletes `C:\ProgramData\Salvanza` (the brand's folder). |
 
-Codes de sortie : `0` = succès, `3010` = succès + redémarrage requis. Voir aussi `DEPLOYMENT.md` (déploiement GPO/Intune/PowerShell).
+Silent install needs only msiexec's own `/quiet`, for example
+`msiexec /i Salvanza-<version>-x64.msi /quiet SERVICEAUTOSTART=0`.
+Exit codes: `0` success, `3010` success with a restart needed.
 
-## Personnalisation
+## Branded builds
 
-### Changer la version
-Modifier dans `Product.wxs` :
-```xml
-<?define ProductVersion = "0.1.44" ?>
-```
+A brand is one `.wxs` file that sets `ProductName`, `ExeName`, `ServiceExeName`, `Folder`,
+`VendorKey`, `Manufacturer`, `UpgradeCode` and the four Programs and Features links, then
+includes `ProductBody.wxi`. The programs are installed as `<FileBase>-gui.exe` and
+`<FileBase>-svc.exe`, and the app picks its brand from its own program name at run time
+(`gui/brand.go`), so `ExeName`, `ServiceExeName` and `Folder` must match the brand's
+`FileBase` and `Folder` there:
 
-### Changer l'UUID
-L'`UpgradeCode` doit rester constant entre versions pour permettre les mises à jour :
-```xml
-<?define UpgradeCode = "12345678-1234-1234-1234-123456789012" ?>
-```
+| Brand | Programs | Service | Folders |
+| ----- | -------- | ------- | ------- |
+| Salvanza | `salvanza-gui.exe`, `salvanza-svc.exe` | `salvanza-svc` | `C:\Program Files\Salvanza`, `C:\ProgramData\Salvanza` |
+| Nimbus Backup | `nimbusbackup-gui.exe`, `nimbusbackup-svc.exe` | `nimbusbackup-svc` | `C:\Program Files\NimbusBackup`, `C:\ProgramData\NimbusBackup` |
+| Etitech Backup | `etitechbackup-gui.exe`, `etitechbackup-svc.exe` | `etitechbackup-svc` | `C:\Program Files\EtitechBackup`, `C:\ProgramData\EtitechBackup` |
 
-### Ajouter des fichiers
-```xml
-<File Id="Config" Source="config.json" />
-```
+Every brand installs the same `salvanza-cli.exe`. The removal page and `KEEP_CONFIG=0`
+act on the brand's own settings folder.
 
-### Icônes de marque
-Chaque marque possède deux icônes :
-- `installer/icons/<ExeName>.ico` — icône de l'installateur (raccourcis, Programs & Features / ARP), référencée par WiX via `../icons/$(var.ExeName).ico`.
-- `gui/build/windows/brands/<brandkey>.ico` — icône de la zone de notification (tray) du GUI. Elle est compilée dans l'exe et choisie **au runtime** selon le nom de l'exe (le MSI livre le même binaire renommé par marque). Le titre/infobulle du tray suit aussi la marque.
+To make one: add the brand to `brandCatalog` in `gui/brand.go`, copy `Product.wxs`, give it
+a new UpgradeCode, add its UpgradeCode to the list of products every installer replaces in
+`ProductBody.wxi`, add `icons/<ExeName>.ico`, build the programs under the brand's names,
+and run candle and light on the new file the way `build-msi.ps1` does (it only builds
+`Product.wxs`).
 
-Les deux sont régénérés par `installer/icons/generate.sh` (sources dans `installer/icons/src/` : les glyphes des marques à logo horizontal sont dessinés dans `src/*.svg`, et `src/proxmox_mark.svg` est le marqueur orange officiel de www.proxmox.com — `favicon.svg`). Le même fichier sert d'icône de ressource de l'exe (`gui/build/windows/icon.ico`, affichée dans la barre des tâches/fenêtre), partagée par toutes les marques car le binaire est renommé et non reconstruit. Les fichiers de `gui/build/windows/` sont ignorés par `.gitignore` (`build/`) mais **forcés** dans le dépôt (`git add -f`) car le binaire les embarque via `go:embed`. Un test (`TestInstallerIconsAreDistinct`, `TestBrandTrayIconsAreEmbedded` dans `gui/brand_test.go`) empêche qu'une icône soit recopiée d'une marque à l'autre.
-
-## Mise à jour du code pour le service
-
-Le fichier `gui/main.go` doit supporter le flag `--service` :
-
-```go
-func main() {
-    isService := false
-    for _, arg := range os.Args {
-        if arg == "--service" {
-            isService = true
-            break
-        }
-    }
-
-    if isService {
-        // Mode service Windows
-        runAsService()
-    } else {
-        // Mode GUI normal
-        runGUI()
-    }
-}
-```
-
-## Test du MSI
-
-1. **Build** : `build.bat`
-2. **Installation** : Double-clic sur `ProxmoxBackupClient.msi` (nécessite admin)
-3. **Vérification service** :
-   ```powershell
-   Get-Service ProxmoxBackupClient
-   ```
-4. **Logs** : Vérifier dans Event Viewer → Application
-5. **Désinstallation** : Panneau de configuration → Programmes
-
-## Distribution
-
-### GitHub Release
-Le workflow GitHub doit être modifié pour inclure le MSI :
-
-```yaml
-- name: Build MSI
-  working-directory: installer/wix
-  run: build.bat
-
-- name: Upload MSI
-  uses: actions/upload-artifact@v4
-  with:
-    name: ProxmoxBackupClient-MSI
-    path: installer/wix/ProxmoxBackupClient.msi
-```
+Never change the UpgradeCode of an existing brand: an upgrade would then install beside the
+old version instead of replacing it.
 
 ## Troubleshooting
 
-### Erreur "candle.exe not found"
-→ WiX Toolset n'est pas dans le PATH. Réinstaller ou ajouter manuellement.
-
-### Erreur "Access denied" lors de l'installation
-→ Exécuter l'installateur en tant qu'administrateur.
-
-### Le service ne démarre pas
-→ Vérifier que l'exe supporte le flag `--service`
-→ Consulter Event Viewer pour les erreurs
-
-### Conflit de version
-→ Désinstaller l'ancienne version d'abord
-→ Vérifier que UpgradeCode est correct
-
-## Ressources
-
-- **WiX Documentation** : https://wixtoolset.org/docs/
-- **Service Windows en Go** : https://github.com/kardianos/service
-- **MSI Best Practices** : https://learn.microsoft.com/en-us/windows/win32/msi/
+- **"version '...' must be x.y.z"**: MSI versions are three numbers. Pass `-Version 2.0.0`
+  for a `-rc1` or `dev-...` build.
+- **"gui\build\bin\... is missing"**: build the three programs first (see BUILD_INSTRUCTIONS.md).
+- **candle.exe not found**: unpack WiX 3.14 to `C:\Dev\tools\wix314`, pass `-WixDir`, or
+  put it on PATH.
+- **The service does not start**: look at `C:\ProgramData\Salvanza\service-service.log`.
+  Check that `salvanza-svc.exe` came from the service build (`-tags service`), not a copy
+  of the app.
+- **Install log**: `msiexec /i <msi> /l*v install.log`.

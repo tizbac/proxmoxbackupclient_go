@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=Proxmox Backup Client
-Comment=Backup client for Proxmox Backup Server
-Exec=pbsgo-gui
-Icon=pbsgo
-Terminal=false
-Type=Application
-Categories=System;Utility;

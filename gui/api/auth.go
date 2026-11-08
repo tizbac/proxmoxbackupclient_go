@@ -1,6 +1,9 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -11,77 +14,127 @@ import (
 // blocks browser-originated requests: a web page cannot set it on a cross-origin
 // request without a CORS preflight, which this server never approves (audit H-01
 // / v2-H-06). The token authenticates the GUI to the privileged local service.
-const tokenHeader = "X-Proxmox-Client-Token"
+const tokenHeader = "X-Salvanza-Token"
 
-// TokenEnvVar carries the local API token in the environment. The Linux GUI
-// launcher (and the in-GUI elevated fetch) inject the service token this way so
-// a normal user's GUI process never has to read the root-owned token file.
-const TokenEnvVar = "PBSGO_API_TOKEN"
+// legacyTokenHeader is the header's name before the rename to Salvanza. The
+// service still accepts it, so scripts written for Proxmox Backup Client keep
+// working; nothing here sends it.
+const legacyTokenHeader = "X-Proxmox-Client-Token"
 
-// tokenOverride takes precedence over the environment variable and the token
-// file for every request when it is non-empty. The GUI sets it after a
-// successful elevated token fetch — at launch and again whenever the service
-// rotates the token (see SetUnauthorizedHook). It is guarded: the reauth
-// transport writes it from whichever request notices the rotation, while every
-// other goroutine reads it.
+// TokenEnvVar carries the local API token in the environment, for a launcher
+// that fetched it already. The app itself never sets it: it keeps the token it
+// fetched in memory (SetTokenOverride). LegacyTokenEnvVar is the name before
+// the rename (upstream's), still read.
+const (
+	TokenEnvVar       = "SALVANZA_API_TOKEN"
+	LegacyTokenEnvVar = "PBSGO_API_TOKEN"
+)
+
+// requestToken is the token a request carries, under either header name.
+func requestToken(r *http.Request) string {
+	if t := r.Header.Get(tokenHeader); t != "" {
+		return t
+	}
+	return r.Header.Get(legacyTokenHeader)
+}
+
+// envValue reads an environment variable under its name, or else under the
+// name it had before the rename.
+func envValue(name, legacy string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return os.Getenv(legacy)
+}
+
+// maxRequestBody bounds request bodies to avoid unbounded memory from a local
+// caller (audit: "borner les tailles de body").
+const maxRequestBody = 8 << 20 // 8 MiB: a settings import goes over as base64
+
+// The token file is the service's secret: SYSTEM and the Administrators group
+// only on Windows, which a program running without elevation cannot use even
+// under an administrator account (its Administrators SID is deny-only), and
+// root 0600 on Linux, without the sudo/wheel group of earlier builds (from
+// upstream, which removed that group as a vulnerability). The app gets the
+// token from an elevated copy of itself (token_elevated.go in the gui
+// package) and keeps it in memory here.
 var (
 	tokenOverrideMu sync.RWMutex
 	tokenOverride   string
+	// fetchedOnly: only tokenOverride counts, not the environment or the
+	// token file (SetFetchedTokenOnly).
+	fetchedOnly bool
 )
 
-// SetTokenOverride installs the in-memory token handed over by an elevated
-// fetch, replacing the previous one. An empty token clears it (used when a
-// fetch succeeded but the service still rejects the token).
+// SecureTokenFile gives the token file at path its permissions. On Linux and
+// other Unix systems it is chmod 0600 (auth_unix.go). On Windows the service
+// sets it to the ACL code in the gui package (which has golang.org/x/sys);
+// until then it fails, so a service that forgot to set it writes no token and
+// accepts no request (fail closed).
+var SecureTokenFile = secureTokenFileDefault
+
+// SetTokenOverride installs the token an elevated fetch handed over, replacing
+// the previous one; "" clears it.
 func SetTokenOverride(token string) {
 	tokenOverrideMu.Lock()
 	tokenOverride = token
 	tokenOverrideMu.Unlock()
 }
 
-// GetTokenOverride returns the token installed by the last successful elevated
-// fetch, or "" when there is none.
+// GetTokenOverride returns the token installed by SetTokenOverride, or "".
 func GetTokenOverride() string {
 	tokenOverrideMu.RLock()
 	defer tokenOverrideMu.RUnlock()
 	return tokenOverride
 }
 
-// tokenFileOwnedByProcess reports whether a token file owned by fileUID may be
-// used without an elevation prompt by a process with euid: either this process
-// IS that owner, or it is root (root can read any file anyway). A file owned by
-// another account — the service's, root's — means the caller is not privileged:
-// it must fetch the token through an elevation prompt instead of quietly
-// authenticating against the privileged service.
+// SetFetchedTokenOnly makes requests carry only the token installed by
+// SetTokenOverride (on), not one from the environment or the token file. The
+// app turns it on when it lets go of the token (its window was in the tray
+// for a while): an elevated app, which could read the file on every request,
+// is then not connected either, until it connects again (which turns it off).
+func SetFetchedTokenOnly(on bool) {
+	tokenOverrideMu.Lock()
+	fetchedOnly = on
+	tokenOverrideMu.Unlock()
+}
+
+// FetchedTokenOnly reports whether SetFetchedTokenOnly is on.
+func FetchedTokenOnly() bool {
+	tokenOverrideMu.RLock()
+	defer tokenOverrideMu.RUnlock()
+	return fetchedOnly
+}
+
+// tokenFileOwnedByProcess reports whether a process with euid may take a
+// token file owned by fileUID straight from disk: it is that owner, or root.
+// A file owned by another account means the caller is not privileged and must
+// fetch the token through an elevation prompt instead.
 func tokenFileOwnedByProcess(fileUID, euid int) bool {
 	return euid == 0 || fileUID == euid
 }
 
-// resolveToken returns the token to attach to a request, in priority order:
-// explicit override → environment → token file at path. An empty result means
-// "no token available" and the request will simply be unauthenticated.
+// resolveToken returns the token to send: the fetched one, then the
+// environment, then the token file when this process may read it directly
+// (ReadOwnTokenFile). "" means none, and the service answers 401. With
+// SetFetchedTokenOnly on, only the fetched one.
 func resolveToken(path string) string {
-	if t := GetTokenOverride(); t != "" {
+	tokenOverrideMu.RLock()
+	t, only := tokenOverride, fetchedOnly
+	tokenOverrideMu.RUnlock()
+	if t != "" || only {
 		return t
 	}
-	if env := os.Getenv(TokenEnvVar); env != "" {
+	if env := envValue(TokenEnvVar, LegacyTokenEnvVar); env != "" {
 		return env
 	}
-	// The token file is the service's root-owned secret (0600 in a 0700
-	// directory); see ReadOwnTokenFile for why an unprivileged process gets ""
-	// here and therefore a 401, which triggers the elevated fetch
-	// (pkexec/sudo, UAC) instead of a silent connection.
 	return ReadOwnTokenFile(path)
 }
 
-// ReadOwnTokenFile returns the token stored at path only when this process is
-// entitled to take it straight from the file — root, or the file's own owner,
-// never merely a process that happens to be able to open it (group-readable
-// leftovers of older installs are excluded on purpose) — and "" otherwise.
-//
-// It is the "no prompt needed" half of the elevated fetch: when we may already
-// read the file, a pkexec/UAC child would only re-read the very same bytes, so
-// the user must not be bothered with a prompt they could only decline and then
-// get stuck behind.
+// ReadOwnTokenFile returns the token stored at path when this process may take
+// it from the file without a prompt: the service itself, root, or an elevated
+// app on Windows. Otherwise "", so the app asks for elevation (or, without a
+// window to ask in, stays unconnected) instead of authenticating quietly.
 func ReadOwnTokenFile(path string) string {
 	if !canReadTokenFile(path) {
 		return ""
@@ -93,13 +146,72 @@ func ReadOwnTokenFile(path string) string {
 	return strings.TrimSpace(string(b))
 }
 
-// maxRequestBody bounds request bodies to avoid unbounded memory from a local
-// caller (audit: "borner les tailles de body").
-const maxRequestBody = 1 << 20 // 1 MiB
+// EnsureToken returns the token stored at path, writing a new one if there is
+// none, and (re)applies the file's permissions (SecureTokenFile). Tests use
+// it; the service takes a new token at every start (NewToken).
+func EnsureToken(path string) (string, error) {
+	if b, err := os.ReadFile(path); err == nil {
+		if t := strings.TrimSpace(string(b)); t != "" {
+			if err := SecureTokenFile(path); err != nil {
+				return "", err
+			}
+			return t, nil
+		}
+	}
+	t, err := generateToken()
+	if err != nil {
+		return "", err
+	}
+	if err := replaceTokenFile(path, t); err != nil {
+		return "", err
+	}
+	return t, nil
+}
 
-// tokenTransport injects the shared token header into every client request,
-// reading the token file on each call so the GUI picks up a token the service
-// created after the GUI started.
+// NewToken writes a new random token to path, replacing any token there, and
+// returns it. The service calls it when it starts, so a token copied earlier,
+// or planted before the service first ran, stops working at the next start.
+func NewToken(path string) (string, error) {
+	t, err := generateToken()
+	if err != nil {
+		return "", err
+	}
+	if err := replaceTokenFile(path, t); err != nil {
+		return "", err
+	}
+	return t, nil
+}
+
+// generateToken returns a new random 256-bit token, hex encoded.
+func generateToken() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate api token: %w", err)
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+// replaceTokenFile writes t to path through a temporary file and a rename,
+// so a reader sees the old token or the new one, never part of one. The
+// temporary file gets the token file's permissions before the rename.
+func replaceTokenFile(path, t string) error {
+	tmp := path + ".tmp"
+	_ = os.Remove(tmp)
+	if err := os.WriteFile(tmp, []byte(t), 0o600); err != nil {
+		return fmt.Errorf("write api token %q: %w", tmp, err)
+	}
+	if err := SecureTokenFile(tmp); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("replace api token %q: %w", path, err)
+	}
+	return nil
+}
+
+// tokenTransport adds the token header to every request (resolveToken).
 type tokenTransport struct {
 	tokenPath string
 	base      http.RoundTripper
@@ -114,7 +226,10 @@ func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // authMiddleware enforces the local-token auth and request hardening on every
 // route: it bounds the body, rejects browser-originated requests (Origin set),
-// and requires the shared token via a constant-time compare.
+// and requires the shared token (tokenAccepted), except for GET
+// /status/public, which says only whether backups run or failed
+// (public_status.go), and GET /servers/public, the computer's servers
+// without their logins (public_servers.go).
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
@@ -125,8 +240,12 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		got := r.Header.Get(tokenHeader)
-		if !s.tokenAccepted(got) {
+		if isPublicRequest(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if !s.tokenAccepted(requestToken(r)) {
 			s.writeError(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

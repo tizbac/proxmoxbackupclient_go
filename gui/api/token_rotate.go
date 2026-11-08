@@ -1,92 +1,94 @@
 package api
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
+	"crypto/subtle"
 	"log"
-	"os"
 	"sync"
 	"time"
 )
 
+// The service takes a new API token at every start (NewToken) and replaces
+// it on a schedule while it runs, so a token copied out of memory or the file
+// stops working within a day (from upstream). An app holding the replaced
+// token gets a 401 once the grace window is over and fetches the new one
+// through elevation again (reauth.go); the grace window keeps requests
+// already on their way from being refused.
+
 const (
-	// DefaultTokenRotation is how often the service regenerates the local API
-	// token when PBSGO_TOKEN_ROTATION does not say otherwise.
+	// DefaultTokenRotation is how often the running service replaces the
+	// token, unless SALVANZA_TOKEN_ROTATION says otherwise.
 	DefaultTokenRotation = 24 * time.Hour
-	// DefaultTokenGrace is how long the previous token keeps authenticating
-	// after a rotation (PBSGO_TOKEN_GRACE), so requests already in flight are
-	// not cut off at the exact rotation instant.
+	// DefaultTokenGrace is how long the replaced token is still accepted,
+	// unless SALVANZA_TOKEN_GRACE says otherwise.
 	DefaultTokenGrace = 10 * time.Minute
 )
 
-// TokenRotationFromEnv returns the rotation interval and the grace window for
-// the previous token. Unset or unparsable values fall back to the defaults;
-// PBSGO_TOKEN_ROTATION=0 disables rotation entirely (tests, and installs that
-// do not want a daily elevation prompt).
+// TokenRotationFromEnv returns the rotation interval and grace window, from
+// SALVANZA_TOKEN_ROTATION and SALVANZA_TOKEN_GRACE, or upstream's names
+// (PBSGO_TOKEN_ROTATION, PBSGO_TOKEN_GRACE) so a setting made for 1.2.0-rc
+// still applies. An unset or unreadable value gives the default; a rotation
+// of 0 turns rotation off.
 func TokenRotationFromEnv() (interval, grace time.Duration) {
 	interval, grace = DefaultTokenRotation, DefaultTokenGrace
-	if v := os.Getenv("PBSGO_TOKEN_ROTATION"); v != "" {
+	if v := envValue("SALVANZA_TOKEN_ROTATION", "PBSGO_TOKEN_ROTATION"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			interval = d
 		} else {
-			log.Printf("PBSGO_TOKEN_ROTATION=%q is not a duration, using %s: %v", v, DefaultTokenRotation, err)
+			log.Printf("SALVANZA_TOKEN_ROTATION=%q is not a duration, using %s: %v", v, DefaultTokenRotation, err)
 		}
 	}
-	if v := os.Getenv("PBSGO_TOKEN_GRACE"); v != "" {
+	if v := envValue("SALVANZA_TOKEN_GRACE", "PBSGO_TOKEN_GRACE"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			grace = d
 		} else {
-			log.Printf("PBSGO_TOKEN_GRACE=%q is not a duration, using %s: %v", v, DefaultTokenGrace, err)
+			log.Printf("SALVANZA_TOKEN_GRACE=%q is not a duration, using %s: %v", v, DefaultTokenGrace, err)
 		}
 	}
 	return interval, grace
 }
 
-// GenerateToken returns a fresh 256-bit local-API token, hex-encoded.
-func GenerateToken() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generate api token: %w", err)
+// SetToken makes token the one the server requires and returns the one it
+// replaced, which is still accepted for the grace window.
+func (s *Server) SetToken(token string) string {
+	s.tokenMu.Lock()
+	defer s.tokenMu.Unlock()
+	prev := s.token
+	if prev != "" && prev != token {
+		s.prevToken = prev
+		s.prevValidUntil = time.Now().Add(s.tokenGrace)
 	}
-	return hex.EncodeToString(buf), nil
+	s.token = token
+	return prev
 }
 
-// RotateToken writes a freshly generated token to path and returns it.
-//
-// The file is (re)written 0600: WriteFile does not touch the mode of an
-// existing file, so the explicit chmod also migrates a token file left behind
-// by an older build that made it group-readable. On Windows the DACL applied by
-// EnsureToken survives the rewrite.
-func RotateToken(path string) (string, error) {
-	t, err := GenerateToken()
-	if err != nil {
-		return "", err
-	}
-	if err := writeTokenFile(path, t); err != nil {
-		return "", err
-	}
-	return t, nil
+// SetTokenGrace sets how long a replaced token is still accepted.
+func (s *Server) SetTokenGrace(grace time.Duration) {
+	s.tokenMu.Lock()
+	defer s.tokenMu.Unlock()
+	s.tokenGrace = grace
 }
 
-// writeTokenFile stores token at path with owner-only permissions, tightening
-// the mode of a pre-existing file as well.
-func writeTokenFile(path, token string) error {
-	if err := os.WriteFile(path, []byte(token), 0o600); err != nil {
-		return fmt.Errorf("write api token %q: %w", path, err)
+// tokenAccepted reports whether got is the current token, or the replaced
+// one inside its grace window. With no current token nothing is accepted
+// (fail closed, H-01).
+func (s *Server) tokenAccepted(got string) bool {
+	if got == "" {
+		return false
 	}
-	if err := os.Chmod(path, 0o600); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("chmod api token %q: %w", path, err)
+	s.tokenMu.RLock()
+	cur, prev, until := s.token, s.prevToken, s.prevValidUntil
+	s.tokenMu.RUnlock()
+	if cur == "" {
+		return false
 	}
-	return nil
+	// Both compares always run, so the time taken does not tell which of the
+	// two a guess matched.
+	current := subtle.ConstantTimeCompare([]byte(got), []byte(cur)) == 1
+	previous := prev != "" && subtle.ConstantTimeCompare([]byte(got), []byte(prev)) == 1
+	return current || (previous && time.Now().Before(until))
 }
 
-// TokenRotator regenerates the service's local API token on a fixed interval
-// and hands each new token to the running API server, which keeps accepting
-// the previous one for a grace window. A GUI that sits idle past that window is
-// rejected with 401 on its next request and re-runs the elevated fetch (the
-// 401 hook installed with api.SetUnauthorizedHook), so the secret never lives
-// forever in a user session.
+// TokenRotator replaces the service's API token on a fixed interval.
 type TokenRotator struct {
 	server   *Server
 	path     string
@@ -95,32 +97,25 @@ type TokenRotator struct {
 
 	stop     chan struct{}
 	stopOnce sync.Once
+	running  sync.WaitGroup // the rotation loop, which Stop waits for
 }
 
-// NewTokenRotator builds a rotator for the API server's token file. interval
-// <= 0 disables the periodic rotation (Rotate can still be called directly).
-// The grace window is pushed onto the server so it knows how long to honour the
-// token it is about to replace.
+// NewTokenRotator returns a rotator for the server's token file. An interval
+// of 0 or less turns the schedule off (Rotate still works).
 func NewTokenRotator(server *Server, path string, interval, grace time.Duration) *TokenRotator {
-	r := &TokenRotator{
-		server:   server,
-		path:     path,
-		interval: interval,
-		grace:    grace,
-		stop:     make(chan struct{}),
-	}
 	server.SetTokenGrace(grace)
-	return r
+	return &TokenRotator{server: server, path: path, interval: interval, grace: grace, stop: make(chan struct{})}
 }
 
-// Start begins rotating on the configured interval. It is a no-op when rotation
-// is disabled.
+// Start rotates on the interval until Stop.
 func (r *TokenRotator) Start() {
 	if r.interval <= 0 {
-		log.Printf("local API token rotation disabled (PBSGO_TOKEN_ROTATION=%s)", r.interval)
+		log.Printf("local API token rotation off (SALVANZA_TOKEN_ROTATION=%s)", r.interval)
 		return
 	}
+	r.running.Add(1)
 	go func() {
+		defer r.running.Done()
 		ticker := time.NewTicker(r.interval)
 		defer ticker.Stop()
 		for {
@@ -128,38 +123,37 @@ func (r *TokenRotator) Start() {
 			case <-r.stop:
 				return
 			case <-ticker.C:
-				if _, err := r.Rotate(); err != nil {
+				if err := r.Rotate(); err != nil {
 					log.Printf("local API token rotation failed: %v", err)
 				}
 			}
 		}
 	}()
-	log.Printf("local API token rotates every %s (previous token accepted for %s)", r.interval, r.grace)
+	log.Printf("local API token rotates every %s (the replaced one is accepted for %s)", r.interval, r.grace)
 }
 
-// Rotate installs a freshly generated token on the server first and only then
-// publishes it in the token file. The order matters: while the file still
-// holds the old token every client keeps authenticating (the server accepts
-// the previous token for the grace window anyway), and nobody can be holding
-// the new one yet — so there is no instant at which a client can read a token
-// the server does not accept. If the file write fails, the server is rolled
-// back to the previous token so file and memory never disagree about which
-// secret is live.
-func (r *TokenRotator) Rotate() (string, error) {
-	next, err := GenerateToken()
+// Rotate makes the server require a new token and then writes it to the
+// token file (upstream's order), so nothing can read a token the server does
+// not accept yet. If the file cannot be written, the server goes back to the
+// token in the file.
+func (r *TokenRotator) Rotate() error {
+	next, err := generateToken()
 	if err != nil {
-		return "", err
+		return err
 	}
 	prev := r.server.SetToken(next)
-	if err := writeTokenFile(r.path, next); err != nil {
+	if err := replaceTokenFile(r.path, next); err != nil {
 		r.server.SetToken(prev)
-		return "", err
+		return err
 	}
-	log.Printf("local API token rotated (previous one accepted for %s)", r.grace)
-	return next, nil
+	log.Printf("local API token rotated (the replaced one is accepted for %s)", r.grace)
+	return nil
 }
 
-// Stop ends the periodic rotation. Safe to call when Start never ran.
+// Stop ends the rotation and waits for one under way to finish, so the
+// server and the token file agree when it returns. Safe to call more than
+// once, or without Start.
 func (r *TokenRotator) Stop() {
 	r.stopOnce.Do(func() { close(r.stop) })
+	r.running.Wait()
 }

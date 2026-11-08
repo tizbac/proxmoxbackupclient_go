@@ -1,0 +1,222 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
+	"time"
+
+	"clientcommon"
+	"pbscommon"
+)
+
+// SetSMTPSettings persists the Preferences > Advanced global SMTP account
+// used by every Backup Set's own on-completion/on-failure email toggle.
+// Bypasses SaveConfig/Validate the same way SetParallelRestore does — see its
+// doc comment for why. An empty password means "keep the existing one" (the
+// frontend never receives the real stored password, matching SaveConfig's
+// existing SMTPPassword handling), so clearing it for real requires deleting
+// the whole account (host empty).
+func (a *App) SetSMTPSettings(host, port, username, password string, insecure bool, from string) error {
+	if a.delegated() {
+		return a.serviceCall("SetSMTPSettings", host, port, username, password, insecure, from)
+	}
+	a.config.SMTPHost = host
+	a.config.SMTPPort = port
+	a.config.SMTPUsername = username
+	if password != "" {
+		a.config.SMTPPassword = password
+	}
+	a.config.SMTPInsecure = insecure
+	a.config.EmailFrom = from
+	if err := a.config.Save(); err != nil {
+		return fmt.Errorf("failed to save SMTP settings: %w", err)
+	}
+	return nil
+}
+
+// SendTestEmail sends a short test message to `to` using the currently saved
+// global SMTP account, so a user can confirm their SMTP settings actually
+// work before relying on them for real backup notifications.
+func (a *App) SendTestEmail(to string) error {
+	// The service holds the SMTP password.
+	if a.delegated() {
+		return a.apiClient.Call("SendTestEmail", nil, to)
+	}
+	if a.config.SMTPHost == "" {
+		return fmt.Errorf("no SMTP server configured — set one in Preferences first")
+	}
+	client, err := clientcommon.SetupMailClient(a.config.SMTPHost, a.config.SMTPPort, a.config.SMTPUsername, a.config.SMTPPassword, a.config.SMTPInsecure)
+	if err != nil {
+		return fmt.Errorf("could not connect to mail server: %w", err)
+	}
+	// The message is already accepted by the time QUIT is sent, so a failed
+	// QUIT does not mean the mail was lost.
+	defer func() { _ = client.Quit() }()
+
+	from := a.config.EmailFrom
+	if from == "" {
+		from = a.config.SMTPUsername
+	}
+	body := fmt.Sprintf("This is a test message from %s, sent at %s.\n\nIf you received this, your SMTP settings are working correctly.", product().Title, time.Now().Format(time.RFC1123))
+	if err := clientcommon.SendMail(from, to, product().ShortTitle+": test email", body, client); err != nil {
+		return fmt.Errorf("could not send test email: %w", err)
+	}
+	return nil
+}
+
+// sendJobNotificationEmail sends one on-completion/on-failure notification
+// for a finished Backup Set, using the global SMTP account. Best-effort: a
+// failure here is logged, never propagated (a backup that actually
+// succeeded/failed must not be reported differently just because the
+// notification email itself couldn't be sent). It reports whether an e-mail
+// was due and could not be sent (no SMTP server set counts as not due).
+func (a *App) sendJobNotificationEmail(job ScheduledJob, success bool, message string) (failed bool) {
+	to := job.EmailOnSuccessTo
+	enabled := job.EmailOnSuccess
+	if !success {
+		to = job.EmailOnFailureTo
+		enabled = job.EmailOnFailure
+	}
+	if !enabled || to == "" {
+		return false
+	}
+	if a.config.SMTPHost == "" {
+		writeDebugLog(fmt.Sprintf("[PostBackup] %q wants an email on %s but no SMTP server is configured in Preferences — skipping",
+			job.Name, map[bool]string{true: "completion", false: "failure"}[success]))
+		return false
+	}
+
+	client, err := clientcommon.SetupMailClient(a.config.SMTPHost, a.config.SMTPPort, a.config.SMTPUsername, a.config.SMTPPassword, a.config.SMTPInsecure)
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("[PostBackup] could not connect to mail server for job %q: %v", job.Name, err))
+		return true
+	}
+	defer func() { _ = client.Quit() }() // as in SendTestEmail: QUIT failing does not lose the mail
+
+	from := a.config.EmailFrom
+	if from == "" {
+		from = a.config.SMTPUsername
+	}
+	status := "completed"
+	if !success {
+		status = "FAILED"
+	}
+	subject := fmt.Sprintf("%s: %q %s", product().ShortTitle, job.Name, status)
+	hostname, _ := os.Hostname()
+	body := fmt.Sprintf("Backup Set %q %s on %s at %s.\n\n%s",
+		job.Name, status, hostname, time.Now().Format(time.RFC1123), message)
+
+	if err := clientcommon.SendMail(from, to, subject, body, client); err != nil {
+		writeDebugLog(fmt.Sprintf("[PostBackup] could not send notification email for job %q: %v", job.Name, err))
+		return true
+	}
+	return false
+}
+
+// noteMailFailed adds clientcommon.MailFailedNote to the PBS comment of the
+// snapshot a run made, as the command-line tools do, so the problem shows
+// in the PBS web UI too. A failed run usually has no snapshot (noter nil).
+func noteMailFailed(jobName string, noter snapshotNoter) {
+	if noter == nil {
+		return
+	}
+	if err := noter.AddNote(clientcommon.MailFailedNote); err != nil {
+		writeDebugLog(fmt.Sprintf("[PostBackup] could not add the mail warning to the PBS comment for job %q: %v", jobName, err))
+		return
+	}
+	writeDebugLog(fmt.Sprintf("[PostBackup] mail warning added to the PBS comment of %q's snapshot", jobName))
+}
+
+// runPreBackupApp runs a Backup Set's configured "before" application, if
+// any. Best-effort: logged, never blocks the backup itself from starting.
+func runPreBackupApp(job ScheduledJob) {
+	runPostBackupApp(job.RunAppBefore, job.Name, "before")
+}
+
+func runPostBackupApp(command, jobName, when string) {
+	if command == "" {
+		return
+	}
+	writeDebugLog(fmt.Sprintf("[PostBackup] running %s-backup application for job %q: %s", when, jobName, command))
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/C", command)
+	} else {
+		cmd = exec.Command("sh", "-c", command)
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		writeDebugLog(fmt.Sprintf("[PostBackup] %s-backup application for job %q failed: %v: %s", when, jobName, err, string(out)))
+	}
+}
+
+// runPostBackupActions runs everything a finished Backup Set is configured
+// to do after it completes: email notification, an application, then exiting
+// the app and/or shutting down the computer — deliberately in that order,
+// since a shutdown is irreversible and must be the very last thing attempted.
+// noter is the run's snapshot (nil when there is none): an e-mail that could
+// not be sent is noted in its PBS comment.
+func (a *App) runPostBackupActions(job ScheduledJob, success bool, message string, noter snapshotNoter) {
+	if a.sendJobNotificationEmail(job, success, message) {
+		noteMailFailed(job.Name, noter)
+	}
+	runPostBackupApp(job.RunAppAfter, job.Name, "after")
+
+	// Only a GUI has a window to hide; the service runs scheduled sets too.
+	if job.MinimizeAfter && !job.ExitAppAfter && a.ctx != nil && !a.isServiceProcess {
+		writeDebugLog(fmt.Sprintf("[PostBackup] job %q configured to minimise to the tray after backup", job.Name))
+		a.MinimizeToTray()
+	}
+	// Exiting is for the app only: in the service it would stop every
+	// schedule until Windows or systemd restarts it.
+	if job.ExitAppAfter && a.isServiceProcess {
+		writeDebugLog(fmt.Sprintf("[PostBackup] job %q is set to exit the app after backup; ignored in the service", job.Name))
+	} else if job.ExitAppAfter {
+		writeDebugLog(fmt.Sprintf("[PostBackup] job %q configured to exit the app after backup — exiting", job.Name))
+		go func() {
+			waitForOtherBackups(job.Name, "exiting the app")
+			exitAppAfterBackup()
+		}()
+	}
+	if job.ShutdownAfter {
+		writeDebugLog(fmt.Sprintf("[PostBackup] job %q configured to shut down the computer after backup — shutting down", job.Name))
+		go func() {
+			waitForOtherBackups(job.Name, "shutting down")
+			time.Sleep(2 * time.Second)
+			shutdownComputer()
+		}()
+	}
+}
+
+// waitForOtherBackups holds an exit or shutdown until the backups and
+// restores already running or queued beside this set's run have ended (it
+// would cut them short), this run's own included. Ones that start later are
+// not waited for.
+func waitForOtherBackups(jobName, what string) {
+	if n := runningOperationCount(); n > 1 {
+		writeDebugLog(fmt.Sprintf("[PostBackup] job %q: %s once the %d other backup(s) running now have finished", jobName, what, n-1))
+	}
+	waitForEarlierOperations()
+}
+
+// exitAppAfterBackup ends the app once a set that closes it has finished.
+// A variable so tests can see whether it was called.
+var exitAppAfterBackup = func() {
+	time.Sleep(2 * time.Second) // give the history write and any event emit a moment to land
+	os.Exit(0)
+}
+
+// shutdownComputer requests an OS shutdown (pbscommon.ShutdownComputer: the
+// Windows API, with shutdown.exe to fall back on; shutdown -h on Linux).
+// Best-effort: logged on failure, there is nothing more a running backup
+// client can do if the OS itself refuses the request (e.g. insufficient
+// privilege).
+func shutdownComputer() {
+	method, err := pbscommon.ShutdownComputer("Shutting down after a backup, as its Backup Set asks.")
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("[PostBackup] shutdown failed: %v", err))
+		return
+	}
+	writeDebugLog("[PostBackup] shutdown requested through " + method)
+}

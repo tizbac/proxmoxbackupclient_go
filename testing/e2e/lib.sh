@@ -31,7 +31,7 @@ else
 	PBC_BIN="proxmox-backup-client"
 	PBC_BIN_EXPLICIT=""
 fi
-PBC_IMAGE="${PBC_IMAGE:-proxmoxbackupclient-e2e-client:latest}"
+PBC_IMAGE="${PBC_IMAGE:-salvanza-e2e-client:latest}"
 
 # Set to 1 to skip the "restore with the official client" assertions.
 E2E_SKIP_OFFICIAL="${E2E_SKIP_OFFICIAL:-0}"
@@ -89,14 +89,43 @@ assert_dir_exists() {
 	return 0
 }
 
-# Sorted "<sha256>  <relpath>" listing of every regular file under $1.
+# The file our directory backup adds at the root of every folder archive
+# (pbscommon.BackupMetaFilename): the official client restores it as an
+# ordinary file. The tree comparisons leave it out; assert_backup_meta checks it.
+BACKUP_META=".proxmox_backup_client_meta.json"
+
+# Sorted "<sha256>  <relpath>" listing of every regular file under $1,
+# without the backup's own metadata file at the root.
 tree_manifest() {
-	( cd "$1" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum )
+	( cd "$1" && find . -type f ! -path "./$BACKUP_META" -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum )
+}
+
+# assert_backup_meta <restored-dir> <original-path> <backup-id>: the metadata
+# file our backup added at the archive root came back, and names the folder
+# and backup ID it was made from.
+assert_backup_meta() {
+	local dir="$1" orig="$2" id="$3"
+	assert_file_exists "$dir/$BACKUP_META"
+	python3 - "$dir/$BACKUP_META" "$orig" "$id" <<-'PY' || die "$dir/$BACKUP_META does not describe this backup"
+		import json, sys
+		m = json.load(open(sys.argv[1]))
+		if m.get("original_path") != sys.argv[2] or m.get("backup_id") != sys.argv[3]:
+		    sys.exit(f"original_path={m.get('original_path')!r} backup_id={m.get('backup_id')!r}")
+	PY
+	ok "$BACKUP_META restored with original_path and backup_id of this backup"
+	return 0
 }
 
 # Sorted relative listing of every directory under $1 (excludes the root).
 tree_dirs() {
 	( cd "$1" && find . -mindepth 1 -type d -print | LC_ALL=C sort )
+}
+
+# Sorted "<relpath> -> <target>" listing of every symbolic link under $1, the
+# target as stored in the link (not resolved). A link restored as the file
+# or folder it points to is missing here, and shows up in the other listings.
+tree_links() {
+	( cd "$1" && find . -type l -printf '%p -> %l\n' | LC_ALL=C sort )
 }
 
 # assert_tree_identical <dir-a> <dir-b> <label>
@@ -105,20 +134,25 @@ assert_tree_identical() {
 	assert_dir_exists "$a"
 	assert_dir_exists "$b"
 
-	local d_manifest d_dirs
-	d_manifest="$(mktemp)"; d_dirs="$(mktemp)"
+	local d_manifest d_dirs d_links
+	d_manifest="$(mktemp)"; d_dirs="$(mktemp)"; d_links="$(mktemp)"
 	if ! diff -u <(tree_manifest "$a") <(tree_manifest "$b") >"$d_manifest"; then
-		printf '%s' "$d_manifest" >&2
-		rm -f "$d_manifest" "$d_dirs"
+		cat "$d_manifest" >&2
+		rm -f "$d_manifest" "$d_dirs" "$d_links"
 		die "$label: restored files differ from the source"
 	fi
 	if ! diff -u <(tree_dirs "$a") <(tree_dirs "$b") >"$d_dirs"; then
-		printf '%s' "$d_dirs" >&2
-		rm -f "$d_manifest" "$d_dirs"
+		cat "$d_dirs" >&2
+		rm -f "$d_manifest" "$d_dirs" "$d_links"
 		die "$label: restored directory tree differs from the source"
 	fi
-	rm -f "$d_manifest" "$d_dirs"
-	ok "$label: $(tree_manifest "$a" | wc -l) file(s) byte-identical, tree layout identical"
+	if ! diff -u <(tree_links "$a") <(tree_links "$b") >"$d_links"; then
+		cat "$d_links" >&2
+		rm -f "$d_manifest" "$d_dirs" "$d_links"
+		die "$label: restored symbolic links differ from the source"
+	fi
+	rm -f "$d_manifest" "$d_dirs" "$d_links"
+	ok "$label: $(tree_manifest "$a" | wc -l) file(s) byte-identical, $(tree_links "$a" | wc -l) symlink(s) with the same targets, tree layout identical"
 	return 0
 }
 
@@ -156,8 +190,13 @@ retry() {
 	return 0
 }
 
+# `version` answers before PBS has written its keys on first boot, and
+# `datastore create` then panics on the missing authkey.key (seen on GitHub,
+# 2026-11-02), so wait for the auth key and the proxy certificate as well.
 pbs_ready() {
-	pbs_mgr version >/dev/null 2>&1
+	pbs_mgr version >/dev/null 2>&1 \
+		&& docker exec "$PBS_CONTAINER" test -s /etc/proxmox-backup/authkey.key \
+		&& docker exec "$PBS_CONTAINER" test -s /etc/proxmox-backup/proxy.pem
 }
 
 start_pbs() {
@@ -180,8 +219,17 @@ start_pbs() {
 	# The datastore/config/log trees are *named volumes* rather than host
 	# bind mounts: the container runs as root and would leave root-owned files
 	# behind that the (possibly non-root) invoking user cannot clean up.
+	#
+	# A short hostname and search domain of our own: PBS names its first
+	# certificate <hostname>.<first search domain>, and a certificate name is
+	# at most 64 characters. The container id (12) plus a GitHub runner's
+	# Azure search domain (<26 random>.bx.internal.cloudapp.net) can pass
+	# that, and PBS then never starts ("ASN1_mbstring_ncopy: string too
+	# long, maxsize=64"), which failed this suite on some runners.
 	docker run -d \
 		--name "$PBS_CONTAINER" \
+		--hostname pbs-e2e \
+		--dns-search e2e.test \
 		-p "127.0.0.1:${PBS_PORT}:8007" \
 		--tmpfs /run:rw,mode=1777 \
 		-v "${PBS_CONTAINER}-etc:/etc/proxmox-backup" \
@@ -353,11 +401,12 @@ pbc_restore() {
 	# The official client creates blob/index targets with O_EXCL, so a leftover
 	# file from a previous run would make the restore fail for the wrong reason.
 	rm -rf "$target_abs"
-	# Our pxar writer stores every entry as uid/gid 1000 (it targets Windows,
-	# which has no POSIX owners; pbscommon/pxar.go), so a non-root restore
-	# (the GitHub runner is uid 1001) cannot chown to that and stops with
-	# "failed to set ownership: Operation not permitted". Ownership is not
-	# what this suite checks, so the official client is told to leave it.
+	# Our pxar writer keeps real owners for Linux files but writes some
+	# entries as uid/gid 1000 (and every entry off Linux; pbscommon/pxar.go),
+	# so a non-root restore (the GitHub runner is uid 1001) cannot chown to
+	# them and stops with "failed to set ownership: Operation not permitted".
+	# Ownership is not what this suite checks, so the official client is
+	# told to leave it.
 	local own=()
 	case "$archive" in
 		*.pxar.didx) own=(--ignore-ownership true) ;;
@@ -398,7 +447,7 @@ slugify() {
 }
 our_directory_backup() {
 	local dir="$1"; shift
-	( cd "$REPO_ROOT" && timeout 900 "$REPO_ROOT/dist/proxmoxbackup-directory" \
+	( cd "$REPO_ROOT" && timeout 900 "$REPO_ROOT/dist/salvanza-cli" backup-folder \
 		-baseurl "$PBS_BASEURL" \
 		-certfingerprint "$PBS_FINGERPRINT" \
 		-authid "$PBS_AUTHID" \
@@ -411,7 +460,7 @@ our_directory_backup() {
 
 our_machine_backup() {
 	local dev="$1"; shift
-	( cd "$REPO_ROOT" && timeout 900 "$REPO_ROOT/dist/proxmoxbackup-machine" \
+	( cd "$REPO_ROOT" && timeout 900 "$REPO_ROOT/dist/salvanza-cli" backup-disk \
 		-baseurl "$PBS_BASEURL" \
 		-certfingerprint "$PBS_FINGERPRINT" \
 		-authid "$PBS_AUTHID" \

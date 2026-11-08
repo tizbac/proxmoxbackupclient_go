@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# build_winpe_iso.sh — Embed Proxmox Backup Client into a Windows PE ISO
+# build_winpe_iso.sh: embed Salvanza for Proxmox Backup Server into a Windows PE ISO
 #                      and auto-launch it at start (rescue environment).
 #
 # Works with ANY WinPE ISO that follows the standard Microsoft layout, i.e.
@@ -19,21 +19,21 @@
 #
 # Options:
 #   -i <path>       Base WinPE .iso (default: WinPE_base.iso in CWD)
-#   -x <path>       The Windows .exe to embed (default: ProxmoxBackupClientGO.exe in CWD)
-#   -o <path>       Output ISO path (default: ProxmoxBackupClient-WinPE.iso)
+#   -x <path>       The Windows .exe to embed (default: salvanza-gui.exe in CWD)
+#   -o <path>       Output ISO path (default: Salvanza-WinPE.iso)
 #   -a <launch.cmd> Optional custom launch script placed at X:\Start.cmd
 #                   and invoked after wpeinit. Defaults to an embedded Start.cmd.
 #   -k              Keep intermediate work dir (default: removed on success)
 #   -h              Show this help
 #
 # The produced ISO boots into Windows PE, runs wpeinit, then runs Start.cmd
-# which copies ProxmoxBackupClientGO.exe to the RAM drive and launches it.
+# which copies salvanza-gui.exe to the RAM drive and launches it.
 
 set -euo pipefail
 
 ISO_IN="${1:-WinPE_base.iso}"
-EXE_IN="ProxmoxBackupClientGO.exe"
-OUT_ISO="ProxmoxBackupClient-WinPE.iso"
+EXE_IN="salvanza-gui.exe"
+OUT_ISO="Salvanza-WinPE.iso"
 LAUNCH_CMD=""
 KEEP=0
 
@@ -95,23 +95,23 @@ if [ -n "$LAUNCH_CMD" ]; then
 else
     cat > "$WD/Start.cmd" <<'CMD'
 @echo off
-title Proxmox Backup Client - WinPE Rescue Environment
+title Salvanza - WinPE Rescue Environment
 color 0B
 echo ============================================================
-echo  Proxmox Backup Client - WinPE Rescue Environment
+echo  Salvanza - WinPE Rescue Environment
 echo ============================================================
-set "WORKDIR=X:\ProxmoxBackup"
+set "WORKDIR=X:\Salvanza"
 if not exist "%WORKDIR%" mkdir "%WORKDIR%"
 for %%d in (C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (
     if exist "%%d:\START_APP.exe" (
-        copy /Y "%%d:\START_APP.exe" "%WORKDIR%\ProxmoxBackupClientGO.exe" >nul 2>&1
+        copy /Y "%%d:\START_APP.exe" "%WORKDIR%\salvanza-gui.exe" >nul 2>&1
         goto :found
     )
 )
 :found
-echo Launching Proxmox Backup Client...
-start "" "%WORKDIR%\ProxmoxBackupClientGO.exe"
-cmd.exe /k "title Proxmox Backup Client - Rescue Shell && cd /d %WORKDIR%"
+echo Launching Salvanza...
+start "" "%WORKDIR%\salvanza-gui.exe"
+cmd.exe /k "title Salvanza - Rescue Shell && cd /d %WORKDIR%"
 CMD
     # Put the real forged placeholder filename -> the embedded exe name
     BN=$(basename "$EXE_IN")

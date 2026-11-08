@@ -1,0 +1,186 @@
+package main
+
+import (
+	"testing"
+
+	"pbscommon"
+)
+
+func TestChangeDetectionForRunFullReadEvery(t *testing.T) {
+	job := ScheduledJob{BackupType: "directory", ChangeDetectionMode: pbscommon.ChangeDetectionMetadata, FullReadEvery: 4}
+	var got []string
+	for i := 0; i < 9; i++ {
+		mode, next := changeDetectionForRun(job)
+		got = append(got, mode)
+		job.MetadataRunsSinceFullRead = next
+	}
+	want := []string{"metadata", "metadata", "metadata", "data", "metadata", "metadata", "metadata", "data", "metadata"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("runs %v, want %v", got, want)
+		}
+	}
+}
+
+func TestFullReadDayTaken(t *testing.T) {
+	jobs := []ScheduledJob{
+		{ID: "a", FullReadDay: "2026-11-08"},
+		{ID: "b", FullReadDay: "2026-11-07"},
+		{ID: "c"},
+	}
+	for _, c := range []struct {
+		id, day string
+		want    bool
+	}{
+		{"b", "2026-11-08", true},  // a has today's
+		{"a", "2026-11-08", false}, // its own day is no clash
+		{"c", "2026-11-09", false}, // a new day is free
+		{"c", "2026-11-07", true},
+	} {
+		if got := fullReadDayTaken(jobs, c.id, c.day); got != c.want {
+			t.Errorf("fullReadDayTaken(%s, %s) = %v, want %v", c.id, c.day, got, c.want)
+		}
+	}
+}
+
+// A set whose scheduled full read was moved to its next run stays due: the
+// metadata run counts, and the next one is a full read again.
+func TestDeferredFullReadStaysDue(t *testing.T) {
+	job := ScheduledJob{BackupType: "directory", ChangeDetectionMode: pbscommon.ChangeDetectionMetadata, FullReadEvery: 3, MetadataRunsSinceFullRead: 2}
+	if mode, _ := changeDetectionForRun(job); mode != pbscommon.ChangeDetectionData {
+		t.Fatalf("due run: %q", mode)
+	}
+	// Deferred: it runs as metadata and completes.
+	job.MetadataRunsSinceFullRead = nextFullReadCount(job, true, false)
+	if mode, _ := changeDetectionForRun(job); mode != pbscommon.ChangeDetectionData {
+		t.Fatalf("after a deferred full read the next run is %q, want a full read", mode)
+	}
+}
+
+func TestChangeDetectionForRunModes(t *testing.T) {
+	for _, c := range []struct {
+		job  ScheduledJob
+		want string
+	}{
+		{ScheduledJob{BackupType: "directory"}, ""},
+		{ScheduledJob{BackupType: "directory", ChangeDetectionMode: "legacy"}, ""},
+		{ScheduledJob{BackupType: "directory", ChangeDetectionMode: "data", FullReadEvery: 3}, "data"},
+		{ScheduledJob{BackupType: "directory", ChangeDetectionMode: "metadata"}, "metadata"},
+		// Machine sets back up disk images: never any change detection.
+		{ScheduledJob{BackupType: "machine", ChangeDetectionMode: "metadata", FullReadEvery: 2}, ""},
+	} {
+		if got, _ := changeDetectionForRun(c.job); got != c.want {
+			t.Errorf("%+v: got %q, want %q", c.job, got, c.want)
+		}
+	}
+	// metadata without a full-read interval never switches to data.
+	job := ScheduledJob{BackupType: "directory", ChangeDetectionMode: "metadata"}
+	for i := 0; i < 50; i++ {
+		mode, next := changeDetectionForRun(job)
+		if mode != "metadata" {
+			t.Fatalf("run %d: %s", i, mode)
+		}
+		job.MetadataRunsSinceFullRead = next
+	}
+}
+
+func TestValidateJobChangeDetection(t *testing.T) {
+	ok := []ScheduledJob{
+		{}, {ChangeDetectionMode: "legacy"}, {ChangeDetectionMode: "data"},
+		{ChangeDetectionMode: "metadata", FullReadEvery: 7}, {ChangeDetectionMode: "metadata", FullReadEvery: 2},
+	}
+	for _, j := range ok {
+		if err := validateScheduledJob(j); err != nil {
+			t.Errorf("%+v rejected: %v", j, err)
+		}
+	}
+	bad := []ScheduledJob{
+		{ChangeDetectionMode: "fast"}, {ChangeDetectionMode: "metadata", FullReadEvery: 1},
+		{ChangeDetectionMode: "metadata", FullReadEvery: -3}, {ChangeDetectionMode: "metadata", FullReadEvery: 400},
+	}
+	for _, j := range bad {
+		if err := validateScheduledJob(j); err == nil {
+			t.Errorf("%+v accepted", j)
+		}
+	}
+}
+
+func TestRunChangeDetectionModeTravelsWithTheRun(t *testing.T) {
+	a := &App{}
+	if a.runChangeDetectionMode("") != "" {
+		t.Fatal("one-off run got a mode")
+	}
+	key := a.registerPendingPostActions(ScheduledJob{ID: "j1", BackupType: "directory", ChangeDetectionMode: "metadata"}, "scheduled")
+	if got := a.runChangeDetectionMode(key); got != "metadata" {
+		t.Fatalf("got %q", got)
+	}
+	mkey := a.registerPendingPostActions(ScheduledJob{ID: "j2", BackupType: "machine", ChangeDetectionMode: "metadata"}, "scheduled")
+	if got := a.runChangeDetectionMode(mkey); got != "" {
+		t.Fatalf("machine run got %q", got)
+	}
+	// A GUI request handed to the service.
+	skey := a.RegisterRunOptions("directory", "data", false)
+	if got := a.runChangeDetectionMode(skey); got != "data" {
+		t.Fatalf("service request got %q", got)
+	}
+	if got := a.runChangeDetectionMode(a.RegisterRunOptions("directory", "bogus", false)); got != "" {
+		t.Fatalf("invalid mode passed through as %q", got)
+	}
+
+	// The structured result rides back on the same key.
+	a.setRunResult(key, &BackupStatus{ReusedFiles: 12})
+	if r := a.takeRunResult(key); r == nil || r.ReusedFiles != 12 {
+		t.Fatalf("result %+v", r)
+	}
+	if a.takePendingPostActions(key) == nil {
+		t.Fatal("reading the result consumed the entry")
+	}
+}
+
+func TestParamUint(t *testing.T) {
+	p := msgParams{"a": uint64(5), "b": 7, "c": float64(9), "d": "x", "e": -2}
+	for k, want := range map[string]uint64{"a": 5, "b": 7, "c": 9, "d": 0, "e": 0, "missing": 0} {
+		if got := paramUint(p, k); got != want {
+			t.Errorf("%s: %d, want %d", k, got, want)
+		}
+	}
+}
+
+func TestApplyRequestedRead(t *testing.T) {
+	meta := ScheduledJob{ChangeDetectionMode: pbscommon.ChangeDetectionMetadata, FullReadEvery: 7}
+	due := meta
+	due.MetadataRunsSinceFullRead = 6
+	cases := []struct {
+		name          string
+		job           ScheduledJob
+		read          string
+		mode          string
+		sched, reqstd bool
+	}{
+		{"schedule: metadata run", meta, "", "metadata", false, false},
+		{"schedule: due full read", due, "", "data", true, false},
+		{"Run now full on a metadata run", meta, "full", "data", false, true},
+		{"Run now quick when a full read is due", due, "quick", "metadata", false, false},
+		{"Run now full when due anyway", due, "full", "data", false, true},
+		{"data set ignores quick", ScheduledJob{ChangeDetectionMode: "data"}, "quick", "data", false, false},
+		{"legacy set ignores full", ScheduledJob{}, "full", "", false, false},
+		{"machine set ignores full", ScheduledJob{BackupType: "machine", ChangeDetectionMode: "metadata"}, "full", "", false, false},
+	}
+	for _, c := range cases {
+		c.job.RequestedRead = c.read
+		m, _ := changeDetectionForRun(c.job)
+		got, s, r := applyRequestedRead(c.job, m)
+		if got != c.mode || s != c.sched || r != c.reqstd {
+			t.Errorf("%s: got (%q, %v, %v), want (%q, %v, %v)", c.name, got, s, r, c.mode, c.sched, c.reqstd)
+		}
+	}
+	// A quick run when due leaves the full read due for the next run.
+	if n := nextFullReadCount(due, true, false); n != 7 {
+		t.Errorf("count after a quick run when due = %d, want 7", n)
+	}
+	d2 := due
+	d2.MetadataRunsSinceFullRead = 7
+	if m, _ := changeDetectionForRun(d2); m != "data" {
+		t.Errorf("next run after a quick one should still be a full read, got %q", m)
+	}
+}

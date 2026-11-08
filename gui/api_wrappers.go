@@ -13,6 +13,9 @@ import (
 
 // SaveScheduledJobFromMap is an API wrapper that accepts map[string]interface{}
 func (a *App) SaveScheduledJobFromMap(jobData map[string]interface{}) error {
+	if err := a.checkJobsChangeAllowedViaAPI(); err != nil {
+		return err
+	}
 	// Convert map to JSON then unmarshal to ScheduledJob
 	jsonData, err := json.Marshal(jobData)
 	if err != nil {
@@ -23,17 +26,15 @@ func (a *App) SaveScheduledJobFromMap(jobData map[string]interface{}) error {
 	if err := json.Unmarshal(jsonData, &job); err != nil {
 		return fmt.Errorf("failed to unmarshal job data: %w", err)
 	}
-	// A caller that predates the enable/disable option sends no "enabled"
-	// key: its new job must run, as it always did.
-	if _, ok := jobData["enabled"]; !ok {
-		job.Enabled = true
-	}
 
 	return a.SaveScheduledJob(job)
 }
 
 // UpdateScheduledJobFromMap is an API wrapper that accepts map[string]interface{}
 func (a *App) UpdateScheduledJobFromMap(jobData map[string]interface{}) error {
+	if err := a.checkJobsChangeAllowedViaAPI(); err != nil {
+		return err
+	}
 	jsonData, err := json.Marshal(jobData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal job data: %w", err)
@@ -43,26 +44,15 @@ func (a *App) UpdateScheduledJobFromMap(jobData map[string]interface{}) error {
 	if err := json.Unmarshal(jsonData, &job); err != nil {
 		return fmt.Errorf("failed to unmarshal job data: %w", err)
 	}
-	// A caller that sends no "enabled" key keeps the stored state instead of
-	// silently disabling the job.
-	if _, ok := jobData["enabled"]; !ok {
-		jobs, err := a.GetScheduledJobs()
-		if err != nil {
-			return fmt.Errorf("failed to load jobs: %w", err)
-		}
-		for _, j := range jobs {
-			if j.ID == job.ID {
-				job.Enabled = j.Enabled
-				break
-			}
-		}
-	}
 
 	return a.UpdateScheduledJob(job)
 }
 
 // DeleteScheduledJobFromMap is an API wrapper (same signature, just for consistency)
 func (a *App) DeleteScheduledJobFromMap(jobID string) error {
+	if err := a.checkJobsChangeAllowedViaAPI(); err != nil {
+		return err
+	}
 	return a.DeleteScheduledJob(jobID)
 }
 
@@ -74,7 +64,7 @@ func (a *App) DeleteScheduledJobFromMap(jobID string) error {
 // persist and the connection test would keep reporting the server offline.
 func (a *App) pinFingerprintLocal(id, fingerprint string) error {
 	if err := security.ValidateFingerprint(fingerprint); err != nil {
-		return fmt.Errorf("empreinte certificat invalide: %w", err)
+		return fmt.Errorf("invalid certificate fingerprint: %w", err)
 	}
 	pbs, err := a.config.GetPBSServer(id)
 	if err != nil {
@@ -83,7 +73,7 @@ func (a *App) pinFingerprintLocal(id, fingerprint string) error {
 	pbs.CertFingerprint = fingerprint
 	if err := a.config.UpdatePBSServer(pbs); err != nil {
 		writeDebugLog(fmt.Sprintf("pinFingerprintLocal: could not persist fingerprint for %q: %v", id, err))
-		return fmt.Errorf("impossible d'enregistrer l'empreinte (config.json non accessible en écriture ?): %w", err)
+		return fmt.Errorf("unable to save the fingerprint (config.json not writable?): %w", err)
 	}
 	// Read the file back so the log states unambiguously whether the fingerprint
 	// reached disk — this separates a write/permission failure from a TLS-apply bug

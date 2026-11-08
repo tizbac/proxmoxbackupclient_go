@@ -20,7 +20,7 @@
 # (download.proxmox.com only carries the bookworm/bullseye keys).
 #
 # Build:
-#   docker build -t proxmoxbackupclient-e2e-client testing/e2e/official-client
+#   docker build -t salvanza-e2e-client testing/e2e/official-client
 FROM debian:trixie-slim
 
 # Proxmox's own instructions use plain http for both the key and the repo and

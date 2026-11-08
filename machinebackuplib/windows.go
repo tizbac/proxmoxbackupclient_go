@@ -269,7 +269,35 @@ func GetDiskSize(path string) (int64, error) {
 	return GetDiskLength(path)
 }
 
-func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback ProgressCallback) (int64, error) {
+// partitionLetter returns the drive letter of the volume on disk that
+// overlaps start..end, or "". Overlap (rather than an exact offset match)
+// also covers volumes whose extent starts slightly off the partition start.
+// Only an exact drive-letter mount ("X:\") counts. Folder mount points
+// ("C:\Mount\Data\") have no own letter; backing them up raw by partition
+// offset yields the correct data (if not crash-consistent), whereas taking
+// the host volume's letter as theirs would snapshot the wrong volume.
+func partitionLetter(start, end uint64, vols []VolumeLetterAssign, disk int) string {
+	for _, V := range vols {
+		if V.DiskNumber != int32(disk) {
+			continue
+		}
+		if end <= V.Offset || start >= V.Offset+V.Length {
+			continue // no overlap
+		}
+		for _, mountPath := range V.Letters {
+			if len(mountPath) == 3 && mountPath[1] == ':' && mountPath[2] == '\\' {
+				return string(mountPath[0])
+			}
+		}
+	}
+	return ""
+}
+
+// BackupWindowsDisk images \\.\PhysicalDrive<index>. With readFree false,
+// the free clusters of each snapshotted NTFS volume are not read but sent as
+// zeros (see usedMap). The partitions skips name are not read or snapshotted
+// and go in as zeros (markSkipped).
+func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback ProgressCallback, jp *JobProgress, readFree bool, skips []PartitionSkip) (int64, error) {
 	parts := make([]Partition, 0)
 	ch := make(chan []byte)
 	diskdev := fmt.Sprintf("\\\\.\\PhysicalDrive%d", index)
@@ -342,36 +370,26 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			StartByte: uint64(E.StartingOffset),
 			EndByte:   uint64(E.StartingOffset + E.PartitionLength),
 			Skip:      false,
+			Number:    int(E.PartitionNumber),
 		}
 		// An active volume (one with a drive letter) that overlaps this
 		// partition MUST be read through a VSS snapshot: reading the raw disk
-		// underneath a mounted NTFS volume is not crash-consistent. Overlap
-		// (rather than exact offset match) also covers volumes whose extent
-		// starts slightly off the partition start.
-		for _, V := range vols {
-			if V.DiskNumber != int32(index) {
-				continue
-			}
-			volEnd := V.Offset + V.Length
-			if p.EndByte <= V.Offset || p.StartByte >= volEnd {
-				continue // no overlap
-			}
-			// Only an exact drive-letter mount ("X:\") gives a usable VSS
-			// letter. Folder mount points ("C:\Mount\Data\") have no own
-			// letter; backing them up raw by partition offset yields the
-			// correct data (if not crash-consistent), whereas taking the host
-			// volume's letter as theirs would snapshot the wrong volume.
-			for _, mountPath := range V.Letters {
-				if len(mountPath) == 3 && mountPath[1] == ':' && mountPath[2] == '\\' {
-					p.RequiresVSS = true
-					if p.Letter == "" {
-						p.Letter = string(mountPath[0])
-					}
-					break
-				}
-			}
+		// underneath a mounted NTFS volume is not crash-consistent.
+		if letter := partitionLetter(p.StartByte, p.EndByte, vols, index); letter != "" {
+			p.RequiresVSS = true
+			p.Letter = letter
+			p.FileSystem = volumeFileSystem(letter)
 		}
 		parts = append(parts, p)
+	}
+
+	// The partitions the Backup Set leaves out: taken off the snapshot here,
+	// written as zeros by readPartition.
+	for _, msg := range markSkipped(diskdev, parts, skips) {
+		log.Print(msg)
+		if progressCallback != nil {
+			progressCallback(0, msg)
+		}
 	}
 
 	// Enforce VSS coverage: every drive-letter volume on this disk must fall
@@ -405,13 +423,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 		}
 	}
 
-	snapshot_paths := make([]string, 0)
-
-	for _, p := range parts {
-		if p.RequiresVSS {
-			snapshot_paths = append(snapshot_paths, fmt.Sprintf("%s:\\\\", p.Letter))
-		}
-	}
+	snapshot_paths := vssPaths(parts)
 
 	total, err := GetDiskLength(diskdev)
 	if err != nil {
@@ -427,9 +439,14 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 
 	// Visible "working" phase before the snapshot step: on a live Windows
 	// system CreateVSSSnapshot can take a while (it runs the VSS writers),
-	// and without this the GUI progress bar appears frozen at 0%.
+	// and without this the GUI progress bar appears frozen at 0%. A disk
+	// with no volume to snapshot takes none and is read straight away, so
+	// the card says it is reading rather than taking a snapshot.
+	if len(snapshot_paths) == 0 {
+		jp.setPhase("data")
+	}
 	if progressCallback != nil {
-		progressCallback(0, fmt.Sprintf("%s: creating VSS snapshot", diskdev))
+		progressCallback(0, snapshotStep(diskdev, parts))
 	}
 
 	return total, snapshot.CreateVSSSnapshot(snapshot_paths, false, func(snapshots map[string]snapshot.SnapShot) error {
@@ -441,7 +458,6 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 		}
 		defer F.Close()
 
-		var b int64 = 0
 		buffer := make([]byte, 0)
 
 		errCh := make(chan error, 1)
@@ -453,10 +469,7 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			if progressCallback == nil {
 				return false
 			}
-			if total == 0 {
-				return progressCallback(0, fmt.Sprintf("%s: Block %d", diskdev, b))
-			}
-			return progressCallback(float64(pos)/float64(total), fmt.Sprintf("%s: Block %d", diskdev, b))
+			return progressCallback(float64(pos)/float64(total), blockMessage(diskdev, pos, uint64(total)))
 		}
 
 		sendChunk := func(p []byte) bool {
@@ -500,98 +513,169 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			return true
 		}
 
-		block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
-
-		// readRaw reads the disk itself from pos up to end and returns how
-		// far it got.
-		readRaw := func(pos, end uint64) (uint64, error) {
-			if _, err := F.Seek(int64(pos), io.SeekStart); err != nil {
-				return pos, fmt.Errorf("seek to offset %d in %s: %w", pos, diskdev, err)
+		// Every snapshotted volume's free-space map, read before the first
+		// block, so that the progress counts only what will be read from the
+		// start (JobProgress.ToSkip), and the partitions left out with it.
+		usedMaps := map[string]*usedMap{}
+		for _, P := range parts {
+			if P.Skip {
+				jp.addToSkip(P.EndByte - P.StartByte)
+				continue
 			}
-			for pos < end {
-				nbytes, rerr := F.Read(block[:min(uint64(len(block)), end-pos)])
-				if nbytes > 0 {
-					if !push(block[:nbytes]) {
-						return pos, errUploadAborted
-					}
-					pos += uint64(nbytes)
-				}
-				if report(pos) {
-					return pos, ErrCancelled
-				}
-				b++
-				if rerr == io.EOF {
-					break
-				}
-				if rerr != nil {
-					return pos, fmt.Errorf("read %s at offset %d: %w", diskdev, pos, rerr)
-				}
+			if !P.RequiresVSS || readFree {
+				continue
 			}
-			return pos, nil
+			snap, ok := snapshots[P.Letter+":\\"]
+			if !ok {
+				continue // readPartition says so
+			}
+			snapPath := strings.TrimRight(snap.ObjectPath, "\\")
+			name := fmt.Sprintf("%s: (shadow copy %s)", P.Letter, snap.Id)
+			f, err := os.Open(snapPath)
+			if err != nil {
+				continue // readPartition says so
+			}
+			m, err := readUsedMap(f, snapPath)
+			f.Close()
+			if err != nil {
+				log.Printf("Reading all of %s, free space included: %v", name, err)
+				continue
+			}
+			usedMaps[P.Letter] = m
+			jp.addToSkip(m.skippable(P.EndByte - P.StartByte))
 		}
 
+		// zeroBlk stands in for free space and unreadable sectors.
+		zeroBlk := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
+		block := make([]byte, pbscommon.PBS_FIXED_CHUNK_SIZE)
+
+		// readPartition copies one partition (or a gap between partitions)
+		// into the image: through its VSS shadow copy when it has a drive
+		// letter, raw from the disk otherwise. Sectors the disk cannot read
+		// go in as zeros and are recorded (readResilient), instead of failing
+		// the whole image as one bad sector used to.
 		readPartition := func(P Partition) error {
 			pos := P.StartByte
-			if !P.RequiresVSS {
-				var err error
-				if pos, err = readRaw(P.StartByte, P.EndByte); err != nil {
-					return err
-				}
-			} else {
+			jp.setPartition(P.label())
+			length := P.EndByte - P.StartByte
+			var src io.ReaderAt = F
+			srcOff, name := P.StartByte, diskdev
+			var used *usedMap
+			if P.RequiresVSS {
 				snap, ok := snapshots[P.Letter+":\\"]
 				if !ok {
 					return fmt.Errorf("cannot find snapshot for letter %s", P.Letter)
 				}
-				snapshot_file, err := os.Open(strings.TrimRight(snap.ObjectPath, "\\"))
+				snapPath := strings.TrimRight(snap.ObjectPath, "\\")
+				snapshot_file, err := os.Open(snapPath)
 				if err != nil {
 					return err
 				}
 				defer snapshot_file.Close()
-
-				l, err := GetDiskLength(strings.TrimRight(snap.ObjectPath, "\\"))
+				l, err := GetDiskLength(snapPath)
 				if err != nil {
 					return err
 				}
-				if uint64(P.StartByte)+uint64(l) > P.EndByte {
+				// Read the shadow up to the partition end: a larger shadow is
+				// cut at the partition boundary, and past the end of a smaller
+				// one (the volume ends before the partition) the rest is read
+				// from the disk (shadowThenDisk).
+				if uint64(l) > length {
 					log.Print("Harmless warning: VSS snapshot is larger than partition, will read only up to the partition end")
 				}
+				name = fmt.Sprintf("%s: (shadow copy %s)", P.Letter, snap.Id)
+				src, srcOff = &shadowThenDisk{shadow: snapshot_file, disk: F, start: int64(P.StartByte), name: name}, 0
+				used = usedMaps[P.Letter]
+			}
 
-				// Read the shadow up to the partition end. Clamping each read
-				// to P.EndByte-pos means pos never overshoots, so a shadow that
-				// is exactly the partition size ends cleanly on EOF, a smaller
-				// shadow leaves the rest to read from the disk, and a larger
-				// one is simply truncated at the partition boundary.
-				for pos < P.EndByte {
-					nbytes, rerr := snapshot_file.Read(block[:min(uint64(len(block)), P.EndByte-pos)])
-					if report(pos) {
+			stoppedByUser := false
+			emit := func(data []byte) bool {
+				if !push(data) {
+					return false
+				}
+				pos += uint64(len(data))
+				if report(pos) {
+					stoppedByUser = true
+					return false
+				}
+				return true
+			}
+			emitZeros := func(n uint64) bool {
+				for n > 0 {
+					m := min(uint64(len(zeroBlk)), n)
+					if !emit(zeroBlk[:m]) {
+						return false
+					}
+					n -= m
+				}
+				return true
+			}
+			onBad := func(off, n uint64) {
+				diskOff := P.StartByte + (off - srcOff)
+				log.Printf("Warning: %s unreadable at disk offset %d (%d bytes), written as zeros", name, diskOff, n)
+				jp.noteUnreadable(diskdev, diskOff, n)
+			}
+
+			if P.Skip {
+				// Left out by the Backup Set: zeros, and nothing read.
+				if !leaveOut(length, emitZeros, jp) {
+					if stoppedByUser {
 						return ErrCancelled
 					}
-					b++
-					if nbytes > 0 {
-						if !push(block[:nbytes]) {
-							return errUploadAborted
-						}
-						pos += uint64(nbytes)
-					}
-					if rerr == io.EOF {
-						break
-					}
-					if rerr != nil {
-						return fmt.Errorf("read snapshot %s at offset %d: %w", snap.Id, pos, rerr)
-					}
+					return errUploadAborted
 				}
+				log.Printf("%s: %s not read, written as zeros", diskdev, P.baseLabel())
+				return nil
+			}
 
-				// The shadow covers the volume, which can end before the
-				// partition does. NTFS always does: its backup boot sector is
-				// the partition's last sector, outside the volume. The file
-				// system never writes past the volume's end, so the rest is
-				// read from the disk itself rather than stored as zeros.
-				if pos < P.EndByte {
-					log.Printf("Reading the last %d bytes of the partition from the disk", P.EndByte-pos)
-					if pos, err = readRaw(pos, P.EndByte); err != nil {
-						return err
+			var err error
+			if used == nil {
+				err = readResilient(src, srcOff, length, block, 4096, emit, emitZeros, onBad)
+			} else {
+				// 4 MiB at a time: a window with no used cluster is zeros,
+				// the rest is read (whole windows keep the reads large), and
+				// the free clusters in it are zeroed before they go out, so
+				// deleted data never reaches the backup and blank space dedupes.
+				var skipped uint64
+				for w := uint64(0); w < length && err == nil; w += pbscommon.PBS_FIXED_CHUNK_SIZE {
+					n := min(uint64(pbscommon.PBS_FIXED_CHUNK_SIZE), length-w)
+					if used.anyUsed(int64(w), int64(n)) {
+						at := int64(w)
+						masked := func(data []byte) bool {
+							used.zeroFree(data, at)
+							at += int64(len(data))
+							return emit(data)
+						}
+						maskedZeros := func(k uint64) bool {
+							at += int64(k)
+							return emitZeros(k)
+						}
+						err = readResilient(src, srcOff+w, n, block, 4096, masked, maskedZeros, onBad)
+					} else if emitZeros(n) {
+						// Counted as it goes, so the progress card shows
+						// it growing instead of 0 B until the partition ends.
+						skipped += n
+						jp.FreeSkipped.Add(n)
+					} else {
+						err = errCopyStopped
 					}
 				}
+				log.Printf("%s: %s of free space not read", name, BytesToString(int64(skipped)))
+			}
+			if err == errCopyStopped {
+				if stoppedByUser {
+					return ErrCancelled
+				}
+				return errUploadAborted
+			}
+			if err != nil {
+				return fmt.Errorf("read %s at offset %d: %w", name, pos, err)
+			}
+			if pos < P.EndByte && !emitZeros(P.EndByte-pos) {
+				if stoppedByUser {
+					return ErrCancelled
+				}
+				return errUploadAborted
 			}
 			if pos != P.EndByte {
 				return fmt.Errorf("failed to read partition entirely %d/%d", pos, P.EndByte)
@@ -599,15 +683,21 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 			return nil
 		}
 
+		// The reader's result goes into errCh BEFORE ch is closed: uploadWorker
+		// checks errCh with a non-blocking receive once ch is drained, so the
+		// other order let it miss a read error, close the index with a short
+		// chunk count and report PBS's "unexpected chunk count" instead of the
+		// real cause. uploadWorker is the only consumer of errCh; readErr keeps
+		// a copy for when the upload stopped first and never looked.
+		var readErr error
+		readerDone := make(chan struct{})
 		go func() {
 			var rerr error
-			// errCh is buffered and holds exactly one value, and it is sent
-			// BEFORE close(ch): uploadWorker drains ch and only then reads
-			// readErrCh, so this ordering guarantees it sees a cancelled run
-			// and returns without committing a partial fixed index.
 			defer func() {
+				readErr = rerr
 				errCh <- rerr
 				close(ch)
+				close(readerDone)
 			}()
 			for idx, P := range parts {
 				fmt.Printf("Partition: %d\n", idx)
@@ -624,28 +714,21 @@ func BackupWindowsDisk(client *pbscommon.PBSClient, index int, progressCallback 
 		var uploadErr error
 		go func() {
 			defer close(uploadDone)
-			uploadErr = uploadWorker(client, fmt.Sprintf("drive-sata%d.img.fidx", index), uint64(total), ch, errCh)
+			uploadErr = uploadWorker(client, fmt.Sprintf("drive-sata%d.img.fidx", index), uint64(total), ch, errCh, jp)
 		}()
 
-		// uploadWorker is the SOLE consumer of errCh (see its doc comment) and
-		// returns the reader's terminal error — including ErrCancelled from a
-		// user Stop — through its own return value. Reading errCh a second
-		// time here raced it: the caller usually won the receive, which left
-		// uploadWorker taking its empty-channel path and committing a partial
-		// fixed index (PBS then failed the close with "unexpected chunk
-		// count"); in the other interleaving this receive never returned and
-		// the job hung with the VSS snapshots still held.
 		<-uploadDone
-		return uploadErr
+		<-readerDone
+		if uploadErr != nil {
+			return uploadErr
+		}
+		return readErr
 	})
 }
 
-func SysTraySetup() {
-	//TODO
-}
-
 // backupWholeDisk is Linux-only (see linux.go). On Windows whole disks are
-// handled through the \\\\.\\PhysicalDriveN path, so this reports "not handled".
-func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, useSnapshot bool, progressCallback ProgressCallback) (bool, int64, error) {
+// handled through the \\\\.\\PhysicalDriveN path, so this reports "not handled"
+// (and liveRead does not apply: a volume in use is always read through VSS).
+func backupWholeDisk(client *pbscommon.PBSClient, dev string, index int, progressCallback ProgressCallback, jp *JobProgress, readFree, liveRead bool, skips []PartitionSkip) (bool, int64, error) {
 	return false, 0, nil
 }

@@ -252,7 +252,7 @@ func DecodeEncryptedBlob(raw []byte, crypt *CryptConfig, digest []byte) ([]byte,
 		if err := verifyBlobCRC(raw, DataBlobHeaderSize); err != nil {
 			return nil, err
 		}
-		if err := verifyPlaintextDigest(plaintext, crypt, digest); err != nil {
+		if err := verifyUnencryptedDigest(plaintext, crypt, digest); err != nil {
 			return nil, err
 		}
 		return plaintext, nil
@@ -264,7 +264,7 @@ func DecodeEncryptedBlob(raw []byte, crypt *CryptConfig, digest []byte) ([]byte,
 		if err != nil {
 			return nil, err
 		}
-		if err := verifyPlaintextDigest(plaintext, crypt, digest); err != nil {
+		if err := verifyUnencryptedDigest(plaintext, crypt, digest); err != nil {
 			return nil, err
 		}
 		return plaintext, nil
@@ -318,6 +318,20 @@ func verifyBlobCRC(raw []byte, headerSize int) error {
 	return nil
 }
 
+// verifyUnencryptedDigest checks an unencrypted chunk against its digest. With
+// a key configured that digest is either keyed (a sign-only snapshot) or a
+// plain sha256 (a snapshot taken before the key was set up, or without it),
+// so both are accepted: a chunk that matches the other kind would need a
+// sha256 preimage. Encrypted chunks keep the strict check.
+func verifyUnencryptedDigest(plaintext []byte, crypt *CryptConfig, digest []byte) error {
+	if crypt != nil && len(digest) > 0 {
+		if plain := sha256.Sum256(plaintext); bytes.Equal(plain[:], digest) {
+			return nil
+		}
+	}
+	return verifyPlaintextDigest(plaintext, crypt, digest)
+}
+
 func verifyPlaintextDigest(plaintext []byte, crypt *CryptConfig, digest []byte) error {
 	if len(digest) == 0 {
 		return nil
@@ -344,8 +358,9 @@ func verifyPlaintextDigest(plaintext []byte, crypt *CryptConfig, digest []byte) 
 // file. KDF is "scrypt" or "PBKDF2"; only the fields relevant to it are used.
 // On disk it is serde's externally tagged enum, as written by
 // proxmox-backup-client: {"Scrypt":{"n":..,"r":..,"p":..,"salt":..}} or
-// {"PBKDF2":{"iter":..,"salt":..}}. The flat layout this package wrote before,
-// {"kdf":"scrypt","n":..,"r":..,"p":..,"salt":..}, is still read.
+// {"PBKDF2":{"iter":..,"salt":..}}. The flat layout upstream's code expected
+// before tizbac/proxmoxbackupclient_go#95, {"kdf":"scrypt","n":..,"r":..,
+// "p":..,"salt":..}, is still read; a key file is always written tagged.
 type KeyDerivationConfig struct {
 	KDF  string
 	N    uint64

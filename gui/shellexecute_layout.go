@@ -6,7 +6,7 @@ package main
 // getting this layout wrong is invisible: ShellExecuteExW simply fails with
 // ERROR_INVALID_PARAMETER (87) and no UAC prompt ever appears, which reads like
 // "elevation does nothing" rather than like a broken struct. Field ORDER is the
-// Win32 order — cbSize, fMask, hwnd, lpVerb, lpFile, lpParameters, lpDirectory,
+// Win32 order: cbSize, fMask, hwnd, lpVerb, lpFile, lpParameters, lpDirectory,
 // nShow, hInstApp, lpIDList, lpClass, hkeyClass, dwHotKey, hMonitor, hProcess
 // (SHELLEXECUTEINFOW is 112 bytes on x64).
 type shellExecInfo struct {

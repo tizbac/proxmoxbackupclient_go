@@ -1,0 +1,90 @@
+﻿[
+    {
+        "path":  "docs",
+        "isDir":  true,
+        "size":  0,
+        "sha256":  "",
+        "mtime":  134361847261190973,
+        "created":  134361847246446261
+    },
+    {
+        "path":  "compressed.txt",
+        "isDir":  false,
+        "size":  1350000,
+        "sha256":  "6c0a274795f3107470616e08b25a4c28a3c21cb047bdfdd7d51c0459904976af",
+        "mtime":  134361847262260524,
+        "created":  134361847262260524
+    },
+    {
+        "path":  "empty.txt",
+        "isDir":  false,
+        "size":  0,
+        "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mtime":  134361847261349154,
+        "created":  134361847261349154
+    },
+    {
+        "path":  "hello.txt",
+        "isDir":  false,
+        "size":  11,
+        "sha256":  "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+        "mtime":  132224078450000000,
+        "created":  132043685500000000
+    },
+    {
+        "path":  "sparse.bin",
+        "isDir":  false,
+        "size":  8388608,
+        "sha256":  "d7483e2fb7ab1e2c86fda9585c605a41d0de16d0fc3228f0a4561cf4bf7e8c51",
+        "mtime":  134361847262239913,
+        "created":  134361847261484945
+    },
+    {
+        "path":  "Ünïcödé 日本.txt",
+        "isDir":  false,
+        "size":  12,
+        "sha256":  "8898cd6a1c9777bbb832388868a66967c501a8ab02291e595816b7b23470c838",
+        "mtime":  134361847261260854,
+        "created":  134361847261260854
+    },
+    {
+        "path":  "docs/sub",
+        "isDir":  true,
+        "size":  0,
+        "sha256":  "",
+        "mtime":  134361847246446261,
+        "created":  134361847246446261
+    },
+    {
+        "path":  "docs/link-to-report.docx",
+        "isDir":  false,
+        "size":  10000,
+        "sha256":  "67c33de4c3ab84145524f7ccaf2543c8c05fa764c298ad9df5d15158aa66c737",
+        "mtime":  134361847248214476,
+        "created":  134361847248214476
+    },
+    {
+        "path":  "docs/report.docx",
+        "isDir":  false,
+        "size":  10000,
+        "sha256":  "67c33de4c3ab84145524f7ccaf2543c8c05fa764c298ad9df5d15158aa66c737",
+        "mtime":  134361847248214476,
+        "created":  134361847248214476
+    },
+    {
+        "path":  "docs/sub/deep",
+        "isDir":  true,
+        "size":  0,
+        "sha256":  "",
+        "mtime":  134361847246451561,
+        "created":  134361847246451561
+    },
+    {
+        "path":  "docs/sub/deep/file.bin",
+        "isDir":  false,
+        "size":  5243003,
+        "sha256":  "409427c6f145f7a5945771f85f3e79a2331b1c8c293392c4f2d93ed7b2d005ac",
+        "mtime":  134361847261190973,
+        "created":  134361847260849875
+    }
+]

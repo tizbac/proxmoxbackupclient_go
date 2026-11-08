@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -57,9 +56,9 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "missing datastore",
 			config: Config{
-				BaseURL:   "https://pbs.example.com:8007",
-				AuthID:    "test@pbs!token",
-				Secret:    "secret123",
+				BaseURL: "https://pbs.example.com:8007",
+				AuthID:  "test@pbs!token",
+				Secret:  "secret123",
 			},
 			wantErr: true,
 		},
@@ -75,29 +74,19 @@ func TestConfigValidation(t *testing.T) {
 	}
 }
 
-// useTempDefaultConfigDir points getConfigDir's default location at a temp
-// directory and returns the config.json path it should then resolve to. On
-// Windows the default is %ProgramData%\ProxmoxBackupClient, not the home
-// directory, so setting HOME alone left these tests writing the real
-// C:\ProgramData\ProxmoxBackupClient\config.json of the machine running them.
-func useTempDefaultConfigDir(t *testing.T) string {
-	t.Helper()
-	tmpDir := t.TempDir()
-	old := configDirOverride
-	SetConfigDir("")
-	t.Cleanup(func() { SetConfigDir(old) })
-	t.Setenv("HOME", tmpDir)
-	if runtime.GOOS == "windows" {
-		t.Setenv("ProgramData", tmpDir)
-		return filepath.Join(tmpDir, "ProxmoxBackupClient", "config.json")
-	}
-	t.Setenv("ProgramData", "")
-	t.Setenv("SystemDrive", "")
-	return filepath.Join(tmpDir, ".proxmox-backup-guardian", "config.json")
-}
-
 func TestConfigSaveLoad(t *testing.T) {
-	configPath := useTempDefaultConfigDir(t)
+	if serviceBuild {
+		t.Skip("the service keeps its settings in ProgramData")
+	}
+	// The app keeps its settings in the user's ~/.salvanza
+	// (the service's are in ProgramData, which only the service writes).
+	// Redirect the home folder (both variables: HOME on Linux, USERPROFILE
+	// on Windows) so this never writes a real one: un-redirected, an earlier
+	// version of this test clobbered a dev machine's real settings
+	// (2026-10-01).
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir)
 
 	config := &Config{
 		BaseURL:   "https://pbs.example.com:8007",
@@ -113,7 +102,8 @@ func TestConfigSaveLoad(t *testing.T) {
 		t.Fatalf("Config.Save() error = %v", err)
 	}
 
-	// Verify file exists
+	// Verify file exists, at the path getConfigDir() resolves to for the app.
+	configPath := filepath.Join(tmpDir, ".salvanza", "config.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Fatalf("Config file not created at %s", configPath)
 	}
@@ -136,13 +126,20 @@ func TestConfigSaveLoad(t *testing.T) {
 }
 
 func TestGetConfigPath(t *testing.T) {
-	expectedPath := useTempDefaultConfigDir(t)
+	// The app's settings are in the user's folder (see TestConfigSaveLoad).
+	if serviceBuild {
+		t.Skip("the service keeps its settings in ProgramData")
+	}
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir)
 
 	configPath, err := getConfigPath()
 	if err != nil {
 		t.Fatalf("getConfigPath() error = %v", err)
 	}
 
+	expectedPath := filepath.Join(tmpDir, ".salvanza", "config.json")
 	if configPath != expectedPath {
 		t.Errorf("getConfigPath() = %v, want %v", configPath, expectedPath)
 	}

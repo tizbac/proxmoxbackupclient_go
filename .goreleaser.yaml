@@ -4,6 +4,9 @@
 # .github/workflows/build-and-release.yml, which uploads them to the same
 # GitHub release this file creates for the tag.
 #
+# One program, salvanza-cli (./cli), with the subcommands backup-folder,
+# backup-disk and, on Linux, attach-nbd.
+#
 # Config schema: GoReleaser v2 (v1 configs are rejected since v2.19).
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
@@ -11,65 +14,31 @@
 version: 2
 
 builds:
-  - id: windows
-    main: ./directorybackup
-    binary: pbsdirectorybackup
-    goos:
-      - windows
-    goarch:
-      - amd64
-  - id: windows_machine
-    main: ./machinebackup
-    binary: pbsmachinebackup
-    goos:
-      - windows
-    goarch:
-      - amd64
-  - id: machine
-    main: ./machinebackup
-    binary: pbsmachinebackup
+  - id: salvanza-cli
+    main: ./cli
+    binary: salvanza-cli
     goos:
       - linux
+      - windows
+      - darwin
       - freebsd
       - netbsd
       - openbsd
       - solaris
     goarch:
       - amd64
-  - id: nbd
-    main: ./nbd
-    binary: pbsnbd
-    goos:
-      - linux
-    goarch:
-      - amd64
-  - id: directory
-    main: ./directorybackup
-    binary: directorybackup
-    goos:
-      - linux
-      - freebsd
-      - netbsd
-      - openbsd
-      - solaris
-    goarch:
-      - amd64
-
-  - id: darwin-amd64
-    main: ./directorybackup
-    binary: directorybackup
-    goos:
-      - darwin
-    goarch:
-      - amd64
-
-  - id: darwin-arm64
-    main: ./directorybackup
-    binary: directorybackup
-    goos:
-      - darwin
-    goarch:
       - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+      - goos: freebsd
+        goarch: arm64
+      - goos: netbsd
+        goarch: arm64
+      - goos: openbsd
+        goarch: arm64
+      - goos: solaris
+        goarch: arm64
 
 release:
   # A tag with a prerelease suffix (e.g. v1.2.0-rc.1) publishes as a
@@ -81,7 +50,6 @@ universal_binaries:
 
 archives:
   - formats: [tar.gz]
-    allow_different_binary_count: true
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_

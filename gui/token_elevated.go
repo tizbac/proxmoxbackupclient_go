@@ -1,52 +1,47 @@
 package main
 
-// token_elevated.go implements the elevated token-fetch protocol, shared by
-// all platforms:
+// The elevated token fetch (from upstream's token_elevated.go).
 //
-// The service's local-API token file is readable only by the privileged
-// account (root on Linux, SYSTEM + Administrators on Windows). A
-// normal-user GUI process therefore cannot read it directly. When the GUI
-// probes the service and gets 401 (running, token missing), it:
+// The service's API token file is readable only by the service's account and
+// elevated administrators (root on Linux). An app run without elevation
+// therefore cannot read it, and gets it like this:
 //
-//  1. creates a private handoff file in the user's temp dir (0600),
-//  2. launches a copy of itself elevated (UAC "runas" on Windows,
-//     pkexec/sudo on Linux) with `--elevated-token-fetch <handoffFile>`,
-//  3. the elevated child reads the service token file, writes it to the
-//     handoff file, and exits — it never starts the GUI,
-//  4. the parent polls the handoff file, keeps the token in memory
-//     (api.SetTokenOverride) and deletes the handoff file.
+//  1. it creates a private handoff file in the user's temp folder (0600),
+//  2. it starts a copy of itself elevated (UAC "runas" on Windows, pkexec on
+//     Linux) with --elevated-token-fetch <handoff file>,
+//  3. that copy reads the token file, writes the token into the handoff file
+//     and exits: it never starts a window,
+//  4. the app reads the handoff file, keeps the token in memory
+//     (api.SetTokenOverride) and deletes the file.
 //
-// The same protocol runs again whenever the service's token is rotated away
-// under a running GUI: the rejected request triggers the hook installed by
-// api.SetUnauthorizedHook, which repeats this fetch (token_refresh.go) instead
-// of failing forever.
-//
-// The child handler MUST run before flag parsing and single-instance checks,
-// so the elevated process does nothing else.
+// It runs again when the service replaces the token under a running app
+// (every 24 hours): the refused request runs the unauthorized hook
+// (service_connect.go), which fetches again.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/tizbac/proxmoxbackupclient_go/gui/api"
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
-// elevatedTokenFetchFlag is the argv marker identifying the elevated child.
+// elevatedTokenFetchFlag marks the elevated copy on its command line.
 const elevatedTokenFetchFlag = "--elevated-token-fetch"
 
-// checkHandoffPath rejects handoff paths the parent could not have created.
-// The elevated child writes to the path it is given, so only an absolute,
-// regular (non-symlink) file is accepted — a FIFO or device would block or
-// misbehave, and a symlink could redirect the root-owned write elsewhere.
+// checkHandoffPath refuses a handoff path the app could not have created.
+// The elevated copy writes to the path it is given, so only an absolute,
+// regular (not a link) file is accepted: a FIFO or device would block, and a
+// link could send the elevated write elsewhere.
 func checkHandoffPath(p string) error {
 	if !filepath.IsAbs(p) {
 		return fmt.Errorf("not an absolute path: %q", p)
 	}
-	// #nosec G703 -- Lstat is the check itself: it must look at the untrusted
-	// path, and unlike Open/Stat it neither follows symlinks nor writes.
+	// #nosec G703 -- Lstat is the check itself: it looks at the path without
+	// following a link or writing.
 	fi, err := os.Lstat(filepath.Clean(p))
 	if err != nil {
 		return err
@@ -57,107 +52,159 @@ func checkHandoffPath(p string) error {
 	return nil
 }
 
-// handleElevatedTokenFetchChild returns true (and exits the process) when this
-// invocation IS the elevated child: it copies the service token into the
-// handoff file and stops. It runs at the very top of main().
+// handleElevatedTokenFetchChild returns false, or exits the process when this
+// is the elevated copy: it copies the service's token into the handoff file
+// and stops. main() calls it first, before flags and the single-instance
+// check.
 func handleElevatedTokenFetchChild(args []string) bool {
 	for i, a := range args {
 		if a != elevatedTokenFetchFlag || i+1 >= len(args) {
 			continue
 		}
 		handoff := args[i+1]
-		writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: reading %s -> %s", serviceTokenPath(), handoff))
+		writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: reading %s -> %s", getAPITokenPath(), handoff))
 		if handoff == "" {
 			os.Exit(exitChildBadArgument)
 		}
 
 		token := ""
-		if b, err := os.ReadFile(serviceTokenPath()); err == nil {
+		if b, err := os.ReadFile(getAPITokenPath()); err == nil {
 			token = strings.TrimSpace(string(b))
 		} else {
 			writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: cannot read token file: %v", err))
 		}
 		if token == "" {
-			// Tell the parent WHY: it waits on this exit code instead of
-			// polling a handoff file that will never be filled.
 			writeDebugLog("[ElevatedTokenFetch] child: no token available, exiting")
 			os.Exit(exitTokenFileUnread)
 		}
-
-		// The handoff path arrives in argv, and this child runs elevated: refuse
-		// anything that is not the plain file the parent created, so an
-		// invocation cannot use the (user-approved) elevation prompt to
-		// truncate an arbitrary file.
-		if err := checkHandoffPath(handoff); err != nil {
-			writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: refusing handoff path: %v", err))
-			os.Exit(exitHandoffUnusable)
-		}
-
-		// The parent created the handoff file; open it WITHOUT creating
-		// it, so a vanished file can never be re-created root-owned.
-		// #nosec G703 -- handoff was validated by checkHandoffPath just above
-		// (absolute path, existing regular file, no symlink).
-		f, err := os.OpenFile(handoff, os.O_WRONLY|os.O_TRUNC, 0600)
-		if err != nil {
-			writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: cannot open handoff file: %v", err))
-			os.Exit(exitHandoffUnusable)
-		}
-		if _, err := f.WriteString(token); err != nil {
-			writeDebugLog(fmt.Sprintf("[ElevatedTokenFetch] child: cannot write handoff file: %v", err))
-			_ = f.Close()
-			os.Exit(exitHandoffUnusable)
-		}
-		_ = f.Close()
-		writeDebugLog("[ElevatedTokenFetch] child: token handed off")
-		os.Exit(exitTokenHandedOff)
+		os.Exit(writeTokenHandoff("[ElevatedTokenFetch]", handoff, token))
 	}
 	return false
 }
 
-// elevatedFetchTokenWithHandoff creates the private handoff file, launches the
-// platform elevation helper (token_windows.go / token_linux.go) and waits for
-// the token. The token is returned in memory; the handoff file is deleted
-// before returning.
-func elevatedFetchTokenWithHandoff() (string, error) {
-	// When we are already privileged enough to read the service token file
-	// (root, an elevated Windows process, or its owner), read it here instead
-	// of launching a child that would read exactly the same bytes: a prompt
-	// the user can decline would otherwise leave the GUI with a token it
-	// knows to be dead (it happens on every rotation of a privileged
-	// session). Everyone else still goes through the handoff below — the gate
-	// in api.ReadOwnTokenFile is what keeps "connect without asking" closed.
-	if token := api.ReadOwnTokenFile(serviceTokenPath()); token != "" {
-		writeDebugLog("[ElevatedTokenFetch] token file is ours to read, no elevation needed")
+// writeTokenHandoff is the elevated copy's last step: it writes token into
+// the handoff file at handoff and returns the copy's exit code. tag starts
+// its log lines.
+func writeTokenHandoff(tag, handoff, token string) int {
+	// The path arrives on the command line of an elevated process: only
+	// the plain file the app created, so the prompt the user approved
+	// cannot be used to truncate any other file.
+	if err := checkHandoffPath(handoff); err != nil {
+		writeDebugLog(fmt.Sprintf("%s child: refusing handoff path: %v", tag, err))
+		return exitHandoffUnusable
+	}
+
+	// Opened without O_CREATE (a file that vanished is never made again,
+	// owned by the elevated account), without following a link where the
+	// system allows, and not emptied until it is shown to be the file
+	// checked above: the path could have been swapped meanwhile.
+	before, err := os.Lstat(handoff) // #nosec G703 -- handoff was checked by checkHandoffPath just above
+	if err != nil {
+		return exitHandoffUnusable
+	}
+	// #nosec G703 -- handoff was checked by checkHandoffPath just above
+	f, err := os.OpenFile(handoff, os.O_WRONLY|handoffNoFollow, 0o600)
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("%s child: cannot open handoff file: %v", tag, err))
+		return exitHandoffUnusable
+	}
+	if err := checkOpenedHandoff(f, before); err != nil {
+		writeDebugLog(fmt.Sprintf("%s child: refusing handoff file: %v", tag, err))
+		_ = f.Close()
+		return exitHandoffUnusable
+	}
+	if err := f.Truncate(0); err != nil {
+		_ = f.Close()
+		return exitHandoffUnusable
+	}
+	if _, err := f.WriteString(token); err != nil {
+		writeDebugLog(fmt.Sprintf("%s child: cannot write handoff file: %v", tag, err))
+		_ = f.Close()
+		return exitHandoffUnusable
+	}
+	_ = f.Close()
+	writeDebugLog(tag + " child: token handed off")
+	return exitTokenHandedOff
+}
+
+// fetchServiceToken gets the service's token: from the file when this app
+// may read it (elevated, or root: no prompt), otherwise through the elevated
+// copy. The token is kept in memory only; the handoff file is deleted.
+func fetchServiceToken() (string, error) {
+	if token := api.ReadOwnTokenFile(getAPITokenPath()); token != "" {
+		writeDebugLog("[ElevatedTokenFetch] the token file is ours to read, no elevation needed")
 		return token, nil
 	}
 
-	tmp, err := os.CreateTemp("", "pbsgo-token-*")
+	name, err := newHandoffFile()
 	if err != nil {
-		return "", fmt.Errorf("cannot create handoff file: %w", err)
+		return "", err
 	}
-	name := tmp.Name()
-	_ = tmp.Close()
-	_ = os.Chmod(name, 0600)
 	defer func() { _ = os.Remove(name) }()
 
 	return elevatedFetchToken(name)
 }
 
-// elevatedChildTimeout bounds one elevated token fetch: how long the parent
-// waits for the child before giving up (the child itself finishes in
-// milliseconds — it only reads a file — so hitting this is a failure, not
-// normal operation).
+// newHandoffFile creates the private handoff file an elevated copy writes
+// the token into. The caller deletes it.
+//
+// The temp folder can be gone: on a Windows server each remote session has
+// its own (Temp\2 for session 2), and a clean-up that empties Temp while the
+// user stays signed in takes it away, so Connect failed with "cannot create
+// handoff file ... The system cannot find the path specified" (deepthought,
+// 2026-11-04). The folder is then made again, and failing that the app's own
+// settings folder (private to the user too) takes the file.
+func newHandoffFile() (string, error) {
+	pattern := product().FileBase + "-token-*"
+	tmp, err := os.CreateTemp("", pattern)
+	if err != nil {
+		if dir := os.TempDir(); os.MkdirAll(dir, 0o700) == nil {
+			tmp, err = os.CreateTemp(dir, pattern)
+		}
+	}
+	if err != nil {
+		if dir, derr := userConfigDir(); derr == nil && os.MkdirAll(dir, 0o700) == nil {
+			tmp, err = os.CreateTemp(dir, pattern)
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("cannot create handoff file: %w", err)
+	}
+	name := tmp.Name()
+	_ = tmp.Close()
+	_ = os.Chmod(name, 0o600)
+	return name, nil
+}
+
+// elevatedFetchToken starts this program elevated as the token-fetch copy
+// and returns the token it hands back (runElevatedHandoff).
+func elevatedFetchToken(handoffFile string) (string, error) {
+	return runElevatedHandoff(elevatedTokenFetchFlag, handoffFile, elevatedChildTimeout)
+}
+
+// ErrElevationDeclined is a dismissed elevation prompt (UAC, or pkexec's
+// password dialog).
+var ErrElevationDeclined = errors.New("the request for administrator rights was declined")
+
+// elevatedChildTimeout bounds one fetch: how long the app waits for the
+// elevated copy (which takes milliseconds once the prompt is answered).
 const elevatedChildTimeout = 60 * time.Second
 
-// elevated child exit codes, mirrored in handleElevatedTokenFetchChild. They
-// live here rather than in the Windows-only file because the child handler is
-// platform-independent — the Windows parent just reports them.
+// The elevated copy's exit codes.
 const (
-	exitTokenHandedOff   = 0
-	exitHandoffUnusable  = 1 // handoff file could not be opened/written
-	exitTokenFileUnread  = 2 // service token file missing, unreadable or empty
-	exitChildBadArgument = 3 // --elevated-token-fetch without a path
+	exitTokenHandedOff    = 0
+	exitHandoffUnusable   = 1 // handoff file could not be opened or written
+	exitTokenFileUnread   = 2 // token file missing, unreadable or empty
+	exitChildBadArgument  = 3 // --elevated-token-fetch without a path
+	exitServiceNotStarted = 4 // --elevated-service-start: the service did not start
 )
+
+// elevatedChildError is an elevated copy that exited with code, not 0.
+type elevatedChildError struct{ code uint32 }
+
+func (e *elevatedChildError) Error() string {
+	return fmt.Sprintf("the elevated process failed: %s (%s)", elevatedChildExitLabel(e.code), elevatedChildExitHint(e.code))
+}
 
 func elevatedChildExitLabel(code uint32) string {
 	switch code {
@@ -167,6 +214,8 @@ func elevatedChildExitLabel(code uint32) string {
 		return "service token file unreadable"
 	case exitChildBadArgument:
 		return "bad handoff argument"
+	case exitServiceNotStarted:
+		return "the background service did not start"
 	default:
 		return fmt.Sprintf("exit code %d", code)
 	}
@@ -177,16 +226,17 @@ func elevatedChildExitHint(code uint32) string {
 	case exitTokenFileUnread:
 		return "the elevated process could not read the local API token; is the service running?"
 	case exitHandoffUnusable:
-		return "the elevated process could not write the handoff file in the user temp directory"
+		return "the elevated process could not write the handoff file in the user's temp folder"
+	case exitServiceNotStarted:
+		return "the debug log says why; Windows Event Viewer or journalctl may say more"
 	default:
-		return "see the debug log for the child's own report"
+		return "see the debug log for the elevated process's own report"
 	}
 }
 
-// readHandoff returns the token the elevated child wrote into name, or an
-// error when the file is missing, empty or unreadable.
+// readHandoff returns the token the elevated copy wrote into name.
 func readHandoff(name string) (string, error) {
-	b, err := os.ReadFile(name)
+	b, err := os.ReadFile(name) // #nosec G304 -- the handoff file this app created
 	if err != nil {
 		return "", err
 	}
@@ -197,8 +247,8 @@ func readHandoff(name string) (string, error) {
 	return token, nil
 }
 
-// waitForHandoff polls the handoff file until the elevated child writes the
-// token or the deadline passes.
+// waitForHandoff polls the handoff file until the token is in it or timeout
+// has passed.
 func waitForHandoff(name string, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

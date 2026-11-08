@@ -1,5 +1,5 @@
-# Nimbus Backup - Unified Build System
-# Builds both CLI and GUI applications
+# Salvanza for Proxmox Backup Server - build system
+# Builds the command line (salvanza-cli), the app (salvanza-gui) and the service (salvanza-svc)
 
 .PHONY: all cli gui deb pkgarch pkgfedora stage-source msi clonezilla clean test help install-deps
 
@@ -17,12 +17,12 @@ BUILD_DIR := dist
 CLI_DIR := cmd
 GUI_DIR := gui
 
-# Binary names
-CLI_DIR_BIN := proxmoxbackup-directory
-CLI_MACHINE_BIN := proxmoxbackup-machine
-CLI_NBD_BIN := proxmoxbackup-nbd
-SERVICE_BIN := ProxmoxBackupClientSVC
-GUI_BIN := ProxmoxBackupClient
+# Binary names. The command line is one program with subcommands
+# (backup-folder, backup-disk, attach-nbd); the tools' earlier names
+# (proxmoxbackup-directory, -machine, -nbd) are links to it in the packages.
+CLI_BIN := salvanza-cli
+SERVICE_BIN := salvanza-svc
+GUI_BIN := salvanza-gui
 
 # Go build flags (security hardening)
 GO_FLAGS := -trimpath -buildmode=pie
@@ -48,28 +48,23 @@ endif
 all: cli gui service
 
 help:
-	@echo "Nimbus Backup Build System"
-	@echo "=========================="
+	@echo "Salvanza build system"
+	@echo "====================="
 	@echo ""
 	@echo "Targets:"
 	@echo "  all          - Build everything (CLI + GUI + Service)"
-	@echo "  cli          - Build all CLI tools"
+	@echo "  cli          - Build the command line (salvanza-cli)"
 	@echo "  gui          - Build GUI application"
-	@echo "  service      - Build Windows Service (NimbusBackupSVC.exe)"
-	@echo "  deb          - Build the Debian package (pbsgo, Linux)"
-	@echo "  pkgarch      - Build the Arch package (pbsgo, on Arch)"
+	@echo "  service      - Build the background service (salvanza-svc)"
+	@echo "  deb          - Build the Debian package (salvanza, Linux)"
+	@echo "  pkgarch      - Build the Arch package (salvanza, on Arch)"
 	@echo "  pkgfedora    - Build the Fedora RPM (docker fedora:44)"
-	@echo "  stage-source - Stage the source tarball used by pkgarch/pkgfedora"
+	@echo "  stage-source - Stage the source tarball used by pkgarch"
 	@echo "  msi          - Build the Windows MSI installers on Linux (docker + wine)"
 	@echo "  clonezilla   - Download + patch the Clonezilla live ISO (not in 'all')"
 	@echo "  test         - Run all tests"
 	@echo "  clean        - Remove build artifacts"
 	@echo "  install-deps - Install build dependencies"
-	@echo ""
-	@echo "CLI Tools:"
-	@echo "  cli-directory - Directory backup CLI"
-	@echo "  cli-machine   - Machine backup CLI"
-	@echo "  cli-nbd       - NBD server CLI"
 	@echo ""
 	@echo "Version: $(VERSION)"
 
@@ -79,44 +74,17 @@ install-deps:
 	go install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)
 	cd gui/frontend && npm install
 
-# CLI Builds
-# NBD is Linux-only (uses Linux ioctl)
-ifeq ($(shell go env GOOS),linux)
-cli: cli-directory cli-machine cli-nbd
-	@echo "✅ All CLI tools built successfully"
-else
-cli: cli-directory cli-machine
-	@echo "✅ CLI tools built successfully (NBD skipped - Linux only)"
-endif
-
-cli-directory:
-	@echo "🔨 Building Directory Backup CLI..."
+# The command line: one program, salvanza-cli (attach-nbd works on Linux only).
+cli:
+	@echo "🔨 Building the command line ($(CLI_BIN))..."
 	@mkdir -p $(BUILD_DIR)
-	cd directorybackup && GOWORK=off go mod tidy && GOWORK=off go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
-		-o ../$(BUILD_DIR)/$(CLI_DIR_BIN)$(shell go env GOEXE)
-	@echo "✅ Built: $(BUILD_DIR)/$(CLI_DIR_BIN)"
-
-cli-machine:
-	@echo "🔨 Building Machine Backup CLI..."
-	@mkdir -p $(BUILD_DIR)
-	cd machinebackup && go mod tidy && go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
-		-o ../$(BUILD_DIR)/$(CLI_MACHINE_BIN)$(shell go env GOEXE)
-	@echo "✅ Built: $(BUILD_DIR)/$(CLI_MACHINE_BIN)"
-
-cli-nbd:
-ifeq ($(shell go env GOOS),linux)
-	@echo "🔨 Building NBD Server CLI..."
-	@mkdir -p $(BUILD_DIR)
-	cd nbd && go mod tidy && go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
-		-o ../$(BUILD_DIR)/$(CLI_NBD_BIN)$(shell go env GOEXE)
-	@echo "✅ Built: $(BUILD_DIR)/$(CLI_NBD_BIN)"
-else
-	@echo "⏭️  Skipping NBD Server CLI (Linux only)"
-endif
+	cd cli && GOWORK=off go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
+		-o ../$(BUILD_DIR)/$(CLI_BIN)$(shell go env GOEXE) .
+	@echo "✅ Built: $(BUILD_DIR)/$(CLI_BIN)"
 
 # Service Build (systemd service on Linux, Windows Service on Windows)
 #
-# The default target OS is windows: gui/build/bin/ProxmoxBackupClientSVC.exe is
+# The default target OS is windows: gui/build/bin/salvanza-svc.exe is
 # what the MSI packages, and a Linux ELF there cannot be started by the Windows
 # SCM (error 193 / service timeout 1053). Override with `SERVICE_GOOS=linux
 # make service` when a local systemd binary is wanted (the deb/rpm/arch
@@ -143,12 +111,14 @@ deb:
 	@sh packaging/debian/build-deb.sh $(BUILD_DIR)
 
 # Arch Linux package (run on Arch, see packaging/arch/PKGBUILD).
-# Stages pbsgo-<version>.tar.gz from the CURRENT working tree first, so the
+# Stages salvanza-<version>.tar.gz from the CURRENT working tree first, so the
 # package contains the source it was built from (not a GitHub commit).
+# pkgver is the app's version (gui/wails.json), which the PKGBUILD checks: an
+# untagged tree's "dev-<sha>" is no pkgver (no hyphens) and not that version.
 pkgarch:
-	@VERSION=$$(bash scripts/get-version.sh) && \
+	@VERSION=$$(sed -n 's/.*"productVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' gui/wails.json) && \
 	 sed -i "s/^pkgver=.*/pkgver=$${VERSION}/" packaging/arch/PKGBUILD && \
-	 sh packaging/stage-source.sh packaging/arch && \
+	 PBS_VERSION=$${VERSION} sh packaging/stage-source.sh packaging/arch && \
 	 cd packaging/arch && makepkg -f -d
 
 # Source tarball the distro packages are built from (uncommitted changes incl.)
@@ -185,7 +155,7 @@ CLONEZILLA_SHA256 ?=
 
 CLONEZILLA_CACHE    := $(BUILD_DIR)/clonezilla
 CLONEZILLA_STOCK    := $(CLONEZILLA_CACHE)/clonezilla-live-$(CLONEZILLA_VER)-$(CLONEZILLA_ARCH).iso
-CLONEZILLA_OUT      := $(BUILD_DIR)/clonezilla-pbs-nbd-$(VERSION).iso
+CLONEZILLA_OUT      := $(BUILD_DIR)/Salvanza-BMR-$(VERSION).iso
 CLONEZILLA_PBSNBD   := $(CLONEZILLA_CACHE)/pbsnbd
 CLONEZILLA_SCRIPTS  := clonezilla-patch/ocs-pbs-nbd clonezilla-patch/ocs-pbs-bare-metal-restore
 CLONEZILLA_PATCHES  := $(wildcard clonezilla-patch/patches/*.patch)
@@ -196,11 +166,11 @@ clonezilla: $(CLONEZILLA_OUT)
 
 # Static binary, same flags as .github/workflows/build-clonezilla-iso.yml so
 # it runs on any live environment regardless of the host libc.
-$(CLONEZILLA_PBSNBD): $(wildcard nbd/*.go) nbd/go.mod nbd/go.sum
+$(CLONEZILLA_PBSNBD): $(wildcard nbd/*.go nbd/cmd/pbsnbd/*.go) nbd/go.mod nbd/go.sum
 	@echo "🔨 Building pbsnbd (static linux/amd64)..."
 	@mkdir -p $(CLONEZILLA_CACHE)
 	cd nbd && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" \
-		-o ../$(CLONEZILLA_PBSNBD) .
+		-o ../$(CLONEZILLA_PBSNBD) ./cmd/pbsnbd
 
 # Stock ISO, downloaded once and cached in dist/clonezilla/.
 $(CLONEZILLA_STOCK):
@@ -252,7 +222,7 @@ gui-dev:
 # pkg/security are standalone modules and MUST be built with GOWORK=off,
 # otherwise the go tool refuses to run ("directory prefix . does not contain
 # modules listed in go.work").
-WORKSPACE_MODULES  := pbscommon clientcommon machinebackuplib machinebackup snapshot nbd gui gui/api
+WORKSPACE_MODULES  := pbscommon clientcommon machinebackuplib machinebackup snapshot nbd gui gui/api cli
 STANDALONE_MODULES := directorybackup pkg/retry pkg/security
 
 # Tests
@@ -342,28 +312,24 @@ cross-compile: cross-cli-windows cross-cli-linux cross-cli-macos cross-gui-windo
 	@echo "✅ All cross-compilation complete"
 
 cross-cli-windows:
-	@echo "🪟 Cross-compiling CLI for Windows..."
+	@echo "🪟 Cross-compiling the command line for Windows..."
 	@mkdir -p $(BUILD_DIR)/windows
-	GOOS=windows GOARCH=amd64 cd directorybackup && go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
-		-o ../$(BUILD_DIR)/windows/$(CLI_DIR_BIN).exe
-	GOOS=windows GOARCH=amd64 cd machinebackup && go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
-		-o ../$(BUILD_DIR)/windows/$(CLI_MACHINE_BIN).exe
+	cd cli && GOWORK=off GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" \
+		-o ../$(BUILD_DIR)/windows/$(CLI_BIN).exe .
 
 cross-cli-linux:
-	@echo "🐧 Cross-compiling CLI for Linux..."
+	@echo "🐧 Cross-compiling the command line for Linux..."
 	@mkdir -p $(BUILD_DIR)/linux
-	GOOS=linux GOARCH=amd64 cd directorybackup && go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
-		-o ../$(BUILD_DIR)/linux/$(CLI_DIR_BIN)
-	GOOS=linux GOARCH=amd64 cd machinebackup && go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
-		-o ../$(BUILD_DIR)/linux/$(CLI_MACHINE_BIN)
+	cd cli && GOWORK=off GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" \
+		-o ../$(BUILD_DIR)/linux/$(CLI_BIN) .
 
 cross-cli-macos:
-	@echo "🍎 Cross-compiling CLI for macOS..."
+	@echo "🍎 Cross-compiling the command line for macOS..."
 	@mkdir -p $(BUILD_DIR)/macos
-	GOOS=darwin GOARCH=amd64 cd directorybackup && go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
-		-o ../$(BUILD_DIR)/macos/$(CLI_DIR_BIN)
-	GOOS=darwin GOARCH=arm64 cd directorybackup && go build $(GO_FLAGS) -ldflags="$(LDFLAGS)" \
-		-o ../$(BUILD_DIR)/macos/$(CLI_DIR_BIN)-arm64
+	cd cli && GOWORK=off GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" \
+		-o ../$(BUILD_DIR)/macos/$(CLI_BIN) .
+	cd cli && GOWORK=off GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" \
+		-o ../$(BUILD_DIR)/macos/$(CLI_BIN)-arm64 .
 
 cross-gui-windows:
 	@echo "🪟🎨 Cross-compiling GUI for Windows..."
@@ -375,10 +341,10 @@ cross-gui-windows:
 release: clean security-check lint test cross-compile
 	@echo "📦 Preparing release v$(VERSION)..."
 	@mkdir -p $(BUILD_DIR)/release
-	cd $(BUILD_DIR) && tar -czf release/nimbus-backup-cli-v$(VERSION)-linux.tar.gz linux/
-	cd $(BUILD_DIR) && zip -r release/nimbus-backup-cli-v$(VERSION)-windows.zip windows/*.exe
-	cd $(BUILD_DIR) && tar -czf release/nimbus-backup-cli-v$(VERSION)-macos.tar.gz macos/
-	cd $(BUILD_DIR) && zip -r release/NimbusBackup-v$(VERSION)-windows.zip windows/$(GUI_BIN).exe
+	cd $(BUILD_DIR) && tar -czf release/salvanza-cli-v$(VERSION)-linux.tar.gz linux/
+	cd $(BUILD_DIR) && zip -r release/salvanza-cli-v$(VERSION)-windows.zip windows/*.exe
+	cd $(BUILD_DIR) && tar -czf release/salvanza-cli-v$(VERSION)-macos.tar.gz macos/
+	cd $(BUILD_DIR) && zip -r release/Salvanza-v$(VERSION)-windows.zip windows/$(GUI_BIN).exe
 	@echo "✅ Release packages ready in $(BUILD_DIR)/release/"
 	@ls -lh $(BUILD_DIR)/release/
 

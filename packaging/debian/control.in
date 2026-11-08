@@ -1,19 +1,26 @@
-Package: pbsgo
+Package: salvanza
 Version: @VERSION@
 Architecture: @ARCH@
-Maintainer: Proxmox Backup Client contributors
-Homepage: https://github.com/tizbac/proxmoxbackupclient_go
+Maintainer: Salvanza contributors <noreply@github.com>
+Homepage: https://salvanza.org/
 Section: admin
 Priority: optional
-Depends: @DEPENDS@
-Recommends: pkexec | policykit-1, sudo
-Description: Backup client for Proxmox Backup Server (CLI + GUI)
- Go-based backup client for Proxmox Backup Server:
-  - pbsgo: directory and stream backup with deduplication
-  - pbsgo-machine: whole-machine (raw disk) backup, using VSS on
-    Windows and block-level snapshotting on Linux
-  - pbsgo-nbd: mount fidx images as read-only NBD block devices
-  - pbsgo-gui: graphical interface; machine (whole-disk) backup
-    requires root, use the pbsgo-gui-root launcher for that
- The GUI frontend is embedded in the binary, no Node.js is needed at
- runtime.
+Installed-Size: @SIZE@
+Depends: @DEPENDS@, pkexec | policykit-1
+Suggests: dattobd-dkms
+Conflicts: proxmoxbackupclient, pbsgo
+Replaces: proxmoxbackupclient, pbsgo
+Provides: proxmoxbackupclient
+Description: Salvanza, backup for Proxmox Backup Server (app and command line)
+ Backs folders and whole disks up to a Proxmox Backup Server and restores
+ them, with deduplication, encryption, change detection, Undelete and
+ Roll back:
+  - salvanza-gui: the app (folder backups as the current user);
+    salvanza-gui-root starts it as root for machine (whole-disk)
+    backups and block snapshots
+  - salvanza-cli backup-folder: folder backups from the command line
+  - salvanza-cli backup-disk: whole-disk backups from the command line
+  - salvanza-cli attach-nbd: attach a disk image from the server as /dev/nbdN
+ It replaces the proxmoxbackupclient package and takes its settings over.
+ Snapshots of mounted file systems use the elastio-snap or dattobd kernel
+ module when one is loaded.

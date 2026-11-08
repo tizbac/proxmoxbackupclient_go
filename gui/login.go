@@ -35,7 +35,7 @@ func (a *App) withAuth(cfg *Config) (*Config, error) {
 			Insecure:        cfg.CertFingerprint != "",
 		}
 		if err := client.ObtainTicket(); err != nil {
-			return cfg, fmt.Errorf("authentification utilisateur/mot de passe impossible: %w", err)
+			return cfg, fmt.Errorf("username/password authentication failed: %w", err)
 		}
 		cp := *cfg
 		cp.Ticket = client.Ticket

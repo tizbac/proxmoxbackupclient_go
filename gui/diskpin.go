@@ -2,49 +2,40 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+
+	"machinebackuplib"
+
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
-// Disk identity prefixes. Windows hands out \\.\PhysicalDriveN names whose N is
-// assigned in enumeration order, so it shifts when a disk is added/removed or a
-// driver is reinstalled — a saved selection can silently start pointing at a
-// DIFFERENT physical disk. A UniqueID built from what the disk itself carries
-// (its serial number, its GPT disk GUID, its MBR disk signature) does not move,
-// and is what the config pins.
+// Disk identity for machine Backup Sets. Windows numbers its disks
+// (\\.\PhysicalDriveN) in the order it finds them, and Linux names them
+// (/dev/sdX) the same way, so adding or removing a disk, or a driver update,
+// can give a disk another number. A set saved as \\.\PhysicalDrive1 would then
+// back up whichever disk is number 1 now. So a set also records what each of
+// its disks carries itself (ScheduledJob.DiskIDs), and a run finds the disk
+// by that (resolveSetDisks). Ported from the project's 1.2.0-rc app, which
+// kept one table of these for the whole computer (config.json pinned_disks,
+// see migrateUpstreamDiskPins).
 const (
-	diskIDPrefixSerial    = "serial:" // vendor serial — survives everything but a firmware flash
-	diskIDPrefixWWN       = "wwn:"    // SCSI/ATA world wide name
-	diskIDPrefixGUID      = "guid:"   // GPT disk GUID
-	diskIDPrefixSig       = "sig:"    // MBR disk signature (4 bytes, hex)
-	diskIDPrefixSize      = "size:"   // NOT stable: only a last-resort hint
-	diskIDPrefixModelSize = "mdl:"    // NOT stable: model+size, two equal disks collide
+	diskIDPrefixSerial = "serial:" // the disk's serial number
+	diskIDPrefixGUID   = "guid:"   // GPT disk GUID
+	diskIDPrefixSig    = "sig:"    // MBR disk signature (4 bytes, hex)
+	diskIDPrefixByID   = "byid:"   // Linux: the disk's name in /dev/disk/by-id
+	diskIDPrefixSize   = "size:"   // not an identity: the size, when nothing else can be read
 )
 
-// stableDiskIDPrefixes identify a specific PHYSICAL disk across reboots; only
-// these are ever written to Config.PinnedDisks. The weak ones are kept in
-// PhysicalDiskInfo.UniqueID for display/diagnostics but never trusted to
-// resolve a backup target.
-var stableDiskIDPrefixes = []string{
-	diskIDPrefixSerial,
-	diskIDPrefixWWN,
-	diskIDPrefixGUID,
-	diskIDPrefixSig,
-}
+// linuxByIDDir holds a Linux computer's links to its disks by identity.
+const linuxByIDDir = "/dev/disk/by-id/"
 
-// allDiskIDPrefixes recognises any id this package may have produced, weak or
-// not (a weak id stored as a request is still answered, just without a pin).
-var allDiskIDPrefixes = []string{
-	diskIDPrefixSerial,
-	diskIDPrefixWWN,
-	diskIDPrefixGUID,
-	diskIDPrefixSig,
-	diskIDPrefixSize,
-	diskIDPrefixModelSize,
-}
+// stableDiskIDPrefixes are the identities that name one disk across restarts.
+// Only these are recorded in a set or used to find a disk.
+var stableDiskIDPrefixes = []string{diskIDPrefixSerial, diskIDPrefixGUID, diskIDPrefixSig, diskIDPrefixByID}
 
-// isStableDiskID reports whether id can be used as a pin: it must come from a
-// property the disk itself carries, not from how the machine happens to number
-// it right now.
+// isStableDiskID reports whether id names a disk by something the disk
+// carries, rather than by how this computer numbers or sizes it.
 func isStableDiskID(id string) bool {
 	for _, p := range stableDiskIDPrefixes {
 		if strings.HasPrefix(id, p) && len(id) > len(p) {
@@ -54,22 +45,71 @@ func isStableDiskID(id string) bool {
 	return false
 }
 
-// looksLikeDiskID reports whether ref is one of our own unique ids rather than
-// a device path.
-func looksLikeDiskID(ref string) bool {
-	for _, p := range allDiskIDPrefixes {
-		if strings.HasPrefix(ref, p) {
-			return true
-		}
+// diskIDsOf returns every identity the listing gave the disk, preferred first.
+func diskIDsOf(d PhysicalDiskInfo) []string {
+	var ids []string
+	if d.UniqueID != "" {
+		ids = append(ids, d.UniqueID)
 	}
-	return false
+	return append(ids, d.OtherIDs...)
 }
 
-// normalizePhysicalDrivePath canonicalises a physical-drive reference to the
-// form machinebackuplib opens ("\\.\PhysicalDrive3"). Accepts the shorthand
-// "PhysicalDrive3", the \\?\ prefix and any case, so entries written by older
-// builds — or by hand — keep working. Returns ok=false for anything that is not
-// a physical drive reference (Linux device nodes, plain file paths, ids).
+// dropSharedDiskIDs removes an identity that more than one disk reports: some
+// USB enclosures give every disk the same serial, and a cloned disk carries
+// its original's GPT GUID. Such an identity cannot tell the disks apart, so
+// the disk's next identity takes its place.
+func dropSharedDiskIDs(disks []PhysicalDiskInfo) []PhysicalDiskInfo {
+	count := map[string]int{}
+	for _, d := range disks {
+		for _, id := range diskIDsOf(d) {
+			count[id]++
+		}
+	}
+	for i := range disks {
+		var keep []string
+		for _, id := range diskIDsOf(disks[i]) {
+			if count[id] == 1 {
+				keep = append(keep, id)
+			}
+		}
+		disks[i].UniqueID, disks[i].OtherIDs = "", nil
+		if len(keep) > 0 {
+			disks[i].UniqueID = keep[0]
+			if len(keep) > 1 {
+				disks[i].OtherIDs = keep[1:]
+			}
+		}
+	}
+	return disks
+}
+
+// sortByIDNames orders a disk's /dev/disk/by-id names by how reliable they
+// are, as the project's 1.2.0-rc app chose them (wwn, scsi, ata, nvme, then
+// the rest), each group in name order, so a disk always gets the same first
+// name.
+func sortByIDNames(names []string) []string {
+	rank := func(n string) int {
+		for i, p := range []string{"wwn-", "scsi-", "ata-", "nvme-"} {
+			if strings.HasPrefix(n, p) {
+				return i
+			}
+		}
+		return 4
+	}
+	out := append([]string(nil), names...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if ri, rj := rank(out[i]), rank(out[j]); ri != rj {
+			return ri < rj
+		}
+		return out[i] < out[j]
+	})
+	return out
+}
+
+// normalizePhysicalDrivePath writes a Windows disk reference the way
+// machinebackuplib opens it ("\\.\PhysicalDrive3"), from "PhysicalDrive3",
+// the \\?\ prefix or any case. ok is false for anything else (a Linux device,
+// a file).
 func normalizePhysicalDrivePath(ref string) (string, bool) {
 	s := strings.TrimSpace(ref)
 	for _, prefix := range []string{`\\.\`, `\\?\`, `//./`, `//?/`} {
@@ -91,156 +131,196 @@ func normalizePhysicalDrivePath(ref string) (string, bool) {
 	return `\\.\PhysicalDrive` + num, true
 }
 
-// resolvePinnedDevices maps a saved disk selection onto the devices that are
-// actually present, so a config keeps backing up the same PHYSICAL disk.
-//
-// Accepted reference shapes, all of which must keep working:
-//
-//   - "\\.\PhysicalDrive3" / "PhysicalDrive3" — what older configs store. If
-//     that path was pinned to a disk and the disk moved, the disk's CURRENT
-//     path is returned; if there is no pin the path is returned unchanged, so
-//     configs written before pinning existed behave exactly as before.
-//   - a unique id ("serial:...", "guid:...", "sig:...") — resolved directly.
-//   - anything else (Linux /dev nodes, file paths) — passed through untouched.
-//
-// It returns an error only when the selection names a disk that is NOT the one
-// the caller asked for (pinned disk missing while another disk sits at its old
-// path): backing up the wrong disk is worse than failing loudly.
-//
-// present may be empty or partial (an unelevated process cannot open disks on
-// Windows): with no stable ids to work with nothing is resolved and the
-// request is returned unchanged.
-func resolvePinnedDevices(requested []string, present []PhysicalDiskInfo, pins map[string]string) ([]string, error) {
-	if len(requested) == 0 {
-		return requested, nil
+// canonicalDevicePath is the form two device paths are compared in: a
+// Windows disk as normalizePhysicalDrivePath writes it, anything else as it is.
+func canonicalDevicePath(p string) string {
+	if n, ok := normalizePhysicalDrivePath(p); ok {
+		return n
 	}
+	return strings.TrimSpace(p)
+}
 
-	byID := make(map[string]string, len(present))   // unique id -> current path
-	byPath := make(map[string]string, len(present)) // normalized path -> unique id
-	stable := 0
+// resolveSetDisks finds the disks a machine Backup Set backs up among the
+// disks present now. devices are the set's saved device paths and ids the
+// identity recorded for each, at the same index; "" (or no entry) for a disk
+// saved before identities were recorded, which is backed up by its path as
+// before. A disk whose identity is now at another path is backed up there,
+// and moved describes each such disk for the log. A disk whose identity is
+// not present fails the run: the disk now at its old path is another one.
+//
+// When no disk present has an identity (the disks could not be listed, or
+// this process may not open them), nothing can be checked and devices are
+// returned as they are.
+func resolveSetDisks(devices, ids []string, present []PhysicalDiskInfo) (resolved, moved []string, err error) {
+	paths, moved, checked, err := resolveSetDiskPaths(devices, ids, present)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !checked {
+		return paths, nil, nil
+	}
+	return uniqueDevicePaths(paths), moved, nil
+}
+
+// uniqueDevicePaths drops a disk given twice.
+func uniqueDevicePaths(paths []string) []string {
+	resolved := make([]string, 0, len(paths))
+	seen := map[string]bool{}
+	for _, path := range paths {
+		// Two saved disks can be one disk now (it moved to the other's
+		// number); PBS refuses a disk given twice.
+		if key := canonicalDevicePath(path); !seen[key] {
+			seen[key] = true
+			resolved = append(resolved, path)
+		}
+	}
+	return resolved
+}
+
+// resolveSetDiskPaths is resolveSetDisks giving the path of each saved disk,
+// at the same index as devices, before a disk given twice is dropped.
+// checked is false when nothing could be checked and devices came back as
+// they are.
+func resolveSetDiskPaths(devices, ids []string, present []PhysicalDiskInfo) (paths, moved []string, checked bool, err error) {
+	byID := map[string]string{}
 	for _, d := range present {
-		if !isStableDiskID(d.UniqueID) {
-			continue
-		}
-		stable++
-		if _, dup := byID[d.UniqueID]; !dup {
-			byID[d.UniqueID] = d.DevicePath
-		}
-		if p, ok := normalizePhysicalDrivePath(d.DevicePath); ok {
-			byPath[p] = d.UniqueID
+		for _, id := range diskIDsOf(d) {
+			if _, dup := byID[id]; isStableDiskID(id) && !dup {
+				byID[id] = d.DevicePath
+			}
 		}
 	}
-	if stable == 0 {
-		// No reliable identity available (listing failed, not elevated, or a
-		// platform we do not identify disks on): behave exactly like a build
-		// without pinning rather than failing a working backup.
-		return append([]string(nil), requested...), nil
+	pinned := false
+	for _, id := range ids {
+		pinned = pinned || isStableDiskID(id)
+	}
+	if !pinned || len(byID) == 0 {
+		return append([]string(nil), devices...), nil, false, nil
 	}
 
-	pinByPath := make(map[string]string, len(pins))
-	for id, path := range pins {
-		if !isStableDiskID(id) {
-			continue
+	paths = make([]string, 0, len(devices))
+	for i, dev := range devices {
+		path := dev
+		if i < len(ids) && isStableDiskID(ids[i]) {
+			cur, ok := byID[ids[i]]
+			if !ok {
+				return nil, nil, false, fmt.Errorf("the disk this Backup Set saved as %s (%s) is not connected, and the set does not back up whichever disk is %s now: reconnect it, or edit the set and choose its disks again", dev, ids[i], dev)
+			}
+			if canonicalDevicePath(cur) != canonicalDevicePath(dev) {
+				moved = append(moved, fmt.Sprintf("%s (%s) is %s now", dev, ids[i], cur))
+			}
+			path = cur
 		}
-		if p, ok := normalizePhysicalDrivePath(path); ok {
-			pinByPath[p] = id
-		}
+		paths = append(paths, path)
 	}
-
-	out := make([]string, 0, len(requested))
-	seen := make(map[string]bool, len(requested))
-	for _, ref := range requested {
-		resolved, err := resolvePinnedDevice(ref, byID, byPath, pinByPath)
-		if err != nil {
-			return nil, err
-		}
-		// Two saved paths can resolve to one disk (the same disk seen at two
-		// numbers over time); handing it to PBS twice would be a hard error.
-		if seen[resolved] {
-			continue
-		}
-		seen[resolved] = true
-		out = append(out, resolved)
-	}
-	return out, nil
+	return paths, moved, true, nil
 }
 
-// resolvePinnedDevice resolves a single saved reference. byID maps a stable
-// unique id to the path it currently has, byPath the reverse, pinByPath maps a
-// saved path to the unique id it was pinned to.
-func resolvePinnedDevice(ref string, byID, byPath, pinByPath map[string]string) (string, error) {
-	ref = strings.TrimSpace(ref)
-	if ref == "" {
-		return "", fmt.Errorf("empty disk selection")
-	}
+// PartitionSkip is a partition a machine Backup Set leaves out.
+type PartitionSkip = api.PartitionSkip
 
-	if looksLikeDiskID(ref) {
-		if path, ok := byID[ref]; ok {
-			return path, nil
+// skipDiskIndex finds the disk of a set (devices, and ids at the same index)
+// that skip belongs to: the disk with its identity, or, for a skip saved
+// without one, the disk at its device path that has no identity either. -1
+// when the set has no such disk.
+func skipDiskIndex(skip PartitionSkip, devices, ids []string) int {
+	for i, dev := range devices {
+		id := ""
+		if i < len(ids) {
+			id = ids[i]
 		}
-		return "", fmt.Errorf("pinned disk %q is not connected", ref)
+		if skip.DiskID != "" && id == skip.DiskID {
+			return i
+		}
+		if skip.DiskID == "" && id == "" && canonicalDevicePath(dev) == canonicalDevicePath(skip.Device) {
+			return i
+		}
 	}
-
-	path, isDrive := normalizePhysicalDrivePath(ref)
-	if !isDrive {
-		return ref, nil // not a physical drive reference: leave it alone
-	}
-
-	pinnedID, pinned := pinByPath[path]
-	if !pinned {
-		return path, nil // legacy entry, never pinned: keep the saved path
-	}
-	if current, ok := byID[pinnedID]; ok {
-		// The disk we pinned before — wherever Windows put it this boot.
-		return current, nil
-	}
-	if holder, ok := byPath[path]; ok && holder != pinnedID {
-		return "", fmt.Errorf("disk %s was pinned to %s, but %s now holds %s — refusing to back up a different disk",
-			pinnedID, path, path, holder)
-	}
-	return "", fmt.Errorf("pinned disk %q (saved as %s) is not connected", pinnedID, path)
+	return -1
 }
 
-// collectDiskPins returns the id→path pins implied by this run: every resolved
-// device that carries a stable unique id, mapped to the path it has right now.
-// Existing entries are kept (an id is only overwritten when the same disk moved
-// to a new number).
-func collectDiskPins(resolved []string, present []PhysicalDiskInfo) map[string]string {
-	byPath := make(map[string]PhysicalDiskInfo, len(present))
+// skipsByDevice gives a run the partitions to leave out of each disk, keyed
+// by the path the run backs the disk up at (paths, at the same index as the
+// set's devices and ids). A skip whose disk is not in the set is left out of
+// the map, so nothing is skipped for it, and named in dropped for the log.
+func skipsByDevice(skips []PartitionSkip, devices, ids, paths []string) (byDev map[string][]machinebackuplib.PartitionSkip, dropped []string) {
+	for _, s := range skips {
+		i := skipDiskIndex(s, devices, ids)
+		if i < 0 || i >= len(paths) {
+			dropped = append(dropped, fmt.Sprintf("%s on %s", s.Label, s.Device))
+			continue
+		}
+		if byDev == nil {
+			byDev = map[string][]machinebackuplib.PartitionSkip{}
+		}
+		byDev[paths[i]] = append(byDev[paths[i]], machinebackuplib.PartitionSkip{Start: s.Start, Size: s.Size, Number: s.Number, Label: s.Label})
+	}
+	return byDev, dropped
+}
+
+// pinSetSkips keeps the partitions a machine set leaves out in step with its
+// disks as it is saved: a skip of a disk the set no longer backs up is
+// dropped, and one saved without an identity takes its disk's identity once
+// the set has recorded one (pinSetDisks). A skip must name a partition:
+// one without a start is dropped too.
+func pinSetSkips(job *ScheduledJob) {
+	if job.BackupType != "machine" {
+		job.SkipPartitions = nil
+		return
+	}
+	var keep []PartitionSkip
+	for _, s := range job.SkipPartitions {
+		if s.Start == 0 {
+			continue
+		}
+		if s.DiskID == "" {
+			for i, dev := range job.DriveLetters {
+				if canonicalDevicePath(dev) == canonicalDevicePath(s.Device) && i < len(job.DiskIDs) {
+					s.DiskID = job.DiskIDs[i]
+					break
+				}
+			}
+		}
+		i := skipDiskIndex(s, job.DriveLetters, job.DiskIDs)
+		if i < 0 {
+			continue
+		}
+		s.Device = job.DriveLetters[i]
+		keep = append(keep, s)
+	}
+	job.SkipPartitions = keep
+}
+
+// pinSetDisks records in a machine Backup Set the identity of each disk it
+// backs up (DiskIDs, at the same index as DriveLetters), so its runs find the
+// same disks later. An identity the set already carries for a device is kept:
+// the editor sends the identity of the disk the user ticked, which is the
+// right one even when that disk is not connected now. The others come from
+// the disks present now. A set none of whose disks has an identity keeps
+// none, and is backed up by its device paths as before.
+func pinSetDisks(job *ScheduledJob, present []PhysicalDiskInfo) {
+	if job.BackupType != "machine" || len(job.DriveLetters) == 0 {
+		job.DiskIDs = nil
+		return
+	}
+	byPath := map[string]string{}
 	for _, d := range present {
-		if p, ok := normalizePhysicalDrivePath(d.DevicePath); ok {
-			byPath[p] = d
+		if isStableDiskID(d.UniqueID) {
+			byPath[canonicalDevicePath(d.DevicePath)] = d.UniqueID
 		}
 	}
-	out := make(map[string]string)
-	for _, ref := range resolved {
-		p, ok := normalizePhysicalDrivePath(ref)
-		if !ok {
-			continue
+	ids := make([]string, len(job.DriveLetters))
+	found := false
+	for i, dev := range job.DriveLetters {
+		if i < len(job.DiskIDs) && isStableDiskID(job.DiskIDs[i]) {
+			ids[i] = job.DiskIDs[i]
+		} else {
+			ids[i] = byPath[canonicalDevicePath(dev)]
 		}
-		if d, ok := byPath[p]; ok && isStableDiskID(d.UniqueID) {
-			out[d.UniqueID] = p
-		}
+		found = found || ids[i] != ""
 	}
-	return out
-}
-
-// mergeDiskPins folds newPins into cfg's pin table, reporting whether anything
-// changed (so callers only rewrite config.json when it matters). A nil map is
-// allocated on first use.
-func mergeDiskPins(cfg *Config, newPins map[string]string) bool {
-	if cfg == nil || len(newPins) == 0 {
-		return false
+	if !found {
+		ids = nil
 	}
-	if cfg.PinnedDisks == nil {
-		cfg.PinnedDisks = make(map[string]string, len(newPins))
-	}
-	changed := false
-	for id, path := range newPins {
-		if cur, ok := cfg.PinnedDisks[id]; !ok || cur != path {
-			cfg.PinnedDisks[id] = path
-			changed = true
-		}
-	}
-	return changed
+	job.DiskIDs = ids
 }

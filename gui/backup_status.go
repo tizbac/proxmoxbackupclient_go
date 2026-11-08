@@ -1,6 +1,10 @@
 package main
 
-import "strings"
+import (
+	"strings"
+
+	"pbscommon"
+)
 
 // Backup result + live-progress types shared across the backup engine, the GUI,
 // the local API and the scheduler. BackupStatus is the single source of truth for
@@ -11,23 +15,15 @@ import "strings"
 // sidecar. The ExcludedByPolicy and Corrupted buckets are defined now but stay empty
 // until Group 1 (user exclusions H-04 and mode-B corruption) fills them.
 
-// BackupStatusFilename is the PBS blob name for the per-snapshot status sidecar.
-// PBS requires a bare basename (no leading dot) ending in ".blob"; the payload is
-// plain JSON. Listed in the manifest so the GUI can read it without a full restore.
-const BackupStatusFilename = "proxmox-client-status.json.blob"
+// BackupStatusFilename and the sidecar types live in pbscommon so the
+// directorybackup CLI writes the same blob; these aliases keep the GUI code
+// unchanged.
+const BackupStatusFilename = pbscommon.BackupStatusFilename
 
-// BackupSidecar is the per-snapshot status persisted as a manifest blob: the files
-// excluded by policy and the files skipped on read errors for THIS directory's
-// snapshot. It lets the GUI show "in this backup, files X/Y were excluded/skipped"
-// without restoring the archive.
-type BackupSidecar struct {
-	FormatVersion    int         `json:"format_version"`
-	BackupID         string      `json:"backup_id"`
-	Directory        string      `json:"directory"`
-	GeneratedAt      int64       `json:"generated_at"`
-	ExcludedByPolicy []FileIssue `json:"excluded_by_policy,omitempty"`
-	SkippedReadError []FileIssue `json:"skipped_read_error,omitempty"`
-}
+type (
+	BackupSidecar = pbscommon.BackupSidecar
+	FileIssue     = pbscommon.FileIssue
+)
 
 // BackupOutcome is the three-state result of a backup run.
 type BackupOutcome string
@@ -46,12 +42,6 @@ const (
 	// committed, or a chunk upload failure that would make a committed index corrupt).
 	OutcomeFailed BackupOutcome = "failed"
 )
-
-// FileIssue records one file that was excluded, skipped or corrupted, with the reason.
-type FileIssue struct {
-	Path   string `json:"path"`
-	Reason string `json:"reason"`
-}
 
 // DirResult records the outcome of one selected backup directory.
 type DirResult struct {
@@ -72,6 +62,18 @@ type BackupStatus struct {
 	FailedChunks uint64        `json:"failed_chunks"`
 	Directories  []DirResult   `json:"directories"`
 
+	// ChangeDetection is the change-detection mode of a split-archive run
+	// ("data" or "metadata"; empty for the classic format). ReusedFiles and
+	// ReusedFileBytes count the unchanged files metadata mode took from the
+	// previous snapshot without reading them.
+	ChangeDetection string `json:"change_detection,omitempty"`
+	ReusedFiles     uint64 `json:"reused_files,omitempty"`
+	ReusedFileBytes uint64 `json:"reused_file_bytes,omitempty"`
+	// ReadEveryFile marks a split-archive run that read every file (data
+	// mode, or metadata mode without a usable previous snapshot): a full
+	// read, as far as "full read every N runs" is concerned.
+	ReadEveryFile bool `json:"read_every_file,omitempty"`
+
 	// Three buckets of files that did not make it into the backup intact.
 	// ExcludedByPolicy and Corrupted are populated in Group 1; SkippedReadError
 	// comes from the existing PBSClient.SkippedFiles list today.
@@ -80,7 +82,16 @@ type BackupStatus struct {
 	Corrupted        []FileIssue `json:"corrupted,omitempty"`
 
 	// Message is the human-readable summary already shown in logs and the UI.
+	// Kept as plain, already-formatted English text for backward compatibility
+	// (every existing consumer, and any persisted entry with no MessageKey).
 	Message string `json:"message"`
+
+	// MessageKey/MessageParams let the frontend render Message in the user's
+	// chosen language via t(key, params) instead of the fixed English text —
+	// see msgcodes.go's doc comment. Empty MessageKey means "no translation
+	// available for this message", and the frontend falls back to Message.
+	MessageKey    MessageKey `json:"message_key,omitempty"`
+	MessageParams msgParams  `json:"message_params,omitempty"`
 }
 
 // Success reports whether the run reached a success level — fully verified, or
@@ -89,58 +100,7 @@ func (s *BackupStatus) Success() bool {
 	return s != nil && (s.Outcome == OutcomeVerifiedSuccess || s.Outcome == OutcomeSuccessWithExclusions)
 }
 
-// outcomeRank orders outcomes worst-to-best (failed=0 … verified=3).
-func outcomeRank(o BackupOutcome) int {
-	switch o {
-	case OutcomeFailed:
-		return 0
-	case OutcomePartial:
-		return 1
-	case OutcomeSuccessWithExclusions:
-		return 2
-	default: // OutcomeVerifiedSuccess
-		return 3
-	}
-}
-
-// worstOutcome returns the worse (lower-ranked) of two outcomes.
-func worstOutcome(a, b BackupOutcome) BackupOutcome {
-	if outcomeRank(a) <= outcomeRank(b) {
-		return a
-	}
-	return b
-}
-
-// merge folds a child run's counts, file buckets and worst outcome into agg.
-// Used to build one aggregate result for multi-folder and auto-split runs.
-func (s *BackupStatus) merge(child *BackupStatus) {
-	if child == nil {
-		return
-	}
-	s.Outcome = worstOutcome(s.Outcome, child.Outcome)
-	s.NewChunks += child.NewChunks
-	s.ReusedChunks += child.ReusedChunks
-	s.FailedChunks += child.FailedChunks
-	s.TotalBytes += child.TotalBytes
-	s.Directories = append(s.Directories, child.Directories...)
-	s.ExcludedByPolicy = append(s.ExcludedByPolicy, child.ExcludedByPolicy...)
-	s.SkippedReadError = append(s.SkippedReadError, child.SkippedReadError...)
-	s.Corrupted = append(s.Corrupted, child.Corrupted...)
-}
-
-// skippedToIssues wraps the engine's free-form SkippedFiles descriptions into the
-// FileIssue bucket. The descriptions already embed the reason; Group 1 will record
-// these with a clean path/reason split at the source (pxar.go).
-func skippedToIssues(skipped []string) []FileIssue {
-	if len(skipped) == 0 {
-		return nil
-	}
-	issues := make([]FileIssue, 0, len(skipped))
-	for _, s := range skipped {
-		issues = append(issues, FileIssue{Reason: s})
-	}
-	return issues
-}
+func skippedToIssues(skipped []string) []FileIssue { return pbscommon.SkippedToIssues(skipped) }
 
 // toLogicalPaths replaces the VSS shadow-copy root (from) with the original
 // logical root (to) in each path/description, so excluded/skipped status lists
@@ -180,4 +140,87 @@ type BackupProgressStats struct {
 	FailedChunks uint64  `json:"failed_chunks"`
 	CurrentDir   string  `json:"current_dir,omitempty"`
 	Message      string  `json:"message"`
+
+	// FilesDone counts files the walk has reached (read or reused);
+	// FilesTotal is 0 until a total is known (the background scan, or the
+	// previous snapshot's file list in metadata mode).
+	FilesDone  uint64 `json:"files_done"`
+	FilesTotal uint64 `json:"files_total"`
+	// UploadedBytes is the content of new chunks sent to PBS so far: zero
+	// when every file is unchanged, whatever BytesDone says.
+	UploadedBytes uint64 `json:"uploaded_bytes"`
+	// SentBytes is what those new chunks took on the network: their size
+	// after compression (or encryption), without TLS and HTTP overhead.
+	SentBytes uint64 `json:"sent_bytes"`
+	// Phase is "connecting", "data" or "finishing".
+	Phase string `json:"phase,omitempty"`
+	// ReadReason says why every file is being read, when it is ("full_read"
+	// for a scheduled full read, "no_previous" when there is no usable
+	// previous snapshot, "data" for a data-mode set); empty for a
+	// change-detection run reusing unchanged files, or the classic format.
+	ReadReason string `json:"read_reason,omitempty"`
+	// ChangeMode is the run's change-detection mode ("" for the classic format).
+	ChangeMode string `json:"change_mode,omitempty"`
+
+	// Machine (disk image) backups: Kind is "machine", Phase adds "snapshot",
+	// and these say where the reader is. Blocks are 4 MiB fixed-index chunks.
+	Kind        string `json:"kind,omitempty"`
+	BlankChunks uint64 `json:"blank_chunks,omitempty"` // reused all-zero chunks, a part of Reused
+	Disk        string `json:"disk,omitempty"`
+	DiskModel   string `json:"disk_model,omitempty"` // "Samsung SSD 860 EVO 500GB"
+	DiskNo      int    `json:"disk_no,omitempty"`
+	DiskCount   int    `json:"disk_count,omitempty"`
+	DiskBytes   uint64 `json:"disk_bytes,omitempty"`
+	DiskDone    uint64 `json:"disk_done,omitempty"`
+	Partition   string `json:"partition,omitempty"`
+	// Unreadable is how much of the disk could not be read (zeros in the image).
+	Unreadable uint64 `json:"unreadable,omitempty"`
+	// ReadDone and ReadTotal leave out what goes into the image as zeros
+	// unread (free space, partitions left out): Percent and the time
+	// remaining follow them, while BytesDone/BytesTotal keep the disk sizes
+	// for "Processed".
+	ReadDone  uint64 `json:"read_done,omitempty"`
+	ReadTotal uint64 `json:"read_total,omitempty"`
+	// RetryAt (Unix ms) is set while a machine backup waits to start again
+	// after losing its connection (Phase "retry_wait"); Attempt is the one
+	// coming, of Attempts.
+	RetryAt  int64 `json:"retry_at,omitempty"`
+	Attempt  int   `json:"attempt,omitempty"`
+	Attempts int   `json:"attempts,omitempty"`
+}
+
+// event is the payload of the "backup:stats" Wails event.
+func (s *BackupProgressStats) event() map[string]interface{} {
+	return map[string]interface{}{
+		"percent":       s.Percent * 100,
+		"bytesDone":     s.BytesDone,
+		"bytesTotal":    s.BytesTotal,
+		"newChunks":     s.NewChunks,
+		"reusedChunks":  s.ReusedChunks,
+		"failedChunks":  s.FailedChunks,
+		"currentDir":    s.CurrentDir,
+		"message":       s.Message,
+		"filesDone":     s.FilesDone,
+		"filesTotal":    s.FilesTotal,
+		"uploadedBytes": s.UploadedBytes,
+		"sentBytes":     s.SentBytes,
+		"phase":         s.Phase,
+		"readReason":    s.ReadReason,
+		"changeMode":    s.ChangeMode,
+		"kind":          s.Kind,
+		"blankChunks":   s.BlankChunks,
+		"disk":          s.Disk,
+		"diskModel":     s.DiskModel,
+		"diskNo":        s.DiskNo,
+		"diskCount":     s.DiskCount,
+		"diskBytes":     s.DiskBytes,
+		"diskDone":      s.DiskDone,
+		"partition":     s.Partition,
+		"unreadable":    s.Unreadable,
+		"readDone":      s.ReadDone,
+		"readTotal":     s.ReadTotal,
+		"retryAt":       s.RetryAt,
+		"attempt":       s.Attempt,
+		"attempts":      s.Attempts,
+	}
 }

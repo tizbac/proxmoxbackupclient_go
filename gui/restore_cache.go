@@ -15,7 +15,11 @@ import (
 //
 // v2: added optional Meta (BackupMeta sidecar) so GetSnapshotMeta is free
 // after a listing.
-const cachedTreeSchema = 2
+// v3: the folder name each path starts with is the original folder's last
+// element on every system (originalFolderName); a v2 tree of a Windows backup
+// saved on Linux still had the whole Windows path there, and its restore
+// matched nothing.
+const cachedTreeSchema = 3
 
 // snapshotCacheKey identifies a single snapshot's content listing. The whole
 // tuple is hashed into the filename so unrelated cache lines stay isolated
@@ -91,7 +95,7 @@ func loadSnapshotTreeCache(key snapshotCacheKey) (*cachedSnapshotTree, bool) {
 		return nil, false
 	}
 	var c cachedSnapshotTree
-	if err := json.Unmarshal(data, &c); err != nil {
+	if err := json.Unmarshal(stripUTF8BOM(data), &c); err != nil {
 		writeBackupLog(fmt.Sprintf("Restore cache: ignoring malformed file %s: %v", filepath.Base(path), err))
 		return nil, false
 	}

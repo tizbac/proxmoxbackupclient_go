@@ -5,16 +5,16 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
-const (
-	mutexName  = "Global\\ProxmoxBackupClientGUIMutex"
-	windowName = "Proxmox Backup Client"
-)
+// mutexName is the brand's single-instance lock: Global\SalvanzaGUIMutex.
+var mutexName = `Global\` + folderName() + "GUIMutex"
 
 var (
 	user32            = windows.NewLazySystemDLL("user32.dll")
@@ -33,44 +33,27 @@ const (
 // Returns true if this is the only instance, false if another exists.
 // If another exists, it attempts to bring that window to the foreground.
 func CheckSingleInstance() bool {
+	if hasArg(elevatedRestartFlag) {
+		waitForPreviousInstance()
+	}
 	mutexNamePtr, err := syscall.UTF16PtrFromString(mutexName)
 	if err != nil {
 		writeDebugLog(fmt.Sprintf("Failed to create mutex name: %v", err))
 		return true // Allow launch on error
 	}
 
+	// Try to create or open the mutex
 	mutex, err := windows.CreateMutex(nil, false, mutexNamePtr)
-
-	// Does the named mutex already exist (i.e. is another instance running)?
-	// Three cases end up here:
-	//
-	//   - success + ERROR_ALREADY_EXISTS: same integrity level, the normal case.
-	//   - ERROR_ALREADY_EXISTS as the error itself: belt and braces for the
-	//     same situation.
-	//   - ERROR_ACCESS_DENIED: the mutex exists but was created at a HIGHER
-	//     integrity level — an elevated relaunch leaves exactly that behind
-	//     (requestElevationWindows hands the lock to the UAC-elevated copy).
-	//     Mandatory integrity control refuses a medium-IL process any access,
-	//     so CreateMutex fails with ACCESS_DENIED instead of reporting
-	//     ALREADY_EXISTS. The old code treated any other error as "no other
-	//     instance, go ahead" — which is why a second GUI window kept
-	//     appearing next to the elevated one. Being locked out of the name
-	//     means someone else holds it; that IS a duplicate.
-	duplicate := false
-	switch {
-	case err == nil:
-		duplicate = windows.GetLastError() == windows.ERROR_ALREADY_EXISTS
-	case errors.Is(err, windows.ERROR_ALREADY_EXISTS):
-		duplicate = true
-	case errors.Is(err, windows.ERROR_ACCESS_DENIED):
-		writeDebugLog(fmt.Sprintf("Mutex %s exists at a higher integrity level (elevated instance): %v", mutexName, err))
-		duplicate = true
-	default:
+	if err != nil && !mutexHeldByAnotherInstance(err) {
 		writeDebugLog(fmt.Sprintf("Failed to create mutex: %v", err))
 		return true // Allow launch on error
 	}
 
-	if duplicate {
+	// The error CreateMutex itself returns is the reliable signal. Do NOT read
+	// windows.GetLastError() afterwards: Go's syscall layer does not preserve it,
+	// so that check always saw 0 and every launch believed it was the first
+	// instance (a second copy simply opened alongside the first).
+	if mutexHeldByAnotherInstance(err) {
 		writeDebugLog("Another instance is already running - attempting to bring it to foreground")
 
 		// Try to find and activate the existing window
@@ -80,8 +63,7 @@ func CheckSingleInstance() bool {
 			writeDebugLog("Could not find existing window to activate")
 		}
 
-		// Close our mutex handle and exit (the handle is 0 when CreateMutex
-		// failed outright, e.g. the ACCESS_DENIED case above).
+		// Close our mutex handle and exit
 		if mutex != 0 {
 			windows.CloseHandle(mutex)
 		}
@@ -90,43 +72,20 @@ func CheckSingleInstance() bool {
 
 	// We are the first instance - keep the mutex open
 	// Don't close it - it will be released when the process exits
-	instanceMutex = mutex
 	writeDebugLog("No other instance detected - continuing startup")
 	return true
 }
 
-// instanceMutex is the handle keeping this process the single instance;
-// ReleaseSingleInstance closes it (used before an elevated relaunch).
-var instanceMutex windows.Handle
-
-// ReleaseSingleInstance closes the single-instance mutex so an elevated
-// relaunch can acquire it instead of being seen as a duplicate. Safe to call
-// when no instance lock is held.
-func ReleaseSingleInstance() {
-	if instanceMutex != 0 {
-		windows.CloseHandle(instanceMutex)
-		instanceMutex = 0
-		writeDebugLog("Single-instance lock released for elevated relaunch")
-	}
-}
-
 // activateExistingWindow finds the existing client window and brings it to
-// foreground.
+// the foreground.
 func activateExistingWindow() bool {
-	// The Wails window title is "<Brand> v<version>" (main.go's options), and
-	// the brand is derived from the executable name — "Proxmox Backup Client",
-	// "Nimbus Backup", "Acme Backup", "Etitech Backup". Searching only for the
-	// hardcoded windowName meant a branded build never matched its own window:
-	// the second launch exited without showing anything. Try the brand first,
-	// then the default brand as a fallback.
-	brand := BrandFromExecutable().Title
-	titles := []string{
-		brand + " v" + appVersion,
-		brand,
-	}
-	if windowName != brand {
-		titles = append(titles, windowName+" v"+appVersion, windowName)
-	}
+	// The window is titled "<Brand> <version>" (main.go), e.g. "Nimbus Backup
+	// v2.0.0" or "... dev-49d96e4" for a development build, with the brand
+	// taken from the executable's name. Searching for the default name alone
+	// never found a branded build's window, so a second launch exited without
+	// showing anything (upstream's fix).
+	brand := product().Title
+	titles := []string{brand + " " + versionLabel(), brand}
 
 	var hwnd uintptr
 	for _, title := range titles {
@@ -161,4 +120,40 @@ func activateExistingWindow() bool {
 	procSetForeground.Call(hwnd)
 
 	return true
+}
+
+// mutexHeldByAnotherInstance reports whether a CreateMutex error means another
+// instance already owns the lock. ACCESS_DENIED counts too: an instance running
+// elevated creates the mutex with an administrators-only ACL, which a standard
+// copy cannot open.
+func mutexHeldByAnotherInstance(err error) bool {
+	return errors.Is(err, windows.ERROR_ALREADY_EXISTS) || errors.Is(err, windows.ERROR_ACCESS_DENIED)
+}
+
+func hasArg(flag string) bool {
+	for _, a := range os.Args[1:] {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// waitForPreviousInstance gives the instance that asked for elevation up to
+// ~12s to exit, so the elevated copy does not mistake it for a second launch.
+func waitForPreviousInstance() {
+	name, err := syscall.UTF16PtrFromString(mutexName)
+	if err != nil {
+		return
+	}
+	for i := 0; i < 40; i++ {
+		h, err := windows.CreateMutex(nil, false, name)
+		if h != 0 {
+			windows.CloseHandle(h)
+		}
+		if !mutexHeldByAnotherInstance(err) {
+			return
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
 }

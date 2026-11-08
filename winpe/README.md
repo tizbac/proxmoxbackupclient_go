@@ -1,20 +1,22 @@
 # WinPE Rescue ISO Builder
 
-> ⚠️ **Trademark & affiliation notice.** This is an **independent community project**, not an official Proxmox product: it is **not affiliated with, endorsed by, or sponsored by Proxmox Server Solutions GmbH**. **Proxmox®** is a registered trademark of Proxmox Server Solutions GmbH in the EU, the U.S. and other countries, and it is used here **only** to describe compatibility. Following Proxmox's own trademark guidance (registered marks must not be used in product or app names — e.g. "XY App for Proxmox Virtual Environment" rather than "Proxmox XY App"), **a rename of the non-branded client is underway**: the product currently called *Proxmox Backup Client* is moving to a name that does not contain the Proxmox mark. See the [Proxmox media kit](https://www.proxmox.com/en/about/company-details/media-kit) for the exact rules.
+> ⚠️ **Trademark & affiliation notice.** This is an **independent community project**, not an official Proxmox product: it is **not affiliated with, endorsed by, or sponsored by Proxmox Server Solutions GmbH**. **Proxmox®** is a registered trademark of Proxmox Server Solutions GmbH in the EU, the U.S. and other countries, and it is used here **only** to describe compatibility. Following Proxmox's own trademark guidance (registered marks must not be used in product or app names, for example "XY App for Proxmox Virtual Environment" rather than "Proxmox XY App"), **the non-branded client has been renamed**: the product formerly called *Proxmox Backup Client* is now **Salvanza for Proxmox Backup Server**, a name that does not contain the Proxmox mark. See the [Proxmox media kit](https://www.proxmox.com/en/about/company-details/media-kit) for the exact rules.
 
-Builds a bootable Windows PE rescue ISO that bundles the Proxmox Backup
-Client GUI and auto-launches it at start.
+Builds a bootable Windows PE rescue ISO that bundles the Salvanza GUI
+(formerly the Proxmox Backup Client GUI) and auto-launches it at start. By
+default it embeds `salvanza-gui.exe` from the current folder and writes
+`Salvanza-WinPE.iso`.
 
 ## Requirements (Linux host)
 
-- `p7zip-full`  — ISO extraction
-- `wimtools`    — `wimlib-imagex` WIM read/modify
-- `xorriso`     — bootable ISO rebuild
+- `p7zip-full`: ISO extraction
+- `wimtools`: `wimlib-imagex` WIM read/modify
+- `xorriso`: bootable ISO rebuild
 
 ## Building the GUI exe first
 
 ```sh
-./build_gui_windows_docker.sh        # -> ProxmoxBackupClientGO.exe
+./build_gui_windows_docker.sh        # -> salvanza-gui.exe
 ```
 
 ## Usage
@@ -28,7 +30,7 @@ Example with a downloaded WinPE ISO:
 ```sh
 curl -C - -o WinPE_base.iso \
   https://archive.org/download/WinPE-10.0.1904/WinPE_amd64_v10.0.19041.1.iso
-./build_winpe_iso.sh -i WinPE_base.iso -x ProxmoxBackupClientGO.exe
+./build_winpe_iso.sh -i WinPE_base.iso -x salvanza-gui.exe
 ```
 
 ### Options
@@ -36,8 +38,8 @@ curl -C - -o WinPE_base.iso \
 | Flag | Meaning |
 |------|---------|
 | `-i <iso>`   | Base WinPE ISO (default `WinPE_base.iso` in CWD) |
-| `-x <exe>`   | Windows exe to embed (default `ProxmoxBackupClientGO.exe`) |
-| `-o <iso>`   | Output ISO path (default `ProxmoxBackupClient-WinPE.iso`) |
+| `-x <exe>`   | Windows exe to embed (default `salvanza-gui.exe`) |
+| `-o <iso>`   | Output ISO path (default `Salvanza-WinPE.iso`) |
 | `-a <cmd>`   | Custom launch script placed at `X:\Start.cmd` |
 | `-k`         | Keep intermediate work dir (deleted on success by default) |
 | `-h`         | Help |
@@ -51,20 +53,26 @@ curl -C - -o WinPE_base.iso \
    UEFI (`efisys.bin`) boot images.
 4. Rebuilds the ISO with `xorriso -as mkisofs`, preserving both boot records.
 
-At boot, WinPE runs `wpeinit`, then our `startnet.cmd` finds `Start.cmd` on
-the boot media, copies the exe to the RAM drive and launches it.
+At boot, WinPE runs `wpeinit`, then our `startnet.cmd` runs the first
+`Start.cmd` it finds at the root of drives `C:` to `W:` (so one on a USB stick
+overrides the built-in one), or else `X:\Start.cmd` from the image. The default
+`Start.cmd` copies the exe to `X:\Salvanza` on the RAM drive, launches it
+and leaves a command prompt open.
 
 ## Test
 
 ```sh
-qemu-system-x86_64 -cdrom ProxmoxBackupClient-WinPE.iso -m 2048 -boot d
+qemu-system-x86_64 -cdrom Salvanza-WinPE.iso -m 2048 -boot d
 ```
 
 ## Caveats
 
-- The Wails GUI (`ProxmoxBackupClientGO.exe`) needs a desktop session and
+- The Wails GUI (`salvanza-gui.exe`) needs a desktop session and
   WebView2 runtime, both of which a bare WinPE lacks. The GUI may therefore
-  fail to launch in a plain WinPE shell; `Start.cmd` drops to a rescue shell
-  if that happens. Customize `Start.cmd` (`-a`) for your environment needs.
+  fail to launch in a plain WinPE shell; the default `Start.cmd` always leaves
+  a rescue command prompt open beside it. Customize `Start.cmd` (`-a`) for your
+  environment needs.
+- This ISO does not do a bare-metal restore. For that use the Clonezilla based
+  restore ISO ([docs/manual/BMR.md](../docs/manual/BMR.md)).
 - The built ISO is ~620 MB and is not tracked by git (only `build_winpe_iso.sh`
   and this README are committed).

@@ -8,22 +8,15 @@ import (
 	"sync"
 )
 
-// The unauthorized hook is called whenever the local service answers 401: the
-// token this request presented is no longer accepted because the service
-// rotated it (see TokenRotator) or it expired. The hook must obtain a fresh
-// token — in practice by repeating the elevated fetch (pkexec/sudo on Linux,
-// UAC on Windows) — and return it; sentToken is the token that was rejected, so
-// a hook can detect that another goroutine already refreshed it and skip the
-// prompt. Returning an error or an empty token means elevation was refused or
-// unavailable: the request keeps its 401 and the caller surfaces it.
-//
-// Install it ONCE at startup, AFTER the launch-time mode resolution: the probe
-// in resolveExecutionMode must keep seeing the raw 401 so it can run its own
-// elevated fetch and fall back to standalone mode when that is declined.
-//
-// It is set through SetUnauthorizedHook rather than being a plain variable
-// because installation happens while requests are already in flight (the late
-// switch to service mode during a backup), and every transport reads it.
+// The unauthorized hook runs when the service answers 401: the app has no
+// token yet, or the one it holds was replaced (TokenRotator). It must get a
+// fresh token (the elevated fetch: UAC on Windows, pkexec on Linux) and return
+// it; sentToken is the one that was refused, so a hook can tell that another
+// request already fetched a new one. An error or "" means there is none (the
+// user declined, or the app may not ask now, such as at sign-in with no
+// window open): the request keeps its 401. From upstream (reauth.go), which
+// fetches at start; this app installs the hook from the start and lets the
+// hook decide when it may ask.
 var (
 	unauthorizedHookMu sync.RWMutex
 	unauthorizedHook   func(sentToken string) (string, error)
@@ -37,27 +30,21 @@ func SetUnauthorizedHook(hook func(sentToken string) (string, error)) {
 	unauthorizedHookMu.Unlock()
 }
 
-// GetUnauthorizedHook returns the installed 401 hook, or nil when requests
-// must surface the rejection as-is.
+// GetUnauthorizedHook returns the installed 401 hook, or nil.
 func GetUnauthorizedHook() func(sentToken string) (string, error) {
 	unauthorizedHookMu.RLock()
 	defer unauthorizedHookMu.RUnlock()
 	return unauthorizedHook
 }
 
-// maxReplayBody bounds the request bodies buffered to be able to replay a
-// rejected request. Everything the GUI posts (jobs, config documents, PBS test
-// requests) is far below it.
+// maxReplayBody bounds the request bodies kept to replay a refused request.
+// Everything the app posts (Backup Sets, the settings document) is far below.
 const maxReplayBody = 8 << 20
 
-// reauthTransport wraps the token-injecting transport with a one-shot replay:
-// when a request comes back 401 and the installed hook yields a new token, the
-// request is resent with it. Callers therefore never see a rotation, they only
-// see an elevated prompt (once, after the previous token stopped working).
-//
-// It lives in the transport so every client call — including the bare
-// http.Clients built for probing — gets the behaviour without the ~19 call
-// sites having to know about it.
+// reauthTransport sends a request and, when it comes back 401 and the hook
+// yields a new token, sends it once more with that token. Callers never see a
+// rotation; the user sees one elevation prompt after the old token stopped
+// working.
 type reauthTransport struct {
 	base      http.RoundTripper
 	tokenPath string
@@ -66,8 +53,8 @@ type reauthTransport struct {
 func (t *reauthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	sent := resolveToken(t.tokenPath)
 
-	// Buffer the body up front: a rejected POST/DELETE has to be replayable,
-	// and the body is consumed by the first attempt.
+	// Keep the body: a refused POST has to be sent again, and the first
+	// attempt consumes it.
 	var body []byte
 	if req.Body != nil {
 		b, err := io.ReadAll(io.LimitReader(req.Body, maxReplayBody+1))
@@ -90,24 +77,21 @@ func (t *reauthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	resp, err := send()
-	// Read the hook once: it can be installed or cleared while this request
-	// was in flight (the late switch to service mode).
 	hook := GetUnauthorizedHook()
 	if err != nil || resp.StatusCode != http.StatusUnauthorized || hook == nil {
 		return resp, err
 	}
 
-	// Another goroutine may already have refreshed the token while this request
-	// was in flight: retry with it instead of prompting the user a second time.
+	// Another request may have fetched a new token while this one was on its
+	// way: use it rather than asking the user again.
 	if now := resolveToken(t.tokenPath); now != "" && now != sent {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return send()
 	}
 
-	// Keep the 401 body: if the hook fails it is handed back untouched, so the
-	// caller still reports a proper "unauthorized" from the service.
+	// Keep the 401's body, to hand back as it was if the hook fails.
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	token, hookErr := hook(sent)
 	if hookErr != nil || token == "" {

@@ -8,6 +8,7 @@
     "namespace": "",
     "backup-id": "",
     "pxarout": "",
+    "change-detection-mode": "legacy",
     "smtp": {
         "host": "smtp.example.com",
         "port": "465",
