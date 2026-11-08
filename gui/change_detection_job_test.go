@@ -22,6 +22,41 @@ func TestChangeDetectionForRunFullReadEvery(t *testing.T) {
 	}
 }
 
+func TestFullReadDayTaken(t *testing.T) {
+	jobs := []ScheduledJob{
+		{ID: "a", FullReadDay: "2026-11-08"},
+		{ID: "b", FullReadDay: "2026-11-07"},
+		{ID: "c"},
+	}
+	for _, c := range []struct {
+		id, day string
+		want    bool
+	}{
+		{"b", "2026-11-08", true},  // a has today's
+		{"a", "2026-11-08", false}, // its own day is no clash
+		{"c", "2026-11-09", false}, // a new day is free
+		{"c", "2026-11-07", true},
+	} {
+		if got := fullReadDayTaken(jobs, c.id, c.day); got != c.want {
+			t.Errorf("fullReadDayTaken(%s, %s) = %v, want %v", c.id, c.day, got, c.want)
+		}
+	}
+}
+
+// A set whose scheduled full read was moved to its next run stays due: the
+// metadata run counts, and the next one is a full read again.
+func TestDeferredFullReadStaysDue(t *testing.T) {
+	job := ScheduledJob{BackupType: "directory", ChangeDetectionMode: pbscommon.ChangeDetectionMetadata, FullReadEvery: 3, MetadataRunsSinceFullRead: 2}
+	if mode, _ := changeDetectionForRun(job); mode != pbscommon.ChangeDetectionData {
+		t.Fatalf("due run: %q", mode)
+	}
+	// Deferred: it runs as metadata and completes.
+	job.MetadataRunsSinceFullRead = nextFullReadCount(job, true, false)
+	if mode, _ := changeDetectionForRun(job); mode != pbscommon.ChangeDetectionData {
+		t.Fatalf("after a deferred full read the next run is %q, want a full read", mode)
+	}
+}
+
 func TestChangeDetectionForRunModes(t *testing.T) {
 	for _, c := range []struct {
 		job  ScheduledJob

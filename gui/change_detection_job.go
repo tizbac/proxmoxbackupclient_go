@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"time"
 
 	"pbscommon"
 )
@@ -67,6 +68,61 @@ func applyRequestedRead(job ScheduledJob, mode string) (runMode string, schedule
 		return pbscommon.ChangeDetectionMetadata, false, false
 	}
 	return mode, mode == pbscommon.ChangeDetectionData, false
+}
+
+// fullReadDayTaken reports whether a set other than jobID has day as its
+// scheduled full read day.
+func fullReadDayTaken(jobs []ScheduledJob, jobID, day string) bool {
+	for _, j := range jobs {
+		if j.ID != jobID && j.FullReadDay == day {
+			return true
+		}
+	}
+	return false
+}
+
+// claimFullReadDay lets one set a day read every file on schedule, so the
+// sets of a computer spread their full reads over the days instead of
+// several long runs reading the disks at once. It records day on jobID and
+// returns true, or returns false when another set has it; that set's run
+// then reads only changed files and its full read stays due for the next
+// run. When the jobs cannot be read or written, the full read goes ahead.
+func (a *App) claimFullReadDay(jobID string, now time.Time) bool {
+	// In an app working through the service, the sets are the service's.
+	if jobID == "" || a.delegated() {
+		return true
+	}
+	day := now.Format("2006-01-02")
+	jobsFileMu.Lock()
+	defer jobsFileMu.Unlock()
+	jobs, err := a.GetScheduledJobs()
+	if err != nil {
+		writeDebugLog(fmt.Sprintf("Warning: full read day not checked, could not load jobs: %v", err))
+		return true
+	}
+	if fullReadDayTaken(jobs, jobID, day) {
+		return false
+	}
+	for i := range jobs {
+		if jobs[i].ID != jobID || jobs[i].FullReadDay == day {
+			continue
+		}
+		jobs[i].FullReadDay = day
+		jobsPath, perr := getScheduledJobsPath()
+		if perr != nil {
+			writeDebugLog(fmt.Sprintf("Warning: cannot resolve jobs path: %v", perr))
+			return true
+		}
+		data, merr := json.MarshalIndent(jobs, "", "  ")
+		if merr != nil {
+			writeDebugLog(fmt.Sprintf("Warning: cannot marshal jobs: %v", merr))
+			return true
+		}
+		if werr := atomicWriteFile(jobsPath, data, 0600); werr != nil {
+			writeDebugLog(fmt.Sprintf("Warning: failed to save the full read day: %v", werr))
+		}
+	}
+	return true
 }
 
 // runFullReadRequested reports whether the run registered under
@@ -208,8 +264,9 @@ func nextFullReadCount(job ScheduledJob, success, readEveryFile bool) int {
 }
 
 // recordChangeDetectionOutcome stores a finished run's effect on its Backup
-// Set's full-read counter (nextFullReadCount). jobID "" (a one-off backup)
-// does nothing.
+// Set's full-read counter (nextFullReadCount) and, for a metadata-mode set
+// whose run read every file, LastFullRead. jobID "" (a one-off backup) does
+// nothing.
 func (a *App) recordChangeDetectionOutcome(jobID string, success, readEveryFile bool) {
 	// In an app working through the service, the set is the service's.
 	if jobID == "" || jobID == "service-request" || a.delegated() {
@@ -228,10 +285,15 @@ func (a *App) recordChangeDetectionOutcome(jobID string, success, readEveryFile 
 			continue
 		}
 		next := nextFullReadCount(jobs[i], success, readEveryFile)
-		if next == jobs[i].MetadataRunsSinceFullRead {
+		fullRead := success && readEveryFile && jobs[i].BackupType != "machine" &&
+			jobs[i].ChangeDetectionMode == pbscommon.ChangeDetectionMetadata
+		if next == jobs[i].MetadataRunsSinceFullRead && !fullRead {
 			return
 		}
 		jobs[i].MetadataRunsSinceFullRead = next
+		if fullRead {
+			jobs[i].LastFullRead = time.Now().Format(time.RFC3339)
+		}
 		jobsPath, perr := getScheduledJobsPath()
 		if perr != nil {
 			writeDebugLog(fmt.Sprintf("Warning: cannot resolve jobs path: %v", perr))

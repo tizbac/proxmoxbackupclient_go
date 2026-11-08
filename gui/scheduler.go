@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"pbscommon"
+
 	"github.com/salvanza/salvanza_client/gui/api"
 )
 
@@ -73,6 +75,14 @@ type ScheduledJob struct {
 	// runs that completed successfully since the last successful full read
 	// (recordChangeDetectionOutcome). Kept across edits.
 	MetadataRunsSinceFullRead int `json:"metadataRunsSinceFullRead,omitempty"`
+	// FullReadDay is run state too: the local day (2006-01-02) this set's
+	// last scheduled full read was dispatched. Only one set a day gets one
+	// (claimFullReadDay); a set due on a day another set has taken reads
+	// unchanged files quickly and is due again on its next run.
+	FullReadDay string `json:"fullReadDay,omitempty"`
+	// LastFullRead is when a run of this metadata-mode set that read every
+	// file last completed (RFC 3339), for the set's card.
+	LastFullRead string `json:"lastFullRead,omitempty"`
 	// ScheduledFullRead is per-run state carried by the job copy a run is
 	// dispatched with, never stored: this run is the set's scheduled full read.
 	ScheduledFullRead bool `json:"-"`
@@ -462,6 +472,8 @@ func (a *App) UpdateScheduledJob(job ScheduledJob) error {
 			// Preserve enabled state and run state
 			job.Enabled = j.Enabled
 			job.MetadataRunsSinceFullRead = j.MetadataRunsSinceFullRead
+			job.FullReadDay = j.FullReadDay
+			job.LastFullRead = j.LastFullRead
 			// The editor does not send the last run: keep it, or the card
 			// says "Never run yet" after every edit.
 			if job.LastRun == "" {
@@ -1103,6 +1115,12 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 	// neither counts towards the next full read nor stands in for one.
 	runMode, _ := changeDetectionForRun(job)
 	runMode, job.ScheduledFullRead, job.FullReadRequested = applyRequestedRead(job, runMode)
+	if job.ScheduledFullRead && !a.claimFullReadDay(job.ID, time.Now()) {
+		// Another set has today's full read: this one reads only changed
+		// files and is due again on its next run.
+		runMode, job.ScheduledFullRead = pbscommon.ChangeDetectionMetadata, false
+		writeDebugLog(fmt.Sprintf("Backup Set %s: full read moved to the next run (another set has today's)", job.Name))
+	}
 	if job.ScheduledFullRead {
 		writeDebugLog(fmt.Sprintf("Backup Set %s: full read run (every %d runs)", job.Name, job.FullReadEvery))
 	} else if job.FullReadRequested {

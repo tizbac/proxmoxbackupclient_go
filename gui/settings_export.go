@@ -317,6 +317,7 @@ func (a *App) mergeSettingsBundle(bundle SettingsBundle, forDeployment bool) (se
 			}
 			job.LastRun, job.NextRun, job.NextRunBy = "", "", ""
 			job.MetadataRunsSinceFullRead = 0
+			job.FullReadDay, job.LastFullRead = "", ""
 		}
 		// Disk identities name the disks of the computer the file came from.
 		// On another computer a machine set is backed up by its device paths,
@@ -336,6 +337,8 @@ func (a *App) mergeSettingsBundle(bundle SettingsBundle, forDeployment bool) (se
 				// Deployed again: the set's own runs on this computer.
 				job.LastRun = existingJobs[i].LastRun
 				job.MetadataRunsSinceFullRead = existingJobs[i].MetadataRunsSinceFullRead
+				job.FullReadDay = existingJobs[i].FullReadDay
+				job.LastFullRead = existingJobs[i].LastFullRead
 			}
 			existingJobs[i] = job
 		} else {

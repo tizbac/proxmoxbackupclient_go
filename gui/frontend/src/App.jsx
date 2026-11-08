@@ -167,6 +167,10 @@ if (window.runtime) {
   OpenBrowser = window.runtime.BrowserOpenURL
 }
 
+// A new Backup Set's change detection (see the changeDetectionMode state).
+const NEW_SET_CHANGE_DETECTION = 'metadata'
+const NEW_SET_FULL_READ_EVERY = 30
+
 // Auto-scaling transfer-rate formatter: shows the conventional decimal unit
 // (KB/MB/GB, ÷1000) with the binary IEC unit (KiB/MiB/GiB, ÷1024) alongside,
 // since a hardcoded "always ÷1048576, always MB/s" badly misrepresents both
@@ -836,9 +840,14 @@ function App() {
   // (ScheduledJob.skipPartitions): { diskId, device, start, size, number, label }.
   const [skipParts, setSkipParts] = useState([])
   // Change detection for a directory Backup Set ('legacy' | 'data' | 'metadata')
-  // and, for metadata, a full read every N runs (0 = never).
-  const [changeDetectionMode, setChangeDetectionMode] = useState('legacy')
-  const [fullReadEvery, setFullReadEvery] = useState(0)
+  // and, for metadata, a full read every N runs (0 = never). A new set starts
+  // on metadata (unchanged files are not read again) with a full read every
+  // NEW_SET_FULL_READ_EVERY runs, about monthly for a daily set: metadata
+  // trusts size and modified time, and a full read catches a file changed
+  // without either moving (an encrypted container, say) and refreshes data
+  // only ever reused from earlier backups. Existing sets keep their own mode.
+  const [changeDetectionMode, setChangeDetectionMode] = useState(NEW_SET_CHANGE_DETECTION)
+  const [fullReadEvery, setFullReadEvery] = useState(NEW_SET_FULL_READ_EVERY)
   const [vmIdNumber, setVmIdNumber] = useState('')
   const [vmIdStyle, setVmIdStyle] = useState('range') // 'range' = 9000000+N, 'zeros' = 000N
   // Reverse of computeVmBackupId: refill the editor from a saved Backup Set.
@@ -2821,7 +2830,7 @@ function App() {
     setEditingJobId(null)
     setJobName('')
     setMachineAsVM(false); setReadFreeSpace(false); setMachineSnapshotsOff(false); setLiveReadAccepted(false); setSkipParts([]); setJobEnabled(true); setVmIdNumber(''); setImageFolders('')
-    setChangeDetectionMode('legacy'); setFullReadEvery(0)
+    setChangeDetectionMode(NEW_SET_CHANGE_DETECTION); setFullReadEvery(NEW_SET_FULL_READ_EVERY)
     setRunAtStartup(false)
     setScheduleMode('scheduled'); setSchedules([newSchedule('days', 's1')])
     setBackupDirs('')
@@ -3016,6 +3025,16 @@ function App() {
           }
           await writeJob()
         }
+        // A metadata set skips unchanged files: say so, and how often it
+        // reads every file, so the interval is a choice, not a surprise.
+        if (jobData.changeDetectionMode === 'metadata') {
+          setBackupNotice({
+            type: 'info',
+            message: jobData.fullReadEvery > 0
+              ? tl('metadataSavedNote', '"{name}" skips files that have not changed. Every {n} runs it reads every file, to catch changes that keep a file\'s size and time. To do that more or less often, change "Read every file every" on the Destination tab.').replace('{name}', jobData.name).replace('{n}', jobData.fullReadEvery)
+              : tl('metadataSavedNoteNever', '"{name}" skips files that have not changed and never reads every file, so a change that keeps a file\'s size and time is not backed up. To read every file now and then, set "Read every file every" on the Destination tab.').replace('{name}', jobData.name),
+          })
+        }
         if (editingJobId) {
           // Reload rather than use the form's copy: the backend adds the
           // next run and keeps the last run and run counters.
@@ -3036,7 +3055,7 @@ function App() {
         setEmailOnFailure(false); setEmailOnFailureTo('')
         setRunAppBefore(''); setRunAppAfter('')
         setExitAppAfter(false); setMinimizeAfter(false); setShutdownAfter(false)
-        setChangeDetectionMode('legacy'); setFullReadEvery(0)
+        setChangeDetectionMode(NEW_SET_CHANGE_DETECTION); setFullReadEvery(NEW_SET_FULL_READ_EVERY)
         setShowBackupForm(false)
       } catch (err) {
         if (!handleJobsLockError(err)) showStatus(`❌ ${jobErrText(err)}`, 'error')
@@ -5080,7 +5099,7 @@ function App() {
           {!backupCardActive && backupNotice && (
             <div className={`status ${backupNotice.type} visible`} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '10px', marginBottom: '20px', ...(backupNotice.type === 'error' ? {borderLeft: '6px solid #d32f2f', background: '#fdecea', color: '#8a1c1c'} : {})}}>
               <span>{backupNotice.type === 'error' ? '❌ ' : ''}{backupNotice.message}</span>
-              <button style={{background: '#d32f2f', border: 'none', color: '#fff', fontSize: '16px', lineHeight: 1, cursor: 'pointer', padding: '4px 10px', borderRadius: '4px'}} onClick={() => setBackupNotice(null)} aria-label="Dismiss">×</button>
+              <button style={{background: backupNotice.type === 'error' ? '#d32f2f' : '#718096', border: 'none', color: '#fff', fontSize: '16px', lineHeight: 1, cursor: 'pointer', padding: '4px 10px', borderRadius: '4px'}} onClick={() => setBackupNotice(null)} aria-label="Dismiss">×</button>
             </div>
           )}
 
@@ -5120,7 +5139,7 @@ function App() {
                     setEmailOnFailure(false); setEmailOnFailureTo('')
                     setRunAppBefore(''); setRunAppAfter('')
                     setExitAppAfter(false); setMinimizeAfter(false); setShutdownAfter(false)
-                    setChangeDetectionMode('legacy'); setFullReadEvery(0)
+                    setChangeDetectionMode(NEW_SET_CHANGE_DETECTION); setFullReadEvery(NEW_SET_FULL_READ_EVERY)
                     setBackupFormTab('source'); setShowBackupForm(true)
                   }}
                 >
@@ -5293,6 +5312,10 @@ function App() {
                                 const left = job.fullReadEvery - (job.metadataRunsSinceFullRead || 0) - 1
                                 return (
                                   <span>
+                                    {' · '}
+                                    {job.lastFullRead
+                                      ? tl('lastFullReadAt', 'Last full read: {when}').replace('{when}', new Date(job.lastFullRead).toLocaleString())
+                                      : tl('lastFullReadNone', 'Last full read: not recorded yet')}
                                     {' · '}
                                     {left <= 0
                                       ? tl('nextRunFullRead', 'Next run: full read (reads every file)')
@@ -5911,7 +5934,12 @@ function App() {
                 labelId="changeDetectionLabel"
                 vertical
                 value={backupType === 'machine' ? 'legacy' : changeDetectionMode}
-                onChange={setChangeDetectionMode}
+                onChange={(mode) => {
+                  // Turning metadata on brings the default full read with it
+                  // (a set saved in another mode keeps no interval).
+                  if (mode === 'metadata' && changeDetectionMode !== 'metadata' && !fullReadEvery) setFullReadEvery(NEW_SET_FULL_READ_EVERY)
+                  setChangeDetectionMode(mode)
+                }}
                 disabled={backupType === 'machine'}
                 options={[
                   { value: 'legacy', label: t('changeDetectionLegacy') },
