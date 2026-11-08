@@ -76,6 +76,8 @@ listed under [History of the GUI before 2.0](#history-of-the-gui-before-20).
 
 - **Mail relays without a login.** An SMTP relay that needs no user name or password (often on port 25) works in the app and in the command-line tools; an incomplete mail setup now says what is missing (tizbac/proxmoxbackupclient_go#74).
 
+- **Linux packages in every release.** The release workflow now builds the `.deb` and `.rpm` for amd64 and arm64 and the Arch package for x86_64, using `packaging/build-linux-package.sh` — the same script a developer runs locally — and publishes them with build provenance. The packages were previously built by hand, so a release often shipped Windows installers only.
+
 ### Changed
 
 - **The progress card is read down each column.** The left column has Started and Forecast finish, then where the backup has got to; the right column has Elapsed time and Time remaining, then the data on its way to the server (Processing, Upload, New/changed data, Data transferred, Compression ratio). A folder backup's Current file moves up under Folder. A machine backup's left column goes Disk, Partition, Blocks, **Position on disk** (how far through the current disk it is, which Processed showed) and the new **Data read**, the figure the percentage counts. A mostly empty disk at 99% used to show "Processed 80.9 / 119.2 GiB" beside it, with nothing on the card agreeing with the 99%. The box underneath also says how much goes into the image without being read (free space or partitions left out). The card is no taller.
