@@ -44,6 +44,9 @@ release:
   # A tag with a prerelease suffix (e.g. v1.2.0-rc.1) publishes as a
   # GitHub prerelease automatically.
   prerelease: auto
+  # Text written on the release page by hand is never replaced. The release
+  # notes come from build-and-release.yml, which keeps hand-written text too.
+  mode: keep-existing
 
 universal_binaries:
   - replace: true
@@ -65,9 +68,8 @@ checksum:
   name_template: checksums.txt
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
+# No commit list as release text: build-and-release.yml writes the release
+# notes when nobody has written them by hand, and an empty text is how it
+# tells that nobody has.
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
+  disable: true
