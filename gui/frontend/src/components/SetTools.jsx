@@ -66,6 +66,21 @@ function useReportBusy(onBusy, tab, busy) {
   useEffect(() => () => { if (onBusy) onBusy(tab, false) }, [onBusy, tab])
 }
 
+// NotOpenedNote names the set folders the logged in user could not open (a
+// network share only the saved backup login reaches, say), and the usual cure.
+function NotOpenedNote({ tl, folders, text, style }) {
+  if (!folders || folders.length === 0) return null
+  const onWindows = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent || '')
+  const hint = onWindows
+    ? tl('notOpenedHintWin', 'If it is a network share, open it once in File Explorer, then try again.')
+    : tl('notOpenedHintLinux', 'If it is a network share, open it once in the file manager, then try again.')
+  return (
+    <div className="info-box" style={{marginBottom: '8px', overflowWrap: 'anywhere', ...style}}>
+      ⚠️ {text.replace('{folders}', folders.join(', '))} {hint}
+    </div>
+  )
+}
+
 export function SetPicker({ ui, jobs, value, onChange }) {
   const { tl } = ui
   // Machine sets too: their folders for Undelete and Roll back are read
@@ -376,6 +391,7 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
               ⚠️ {tl('undeleteUnknown', '{n} files are under folders that could not be read now, so they are not listed:').replace('{n}', scan.unknown)} {(scan.unreadableFolders || []).slice(0, 5).join(', ')}
             </div>
           )}
+          <NotOpenedNote tl={tl} folders={scan.notOpened} text={tl('undeleteNotOpened', "Couldn't open {folders} as the logged in user, so nothing there was checked.")} />
           {(scan.files || []).length > 0 && (
             <>
               <div style={{display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px'}}>
@@ -789,6 +805,7 @@ export function RollbackPage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
             </div>
           </div>
           {preview.unknown > 0 && <div className="info-box" style={{marginTop: '10px'}}>⚠️ {tl('rollbackUnknown', '{n} files are under folders that could not be read now; they are left alone.').replace('{n}', preview.unknown.toLocaleString())}</div>}
+          <NotOpenedNote tl={tl} folders={preview.notOpened} text={tl('rollbackNotOpened', "Couldn't open {folders} as the logged in user, so it is left alone.")} style={{marginTop: '10px'}} />
           <details style={{marginTop: '10px'}}><summary>{tl('rollbackShowMissing', 'Missing files')} ({preview.missingCount.toLocaleString()})</summary><ItemList ui={ui} items={preview.missing} total={preview.missingCount} /></details>
           <details><summary>{tl('rollbackShowChanged', 'Changed files')} ({preview.changedCount.toLocaleString()})</summary><ItemList ui={ui} items={preview.changed} total={preview.changedCount} live /></details>
           <details><summary>{tl('rollbackShowAdded', 'Files added since')} ({preview.newCount.toLocaleString()})</summary><ItemList ui={ui} items={preview.new} total={preview.newCount} /></details>

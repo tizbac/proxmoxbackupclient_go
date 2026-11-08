@@ -142,6 +142,9 @@ func setCLI(cmd string, args []string) int {
 			fmt.Printf("; %d more under folders that could not be read", scan.Unknown)
 		}
 		fmt.Println()
+		if len(scan.NotOpened) > 0 {
+			fmt.Printf("Not checked: %s (couldn't open as the logged in user)\n", strings.Join(scan.NotOpened, ", "))
+		}
 		if *dryRun || len(scan.Files) == 0 {
 			return 0
 		}
@@ -210,6 +213,9 @@ func setCLI(cmd string, args []string) int {
 		fmt.Printf("  missing now: %d files (%s)\n  changed since: %d files (%s)\n  added since: %d files (%s)\n  unchanged: %d\n",
 			pv.MissingCount, formatByteSize(pv.MissingBytes), pv.ChangedCount, formatByteSize(pv.ChangedBytes),
 			pv.NewCount, formatByteSize(pv.NewBytes), pv.Unchanged)
+		if len(pv.NotOpened) > 0 {
+			fmt.Printf("  left alone: %s (couldn't open as the logged in user)\n", strings.Join(pv.NotOpened, ", "))
+		}
 		fmt.Printf("Policy %s: %d files restored or replaced, %d removed; everything replaced or removed is kept in %s for Undo.\n",
 			*policy, restore, remove, strings.Join(pv.SafetyFolders, ", "))
 		if *dryRun {

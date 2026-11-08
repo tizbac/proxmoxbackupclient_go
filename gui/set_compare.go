@@ -77,8 +77,18 @@ type LiveIndex struct {
 	Root       string
 	Entries    []IndexEntry // sorted by pathKey
 	Unreadable []string     // relative paths of folders that could not be listed
+	// NotOpened: the folder itself could not be opened by the logged in user
+	// (a network share only the saved backup login reaches, say), so nothing
+	// in it is known.
+	NotOpened bool
 
 	files map[string]struct{} // pathKey of every file, built on first HasFile
+}
+
+// unknownAt reports whether rel is in a part of the folder that could not be
+// read, so its absence says nothing.
+func (li *LiveIndex) unknownAt(rel string) bool {
+	return li.NotOpened || underAny(rel, li.Unreadable)
 }
 
 // HasFile reports whether the live folder holds a FILE at rel.
@@ -229,7 +239,7 @@ func compareIndexes(snap []IndexEntry, live *LiveIndex) CompareResult {
 			if s.IsDir || s.Path == backupMetaFileName {
 				continue
 			}
-			if underAny(s.Path, live.Unreadable) {
+			if live.unknownAt(s.Path) {
 				r.Unknown++
 				continue
 			}

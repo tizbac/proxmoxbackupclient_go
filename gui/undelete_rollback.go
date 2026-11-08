@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -54,10 +55,13 @@ func (a *App) ListSetSnapshots(jobID string) ([]SetSnapshot, error) {
 
 // liveFolders walks every folder of a set. The progress events carry the
 // number of files and folders found so far and, as an estimate of the total,
-// how many the snapshot idx has for that folder (0 when unknown).
+// how many the snapshot idx has for that folder (0 when unknown). A folder
+// the logged in user may not open is marked NotOpened and the others are
+// still walked; only when none of them opens is that an error.
 func (a *App) liveFolders(job ScheduledJob, idx snapshotIndex, snap SetSnapshot, cancel func() bool) (map[string]*LiveIndex, error) {
 	out := map[string]*LiveIndex{}
 	folders := setFoldersOf(job)
+	var notOpened []string
 	for _, f := range folders {
 		dir := f.Dir
 		expected := len(idx[archiveFor(snap, f.Base)])
@@ -71,11 +75,44 @@ func (a *App) liveFolders(job ScheduledJob, idx snapshotIndex, snap SetSnapshot,
 			if errors.Is(err, errCompareCancelled) {
 				return nil, err
 			}
+			if isLoginRefusal(err) {
+				// The app runs as the logged in user, who may not reach a
+				// share that only the backups' saved login (used by the
+				// service) can.
+				writeDebugLog(fmt.Sprintf("Set scan: cannot open %s as the logged in user: %v", f.Dir, err))
+				out[f.Base] = &LiveIndex{Root: f.Dir, NotOpened: true}
+				notOpened = append(notOpened, f.Dir)
+				continue
+			}
 			return nil, fmt.Errorf("cannot read %s: %w", f.Dir, err)
 		}
 		out[f.Base] = li
 	}
+	if len(folders) > 0 && len(notOpened) == len(folders) {
+		return nil, notOpenedError(notOpened)
+	}
 	return out, nil
+}
+
+// notOpenedError says which folders the logged in user could not open and
+// what usually cures it.
+func notOpenedError(dirs []string) error {
+	browser := "File Explorer"
+	if runtime.GOOS != "windows" {
+		browser = "the file manager"
+	}
+	return fmt.Errorf("Couldn't open %s as the logged in user. If it is a network share, open it once in %s, then try again", strings.Join(dirs, ", "), browser) //nolint:staticcheck // ST1005: a sentence shown to the user as it is
+}
+
+// notOpenedDirs lists the set's folders that live has as NotOpened.
+func notOpenedDirs(folders []setFolder, live map[string]*LiveIndex) []string {
+	var out []string
+	for _, f := range folders {
+		if li := live[f.Base]; li != nil && li.NotOpened {
+			out = append(out, f.Dir)
+		}
+	}
+	return out
 }
 
 // archiveFor returns the raw name of the set folder's archive in a snapshot.
@@ -113,6 +150,7 @@ type UndeleteScan struct {
 	OldestUnix        int64          `json:"oldestUnix"`
 	Unknown           int            `json:"unknown"`           // under folders that could not be read
 	UnreadableFolders []string       `json:"unreadableFolders"` // "<folder>\<relative>"
+	NotOpened         []string       `json:"notOpened"`         // set folders the logged in user could not open: not checked
 }
 
 // ScanUndelete lists the files of a Backup Set that are in its snapshots but
@@ -169,7 +207,7 @@ func (a *App) scanUndelete(cfg *Config, job ScheduledJob, snaps []SetSnapshot, c
 		return nil, err
 	}
 	folders := setFoldersOf(job)
-	res := &UndeleteScan{NewestUnix: snaps[0].Unix, OldestUnix: snaps[len(snaps)-1].Unix}
+	res := &UndeleteScan{NewestUnix: snaps[0].Unix, OldestUnix: snaps[len(snaps)-1].Unix, NotOpened: notOpenedDirs(folders, live)}
 	for _, f := range folders {
 		for _, u := range live[f.Base].Unreadable {
 			res.UnreadableFolders = append(res.UnreadableFolders, filepath.Join(f.Dir, filepath.FromSlash(u)))
@@ -200,6 +238,9 @@ func (a *App) scanUndelete(cfg *Config, job ScheduledJob, snaps []SetSnapshot, c
 				continue
 			}
 			li := live[f.Base]
+			if li.NotOpened {
+				continue // said once, in NotOpened, not counted file by file
+			}
 			for _, e := range idx[archive] {
 				if e.IsDir || e.Path == backupMetaFileName {
 					continue
@@ -211,7 +252,7 @@ func (a *App) scanUndelete(cfg *Config, job ScheduledJob, snaps []SetSnapshot, c
 				if found[key] {
 					continue
 				}
-				if underAny(e.Path, li.Unreadable) {
+				if li.unknownAt(e.Path) {
 					unknown[key] = true
 					continue
 				}
@@ -382,7 +423,8 @@ type RollbackPreview struct {
 	NewBytes      uint64         `json:"newBytes"`
 	NewDirCount   int            `json:"newDirCount"`
 	Unknown       int            `json:"unknown"`
-	Missing       []RollbackItem `json:"missing"` // first previewListLimit of each
+	NotOpened     []string       `json:"notOpened"` // set folders the logged in user could not open: left alone
+	Missing       []RollbackItem `json:"missing"`   // first previewListLimit of each
 	Changed       []RollbackItem `json:"changed"`
 	New           []RollbackItem `json:"new"`
 	SafetyFolders []string       `json:"safetyFolders"`
@@ -441,13 +483,14 @@ func (a *App) planRollbackFor(cfg *Config, job ScheduledJob, snapshotUnix int64,
 	}
 	a.scanProgress("compare", "", 0, 0)
 	p := &rollbackPlan{job: job, cfg: cfg, snap: *snap, folders: setFoldersOf(job), compares: map[string]CompareResult{}}
-	pv := &RollbackPreview{SnapshotID: snap.ID, SnapshotUnix: snap.Unix}
+	pv := &RollbackPreview{SnapshotID: snap.ID, SnapshotUnix: snap.Unix, NotOpened: notOpenedDirs(p.folders, live)}
 	safety := map[string]bool{}
 	for _, f := range p.folders {
 		archive := archiveFor(*snap, f.Base)
-		if archive == "" {
-			// This folder was added to the set after the snapshot: nothing
-			// to roll back to, so leave it alone.
+		if archive == "" || live[f.Base].NotOpened {
+			// Added to the set after the snapshot (nothing to roll back to),
+			// or not openable as the logged in user: leave it alone. With no
+			// entry in compares, the roll back itself skips it too.
 			continue
 		}
 		c := compareIndexes(idx[archive], live[f.Base])
@@ -705,7 +748,7 @@ func (a *App) applyRollbackMoves(ctx context.Context, p *rollbackPlan, policy st
 	var manifestPath string
 	for _, f := range p.folders {
 		archive := archiveFor(p.snap, f.Base)
-		if archive == "" {
+		if _, planned := p.compares[f.Base]; archive == "" || !planned {
 			continue
 		}
 		// The safety folder first, locked down, then the set's folders in it
