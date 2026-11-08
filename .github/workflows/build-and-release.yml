@@ -635,14 +635,16 @@ jobs:
 
           EOFNOTES
 
-          # Get commits since last tag
+          # What changed: CHANGELOG.md, and the full comparison with the
+          # previous tag. Not the commit titles themselves: 2.0.0 had ~750 since
+          # its prerelease, which buried the rest of the page.
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREV_TAG" ]; then
-            echo "### Changes since ${PREV_TAG}" >> RELEASE_BODY.md
-            echo "" >> RELEASE_BODY.md
-            git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --no-merges >> RELEASE_BODY.md
-            echo "" >> RELEASE_BODY.md
-          fi
+          {
+            echo "Every change is in [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ steps.version.outputs.VERSION }}/CHANGELOG.md)."
+            if [ -n "$PREV_TAG" ]; then
+              echo "All commits since ${PREV_TAG}: [${PREV_TAG}...${{ steps.version.outputs.VERSION }}](https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${{ steps.version.outputs.VERSION }})."
+            fi
+          } >> RELEASE_BODY.md
 
           # Publish the SHA-256 checksums on the release page itself so users
           # can verify integrity without downloading SHA256SUMS.txt first.
@@ -682,13 +684,36 @@ jobs:
            echo "" >> RELEASE_BODY.md
            echo "**Salvanza**: [Releases](https://github.com/salvanza/salvanza_client/releases)" >> RELEASE_BODY.md
 
+          # A release page keeps every line break, so the template's and the
+          # notes' wrapped paragraphs would show as a narrow column: join them.
+          python3 scripts/unwrap-markdown.py RELEASE_BODY.md
+
+      # Release notes written by hand on the release page (before this job
+      # finishes) are kept: the job then only adds its files. goreleaser leaves
+      # the text empty (.goreleaser.yaml: changelog disabled), so an empty text
+      # means nobody wrote one, and the generated notes above are used.
+      - name: Is there hand-written release text?
+        id: existing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          body=$(gh release view "${{ steps.version.outputs.VERSION }}" --repo "${{ github.repository }}" --json body --jq .body 2>/dev/null || true)
+          if [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ]; then
+            echo "keep=true" >> "$GITHUB_OUTPUT"
+            echo "The release already has text ($(printf '%s' "$body" | wc -c) bytes): keeping it, adding the files only."
+          else
+            echo "keep=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # The goreleaser workflow ("Release Automation") normally creates the
       # release for this tag a few minutes earlier, with the cross-platform CLI
-      # archives. This step then updates that release: it appends the GUI/MSI
-      # and the CLI bundles built above and sets the body. action-gh-release
-      # edits an existing release for the tag rather than failing, which is what
-      # makes the two workflows coexist.
+      # archives. These steps then update that release: they add the MSIs, the
+      # Linux packages and the CLI bundles built above, and set the text only
+      # when nobody has written it. action-gh-release edits an existing release
+      # for the tag rather than failing, which is what makes the two workflows
+      # coexist; without a body input it leaves the text as it is.
       - name: Create GitHub Release
+        if: steps.existing.outputs.keep != 'true'
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_BODY.md
@@ -697,6 +722,13 @@ jobs:
           prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # gh release upload adds files and never touches the text.
+      - name: Add the files to the release (its text is kept)
+        if: steps.existing.outputs.keep == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.version.outputs.VERSION }}" release/* --repo "${{ github.repository }}" --clobber
 
       - name: Update latest release badge
         if: ${{ !contains(steps.version.outputs.VERSION, '-') }}
