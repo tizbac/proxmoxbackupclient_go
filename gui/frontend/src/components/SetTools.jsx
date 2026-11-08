@@ -395,7 +395,7 @@ export function UndeletePage({ ui, jobs, jobId, setJobId, restoreLoading, onStar
                 ]} />
               {dest === 'other' && (
                 <div style={{display: 'flex', gap: '8px', marginTop: '8px'}}>
-                  <input type="text" value={destPath} onChange={(e) => setDestPath(e.target.value)} placeholder="D:\\Recovered" aria-label={tl('undeleteDestFolder', 'Destination folder')} />
+                  <input type="text" value={destPath} onChange={(e) => setDestPath(e.target.value)} placeholder={ui.os === 'linux' ? '/home/name/Recovered' : 'D:\\Recovered'} aria-label={tl('undeleteDestFolder', 'Destination folder')} />
                   <button className="btn btn-secondary" onClick={async () => { try { const d = await ui.OpenRestoreDestDialog(); if (d) setDestPath(d) } catch (e) { setError(String(e)) } }}>{t('browse') !== 'browse' ? t('browse') : 'Browse...'}</button>
                 </div>
               )}

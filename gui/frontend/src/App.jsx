@@ -5507,7 +5507,9 @@ function App() {
                     setConfig({...config, backupdir: dirs[0] || ''})
                   }}
                   rows="3"
-                  placeholder="C:\Data&#10;C:\Users&#10;D:\Documents&#10;\\server\share"
+                  placeholder={systemInfo.os === 'linux'
+                    ? '/home/name/Documents\n/srv/data\n/mnt/share'
+                    : 'C:\\Data\nC:\\Users\nD:\\Documents\n\\\\server\\share'}
                 />
               </details>
             </div>
@@ -6641,7 +6643,7 @@ function App() {
                           type="text"
                           value={restoreDestPath}
                           onChange={(e) => setRestoreDestPath(e.target.value)}
-                          placeholder="C:\Restore"
+                          placeholder={systemInfo.os === 'linux' ? '/home/name/Restore' : 'C:\\Restore'}
                           style={{flex: 1}}
                         />
                         <button className="btn" onClick={handleBrowseRestoreDest} type="button">

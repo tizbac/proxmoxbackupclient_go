@@ -758,7 +758,7 @@ func listSnapshotViaCatalog(opts RestoreOptions, cancel func() bool) (entries []
 // resolveArchiveDisplayNames maps each archive's own raw name (as stored in
 // the manifest/catalog, e.g. "c__testdata_....pxar.didx") to a human-readable
 // display name derived from that archive's own meta sidecar
-// (filepath.Base(OriginalPath) — the originally-selected folder's own name,
+// (originalFolderName(OriginalPath): the originally-selected folder's own name,
 // which PXAR's archive format itself never records; see WriteDir's toplevel
 // doc comment). Falls back to the raw archive name when no meta / no
 // OriginalPath is available (legacy snapshots, or a best-effort read
@@ -782,8 +782,8 @@ func resolveArchiveDisplayNames(opts RestoreOptions, archiveNames []string, canc
 		metaByArchive[archiveName] = meta
 
 		name := archiveName
-		if meta != nil && meta.OriginalPath != "" {
-			if base := filepath.Base(filepath.Clean(meta.OriginalPath)); base != "" && base != "." && base != string(filepath.Separator) {
+		if meta != nil {
+			if base := originalFolderName(meta.OriginalPath); base != "" {
 				name = base
 			}
 		}
@@ -795,6 +795,26 @@ func resolveArchiveDisplayNames(opts RestoreOptions, archiveNames []string, canc
 		displayNames[archiveName] = final
 	}
 	return displayNames, metaByArchive
+}
+
+// originalFolderName is the last element of a backed-up folder's original
+// path, whichever system took the backup: "/" and "\" both end an element,
+// so a Windows backup browsed on Linux shows "Docs" for C:\Users\me\Docs,
+// not the whole path. (filepath.Base splits only on the running system's
+// separators; the whole Windows path then became the name, and as the
+// selection's "\" are made "/" before it is matched to this name, a restore
+// of it on Linux matched nothing, found 2026-11-07.) "" for a drive or share
+// root ("C:\", "/") or no path, which are no folder name: the archive's own
+// name is used then.
+func originalFolderName(p string) string {
+	p = strings.TrimRight(p, `/\`)
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
+		p = p[i+1:]
+	}
+	if p == "" || p == "." || p == ".." || strings.HasSuffix(p, ":") {
+		return ""
+	}
+	return p
 }
 
 // readArchiveMetaCheap reads only the meta sidecar from a specific archive.
