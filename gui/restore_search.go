@@ -186,6 +186,16 @@ func joinOriginPath(meta *BackupMeta, archivePath string) string {
 		sep = "\\"
 	}
 	base := strings.TrimRight(meta.OriginalPath, sep)
+	// The browse tree's paths start with the folder's own name
+	// (originalFolderName), which OriginalPath already ends with: kept, it
+	// showed C:\Data\Docs\Docs\file.txt (found 2026-11-07).
+	if name := originalFolderName(meta.OriginalPath); name != "" {
+		if archivePath == name {
+			archivePath = ""
+		} else {
+			archivePath = strings.TrimPrefix(archivePath, name+"/")
+		}
+	}
 	if archivePath == "" {
 		return base
 	}

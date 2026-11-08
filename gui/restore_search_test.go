@@ -250,6 +250,10 @@ func TestSearchJoinOriginPath(t *testing.T) {
 		{"unix root archive path", unix, "", "/home/tiziano/data"},
 		{"windows meta", &BackupMeta{OS: "windows", OriginalPath: `C:\Users\tiz\data\`}, "a/b.txt", `C:\Users\tiz\data\a\b.txt`},
 		{"backslash implies windows", &BackupMeta{OS: "", OriginalPath: `D:\x\`}, "p/q", `D:\x\p\q`},
+		// Browse-tree paths start with the folder's own name: not doubled.
+		{"tree path, windows", &BackupMeta{OS: "windows", OriginalPath: `C:\TestData\Backup of Compaq 486 Laptop`}, "Backup of Compaq 486 Laptop/CPC/SMARTCHK.CPS", `C:\TestData\Backup of Compaq 486 Laptop\CPC\SMARTCHK.CPS`},
+		{"tree path, the folder itself", unix, "data", "/home/tiziano/data"},
+		{"tree path, unix", unix, "data/a/b.txt", "/home/tiziano/data/a/b.txt"},
 		{"no meta", nil, "a.txt", ""},
 		{"empty original path", &BackupMeta{OS: "linux", OriginalPath: ""}, "a.txt", ""},
 	}
