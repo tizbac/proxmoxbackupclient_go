@@ -354,6 +354,8 @@ The server editor has four tabs.
 
 **Certificate fingerprint.** PBS normally uses a self-signed certificate. If you leave the fingerprint empty, **Test** fetches the fingerprint the server presents and asks you to confirm it (**Trust this server's certificate?**). Compare it with the one shown on the PBS dashboard (Show Fingerprint), then click **Trust and connect**. The fingerprint is then pinned and must match on every connection (trust on first use).
 
+**What the account may do.** **Test** also asks PBS what the account may do on the datastore (and on the namespace, if you use one). Backing up needs the **Datastore.Backup** permission; restoring other machines' backups needs **Datastore.Read** (an account with Datastore.Backup also restores the backups it made, which is all the DatastorePowerUser role gives). An account that can back up passes with no comment. An account that can only restore, with Datastore.Read but not Datastore.Backup, passes with a warning: *restore only: this account has Datastore.Read but not Datastore.Backup on /datastore/...*, because that is right for a server you only restore from, and a backup to it would be refused. An account that can do neither fails, and the message lists the permissions it has. A PBS that does not report permissions is not asked, and the test is as before.
+
 ### User / Password tab
 
 A PBS user such as `backup@pbs`. The realm is required. The password is stored and a fresh PBS ticket is obtained for every backup.

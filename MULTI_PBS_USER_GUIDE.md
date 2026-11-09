@@ -59,7 +59,7 @@ Save the server. The first server you add becomes the default.
 
 ### Step 3: test the connection
 
-Each server in the list has a status: **Not tested**, **Testing...**, **Online** or **Offline**. Click **Test** to check it. If the server uses a self-signed certificate and no fingerprint is set, the app shows the fingerprint it found; compare it with the one on the PBS dashboard (Show Fingerprint) before you confirm.
+Each server in the list has a status: **Not tested**, **Testing...**, **Online** or **Offline**. Click **Test** to check it. If the server uses a self-signed certificate and no fingerprint is set, the app shows the fingerprint it found; compare it with the one on the PBS dashboard (Show Fingerprint) before you confirm. The test also checks what the account may do on the datastore: an account that can only restore (Datastore.Read without Datastore.Backup) passes with a warning, and one that can neither back up nor restore fails and lists the permissions it has.
 
 ### Step 4: choose the default server
 

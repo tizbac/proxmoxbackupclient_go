@@ -64,11 +64,15 @@ let ConnectService, IsServiceConnected, UseOwnSettings, OwnSetsCount, ConnectSer
 let ComputerServers
 // Installed but not running: the banner's Start the service
 let StartServiceAndConnect
+// The connection tests that also return a warning (an account that can restore but not back up);
+// absent in a build from before them.
+let TestConnectionNote, TestPBSConnectionNote
 
 // Check if we're running in Wails
 if (window.go) {
   GetConfigWithHostname = window.go.main.App.GetConfigWithHostname
   TestConnection = window.go.main.App.TestConnection
+  TestConnectionNote = window.go.main.App.TestConnectionNote
   StartBackup = window.go.main.App.StartBackup
   StartMachineBackup = window.go.main.App.StartMachineBackup
   ListSnapshots = window.go.main.App.ListSnapshots
@@ -113,6 +117,7 @@ if (window.go) {
   SetDefaultPBSServer = window.go.main.App.SetDefaultPBSServer
   GetDefaultPBSID = window.go.main.App.GetDefaultPBSID
   TestPBSConnection = window.go.main.App.TestPBSConnection
+  TestPBSConnectionNote = window.go.main.App.TestPBSConnectionNote
   GetServerFingerprint = window.go.main.App.GetServerFingerprint
   PinPBSServerFingerprint = window.go.main.App.PinPBSServerFingerprint
   SetParallelRestore = window.go.main.App.SetParallelRestore
@@ -2237,9 +2242,16 @@ function App() {
 
     try {
       setServerStatus(prev => ({ ...prev, [id]: 'testing' }))
-      await TestPBSConnection(id)
+      let note = ''
+      if (TestPBSConnectionNote) note = await TestPBSConnectionNote(id)
+      else await TestPBSConnection(id)
       setServerStatus(prev => ({ ...prev, [id]: 'online' }))
-      showStatus(`✅ ${t('statusConnectionSuccess').replace('{id}', serverLabel(id))}`, 'success')
+      if (note) {
+        // Connected, but the account cannot back up: said, and kept on screen to be read.
+        showStatus(`⚠️ ${t('statusConnectionSuccess').replace('{id}', serverLabel(id))}. ${note}`, 'warning', true)
+      } else {
+        showStatus(`✅ ${t('statusConnectionSuccess').replace('{id}', serverLabel(id))}`, 'success')
+      }
     } catch (err) {
       const server = pbsServers.find(s => s.id === id)
       // Self-signed cert + no fingerprint yet: offer to discover and pin it (TOFU).
@@ -2629,8 +2641,14 @@ function App() {
     }
 
     try {
-      await TestConnection(testConfig)
-      showStatus(`✅ ${t('statusConnectionOK')}`, 'success')
+      let note = ''
+      if (TestConnectionNote) note = await TestConnectionNote(testConfig)
+      else await TestConnection(testConfig)
+      if (note) {
+        showStatus(`⚠️ ${t('statusConnectionOK')} ${note}`, 'warning', true)
+      } else {
+        showStatus(`✅ ${t('statusConnectionOK')}`, 'success')
+      }
     } catch (err) {
       // Self-signed cert + no fingerprint yet: discover, re-test pinned, fill the
       // form so a Save persists it (legacy single-server config).

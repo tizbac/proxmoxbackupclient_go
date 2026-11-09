@@ -1373,9 +1373,19 @@ func (pbs *PBSClient) Finish() error {
 	return nil
 }
 
-// TestConnection performs a real HTTP request to verify PBS connectivity
-// Returns error if hostname unreachable, credentials invalid, or datastore inaccessible
+// TestConnection performs real HTTP requests to verify PBS connectivity.
+// Returns error if hostname unreachable, credentials invalid, datastore
+// inaccessible, or the account may neither back up nor restore on it. An
+// account that can only restore passes; TestConnectionAccess says so.
 func (pbs *PBSClient) TestConnection() error {
+	_, err := pbs.TestConnectionAccess()
+	return err
+}
+
+// testStatus reads the datastore's status: the host is reachable, the
+// credentials are accepted and the account may look at the datastore. It says
+// nothing of whether the account may write to it.
+func (pbs *PBSClient) testStatus() error {
 	// Same TLS policy as the backup session: pin the fingerprint when configured,
 	// otherwise CA-validate. The old `|| CertFingerPrint == ""` skipped verification
 	// entirely when no fingerprint was set, accepting any certificate (audit H-02).
@@ -1409,7 +1419,7 @@ func (pbs *PBSClient) TestConnection() error {
 		return fmt.Errorf("authentication failed: invalid credentials")
 	}
 	if resp.StatusCode == 403 {
-		return fmt.Errorf("access denied: check datastore permissions")
+		return fmt.Errorf("access denied: this account has no permission on %s (backing up needs the Datastore.Backup permission, restoring Datastore.Read)", pbs.accessPath())
 	}
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("server error: HTTP %d", resp.StatusCode)

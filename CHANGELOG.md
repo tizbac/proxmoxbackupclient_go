@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Test connection checks what the account may do.** The test used to read the datastore's status only, so an account that could read but not write passed it and its backups then failed. It now also asks PBS for the account's permissions on the datastore (and namespace). An account that can back up passes as before; one that can only restore (Datastore.Read without Datastore.Backup) passes with a warning, *restore only: this account has Datastore.Read but not Datastore.Backup on /datastore/...*; one that can neither back up nor restore fails and the message lists the permissions it has. The warning shows in the app, and in the text window, next to the result. An older PBS that does not report permissions is not asked. (#136)
 - **The manuals' links open the files of the build you run.** Links in the Help manuals that leave the app (screenshots, CHANGELOG.md and other files in the repository, **Open on GitHub**) open the tag of a release, or the exact commit of a development build, instead of always `master`. A development build's links match its own manuals, whichever branch the commit is on.
 
 ### Fixed

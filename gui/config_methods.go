@@ -7,6 +7,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"pbscommon"
 	"security"
@@ -84,10 +85,30 @@ func (a *App) SaveConfig(config *Config) error {
 
 // TestConnection tests the PBS connection with the provided config (or current if nil)
 func (a *App) TestConnection(config *Config) error {
+	_, err := a.TestConnectionNote(config)
+	return err
+}
+
+// isUnknownCall reports whether a service answered that it does not have a
+// call: an older service than this app.
+func isUnknownCall(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "unknown call")
+}
+
+// TestConnectionNote is TestConnection that also returns a warning to show
+// with a successful test: "" when there is none, else what the account may
+// not do (it can restore but not back up). An account that may neither back up
+// nor restore on the datastore fails the test.
+func (a *App) TestConnectionNote(config *Config) (string, error) {
 	writeDebugLog("TestConnection() called")
 	if a.delegated() {
 		// The service holds the stored secret an empty one stands for.
-		return a.apiClient.Call("TestConnection", nil, config)
+		var note string
+		err := a.apiClient.Call("TestConnectionNote", &note, config)
+		if isUnknownCall(err) { // a service from before the warning
+			return "", a.apiClient.Call("TestConnection", nil, config)
+		}
+		return note, err
 	}
 
 	// Use provided config or fallback to current app config
@@ -104,13 +125,13 @@ func (a *App) TestConnection(config *Config) error {
 
 	// Validate config first
 	if err := testConfig.Validate(); err != nil {
-		return err
+		return "", err
 	}
 
 	// Mint a fresh PBS session ticket for this operation (username/password).
 	testConfig, err := a.withAuth(testConfig)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Create PBS client
@@ -137,14 +158,20 @@ func (a *App) TestConnection(config *Config) error {
 		security.SanitizeSecret(testConfig.Secret),
 		testConfig.Datastore))
 
-	// Perform real HTTP test (checks DNS, connectivity, auth, datastore access)
-	if err := client.TestConnection(); err != nil {
+	// Perform real HTTP test (checks DNS, connectivity, auth, datastore access,
+	// and what the account may do on the datastore)
+	access, err := client.TestConnectionAccess()
+	if err != nil {
 		writeDebugLog(fmt.Sprintf("Connection test failed: %v", err))
-		return err
+		return "", err
 	}
 
+	note := access.Note()
 	writeDebugLog("Connection test successful (authenticated + datastore accessible)")
-	return nil
+	if note != "" {
+		writeDebugLog("Connection test warning: " + note)
+	}
+	return note, nil
 }
 
 // AddPBSServer adds a new PBS server to the configuration
@@ -202,17 +229,29 @@ func (a *App) SetDefaultPBSServer(id string) error {
 
 // TestPBSConnection tests connection to a specific PBS server
 func (a *App) TestPBSConnection(pbsID string) error {
+	_, err := a.TestPBSConnectionNote(pbsID)
+	return err
+}
+
+// TestPBSConnectionNote is TestPBSConnection that also returns the warning of
+// TestConnectionNote.
+func (a *App) TestPBSConnectionNote(pbsID string) (string, error) {
 	writeDebugLog(fmt.Sprintf("TestPBSConnection(%s) called", pbsID))
 	if a.delegated() {
-		return a.apiClient.Call("TestPBSConnection", nil, pbsID)
+		var note string
+		err := a.apiClient.Call("TestPBSConnectionNote", &note, pbsID)
+		if isUnknownCall(err) { // a service from before the warning
+			return "", a.apiClient.Call("TestPBSConnection", nil, pbsID)
+		}
+		return note, err
 	}
 
 	pbs, err := a.config.GetPBSServer(pbsID)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Convert to legacy Config format for existing TestConnection logic
 	legacyConfig := pbs.ToConfig()
-	return a.TestConnection(legacyConfig)
+	return a.TestConnectionNote(legacyConfig)
 }

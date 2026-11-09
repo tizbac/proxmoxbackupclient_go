@@ -371,6 +371,22 @@ var apiCalls = map[string]func(a *App, args []json.RawMessage) (interface{}, err
 		}
 		return nil, a.TestPBSConnection(id)
 	},
+	// The same tests, answering with the warning for an account that can
+	// restore but not back up ("" when there is none).
+	"TestConnectionNote": func(a *App, args []json.RawMessage) (interface{}, error) {
+		var c Config
+		if err := arg(args, 0, &c); err != nil {
+			return nil, err
+		}
+		return a.TestConnectionNote(&c)
+	},
+	"TestPBSConnectionNote": func(a *App, args []json.RawMessage) (interface{}, error) {
+		var id string
+		if err := arg(args, 0, &id); err != nil {
+			return nil, err
+		}
+		return a.TestPBSConnectionNote(id)
+	},
 	"SetSMTPSettings": func(a *App, args []json.RawMessage) (interface{}, error) {
 		var host, port, user, pass, from string
 		var insecure bool

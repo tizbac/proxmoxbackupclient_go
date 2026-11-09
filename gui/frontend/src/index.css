@@ -601,6 +601,11 @@ body {
     background: #fff5f5;
 }
 
+.status.warning {
+    border-left-color: #ed8936;
+    background: #fffaf0;
+}
+
 .status.visible {
     display: block;
 }
