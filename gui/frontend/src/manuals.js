@@ -35,9 +35,16 @@ const unescape = (s) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/
   .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
 const attr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 
-// "v0.9.1" for a release, master for a development build.
+// Which version of the repository a link in the manuals opens, so the files
+// are the ones this build's manuals were written with: the tag of a release
+// ("v0.9.1", also a release candidate, "v1.2.0-rc.1"), the commit of a
+// development build ("dev-37df34d8" or "2.0.0-dev-37df34d" -> 37df34d8, which
+// GitHub opens from any branch), master when the version says neither.
 export function repoRef(appVersion) {
-  return /^\d+\.\d+\.\d+$/.test(appVersion || '') ? `v${appVersion}` : 'master'
+  const v = appVersion || ''
+  const dev = /(?:^|-)dev-([0-9a-f]{7,40})$/.exec(v)
+  if (dev) return dev[1]
+  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/.test(v) ? `v${v}` : 'master'
 }
 
 // Where a link in the manual at docPath goes: another place in the manuals

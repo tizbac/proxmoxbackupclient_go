@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The manuals' links open the files of the build you run.** Links in the Help manuals that leave the app (screenshots, CHANGELOG.md and other files in the repository, **Open on GitHub**) open the tag of a release, or the exact commit of a development build, instead of always `master`. A development build's links match its own manuals, whichever branch the commit is on.
+
 ### Fixed
 
 - **Release notes written by hand are kept.** The release workflow no longer replaces the text of a release that already has some: it only adds its installers and packages. Generated release notes read well on the release page (their wrapped lines are joined) and link CHANGELOG.md and the comparison with the previous tag instead of listing every commit. The bare-metal restore ISO workflow, run on a tag, only adds the ISO.
