@@ -63,12 +63,18 @@ On the Dashboard or the Backup Sets screen:
 | **s** | Stops the running backup, after asking. No snapshot is kept |
 | **e** | Turns the set on or off |
 | **Enter** | Edits the set |
-| **n** | Makes a new folder set |
+| **n** | Makes a new set: it asks whether it backs up **folders** or a **disk image** |
 | **d** | Deletes the set, after asking. Its backups on the server stay |
 | **u** | Undelete: puts back files that are in the set's backups but gone from the disk ([below](#undelete-and-roll-back)) |
 | **k** | Roll back: puts the set's folders back as an earlier backup had them ([below](#undelete-and-roll-back)) |
 
-The editor has three steps like the app's: **General** (name, backup ID, folders, server), **Schedule** (on a schedule or manual; every N minutes, hours, days, weeks or months; time of day; days of the week) and **Options** (change detection, VSS, files to leave out, e-mail when it fails). **PgDn** and **PgUp** move between the steps, **Ctrl+S** saves and **Esc** cancels. The service checks what you save, as for the app, and says what is wrong. A set that has several schedules keeps the others: only the first is edited here. The disks of a machine set are chosen in the app.
+The editor has three steps like the app's: **General** (name, backup ID, folders, server), **Schedule** (on a schedule or manual; every N minutes, hours, days, weeks or months; time of day; days of the week) and **Options** (change detection, VSS, files to leave out, e-mail when it fails). **PgDn** and **PgUp** move between the steps, **Ctrl+S** saves and **Esc** cancels. The service checks what you save, as for the app, and says what is wrong. A set that has several schedules keeps the others: only the first is edited here.
+
+### Disk images (machine sets)
+
+A disk image set backs up whole disks instead of folders, like the app's Machine backup. Its editor has **Choose disks** on the first step (or **Ctrl+D**), which lists the computer's physical disks with their partitions. **Space** ticks a disk. On a ticked disk, **Space** on a partition leaves it **out**: it is not read and goes into the image as zeros (the window warns when it is a system or boot partition, as the restored disk then does not start). **Enter** keeps the choice, **Esc** drops it. A disk the set names that the computer no longer lists stays in the set, and the picker says so. Each disk is recorded by its own identity (serial, GUID or `/dev/disk/by-id` name), so the set still backs up the right disk if the system numbers the disks differently later.
+
+The Options step has what the app's Machine backup has: reading free space too (a forensic copy), backing up as a Proxmox VM (`vm/<number>`, with the number and which of the two ID styles to use), the folders Undelete and Roll back look at, and on Linux whether to read mounted disks live without a snapshot (which needs the second box ticked, or every run would stop). The disks are listed by the service, so the window needs administrator or root for this. On Linux the service marks every `sd` and `nvme` disk as a boot disk, so the **[boot]** badge there says little: check what is mounted.
 
 ### Undelete and Roll back
 
@@ -80,7 +86,7 @@ Both work on the selected Backup Set through the service program (`salvanza-svc`
 
 ## 4. Back up folders now
 
-**b** opens a form for a one-off backup without a Backup Set: the folders (one per line), backup ID, server, compression, VSS, files to leave out and a comment. **Ctrl+S** starts it. It then shows under Running now like any other backup.
+**b** opens a one-off backup without a Backup Set. It asks first whether to back up **folders** or a **disk image**. The folder form has the folders (one per line), backup ID, server, compression, VSS, files to leave out and a comment. The disk form has **Choose disks** (or **Ctrl+D**; the same list as above, without partitions to leave out), backup ID, server, compression, VSS, backing up as a Proxmox VM, and a comment. **Ctrl+S** starts it. It then shows under Running now like any other backup.
 
 ## 5. Restore
 
@@ -166,11 +172,11 @@ Each screen's own keys are in its section and in the bar at the bottom. The mous
 * `-check -encryption` proves the whole encryption chain against a real Proxmox Backup Server (named in the environment variables `TUI_CHECK_PBS_URL`, `_AUTHID`, `_SECRET`, `_DATASTORE`, `_FINGERPRINT`): it makes a key, lets a temporary server use it, backs a folder up, restores it with the server's key and compares the files, then removes the server and the test backups. The key file it made stays in the keys folder; its path is printed as `KEYFILE=`.
 * `-check -recover` (same environment variables) backs a folder up with a temporary Backup Set, deletes one file, changes one and adds one, then proves Undelete (the file comes back, and the look changes nothing), Roll back with **exact** (the changed file is restored, the added one removed, the preview changes nothing), Undo of that roll back, and deleting the safety copies of a second one, and removes everything it made. It needs the service program, as above.
 * `-check -write` also saves, lists and removes a share login, and exports the settings to a temporary file and imports them back.
+* `-check -machine` (same environment variables, and `TUI_CHECK_DISK`, the disk to read, such as `/dev/sdb` or `\\.\PhysicalDrive4`) proves the disk image backups against a real Proxmox Backup Server: it lists the disks, backs the disk up as a one-off, saves a disk image Backup Set that leaves the last partition out, runs it, and checks from the run's log that the partition was left out and not read. It refuses a disk with a mounted, system or boot partition, only reads the disk, and removes the set, the server and the test backups. Use a scratch disk: an image of a large one takes long.
 * `-check -restore-check` restores a few small files of the newest readable snapshot into a temporary folder and deletes it. `-restore-group <backup ID>` tries only that backup, which also shows why an encrypted one cannot be read.
 
 ## 11. What it does not do yet
 
 * The **paper key** (printing it, reading it back) is in the app only, by design.
 * A disk image (a machine backup) is not restored here: use the [bare-metal restore](BMR.md).
-* Machine Backup Sets can be edited here but not made.
 * The window is in English only.

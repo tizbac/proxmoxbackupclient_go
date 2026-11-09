@@ -2,7 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +44,51 @@ type editor struct {
 	exclude  *tview.TextArea
 	mailFail *tview.Checkbox
 	mailTo   *tview.InputField
+
+	// a machine (disk image) set
+	sel        machineSel
+	f1         *tview.Form
+	freeSpace  *tview.Checkbox
+	asVM       *tview.Checkbox
+	vmID       *tview.InputField
+	vmStyle    *tview.DropDown
+	snapsOff   *tview.Checkbox
+	liveRead   *tview.Checkbox
+	imgFolders *tview.TextArea
+}
+
+var vmStyles = []string{"9000000 + number", "000 + number"}
+
+// vmBackupID is the numeric PBS vm/<id> a machine set backs up as: 9000000+N
+// cannot collide with a real VM's ID, 000N is the other style.
+func vmBackupID(n string, style int) string {
+	digits := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, n)
+	v, err := strconv.Atoi(digits)
+	if err != nil || v < 1 || v > 999999 {
+		return ""
+	}
+	if style == 1 {
+		return "000" + strconv.Itoa(v)
+	}
+	return strconv.Itoa(9000000 + v)
+}
+
+// vmFromBackupID is the reverse: the number and style of a saved vm ID.
+func vmFromBackupID(id string) (string, int) {
+	if v, err := strconv.Atoi(id); err == nil && v > 9000000 && v <= 9999999 {
+		return strconv.Itoa(v - 9000000), 0
+	}
+	if strings.HasPrefix(id, "000") && len(id) > 3 {
+		if _, err := strconv.Atoi(id[3:]); err == nil {
+			return id[3:], 1
+		}
+	}
+	return "", 0
 }
 
 func styleForm(f *tview.Form) *tview.Form {
@@ -60,13 +107,41 @@ func (a *App) editSet() {
 	a.openEditor(s, false)
 }
 
+// newSet asks what the set backs up, then opens the form.
 func (a *App) newSet() {
+	m := tview.NewModal().SetText("What should the new Backup Set back up?").
+		AddButtons([]string{"Folders", "Disk image", "Cancel"})
+	m.SetBackgroundColor(colPanel).SetTextColor(tcell.ColorWhite).SetButtonBackgroundColor(colAccent)
+	m.SetDoneFunc(func(_ int, label string) {
+		a.pages.RemovePage("newtype")
+		a.modal = false
+		switch label {
+		case "Folders":
+			a.openEditor(toSet(a.newSetDoc(false)), true)
+		case "Disk image":
+			a.openEditor(toSet(a.newSetDoc(true)), true)
+		default:
+			a.switchTab(a.tab)
+		}
+	})
+	a.modal = true
+	a.pages.AddPage("newtype", m, true, true)
+	a.app.SetFocus(m)
+}
+
+func (a *App) newSetDoc(machine bool) map[string]interface{} {
 	raw := map[string]interface{}{
 		"id": strconv.FormatInt(time.Now().UnixMilli(), 10), "backupType": "directory", "enabled": true,
 		"scheduleMode": "scheduled", "useVSS": true, "changeDetectionMode": "legacy", "excludeList": []interface{}{},
 		"schedules": []interface{}{map[string]interface{}{"id": "s1", "enabled": true, "unit": "days", "every": 1.0, "at": "02:00"}},
 	}
-	a.openEditor(toSet(raw), true)
+	if machine {
+		host, _ := os.Hostname()
+		raw["backupType"], raw["backupId"] = "machine", host
+		raw["changeDetectionMode"] = ""
+		raw["driveLetters"], raw["diskIds"], raw["skipPartitions"] = []interface{}{}, []interface{}{}, []interface{}{}
+	}
+	return raw
 }
 
 func (a *App) openEditor(s Set, isNew bool) {
@@ -130,9 +205,10 @@ func (e *editor) build() {
 	a.mu.Unlock()
 	e.server = tview.NewDropDown().SetLabel("PBS server ").SetOptions(options, nil).SetCurrentOption(indexOf(e.serverIDs, e.set.ServerID))
 	f1 := styleForm(tview.NewForm()).AddFormItem(e.name).AddFormItem(e.backupID)
+	e.f1 = f1
 	if e.set.Type == "machine" {
-		disks := strings.Join(e.set.Sources, ", ")
-		f1.AddTextView("Disks ", disks+"\n(the disks of a machine set are changed in the desktop app)", 60, 2, true, false)
+		e.sel = selOf(e.orig)
+		f1.AddTextView("Disks ", e.sel.summary(), 66, 3, true, false)
 	} else {
 		f1.AddFormItem(e.dirs)
 	}
@@ -165,6 +241,26 @@ func (e *editor) build() {
 	f3 := styleForm(tview.NewForm())
 	if e.set.Type != "machine" {
 		f3.AddFormItem(e.detect).AddFormItem(e.exclude)
+	} else {
+		e.freeSpace = tview.NewCheckbox().SetLabel("Read free space too (a forensic copy) ").SetChecked(boolean(e.orig, "readFreeSpace"))
+		vmNum, vmSty := "", 0
+		isVM := boolean(e.orig, "machineAsVm")
+		if isVM {
+			vmNum, vmSty = vmFromBackupID(e.set.BackupID)
+		}
+		e.asVM = tview.NewCheckbox().SetLabel("Back up as a Proxmox VM (vm/ID, restorable from Proxmox VE) ").SetChecked(isVM)
+		e.vmID = tview.NewInputField().SetLabel("  VM number (1 to 999999) ").SetText(vmNum).SetFieldWidth(8)
+		e.vmStyle = tview.NewDropDown().SetLabel("  Backup ID in PBS ").SetOptions(vmStyles, nil).SetCurrentOption(vmSty)
+		e.imgFolders = tview.NewTextArea().SetLabel("Undelete and Roll back folders ").
+			SetText(strings.Join(strList(e.orig, "imageFolders"), "\n"), false).SetSize(3, 48)
+		e.imgFolders.SetBorder(false)
+		f3.AddFormItem(e.freeSpace).AddFormItem(e.asVM).AddFormItem(e.vmID).AddFormItem(e.vmStyle)
+		if runtime.GOOS == "linux" {
+			e.snapsOff = tview.NewCheckbox().SetLabel("Do not use snapshots (read the disks live) ").SetChecked(boolean(e.orig, "snapshotsOff"))
+			e.liveRead = tview.NewCheckbox().SetLabel("  I accept reading mounted disks live ").SetChecked(boolean(e.orig, "liveRead"))
+			f3.AddFormItem(e.snapsOff).AddFormItem(e.liveRead)
+		}
+		f3.AddFormItem(e.imgFolders)
 	}
 	f3.AddFormItem(e.vss).AddFormItem(e.mailFail).AddFormItem(e.mailTo)
 	f3.SetTitle(" 3  Options ")
@@ -172,6 +268,9 @@ func (e *editor) build() {
 	forms := []*tview.Form{f1, f2, f3}
 	for i, f := range forms {
 		i := i
+		if i == 0 && e.set.Type == "machine" {
+			f.AddButton("Choose disks", e.chooseDisks)
+		}
 		if i > 0 {
 			f.AddButton("Back", func() { e.show(i - 1) })
 		}
@@ -198,11 +297,31 @@ func (e *editor) build() {
 			case tcell.KeyCtrlS:
 				e.save()
 				return nil
+			case tcell.KeyCtrlD:
+				if e.set.Type == "machine" {
+					e.chooseDisks()
+					return nil
+				}
 			}
 			return ev
 		})
 		e.pages.AddPage(fmt.Sprint(i), f, true, i == 0)
 	}
+}
+
+// chooseDisks opens the disk picker on top of the form.
+func (e *editor) chooseDisks() {
+	back := func() {
+		e.a.pages.SwitchToPage("edit")
+		e.show(e.step)
+	}
+	e.a.pickDisks(e.sel, true, func(s machineSel) {
+		e.sel = s
+		if tv, ok := e.f1.GetFormItemByLabel("Disks ").(*tview.TextView); ok {
+			tv.SetText(s.summary())
+		}
+		back()
+	}, back)
 }
 
 func (e *editor) layout() tview.Primitive {
@@ -230,6 +349,9 @@ func (e *editor) show(step int) {
 		word = "New Backup Set"
 	}
 	b.WriteString(tag(colDim) + "   " + word + "   PgDn next, PgUp back, Ctrl+S save, Esc cancel")
+	if e.set.Type == "machine" {
+		b.WriteString(", Ctrl+D disks")
+	}
 	e.title.SetText(b.String())
 	_, front := e.pages.GetFrontPage()
 	e.a.app.SetFocus(front)
@@ -288,6 +410,31 @@ func (e *editor) document() (map[string]interface{}, error) {
 		_, det := e.detect.GetCurrentOption()
 		doc["changeDetectionMode"] = det
 		doc["excludeList"] = splitLines(e.exclude.GetText())
+	} else {
+		if len(e.sel.paths) == 0 {
+			return nil, fmt.Errorf("choose at least one disk (Choose disks on the General page)")
+		}
+		doc["backupType"] = "machine"
+		doc["backupDirs"] = []interface{}{}
+		e.sel.apply(doc)
+		doc["readFreeSpace"] = e.freeSpace.IsChecked()
+		doc["machineAsVm"] = e.asVM.IsChecked()
+		if e.asVM.IsChecked() {
+			si, _ := e.vmStyle.GetCurrentOption()
+			id := vmBackupID(e.vmID.GetText(), si)
+			if id == "" {
+				return nil, fmt.Errorf("enter a VM number between 1 and 999999")
+			}
+			doc["backupId"] = id
+		}
+		if e.snapsOff != nil {
+			doc["snapshotsOff"] = e.snapsOff.IsChecked()
+			doc["liveRead"] = e.snapsOff.IsChecked() && e.liveRead.IsChecked()
+			if e.snapsOff.IsChecked() && !e.liveRead.IsChecked() {
+				return nil, fmt.Errorf("snapshots are off but reading the disks live is not accepted, so every run would stop; accept it or use snapshots")
+			}
+		}
+		doc["imageFolders"] = splitLines(e.imgFolders.GetText())
 	}
 	idx, _ := e.server.GetCurrentOption()
 	doc["pbsServerId"] = e.serverIDs[idx]

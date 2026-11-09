@@ -263,6 +263,8 @@ func TestEditorRefusesWhatTheServiceWouldRefuse(t *testing.T) {
 func TestNewSetNeedsANameAndAFolder(t *testing.T) {
 	h := newHarness(t, 130, 40)
 	h.typ('n')
+	h.waitFor("What should the new")
+	h.key(tcell.KeyEnter, 0) // Folders
 	h.waitFor("New Backup Set")
 	h.key(tcell.KeyCtrlS, 0)
 	h.waitFor("needs a name")
@@ -369,6 +371,8 @@ func TestTypingInTheDestinationFieldIsNotAShortcut(t *testing.T) {
 func TestOneOffBackupForm(t *testing.T) {
 	h := newHarness(t, 130, 40)
 	h.typ('b')
+	h.waitFor("What should be backed up")
+	h.key(tcell.KeyEnter, 0) // Folders
 	h.waitFor("Back up folders now")
 	h.key(tcell.KeyCtrlS, 0)
 	h.waitFor("at least one folder")
@@ -570,7 +574,13 @@ func TestDumpScreens(t *testing.T) {
 			h.typ(' ')
 		}},
 		{"14-restore-destination", func() { h.key(tcell.KeyPgDn, 0); time.Sleep(300 * time.Millisecond) }},
-		{"15-one-off", func() { h.key(tcell.KeyEscape, 0); h.typ('1'); h.typ('b') }},
+		{"15-one-off", func() {
+			h.key(tcell.KeyEscape, 0)
+			h.typ('1')
+			h.typ('b')
+			time.Sleep(200 * time.Millisecond)
+			h.key(tcell.KeyEnter, 0)
+		}},
 		{"16-reports", func() { h.key(tcell.KeyEscape, 0); h.typ('7') }},
 		{"17-log-files", func() { h.typ('8') }},
 		{"18-servers", func() { h.typ('5') }},

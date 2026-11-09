@@ -13,7 +13,7 @@ import (
 // RollbackRecord is an earlier roll back of a Backup Set that left a safety
 // folder, as `salvanza-svc -list-rollbacks` prints it.
 type RollbackRecord struct {
-	Created, Status, Policy string
+	Created, Status, Policy  string
 	Moved, Removed, Restored int
 	Bytes                    int64
 }

@@ -22,6 +22,11 @@ type Backend interface {
 	// StartFolderBackup starts a one-off backup of folders; the service runs it
 	// in the background (it shows up with the running backups).
 	StartFolderBackup(req api.BackupRequest) error
+	// Disks lists the physical disks with their partitions (the disk picker);
+	// StartMachineBackup starts a one-off disk image backup of the disks in
+	// req.DriveLetters (BackupType "machine", or "machine-vm" for a PBS vm).
+	Disks() ([]Disk, error)
+	StartMachineBackup(req api.BackupRequest) error
 	// SaveSet stores a Backup Set document (the service's own checks apply):
 	// a new set when isNew, otherwise a change of the set with that id.
 	SaveSet(doc map[string]interface{}, isNew bool) error
