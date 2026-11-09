@@ -20,6 +20,10 @@ type demoBackend struct {
 	msgs   []MessageEntry
 	start  time.Time
 	nextID int
+
+	servers  []Server
+	prefs    Prefs
+	prefsSet bool
 }
 
 func newDemoBackend() *demoBackend {
@@ -327,9 +331,179 @@ func (d *demoBackend) RestoreFiles(serverID string, s SnapshotInfo, includes []s
 	return n, nil
 }
 
+func demoServer(id, name, url, store, ns, fp, authID string, def bool) Server {
+	raw := map[string]interface{}{
+		"id": id, "name": name, "baseurl": url, "datastore": store, "namespace": ns, "certfingerprint": fp,
+		"authid": authID, "secret_set": true, "encryption_key_file": "keys/key.json",
+	}
+	return Server{
+		ID: id, Name: name, URL: url, Datastore: store, Namespace: ns, Fingerprint: fp, Default: def, Login: "token",
+		Encrypted: true, AuthID: authID, Raw: raw,
+	}
+}
+
 func (d *demoBackend) Servers() ([]Server, error) {
-	return []Server{
-		{ID: "main", Name: "Main PBS", URL: "https://pbs.example.com:8007", Datastore: "backup", Namespace: "desktop", Fingerprint: "07:49:87:ae:76:0f:a8:e7:97:d8:1c:f0:44:1a:65:5d:2c:f3:10:49:00:ea:2c:53:e4:0b:cc:09:95:29:c5:22", Default: true, Login: "token", Encrypted: true},
-		{ID: "offsite", Name: "Offsite PBS", URL: "https://offsite.example.net:8007", Datastore: "photos", Login: "token", Encrypted: true},
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.servers == nil {
+		d.servers = []Server{
+			demoServer("main", "Main PBS", "https://pbs.example.com:8007", "backup", "desktop",
+				"07:49:87:AE:76:0F:A8:E7:97:D8:1C:F0:44:1A:65:5D:2C:F3:10:49:00:EA:2C:53:E4:0B:CC:09:95:29:C5:22", "backup@pbs!desktop", true),
+			demoServer("offsite", "Offsite PBS", "https://offsite.example.net:8007", "photos", "", "", "backup@pbs!photos", false),
+		}
+	}
+	return append([]Server(nil), d.servers...), nil
+}
+
+func (d *demoBackend) SaveServer(doc map[string]interface{}, isNew bool) error {
+	if _, err := d.Servers(); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	id := str(doc, "id")
+	if str(doc, "name") == "" || str(doc, "baseurl") == "" || str(doc, "datastore") == "" {
+		return fmt.Errorf("a server needs a name, an address and a datastore")
+	}
+	for i, s := range d.servers {
+		if s.ID == id {
+			if isNew {
+				return fmt.Errorf("a server with the id %q exists already", id)
+			}
+			d.servers[i] = demoServer(id, str(doc, "name"), str(doc, "baseurl"), str(doc, "datastore"), str(doc, "namespace"),
+				str(doc, "certfingerprint"), str(doc, "authid"), s.Default)
+			d.servers[i].Raw = doc
+			return nil
+		}
+	}
+	if !isNew {
+		return fmt.Errorf("no such server")
+	}
+	s := demoServer(id, str(doc, "name"), str(doc, "baseurl"), str(doc, "datastore"), str(doc, "namespace"),
+		str(doc, "certfingerprint"), str(doc, "authid"), len(d.servers) == 0)
+	s.Raw = doc
+	d.servers = append(d.servers, s)
+	return nil
+}
+
+func (d *demoBackend) DeleteServer(id string) error {
+	if _, err := d.Servers(); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for i := range d.servers {
+		if d.servers[i].ID == id {
+			if d.servers[i].Default && len(d.servers) > 1 {
+				return fmt.Errorf("this is the default server: make another one the default first")
+			}
+			d.servers = append(d.servers[:i], d.servers[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("no such server")
+}
+
+func (d *demoBackend) SetDefaultServer(id string) error {
+	if _, err := d.Servers(); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	found := false
+	for i := range d.servers {
+		d.servers[i].Default = d.servers[i].ID == id
+		found = found || d.servers[i].ID == id
+	}
+	if !found {
+		return fmt.Errorf("no such server")
+	}
+	return nil
+}
+
+func (d *demoBackend) TestServer(id string) error {
+	time.Sleep(200 * time.Millisecond)
+	if id == "offsite" {
+		return fmt.Errorf("connection test failed: no route to host")
+	}
+	return nil
+}
+
+func (d *demoBackend) PinFingerprint(id, fingerprint string) error {
+	if _, err := d.Servers(); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for i := range d.servers {
+		if d.servers[i].ID == id {
+			d.servers[i].Fingerprint = fingerprint
+			return nil
+		}
+	}
+	return fmt.Errorf("no such server")
+}
+
+func (d *demoBackend) Prefs() (Prefs, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.prefsSet {
+		d.prefs = Prefs{Compression: "default", SMTPHost: "smtp.example.com", SMTPPort: "587", SMTPUser: "alerts@example.com",
+			SMTPPasswordSet: true, MailFrom: "backup@example.com", MaxRuns: 2}
+		d.prefsSet = true
+	}
+	return d.prefs, nil
+}
+
+func (d *demoBackend) SavePrefs(old, now Prefs) error {
+	if now.UploadMBps < 0 || now.UploadMBps > 10000 {
+		return fmt.Errorf("speed limits must be between 0 and 10000 MB/s")
+	}
+	if now.ChunkTimeout != 0 && (now.ChunkTimeout < 30 || now.ChunkTimeout > 1800) {
+		return fmt.Errorf("the chunk timeout must be the default (0) or between 30 and 1800 seconds")
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if now.SMTPPassword != "" {
+		now.SMTPPasswordSet = true
+	}
+	now.SMTPPassword = ""
+	d.prefs, d.prefsSet = now, true
+	return nil
+}
+
+func (d *demoBackend) SendTestMail(to string) error {
+	time.Sleep(200 * time.Millisecond)
+	if !strings.Contains(to, "@") {
+		return fmt.Errorf("that is not an e-mail address")
+	}
+	return nil
+}
+
+func (d *demoBackend) LogFiles() ([]LogFile, error) {
+	now := time.Now()
+	return []LogFile{
+		{Name: "backup-20261109-021048-DESKTOP-01.log.gz", Kind: "run", BackupID: "DESKTOP-01", Started: now.Add(-9 * time.Hour), Modified: now.Add(-9 * time.Hour), Size: 5552, Compressed: true},
+		{Name: "service.log", Kind: "service", Started: now.Add(-30 * time.Hour), Modified: now.Add(-5 * time.Minute), Size: 183000, Service: true},
+		{Name: "backup-20261108-020000-DESKTOP-01-photos.log.gz", Kind: "run", BackupID: "DESKTOP-01-photos", Started: now.Add(-33 * time.Hour), Modified: now.Add(-33 * time.Hour), Size: 3563, Compressed: true},
 	}, nil
+}
+
+func (d *demoBackend) ReadLogFile(f LogFile, filter string, hideChunks bool) ([]string, error) {
+	ts := f.Started.Format("2006-01-02 15:04:05")
+	lines := []string{ts + " Starting " + f.Name, ts + " Connected to Main PBS", ts + " warning: 2 files skipped, in use"}
+	for i := 0; i < 8 && !hideChunks; i++ {
+		lines = append(lines, fmt.Sprintf("%s New chunk %d", ts, i))
+	}
+	lines = append(lines, ts+" Backup completed in 55s")
+	if filter == "" {
+		return lines, nil
+	}
+	var out []string
+	for _, l := range lines {
+		if strings.Contains(strings.ToLower(l), strings.ToLower(filter)) {
+			out = append(out, l)
+		}
+	}
+	return out, nil
 }

@@ -256,6 +256,108 @@ func CheckWrite(be Backend, stdout, stderr io.Writer) int {
 		return 1
 	}
 	sayln(stdout, "deleted again: the editor's documents are accepted by this service")
+	if code := checkWriteServer(be, stdout, stderr); code != 0 {
+		return code
+	}
+	if code := checkWritePrefs(be, stdout, stderr); code != 0 {
+		return code
+	}
+	return checkLogs(be, stdout, stderr)
+}
+
+// checkWriteServer adds, changes and deletes a temporary server (never the
+// default, and nothing connects to it).
+func checkWriteServer(be Backend, stdout, stderr io.Writer) int {
+	const name = "__tui-selftest-server__"
+	id := fmt.Sprintf("tuiselftest%d", time.Now().Unix())
+	doc := map[string]interface{}{
+		"id": id, "name": name, "baseurl": "https://tui-selftest.invalid:8007", "datastore": "selftest",
+		"authid": "selftest@pbs!tui", "secret": "not-a-real-secret",
+	}
+	defer func() { _ = be.DeleteServer(id) }()
+	if err := be.SaveServer(doc, true); err != nil {
+		sayln(stderr, "server create: "+describeErr(err))
+		return 1
+	}
+	list, err := be.Servers()
+	if err != nil {
+		sayln(stderr, "servers: "+describeErr(err))
+		return 1
+	}
+	var found *Server
+	for i := range list {
+		if list[i].ID == id {
+			found = &list[i]
+		}
+	}
+	if found == nil || found.Default {
+		sayln(stderr, "server create: the new server is missing or became the default")
+		return 1
+	}
+	// change it the way the editor does: the service's own document, the secret left empty
+	upd := copyMap(found.Raw)
+	upd["description"] = "temporary, made by the text window's check"
+	upd["secret"] = ""
+	delete(upd, "secret_set")
+	if err := be.SaveServer(upd, false); err != nil {
+		sayln(stderr, "server change: "+describeErr(err))
+		return 1
+	}
+	if err := be.DeleteServer(id); err != nil {
+		sayln(stderr, "server delete: "+describeErr(err))
+		return 1
+	}
+	say(stdout, "server: created, changed (secret kept) and deleted again\n")
+	return 0
+}
+
+// checkWritePrefs sets one preference and puts it back.
+func checkWritePrefs(be Backend, stdout, stderr io.Writer) int {
+	old, err := be.Prefs()
+	if err != nil {
+		sayln(stderr, "preferences: "+describeErr(err))
+		return 1
+	}
+	now := old
+	now.ChunkTimeout = 120
+	if old.ChunkTimeout == 120 {
+		now.ChunkTimeout = 150
+	}
+	if err := be.SavePrefs(old, now); err != nil {
+		sayln(stderr, "preferences save: "+describeErr(err))
+		return 1
+	}
+	got, err := be.Prefs()
+	restoreErr := be.SavePrefs(got, old)
+	if err != nil || got.ChunkTimeout != now.ChunkTimeout {
+		say(stderr, "preferences: the chunk timeout reads back as %d, wanted %d (%v)\n", got.ChunkTimeout, now.ChunkTimeout, err)
+		return 1
+	}
+	if restoreErr != nil {
+		sayln(stderr, "preferences: could not put the old value back: "+describeErr(restoreErr))
+		return 1
+	}
+	say(stdout, "preferences: chunk timeout changed to %d and put back to %d\n", now.ChunkTimeout, old.ChunkTimeout)
+	return 0
+}
+
+// checkLogs lists the log files and reads the end of the newest.
+func checkLogs(be Backend, stdout, stderr io.Writer) int {
+	files, err := be.LogFiles()
+	if err != nil {
+		sayln(stderr, "log files: "+describeErr(err))
+		return 1
+	}
+	say(stdout, "log files: %d\n", len(files))
+	if len(files) == 0 {
+		return 0
+	}
+	lines, err := be.ReadLogFile(files[0], "", true)
+	if err != nil {
+		sayln(stderr, "log read: "+describeErr(err))
+		return 1
+	}
+	say(stdout, "read %d lines of %s\n", len(lines), files[0].Name)
 	return 0
 }
 

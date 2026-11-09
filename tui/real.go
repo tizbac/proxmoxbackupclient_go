@@ -126,6 +126,7 @@ func (b *serviceBackend) Servers() ([]Server, error) {
 				ID: id, Name: firstNonEmpty(str(s, "name"), id), URL: str(s, "baseurl"), Datastore: str(s, "datastore"),
 				Namespace: str(s, "namespace"), Fingerprint: str(s, "certfingerprint"), Default: id == def,
 				Login: login, Encrypted: str(s, "encryption_key_file") != "",
+				AuthID: str(s, "authid"), Username: str(s, "username"), Description: str(s, "description"), Raw: s,
 			})
 		}
 	}
@@ -138,6 +139,108 @@ func (b *serviceBackend) Servers() ([]Server, error) {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	return out, nil
+}
+
+func (b *serviceBackend) SaveServer(doc map[string]interface{}, isNew bool) error {
+	name := "UpdatePBSServer"
+	if isNew {
+		name = "AddPBSServer"
+	}
+	return b.c.Call(name, nil, doc)
+}
+
+func (b *serviceBackend) DeleteServer(id string) error { return b.c.Call("DeletePBSServer", nil, id) }
+
+func (b *serviceBackend) SetDefaultServer(id string) error {
+	return b.c.Call("SetDefaultPBSServer", nil, id)
+}
+
+func (b *serviceBackend) TestServer(id string) error { return b.c.Call("TestPBSConnection", nil, id) }
+
+func (b *serviceBackend) PinFingerprint(id, fingerprint string) error {
+	return b.c.PinFingerprint(id, fingerprint)
+}
+
+func (b *serviceBackend) Prefs() (Prefs, error) {
+	doc, err := b.c.GetFullConfig()
+	if err != nil {
+		return Prefs{}, err
+	}
+	return prefsFromConfig(doc), nil
+}
+
+// SavePrefs sends only what changed, through the same setters the desktop app
+// uses, so the service's own limits and checks apply.
+func (b *serviceBackend) SavePrefs(old, now Prefs) error {
+	if now.limitsChanged(old) {
+		if err := b.c.Call("SetSpeedLimits", nil, now.UploadMBps, now.DownloadMBps, now.DiskReadMBps); err != nil {
+			return err
+		}
+	}
+	if now.UploadThreads != old.UploadThreads {
+		if err := b.c.Call("SetUploadThreads", nil, now.UploadThreads); err != nil {
+			return err
+		}
+	}
+	if now.ChunkTimeout != old.ChunkTimeout {
+		if err := b.c.Call("SetChunkTimeout", nil, now.ChunkTimeout); err != nil {
+			return err
+		}
+	}
+	if now.Compression != old.Compression {
+		level := now.Compression
+		if level == "default" {
+			level = ""
+		}
+		if err := b.c.Call("SetCompressionLevel", nil, level); err != nil {
+			return err
+		}
+	}
+	if now.ParallelRestore != old.ParallelRestore {
+		if err := b.c.Call("SetParallelRestore", nil, now.ParallelRestore); err != nil {
+			return err
+		}
+	}
+	if now.ParallelRead != old.ParallelRead || now.ReadWorkers != old.ReadWorkers {
+		if err := b.c.Call("SetParallelBackupRead", nil, now.ParallelRead, now.ReadWorkers); err != nil {
+			return err
+		}
+	}
+	if now.MaxRuns != old.MaxRuns {
+		if err := b.c.Call("SetMaxConcurrentRuns", nil, now.MaxRuns); err != nil {
+			return err
+		}
+	}
+	if now.mailChanged(old) {
+		return b.c.Call("SetSMTPSettings", nil, now.SMTPHost, now.SMTPPort, now.SMTPUser, now.SMTPPassword, now.SMTPInsecure, now.MailFrom)
+	}
+	return nil
+}
+
+func (b *serviceBackend) SendTestMail(to string) error { return b.c.Call("SendTestEmail", nil, to) }
+
+func (b *serviceBackend) LogFiles() ([]LogFile, error) {
+	var raw []map[string]interface{}
+	if err := b.c.ListLogs(&raw); err != nil {
+		return nil, err
+	}
+	out := make([]LogFile, 0, len(raw))
+	for _, m := range raw {
+		out = append(out, logFileFrom(m))
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Modified.After(out[j].Modified) })
+	return out, nil
+}
+
+func (b *serviceBackend) ReadLogFile(f LogFile, filter string, hideChunks bool) ([]string, error) {
+	var view struct {
+		Lines []string `json:"lines"`
+	}
+	q := map[string]interface{}{"folder": f.Folder, "name": f.Name, "filter": filter, "hideChunks": hideChunks, "lines": 3000}
+	if err := b.c.ReadLog(q, &view); err != nil {
+		return nil, err
+	}
+	return view.Lines, nil
 }
 
 func (b *serviceBackend) access(serverID string) (Access, error) {
@@ -213,13 +316,17 @@ func describeErr(err error) string {
 		return ""
 	}
 	msg := err.Error()
+	low := strings.ToLower(msg)
 	switch {
-	case strings.Contains(msg, "401"), strings.Contains(strings.ToLower(msg), "unauthorized"):
+	case strings.Contains(msg, "401"), strings.Contains(low, "unauthorized"):
 		return "the service refused the token: run as administrator or root, or set SALVANZA_API_TOKEN"
-	case strings.Contains(msg, "refused"), strings.Contains(msg, "connect"):
+	// only the window's own link to the service: a Proxmox Backup Server that
+	// cannot be reached is reported as the service reports it
+	case strings.Contains(low, "failed to connect to service"), strings.Contains(low, "127.0.0.1:18765"),
+		strings.Contains(low, "could not tell who is answering"), strings.Contains(low, "something other than the background service"):
 		return "the Salvanza service is not running or not reachable"
 	case strings.Contains(msg, "501"):
 		return "this service is older and does not offer that"
 	}
-	return fmt.Sprint(msg)
+	return msg
 }

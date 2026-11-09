@@ -25,8 +25,9 @@ var (
 	colOK      = tcell.NewRGBColor(91, 214, 138)
 	colWarn    = tcell.NewRGBColor(255, 180, 84)
 	colErr     = tcell.NewRGBColor(255, 107, 107)
-	tabNames   = []string{"Dashboard", "Backup Sets", "History", "Messages", "Servers", "Restore"}
-	tabPages   = []string{"dash", "sets", "hist", "msgs", "srv", "rest"}
+	tabNames   = []string{"Dashboard", "Backup Sets", "History", "Messages", "Servers", "Restore", "Reports", "Logs", "Preferences"}
+	tabShort   = []string{"Dash", "Sets", "Hist", "Msgs", "Servers", "Restore", "Reports", "Logs", "Prefs"}
+	tabPages   = []string{"dash", "sets", "hist", "msgs", "srv", "rest", "rep", "logs", "prefs"}
 	refreshRun = 2 * time.Second
 	refreshAll = 10 * time.Second
 )
@@ -53,6 +54,13 @@ type App struct {
 	srvTable   *tview.Table
 	srvDetail  *tview.TextView
 	rs         *restoreView
+	pf         *prefsView
+	repTable   *tview.Table
+	repFail    *tview.TextView
+	repPeriod  int
+	logsTable  *tview.Table
+	logFiles   []LogFile
+	logErr     error
 
 	mu      sync.Mutex
 	svc     *api.StatusResponse
@@ -108,6 +116,9 @@ func (a *App) build() {
 	a.pages.AddPage("msgs", a.buildMessages(), true, false)
 	a.pages.AddPage("srv", a.buildServers(), true, false)
 	a.pages.AddPage("rest", a.buildRestore(), true, false)
+	a.pages.AddPage("rep", a.buildReports(), true, false)
+	a.pages.AddPage("logs", a.buildLogs(), true, false)
+	a.pages.AddPage("prefs", a.buildPrefs(), true, false)
 
 	root := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(a.header, 1, 0, false).
@@ -190,6 +201,7 @@ func (a *App) buildServers() tview.Primitive {
 	a.srvTable.SetTitle(" PBS servers ").SetTitleAlign(tview.AlignLeft)
 	a.srvDetail = textBox("Server")
 	a.srvTable.SetSelectionChangedFunc(func(int, int) { a.renderSrvDetail() })
+	a.srvTable.SetSelectedFunc(func(int, int) { a.editServer() })
 	return tview.NewFlex().
 		AddItem(a.srvTable, 0, 3, true).
 		AddItem(a.srvDetail, 0, 2, false)
@@ -197,27 +209,36 @@ func (a *App) buildServers() tview.Primitive {
 
 // ---- keys ------------------------------------------------------------------
 
+// typingNow says whether a text field has the keyboard: the destination step
+// of Restore and the Preferences forms. Characters then belong to the field.
+func (a *App) typingNow() bool {
+	return (a.tab == 5 && a.rs != nil && a.rs.typing()) || a.tab == 8
+}
+
+// ownsTab says whether Tab belongs to the screen (moving between its fields)
+// instead of switching screens; the function keys and 1 to 9 still switch.
+func (a *App) ownsTab() bool {
+	return (a.tab == 5 && a.rs != nil && (a.rs.step == 0 || a.rs.step == 3)) || a.tab == 8
+}
+
 func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
 	if a.modal {
 		return ev
 	}
-	// Tab moves between the fields of a form: on the Restore steps that have fields it belongs to them
-	// (the function keys and 1 to 6 still switch screens).
-	ownsTab := a.tab == 5 && a.rs != nil && (a.rs.step == 0 || a.rs.step == 3)
 	switch ev.Key() {
 	case tcell.KeyTab:
-		if ownsTab {
+		if a.ownsTab() {
 			return ev
 		}
 		a.switchTab((a.tab + 1) % len(tabPages))
 		return nil
 	case tcell.KeyBacktab:
-		if ownsTab {
+		if a.ownsTab() {
 			return ev
 		}
 		a.switchTab((a.tab + len(tabPages) - 1) % len(tabPages))
 		return nil
-	case tcell.KeyF1, tcell.KeyF2, tcell.KeyF3, tcell.KeyF4, tcell.KeyF5, tcell.KeyF6:
+	case tcell.KeyF1, tcell.KeyF2, tcell.KeyF3, tcell.KeyF4, tcell.KeyF5, tcell.KeyF6, tcell.KeyF7, tcell.KeyF8, tcell.KeyF9:
 		a.switchTab(int(ev.Key() - tcell.KeyF1))
 		return nil
 	case tcell.KeyCtrlC:
@@ -226,66 +247,74 @@ func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyEscape:
 		return ev
 	}
-	if a.tab == 5 && a.rs != nil {
-		// On the Restore screen, text fields own every character; elsewhere on it only
-		// the screen switches, help and quit are global.
-		if a.rs.typing() && ev.Key() == tcell.KeyRune {
-			return ev
-		}
-		switch ev.Rune() {
-		case 'q', 'Q', '?', '1', '2', '3', '4', '5', '6':
-		default:
-			return ev
-		}
+	if ev.Key() != tcell.KeyRune || a.typingNow() {
+		return ev
 	}
+	sets := a.tab == 0 || a.tab == 1
 	switch ev.Rune() {
 	case 'q', 'Q':
 		a.app.Stop()
 		return nil
-	case '1', '2', '3', '4', '5', '6':
-		if a.tab == 5 && a.rs != nil && a.rs.typing() {
-			return ev // a digit typed into a field of the restore wizard
-		}
+	case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 		a.switchTab(int(ev.Rune() - '1'))
 		return nil
 	case '?':
 		a.help()
 		return nil
-	case 'r':
-		a.actRun()
-		return nil
-	case 'p':
-		a.actPause()
-		return nil
-	case 's':
-		a.actStop()
-		return nil
-	case 'e':
-		a.actToggle()
-		return nil
-	case 'n':
-		if a.tab == 0 || a.tab == 1 {
-			a.newSet()
-		}
-		return nil
-	case 'd':
-		if a.tab == 0 || a.tab == 1 {
-			a.actDelete()
-		}
-		return nil
-	case 'b':
-		if a.tab == 0 || a.tab == 1 {
-			a.oneOff()
-		}
-		return nil
-	case 'E':
-		if a.tab == 0 || a.tab == 1 {
-			a.editSet()
-		}
-		return nil
 	case 'g', 'R':
 		go a.refresh(true)
+		if a.tab == 7 {
+			a.loadLogFiles()
+		}
 		a.setFlash("refreshing")
+		return nil
+	}
+	switch {
+	case sets:
+		switch ev.Rune() {
+		case 'r':
+			a.actRun()
+		case 'p':
+			a.actPause()
+		case 's':
+			a.actStop()
+		case 'e':
+			a.actToggle()
+		case 'n':
+			a.newSet()
+		case 'd':
+			a.actDelete()
+		case 'b':
+			a.oneOff()
+		case 'E':
+			a.editSet()
+		default:
+			return ev
+		}
+		return nil
+	case a.tab == 4:
+		switch ev.Rune() {
+		case 'n':
+			a.newServer()
+		case 'd':
+			a.deleteServer()
+		case 't':
+			a.testServer()
+		case 'u':
+			a.defaultServer()
+		case 'f':
+			a.pinServer()
+		case 'E':
+			a.editServer()
+		default:
+			return ev
+		}
+		return nil
+	case a.tab == 6 && ev.Rune() == 'w':
+		a.mu.Lock()
+		a.repPeriod = (a.repPeriod + 1) % len(reportPeriods)
+		a.mu.Unlock()
+		a.renderReports()
 		return nil
 	}
 	return ev
@@ -307,6 +336,14 @@ func (a *App) switchTab(i int) {
 		a.app.SetFocus(a.srvTable)
 	case 5:
 		a.rs.enter()
+	case 6:
+		a.renderReports()
+		a.app.SetFocus(a.repTable)
+	case 7:
+		a.loadLogFiles()
+		a.app.SetFocus(a.logsTable)
+	case 8:
+		a.pf.enter()
 	}
 	a.renderChrome()
 }
@@ -350,7 +387,11 @@ func (a *App) renderChrome() {
 	}
 	a.header.SetText(fmt.Sprintf("[white::b] Salvanza Backup%s[-:-:-]   %s", mode, state))
 	var b strings.Builder
-	for i, n := range tabNames {
+	names := tabNames
+	if _, _, w, _ := a.tabs.GetRect(); w > 0 && w < 105 {
+		names = tabShort // the long names do not fit an 80 column terminal
+	}
+	for i, n := range names {
 		if i == tab {
 			fmt.Fprintf(&b, "[black:#%06x] %d %s [-:-] ", colHead.Hex(), i+1, n)
 		} else {
@@ -374,8 +415,17 @@ func (a *App) renderChrome() {
 	if tab == 2 {
 		f += hint("Enter", "open the run's log")
 	}
-	if tab == 5 {
+	switch tab {
+	case 4:
+		f += hint("Enter", "edit") + hint("n", "new") + hint("d", "delete") + hint("t", "test") + hint("u", "make default") + hint("f", "pin fingerprint")
+	case 5:
 		f += hint("Enter", "choose") + hint("Space", "tick") + hint("PgDn", "next step") + hint("Esc", "back")
+	case 6:
+		f += hint("w", "change the period")
+	case 7:
+		f += hint("Enter", "open the log") + hint("g", "refresh")
+	case 8:
+		f += hint("Ctrl+S", "save") + hint("PgDn", "e-mail")
 	}
 	f += hint("Tab", "next") + hint("?", "help") + hint("q", "quit")
 	a.footer.SetText(f)
@@ -442,6 +492,7 @@ func (a *App) renderAll() {
 	a.renderHist()
 	a.renderMsgs()
 	a.renderServers()
+	a.renderReports()
 }
 
 // ---- helpers --------------------------------------------------------------------
@@ -973,7 +1024,7 @@ func (a *App) help() {
 		return fmt.Sprintf(" %s[::b]%-12s[-:-:-] %s\n", tag(colKey), key, d)
 	}
 	t.SetText("\n" +
-		k("Tab, 1-5", "switch screen (F1 to F5 too)") +
+		k("Tab, 1-9", "switch screen (F1 to F9 too)") +
 		k("Up, Down", "move in a list (PgUp, PgDn, Home, End)") +
 		k("r", "run the selected Backup Set now") +
 		k("p", "pause or resume the running backup") +
@@ -983,6 +1034,8 @@ func (a *App) help() {
 		k("n, d", "new Backup Set, delete the selected one (asks first)") +
 		k("b", "back up folders now, without a Backup Set") +
 		k("6", "Restore: browse a backup and restore files") +
+		k("Servers", "n new, Enter edit, d delete, t test, u default, f pin") +
+		k("7, 8, 9", "Reports (w: period), Log files, Preferences") +
 		k("g", "refresh now (it also refreshes every 2 s)") +
 		k("q, Ctrl+C", "quit; running backups go on in the service") +
 		"\n " + tag(colDim) + "Press Esc to close.")
@@ -997,7 +1050,7 @@ func (a *App) help() {
 	})
 	flex := tview.NewFlex().
 		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).AddItem(nil, 0, 1, false).AddItem(t, 18, 0, true).AddItem(nil, 0, 1, false), 64, 0, true).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).AddItem(nil, 0, 1, false).AddItem(t, 20, 0, true).AddItem(nil, 0, 1, false), 64, 0, true).
 		AddItem(nil, 0, 1, false)
 	a.modal = true
 	a.pages.AddPage("help", flex, true, true)

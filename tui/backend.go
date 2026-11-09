@@ -29,6 +29,21 @@ type Backend interface {
 	History() ([]HistoryEntry, error)
 	Messages() ([]MessageEntry, error)
 	Servers() ([]Server, error)
+	// Server management (the service applies its own checks): doc is a server
+	// document as the service sends it, with the changes; an empty secret
+	// keeps the stored one.
+	SaveServer(doc map[string]interface{}, isNew bool) error
+	DeleteServer(id string) error
+	SetDefaultServer(id string) error
+	TestServer(id string) error
+	PinFingerprint(id, fingerprint string) error
+	// Preferences: the computer's backup options and e-mail account.
+	Prefs() (Prefs, error)
+	SavePrefs(old, now Prefs) error
+	SendTestMail(to string) error
+	// The service's log files, and a part of one.
+	LogFiles() ([]LogFile, error)
+	ReadLogFile(f LogFile, filter string, hideChunks bool) ([]string, error)
 	// RunLog returns the log lines of the run of backupID at the given time;
 	// hideChunks leaves out the "New chunk" and "Reuse chunk" lines.
 	RunLog(backupID string, at time.Time, hideChunks bool) ([]string, error)
@@ -74,6 +89,8 @@ type Server struct {
 	Default                                          bool
 	Login                                            string
 	Encrypted                                        bool
+	AuthID, Username, Description                    string
+	Raw                                              map[string]interface{}
 }
 
 func str(m map[string]interface{}, keys ...string) string {
