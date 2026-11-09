@@ -36,7 +36,7 @@ func stepBar(names []string, current int, markDone bool) string {
 		}
 		switch {
 		case i == current:
-			fmt.Fprintf(&b, "[black:#%06x] %s [-:-]", colHead.Hex(), n)
+			fmt.Fprintf(&b, "[black:%s] %s [-:-]", spec(colHead), n)
 		case markDone && i < current:
 			b.WriteString(tag(colOK) + " " + n + " [-:-]")
 		default:

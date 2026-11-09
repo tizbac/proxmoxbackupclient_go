@@ -62,7 +62,7 @@ func (a *App) setEncryption(s Set) string {
 // infoBox shows a message above the window; OK closes it.
 func (a *App) infoBox(text string) {
 	m := tview.NewModal().SetText(text).AddButtons([]string{"OK"})
-	m.SetBackgroundColor(colPanel).SetTextColor(colText).SetButtonBackgroundColor(colAccent)
+	m.SetBackgroundColor(colPanel).SetTextColor(colText).SetButtonBackgroundColor(colAccent).SetButtonStyle(onColour(colAccent))
 	prev := a.modal
 	m.SetDoneFunc(func(int, string) {
 		a.pages.RemovePage("info")

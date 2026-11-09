@@ -86,6 +86,7 @@ e enable or disable, g refresh, ? help, q quit.`)
 		os.Stdout, os.Stderr = f, f
 		log.SetOutput(io.Discard)
 	}
+	usePalette(colorDepth()) // 8 and 16 colour terminals get the ANSI palette (SALVANZA_TUI_COLORS overrides)
 	if err := NewApp(be, version).Run(); err != nil {
 		sayln(stderr, "salvanza-cli tui:", err)
 		return 1

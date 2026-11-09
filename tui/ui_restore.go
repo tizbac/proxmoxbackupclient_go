@@ -53,7 +53,7 @@ func (a *App) buildRestore() tview.Primitive {
 	r.steps = tview.NewTextView().SetDynamicColors(true)
 	r.pages = tview.NewPages()
 
-	r.server = tview.NewDropDown().SetLabel(" Server ").SetFieldBackgroundColor(colSel).SetFieldTextColor(tcell.ColorWhite)
+	r.server = tview.NewDropDown().SetLabel(" Server ").SetFieldBackgroundColor(colSel).SetFieldTextColor(colWhite)
 	r.server.SetLabelColor(colDim)
 	r.groupsTable = newTable()
 	r.groupsTable.SetTitle(" Backups on the server ").SetTitleAlign(tview.AlignLeft)
@@ -425,7 +425,7 @@ func (r *restoreView) addChildren(n *tview.TreeNode, path string) {
 	r.mu.Unlock()
 	for _, it := range kids {
 		child := tview.NewTreeNode("").SetReference(it.Path).SetSelectable(true).
-			SetSelectedTextStyle(tcell.StyleDefault.Background(colSel).Foreground(tcell.ColorWhite))
+			SetSelectedTextStyle(onColour(colSel))
 		child.SetExpanded(false)
 		n.AddChild(child)
 	}

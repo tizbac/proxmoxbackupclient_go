@@ -93,8 +93,8 @@ func vmFromBackupID(id string) (string, int) {
 
 func styleForm(f *tview.Form) *tview.Form {
 	f.SetBorder(true).SetBackgroundColor(colBg)
-	f.SetFieldBackgroundColor(colSel).SetFieldTextColor(tcell.ColorWhite)
-	f.SetLabelColor(colDim).SetButtonBackgroundColor(colAccent).SetButtonTextColor(tcell.ColorWhite)
+	f.SetFieldBackgroundColor(colSel).SetFieldTextColor(colWhite).SetFieldStyle(onColour(colSel))
+	f.SetLabelColor(colDim).SetButtonBackgroundColor(colAccent).SetButtonStyle(onColour(colAccent)).SetButtonTextColor(colWhite)
 	return f
 }
 
@@ -111,7 +111,7 @@ func (a *App) editSet() {
 func (a *App) newSet() {
 	m := tview.NewModal().SetText("What should the new Backup Set back up?").
 		AddButtons([]string{"Folders", "Disk image", "Cancel"})
-	m.SetBackgroundColor(colPanel).SetTextColor(tcell.ColorWhite).SetButtonBackgroundColor(colAccent)
+	m.SetBackgroundColor(colPanel).SetTextColor(colWhite).SetButtonBackgroundColor(colAccent).SetButtonStyle(onColour(colAccent))
 	m.SetDoneFunc(func(_ int, label string) {
 		a.pages.RemovePage("newtype")
 		a.modal = false
@@ -507,7 +507,7 @@ func (e *editor) save() {
 // errorBox shows a message above the window; OK closes it.
 func (a *App) errorBox(text string) {
 	m := tview.NewModal().SetText(text).AddButtons([]string{"OK"})
-	m.SetBackgroundColor(colPanel).SetTextColor(colErr).SetButtonBackgroundColor(colAccent)
+	m.SetBackgroundColor(colPanel).SetTextColor(colErr).SetButtonBackgroundColor(colAccent).SetButtonStyle(onColour(colAccent))
 	prev := a.modal
 	m.SetDoneFunc(func(int, string) {
 		a.pages.RemovePage("error")

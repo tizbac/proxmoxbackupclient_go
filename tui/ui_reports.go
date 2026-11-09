@@ -104,7 +104,7 @@ func (a *App) renderReports() {
 		if i >= 7 {
 			break
 		}
-		fmt.Fprintf(&b, " %s%-17s[-] [white]%-24s[-] %s%s[-]\n", tag(colDim), when(f.At), f.Name, tag(colErr), tview.Escape(f.Message))
+		fmt.Fprintf(&b, " %s%-17s[-] [white::b]%-24s[-:-:-] %s%s[-]\n", tag(colDim), when(f.At), f.Name, tag(colErr), tview.Escape(f.Message))
 	}
 	if b.Len() == 0 {
 		b.WriteString(" " + tag(colOK) + "No failed runs in this period.")

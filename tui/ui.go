@@ -99,7 +99,7 @@ func applyStyles() {
 	tview.Styles.ContrastSecondaryTextColor = colDim
 }
 
-func tag(c tcell.Color) string { return fmt.Sprintf("[#%06x]", c.Hex()) }
+func tag(c tcell.Color) string { return "[" + spec(c) + "]" }
 
 func (a *App) build() {
 	applyStyles()
@@ -134,7 +134,7 @@ func (a *App) build() {
 
 func newTable() *tview.Table {
 	t := tview.NewTable().SetSelectable(true, false).SetFixed(1, 0).SetSeparator(' ')
-	t.SetSelectedStyle(tcell.StyleDefault.Background(colSel).Foreground(tcell.ColorWhite))
+	t.SetSelectedStyle(onColour(colSel))
 	t.SetBorder(true)
 	return t
 }
@@ -433,7 +433,7 @@ func (a *App) renderChrome() {
 	case svc != nil:
 		state = tag(colOK) + "service running"
 		if running > 0 {
-			state += fmt.Sprintf("[white]   %d backup(s) running", running)
+			state += fmt.Sprintf("[%s]   %d backup(s) running", spec(colWhite), running)
 		}
 		if svc.Version != "" {
 			state += tag(colDim) + "   v" + svc.Version
@@ -443,7 +443,7 @@ func (a *App) renderChrome() {
 	if a.be.Name() == "demo" {
 		mode = tag(colKey) + "  [DEMO DATA]"
 	}
-	a.header.SetText(fmt.Sprintf("[white::b] Salvanza Backup%s[-:-:-]   %s", mode, state))
+	a.header.SetText(fmt.Sprintf("[%s::b] Salvanza Backup%s[-:-:-]   %s", spec(colWhite), mode, state))
 	var b strings.Builder
 	names := tabNames
 	if _, _, w, _ := a.tabs.GetRect(); w > 0 && w < 105 {
@@ -451,7 +451,7 @@ func (a *App) renderChrome() {
 	}
 	for i, n := range names {
 		if i == tab {
-			fmt.Fprintf(&b, "[black:#%06x] %d %s [-:-] ", colHead.Hex(), i+1, n)
+			fmt.Fprintf(&b, "[black:%s] %d %s [-:-] ", spec(colHead), i+1, n)
 		} else {
 			fmt.Fprintf(&b, "%s %d %s [-:-] ", tag(colDim), i+1, n)
 		}
@@ -835,7 +835,7 @@ func (a *App) renderRecent() {
 		if i >= 5 {
 			break
 		}
-		fmt.Fprintf(&b, " %s%-17s[-] [white]%-16s[-] %s%-7s[-] %s%s[-]\n", tag(colDim), when(h.At), h.Name, tag(statusColour(h.Status)), statusWord(h.Status), tag(colDim), tview.Escape(h.Message))
+		fmt.Fprintf(&b, " %s%-17s[-] [white::b]%-16s[-:-:-] %s%-7s[-] %s%s[-]\n", tag(colDim), when(h.At), h.Name, tag(statusColour(h.Status)), statusWord(h.Status), tag(colDim), tview.Escape(h.Message))
 	}
 	if b.Len() == 0 {
 		b.WriteString(" " + tag(colDim) + "No runs recorded yet.")
@@ -1102,7 +1102,7 @@ func (a *App) actToggle() {
 func (a *App) confirm(text string, yes func()) {
 	m := tview.NewModal().SetText(text).AddButtons([]string{"Yes", "No"})
 	m.SetBackgroundColor(colPanel).SetTextColor(colText)
-	m.SetButtonBackgroundColor(colAccent)
+	m.SetButtonBackgroundColor(colAccent).SetButtonStyle(onColour(colAccent))
 	prev := a.modal // a form under the question (the server editor, say) stays open
 	m.SetDoneFunc(func(i int, label string) {
 		a.pages.RemovePage("modal")

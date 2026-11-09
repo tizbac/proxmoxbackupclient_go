@@ -30,6 +30,8 @@ The service gives its API token only to administrators and root. A launcher that
 
 `salvanza-cli tui -demo` shows invented data and needs no service: a good way to look around. Everything works in it, but nothing is stored anywhere.
 
+**Colours.** The window uses the app's blue where the terminal can show it (true colour or 256 colours). A terminal with only 8 or 16 colours, such as the Linux text console, gets the plain ANSI colours instead: white (bold, which is what makes it bright white there) on blue for buttons and fields, on black, so nothing depends on how the terminal rounds a colour. The window decides from `TERM` and `COLORTERM`. If your terminal does not say what it can do, set `SALVANZA_TUI_COLORS` to `8`, `16`, `256` or `truecolor` to choose.
+
 If the window says "the Salvanza service is not running or not reachable", start the service ([GUI manual, section 15](GUI.md#15-background-service-tray-and-closing-the-window)). If it says the service refused the token, you are not running as administrator or root.
 
 The window needs a terminal at least 80 columns wide and 24 lines high; it uses more room when there is any. Closing it does not stop backups: they run in the service.

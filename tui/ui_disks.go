@@ -208,12 +208,12 @@ func (p *diskPicker) draw() {
 	p.table.Clear()
 	p.rows = nil
 	cell := func(r, c int, text string, col tcell.Color) {
-		p.table.SetCell(r, c, tview.NewTableCell(text).SetTextColor(col).SetSelectedStyle(tcell.StyleDefault.Background(colSel).Foreground(tcell.ColorWhite)))
+		p.table.SetCell(r, c, tview.NewTableCell(text).SetTextColor(col).SetSelectedStyle(onColour(colSel)))
 	}
 	r := 0
 	for i, d := range p.disks {
 		mark := "( )"
-		col := tcell.ColorWhite
+		col := colWhite
 		if p.on[i] {
 			mark, col = "(*)", colOK
 		}

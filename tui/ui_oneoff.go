@@ -13,7 +13,7 @@ import (
 // oneOff asks what to back up now, then opens that form.
 func (a *App) oneOff() {
 	m := tview.NewModal().SetText("What should be backed up now?").AddButtons([]string{"Folders", "Disk image", "Cancel"})
-	m.SetBackgroundColor(colPanel).SetTextColor(tcell.ColorWhite).SetButtonBackgroundColor(colAccent)
+	m.SetBackgroundColor(colPanel).SetTextColor(colWhite).SetButtonBackgroundColor(colAccent).SetButtonStyle(onColour(colAccent))
 	m.SetDoneFunc(func(_ int, label string) {
 		a.pages.RemovePage("oneofftype")
 		a.modal = false
