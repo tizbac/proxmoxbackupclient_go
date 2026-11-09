@@ -27,6 +27,11 @@ type prefsView struct {
 
 	host, port, user, pass, from, testTo *tview.InputField
 	insecure                             *tview.Checkbox
+
+	shareList                                    *tview.TextView
+	shareServer, shareUser, sharePass, shareTest *tview.InputField
+	setFile                                      *tview.InputField
+	setSecrets                                   *tview.Checkbox
 }
 
 func (a *App) buildPrefs() tview.Primitive {
@@ -63,40 +68,75 @@ func (a *App) buildPrefs() tview.Primitive {
 	f2.AddTextView("", tag(colDim)+"Leave the password empty to keep the stored one. Every Backup Set's e-mail setting uses this account.", 70, 2, true, false)
 	f2.SetTitle(" E-mail ")
 
+	p.shareList = tview.NewTextView().SetDynamicColors(true)
+	p.shareServer = tview.NewInputField().SetLabel(`Server (as in \\server\share) `).SetFieldWidth(30)
+	p.shareUser = tview.NewInputField().SetLabel("User name ").SetFieldWidth(30)
+	p.sharePass = tview.NewInputField().SetLabel("Password ").SetFieldWidth(30).SetMaskCharacter('*')
+	p.shareTest = tview.NewInputField().SetLabel(`Try it on a folder (optional, \\server\share\folder) `).SetFieldWidth(40)
+	f3 := styleForm(tview.NewForm()).AddFormItem(p.shareServer).AddFormItem(p.shareUser).AddFormItem(p.sharePass).AddFormItem(p.shareTest)
+	f3.AddTextView("", tag(colDim)+"Backups that run in the service reach another computer's share with the login saved for its server. Leave the password empty to keep the stored one. To check a folder without saving, fill only the folder and choose Check folder.", 76, 3, true, false)
+	f3.SetTitle(" Network shares ")
+
+	p.setFile = tview.NewInputField().SetLabel("File ").SetFieldWidth(60)
+	p.setSecrets = tview.NewCheckbox().SetLabel("Include passwords and secrets in the export ")
+	f4 := styleForm(tview.NewForm()).AddFormItem(p.setFile).AddFormItem(p.setSecrets)
+	f4.AddTextView("", tag(colDim)+"Export writes the Backup Sets, servers and preferences to a new file (never over an existing one; with secrets it is readable only by you). Import merges such a file into this computer's settings, in the service.", 76, 3, true, false)
+	f4.SetTitle(" Settings file ")
+
 	p.title = tview.NewTextView().SetDynamicColors(true)
 	p.pages = tview.NewPages()
-	forms := []*tview.Form{f1, f2}
+	forms := []*tview.Form{f1, f2, f3, f4}
 	for i, f := range forms {
 		i := i
-		if i == 0 {
-			f.AddButton("E-mail", func() { p.show(1) })
-		} else {
-			f.AddButton("Backup options", func() { p.show(0) })
+		if i > 0 {
+			f.AddButton("Previous page", func() { p.show(i - 1) })
 		}
-		f.AddButton("Save", p.save)
-		if i == 1 {
-			f.AddButton("Save and send test message", p.sendTest)
+		if i < len(forms)-1 {
+			f.AddButton("Next page", func() { p.show(i + 1) })
 		}
-		f.AddButton("Revert", p.load)
+		switch i {
+		case 0, 1:
+			f.AddButton("Save", p.save)
+			if i == 1 {
+				f.AddButton("Save and send test message", p.sendTest)
+			}
+			f.AddButton("Revert", p.load)
+		case 2:
+			f.AddButton("Save login", p.saveShare)
+			f.AddButton("Remove login", p.removeShare)
+			f.AddButton("Check folder", p.checkShare)
+		case 3:
+			f.AddButton("Export", p.exportSettings)
+			f.AddButton("Import", p.importSettings)
+		}
 		f.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
 			switch ev.Key() {
 			case tcell.KeyPgDn:
-				if i == 0 {
-					p.show(1)
+				if i < len(forms)-1 {
+					p.show(i + 1)
 				}
 				return nil
 			case tcell.KeyPgUp:
-				if i == 1 {
-					p.show(0)
+				if i > 0 {
+					p.show(i - 1)
 				}
 				return nil
 			case tcell.KeyCtrlS:
-				p.save()
+				switch i {
+				case 0, 1:
+					p.save()
+				case 2:
+					p.saveShare()
+				}
 				return nil
 			}
 			return ev
 		})
-		p.pages.AddPage(strconv.Itoa(i), f, true, i == 0)
+		var page tview.Primitive = f
+		if i == 2 {
+			page = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(p.shareList, 6, 0, false).AddItem(f, 0, 1, true)
+		}
+		p.pages.AddPage(strconv.Itoa(i), page, true, i == 0)
 	}
 	p.root = tview.NewFlex().SetDirection(tview.FlexRow).AddItem(p.title, 1, 0, false).AddItem(p.pages, 0, 1, true)
 	p.renderTitle()
@@ -104,7 +144,7 @@ func (a *App) buildPrefs() tview.Primitive {
 }
 
 func (p *prefsView) renderTitle() {
-	labels := []string{"Backup options", "E-mail"}
+	labels := []string{"Backup options", "E-mail", "Network shares", "Settings file"}
 	var b strings.Builder
 	b.WriteString(" ")
 	for i, l := range labels {
@@ -129,6 +169,7 @@ func (p *prefsView) show(step int) {
 // enter is called when the screen is shown.
 func (p *prefsView) enter() {
 	p.load()
+	p.loadShares()
 	p.show(p.step)
 }
 

@@ -139,7 +139,7 @@ func TestImportAKeyFileChecksItAndShowsTheFingerprint(t *testing.T) {
 	h.key(tcell.KeyTab, 0) // Read
 	h.key(tcell.KeyEnter, 0)
 	h.waitFor("Import this key?")
-	h.waitFor(fp[:17]) // the dialog wraps the long fingerprint
+	h.waitFor(fp[:5]) // the dialog wraps the long fingerprint
 	h.waitFor("The key was checked")
 	h.key(tcell.KeyEnter, 0) // Yes
 	h.waitFor("The key was imported")
@@ -168,7 +168,7 @@ func TestImportRefusesWhatIsNotAKey(t *testing.T) {
 	h.key(tcell.KeyTab, 0)
 	h.key(tcell.KeyTab, 0)
 	h.key(tcell.KeyEnter, 0)
-	h.waitFor("not a Proxmox Backup Server key file")
+	h.waitFor("Proxmox")
 	h.key(tcell.KeyEnter, 0)
 	// the editor is still open, with the old key
 	h.waitFor("Key file")

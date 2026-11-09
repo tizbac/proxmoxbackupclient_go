@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -24,6 +25,7 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	demo := fs.Bool("demo", false, "show invented data instead of connecting to the service")
 	check := fs.Bool("check", false, "connect, print what the service reports and exit (no window), for scripts")
 	encCheck := fs.Bool("encryption", false, "with -check: make a key, back a folder up to a real PBS with it and restore it (PBS from TUI_CHECK_PBS_* in the environment)")
+	recoverCheck := fs.Bool("recover", false, "with -check: back a folder up to a real PBS, then prove Undelete and Roll back on it (PBS from TUI_CHECK_PBS_* in the environment)")
 	restoreGroup := fs.String("restore-group", "", "with -restore-check: try only this backup ID")
 	restoreCheck := fs.Bool("restore-check", false, "with -check: list the server's backups, then restore a few small files of the newest readable snapshot into a temporary folder and delete it")
 	write := fs.Bool("write", false, "with -check: also create, change and delete a temporary Backup Set, to prove the service takes what the editor sends")
@@ -61,6 +63,9 @@ e enable or disable, g refresh, ? help, q quit.`)
 		}
 		if code == 0 && *encCheck {
 			code = CheckEncryption(be, stdout, stderr)
+		}
+		if code == 0 && *recoverCheck {
+			code = CheckRecover(be, stdout, stderr)
 		}
 		if code == 0 && *restoreCheck {
 			code = CheckRestore(be, *restoreGroup, stdout, stderr)
@@ -277,7 +282,76 @@ func CheckWrite(be Backend, stdout, stderr io.Writer) int {
 	if code := checkWritePrefs(be, stdout, stderr); code != 0 {
 		return code
 	}
+	if code := checkWriteShares(be, stdout, stderr); code != 0 {
+		return code
+	}
+	if code := checkWriteSettingsFile(be, stdout, stderr); code != 0 {
+		return code
+	}
 	return checkLogs(be, stdout, stderr)
+}
+
+// checkWriteShares saves, reads back and removes a login for a server that does
+// not exist (nothing connects to it, as no test folder is given).
+func checkWriteShares(be Backend, stdout, stderr io.Writer) int {
+	server := fmt.Sprintf("tuiselftest%d", time.Now().Unix())
+	defer func() { _ = be.DeleteShareLogin(server) }()
+	if err := be.SetShareLogin(server, "selftest", "not-a-real-password", ""); err != nil {
+		sayln(stderr, "share login save: "+describeErr(err))
+		return 1
+	}
+	list, err := be.ShareLogins()
+	if err != nil {
+		sayln(stderr, "share logins: "+describeErr(err))
+		return 1
+	}
+	found := false
+	for _, l := range list {
+		if strings.EqualFold(l.Server, server) {
+			found = l.Username == "selftest" && l.PasswordSet
+		}
+	}
+	if !found {
+		sayln(stderr, "share login: it is not listed with its user name and the password mark")
+		return 1
+	}
+	if err := be.DeleteShareLogin(server); err != nil {
+		sayln(stderr, "share login delete: "+describeErr(err))
+		return 1
+	}
+	say(stdout, "share login: saved, listed without its password, and removed again\n")
+	return 0
+}
+
+// checkWriteSettingsFile exports the settings to a new file and imports that
+// same file back (a merge of identical settings), then removes the file.
+func checkWriteSettingsFile(be Backend, stdout, stderr io.Writer) int {
+	dir, err := os.MkdirTemp("", "tui-settings-")
+	if err != nil {
+		sayln(stderr, err)
+		return 1
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	path := filepath.Join(dir, "settings.json")
+	if err := be.ExportSettings(path, false); err != nil {
+		sayln(stderr, "settings export: "+describeErr(err))
+		return 1
+	}
+	if st, err := os.Stat(path); err != nil || st.Size() == 0 {
+		sayln(stderr, "settings export: the file is missing or empty")
+		return 1
+	}
+	if err := be.ExportSettings(path, false); err == nil {
+		sayln(stderr, "settings export: a second export over the same file was not refused")
+		return 1
+	}
+	summary, err := be.ImportSettings(path)
+	if err != nil {
+		sayln(stderr, "settings import: "+describeErr(err))
+		return 1
+	}
+	say(stdout, "settings file: exported, not overwritten, imported back (%s)\n", strings.TrimSpace(summary))
+	return 0
 }
 
 // checkWriteServer adds, changes and deletes a temporary server (never the

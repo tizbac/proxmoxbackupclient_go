@@ -41,6 +41,18 @@ type Backend interface {
 	Prefs() (Prefs, error)
 	SavePrefs(old, now Prefs) error
 	SendTestMail(to string) error
+	// Network share logins (the service connects to a share with them) and
+	// settings export and import. An empty password keeps the stored one. An
+	// export file is never written over an existing file.
+	ShareLogins() ([]ShareLogin, error)
+	SetShareLogin(server, username, password, testPath string) error
+	DeleteShareLogin(server string) error
+	CheckShares(paths []string) ([]ShareCheck, error)
+	ExportSettings(path string, withSecrets bool) error
+	ImportSettings(path string) (string, error)
+	// RunSetTool runs the service program's Undelete or Roll back command line
+	// (args as in the GUI manual), calling line for each line of its output.
+	RunSetTool(args []string, line func(string)) error
 	// Encryption keys. The key file stays on the computer, in the service's keys
 	// folder; the window never shows key material, only fingerprints.
 	KeyInfo(path string) (KeyInfo, error)

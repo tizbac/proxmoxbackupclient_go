@@ -287,6 +287,10 @@ func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
 			a.actDelete()
 		case 'b':
 			a.oneOff()
+		case 'u':
+			a.undeleteSet()
+		case 'k':
+			a.rollbackSet()
 		case 'E':
 			a.editSet()
 		default:
@@ -411,7 +415,8 @@ func (a *App) renderChrome() {
 	switch tab {
 	case 0, 1:
 		f += hint("r", "run now") + hint("p", "pause/resume") + hint("s", "stop") + hint("e", "enable/disable") +
-			hint("Enter", "edit") + hint("n", "new") + hint("d", "delete") + hint("b", "one-off backup")
+			hint("Enter", "edit") + hint("n", "new") + hint("d", "delete") + hint("b", "one-off backup") +
+			hint("u", "undelete") + hint("k", "roll back")
 	}
 	if tab == 2 {
 		f += hint("Enter", "open the run's log")
@@ -426,7 +431,7 @@ func (a *App) renderChrome() {
 	case 7:
 		f += hint("Enter", "open the log") + hint("g", "refresh")
 	case 8:
-		f += hint("Ctrl+S", "save") + hint("PgDn", "e-mail")
+		f += hint("Ctrl+S", "save") + hint("PgDn", "next page")
 	}
 	f += hint("Tab", "next") + hint("?", "help") + hint("q", "quit")
 	a.footer.SetText(f)
@@ -1072,6 +1077,7 @@ func (a *App) help() {
 		k("Enter", "edit the selected Backup Set (History: open its log)") +
 		k("n, d", "new Backup Set, delete the selected one (asks first)") +
 		k("b", "back up folders now, without a Backup Set") +
+		k("u, k", "Undelete files of the selected set, Roll the set back") +
 		k("6", "Restore: browse a backup and restore files") +
 		k("Servers", "n new, Enter edit, d delete, t test, u default, f pin") +
 		k("7, 8, 9", "Reports (w: period), Log files, Preferences") +

@@ -65,8 +65,18 @@ On the Dashboard or the Backup Sets screen:
 | **Enter** | Edits the set |
 | **n** | Makes a new folder set |
 | **d** | Deletes the set, after asking. Its backups on the server stay |
+| **u** | Undelete: puts back files that are in the set's backups but gone from the disk ([below](#undelete-and-roll-back)) |
+| **k** | Roll back: puts the set's folders back as an earlier backup had them ([below](#undelete-and-roll-back)) |
 
 The editor has three steps like the app's: **General** (name, backup ID, folders, server), **Schedule** (on a schedule or manual; every N minutes, hours, days, weeks or months; time of day; days of the week) and **Options** (change detection, VSS, files to leave out, e-mail when it fails). **PgDn** and **PgUp** move between the steps, **Ctrl+S** saves and **Esc** cancels. The service checks what you save, as for the app, and says what is wrong. A set that has several schedules keeps the others: only the first is edited here. The disks of a machine set are chosen in the app.
+
+### Undelete and Roll back
+
+Both work on the selected Backup Set through the service program (`salvanza-svc`, the same engine as the desktop app and the [command line in the GUI manual](GUI.md#undelete-and-roll-back-from-the-command-line)), so they need the same account as the rest of this window: administrator or root. The window finds the program next to itself, in the install folders or on the search path; the variable `SALVANZA_SVC` names it when it is somewhere else. Its output appears in the window as it comes; **Esc** closes the window (work that has started goes on).
+
+**Undelete (u).** Choose how far back to look (0 is the newest backup only; N also looks in the last N days) and, if you like, a folder to restore under instead of where the files were. **Look** lists the files that are in the backups but not on disk and changes nothing. **Restore** puts them back, never over a file that has come back. Files that look moved are listed, not restored. The restored files are checked against the backup unless you turn that off.
+
+**Roll back (k).** Choose the backup (the newest, or the newest at or before a local time written `2026-10-10 14:30`) and what to do: **replace** (restore missing and changed files, keep files added since), **missing** (only files that are gone) or **exact** (also remove files added since). **Preview** shows the counts and changes nothing. **Roll back** shows the same counts and then waits: press **y** to go ahead, **Esc** to cancel. Everything replaced or removed is first moved to a safety folder; **undoing a roll back is done in the desktop app**.
 
 ## 4. Back up folders now
 
@@ -126,10 +136,13 @@ Printing the key as a **paper key**, and reading a paper key back (from its QR c
 
 ## 8. Preferences
 
-Screen 9 has two pages, **Backup options** and **E-mail**, switched with **PgDn** and **PgUp** (or the buttons). **Ctrl+S** saves, **Revert** reads the stored values again.
+Screen 9 has four pages, **Backup options**, **E-mail**, **Network shares** and **Settings file**, switched with **PgDn** and **PgUp** (or the buttons). **Ctrl+S** saves, **Revert** reads the stored values again.
 
 * **Backup options:** speed limits for upload, download and disk reading (MB/s, 0 for none), upload threads (0 for automatic), the chunk timeout (30 to 1800 seconds, 0 for the default of 90), compression, how many backups run at once, restoring files in parallel, and reading folders ahead while backing up, with the number of workers.
 * **E-mail:** the account Backup Sets use to e-mail their results: server, port, user name, password (leave empty to keep the stored one), whether to accept an untrusted certificate, the sender address. **Save and send test message** saves the account and sends a short message to the address you give.
+
+* **Network shares:** the login the service uses to reach another computer's share (`\\server\share`) when the backups run. Give the server, user name and password (leave the password empty to keep the stored one); a folder on the share can be tried before the login is saved. **Remove login** takes it away, **Check folder** tells whether the backups can read a folder on a share, with the saved login. The password is never shown.
+* **Settings file:** **Export** writes the Backup Sets, servers and preferences to a new file (never over an existing one; with **Include passwords and secrets** ticked the file is readable only by you and must be kept safe). **Import** merges such a file into this computer's settings, after asking, and says what it added.
 
 Only what you changed is sent, through the same settings the app uses, so the service's own checks and limits apply and tell you what is wrong.
 
@@ -151,12 +164,13 @@ Each screen's own keys are in its section and in the bar at the bottom. The mous
 
 * `-check -write` makes a temporary manual Backup Set and a temporary server, changes and deletes them, changes one preference and puts it back, and reads a log file, to prove the service takes what the window sends.
 * `-check -encryption` proves the whole encryption chain against a real Proxmox Backup Server (named in the environment variables `TUI_CHECK_PBS_URL`, `_AUTHID`, `_SECRET`, `_DATASTORE`, `_FINGERPRINT`): it makes a key, lets a temporary server use it, backs a folder up, restores it with the server's key and compares the files, then removes the server and the test backups. The key file it made stays in the keys folder; its path is printed as `KEYFILE=`.
+* `-check -recover` (same environment variables) backs a folder up with a temporary Backup Set, deletes one file, changes one and adds one, then proves Undelete (the file comes back, and the look changes nothing) and Roll back with **exact** (the changed file is restored, the added one removed, the preview changes nothing), and removes everything it made. It needs the service program, as above.
+* `-check -write` also saves, lists and removes a share login, and exports the settings to a temporary file and imports them back.
 * `-check -restore-check` restores a few small files of the newest readable snapshot into a temporary folder and deletes it. `-restore-group <backup ID>` tries only that backup, which also shows why an encrypted one cannot be read.
 
 ## 11. What it does not do yet
 
-* Undelete and Roll back are in the app only (or in the service's command line, see the [GUI manual](GUI.md#undelete-and-roll-back-from-the-command-line)).
-* **Share logins** and settings export and import are in the app.
+* **Undoing a roll back**, and deleting the safety copies it keeps, are in the app only.
 * The **paper key** (printing it, reading it back) is in the app only, by design.
 * A disk image (a machine backup) is not restored here: use the [bare-metal restore](BMR.md).
 * Machine Backup Sets can be edited here but not made.

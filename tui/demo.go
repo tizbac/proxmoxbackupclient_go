@@ -25,6 +25,7 @@ type demoBackend struct {
 	prefs    Prefs
 	prefsSet bool
 	keys     map[string]KeyInfo
+	shares   []ShareLogin
 }
 
 func newDemoBackend() *demoBackend {

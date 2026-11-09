@@ -189,11 +189,87 @@ func TestSendTestMailNeedsAnAddress(t *testing.T) {
 	}
 	h.typeText("someone@example.com")
 	// buttons: E-mail screen has Backup options, Save, Save and send test message
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		h.key(tcell.KeyTab, 0)
 	}
 	h.key(tcell.KeyEnter, 0)
 	h.waitFor("test message sent to someone@example.com")
+}
+
+func TestNetworkShareLogins(t *testing.T) {
+	h := newHarness(t, 130, 44)
+	h.sim.InjectKey(tcell.KeyF9, 0, tcell.ModNone)
+	h.waitFor("Upload limit")
+	h.key(tcell.KeyPgDn, 0)
+	h.key(tcell.KeyPgDn, 0)
+	h.waitFor("Saved logins")
+	h.waitFor(`\\nas01`)
+
+	// a login needs a password
+	h.typeText("files")
+	h.key(tcell.KeyTab, 0)
+	h.typeText("backup")
+	h.key(tcell.KeyCtrlS, 0)
+	h.waitFor("a password is needed for files")
+	h.key(tcell.KeyEnter, 0)
+
+	// with one it is saved; the password is never shown
+	h.key(tcell.KeyTab, 0)
+	h.typeText("s3cretpw")
+	if strings.Contains(h.screen(), "s3cretpw") {
+		t.Errorf("the password was shown:\n%s", h.screen())
+	}
+	h.key(tcell.KeyCtrlS, 0)
+	h.waitFor("login saved for files")
+	h.waitFor(`\\files`)
+	if strings.Contains(h.screen(), "s3cretpw") {
+		t.Errorf("the password was shown after saving:\n%s", h.screen())
+	}
+	list, _ := h.a.be.ShareLogins()
+	if len(list) != 2 {
+		t.Fatalf("logins: %+v", list)
+	}
+
+	// a folder on a server with no login is refused for want of one
+	h.key(tcell.KeyTab, 0) // test folder
+	h.typeText(`\\other\share\docs`)
+	for i := 0; i < 5; i++ { // Previous page, Save login, Remove login, then Check folder
+		h.key(tcell.KeyTab, 0)
+	}
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("was refused for want of")
+	h.key(tcell.KeyEnter, 0)
+}
+
+func TestSettingsFileExportImport(t *testing.T) {
+	h := newHarness(t, 130, 44)
+	h.sim.InjectKey(tcell.KeyF9, 0, tcell.ModNone)
+	h.waitFor("Upload limit")
+	for i := 0; i < 3; i++ {
+		h.key(tcell.KeyPgDn, 0)
+	}
+	h.waitFor("Include passwords and secrets")
+	path := t.TempDir() + "/settings.json"
+	h.typeText(path)
+	// Tab: the secrets box, then Previous page, Export
+	for i := 0; i < 3; i++ {
+		h.key(tcell.KeyTab, 0)
+	}
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Settings written to")
+	h.key(tcell.KeyEnter, 0)
+
+	// never over an existing file
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("already exists")
+	h.key(tcell.KeyEnter, 0)
+
+	// import asks first, then reports
+	h.key(tcell.KeyTab, 0)
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Merge the settings")
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Imported the demo settings")
 }
 
 func TestEncryptedBackupAsksForThePassphrase(t *testing.T) {
