@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A backup refused for want of a permission says so, and is not retried.** An account that can read a datastore but not write to it (PBS role `DatastoreReader`, say) passes the connection test, which only reads the datastore's status, and its backup then failed with "Connection to the server lost on attempt 1 of 5" and was tried four more times over half an hour. PBS had refused the session with "missing permissions 'Datastore.Backup'", but the backup tool hid that behind its own message for a lost connection. The run now fails at once with PBS's words and a hint: "PBS refused the backup session: HTTP 403 Forbidden - missing permissions 'Datastore.Backup' on '/datastore/store'. The account needs the Datastore.Backup permission on the datastore (and on the namespace, if one is used) to back up". A wrong token says "PBS authentication failed: HTTP 401" the same way, and the response headers no longer appear in these messages. (#136)
+- **The Boot badge of the disk picker on Linux is on the disk that has `/` or a boot partition,** not on every `sd` and `nvme` disk.
 - **Release notes written by hand are kept.** The release workflow no longer replaces the text of a release that already has some: it only adds its installers and packages. Generated release notes read well on the release page (their wrapped lines are joined) and link CHANGELOG.md and the comparison with the previous tag instead of listing every commit. The bare-metal restore ISO workflow, run on a tag, only adds the ISO.
 
 ## [2.0.0] - 2026-11-08

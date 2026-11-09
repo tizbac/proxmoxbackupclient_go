@@ -18,6 +18,10 @@ func TestReconnectable(t *testing.T) {
 		{"read /dev/elastio-snap1 at segment 1048576: failed to read block: input/output error", false},
 		{"no usable block snapshot module loaded", false},
 		{"HTTP 401 - permission check failed", false},
+		// A session PBS refused for want of a permission (issue 136): trying
+		// again changes nothing, and it must not read as a lost connection.
+		{`backup device /dev/sdb: Post "https://pbs:8007/fixed_index": PBS refused the backup session: HTTP 403 Forbidden - missing permissions 'Datastore.Backup' on '/datastore/store'. The account needs the Datastore.Backup permission on the datastore (and on the namespace, if one is used) to back up`, false},
+		{`Post "https://pbs:8007/fixed_index": PBS authentication failed: HTTP 401 Unauthorized - authentication failed`, false},
 	} {
 		if got := Reconnectable(errors.New(tc.err)); got != tc.want {
 			t.Errorf("Reconnectable(%q) = %v, want %v", tc.err, got, tc.want)

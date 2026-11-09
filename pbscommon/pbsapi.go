@@ -162,10 +162,29 @@ func (e *AuthErr) Error() string {
 	// upgrade (a 400 for a backup time already taken, a 403 for a missing
 	// permission) said "authentication failed" too and sent people looking
 	// at their token.
+	msg := e.Message()
 	if strings.HasPrefix(e.StatusCode, "401") {
-		return fmt.Sprintf("PBS authentication failed: HTTP %s - %s", e.StatusCode, e.ResponseBody)
+		return fmt.Sprintf("PBS authentication failed: HTTP %s - %s", e.StatusCode, msg)
 	}
-	return fmt.Sprintf("PBS refused the backup session: HTTP %s - %s", e.StatusCode, e.ResponseBody)
+	text := fmt.Sprintf("PBS refused the backup session: HTTP %s - %s", e.StatusCode, msg)
+	if strings.HasPrefix(e.StatusCode, "403") {
+		// The account is known but may not write to the datastore (a reader
+		// passes the connection test, which only reads its status).
+		text += ". The account needs the Datastore.Backup permission on the datastore (and on the namespace, if one is used) to back up"
+	}
+	return text
+}
+
+// Message is what PBS said when it refused the session: the body of its
+// answer, without the response headers that ResponseBody starts with.
+func (e *AuthErr) Message() string {
+	body := e.ResponseBody
+	if i := strings.Index(body, "\nBody: "); i >= 0 {
+		body = body[i+len("\nBody: "):]
+	} else if strings.HasPrefix(body, "HTTP/") {
+		return "" // headers only
+	}
+	return strings.TrimSpace(body)
 }
 
 // backupTimeTakenText is how PBS words refusing a backup session whose
@@ -1439,6 +1458,15 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 	// If HTTP/2 tries to reconnect (connection dropped mid-backup), we must
 	// fail rather than silently create a new PBS session with stale writer IDs.
 	var dialCalled atomic.Bool
+	// How the first dial ended. A dial that fails (PBS refused the session,
+	// say for want of the Datastore.Backup permission) is tried again by the
+	// HTTP/2 transport for the requests that follow; those must report why the
+	// first one failed, not "connection lost", which is what a session that
+	// was open and dropped is reported as, and which a backup retries.
+	var (
+		firstDialErr  atomic.Pointer[error]
+		firstDialDone = make(chan struct{})
+	)
 
 	// Create completely new client with fresh HTTP/2 transport.
 	// ReadIdleTimeout + PingTimeout cause the transport to send PING frames on idle
@@ -1460,15 +1488,30 @@ func (pbs *PBSClient) Connect(reader bool, backuptype string) {
 			ReadIdleTimeout: 30 * time.Second,
 			PingTimeout:     5 * time.Minute,
 
-			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (nc net.Conn, dialErr error) {
 
 				// Prevent HTTP/2 auto-reconnect from creating orphaned PBS sessions.
 				// If the connection drops mid-backup, a reconnect would start a new PBS
 				// session with the same backup-time but fresh writer IDs on the server,
 				// while the client still holds stale writer IDs → "writer not registered".
 				if !dialCalled.CompareAndSwap(false, true) {
+					select {
+					case <-firstDialDone:
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+					if e := firstDialErr.Load(); e != nil {
+						return nil, *e // the session was never opened: say why
+					}
 					return nil, fmt.Errorf("connection lost: PBS session cannot be resumed (reconnect blocked to prevent orphaned sessions)")
 				}
+				defer func() {
+					if dialErr != nil {
+						e := dialErr
+						firstDialErr.Store(&e)
+					}
+					close(firstDialDone)
+				}()
 
 				//This is one of the trickiest parts, GO http2 library does not support starting with http1 and upgrading to 2 after
 				//So to achieve that the function to create SSL socket has been hijacked here
