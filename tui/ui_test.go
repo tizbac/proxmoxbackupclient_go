@@ -15,9 +15,10 @@ import (
 
 // harness runs the real UI on a simulated terminal over the demo backend.
 type harness struct {
-	t   *testing.T
-	a   *App
-	sim tcell.SimulationScreen
+	t    *testing.T
+	a    *App
+	sim  tcell.SimulationScreen
+	done chan struct{} // closed when the UI has stopped (q, Ctrl+C)
 }
 
 func newHarness(t *testing.T, w, h int) *harness {
@@ -41,7 +42,7 @@ func newHarness(t *testing.T, w, h int) *harness {
 		case <-time.After(3 * time.Second):
 		}
 	})
-	hn := &harness{t: t, a: a, sim: sim}
+	hn := &harness{t: t, a: a, sim: sim, done: done}
 	// Running the app initialises the screen again, which resets its size.
 	time.Sleep(250 * time.Millisecond)
 	sim.SetSize(w, h)

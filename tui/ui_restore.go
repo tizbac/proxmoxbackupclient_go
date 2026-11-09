@@ -59,8 +59,14 @@ func (a *App) buildRestore() tview.Primitive {
 	r.groupsTable.SetTitle(" Backups on the server ").SetTitleAlign(tview.AlignLeft)
 	r.groupsTable.SetSelectedFunc(func(row, _ int) { r.pickGroup(row) })
 	r.groupsTable.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-		if ev.Key() == tcell.KeyTab {
+		switch ev.Key() {
+		case tcell.KeyTab:
 			a.app.SetFocus(r.server)
+			return nil
+		case tcell.KeyRight: // Enter, going in
+			if row, _ := r.groupsTable.GetSelection(); row > 0 && row < r.groupsTable.GetRowCount() {
+				r.pickGroup(row)
+			}
 			return nil
 		}
 		return ev
@@ -117,8 +123,14 @@ func (a *App) buildRestore() tview.Primitive {
 
 	// Esc: one step back (the screen's own keys come first)
 	r.snapTable.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-		if ev.Key() == tcell.KeyEscape {
+		switch ev.Key() {
+		case tcell.KeyEscape, tcell.KeyLeft: // back
 			r.show(0)
+			return nil
+		case tcell.KeyRight: // Enter, going in
+			if row, _ := r.snapTable.GetSelection(); row > 0 && row < r.snapTable.GetRowCount() {
+				r.pickSnapshot(row)
+			}
 			return nil
 		}
 		return ev
@@ -127,8 +139,12 @@ func (a *App) buildRestore() tview.Primitive {
 	return r.root
 }
 
-// typing says whether a text field has the keyboard (the destination step).
-func (r *restoreView) typing() bool { return r.step == 3 }
+// typing says whether a text field has the keyboard: the destination step, and
+// its folder field has the focus (not the tick box or a button, where q quits
+// and the digits change screen).
+func (r *restoreView) typing() bool {
+	return r.step == 3 && focusTakesText(r.a.app.GetFocus())
+}
 
 func (r *restoreView) isRunning() bool {
 	r.mu.Lock()

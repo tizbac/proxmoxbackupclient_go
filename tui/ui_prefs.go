@@ -109,6 +109,12 @@ func (a *App) buildPrefs() tview.Primitive {
 			f.AddButton("Import", p.importSettings)
 		}
 		f.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+			if d := altStep(ev); d != 0 {
+				if j := i + d; j >= 0 && j < len(forms) {
+					p.show(j)
+				}
+				return nil
+			}
 			switch ev.Key() {
 			case tcell.KeyPgDn:
 				if i < len(forms)-1 {

@@ -213,7 +213,22 @@ func (a *App) buildServers() tview.Primitive {
 // typingNow says whether a text field has the keyboard: the destination step
 // of Restore and the Preferences forms. Characters then belong to the field.
 func (a *App) typingNow() bool {
-	return (a.tab == 5 && a.rs != nil && a.rs.typing()) || a.tab == 8
+	if a.tab == 8 {
+		// Preferences is all forms: letters and digits are the screen's only
+		// while a field that takes text has the focus, not on a button or a tick box.
+		return focusTakesText(a.app.GetFocus())
+	}
+	return a.tab == 5 && a.rs != nil && a.rs.typing()
+}
+
+// focusTakesText says whether the focused item takes typed text (so q and the
+// digits are its, not the global keys').
+func focusTakesText(p tview.Primitive) bool {
+	switch p.(type) {
+	case *tview.InputField, *tview.TextArea, *tview.DropDown:
+		return true
+	}
+	return false
 }
 
 // ownsTab says whether Tab belongs to the screen (moving between its fields)
@@ -222,11 +237,49 @@ func (a *App) ownsTab() bool {
 	return (a.tab == 5 && a.rs != nil && (a.rs.step == 0 || a.rs.step == 3)) || a.tab == 8
 }
 
+// quit leaves the window; running backups go on in the service. Under an open
+// form it asks first, as what the form holds is lost.
+func (a *App) quit() {
+	if a.modal {
+		a.confirm("Quit the window?\nAnything not saved in the open form is lost. Running backups go on in the service.", func() { a.app.Stop() })
+		return
+	}
+	a.app.Stop()
+}
+
 func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
+	// Ctrl keys work everywhere, in a field and in a form too, as in nano.
+	switch ev.Key() {
+	case tcell.KeyCtrlQ:
+		a.quit()
+		return nil
+	case tcell.KeyCtrlX:
+		if _, ok := a.app.GetFocus().(*tview.TextArea); !ok { // in a text area Ctrl+X is cut
+			a.quit()
+			return nil
+		}
+	case tcell.KeyCtrlG:
+		if !a.modal {
+			a.help()
+			return nil
+		}
+	}
 	if a.modal {
 		return ev
 	}
 	switch ev.Key() {
+	case tcell.KeyLeft, tcell.KeyRight:
+		// On a list the arrows move between the screens. A form, a tree and the
+		// Restore lists use them themselves.
+		if _, ok := a.app.GetFocus().(*tview.Table); ok && a.tab != 5 {
+			d := 1
+			if ev.Key() == tcell.KeyLeft {
+				d = len(tabPages) - 1
+			}
+			a.switchTab((a.tab + d) % len(tabPages))
+			return nil
+		}
+		return ev
 	case tcell.KeyTab:
 		if a.ownsTab() {
 			return ev
@@ -411,7 +464,16 @@ func (a *App) renderChrome() {
 		a.status.SetText("")
 	}
 	hint := func(k, d string) string { return tag(colKey) + "[::b]" + k + "[-:-:-]" + tag(colDim) + " " + d + "  " }
-	f := " "
+	// The keys that work everywhere come first, so a narrow window never cuts them off.
+	f := " " + hint("Ctrl+Q", "quit") + hint("Ctrl+G", "help")
+	switch tab {
+	case 5:
+		f += hint("→ ←", "open, back")
+	case 8:
+		f += hint("Alt+→ ←", "page")
+	default:
+		f += hint("→ ←", "screen")
+	}
 	switch tab {
 	case 0, 1:
 		f += hint("r", "run now") + hint("p", "pause/resume") + hint("s", "stop") + hint("e", "enable/disable") +
@@ -433,7 +495,7 @@ func (a *App) renderChrome() {
 	case 8:
 		f += hint("Ctrl+S", "save") + hint("PgDn", "next page")
 	}
-	f += hint("Tab", "next") + hint("?", "help") + hint("q", "quit")
+	f += hint("Tab", "next")
 	a.footer.SetText(f)
 }
 
@@ -1068,7 +1130,11 @@ func (a *App) help() {
 		return fmt.Sprintf(" %s[::b]%-12s[-:-:-] %s\n", tag(colKey), key, d)
 	}
 	t.SetText("\n" +
-		k("Tab, 1-9", "switch screen (F1 to F9 too)") +
+		k("Ctrl+Q, Ctrl+X", "quit from anywhere (in a form it asks first)") +
+		k("Ctrl+G", "this help, from anywhere") +
+		k("Left, Right", "previous, next screen (Tab, 1-9 and F1 to F9 too)") +
+		k("Alt+Left/Right", "previous, next page of a form or Preferences (PgUp, PgDn too)") +
+		k("Ctrl+S", "save, in a form") +
 		k("Up, Down", "move in a list (PgUp, PgDn, Home, End)") +
 		k("r", "run the selected Backup Set now") +
 		k("p", "pause or resume the running backup") +
@@ -1082,7 +1148,7 @@ func (a *App) help() {
 		k("Servers", "n new, Enter edit, d delete, t test, u default, f pin") +
 		k("7, 8, 9", "Reports (w: period), Log files, Preferences") +
 		k("g", "refresh now (it also refreshes every 2 s)") +
-		k("q, Ctrl+C", "quit; running backups go on in the service") +
+		k("q, Ctrl+C", "quit when you are not typing; running backups go on in the service") +
 		"\n " + tag(colDim) + "Press Esc to close.")
 	t.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
 		if ev.Key() == tcell.KeyEscape || ev.Rune() == 'q' || ev.Rune() == '?' {
@@ -1095,7 +1161,7 @@ func (a *App) help() {
 	})
 	flex := tview.NewFlex().
 		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).AddItem(nil, 0, 1, false).AddItem(t, 20, 0, true).AddItem(nil, 0, 1, false), 64, 0, true).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).AddItem(nil, 0, 1, false).AddItem(t, 26, 0, true).AddItem(nil, 0, 1, false), 64, 0, true).
 		AddItem(nil, 0, 1, false)
 	a.modal = true
 	a.pages.AddPage("help", flex, true, true)

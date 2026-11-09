@@ -36,7 +36,7 @@ The window needs a terminal at least 80 columns wide and 24 lines high; it uses 
 
 ## 2. The screens
 
-The top line shows whether the service answers, its version and how many backups run. The numbers 1 to 9, the function keys F1 to F9 and **Tab** switch screens. (On Preferences and on the typing steps of Restore the characters belong to the field you are in, so use the function keys there.)
+The top line shows whether the service answers, its version and how many backups run. **Left** and **Right** on a list, **Tab**, the numbers 1 to 9 and the function keys F1 to F9 switch screens. (While you are typing in a field the characters belong to the field, so there use the function keys or the Ctrl keys below.)
 
 | Screen | Shows |
 |---|---|
@@ -156,13 +156,19 @@ Only what you changed is sent, through the same settings the app uses, so the se
 
 | Key | Does |
 |---|---|
-| **Tab**, **1** to **9**, **F1** to **F9** | Switch screen |
+| **Ctrl+Q**, **Ctrl+X**, **Ctrl+C** | Quit, from anywhere, in a field and in a form too. Under an open form (Ctrl+Q, Ctrl+X) it asks first, as what the form holds is lost. In a text area Ctrl+X is cut, so use Ctrl+Q there. Running backups go on in the service |
+| **Ctrl+G** | Help, from anywhere |
+| **Ctrl+S** | Save, in a form |
+| **Left**, **Right** | On a list, the previous or next screen. On Restore's lists **Right** goes in (it is Enter) and **Left** goes back. In a form, a field or a file tree they belong to that |
+| **Alt+Left**, **Alt+Right** | The previous or next page of a form or of Preferences (**PgUp** and **PgDn** do the same) |
+| **Tab**, **1** to **9**, **F1** to **F9** | Switch screen (the numbers when you are not typing) |
 | **Up**, **Down**, **PgUp**, **PgDn**, **Home**, **End** | Move in a list |
 | **g** | Refresh now (the window also refreshes every 2 seconds) |
-| **?** | Help |
-| **q**, **Ctrl+C** | Quit |
+| **?** | Help (when you are not typing) |
+| **q** | Quit (when you are not typing) |
+| **Esc** | Cancel a form, close a window, go back a step |
 
-Each screen's own keys are in its section and in the bar at the bottom. The mouse works in terminals that pass it on.
+The Ctrl keys work everywhere, in the way of nano; the plain letters and numbers are shortcuts only when nothing is being typed. The bar at the bottom shows the keys that work on the screen you are on, the Ctrl keys first. Each screen's own keys are in its section. The mouse works in terminals that pass it on.
 
 ## 10. Scripts and checks
 

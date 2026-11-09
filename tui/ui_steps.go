@@ -3,7 +3,24 @@ package tui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/gdamore/tcell/v2"
 )
+
+// altStep says which way Alt+Left (-1) or Alt+Right (1) asks to move between the
+// pages of a form, as PgUp and PgDn do; 0 for any other key.
+func altStep(ev *tcell.EventKey) int {
+	if ev.Modifiers()&tcell.ModAlt == 0 {
+		return 0
+	}
+	switch ev.Key() {
+	case tcell.KeyLeft:
+		return -1
+	case tcell.KeyRight:
+		return 1
+	}
+	return 0
+}
 
 // stepBar draws the steps of a wizard or a form as their names with > between
 // them, the current one highlighted. With markDone the steps already passed

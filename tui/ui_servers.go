@@ -242,6 +242,12 @@ func (a *App) openServerEditor(s Server, isNew bool) {
 		f.AddButton("Save", e.save)
 		f.AddButton("Cancel", e.close)
 		f.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+			if d := altStep(ev); d != 0 {
+				if j := i + d; j >= 0 && j < len(forms) {
+					e.show(j)
+				}
+				return nil
+			}
 			switch ev.Key() {
 			case tcell.KeyEscape:
 				e.close()
