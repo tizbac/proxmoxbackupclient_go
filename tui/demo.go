@@ -26,6 +26,7 @@ type demoBackend struct {
 	prefsSet bool
 	keys     map[string]KeyInfo
 	shares   []ShareLogin
+	testNote string // what TestServer warns of, set by tests
 }
 
 func newDemoBackend() *demoBackend {
@@ -458,12 +459,14 @@ func (d *demoBackend) SetDefaultServer(id string) error {
 	return nil
 }
 
-func (d *demoBackend) TestServer(id string) error {
+func (d *demoBackend) TestServer(id string) (string, error) {
 	time.Sleep(200 * time.Millisecond)
 	if id == "offsite" {
-		return fmt.Errorf("connection test failed: no route to host")
+		return "", fmt.Errorf("connection test failed: no route to host")
 	}
-	return nil
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.testNote, nil
 }
 
 func (d *demoBackend) PinFingerprint(id, fingerprint string) error {

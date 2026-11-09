@@ -27,6 +27,7 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	encCheck := fs.Bool("encryption", false, "with -check: make a key, back a folder up to a real PBS with it and restore it (PBS from TUI_CHECK_PBS_* in the environment)")
 	recoverCheck := fs.Bool("recover", false, "with -check: back a folder up to a real PBS, then prove Undelete and Roll back on it (PBS from TUI_CHECK_PBS_* in the environment)")
 	machineCheck := fs.Bool("machine", false, "with -check: back a scratch disk (TUI_CHECK_DISK) up to a real PBS as a one-off disk image and as a Backup Set that leaves a partition out (PBS from TUI_CHECK_PBS_* in the environment)")
+	accessCheck := fs.Bool("access", false, "with -check: test the connection to a real PBS with accounts of different permissions (cases file in TUI_CHECK_ACCESS_CASES) and show what the test reports for each")
 	restoreGroup := fs.String("restore-group", "", "with -restore-check: try only this backup ID")
 	restoreCheck := fs.Bool("restore-check", false, "with -check: list the server's backups, then restore a few small files of the newest readable snapshot into a temporary folder and delete it")
 	write := fs.Bool("write", false, "with -check: also create, change and delete a temporary Backup Set, to prove the service takes what the editor sends")
@@ -67,6 +68,9 @@ e enable or disable, g refresh, ? help, q quit.`)
 		}
 		if code == 0 && *recoverCheck {
 			code = CheckRecover(be, stdout, stderr)
+		}
+		if code == 0 && *accessCheck {
+			code = CheckAccess(be, stdout, stderr)
 		}
 		if code == 0 && *machineCheck {
 			code = CheckMachine(be, stdout, stderr)

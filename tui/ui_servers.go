@@ -117,8 +117,11 @@ func (a *App) testServer() {
 	}
 	a.setFlash("testing the connection to " + s.Name + " ...")
 	go func() {
-		err := a.be.TestServer(s.ID)
+		note, err := a.be.TestServer(s.ID)
 		msg := "connection to " + s.Name + " works"
+		if note != "" {
+			msg += ", but " + note
+		}
 		if err != nil {
 			msg = "connection to " + s.Name + " failed: " + describeErr(err)
 		}

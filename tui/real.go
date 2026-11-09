@@ -192,7 +192,14 @@ func (b *serviceBackend) SetDefaultServer(id string) error {
 	return b.c.Call("SetDefaultPBSServer", nil, id)
 }
 
-func (b *serviceBackend) TestServer(id string) error { return b.c.Call("TestPBSConnection", nil, id) }
+func (b *serviceBackend) TestServer(id string) (string, error) {
+	var note string
+	err := b.c.Call("TestPBSConnectionNote", &note, id)
+	if err != nil && strings.Contains(err.Error(), "unknown call") { // a service from before the warning
+		return "", b.c.Call("TestPBSConnection", nil, id)
+	}
+	return note, err
+}
 
 func (b *serviceBackend) PinFingerprint(id, fingerprint string) error {
 	return b.c.PinFingerprint(id, fingerprint)

@@ -75,11 +75,31 @@ func CheckMachine(be Backend, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	// wait polls for the group's snapshot. It shows the Message Log lines that
+	// come while it waits, and gives up at once when the backup says it could
+	// not reach or write to the server (and stops the run), so a refusal is
+	// seen in seconds and not after the retries.
+	started := time.Now()
+	shown := map[string]bool{}
 	wait := func(group string) ([]SnapshotInfo, bool) {
 		for deadline := time.Now().Add(6 * time.Minute); time.Now().Before(deadline); {
 			time.Sleep(3 * time.Second)
 			if snaps, err := be.RestoreSnapshots(srvID, Group{Type: "host", ID: group}); err == nil && len(snaps) > 0 {
 				return snaps, true
+			}
+			msgs, _ := be.Messages()
+			for _, m := range msgs {
+				key := m.At.Format(time.RFC3339Nano) + m.Message
+				if m.At.Before(started) || shown[key] {
+					continue
+				}
+				shown[key] = true
+				say(stdout, "  message log: %s %s\n", m.Level, m.Message)
+				low := strings.ToLower(m.Message)
+				if strings.Contains(low, "lost on attempt") || strings.Contains(low, "refused") || strings.Contains(low, "denied") || strings.Contains(low, "permission") {
+					_ = be.Control("stop", "")
+					return nil, false
+				}
 			}
 		}
 		return nil, false
@@ -95,7 +115,7 @@ func CheckMachine(be Backend, stdout, stderr io.Writer) int {
 	}
 	say(stdout, "one-off disk backup of %s started\n", devPath)
 	if _, ok := wait(oneOffGroup); !ok {
-		sayln(stderr, "the one-off disk backup did not finish in 6 minutes")
+		sayln(stderr, "the one-off disk backup did not finish (the message log lines above say why, if there are any)")
 		return 1
 	}
 	say(stdout, "one-off disk backup: the snapshot is on the server\n")
@@ -141,7 +161,7 @@ func CheckMachine(be Backend, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if _, ok := wait(setGroup); !ok {
-		sayln(stderr, "the disk image set did not finish in 6 minutes")
+		sayln(stderr, "the disk image set did not finish (the message log lines above say why, if there are any)")
 		return 1
 	}
 	say(stdout, "disk image set: ran, the snapshot is on the server\n")

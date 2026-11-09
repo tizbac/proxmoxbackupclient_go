@@ -40,7 +40,9 @@ type Backend interface {
 	SaveServer(doc map[string]interface{}, isNew bool) error
 	DeleteServer(id string) error
 	SetDefaultServer(id string) error
-	TestServer(id string) error
+	// TestServer tests the connection to a server. The note is a warning for a
+	// test that passed (the account can restore but not back up), "" if none.
+	TestServer(id string) (note string, err error)
 	PinFingerprint(id, fingerprint string) error
 	// Preferences: the computer's backup options and e-mail account.
 	Prefs() (Prefs, error)
