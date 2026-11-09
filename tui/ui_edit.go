@@ -334,16 +334,8 @@ func (e *editor) layout() tview.Primitive {
 func (e *editor) show(step int) {
 	e.step = step
 	e.pages.SwitchToPage(fmt.Sprint(step))
-	labels := []string{"General", "Schedule", "Options"}
-	var b strings.Builder
-	b.WriteString(" ")
-	for i, l := range labels {
-		if i == step {
-			fmt.Fprintf(&b, "[black:#%06x] %d %s [-:-] ", colHead.Hex(), i+1, l)
-		} else {
-			fmt.Fprintf(&b, "%s %d %s [-:-] ", tag(colDim), i+1, l)
-		}
-	}
+	b := strings.Builder{}
+	b.WriteString(stepBar([]string{"General", "Schedule", "Options"}, step, false))
 	word := "Edit Backup Set"
 	if e.isNew {
 		word = "New Backup Set"

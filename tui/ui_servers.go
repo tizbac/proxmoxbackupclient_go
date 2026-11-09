@@ -278,16 +278,8 @@ func (e *serverEditor) show(step int) {
 	if e.isNew {
 		word = "New server"
 	}
-	labels := []string{"Server", "Login", "Encryption"}
-	var b strings.Builder
-	b.WriteString(" ")
-	for i, l := range labels {
-		if i == step {
-			fmt.Fprintf(&b, "[black:#%06x] %d %s [-:-] ", colHead.Hex(), i+1, l)
-		} else {
-			fmt.Fprintf(&b, "%s %d %s [-:-] ", tag(colDim), i+1, l)
-		}
-	}
+	b := strings.Builder{}
+	b.WriteString(stepBar([]string{"Server", "Login", "Encryption"}, step, false))
 	b.WriteString(tag(colDim) + "   " + word + "   PgDn next, PgUp back, Ctrl+S save, Esc cancel")
 	e.title.SetText(b.String())
 	_, front := e.pages.GetFrontPage()

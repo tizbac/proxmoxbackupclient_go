@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -144,16 +143,8 @@ func (a *App) buildPrefs() tview.Primitive {
 }
 
 func (p *prefsView) renderTitle() {
-	labels := []string{"Backup options", "E-mail", "Network shares", "Settings file"}
-	var b strings.Builder
-	b.WriteString(" ")
-	for i, l := range labels {
-		if i == p.step {
-			fmt.Fprintf(&b, "[black:#%06x] %d %s [-:-] ", colHead.Hex(), i+1, l)
-		} else {
-			fmt.Fprintf(&b, "%s %d %s [-:-] ", tag(colDim), i+1, l)
-		}
-	}
+	b := strings.Builder{}
+	b.WriteString(stepBar([]string{"Backup options", "E-mail", "Network shares", "Settings file"}, p.step, false))
 	b.WriteString(tag(colDim) + "   Tab next field, PgDn and PgUp switch page, Ctrl+S save, F1 to F9 other screens")
 	p.title.SetText(b.String())
 }

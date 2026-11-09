@@ -137,20 +137,8 @@ func (r *restoreView) isRunning() bool {
 }
 
 func (r *restoreView) renderSteps() {
-	names := []string{"Source", "Snapshot", "Files", "Destination", "Restore"}
-	var b strings.Builder
-	b.WriteString(" ")
-	for i, n := range names {
-		switch {
-		case i == r.step:
-			fmt.Fprintf(&b, "[black:#%06x] %d %s [-:-] ", colHead.Hex(), i+1, n)
-		case i < r.step:
-			fmt.Fprintf(&b, "%s %d %s [-:-] ", tag(colOK), i+1, n)
-		default:
-			fmt.Fprintf(&b, "%s %d %s [-:-] ", tag(colDim), i+1, n)
-		}
-	}
-	r.steps.SetText(b.String())
+	r.steps.SetText(stepBar([]string{"Source", "Snapshot", "Files", "Destination", "Restore"}, r.step, true) +
+		tag(colDim) + "   Enter next step, Esc back")
 }
 
 func (r *restoreView) show(step int) {
