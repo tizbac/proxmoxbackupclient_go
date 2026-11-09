@@ -209,16 +209,16 @@ func (a *App) openServerEditor(s Server, isNew bool) {
 	hint := tag(colDim) + "Leave a secret or password empty to keep the one stored."
 	f1 := styleForm(tview.NewForm()).AddFormItem(e.name).AddFormItem(e.address).AddFormItem(e.fingerprint).
 		AddFormItem(e.datastore).AddFormItem(e.namespace).AddFormItem(e.description)
-	f1.SetTitle(" 1  Server ")
+	f1.SetTitle(" Server ")
 	f2 := styleForm(tview.NewForm()).AddFormItem(e.login).AddFormItem(e.tokenID).AddFormItem(e.secret).
 		AddFormItem(e.username).AddFormItem(e.password)
 	f2.AddTextView("", hint, 60, 1, true, false)
-	f2.SetTitle(" 2  Login ")
+	f2.SetTitle(" Login ")
 	f3 := styleForm(tview.NewForm()).AddFormItem(e.keyFile).AddFormItem(e.keyPass).AddFormItem(e.forgetPass)
 	f3.AddTextView("", tag(colDim)+"Backups to this server are encrypted with the key. Leave the key file empty for none.\n"+
 		"A passphrase is stored so scheduled backups can run alone; leave it empty to keep the stored one.\n"+
 		"Keep a copy of the key file somewhere safe: without it the backups cannot be restored.", 88, 4, true, false)
-	f3.SetTitle(" 3  Encryption ")
+	f3.SetTitle(" Encryption ")
 
 	e.title = tview.NewTextView().SetDynamicColors(true)
 	e.pages = tview.NewPages()
@@ -271,7 +271,7 @@ func (a *App) openServerEditor(s Server, isNew bool) {
 		e.pages.AddPage(strconv.Itoa(i), f, true, i == 0)
 	}
 	body := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(e.title, 1, 0, false).AddItem(e.pages, 0, 1, true)
-	layout := tview.NewFlex().AddItem(nil, 0, 1, false).AddItem(body, 96, 0, true).AddItem(nil, 0, 1, false)
+	layout := tview.NewFlex().AddItem(nil, 0, 1, false).AddItem(body, 112, 0, true).AddItem(nil, 0, 1, false)
 	a.modal = true
 	a.pages.AddPage("srvedit", layout, true, false)
 	a.pages.SwitchToPage("srvedit")

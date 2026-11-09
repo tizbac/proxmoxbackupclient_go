@@ -110,7 +110,7 @@ func (h *harness) typ(r rune) { h.key(tcell.KeyRune, r) }
 func TestDashboardShowsSetsRunsAndRecent(t *testing.T) {
 	h := newHarness(t, 130, 36)
 	s := h.screen()
-	for _, want := range []string{"Salvanza Backup", "[DEMO DATA]", "service running", "Backup Sets", "Documents", "Machine image",
+	for _, want := range []string{"Salvanza", "[DEMO DATA]", "service running", "Backup Sets", "Documents", "Machine image",
 		"Photos", "Web server", "Running now", "Nothing is running", "Recent", "Failed"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("dashboard lacks %q:\n%s", want, s)

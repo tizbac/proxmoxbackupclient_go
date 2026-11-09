@@ -73,9 +73,11 @@ type App struct {
 	servers []Server
 	tab     int
 	modal   bool
-	flash   string
-	flashAt time.Time
-	version string
+	// lastWidth is the width the chrome was last laid out for (UI goroutine only).
+	lastWidth int
+	flash     string
+	flashAt   time.Time
+	version   string
 }
 
 // NewApp builds the window over a backend. Call Run to show it.
@@ -129,6 +131,16 @@ func (a *App) build() {
 		AddItem(a.footer, 1, 0, false)
 	a.app.SetRoot(root, true).EnableMouse(true)
 	a.app.SetInputCapture(a.keys)
+	// The title and the tab names depend on the window's width: draw them again
+	// as soon as it changes, not at the next refresh.
+	a.app.SetBeforeDrawFunc(func(s tcell.Screen) bool {
+		if w, _ := s.Size(); w != a.lastWidth {
+			a.lastWidth = w
+			// QueueUpdateDraw waits for the update to run, so never from the draw loop itself
+			go a.app.QueueUpdateDraw(a.renderChrome)
+		}
+		return false
+	})
 	a.switchTab(0)
 }
 
@@ -443,7 +455,12 @@ func (a *App) renderChrome() {
 	if a.be.Name() == "demo" {
 		mode = tag(colKey) + "  [DEMO DATA]"
 	}
-	a.header.SetText(fmt.Sprintf("[%s::b] Salvanza Backup%s[-:-:-]   %s", spec(colWhite), mode, state))
+	// The product's name; just "Salvanza" in a window too narrow to keep the status beside it.
+	title := "Salvanza for Proxmox Backup Server"
+	if _, _, w, _ := a.header.GetRect(); w > 0 && w < 115 {
+		title = "Salvanza"
+	}
+	a.header.SetText(fmt.Sprintf("[%s::b] %s%s[-:-:-]   %s", spec(colWhite), title, mode, state))
 	var b strings.Builder
 	names := tabNames
 	if _, _, w, _ := a.tabs.GetRect(); w > 0 && w < 105 {

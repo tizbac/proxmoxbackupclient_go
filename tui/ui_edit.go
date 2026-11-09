@@ -213,7 +213,7 @@ func (e *editor) build() {
 		f1.AddFormItem(e.dirs)
 	}
 	f1.AddFormItem(e.server)
-	f1.SetTitle(" 1  General ")
+	f1.SetTitle(" General ")
 
 	// ---- step 2: schedule
 	sc := e.firstSchedule()
@@ -229,7 +229,7 @@ func (e *editor) build() {
 	e.weekdayF = tview.NewInputField().SetLabel("Only on days ").SetText(strings.Join(strList(sc, "weekdays"), ",")).SetFieldWidth(32)
 	f2 := styleForm(tview.NewForm()).AddFormItem(e.mode).AddFormItem(e.unit).AddFormItem(e.every).AddFormItem(e.at).AddFormItem(e.weekdayF)
 	f2.AddTextView("", tag(colDim)+"Days: Mon,Tue,Wed,Thu,Fri,Sat,Sun (empty = every day). Hours and minutes need no time of day.\nOnly the first schedule is edited here; others the set has are kept.", 70, 3, true, false)
-	f2.SetTitle(" 2  Schedule ")
+	f2.SetTitle(" Schedule ")
 
 	// ---- step 3: options
 	e.detect = tview.NewDropDown().SetLabel("Change detection ").SetOptions([]string{"legacy", "data", "metadata"}, nil).
@@ -263,7 +263,7 @@ func (e *editor) build() {
 		f3.AddFormItem(e.imgFolders)
 	}
 	f3.AddFormItem(e.vss).AddFormItem(e.mailFail).AddFormItem(e.mailTo)
-	f3.SetTitle(" 3  Options ")
+	f3.SetTitle(" Options ")
 
 	forms := []*tview.Form{f1, f2, f3}
 	for i, f := range forms {
