@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"os"
@@ -41,6 +42,9 @@ func newHarness(t *testing.T, w, h int) *harness {
 		}
 	})
 	hn := &harness{t: t, a: a, sim: sim}
+	// Running the app initialises the screen again, which resets its size.
+	time.Sleep(250 * time.Millisecond)
+	sim.SetSize(w, h)
 	hn.waitFor("Documents")
 	return hn
 }
@@ -200,17 +204,81 @@ func TestRelativeTimes(t *testing.T) {
 }
 
 func TestScheduleText(t *testing.T) {
-	m := map[string]interface{}{"scheduleTime": "18:00", "triggerMode": "daily"}
-	if got := scheduleText(m); got != "daily 18:00" {
-		t.Errorf("daily: %q", got)
+	sched := func(s ...map[string]interface{}) map[string]interface{} {
+		arr := make([]interface{}, len(s))
+		for i, v := range s {
+			arr[i] = v
+		}
+		return map[string]interface{}{"scheduleMode": "scheduled", "schedules": arr}
 	}
-	m = map[string]interface{}{"scheduleMode": "manual"}
-	if got := scheduleText(m); got != "manual" {
-		t.Errorf("manual: %q", got)
+	days := func(d ...string) []interface{} {
+		out := make([]interface{}, len(d))
+		for i, v := range d {
+			out[i] = v
+		}
+		return out
 	}
-	m = map[string]interface{}{"triggerMode": "interval", "intervalMinutes": float64(30), "daysOfWeek": []interface{}{"Mon", "Fri"}}
-	if got := scheduleText(m); got != "every 30 min Mon,Fri" {
-		t.Errorf("interval: %q", got)
+	cases := []struct {
+		name string
+		m    map[string]interface{}
+		want string
+	}{
+		{"daily", sched(map[string]interface{}{"enabled": true, "unit": "days", "every": 1.0, "at": "18:00"}), "daily 18:00"},
+		{"every 2 days", sched(map[string]interface{}{"enabled": true, "unit": "days", "every": 2.0, "at": "01:30"}), "every 2 days 01:30"},
+		{"weekdays only", sched(map[string]interface{}{"enabled": true, "unit": "days", "every": 1.0, "at": "02:00", "weekdays": days("Mon", "Tue")}), "Mon,Tue 02:00"},
+		{"weekly", sched(map[string]interface{}{"enabled": true, "unit": "weeks", "every": 1.0, "at": "01:00", "weekdays": days("Sun")}), "weekly Sun 01:00"},
+		{"minutes in a window", sched(map[string]interface{}{"enabled": true, "unit": "minutes", "every": 30.0, "windowStart": "09:00", "windowEnd": "17:00"}), "every 30 mins 09:00-17:00"},
+		{"hourly", sched(map[string]interface{}{"enabled": true, "unit": "hours", "every": 1.0, "minute": 15.0}), "every hour at :15"},
+		{"monthly last day", sched(map[string]interface{}{"enabled": true, "unit": "months", "every": 1.0, "monthMode": "last", "at": "03:00"}), "monthly, last day 03:00"},
+		{"two schedules", sched(
+			map[string]interface{}{"enabled": true, "unit": "days", "every": 1.0, "at": "02:00"},
+			map[string]interface{}{"enabled": true, "unit": "days", "every": 1.0, "at": "12:30"}), "daily 02:00, daily 12:30"},
+		{"a disabled one is left out", sched(
+			map[string]interface{}{"enabled": false, "unit": "days", "every": 1.0, "at": "02:00"},
+			map[string]interface{}{"enabled": true, "unit": "days", "every": 1.0, "at": "12:30"}), "daily 12:30"},
+		{"all off", sched(map[string]interface{}{"enabled": false, "unit": "days", "every": 1.0, "at": "02:00"}), "all schedules off"},
+		{"manual", map[string]interface{}{"scheduleMode": "manual"}, "manual"},
+		{"old daily", map[string]interface{}{"scheduleTime": "18:00", "triggerMode": "daily"}, "daily 18:00"},
+		{"old interval", map[string]interface{}{"triggerMode": "interval", "intervalMinutes": 30.0, "daysOfWeek": days("Mon", "Fri")}, "every 30 min Mon,Fri"},
+		{"old manual", map[string]interface{}{"triggerMode": "manual"}, "manual"},
+		{"scheduled mode but no schedules and a manual trigger", map[string]interface{}{"scheduleMode": "scheduled", "triggerMode": "manual"}, "manual"},
+		{"nothing at all", map[string]interface{}{}, "no schedule"},
+	}
+	for _, c := range cases {
+		if got := scheduleText(c.m); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestParsesRealServiceDocuments feeds the parsers documents captured from a
+// running service (winclient, 09/11/2026), so a change in the service's
+// fields shows up here.
+func TestParsesRealServiceDocuments(t *testing.T) {
+	var job map[string]interface{}
+	if err := json.Unmarshal([]byte(`{"backupDirs":["C:\\TestData\\Backup of Compaq 486 Laptop"],"backupId":"pbstest-winclient","backupType":"directory","enabled":true,"id":"1790165976252","lastRun":"2026-11-09T02:10:48Z","name":"Folder Backup without VSS","nextRun":"2026-11-10T02:00:00Z","pbsServerId":"pbs-test","scheduleMode":"scheduled","scheduleTime":"02:00","schedules":[{"at":"02:00","enabled":true,"every":1,"id":"s1","unit":"days"}],"triggerMode":"daily","useVSS":false}`), &job); err != nil {
+		t.Fatal(err)
+	}
+	s := toSet(job)
+	if s.Name != "Folder Backup without VSS" || s.Type != "folder" || !s.Enabled || s.Schedule != "daily 02:00" ||
+		s.ServerID != "pbs-test" || len(s.Sources) != 1 || s.LastRun.IsZero() || s.NextRun.IsZero() {
+		t.Errorf("set parsed wrongly: %+v", s)
+	}
+	var hist map[string]interface{}
+	if err := json.Unmarshal([]byte(`{"backupDirs":[],"backupId":"pbstest-winclient","backupType":"machine","encryption":"unencrypted","id":"1794189646","message":"Machine backup completed in 7m 32s: 34.4 GB","name":"Full Machine","status":"success","timestamp":"2026-11-09T02:09:52Z","trigger":"scheduled","useVSS":true}`), &hist); err != nil {
+		t.Fatal(err)
+	}
+	h := toHistory(hist)
+	if h.Name != "Full Machine" || h.Status != "success" || h.At.IsZero() || h.Encryption != "unencrypted" {
+		t.Errorf("history parsed wrongly: %+v", h)
+	}
+	var msg map[string]interface{}
+	if err := json.Unmarshal([]byte(`{"job_name":"Full Machine","level":"info","message":"Full Machine: done","source":"Backup","timestamp":"2026-11-09T02:09:52Z"}`), &msg); err != nil {
+		t.Fatal(err)
+	}
+	m := toMessage(msg)
+	if m.Level != "info" || m.Message != "Full Machine: done" || m.At.IsZero() || m.Source != "Backup" {
+		t.Errorf("message parsed wrongly: %+v", m)
 	}
 }
 

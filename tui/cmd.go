@@ -19,8 +19,9 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	url := fs.String("url", "http://127.0.0.1:18765", "address of the Salvanza service API")
 	tokenFile := fs.String("token-file", "", "the service's api-token file (default: found in the service's settings folder)")
 	demo := fs.Bool("demo", false, "show invented data instead of connecting to the service")
+	check := fs.Bool("check", false, "connect, print what the service reports and exit (no window), for scripts")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, `Usage: salvanza-cli tui [-url <address>] [-token-file <file>] [-demo]
+		fmt.Fprintln(stderr, `Usage: salvanza-cli tui [-url <address>] [-token-file <file>] [-demo] [-check]
 
 A text-mode window for the Backup Sets, running backups, history, Message Log
 and servers of this computer's Salvanza service. Run it as administrator
@@ -46,9 +47,54 @@ e enable or disable, g refresh, ? help, q quit.`)
 		}
 		be = newServiceBackend(*url, path)
 	}
+	if *check {
+		return Check(be, stdout, stderr)
+	}
 	if err := NewApp(be, version).Run(); err != nil {
 		fmt.Fprintln(stderr, "salvanza-cli tui:", err)
 		return 1
+	}
+	return 0
+}
+
+// Check reads everything the window shows and prints a summary; it returns 0
+// when the service answered, 1 when it did not.
+func Check(be Backend, stdout, stderr io.Writer) int {
+	st, err := be.Status()
+	if err != nil {
+		fmt.Fprintln(stderr, "service: "+describeErr(err))
+		return 1
+	}
+	fmt.Fprintf(stdout, "service: running, version %s, %d backup(s) active\n", st.Version, st.ActiveJobs)
+	sets, err := be.Sets()
+	if err != nil {
+		fmt.Fprintln(stderr, "sets: "+describeErr(err))
+		return 1
+	}
+	fmt.Fprintf(stdout, "backup sets: %d\n", len(sets))
+	for _, s := range sets {
+		state := "on"
+		if !s.Enabled {
+			state = "off"
+		}
+		fmt.Fprintf(stdout, "  %-48s %-8s %-3s %-28s next %s\n", s.Name, s.Type, state, s.Schedule, when(s.NextRun))
+	}
+	runs, err := be.Runs()
+	if err != nil {
+		fmt.Fprintln(stderr, "runs: "+describeErr(err))
+		return 1
+	}
+	fmt.Fprintf(stdout, "runs known: %d\n", len(runs))
+	hist, _ := be.History()
+	msgs, _ := be.Messages()
+	srv, _ := be.Servers()
+	fmt.Fprintf(stdout, "history: %d, messages: %d, servers: %d\n", len(hist), len(msgs), len(srv))
+	for _, s := range srv {
+		def := ""
+		if s.Default {
+			def = " (default)"
+		}
+		fmt.Fprintf(stdout, "  server %s%s: %s datastore %s\n", s.Name, def, s.URL, s.Datastore)
 	}
 	return 0
 }

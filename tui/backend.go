@@ -55,9 +55,9 @@ type MessageEntry struct {
 // Server is a configured PBS server (never its login).
 type Server struct {
 	ID, Name, URL, Datastore, Namespace, Fingerprint string
-	Default                                           bool
-	Login                                             string
-	Encrypted                                         bool
+	Default                                          bool
+	Login                                            string
+	Encrypted                                        bool
 }
 
 var errNotOffered = errors.New("this service does not offer that")
@@ -108,44 +108,120 @@ func parseTime(s string) time.Time {
 	return time.Time{}
 }
 
-// scheduleText summarises when a set runs, from the fields the service sends.
+// scheduleText summarises when a set runs, from the fields the service sends:
+// the Schedules list (gui/schedules.go), or the older single-trigger fields.
 func scheduleText(m map[string]interface{}) string {
-	mode := str(m, "scheduleMode")
-	trig := str(m, "triggerMode")
-	if mode == "manual" || trig == "manual" {
+	if str(m, "scheduleMode") == "manual" || (str(m, "scheduleMode") == "" && str(m, "triggerMode") == "manual") {
 		return "manual"
 	}
 	var parts []string
 	if arr, ok := m["schedules"].([]interface{}); ok {
 		for _, s := range arr {
 			sm, _ := s.(map[string]interface{})
-			if sm == nil || (sm["enabled"] == false) {
+			if sm == nil || sm["enabled"] == false {
 				continue
 			}
 			parts = append(parts, oneSchedule(sm))
 		}
+		if len(arr) > 0 && len(parts) == 0 {
+			return "all schedules off"
+		}
 	}
 	if len(parts) == 0 {
-		parts = append(parts, oneSchedule(m))
+		parts = append(parts, legacySchedule(m))
 	}
 	return strings.Join(parts, ", ")
 }
 
+func plural(n int, unit string) string {
+	if n <= 1 {
+		return unit
+	}
+	return fmt.Sprintf("%d %ss", n, unit)
+}
+
+func every(m map[string]interface{}) int {
+	n, _ := m["every"].(float64)
+	if n < 1 {
+		return 1
+	}
+	return int(n)
+}
+
+// oneSchedule is one entry of the Schedules list in words.
 func oneSchedule(m map[string]interface{}) string {
-	trig := str(m, "triggerMode", "mode")
+	n := every(m)
+	at := str(m, "at")
+	if at != "" {
+		at = " " + at
+	}
+	days := strList(m, "weekdays")
+	onDays := ""
+	if len(days) > 0 && len(days) < 7 {
+		onDays = " " + strings.Join(days, ",")
+	}
+	window := ""
+	if s, e := str(m, "windowStart"), str(m, "windowEnd"); s != "" && e != "" {
+		window = " " + s + "-" + e
+	}
+	switch str(m, "unit") {
+	case "minutes":
+		return fmt.Sprintf("every %s%s%s", plural(n, "min"), window, onDays)
+	case "hours":
+		if window == "" {
+			return fmt.Sprintf("every %s at :%02.0f%s", plural(n, "hour"), num(m, "minute"), onDays)
+		}
+		return fmt.Sprintf("every %s%s%s", plural(n, "hour"), window, onDays)
+	case "days":
+		if n == 1 && onDays == "" {
+			return "daily" + at
+		}
+		if n == 1 {
+			return strings.TrimSpace(onDays) + at
+		}
+		return fmt.Sprintf("every %s%s%s", plural(n, "day"), at, onDays)
+	case "weeks":
+		if n == 1 {
+			return "weekly" + onDays + at
+		}
+		return fmt.Sprintf("every %s%s%s", plural(n, "week"), onDays, at)
+	case "months":
+		switch str(m, "monthMode") {
+		case "last":
+			return "monthly, last day" + at
+		case "nth":
+			return fmt.Sprintf("monthly, nth %s%s", str(m, "nthWeekday"), at)
+		}
+		return fmt.Sprintf("monthly, day %s%s", str(m, "monthDay"), at)
+	case "years":
+		return fmt.Sprintf("yearly, %s/%s%s", str(m, "yearDay"), str(m, "yearMonth"), at)
+	}
+	return "on schedule"
+}
+
+// legacySchedule reads the single-trigger fields of a set saved before the
+// Schedules list.
+func legacySchedule(m map[string]interface{}) string {
 	days := strList(m, "daysOfWeek")
 	d := ""
 	if len(days) > 0 && len(days) < 7 {
 		d = " " + strings.Join(days, ",")
 	}
-	if trig == "interval" {
+	switch str(m, "triggerMode") {
+	case "interval":
 		return fmt.Sprintf("every %s min%s", str(m, "intervalMinutes"), d)
+	case "manual":
+		return "manual"
 	}
-	t := str(m, "scheduleTime", "time")
-	if t == "" {
-		return "on schedule"
+	if t := str(m, "scheduleTime"); t != "" {
+		return "daily " + t + d
 	}
-	return "daily " + t + d
+	return "no schedule"
+}
+
+func num(m map[string]interface{}, k string) float64 {
+	f, _ := m[k].(float64)
+	return f
 }
 
 func toSet(m map[string]interface{}) Set {
@@ -159,12 +235,12 @@ func toSet(m map[string]interface{}) Set {
 	if len(src) == 0 {
 		src = strList(m, "driveLetters")
 	}
-	mode := str(m, "scheduleMode")
+	sched := scheduleText(m)
 	return Set{
 		ID: str(m, "id"), Name: str(m, "name"), Type: typ, BackupID: str(m, "backupId"),
 		ServerID: str(m, "pbsServerId"), Enabled: boolean(m, "enabled"),
-		Manual:  mode == "manual" || str(m, "triggerMode") == "manual",
-		Schedule: scheduleText(m), LastRun: parseTime(str(m, "lastRun")), NextRun: parseTime(str(m, "nextRun")),
+		Manual:   sched == "manual",
+		Schedule: sched, LastRun: parseTime(str(m, "lastRun")), NextRun: parseTime(str(m, "nextRun")),
 		Sources: src, Raw: m,
 	}
 }

@@ -42,8 +42,8 @@ type App struct {
 	status *tview.TextView
 	footer *tview.TextView
 
-	dashSets *tview.Table
-	dashRuns *tview.TextView
+	dashSets   *tview.Table
+	dashRuns   *tview.TextView
 	dashRecent *tview.TextView
 	setsTable  *tview.Table
 	setDetail  *tview.TextView
@@ -431,11 +431,6 @@ func human(n float64) string {
 		return fmt.Sprintf("%.0f %s", n, units[i])
 	}
 	return fmt.Sprintf("%.1f %s", n, units[i])
-}
-
-func num(m map[string]interface{}, k string) float64 {
-	f, _ := m[k].(float64)
-	return f
 }
 
 func statusColour(s string) tcell.Color {
