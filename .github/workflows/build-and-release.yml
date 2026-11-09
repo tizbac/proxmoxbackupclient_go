@@ -75,6 +75,10 @@ jobs:
       - name: Run gosec
         env:
           GOWORK: off
+          # The pinned gosec (v2.30.0) needs Go 1.26 to build, and this job's Go is
+          # 1.25: it relies on Go fetching the newer toolchain for the install.
+          # setup-go v6 sets GOTOOLCHAIN=local, which stops that, so say so here.
+          GOTOOLCHAIN: auto
         run: |
           # Pinned: gosec adds rules between releases (v2.30 brought the G703
           # path-traversal taint analysis), and an unpinned scanner turning a
