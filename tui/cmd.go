@@ -7,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"time"
 )
 
@@ -21,6 +23,7 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	tokenFile := fs.String("token-file", "", "the service's api-token file (default: found in the service's settings folder)")
 	demo := fs.Bool("demo", false, "show invented data instead of connecting to the service")
 	check := fs.Bool("check", false, "connect, print what the service reports and exit (no window), for scripts")
+	restoreCheck := fs.Bool("restore-check", false, "with -check: list the server's backups, then restore a few small files of the newest readable snapshot into a temporary folder and delete it")
 	write := fs.Bool("write", false, "with -check: also create, change and delete a temporary Backup Set, to prove the service takes what the editor sends")
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, `Usage: salvanza-cli tui [-url <address>] [-token-file <file>] [-demo] [-check]
@@ -54,7 +57,16 @@ e enable or disable, g refresh, ? help, q quit.`)
 		if code == 0 && *write {
 			code = CheckWrite(be, stdout, stderr)
 		}
+		if code == 0 && *restoreCheck {
+			code = CheckRestore(be, stdout, stderr)
+		}
 		return code
+	}
+	// The shared PBS client prints its connection chatter to standard output,
+	// which would scribble over the screen: keep it out of the window.
+	if f, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0); err == nil {
+		os.Stdout, os.Stderr = f, f
+		log.SetOutput(io.Discard)
 	}
 	if err := NewApp(be, version).Run(); err != nil {
 		fmt.Fprintln(stderr, "salvanza-cli tui:", err)
@@ -102,6 +114,78 @@ func Check(be Backend, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "  server %s%s: %s datastore %s\n", s.Name, def, s.URL, s.Datastore)
 	}
+	return 0
+}
+
+// CheckRestore follows the restore wizard's path against the default server:
+// groups, the newest snapshot that can be read, its file list, and a restore of
+// a few small files into a temporary folder, which is removed again.
+func CheckRestore(be Backend, stdout, stderr io.Writer) int {
+	groups, err := be.RestoreGroups("")
+	if err != nil {
+		fmt.Fprintln(stderr, "groups: "+describeErr(err))
+		return 1
+	}
+	fmt.Fprintf(stdout, "backup groups on the default server: %d\n", len(groups))
+	for _, g := range groups {
+		snaps, err := be.RestoreSnapshots("", g)
+		if err != nil || len(snaps) == 0 {
+			continue
+		}
+		for _, s := range snaps {
+			if s.Encrypted || len(s.Archives) == 0 || !s.HasCatalog {
+				continue
+			}
+			items, err := be.RestoreCatalog("", s)
+			if err != nil {
+				continue
+			}
+			// the smallest few files
+			var files []CatalogItem
+			for _, it := range items {
+				if !it.Dir && it.Size > 0 && it.Size < 1<<20 {
+					files = append(files, it)
+				}
+			}
+			if len(files) == 0 {
+				continue
+			}
+			sort.Slice(files, func(i, j int) bool { return files[i].Size < files[j].Size })
+			if len(files) > 3 {
+				files = files[:3]
+			}
+			var inc []string
+			for _, f := range files {
+				inc = append(inc, f.Path)
+			}
+			dest, err := os.MkdirTemp("", "tui-restore-check-")
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return 1
+			}
+			defer os.RemoveAll(dest)
+			fmt.Fprintf(stdout, "snapshot %s/%s %s: %d catalog entries, restoring %d files\n", g.Type, g.ID, s.Time.Format(time.RFC3339), len(items), len(inc))
+			n, err := be.RestoreFiles("", s, inc, dest, false, nil)
+			if err != nil {
+				fmt.Fprintln(stderr, "restore: "+describeErr(err))
+				return 1
+			}
+			var got int
+			_ = filepath.Walk(dest, func(p string, info os.FileInfo, err error) error {
+				if err == nil && !info.IsDir() {
+					got++
+				}
+				return nil
+			})
+			if got < len(inc) {
+				fmt.Fprintf(stderr, "restore: wrote %d files, expected %d (reported %d)\n", got, len(inc), n)
+				return 1
+			}
+			fmt.Fprintf(stdout, "restored %d files into a temporary folder, removed again: the restore path works\n", got)
+			return 0
+		}
+	}
+	fmt.Fprintln(stdout, "no unencrypted snapshot with a file catalog was found to try a restore on")
 	return 0
 }
 

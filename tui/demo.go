@@ -256,6 +256,63 @@ func (d *demoBackend) RunLog(backupID string, at time.Time, hideChunks bool) ([]
 	return append(lines, ts+" File metadata: 3204 entries, 0 errors", ts+" Backup completed in 55s: 412 MB backed up (18 new, 3186 reused chunks)"), nil
 }
 
+func (d *demoBackend) RestoreGroups(serverID string) ([]Group, error) {
+	now := time.Now()
+	return []Group{
+		{Type: "host", ID: "DESKTOP-01", Count: 14, Latest: now.Add(-9 * time.Hour)},
+		{Type: "host", ID: "DESKTOP-01-photos", Count: 30, Latest: now.Add(-33 * time.Hour)},
+		{Type: "host", ID: "DESKTOP-01-disk", Count: 6, Latest: now.Add(-40 * time.Hour)},
+	}, nil
+}
+
+func (d *demoBackend) RestoreSnapshots(serverID string, g Group) ([]SnapshotInfo, error) {
+	out := make([]SnapshotInfo, 0, 6)
+	for i := 0; i < 6; i++ {
+		out = append(out, SnapshotInfo{
+			Type: g.Type, BackupID: g.ID, Time: g.Latest.Add(-time.Duration(i) * 24 * time.Hour),
+			Archives: []string{"backup.pxar.didx"}, Size: 412e6 + int64(i)*1e6, HasCatalog: true,
+		})
+	}
+	if g.ID == "DESKTOP-01-disk" {
+		out[0].Archives = nil
+	}
+	return out, nil
+}
+
+func (d *demoBackend) RestoreCatalog(serverID string, s SnapshotInfo) ([]CatalogItem, error) {
+	mod := s.Time
+	a := "backup.pxar.didx"
+	items := []CatalogItem{
+		{Path: a, Dir: true},
+		{Path: a + "/Documents", Dir: true},
+		{Path: a + "/Documents/Finance", Dir: true},
+		{Path: a + "/Documents/Finance/invoice-2026-10.pdf", Size: 184e3, Mod: mod},
+		{Path: a + "/Documents/Finance/invoice-2026-09.pdf", Size: 176e3, Mod: mod},
+		{Path: a + "/Documents/Finance/budget.xlsx", Size: 64e3, Mod: mod},
+		{Path: a + "/Documents/Projects", Dir: true},
+		{Path: a + "/Documents/Projects/notes-001.docx", Size: 22e3, Mod: mod},
+		{Path: a + "/Documents/Projects/notes-002.docx", Size: 24e3, Mod: mod},
+		{Path: a + "/Pictures", Dir: true},
+		{Path: a + "/Pictures/holiday.jpg", Size: 4.2e6, Mod: mod},
+		{Path: a + "/todo.txt", Size: 800, Mod: mod},
+	}
+	return items, nil
+}
+
+func (d *demoBackend) RestoreFiles(serverID string, s SnapshotInfo, includes []string, dest string, overwrite bool, progress func(file string)) (int, error) {
+	n := len(includes)
+	if n == 0 {
+		n = 9
+	}
+	for i := 0; i < n; i++ {
+		if progress != nil {
+			progress(fmt.Sprintf("%s/file-%02d", dest, i))
+		}
+		time.Sleep(60 * time.Millisecond)
+	}
+	return n, nil
+}
+
 func (d *demoBackend) Servers() ([]Server, error) {
 	return []Server{
 		{ID: "main", Name: "Main PBS", URL: "https://pbs.example.com:8007", Datastore: "backup", Namespace: "desktop", Fingerprint: "07:49:87:ae:76:0f:a8:e7:97:d8:1c:f0:44:1a:65:5d:2c:f3:10:49:00:ea:2c:53:e4:0b:cc:09:95:29:c5:22", Default: true, Login: "token", Encrypted: true},

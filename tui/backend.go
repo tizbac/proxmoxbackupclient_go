@@ -30,6 +30,13 @@ type Backend interface {
 	// RunLog returns the log lines of the run of backupID at the given time;
 	// hideChunks leaves out the "New chunk" and "Reuse chunk" lines.
 	RunLog(backupID string, at time.Time, hideChunks bool) ([]string, error)
+	// Restore: the backup groups of a server, a group's snapshots, a snapshot's
+	// file catalog, and the extraction of ticked paths (catalog paths; none
+	// means everything) into dest. serverID "" is the default server.
+	RestoreGroups(serverID string) ([]Group, error)
+	RestoreSnapshots(serverID string, g Group) ([]SnapshotInfo, error)
+	RestoreCatalog(serverID string, s SnapshotInfo) ([]CatalogItem, error)
+	RestoreFiles(serverID string, s SnapshotInfo, includes []string, dest string, overwrite bool, progress func(file string)) (int, error)
 	Name() string
 }
 

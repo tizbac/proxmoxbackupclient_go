@@ -271,6 +271,80 @@ func TestDeleteASet(t *testing.T) {
 	}
 }
 
+func TestRestoreWizardFromSourceToDone(t *testing.T) {
+	h := newHarness(t, 130, 40)
+	h.typ('6')
+	h.waitFor("Backups on the server")
+	h.waitFor("host/DESKTOP-01")
+	h.key(tcell.KeyEnter, 0) // the first group
+	h.waitFor("Snapshots")
+	h.waitFor("Archives")
+	h.key(tcell.KeyEnter, 0) // the newest snapshot
+	h.waitFor("Selection")
+	h.waitFor("Documents")
+	s := h.screen()
+	for _, want := range []string{"Pictures", "todo.txt", "Nothing ticked"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("the file tree lacks %q:\n%s", want, s)
+		}
+	}
+	h.key(tcell.KeyDown, 0)  // Documents
+	h.key(tcell.KeyRight, 0) // open it
+	h.waitFor("Finance")
+	h.key(tcell.KeyLeft, 0)
+	time.Sleep(200 * time.Millisecond)
+	if strings.Contains(h.screen(), "Finance") {
+		t.Errorf("Left closes the folder:\n%s", h.screen())
+	}
+	h.key(tcell.KeyUp, 0)
+	h.typ(' ') // tick the current node, the archive
+	h.waitFor("1 item(s) ticked")
+	h.typ('c')
+	h.waitFor("Nothing ticked")
+	h.typ('a')
+	h.waitFor("item(s) ticked")
+	h.key(tcell.KeyPgDn, 0)
+	h.waitFor("Restore into")
+	h.key(tcell.KeyTab, 0) // overwrite
+	h.key(tcell.KeyTab, 0) // the Restore button
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Restore finished")
+	if !strings.Contains(h.screen(), "file(s) restored") {
+		t.Errorf("the result is shown:\n%s", h.screen())
+	}
+	h.key(tcell.KeyEscape, 0)
+	h.waitFor("Backups on the server")
+}
+
+func TestRestoreRefusesADiskImage(t *testing.T) {
+	h := newHarness(t, 130, 40)
+	h.typ('6')
+	h.waitFor("host/DESKTOP-01-disk")
+	h.key(tcell.KeyDown, 0)
+	h.key(tcell.KeyDown, 0)
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("none (disk image)")
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("disk image, not files")
+}
+
+func TestTypingInTheDestinationFieldIsNotAShortcut(t *testing.T) {
+	h := newHarness(t, 130, 40)
+	h.typ('6')
+	h.waitFor("host/DESKTOP-01")
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Archives")
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Selection")
+	h.key(tcell.KeyPgDn, 0)
+	h.waitFor("Restore into")
+	// letters that are shortcuts elsewhere (q quit, s stop, r run, e enable) must land in the field
+	h.typeText("qsre")
+	if !strings.Contains(h.screen(), "qsre") {
+		t.Errorf("typed text did not reach the field:\n%s", h.screen())
+	}
+}
+
 func TestCheckAndCheckWriteOnTheDemoBackend(t *testing.T) {
 	var out, errb strings.Builder
 	be := newDemoBackend()

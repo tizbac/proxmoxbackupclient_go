@@ -129,6 +129,46 @@ func (b *serviceBackend) Servers() ([]Server, error) {
 	return out, nil
 }
 
+func (b *serviceBackend) access(serverID string) (Access, error) {
+	acc, err := b.c.PBSAccess(serverID, false)
+	if err != nil {
+		return Access{}, err
+	}
+	return accessFrom(acc), nil
+}
+
+func (b *serviceBackend) RestoreGroups(serverID string) ([]Group, error) {
+	acc, err := b.access(serverID)
+	if err != nil {
+		return nil, err
+	}
+	return listGroups(acc)
+}
+
+func (b *serviceBackend) RestoreSnapshots(serverID string, g Group) ([]SnapshotInfo, error) {
+	acc, err := b.access(serverID)
+	if err != nil {
+		return nil, err
+	}
+	return listSnapshotsOf(acc, g.Type, g.ID)
+}
+
+func (b *serviceBackend) RestoreCatalog(serverID string, s SnapshotInfo) ([]CatalogItem, error) {
+	acc, err := b.access(serverID)
+	if err != nil {
+		return nil, err
+	}
+	return readCatalog(acc, s)
+}
+
+func (b *serviceBackend) RestoreFiles(serverID string, s SnapshotInfo, includes []string, dest string, overwrite bool, progress func(file string)) (int, error) {
+	acc, err := b.access(serverID)
+	if err != nil {
+		return 0, err
+	}
+	return restoreFiles(acc, s, includes, dest, overwrite, progress)
+}
+
 func (b *serviceBackend) RunLog(backupID string, at time.Time, hideChunks bool) ([]string, error) {
 	var info struct {
 		Folder int    `json:"folder"`

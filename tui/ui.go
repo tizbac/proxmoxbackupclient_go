@@ -25,8 +25,8 @@ var (
 	colOK      = tcell.NewRGBColor(91, 214, 138)
 	colWarn    = tcell.NewRGBColor(255, 180, 84)
 	colErr     = tcell.NewRGBColor(255, 107, 107)
-	tabNames   = []string{"Dashboard", "Backup Sets", "History", "Messages", "Servers"}
-	tabPages   = []string{"dash", "sets", "hist", "msgs", "srv"}
+	tabNames   = []string{"Dashboard", "Backup Sets", "History", "Messages", "Servers", "Restore"}
+	tabPages   = []string{"dash", "sets", "hist", "msgs", "srv", "rest"}
 	refreshRun = 2 * time.Second
 	refreshAll = 10 * time.Second
 )
@@ -52,6 +52,7 @@ type App struct {
 	msgsTable  *tview.Table
 	srvTable   *tview.Table
 	srvDetail  *tview.TextView
+	rs         *restoreView
 
 	mu      sync.Mutex
 	svc     *api.StatusResponse
@@ -106,6 +107,7 @@ func (a *App) build() {
 	a.pages.AddPage("hist", a.buildHistory(), true, false)
 	a.pages.AddPage("msgs", a.buildMessages(), true, false)
 	a.pages.AddPage("srv", a.buildServers(), true, false)
+	a.pages.AddPage("rest", a.buildRestore(), true, false)
 
 	root := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(a.header, 1, 0, false).
@@ -199,14 +201,23 @@ func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
 	if a.modal {
 		return ev
 	}
+	// Tab moves between the fields of a form: on the Restore steps that have fields it belongs to them
+	// (the function keys and 1 to 6 still switch screens).
+	ownsTab := a.tab == 5 && a.rs != nil && (a.rs.step == 0 || a.rs.step == 3)
 	switch ev.Key() {
 	case tcell.KeyTab:
+		if ownsTab {
+			return ev
+		}
 		a.switchTab((a.tab + 1) % len(tabPages))
 		return nil
 	case tcell.KeyBacktab:
+		if ownsTab {
+			return ev
+		}
 		a.switchTab((a.tab + len(tabPages) - 1) % len(tabPages))
 		return nil
-	case tcell.KeyF1, tcell.KeyF2, tcell.KeyF3, tcell.KeyF4, tcell.KeyF5:
+	case tcell.KeyF1, tcell.KeyF2, tcell.KeyF3, tcell.KeyF4, tcell.KeyF5, tcell.KeyF6:
 		a.switchTab(int(ev.Key() - tcell.KeyF1))
 		return nil
 	case tcell.KeyCtrlC:
@@ -215,11 +226,26 @@ func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyEscape:
 		return ev
 	}
+	if a.tab == 5 && a.rs != nil {
+		// On the Restore screen, text fields own every character; elsewhere on it only
+		// the screen switches, help and quit are global.
+		if a.rs.typing() && ev.Key() == tcell.KeyRune {
+			return ev
+		}
+		switch ev.Rune() {
+		case 'q', 'Q', '?', '1', '2', '3', '4', '5', '6':
+		default:
+			return ev
+		}
+	}
 	switch ev.Rune() {
 	case 'q', 'Q':
 		a.app.Stop()
 		return nil
-	case '1', '2', '3', '4', '5':
+	case '1', '2', '3', '4', '5', '6':
+		if a.tab == 5 && a.rs != nil && a.rs.typing() {
+			return ev // a digit typed into a field of the restore wizard
+		}
 		a.switchTab(int(ev.Rune() - '1'))
 		return nil
 	case '?':
@@ -274,6 +300,8 @@ func (a *App) switchTab(i int) {
 		a.app.SetFocus(a.msgsTable)
 	case 4:
 		a.app.SetFocus(a.srvTable)
+	case 5:
+		a.rs.enter()
 	}
 	a.renderChrome()
 }
@@ -340,6 +368,9 @@ func (a *App) renderChrome() {
 	}
 	if tab == 2 {
 		f += hint("Enter", "open the run's log")
+	}
+	if tab == 5 {
+		f += hint("Enter", "choose") + hint("Space", "tick") + hint("PgDn", "next step") + hint("Esc", "back")
 	}
 	f += hint("Tab", "next") + hint("g", "refresh") + hint("?", "help") + hint("q", "quit")
 	a.footer.SetText(f)
