@@ -85,6 +85,49 @@ func TestUndeleteFromTheBackupSets(t *testing.T) {
 	h.key(tcell.KeyEscape, 0)
 }
 
+func TestEarlierRollBacksUndoAndDeleteCopies(t *testing.T) {
+	h := newHarness(t, 130, 44)
+	h.typ('2')
+	h.waitFor("Backup Sets")
+	open := func() {
+		h.typ('k')
+		h.waitFor("Back to the backup at or before")
+		for i := 0; i < 6; i++ { // fields, Preview, Roll back, Earlier roll backs
+			h.key(tcell.KeyTab, 0)
+		}
+		h.key(tcell.KeyEnter, 0)
+		h.waitFor("Earlier roll backs of")
+		h.waitFor("replace")
+	}
+	open()
+	h.typ('u')
+	h.waitFor("Undo the roll back of")
+	h.key(tcell.KeyEnter, 0) // Yes
+	h.waitFor("7 restored files removed")
+	h.key(tcell.KeyEscape, 0)
+	h.waitFor("Backup Sets")
+
+	open()
+	h.typ('d')
+	h.waitFor("Delete the safety copies")
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("can no longer be undone.")
+	h.key(tcell.KeyEscape, 0)
+}
+
+func TestRollbackRecordsAreParsedFromTheToolOutput(t *testing.T) {
+	recs, err := rollbackRecords(newDemoBackend(), "any")
+	if err != nil || len(recs) != 2 {
+		t.Fatalf("%+v %v", recs, err)
+	}
+	if recs[0].Policy != "replace" || recs[0].Moved != 5 || recs[0].Removed != 1 || recs[0].Restored != 7 || recs[0].Bytes != 3565158 {
+		t.Errorf("first record: %+v", recs[0])
+	}
+	if recs[1].Status != "undone" {
+		t.Errorf("second record: %+v", recs[1])
+	}
+}
+
 func TestRollBackPreviewsThenWaitsForY(t *testing.T) {
 	h := newHarness(t, 130, 44)
 	h.typ('2')

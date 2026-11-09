@@ -76,7 +76,7 @@ Both work on the selected Backup Set through the service program (`salvanza-svc`
 
 **Undelete (u).** Choose how far back to look (0 is the newest backup only; N also looks in the last N days) and, if you like, a folder to restore under instead of where the files were. **Look** lists the files that are in the backups but not on disk and changes nothing. **Restore** puts them back, never over a file that has come back. Files that look moved are listed, not restored. The restored files are checked against the backup unless you turn that off.
 
-**Roll back (k).** Choose the backup (the newest, or the newest at or before a local time written `2026-10-10 14:30`) and what to do: **replace** (restore missing and changed files, keep files added since), **missing** (only files that are gone) or **exact** (also remove files added since). **Preview** shows the counts and changes nothing. **Roll back** shows the same counts and then waits: press **y** to go ahead, **Esc** to cancel. Everything replaced or removed is first moved to a safety folder; **undoing a roll back is done in the desktop app**.
+**Roll back (k).** Choose the backup (the newest, or the newest at or before a local time written `2026-10-10 14:30`) and what to do: **replace** (restore missing and changed files, keep files added since), **missing** (only files that are gone) or **exact** (also remove files added since). **Preview** shows the counts and changes nothing. **Roll back** shows the same counts and then waits: press **y** to go ahead, **Esc** to cancel. Everything replaced or removed is first moved to a safety folder. **Earlier roll backs** (a button on the Roll back form) lists the set's roll backs that left a safety folder, newest first: **u** undoes the selected one (the files it restored are deleted and the files it put aside go back), **d** deletes its safety copies, after which it can no longer be undone. Both ask first.
 
 ## 4. Back up folders now
 
@@ -164,13 +164,12 @@ Each screen's own keys are in its section and in the bar at the bottom. The mous
 
 * `-check -write` makes a temporary manual Backup Set and a temporary server, changes and deletes them, changes one preference and puts it back, and reads a log file, to prove the service takes what the window sends.
 * `-check -encryption` proves the whole encryption chain against a real Proxmox Backup Server (named in the environment variables `TUI_CHECK_PBS_URL`, `_AUTHID`, `_SECRET`, `_DATASTORE`, `_FINGERPRINT`): it makes a key, lets a temporary server use it, backs a folder up, restores it with the server's key and compares the files, then removes the server and the test backups. The key file it made stays in the keys folder; its path is printed as `KEYFILE=`.
-* `-check -recover` (same environment variables) backs a folder up with a temporary Backup Set, deletes one file, changes one and adds one, then proves Undelete (the file comes back, and the look changes nothing) and Roll back with **exact** (the changed file is restored, the added one removed, the preview changes nothing), and removes everything it made. It needs the service program, as above.
+* `-check -recover` (same environment variables) backs a folder up with a temporary Backup Set, deletes one file, changes one and adds one, then proves Undelete (the file comes back, and the look changes nothing), Roll back with **exact** (the changed file is restored, the added one removed, the preview changes nothing), Undo of that roll back, and deleting the safety copies of a second one, and removes everything it made. It needs the service program, as above.
 * `-check -write` also saves, lists and removes a share login, and exports the settings to a temporary file and imports them back.
 * `-check -restore-check` restores a few small files of the newest readable snapshot into a temporary folder and deletes it. `-restore-group <backup ID>` tries only that backup, which also shows why an encrypted one cannot be read.
 
 ## 11. What it does not do yet
 
-* **Undoing a roll back**, and deleting the safety copies it keeps, are in the app only.
 * The **paper key** (printing it, reading it back) is in the app only, by design.
 * A disk image (a machine backup) is not restored here: use the [bare-metal restore](BMR.md).
 * Machine Backup Sets can be edited here but not made.

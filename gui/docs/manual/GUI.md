@@ -968,6 +968,9 @@ salvanza-svc.exe -list-sets
 salvanza-svc.exe -undelete "Documents" [-days 7] [-to D:\Recovered] [-dry-run] [-no-verify]
 salvanza-svc.exe -rollback "Documents" [-at "2026-10-10 14:30"] [-policy replace|missing|exact]
                  [-backup-first] [-dry-run] [-yes] [-no-verify]
+salvanza-svc.exe -list-rollbacks "Documents"
+salvanza-svc.exe -undo-rollback "Documents" -created 2026-11-08T14:30:00Z
+salvanza-svc.exe -delete-rollback-copies "Documents" -created 2026-11-08T14:30:00Z
 ```
 
 | Option | Meaning |
@@ -979,6 +982,9 @@ salvanza-svc.exe -rollback "Documents" [-at "2026-10-10 14:30"] [-policy replace
 | `-rollback <set>` | Puts the set's folders back as the newest backup (or the one at or before `-at`) has them. Shows the counts first; asks for `yes` unless `-yes`. Everything replaced or removed is moved to the safety folder first, so Undo in the GUI can put it back |
 | `-at "YYYY-MM-DD HH:MM"` | Roll back: use the newest backup at or before this local time |
 | `-policy` | `replace` (default: restore missing and changed files, keep files added since), `missing` (missing files only) or `exact` (also remove files added since) |
+| `-list-rollbacks <set>` | Lists the set's earlier roll backs that left a safety folder, newest first: one line each with the time, state, policy and counts |
+| `-undo-rollback <set>` | Undoes one roll back, the one made at `-created` (the time `-list-rollbacks` printed): the files it restored are deleted and the files it moved aside go back |
+| `-delete-rollback-copies <set>` | Deletes the safety copies of the roll back made at `-created`; it can no longer be undone |
 | `-backup-first` | Roll back: back the set up before changing anything |
 | `-yes` | Roll back: do not ask for `yes` |
 | `-dry-run` | Only show what would be done |

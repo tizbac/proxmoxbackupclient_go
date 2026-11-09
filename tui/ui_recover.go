@@ -98,7 +98,7 @@ func (a *App) rollbackSet() {
 	verify := tview.NewCheckbox().SetLabel("Check the restored files against the backup ").SetChecked(true)
 	form := styleForm(tview.NewForm()).AddFormItem(at).AddFormItem(policy).AddFormItem(first).AddFormItem(verify)
 	form.SetTitle(" Roll back: " + s.Name + " ")
-	form.AddTextView("", tag(colDim)+"Puts the set's folders back as that backup had them. It compares first and shows the counts, then waits for y. Everything replaced or removed is kept in a safety folder; undoing the roll back is done in the desktop app.", 80, 4, true, false)
+	form.AddTextView("", tag(colDim)+"Puts the set's folders back as that backup had them. It compares first and shows the counts, then waits for y. Everything replaced or removed is kept in a safety folder; Earlier roll backs lists them, to undo one or delete its safety copies.", 80, 4, true, false)
 	args := func() []string {
 		i, _ := policy.GetCurrentOption()
 		out := []string{"-rollback", s.ID, "-policy", rollbackPolicies[i].id}
@@ -121,6 +121,10 @@ func (a *App) rollbackSet() {
 	form.AddButton("Roll back", func() {
 		a.closeModal("recover")
 		a.toolOutput("Roll back: "+s.Name, append(args(), "-dry-run"), append(args(), "-yes"))
+	})
+	form.AddButton("Earlier roll backs", func() {
+		a.closeModal("recover")
+		a.rollbackList(s)
 	})
 	form.AddButton("Cancel", cancel)
 	a.formModal("recover", form, 100, cancel)

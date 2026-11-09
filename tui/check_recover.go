@@ -160,6 +160,45 @@ func CheckRecover(be Backend, stdout, stderr io.Writer) int {
 		sayln(stderr, "rollback (exact): the file added since is still there")
 		return 1
 	}
-	say(stdout, "rollback (exact): edited.txt restored, added.txt removed, %d safety folder(s) cleaned up\n", len(safety))
+	say(stdout, "rollback (exact): edited.txt restored, added.txt removed\n")
+
+	// Undo it: the list names the roll back, and undoing puts the folder back as it was before
+	recs, err := rollbackRecords(be, setID)
+	if err != nil || len(recs) != 1 {
+		sayln(stderr, fmt.Sprintf("earlier roll backs: want 1, got %d (%v)", len(recs), err))
+		return 1
+	}
+	if out, err = run("-undo-rollback", setID, "-created", recs[0].Created); err != nil {
+		sayln(stderr, fmt.Sprintf("undo roll back: %v: %v", err, out))
+		return 1
+	}
+	if got, _ := os.ReadFile(filepath.Join(src, "edited.txt")); !bytes.Equal(got, []byte("changed after the backup")) {
+		sayln(stderr, "undo roll back: edited.txt is not back as it was before the roll back")
+		return 1
+	}
+	if got, err := os.ReadFile(filepath.Join(src, "added.txt")); err != nil || !bytes.Equal(got, []byte("added after the backup")) {
+		sayln(stderr, fmt.Sprintf("undo roll back: added.txt is not back (%v)", err))
+		return 1
+	}
+	say(stdout, "undo roll back: the folder is as it was before the roll back\n")
+
+	// Roll back again, then delete its safety copies: they are gone and the list is empty
+	if out, err = run("-rollback", setID, "-policy", "exact", "-yes"); err != nil {
+		sayln(stderr, fmt.Sprintf("second rollback: %v: %v", err, out))
+		return 1
+	}
+	if recs, err = rollbackRecords(be, setID); err != nil || len(recs) == 0 {
+		sayln(stderr, fmt.Sprintf("second roll back is not listed (%v)", err))
+		return 1
+	}
+	if out, err = run("-delete-rollback-copies", setID, "-created", recs[len(recs)-1].Created); err != nil {
+		sayln(stderr, fmt.Sprintf("delete safety copies: %v: %v", err, out))
+		return 1
+	}
+	if recs, err = rollbackRecords(be, setID); err != nil || len(recs) != 0 {
+		sayln(stderr, fmt.Sprintf("after deleting the copies %d roll back(s) are still listed (%v)", len(recs), err))
+		return 1
+	}
+	say(stdout, "safety copies deleted: no roll back is listed any more; %d safety folder(s) cleaned up\n", len(safety))
 	return 0
 }

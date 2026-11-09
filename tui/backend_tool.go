@@ -116,6 +116,14 @@ func (d *demoBackend) RunSetTool(args []string, line func(string)) error {
 	}
 	pause := func() { time.Sleep(60 * time.Millisecond) }
 	switch {
+	case has("-list-rollbacks"):
+		line("ROLLBACK\t2026-11-08T14:30:00Z\t\treplace\t5\t1\t7\t3565158")
+		line("ROLLBACK\t2026-11-02T09:05:00Z\tundone\texact\t2\t0\t3\t120400")
+		line("2 earlier roll back(s) of \"Documents\"")
+	case has("-undo-rollback"):
+		line("Undo roll back of Documents: 5 files put back, 7 restored files removed")
+	case has("-delete-rollback-copies"):
+		line("Deleted the safety copies of the roll back; it can no longer be undone.")
 	case has("-undelete"):
 		line(`Looking for files of "Documents" that are in its backups but not on disk...`)
 		pause()
