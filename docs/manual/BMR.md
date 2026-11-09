@@ -69,7 +69,7 @@ This **overwrites the whole target disk**. Disconnect any disk you want to keep 
 
 ### 4.1 Boot
 
-Plug in the boot media, power on and pick it from the boot menu. The first menu entry, **"Salvanza - PBS Bare Metal Restore"**, is the default: press Enter or let it start on its own. It skips Clonezilla's language and keyboard questions (it uses English with a UK keyboard layout).
+Plug in the boot media, power on and pick it from the boot menu. The first menu entry, **"Salvanza - PBS Bare Metal Restore"**, is the default: press Enter or let it start on its own. It skips Clonezilla's language and keyboard questions (it uses English with a UK keyboard layout). [Screenshot: the boot menu](../screenshots/bmr-01-boot-menu.png).
 
 ### 4.2 Network
 
@@ -86,7 +86,7 @@ Four screens, each checked before moving on:
 | Password | | The user's password. Must not be empty |
 | PBS datastore | `backup` or `backup/clients` | Text after the first `/` is the namespace |
 
-These are remembered for the rest of the boot session (in `/tmp/pbsnbd-credentials`, readable by root only), so a second attempt starts with them filled in.
+Screenshots: [the URL](../screenshots/bmr-02-url.png) and [the password](../screenshots/bmr-03-password.png) (the address and the password length in them are placeholders). These are remembered for the rest of the boot session (in `/tmp/pbsnbd-credentials`, readable by root only), so a second attempt starts with them filled in.
 
 ### 4.4 Encryption key
 
@@ -104,8 +104,8 @@ For a passphrase-protected key a hidden box asks for the passphrase. The passphr
 
 Up to three menus; a menu with only one choice is skipped:
 
-1. **Which machine**: `host/<id>` or `vm/<id>`, with the PBS comment (the Backup Set name) if there is one.
-2. **Which date**: the backups of that machine, with the number of files in each.
+1. **Which machine**: `host/<id>` or `vm/<id>`, with the PBS comment (the Backup Set name) if there is one ([screenshot](../screenshots/bmr-04-machine.png)).
+2. **Which date**: the backups of that machine, with the number of files in each ([screenshot](../screenshots/bmr-05-date.png)).
 3. **Which disk image**: for a backup of more than one disk, for example `drive-sata0.img.fidx`.
 
 The chosen image is attached as `/dev/nbd0`. If it cannot be attached (wrong key, server unreachable), a message shows the last lines of the attach log and the flow stops.
@@ -118,7 +118,9 @@ A confirmation screen shows the source and target with their sizes:
 
 > Source (PBS snapshot) : /dev/nbd0 (...) Target (THIS MACHINE) : /dev/sda (...) EVERYTHING on /dev/sda will be PERMANENTLY OVERWRITTEN. Continue?
 
-Clonezilla then asks twice more before it writes. Answer `y` to each.
+([Screenshot: the confirmation](../screenshots/bmr-06-confirm.png).)
+
+Clonezilla then asks twice more before it writes. Answer `y` to each ([screenshot: Clonezilla's own warning and question](../screenshots/bmr-07-clonezilla-asks.png)).
 
 ### 4.7 The restore
 
@@ -126,11 +128,11 @@ Clonezilla copies the partition table, every partition and the data between the 
 
 A Linux machine backup carries the block snapshot's copy-on-write file (`.pbs_snapshot_N.cow`, about a tenth of each snapshotted file system). Backups made with this version leave its contents out of the image, but the file itself is still there. After a successful restore the ISO deletes it from each ext2/3/4 and XFS partition. A test-build ISO from before 6 October 2026 does not: delete `/.pbs_snapshot_*.cow` (and the same name at the top of any other snapshotted file system, such as `/home`) yourself after the first start.
 
-Restores of 32 to 40 GiB Windows and Linux test machines took 8 to 11 minutes from power-on to the login prompt on a local network. Time depends on disk size, network and PBS speed.
+Restores of 32 to 40 GiB Windows and Linux test machines took 8 to 11 minutes from power-on to the login prompt on a local network. Time depends on disk size, network and PBS speed. [Screenshot: a partition being restored](../screenshots/bmr-08-progress.png).
 
 ### 4.8 Finish
 
-* **Success:** "Restore is complete." Choose OK and the machine switches off. Remove the boot stick or disc, then switch the machine on: it starts from the restored disk. (Test-build ISOs from before 25 October 2026 restarted instead, and from a USB stick that started the restore system again.)
+* **Success:** "Restore is complete." ([Screenshot](../screenshots/bmr-09-complete.png).) Choose OK and the machine switches off. Just before it does, the console may show a few lines about a device that is "busy" and the prompt "Please remove the live-medium, close the tray (if any) and press ENTER to continue" ([screenshot](../screenshots/bmr-10-remove-medium.png)). That is Clonezilla's normal last step: remove the boot stick or disc if you like and press Enter, and the machine switches off. If nobody is there to press Enter it waits. Then, with the boot stick or disc removed, switch the machine on: it starts from the restored disk. (Test-build ISOs from before 25 October 2026 restarted instead, and from a USB stick that started the restore system again.)
 * **Failure:** the exit code and the log folder are shown, and the machine does not switch off. Look in the log folder, then run the restore again.
 
 ### After the restore
