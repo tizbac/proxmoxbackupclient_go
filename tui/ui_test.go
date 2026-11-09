@@ -536,6 +536,20 @@ func TestDumpScreens(t *testing.T) {
 			h.key(tcell.KeyEnter, 0)
 			time.Sleep(300 * time.Millisecond)
 		}},
+		{"11-restore-source", func() { h.key(tcell.KeyEscape, 0); h.typ('6'); time.Sleep(400 * time.Millisecond) }},
+		{"12-restore-snapshots", func() { h.key(tcell.KeyEnter, 0); time.Sleep(400 * time.Millisecond) }},
+		{"13-restore-files", func() {
+			h.key(tcell.KeyEnter, 0)
+			time.Sleep(500 * time.Millisecond)
+			h.key(tcell.KeyDown, 0)
+			h.key(tcell.KeyRight, 0)
+			h.key(tcell.KeyDown, 0)
+			h.key(tcell.KeyRight, 0)
+			h.key(tcell.KeyDown, 0)
+			h.typ(' ')
+		}},
+		{"14-restore-destination", func() { h.key(tcell.KeyPgDn, 0); time.Sleep(300 * time.Millisecond) }},
+		{"15-one-off", func() { h.key(tcell.KeyEscape, 0); h.typ('1'); h.typ('b') }},
 	}
 	for _, s := range shots {
 		s.do()

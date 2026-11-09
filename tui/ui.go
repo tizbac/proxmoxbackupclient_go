@@ -377,7 +377,7 @@ func (a *App) renderChrome() {
 	if tab == 5 {
 		f += hint("Enter", "choose") + hint("Space", "tick") + hint("PgDn", "next step") + hint("Esc", "back")
 	}
-	f += hint("Tab", "next") + hint("g", "refresh") + hint("?", "help") + hint("q", "quit")
+	f += hint("Tab", "next") + hint("?", "help") + hint("q", "quit")
 	a.footer.SetText(f)
 }
 

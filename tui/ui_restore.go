@@ -353,7 +353,8 @@ func (r *restoreView) addChildren(n *tview.TreeNode, path string) {
 	kids := r.children[path]
 	r.mu.Unlock()
 	for _, it := range kids {
-		child := tview.NewTreeNode("").SetReference(it.Path).SetSelectable(true)
+		child := tview.NewTreeNode("").SetReference(it.Path).SetSelectable(true).
+			SetSelectedTextStyle(tcell.StyleDefault.Background(colSel).Foreground(tcell.ColorWhite))
 		child.SetExpanded(false)
 		n.AddChild(child)
 	}
