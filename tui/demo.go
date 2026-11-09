@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,15 +28,39 @@ func newDemoBackend() *demoBackend {
 		return time.Date(now.Year(), now.Month(), now.Day()+dayOffset, h, m, 0, 0, now.Location())
 	}
 	d := &demoBackend{start: now}
+	// The sets are documents as the service sends them, so the editor has real fields to work on.
+	doc := func(id, name, typ, backupID, server string, enabled bool, unit, atTime string, weekdays []interface{}, dirs []interface{}, last, next time.Time) Set {
+		m := map[string]interface{}{
+			"id": id, "name": name, "backupType": typ, "backupId": backupID, "pbsServerId": server, "enabled": enabled,
+			"lastRun": last.UTC().Format(time.RFC3339), "useVSS": true, "excludeList": []interface{}{},
+		}
+		if typ == "machine" {
+			m["driveLetters"] = dirs
+		} else {
+			m["backupDirs"] = dirs
+			m["changeDetectionMode"] = "legacy"
+		}
+		if unit == "" {
+			m["scheduleMode"], m["triggerMode"] = "manual", "manual"
+		} else {
+			sc := map[string]interface{}{"id": "s1", "enabled": true, "unit": unit, "every": 1.0, "at": atTime}
+			if weekdays != nil {
+				sc["weekdays"] = weekdays
+			}
+			m["scheduleMode"], m["schedules"] = "scheduled", []interface{}{sc}
+			m["nextRun"] = next.UTC().Format(time.RFC3339)
+		}
+		return toSet(m)
+	}
 	d.sets = []Set{
-		{ID: "s1", Name: "Documents", Type: "folder", BackupID: "DESKTOP-01", Enabled: true, Schedule: "daily 18:00",
-			LastRun: at(2, 10, 0), NextRun: at(18, 0, 0), Sources: []string{`C:\Users\mick\Documents`, `C:\Users\mick\Desktop`}, ServerID: "main"},
-		{ID: "s2", Name: "Machine image", Type: "machine", BackupID: "DESKTOP-01-disk", Enabled: true, Schedule: "daily 01:00 Sun",
-			LastRun: at(1, 7, -1), NextRun: at(1, 0, 6), Sources: []string{`\\.\PhysicalDrive0`}, ServerID: "main"},
-		{ID: "s3", Name: "Photos", Type: "folder", BackupID: "DESKTOP-01-photos", Enabled: true, Schedule: "daily 02:00",
-			LastRun: at(2, 0, -1), NextRun: at(2, 0, 1), Sources: []string{`D:\Photos`}, ServerID: "offsite"},
-		{ID: "s4", Name: "Web server", Type: "folder", BackupID: "DESKTOP-01-web", Enabled: false, Schedule: "manual", Manual: true,
-			LastRun: at(3, 0, -6), Sources: []string{`C:\inetpub`}, ServerID: "main"},
+		doc("s1", "Documents", "directory", "DESKTOP-01", "main", true, "days", "18:00", nil,
+			[]interface{}{`C:\Users\mick\Documents`, `C:\Users\mick\Desktop`}, at(2, 10, 0), at(18, 0, 0)),
+		doc("s2", "Machine image", "machine", "DESKTOP-01-disk", "main", true, "weeks", "01:00", []interface{}{"Sun"},
+			[]interface{}{`\\.\PhysicalDrive0`}, at(1, 7, -1), at(1, 0, 6)),
+		doc("s3", "Photos", "directory", "DESKTOP-01-photos", "offsite", true, "days", "02:00", nil,
+			[]interface{}{`D:\Photos`}, at(2, 0, -1), at(2, 0, 1)),
+		doc("s4", "Web server", "directory", "DESKTOP-01-web", "main", false, "", "", nil,
+			[]interface{}{`C:\inetpub`}, at(3, 0, -6), time.Time{}),
 	}
 	d.hist = []HistoryEntry{
 		{ID: "h1", Name: "Photos", Status: "failed", Message: "2 files could not be read: in use", At: at(2, 0, -1), BackupID: "DESKTOP-01-photos", Encryption: "encrypted"},
@@ -162,6 +187,48 @@ func (d *demoBackend) SetEnabled(id string, on bool) error {
 	return fmt.Errorf("no such set")
 }
 
+func (d *demoBackend) SaveSet(doc map[string]interface{}, isNew bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	name := str(doc, "name")
+	if name == "" {
+		return fmt.Errorf("a Backup Set needs a name")
+	}
+	for _, s := range d.sets {
+		if strings.EqualFold(s.Name, name) && s.ID != str(doc, "id") {
+			return fmt.Errorf("a Backup Set named %q exists already", name)
+		}
+	}
+	if boolean(doc, "enabled") == false && isNew {
+		doc["enabled"] = true
+	}
+	set := toSet(doc)
+	if isNew {
+		d.sets = append(d.sets, set)
+		return nil
+	}
+	for i := range d.sets {
+		if d.sets[i].ID == set.ID {
+			set.LastRun = d.sets[i].LastRun
+			d.sets[i] = set
+			return nil
+		}
+	}
+	return fmt.Errorf("no such Backup Set")
+}
+
+func (d *demoBackend) DeleteSet(id string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for i := range d.sets {
+		if d.sets[i].ID == id {
+			d.sets = append(d.sets[:i], d.sets[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("no such Backup Set")
+}
+
 func (d *demoBackend) History() ([]HistoryEntry, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -172,6 +239,21 @@ func (d *demoBackend) Messages() ([]MessageEntry, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return append([]MessageEntry(nil), d.msgs...), nil
+}
+
+func (d *demoBackend) RunLog(backupID string, at time.Time, hideChunks bool) ([]string, error) {
+	ts := at.Format("2006-01-02 15:04:05")
+	lines := []string{
+		ts + " Starting backup of C:\\Users\\mick\\Documents",
+		ts + " Creating VSS Snapshot... Snapshot created",
+		ts + " Connected to Main PBS, backup group host/" + backupID,
+	}
+	if !hideChunks {
+		for i := 0; i < 12; i++ {
+			lines = append(lines, fmt.Sprintf("%s New chunk %d (4194304 bytes)", ts, 1000+i), fmt.Sprintf("%s Reuse chunk %d", ts, 2000+i))
+		}
+	}
+	return append(lines, ts+" File metadata: 3204 entries, 0 errors", ts+" Backup completed in 55s: 412 MB backed up (18 new, 3186 reused chunks)"), nil
 }
 
 func (d *demoBackend) Servers() ([]Server, error) {

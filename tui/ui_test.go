@@ -156,6 +156,142 @@ func TestStopCanBeCancelled(t *testing.T) {
 	}
 }
 
+func TestHistoryEntryOpensItsLog(t *testing.T) {
+	h := newHarness(t, 130, 36)
+	h.typ('3')
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Backup completed in 55s")
+	s := h.screen()
+	for _, want := range []string{"Log: ", "New chunk", "Esc"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("log view lacks %q:\n%s", want, s)
+		}
+	}
+	h.typ('c') // hide the chunk lines
+	time.Sleep(400 * time.Millisecond)
+	if strings.Contains(h.screen(), "New chunk 1000") {
+		t.Errorf("chunk lines are still shown:\n%s", h.screen())
+	}
+	h.key(tcell.KeyEscape, 0)
+	time.Sleep(250 * time.Millisecond)
+	if strings.Contains(h.screen(), "Log: ") {
+		t.Errorf("the log view did not close:\n%s", h.screen())
+	}
+	// the history screen answers its keys again
+	h.typ('1')
+	h.waitFor("Running now")
+}
+
+func (h *harness) typeText(s string) {
+	for _, r := range s {
+		h.sim.InjectKey(tcell.KeyRune, r, tcell.ModNone)
+	}
+	time.Sleep(200 * time.Millisecond)
+}
+
+func TestEditASetThroughTheForm(t *testing.T) {
+	h := newHarness(t, 130, 40)
+	h.key(tcell.KeyEnter, 0) // the first set, Documents
+	h.waitFor("Edit Backup Set")
+	for _, want := range []string{"Name", "Backup ID", "Folders", "PBS server", "Documents", `C:\Users\mick\Documents`} {
+		if !strings.Contains(h.screen(), want) {
+			t.Errorf("the editor lacks %q:\n%s", want, h.screen())
+		}
+	}
+	h.typeText("2") // Documents2
+	h.key(tcell.KeyPgDn, 0)
+	h.waitFor("Repeat every")
+	if !strings.Contains(h.screen(), "18:00") {
+		t.Errorf("step 2 shows the set's time:\n%s", h.screen())
+	}
+	h.key(tcell.KeyPgDn, 0)
+	h.waitFor("Change detection")
+	h.key(tcell.KeyCtrlS, 0)
+	h.waitFor("saved Documents2")
+	h.waitFor("Documents2")
+	if strings.Contains(h.screen(), "Edit Backup Set") {
+		t.Errorf("the editor closed after saving:\n%s", h.screen())
+	}
+}
+
+func TestEditorRefusesWhatTheServiceWouldRefuse(t *testing.T) {
+	h := newHarness(t, 130, 40)
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Edit Backup Set")
+	h.key(tcell.KeyPgDn, 0)
+	h.waitFor("Repeat every")
+	// down to the "Only on days" field: unit, every, at, days
+	for i := 0; i < 4; i++ {
+		h.key(tcell.KeyTab, 0)
+	}
+	h.typeText("Funday")
+	h.key(tcell.KeyCtrlS, 0)
+	h.waitFor("is not a day")
+	h.key(tcell.KeyEnter, 0) // OK
+	time.Sleep(200 * time.Millisecond)
+	if !strings.Contains(h.screen(), "Repeat every") {
+		t.Errorf("the editor stays open after a refused save:\n%s", h.screen())
+	}
+	h.key(tcell.KeyEscape, 0)
+	time.Sleep(200 * time.Millisecond)
+	if strings.Contains(h.screen(), "Repeat every") {
+		t.Errorf("Esc closes the editor:\n%s", h.screen())
+	}
+}
+
+func TestNewSetNeedsANameAndAFolder(t *testing.T) {
+	h := newHarness(t, 130, 40)
+	h.typ('n')
+	h.waitFor("New Backup Set")
+	h.key(tcell.KeyCtrlS, 0)
+	h.waitFor("needs a name")
+	h.key(tcell.KeyEnter, 0)
+	h.typeText("Test set")
+	h.key(tcell.KeyCtrlS, 0)
+	h.waitFor("add at least one folder")
+	h.key(tcell.KeyEnter, 0)
+	h.key(tcell.KeyTab, 0) // Backup ID
+	h.key(tcell.KeyTab, 0) // Folders
+	h.typeText(`C:\Data`)
+	h.key(tcell.KeyCtrlS, 0)
+	h.waitFor("saved Test set")
+	h.typ('2')
+	h.waitFor("Test set")
+}
+
+func TestDeleteASet(t *testing.T) {
+	h := newHarness(t, 130, 40)
+	h.typ('d')
+	h.waitFor("Delete the Backup Set")
+	h.key(tcell.KeyEnter, 0) // Yes
+	h.waitFor("deleted Documents")
+	time.Sleep(300 * time.Millisecond)
+	if strings.Count(h.screen(), "Documents") > 2 { // the flash line and perhaps a recent entry, not the table row
+		t.Logf("screen after delete:\n%s", h.screen())
+	}
+}
+
+func TestCheckAndCheckWriteOnTheDemoBackend(t *testing.T) {
+	var out, errb strings.Builder
+	be := newDemoBackend()
+	if code := Check(be, &out, &errb); code != 0 {
+		t.Fatalf("Check: %d %s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "backup sets: 4") {
+		t.Errorf("Check output: %s", out.String())
+	}
+	out.Reset()
+	if code := CheckWrite(be, &out, &errb); code != 0 {
+		t.Fatalf("CheckWrite: %d %s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "deleted again") {
+		t.Errorf("CheckWrite output: %s", out.String())
+	}
+	if sets, _ := be.Sets(); len(sets) != 4 {
+		t.Errorf("the temporary set was not removed: %d sets", len(sets))
+	}
+}
+
 func TestEnableDisable(t *testing.T) {
 	h := newHarness(t, 130, 36)
 	h.typ('e') // Documents off
@@ -304,6 +440,15 @@ func TestDumpScreens(t *testing.T) {
 		{"4-messages", func() { h.typ('4') }},
 		{"5-servers", func() { h.typ('5') }},
 		{"6-help", func() { h.typ('1'); h.typ('?') }},
+		{"7-edit-general", func() { h.key(tcell.KeyEscape, 0); h.typ('1'); h.key(tcell.KeyEnter, 0) }},
+		{"8-edit-schedule", func() { h.key(tcell.KeyPgDn, 0) }},
+		{"9-edit-options", func() { h.key(tcell.KeyPgDn, 0) }},
+		{"10-log", func() {
+			h.key(tcell.KeyEscape, 0)
+			h.typ('3')
+			h.key(tcell.KeyEnter, 0)
+			time.Sleep(300 * time.Millisecond)
+		}},
 	}
 	for _, s := range shots {
 		s.do()

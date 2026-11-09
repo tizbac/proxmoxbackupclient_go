@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 )
 
 // Run is `salvanza-cli tui`. It returns the process exit code.
@@ -20,6 +21,7 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	tokenFile := fs.String("token-file", "", "the service's api-token file (default: found in the service's settings folder)")
 	demo := fs.Bool("demo", false, "show invented data instead of connecting to the service")
 	check := fs.Bool("check", false, "connect, print what the service reports and exit (no window), for scripts")
+	write := fs.Bool("write", false, "with -check: also create, change and delete a temporary Backup Set, to prove the service takes what the editor sends")
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, `Usage: salvanza-cli tui [-url <address>] [-token-file <file>] [-demo] [-check]
 
@@ -48,7 +50,11 @@ e enable or disable, g refresh, ? help, q quit.`)
 		be = newServiceBackend(*url, path)
 	}
 	if *check {
-		return Check(be, stdout, stderr)
+		code := Check(be, stdout, stderr)
+		if code == 0 && *write {
+			code = CheckWrite(be, stdout, stderr)
+		}
+		return code
 	}
 	if err := NewApp(be, version).Run(); err != nil {
 		fmt.Fprintln(stderr, "salvanza-cli tui:", err)
@@ -96,6 +102,76 @@ func Check(be Backend, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "  server %s%s: %s datastore %s\n", s.Name, def, s.URL, s.Datastore)
 	}
+	return 0
+}
+
+// CheckWrite makes a temporary manual Backup Set the way the editor does,
+// changes it, and deletes it again (always, also after a failure).
+func CheckWrite(be Backend, stdout, stderr io.Writer) int {
+	const name = "__tui-selftest__"
+	id := fmt.Sprintf("%d", time.Now().UnixMilli())
+	doc := map[string]interface{}{
+		"id": id, "name": name, "backupType": "directory", "enabled": true, "backupId": "tui-selftest",
+		"backupDirs": []interface{}{os.TempDir()}, "scheduleMode": "manual", "useVSS": false,
+		"changeDetectionMode": "legacy", "excludeList": []interface{}{},
+		"schedules": []interface{}{map[string]interface{}{"id": "s1", "enabled": true, "unit": "days", "every": 1.0, "at": "03:30"}},
+	}
+	cleanup := func() {
+		if sets, err := be.Sets(); err == nil {
+			for _, s := range sets {
+				if s.Name == name || s.Name == name+" changed" {
+					_ = be.DeleteSet(s.ID)
+				}
+			}
+		}
+	}
+	defer cleanup()
+	find := func(n string) (Set, bool) {
+		sets, err := be.Sets()
+		if err != nil {
+			return Set{}, false
+		}
+		for _, s := range sets {
+			if s.Name == n {
+				return s, true
+			}
+		}
+		return Set{}, false
+	}
+	if err := be.SaveSet(doc, true); err != nil {
+		fmt.Fprintln(stderr, "create: "+describeErr(err))
+		return 1
+	}
+	s, ok := find(name)
+	if !ok {
+		fmt.Fprintln(stderr, "create: the new set is not in the list")
+		return 1
+	}
+	fmt.Fprintf(stdout, "created %q, schedule %q\n", s.Name, s.Schedule)
+	// change it as the editor does: the service's own document plus the changes
+	upd := copyMap(s.Raw)
+	upd["name"] = name + " changed"
+	upd["scheduleMode"] = "scheduled"
+	upd["schedules"] = []interface{}{map[string]interface{}{"id": "s1", "enabled": true, "unit": "days", "every": 1.0, "at": "04:45", "weekdays": []interface{}{"Mon", "Fri"}}}
+	if err := be.SaveSet(upd, false); err != nil {
+		fmt.Fprintln(stderr, "change: "+describeErr(err))
+		return 1
+	}
+	s2, ok := find(name + " changed")
+	if !ok || s2.ID != id {
+		fmt.Fprintln(stderr, "change: the changed set is not in the list")
+		return 1
+	}
+	fmt.Fprintf(stdout, "changed to %q, schedule %q, next run %s\n", s2.Name, s2.Schedule, when(s2.NextRun))
+	if err := be.DeleteSet(id); err != nil {
+		fmt.Fprintln(stderr, "delete: "+describeErr(err))
+		return 1
+	}
+	if _, ok := find(name + " changed"); ok {
+		fmt.Fprintln(stderr, "delete: the set is still listed")
+		return 1
+	}
+	fmt.Fprintln(stdout, "deleted again: the editor's documents are accepted by this service")
 	return 0
 }
 

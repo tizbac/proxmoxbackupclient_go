@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/salvanza/salvanza_client/gui/api"
 )
@@ -57,6 +58,16 @@ func (b *serviceBackend) Control(action, jobID string) error {
 }
 
 func (b *serviceBackend) SetEnabled(id string, on bool) error { return b.c.SetJobEnabled(id, on) }
+
+func (b *serviceBackend) SaveSet(doc map[string]interface{}, isNew bool) error {
+	name := "UpdateScheduledJob"
+	if isNew {
+		name = "SaveScheduledJob"
+	}
+	return b.c.Call(name, nil, doc)
+}
+
+func (b *serviceBackend) DeleteSet(id string) error { return b.c.Call("DeleteScheduledJob", nil, id) }
 
 func (b *serviceBackend) History() ([]HistoryEntry, error) {
 	raw, err := b.c.GetJobHistory()
@@ -116,6 +127,24 @@ func (b *serviceBackend) Servers() ([]Server, error) {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	return out, nil
+}
+
+func (b *serviceBackend) RunLog(backupID string, at time.Time, hideChunks bool) ([]string, error) {
+	var info struct {
+		Folder int    `json:"folder"`
+		Name   string `json:"name"`
+	}
+	if err := b.c.FindRunLog(backupID, at.UnixMilli(), &info); err != nil {
+		return nil, err
+	}
+	var view struct {
+		Lines []string `json:"lines"`
+	}
+	q := map[string]interface{}{"folder": info.Folder, "name": info.Name, "hideChunks": hideChunks, "lines": 3000}
+	if err := b.c.ReadLog(q, &view); err != nil {
+		return nil, err
+	}
+	return view.Lines, nil
 }
 
 func firstNonEmpty(a ...string) string {

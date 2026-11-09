@@ -20,9 +20,16 @@ type Backend interface {
 	RunSet(id string) error
 	Control(action, jobID string) error // "pause", "resume" or "stop"
 	SetEnabled(id string, on bool) error
+	// SaveSet stores a Backup Set document (the service's own checks apply):
+	// a new set when isNew, otherwise a change of the set with that id.
+	SaveSet(doc map[string]interface{}, isNew bool) error
+	DeleteSet(id string) error
 	History() ([]HistoryEntry, error)
 	Messages() ([]MessageEntry, error)
 	Servers() ([]Server, error)
+	// RunLog returns the log lines of the run of backupID at the given time;
+	// hideChunks leaves out the "New chunk" and "Reuse chunk" lines.
+	RunLog(backupID string, at time.Time, hideChunks bool) ([]string, error)
 	Name() string
 }
 

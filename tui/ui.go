@@ -159,6 +159,8 @@ func (a *App) buildSets() tview.Primitive {
 	a.setsTable.SetTitle(" Backup Sets ").SetTitleAlign(tview.AlignLeft)
 	a.setDetail = textBox("Details")
 	a.setsTable.SetSelectionChangedFunc(func(int, int) { a.renderSetDetail() })
+	a.setsTable.SetSelectedFunc(func(int, int) { a.editSet() })
+	a.dashSets.SetSelectedFunc(func(int, int) { a.editSet() })
 	return tview.NewFlex().
 		AddItem(a.setsTable, 0, 3, true).
 		AddItem(a.setDetail, 0, 2, false)
@@ -169,6 +171,7 @@ func (a *App) buildHistory() tview.Primitive {
 	a.histTable.SetTitle(" History ").SetTitleAlign(tview.AlignLeft)
 	a.histDetail = textBox("Run")
 	a.histTable.SetSelectionChangedFunc(func(int, int) { a.renderHistDetail() })
+	a.histTable.SetSelectedFunc(func(int, int) { a.openLog() })
 	return tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(a.histTable, 0, 3, true).
 		AddItem(a.histDetail, 7, 0, false)
@@ -233,6 +236,21 @@ func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'e':
 		a.actToggle()
+		return nil
+	case 'n':
+		if a.tab == 0 || a.tab == 1 {
+			a.newSet()
+		}
+		return nil
+	case 'd':
+		if a.tab == 0 || a.tab == 1 {
+			a.actDelete()
+		}
+		return nil
+	case 'E':
+		if a.tab == 0 || a.tab == 1 {
+			a.editSet()
+		}
 		return nil
 	case 'g', 'R':
 		go a.refresh(true)
@@ -317,7 +335,11 @@ func (a *App) renderChrome() {
 	f := " "
 	switch tab {
 	case 0, 1:
-		f += hint("r", "run now") + hint("p", "pause/resume") + hint("s", "stop") + hint("e", "enable/disable")
+		f += hint("r", "run now") + hint("p", "pause/resume") + hint("s", "stop") + hint("e", "enable/disable") +
+			hint("Enter", "edit") + hint("n", "new") + hint("d", "delete")
+	}
+	if tab == 2 {
+		f += hint("Enter", "open the run's log")
 	}
 	f += hint("Tab", "next") + hint("g", "refresh") + hint("?", "help") + hint("q", "quit")
 	a.footer.SetText(f)
