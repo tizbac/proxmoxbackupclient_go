@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A text-mode window: `salvanza-cli tui`.** The desktop app's Backup Sets, running backups, history, Message Log, servers and restore in a terminal, for servers and SSH sessions. Run, pause, stop, enable, edit, add and delete Backup Sets, back up folders now, open a run's log, and browse a backup and restore ticked files. It works through the background service's local API, so it needs administrator or root. See [docs/manual/TUI.md](docs/manual/TUI.md).
+
 ### Changed
 
 - **The manuals' links open the files of the build you run.** Links in the Help manuals that leave the app (screenshots, CHANGELOG.md and other files in the repository, **Open on GitHub**) open the tag of a release, or the exact commit of a development build, instead of always `master`. A development build's links match its own manuals, whichever branch the commit is on.
