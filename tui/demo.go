@@ -294,10 +294,25 @@ func (d *demoBackend) RestoreSnapshots(serverID string, g Group) ([]SnapshotInfo
 	if g.ID == "DESKTOP-01-disk" {
 		out[0].Archives = nil
 	}
+	if g.ID == "DESKTOP-01-photos" {
+		for i := range out {
+			out[i].Encrypted = true
+		}
+	}
 	return out, nil
 }
 
-func (d *demoBackend) RestoreCatalog(serverID string, s SnapshotInfo) ([]CatalogItem, error) {
+const demoPassphrase = "demo-pass"
+
+func (d *demoBackend) RestoreCatalog(serverID string, s SnapshotInfo, passphrase string) ([]CatalogItem, error) {
+	if s.Encrypted {
+		if passphrase == "" {
+			return nil, ErrNeedPassphrase
+		}
+		if passphrase != demoPassphrase {
+			return nil, fmt.Errorf("the key could not be unlocked, is the passphrase right?")
+		}
+	}
 	mod := s.Time
 	a := "backup.pxar.didx"
 	items := []CatalogItem{
@@ -317,7 +332,10 @@ func (d *demoBackend) RestoreCatalog(serverID string, s SnapshotInfo) ([]Catalog
 	return items, nil
 }
 
-func (d *demoBackend) RestoreFiles(serverID string, s SnapshotInfo, includes []string, dest string, overwrite bool, progress func(file string)) (int, error) {
+func (d *demoBackend) RestoreFiles(serverID string, s SnapshotInfo, includes []string, dest string, overwrite bool, passphrase string, progress func(file string)) (int, error) {
+	if s.Encrypted && passphrase != demoPassphrase {
+		return 0, ErrNeedPassphrase
+	}
 	n := len(includes)
 	if n == 0 {
 		n = 9

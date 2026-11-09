@@ -23,6 +23,7 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	tokenFile := fs.String("token-file", "", "the service's api-token file (default: found in the service's settings folder)")
 	demo := fs.Bool("demo", false, "show invented data instead of connecting to the service")
 	check := fs.Bool("check", false, "connect, print what the service reports and exit (no window), for scripts")
+	restoreGroup := fs.String("restore-group", "", "with -restore-check: try only this backup ID")
 	restoreCheck := fs.Bool("restore-check", false, "with -check: list the server's backups, then restore a few small files of the newest readable snapshot into a temporary folder and delete it")
 	write := fs.Bool("write", false, "with -check: also create, change and delete a temporary Backup Set, to prove the service takes what the editor sends")
 	fs.Usage = func() {
@@ -58,7 +59,7 @@ e enable or disable, g refresh, ? help, q quit.`)
 			code = CheckWrite(be, stdout, stderr)
 		}
 		if code == 0 && *restoreCheck {
-			code = CheckRestore(be, stdout, stderr)
+			code = CheckRestore(be, *restoreGroup, stdout, stderr)
 		}
 		return code
 	}
@@ -120,7 +121,10 @@ func Check(be Backend, stdout, stderr io.Writer) int {
 // CheckRestore follows the restore wizard's path against the default server:
 // groups, the newest snapshot that can be read, its file list, and a restore of
 // a few small files into a temporary folder, which is removed again.
-func CheckRestore(be Backend, stdout, stderr io.Writer) int {
+//
+// With onlyGroup set, only that backup ID is tried, and what goes wrong with
+// it is reported (an encrypted group needs the server's key to be set up).
+func CheckRestore(be Backend, onlyGroup string, stdout, stderr io.Writer) int {
 	groups, err := be.RestoreGroups("")
 	if err != nil {
 		sayln(stderr, "groups: "+describeErr(err))
@@ -128,16 +132,23 @@ func CheckRestore(be Backend, stdout, stderr io.Writer) int {
 	}
 	say(stdout, "backup groups on the default server: %d\n", len(groups))
 	for _, g := range groups {
+		if onlyGroup != "" && g.ID != onlyGroup {
+			continue
+		}
 		snaps, err := be.RestoreSnapshots("", g)
 		if err != nil || len(snaps) == 0 {
 			continue
 		}
 		for _, s := range snaps {
-			if s.Encrypted || len(s.Archives) == 0 || !s.HasCatalog {
+			if len(s.Archives) == 0 || !s.HasCatalog {
 				continue
 			}
-			items, err := be.RestoreCatalog("", s)
+			items, err := be.RestoreCatalog("", s, "")
 			if err != nil {
+				if onlyGroup != "" {
+					sayln(stderr, "catalog of "+g.ID+": "+describeErr(err))
+					return 1
+				}
 				continue
 			}
 			// the smallest few files
@@ -165,7 +176,7 @@ func CheckRestore(be Backend, stdout, stderr io.Writer) int {
 			}
 			defer func() { _ = os.RemoveAll(dest) }()
 			say(stdout, "snapshot %s/%s %s: %d catalog entries, restoring %d files\n", g.Type, g.ID, s.Time.Format(time.RFC3339), len(items), len(inc))
-			n, err := be.RestoreFiles("", s, inc, dest, false, nil)
+			n, err := be.RestoreFiles("", s, inc, dest, false, "", nil)
 			if err != nil {
 				sayln(stderr, "restore: "+describeErr(err))
 				return 1

@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,13 +33,51 @@ type Access struct {
 	BaseURL, Fingerprint, Datastore, Namespace string
 	AuthID, Secret                             string
 	Ticket, CSRF                               string
+	// The encryption key of the server, when the service handed it over: the
+	// key file's contents and the passphrase it remembers (may be empty).
+	KeyData       []byte
+	KeyPassphrase string
 }
 
 func accessFrom(a *api.PBSAccess) Access {
 	return Access{
 		BaseURL: a.BaseURL, Fingerprint: a.CertFingerprint, Datastore: a.Datastore, Namespace: a.Namespace,
 		AuthID: a.AuthID, Secret: a.Secret, Ticket: a.Ticket, CSRF: a.CSRFToken,
+		KeyData: a.KeyFileData, KeyPassphrase: a.KeyPassphrase,
 	}
+}
+
+// ErrNeedPassphrase is returned for an encrypted snapshot whose key is
+// protected by a passphrase that is not known yet: ask for it and try again.
+var ErrNeedPassphrase = errors.New("this snapshot is encrypted with a key that needs its passphrase")
+
+// ErrNoKey is returned for an encrypted snapshot when the server has no key.
+var ErrNoKey = errors.New("this snapshot is encrypted, but no encryption key is set up for this server: add its key file in the desktop app (Preferences, Servers)")
+
+// crypt unwraps the server's key for an encrypted snapshot. passphrase
+// overrides the remembered one; it is only needed for a protected key.
+func (a Access) crypt(passphrase string) (*pbscommon.CryptConfig, error) {
+	if len(a.KeyData) == 0 {
+		return nil, ErrNoKey
+	}
+	cfg := &pbscommon.KeyConfig{}
+	if err := json.Unmarshal(a.KeyData, cfg); err != nil || cfg.Data == "" {
+		return nil, fmt.Errorf("the server's key file cannot be read")
+	}
+	if passphrase == "" {
+		passphrase = a.KeyPassphrase
+	}
+	if cfg.KDF != nil && passphrase == "" {
+		return nil, ErrNeedPassphrase
+	}
+	crypt, err := cfg.CryptConfig([]byte(passphrase))
+	if err != nil {
+		if cfg.KDF != nil {
+			return nil, fmt.Errorf("the key could not be unlocked, is the passphrase right? (%w)", err)
+		}
+		return nil, err
+	}
+	return crypt, nil
 }
 
 // Group is a backup group on the server (a machine or Backup Set's backups).
@@ -72,6 +112,19 @@ func (a Access) client(backupType, backupID string, t time.Time) *pbscommon.PBSC
 		Insecure: a.Fingerprint != "", CompressionLevel: pbscommon.CompressionFastest,
 		Manifest: pbscommon.BackupManifest{BackupID: backupID, BackupType: backupType, BackupTime: t.Unix()},
 	}
+}
+
+// clientFor is client with the snapshot's key set when it is encrypted.
+func (a Access) clientFor(s SnapshotInfo, passphrase string) (*pbscommon.PBSClient, error) {
+	c := a.client(s.Type, s.BackupID, s.Time)
+	if s.Encrypted {
+		crypt, err := a.crypt(passphrase)
+		if err != nil {
+			return nil, err
+		}
+		c.Crypt = crypt
+	}
+	return c, nil
 }
 
 func isDataArchive(n string) bool {
@@ -144,17 +197,15 @@ func listSnapshotsOf(a Access, backupType, backupID string) ([]SnapshotInfo, err
 	return out, nil
 }
 
-var errEncrypted = fmt.Errorf("this snapshot is encrypted: restore it with the desktop app for now (keys are not handled in the text window yet)")
-
 // readCatalog lists the files of a snapshot from its catalog.
-func readCatalog(a Access, s SnapshotInfo) ([]CatalogItem, error) {
-	if s.Encrypted {
-		return nil, errEncrypted
-	}
+func readCatalog(a Access, s SnapshotInfo, passphrase string) ([]CatalogItem, error) {
 	if !s.HasCatalog {
 		return nil, fmt.Errorf("this snapshot has no catalog, so its files cannot be listed quickly")
 	}
-	c := a.client(s.Type, s.BackupID, s.Time)
+	c, err := a.clientFor(s, passphrase)
+	if err != nil {
+		return nil, err
+	}
 	c.Connect(true, s.Type)
 	defer c.Close()
 	ra, size, err := c.NewDIDXReaderAt(catalogName, 64, nil)
@@ -185,10 +236,7 @@ func readCatalog(a Access, s SnapshotInfo) ([]CatalogItem, error) {
 // none means everything) below dest. Several archives each get a folder of
 // their own below dest; one archive goes straight into it. It returns how many
 // files were written.
-func restoreFiles(a Access, s SnapshotInfo, includes []string, dest string, overwrite bool, progress func(file string)) (int, error) {
-	if s.Encrypted {
-		return 0, errEncrypted
-	}
+func restoreFiles(a Access, s SnapshotInfo, includes []string, dest string, overwrite bool, passphrase string, progress func(file string)) (int, error) {
 	if dest == "" {
 		return 0, fmt.Errorf("choose a folder to restore into")
 	}
@@ -198,7 +246,10 @@ func restoreFiles(a Access, s SnapshotInfo, includes []string, dest string, over
 	if len(s.Archives) == 0 {
 		return 0, fmt.Errorf("this snapshot holds no files to restore (a disk image is restored with the bare-metal restore)")
 	}
-	c := a.client(s.Type, s.BackupID, s.Time)
+	c, err := a.clientFor(s, passphrase)
+	if err != nil {
+		return 0, err
+	}
 	c.Connect(true, s.Type)
 	defer c.Close()
 

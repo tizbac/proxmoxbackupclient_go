@@ -95,7 +95,7 @@ func TestRestoreLive(t *testing.T) {
 		t.Fatalf("snapshot info: %+v", s)
 	}
 
-	cat, err := readCatalog(acc, s)
+	cat, err := readCatalog(acc, s, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestRestoreLive(t *testing.T) {
 	// restore a folder and one more file; the rest must stay out
 	dest := t.TempDir()
 	var seen []string
-	n, err := restoreFiles(acc, s, []string{arch + "/docs", arch + "/pictures/two.bin"}, dest, false, func(f string) { seen = append(seen, f) })
+	n, err := restoreFiles(acc, s, []string{arch + "/docs", arch + "/pictures/two.bin"}, dest, false, "", func(f string) { seen = append(seen, f) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestRestoreLive(t *testing.T) {
 
 	// everything, into a fresh folder
 	all := t.TempDir()
-	if _, err := restoreFiles(acc, s, nil, all, false, nil); err != nil {
+	if _, err := restoreFiles(acc, s, nil, all, false, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	for name, data := range files {

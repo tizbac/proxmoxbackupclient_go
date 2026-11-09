@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,6 +43,8 @@ type restoreView struct {
 	children map[string][]CatalogItem
 	selected map[string]bool
 	running  bool
+	// the key's passphrase, once asked for, for this snapshot
+	passphrase string
 }
 
 func (a *App) buildRestore() tview.Primitive {
@@ -282,6 +285,7 @@ func (r *restoreView) pickSnapshot(row int) {
 		return
 	}
 	r.snap = r.snaps[row-1]
+	r.passphrase = ""
 	s := r.snap
 	r.mu.Unlock()
 	if len(s.Archives) == 0 {
@@ -290,19 +294,82 @@ func (r *restoreView) pickSnapshot(row int) {
 	}
 	root := tview.NewTreeNode(tag(colDim) + "reading the file list...").SetSelectable(false)
 	r.tree.SetRoot(root).SetCurrentNode(root)
+	r.mu.Lock()
+	r.selected = map[string]bool{} // the ticks of the snapshot before do not carry over
+	r.mu.Unlock()
+	r.refreshInfo()
 	r.show(2)
+	r.readCatalog(s, "")
+}
+
+// readCatalog reads the file list; an encrypted snapshot whose key needs a
+// passphrase asks for it, and tries again with it.
+func (r *restoreView) readCatalog(s SnapshotInfo, passphrase string) {
 	srv := r.serverID()
 	go func() {
-		items, err := r.a.be.RestoreCatalog(srv, s)
+		items, err := r.a.be.RestoreCatalog(srv, s, passphrase)
 		r.a.app.QueueUpdateDraw(func() {
-			if err != nil {
+			switch {
+			case errors.Is(err, ErrNeedPassphrase):
+				r.askPassphrase("", func(p string) { r.readCatalog(s, p) })
+			case err != nil && passphrase != "" && !errors.Is(err, ErrNoKey) && strings.Contains(err.Error(), "could not be unlocked"):
+				r.askPassphrase("That passphrase did not unlock the key. Try again.", func(p string) { r.readCatalog(s, p) })
+			case err != nil:
 				r.a.errorBox(describeErr(err))
 				r.show(1)
-				return
+			default:
+				r.mu.Lock()
+				r.passphrase = passphrase
+				r.mu.Unlock()
+				r.loadTree(items)
 			}
-			r.loadTree(items)
 		})
 	}()
+}
+
+// askPassphrase shows a masked field for the key's passphrase; Esc goes back
+// to the snapshot list.
+func (r *restoreView) askPassphrase(note string, then func(string)) {
+	a := r.a
+	field := tview.NewInputField().SetLabel("Passphrase ").SetFieldWidth(40).SetMaskCharacter('*')
+	form := styleForm(tview.NewForm()).AddFormItem(field)
+	text := "This backup is encrypted. Enter the passphrase of the key."
+	if note != "" {
+		text = note
+	}
+	form.AddTextView("", tag(colDim)+text, 56, 2, true, false)
+	form.SetTitle(" Encrypted backup ")
+	closeAsk := func() {
+		a.pages.RemovePage("passphrase")
+		a.modal = false
+	}
+	form.AddButton("Unlock", func() {
+		p := field.GetText()
+		closeAsk()
+		if p == "" {
+			r.show(1)
+			return
+		}
+		then(p)
+	})
+	form.AddButton("Cancel", func() {
+		closeAsk()
+		r.show(1)
+	})
+	form.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+		if ev.Key() == tcell.KeyEscape {
+			closeAsk()
+			r.show(1)
+			return nil
+		}
+		return ev
+	})
+	box := tview.NewFlex().AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).AddItem(nil, 0, 1, false).AddItem(form, 11, 0, true).AddItem(nil, 0, 1, false), 66, 0, true).
+		AddItem(nil, 0, 1, false)
+	a.modal = true
+	a.pages.AddPage("passphrase", box, true, true)
+	a.app.SetFocus(form)
 }
 
 func parentOf(p string) string {
@@ -549,9 +616,12 @@ func (r *restoreView) start() {
 	r.show(4)
 	srv := r.serverID()
 	overwrite := r.overwrite.IsChecked()
+	r.mu.Lock()
+	pass := r.passphrase
+	r.mu.Unlock()
 	go func() {
 		count := 0
-		n, err := r.a.be.RestoreFiles(srv, snap, inc, dest, overwrite, func(file string) {
+		n, err := r.a.be.RestoreFiles(srv, snap, inc, dest, overwrite, pass, func(file string) {
 			count++
 			c := count
 			r.a.app.QueueUpdateDraw(func() {

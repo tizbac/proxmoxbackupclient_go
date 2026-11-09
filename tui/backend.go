@@ -52,8 +52,10 @@ type Backend interface {
 	// means everything) into dest. serverID "" is the default server.
 	RestoreGroups(serverID string) ([]Group, error)
 	RestoreSnapshots(serverID string, g Group) ([]SnapshotInfo, error)
-	RestoreCatalog(serverID string, s SnapshotInfo) ([]CatalogItem, error)
-	RestoreFiles(serverID string, s SnapshotInfo, includes []string, dest string, overwrite bool, progress func(file string)) (int, error)
+	// For an encrypted snapshot the server's key is used; passphrase is the key's
+	// passphrase when it is not stored (ErrNeedPassphrase says it is wanted).
+	RestoreCatalog(serverID string, s SnapshotInfo, passphrase string) ([]CatalogItem, error)
+	RestoreFiles(serverID string, s SnapshotInfo, includes []string, dest string, overwrite bool, passphrase string, progress func(file string)) (int, error)
 	Name() string
 }
 

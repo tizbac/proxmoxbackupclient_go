@@ -196,6 +196,51 @@ func TestSendTestMailNeedsAnAddress(t *testing.T) {
 	h.waitFor("test message sent to someone@example.com")
 }
 
+func TestEncryptedBackupAsksForThePassphrase(t *testing.T) {
+	h := newHarness(t, 130, 40)
+	h.typ('6')
+	h.waitFor("host/DESKTOP-01-photos")
+	h.key(tcell.KeyDown, 0) // the photos group, whose snapshots are encrypted
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Encrypted")
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Enter the passphrase")
+	// a wrong passphrase is explained and asked for again
+	h.typeText("wrongpass")
+	if strings.Contains(h.screen(), "wrongpass") {
+		t.Errorf("the passphrase was shown:\n%s", h.screen())
+	}
+	h.key(tcell.KeyTab, 0)
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("did not unlock the key")
+	h.typeText(demoPassphrase)
+	h.key(tcell.KeyTab, 0)
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Selection")
+	h.waitFor("Documents")
+	// the restore goes through with the passphrase given once
+	h.typ('a')
+	h.key(tcell.KeyPgDn, 0)
+	h.waitFor("Restore into")
+	h.key(tcell.KeyTab, 0)
+	h.key(tcell.KeyTab, 0)
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Restore finished")
+}
+
+func TestCancellingThePassphraseGoesBackToTheSnapshots(t *testing.T) {
+	h := newHarness(t, 130, 40)
+	h.typ('6')
+	h.waitFor("host/DESKTOP-01-photos")
+	h.key(tcell.KeyDown, 0)
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Encrypted")
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("Enter the passphrase")
+	h.key(tcell.KeyEscape, 0)
+	h.waitFor("Snapshots")
+}
+
 func TestFetchFingerprintOfATLSServer(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer srv.Close()

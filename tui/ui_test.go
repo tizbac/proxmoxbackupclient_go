@@ -550,6 +550,23 @@ func TestDumpScreens(t *testing.T) {
 		}},
 		{"14-restore-destination", func() { h.key(tcell.KeyPgDn, 0); time.Sleep(300 * time.Millisecond) }},
 		{"15-one-off", func() { h.key(tcell.KeyEscape, 0); h.typ('1'); h.typ('b') }},
+		{"16-reports", func() { h.key(tcell.KeyEscape, 0); h.typ('7') }},
+		{"17-log-files", func() { h.typ('8') }},
+		{"18-servers", func() { h.typ('5') }},
+		{"19-server-edit", func() { h.key(tcell.KeyEnter, 0) }},
+		{"20-preferences", func() { h.key(tcell.KeyEscape, 0); h.sim.InjectKey(tcell.KeyF9, 0, tcell.ModNone) }},
+		{"21-passphrase", func() {
+			h.sim.InjectKey(tcell.KeyF6, 0, tcell.ModNone)
+			time.Sleep(400 * time.Millisecond)
+			h.key(tcell.KeyEscape, 0) // files -> snapshots
+			h.key(tcell.KeyEscape, 0) // snapshots -> source
+			h.key(tcell.KeyDown, 0)   // the photos group, encrypted
+			h.key(tcell.KeyEnter, 0)
+			time.Sleep(400 * time.Millisecond)
+			h.key(tcell.KeyEnter, 0)
+			time.Sleep(400 * time.Millisecond)
+			h.typeText("secret")
+		}},
 	}
 	for _, s := range shots {
 		s.do()

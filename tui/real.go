@@ -244,7 +244,7 @@ func (b *serviceBackend) ReadLogFile(f LogFile, filter string, hideChunks bool) 
 }
 
 func (b *serviceBackend) access(serverID string) (Access, error) {
-	acc, err := b.c.PBSAccess(serverID, false)
+	acc, err := b.c.PBSAccess(serverID, true)
 	if err != nil {
 		return Access{}, err
 	}
@@ -267,20 +267,20 @@ func (b *serviceBackend) RestoreSnapshots(serverID string, g Group) ([]SnapshotI
 	return listSnapshotsOf(acc, g.Type, g.ID)
 }
 
-func (b *serviceBackend) RestoreCatalog(serverID string, s SnapshotInfo) ([]CatalogItem, error) {
+func (b *serviceBackend) RestoreCatalog(serverID string, s SnapshotInfo, passphrase string) ([]CatalogItem, error) {
 	acc, err := b.access(serverID)
 	if err != nil {
 		return nil, err
 	}
-	return readCatalog(acc, s)
+	return readCatalog(acc, s, passphrase)
 }
 
-func (b *serviceBackend) RestoreFiles(serverID string, s SnapshotInfo, includes []string, dest string, overwrite bool, progress func(file string)) (int, error) {
+func (b *serviceBackend) RestoreFiles(serverID string, s SnapshotInfo, includes []string, dest string, overwrite bool, passphrase string, progress func(file string)) (int, error) {
 	acc, err := b.access(serverID)
 	if err != nil {
 		return 0, err
 	}
-	return restoreFiles(acc, s, includes, dest, overwrite, progress)
+	return restoreFiles(acc, s, includes, dest, overwrite, passphrase, progress)
 }
 
 func (b *serviceBackend) RunLog(backupID string, at time.Time, hideChunks bool) ([]string, error) {
