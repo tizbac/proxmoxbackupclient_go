@@ -49,8 +49,29 @@ func newHarness(t *testing.T, w, h int) *harness {
 	return hn
 }
 
+// contents copies the simulated screen on the UI goroutine, the one that draws
+// it, so the test never reads the buffer while it is being written.
+func (h *harness) contents() ([]tcell.SimCell, int, int) {
+	type snap struct {
+		cells []tcell.SimCell
+		w, h  int
+	}
+	ch := make(chan snap, 1)
+	h.a.app.QueueUpdate(func() {
+		c, w, hh := h.sim.GetContents()
+		ch <- snap{append([]tcell.SimCell(nil), c...), w, hh}
+	})
+	select {
+	case s := <-ch:
+		return s.cells, s.w, s.h
+	case <-time.After(5 * time.Second):
+		h.t.Fatal("the window did not answer a screen read")
+		return nil, 0, 0
+	}
+}
+
 func (h *harness) screen() string {
-	cells, w, hgt := h.sim.GetContents()
+	cells, w, hgt := h.contents()
 	var b strings.Builder
 	for y := 0; y < hgt; y++ {
 		for x := 0; x < w; x++ {
@@ -577,7 +598,7 @@ func TestDumpScreens(t *testing.T) {
 }
 
 func (h *harness) htmlScreen() string {
-	cells, w, hgt := h.sim.GetContents()
+	cells, w, hgt := h.contents()
 	var b strings.Builder
 	b.WriteString(`<!doctype html><meta charset=utf-8><body style="margin:0;background:#0b0f14"><div style="display:inline-block;margin:14px;border:1px solid #2b3440;border-radius:6px;overflow:hidden"><pre style="margin:0;font:15px/1.25 'Cascadia Mono',Consolas,monospace;background:#12171e">`)
 	hex := func(c tcell.Color, def string) string {
