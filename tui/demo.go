@@ -199,7 +199,7 @@ func (d *demoBackend) SaveSet(doc map[string]interface{}, isNew bool) error {
 			return fmt.Errorf("a Backup Set named %q exists already", name)
 		}
 	}
-	if boolean(doc, "enabled") == false && isNew {
+	if !boolean(doc, "enabled") && isNew {
 		doc["enabled"] = true
 	}
 	set := toSet(doc)

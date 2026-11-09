@@ -26,7 +26,7 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	restoreCheck := fs.Bool("restore-check", false, "with -check: list the server's backups, then restore a few small files of the newest readable snapshot into a temporary folder and delete it")
 	write := fs.Bool("write", false, "with -check: also create, change and delete a temporary Backup Set, to prove the service takes what the editor sends")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, `Usage: salvanza-cli tui [-url <address>] [-token-file <file>] [-demo] [-check]
+		sayln(stderr, `Usage: salvanza-cli tui [-url <address>] [-token-file <file>] [-demo] [-check]
 
 A text-mode window for the Backup Sets, running backups, history, Message Log
 and servers of this computer's Salvanza service. Run it as administrator
@@ -69,7 +69,7 @@ e enable or disable, g refresh, ? help, q quit.`)
 		log.SetOutput(io.Discard)
 	}
 	if err := NewApp(be, version).Run(); err != nil {
-		fmt.Fprintln(stderr, "salvanza-cli tui:", err)
+		sayln(stderr, "salvanza-cli tui:", err)
 		return 1
 	}
 	return 0
@@ -80,39 +80,39 @@ e enable or disable, g refresh, ? help, q quit.`)
 func Check(be Backend, stdout, stderr io.Writer) int {
 	st, err := be.Status()
 	if err != nil {
-		fmt.Fprintln(stderr, "service: "+describeErr(err))
+		sayln(stderr, "service: "+describeErr(err))
 		return 1
 	}
-	fmt.Fprintf(stdout, "service: running, version %s, %d backup(s) active\n", st.Version, st.ActiveJobs)
+	say(stdout, "service: running, version %s, %d backup(s) active\n", st.Version, st.ActiveJobs)
 	sets, err := be.Sets()
 	if err != nil {
-		fmt.Fprintln(stderr, "sets: "+describeErr(err))
+		sayln(stderr, "sets: "+describeErr(err))
 		return 1
 	}
-	fmt.Fprintf(stdout, "backup sets: %d\n", len(sets))
+	say(stdout, "backup sets: %d\n", len(sets))
 	for _, s := range sets {
 		state := "on"
 		if !s.Enabled {
 			state = "off"
 		}
-		fmt.Fprintf(stdout, "  %-48s %-8s %-3s %-28s next %s\n", s.Name, s.Type, state, s.Schedule, when(s.NextRun))
+		say(stdout, "  %-48s %-8s %-3s %-28s next %s\n", s.Name, s.Type, state, s.Schedule, when(s.NextRun))
 	}
 	runs, err := be.Runs()
 	if err != nil {
-		fmt.Fprintln(stderr, "runs: "+describeErr(err))
+		sayln(stderr, "runs: "+describeErr(err))
 		return 1
 	}
-	fmt.Fprintf(stdout, "runs known: %d\n", len(runs))
+	say(stdout, "runs known: %d\n", len(runs))
 	hist, _ := be.History()
 	msgs, _ := be.Messages()
 	srv, _ := be.Servers()
-	fmt.Fprintf(stdout, "history: %d, messages: %d, servers: %d\n", len(hist), len(msgs), len(srv))
+	say(stdout, "history: %d, messages: %d, servers: %d\n", len(hist), len(msgs), len(srv))
 	for _, s := range srv {
 		def := ""
 		if s.Default {
 			def = " (default)"
 		}
-		fmt.Fprintf(stdout, "  server %s%s: %s datastore %s\n", s.Name, def, s.URL, s.Datastore)
+		say(stdout, "  server %s%s: %s datastore %s\n", s.Name, def, s.URL, s.Datastore)
 	}
 	return 0
 }
@@ -123,10 +123,10 @@ func Check(be Backend, stdout, stderr io.Writer) int {
 func CheckRestore(be Backend, stdout, stderr io.Writer) int {
 	groups, err := be.RestoreGroups("")
 	if err != nil {
-		fmt.Fprintln(stderr, "groups: "+describeErr(err))
+		sayln(stderr, "groups: "+describeErr(err))
 		return 1
 	}
-	fmt.Fprintf(stdout, "backup groups on the default server: %d\n", len(groups))
+	say(stdout, "backup groups on the default server: %d\n", len(groups))
 	for _, g := range groups {
 		snaps, err := be.RestoreSnapshots("", g)
 		if err != nil || len(snaps) == 0 {
@@ -160,14 +160,14 @@ func CheckRestore(be Backend, stdout, stderr io.Writer) int {
 			}
 			dest, err := os.MkdirTemp("", "tui-restore-check-")
 			if err != nil {
-				fmt.Fprintln(stderr, err)
+				sayln(stderr, err)
 				return 1
 			}
-			defer os.RemoveAll(dest)
-			fmt.Fprintf(stdout, "snapshot %s/%s %s: %d catalog entries, restoring %d files\n", g.Type, g.ID, s.Time.Format(time.RFC3339), len(items), len(inc))
+			defer func() { _ = os.RemoveAll(dest) }()
+			say(stdout, "snapshot %s/%s %s: %d catalog entries, restoring %d files\n", g.Type, g.ID, s.Time.Format(time.RFC3339), len(items), len(inc))
 			n, err := be.RestoreFiles("", s, inc, dest, false, nil)
 			if err != nil {
-				fmt.Fprintln(stderr, "restore: "+describeErr(err))
+				sayln(stderr, "restore: "+describeErr(err))
 				return 1
 			}
 			var got int
@@ -178,14 +178,14 @@ func CheckRestore(be Backend, stdout, stderr io.Writer) int {
 				return nil
 			})
 			if got < len(inc) {
-				fmt.Fprintf(stderr, "restore: wrote %d files, expected %d (reported %d)\n", got, len(inc), n)
+				say(stderr, "restore: wrote %d files, expected %d (reported %d)\n", got, len(inc), n)
 				return 1
 			}
-			fmt.Fprintf(stdout, "restored %d files into a temporary folder, removed again: the restore path works\n", got)
+			say(stdout, "restored %d files into a temporary folder, removed again: the restore path works\n", got)
 			return 0
 		}
 	}
-	fmt.Fprintln(stdout, "no unencrypted snapshot with a file catalog was found to try a restore on")
+	sayln(stdout, "no unencrypted snapshot with a file catalog was found to try a restore on")
 	return 0
 }
 
@@ -223,39 +223,39 @@ func CheckWrite(be Backend, stdout, stderr io.Writer) int {
 		return Set{}, false
 	}
 	if err := be.SaveSet(doc, true); err != nil {
-		fmt.Fprintln(stderr, "create: "+describeErr(err))
+		sayln(stderr, "create: "+describeErr(err))
 		return 1
 	}
 	s, ok := find(name)
 	if !ok {
-		fmt.Fprintln(stderr, "create: the new set is not in the list")
+		sayln(stderr, "create: the new set is not in the list")
 		return 1
 	}
-	fmt.Fprintf(stdout, "created %q, schedule %q\n", s.Name, s.Schedule)
+	say(stdout, "created %q, schedule %q\n", s.Name, s.Schedule)
 	// change it as the editor does: the service's own document plus the changes
 	upd := copyMap(s.Raw)
 	upd["name"] = name + " changed"
 	upd["scheduleMode"] = "scheduled"
 	upd["schedules"] = []interface{}{map[string]interface{}{"id": "s1", "enabled": true, "unit": "days", "every": 1.0, "at": "04:45", "weekdays": []interface{}{"Mon", "Fri"}}}
 	if err := be.SaveSet(upd, false); err != nil {
-		fmt.Fprintln(stderr, "change: "+describeErr(err))
+		sayln(stderr, "change: "+describeErr(err))
 		return 1
 	}
 	s2, ok := find(name + " changed")
 	if !ok || s2.ID != id {
-		fmt.Fprintln(stderr, "change: the changed set is not in the list")
+		sayln(stderr, "change: the changed set is not in the list")
 		return 1
 	}
-	fmt.Fprintf(stdout, "changed to %q, schedule %q, next run %s\n", s2.Name, s2.Schedule, when(s2.NextRun))
+	say(stdout, "changed to %q, schedule %q, next run %s\n", s2.Name, s2.Schedule, when(s2.NextRun))
 	if err := be.DeleteSet(id); err != nil {
-		fmt.Fprintln(stderr, "delete: "+describeErr(err))
+		sayln(stderr, "delete: "+describeErr(err))
 		return 1
 	}
 	if _, ok := find(name + " changed"); ok {
-		fmt.Fprintln(stderr, "delete: the set is still listed")
+		sayln(stderr, "delete: the set is still listed")
 		return 1
 	}
-	fmt.Fprintln(stdout, "deleted again: the editor's documents are accepted by this service")
+	sayln(stdout, "deleted again: the editor's documents are accepted by this service")
 	return 0
 }
 
@@ -296,3 +296,8 @@ func exists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
 }
+
+// say and sayln write to an output stream; a failed write to a closed pipe is not worth stopping for.
+func say(w io.Writer, format string, args ...interface{}) { _, _ = fmt.Fprintf(w, format, args...) }
+
+func sayln(w io.Writer, args ...interface{}) { _, _ = fmt.Fprintln(w, args...) }

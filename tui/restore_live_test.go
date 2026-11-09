@@ -175,7 +175,7 @@ func deleteGroup(t *testing.T, base, store, authID, secret, id string) {
 		t.Logf("cleanup: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		t.Logf("cleanup of %s: HTTP %d (delete it by hand)", id, resp.StatusCode)
 	}

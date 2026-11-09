@@ -23,8 +23,7 @@ func (a *App) openLog() {
 	view := tview.NewTextView().SetDynamicColors(true).SetScrollable(true).SetWrap(false)
 	view.SetBorder(true).SetTitle(fmt.Sprintf(" Log: %s, %s ", h.Name, when(h.At))).SetTitleAlign(tview.AlignLeft)
 	hide := false
-	var load func()
-	load = func() {
+	load := func() {
 		view.SetText(tag(colDim) + "reading the log...")
 		go func() {
 			lines, err := a.be.RunLog(h.BackupID, h.At, hide)

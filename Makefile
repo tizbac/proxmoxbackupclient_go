@@ -222,7 +222,7 @@ gui-dev:
 # pkg/security are standalone modules and MUST be built with GOWORK=off,
 # otherwise the go tool refuses to run ("directory prefix . does not contain
 # modules listed in go.work").
-WORKSPACE_MODULES  := pbscommon clientcommon machinebackuplib machinebackup snapshot nbd gui gui/api cli
+WORKSPACE_MODULES  := pbscommon clientcommon machinebackuplib machinebackup snapshot nbd gui gui/api cli tui
 STANDALONE_MODULES := directorybackup pkg/retry pkg/security
 
 # Tests

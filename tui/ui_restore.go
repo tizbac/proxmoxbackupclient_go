@@ -197,10 +197,6 @@ func (r *restoreView) serverID() string {
 	return ""
 }
 
-func (r *restoreView) fail(what string, err error) {
-	r.a.app.QueueUpdateDraw(func() { r.a.errorBox(what + ": " + describeErr(err)) })
-}
-
 func (r *restoreView) loadGroups() {
 	r.groupsTable.Clear()
 	header(r.groupsTable, "Backup", "Backups", "Latest")

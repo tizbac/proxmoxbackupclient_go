@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -73,8 +72,6 @@ type Server struct {
 	Login                                            string
 	Encrypted                                        bool
 }
-
-var errNotOffered = errors.New("this service does not offer that")
 
 func str(m map[string]interface{}, keys ...string) string {
 	for _, k := range keys {
@@ -240,10 +237,9 @@ func num(m map[string]interface{}, k string) float64 {
 
 func toSet(m map[string]interface{}) Set {
 	typ := str(m, "backupType")
-	if typ == "directory" || typ == "" {
+	switch typ {
+	case "directory", "":
 		typ = "folder"
-	} else if typ == "machine" {
-		typ = "machine"
 	}
 	src := strList(m, "backupDirs")
 	if len(src) == 0 {
