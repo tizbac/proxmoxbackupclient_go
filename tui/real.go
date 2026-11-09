@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -11,8 +12,9 @@ import (
 
 // serviceBackend is the real backend: the local service API.
 type serviceBackend struct {
-	c    *api.Client
-	name string
+	c       *api.Client
+	name    string
+	keysDir string // the service's keys folder, beside its token file
 }
 
 func newServiceBackend(url, tokenPath string) *serviceBackend {
@@ -22,7 +24,7 @@ func newServiceBackend(url, tokenPath string) *serviceBackend {
 	} else {
 		c = api.NewClient(tokenPath)
 	}
-	return &serviceBackend{c: c, name: "service"}
+	return &serviceBackend{c: c, name: "service", keysDir: filepath.Join(filepath.Dir(tokenPath), "keys")}
 }
 
 func (b *serviceBackend) Name() string { return b.name }
@@ -126,7 +128,8 @@ func (b *serviceBackend) Servers() ([]Server, error) {
 				ID: id, Name: firstNonEmpty(str(s, "name"), id), URL: str(s, "baseurl"), Datastore: str(s, "datastore"),
 				Namespace: str(s, "namespace"), Fingerprint: str(s, "certfingerprint"), Default: id == def,
 				Login: login, Encrypted: str(s, "encryption_key_file") != "",
-				AuthID: str(s, "authid"), Username: str(s, "username"), Description: str(s, "description"), Raw: s,
+				AuthID: str(s, "authid"), Username: str(s, "username"), Description: str(s, "description"),
+				KeyFile: str(s, "encryption_key_file"), PassphraseStored: boolean(s, "encryption_key_passphrase_set"), Raw: s,
 			})
 		}
 	}
@@ -139,6 +142,40 @@ func (b *serviceBackend) Servers() ([]Server, error) {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	return out, nil
+}
+
+func (b *serviceBackend) KeyInfo(path string) (KeyInfo, error) {
+	var raw map[string]interface{}
+	if err := b.c.Call("InspectEncryptionKeyFile", &raw, path); err != nil {
+		return KeyInfo{}, err
+	}
+	return keyInfoFrom(raw), nil
+}
+
+func (b *serviceBackend) GenerateKey(name string) (KeyInfo, error) {
+	var raw map[string]interface{}
+	if err := b.c.Call("GenerateEncryptionKeyFile", &raw, filepath.Join(b.keysDir, name)); err != nil {
+		return KeyInfo{}, err
+	}
+	return keyInfoFrom(raw), nil
+}
+
+// StoreKey saves a key file's text in the service's keys folder (never over an
+// existing file) and describes it.
+func (b *serviceBackend) StoreKey(name string, data []byte) (KeyInfo, error) {
+	path, err := b.c.SaveKey(name, data)
+	if err != nil {
+		return KeyInfo{}, err
+	}
+	return b.KeyInfo(path)
+}
+
+func (b *serviceBackend) RestrictKey(path string) (KeyInfo, error) {
+	var raw map[string]interface{}
+	if err := b.c.Call("RestrictEncryptionKeyFileAccess", &raw, path); err != nil {
+		return KeyInfo{}, err
+	}
+	return keyInfoFrom(raw), nil
 }
 
 func (b *serviceBackend) SaveServer(doc map[string]interface{}, isNew bool) error {

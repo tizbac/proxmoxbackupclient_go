@@ -48,6 +48,21 @@ func prefsFromConfig(doc map[string]interface{}) Prefs {
 	}
 }
 
+// KeyInfo describes a key file without the key: what the service reports.
+type KeyInfo struct {
+	Path, Fingerprint, Created, Hint, Reason string
+	Exists, Usable                           bool
+	PassphraseProtected, OpenToOthers        bool
+}
+
+func keyInfoFrom(m map[string]interface{}) KeyInfo {
+	return KeyInfo{
+		Path: str(m, "path"), Fingerprint: str(m, "fingerprint"), Created: str(m, "created"), Hint: str(m, "hint"),
+		Reason: str(m, "reason"), Exists: boolean(m, "exists"), Usable: boolean(m, "usable"),
+		PassphraseProtected: boolean(m, "passphrase_protected"), OpenToOthers: boolean(m, "open_to_others"),
+	}
+}
+
 // LogFile is one of the service's log files.
 type LogFile struct {
 	Folder            int

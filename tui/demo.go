@@ -24,6 +24,7 @@ type demoBackend struct {
 	servers  []Server
 	prefs    Prefs
 	prefsSet bool
+	keys     map[string]KeyInfo
 }
 
 func newDemoBackend() *demoBackend {
@@ -352,11 +353,11 @@ func (d *demoBackend) RestoreFiles(serverID string, s SnapshotInfo, includes []s
 func demoServer(id, name, url, store, ns, fp, authID string, def bool) Server {
 	raw := map[string]interface{}{
 		"id": id, "name": name, "baseurl": url, "datastore": store, "namespace": ns, "certfingerprint": fp,
-		"authid": authID, "secret_set": true, "encryption_key_file": "keys/key.json",
+		"authid": authID, "secret_set": true, "encryption_key_file": "keys/key.json", "encryption_key_passphrase_set": true,
 	}
 	return Server{
 		ID: id, Name: name, URL: url, Datastore: store, Namespace: ns, Fingerprint: fp, Default: def, Login: "token",
-		Encrypted: true, AuthID: authID, Raw: raw,
+		Encrypted: true, AuthID: authID, KeyFile: "keys/key.json", PassphraseStored: true, Raw: raw,
 	}
 }
 
@@ -391,6 +392,7 @@ func (d *demoBackend) SaveServer(doc map[string]interface{}, isNew bool) error {
 			d.servers[i] = demoServer(id, str(doc, "name"), str(doc, "baseurl"), str(doc, "datastore"), str(doc, "namespace"),
 				str(doc, "certfingerprint"), str(doc, "authid"), s.Default)
 			d.servers[i].Raw = doc
+			applyKeyFields(&d.servers[i], doc, s.PassphraseStored)
 			return nil
 		}
 	}
@@ -400,8 +402,24 @@ func (d *demoBackend) SaveServer(doc map[string]interface{}, isNew bool) error {
 	s := demoServer(id, str(doc, "name"), str(doc, "baseurl"), str(doc, "datastore"), str(doc, "namespace"),
 		str(doc, "certfingerprint"), str(doc, "authid"), len(d.servers) == 0)
 	s.Raw = doc
+	applyKeyFields(&s, doc, false)
 	d.servers = append(d.servers, s)
 	return nil
+}
+
+// applyKeyFields takes the key settings of a saved server document the way the
+// service does: an empty passphrase keeps the stored one, the clear flag drops it.
+func applyKeyFields(s *Server, doc map[string]interface{}, storedBefore bool) {
+	s.KeyFile = str(doc, "encryption_key_file")
+	s.Encrypted = s.KeyFile != ""
+	switch {
+	case s.KeyFile == "" || boolean(doc, "clear_encryption_key_passphrase"):
+		s.PassphraseStored = false
+	case str(doc, "encryption_key_passphrase") != "":
+		s.PassphraseStored = true
+	default:
+		s.PassphraseStored = storedBefore
+	}
 }
 
 func (d *demoBackend) DeleteServer(id string) error {
@@ -460,6 +478,69 @@ func (d *demoBackend) PinFingerprint(id, fingerprint string) error {
 		}
 	}
 	return fmt.Errorf("no such server")
+}
+
+// The demo's keys: a name and a fingerprint, in memory.
+func (d *demoBackend) KeyInfo(path string) (KeyInfo, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if k, ok := d.keys[path]; ok {
+		return k, nil
+	}
+	if path == "keys/key.json" { // the demo servers' own key
+		return KeyInfo{Path: path, Exists: true, Usable: true, Fingerprint: "ab:12:cd:34:ef:56:78:90", Created: "2026-10-01T09:00:00Z", PassphraseProtected: true}, nil
+	}
+	return KeyInfo{Path: path, Reason: "file not found or not readable"}, nil
+}
+
+func (d *demoBackend) storeDemoKey(path string, protected bool) KeyInfo {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.keys == nil {
+		d.keys = map[string]KeyInfo{}
+	}
+	d.nextID++
+	k := KeyInfo{Path: path, Exists: true, Usable: true, PassphraseProtected: protected, OpenToOthers: true,
+		Fingerprint: fmt.Sprintf("de:mo:%02x:%02x:aa:bb:cc:dd", d.nextID, d.nextID*7%256), Created: time.Now().Format(time.RFC3339)}
+	d.keys[path] = k
+	return k
+}
+
+func (d *demoBackend) GenerateKey(name string) (KeyInfo, error) {
+	path := "keys/" + name
+	d.mu.Lock()
+	_, exists := d.keys[path]
+	d.mu.Unlock()
+	if exists {
+		return KeyInfo{}, fmt.Errorf("%s already exists: it is not overwritten, as that would make the snapshots already encrypted with it unreadable", path)
+	}
+	return d.storeDemoKey(path, false), nil
+}
+
+func (d *demoBackend) StoreKey(name string, data []byte) (KeyInfo, error) {
+	if len(data) == 0 {
+		return KeyInfo{}, fmt.Errorf("the key file is empty")
+	}
+	path := "keys/" + name
+	d.mu.Lock()
+	_, exists := d.keys[path]
+	d.mu.Unlock()
+	if exists {
+		return KeyInfo{}, fmt.Errorf("%s already exists: it is not overwritten", path)
+	}
+	return d.storeDemoKey(path, strings.Contains(string(data), "kdf")), nil
+}
+
+func (d *demoBackend) RestrictKey(path string) (KeyInfo, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	k, ok := d.keys[path]
+	if !ok {
+		return KeyInfo{}, fmt.Errorf("not a usable key file: file not found")
+	}
+	k.OpenToOthers = false
+	d.keys[path] = k
+	return k, nil
 }
 
 func (d *demoBackend) Prefs() (Prefs, error) {

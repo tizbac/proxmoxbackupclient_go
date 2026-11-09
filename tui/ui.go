@@ -55,6 +55,7 @@ type App struct {
 	srvDetail  *tview.TextView
 	rs         *restoreView
 	pf         *prefsView
+	keyCache   map[string]KeyInfo
 	repTable   *tview.Table
 	repFail    *tview.TextView
 	repPeriod  int
@@ -683,6 +684,7 @@ func (a *App) renderSetDetail() {
 	line("Schedule", s.Schedule)
 	line("Next run", when(s.NextRun))
 	line("Last run", when(s.LastRun))
+	line("Encryption", a.setEncryption(s))
 	if len(s.Sources) > 0 {
 		b.WriteString(tag(colDim) + "Sources[-]\n")
 		for _, src := range s.Sources {
@@ -877,7 +879,9 @@ func (a *App) renderSrvDetail() {
 	}
 	s := a.servers[row-1]
 	enc := "no"
-	if s.Encrypted {
+	if s.KeyFile != "" {
+		enc = tag(colOK) + "yes"
+	} else if s.Encrypted {
 		enc = tag(colOK) + "yes, with a key"
 	}
 	var b strings.Builder
@@ -893,6 +897,34 @@ func (a *App) renderSrvDetail() {
 	line("Login", s.Login)
 	line("Encrypted", enc)
 	line("Fingerprint", s.Fingerprint)
+	if s.KeyFile != "" {
+		b.WriteString("\n")
+		line("Key file", tview.Escape(s.KeyFile))
+		pass := "no, asked for when needed"
+		if s.PassphraseStored {
+			pass = "yes"
+		}
+		if k, ok := a.keyCache[s.KeyFile]; ok {
+			switch {
+			case !k.Exists || !k.Usable:
+				line("Key", tag(colErr)+tview.Escape(firstNonEmpty(k.Reason, "not usable")))
+			default:
+				line("Key", "fingerprint "+k.Fingerprint)
+				if k.PassphraseProtected {
+					line("Passphrase", "the key is protected; stored: "+pass)
+				} else {
+					line("Passphrase", "the key has none")
+				}
+				if k.OpenToOthers {
+					line("Access", tag(colWarn)+"other accounts can read the key file (restrict it in the editor)")
+				}
+			}
+		} else {
+			line("Passphrase stored", pass)
+			path := s.KeyFile
+			go a.loadKeyInfo(path)
+		}
+	}
 	a.srvDetail.SetText(b.String())
 }
 
@@ -1004,10 +1036,17 @@ func (a *App) confirm(text string, yes func()) {
 	m := tview.NewModal().SetText(text).AddButtons([]string{"Yes", "No"})
 	m.SetBackgroundColor(colPanel).SetTextColor(colText)
 	m.SetButtonBackgroundColor(colAccent)
+	prev := a.modal // a form under the question (the server editor, say) stays open
 	m.SetDoneFunc(func(i int, label string) {
 		a.pages.RemovePage("modal")
-		a.modal = false
-		a.switchTab(a.tab)
+		a.modal = prev
+		if prev {
+			if _, front := a.pages.GetFrontPage(); front != nil {
+				a.app.SetFocus(front)
+			}
+		} else {
+			a.switchTab(a.tab)
+		}
 		if label == "Yes" {
 			yes()
 		}

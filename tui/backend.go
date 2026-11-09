@@ -41,6 +41,12 @@ type Backend interface {
 	Prefs() (Prefs, error)
 	SavePrefs(old, now Prefs) error
 	SendTestMail(to string) error
+	// Encryption keys. The key file stays on the computer, in the service's keys
+	// folder; the window never shows key material, only fingerprints.
+	KeyInfo(path string) (KeyInfo, error)
+	GenerateKey(name string) (KeyInfo, error) // a new key, in the keys folder; never overwrites
+	StoreKey(name string, data []byte) (KeyInfo, error)
+	RestrictKey(path string) (KeyInfo, error)
 	// The service's log files, and a part of one.
 	LogFiles() ([]LogFile, error)
 	ReadLogFile(f LogFile, filter string, hideChunks bool) ([]string, error)
@@ -92,6 +98,8 @@ type Server struct {
 	Login                                            string
 	Encrypted                                        bool
 	AuthID, Username, Description                    string
+	KeyFile                                          string
+	PassphraseStored                                 bool
 	Raw                                              map[string]interface{}
 }
 

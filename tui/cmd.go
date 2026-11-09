@@ -23,6 +23,7 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	tokenFile := fs.String("token-file", "", "the service's api-token file (default: found in the service's settings folder)")
 	demo := fs.Bool("demo", false, "show invented data instead of connecting to the service")
 	check := fs.Bool("check", false, "connect, print what the service reports and exit (no window), for scripts")
+	encCheck := fs.Bool("encryption", false, "with -check: make a key, back a folder up to a real PBS with it and restore it (PBS from TUI_CHECK_PBS_* in the environment)")
 	restoreGroup := fs.String("restore-group", "", "with -restore-check: try only this backup ID")
 	restoreCheck := fs.Bool("restore-check", false, "with -check: list the server's backups, then restore a few small files of the newest readable snapshot into a temporary folder and delete it")
 	write := fs.Bool("write", false, "with -check: also create, change and delete a temporary Backup Set, to prove the service takes what the editor sends")
@@ -57,6 +58,9 @@ e enable or disable, g refresh, ? help, q quit.`)
 		code := Check(be, stdout, stderr)
 		if code == 0 && *write {
 			code = CheckWrite(be, stdout, stderr)
+		}
+		if code == 0 && *encCheck {
+			code = CheckEncryption(be, stdout, stderr)
 		}
 		if code == 0 && *restoreCheck {
 			code = CheckRestore(be, *restoreGroup, stdout, stderr)

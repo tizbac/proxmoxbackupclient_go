@@ -171,6 +171,9 @@ type serverEditor struct {
 	name, address, fingerprint, datastore, namespace, description *tview.InputField
 	login                                                         *tview.DropDown
 	tokenID, secret, username, password                           *tview.InputField
+	keyFile, keyPass                                              *tview.InputField
+	forgetPass                                                    *tview.Checkbox
+	serverID                                                      string
 }
 
 func (a *App) openServerEditor(s Server, isNew bool) {
@@ -195,6 +198,10 @@ func (a *App) openServerEditor(s Server, isNew bool) {
 	e.secret = in("Token secret ", "", 50).SetMaskCharacter('*')
 	e.username = in("User name ", str(e.orig, "username"), 40)
 	e.password = in("Password ", "", 50).SetMaskCharacter('*')
+	e.keyFile = in("Key file ", str(e.orig, "encryption_key_file"), 70)
+	e.keyPass = in("Key passphrase ", "", 40).SetMaskCharacter('*')
+	e.forgetPass = tview.NewCheckbox().SetLabel("Forget the stored passphrase ")
+	e.serverID = s.ID
 
 	hint := tag(colDim) + "Leave a secret or password empty to keep the one stored."
 	f1 := styleForm(tview.NewForm()).AddFormItem(e.name).AddFormItem(e.address).AddFormItem(e.fingerprint).
@@ -204,17 +211,30 @@ func (a *App) openServerEditor(s Server, isNew bool) {
 		AddFormItem(e.username).AddFormItem(e.password)
 	f2.AddTextView("", hint, 60, 1, true, false)
 	f2.SetTitle(" 2  Login ")
+	f3 := styleForm(tview.NewForm()).AddFormItem(e.keyFile).AddFormItem(e.keyPass).AddFormItem(e.forgetPass)
+	f3.AddTextView("", tag(colDim)+"Backups to this server are encrypted with the key. Leave the key file empty for none.\n"+
+		"A passphrase is stored so scheduled backups can run alone; leave it empty to keep the stored one.\n"+
+		"Keep a copy of the key file somewhere safe: without it the backups cannot be restored.", 88, 4, true, false)
+	f3.SetTitle(" 3  Encryption ")
 
 	e.title = tview.NewTextView().SetDynamicColors(true)
 	e.pages = tview.NewPages()
-	forms := []*tview.Form{f1, f2}
+	forms := []*tview.Form{f1, f2, f3}
 	for i, f := range forms {
 		i := i
 		if i == 0 {
 			f.AddButton("Fetch fingerprint", e.fetch)
-			f.AddButton("Next", func() { e.show(1) })
 		} else {
-			f.AddButton("Back", func() { e.show(0) })
+			f.AddButton("Back", func() { e.show(i - 1) })
+		}
+		if i < len(forms)-1 {
+			f.AddButton("Next", func() { e.show(i + 1) })
+		}
+		if i == 2 {
+			f.AddButton("Generate key", e.generateKey)
+			f.AddButton("Import key file", e.importKey)
+			f.AddButton("Inspect", e.inspectKey)
+			f.AddButton("Restrict access", e.restrictKey)
 		}
 		f.AddButton("Save", e.save)
 		f.AddButton("Cancel", e.close)
@@ -224,13 +244,13 @@ func (a *App) openServerEditor(s Server, isNew bool) {
 				e.close()
 				return nil
 			case tcell.KeyPgDn:
-				if i == 0 {
-					e.show(1)
+				if i < len(forms)-1 {
+					e.show(i + 1)
 				}
 				return nil
 			case tcell.KeyPgUp:
-				if i == 1 {
-					e.show(0)
+				if i > 0 {
+					e.show(i - 1)
 				}
 				return nil
 			case tcell.KeyCtrlS:
@@ -255,7 +275,7 @@ func (e *serverEditor) show(step int) {
 	if e.isNew {
 		word = "New server"
 	}
-	labels := []string{"Server", "Login"}
+	labels := []string{"Server", "Login", "Encryption"}
 	var b strings.Builder
 	b.WriteString(" ")
 	for i, l := range labels {
@@ -344,7 +364,15 @@ func (e *serverEditor) document() (map[string]interface{}, error) {
 			return nil, fmt.Errorf("give the token secret")
 		}
 	}
+	doc["encryption_key_file"] = strings.TrimSpace(e.keyFile.GetText())
+	if p := e.keyPass.GetText(); p != "" {
+		doc["encryption_key_passphrase"] = p
+	}
+	if e.forgetPass.IsChecked() {
+		doc["clear_encryption_key_passphrase"] = true
+	}
 	// what the service sends as markers, never to be sent back
+	delete(doc, "encryption_key_passphrase_set")
 	delete(doc, "secret_set")
 	delete(doc, "password_set")
 	delete(doc, "is_online")

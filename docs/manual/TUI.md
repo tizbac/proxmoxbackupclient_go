@@ -11,7 +11,7 @@ It is new after version 2.0.
 3. [Backup Sets](#3-backup-sets)
 4. [Back up folders now](#4-back-up-folders-now)
 5. [Restore](#5-restore)
-6. [Servers](#6-servers)
+6. [Servers and encryption keys](#6-servers-and-encryption-keys)
 7. [Reports and log files](#7-reports-and-log-files)
 8. [Preferences](#8-preferences)
 9. [Keys](#9-keys)
@@ -84,9 +84,9 @@ Screen 6 follows the app's five steps.
 
 A snapshot of several folders restores each into a folder of its own below the destination.
 
-**Encrypted backups.** The server's encryption key is the one the service has stored for it (set up in the app, Preferences, Servers). If the key has a passphrase and the service has not stored it, the window asks for it once, masked, when you open the snapshot, and uses it for the restore. A wrong passphrase is explained and asked for again. A server with no key set up says so.
+**Encrypted backups.** The server's encryption key is the one the service has stored for it (set up under [Servers and encryption keys](#6-servers-and-encryption-keys) or in the app). If the key has a passphrase and the service has not stored it, the window asks for it once, masked, when you open the snapshot, and uses it for the restore. A wrong passphrase is explained and asked for again. A server with no key set up says so.
 
-## 6. Servers
+## 6. Servers and encryption keys
 
 Screen 5 lists the servers; the details of the selected one show beside the list, never its login.
 
@@ -99,9 +99,24 @@ Screen 5 lists the servers; the details of the selected one show beside the list
 | **u** | Makes it the default server |
 | **f** | Reads the certificate the server presents and pins its fingerprint, after you have compared it with the one in the Proxmox Backup Server (Dashboard, Show Fingerprint) |
 
-The editor has two steps. **Server**: name, address (`https://pbs.example.com:8007`), fingerprint, datastore, namespace, description. **Fetch fingerprint** fills the fingerprint in from the server; compare it with the one in the Proxmox Backup Server before you save. **Login**: an API token (token ID and secret) or a user name and password. On an existing server leave a secret or password empty to keep the stored one. The service checks the server on saving, as for the app.
+The editor has three steps. **Server**: name, address (`https://pbs.example.com:8007`), fingerprint, datastore, namespace, description. **Fetch fingerprint** fills the fingerprint in from the server; compare it with the one in the Proxmox Backup Server before you save. **Login**: an API token (token ID and secret) or a user name and password. On an existing server leave a secret or password empty to keep the stored one. The service checks the server on saving, as for the app. **Encryption** is the third step ([below](#encryption-keys)).
 
-Setting up or changing an **encryption key** is done in the app.
+### Encryption keys
+
+A server's backups are encrypted with the key whose file is named in the server's **Encryption** step; with no key file the backups are not encrypted. The key file stays in the service's keys folder. The window never shows a key, only its fingerprint and where the file is.
+
+| Button | Does |
+|---|---|
+| **Generate key** | Makes a new key (without a passphrase, as the app does) in the keys folder and puts it in the **Key file** field. It never overwrites an existing file. A server that has a key already asks first, because a new key cannot read what the old one encrypted |
+| **Import key file** | Reads a key file from anywhere on this computer (a USB stick, a backup copy), checks it, shows its **fingerprint** to compare with your notes or paper copy, and stores a copy in the keys folder. A key without a passphrase must match its own fingerprint; a protected key is checked when you give its passphrase, which also lets it be stored. An existing key file is never overwritten |
+| **Inspect** | Shows the key file's fingerprint, creation date, whether it has a passphrase, and whether other accounts can read it |
+| **Restrict access** | Limits who can read the key file to the service and administrators (or its owner on Linux) |
+
+**Key passphrase** stores the passphrase of a protected key in the service so scheduled backups can run alone; leave it empty to keep what is stored, or tick **Forget the stored passphrase**. Without a stored passphrase the window asks for it when it needs the key, for a restore. The server's details on the Servers screen, and each Backup Set's details, say whether backups are encrypted, with which key, and warn when the key file can be read by other accounts.
+
+Save the server to use a new key. **Keep a copy of the key file somewhere safe: without it the backups cannot be restored.**
+
+Printing the key as a **paper key**, and reading a paper key back (from its QR code or typed text), are done in the desktop app only, on purpose: the window never puts the key itself on screen.
 
 ## 7. Reports and log files
 
@@ -135,12 +150,14 @@ Each screen's own keys are in its section and in the bar at the bottom. The mous
 `salvanza-cli tui -check` connects, prints what the service reports (its version, the Backup Sets, history and server counts) and exits with 0, or with 1 when the service did not answer. It needs no terminal, so it suits a health check or a script. Some options go further and change or read things, so use them on a test machine:
 
 * `-check -write` makes a temporary manual Backup Set and a temporary server, changes and deletes them, changes one preference and puts it back, and reads a log file, to prove the service takes what the window sends.
+* `-check -encryption` proves the whole encryption chain against a real Proxmox Backup Server (named in the environment variables `TUI_CHECK_PBS_URL`, `_AUTHID`, `_SECRET`, `_DATASTORE`, `_FINGERPRINT`): it makes a key, lets a temporary server use it, backs a folder up, restores it with the server's key and compares the files, then removes the server and the test backups. The key file it made stays in the keys folder; its path is printed as `KEYFILE=`.
 * `-check -restore-check` restores a few small files of the newest readable snapshot into a temporary folder and deletes it. `-restore-group <backup ID>` tries only that backup, which also shows why an encrypted one cannot be read.
 
 ## 11. What it does not do yet
 
 * Undelete and Roll back are in the app only (or in the service's command line, see the [GUI manual](GUI.md#undelete-and-roll-back-from-the-command-line)).
-* Creating, importing and exporting **encryption keys**, **share logins**, and settings export and import are in the app.
+* **Share logins** and settings export and import are in the app.
+* The **paper key** (printing it, reading it back) is in the app only, by design.
 * A disk image (a machine backup) is not restored here: use the [bare-metal restore](BMR.md).
 * Machine Backup Sets can be edited here but not made.
 * The window is in English only.
