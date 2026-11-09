@@ -46,9 +46,6 @@ func listPhysicalDisks() ([]PhysicalDiskInfo, error) {
 			model = ""
 		}
 
-		// Check if this is a boot disk (check if / is on this disk)
-		isBootDisk := isBootDisk(entry.Name())
-
 		devicePath := fmt.Sprintf("/dev/%s", entry.Name())
 		deviceID := entry.Name()
 
@@ -56,7 +53,9 @@ func listPhysicalDisks() ([]PhysicalDiskInfo, error) {
 			DiskNumber:   0, // Linux doesn't use disk numbers like Windows
 			Size:         size,
 			Model:        model,
-			IsBootDisk:   isBootDisk,
+			// IsBootDisk is set from the disk's partitions, which say where / and
+			// the boot partition are (markBootDisks, disklist_types.go).
+			IsBootDisk:   false,
 			IsSystemDisk: false, // Linux doesn't have a direct equivalent
 			DeviceID:     deviceID,
 			DevicePath:   devicePath,
@@ -157,15 +156,4 @@ func getDiskModel(deviceName string) (string, error) {
 	}
 
 	return model, nil
-}
-
-// isBootDisk checks if a disk is the boot disk (contains root filesystem)
-func isBootDisk(deviceName string) bool {
-	// This is a simplified check - in practice we'd want to check mount points
-	// For now, we'll check if the device is a candidate for root
-	// This is a best-effort implementation
-
-	// Try to find if this is used for / mount point
-	// In a real implementation, this would use more robust methods
-	return strings.HasPrefix(deviceName, "nvme") || strings.HasPrefix(deviceName, "sd")
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 
 	"machinebackuplib"
 )
@@ -23,8 +24,24 @@ func physicalDisksWithPartitions() ([]PhysicalDiskInfo, error) {
 			continue
 		}
 		disks[i].Partitions = parts
+		if runtime.GOOS == "linux" {
+			disks[i].IsBootDisk = holdsBootOrRoot(parts)
+		}
 	}
 	return disks, nil
+}
+
+// holdsBootOrRoot reports whether a disk has the partition / is mounted from
+// or a boot partition (/boot, the EFI system partition, a BIOS boot
+// partition), which is what the disk picker's Boot badge means. The Linux disk
+// list used to give the badge to every sd and nvme disk.
+func holdsBootOrRoot(parts []machinebackuplib.PartitionInfo) bool {
+	for _, p := range parts {
+		if p.Role == "system" || p.Role == "boot" {
+			return true
+		}
+	}
+	return false
 }
 
 // PhysicalDiskInfo represents information about a physical disk.
