@@ -273,6 +273,11 @@ func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
 			a.actDelete()
 		}
 		return nil
+	case 'b':
+		if a.tab == 0 || a.tab == 1 {
+			a.oneOff()
+		}
+		return nil
 	case 'E':
 		if a.tab == 0 || a.tab == 1 {
 			a.editSet()
@@ -364,7 +369,7 @@ func (a *App) renderChrome() {
 	switch tab {
 	case 0, 1:
 		f += hint("r", "run now") + hint("p", "pause/resume") + hint("s", "stop") + hint("e", "enable/disable") +
-			hint("Enter", "edit") + hint("n", "new") + hint("d", "delete")
+			hint("Enter", "edit") + hint("n", "new") + hint("d", "delete") + hint("b", "one-off backup")
 	}
 	if tab == 2 {
 		f += hint("Enter", "open the run's log")
@@ -974,6 +979,10 @@ func (a *App) help() {
 		k("p", "pause or resume the running backup") +
 		k("s", "stop the running backup (asks first)") +
 		k("e", "enable or disable the selected Backup Set") +
+		k("Enter", "edit the selected Backup Set (History: open its log)") +
+		k("n, d", "new Backup Set, delete the selected one (asks first)") +
+		k("b", "back up folders now, without a Backup Set") +
+		k("6", "Restore: browse a backup and restore files") +
 		k("g", "refresh now (it also refreshes every 2 s)") +
 		k("q, Ctrl+C", "quit; running backups go on in the service") +
 		"\n " + tag(colDim) + "Press Esc to close.")
@@ -988,7 +997,7 @@ func (a *App) help() {
 	})
 	flex := tview.NewFlex().
 		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).AddItem(nil, 0, 1, false).AddItem(t, 13, 0, true).AddItem(nil, 0, 1, false), 64, 0, true).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).AddItem(nil, 0, 1, false).AddItem(t, 18, 0, true).AddItem(nil, 0, 1, false), 64, 0, true).
 		AddItem(nil, 0, 1, false)
 	a.modal = true
 	a.pages.AddPage("help", flex, true, true)

@@ -345,6 +345,19 @@ func TestTypingInTheDestinationFieldIsNotAShortcut(t *testing.T) {
 	}
 }
 
+func TestOneOffBackupForm(t *testing.T) {
+	h := newHarness(t, 130, 40)
+	h.typ('b')
+	h.waitFor("Back up folders now")
+	h.key(tcell.KeyCtrlS, 0)
+	h.waitFor("at least one folder")
+	h.key(tcell.KeyEnter, 0)
+	h.typeText(`C:\Data`)
+	h.key(tcell.KeyCtrlS, 0)
+	h.waitFor("started the one-off backup")
+	h.waitFor(`One-off: C:\Data`)
+}
+
 func TestCheckAndCheckWriteOnTheDemoBackend(t *testing.T) {
 	var out, errb strings.Builder
 	be := newDemoBackend()

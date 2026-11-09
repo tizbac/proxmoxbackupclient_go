@@ -59,6 +59,17 @@ func (b *serviceBackend) Control(action, jobID string) error {
 
 func (b *serviceBackend) SetEnabled(id string, on bool) error { return b.c.SetJobEnabled(id, on) }
 
+func (b *serviceBackend) StartFolderBackup(req api.BackupRequest) error {
+	resp, err := b.c.StartBackup(&req)
+	if err != nil {
+		return err
+	}
+	if !resp.Success {
+		return fmt.Errorf("%s", firstNonEmpty(resp.Error, resp.Message, "the service did not start the backup"))
+	}
+	return nil
+}
+
 func (b *serviceBackend) SaveSet(doc map[string]interface{}, isNew bool) error {
 	name := "UpdateScheduledJob"
 	if isNew {

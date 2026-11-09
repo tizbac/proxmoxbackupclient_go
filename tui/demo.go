@@ -187,6 +187,20 @@ func (d *demoBackend) SetEnabled(id string, on bool) error {
 	return fmt.Errorf("no such set")
 }
 
+func (d *demoBackend) StartFolderBackup(req api.BackupRequest) error {
+	if len(req.BackupDirs) == 0 {
+		return fmt.Errorf("no folder to back up")
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.nextID++
+	d.runs = append(d.runs, api.BackupProgress{
+		JobID: fmt.Sprintf("demo-%d", d.nextID), Name: "One-off: " + req.BackupDirs[0], Running: true, Progress: 1,
+		StartTime: time.Now().Format(time.RFC3339), Message: "Starting",
+	})
+	return nil
+}
+
 func (d *demoBackend) SaveSet(doc map[string]interface{}, isNew bool) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()

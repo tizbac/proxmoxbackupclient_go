@@ -19,6 +19,9 @@ type Backend interface {
 	RunSet(id string) error
 	Control(action, jobID string) error // "pause", "resume" or "stop"
 	SetEnabled(id string, on bool) error
+	// StartFolderBackup starts a one-off backup of folders; the service runs it
+	// in the background (it shows up with the running backups).
+	StartFolderBackup(req api.BackupRequest) error
 	// SaveSet stores a Backup Set document (the service's own checks apply):
 	// a new set when isNew, otherwise a change of the set with that id.
 	SaveSet(doc map[string]interface{}, isNew bool) error
