@@ -2278,7 +2278,10 @@ function App() {
         }
       }
       setServerStatus(prev => ({ ...prev, [id]: 'offline' }))
-      showStatus(`❌ ${t('statusConnectionFailed')} ${err}`, 'error')
+      // A failed test says why (a refused permission, a wrong login): it stays until the next
+      // status replaces it, as the warning does. The 5 seconds other messages get is too short
+      // to read it, and nothing else shows it.
+      showStatus(`❌ ${t('statusConnectionFailed')} ${err}`, 'error', true)
     }
   }
 
@@ -2671,7 +2674,7 @@ function App() {
           return
         }
       }
-      showStatus(`❌ ${err}`, 'error')
+      showStatus(`❌ ${err}`, 'error', true) // stays until the next status, like the server list's test
     }
   }
 
