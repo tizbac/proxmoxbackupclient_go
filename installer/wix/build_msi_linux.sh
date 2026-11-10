@@ -323,6 +323,49 @@ run_wine() {
         "$WINE_IMAGE" "$@"
 }
 
+# Stamp each brand's name inside its copies of the app and the service (file
+# description, product, company, icon), which Windows shows in the installer's
+# "Files in Use" box, Task Manager and Properties. Same as brand-exes.ps1, with
+# the same pinned rcedit, run under wine.
+RCEDIT_VERSION=v2.0.0
+RCEDIT_SHA256=3e7801db1a5edbec91b49a24a094aad776cb4515488ea5a4ca2289c400eade2a
+RCEDIT_EXE="$WORK/rcedit-x64.exe"
+if [ ! -f "$RCEDIT_EXE" ]; then
+    curl -fsSL -o "$RCEDIT_EXE" "https://github.com/electron/rcedit/releases/download/$RCEDIT_VERSION/rcedit-x64.exe"
+fi
+echo "$RCEDIT_SHA256  $RCEDIT_EXE" | sha256sum -c - >/dev/null || { echo "rcedit checksum mismatch" >&2; exit 1; }
+brand_title() {
+    case "$1" in
+        salvanza) echo "Salvanza for Proxmox Backup Server" ;;
+        nimbusbackup) echo "Nimbus Backup" ;;
+        etitechbackup) echo "Etitech Backup" ;;
+        *) echo "$1" ;;
+    esac
+}
+for ENTRY in $BRANDS; do
+    IFS=: read -r _ BASE _ <<<"$ENTRY"
+    TITLE="$(brand_title "$BASE")"
+    COMPANY="$TITLE"
+    [ "$BASE" = salvanza ] && COMPANY="Salvanza"
+    for KIND in gui svc; do
+        DESC="$TITLE"
+        [ "$KIND" = svc ] && DESC="$TITLE Service"
+        ICON_ARGS=()
+        [ "$KIND" = gui ] && ICON_ARGS=(--set-icon "Z:/work/installer/icons/${BASE}-gui.ico")
+        run_wine wine Z:/work/rcedit-x64.exe "Z:/work/gui/build/bin/${BASE}-${KIND}.exe" \
+            --set-file-version "${PRODUCT_VERSION}.0" --set-product-version "${PRODUCT_VERSION}.0" \
+            --set-version-string FileDescription "$DESC" \
+            --set-version-string ProductName "$TITLE" \
+            --set-version-string CompanyName "$COMPANY" \
+            --set-version-string InternalName "${BASE}-${KIND}" \
+            --set-version-string OriginalFilename "${BASE}-${KIND}.exe" \
+            --set-version-string FileVersion "$VERSION" \
+            --set-version-string ProductVersion "$VERSION" \
+            ${ICON_ARGS[@]+"${ICON_ARGS[@]}"}
+    done
+    echo "    branded ${BASE}-gui.exe and ${BASE}-svc.exe as '$TITLE'"
+done
+
 for ENTRY in $BRANDS; do
     IFS=: read -r WXS_FILE _ BRAND <<<"$ENTRY"
     [ -f "$WXS_FILE" ] || { echo "warning: $WXS_FILE not found, skipping" >&2; continue; }
