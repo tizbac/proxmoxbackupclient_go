@@ -2,7 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
 // The Network shares and Settings file pages of Preferences.
@@ -120,6 +123,34 @@ func (p *prefsView) exportSettings() {
 				note += " The file holds passwords and secrets: keep it safe."
 			}
 			p.a.infoBox(note)
+		})
+	}()
+}
+
+// defaultLogsPath is a new file name for the logs, in the user's home folder.
+func defaultLogsPath() string {
+	name := "salvanza-logs-" + time.Now().Format("20060102-150405") + ".zip"
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, name)
+	}
+	return name
+}
+
+func (p *prefsView) saveLogs() {
+	path := strings.TrimSpace(p.logsFile.GetText())
+	if path == "" {
+		p.a.errorBox("Give the file to write.")
+		return
+	}
+	go func() {
+		err := p.a.be.SaveLogs(path)
+		p.a.app.QueueUpdateDraw(func() {
+			if err != nil {
+				p.a.errorBox(describeErr(err))
+				return
+			}
+			p.logsFile.SetText(defaultLogsPath()) // the next one gets its own name
+			p.a.infoBox("Logs written to " + path + ". Look through them before you post them: they name your folders and servers.")
 		})
 	}()
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -120,6 +121,13 @@ func (h *stateHandler) FindRunLogForAPI(backupID string, at int64) (json.RawMess
 	return b, nil
 }
 
+func (h *stateHandler) LogBundleForAPI(days int) ([]byte, error) {
+	if days == 13 {
+		return nil, errors.New("no logs to pack")
+	}
+	return []byte(fmt.Sprintf("zip-of-%d-days", days)), nil
+}
+
 func (h *stateHandler) ExportSettingsForAPI(includeSecrets bool) ([]byte, error) {
 	if includeSecrets {
 		return []byte("with-secrets"), nil
@@ -210,6 +218,25 @@ func TestJobControl(t *testing.T) {
 	jobs, err := c.GetScheduledJobsFull()
 	if err != nil || len(jobs) != 1 || jobs[0]["name"] != "Documents" {
 		t.Errorf("GetScheduledJobsFull = %v, %v", jobs, err)
+	}
+}
+
+func TestLogBundle(t *testing.T) {
+	_, c := newStateService(t)
+	data, err := c.LogBundle(7)
+	if err != nil || string(data) != "zip-of-7-days" {
+		t.Fatalf("LogBundle(7) = %q, %v", data, err)
+	}
+	if data, err = c.LogBundle(0); err != nil || string(data) != "zip-of-0-days" {
+		t.Errorf("LogBundle(0) = %q, %v", data, err)
+	}
+	if _, err = c.LogBundle(13); err == nil || !strings.Contains(err.Error(), "no logs to pack") {
+		t.Errorf("a failure of the service was not passed on: %v", err)
+	}
+	for _, days := range []int{-1, 366, 100000} {
+		if _, err = c.LogBundle(days); err == nil {
+			t.Errorf("LogBundle(%d) was accepted", days)
+		}
 	}
 }
 

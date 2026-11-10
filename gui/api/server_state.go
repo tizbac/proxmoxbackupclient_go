@@ -65,6 +65,12 @@ type LogAPI interface {
 	FindRunLogForAPI(backupID string, at int64) (json.RawMessage, error)
 }
 
+// LogBundleAPI packs the service's logs into one zip, for an app that is not
+// allowed to read the service's folder and has to hand them to a person.
+type LogBundleAPI interface {
+	LogBundleForAPI(days int) ([]byte, error)
+}
+
 // SettingsAPI exports and imports the settings.
 type SettingsAPI interface {
 	ExportSettingsForAPI(includeSecrets bool) ([]byte, error)
@@ -92,6 +98,7 @@ func (s *Server) setupStateRoutes() {
 	s.mux.HandleFunc("/logs", s.handleLogs)
 	s.mux.HandleFunc("/logs/read", s.handleLogRead)
 	s.mux.HandleFunc("/logs/run", s.handleRunLog)
+	s.mux.HandleFunc("/logs/bundle", s.handleLogBundle)
 	s.mux.HandleFunc("/settings/export", s.handleSettingsExport)
 	s.mux.HandleFunc("/settings/import", s.handleSettingsImport)
 	s.mux.HandleFunc("/keys/save", s.handleKeySave)
@@ -382,6 +389,32 @@ func (s *Server) handleRunLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeRaw(w, info)
+}
+
+// handleLogBundle answers POST /logs/bundle {"days": n} with {"data": <zip>}.
+func (s *Server) handleLogBundle(w http.ResponseWriter, r *http.Request) {
+	b, ok := s.app.(LogBundleAPI)
+	if !ok {
+		s.notServed(w)
+		return
+	}
+	if !s.method(w, r, http.MethodPost) {
+		return
+	}
+	var req LogBundleRequest
+	if !s.decodeBody(w, r, &req) {
+		return
+	}
+	if req.Days < 0 || req.Days > 365 {
+		s.writeError(w, "days must be between 0 and 365", http.StatusBadRequest)
+		return
+	}
+	data, err := b.LogBundleForAPI(req.Days)
+	if err != nil {
+		s.writeError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.writeJSON(w, LogBundleResponse{Data: data}, http.StatusOK)
 }
 
 func (s *Server) handleSettingsExport(w http.ResponseWriter, r *http.Request) {

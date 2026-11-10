@@ -31,6 +31,7 @@ type prefsView struct {
 	shareServer, shareUser, sharePass, shareTest *tview.InputField
 	setFile                                      *tview.InputField
 	setSecrets                                   *tview.Checkbox
+	logsFile                                     *tview.InputField
 }
 
 func (a *App) buildPrefs() tview.Primitive {
@@ -78,8 +79,9 @@ func (a *App) buildPrefs() tview.Primitive {
 
 	p.setFile = tview.NewInputField().SetLabel("File ").SetFieldWidth(60)
 	p.setSecrets = tview.NewCheckbox().SetLabel("Include passwords and secrets in the export ")
-	f4 := styleForm(tview.NewForm()).AddFormItem(p.setFile).AddFormItem(p.setSecrets)
-	f4.AddTextView("", tag(colDim)+"Export writes the Backup Sets, servers and preferences to a new file (never over an existing one; with secrets it is readable only by you). Import merges such a file into this computer's settings, in the service.", 76, 3, true, false)
+	p.logsFile = tview.NewInputField().SetLabel("Logs file ").SetFieldWidth(60).SetText(defaultLogsPath())
+	f4 := styleForm(tview.NewForm()).AddFormItem(p.setFile).AddFormItem(p.setSecrets).AddFormItem(p.logsFile)
+	f4.AddTextView("", tag(colDim)+"Export writes the Backup Sets, servers and preferences to a new file (never over an existing one; with secrets it is readable only by you). Import merges such a file into this computer's settings, in the service. Save logs writes the service's logs of the last two weeks into one zip, to attach to a bug report: look through them first, they name your folders and servers.", 76, 5, true, false)
 	f4.SetTitle(" Settings file ")
 
 	p.title = tview.NewTextView().SetDynamicColors(true)
@@ -107,6 +109,7 @@ func (a *App) buildPrefs() tview.Primitive {
 		case 3:
 			f.AddButton("Export", p.exportSettings)
 			f.AddButton("Import", p.importSettings)
+			f.AddButton("Save logs", p.saveLogs)
 		}
 		f.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
 			if d := altStep(ev); d != 0 {

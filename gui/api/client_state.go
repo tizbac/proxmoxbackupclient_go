@@ -144,6 +144,13 @@ func (c *Client) FindRunLog(backupID string, at int64, out interface{}) error {
 	return c.call(http.MethodGet, "/logs/run?"+q.Encode(), nil, out)
 }
 
+// LogBundle returns the service's logs of the last days (0: its default) as a zip.
+func (c *Client) LogBundle(days int) ([]byte, error) {
+	var resp LogBundleResponse
+	err := c.call(http.MethodPost, "/logs/bundle", LogBundleRequest{Days: days}, &resp)
+	return resp.Data, err
+}
+
 // ExportSettings returns a settings export file's contents.
 func (c *Client) ExportSettings(includeSecrets bool) ([]byte, error) {
 	var resp SettingsExportResponse

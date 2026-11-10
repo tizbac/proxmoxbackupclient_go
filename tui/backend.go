@@ -57,6 +57,9 @@ type Backend interface {
 	CheckShares(paths []string) ([]ShareCheck, error)
 	ExportSettings(path string, withSecrets bool) error
 	ImportSettings(path string) (string, error)
+	// SaveLogs writes the service's logs of the last two weeks into one new zip
+	// file (never over an existing one), for a bug report.
+	SaveLogs(path string) error
 	// RunSetTool runs the service program's Undelete or Roll back command line
 	// (args as in the GUI manual), calling line for each line of its output.
 	RunSetTool(args []string, line func(string)) error

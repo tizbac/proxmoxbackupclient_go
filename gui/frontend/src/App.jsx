@@ -46,7 +46,7 @@ let SetParallelRestore, SetParallelBackupRead
 let GetJobPolicy, SetRequireAdminForJobs, RequestElevation, SnapshotSupport, RunScheduledJobNowRead
 let ExportSettings, ImportSettings
 let SetSMTPSettings, SendTestEmail
-let GetLogsFolder, OpenLogsFolder
+let GetLogsFolder, OpenLogsFolder, SaveLogs
 // Encryption key management
 let InspectEncryptionKeyFile, GenerateEncryptionKeyFile, OpenEncryptionKeyDialog, OpenEncryptionKeySaveDialog
 // Undelete, Roll back, Run as Service
@@ -131,6 +131,7 @@ if (window.go) {
   ImportSettings = window.go.main.App.ImportSettings
   GetLogsFolder = window.go.main.App.GetLogsFolder
   OpenLogsFolder = window.go.main.App.OpenLogsFolder
+  SaveLogs = window.go.main.App.SaveLogs
   SetSMTPSettings = window.go.main.App.SetSMTPSettings
   SendTestEmail = window.go.main.App.SendTestEmail
   // Encryption key management
@@ -2067,6 +2068,18 @@ function App() {
         setStatus(s => ({ ...s, visible: false }))
         statusTimeoutRef.current = null
       }, 5000)
+    }
+  }
+
+  // Saves the app's logs and the service's in one zip, to attach to a bug report. The
+  // service's folder is its own and stays closed: the app asks the service for its logs.
+  const handleSaveLogs = async () => {
+    if (!SaveLogs) return
+    try {
+      const path = await SaveLogs()
+      if (path) showStatus(`✅ ${tl('logsSavedTo', 'Logs saved to')} ${path}`, 'success')
+    } catch (err) {
+      showStatus(`❌ ${err}`, 'error')
     }
   }
 
@@ -4867,6 +4880,18 @@ function App() {
                       >
                         {t('viewLogsBtn')}
                       </button>
+                      {SaveLogs && (
+                        <>
+                          {' '}
+                          <button
+                            className="btn btn-secondary"
+                            title={tl('saveLogsTip', 'One zip with this app\'s logs and the service\'s, for a bug report')}
+                            onClick={handleSaveLogs}
+                          >
+                            {tl('saveLogsBtn', 'Save logs for a bug report…')}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </>
                 )}
@@ -7298,6 +7323,9 @@ function App() {
         <div className={`tab-content ${activeTab === 'logs' ? 'active' : ''}`}>
           <LogsPage t={t} language={language} active={activeTab === 'logs'} request={logRequest}
             onOpenFolder={OpenLogsFolder ? () => OpenLogsFolder().catch(err => showStatus(`❌ ${err}`, 'error')) : null}
+            onSaveLogs={SaveLogs ? handleSaveLogs : null}
+            saveLogsLabel={tl('saveLogsBtn', 'Save logs for a bug report…')}
+            saveLogsTip={tl('saveLogsTip', 'One zip with this app\'s logs and the service\'s, for a bug report')}
             formatBytes={formatBytes} />
         </div>
       </div>
