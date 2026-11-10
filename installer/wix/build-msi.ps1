@@ -49,6 +49,11 @@ if ($Brand -ne 'Salvanza') {
     Copy-Item (Join-Path $bin 'salvanza-gui.exe') (Join-Path $bin "$base-gui.exe") -Force
     Copy-Item (Join-Path $bin 'salvanza-svc.exe') (Join-Path $bin "$base-svc.exe") -Force
 }
+# Put the brand's name inside the programs too (file description, product, icon),
+# which Windows shows in "Files in Use", Task Manager and Properties.
+$titles = @{ 'Salvanza' = 'Salvanza for Proxmox Backup Server'; 'NimbusBackup' = 'Nimbus Backup'; 'EtitechBackup' = 'Etitech Backup' }
+$company = if ($Brand -eq 'Salvanza') { 'Salvanza' } else { $titles[$Brand] }
+& (Join-Path $here 'brand-exes.ps1') -Bin $bin -Base $Brand.ToLowerInvariant() -Title $titles[$Brand] -Company $company -Version $Version
 
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 $obj = Join-Path $OutDir "$Brand.wixobj"

@@ -376,6 +376,8 @@ jobs:
           $fileVersion = "${{ steps.version.outputs.VERSION }}"
           # MSI name = exe base: the wxs file, and <base>-gui.exe / <base>-svc.exe.
           $brands = [ordered]@{ 'Salvanza' = 'salvanza'; 'NimbusBackup' = 'nimbusbackup'; 'EtitechBackup' = 'etitechbackup' }
+          # The name each brand shows in Windows (gui/brand.go Title).
+          $titles = @{ 'Salvanza' = 'Salvanza for Proxmox Backup Server'; 'NimbusBackup' = 'Nimbus Backup'; 'EtitechBackup' = 'Etitech Backup' }
           $bin = (Resolve-Path '../../gui/build/bin').Path
           $dist = (Resolve-Path '../../dist').Path
 
@@ -394,6 +396,11 @@ jobs:
                 # file onto itself is an error even with -Force.
                 if ($pair[0] -ne $pair[1]) { Copy-Item $pair[0] $pair[1] -Force }
             }
+
+            # The copies still carry Salvanza's name inside (file description,
+            # product, icon), which Windows shows in the installer's "Files in
+            # Use" box, Task Manager and the file's Properties. Stamp the brand's.
+            ./brand-exes.ps1 -Bin $bin -Base $base -Title $titles[$brand] -Company $(if ($brand -eq 'Salvanza') { 'Salvanza' } else { $titles[$brand] }) -Version $version -FileVersion $fileVersion
 
             candle.exe "-dProductVersion=$version" $wxs -ext WixUIExtension -ext WixUtilExtension -out "$brand.wixobj"
             if ($LASTEXITCODE -ne 0) { throw "candle failed for $brand (exit $LASTEXITCODE)" }
