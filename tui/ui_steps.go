@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // altStep says which way Alt+Left (-1) or Alt+Right (1) asks to move between the
@@ -20,6 +21,22 @@ func altStep(ev *tcell.EventKey) int {
 		return 1
 	}
 	return 0
+}
+
+// withHint puts a hint beside a step bar: the first of the hints that fits the
+// window's width (the longest first), or none. A hint cut off at the edge, in
+// the middle of a word, reads as a bug.
+func withHint(width int, bar string, hints ...string) string {
+	if width <= 0 {
+		return bar + tag(colDim) + "   " + hints[0]
+	}
+	used := tview.TaggedStringWidth(bar)
+	for _, h := range hints {
+		if used+3+tview.TaggedStringWidth(h) <= width-1 {
+			return bar + tag(colDim) + "   " + h
+		}
+	}
+	return bar
 }
 
 // stepBar draws the steps of a wizard or a form as their names with > between

@@ -153,8 +153,9 @@ func (r *restoreView) isRunning() bool {
 }
 
 func (r *restoreView) renderSteps() {
-	r.steps.SetText(stepBar([]string{"Source", "Snapshot", "Files", "Destination", "Restore"}, r.step, true) +
-		tag(colDim) + "   Enter next step, Esc back")
+	// the window's width, not this box's: a screen that is not showing has not been laid out yet
+	r.steps.SetText(withHint(r.a.width(),stepBar([]string{"Source", "Snapshot", "Files", "Destination", "Restore"}, r.step, true),
+		"Enter next step, Esc back", "Enter next, Esc back", "Esc back"))
 }
 
 func (r *restoreView) show(step int) {

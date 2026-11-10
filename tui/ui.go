@@ -27,6 +27,7 @@ var (
 	colErr     = tcell.NewRGBColor(255, 107, 107)
 	tabNames   = []string{"Dashboard", "Backup Sets", "History", "Messages", "Servers", "Restore", "Reports", "Logs", "Preferences"}
 	tabShort   = []string{"Dash", "Sets", "Hist", "Msgs", "Servers", "Restore", "Reports", "Logs", "Prefs"}
+	tabTiny    = []string{"Dash", "Sets", "Hist", "Msgs", "Srv", "Rest", "Rpt", "Logs", "Prefs"} // an 80 column terminal
 	tabPages   = []string{"dash", "sets", "hist", "msgs", "srv", "rest", "rep", "logs", "prefs"}
 	refreshRun = 2 * time.Second
 	refreshAll = 10 * time.Second
@@ -73,6 +74,8 @@ type App struct {
 	servers []Server
 	tab     int
 	modal   bool
+	// tabSpans are the columns of each tab in the tab bar, for mouse clicks.
+	tabSpans [][2]int
 	// lastWidth is the width the chrome was last laid out for (UI goroutine only).
 	lastWidth int
 	flash     string
@@ -131,11 +134,29 @@ func (a *App) build() {
 		AddItem(a.footer, 1, 0, false)
 	a.app.SetRoot(root, true).EnableMouse(true)
 	a.app.SetInputCapture(a.keys)
+	// A click on a name in the tab bar opens that screen (as its number key does).
+	a.tabs.SetMouseCapture(func(action tview.MouseAction, ev *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if action != tview.MouseLeftClick || a.modal {
+			return action, ev
+		}
+		x, y := ev.Position()
+		rx, ry, _, _ := a.tabs.GetRect()
+		if y != ry {
+			return action, ev
+		}
+		if i := a.tabAt(x - rx); i >= 0 && !a.typingNow() {
+			a.switchTab(i)
+			return tview.MouseConsumed, nil
+		}
+		return action, ev
+	})
 	// The title and the tab names depend on the window's width: draw them again
 	// as soon as it changes, not at the next refresh.
 	a.app.SetBeforeDrawFunc(func(s tcell.Screen) bool {
-		if w, _ := s.Size(); w != a.lastWidth {
+		if w, _ := s.Size(); w != a.width() {
+			a.mu.Lock()
 			a.lastWidth = w
+			a.mu.Unlock()
 			// QueueUpdateDraw waits for the update to run, so never from the draw loop itself
 			go a.app.QueueUpdateDraw(a.renderChrome)
 		}
@@ -174,6 +195,7 @@ func (a *App) buildDashboard() tview.Primitive {
 	a.dashSets.SetTitle(" Backup Sets ").SetTitleAlign(tview.AlignLeft)
 	a.dashRuns = textBox("Running now")
 	a.dashRecent = textBox("Recent")
+	a.dashRecent.SetWrap(false) // a long message is cut at the box's edge, not wrapped out of its column
 	return tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(a.dashSets, 0, 3, true).
 		AddItem(a.dashRuns, 9, 0, false).
@@ -462,58 +484,129 @@ func (a *App) renderChrome() {
 	}
 	a.header.SetText(fmt.Sprintf("[%s::b] %s%s[-:-:-]   %s", spec(colWhite), title, mode, state))
 	var b strings.Builder
-	names := tabNames
-	if _, _, w, _ := a.tabs.GetRect(); w > 0 && w < 105 {
-		names = tabShort // the long names do not fit an 80 column terminal
-	}
+	_, _, tw, _ := a.tabs.GetRect()
+	names := tabNamesFor(tw)
+	spans := make([][2]int, len(names))
+	x := 0
 	for i, n := range names {
+		label := fmt.Sprintf(" %d %s ", i+1, n)
+		spans[i] = [2]int{x, x + len([]rune(label))}
+		x += len([]rune(label)) + 1
 		if i == tab {
-			fmt.Fprintf(&b, "[black:%s] %d %s [-:-] ", spec(colHead), i+1, n)
+			fmt.Fprintf(&b, "[black:%s]%s[-:-] ", spec(colHead), label)
 		} else {
-			fmt.Fprintf(&b, "%s %d %s [-:-] ", tag(colDim), i+1, n)
+			fmt.Fprintf(&b, "%s%s[-:-] ", tag(colDim), label)
 		}
 	}
+	a.mu.Lock()
+	a.tabSpans = spans
+	a.mu.Unlock()
 	a.tabs.SetText(b.String())
+	if a.rs != nil {
+		a.rs.renderSteps() // their hints follow the window's width as well
+	}
+	if a.pf != nil {
+		a.pf.renderTitle()
+	}
 
 	if flash != "" && time.Since(flashAt) < 6*time.Second {
 		a.status.SetText(" " + tag(colWarn) + flash)
 	} else {
 		a.status.SetText("")
 	}
-	hint := func(k, d string) string { return tag(colKey) + "[::b]" + k + "[-:-:-]" + tag(colDim) + " " + d + "  " }
 	// The keys that work everywhere come first, so a narrow window never cuts them off.
-	f := " " + hint("Ctrl+Q", "quit") + hint("Ctrl+G", "help")
+	hints := [][2]string{{"Ctrl+Q", "quit"}, {"Ctrl+G", "help"}}
 	switch tab {
 	case 5:
-		f += hint("→ ←", "open, back")
+		hints = append(hints, [2]string{"→ ←", "open, back"})
 	case 8:
-		f += hint("Alt+→ ←", "page")
+		hints = append(hints, [2]string{"Alt+→ ←", "page"})
 	default:
-		f += hint("→ ←", "screen")
+		hints = append(hints, [2]string{"→ ←", "screen"})
 	}
 	switch tab {
 	case 0, 1:
-		f += hint("r", "run now") + hint("p", "pause/resume") + hint("s", "stop") + hint("e", "enable/disable") +
-			hint("Enter", "edit") + hint("n", "new") + hint("d", "delete") + hint("b", "one-off backup") +
-			hint("u", "undelete") + hint("k", "roll back")
+		hints = append(hints, [][2]string{{"r", "run now"}, {"p", "pause/resume"}, {"s", "stop"}, {"e", "enable/disable"},
+			{"Enter", "edit"}, {"n", "new"}, {"d", "delete"}, {"b", "one-off backup"},
+			{"u", "undelete"}, {"k", "roll back"}}...)
 	}
 	if tab == 2 {
-		f += hint("Enter", "open the run's log")
+		hints = append(hints, [2]string{"Enter", "open the run's log"})
 	}
 	switch tab {
 	case 4:
-		f += hint("Enter", "edit") + hint("n", "new") + hint("d", "delete") + hint("t", "test") + hint("u", "make default") + hint("f", "pin fingerprint")
+		hints = append(hints, [][2]string{{"Enter", "edit"}, {"n", "new"}, {"d", "delete"}, {"t", "test"}, {"u", "make default"}, {"f", "pin fingerprint"}}...)
 	case 5:
-		f += hint("Enter", "choose") + hint("Space", "tick") + hint("PgDn", "next step") + hint("Esc", "back")
+		hints = append(hints, [][2]string{{"Enter", "choose"}, {"Space", "tick"}, {"PgDn", "next step"}, {"Esc", "back"}}...)
 	case 6:
-		f += hint("w", "change the period")
+		hints = append(hints, [2]string{"w", "change the period"})
 	case 7:
-		f += hint("Enter", "open the log") + hint("g", "refresh")
+		hints = append(hints, [][2]string{{"Enter", "open the log"}, {"g", "refresh"}}...)
 	case 8:
-		f += hint("Ctrl+S", "save") + hint("PgDn", "next page")
+		hints = append(hints, [][2]string{{"Ctrl+S", "save"}, {"PgDn", "next page"}}...)
 	}
-	f += hint("Tab", "next")
-	a.footer.SetText(f)
+	hints = append(hints, [2]string{"Tab", "next"})
+	_, _, fw, _ := a.footer.GetRect()
+	a.footer.SetText(footerText(hints, fw))
+}
+
+// footerText lays out the key hints in one line. Hints that do not fit the
+// width are left out whole (Ctrl+G lists every key), never cut in the middle.
+func footerText(hints [][2]string, width int) string {
+	var b strings.Builder
+	b.WriteString(" ")
+	used := 1
+	for _, h := range hints {
+		w := len([]rune(h[0])) + 1 + len([]rune(h[1])) + 2
+		if width > 0 && used+w > width-1 {
+			break
+		}
+		b.WriteString(tag(colKey) + "[::b]" + h[0] + "[-:-:-]" + tag(colDim) + " " + h[1] + "  ")
+		used += w
+	}
+	return b.String()
+}
+
+// tabNamesFor picks the longest set of screen names that fits the width of the
+// tab bar: wrapping it would push the last tabs off the screen and put the
+// mouse clicks on the wrong ones.
+func tabNamesFor(width int) []string {
+	if width <= 0 {
+		return tabNames
+	}
+	for _, set := range [][]string{tabNames, tabShort, tabTiny} {
+		if tabBarWidth(set) <= width-1 {
+			return set
+		}
+	}
+	return tabTiny
+}
+
+func tabBarWidth(names []string) int {
+	w := len(names) - 1 // the space between the tabs
+	for i, n := range names {
+		w += len([]rune(fmt.Sprintf(" %d %s ", i+1, n)))
+	}
+	return w
+}
+
+// width is the window's width as last laid out (0 before the first draw).
+func (a *App) width() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastWidth
+}
+
+// tabAt says which tab a click at column x of the tab bar hit, or -1.
+func (a *App) tabAt(x int) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i, sp := range a.tabSpans {
+		if x >= sp[0] && x < sp[1] {
+			return i
+		}
+	}
+	return -1
 }
 
 // ---- data ---------------------------------------------------------------------

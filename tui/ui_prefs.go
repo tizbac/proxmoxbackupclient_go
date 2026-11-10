@@ -149,10 +149,11 @@ func (a *App) buildPrefs() tview.Primitive {
 }
 
 func (p *prefsView) renderTitle() {
-	b := strings.Builder{}
-	b.WriteString(stepBar([]string{"Backup options", "E-mail", "Network shares", "Settings file"}, p.step, false))
-	b.WriteString(tag(colDim) + "   Tab next field, PgDn and PgUp switch page, Ctrl+S save, F1 to F9 other screens")
-	p.title.SetText(b.String())
+	p.title.SetText(withHint(p.a.width(),stepBar([]string{"Backup options", "E-mail", "Network shares", "Settings file"}, p.step, false),
+		"Tab next field, PgDn and PgUp switch page, Ctrl+S save, F1 to F9 other screens",
+		"Tab next field, PgDn/PgUp page, Ctrl+S save",
+		"PgDn/PgUp page, Ctrl+S save",
+		"Ctrl+S save"))
 }
 
 func (p *prefsView) show(step int) {
