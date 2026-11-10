@@ -80,6 +80,8 @@ type App struct {
 	lastWidth int
 	flash     string
 	flashAt   time.Time
+	// flashSticky: the message stays until the next action instead of clearing itself.
+	flashSticky bool
 	version   string
 }
 
@@ -134,6 +136,13 @@ func (a *App) build() {
 		AddItem(a.footer, 1, 0, false)
 	a.app.SetRoot(root, true).EnableMouse(true)
 	a.app.SetInputCapture(a.keys)
+	// A click anywhere clears a message that stayed (the click is an action too).
+	a.app.SetMouseCapture(func(ev *tcell.EventMouse, action tview.MouseAction) (*tcell.EventMouse, tview.MouseAction) {
+		if action == tview.MouseLeftClick {
+			a.clearFlash()
+		}
+		return ev, action
+	})
 	// A click on a name in the tab bar opens that screen (as its number key does).
 	a.tabs.SetMouseCapture(func(action tview.MouseAction, ev *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if action != tview.MouseLeftClick || a.modal {
@@ -282,6 +291,19 @@ func (a *App) quit() {
 }
 
 func (a *App) keys(ev *tcell.EventKey) *tcell.EventKey {
+	// A message that stayed is cleared by the next action: Enter, Esc, or a key
+	// that does something. The digits only change screen, which is not an action,
+	// so a result can still be read after moving to another screen.
+	if a.flashStands() {
+		switch ev.Key() {
+		case tcell.KeyEnter, tcell.KeyEscape:
+			a.clearFlash()
+		case tcell.KeyRune:
+			if r := ev.Rune(); r < '1' || r > '9' {
+				a.clearFlash()
+			}
+		}
+	}
 	// Ctrl keys work everywhere, in a field and in a form too, as in nano.
 	switch ev.Key() {
 	case tcell.KeyCtrlQ:
@@ -442,16 +464,44 @@ func (a *App) switchTab(i int) {
 
 // ---- chrome ------------------------------------------------------------------
 
+// setFlash puts a message on the status line. A note that something is under way
+// ("testing the connection ...", "refreshing") clears itself after a few seconds.
+// Anything else, the result of an action, stays until the next action (Enter or a
+// key that does something, a click), Esc, or a newer message, and shows the time
+// it happened: a failure that vanishes while you look away is a failure you
+// never saw, and one that stays must not pass for a current one.
 func (a *App) setFlash(s string) {
+	t := strings.TrimSpace(s)
+	sticky := !strings.HasSuffix(t, "...") && t != "refreshing"
 	a.mu.Lock()
-	a.flash, a.flashAt = s, time.Now()
+	a.flash, a.flashAt, a.flashSticky = s, time.Now(), sticky
 	a.mu.Unlock()
 	a.renderChrome()
 }
 
+// clearFlash removes a message that stayed.
+func (a *App) clearFlash() {
+	a.mu.Lock()
+	had := a.flash != "" && a.flashSticky
+	if had {
+		a.flash = ""
+	}
+	a.mu.Unlock()
+	if had {
+		a.renderChrome()
+	}
+}
+
+// flashStands says whether a message that stays is on the status line.
+func (a *App) flashStands() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.flash != "" && a.flashSticky
+}
+
 func (a *App) renderChrome() {
 	a.mu.Lock()
-	svc, err, flash, flashAt, tab := a.svc, a.svcErr, a.flash, a.flashAt, a.tab
+	svc, err, flash, flashAt, flashSticky, tab := a.svc, a.svcErr, a.flash, a.flashAt, a.flashSticky, a.tab
 	running := 0
 	for _, r := range a.runs {
 		if r.Running {
@@ -509,9 +559,12 @@ func (a *App) renderChrome() {
 		a.pf.renderTitle()
 	}
 
-	if flash != "" && time.Since(flashAt) < 6*time.Second {
+	switch {
+	case flash != "" && flashSticky:
+		a.status.SetText(" " + tag(colDim) + flashAt.Format("15:04") + "  " + tag(colWarn) + flash)
+	case flash != "" && time.Since(flashAt) < 6*time.Second:
 		a.status.SetText(" " + tag(colWarn) + flash)
-	} else {
+	default:
 		a.status.SetText("")
 	}
 	// The keys that work everywhere come first, so a narrow window never cuts them off.
@@ -754,6 +807,16 @@ func (a *App) lastResult(set Set) (HistoryEntry, bool) {
 	return HistoryEntry{}, false
 }
 
+// lastSuccess is the most recent run of a set that succeeded (the caller holds a.mu).
+func (a *App) lastSuccess(set Set) (HistoryEntry, bool) {
+	for _, h := range a.hist { // newest first
+		if h.Name == set.Name && statusColour(h.Status) == colOK {
+			return h, true
+		}
+	}
+	return HistoryEntry{}, false
+}
+
 func (a *App) runOf(set Set) (api.BackupProgress, bool) {
 	for _, r := range a.runs {
 		if r.Running && r.Name == set.Name {
@@ -860,7 +923,30 @@ func (a *App) renderSetDetail() {
 	line("State", state)
 	line("Schedule", s.Schedule)
 	line("Next run", when(s.NextRun))
-	line("Last run", when(s.LastRun))
+	a.mu.Lock()
+	last, hasLast := a.lastResult(s)
+	okRun, hasOK := a.lastSuccess(s)
+	a.mu.Unlock()
+	lastWhen := s.LastRun
+	if hasLast && !last.At.IsZero() {
+		lastWhen = last.At
+	}
+	lastRun := when(lastWhen)
+	if hasLast {
+		lastRun += "  " + tag(statusColour(last.Status)) + statusWord(last.Status) + "[-]"
+	}
+	line("Last run", lastRun)
+	// A run that did not succeed says why, and when the set last did succeed: how long it has been failing.
+	if hasLast && statusColour(last.Status) != colOK && statusColour(last.Status) != colDim && last.Message != "" {
+		line("Why", tag(colErr)+tview.Escape(last.Message)+"[-]")
+	}
+	if hasLast && statusColour(last.Status) != colOK {
+		if hasOK {
+			line("Last OK", when(okRun.At))
+		} else {
+			line("Last OK", tag(colWarn)+"never"+"[-]")
+		}
+	}
 	line("Encryption", a.setEncryption(s))
 	if len(s.Sources) > 0 {
 		b.WriteString(tag(colDim) + "Sources[-]\n")

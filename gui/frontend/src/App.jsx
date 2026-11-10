@@ -2056,19 +2056,57 @@ function App() {
     if (showPreferences || activeTab === 'backup') refreshJobPolicy()
   }, [showPreferences, activeTab])
 
+  // A finished action (a success, an error, a warning) stays on screen until the
+  // user's next click, Esc, or a newer message: a failure that vanishes while you
+  // look away is a failure you never saw. It carries the time it happened, so a
+  // message left standing cannot pass for a current one. Short notes (type 'info')
+  // still clear themselves.
   const showStatus = (message, type, persist = false) => {
     if (statusTimeoutRef.current) {
       clearTimeout(statusTimeoutRef.current)
       statusTimeoutRef.current = null
     }
-    setStatus({ message, type, visible: true })
-    if (!persist) {
+    const sticky = persist || type === 'error' || type === 'success' || type === 'warning'
+    const now = new Date()
+    setStatus({
+      message,
+      type,
+      visible: true,
+      sticky,
+      shownAt: now.getTime(),
+      time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    })
+    if (!sticky) {
       statusTimeoutRef.current = setTimeout(() => {
         setStatus(s => ({ ...s, visible: false }))
         statusTimeoutRef.current = null
       }, 5000)
     }
   }
+
+  // What the status line says: a message that stays shows when it happened.
+  const statusText = (s) => (s.sticky && s.time ? `${s.time}  ${s.message}` : s.message)
+
+  // The next click anywhere (but on the message itself), or Esc, clears a message that stays.
+  useEffect(() => {
+    const dismiss = (e) => {
+      setStatus(s => {
+        if (!s.visible || !s.sticky) return s
+        if (Date.now() - (s.shownAt || 0) < 400) return s // the click that caused it, or a double click
+        if (e && e.target && e.target.closest && e.target.closest('.status')) return s
+        return { ...s, visible: false }
+      })
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') dismiss(null)
+    }
+    document.addEventListener('click', dismiss, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('click', dismiss, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [])
 
   // ==================== MULTI-PBS HANDLERS ====================
 
@@ -4321,7 +4359,7 @@ function App() {
                     )}
 
                     {status.visible && showPreferences && prefsTab === 'account' && (
-                      <div className={`status ${status.type} visible`}>{status.message}</div>
+                      <div className={`status ${status.type} visible`}>{statusText(status)}</div>
                     )}
                   </>
                 )}
@@ -5327,6 +5365,39 @@ function App() {
                             <div style={{fontSize: '12px', color: '#888', marginTop: '2px'}}>
                               {t('lastRun')} {job.lastRun ? new Date(job.lastRun).toLocaleString() : t('neverRun')}
                               {job.lastRun && <LastRunAgo when={job.lastRun} />}
+                              {(() => {
+                                // A run that did not succeed says so here, with its error and when the set
+                                // last did succeed (how long it has been failing), instead of leaving that to
+                                // a message that clears itself.
+                                const mine = jobHistory.filter(h => h.name === job.name) // newest first
+                                const last = mine[0]
+                                if (!last || last.status === 'success' || last.status === 'running') return null
+                                const ok = mine.find(h => h.status === 'success')
+                                return (
+                                  <div style={{marginTop: '2px'}}>
+                                    <div
+                                      style={{color: last.status === 'cancelled' ? '#c9a227' : '#d9534f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}
+                                      title={last.message}
+                                    >
+                                      {last.status === 'cancelled' ? tl('lastRunStopped', 'Stopped') : tl('lastRunFailedWord', 'Failed')}
+                                      {last.message ? `: ${last.message}` : ''}
+                                    </div>
+                                    <div>
+                                      {ok
+                                        ? tl('lastSuccessfulRun', 'Last successful run: {when}').replace('{when}', new Date(ok.timestamp).toLocaleString())
+                                        : tl('noRecentSuccess', 'No successful run in the recent history')}
+                                      {ok && <LastRunAgo when={ok.timestamp} />}
+                                      {' · '}
+                                      <a
+                                        href="#"
+                                        onClick={(e) => { e.preventDefault(); setSelectedHistoryId(last.id); setActiveTab('reports') }}
+                                      >
+                                        {tl('viewThisRun', 'View this run')}
+                                      </a>
+                                    </div>
+                                  </div>
+                                )
+                              })()}
                               {job.backupType !== 'machine' && job.changeDetectionMode === 'metadata' && job.fullReadEvery > 0 && (() => {
                                 // Same rule as the backend (changeDetectionForRun):
                                 // the run that brings the count to N is a full read.
@@ -6148,7 +6219,7 @@ function App() {
               then once real progress started the card ALSO started
               rendering it, duplicating the same text in two places at once. */}
           {status.visible && activeTab === 'backup' && !backupCardActive && (
-            <div id="backup-tab-status" className={`status ${status.type} visible`}>{status.message}</div>
+            <div id="backup-tab-status" className={`status ${status.type} visible`}>{statusText(status)}</div>
           )}
         </div>
 
@@ -6947,7 +7018,7 @@ function App() {
               status.message — same reasoning as the backup tab's own version
               of this condition. */}
           {status.visible && activeTab === 'restore' && !restoreLoading && !(restoreStep === 5 && lastRestoreResult && status.message === lastRestoreResult.message) && (
-            <div className={`status ${status.type} visible`}>{status.message}</div>
+            <div className={`status ${status.type} visible`}>{statusText(status)}</div>
           )}
         </div>
 
@@ -6957,7 +7028,7 @@ function App() {
             restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'undelete' ? restoreCard : null}
             lastResult={lastRestoreResult && lastRestoreResult.kind === 'undelete' ? lastRestoreResult : null} />
           {status.visible && activeTab === 'undelete' && !restoreLoading && !(lastRestoreResult && status.message === lastRestoreResult.message) && (
-            <div className={`status ${status.type} visible`}>{status.message}</div>
+            <div className={`status ${status.type} visible`}>{statusText(status)}</div>
           )}
         </div>
 
@@ -6967,7 +7038,7 @@ function App() {
             restoreLoading={restoreLoading} onStarted={startSetRestore} restoreCard={activeTab === 'rollback' ? restoreCard : null}
             lastResult={lastRestoreResult && lastRestoreResult.kind === 'rollback' ? lastRestoreResult : null} />
           {status.visible && activeTab === 'rollback' && !restoreLoading && !(lastRestoreResult && status.message === lastRestoreResult.message) && (
-            <div className={`status ${status.type} visible`}>{status.message}</div>
+            <div className={`status ${status.type} visible`}>{statusText(status)}</div>
           )}
         </div>
 
