@@ -878,6 +878,18 @@ func RunBackupInline(opts BackupOptions) (returnErr error) {
 	run.logger.Store(runLogger)
 	defer run.logger.Store(nil)
 
+	// The computer must not go to sleep under a running backup: the network drops,
+	// the PBS session is lost and the run stalls or starts over hours later. The
+	// request ends with the run, however it ends. When the system will not grant
+	// it the backup still runs, and the log says so.
+	endAwake, awakeErr := preventSleep(sleepReason())
+	defer endAwake()
+	if awakeErr != nil {
+		runLog(opts.Ctx, awakeErr.Error())
+	} else {
+		runLog(opts.Ctx, "Keeping the computer awake until this backup ends")
+	}
+
 	// CRITICAL: Panic recovery to prevent silent goroutine death (scheduler launches backups in goroutines)
 	defer func() {
 		if r := recover(); r != nil {
