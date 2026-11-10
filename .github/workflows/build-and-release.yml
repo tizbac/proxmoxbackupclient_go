@@ -29,9 +29,9 @@ jobs:
     name: Check Dependency Updates
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
@@ -53,9 +53,9 @@ jobs:
     name: Security Checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
@@ -75,6 +75,10 @@ jobs:
       - name: Run gosec
         env:
           GOWORK: off
+          # The pinned gosec (v2.30.0) needs Go 1.26 to build, and this job's Go is
+          # 1.25: it relies on Go fetching the newer toolchain for the install.
+          # setup-go v6 sets GOTOOLCHAIN=local, which stops that, so say so here.
+          GOTOOLCHAIN: auto
         run: |
           # Pinned: gosec adds rules between releases (v2.30 brought the G703
           # path-traversal taint analysis), and an unpinned scanner turning a
@@ -84,7 +88,7 @@ jobs:
           cd gui && gosec -severity high -confidence high ./...
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           working-directory: gui
@@ -97,9 +101,9 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
@@ -127,7 +131,7 @@ jobs:
         run: go tool cover -html=coverage.out -o coverage.html
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v7
         with:
           files: ./gui/coverage.out
 
@@ -148,9 +152,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
@@ -199,9 +203,9 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
@@ -212,7 +216,7 @@ jobs:
         run: make cli
 
       - name: Upload CLI artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cli-${{ runner.os }}
           path: dist/salvanza-cli*
@@ -224,14 +228,14 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -412,7 +416,7 @@ jobs:
           Get-ChildItem $dist -Filter *.msi | Format-Table Name, Length
 
       - name: Upload GUI artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
            name: Salvanza-Windows
            path: dist/*.msi
@@ -439,7 +443,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build the package
         env:
@@ -455,7 +459,7 @@ jobs:
           ls -l dist
 
       - name: Upload the package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: linux-${{ matrix.kind }}-${{ matrix.arch }}
           path: dist/*
@@ -472,7 +476,7 @@ jobs:
       attestations: write  # store the build-provenance attestation
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Full history + tags so `git describe`/`git log PREV_TAG..HEAD` in
           # the release-notes step can compute the previous tag and list the
