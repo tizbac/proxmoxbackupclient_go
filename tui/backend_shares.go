@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"archive/zip"
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -98,6 +100,37 @@ func (b *serviceBackend) ImportSettings(path string) (string, error) {
 		return "", err
 	}
 	return b.c.ImportSettings(data)
+}
+
+// logBundleDays is how far back a saved logs file goes, as in the app.
+const logBundleDays = 14
+
+func (b *serviceBackend) SaveLogs(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("give the file to write")
+	}
+	data, err := b.c.LogBundle(logBundleDays)
+	if err != nil {
+		return err
+	}
+	return writeNewFile(path, data)
+}
+
+func (d *demoBackend) SaveLogs(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("give the file to write")
+	}
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.Create("info.txt")
+	if err != nil {
+		return err
+	}
+	_, _ = w.Write([]byte("Demo logs: nothing real is in this file.\n"))
+	if err := zw.Close(); err != nil {
+		return err
+	}
+	return writeNewFile(path, buf.Bytes())
 }
 
 // The demo keeps its logins and its settings in memory.

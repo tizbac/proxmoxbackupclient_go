@@ -39,7 +39,7 @@ export async function logRequestFor({ backupId, at, kind, notice }) {
   return { folder: f.folder, name: f.name, around: logStamp(at), notice: notice || '' }
 }
 
-export default function LogsPage({ t, language, active, request, onOpenFolder, formatBytes }) {
+export default function LogsPage({ t, language, active, request, onOpenFolder, onSaveLogs, saveLogsLabel, saveLogsTip, formatBytes }) {
   const [files, setFiles] = useState([])
   const [sel, setSel] = useState(null) // {folder, name}
   const [view, setView] = useState(null)
@@ -137,6 +137,7 @@ export default function LogsPage({ t, language, active, request, onOpenFolder, f
                 {t('logsHideChunks')}
               </label>
               <button className="btn btn-secondary" onClick={() => { loadFiles(); setReload(n => n + 1) }}>{t('logsRefresh')}</button>
+              {onSaveLogs && <button className="btn btn-secondary" title={saveLogsTip} onClick={onSaveLogs}>{saveLogsLabel}</button>}
               {onOpenFolder && <button className="btn btn-secondary" onClick={onOpenFolder}>{t('logsOpenFolder')}</button>}
             </div>
             {notice && <div className="info-box" style={{ marginBottom: '8px' }}>ℹ️ {notice}</div>}

@@ -182,6 +182,17 @@ type SettingsExportResponse struct {
 	Data []byte `json:"data"`
 }
 
+// LogBundleRequest asks for the service's logs as a zip (POST /logs/bundle).
+type LogBundleRequest struct {
+	// Days is how far back to go; 0 means the service's default.
+	Days int `json:"days,omitempty"`
+}
+
+// LogBundleResponse is the zip of the service's logs.
+type LogBundleResponse struct {
+	Data []byte `json:"data"`
+}
+
 // SettingsImportRequest merges an exported file (POST /settings/import).
 type SettingsImportRequest struct {
 	Data []byte `json:"data"`
