@@ -111,7 +111,7 @@ func TestDashboardRecentDoesNotWrapOutOfItsBox(t *testing.T) {
 		if in && strings.HasPrefix(l, "└") {
 			break
 		}
-		if in && !(strings.HasPrefix(l, "│") && strings.Contains(l, "│")) {
+		if in && !strings.HasPrefix(l, "│") {
 			t.Errorf("a line of the Recent box left its column: %q", l)
 		}
 		if in && strings.HasPrefix(l, "│chunks") {
