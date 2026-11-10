@@ -26,6 +26,7 @@ The command line is one program, `salvanza-cli` (`salvanza-cli.exe` on Windows),
 | `salvanza-cli backup-disk` | Backs up whole disks as images, as a `host` or `vm` snapshot |
 | `salvanza-cli attach-nbd` | Linux only. Attaches a disk image from PBS as a read-only `/dev/nbdN` block device. The bare-metal restore ISO has the same code as `pbsnbd` |
 | `salvanza-cli install-snapshot-module` | Linux only, as root. Builds and loads the elastio-snap snapshot module that `backup-disk` needs ([below](#installing-the-snapshot-module-linux)) |
+| `salvanza-cli tui` | A text-mode window for Backup Sets, running backups, history and restore, for servers and SSH sessions. Run it as administrator or root with the service running ([TUI.md](TUI.md)) |
 | `salvanza-cli version` | Prints the version (also `-version`) |
 | `salvanza-cli help` | Lists the commands. `salvanza-cli <command> -help` (or `salvanza-cli help <command>`) lists a command's options |
 

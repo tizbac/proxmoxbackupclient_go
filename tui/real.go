@@ -1,0 +1,376 @@
+package tui
+
+import (
+	"fmt"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/salvanza/salvanza_client/gui/api"
+)
+
+// serviceBackend is the real backend: the local service API.
+type serviceBackend struct {
+	c       *api.Client
+	name    string
+	keysDir string // the service's keys folder, beside its token file
+}
+
+func newServiceBackend(url, tokenPath string) *serviceBackend {
+	var c *api.Client
+	if url != "" && url != api.DefaultServiceURL {
+		c = api.NewClientAt(url, tokenPath)
+	} else {
+		c = api.NewClient(tokenPath)
+	}
+	return &serviceBackend{c: c, name: "service", keysDir: filepath.Join(filepath.Dir(tokenPath), "keys")}
+}
+
+func (b *serviceBackend) Name() string { return b.name }
+
+func (b *serviceBackend) Status() (*api.StatusResponse, error) { return b.c.GetStatus() }
+
+func (b *serviceBackend) Sets() ([]Set, error) {
+	raw, err := b.c.GetScheduledJobsFull()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Set, 0, len(raw))
+	for _, m := range raw {
+		out = append(out, toSet(m))
+	}
+	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out, nil
+}
+
+func (b *serviceBackend) Runs() ([]api.BackupProgress, error) {
+	r, err := b.c.GetRuns()
+	if err != nil {
+		return nil, err
+	}
+	return r.Runs, nil
+}
+
+func (b *serviceBackend) RunSet(id string) error { return b.c.RunJob(id) }
+
+func (b *serviceBackend) Control(action, jobID string) error {
+	_, err := b.c.ControlRun(action, jobID)
+	return err
+}
+
+func (b *serviceBackend) SetEnabled(id string, on bool) error { return b.c.SetJobEnabled(id, on) }
+
+func (b *serviceBackend) StartFolderBackup(req api.BackupRequest) error {
+	resp, err := b.c.StartBackup(&req)
+	if err != nil {
+		return err
+	}
+	if !resp.Success {
+		return fmt.Errorf("%s", firstNonEmpty(resp.Error, resp.Message, "the service did not start the backup"))
+	}
+	return nil
+}
+
+func (b *serviceBackend) SaveSet(doc map[string]interface{}, isNew bool) error {
+	name := "UpdateScheduledJob"
+	if isNew {
+		name = "SaveScheduledJob"
+	}
+	return b.c.Call(name, nil, doc)
+}
+
+func (b *serviceBackend) DeleteSet(id string) error { return b.c.Call("DeleteScheduledJob", nil, id) }
+
+func (b *serviceBackend) History() ([]HistoryEntry, error) {
+	raw, err := b.c.GetJobHistory()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]HistoryEntry, 0, len(raw))
+	for _, m := range raw {
+		out = append(out, toHistory(m))
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
+	return out, nil
+}
+
+func (b *serviceBackend) Messages() ([]MessageEntry, error) {
+	raw, err := b.c.GetMessageLog()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]MessageEntry, 0, len(raw))
+	for _, m := range raw {
+		out = append(out, toMessage(m))
+	}
+	return out, nil
+}
+
+func (b *serviceBackend) Servers() ([]Server, error) {
+	doc, err := b.c.GetFullConfig()
+	if err != nil {
+		return nil, err
+	}
+	def, _ := doc["default_pbs_id"].(string)
+	var out []Server
+	if m, ok := doc["pbs_servers"].(map[string]interface{}); ok {
+		for id, v := range m {
+			s, _ := v.(map[string]interface{})
+			if s == nil {
+				continue
+			}
+			login := "token"
+			if str(s, "username") != "" {
+				login = "password"
+			}
+			out = append(out, Server{
+				ID: id, Name: firstNonEmpty(str(s, "name"), id), URL: str(s, "baseurl"), Datastore: str(s, "datastore"),
+				Namespace: str(s, "namespace"), Fingerprint: str(s, "certfingerprint"), Default: id == def,
+				Login: login, Encrypted: str(s, "encryption_key_file") != "",
+				AuthID: str(s, "authid"), Username: str(s, "username"), Description: str(s, "description"),
+				KeyFile: str(s, "encryption_key_file"), PassphraseStored: boolean(s, "encryption_key_passphrase_set"), Raw: s,
+			})
+		}
+	}
+	if len(out) == 0 && str(doc, "baseurl") != "" {
+		out = append(out, Server{
+			ID: "default", Name: "Default", URL: str(doc, "baseurl"), Datastore: str(doc, "datastore"),
+			Namespace: str(doc, "namespace"), Fingerprint: str(doc, "certfingerprint"), Default: true,
+			Login: "token", Encrypted: str(doc, "encryption_key_file") != "",
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out, nil
+}
+
+func (b *serviceBackend) KeyInfo(path string) (KeyInfo, error) {
+	var raw map[string]interface{}
+	if err := b.c.Call("InspectEncryptionKeyFile", &raw, path); err != nil {
+		return KeyInfo{}, err
+	}
+	return keyInfoFrom(raw), nil
+}
+
+func (b *serviceBackend) GenerateKey(name string) (KeyInfo, error) {
+	var raw map[string]interface{}
+	if err := b.c.Call("GenerateEncryptionKeyFile", &raw, filepath.Join(b.keysDir, name)); err != nil {
+		return KeyInfo{}, err
+	}
+	return keyInfoFrom(raw), nil
+}
+
+// StoreKey saves a key file's text in the service's keys folder (never over an
+// existing file) and describes it.
+func (b *serviceBackend) StoreKey(name string, data []byte) (KeyInfo, error) {
+	path, err := b.c.SaveKey(name, data)
+	if err != nil {
+		return KeyInfo{}, err
+	}
+	return b.KeyInfo(path)
+}
+
+func (b *serviceBackend) RestrictKey(path string) (KeyInfo, error) {
+	var raw map[string]interface{}
+	if err := b.c.Call("RestrictEncryptionKeyFileAccess", &raw, path); err != nil {
+		return KeyInfo{}, err
+	}
+	return keyInfoFrom(raw), nil
+}
+
+func (b *serviceBackend) SaveServer(doc map[string]interface{}, isNew bool) error {
+	name := "UpdatePBSServer"
+	if isNew {
+		name = "AddPBSServer"
+	}
+	return b.c.Call(name, nil, doc)
+}
+
+func (b *serviceBackend) DeleteServer(id string) error { return b.c.Call("DeletePBSServer", nil, id) }
+
+func (b *serviceBackend) SetDefaultServer(id string) error {
+	return b.c.Call("SetDefaultPBSServer", nil, id)
+}
+
+func (b *serviceBackend) TestServer(id string) (string, error) {
+	var note string
+	err := b.c.Call("TestPBSConnectionNote", &note, id)
+	if err != nil && strings.Contains(err.Error(), "unknown call") { // a service from before the warning
+		return "", b.c.Call("TestPBSConnection", nil, id)
+	}
+	return note, err
+}
+
+func (b *serviceBackend) PinFingerprint(id, fingerprint string) error {
+	return b.c.PinFingerprint(id, fingerprint)
+}
+
+func (b *serviceBackend) Prefs() (Prefs, error) {
+	doc, err := b.c.GetFullConfig()
+	if err != nil {
+		return Prefs{}, err
+	}
+	return prefsFromConfig(doc), nil
+}
+
+// SavePrefs sends only what changed, through the same setters the desktop app
+// uses, so the service's own limits and checks apply.
+func (b *serviceBackend) SavePrefs(old, now Prefs) error {
+	if now.limitsChanged(old) {
+		if err := b.c.Call("SetSpeedLimits", nil, now.UploadMBps, now.DownloadMBps, now.DiskReadMBps); err != nil {
+			return err
+		}
+	}
+	if now.UploadThreads != old.UploadThreads {
+		if err := b.c.Call("SetUploadThreads", nil, now.UploadThreads); err != nil {
+			return err
+		}
+	}
+	if now.ChunkTimeout != old.ChunkTimeout {
+		if err := b.c.Call("SetChunkTimeout", nil, now.ChunkTimeout); err != nil {
+			return err
+		}
+	}
+	if now.Compression != old.Compression {
+		level := now.Compression
+		if level == "default" {
+			level = ""
+		}
+		if err := b.c.Call("SetCompressionLevel", nil, level); err != nil {
+			return err
+		}
+	}
+	if now.ParallelRestore != old.ParallelRestore {
+		if err := b.c.Call("SetParallelRestore", nil, now.ParallelRestore); err != nil {
+			return err
+		}
+	}
+	if now.ParallelRead != old.ParallelRead || now.ReadWorkers != old.ReadWorkers {
+		if err := b.c.Call("SetParallelBackupRead", nil, now.ParallelRead, now.ReadWorkers); err != nil {
+			return err
+		}
+	}
+	if now.MaxRuns != old.MaxRuns {
+		if err := b.c.Call("SetMaxConcurrentRuns", nil, now.MaxRuns); err != nil {
+			return err
+		}
+	}
+	if now.mailChanged(old) {
+		return b.c.Call("SetSMTPSettings", nil, now.SMTPHost, now.SMTPPort, now.SMTPUser, now.SMTPPassword, now.SMTPInsecure, now.MailFrom)
+	}
+	return nil
+}
+
+func (b *serviceBackend) SendTestMail(to string) error { return b.c.Call("SendTestEmail", nil, to) }
+
+func (b *serviceBackend) LogFiles() ([]LogFile, error) {
+	var raw []map[string]interface{}
+	if err := b.c.ListLogs(&raw); err != nil {
+		return nil, err
+	}
+	out := make([]LogFile, 0, len(raw))
+	for _, m := range raw {
+		out = append(out, logFileFrom(m))
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Modified.After(out[j].Modified) })
+	return out, nil
+}
+
+func (b *serviceBackend) ReadLogFile(f LogFile, filter string, hideChunks bool) ([]string, error) {
+	var view struct {
+		Lines []string `json:"lines"`
+	}
+	q := map[string]interface{}{"folder": f.Folder, "name": f.Name, "filter": filter, "hideChunks": hideChunks, "lines": 3000}
+	if err := b.c.ReadLog(q, &view); err != nil {
+		return nil, err
+	}
+	return view.Lines, nil
+}
+
+func (b *serviceBackend) access(serverID string) (Access, error) {
+	acc, err := b.c.PBSAccess(serverID, true)
+	if err != nil {
+		return Access{}, err
+	}
+	return accessFrom(acc), nil
+}
+
+func (b *serviceBackend) RestoreGroups(serverID string) ([]Group, error) {
+	acc, err := b.access(serverID)
+	if err != nil {
+		return nil, err
+	}
+	return listGroups(acc)
+}
+
+func (b *serviceBackend) RestoreSnapshots(serverID string, g Group) ([]SnapshotInfo, error) {
+	acc, err := b.access(serverID)
+	if err != nil {
+		return nil, err
+	}
+	return listSnapshotsOf(acc, g.Type, g.ID)
+}
+
+func (b *serviceBackend) RestoreCatalog(serverID string, s SnapshotInfo, passphrase string) ([]CatalogItem, error) {
+	acc, err := b.access(serverID)
+	if err != nil {
+		return nil, err
+	}
+	return readCatalog(acc, s, passphrase)
+}
+
+func (b *serviceBackend) RestoreFiles(serverID string, s SnapshotInfo, includes []string, dest string, overwrite bool, passphrase string, progress func(file string)) (int, error) {
+	acc, err := b.access(serverID)
+	if err != nil {
+		return 0, err
+	}
+	return restoreFiles(acc, s, includes, dest, overwrite, passphrase, progress)
+}
+
+func (b *serviceBackend) RunLog(backupID string, at time.Time, hideChunks bool) ([]string, error) {
+	var info struct {
+		Folder int    `json:"folder"`
+		Name   string `json:"name"`
+	}
+	if err := b.c.FindRunLog(backupID, at.UnixMilli(), &info); err != nil {
+		return nil, err
+	}
+	var view struct {
+		Lines []string `json:"lines"`
+	}
+	q := map[string]interface{}{"folder": info.Folder, "name": info.Name, "hideChunks": hideChunks, "lines": 3000}
+	if err := b.c.ReadLog(q, &view); err != nil {
+		return nil, err
+	}
+	return view.Lines, nil
+}
+
+func firstNonEmpty(a ...string) string {
+	for _, s := range a {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// describeErr turns a connection problem into something a person can act on.
+func describeErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	low := strings.ToLower(msg)
+	switch {
+	case strings.Contains(msg, "401"), strings.Contains(low, "unauthorized"):
+		return "the service refused the token: run as administrator or root, or set SALVANZA_API_TOKEN"
+	// only the window's own link to the service: a Proxmox Backup Server that
+	// cannot be reached is reported as the service reports it
+	case strings.Contains(low, "failed to connect to service"), strings.Contains(low, "127.0.0.1:18765"),
+		strings.Contains(low, "could not tell who is answering"), strings.Contains(low, "something other than the background service"):
+		return "the Salvanza service is not running or not reachable"
+	case strings.Contains(msg, "501"):
+		return "this service is older and does not offer that"
+	}
+	return msg
+}

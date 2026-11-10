@@ -7,6 +7,7 @@ require (
 	directorybackup v0.0.0
 	machinebackup v0.0.0
 	pbsnbd v0.0.0
+	salvanza-tui v0.0.0
 	snapshot v0.0.0
 )
 
@@ -26,6 +27,7 @@ require (
 	github.com/rivo/tview v0.42.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rodolfoag/gow32 v0.0.0-20230512144032-1e896a3c51aa // indirect
+	github.com/salvanza/salvanza_client/gui/api v0.0.0 // indirect
 	github.com/st-matskevich/go-vss v0.4.3 // indirect
 	github.com/tawesoft/golib/v2 v2.16.0 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
@@ -43,11 +45,13 @@ require (
 replace (
 	clientcommon => ../clientcommon
 	directorybackup => ../directorybackup
+	github.com/salvanza/salvanza_client/gui/api => ../gui/api
 	machinebackup => ../machinebackup
 	machinebackuplib => ../machinebackuplib
 	pbscommon => ../pbscommon
 	pbsnbd => ../nbd
 	retry => ../pkg/retry
+	salvanza-tui => ../tui
 	security => ../pkg/security
 	snapshot => ../snapshot
 )

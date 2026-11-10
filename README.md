@@ -88,6 +88,7 @@ Salvanza is the new name of Proxmox Backup Client, and the upgrade is automatic.
 | Manual | Covers |
 |---|---|
 | **[GUI manual](docs/manual/GUI.md)** | Install, PBS servers, Backup Sets and schedules, incremental backups, progress, restore, Undelete, Roll back, Reports, logs, Preferences, the background service, troubleshooting |
+| **[Text-mode window manual](docs/manual/TUI.md)** | `salvanza-cli tui`: the app in a terminal, for servers and SSH sessions: every screen and key |
 | **[Command line manual](docs/manual/CLI.md)** | `salvanza-cli backup-folder`, `backup-disk`, `attach-nbd`: every flag, config files, exit codes, scheduling |
 | **[Bare-metal restore manual](docs/manual/BMR.md)** | The restore ISO, step by step; `vm` backups onto Proxmox VE; physical to virtual; different hardware |
 | [Restore scenarios](docs/RESTORE_GUIDE.md) | Which restore to use when |
@@ -190,10 +191,66 @@ The main features are listed under [New in 2.0](#-new-in-20). Also:
 - `salvanza-cli backup-folder`: folder (pxar) backups with deduplication and `-change-detection-mode legacy|data|metadata`
 - `salvanza-cli backup-disk`: live whole-disk backups of Windows (VSS) and Linux (elastio-snap/dattobd) machines (fidx, incremental, free space skipped unless `-readfreespace`, `-type vm` for a Proxmox VE backup, `-skippartition <disk>:<number>` to leave a partition out)
 - `salvanza-cli attach-nbd`: NBD server for restoring disk backups (Linux)
+- `salvanza-cli tui`: the text-mode window, the app in a terminal ([below](#text-mode-window-salvanza-cli-tui))
 - `salvanza-cli version` prints the version, `salvanza-cli help` lists the subcommands, and `salvanza-cli <command> -help` lists a subcommand's options
 - The service program, `salvanza-svc` (`salvanza-svc.exe` on Windows; on Linux also the app, `salvanza-gui`): `-list-sets`, `-undelete` and `-rollback` for Backup Sets defined in the GUI
 
 The three subcommands accept `-keyfile` and `-keyfile-passphrase` for encrypted snapshots. The tools' earlier names, `proxmoxbackup-directory`, `proxmoxbackup-machine` and `proxmoxbackup-nbd` (and `pbsdirectorybackup`, `pbsmachinebackup`, `pbsnbd`), still run the same subcommands with the same flags, so existing scripts keep working. Full reference: [command line manual](docs/manual/CLI.md).
+
+### Text-mode window: `salvanza-cli tui`
+
+The app in a terminal, for servers, SSH sessions and computers without a desktop: run `salvanza-cli tui` (add `-demo` to look around with invented data and no service). It works through the background service, as the app does, so it needs administrator rights (root on Linux).
+
+- **Backup Sets** for folders and for whole disks (a disk picker that can leave partitions out), one-off backups, and run, pause, stop, enable and edit
+- **Restore**, also of encrypted backups, **Undelete** and **Roll back** with Undo
+- **Servers** (test, pin the certificate fingerprint; the test says what the account may do on the datastore) and **encryption keys**, network share logins, preferences, and settings export and import
+- History, the Message Log, reports and log files
+- Ctrl+Q, Ctrl+G and Ctrl+S work everywhere, as in nano, and the arrow keys move between screens. It adapts to 8, 16, 256 and true colour terminals, the Linux text console included
+
+Printing a paper key, and restoring a disk image, stay in the app and in the [bare-metal restore](docs/manual/BMR.md). Every screen and key is in the [text-mode window manual](docs/manual/TUI.md).
+
+<table>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/tui-dashboard.png" width="280">](docs/screenshots/tui-dashboard.png)
+**Dashboard**: the Backup Sets, the backups running now and the latest runs
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/tui-disk-picker.png" width="280">](docs/screenshots/tui-disk-picker.png)
+**Disk images**: choose the disks, and leave partitions out
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/tui-restore.png" width="280">](docs/screenshots/tui-restore.png)
+**Restore**: browse a backup and tick the files
+
+</td>
+</tr>
+<tr>
+<td width="33%">
+
+[<img src="docs/screenshots/tui-undelete.png" width="280">](docs/screenshots/tui-undelete.png)
+**Undelete**: files in the backups that are gone from the disk
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/tui-rollback.png" width="280">](docs/screenshots/tui-rollback.png)
+**Roll back**: shows what would change, then waits for your answer
+
+</td>
+<td width="33%">
+
+[<img src="docs/screenshots/tui-servers-encryption.png" width="280">](docs/screenshots/tui-servers-encryption.png)
+**Servers and encryption keys**: generate, import and inspect a key
+
+</td>
+</tr>
+</table>
 
 ### 📸 Screenshots
 

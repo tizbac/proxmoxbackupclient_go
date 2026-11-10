@@ -18,6 +18,7 @@ import (
 	"clientcommon"
 	"directorybackup"
 	"machinebackup"
+	tui "salvanza-tui"
 	"snapshot"
 )
 
@@ -42,7 +43,13 @@ func commands() []command {
 		{"attach-nbd", "attach a disk image from PBS as a read-only /dev/nbdN (Linux)", attachNBD,
 			[]string{"proxmoxbackup-nbd", "pbsnbd"}},
 		{"install-snapshot-module", "build and load elastio-snap for disk snapshots (Linux, root)", installSnapshotModule, nil},
+		{"tui", "text window for Backup Sets, running backups and history (administrator or root)", runTUI, nil},
 	}
+}
+
+// runTUI is the text-mode window: it talks to the local Salvanza service.
+func runTUI() {
+	os.Exit(tui.Run(os.Args[1:], os.Stdout, os.Stderr, version))
 }
 
 func main() {

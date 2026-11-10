@@ -18,6 +18,9 @@ import (
 //	salvanza-svc -undelete "<set>" [-days N] [-to DIR] [-dry-run] [-no-verify]
 //	salvanza-svc -rollback "<set>" [-at "2026-10-10 14:30"] [-policy replace|missing|exact]
 //	             [-backup-first] [-dry-run] [-yes] [-no-verify]
+//	salvanza-svc -list-rollbacks "<set>"
+//	salvanza-svc -undo-rollback "<set>" -created <time from -list-rollbacks>
+//	salvanza-svc -delete-rollback-copies "<set>" -created <time from -list-rollbacks>
 //
 // The service program (a console program on Windows) and the Linux GUI
 // program both take them; runSetCLI returns false when none of them is on
@@ -32,7 +35,7 @@ func runSetCLI(args []string) bool {
 	cmd := ""
 	for _, a := range args {
 		switch strings.TrimLeft(a, "-") {
-		case "list-sets", "undelete", "rollback":
+		case "list-sets", "undelete", "rollback", "list-rollbacks", "undo-rollback", "delete-rollback-copies":
 			if cmd == "" {
 				cmd = strings.TrimLeft(a, "-")
 			}
@@ -59,6 +62,10 @@ func setCLI(cmd string, args []string) int {
 	dryRun := fs.Bool("dry-run", false, "only show what would be done")
 	yes := fs.Bool("yes", false, "roll back without asking")
 	noVerify := fs.Bool("no-verify", false, "do not verify the restored files")
+	listRollbacks := fs.String("list-rollbacks", "", "Backup Set whose earlier roll backs to list (name or id)")
+	undoRollback := fs.String("undo-rollback", "", "Backup Set whose roll back to undo (name or id); needs -created")
+	deleteCopies := fs.String("delete-rollback-copies", "", "Backup Set whose roll back safety copies to delete (name or id); needs -created")
+	created := fs.String("created", "", "undo-rollback, delete-rollback-copies: the roll back's time as -list-rollbacks prints it")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -83,8 +90,15 @@ func setCLI(cmd string, args []string) int {
 		return 0
 	}
 	name := *undelete
-	if cmd == "rollback" {
+	switch cmd {
+	case "rollback":
 		name = *rollback
+	case "list-rollbacks":
+		name = *listRollbacks
+	case "undo-rollback":
+		name = *undoRollback
+	case "delete-rollback-copies":
+		name = *deleteCopies
 	}
 	var job *ScheduledJob
 	for i := range jobs {
@@ -117,6 +131,9 @@ func setCLI(cmd string, args []string) int {
 	}
 
 	switch cmd {
+	case "list-rollbacks", "undo-rollback", "delete-rollback-copies":
+		return rollbackRecordsCLI(a, cmd, job, *created)
+
 	case "undelete":
 		fmt.Printf("Looking for files of %q that are in its backups but not on disk...\n", job.Name)
 		scan, err := a.ScanUndelete(job.ID, *days)
@@ -240,4 +257,49 @@ func setCLI(cmd string, args []string) int {
 		return wait()
 	}
 	return 2
+}
+
+// rollbackRecordsCLI lists a set's earlier roll backs (one tab-separated
+// ROLLBACK line each: time, status, policy, files moved aside, removed,
+// restored, bytes kept), or undoes one or deletes its safety copies, the one
+// made at the -created time.
+func rollbackRecordsCLI(a *App, cmd string, job *ScheduledJob, created string) int {
+	records, err := a.ListRollbacks(job.ID)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Roll backs:", err)
+		return 1
+	}
+	if cmd == "list-rollbacks" {
+		for _, r := range records {
+			fmt.Printf("ROLLBACK\t%s\t%s\t%s\t%d\t%d\t%d\t%d\n", r.Created, r.Status, r.Policy, r.Moved, r.Removed, r.Restored, r.Bytes)
+		}
+		fmt.Printf("%d earlier roll back(s) of %q\n", len(records), job.Name)
+		return 0
+	}
+	if created == "" {
+		fmt.Fprintln(os.Stderr, "-created is needed: use the time -list-rollbacks prints")
+		return 2
+	}
+	for _, r := range records {
+		if r.Created != created {
+			continue
+		}
+		if cmd == "undo-rollback" {
+			msg, err := a.UndoRollback(r.Path)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Undo roll back:", err)
+				return 1
+			}
+			fmt.Println(msg)
+			return 0
+		}
+		if err := a.DeleteRollbackCopies(r.Path); err != nil {
+			fmt.Fprintln(os.Stderr, "Delete the safety copies:", err)
+			return 1
+		}
+		fmt.Printf("Deleted the safety copies of the roll back of %s; it can no longer be undone.\n", created)
+		return 0
+	}
+	fmt.Fprintf(os.Stderr, "No roll back of %q was made at %s (-list-rollbacks lists them)\n", job.Name, created)
+	return 1
 }
