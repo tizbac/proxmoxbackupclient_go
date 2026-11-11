@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/rivo/tview"
 )
 
 // The Network shares and Settings file pages of Preferences.
@@ -136,23 +138,34 @@ func defaultLogsPath() string {
 	return name
 }
 
+// saveLogs asks for the file (a new name is filled in, in the home folder) and
+// writes the service's logs of the last two weeks into it.
 func (p *prefsView) saveLogs() {
-	path := strings.TrimSpace(p.logsFile.GetText())
-	if path == "" {
-		p.a.errorBox("Give the file to write.")
-		return
-	}
-	go func() {
-		err := p.a.be.SaveLogs(path)
-		p.a.app.QueueUpdateDraw(func() {
-			if err != nil {
-				p.a.errorBox(describeErr(err))
-				return
-			}
-			p.logsFile.SetText(defaultLogsPath()) // the next one gets its own name
-			p.a.infoBox("Logs written to " + path + ". Look through them before you post them: they name your folders and servers.")
-		})
-	}()
+	path := tview.NewInputField().SetLabel("File ").SetFieldWidth(60).SetText(defaultLogsPath())
+	form := styleForm(tview.NewForm()).AddFormItem(path)
+	form.SetTitle(" Save logs ")
+	form.AddTextView("", tag(colDim)+"One zip with the service's logs of the last two weeks, to attach to a bug report. A file that already exists is never overwritten. The logs name your folders and servers: look through them before you post them.", 70, 4, true, false)
+	cancel := func() { p.a.closeModal("savelogs") }
+	form.AddButton("Save", func() {
+		dest := strings.TrimSpace(path.GetText())
+		if dest == "" {
+			p.a.errorBox("Give the file to write.")
+			return
+		}
+		p.a.closeModal("savelogs")
+		go func() {
+			err := p.a.be.SaveLogs(dest)
+			p.a.app.QueueUpdateDraw(func() {
+				if err != nil {
+					p.a.errorBox(describeErr(err))
+					return
+				}
+				p.a.infoBox("Logs written to " + dest + ". Look through them before you post them.")
+			})
+		}()
+	})
+	form.AddButton("Cancel", cancel)
+	p.a.formModal("savelogs", form, 80, cancel)
 }
 
 func (p *prefsView) importSettings() {
