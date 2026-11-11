@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -37,25 +38,62 @@ func TestDefaultLogsPathIsANewZipName(t *testing.T) {
 }
 
 func TestSettingsFilePageSavesLogsFromTheWindow(t *testing.T) {
-	h := newHarness(t, 130, 40)
+	home := t.TempDir() // the file name offered is in the home folder
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	h := newHarness(t, 130, 44)
 	h.waitFor("service running")
 	h.key(tcell.KeyF9, 0)
-	h.waitFor("Backup options")
+	h.waitFor("Upload limit")
 	for i := 0; i < 3; i++ {
 		h.key(tcell.KeyPgDn, 0)
 	}
-	h.waitFor("Save logs")
-	if !strings.Contains(h.screen(), "Logs file") {
-		t.Fatalf("the page has no Logs file field:\n%s", h.screen())
+	h.waitFor("Include passwords and secrets")
+	// the buttons: Previous page, Export, Import, Save logs (Tab: secrets box, then these)
+	for i := 0; i < 5; i++ {
+		h.key(tcell.KeyTab, 0)
 	}
-	dest := filepath.Join(t.TempDir(), "my-logs.zip")
-	h.onUI(func() { h.a.pf.logsFile.SetText(dest) })
-	h.onUI(h.a.pf.saveLogs)
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("overwritten") // the dialog, whose file name is already filled in
+	h.key(tcell.KeyTab, 0)  // the Save button
+	h.key(tcell.KeyEnter, 0)
 	h.waitFor("Logs written to")
-	if _, err := os.Stat(dest); err != nil {
+	found, _ := filepath.Glob(filepath.Join(home, "salvanza-logs-*.zip"))
+	if len(found) != 1 {
+		t.Fatalf("expected one zip in the home folder, found %v", found)
+	}
+	if _, err := os.Stat(found[0]); err != nil {
 		t.Fatalf("the file was not written: %v", err)
 	}
-	if !strings.Contains(h.screen(), "Look through them") {
-		t.Errorf("the box does not warn about what the logs name:\n%s", h.screen())
+	// one word, not a phrase: a dialog wraps its lines differently by the length of the path
+	if !strings.Contains(h.screen(), "post") {
+		t.Errorf("the box does not warn about posting the logs:\n%s", h.screen())
+	}
+}
+
+func TestSaveLogsDialogCanBeCancelled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	h := newHarness(t, 130, 44)
+	h.waitFor("service running")
+	h.key(tcell.KeyF9, 0)
+	h.waitFor("Upload limit")
+	for i := 0; i < 3; i++ {
+		h.key(tcell.KeyPgDn, 0)
+	}
+	h.waitFor("Include passwords and secrets")
+	for i := 0; i < 5; i++ {
+		h.key(tcell.KeyTab, 0)
+	}
+	h.key(tcell.KeyEnter, 0)
+	h.waitFor("overwritten")
+	h.key(tcell.KeyEscape, 0)
+	time.Sleep(300 * time.Millisecond)
+	if strings.Contains(h.screen(), "overwritten") {
+		t.Errorf("Esc did not close the dialog:\n%s", h.screen())
+	}
+	if found, _ := filepath.Glob(filepath.Join(home, "salvanza-logs-*.zip")); len(found) != 0 {
+		t.Errorf("a file was written although the dialog was cancelled: %v", found)
 	}
 }
