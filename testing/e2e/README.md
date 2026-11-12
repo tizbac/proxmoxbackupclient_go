@@ -54,12 +54,14 @@ Every setting is an environment variable with a sensible default:
 |---|---|---|
 | 1 | Directory backup → official restore | Every file and directory is byte-identical (`sha256` manifest diff + directory-tree diff), and every symbolic link comes back as a link with the same target (to a file, out of a folder, to a folder, dangling, absolute, a non-ASCII name). The `.proxmox_backup_client_meta.json` our backup adds at the root is left out of the comparison and checked on its own: it must name the source folder and the backup ID. |
 | 2 | Block/file backup (`.fidx`) → official restore | The restored image is byte-identical to the source. |
-| 3 | **Encrypted** directory backup → official restore `--keyfile` | Restores identically; and the unkeyed restore is *refused*. |
+| 3 | **Encrypted** directory backup → official restore `--keyfile` | Restores identically; and the unkeyed restore is *refused*. The datastore holds chunks that were compressed and then encrypted (the blob magic of each chunk file is read), as the official client stores them. |
 | 4 | **Encrypted** block backup → official restore `--keyfile` | Restores identically; and the unkeyed restore is *refused*. |
-| 5 | Manifest interop | The official client lists our snapshots, restores our `index.json.blob`, and the manifest has a valid signature, a `key-fingerprint`, `crypt-mode: encrypt` on every archive, and exactly the key set that proxmox-backup declares. |
+| 5 | Manifest interop | The official client lists our snapshots, restores our `index.json.blob`, and the manifest has a valid signature, a `key-fingerprint`, `crypt-mode: encrypt` on every archive, and exactly the key set that proxmox-backup declares. The note of the client that wrote the snapshot (`unprotected["salvanza-client"]`) comes back from the server: a version on every snapshot, and on the encrypted one format 1 and the oldest version that reads it. |
 | 6 | PBS server-side verify | `proxmox-backup-manager verify` reads every chunk and archive back and reports `TASK OK`. |
 | 7 | Dedup | A second identical backup reports chunk reuse. |
 | 8 | Namespace round-trip | A backup made with `-namespace` is listed and restored by the official client with `--ns`, and does not appear in the root namespace. |
+| 9 | Compression `none` → official restore | A folder backup, an encrypted folder backup and an encrypted block backup made with `-compression none` add no compressed chunk to the datastore (counted by blob magic before and after), and each restores identically. |
+| 10 | **Official** encrypted backup → **our** restore | The reverse direction. The official client backs up a folder, a disk image and a blob with a key (compressed, then encrypted), and the same folder again as a split archive; our reader (`TestLiveRestoreOfficial` in `pbscommon`, run by the suite with `go test`) restores all of them: the folders are identical to the source, the image and the blob have its `sha256`. |
 
 Tests 3 and 4 use a key file created by the **official** client, which doubles
 as an assertion that our key-file parser is compatible.

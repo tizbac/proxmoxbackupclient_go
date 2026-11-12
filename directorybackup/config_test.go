@@ -106,11 +106,11 @@ func TestExcludeConfig(t *testing.T) {
 	}
 }
 
-// -compression takes the four levels (and empty, default); anything else
+// -compression takes the five levels (and empty, default); anything else
 // stops the run, rather than being taken as fastest.
 func TestCompressionOption(t *testing.T) {
 	base := Config{BaseURL: "https://pbs:8007", AuthID: "a@pbs!t", Secret: "s", Datastore: "ds", BackupSourceDir: "/data"}
-	for _, ok := range []string{"", "fastest", "default", "better", "best"} {
+	for _, ok := range []string{"", "none", "fastest", "default", "better", "best"} {
 		c := base
 		c.Compression = ok
 		if p := c.problems(); len(p) != 0 {

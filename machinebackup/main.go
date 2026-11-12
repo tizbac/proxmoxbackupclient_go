@@ -23,8 +23,12 @@ import (
 // it with -ldflags "-X main.version=..."); -version prints it.
 var version string
 
-// SetVersion sets the version -version prints.
-func SetVersion(v string) { version = v }
+// SetVersion sets the version -version prints, which is also the one the
+// manifest of each snapshot names as its writer.
+func SetVersion(v string) {
+	version = v
+	pbscommon.SetClientVersion(v)
+}
 
 // usageSummary heads -help's text.
 const usageSummary = "Backs up whole disks to a Proxmox Backup Server as a host or vm snapshot."
@@ -65,7 +69,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcom
 	backupTypeFlag := flag.String("type", "", "host|vm , vm will allow to restore as VM inside proxmox VE (Physical to Virtual), also it enables to use file restore feature, use numeric backupid")
 	flag.Var(&backupdevs, "backupdev", "Can be specified multiple times,Backup device file ( On windows it can be \\\\.\\PhysicalDriveN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever ; mounted partitions get a consistent point-in-time snapshot via the elastio-snap/dattobd kernel module (requires root)")
 	liveReadFlag := flag.Bool("liveread", false, "Linux: read mounted partitions live, without a snapshot, so elastio-snap or dattobd is not needed. The image may be inconsistent: files that change during the backup can be caught half written. Windows always reads a volume in use through VSS")
-	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: fastest, default (zstd level 3), better or best (default: default). Encrypted backups are compressed too, before encryption")
+	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: none, fastest, default (zstd level 3), better or best (default: default). Encrypted backups are compressed too, before encryption")
 	readFreeSpaceFlag := flag.Bool("readfreespace", false, "Windows: also read free space and the paging/hibernation files (a forensic copy); by default they go into the image as zeros without being read")
 	progressFlag := flag.Bool("progress", false, "Draw a progress bar on standard error while the backup runs, with the percentage of the data actually read (free space and partitions left out are counted as done at once, as in the app). Before the size is known the bar is indeterminate. The per-chunk lines are left out; other messages go above the bar")
 	var skipparts arrayFlags
@@ -322,7 +326,7 @@ func problems(cfg *machinebackuplib.Config) []string {
 		p = append(p, fmt.Sprintf("-type is %q: use host or vm", cfg.BackupType))
 	}
 	if !pbscommon.ValidCompressionLevel(cfg.CompressionLevel) {
-		p = append(p, fmt.Sprintf("-compression is %q: use fastest, default, better or best", cfg.CompressionLevel))
+		p = append(p, fmt.Sprintf("-compression is %q: use none, fastest, default, better or best", cfg.CompressionLevel))
 	}
 	if cfg.SMTP != nil {
 		if s := cfg.SMTP.Problem(); s != "" {

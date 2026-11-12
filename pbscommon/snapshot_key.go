@@ -31,7 +31,9 @@ func (e *SnapshotKeyError) Error() string {
 
 // CheckArchiveKey reads the snapshot's manifest (index.json.blob, which is
 // never encrypted) in this reader session and returns a *SnapshotKeyError
-// when archiveName is encrypted and pbs.Crypt cannot read it. It returns nil
+// when archiveName is encrypted and pbs.Crypt cannot read it, or a
+// *SnapshotFormatError when the snapshot was written by a newer version of
+// this client in a format this one does not read. It returns nil
 // when the archive is not encrypted, when the key matches, and when the
 // manifest cannot be read or says nothing either way: the restore then goes
 // ahead and fails, if it must, on the first chunk as before.
@@ -43,6 +45,11 @@ func (pbs *PBSClient) CheckArchiveKey(archiveName string) error {
 	var m BackupManifest
 	if json.Unmarshal(raw, &m) != nil {
 		return nil
+	}
+	// A format newer than this build reads is said first: the right key
+	// would not help (*SnapshotFormatError, snapshot_writer.go).
+	if err := archiveFormatError(&m, archiveName); err != nil {
+		return err
 	}
 	return archiveKeyError(&m, archiveName, pbs.Crypt)
 }

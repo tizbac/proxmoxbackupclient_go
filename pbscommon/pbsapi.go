@@ -40,12 +40,19 @@ const (
 	CompressionBetter CompressionLevel = "better"
 	// CompressionBest - Best compression ratio, highest CPU usage
 	CompressionBest CompressionLevel = "best"
+	// CompressionNone - chunks and blobs are sent as they are, not
+	// compressed. For data that is already compressed, and the one level
+	// whose encrypted backups a 2.0 client can still restore (it cannot
+	// read compressed encrypted chunks).
+	CompressionNone CompressionLevel = "none"
 )
 
 // ParseCompressionLevel converts a string to CompressionLevel
-// Returns CompressionFastest if invalid or empty
+// Returns CompressionFastest if invalid, CompressionDefault if empty
 func ParseCompressionLevel(level string) CompressionLevel {
 	switch strings.ToLower(level) {
+	case "none", "off", "0":
+		return CompressionNone
 	case "fastest", "fast":
 		return CompressionFastest
 	case "default", "":
@@ -60,12 +67,12 @@ func ParseCompressionLevel(level string) CompressionLevel {
 }
 
 // ValidCompressionLevel reports whether level is one a setting or option may
-// hold: fastest, default, better or best (any case), or empty for default.
-// ParseCompressionLevel takes anything and falls back to fastest, so a
-// setting is checked with this first.
+// hold: none, fastest, default, better or best (any case), or empty for
+// default. ParseCompressionLevel takes anything and falls back to fastest, so
+// a setting is checked with this first.
 func ValidCompressionLevel(level string) bool {
 	switch strings.ToLower(level) {
-	case "", "fastest", "default", "better", "best":
+	case "", "none", "fastest", "default", "better", "best":
 		return true
 	}
 	return false
@@ -116,6 +123,12 @@ type Unprotected struct {
 	// signature (proxmox-backup removes `unprotected` before computing the
 	// auth tag), so a restore can pick the right key before verifying.
 	KeyFingerprint *string `json:"key-fingerprint,omitempty"`
+
+	// Writer names the version of this client that wrote the snapshot and
+	// what a client needs to read it (snapshot_writer.go). Not a field of
+	// proxmox-backup's: PBS keeps "unprotected" as it is given, and the
+	// official client ignores what it does not know there.
+	Writer *SnapshotWriter `json:"salvanza-client,omitempty"`
 }
 
 // BackupManifest mirrors proxmox-backup's `BackupManifest` (src/backup/
@@ -925,6 +938,12 @@ func (pbs *PBSClient) UploadChunk(writerid uint64, digest string, chunkdata []by
 	var outBuffer []byte
 	var err error
 
+	// Compression "none" overrides the caller: every backup path asks for a
+	// compressed chunk, and the setting is where compression is turned off.
+	if pbs.CompressionLevel == CompressionNone {
+		compressed = false
+	}
+
 	if pbs.Crypt != nil {
 		// Encrypted chunk: MAGIC || crc32 || IV || TAG || AES-256-GCM(data),
 		// where data is the zstd-compressed plaintext (ENCR_COMPR, what
@@ -1121,8 +1140,13 @@ func (pbs *PBSClient) uploadBlob(name string, data []byte, encrypt bool) error {
 
 	if encrypt && pbs.Crypt != nil {
 		var err error
-		// Compressed when it helps, as proxmox-backup-client uploads blobs.
-		out, err = pbs.Crypt.EncodeEncryptedCompressed(data, pbs.zstdLevel())
+		// Compressed when it helps, as proxmox-backup-client uploads blobs,
+		// unless compression is set to none.
+		if pbs.CompressionLevel == CompressionNone {
+			out, err = pbs.Crypt.EncodeEncrypted(data)
+		} else {
+			out, err = pbs.Crypt.EncodeEncryptedCompressed(data, pbs.zstdLevel())
+		}
 		if err != nil {
 			return fmt.Errorf("failed to encrypt blob %s: %w", name, err)
 		}
@@ -1234,6 +1258,10 @@ func (pbs *PBSClient) UploadManifest() error {
 			pbs.Manifest.Files[i].CryptMode = CryptModeEncrypt
 		}
 	}
+
+	// Which version wrote this and what reads it: in "unprotected", so it
+	// is outside the signature computed below.
+	pbs.Manifest.Unprotected.Writer = pbs.snapshotWriter()
 
 	manifestBin, err := json.Marshal(pbs.Manifest)
 	if err != nil {
@@ -1835,18 +1863,9 @@ func (pbs *PBSClient) GetChunkData(ctx context.Context, digest string) ([]byte, 
 		// DIDXReaderAt never had a chance against this: by the time it hangs,
 		// the network read is long done, so no context timeout on the HTTP
 		// request can touch it.
-		dec, err := zstd.NewReader(nil)
-
-		if err != nil {
-			return nil, err
-		}
-		defer dec.Close()
-		ret2 := make([]byte, 0)
-		ret2, err = dec.DecodeAll(ret[12:], ret2)
-		if err != nil {
-			return nil, err
-		}
-		return ret2, nil
+		// zstdDecodeAll is that nil-reader decode, with the size limit an
+		// encrypted chunk's decode has.
+		return zstdDecodeAll(ret[12:])
 	} else {
 		// Encrypted chunk (or a magic we don't know). DecodeEncryptedBlob
 		// owns the IV/TAG/CRC framing and the sha256(plaintext || id_key)

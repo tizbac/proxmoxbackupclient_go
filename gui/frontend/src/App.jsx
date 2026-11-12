@@ -4822,6 +4822,7 @@ function App() {
                           }}
                         >
                           {[
+                            ['none', 'compressionNone'],
                             ['fastest', 'compressionFastest'],
                             ['default', 'compressionDefault'],
                             ['better', 'compressionBetter'],

@@ -17,8 +17,12 @@ import (
 // it with -ldflags "-X main.version=..."); -version prints it.
 var version string
 
-// SetVersion sets the version -version prints.
-func SetVersion(v string) { version = v }
+// SetVersion sets the version -version prints, which is also the one the
+// manifest of each snapshot names as its writer.
+func SetVersion(v string) {
+	version = v
+	pbscommon.SetClientVersion(v)
+}
 
 // usageSummary heads -help's text.
 const usageSummary = "Backs up folders, or standard input (-backupstream), to a Proxmox Backup Server\nas a host snapshot."
@@ -91,7 +95,8 @@ type Config struct {
 	ExcludeList []string `json:"exclude"`
 
 	// Compression is how hard chunks are compressed before they go to PBS:
-	// fastest, default (zstd level 3), better or best; empty is default.
+	// none, fastest, default (zstd level 3), better or best; empty is
+	// default.
 	Compression string `json:"compression"`
 
 	// ReadAhead is how many files of each folder are read in the background
@@ -160,7 +165,7 @@ func (c *Config) problems() []string {
 		p = append(p, problem)
 	}
 	if !pbscommon.ValidCompressionLevel(c.Compression) {
-		p = append(p, fmt.Sprintf("-compression is %q: use fastest, default, better or best", c.Compression))
+		p = append(p, fmt.Sprintf("-compression is %q: use none, fastest, default, better or best", c.Compression))
 	}
 	if len(c.ExcludeList) > 0 && len(c.Dirs()) == 0 && c.BackupStreamName != "" {
 		p = append(p, "-exclude leaves out files and folders of -backupdir; it does not apply to -backupstream")
@@ -272,7 +277,7 @@ func loadConfig() *Config {
 	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
 	var excludeFlags dirListFlag
 	flag.Var(&excludeFlags, "exclude", "Leave out files and folders matching this pattern; repeat for several. Without / or \\ it matches a name at any depth (*.tmp, node_modules); with one it is taken from the folder backed up (logs/*.log, C:\\Users\\alice\\Temp). Not case sensitive. Adds to the config file's \"exclude\" list")
-	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: fastest, default (zstd level 3), better or best (default: default). Encrypted backups are compressed too, before encryption")
+	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: none, fastest, default (zstd level 3), better or best (default: default). Encrypted backups are compressed too, before encryption")
 	readAheadFlag := flag.Int("read-ahead", 0, "Read up to this many files of each folder in the background ahead of the one being archived, 1 to 32, which helps when reading from the disk is the slow part; 0 or left out reads one file at a time. Each file read ahead, up to 128 MB, is held in memory until it is archived, so a folder can hold up to this many at a time (and its parent folders theirs, while it is backed up). The archive is the same either way")
 	noMTimeFlag := flag.Bool("no-mtime", false, "Record 1970-01-01 as every file and folder time instead of the real one, so time-only changes (a folder whose contents come and go) do not change the archive and re-upload its chunks; restored items get 1970-01-01 (advanced, optional)")
 	progressFlag := flag.Bool("progress", false, "Draw a progress bar on standard error while the backup runs. The folder is walked once beforehand to count its files and bytes (-backupstream has no size to count: its bar is indeterminate). The per-chunk lines are left out; other messages go above the bar")

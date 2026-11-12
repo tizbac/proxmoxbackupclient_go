@@ -46,7 +46,7 @@ func (a *App) oneOffDisks() {
 	}
 	a.mu.Unlock()
 	server := tview.NewDropDown().SetLabel("PBS server ").SetOptions(options, nil).SetCurrentOption(0)
-	comp := tview.NewDropDown().SetLabel("Compression ").SetOptions([]string{"default", "fastest", "better", "best"}, nil).SetCurrentOption(0)
+	comp := tview.NewDropDown().SetLabel("Compression ").SetOptions(compressionLevels, nil).SetCurrentOption(0)
 	vss := tview.NewCheckbox().SetLabel("Use VSS snapshot (Windows) ").SetChecked(true)
 	asVM := tview.NewCheckbox().SetLabel("Back up as a Proxmox VM (vm/ID) ")
 	vmID := tview.NewInputField().SetLabel("  VM number (1 to 999999) ").SetFieldWidth(8)
@@ -150,8 +150,7 @@ func (a *App) oneOffFolders() {
 	}
 	a.mu.Unlock()
 	server := tview.NewDropDown().SetLabel("PBS server ").SetOptions(options, nil).SetCurrentOption(0)
-	compression := []string{"default", "fastest", "better", "best"}
-	comp := tview.NewDropDown().SetLabel("Compression ").SetOptions(compression, nil).SetCurrentOption(0)
+	comp := tview.NewDropDown().SetLabel("Compression ").SetOptions(compressionLevels, nil).SetCurrentOption(0)
 	vss := tview.NewCheckbox().SetLabel("Use VSS snapshot (Windows) ").SetChecked(true)
 	exclude := tview.NewTextArea().SetLabel("Leave out ").SetSize(3, 56)
 	exclude.SetBorder(false)

@@ -319,11 +319,17 @@ func DecodeEncryptedBlob(raw []byte, crypt *CryptConfig, digest []byte) ([]byte,
 	}
 }
 
-// zstdDecodeAll decodes a zstd frame. A nil reader is used on purpose: giving
-// zstd.NewReader a real io.Reader makes it spawn stream decoding goroutines
-// that only exit when the decoder is closed.
+// MaxBlobSize is the most a chunk or blob may decompress to: PBS's own limit
+// on a DataBlob (MAX_BLOB_SIZE, 128 MiB), many times the largest chunk any
+// client cuts. A frame that claims more is refused before memory is found
+// for it, so a damaged or hostile chunk cannot exhaust the computer.
+const MaxBlobSize = 128 * 1024 * 1024
+
+// zstdDecodeAll decodes a zstd frame of at most MaxBlobSize. A nil reader is
+// used on purpose: giving zstd.NewReader a real io.Reader makes it spawn
+// stream decoding goroutines that only exit when the decoder is closed.
 func zstdDecodeAll(data []byte) ([]byte, error) {
-	dec, err := zstd.NewReader(nil)
+	dec, err := zstd.NewReader(nil, zstd.WithDecoderMaxMemory(MaxBlobSize))
 	if err != nil {
 		return nil, err
 	}

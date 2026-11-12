@@ -117,14 +117,15 @@ func TestProblems(t *testing.T) {
 		edit func(*machinebackuplib.Config)
 		want string
 	}{
-		"ticket":       {func(c *machinebackuplib.Config) { c.AuthID, c.Secret, c.Ticket = "", "", "t" }, ""},
-		"no secret":    {func(c *machinebackuplib.Config) { c.Secret = "" }, "Missing options: -secret (for -authid)"},
-		"no devices":   {func(c *machinebackuplib.Config) { c.BackupDevices = nil }, "Missing options: -backupdev"},
-		"vm":           {func(c *machinebackuplib.Config) { c.BackupType = "vm" }, ""},
-		"bad type":     {func(c *machinebackuplib.Config) { c.BackupType = "VM" }, `-type is "VM": use host or vm`},
-		"compression":  {func(c *machinebackuplib.Config) { c.CompressionLevel = "best" }, ""},
-		"bad level":    {func(c *machinebackuplib.Config) { c.CompressionLevel = "max" }, `-compression is "max": use fastest, default, better or best`},
-		"smtp no host": {func(c *machinebackuplib.Config) { c.SMTP = &machinebackuplib.SMTPConfig{Port: "25"} }, `smtp: "host" and "port" are needed`},
+		"ticket":         {func(c *machinebackuplib.Config) { c.AuthID, c.Secret, c.Ticket = "", "", "t" }, ""},
+		"no secret":      {func(c *machinebackuplib.Config) { c.Secret = "" }, "Missing options: -secret (for -authid)"},
+		"no devices":     {func(c *machinebackuplib.Config) { c.BackupDevices = nil }, "Missing options: -backupdev"},
+		"vm":             {func(c *machinebackuplib.Config) { c.BackupType = "vm" }, ""},
+		"bad type":       {func(c *machinebackuplib.Config) { c.BackupType = "VM" }, `-type is "VM": use host or vm`},
+		"compression":    {func(c *machinebackuplib.Config) { c.CompressionLevel = "best" }, ""},
+		"bad level":      {func(c *machinebackuplib.Config) { c.CompressionLevel = "max" }, `-compression is "max": use none, fastest, default, better or best`},
+		"no compression": {func(c *machinebackuplib.Config) { c.CompressionLevel = "none" }, ""},
+		"smtp no host":   {func(c *machinebackuplib.Config) { c.SMTP = &machinebackuplib.SMTPConfig{Port: "25"} }, `smtp: "host" and "port" are needed`},
 	} {
 		cfg := full
 		c.edit(&cfg)
