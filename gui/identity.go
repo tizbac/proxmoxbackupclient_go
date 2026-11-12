@@ -128,6 +128,7 @@ const nimbusCopiedMarker = "COPIED-TO-ProxmoxBackupClient.txt"
 
 // copiedAway reports whether dir's settings were copied to another folder that
 // carried on (nimbusCopiedMarker): they are out of date and never taken over.
+// #nosec G703 -- the folders are ProgramData's, with the brands' fixed names: not user input
 func copiedAway(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, nimbusCopiedMarker))
 	return err == nil

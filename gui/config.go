@@ -362,7 +362,7 @@ func adoptWindowsState(programData, dir string) {
 	}
 	var from string
 	var err error
-	if _, cerr := os.Stat(filepath.Join(dir, "config.json")); cerr == nil && copiedAway(dir) {
+	if _, cerr := os.Stat(filepath.Join(dir, "config.json")); cerr == nil && copiedAway(dir) { // #nosec G703 -- ProgramData's folder with the brand's fixed name: not user input
 		var kept string
 		from, kept, err = adoptOverCopiedAway(dir, candidates)
 		if kept != "" {
