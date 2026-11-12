@@ -39,7 +39,9 @@ export async function logRequestFor({ backupId, at, kind, notice }) {
   return { folder: f.folder, name: f.name, around: logStamp(at), notice: notice || '' }
 }
 
-export default function LogsPage({ t, language, active, request, onOpenFolder, onSaveLogs, saveLogsLabel, saveLogsTip, formatBytes }) {
+// serviceLogs: {folder, state: 'readable'|'locked'|'none', listed} from GetServiceLogsStatus.
+// onOpenServiceFolder opens the service's folder (or, when it is locked, restarts the app as an administrator).
+export default function LogsPage({ t, language, active, request, onOpenFolder, onSaveLogs, saveLogsLabel, saveLogsTip, serviceLogs, onOpenServiceFolder, serviceFolderLabel, serviceLockedNote, formatBytes }) {
   const [files, setFiles] = useState([])
   const [sel, setSel] = useState(null) // {folder, name}
   const [view, setView] = useState(null)
@@ -109,6 +111,12 @@ export default function LogsPage({ t, language, active, request, onOpenFolder, o
   return (
     <div>
       <h2>{t('logsTitle')}</h2>
+      {serviceLogs && serviceLogs.state === 'locked' && !serviceLogs.listed && (
+        <div className="info-box" style={{ marginBottom: '8px' }}>
+          ℹ️ {serviceLockedNote}
+          {onOpenServiceFolder && <> <button className="btn btn-secondary" onClick={onOpenServiceFolder}>{serviceFolderLabel}</button></>}
+        </div>
+      )}
       {files.length === 0 ? (
         <p style={{ color: '#718096' }}>{t('logsNone')}</p>
       ) : (
@@ -139,6 +147,8 @@ export default function LogsPage({ t, language, active, request, onOpenFolder, o
               <button className="btn btn-secondary" onClick={() => { loadFiles(); setReload(n => n + 1) }}>{t('logsRefresh')}</button>
               {onSaveLogs && <button className="btn btn-secondary" title={saveLogsTip} onClick={onSaveLogs}>{saveLogsLabel}</button>}
               {onOpenFolder && <button className="btn btn-secondary" onClick={onOpenFolder}>{t('logsOpenFolder')}</button>}
+              {onOpenServiceFolder && serviceLogs && serviceLogs.state !== 'none' && !(serviceLogs.state === 'locked' && !serviceLogs.listed) &&
+                <button className="btn btn-secondary" onClick={onOpenServiceFolder}>{serviceFolderLabel}</button>}
             </div>
             {notice && <div className="info-box" style={{ marginBottom: '8px' }}>ℹ️ {notice}</div>}
             {err && <div className="status error visible" style={{ marginBottom: '8px' }}>❌ {err}</div>}

@@ -163,7 +163,7 @@ func (a *App) buildLogBundle(days int) ([]byte, error) {
 	if days <= 0 {
 		days = logBundleDays
 	}
-	files, leftOut := collectLogs(logFolders(), days, logBundleMaxBytes)
+	files, leftOut := collectLogs(a.logDirs(), days, logBundleMaxBytes)
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	skipped, err := addLogFiles(zw, "app/", files)

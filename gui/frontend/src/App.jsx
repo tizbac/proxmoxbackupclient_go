@@ -47,7 +47,7 @@ let SetParallelRestore, SetParallelBackupRead
 let GetJobPolicy, SetRequireAdminForJobs, RequestElevation, SnapshotSupport, RunScheduledJobNowRead
 let ExportSettings, ImportSettings
 let SetSMTPSettings, SendTestEmail
-let GetLogsFolder, OpenLogsFolder, SaveLogs
+let GetLogsFolder, OpenLogsFolder, SaveLogs, GetServiceLogsStatus, OpenServiceLogsFolder
 // Encryption key management
 let InspectEncryptionKeyFile, GenerateEncryptionKeyFile, OpenEncryptionKeyDialog, OpenEncryptionKeySaveDialog
 // Undelete, Roll back, Run as Service
@@ -133,6 +133,8 @@ if (window.go) {
   GetLogsFolder = window.go.main.App.GetLogsFolder
   OpenLogsFolder = window.go.main.App.OpenLogsFolder
   SaveLogs = window.go.main.App.SaveLogs
+  GetServiceLogsStatus = window.go.main.App.GetServiceLogsStatus
+  OpenServiceLogsFolder = window.go.main.App.OpenServiceLogsFolder
   SetSMTPSettings = window.go.main.App.SetSMTPSettings
   SendTestEmail = window.go.main.App.SendTestEmail
   // Encryption key management
@@ -2151,6 +2153,27 @@ function App() {
 
   // Saves the app's logs and the service's in one zip, to attach to a bug report. The
   // service's folder is its own and stays closed: the app asks the service for its logs.
+  // The service's log folder: whether this window may open it, or only an administrator may.
+  const [serviceLogs, setServiceLogs] = useState(null)
+  useEffect(() => {
+    if (activeTab !== 'logs' || !GetServiceLogsStatus) return
+    GetServiceLogsStatus().then(setServiceLogs).catch(() => setServiceLogs(null))
+  }, [activeTab])
+  // Opens the service's folder; if only an administrator may read it, restarts
+  // the app as one (the system's own prompt asks), and the button works then.
+  const handleOpenServiceLogs = async () => {
+    if (!OpenServiceLogsFolder) return
+    try {
+      await OpenServiceLogsFolder()
+    } catch (err) {
+      if (String(err).includes('SERVICE_LOGS_NEED_ADMIN')) {
+        await restartAsAdmin()
+      } else {
+        showStatus(`❌ ${err}`, 'error')
+      }
+    }
+  }
+
   const handleSaveLogs = async () => {
     if (!SaveLogs) return
     try {
@@ -7480,6 +7503,12 @@ function App() {
         <div className={`tab-content ${activeTab === 'logs' ? 'active' : ''}`}>
           <LogsPage t={t} language={language} active={activeTab === 'logs'} request={logRequest}
             onOpenFolder={OpenLogsFolder ? () => OpenLogsFolder().catch(err => showStatus(`❌ ${err}`, 'error')) : null}
+            serviceLogs={serviceLogs}
+            onOpenServiceFolder={OpenServiceLogsFolder ? handleOpenServiceLogs : null}
+            serviceFolderLabel={serviceLogs && serviceLogs.state === 'locked'
+              ? tl('logsOpenServiceFolderAdmin', 'Open service log folder (as administrator)')
+              : tl('logsOpenServiceFolder', 'Open service log folder')}
+            serviceLockedNote={tl('logsServiceLocked', 'The background service\'s logs can only be read by an administrator. Restart the app as an administrator to see them here.')}
             onSaveLogs={SaveLogs ? handleSaveLogs : null}
             saveLogsLabel={tl('saveLogsBtn', 'Save logs for a bug report…')}
             saveLogsTip={tl('saveLogsTip', 'One zip with this app\'s logs and the service\'s, for a bug report')}

@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -36,16 +38,52 @@ type LogFileInfo struct {
 // compressed when the run ended, and its rotated parts.
 var runLogName = regexp.MustCompile(`^backup-(\d{8})-(\d{6})-(.+?)\.log(\.\d{8}-\d{6})?(\.gz)?$`)
 
-// logFolders lists the folders logs are in: this process's, and on Linux the
-// service's (/var/log/salvanza) when this process can read it (root; an app
-// works through the service otherwise).
+// serviceLogsFolder is where the background service keeps its logs: the
+// settings folder under ProgramData on Windows, /var/log/<brand> elsewhere.
+// Only the service (and an administrator) may read it.
+// A variable so a test can point it at a throwaway folder.
+var serviceLogsFolder = func() string {
+	if runtime.GOOS == "windows" {
+		programData := os.Getenv("ProgramData")
+		if programData == "" {
+			programData = filepath.Join(os.Getenv("SystemDrive")+string(filepath.Separator), "ProgramData")
+		}
+		return filepath.Join(programData, folderName())
+	}
+	return "/var/log/" + folderNameLower()
+}
+
+// serviceLogsAccess says whether the service has a log folder on this
+// computer and whether this process may read it: "readable", "locked" (it is
+// there but this process is refused: an administrator may read it) or "none".
+func serviceLogsAccess() (folder, state string) {
+	folder = serviceLogsFolder()
+	if _, err := os.ReadDir(folder); err == nil {
+		return folder, "readable"
+	} else if errors.Is(err, fs.ErrPermission) {
+		return folder, "locked"
+	}
+	return folder, "none"
+}
+
+// logFolders lists the folders logs are in: this process's, and the service's
+// when this process can read it (an administrator or root; an app works
+// through the service otherwise).
 func logFolders() []string {
 	dirs := []string{logDir}
-	serviceLogs := "/var/log/" + folderNameLower()
-	if runtime.GOOS == "linux" && logDir != serviceLogs && os.Geteuid() == 0 {
-		if fi, err := os.Stat(serviceLogs); err == nil && fi.IsDir() {
-			dirs = append(dirs, serviceLogs)
-		}
+	if folder, state := serviceLogsAccess(); state == "readable" && filepath.Clean(folder) != filepath.Clean(logDir) {
+		dirs = append(dirs, folder)
+	}
+	return dirs
+}
+
+// logDirs is logFolders for this app: an app that works through the service
+// gets the service's logs from it (folder numbers from serviceLogFolder), so
+// its own reading of the service's folder, if it could, is left out.
+func (a *App) logDirs() []string {
+	dirs := logFolders()
+	if a.delegated() && len(dirs) > 1 {
+		return dirs[:1]
 	}
 	return dirs
 }
@@ -98,7 +136,7 @@ func (a *App) ListLogFiles() ([]LogFileInfo, error) {
 // listLocalLogFiles lists the log files in this process's folders.
 func (a *App) listLocalLogFiles() ([]LogFileInfo, error) {
 	out := []LogFileInfo{}
-	for i, dir := range logFolders() {
+	for i, dir := range a.logDirs() {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			if i == 0 {
