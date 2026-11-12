@@ -66,10 +66,11 @@ The app needs the WebKitGTK runtime that Wails programs use; most desktop distri
 
 A machine backup of a running Linux computer reads each mounted partition through a snapshot, as Windows does with VSS, so the image is consistent. Linux has nothing built in for this, so the app uses a kernel module: `elastio-snap` or `dattobd` (elastio-snap is a fork of dattobd). A folder backup uses the same snapshot when its Backup Set has **Use VSS (Windows Shadow Copy / Linux Snapshot)** ticked, and so needs the module and root too; unticked, it reads the folders as they are. Neither module can snapshot **btrfs**, the default file system of Fedora: there, untick it for folder sets, and a machine set needs **Use snapshots** off (with its acceptance box) for its btrfs partitions.
 
-A machine backup needs two things:
+A machine backup needs three things:
 
 1. **One of the modules loaded.** If both are loaded, the app uses elastio-snap.
 2. **Root rights.** The background service has them. Without it, use **Restart as administrator**, or run `salvanza-cli backup-disk` with `sudo`.
+3. **At least 10% of each snapshotted file system free.** The modules keep the snapshot's copy-on-write file on the file system they snapshot, and with less room taking the snapshot fails (or the file fills up during the backup). The run stops before it starts, saying which volume is too full, how much is free and how much more is needed. The same check applies to a folder backup that uses a snapshot, and to `salvanza-cli backup-folder` and `backup-disk`.
 
 **Install the module through DKMS** (Dynamic Kernel Module Support). A kernel module is built for one kernel. DKMS builds it again for each new kernel when the kernel is updated, so the module keeps loading. A module built with plain `make install` is left behind by the next kernel update, and machine backups stop until it is built again.
 

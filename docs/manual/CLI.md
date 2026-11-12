@@ -142,7 +142,7 @@ Chunks sent in the lost session are sent again. The run prints when it starts ag
 | `-backup-id <id>` | computer name | Backup ID. Snapshots with the same ID form one group |
 | `-change-detection-mode <mode>` | `legacy` | `legacy`, `data` or `metadata` ([section 4](#4-incremental-backups-with--change-detection-mode)) |
 | `-exclude <pattern>` | | Leave out files and folders matching the pattern. Repeat for several ([below](#leaving-files-out)) |
-| `-novss` | VSS on | Do not snapshot the source first. Needed for file systems without VSS (VeraCrypt volumes) and on Linux unless you run as root with `elastio-snap` or `dattobd` loaded, and on btrfs (Fedora's default), which neither module can snapshot. Without it the run says what is missing. A network path (a share or a drive mapped to one; NFS, SMB/CIFS or FUSE on Linux) is read without a snapshot on its own, with a note, as in the GUI |
+| `-novss` | VSS on | Do not snapshot the source first. Needed for file systems without VSS (VeraCrypt volumes) and on Linux unless you run as root with `elastio-snap` or `dattobd` loaded, and on btrfs (Fedora's default), which neither module can snapshot. Without it the run says what is missing, or that the file system has less than the 10% free a snapshot needs. A network path (a share or a drive mapped to one; NFS, SMB/CIFS or FUSE on Linux) is read without a snapshot on its own, with a note, as in the GUI |
 | `-keyfile <file>` | | Encrypt with this PBS key file ([section 7](#7-encryption)) |
 | `-keyfile-passphrase <text>` | asked | Passphrase for a protected key |
 | `-no-mtime` | off | Record 1970-01-01 as every file and folder time ([below](#leaving-times-out-of-the-archive)) |
@@ -282,7 +282,7 @@ Later backups of the same disk to the same group only upload changed 4 MiB chunk
 
 Free space is not read. On Windows each NTFS volume's cluster bitmap is read from its snapshot. On Linux the free-space maps of ext2/3/4 and XFS file systems are read from the snapshot (or straight from the partition when it is not mounted). Empty stretches go into the image as zeros, so a half-empty disk takes about half the time, and deleted data never reaches the backup. The image is still a complete, bootable disk. Use `-readfreespace` to read everything.
 
-On Linux the snapshot's own copy-on-write file (`.pbs_snapshot_N.cow` at the top of each snapshotted file system, about a tenth of its size) is always left out of the image, also with `-readfreespace`. The bare-metal restore ISO deletes the file after a restore ([BMR.md](BMR.md)).
+On Linux the snapshot's own copy-on-write file (`.pbs_snapshot_N.cow` at the top of each snapshotted file system, about a tenth of its size) is always left out of the image, also with `-readfreespace`. Taking the snapshot needs at least 10% of each snapshotted file system free for that file: with less, the run stops before it starts and says which volume is too full, how much is free and how much more is needed, rather than failing part way through. `-liveread` skips the check, as it skips the snapshot. The bare-metal restore ISO deletes the file after a restore ([BMR.md](BMR.md)).
 
 If the disk cannot read a sector, that spot goes into the image as zeros and the backup carries on. The run then prints a warning saying where, keeps the snapshot and exits with code 3.
 

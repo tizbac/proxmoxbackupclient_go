@@ -318,6 +318,13 @@ func createOne(c snapControl, absPath string, needFiles bool) (*linuxSnapshot, s
 		return nil, "", err
 	}
 
+	// Less than 10% free and the module cannot create the copy-on-write file
+	// (or it fills up mid-backup): say so now, with the figures. Checked after
+	// destroyStaleTracers, whose file it may just have removed.
+	if err := checkCowFreeSpace(mountpoint, device, fstype); err != nil {
+		return nil, "", err
+	}
+
 	minor, err := allocMinor(c)
 	if err != nil {
 		return nil, "", err
@@ -331,7 +338,7 @@ func createOne(c snapControl, absPath string, needFiles bool) (*linuxSnapshot, s
 	if err := ioctlSetupSnapshot(c.ctlDevice, c.name, device, cowFile, minor); err != nil {
 		os.Remove(cowFile)
 		if errors.Is(err, syscall.ENOSPC) {
-			err = fmt.Errorf("%w: the snapshot keeps its copy-on-write file on the file system it snapshots (%s), which needs free space for it", err, mountpoint)
+			err = fmt.Errorf("%w: the snapshot keeps its copy-on-write file on the file system it snapshots (%s), which needs at least %d%% of its size free for it", err, mountpoint, minCowFreePercent)
 		}
 		return nil, "", err
 	}
@@ -465,6 +472,19 @@ func CreateVSSSnapshotCtx(ctx context.Context, paths []string, needFiles bool, b
 		if _, device, _, err := findMount(absPath); err == nil && !seenDev[device] {
 			seenDev[device] = true
 			devs = append(devs, device)
+		}
+	}
+	// Refuse before waiting for the devices' locks or taking any snapshot,
+	// naming the volume and how much room is missing. A copy-on-write file
+	// already there (a crashed run's) is not counted: createOne removes stale
+	// ones first, and checks again just before it creates its own.
+	for _, absPath := range absPaths {
+		mountpoint, device, fstype, err := findMount(absPath)
+		if err != nil || fstype == "btrfs" || hasCowFile(mountpoint) {
+			continue // createOne says why, or frees the room first
+		}
+		if err := checkCowFreeSpace(mountpoint, device, fstype); err != nil {
+			return fmt.Errorf("could not snapshot %s: %w: refusing to back up without a snapshot", absPath, err)
 		}
 	}
 	if err := holdDevices(ctx, devs); err != nil {
