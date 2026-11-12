@@ -23,12 +23,19 @@ type harness struct {
 
 func newHarness(t *testing.T, w, h int) *harness {
 	t.Helper()
+	return newHarnessWith(t, newDemoBackend(), w, h)
+}
+
+// newHarnessWith runs the window over a backend of the test's own, usually the
+// demo backend with a method or two replaced.
+func newHarnessWith(t *testing.T, be Backend, w, h int) *harness {
+	t.Helper()
 	sim := tcell.NewSimulationScreen("UTF-8")
 	if err := sim.Init(); err != nil {
 		t.Fatal(err)
 	}
 	sim.SetSize(w, h)
-	a := NewApp(newDemoBackend(), "test")
+	a := NewApp(be, "test")
 	a.app.SetScreen(sim)
 	done := make(chan struct{})
 	go func() {

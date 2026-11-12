@@ -230,7 +230,7 @@ func (r *restoreView) loadGroups() {
 			if len(groups) == 0 {
 				r.groupsTable.SetCell(1, 0, cell("nothing is stored on this server yet", colDim))
 			} else {
-				r.groupsTable.Select(1, 0)
+				selectTop(r.groupsTable)
 			}
 		})
 	}()
@@ -277,7 +277,7 @@ func (r *restoreView) pickGroup(row int) {
 				r.snapTable.SetCell(i+1, 3, cell(enc, c))
 			}
 			if len(snaps) > 0 {
-				r.snapTable.Select(1, 0)
+				selectTop(r.snapTable)
 			}
 		})
 	}()

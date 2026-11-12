@@ -72,7 +72,7 @@ func (a *App) rollbackList(s Set) {
 				tbl.SetCell(i+1, c, tview.NewTableCell(v).SetTextColor(colText))
 			}
 		}
-		tbl.Select(1, 0)
+		selectTop(tbl)
 	}
 	load := func() {
 		go func() {

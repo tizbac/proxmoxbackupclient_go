@@ -155,7 +155,7 @@ func (a *App) renderLogs() {
 		if keep < 1 || keep > len(files) {
 			keep = 1
 		}
-		a.logsTable.Select(keep, 0)
+		selectKept(a.logsTable, keep)
 	}
 }
 

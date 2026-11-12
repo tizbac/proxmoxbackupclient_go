@@ -181,6 +181,26 @@ func newTable() *tview.Table {
 	return t
 }
 
+// A table that is drawn with fewer rows than its box starts to follow its end
+// (tview's Table.Draw sets trackEnd), and Select does not stop that. So a list
+// that was drawn short (the "reading the server..." line, an empty list) and is
+// then filled past the box opened scrolled to its end, with the selected first
+// row out of sight. selectTop and selectKept are for a table that was just
+// refilled: they stop the following before they select.
+
+// selectTop shows a new list from its start, with its first row selected.
+func selectTop(t *tview.Table) {
+	t.ScrollToBeginning()
+	t.Select(1, 0)
+}
+
+// selectKept selects a row of a list that was refreshed in place and keeps the
+// place it was scrolled to.
+func selectKept(t *tview.Table, row int) {
+	t.SetOffset(t.GetOffset())
+	t.Select(row, 0)
+}
+
 func header(t *tview.Table, cols ...string) {
 	for i, c := range cols {
 		t.SetCell(0, i, tview.NewTableCell(" "+c).SetTextColor(colHead).SetSelectable(false).SetAttributes(tcell.AttrBold).SetExpansion(1))
@@ -874,7 +894,7 @@ func (a *App) fillSets(t *tview.Table) {
 		keep = n
 	}
 	if n > 0 {
-		t.Select(keep, 0)
+		selectKept(t, keep)
 	}
 }
 
@@ -1058,7 +1078,7 @@ func (a *App) renderHist() {
 		if keep < 1 || keep > n {
 			keep = 1
 		}
-		a.histTable.Select(keep, 0)
+		selectKept(a.histTable, keep)
 	}
 	a.renderHistDetail()
 }
@@ -1102,7 +1122,7 @@ func (a *App) renderMsgs() {
 		if keep < 1 || keep > n {
 			keep = 1
 		}
-		a.msgsTable.Select(keep, 0)
+		selectKept(a.msgsTable, keep)
 	}
 }
 
@@ -1127,7 +1147,7 @@ func (a *App) renderServers() {
 		if keep < 1 || keep > n {
 			keep = 1
 		}
-		a.srvTable.Select(keep, 0)
+		selectKept(a.srvTable, keep)
 	}
 	a.renderSrvDetail()
 }
