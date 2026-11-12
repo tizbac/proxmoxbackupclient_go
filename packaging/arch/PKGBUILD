@@ -41,7 +41,7 @@
 #   tree on every build, so there is no fixed sum to pin.
 
 pkgname=salvanza
-pkgver=2.0.0
+pkgver=2.1.0
 pkgrel=1
 pkgdesc='Salvanza, backup for Proxmox Backup Server (app, service and command line)'
 arch=(x86_64 aarch64)
