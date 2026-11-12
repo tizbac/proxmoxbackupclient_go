@@ -360,7 +360,17 @@ func adoptWindowsState(programData, dir string) {
 	for _, f := range otherBrandFolders() {
 		candidates = append(candidates, filepath.Join(programData, f))
 	}
-	from, err := adoptFolder(dir, candidates)
+	var from string
+	var err error
+	if _, cerr := os.Stat(filepath.Join(dir, "config.json")); cerr == nil && copiedAway(dir) {
+		var kept string
+		from, kept, err = adoptOverCopiedAway(dir, candidates)
+		if kept != "" {
+			fmt.Fprintf(os.Stderr, "Out-of-date settings (copied away by an earlier install) kept in %s\n", kept)
+		}
+	} else {
+		from, err = adoptFolder(dir, candidates)
+	}
 	switch {
 	case err != nil:
 		fmt.Fprintf(os.Stderr, "Settings of an earlier install not taken over: %v\n", err)

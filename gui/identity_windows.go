@@ -12,8 +12,10 @@ func init() {
 
 // legacyServiceNames are the Windows service names of the releases before
 // the rename (the app's exe name plus "SVC", and the older name the service's
-// own "-service install" used), which an upgrade removes.
-var legacyServiceNames = []string{"ProxmoxBackupClientSVC", "ProxmoxBackupClient", "NimbusBackupSVC", "EtitechBackupSVC", "AcmeBackupSVC"}
+// own "-service install" used), which an upgrade removes. "NimbusBackup" is
+// the name every Nimbus Backup MSI up to 0.4 (rdemsystems/NimbusBackupClient)
+// registered: the app's exe name, without "SVC".
+var legacyServiceNames = []string{"ProxmoxBackupClientSVC", "ProxmoxBackupClient", "NimbusBackupSVC", "NimbusBackup", "EtitechBackupSVC", "AcmeBackupSVC"}
 
 // otherBrandServiceNames are today's service names of the other brands: an
 // installer of one brand replaces any other for now, so its service removes
