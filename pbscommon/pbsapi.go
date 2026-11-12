@@ -41,9 +41,10 @@ const (
 	// CompressionBest - Best compression ratio, highest CPU usage
 	CompressionBest CompressionLevel = "best"
 	// CompressionNone - chunks and blobs are sent as they are, not
-	// compressed. For data that is already compressed, and the one level
-	// whose encrypted backups a 2.0 client can still restore (it cannot
-	// read compressed encrypted chunks).
+	// compressed. For data that is already compressed. An encrypted chunk
+	// sent this way is one a 2.0 client can read, but that does not make
+	// the backup one it can restore: PBS keeps the chunk it already holds,
+	// so the backup may refer to chunks an earlier run stored compressed.
 	CompressionNone CompressionLevel = "none"
 )
 
