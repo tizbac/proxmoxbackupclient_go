@@ -21,7 +21,7 @@ type ServiceLogsStatus struct {
 // opened here, or need the app restarted as an administrator.
 func (a *App) GetServiceLogsStatus() ServiceLogsStatus {
 	folder, state := serviceLogsAccess()
-	return ServiceLogsStatus{Folder: folder, State: state, Listed: a.delegated() || state == "readable"}
+	return ServiceLogsStatus{Folder: folder, State: state, Listed: a.logsThroughService() || state == "readable"}
 }
 
 // OpenServiceLogsFolder opens the service's log folder in the file manager. A
@@ -38,8 +38,9 @@ func (a *App) OpenServiceLogsFolder() error {
 	return fmt.Errorf("the service has no log folder on this computer")
 }
 
-// openFolderInFileManager starts the platform's file manager on dir.
-func openFolderInFileManager(dir string) error {
+// openFolderInFileManager starts the platform's file manager on dir. A
+// variable so a test can see what would be opened.
+var openFolderInFileManager = func(dir string) error {
 	if dir == "" {
 		return fmt.Errorf("log folder is not known")
 	}

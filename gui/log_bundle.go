@@ -164,14 +164,33 @@ func (a *App) buildLogBundle(days int) ([]byte, error) {
 		days = logBundleDays
 	}
 	files, leftOut := collectLogs(a.logDirs(), days, logBundleMaxBytes)
+	// A process that may read the service's folder itself (an administrator,
+	// root) has its files in the same list: they go under service/.
+	svcDir := filepath.Clean(serviceLogsFolder())
+	var own, direct []bundleFile
+	for _, f := range files {
+		if filepath.Clean(f.dir) == svcDir && filepath.Clean(logDir) != svcDir {
+			direct = append(direct, f)
+		} else {
+			own = append(own, f)
+		}
+	}
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	skipped, err := addLogFiles(zw, "app/", files)
+	skipped, err := addLogFiles(zw, "app/", own)
 	if err != nil {
 		return nil, err
 	}
+	skippedSvc, err := addLogFiles(zw, "service/", direct)
+	if err != nil {
+		return nil, err
+	}
+	skipped = append(skipped, skippedSvc...)
 	note := "the service's logs are not part of this file (the app does not use the service)"
-	svcCount := 0
+	if _, state := serviceLogsAccess(); state == "locked" {
+		note = "the service's logs are not part of this file: only an administrator may read them (restart the app as one)"
+	}
+	svcCount := len(direct)
 	if a.delegated() {
 		note = ""
 		data, derr := a.apiClient.LogBundle(days)

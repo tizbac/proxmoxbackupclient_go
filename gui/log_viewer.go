@@ -77,12 +77,19 @@ func logFolders() []string {
 	return dirs
 }
 
+// logsThroughService: does this app get the service's logs from the service?
+// It does when it works through the service and has its token; a window that
+// is set to use the service but is not connected (the Connect banner) does not.
+func (a *App) logsThroughService() bool {
+	return a.delegated() && a.IsServiceConnected()
+}
+
 // logDirs is logFolders for this app: an app that works through the service
 // gets the service's logs from it (folder numbers from serviceLogFolder), so
 // its own reading of the service's folder, if it could, is left out.
 func (a *App) logDirs() []string {
 	dirs := logFolders()
-	if a.delegated() && len(dirs) > 1 {
+	if a.logsThroughService() && len(dirs) > 1 {
 		return dirs[:1]
 	}
 	return dirs

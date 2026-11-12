@@ -1,9 +1,13 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/salvanza/salvanza_client/gui/api"
@@ -62,8 +66,53 @@ func TestServiceLogsFolderNotListedTwiceWhenThroughTheService(t *testing.T) {
 	if !a.delegated() {
 		t.Fatal("test setup: the app should work through the service")
 	}
+	a.mode = api.ModeService
+	a.svcConnected.Store(true)
 	if got := len(a.logDirs()); got != 1 {
-		t.Fatalf("delegated: %d folders, want 1 (the service's come through it)", got)
+		t.Fatalf("connected: %d folders, want 1 (the service's come through it)", got)
+	}
+	// Set to use the service but not connected (the Connect banner): the
+	// service's logs do not come through it, so a process that may read the
+	// folder lists it itself, and one that may not is told it is locked.
+	a.svcConnected.Store(false)
+	if got := len(a.logDirs()); got != 2 {
+		t.Fatalf("not connected: %d folders, want 2", got)
+	}
+	if st := a.GetServiceLogsStatus(); !st.Listed || st.State != "readable" {
+		t.Fatalf("not connected, readable: %+v", st)
+	}
+}
+
+func TestSaveLogsPutsAnAdministratorsServiceLogsUnderService(t *testing.T) {
+	own := withLogFolder(t)
+	svc := t.TempDir()
+	withServiceFolder(t, svc)
+	writeLogLines(t, filepath.Join(own, "service-gui.log"), []string{"[GUI] [2026-11-12 10:00:00] mine"}, false)
+	writeLogLines(t, filepath.Join(svc, "backup-service.log"), []string{"[BACKUP] [2026-11-12 10:01:00] the service's"}, false)
+	data, err := (&App{}).buildLogBundle(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	var info string
+	for _, f := range zr.File {
+		got[f.Name] = true
+		if f.Name == "info.txt" {
+			rc, _ := f.Open()
+			b, _ := io.ReadAll(rc)
+			_ = rc.Close()
+			info = string(b)
+		}
+	}
+	if !got["app/service-gui.log"] || !got["service/backup-service.log"] || got["app/backup-service.log"] {
+		t.Fatalf("zip entries: %v", got)
+	}
+	if !strings.Contains(info, "1 file(s) from the service") {
+		t.Fatalf("info.txt does not say the service's files are in: %q", info)
 	}
 }
 
