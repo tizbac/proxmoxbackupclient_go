@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // The log viewer (View Full Logs): the log files the app and the background
@@ -81,7 +83,7 @@ func logFolders() []string {
 // It does when it works through the service and has its token; a window that
 // is set to use the service but is not connected (the Connect banner) does not.
 func (a *App) logsThroughService() bool {
-	return a.delegated() && a.IsServiceConnected()
+	return a.delegated() && (a.mode != api.ModeService || a.svcConnected.Load())
 }
 
 // logDirs is logFolders for this app: an app that works through the service
