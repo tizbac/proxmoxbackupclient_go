@@ -119,20 +119,21 @@ func ValidateBackupID(id string) error {
 	return nil
 }
 
-// ValidateDatastore validates datastore name
+// datastoreName is the pattern Proxmox Backup Server itself applies to a
+// datastore name (its "safe ID"): a letter, digit or underscore first, then
+// letters, digits, dots, underscores and hyphens.
+var datastoreName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*$`)
+
+// ValidateDatastore validates datastore name. It accepts every name the
+// server accepts, so a datastore that exists can always be entered; the
+// server stays the judge of its own length limits.
 func ValidateDatastore(name string) error {
 	if name == "" {
 		return fmt.Errorf("datastore name cannot be empty")
 	}
 
-	// Must be alphanumeric with hyphens and underscores
-	matched, err := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, name)
-	if err != nil {
-		return fmt.Errorf("regex error: %w", err)
-	}
-
-	if !matched {
-		return fmt.Errorf("datastore name must be alphanumeric with hyphens/underscores only")
+	if !datastoreName.MatchString(name) {
+		return fmt.Errorf("datastore name may hold letters, digits, dots, hyphens and underscores, and must not start with a dot or a hyphen")
 	}
 
 	if len(name) > 64 {
