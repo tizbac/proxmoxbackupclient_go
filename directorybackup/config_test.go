@@ -128,6 +128,41 @@ func TestCompressionOption(t *testing.T) {
 	}
 }
 
+// Encrypted chunks are compressed unless the config file says
+// "no-compress-encrypted": a config file that says nothing writes what
+// proxmox-backup-client writes.
+func TestNoCompressEncryptedOptionIsOffUnlessAsked(t *testing.T) {
+	base := `"baseurl": "https://pbs:8007", "authid": "a@pbs!t", "secret": "s", "datastore": "ds", "backupdir": "/data", "keyfile": "/etc/pbs/key.json"`
+	for name, c := range map[string]struct {
+		extra string
+		want  bool
+	}{
+		"left out": {"", false},
+		"false":    {`, "no-compress-encrypted": false`, false},
+		"true":     {`, "no-compress-encrypted": true`, true},
+	} {
+		var cfg Config
+		if err := json.Unmarshal([]byte("{"+base+c.extra+"}"), &cfg); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if cfg.NoCompressEncrypted != c.want {
+			t.Errorf("%s: NoCompressEncrypted = %v, want %v", name, cfg.NoCompressEncrypted, c.want)
+		}
+		if p := cfg.problems(); len(p) != 0 {
+			t.Errorf("%s: %q", name, p)
+		}
+	}
+	// the app's own key means the opposite and is not the tools': a settings
+	// file of the app given by mistake must not turn compression off
+	var cfg Config
+	if err := json.Unmarshal([]byte("{"+base+`, "compress_encrypted": false}`), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.NoCompressEncrypted {
+		t.Error(`"compress_encrypted": false (the app's key) was read as the tools' "no-compress-encrypted"`)
+	}
+}
+
 // -read-ahead takes 0 (off) to 32 files, as the app does, for folders only.
 func TestReadAheadOption(t *testing.T) {
 	base := Config{BaseURL: "https://pbs:8007", AuthID: "a@pbs!t", Secret: "s", Datastore: "ds", BackupSourceDir: "/data"}

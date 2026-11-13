@@ -38,6 +38,11 @@ func (a *App) SaveConfig(config *Config) error {
 		// Network share logins change only through SetShareLogin and
 		// DeleteShareLogin: the window's copy has no passwords.
 		config.ShareLogins = a.config.ShareLogins
+		// Not part of the settings form either: "Compress encrypted backups"
+		// of the single server of older settings (it follows the default
+		// server's), and that the switches have their start values.
+		config.CompressEncrypted = a.config.CompressEncrypted
+		config.CompressEncryptedDecided = a.config.CompressEncryptedDecided
 		config.EncryptionKeyPassphrase = mergeStoredPassphrase(a.config.EncryptionKeyFile, a.config.EncryptionKeyPassphrase,
 			config.EncryptionKeyFile, config.EncryptionKeyPassphrase, config.ClearEncryptionKeyPassphrase)
 	}

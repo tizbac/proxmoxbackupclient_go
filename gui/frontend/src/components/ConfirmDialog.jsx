@@ -14,6 +14,7 @@ import { useTranslation } from '../i18n/i18nContext'
 // Requests queue, so two at once are shown one after the other. Escape,
 // the Cancel button and a click outside answer "no"; danger dialogs start
 // with the focus on Cancel so Enter never does the risky thing by accident.
+// focusCancel does the same for a question that is not a danger (no red).
 
 let enqueue = null
 
@@ -71,6 +72,7 @@ export default function ConfirmHost() {
 
   const isNotice = req.kind === 'notice'
   const danger = !!req.danger
+  const cancelFirst = danger || !!req.focusCancel
   const headerBg = danger ? '#c53030' : 'var(--accent)'
   const icon = req.icon || (danger ? '⚠️' : isNotice ? 'ℹ️' : '❓')
   const title = req.title || (isNotice ? tl('noticeTitle', 'Information') : tl('confirmTitle', 'Please confirm'))
@@ -137,7 +139,7 @@ export default function ConfirmHost() {
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '0 18px 18px', flexWrap: 'wrap' }}>
           {!isNotice && (
-            <button className="btn btn-secondary" style={{ margin: 0 }} onClick={() => answer(false)} data-autofocus={danger ? true : undefined}>
+            <button className="btn btn-secondary" style={{ margin: 0 }} onClick={() => answer(false)} data-autofocus={cancelFirst ? true : undefined}>
               {cancelLabel}
             </button>
           )}
@@ -150,7 +152,7 @@ export default function ConfirmHost() {
             className="btn"
             style={{ margin: 0, ...(danger ? { background: '#c53030' } : {}) }}
             onClick={() => answer(isNotice ? undefined : true)}
-            data-autofocus={danger ? undefined : true}
+            data-autofocus={cancelFirst ? undefined : true}
           >
             {okLabel}
           </button>

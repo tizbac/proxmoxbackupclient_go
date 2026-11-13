@@ -2053,6 +2053,45 @@ function App() {
     refreshJobPolicy()
   }, [])
 
+  // Compress encrypted backups (gui/compress_encrypted.go): a server whose
+  // switch this version started off, because the version before it wrote
+  // encrypted backups uncompressed, is asked about once. Either answer is
+  // saved with the server, which ends the question; if saving fails it is
+  // asked again the next time the app starts, not again in this run.
+  const compressAskedRef = useRef(new Set())
+  useEffect(() => {
+    if (!UpdatePBSServer) return
+    const pending = (pbsServers || []).filter(s => s.compress_encrypted_ask && !compressAskedRef.current.has(s.id))
+    if (pending.length === 0) return
+    pending.forEach(s => compressAskedRef.current.add(s.id))
+    const ask = async () => {
+      for (const server of pending) {
+        const on = await askConfirm({
+          title: tl('compressEncryptedAskTitle', 'Compress encrypted backups?'),
+          message: tl('compressEncryptedAskMessage', 'Encrypted backups to {server} are not compressed, to stay compatible with version 2.0.0 and earlier.\n\nWe recommend turning compression on. It saves space on the server and matches the official Proxmox client.\n\nKeep it off only if you still need to restore with version 2.0.0 or earlier, or with a restore ISO made before 2.1. Once it is on, encrypted backups made by this computer need version 2.1 or later to restore.\n\nYou can change this later on the Encryption tab of the server, in Preferences.').replace('{server}', server.name || server.id),
+          confirmLabel: tl('compressEncryptedTurnOn', 'Turn on'),
+          cancelLabel: tl('compressEncryptedKeepOff', 'Keep off for now'),
+          focusCancel: true,
+          icon: '🔐',
+        })
+        try {
+          await UpdatePBSServer({
+            ...server,
+            password: '',
+            encryption_key_passphrase: '',
+            clear_encryption_key_passphrase: false,
+            compress_encrypted: !!on,
+            compress_encrypted_ask: false,
+          })
+        } catch (err) {
+          showStatus(`❌ ${t('statusError')} ${err}`, 'error', true)
+        }
+      }
+      await loadPBSServers()
+    }
+    ask()
+  }, [pbsServers])
+
   useEffect(() => {
     if (showPreferences || activeTab === 'backup') refreshJobPolicy()
   }, [showPreferences, activeTab])
@@ -2516,6 +2555,23 @@ function App() {
     ]
     const title = editingServer ? t('editServer') : t('addServer')
     const onSubmit = editingServer ? handleUpdatePBSServer : handleAddPBSServer
+    // Compress encrypted backups, as the server being edited is saved: on or
+    // off (a server being added has neither). Turning it on for a server
+    // saved off is the step that older versions cannot follow, so it is
+    // confirmed; turning it off for one saved on gets a note of what that
+    // does not undo.
+    const savedServer = editingServer ? pbsServers.find(s => s.id === editingServer) : null
+    const savedCompressEncrypted = !!savedServer && savedServer.compress_encrypted !== false
+    const setCompressEncrypted = async (on) => {
+      if (on && savedServer && savedServer.compress_encrypted === false && !(await askConfirm({
+        title: tl('compressEncryptedAskTitle', 'Compress encrypted backups?'),
+        message: tl('compressEncryptedOnConfirm', 'Once this is on, encrypted backups made by this computer to this server need version 2.1 or later of this app, or the official Proxmox client, to restore. Version 2.0.0 and earlier, and restore ISOs made before 2.1, will not be able to restore them.\n\nOther computers that back up to the same datastore with the same key are affected too, so update them first.'),
+        confirmLabel: tl('compressEncryptedTurnOn', 'Turn on'),
+        focusCancel: true,
+        icon: '🔐',
+      }))) return
+      setServerFormData(f => ({...f, compress_encrypted: on}))
+    }
 
     const body = (
       <>
@@ -2612,6 +2668,28 @@ function App() {
               clearStored={!!serverFormData.clear_encryption_key_passphrase}
               onClearStoredChange={(v) => setServerFormData(f => ({...f, clear_encryption_key_passphrase: v}))}
             />
+            {/* Compress encrypted backups (gui/compress_encrypted.go): only
+                means anything with a key. Unset is on; once touched the form
+                always says which. */}
+            {(serverFormData.encryption_key_file || '').trim() && (
+              <div className="form-group" style={{marginTop: '16px', marginBottom: 0}}>
+                <label className="tick-row">
+                  <input
+                    type="checkbox"
+                    checked={serverFormData.compress_encrypted !== false}
+                    onChange={(e) => setCompressEncrypted(e.target.checked)}
+                  />
+                  <span>{tl('compressEncryptedLabel', 'Compress encrypted backups')}</span>
+                </label>
+                <div className="info-box" style={{marginTop: '10px', marginBottom: 0}}>
+                  {serverFormData.compress_encrypted !== false
+                    ? <>ℹ️ {tl('compressEncryptedHintOn', 'Encrypted backups to this server are compressed before they are encrypted, as the official Proxmox client does. Restoring them needs version 2.1 or later of this app.')}</>
+                    : <>⚠️ {tl('compressEncryptedHintOff', 'Encrypted backups to this server are not compressed, so that version 2.0.0 and earlier can still restore them. We recommend turning this on unless you still need that: it saves space on the server and matches the official Proxmox client.')}
+                        {savedCompressEncrypted && <><br/><br/>{tl('compressEncryptedOffNote', 'Turning this off does not change backups already on the server. Data the server already holds in compressed form is not sent again, so backups made from now on may still need version 2.1 or later to restore.')}</>}
+                      </>}
+                </div>
+              </div>
+            )}
           </>
         )}
       </>
@@ -4414,7 +4492,7 @@ function App() {
                         <label>{t('emailFromLabel')}</label>
                         <input type="text" value={emailFrom} onChange={(e) => setEmailFrom(e.target.value)} placeholder="backups@example.com" />
                       </div>
-                      <label style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer'}}>
+                      <label className="tick-row" style={{marginBottom: '12px'}}>
                         <input type="checkbox" checked={smtpInsecure} onChange={(e) => setSmtpInsecure(e.target.checked)} />
                         <span>{t('smtpInsecureLabel')}</span>
                       </label>
@@ -4551,7 +4629,7 @@ function App() {
                     {jobPolicy.supported && (
                       <div className="form-group" style={{marginTop: '20px'}}>
                         <h3 style={{marginBottom: '8px'}}>{t('jobsPolicyTitle')}</h3>
-                        {!jobPolicy.fixed && <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px', opacity: jobPolicy.is_admin ? 1 : 0.7}}>
+                        {!jobPolicy.fixed && <label className="tick-row" style={{opacity: jobPolicy.is_admin ? 1 : 0.7, cursor: jobPolicy.is_admin ? 'pointer' : 'default'}}>
                           <input
                             type="checkbox"
                             checked={!!jobPolicy.require_admin}
@@ -4591,7 +4669,7 @@ function App() {
                   <>
                     <h2 style={{marginTop: 0}}>{t('prefsBackupOptions')}</h2>
                     <div className="form-group" style={{marginTop: '20px'}}>
-                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
+                      <label className="tick-row">
                         <input
                           type="checkbox"
                           checked={!!config.parallel_restore}
@@ -4616,7 +4694,7 @@ function App() {
                     </div>
 
                     <div className="form-group" style={{marginTop: '24px'}}>
-                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
+                      <label className="tick-row">
                         <input
                           type="checkbox"
                           checked={!!config.parallel_backup_read}
@@ -4844,7 +4922,7 @@ function App() {
                       <h3 style={{marginBottom: '8px'}}>{t('settingsPortabilityTitle')}</h3>
                       <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('settingsPortabilityIntro')}</p>
 
-                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '12px'}}>
+                      <label className="tick-row" style={{marginBottom: '12px'}}>
                         <input
                           type="checkbox"
                           checked={exportIncludeSecrets}

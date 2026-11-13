@@ -245,6 +245,7 @@ func (a *App) mergeSettingsBundle(bundle SettingsBundle, forDeployment bool) (se
 
 	for id, srv := range bundle.Config.PBSServers {
 		srvCopy := *srv
+		importedCompressEncrypted(a.config.PBSServers[id], &srvCopy, bundle.Config.CompressEncryptedDecided)
 		if existing, ok := a.config.PBSServers[id]; ok && existing != nil {
 			if srvCopy.Secret == "" && srvCopy.Password == "" {
 				srvCopy.Secret = existing.Secret
@@ -262,6 +263,7 @@ func (a *App) mergeSettingsBundle(bundle SettingsBundle, forDeployment bool) (se
 	if bundle.Config.DefaultPBSID != "" && (!forDeployment || a.config.DefaultPBSID == "") {
 		a.config.DefaultPBSID = bundle.Config.DefaultPBSID
 	}
+	a.config.followDefaultCompressEncrypted()
 	if bundle.Config.Theme != nil {
 		a.config.Theme = bundle.Config.Theme
 	}

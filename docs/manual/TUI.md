@@ -123,6 +123,8 @@ The editor has three steps. **Server**: name, address (`https://pbs.example.com:
 
 A server's backups are encrypted with the key whose file is named in the server's **Encryption** step; with no key file the backups are not encrypted. The key file stays in the service's keys folder. The window never shows a key, only its fingerprint and where the file is.
 
+**Compress encrypted backups**, in the same step, says how this computer writes them: ticked, compressed before they are encrypted (restoring needs version 2.1 or later); not ticked, as version 2.0.0 and earlier wrote them, which those versions and restore ISOs made before 2.1 can still restore. The server's details show which, on the line **Compressed**. A server that had a key before the update to 2.1 starts not ticked, and the window asks once, when it opens, whether to turn it on (**Keep off for now** has the focus, and Esc answers the same). Ticking it for a saved server asks first. The whole of it is in the app's manual, [GUI.md, Encryption tab](GUI.md#encryption-tab).
+
 | Button | Does |
 |---|---|
 | **Generate key** | Makes a new key (without a passphrase, as the app does) in the keys folder and puts it in the **Key file** field. It never overwrites an existing file. A server that has a key already asks first, because a new key cannot read what the old one encrypted |

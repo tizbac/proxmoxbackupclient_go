@@ -111,7 +111,7 @@ func (a *App) copyOwnSettingsToService(ownCfg *Config, ownJobs []ScheduledJob) e
 		BundleVersion: currentSettingsBundleVersion,
 		ExportedAt:    time.Now().Format(time.RFC3339),
 		AppVersion:    appVersion,
-		Config:        &Config{PBSServers: servers},
+		Config:        &Config{PBSServers: servers, CompressEncryptedDecided: ownCfg.CompressEncryptedDecided},
 		ScheduledJobs: jobs,
 		SourceHost:    host, // this computer: machine sets keep their disks
 	}

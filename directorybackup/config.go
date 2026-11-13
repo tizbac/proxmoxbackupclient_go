@@ -75,6 +75,12 @@ type Config struct {
 	// Ignored for `--kdf none` key files, which need nothing.
 	KeyFilePassphrase string `json:"keyfilepassphrase"`
 
+	// NoCompressEncrypted writes chunks encrypted with KeyFile uncompressed,
+	// the form version 2.0 and earlier wrote and the only one they restore.
+	// False (the default) compresses them before they are encrypted, as
+	// proxmox-backup-client does; restoring those needs version 2.1 or later.
+	NoCompressEncrypted bool `json:"no-compress-encrypted"`
+
 	// ChangeDetectionMode is legacy (default), data or metadata, as for
 	// proxmox-backup-client --change-detection-mode. data and metadata write a
 	// split archive (backup.mpxar.didx + backup.ppxar.didx); metadata reads
@@ -275,9 +281,10 @@ func loadConfig() *Config {
 	noVSSFlag := flag.Bool("novss", false, "Disable VSS ( For filesystems that don't support it, for example veracrypt )")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
 	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
+	noCompressEncryptedFlag := flag.Bool("no-compress-encrypted", false, clientcommon.NoCompressEncryptedFlagHelp)
 	var excludeFlags dirListFlag
 	flag.Var(&excludeFlags, "exclude", "Leave out files and folders matching this pattern; repeat for several. Without / or \\ it matches a name at any depth (*.tmp, node_modules); with one it is taken from the folder backed up (logs/*.log, C:\\Users\\alice\\Temp). Not case sensitive. Adds to the config file's \"exclude\" list")
-	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: none, fastest, default (zstd level 3), better or best (default: default). Encrypted backups are compressed too, before encryption")
+	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: none, fastest, default (zstd level 3), better or best (default: default). Has no effect on an encrypted backup with -no-compress-encrypted")
 	readAheadFlag := flag.Int("read-ahead", 0, "Read up to this many files of each folder in the background ahead of the one being archived, 1 to 32, which helps when reading from the disk is the slow part; 0 or left out reads one file at a time. Each file read ahead, up to 128 MB, is held in memory until it is archived, so a folder can hold up to this many at a time (and its parent folders theirs, while it is backed up). The archive is the same either way")
 	noMTimeFlag := flag.Bool("no-mtime", false, "Record 1970-01-01 as every file and folder time instead of the real one, so time-only changes (a folder whose contents come and go) do not change the archive and re-upload its chunks; restored items get 1970-01-01 (advanced, optional)")
 	progressFlag := flag.Bool("progress", false, "Draw a progress bar on standard error while the backup runs. The folder is walked once beforehand to count its files and bytes (-backupstream has no size to count: its bar is indeterminate). The per-chunk lines are left out; other messages go above the bar")
@@ -373,6 +380,9 @@ func loadConfig() *Config {
 	}
 	if *keyFilePassphraseFlag != "" {
 		config.KeyFilePassphrase = *keyFilePassphraseFlag
+	}
+	if *noCompressEncryptedFlag {
+		config.NoCompressEncrypted = true
 	}
 	if *noMTimeFlag {
 		config.NoMTime = true

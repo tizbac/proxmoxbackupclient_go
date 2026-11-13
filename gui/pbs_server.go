@@ -125,6 +125,15 @@ type PBSServer struct {
 	IsOnline                     bool   `json:"is_online,omitempty"`   // Connection status (updated by GUI)
 	SecretSet                    bool   `json:"secret_set,omitempty"`  // M-04: set on sanitized copies so the UI knows a token exists without receiving it
 	PasswordSet                  bool   `json:"password_set,omitempty"`
+	// CompressEncrypted is the "Compress encrypted backups" switch
+	// (compress_encrypted.go): nil or true compresses encrypted chunks before
+	// they are encrypted, false writes them as version 2.0 and older did.
+	CompressEncrypted *bool `json:"compress_encrypted,omitempty"`
+	// CompressEncryptedAsk marks a switch this version turned off itself when
+	// it first read settings of an earlier version, until the user has
+	// answered the question the app then asks once (turn it on, or keep it
+	// off) or has changed the switch.
+	CompressEncryptedAsk bool `json:"compress_encrypted_ask,omitempty"`
 }
 
 // sanitized returns a copy with the secret and password stripped (SecretSet /
@@ -214,6 +223,7 @@ func (pbs *PBSServer) ToConfig() *Config {
 		Password:                pbs.Password,
 		EncryptionKeyFile:       pbs.EncryptionKeyFile,
 		EncryptionKeyPassphrase: pbs.EncryptionKeyPassphrase,
+		CompressEncrypted:       pbs.CompressEncrypted,
 		Datastore:               pbs.Datastore,
 		Namespace:               pbs.Namespace,
 	}

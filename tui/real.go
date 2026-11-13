@@ -129,7 +129,8 @@ func (b *serviceBackend) Servers() ([]Server, error) {
 				Namespace: str(s, "namespace"), Fingerprint: str(s, "certfingerprint"), Default: id == def,
 				Login: login, Encrypted: str(s, "encryption_key_file") != "",
 				AuthID: str(s, "authid"), Username: str(s, "username"), Description: str(s, "description"),
-				KeyFile: str(s, "encryption_key_file"), PassphraseStored: boolean(s, "encryption_key_passphrase_set"), Raw: s,
+				KeyFile: str(s, "encryption_key_file"), PassphraseStored: boolean(s, "encryption_key_passphrase_set"),
+				CompressEncryptedOff: compressEncryptedOff(s), Raw: s,
 			})
 		}
 	}

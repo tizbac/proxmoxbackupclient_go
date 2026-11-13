@@ -65,6 +65,66 @@ func TestEncodeEncryptedCompressedRoundTrip(t *testing.T) {
 	}
 }
 
+// WithCompression(false): the same call writes what version 2.0 wrote and
+// reads, however compressible the data and whatever level is asked for. The
+// digest, and so the chunk's name on the server, is the same either way.
+func TestWithCompressionOffWritesPlainEncrypted(t *testing.T) {
+	crypt := testCryptConfig(t)
+	if !crypt.Compresses() {
+		t.Fatal("a new CryptConfig does not compress")
+	}
+	off := crypt.WithCompression(false)
+	if off.Compresses() {
+		t.Fatal("WithCompression(false) still compresses")
+	}
+	if !crypt.Compresses() {
+		t.Fatal("WithCompression(false) changed the CryptConfig it was called on")
+	}
+	plain := bytes.Repeat([]byte("compressible chunk data "), 4096)
+	for _, level := range []zstd.EncoderLevel{zstd.SpeedFastest, zstd.SpeedDefault, zstd.SpeedBestCompression} {
+		blob, err := off.EncodeEncryptedCompressed(plain, level)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(blob[:8], blobEncryptedMagic) {
+			t.Fatalf("level %v: magic = % x, want ENCR (uncompressed)", level, blob[:8])
+		}
+		if len(blob) < len(plain) {
+			t.Errorf("level %v: %d bytes for %d: compressed", level, len(blob), len(plain))
+		}
+		// Either CryptConfig reads it: the switch is about writing only.
+		for name, reader := range map[string]*CryptConfig{"off": off, "on": crypt} {
+			digest := reader.ComputeDigest(plain)
+			got, err := DecodeEncryptedBlob(blob, reader, digest[:])
+			if err != nil || !bytes.Equal(got, plain) {
+				t.Fatalf("level %v, read with the switch %s: %v", level, name, err)
+			}
+		}
+	}
+	if off.ComputeDigest(plain) != crypt.ComputeDigest(plain) {
+		t.Error("the digest differs with the switch off")
+	}
+	if off.Fingerprint() != crypt.Fingerprint() {
+		t.Error("the key fingerprint differs with the switch off")
+	}
+
+	// And it reads the compressed form, and can be turned back on.
+	compr, err := crypt.EncodeEncryptedCompressed(plain, zstd.SpeedFastest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := DecodeEncryptedBlob(compr, off, nil); err != nil || !bytes.Equal(got, plain) {
+		t.Fatalf("the switch off cannot read a compressed chunk: %v", err)
+	}
+	again, err := off.WithCompression(true).EncodeEncryptedCompressed(plain, zstd.SpeedFastest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(again[:8], blobEncryptedComprMagic) {
+		t.Fatalf("turned back on: magic = % x, want ENCR_COMPR", again[:8])
+	}
+}
+
 // Incompressible data stays in the plain encrypted form, as in PBS.
 func TestEncodeEncryptedCompressedFallsBack(t *testing.T) {
 	crypt := testCryptConfig(t)

@@ -59,6 +59,16 @@ type Config struct {
 	// ClearEncryptionKeyPassphrase is a frontend instruction on save: delete
 	// the stored passphrase. It is never persisted.
 	ClearEncryptionKeyPassphrase bool `json:"clear_encryption_key_passphrase,omitempty"`
+	// CompressEncrypted is the server's "Compress encrypted backups" switch
+	// (compress_encrypted.go): nil or true writes encrypted chunks compressed,
+	// false writes them as version 2.0 and older did. Here for the single
+	// server of the oldest settings and for the Config one operation runs on
+	// (ToConfig, EffectivePBS); a PBS server entry has its own.
+	CompressEncrypted *bool `json:"compress_encrypted,omitempty"`
+	// CompressEncryptedDecided says the switch of every server these settings
+	// had when this version first read them has been given its start value
+	// (decideCompressEncrypted), so that is done once.
+	CompressEncryptedDecided bool `json:"compress_encrypted_decided,omitempty"`
 	// Crypt is EncryptionKeyFile after it has been read and unlocked, held
 	// runtime-only so the unlocked key never lands in config.json.
 	Crypt *pbscommon.CryptConfig `json:"-"`
@@ -402,7 +412,11 @@ func LoadConfig() *Config {
 	if err != nil {
 		// Config doesn't exist yet, return empty config. Anything else (no
 		// permission, say) is worth a line: the settings are there, unread.
-		if !os.IsNotExist(err) {
+		if os.IsNotExist(err) {
+			// Nothing an earlier version left: the servers added from here
+			// start with "Compress encrypted backups" on.
+			config.CompressEncryptedDecided = true
+		} else {
 			writeDebugLog(fmt.Sprintf("config: could not read %s: %v", configPath, err))
 		}
 		return config
@@ -466,6 +480,20 @@ func LoadConfig() *Config {
 	// Ensure PBSServers map is initialized
 	if config.PBSServers == nil {
 		config.PBSServers = make(map[string]*PBSServer)
+	}
+
+	// "Compress encrypted backups", the first time this version reads the
+	// settings of an earlier one (compress_encrypted.go). Saved, so it is
+	// decided once; a save that fails is tried again on the next load.
+	if !config.CompressEncryptedDecided {
+		off := config.decideCompressEncrypted(replacedCompressingClient())
+		if err := config.Save(); err != nil {
+			writeDebugLog(fmt.Sprintf("config: could not save the start values of Compress encrypted backups: %v", err))
+		}
+		for _, name := range off {
+			writeDebugLog("config: Compress encrypted backups starts off for " + name + ": its encrypted backups stay readable by version 2.0 and earlier until it is turned on")
+			LogMessage("App", "info", compressEncryptedOffNotice(name), "", "", nil)
+		}
 	}
 
 	return config
@@ -609,6 +637,7 @@ func (c *Config) EffectivePBS() *Config {
 	// legacy top-level EncryptionKeyFile stays empty in that mode.
 	cp.EncryptionKeyFile = pbs.EncryptionKeyFile
 	cp.EncryptionKeyPassphrase = pbs.EncryptionKeyPassphrase
+	cp.CompressEncrypted = pbs.CompressEncrypted
 	cp.Datastore = pbs.Datastore
 	cp.Namespace = pbs.Namespace
 	return &cp
@@ -668,6 +697,8 @@ func (c *Config) AddPBSServer(pbs *PBSServer) error {
 		return fmt.Errorf("PBS server with ID '%s' already exists", pbs.ID)
 	}
 
+	// A server added now has nothing to ask about its switch.
+	pbs.CompressEncryptedAsk = false
 	c.PBSServers[pbs.ID] = pbs
 
 	// If this is the first server, set it as default
@@ -675,6 +706,7 @@ func (c *Config) AddPBSServer(pbs *PBSServer) error {
 		c.DefaultPBSID = pbs.ID
 	}
 
+	c.followDefaultCompressEncrypted()
 	return c.Save()
 }
 
@@ -706,7 +738,9 @@ func (c *Config) UpdatePBSServer(pbs *PBSServer) error {
 		pbs.Secret = ""
 	}
 
+	settleCompressEncrypted(existing, pbs)
 	c.PBSServers[pbs.ID] = pbs
+	c.followDefaultCompressEncrypted()
 	return c.Save()
 }
 
@@ -750,6 +784,7 @@ func (c *Config) SetDefaultPBS(id string) error {
 	}
 
 	c.DefaultPBSID = id
+	c.followDefaultCompressEncrypted()
 	return c.Save()
 }
 
@@ -810,6 +845,11 @@ func (c *Config) unlockCrypt(interactive bool) error {
 			return err
 		}
 		return fmt.Errorf("unlocking encryption key file %s: %w", c.EncryptionKeyFile, err)
+	}
+	// The server's "Compress encrypted backups" switch, off: a copy, since an
+	// unlocked key may be kept and shared (unlockProtectedKey).
+	if c.Crypt != nil && !compressEncryptedOn(c.CompressEncrypted) {
+		c.Crypt = c.Crypt.WithCompression(false)
 	}
 	return nil
 }
