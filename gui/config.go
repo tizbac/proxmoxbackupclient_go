@@ -390,7 +390,11 @@ func LoadConfig() *Config {
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		// Config doesn't exist yet, return empty config
+		// Config doesn't exist yet, return empty config. Anything else (no
+		// permission, say) is worth a line: the settings are there, unread.
+		if !os.IsNotExist(err) {
+			writeDebugLog(fmt.Sprintf("config: could not read %s: %v", configPath, err))
+		}
 		return config
 	}
 

@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+// unlockTakenOverSettings is for Windows, where an older version could leave
+// settings files that nobody may read; nothing to do here.
+func unlockTakenOverSettings(string) {}
+
 // hardenConfigDir protects a settings folder.
 //
 // A user's own folder (~/.salvanza) is made private to its
