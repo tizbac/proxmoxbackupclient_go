@@ -30,17 +30,19 @@ func captureStdout(t *testing.T, f func()) string {
 	return <-done
 }
 
-// An encrypted run of the command-line tools writes what version 2.0 wrote,
-// and says so, unless it is asked to compress; a run without a key has
-// nothing to say and stays without one. (What the two settings write is
-// tested with the key itself, in pbscommon.)
+// An encrypted run of the command-line tools compresses before it encrypts,
+// as proxmox-backup-client does, unless -no-compress-encrypted asks for what
+// version 2.0 wrote; either way it says in one line what it writes and which
+// versions restore it. A run without a key has nothing to say and stays
+// without one. (What the two settings write is tested with the key itself,
+// in pbscommon.)
 func TestBackupCrypt(t *testing.T) {
 	out := captureStdout(t, func() {
 		if got := BackupCrypt(nil, false); got != nil {
-			t.Error("no key became a key")
+			t.Error("no key became a key with -no-compress-encrypted")
 		}
 		if got := BackupCrypt(nil, true); got != nil {
-			t.Error("no key became a key with -compress-encrypted")
+			t.Error("no key became a key")
 		}
 	})
 	if out != "" {
@@ -53,25 +55,33 @@ func TestBackupCrypt(t *testing.T) {
 	}
 
 	var off, on *pbscommon.CryptConfig
-	out = captureStdout(t, func() { off = BackupCrypt(crypt, false) })
-	if off == nil || off.Compresses() {
-		t.Fatal("without -compress-encrypted the run compresses encrypted chunks")
+	out = captureStdout(t, func() { on = BackupCrypt(crypt, true) })
+	if on == nil || !on.Compresses() {
+		t.Fatal("a run that was not told otherwise does not compress encrypted chunks")
 	}
-	for _, want := range []string{"uncompressed", "version 2.0 and earlier", "-compress-encrypted", "2.1 or later"} {
+	for _, want := range []string{"compressed before", "2.1 or later", "-no-compress-encrypted", "as version 2.0 did"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("the line of a run without -compress-encrypted lacks %q: %q", want, out)
+			t.Errorf("the line of a run that compresses lacks %q: %q", want, out)
 		}
 	}
 	if strings.Count(out, "\n") != 1 {
 		t.Errorf("want one line, got %q", out)
 	}
 
-	out = captureStdout(t, func() { on = BackupCrypt(crypt, true) })
-	if on == nil || !on.Compresses() {
-		t.Fatal("-compress-encrypted does not compress")
+	out = captureStdout(t, func() { off = BackupCrypt(crypt, false) })
+	if off == nil || off.Compresses() {
+		t.Fatal("-no-compress-encrypted compresses encrypted chunks")
 	}
-	if out != "" {
-		t.Errorf("-compress-encrypted printed %q", out)
+	for _, want := range []string{"uncompressed", "-no-compress-encrypted", "version 2.0 and earlier"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the line of a run with -no-compress-encrypted lacks %q: %q", want, out)
+		}
+	}
+	if strings.Contains(out, "2.1 or later") {
+		t.Errorf("the line of a run with -no-compress-encrypted speaks of 2.1: %q", out)
+	}
+	if strings.Count(out, "\n") != 1 {
+		t.Errorf("want one line, got %q", out)
 	}
 	if off.Fingerprint() != officialPBKDF2Fingerprint || on.Fingerprint() != officialPBKDF2Fingerprint {
 		t.Error("the key changed with the option")

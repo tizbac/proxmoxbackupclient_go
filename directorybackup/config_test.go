@@ -128,36 +128,38 @@ func TestCompressionOption(t *testing.T) {
 	}
 }
 
-// "compress-encrypted" is off unless the config file says so: a config file
-// written for version 2.0 keeps writing what version 2.0 restores.
-func TestCompressEncryptedOptionIsOffUnlessAsked(t *testing.T) {
+// Encrypted chunks are compressed unless the config file says
+// "no-compress-encrypted": a config file that says nothing writes what
+// proxmox-backup-client writes.
+func TestNoCompressEncryptedOptionIsOffUnlessAsked(t *testing.T) {
 	base := `"baseurl": "https://pbs:8007", "authid": "a@pbs!t", "secret": "s", "datastore": "ds", "backupdir": "/data", "keyfile": "/etc/pbs/key.json"`
 	for name, c := range map[string]struct {
 		extra string
 		want  bool
 	}{
 		"left out": {"", false},
-		"false":    {`, "compress-encrypted": false`, false},
-		"true":     {`, "compress-encrypted": true`, true},
+		"false":    {`, "no-compress-encrypted": false`, false},
+		"true":     {`, "no-compress-encrypted": true`, true},
 	} {
 		var cfg Config
 		if err := json.Unmarshal([]byte("{"+base+c.extra+"}"), &cfg); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		if cfg.CompressEncrypted != c.want {
-			t.Errorf("%s: CompressEncrypted = %v, want %v", name, cfg.CompressEncrypted, c.want)
+		if cfg.NoCompressEncrypted != c.want {
+			t.Errorf("%s: NoCompressEncrypted = %v, want %v", name, cfg.NoCompressEncrypted, c.want)
 		}
 		if p := cfg.problems(); len(p) != 0 {
 			t.Errorf("%s: %q", name, p)
 		}
 	}
-	// the app's own spelling is not the tools': it must not turn it on by chance
+	// the app's own key means the opposite and is not the tools': a settings
+	// file of the app given by mistake must not turn compression off
 	var cfg Config
-	if err := json.Unmarshal([]byte("{"+base+`, "compress_encrypted": true}`), &cfg); err != nil {
+	if err := json.Unmarshal([]byte("{"+base+`, "compress_encrypted": false}`), &cfg); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.CompressEncrypted {
-		t.Error(`"compress_encrypted" (the app's key) was read as the tools' "compress-encrypted"`)
+	if cfg.NoCompressEncrypted {
+		t.Error(`"compress_encrypted": false (the app's key) was read as the tools' "no-compress-encrypted"`)
 	}
 }
 

@@ -452,7 +452,7 @@ func Main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	crypt = clientcommon.BackupCrypt(crypt, cfg.CompressEncrypted)
+	crypt = clientcommon.BackupCrypt(crypt, !cfg.NoCompressEncrypted)
 
 	// newClient builds a PBS client for one backup group. A multi-directory run
 	// needs one per directory, because each directory is its own group.

@@ -51,9 +51,10 @@ func (i *arrayFlags) Set(value string) error {
 
 // loadConfig reads the command line and the -config file. The speed limits
 // and -shutdown-after come back on their own: machinebackuplib.Config is the
-// app's too, which sets those from its own settings. So does
-// -compress-encrypted (the last result): the app hands over a key that is
-// already set the way its server says.
+// app's too, which sets those from its own settings. So does whether
+// encrypted chunks are compressed (the last result, true unless
+// -no-compress-encrypted): the app hands over a key that is already set the
+// way its server says.
 func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcommon.AfterRun, bool, bool) {
 	// Define flags
 
@@ -71,7 +72,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcom
 	backupTypeFlag := flag.String("type", "", "host|vm , vm will allow to restore as VM inside proxmox VE (Physical to Virtual), also it enables to use file restore feature, use numeric backupid")
 	flag.Var(&backupdevs, "backupdev", "Can be specified multiple times,Backup device file ( On windows it can be \\\\.\\PhysicalDriveN , in that case VSS will be leveraged to take consistent snapshot), on linux can be /dev/sdX or whatever ; mounted partitions get a consistent point-in-time snapshot via the elastio-snap/dattobd kernel module (requires root)")
 	liveReadFlag := flag.Bool("liveread", false, "Linux: read mounted partitions live, without a snapshot, so elastio-snap or dattobd is not needed. The image may be inconsistent: files that change during the backup can be caught half written. Windows always reads a volume in use through VSS")
-	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: none, fastest, default (zstd level 3), better or best (default: default). Encrypted backups are compressed only with -compress-encrypted")
+	compressionFlag := flag.String("compression", "", "How hard chunks are compressed before they go to PBS: none, fastest, default (zstd level 3), better or best (default: default). Has no effect on an encrypted backup with -no-compress-encrypted")
 	readFreeSpaceFlag := flag.Bool("readfreespace", false, "Windows: also read free space and the paging/hibernation files (a forensic copy); by default they go into the image as zeros without being read")
 	progressFlag := flag.Bool("progress", false, "Draw a progress bar on standard error while the backup runs, with the percentage of the data actually read (free space and partitions left out are counted as done at once, as in the app). Before the size is known the bar is indeterminate. The per-chunk lines are left out; other messages go above the bar")
 	var skipparts arrayFlags
@@ -79,7 +80,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcom
 	sysTrayFlag := flag.Bool("systray", false, "Does nothing: accepted so older scripts keep working (the tray icon was taken out of the command-line tools)")
 	keyFileFlag := flag.String("keyfile", "", "Path to a Proxmox Backup Server encryption key file (encrypts chunks and signs the manifest; same format as proxmox-backup-client key create)")
 	keyFilePassphraseFlag := flag.String("keyfile-passphrase", "", "Passphrase for a scrypt/PBKDF2 protected -keyfile (prompted for when omitted)")
-	compressEncryptedFlag := flag.Bool("compress-encrypted", false, clientcommon.CompressEncryptedFlagHelp)
+	noCompressEncryptedFlag := flag.Bool("no-compress-encrypted", false, clientcommon.NoCompressEncryptedFlagHelp)
 	mailHostFlag := flag.String("mail-host", "", "mail notification system: mail server host(optional)")
 	mailPortFlag := flag.String("mail-port", "", "mail notification system: mail server port(optional)")
 	mailUsernameFlag := flag.String("mail-username", "", "mail notification system: mail server username(optional)")
@@ -110,7 +111,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcom
 	var limits clientcommon.SpeedLimits
 	var after clientcommon.AfterRun
 	var enc struct {
-		Compress bool `json:"compress-encrypted"`
+		NoCompress bool `json:"no-compress-encrypted"`
 	}
 	if *configFile != "" {
 		file, err := os.ReadFile(*configFile)
@@ -258,7 +259,7 @@ func loadConfig() (*machinebackuplib.Config, clientcommon.SpeedLimits, clientcom
 		config.SMTP.Template.Body = *mailBodyTemplateFlag
 	}
 
-	return config, limits, after, *progressFlag, enc.Compress || *compressEncryptedFlag
+	return config, limits, after, *progressFlag, !(enc.NoCompress || *noCompressEncryptedFlag)
 }
 
 // sendResultMail sends the notification e-mail when -mail-* (or the config
