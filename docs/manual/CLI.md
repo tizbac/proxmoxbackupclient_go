@@ -227,6 +227,8 @@ On Windows, junction points and symbolic links are skipped. On Linux, symbolic l
 
 If a source disk drops out mid-backup ("device not ready"), the command waits up to 2 minutes for it to come back, reopens the file and carries on. A file that still cannot be read is filled with zeros to its recorded size and flagged; the snapshot is kept and the command exits with code 3. Other per-file read errors (a locked region, for example) are handled the same way.
 
+A file or folder that cannot be opened at all (no permission, or in use by another program) is left out of the snapshot, and the command also exits with code 3. Before its closing lines the command prints what it left out, in two parts. `=== COULD NOT BE READ (N) ===` gives a count for each reason, then each file by name (up to 50,000). `=== LEFT OUT BY DESIGN (N) ===` gives a count for each kind of item skipped on purpose (junction points, system files, sockets, pipes) and the first 50 of them.
+
 ## 4. Incremental backups with -change-detection-mode
 
 | Mode | Reads | Stored as |

@@ -1029,6 +1029,13 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 	if len(excluded) > 0 {
 		notice("%d files and folders excluded by -exclude", len(excluded))
 	}
+	// What could not be read, each file by name, then what is left out on
+	// purpose (pbscommon.SkippedReport), by the names the user knows. Until
+	// issue #149 only the count of read errors was printed, at the end.
+	unreadable := byRealPath(archive.ReadErrors, vssUsed, backupdir, originalPath)
+	for _, line := range pbscommon.SkippedReport(byRealPath(archive.SkippedFiles, vssUsed, backupdir, originalPath), unreadable) {
+		notice("%s", line)
+	}
 	if archive.Reuse != nil {
 		st := archive.Reuse.Stats
 		notice("Metadata change detection: %d unchanged files (%d bytes) reused without reading, %d chunks reused, %d bytes padding; %d unchanged files read anyway to limit padding",
@@ -1078,7 +1085,6 @@ func backup_real(client *pbscommon.PBSClient, newchunk, reusechunk *atomic.Uint6
 		}
 	}
 
-	unreadable := byRealPath(archive.ReadErrors, vssUsed, backupdir, originalPath)
 	sidecar := &pbscommon.BackupSidecar{
 		FormatVersion:    1,
 		BackupID:         client.Manifest.BackupID,

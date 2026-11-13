@@ -1645,20 +1645,13 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 
 	if len(allSkipped) > 0 {
 		completionMsg += skippedSummary(len(allSkipped), len(allReadErrors))
-		runLog(opts.Ctx, fmt.Sprintf("=== SKIPPED FILES/DIRECTORIES (%d) ===", len(allSkipped)))
-
-		// Log first 50 skipped files in detail
-		maxLog := 50
-		if len(allSkipped) < maxLog {
-			maxLog = len(allSkipped)
+		// The files it could not read first, each one by name, then what it
+		// leaves out on purpose. The first 50 of both together used to be
+		// logged, which on a system drive were all junction points and
+		// system files (issue #149).
+		for _, line := range pbscommon.SkippedReport(allSkipped, allReadErrors) {
+			runLog(opts.Ctx, line)
 		}
-		for i := 0; i < maxLog; i++ {
-			runLog(opts.Ctx, fmt.Sprintf("  [%d] %s", i+1, allSkipped[i]))
-		}
-		if len(allSkipped) > 50 {
-			runLog(opts.Ctx, fmt.Sprintf("  ... and %d more (see full list in GUI)", len(allSkipped)-50))
-		}
-		runLog(opts.Ctx, "=== END SKIPPED FILES ===")
 	}
 
 	runLog(opts.Ctx, completionMsg)

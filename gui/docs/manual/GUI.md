@@ -1182,6 +1182,8 @@ On Linux the official client keeps POSIX ACLs, extended attributes and file capa
 
 **A backup stays at "Creating VSS snapshot..." (Windows).** Another shadow copy is being made, by another backup program, System Restore or a backup of this app that timed out. The backup tries again every 30 seconds for up to 10 minutes, then fails with "another shadow copy was still being made after 10m0s". It never deletes other shadow copies or restarts the VSS service; `vssadmin list shadows` and `vssadmin list writers` show what VSS is doing.
 
+**A folder backup says files or folders could not be read.** The run's log (the **Logs** page, or **View this run** on the set's card) has a part headed `=== COULD NOT BE READ (N) ===`: a count for each reason, then each file by name, up to 50,000. "Access is denied" and "permission denied" mean the account the backup runs as may not open the file; "being used by another process" means a program held it open (on Windows, check that **Use VSS** is ticked for the Backup Set). The part headed `=== LEFT OUT BY DESIGN (N) ===` counts what is skipped on purpose (junction points, system files, sockets, pipes) and is no cause for concern.
+
 **A machine backup ends as partial.** Part of a disk could not be read (bad sectors). That part is zeros in the image; the card, the Reports row and the log say where and how much. Check the disk's health.
 
 **Listing snapshots takes a long time.** PBS reads its datastore directory to answer. On a datastore that is cold (spun-down disks) or busy with a verify, garbage collection or another backup this can take a minute or more. The GUI waits up to 120 seconds and shows the slow-server hint after 15.
