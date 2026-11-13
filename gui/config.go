@@ -147,9 +147,9 @@ type Config struct {
 	ShareLogins map[string]*ShareLogin `json:"share_logins,omitempty"`
 
 	// CompressionLevel is how hard chunks are compressed before they go to
-	// PBS, for every backup this computer makes (compression.go): fastest,
-	// default (zstd level 3), better or best. Empty means default. Backup
-	// Sets' own "compression" field is no longer read.
+	// PBS, for every backup this computer makes (compression.go): none,
+	// fastest, default (zstd level 3), better or best. Empty means default.
+	// Backup Sets' own "compression" field is no longer read.
 	CompressionLevel string `json:"compression_level,omitempty"`
 
 	// ==================== EMAIL NOTIFICATIONS ====================

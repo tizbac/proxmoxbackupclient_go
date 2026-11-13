@@ -94,7 +94,10 @@ func TestUploadChunkEncryptedFraming(t *testing.T) {
 	pt := bytes.Repeat([]byte("proxmox"), 4096) // 28672 bytes, compressible
 	digest := client.ChunkDigestHex(pt)
 
-	if err := client.UploadChunk(7, digest, pt, false, true); err != nil {
+	// Uncompressed upload: the plain encrypted framing (header + ciphertext
+	// of the same length); the compressed form is covered by
+	// TestUploadChunkEncryptedCompresses.
+	if err := client.UploadChunk(7, digest, pt, false, false); err != nil {
 		t.Fatalf("UploadChunk: %v", err)
 	}
 
@@ -134,22 +137,35 @@ func TestUploadChunkEncryptedFraming(t *testing.T) {
 	}
 }
 
-// An encrypted chunk upload must not silently fall back to the compressed
-// framing even though the caller asked for compression.
-func TestUploadChunkEncryptedIgnoresCompression(t *testing.T) {
+// An encrypted chunk upload with compression requested must use the
+// compressed AND encrypted framing (ENCR_COMPR, as proxmox-backup-client
+// does), never the unencrypted compressed one.
+func TestUploadChunkEncryptedCompresses(t *testing.T) {
 	srv, captured := newFakePBSServer(t)
-	client := newTestClient(srv.URL, testCryptConfig(t))
+	crypt := testCryptConfig(t)
+	client := newTestClient(srv.URL, crypt)
 
 	pt := bytes.Repeat([]byte("A"), 1<<20)
 	if err := client.UploadChunk(1, client.ChunkDigestHex(pt), pt, true, true); err != nil {
 		t.Fatalf("UploadChunk: %v", err)
 	}
 	body := (*captured)[0].body
-	if !IsEncryptedBlob(body) {
-		t.Fatalf("expected encrypted framing, got magic % x", body[:8])
+	if !bytes.Equal(body[:8], blobEncryptedComprMagic) {
+		t.Fatalf("expected compressed+encrypted framing, got magic % x", body[:8])
 	}
-	if bytes.Contains(body[:EncryptedDataBlobHeaderSize+64], []byte("AAAA")) {
-		t.Error("plaintext leaked into the uploaded encrypted blob header region")
+	if len(body) >= len(pt) {
+		t.Errorf("encrypted chunk not compressed: %d bytes for %d", len(body), len(pt))
+	}
+	if bytes.Contains(body, []byte("AAAA")) {
+		t.Error("plaintext leaked into the uploaded encrypted blob")
+	}
+	digest := crypt.ComputeDigest(pt)
+	back, err := DecodeEncryptedBlob(body, crypt, digest[:])
+	if err != nil {
+		t.Fatalf("DecodeEncryptedBlob: %v", err)
+	}
+	if !bytes.Equal(back, pt) {
+		t.Error("decoded chunk does not match the plaintext")
 	}
 }
 

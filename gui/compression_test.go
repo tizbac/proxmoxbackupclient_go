@@ -9,7 +9,7 @@ import (
 )
 
 // The setter saves the level, runs take it, and the window reads it back.
-// Empty, and anything not one of the four (a hand-edited config.json), is
+// Empty, and anything not one of the five (a hand-edited config.json), is
 // default; a level named for one run wins over the setting.
 func TestSetCompressionLevel(t *testing.T) {
 	strictHome(t)
@@ -32,6 +32,20 @@ func TestSetCompressionLevel(t *testing.T) {
 	}
 	if m := a.GetConfigWithHostname(); m["compression_level"] != "best" {
 		t.Errorf("GetConfigWithHostname: %v", m["compression_level"])
+	}
+
+	// "none" is a level like the others: saved, and what a run takes.
+	if err := a.SetCompressionLevel("none"); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.effectiveCompression(""); got != "none" {
+		t.Errorf("a run with none set: %q", got)
+	}
+	if got := a.effectiveCompression("off"); got != "none" {
+		t.Errorf("a run asking for off: %q, want none", got)
+	}
+	if err := a.SetCompressionLevel("best"); err != nil {
+		t.Fatal(err)
 	}
 
 	for _, bad := range []string{"fast", "max", "9", "zstd"} {

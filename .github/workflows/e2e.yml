@@ -59,6 +59,13 @@ jobs:
           files=(
             pbscommon/crypt.go
             pbscommon/crypt_test.go
+            pbscommon/crypt_compress_test.go
+            pbscommon/compression_level_test.go
+            pbscommon/snapshot_key.go
+            pbscommon/snapshot_writer.go
+            pbscommon/snapshot_writer_test.go
+            pbscommon/encr_compr_read_test.go
+            pbscommon/zz_restore_livetest_test.go
             pbscommon/pbsapi.go
             pbscommon/pbsapi_crypt_test.go
             pbscommon/pbsapi_namespace_test.go

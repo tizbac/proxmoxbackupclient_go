@@ -77,7 +77,7 @@ type BackupOptions struct {
 	BackupType      string // "host" for directory, "vm" for machine
 	Kind            string // "disk", "directory", or "machine"
 	UseVSS          bool
-	Compression     string   // Compression level: "fastest", "default", "better", "best"
+	Compression     string   // Compression level: "none", "fastest", "default", "better", "best"
 	ExcludeList     []string // User-configured exclusion patterns applied by the PXAR writer (H-04)
 	DisableSplit    bool     // When true, never auto-split regardless of size
 	SplitSizeBytes  uint64   // Auto-split threshold and per-bin target; 0 = default (SplitThreshold)

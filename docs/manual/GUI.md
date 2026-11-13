@@ -626,9 +626,15 @@ A chunk upload is watched while it goes. It is given up, and the chunk sent agai
 
 ### Compression
 
-**Preferences > Backup Options > Compression** sets how hard backup data is compressed before it is sent to PBS: **Fastest**, **Default (zstd level 3)**, **Better** or **Best**. PBS stores the data as it arrives and does not compress it again, so a higher level sends less and uses less space on the datastore, for more processor time on this computer. Default suits most computers; Fastest helps a slow computer on a fast network, Better or Best a fast computer on a slow link.
+**Preferences > Backup Options > Compression** sets how hard backup data is compressed before it is sent to PBS: **None**, **Fastest**, **Default (zstd level 3)**, **Better** or **Best**. PBS stores the data as it arrives and does not compress it again, so a higher level sends less and uses less space on the datastore, for more processor time on this computer. Default suits most computers; Fastest helps a slow computer on a fast network, Better or Best a fast computer on a slow link. None sends the data as it is, for data that does not compress (video, archives) or a PBS datastore on a filesystem that compresses for itself.
 
-The level applies to every backup this computer makes, folder and machine alike, and with the background service it is the service's. It only affects data PBS does not have yet: what is already stored stays as it was, and restores read any level, so the setting can be changed at any time. Encrypted backups are not compressed, whatever the setting. Earlier builds used Fastest for folder backups and Default for machine backups, with no way to choose.
+The level applies to every backup this computer makes, folder and machine alike, and with the background service it is the service's. It only affects data PBS does not have yet: what is already stored stays as it was, and restores read any level, so the setting can be changed at any time. Encrypted backups are compressed too, before they are encrypted, as proxmox-backup-client does. Earlier builds used Fastest for folder backups and Default for machine backups, with no way to choose.
+
+**Encrypted backups and versions up to 2.0.** Versions up to 2.0 sent encrypted data uncompressed, and they cannot read encrypted data that was compressed first: their restore stops with *compressed encrypted blobs (zstd block format) are not supported*. An encrypted backup made by version 2.1 or later therefore needs version 2.1 or later to restore, browse or search, and that includes the restore ISOs ([BMR.md](BMR.md)): build or download them again after updating. proxmox-backup-client reads these backups, as it writes the same form. Unencrypted backups are not affected.
+
+Setting Compression to None does not make an encrypted backup readable by version 2.0. PBS does not take a chunk it already holds a second time, so a backup made with None can still refer to chunks an earlier run stored compressed, and computers that share a key and a datastore share those chunks: update them together.
+
+From version 2.1, each backup records the version that made it and, when it is encrypted, the oldest version that can read it. A version that meets a backup written in a form newer than it knows says so before it reads any data, and names the version needed: *this snapshot was written by version ... of this client in a format this version cannot read: restoring it needs version ... or later*.
 
 ### 6.9 Administrator protection
 
@@ -755,7 +761,7 @@ The rows are read down each column. The left column has the clock times, then wh
 | Upload | Data actually sent to PBS per second over the last 10 seconds, compressed, as it goes over the network. Close to zero when nearly everything is reused |
 | New/changed data | The size of the new chunks so far (new files, and the parts of files or disk blocks that changed), before compression. Only new chunks are sent, so this is usually far less than Processed |
 | Data transferred | What the new chunks took on the network once compressed: the data actually sent to PBS so far in this run, without the few percent of connection overhead |
-| Compression ratio | New/changed data divided by Data transferred, for example 6.0:1. An encrypted backup is not compressed, so it shows about 1.0:1 |
+| Compression ratio | New/changed data divided by Data transferred, for example 6.0:1 |
 
 A machine backup has the same right column. Its left column, under the clock times, goes from the disk down to the figure the percentage counts:
 

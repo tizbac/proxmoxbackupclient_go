@@ -8,7 +8,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-var compressionLevels = []string{"default", "fastest", "better", "best"}
+var compressionLevels = []string{"default", "none", "fastest", "better", "best"}
 
 // prefsView is the Preferences screen: Backup options and E-mail, as in the
 // desktop app. Only what changed is sent, through the service's own setters.
