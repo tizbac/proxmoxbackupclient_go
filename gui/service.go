@@ -47,6 +47,17 @@ func (s *BackupService) Start(svc service.Service) error {
 func (s *BackupService) run() {
 	writeDebugLog(product().Title + " service running")
 
+	// Lock the settings folder down first: before the settings are read and
+	// before the API token is written into it. It also unlocks settings files
+	// an older version locked (inheritUpstreamStateFiles); Nimbus Backup 0.4.1
+	// could leave config.json with permissions that let nobody in, not even
+	// the service, and read after this the settings load on the first start.
+	if dir, err := getConfigDir(); err == nil {
+		if err := hardenConfigDir(dir); err != nil {
+			writeDebugLog(fmt.Sprintf("[ConfigACL] %v", err))
+		}
+	}
+
 	// Initialize app with background context (service has no Wails runtime)
 	// IMPORTANT: Service App must be in Standalone mode to execute backups directly
 	s.app = &App{
@@ -85,13 +96,6 @@ func (s *BackupService) run() {
 	// can fail with "VSS_START - shadow copy creation is already in progress".
 	if err := snapshot.VSSCleanup(); err != nil {
 		writeDebugLog(fmt.Sprintf("VSS cleanup at startup reported error: %v", err))
-	}
-
-	// Lock the settings folder down before writing the API token into it.
-	if dir, err := getConfigDir(); err == nil {
-		if err := hardenConfigDir(dir); err != nil {
-			writeDebugLog(fmt.Sprintf("[ConfigACL] %v", err))
-		}
 	}
 
 	// Start HTTP API server for GUI communication (token-authenticated — H-01).
