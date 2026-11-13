@@ -29,6 +29,11 @@ func isolateSettings(scratch string) {
 	_ = os.Setenv("USERPROFILE", filepath.Join(scratch, "home"))
 }
 
+// isolateServiceDir has nothing to do on Windows: a test that clears
+// ProgramData and SystemDrive (useTempConfigDir) sends the service program to
+// the home folder, which that test has already made its own.
+func isolateServiceDir(*testing.T, string) {}
+
 // useRealSettings is for an opt-in live test that must use the computer's
 // real folders.
 func useRealSettings(t *testing.T) {

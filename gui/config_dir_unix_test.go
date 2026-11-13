@@ -16,6 +16,15 @@ func withSharedDir(t *testing.T, dir string) {
 	t.Cleanup(func() { sharedConfigDir = old })
 }
 
+// isolateServiceDir gives one test a service settings folder of its own,
+// inside dir. Every test otherwise shares the one TestMain set, and the
+// service program keeps all its files there (the restore cache among them):
+// built with -tags service, one test found what another had saved.
+func isolateServiceDir(t *testing.T, dir string) {
+	t.Helper()
+	withSharedDir(t, filepath.Join(dir, "shared"))
+}
+
 // The app keeps its files in the user's folder whether or not the service's
 // folder exists (it reaches the service's settings through the API); the
 // token path is in the service's folder; the Linux command line, run as root
@@ -33,8 +42,14 @@ func TestConfigDirChoice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(home, ".salvanza"); dir != want {
-		t.Fatalf("app folder %s, want %s", dir, want)
+	// The service program (built with -tags service) is the other way round:
+	// its own folder is the service's.
+	want := filepath.Join(home, ".salvanza")
+	if serviceBuild {
+		want = shared
+	}
+	if dir != want {
+		t.Fatalf("settings folder %s, want %s", dir, want)
 	}
 	if p := getAPITokenPath(); p != filepath.Join(shared, "api-token") {
 		t.Fatalf("token path %s, want the service's folder", p)

@@ -22,6 +22,12 @@ func isolateSettings(scratch string) {
 	_ = os.Unsetenv("SystemDrive")
 	_ = os.Setenv("HOME", filepath.Join(scratch, "home"))
 	sharedConfigDir = filepath.Join(scratch, "shared")
+	// The service program (-tags service) takes over an earlier install's
+	// settings folder by moving it (adoptLinuxState): run as root on a
+	// computer that has one, a test would have moved the real folder into
+	// the scratch one, which is deleted at the end.
+	legacyStateDir = filepath.Join(scratch, "proxmoxbackupclient")
+	pbsgoStateDir = filepath.Join(scratch, "pbsgo")
 }
 
 // useRealSettings is for an opt-in live test that must use the computer's

@@ -18,6 +18,7 @@ func useTempConfigDir(t *testing.T) string {
 	t.Setenv("USERPROFILE", dir)
 	t.Setenv("ProgramData", "")
 	t.Setenv("SystemDrive", "")
+	isolateServiceDir(t, dir)
 	return dir
 }
 
