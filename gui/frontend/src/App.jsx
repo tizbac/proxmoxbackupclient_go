@@ -4492,7 +4492,7 @@ function App() {
                         <label>{t('emailFromLabel')}</label>
                         <input type="text" value={emailFrom} onChange={(e) => setEmailFrom(e.target.value)} placeholder="backups@example.com" />
                       </div>
-                      <label style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer'}}>
+                      <label className="tick-row" style={{marginBottom: '12px'}}>
                         <input type="checkbox" checked={smtpInsecure} onChange={(e) => setSmtpInsecure(e.target.checked)} />
                         <span>{t('smtpInsecureLabel')}</span>
                       </label>
@@ -4629,7 +4629,7 @@ function App() {
                     {jobPolicy.supported && (
                       <div className="form-group" style={{marginTop: '20px'}}>
                         <h3 style={{marginBottom: '8px'}}>{t('jobsPolicyTitle')}</h3>
-                        {!jobPolicy.fixed && <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px', opacity: jobPolicy.is_admin ? 1 : 0.7}}>
+                        {!jobPolicy.fixed && <label className="tick-row" style={{opacity: jobPolicy.is_admin ? 1 : 0.7, cursor: jobPolicy.is_admin ? 'pointer' : 'default'}}>
                           <input
                             type="checkbox"
                             checked={!!jobPolicy.require_admin}
@@ -4669,7 +4669,7 @@ function App() {
                   <>
                     <h2 style={{marginTop: 0}}>{t('prefsBackupOptions')}</h2>
                     <div className="form-group" style={{marginTop: '20px'}}>
-                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
+                      <label className="tick-row">
                         <input
                           type="checkbox"
                           checked={!!config.parallel_restore}
@@ -4694,7 +4694,7 @@ function App() {
                     </div>
 
                     <div className="form-group" style={{marginTop: '24px'}}>
-                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px'}}>
+                      <label className="tick-row">
                         <input
                           type="checkbox"
                           checked={!!config.parallel_backup_read}
@@ -4922,7 +4922,7 @@ function App() {
                       <h3 style={{marginBottom: '8px'}}>{t('settingsPortabilityTitle')}</h3>
                       <p style={{color: '#718096', fontSize: '13px', marginBottom: '12px'}}>{t('settingsPortabilityIntro')}</p>
 
-                      <label style={{display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '12px'}}>
+                      <label className="tick-row" style={{marginBottom: '12px'}}>
                         <input
                           type="checkbox"
                           checked={exportIncludeSecrets}
