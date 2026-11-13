@@ -122,7 +122,17 @@ type Server struct {
 	AuthID, Username, Description                    string
 	KeyFile                                          string
 	PassphraseStored                                 bool
-	Raw                                              map[string]interface{}
+	// CompressEncryptedOff: "Compress encrypted backups" is off for this
+	// server, so its encrypted backups are written as version 2.0 wrote them.
+	CompressEncryptedOff bool
+	Raw                  map[string]interface{}
+}
+
+// compressEncryptedOff reads the switch from a server as the service sends
+// it: only an explicit false is off (unset is on).
+func compressEncryptedOff(m map[string]interface{}) bool {
+	v, ok := m["compress_encrypted"].(bool)
+	return ok && !v
 }
 
 func str(m map[string]interface{}, keys ...string) string {

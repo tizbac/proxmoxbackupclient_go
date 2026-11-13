@@ -128,6 +128,39 @@ func TestCompressionOption(t *testing.T) {
 	}
 }
 
+// "compress-encrypted" is off unless the config file says so: a config file
+// written for version 2.0 keeps writing what version 2.0 restores.
+func TestCompressEncryptedOptionIsOffUnlessAsked(t *testing.T) {
+	base := `"baseurl": "https://pbs:8007", "authid": "a@pbs!t", "secret": "s", "datastore": "ds", "backupdir": "/data", "keyfile": "/etc/pbs/key.json"`
+	for name, c := range map[string]struct {
+		extra string
+		want  bool
+	}{
+		"left out": {"", false},
+		"false":    {`, "compress-encrypted": false`, false},
+		"true":     {`, "compress-encrypted": true`, true},
+	} {
+		var cfg Config
+		if err := json.Unmarshal([]byte("{"+base+c.extra+"}"), &cfg); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if cfg.CompressEncrypted != c.want {
+			t.Errorf("%s: CompressEncrypted = %v, want %v", name, cfg.CompressEncrypted, c.want)
+		}
+		if p := cfg.problems(); len(p) != 0 {
+			t.Errorf("%s: %q", name, p)
+		}
+	}
+	// the app's own spelling is not the tools': it must not turn it on by chance
+	var cfg Config
+	if err := json.Unmarshal([]byte("{"+base+`, "compress_encrypted": true}`), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CompressEncrypted {
+		t.Error(`"compress_encrypted" (the app's key) was read as the tools' "compress-encrypted"`)
+	}
+}
+
 // -read-ahead takes 0 (off) to 32 files, as the app does, for folders only.
 func TestReadAheadOption(t *testing.T) {
 	base := Config{BaseURL: "https://pbs:8007", AuthID: "a@pbs!t", Secret: "s", Datastore: "ds", BackupSourceDir: "/data"}

@@ -66,7 +66,26 @@ var hexDigits = "0123456789abcdef"
 type CryptConfig struct {
 	encKey []byte
 	idKey  []byte
+	// storeUncompressed makes EncodeEncryptedCompressed write the plain
+	// encrypted form (see WithCompression). Reading is not affected.
+	storeUncompressed bool
 }
+
+// WithCompression returns a copy of c that writes encrypted chunks and blobs
+// compressed (on, the default of a new CryptConfig) or never compressed (off).
+// Off is the form version 2.0 and older of this client wrote, and the only
+// form they read: a computer that still has to be restored with one of them
+// keeps writing it. c itself is not changed, so a key unlocked once and kept
+// can serve servers set either way.
+func (c *CryptConfig) WithCompression(on bool) *CryptConfig {
+	cp := *c
+	cp.storeUncompressed = !on
+	return &cp
+}
+
+// Compresses reports whether c writes compressed encrypted chunks and blobs
+// (WithCompression).
+func (c *CryptConfig) Compresses() bool { return !c.storeUncompressed }
 
 // NewCryptConfig builds a CryptConfig from a raw 32 byte encryption key.
 func NewCryptConfig(encKey []byte) (*CryptConfig, error) {
@@ -214,8 +233,13 @@ func (c *CryptConfig) EncodeEncrypted(data []byte) ([]byte, error) {
 // is compressed into a regular zstd frame (zstd::bulk::compress), then
 // encrypted and framed with ENCR_COMPR_BLOB_MAGIC_1_0. As in PBS, the
 // compressed form is only used when it is smaller; otherwise this is
-// EncodeEncrypted.
+// EncodeEncrypted. It is EncodeEncrypted too for a CryptConfig set not to
+// compress (WithCompression): every upload comes through here, so that one
+// setting keeps a whole backup readable by version 2.0 and older.
 func (c *CryptConfig) EncodeEncryptedCompressed(data []byte, level zstd.EncoderLevel) ([]byte, error) {
+	if c.storeUncompressed {
+		return c.EncodeEncrypted(data)
+	}
 	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(level), zstd.WithEncoderConcurrency(1))
 	if err != nil {
 		return nil, err

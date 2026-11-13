@@ -99,8 +99,8 @@ func TestGenerateAKeyForAServer(t *testing.T) {
 	h.key(tcell.KeyPgDn, 0)
 	h.waitFor("Key file")
 	h.waitFor("keys/key.json")
-	// Key file, passphrase, forget, then the buttons: Back, Generate key
-	for i := 0; i < 4; i++ {
+	// Key file, passphrase, forget, compress, then the buttons: Back, Generate key
+	for i := 0; i < 5; i++ {
 		h.key(tcell.KeyTab, 0)
 	}
 	h.key(tcell.KeyEnter, 0)
@@ -129,7 +129,7 @@ func TestImportAKeyFileChecksItAndShowsTheFingerprint(t *testing.T) {
 	h.key(tcell.KeyPgDn, 0)
 	h.waitFor("Key file")
 	// Back, Generate key, Import key file
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 6; i++ {
 		h.key(tcell.KeyTab, 0)
 	}
 	h.key(tcell.KeyEnter, 0)
@@ -159,7 +159,7 @@ func TestImportRefusesWhatIsNotAKey(t *testing.T) {
 	h.key(tcell.KeyPgDn, 0)
 	h.key(tcell.KeyPgDn, 0)
 	h.waitFor("Key file")
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 6; i++ {
 		h.key(tcell.KeyTab, 0)
 	}
 	h.key(tcell.KeyEnter, 0)

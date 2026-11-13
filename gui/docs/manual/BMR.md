@@ -220,7 +220,7 @@ A disk image carries the drivers of the machine it came from.
 | "That passphrase did not unlock the key" | Retype the passphrase; 3 attempts in total |
 | "No disk partition with a filesystem was found" | Plug in the key USB stick, then start the flow again |
 | "/dev/nbd0 could not be attached" | Wrong key file for an encrypted backup, or the server stopped answering. The message shows the attach log; for a wrong key it says "this snapshot was encrypted with another key" and shows the fingerprint of the key the snapshot needs and of the key given |
-| "compressed encrypted blobs (zstd block format) are not supported" in the attach log | The ISO was built from version 2.0 or older and the encrypted backup was made by version 2.1 or later. Build or download a current ISO |
+| "compressed encrypted blobs (zstd block format) are not supported" in the attach log | The ISO was built from version 2.0 or older and the encrypted backup was made by version 2.1 or later with **Compress encrypted backups** on ([GUI.md](GUI.md#encryption-tab)), or by proxmox-backup-client. Build or download a current ISO |
 | "this snapshot was written by version ... of this client in a format this version cannot read" in the attach log | The backup was made by a newer version than the ISO. The message names the version needed: build or download an ISO of that version or later |
 | "No local target disk found" | The new disk is missing, unsupported by the live system, or seen as removable. Check cabling and BIOS settings. The stick the restore booted from is never offered |
 | Several disks and unsure which is the target | Compare sizes in the menu; if still unsure, check disk models and serials in the firmware setup first, or disconnect the others |

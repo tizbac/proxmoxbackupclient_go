@@ -228,6 +228,23 @@ body {
     margin-right: 8px;
 }
 
+/* A tick box with its label on the same line. Without this the box keeps the
+   browser's own margins plus the one above, and sits above the text and too
+   far from it. */
+.form-group label.tick-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+    cursor: pointer;
+}
+.form-group label.tick-row input[type="checkbox"] {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+}
+
 /* Schedule tab of the Backup Set editor (ScheduleEditor.jsx). Its fields
    are the form fields above, sized to their content to sit in a row. */
 .sched-list {

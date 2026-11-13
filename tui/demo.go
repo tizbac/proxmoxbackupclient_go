@@ -414,6 +414,7 @@ func (d *demoBackend) SaveServer(doc map[string]interface{}, isNew bool) error {
 func applyKeyFields(s *Server, doc map[string]interface{}, storedBefore bool) {
 	s.KeyFile = str(doc, "encryption_key_file")
 	s.Encrypted = s.KeyFile != ""
+	s.CompressEncryptedOff = compressEncryptedOff(doc)
 	switch {
 	case s.KeyFile == "" || boolean(doc, "clear_encryption_key_passphrase"):
 		s.PassphraseStored = false

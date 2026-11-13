@@ -74,6 +74,9 @@ type App struct {
 	servers []Server
 	tab     int
 	modal   bool
+	// compressAsked are the servers this run has asked about Compress
+	// encrypted backups (ui_compress_ask.go, UI goroutine only).
+	compressAsked map[string]bool
 	// tabSpans are the columns of each tab in the tab bar, for mouse clicks.
 	tabSpans [][2]int
 	// lastWidth is the width the chrome was last laid out for (UI goroutine only).
@@ -82,7 +85,7 @@ type App struct {
 	flashAt   time.Time
 	// flashSticky: the message stays until the next action instead of clearing itself.
 	flashSticky bool
-	version   string
+	version     string
 }
 
 // NewApp builds the window over a backend. Call Run to show it.
@@ -731,6 +734,9 @@ func (a *App) refresh(all bool) {
 		}
 		a.mu.Unlock()
 		a.renderAll()
+		if all && serr == nil {
+			a.askCompressEncrypted()
+		}
 	})
 }
 
@@ -1183,6 +1189,13 @@ func (a *App) renderSrvDetail() {
 	if s.KeyFile != "" {
 		b.WriteString("\n")
 		line("Key file", tview.Escape(s.KeyFile))
+		if s.CompressEncryptedOff {
+			// short enough for the details pane of a 120 column window
+			line("Compressed", tag(colWarn)+"no (2.0.0 and earlier can restore)")
+			line("", "to turn on: edit the server, Encryption")
+		} else {
+			line("Compressed", "yes (restoring needs 2.1 or later)")
+		}
 		pass := "no, asked for when needed"
 		if s.PassphraseStored {
 			pass = "yes"

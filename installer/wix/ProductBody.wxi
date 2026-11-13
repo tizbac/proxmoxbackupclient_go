@@ -39,6 +39,13 @@
     <?if $(var.UpgradeCode) != "12345678-1234-1234-1234-123456789012" ?>
     <Upgrade Id="12345678-1234-1234-1234-123456789012">
       <UpgradeVersion Minimum="0.0.0" IncludeMinimum="yes" Maximum="255.255.65535" IncludeMaximum="yes" OnlyDetect="no" Property="OTHERPRODUCT_PBC" />
+      <!-- Detect only (the row above removes it): Nimbus Backup 0.4.1 to
+           0.4.5 as RDEM Systems released it, under this code, which already
+           wrote encrypted backups compressed. This project's own installers
+           under the code are 0.1, 1.1 and 1.2, which did not. Noted for the
+           service (ReplacedCompressingClient below), whose "Compress
+           encrypted backups" then starts on (gui/compress_encrypted.go). -->
+      <UpgradeVersion Minimum="0.4.1" IncludeMinimum="yes" Maximum="0.255.65535" IncludeMaximum="yes" OnlyDetect="yes" Property="RDEMNIMBUS04" />
     </Upgrade>
     <?endif ?>
     <?if $(var.UpgradeCode) != "F15C307F-1053-46B7-BCB0-2FAAC3627ED6" ?>
@@ -234,6 +241,22 @@
                        Value="[AUTOSTART]"
                        KeyPath="yes"/>
       </Component>
+      <!-- This install replaced a client that wrote encrypted backups
+           compressed (RDEMNIMBUS04 above): read once by the service when it
+           first reads the settings it took over
+           (gui/compress_encrypted_windows.go). Written before the service
+           starts (WriteRegistryValues comes before StartServices). -->
+      <?if $(var.UpgradeCode) != "12345678-1234-1234-1234-123456789012" ?>
+      <Component Id="ReplacedCompressingClient" Guid="*" Win64="yes">
+        <Condition>RDEMNIMBUS04</Condition>
+        <RegistryValue Root="HKLM"
+                       Key="Software\$(var.Folder)\Upgrade"
+                       Name="ReplacedCompressingClient"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes"/>
+      </Component>
+      <?endif ?>
     </DirectoryRef>
 
     <!-- Features -->
@@ -253,6 +276,9 @@
       <ComponentRef Id="ApplicationShortcut" />
       <ComponentRef Id="AutoStartRegistry" />
       <ComponentRef Id="AutoStartChoice" />
+      <?if $(var.UpgradeCode) != "12345678-1234-1234-1234-123456789012" ?>
+      <ComponentRef Id="ReplacedCompressingClient" />
+      <?endif ?>
       <ComponentRef Id="DesktopShortcuts" />
     </Feature>
 

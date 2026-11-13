@@ -23,9 +23,10 @@ const (
 	// SnapshotFormatEncrCompr is an encrypted snapshot whose chunks and blobs
 	// may be compressed before they are encrypted (ENCR_COMPR), as the
 	// official client writes them. Named on every encrypted snapshot,
-	// whatever the compression setting: a chunk PBS already holds is not
-	// sent again, so a backup made with compression "none" can still refer
-	// to compressed chunks an earlier backup stored.
+	// whatever the compression setting and whether or not the key is set to
+	// compress (CryptConfig.WithCompression): a chunk PBS already holds is
+	// not sent again, so a backup that writes none compressed can still
+	// refer to compressed chunks an earlier backup stored.
 	SnapshotFormatEncrCompr = 1
 
 	// ReadableSnapshotFormat is the newest format this build restores.

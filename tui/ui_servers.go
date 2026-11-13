@@ -175,7 +175,7 @@ type serverEditor struct {
 	login                                                         *tview.DropDown
 	tokenID, secret, username, password                           *tview.InputField
 	keyFile, keyPass                                              *tview.InputField
-	forgetPass                                                    *tview.Checkbox
+	forgetPass, compress                                          *tview.Checkbox
 	serverID                                                      string
 }
 
@@ -204,6 +204,7 @@ func (a *App) openServerEditor(s Server, isNew bool) {
 	e.keyFile = in("Key file ", str(e.orig, "encryption_key_file"), 70)
 	e.keyPass = in("Key passphrase ", "", 40).SetMaskCharacter('*')
 	e.forgetPass = tview.NewCheckbox().SetLabel("Forget the stored passphrase ")
+	e.compress = tview.NewCheckbox().SetLabel("Compress encrypted backups ").SetChecked(!compressEncryptedOff(e.orig))
 	e.serverID = s.ID
 
 	hint := tag(colDim) + "Leave a secret or password empty to keep the one stored."
@@ -214,10 +215,12 @@ func (a *App) openServerEditor(s Server, isNew bool) {
 		AddFormItem(e.username).AddFormItem(e.password)
 	f2.AddTextView("", hint, 60, 1, true, false)
 	f2.SetTitle(" Login ")
-	f3 := styleForm(tview.NewForm()).AddFormItem(e.keyFile).AddFormItem(e.keyPass).AddFormItem(e.forgetPass)
+	f3 := styleForm(tview.NewForm()).AddFormItem(e.keyFile).AddFormItem(e.keyPass).AddFormItem(e.forgetPass).AddFormItem(e.compress)
 	f3.AddTextView("", tag(colDim)+"Backups to this server are encrypted with the key. Leave the key file empty for none.\n"+
 		"A passphrase is stored so scheduled backups can run alone; leave it empty to keep the stored one.\n"+
-		"Keep a copy of the key file somewhere safe: without it the backups cannot be restored.", 88, 4, true, false)
+		"Keep a copy of the key file somewhere safe: without it the backups cannot be restored.\n"+
+		"Compressed encrypted backups need version 2.1 or later to restore. Leave it off only while you\n"+
+		"still restore with version 2.0.0 or earlier, or with a restore ISO made before 2.1.", 96, 6, true, false)
 	f3.SetTitle(" Encryption ")
 
 	e.title = tview.NewTextView().SetDynamicColors(true)
@@ -372,6 +375,12 @@ func (e *serverEditor) document() (map[string]interface{}, error) {
 	if e.forgetPass.IsChecked() {
 		doc["clear_encryption_key_passphrase"] = true
 	}
+	// The switch is said only where it means something (a key) and where it
+	// differs from what the server came with, so a server that never had it
+	// set stays unset (which is on).
+	if str(doc, "encryption_key_file") != "" && e.compress.IsChecked() == compressEncryptedOff(e.orig) {
+		doc["compress_encrypted"] = e.compress.IsChecked()
+	}
 	// what the service sends as markers, never to be sent back
 	delete(doc, "encryption_key_passphrase_set")
 	delete(doc, "secret_set")
@@ -386,6 +395,20 @@ func (e *serverEditor) save() {
 		e.a.errorBox(err.Error())
 		return
 	}
+	// Turning "Compress encrypted backups" on for a server saved with it off
+	// is the step older versions cannot follow, so it is asked first.
+	if !e.isNew && compressEncryptedOff(e.orig) && !compressEncryptedOff(doc) && str(doc, "encryption_key_file") != "" {
+		// no line breaks inside the paragraph: the box wraps it to its width
+		e.a.confirm("Turn on Compress encrypted backups for "+str(doc, "name")+"?\n\n"+
+			"Encrypted backups this computer makes to it will then need version 2.1 or later to restore. "+
+			"Version 2.0.0 and earlier, and restore ISOs made before 2.1, cannot restore them.", func() { e.send(doc) })
+		return
+	}
+	e.send(doc)
+}
+
+// send saves the server document and closes the form.
+func (e *serverEditor) send(doc map[string]interface{}) {
 	go func() {
 		err := e.a.be.SaveServer(doc, e.isNew)
 		e.a.app.QueueUpdateDraw(func() {

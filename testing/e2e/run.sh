@@ -146,7 +146,14 @@ make_extra_fixtures() {
 	unique_text "$WORK/src-official/words.txt" 3
 	unique_text "$WORK/official.img" 9
 	truncate -s $((9 * 1024 * 1024)) "$WORK/official.img"
-	log "extra fixtures: src-none, none.img (archive '$NONE_ARCHIVE'), src-official, official.img"
+
+	mkdir -p "$WORK/src-plain/sub"
+	unique_text "$WORK/src-plain/words.txt" 3
+	printf 'a small file\n' >"$WORK/src-plain/sub/small.txt"
+	unique_text "$WORK/plain.img" 9
+	truncate -s $((9 * 1024 * 1024)) "$WORK/plain.img"
+	PLAIN_ARCHIVE="$(slugify "$WORK/plain.img").fidx"
+	log "extra fixtures: src-none, none.img (archive '$NONE_ARCHIVE'), src-official, official.img, src-plain, plain.img (archive '$PLAIN_ARCHIVE')"
 }
 
 make_keyfile() {
@@ -263,13 +270,13 @@ test_block_backup() {
 # ===========================================================================
 test_directory_backup_encrypted() {
 	our_directory_backup "$WORK/src" -backup-id e2e-dir-enc \
-		-keyfile "$KEYFILE" >"$WORK/log-dir-enc.txt" 2>&1 \
+		-keyfile "$KEYFILE" -compress-encrypted >"$WORK/log-dir-enc.txt" 2>&1 \
 		|| { cat "$WORK/log-dir-enc.txt"; return 1; }
 
-	# An encrypted backup compresses before it encrypts, as the official
-	# client does: the fixture has data that compresses, so the datastore
-	# must now hold compressed encrypted chunks (no test before this one
-	# used a key).
+	# With -compress-encrypted an encrypted backup compresses before it
+	# encrypts, as the official client does: the fixture has data that
+	# compresses, so the datastore must now hold compressed encrypted chunks
+	# (no test before this one used a key).
 	local n
 	n="$(chunk_magic_count "$MAGIC_ENCR_COMPR")"
 	[ "$n" -gt 0 ] || die "the encrypted backup stored no compressed encrypted chunk"
@@ -289,7 +296,7 @@ test_directory_backup_encrypted() {
 # ===========================================================================
 test_block_backup_encrypted() {
 	our_machine_backup "$WORK/disk.img" -backup-id e2e-block-enc \
-		-keyfile "$KEYFILE" >"$WORK/log-block-enc.txt" 2>&1 \
+		-keyfile "$KEYFILE" -compress-encrypted >"$WORK/log-block-enc.txt" 2>&1 \
 		|| { cat "$WORK/log-block-enc.txt"; return 1; }
 
 	pbc_restore_must_fail host/e2e-block-enc "$BLOCK_ARCHIVE" restore-block-enc.img
@@ -449,7 +456,7 @@ test_compression_none() {
 	c0="$(chunk_magic_count "$MAGIC_ENCR_COMPR")"
 	u0="$(chunk_magic_count "$MAGIC_ENCRYPTED")"
 	our_directory_backup "$WORK/src-none" -backup-id e2e-none-enc -compression none \
-		-keyfile "$KEYFILE" >"$WORK/log-none-enc.txt" 2>&1 \
+		-keyfile "$KEYFILE" -compress-encrypted >"$WORK/log-none-enc.txt" 2>&1 \
 		|| { cat "$WORK/log-none-enc.txt"; return 1; }
 	assert_stored_as "encrypted folder backup, compression none" "$MAGIC_ENCR_COMPR" "$c0" "$MAGIC_ENCRYPTED" "$u0"
 	pbc_restore host/e2e-none-enc backup.pxar.didx restore-none-enc --keyfile key.pem
@@ -459,7 +466,7 @@ test_compression_none() {
 	c0="$(chunk_magic_count "$MAGIC_ENCR_COMPR")"
 	u0="$(chunk_magic_count "$MAGIC_ENCRYPTED")"
 	our_machine_backup "$WORK/none.img" -backup-id e2e-block-none-enc -compression none \
-		-keyfile "$KEYFILE" >"$WORK/log-block-none-enc.txt" 2>&1 \
+		-keyfile "$KEYFILE" -compress-encrypted >"$WORK/log-block-none-enc.txt" 2>&1 \
 		|| { cat "$WORK/log-block-none-enc.txt"; return 1; }
 	assert_stored_as "encrypted block backup, compression none" "$MAGIC_ENCR_COMPR" "$c0" "$MAGIC_ENCRYPTED" "$u0"
 	pbc_restore host/e2e-block-none-enc "$NONE_ARCHIVE" restore-none-enc.img --keyfile key.pem
@@ -559,6 +566,41 @@ test_official_backup_our_restore() {
 	assert_tree_identical "$WORK/src-official" "$WORK/restore-official-split" "official encrypted split folder backup, our restore"
 }
 
+# ===========================================================================
+# Test 11: encrypted backup without -compress-encrypted -> stored as 2.0 did
+# ===========================================================================
+# Without -compress-encrypted an encrypted backup is written as version 2.0
+# and earlier wrote it, the only form those versions restore: no chunk
+# compressed before encryption, whatever -compression says. Its own data, so
+# nothing it sends is already in the datastore in the other form.
+test_encrypted_uncompressed_default() {
+	local c0 u0
+
+	step "our CLI: encrypted folder backup without -compress-encrypted"
+	c0="$(chunk_magic_count "$MAGIC_ENCR_COMPR")"
+	u0="$(chunk_magic_count "$MAGIC_ENCRYPTED")"
+	our_directory_backup "$WORK/src-plain" -backup-id e2e-plain-enc \
+		-keyfile "$KEYFILE" >"$WORK/log-plain-enc.txt" 2>&1 \
+		|| { cat "$WORK/log-plain-enc.txt"; return 1; }
+	assert_stored_as "encrypted folder backup, no -compress-encrypted" "$MAGIC_ENCR_COMPR" "$c0" "$MAGIC_ENCRYPTED" "$u0"
+	grep -q 'written uncompressed' "$WORK/log-plain-enc.txt" \
+		|| die "the run did not say its encrypted chunks are written uncompressed"
+	pbc_restore host/e2e-plain-enc backup.pxar.didx restore-plain-enc --keyfile key.pem
+	assert_tree_identical "$WORK/src-plain" "$WORK/restore-plain-enc" "encrypted folder backup, no -compress-encrypted"
+
+	step "our CLI: encrypted block backup without -compress-encrypted, -compression best"
+	c0="$(chunk_magic_count "$MAGIC_ENCR_COMPR")"
+	u0="$(chunk_magic_count "$MAGIC_ENCRYPTED")"
+	our_machine_backup "$WORK/plain.img" -backup-id e2e-block-plain-enc -compression best \
+		-keyfile "$KEYFILE" >"$WORK/log-block-plain-enc.txt" 2>&1 \
+		|| { cat "$WORK/log-block-plain-enc.txt"; return 1; }
+	assert_stored_as "encrypted block backup, no -compress-encrypted" "$MAGIC_ENCR_COMPR" "$c0" "$MAGIC_ENCRYPTED" "$u0"
+	grep -q 'written uncompressed' "$WORK/log-block-plain-enc.txt" \
+		|| die "the run did not say its encrypted chunks are written uncompressed"
+	pbc_restore host/e2e-block-plain-enc "$PLAIN_ARCHIVE" restore-plain-enc.img --keyfile key.pem
+	assert_bytes_identical "$WORK/plain.img" "$WORK/restore-plain-enc.img" "encrypted block backup, no -compress-encrypted"
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -606,6 +648,7 @@ main() {
 	run_test "8. namespace round-trip (-namespace / --ns)"         test_namespace_roundtrip
 	run_test "9. compression none -> official restore"             test_compression_none
 	run_test "10. official encrypted backup -> our restore"        test_official_backup_our_restore
+	run_test "11. encrypted, no -compress-encrypted -> as 2.0"     test_encrypted_uncompressed_default
 
 	section "Summary"
 	log "passed: ${#PASSED[@]}"

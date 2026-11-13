@@ -7,6 +7,26 @@ import (
 	"pbscommon"
 )
 
+// CompressEncryptedFlagHelp is the usage text of -compress-encrypted, shared by
+// the backup tools.
+const CompressEncryptedFlagHelp = "With -keyfile: compress chunks before they are encrypted, as proxmox-backup-client does. Such backups need version 2.1 or later to restore. Without it encrypted chunks are written uncompressed, as version 2.0 and earlier wrote them and the only form those versions (and restore ISOs made with them) can restore"
+
+// BackupCrypt sets how a backup run of the command-line tools writes with
+// crypt (nil, no encryption, stays nil): compressed before encryption only
+// when asked for (-compress-encrypted or the config file's
+// "compress-encrypted"), since a script that ran with version 2.0 must keep
+// writing what version 2.0 and its restore ISOs can read until its owner
+// says otherwise. Without it the run says so once, on standard output.
+func BackupCrypt(crypt *pbscommon.CryptConfig, compress bool) *pbscommon.CryptConfig {
+	if crypt == nil {
+		return nil
+	}
+	if !compress {
+		fmt.Println("Encrypted chunks are written uncompressed, so version 2.0 and earlier can restore them. Add -compress-encrypted to compress them (restoring then needs version 2.1 or later).")
+	}
+	return crypt.WithCompression(compress)
+}
+
 // LoadCryptConfig resolves a PBS encryption key file into the CryptConfig the
 // backup and restore paths put on pbscommon.PBSClient.
 //
