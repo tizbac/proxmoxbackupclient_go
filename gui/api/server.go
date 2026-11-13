@@ -198,6 +198,20 @@ func (s *Server) handleMachineBackup(w http.ResponseWriter, r *http.Request) {
 	s.startRun(w, r, true)
 }
 
+// knownCompression reports whether level is one a run can be asked for with:
+// empty (the Backup Options setting), one of the five levels, or one of the
+// other spellings the service has always taken for them ("off", "0", "fast",
+// "max"), in any case. The list is pbscommon.ParseCompressionLevel's, which
+// this module cannot import; that function turns anything else into
+// "fastest".
+func knownCompression(level string) bool {
+	switch strings.ToLower(level) {
+	case "", "none", "off", "0", "fastest", "fast", "default", "better", "best", "max":
+		return true
+	}
+	return false
+}
+
 func (s *Server) startRun(w http.ResponseWriter, r *http.Request, machine bool) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -207,6 +221,13 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, machine bool) 
 	var req BackupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// A compression level nobody knows used to run at "fastest" without a
+	// word. The request is refused here, before a run is listed for it.
+	if !knownCompression(req.Compression) {
+		s.writeError(w, fmt.Sprintf("compression is %q: use none, fastest, default, better or best", req.Compression), http.StatusBadRequest)
 		return
 	}
 

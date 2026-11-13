@@ -296,6 +296,47 @@ func TestRequestedRunNamed(t *testing.T) {
 	_ = s
 }
 
+// A run asked for with a compression level nobody knows is refused, for a
+// folder backup and a machine backup alike, and never reaches the service's
+// App: it used to run at "fastest" without a word. The levels, the other
+// spellings the service has always taken, and no level at all still start.
+func TestUnknownCompressionRefused(t *testing.T) {
+	fake := &fakeHandler{}
+	_, c := newTestService(t, fake)
+	for _, bad := range []string{"ultra", "zstd", "9", " best"} {
+		req := &BackupRequest{BackupType: "directory", BackupID: "id", BackupDirs: []string{`C:\Data`}, Compression: bad}
+		if _, err := c.StartBackup(req); err == nil || !strings.Contains(err.Error(), "use none, fastest, default, better or best") {
+			t.Errorf("StartBackup with compression %q = %v, want it refused", bad, err)
+		}
+		if _, err := c.StartMachineBackup(req); err == nil || !strings.Contains(err.Error(), "use none, fastest, default, better or best") {
+			t.Errorf("StartMachineBackup with compression %q = %v, want it refused", bad, err)
+		}
+	}
+	runs, err := c.GetRuns()
+	if err != nil || len(runs.Runs) != 0 {
+		t.Fatalf("a refused request left a run listed: %+v, %v", runs, err)
+	}
+	good := []string{"", "none", "fastest", "default", "better", "best", "Best", "off", "0", "fast", "max"}
+	for _, ok := range good {
+		if _, err := c.StartBackup(&BackupRequest{BackupType: "directory", BackupID: "id", BackupDirs: []string{`C:\Data`}, Compression: ok}); err != nil {
+			t.Errorf("StartBackup with compression %q refused: %v", ok, err)
+		}
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		fake.mu.Lock()
+		n := fake.dirRuns
+		fake.mu.Unlock()
+		if n == len(good) {
+			return
+		}
+		if n > len(good) || time.Now().After(deadline) {
+			t.Fatalf("%d folder backups started, want %d (the refused ones must not)", n, len(good))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // Machine backups the GUI asks for reach StartMachineBackup (the route was
 // missing: the request got a 404), with the disks and a tracked run key.
 // A Backup Set without a backup ID (one the installer set up, or one whose
