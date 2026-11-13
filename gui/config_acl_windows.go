@@ -82,8 +82,11 @@ var upstreamStateFiles = []string{"config.json", "scheduled_jobs.json", "job_his
 // permissions after an upgrade from 1.2.0-rc, so an elevated administrator
 // can open them as well as the service. Only a protected DACL on one of those
 // names is reset: this app protects key files on purpose, never these. The
-// service runs as SYSTEM, which those DACLs let in. Returns how many were
-// reset.
+// service runs as SYSTEM, which those DACLs let in, with one exception:
+// Nimbus Backup 0.4.1 could leave a file with a protected DACL without any
+// entry, which lets nobody in. The owner may still change it, so the reset
+// works there too, and until it has run the service cannot read the file.
+// Returns how many were reset.
 func inheritUpstreamStateFiles(dir string) int {
 	emptyBuf := [8]byte{2, 0, 8, 0, 0, 0, 0, 0} // ACL_REVISION, size 8, 0 ACEs
 	empty := (*windows.ACL)(unsafe.Pointer(&emptyBuf[0]))
@@ -108,6 +111,14 @@ func inheritUpstreamStateFiles(dir string) int {
 		n++
 	}
 	return n
+}
+
+// unlockTakenOverSettings makes the settings files of a folder just taken
+// over from an earlier install readable again where an older version locked
+// them (inheritUpstreamStateFiles), so the copy kept for a rollback has them.
+// The service locks the whole folder down straight after (hardenConfigDir).
+func unlockTakenOverSettings(dir string) {
+	inheritUpstreamStateFiles(dir)
 }
 
 const (

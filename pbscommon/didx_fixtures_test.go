@@ -97,6 +97,10 @@ type fakePBSWithDIDX struct {
 	// without it the manifest is missing, as for the tests written before
 	// the key check (CheckArchiveKey then lets the reader open).
 	manifest []byte
+	// encode, when set, turns a chunk into the DataBlob that is served, in
+	// place of mustEncodeBlob: for the tests of the other stored forms. It is
+	// called from the server's goroutines.
+	encode func(payload []byte) []byte
 }
 
 // setManifest serves m as the snapshot's index.json.blob.
@@ -156,6 +160,10 @@ func newFakePBSWithDIDX(t *testing.T, name string, a *didxArchive, crypt *CryptC
 			}
 			if repl, ok := f.corrupt[d]; ok {
 				payload = repl
+			}
+			if f.encode != nil {
+				w.Write(f.encode(payload))
+				return
 			}
 			w.Write(mustEncodeBlob(t, payload, crypt))
 		default:

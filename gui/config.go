@@ -147,9 +147,9 @@ type Config struct {
 	ShareLogins map[string]*ShareLogin `json:"share_logins,omitempty"`
 
 	// CompressionLevel is how hard chunks are compressed before they go to
-	// PBS, for every backup this computer makes (compression.go): fastest,
-	// default (zstd level 3), better or best. Empty means default. Backup
-	// Sets' own "compression" field is no longer read.
+	// PBS, for every backup this computer makes (compression.go): none,
+	// fastest, default (zstd level 3), better or best. Empty means default.
+	// Backup Sets' own "compression" field is no longer read.
 	CompressionLevel string `json:"compression_level,omitempty"`
 
 	// ==================== EMAIL NOTIFICATIONS ====================
@@ -400,7 +400,11 @@ func LoadConfig() *Config {
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		// Config doesn't exist yet, return empty config
+		// Config doesn't exist yet, return empty config. Anything else (no
+		// permission, say) is worth a line: the settings are there, unread.
+		if !os.IsNotExist(err) {
+			writeDebugLog(fmt.Sprintf("config: could not read %s: %v", configPath, err))
+		}
 		return config
 	}
 
@@ -415,6 +419,17 @@ func LoadConfig() *Config {
 				writeDebugLog("config: plain-text secrets in config.json sealed")
 			}
 		})
+	}
+	// An encryption key that went along when an earlier install's settings
+	// folder became this one is named where it is now. Saved, so the settings
+	// agree with the disk; a save that fails is tried again on the next load.
+	if moved := config.repointMovedKeyPaths(filepath.Dir(configPath)); len(moved) > 0 {
+		if err := config.Save(); err != nil {
+			writeDebugLog(fmt.Sprintf("config: could not save the encryption key paths put right: %v", err))
+		}
+		for _, m := range moved {
+			writeDebugLog("config: encryption key moved with the settings folder: " + m)
+		}
 	}
 
 	// ==================== AUTO-MIGRATION ====================

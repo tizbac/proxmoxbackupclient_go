@@ -14,7 +14,7 @@
   "info": {
     "companyName": "Salvanza",
     "productName": "Salvanza for Proxmox Backup Server",
-    "productVersion": "2.0.0",
+    "productVersion": "2.1.0",
     "copyright": "© 2024-2026 Salvanza contributors and RDEM Systems.",
     "comments": "Backup client for Proxmox Backup Server"
   },

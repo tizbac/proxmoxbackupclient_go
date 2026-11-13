@@ -176,6 +176,28 @@ pbs_mgr() {
 	docker exec "$PBS_CONTAINER" proxmox-backup-manager "$@"
 }
 
+# How a chunk is stored is in the first 8 bytes of its file in the datastore:
+# the DataBlob magic numbers of proxmox-backup, the same values as
+# blobUncompressedMagic and blobCompressedMagic (pbscommon/pbsapi.go) and
+# blobEncryptedMagic and blobEncryptedComprMagic (pbscommon/crypt.go).
+MAGIC_UNCOMPRESSED="42ab3807be8370a1"
+MAGIC_COMPRESSED="31b958426fb6a37f"
+MAGIC_ENCRYPTED="7b6785be222d4cf0"
+MAGIC_ENCR_COMPR="e6591bbf0bbfd80b"
+
+# chunk_magic_count <magic>: how many chunks of the datastore are stored in
+# that form. PBS keeps a chunk as the client sent it, so the difference across
+# a backup says what that backup uploaded, which no restore can tell: a chunk
+# restores the same whether it was compressed or not.
+chunk_magic_count() {
+	docker exec "$PBS_CONTAINER" sh -c '
+		find "$1/.chunks" -type f | while read -r f; do
+			head -c 8 "$f" | od -An -tx1 | tr -d " \n"
+			echo
+		done | grep -c -x "$2" || true
+	' sh "/var/lib/proxmox-backup/store-${PBS_DATASTORE}" "$1"
+}
+
 # Poll an arbitrary command until it succeeds or the timeout expires.
 retry() {
 	local timeout="$1"; shift

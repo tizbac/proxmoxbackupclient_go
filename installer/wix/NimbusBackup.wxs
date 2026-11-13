@@ -20,7 +20,7 @@
 
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <?ifndef ProductVersion ?>
-    <?define ProductVersion = "2.0.0" ?>
+    <?define ProductVersion = "2.1.0" ?>
   <?endif ?>
 
   <?include ProductBody.wxi ?>

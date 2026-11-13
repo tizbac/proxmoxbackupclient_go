@@ -3,10 +3,12 @@
 # End-to-end test suite for Salvanza against a real
 # Proxmox Backup Server.
 #
-# Every test performs a backup with one of OUR CLIs and then restores it with
-# the OFFICIAL proxmox-backup-client, which is the real interoperability
-# contract: if the official client can read and reproduce our archives
-# byte-for-byte, our writer is correct.
+# Every test but the last performs a backup with one of OUR CLIs and then
+# restores it with the OFFICIAL proxmox-backup-client, which is the real
+# interoperability contract: if the official client can read and reproduce our
+# archives byte-for-byte, our writer is correct. The last test is the reverse,
+# for our reader: an encrypted backup made by the official client, restored by
+# our own code.
 #
 # Usage:
 #   ./testing/e2e/run.sh              # run everything
@@ -108,6 +110,43 @@ PY
 	# ever drift apart the Go test fails there.
 	BLOCK_ARCHIVE="$(slugify "$img").fidx"
 	log "block fixture: $(stat -c%s "$img") bytes, expected archive '$BLOCK_ARCHIVE'"
+}
+
+# unique_text <file> <MiB>: text that compresses well and that no earlier run
+# or fixture has held, so a backup of it has chunks PBS does not hold yet.
+# Tests that count what a backup uploaded (chunk_magic_count) need that: a
+# chunk the datastore already has is not sent again.
+unique_text() {
+	python3 - "$1" "$2" <<'PY'
+import os, sys
+seed = os.urandom(16).hex()
+line = "%s line %%09d of a fixture of the end-to-end suite\n" % seed
+want = int(sys.argv[2]) * 1024 * 1024
+with open(sys.argv[1], "w") as f:
+    n = size = 0
+    while size < want:
+        s = line % n
+        f.write(s)
+        size += len(s)
+        n += 1
+PY
+}
+
+# Fixtures of the compression "none" test and of the official-client backup
+# test: each its own unique data (see unique_text).
+make_extra_fixtures() {
+	mkdir -p "$WORK/src-none/sub"
+	unique_text "$WORK/src-none/words.txt" 3
+	printf 'a small file\n' >"$WORK/src-none/sub/small.txt"
+	unique_text "$WORK/none.img" 9
+	truncate -s $((9 * 1024 * 1024)) "$WORK/none.img"
+	NONE_ARCHIVE="$(slugify "$WORK/none.img").fidx"
+
+	cp -a "$WORK/src" "$WORK/src-official"
+	unique_text "$WORK/src-official/words.txt" 3
+	unique_text "$WORK/official.img" 9
+	truncate -s $((9 * 1024 * 1024)) "$WORK/official.img"
+	log "extra fixtures: src-none, none.img (archive '$NONE_ARCHIVE'), src-official, official.img"
 }
 
 make_keyfile() {
@@ -227,6 +266,15 @@ test_directory_backup_encrypted() {
 		-keyfile "$KEYFILE" >"$WORK/log-dir-enc.txt" 2>&1 \
 		|| { cat "$WORK/log-dir-enc.txt"; return 1; }
 
+	# An encrypted backup compresses before it encrypts, as the official
+	# client does: the fixture has data that compresses, so the datastore
+	# must now hold compressed encrypted chunks (no test before this one
+	# used a key).
+	local n
+	n="$(chunk_magic_count "$MAGIC_ENCR_COMPR")"
+	[ "$n" -gt 0 ] || die "the encrypted backup stored no compressed encrypted chunk"
+	ok "encrypted backup: $n chunk(s) stored compressed, then encrypted"
+
 	# Negative check: the key fingerprint is embedded in the manifest, so an
 	# unkeyed restore must be refused.
 	pbc_restore_must_fail host/e2e-dir-enc backup.pxar.didx restore-dir-enc-nokey
@@ -276,6 +324,21 @@ test_manifest_interop() {
 		die "restored index.json.blob does not look like a manifest"
 	fi
 	ok "official client restored our index.json.blob (unencrypted snapshot)"
+	# The note of the version that wrote the snapshot (pbscommon/
+	# snapshot_writer.go) must come back from PBS, which rebuilds the rest of
+	# the manifest at /finish. An unencrypted snapshot is in the format every
+	# version reads, so it names a version and nothing else.
+	python3 - "$WORK/manifest-dir.json" <<-'PY' || return 1
+		import json, sys
+		m = json.load(open(sys.argv[1]))
+		w = m.get("unprotected", {}).get("salvanza-client")
+		if not isinstance(w, dict) or not w.get("version"):
+		    sys.exit(f"unprotected['salvanza-client'] names no version: {w!r}")
+		if "format" in w or "min-version" in w:
+		    sys.exit(f"an unencrypted snapshot names a format: {w!r}")
+		print(f"  written by version {w['version']}")
+	PY
+	ok "unencrypted manifest: PBS kept the note of the version that wrote it"
 
 	pbc_restore host/e2e-dir-enc index.json.blob manifest-enc.json --keyfile key.pem
 	if ! grep -q '"key-fingerprint"' "$WORK/manifest-enc.json"; then
@@ -307,9 +370,20 @@ test_manifest_interop() {
 		fprint = set(files[0])
 		if fprint != {"crypt-mode", "csum", "filename", "size"}:
 		    sys.exit(f"unexpected file entry keys: {sorted(fprint)}")
+		# An encrypted snapshot names the format with compressed encrypted
+		# chunks and the first version that reads it, for a client too old
+		# to know the format (pbscommon/snapshot_writer.go). The official
+		# client restored this manifest and checked its signature above,
+		# so the note does not disturb either.
+		w = m.get("unprotected", {}).get("salvanza-client")
+		if not isinstance(w, dict) or not w.get("version"):
+		    sys.exit(f"unprotected['salvanza-client'] names no version: {w!r}")
+		if w.get("format") != 1 or w.get("min-version") != "2.1.0":
+		    sys.exit(f"an encrypted snapshot must name format 1 and min-version 2.1.0: {w!r}")
 		print(f"  {len(files)} archives, all crypt-mode=encrypt; manifest signed; key set matches proxmox-backup")
+		print(f"  written by version {w['version']}, format {w['format']}, needs {w['min-version']} or later")
 	PY
-	ok "encrypted manifest: signed, all archives crypt-mode=encrypt, PBS-compatible key set"
+	ok "encrypted manifest: signed, all archives crypt-mode=encrypt, PBS-compatible key set, writer note kept"
 }
 
 # ===========================================================================
@@ -343,6 +417,148 @@ test_dedup_reuse() {
 	ok "second identical block backup completed (fixed index is content-addressed)"
 }
 
+# ===========================================================================
+# Test 9: -compression none -> nothing stored compressed, official restore
+# ===========================================================================
+# assert_stored_as <what> <magic that must not grow> <its count before>
+#                  <magic that must grow> <its count before>
+assert_stored_as() {
+	local what="$1" never="$2" never0="$3" grown="$4" grown0="$5"
+	local never1 grown1
+	never1="$(chunk_magic_count "$never")"
+	grown1="$(chunk_magic_count "$grown")"
+	assert_eq "$never0" "$never1" "$what: chunks stored compressed"
+	[ "$grown1" -gt "$grown0" ] || die "$what: no chunk was stored uncompressed (before $grown0, after $grown1)"
+	ok "$what: $((grown1 - grown0)) chunk(s) stored, none of them compressed"
+}
+
+test_compression_none() {
+	local c0 u0
+
+	step "our CLI: folder backup with -compression none"
+	c0="$(chunk_magic_count "$MAGIC_COMPRESSED")"
+	u0="$(chunk_magic_count "$MAGIC_UNCOMPRESSED")"
+	our_directory_backup "$WORK/src-none" -backup-id e2e-none -compression none \
+		>"$WORK/log-none.txt" 2>&1 \
+		|| { cat "$WORK/log-none.txt"; return 1; }
+	assert_stored_as "folder backup, compression none" "$MAGIC_COMPRESSED" "$c0" "$MAGIC_UNCOMPRESSED" "$u0"
+	pbc_restore host/e2e-none backup.pxar.didx restore-none
+	assert_tree_identical "$WORK/src-none" "$WORK/restore-none" "folder backup, compression none"
+
+	step "our CLI: encrypted folder backup with -compression none"
+	c0="$(chunk_magic_count "$MAGIC_ENCR_COMPR")"
+	u0="$(chunk_magic_count "$MAGIC_ENCRYPTED")"
+	our_directory_backup "$WORK/src-none" -backup-id e2e-none-enc -compression none \
+		-keyfile "$KEYFILE" >"$WORK/log-none-enc.txt" 2>&1 \
+		|| { cat "$WORK/log-none-enc.txt"; return 1; }
+	assert_stored_as "encrypted folder backup, compression none" "$MAGIC_ENCR_COMPR" "$c0" "$MAGIC_ENCRYPTED" "$u0"
+	pbc_restore host/e2e-none-enc backup.pxar.didx restore-none-enc --keyfile key.pem
+	assert_tree_identical "$WORK/src-none" "$WORK/restore-none-enc" "encrypted folder backup, compression none"
+
+	step "our CLI: encrypted block backup with -compression none"
+	c0="$(chunk_magic_count "$MAGIC_ENCR_COMPR")"
+	u0="$(chunk_magic_count "$MAGIC_ENCRYPTED")"
+	our_machine_backup "$WORK/none.img" -backup-id e2e-block-none-enc -compression none \
+		-keyfile "$KEYFILE" >"$WORK/log-block-none-enc.txt" 2>&1 \
+		|| { cat "$WORK/log-block-none-enc.txt"; return 1; }
+	assert_stored_as "encrypted block backup, compression none" "$MAGIC_ENCR_COMPR" "$c0" "$MAGIC_ENCRYPTED" "$u0"
+	pbc_restore host/e2e-block-none-enc "$NONE_ARCHIVE" restore-none-enc.img --keyfile key.pem
+	assert_bytes_identical "$WORK/none.img" "$WORK/restore-none-enc.img" "encrypted block backup, compression none"
+}
+
+# ===========================================================================
+# Test 10: encrypted backup by the OFFICIAL client -> restore by our own reader
+# ===========================================================================
+# The official client compresses a chunk or blob before it encrypts it
+# (ENCR_COMPR). Our own backups do the same from version 2.1, and tests 3 and 4
+# prove the official client reads those; this one proves our reader reads the
+# official client's, in each place a restore decodes data: a folder archive
+# (dynamic index), the same folder as a split archive, a disk image (fixed
+# index) and a blob. There is no restore command to run, so the reading is
+# done by a Go test of pbscommon that only runs when it is given a server
+# (TestLiveRestoreOfficial, pbscommon/zz_restore_livetest_test.go).
+test_official_backup_our_restore() {
+	pbc_available || { warn "no official client -- skipping"; return 0; }
+	command -v go >/dev/null 2>&1 || die "go is required: the restore is done by a Go test of pbscommon"
+
+	local n0 n1
+	n0="$(chunk_magic_count "$MAGIC_ENCR_COMPR")"
+	step "official client: encrypted backup of a folder, a disk image and a blob"
+	pbc backup src.pxar:src-official disk.img:official.img notes.conf:src-official/words.txt \
+		--keyfile key.pem --backup-id e2e-official-enc >"$WORK/log-official-enc.txt" 2>&1 \
+		|| { cat "$WORK/log-official-enc.txt"; return 1; }
+	n1="$(chunk_magic_count "$MAGIC_ENCR_COMPR")"
+	[ "$n1" -gt "$n0" ] || die "the official client stored no compressed encrypted chunk, so this test would prove nothing"
+	ok "official client stored $((n1 - n0)) compressed encrypted chunk(s)"
+
+	step "official client: the same folder as a split archive (--change-detection-mode data)"
+	pbc backup src.pxar:src-official --change-detection-mode data \
+		--keyfile key.pem --backup-id e2e-official-split >"$WORK/log-official-split.txt" 2>&1 \
+		|| { cat "$WORK/log-official-split.txt"; return 1; }
+
+	# The cases for the Go test: which snapshots, and what each archive must
+	# come back as. The token secret goes in from the environment, into a
+	# file only this user can read, in the workdir that is removed at the end.
+	pbc snapshot list --output-format json >"$WORK/snapshots.json" \
+		|| { pbc snapshot list; return 1; }
+	rm -rf "$WORK/restore-official" "$WORK/restore-official-split"
+	python3 - "$WORK" "$PBS_BASEURL" "$PBS_FINGERPRINT" "$PBS_DATASTORE" "$PBS_AUTHID" <<-'PY' || return 1
+		import hashlib, json, os, sys
+		work, url, fingerprint, datastore, authid = sys.argv[1:6]
+		snaps = json.load(open(os.path.join(work, "snapshots.json")))
+		def when(backup_id):
+		    t = [s["backup-time"] for s in snaps if s["backup-id"] == backup_id]
+		    if len(t) != 1:
+		        sys.exit(f"snapshot {backup_id}: found {len(t)} of them, want 1")
+		    return t[0]
+		def files(backup_id):
+		    return [f["filename"] if isinstance(f, dict) else f
+		            for s in snaps if s["backup-id"] == backup_id for f in s.get("files", [])]
+		def sha(rel):
+		    h = hashlib.sha256()
+		    with open(os.path.join(work, rel), "rb") as f:
+		        for block in iter(lambda: f.read(1 << 20), b""):
+		            h.update(block)
+		    return h.hexdigest()
+		enc, split = "e2e-official-enc", "e2e-official-split"
+		for backup_id, names in ((enc, ["src.pxar.didx", "disk.img.fidx", "notes.conf.blob"]),
+		                         (split, ["src.mpxar.didx", "src.ppxar.didx"])):
+		    missing = [n for n in names if n not in files(backup_id)]
+		    if missing:
+		        sys.exit(f"snapshot {backup_id} has no {missing}: it holds {files(backup_id)}")
+		def case(name, backup_id, kind, archive, **more):
+		    return dict(name=name, type="host", id=backup_id, time=when(backup_id), kind=kind, archive=archive, **more)
+		cfg = {
+		    "url": url, "fingerprint": fingerprint, "datastore": datastore, "namespace": "",
+		    "authid": authid, "secret": os.environ["PBS_TOKEN_SECRET"],
+		    "keyfile": os.path.join(work, "key.pem"),
+		    "cases": [
+		        case("folder", enc, "pxar", "src.pxar.didx", dest=os.path.join(work, "restore-official")),
+		        case("split folder", split, "pxar", "src.mpxar.didx", payload="src.ppxar.didx",
+		             dest=os.path.join(work, "restore-official-split")),
+		        case("disk image", enc, "image", "disk.img.fidx", sha256=sha("official.img")),
+		        case("blob", enc, "blob", "notes.conf.blob", sha256=sha("src-official/words.txt")),
+		    ],
+		}
+		fd = os.open(os.path.join(work, "restore-cases.json"), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+		with os.fdopen(fd, "w") as f:
+		    json.dump(cfg, f)
+	PY
+
+	step "our reader: restoring the official client's encrypted archives"
+	( cd "$REPO_ROOT/pbscommon" && PBS_RESTORE_CASES="$WORK/restore-cases.json" \
+		go test -count=1 -run '^TestLiveRestoreOfficial$' -v . ) >"$WORK/log-our-restore.txt" 2>&1 \
+		|| { cat "$WORK/log-our-restore.txt"; return 1; }
+	# A test that was skipped also exits 0: it must have run and passed.
+	grep -q -- '--- PASS: TestLiveRestoreOfficial ' "$WORK/log-our-restore.txt" \
+		|| { cat "$WORK/log-our-restore.txt"; die "TestLiveRestoreOfficial did not run"; }
+	grep -- '--- PASS' "$WORK/log-our-restore.txt" || true
+	ok "our reader read the disk image and the blob: sha256 as the source"
+
+	assert_tree_identical "$WORK/src-official" "$WORK/restore-official" "official encrypted folder backup, our restore"
+	assert_tree_identical "$WORK/src-official" "$WORK/restore-official-split" "official encrypted split folder backup, our restore"
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -352,6 +568,7 @@ main() {
 		===============================================================
 		 Salvanza -- end-to-end test suite
 		 backup with our CLIs, restore with the official client
+		 (and, last, the reverse)
 		===============================================================
 	BANNER
 	printf '%s' "$C_RESET"
@@ -372,6 +589,7 @@ main() {
 	section "Preparing fixtures"
 	make_directory_fixture
 	make_block_fixture
+	make_extra_fixtures
 
 	detect_pbc
 	start_pbs
@@ -386,6 +604,8 @@ main() {
 	run_test "6. PBS server-side verify"                           test_server_side_verify
 	run_test "7. chunk dedup on a second identical backup"         test_dedup_reuse
 	run_test "8. namespace round-trip (-namespace / --ns)"         test_namespace_roundtrip
+	run_test "9. compression none -> official restore"             test_compression_none
+	run_test "10. official encrypted backup -> our restore"        test_official_backup_our_restore
 
 	section "Summary"
 	log "passed: ${#PASSED[@]}"

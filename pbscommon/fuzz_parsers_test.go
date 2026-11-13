@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // Fuzz tests for the parsers that read what a PBS server, or a file a user
@@ -93,6 +95,16 @@ func FuzzDecodeBlob(f *testing.F) {
 	crypt, err := NewCryptConfig(bytes.Repeat([]byte{7}, 32))
 	if err != nil {
 		f.Fatal(err)
+	}
+	// Both encrypted forms, made with the key the fuzz target holds, so that
+	// mutations start from blobs that decrypt: the compressed one leads into
+	// the zstd decoder behind the encryption.
+	text := bytes.Repeat([]byte("fuzz seed text "), 64)
+	if enc, err := crypt.EncodeEncrypted(text); err == nil {
+		f.Add(enc)
+	}
+	if encCompr, err := crypt.EncodeEncryptedCompressed(text, zstd.SpeedDefault); err == nil {
+		f.Add(encCompr)
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		_, _ = DecodeEncryptedBlob(data, nil, nil)

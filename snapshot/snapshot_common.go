@@ -13,6 +13,9 @@ var (
 	// ErrUnsupportedFS: the path is on a file system the modules cannot
 	// snapshot (btrfs, Fedora's default).
 	ErrUnsupportedFS = errors.New("elastio-snap and dattobd cannot snapshot this file system")
+	// ErrNotEnoughSpace: the file system has less than 10% of its size free,
+	// too little for the snapshot's copy-on-write file, which lives on it.
+	ErrNotEnoughSpace = errors.New("not enough free space on the file system for the snapshot's copy-on-write file")
 )
 
 type SnapShot struct {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -64,6 +65,60 @@ func TestInheritUpstreamStateFiles(t *testing.T) {
 	}
 	if n := inheritUpstreamStateFiles(dir); n != 0 {
 		t.Errorf("second run reset %d file(s), want 0", n)
+	}
+}
+
+// Nimbus Backup 0.4.1 could leave config.json with a protected DACL without
+// any entry, so that nobody may read it. A folder taken over with such a file
+// has it readable at once, and the copy kept for a rollback holds it.
+func TestTakeoverUnlocksSettingsNobodyMayRead(t *testing.T) {
+	programData := t.TempDir()
+	earlier := filepath.Join(programData, legacyFolder)
+	dir := filepath.Join(programData, folderName())
+	if err := os.MkdirAll(earlier, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(earlier, "config.json")
+	if err := os.WriteFile(locked, []byte(`{"pbs_servers":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	emptyBuf := [8]byte{2, 0, 8, 0, 0, 0, 0, 0} // ACL_REVISION, size 8, 0 ACEs
+	empty := (*windows.ACL)(unsafe.Pointer(&emptyBuf[0]))
+	// The test owns the file, so it may still change the DACL afterwards, as
+	// the service (SYSTEM) may on a real install.
+	if err := windows.SetNamedSecurityInfo(locked, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, empty, nil); err != nil {
+		t.Fatal(err)
+	}
+	// An account with the backup privilege switched on (a remote session's
+	// administrator) reads the file all the same, so the takeover is judged
+	// by the DACL as well: it is no longer a protected one.
+	if _, err := os.ReadFile(locked); err == nil {
+		t.Log("this account reads a file that lets nobody in; judging by the DACL only")
+	}
+
+	adoptWindowsState(programData, dir)
+
+	taken := filepath.Join(dir, "config.json")
+	if _, err := os.ReadFile(taken); err != nil {
+		t.Fatalf("config.json not readable after the takeover: %v", err)
+	}
+	sd, err := windows.GetNamedSecurityInfo(taken, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, _, err := sd.Control(); err != nil || c&windows.SE_DACL_PROTECTED != 0 {
+		t.Fatalf("config.json still has its protected DACL after the takeover (control %#x, %v)", c, err)
+	}
+	kept, err := filepath.Glob(filepath.Join(dir, "pre-*", "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kept) != 1 {
+		t.Fatalf("the copy kept for a rollback has %d config.json, want 1", len(kept))
+	}
+	if data, err := os.ReadFile(kept[0]); err != nil || len(data) == 0 {
+		t.Errorf("the kept config.json is empty or unreadable: %v", err)
 	}
 }
 

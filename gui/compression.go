@@ -9,8 +9,9 @@ import (
 // Preferences > Backup Options "Compression": how hard each chunk is
 // compressed before it is sent to PBS, which stores it as sent. One setting
 // for every backup this computer makes, folder and machine alike; the
-// service's settings are the ones its runs use. Encrypted chunks are not
-// compressed whatever it says (pbscommon.UploadChunk).
+// service's settings are the ones its runs use. Encrypted chunks are
+// compressed too, before they are encrypted; "none" sends every chunk as it
+// is (pbscommon.UploadChunk).
 
 // effectiveCompression is the level a run uses: one named for the run itself
 // (a request to the service API that gives one), otherwise the setting,
@@ -24,7 +25,7 @@ func (a *App) effectiveCompression(requested string) string {
 }
 
 // compressionSetting is the level c's Backup Options setting gives: default
-// when it is empty, or not one of the four (a hand-edited config.json).
+// when it is empty, or not one of the five (a hand-edited config.json).
 func compressionSetting(c *Config) string {
 	if c != nil && c.CompressionLevel != "" && pbscommon.ValidCompressionLevel(c.CompressionLevel) {
 		return string(pbscommon.ParseCompressionLevel(c.CompressionLevel))
@@ -37,7 +38,7 @@ func compressionSetting(c *Config) string {
 // SetSpeedLimits.
 func (a *App) SetCompressionLevel(level string) error {
 	if !pbscommon.ValidCompressionLevel(level) {
-		return fmt.Errorf("compression must be fastest, default, better or best, not %q", level)
+		return fmt.Errorf("compression must be none, fastest, default, better or best, not %q", level)
 	}
 	if a.delegated() {
 		return a.serviceCall("SetCompressionLevel", level)

@@ -114,6 +114,8 @@ func adoptFolder(dst string, candidates []string) (string, error) {
 			return "", fmt.Errorf("taking over the settings in %s: %v (moving it: %v)", from, cerr, err)
 		}
 	}
+	// Before the copy, which can only keep what it can read.
+	unlockTakenOverSettings(dst)
 	keepSettingsCopy(dst, product().Folder)
 	return from, nil
 }
