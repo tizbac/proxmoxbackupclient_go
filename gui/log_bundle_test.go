@@ -141,6 +141,8 @@ func TestBundleOfAnEmptyFolderIsStillAValidZip(t *testing.T) {
 func TestAppBundleWithoutTheServiceSaysSo(t *testing.T) {
 	dir := t.TempDir()
 	withLogDir(t, dir)
+	// No service on this computer, whatever is installed where the test runs.
+	withServiceFolder(t, filepath.Join(t.TempDir(), "no-service"))
 	writeLog(t, dir, "service-gui.log", 100, time.Minute)
 	data, err := (&App{}).buildLogBundle(14)
 	if err != nil {

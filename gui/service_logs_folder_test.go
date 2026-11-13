@@ -131,6 +131,124 @@ func TestServiceLogsFolderAbsent(t *testing.T) {
 	}
 }
 
+// withFileManagerRights says, for a test, whether the file manager has this
+// process's rights, and records what OpenServiceLogsFolder opens.
+func withFileManagerRights(t *testing.T, lacks bool) *string {
+	t.Helper()
+	oldLacks, oldOpen := fileManagerLacksOurRights, openFolderInFileManager
+	opened := new(string)
+	fileManagerLacksOurRights = func() bool { return lacks }
+	openFolderInFileManager = func(dir string) error { *opened = dir; return nil }
+	t.Cleanup(func() { fileManagerLacksOurRights, openFolderInFileManager = oldLacks, oldOpen })
+	return opened
+}
+
+func TestOpenServiceLogsFolderOpensTheFolderWhenTheFileManagerMayReadIt(t *testing.T) {
+	own := withLogFolder(t)
+	svc := t.TempDir()
+	withServiceFolder(t, svc)
+	opened := withFileManagerRights(t, false)
+	a := &App{}
+	if st := a.GetServiceLogsStatus(); st.Copy {
+		t.Fatalf("status says a copy would be opened: %+v", st)
+	}
+	if err := a.OpenServiceLogsFolder(); err != nil {
+		t.Fatal(err)
+	}
+	if *opened != svc {
+		t.Fatalf("opened %q, want the service's folder %q", *opened, svc)
+	}
+	if _, err := os.Stat(filepath.Join(own, serviceLogsCopyName)); err == nil {
+		t.Fatal("a copy was made though the folder itself was opened")
+	}
+}
+
+// An app restarted as administrator on Windows: File Explorer is not, and
+// would offer to give the user the service's settings folder for good. The
+// logs are copied to the user's own folder and that is opened; the settings,
+// the token and the keys are not copied.
+func TestOpenServiceLogsFolderOpensACopyWhenTheFileManagerLacksRights(t *testing.T) {
+	own := withLogFolder(t)
+	svc := t.TempDir()
+	withServiceFolder(t, svc)
+	opened := withFileManagerRights(t, true)
+	writeLogLines(t, filepath.Join(svc, "service-service.log"), []string{"[SERVICE] [2026-11-13 10:00:00] started"}, false)
+	writeLogLines(t, filepath.Join(svc, "backup-20261113-100100-docs.log.gz"), []string{"[BACKUP] [2026-11-13 10:01:00] a run"}, true)
+	for _, private := range []string{"config.json", "api-token", "scheduled_jobs.json"} {
+		if err := os.WriteFile(filepath.Join(svc, private), []byte("private"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(svc, "keys"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(svc, "keys", "backup-key.log"), []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	a := &App{}
+	if st := a.GetServiceLogsStatus(); !st.Copy || st.State != "readable" {
+		t.Fatalf("status %+v, want readable with copy", st)
+	}
+	if err := a.OpenServiceLogsFolder(); err != nil {
+		t.Fatal(err)
+	}
+	copyDir := filepath.Join(own, serviceLogsCopyName)
+	if *opened != copyDir {
+		t.Fatalf("opened %q, want the copy %q", *opened, copyDir)
+	}
+	names := func() []string {
+		entries, err := os.ReadDir(copyDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, e := range entries {
+			out = append(out, e.Name())
+		}
+		return out
+	}
+	if got := strings.Join(names(), ","); got != "backup-20261113-100100-docs.log.gz,service-service.log" {
+		t.Fatalf("the copy holds %q, want the two logs and nothing else", got)
+	}
+	want, _ := os.ReadFile(filepath.Join(svc, "service-service.log"))
+	got, _ := os.ReadFile(filepath.Join(copyDir, "service-service.log"))
+	if !bytes.Equal(got, want) || len(got) == 0 {
+		t.Fatalf("the copied log differs: %q, want %q", got, want)
+	}
+	si, _ := os.Stat(filepath.Join(svc, "service-service.log"))
+	ci, _ := os.Stat(filepath.Join(copyDir, "service-service.log"))
+	if !ci.ModTime().Equal(si.ModTime()) {
+		t.Fatalf("the copy's time %v, want the log's %v", ci.ModTime(), si.ModTime())
+	}
+
+	// A second click replaces the copy: a log that has gone is not left in it.
+	if err := os.Remove(filepath.Join(svc, "backup-20261113-100100-docs.log.gz")); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.OpenServiceLogsFolder(); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(names(), ","); got != "service-service.log" {
+		t.Fatalf("after the second copy it holds %q, want service-service.log", got)
+	}
+
+	// The copy is a folder in the user's log folder: it is not listed as logs again.
+	files, err := a.ListLogFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, f := range files {
+		if f.Name == "service-service.log" {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("service-service.log listed %d times, want once", seen)
+	}
+}
+
 func TestServiceLogsFolderSameAsOwnIsNotDoubled(t *testing.T) {
 	own := withLogFolder(t)
 	withServiceFolder(t, own)

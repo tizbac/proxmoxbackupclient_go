@@ -39,9 +39,10 @@ export async function logRequestFor({ backupId, at, kind, notice }) {
   return { folder: f.folder, name: f.name, around: logStamp(at), notice: notice || '' }
 }
 
-// serviceLogs: {folder, state: 'readable'|'locked'|'none', listed} from GetServiceLogsStatus.
-// onOpenServiceFolder opens the service's folder (or, when it is locked, restarts the app as an administrator).
-export default function LogsPage({ t, language, active, request, onOpenFolder, onSaveLogs, saveLogsLabel, saveLogsTip, serviceLogs, onOpenServiceFolder, serviceFolderLabel, serviceLockedNote, formatBytes }) {
+// serviceLogs: {folder, state: 'readable'|'locked'|'none', listed, copy} from GetServiceLogsStatus.
+// onOpenServiceFolder opens the service's folder (or, when it is locked, restarts the app as an
+// administrator; or, with copy, a copy of its logs, and serviceFolderTip says why).
+export default function LogsPage({ t, language, active, request, onOpenFolder, onSaveLogs, saveLogsLabel, saveLogsTip, serviceLogs, onOpenServiceFolder, serviceFolderLabel, serviceFolderTip, serviceLockedNote, formatBytes }) {
   const [files, setFiles] = useState([])
   const [sel, setSel] = useState(null) // {folder, name}
   const [view, setView] = useState(null)
@@ -148,7 +149,7 @@ export default function LogsPage({ t, language, active, request, onOpenFolder, o
               {onSaveLogs && <button className="btn btn-secondary" title={saveLogsTip} onClick={onSaveLogs}>{saveLogsLabel}</button>}
               {onOpenFolder && <button className="btn btn-secondary" onClick={onOpenFolder}>{t('logsOpenFolder')}</button>}
               {onOpenServiceFolder && serviceLogs && serviceLogs.state !== 'none' && !(serviceLogs.state === 'locked' && !serviceLogs.listed) &&
-                <button className="btn btn-secondary" onClick={onOpenServiceFolder}>{serviceFolderLabel}</button>}
+                <button className="btn btn-secondary" title={serviceFolderTip || undefined} onClick={onOpenServiceFolder}>{serviceFolderLabel}</button>}
             </div>
             {notice && <div className="info-box" style={{ marginBottom: '8px' }}>ℹ️ {notice}</div>}
             {err && <div className="status error visible" style={{ marginBottom: '8px' }}>❌ {err}</div>}

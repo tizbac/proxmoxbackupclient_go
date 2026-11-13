@@ -7507,7 +7507,12 @@ function App() {
             onOpenServiceFolder={OpenServiceLogsFolder ? handleOpenServiceLogs : null}
             serviceFolderLabel={serviceLogs && serviceLogs.state === 'locked'
               ? tl('logsOpenServiceFolderAdmin', 'Open service log folder (as administrator)')
-              : tl('logsOpenServiceFolder', 'Open service log folder')}
+              : serviceLogs && serviceLogs.copy
+                ? tl('logsOpenServiceFolderCopy', 'Open a copy of the service logs')
+                : tl('logsOpenServiceFolder', 'Open service log folder')}
+            serviceFolderTip={serviceLogs && serviceLogs.copy
+              ? tl('logsOpenServiceFolderCopyTip', 'File Explorer does not run as administrator, so it could only show the service\'s folder by changing who may read it. This copies the service\'s logs to your own log folder and opens the copy.')
+              : ''}
             serviceLockedNote={tl('logsServiceLocked', 'The background service\'s logs can only be read by an administrator. Restart the app as an administrator to see them here.')}
             onSaveLogs={SaveLogs ? handleSaveLogs : null}
             saveLogsLabel={tl('saveLogsBtn', 'Save logs for a bug report…')}
