@@ -53,7 +53,7 @@ func TestCollectLogsTakesRecentLogsNewestFirstAndSkipsTheRest(t *testing.T) {
 	writeLog(t, dir, "service-service.log", 10, time.Hour)
 	writeLog(t, dir, "backup-20261110-030000-PC.log.gz", 10, 2*time.Hour)
 	writeLog(t, dir, "backup-20261001-030000-PC.log.gz", 10, 40*24*time.Hour) // older than the window
-	writeLog(t, dir, "settings.json", 10, time.Minute)                         // not a log
+	writeLog(t, dir, "settings.json", 10, time.Minute)                        // not a log
 	writeLog(t, dir, "notes.txt", 10, time.Minute)
 	files, left := collectLogs([]string{dir, filepath.Join(dir, "missing")}, 14, 1<<20)
 	if left != 0 || len(files) != 2 {
