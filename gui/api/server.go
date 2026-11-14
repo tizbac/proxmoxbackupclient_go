@@ -158,10 +158,37 @@ func (s *Server) Handler() http.Handler {
 	return s.authMiddleware(s.mux)
 }
 
+// The time limits of the API's connections. Any program on the computer may
+// connect, and some requests need no token (the public status, the logs), so a
+// program must not be able to hold connections open for ever: one that sends
+// its request a byte at a time, or never, is cut off. There is no limit on
+// writing the answer: some requests wait on a PBS (a connection test), and the
+// log answers set their own (oneLogRequest). Variables so a test can shorten them.
+var (
+	apiReadHeaderTimeout = 10 * time.Second
+	apiReadTimeout       = time.Minute // the whole request; bodies are at most 8 MiB, from this computer
+	apiIdleTimeout       = 2 * time.Minute
+)
+
+// apiMaxHeaderBytes caps a request's headers; the API's are a few hundred bytes.
+const apiMaxHeaderBytes = 64 << 10
+
+// httpServer is the API's HTTP server, with its token check and time limits.
+func (s *Server) httpServer() *http.Server {
+	return &http.Server{
+		Addr:              s.addr,
+		Handler:           s.authMiddleware(s.mux),
+		ReadHeaderTimeout: apiReadHeaderTimeout,
+		ReadTimeout:       apiReadTimeout,
+		IdleTimeout:       apiIdleTimeout,
+		MaxHeaderBytes:    apiMaxHeaderBytes,
+	}
+}
+
 // Start starts the HTTP server
 func (s *Server) Start() error {
 	log.Printf("Starting API server on %s", s.addr)
-	return http.ListenAndServe(s.addr, s.authMiddleware(s.mux))
+	return s.httpServer().ListenAndServe()
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {

@@ -119,7 +119,9 @@ Other programs using the API are not affected; they can make the same check.
 
 Checks on every request (`authMiddleware`):
 
-- request body at most 8 MiB;
+- request body at most 8 MiB, headers at most 64 KiB; the headers must arrive within 10
+  seconds and the whole request within a minute, and a kept-alive connection is closed
+  after 2 minutes without a request (`server.go`), so no program can hold connections open;
 - a request with an `Origin` header gets **403** `forbidden` (browsers send it; the app
   does not);
 - a missing or wrong token gets **401** `unauthorized` (constant-time compare), except on
