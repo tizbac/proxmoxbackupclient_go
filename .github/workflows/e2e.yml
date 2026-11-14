@@ -54,45 +54,14 @@ jobs:
       - name: Check formatting
         run: |
           set -euo pipefail
-          # Only the files this project actually maintains; several legacy
-          # files have never been gofmt'd and fixing them is unrelated churn.
-          files=(
-            pbscommon/crypt.go
-            pbscommon/crypt_test.go
-            pbscommon/crypt_compress_test.go
-            pbscommon/compression_level_test.go
-            pbscommon/snapshot_key.go
-            pbscommon/snapshot_writer.go
-            pbscommon/snapshot_writer_test.go
-            pbscommon/encr_compr_read_test.go
-            pbscommon/zz_restore_livetest_test.go
-            pbscommon/pbsapi.go
-            pbscommon/pbsapi_crypt_test.go
-            pbscommon/pbsapi_namespace_test.go
-            pbscommon/didx_assembler.go
-            pbscommon/didx_assembler_test.go
-            pbscommon/didx_fixtures_test.go
-            pbscommon/didx_reader.go
-            pbscommon/didx_reader_test.go
-            pbscommon/pxar_reader.go
-            pbscommon/pxar_reader_test.go
-            pbscommon/pxar_fixtures_test.go
-            clientcommon/crypt.go
-            machinebackuplib/machinebackup.go
-            machinebackuplib/slugify_test.go
-            nbd/fidxserver.go
-            nbd/fidxserver_test.go
-            gui/restore_inline.go
-            gui/restore_search.go
-            gui/restore_search_test.go
-            gui/restore_cache.go
-            gui/restore_cache_test.go
-            gui/crypt_key.go
-            gui/crypt_test.go
-            gui/config.go
-            gui/pbs_server.go
-            gui/main.go
-          )
+          # Every Go file in the repository. This step once named the files to
+          # check, as older ones had never been gofmt'd; all of them are now,
+          # and a list leaves out every file added after it was written.
+          mapfile -t files < <(git ls-files '*.go')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo 'no Go files found to check' >&2
+            exit 1
+          fi
           out="$(gofmt -l "${files[@]}")"
           if [ -n "$out" ]; then
             printf 'not gofmt-clean:\n%s\n' "$out" >&2
