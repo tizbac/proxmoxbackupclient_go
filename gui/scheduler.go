@@ -189,8 +189,13 @@ func encryptionLabel(keyInUse bool) string {
 
 // JobHistory represents a completed backup job
 type JobHistory struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// JobID is the ID of the Backup Set that ran this backup, so the run stays
+	// with its set through a rename and a later set of the same name does not
+	// show it as its own (history_set_id.go). Empty for a restore and for a
+	// one-off backup; historyNoSet for an older entry whose set is gone.
+	JobID      string   `json:"jobId,omitempty"`
 	Timestamp  string   `json:"timestamp"` // ISO format
 	Status     string   `json:"status"`    // "success", "failed", "running"
 	Message    string   `json:"message"`
@@ -906,7 +911,8 @@ func (a *App) StopScheduler() {
 	schedulerRunning = false
 }
 
-// CleanupAbandonedJobs marks any "running" jobs as abandoned on app startup
+// CleanupAbandonedJobs marks any "running" jobs as abandoned on app startup,
+// and ties runs an earlier version recorded to their Backup Sets.
 func (a *App) CleanupAbandonedJobs() {
 	writeDebugLog("CleanupAbandonedJobs called - cleaning up stale running jobs")
 
@@ -929,6 +935,16 @@ func (a *App) CleanupAbandonedJobs() {
 			history[i].Timestamp = time.Now().Format(time.RFC3339)
 			modified = true
 		}
+	}
+
+	// Tie runs recorded before entries held their Backup Set's ID to their
+	// sets (history_set_id.go). Left for the next start when the sets cannot
+	// be read: with no sets to go on every run would be marked as no set's.
+	if jobs, jerr := a.GetScheduledJobs(); jerr != nil {
+		writeDebugLog(fmt.Sprintf("Run history not tied to Backup Sets this start, the sets could not be read: %v", jerr))
+	} else if stampHistorySetIDs(history, jobs) {
+		writeDebugLog("Run history: tied earlier runs to their Backup Sets")
+		modified = true
 	}
 
 	if modified {
@@ -1249,6 +1265,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 		historyEntry := JobHistory{
 			ID:         fmt.Sprintf("%d", startTime.Unix()),
 			Name:       job.Name,
+			JobID:      job.ID,
 			Timestamp:  time.Now().Format(time.RFC3339),
 			Status:     "success",
 			Message:    "Backup completed",
@@ -1318,6 +1335,7 @@ func (a *App) executeScheduledJob(job ScheduledJob, trigger string) {
 		if herr := a.AddJobHistory(JobHistory{
 			ID:            fmt.Sprintf("%d", startTime.Unix()),
 			Name:          job.Name,
+			JobID:         job.ID,
 			Timestamp:     time.Now().Format(time.RFC3339),
 			Status:        "failed",
 			Message:       fmt.Sprintf("Error: %v", err),

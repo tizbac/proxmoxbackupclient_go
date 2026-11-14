@@ -151,6 +151,17 @@ type pendingPostActionsEntry struct {
 	runDone chan struct{}
 }
 
+// setID is the ID of the Backup Set this run is of, for its history entry
+// (JobHistory.JobID). Empty for a one-off backup: no entry at all, or a
+// request the app handed to the service (RegisterRunOptions), which has no
+// trigger and no set behind it.
+func (e *pendingPostActionsEntry) setID() string {
+	if e == nil || e.job == nil || e.trigger == "" {
+		return ""
+	}
+	return e.job.ID
+}
+
 // serviceRunOutcome is how a run handed to the service ended: its summary,
 // and the same as message code and figures (empty from an older service).
 type serviceRunOutcome struct {

@@ -152,12 +152,10 @@ func (a *App) LastRunOutcomeForAPI() (failed bool, ended string) {
 // recent backup of at least one of the Backup Sets in jobs failed, ended the
 // time of the most recent backup of any kind. Restores, and runs still
 // marked running, do not count; a one-off backup counts only for ended.
+// A run is its set's by the set's ID (runOfSet), so a failure left by a
+// deleted set is not held against a new set with the same name.
 func lastRunOutcome(jobs []ScheduledJob, hist []JobHistory) (failed bool, ended string) {
-	sets := map[string]bool{}
-	for _, j := range jobs {
-		sets[j.Name] = true
-	}
-	seen := map[string]bool{}
+	seen := make([]bool, len(jobs))
 	for _, h := range hist {
 		if h.Kind == "restore" || h.Status == "running" {
 			continue
@@ -165,12 +163,17 @@ func lastRunOutcome(jobs []ScheduledJob, hist []JobHistory) (failed bool, ended 
 		if ended == "" {
 			ended = h.Timestamp
 		}
-		if h.Trigger == "oneoff" || !sets[h.Name] || seen[h.Name] {
-			continue
-		}
-		seen[h.Name] = true
-		if h.Status == "failed" {
-			failed = true
+		for i, j := range jobs {
+			if !runOfSet(h, j) {
+				continue
+			}
+			if !seen[i] {
+				seen[i] = true
+				if h.Status == "failed" {
+					failed = true
+				}
+			}
+			break
 		}
 	}
 	return failed, ended

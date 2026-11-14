@@ -495,6 +495,8 @@ A Backup Set is a saved backup with a name, its schedules and options. The **Bac
 | SHARED ID (amber) | Another set writes into the same backup group on PBS ([section 6.4](#64-destination-tab)). Hover it for the other set's name |
 | DISABLED (grey) | The set is out of its schedule (**More > Disable**, or the **Enabled** switch in its editor); Run Now still works |
 
+A set whose last run did not succeed says so under Last run: **Failed:** (or **Stopped:** for a run that was stopped) with the last part of the error, which is what PBS or the system answered, then **View this run**, which opens the run on the Reports page with its full error and log, and below it **Last successful run** with how long ago that was. These are the set's own runs: a renamed set keeps them, and a new set given the name of a deleted one starts with none.
+
 A Metadata set with a full read set up also shows, after Last run, when its last full read finished (**Last full read:** and the date, or "not recorded yet" until one has run with this version) and **Next full read in N runs** or **Next run: full read (reads every file)**.
 
 Each card has **Run Now**, **Edit** and a **More ▾** menu:

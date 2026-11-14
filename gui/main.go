@@ -1145,6 +1145,7 @@ func (a *App) startBackupDirect(backupType string, backupDirs []string, driveLet
 				MessageKey:    msgKey,
 				MessageParams: msgP,
 			}
+			historyEntry.JobID = postActionsEntry.setID()
 			if backupType != "machine" {
 				historyEntry.ChangeDetection = changeDetectionLabel(changeMode)
 				historyEntry.ReusedFiles = paramUint(msgP, "reusedFiles")
@@ -1486,6 +1487,7 @@ func (a *App) startMachineBackupDirect(backupType string, backupDevices []string
 				MessageKey:    msgKey,
 				MessageParams: msgP,
 			}
+			historyEntry.JobID = postActionsEntry.setID()
 			if !success {
 				historyEntry.Status = "failed"
 				// A Stop is the user's choice, as for a folder backup above.

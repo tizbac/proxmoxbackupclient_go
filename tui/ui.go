@@ -826,7 +826,7 @@ func statusWord(s string) string {
 // lastResult is the most recent history entry of a set, for the Result column.
 func (a *App) lastResult(set Set) (HistoryEntry, bool) {
 	for _, h := range a.hist { // newest first
-		if h.Name == set.Name {
+		if h.OfSet(set) {
 			return h, true
 		}
 	}
@@ -836,7 +836,7 @@ func (a *App) lastResult(set Set) (HistoryEntry, bool) {
 // lastSuccess is the most recent run of a set that succeeded (the caller holds a.mu).
 func (a *App) lastSuccess(set Set) (HistoryEntry, bool) {
 	for _, h := range a.hist { // newest first
-		if h.Name == set.Name && statusColour(h.Status) == colOK {
+		if h.OfSet(set) && statusColour(h.Status) == colOK {
 			return h, true
 		}
 	}

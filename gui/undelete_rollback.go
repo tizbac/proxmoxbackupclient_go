@@ -754,7 +754,7 @@ func (a *App) waitForSetRun(ctx context.Context, job ScheduledJob, since time.Ti
 			continue
 		}
 		for _, h := range hist {
-			if h.Name != job.Name || h.Kind == "restore" || h.Status == "running" {
+			if !runOfSet(h, job) || h.Status == "running" {
 				continue
 			}
 			ts, err := time.Parse(time.RFC3339, h.Timestamp)

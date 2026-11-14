@@ -104,6 +104,25 @@ type HistoryEntry struct {
 	At                                  time.Time
 	Sources                             []string
 	Encryption                          string
+	// SetID is the ID of the Backup Set that ran this backup; Kind is "restore"
+	// for a restore and Trigger "oneoff" for a backup no set ran (see OfSet).
+	SetID, Kind, Trigger string
+}
+
+// OfSet reports whether the run is one of set's, by the set's ID: a run stays
+// with its set through a rename, and a new set given the name of a deleted
+// one does not show the deleted set's runs as its own. An entry with no set
+// ID is one the service has not tied to a set yet (it does at its next
+// start), and until then the name is all there is to go on. As runOfSet in
+// the service (gui/history_set_id.go).
+func (h HistoryEntry) OfSet(set Set) bool {
+	if h.Kind != "" || h.Trigger == "oneoff" {
+		return false
+	}
+	if h.SetID != "" {
+		return h.SetID == set.ID
+	}
+	return h.Name == set.Name
 }
 
 // MessageEntry is one Message Log line.
@@ -322,6 +341,7 @@ func toHistory(m map[string]interface{}) HistoryEntry {
 		ID: str(m, "id"), Name: str(m, "name"), Status: str(m, "status"), Message: str(m, "message"),
 		BackupID: str(m, "backupId"), At: parseTime(str(m, "timestamp")), Sources: strList(m, "backupDirs"),
 		Encryption: str(m, "encryption"),
+		SetID:      str(m, "jobId"), Kind: str(m, "kind"), Trigger: str(m, "trigger"),
 	}
 }
 

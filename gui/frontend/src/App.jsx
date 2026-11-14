@@ -27,6 +27,7 @@ import LogsPage, { logRequestFor } from './components/LogsPage'
 import StorageOffer from './components/StorageOffer'
 import { aboutLinks, PROJECT_REPO } from './aboutBrand'
 import { holdEta, finishAt } from './etaHold'
+import { runsOfSet, shortRunError } from './runsOfSet'
 import defaultIcon from './assets/default-icon.svg'
 
 // Translation key for each About page link (aboutLinks in aboutBrand.js).
@@ -5472,32 +5473,38 @@ function App() {
                               {(() => {
                                 // A run that did not succeed says so here, with its error and when the set
                                 // last did succeed (how long it has been failing), instead of leaving that to
-                                // a message that clears itself.
-                                const mine = jobHistory.filter(h => h.name === job.name) // newest first
+                                // a message that clears itself. The runs are this set's own, by its ID
+                                // (runsOfSet), and the error is the short of it: "View this run", at the end
+                                // of the line it belongs to, shows the whole.
+                                const mine = runsOfSet(jobHistory, job) // newest first
                                 const last = mine[0]
                                 if (!last || last.status === 'success' || last.status === 'running') return null
                                 const ok = mine.find(h => h.status === 'success')
+                                const why = shortRunError(last.message)
+                                const line = (last.status === 'cancelled' ? tl('lastRunStopped', 'Stopped') : tl('lastRunFailedWord', 'Failed'))
+                                  + (why ? `: ${why}` : '')
                                 return (
                                   <div style={{marginTop: '2px'}}>
-                                    <div
-                                      style={{color: last.status === 'cancelled' ? '#c9a227' : '#d9534f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}
-                                      title={last.message}
-                                    >
-                                      {last.status === 'cancelled' ? tl('lastRunStopped', 'Stopped') : tl('lastRunFailedWord', 'Failed')}
-                                      {last.message ? `: ${last.message}` : ''}
+                                    <div style={{display: 'flex', alignItems: 'baseline', gap: '8px'}}>
+                                      <span
+                                        style={{color: last.status === 'cancelled' ? '#c9a227' : '#d9534f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0}}
+                                        title={line}
+                                      >
+                                        {line}
+                                      </span>
+                                      <a
+                                        href="#"
+                                        style={{flexShrink: 0, whiteSpace: 'nowrap'}}
+                                        onClick={(e) => { e.preventDefault(); setSelectedHistoryId(last.id); setActiveTab('reports') }}
+                                      >
+                                        {tl('viewThisRun', 'View this run')}
+                                      </a>
                                     </div>
                                     <div>
                                       {ok
                                         ? tl('lastSuccessfulRun', 'Last successful run: {when}').replace('{when}', new Date(ok.timestamp).toLocaleString())
                                         : tl('noRecentSuccess', 'No successful run in the recent history')}
                                       {ok && <LastRunAgo when={ok.timestamp} />}
-                                      {' · '}
-                                      <a
-                                        href="#"
-                                        onClick={(e) => { e.preventDefault(); setSelectedHistoryId(last.id); setActiveTab('reports') }}
-                                      >
-                                        {tl('viewThisRun', 'View this run')}
-                                      </a>
                                     </div>
                                   </div>
                                 )
