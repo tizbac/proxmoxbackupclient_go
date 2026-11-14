@@ -9,7 +9,9 @@ import (
 	"time"
 )
 
-// The service's public status: the one route that needs no token. The app
+// The service's public status: a route that needs no token (the others are
+// the servers without their logins, public_servers.go, and the service's
+// logs, public_logs.go). The app
 // holds the service's token only while its window is in use (it lets go of
 // it after a while in the tray, gui/token_drop.go), and any program running
 // as the same user could read it from the app's memory while it holds it.
@@ -58,11 +60,14 @@ type PublicStatusAPI interface {
 	LastRunOutcomeForAPI() (failed bool, ended string)
 }
 
-// isPublicRequest reports whether r is one of the two requests the token
-// check lets through: GET /status/public and GET /servers/public
-// (public_servers.go).
+// isPublicRequest reports whether r is one of the requests the token check
+// lets through: GET /status/public, GET /servers/public (public_servers.go)
+// and the four log requests (public_logs.go).
 func isPublicRequest(r *http.Request) bool {
-	return r.Method == http.MethodGet && (r.URL.Path == PublicStatusPath || r.URL.Path == PublicServersPath)
+	if r.Method == http.MethodGet && (r.URL.Path == PublicStatusPath || r.URL.Path == PublicServersPath) {
+		return true
+	}
+	return isPublicLogRequest(r)
 }
 
 // handlePublicStatus serves GET /status/public.

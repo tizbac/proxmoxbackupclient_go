@@ -43,9 +43,11 @@ In service mode the app:
 - gets what one restore, browse or search needs from `POST /pbs/access`;
 - reads and adds history (`/history`, `/history/append`) and Message Log entries
   (`/messages`), lists and controls Backup Sets (`/jobs/full`, `/jobs/enabled`,
-  `/call/RunScheduledJobNowRead`), reads the service's logs (`/logs`, `/logs/read`,
-  `/logs/run`), exports and imports settings (`/settings/export`, `/settings/import`) and
-  stores keys (`/keys/save`);
+  `/call/RunScheduledJobNowRead`), exports and imports settings (`/settings/export`,
+  `/settings/import`) and stores keys (`/keys/save`);
+- reads the service's logs for its Logs page, Save logs and the service log folder button
+  (`/logs`, `/logs/read`, `/logs/run`, `/logs/bundle`), with or without the token, so a user
+  who is not an administrator, or who works on their own settings, still sees them;
 - sends a certificate pin to `POST /pbs/fingerprint`.
 
 Each of these routes is served when the service has the handler and answers **501**
@@ -53,7 +55,8 @@ otherwise (`gui/api/server_state.go`).
 
 ## Authentication
 
-Every request except `GET /status/public` and `GET /servers/public` must carry the header
+Every request except `GET /status/public`, `GET /servers/public` and the four log requests
+(`GET /logs`, `POST /logs/read`, `GET /logs/run`, `POST /logs/bundle`) must carry the header
 
 ```
 X-Salvanza-Token: <contents of the token file>
@@ -120,8 +123,12 @@ Checks on every request (`authMiddleware`):
 - a request with an `Origin` header gets **403** `forbidden` (browsers send it; the app
   does not);
 - a missing or wrong token gets **401** `unauthorized` (constant-time compare), except on
-  `GET /status/public` and `GET /servers/public` (any other method there needs the token
-  too).
+  `GET /status/public`, `GET /servers/public` and the four log requests (any other method
+  there, and any other path under `/logs`, needs the token too);
+- one of those requests without the token must name this computer in its `Host` header
+  (`127.0.0.1` or any `127.x`, `::1` or `localhost`, with or without a port), or it gets
+  **403** `forbidden`. A web page that points its own host name at 127.0.0.1 (DNS
+  rebinding) sends that name, so it is refused. With the token the `Host` does not matter.
 
 ## Errors
 
@@ -162,7 +169,7 @@ secrets (no token secret, no passphrase). `last_backup` exists in the type but i
 
 ### GET /status/public
 
-One of the two routes that need no token (`public_status.go`). Any program on the computer may read
+One of the routes that need no token (`public_status.go`). Any program on the computer may read
 it, so it says only whether backups run and whether one failed: no Backup Set names, paths,
 servers or messages. The app's tray uses it while the app holds no token. Every field is
 always present:
@@ -194,7 +201,7 @@ from the real service. An earlier service without the route answers it **401**.
 
 ### GET /servers/public
 
-The other route that needs no token (`public_servers.go`): the computer's PBS servers,
+Another route that needs no token (`public_servers.go`): the computer's PBS servers,
 without their logins. A user who works on their own settings (Use my own settings) holds
 no token; the app's Preferences offer them these servers, so they can add one with their
 own API token or username and password instead of typing its address, datastore and
@@ -224,6 +231,39 @@ file. Sorted by name; every field is always present:
 
 With no servers the answer is `[]`. The `Origin` check and the app's peer check apply as to
 `GET /status/public`. An earlier service without the route answers it **401**.
+
+### GET /logs, POST /logs/read, GET /logs/run, POST /logs/bundle
+
+The service's own logs, for any program on the computer, with or without the token
+(`public_logs.go`). The logs are in the service's settings folder, which only the service
+and an administrator may read, and a user who is not an administrator still needs to see
+why a backup failed and to attach the logs to a bug report. Only log files are served
+(`service-*.log`, `backup-*.log` and their rotated and compressed parts), never the
+settings, the token or a key, and the settings folder stays locked.
+
+What any user of the computer can read through these: the folders and files the service
+backs up, the PBS servers, datastores and login names. Never a secret: the log calls mask
+those, server addresses are logged without any `user:password@` part, and a Backup Set's
+before and after commands are not logged, nor what they print.
+
+- `GET /logs` lists the logs, newest first: `[{ "folder": 0, "name": "service-service.log",
+  "kind": "app", "size": 1234, "modified": 1794528558000, "compressed": false,
+  "service": true }]`. A run log also has `backupId` and `started` (Unix ms).
+- `POST /logs/read` gives part of one: request `{ "name": "...", "filter": "", "hideChunks":
+  false, "lines": 2000, "around": "" }` (`filter`: only lines holding it, any case;
+  `around`: a time, `2006-01-02 15:04:05` or its first part, for the lines around it instead
+  of the end); answer `{ "lines": [...], "matching": 0, "first": 0, "focus": -1 }`. **400**
+  for a name that is not one of the service's logs.
+- `GET /logs/run?backup_id=<id>&at=<Unix ms>` finds the log of that run, as one entry of the
+  list; **404** when there is none.
+- `POST /logs/bundle` with `{ "days": 14 }` (0 to 365; 0 means the default 14) answers
+  `{ "data": "<zip, base64>" }`: the logs of those days, newest first, up to a size limit,
+  with an `info.txt`.
+
+They are answered one at a time, and an answer has 2 minutes to reach the caller, so a
+program that asks in a loop, or asks and does not read, cannot fill the service's memory or
+hold the others up for longer. The `Origin` and `Host` checks apply. An earlier service
+answers them **401** without the token.
 
 ### POST /backup
 
@@ -377,8 +417,9 @@ Linux, as root:
 curl -s -H "X-Salvanza-Token: $(cat /var/lib/salvanza/api-token)" http://127.0.0.1:18765/status
 ```
 
-The public status needs neither elevation nor the token:
+The public status and the service's logs need neither elevation nor the token:
 
 ```sh
 curl -s http://127.0.0.1:18765/status/public
+curl -s http://127.0.0.1:18765/logs
 ```

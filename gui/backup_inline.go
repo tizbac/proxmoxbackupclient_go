@@ -918,7 +918,7 @@ func RunBackupInline(opts BackupOptions) (returnErr error) {
 	// prod report showed only "Validating backup options" then nothing because an
 	// empty multi-PBS resolution failed here silently.
 	runLog(opts.Ctx, fmt.Sprintf("[DEBUG] Validating backup options: target=%q datastore=%q ns=%q authid=%q secret=%v dirs=%d backupID=%q",
-		opts.BaseURL, opts.Datastore, opts.Namespace, opts.AuthID, opts.Secret != "", len(opts.BackupObjects), opts.BackupID))
+		security.SanitizeURL(opts.BaseURL), opts.Datastore, opts.Namespace, opts.AuthID, opts.Secret != "", len(opts.BackupObjects), opts.BackupID))
 	hasToken := opts.AuthID != "" && opts.Secret != ""
 	hasTicket := opts.Ticket != ""
 	if opts.BaseURL == "" || (!hasToken && !hasTicket) {

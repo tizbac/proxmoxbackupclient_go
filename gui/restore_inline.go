@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"pbscommon"
+	"security"
 )
 
 // restoreChunkCache is how many decompressed chunks a restore keeps (about
@@ -277,7 +278,7 @@ type SnapshotEntry struct {
 // SECURITY: Only lists snapshots from the specified PBS server/datastore/namespace
 // to prevent cross-server snapshot access.
 func ListSnapshotsInline(baseURL, authID, secret, ticket, csrf, datastore, namespace, certFingerprint, backupID string) ([]SnapshotInfo, error) {
-	writeBackupLog(fmt.Sprintf("Listing snapshots for backup ID: %s on %s/%s/%s", backupID, baseURL, datastore, namespace))
+	writeBackupLog(fmt.Sprintf("Listing snapshots for backup ID: %s on %s/%s/%s", backupID, security.SanitizeURL(baseURL), datastore, namespace))
 
 	client := &pbscommon.PBSClient{
 		BaseURL:          baseURL,
@@ -1382,7 +1383,7 @@ func RestoreSnapshotInline(opts RestoreOptions) error {
 	}
 	writeBackupLog(fmt.Sprintf("Starting restore: snapshot=%s, mode=%s, dest=%s, includes=%d, overwrite=%v, allowCrossHost=%v from %s/%s/%s",
 		opts.SnapshotTime.Format("2006-01-02T15:04:05Z"), mode, opts.DestPath, len(opts.IncludePaths), opts.Overwrite, opts.AllowCrossHost,
-		opts.BaseURL, opts.Datastore, opts.Namespace))
+		security.SanitizeURL(opts.BaseURL), opts.Datastore, opts.Namespace))
 
 	progress := func(pct float64, msg string) {
 		writeBackupLog(fmt.Sprintf("Restore progress: %.1f%% - %s", pct*100, msg))

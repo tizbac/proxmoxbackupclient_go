@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 )
 
 // ErrUnauthorized is a request the service refused for want of a valid
@@ -19,6 +20,11 @@ var ErrUnauthorized = errors.New("not connected to the background service")
 // the answer into out (nil to ignore it). The service's error message is
 // returned as the error.
 func (c *Client) call(method, path string, in, out interface{}) error {
+	return c.callWith(c.httpClient, method, path, in, out)
+}
+
+// callWith is call through the HTTP client hc.
+func (c *Client) callWith(hc *http.Client, method, path string, in, out interface{}) error {
 	var body io.Reader
 	if in != nil {
 		b, err := json.Marshal(in)
@@ -34,7 +40,7 @@ func (c *Client) call(method, path string, in, out interface{}) error {
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return fmt.Errorf("the background service did not answer: %w", err)
 	}
@@ -128,26 +134,37 @@ func (c *Client) RunJob(id string) error {
 	return c.call(http.MethodPost, "/jobs/run/"+url.PathEscape(id), nil, nil)
 }
 
+// logClient is the HTTP client of the four log requests. The service answers
+// them without the token (public_logs.go), so they never run the unauthorized
+// hook: reading a log must not bring up an elevation prompt. The token goes
+// along when the app holds one, as with ProbeStatus. A service older than
+// that answers 401 to an app without the token: ErrUnauthorized.
+func (c *Client) logClient(timeout time.Duration) *http.Client {
+	return &http.Client{Timeout: timeout, Transport: c.probe}
+}
+
 // ListLogs lists the service's logs (the app's []LogFileInfo).
 func (c *Client) ListLogs(out interface{}) error {
-	return c.call(http.MethodGet, "/logs", nil, out)
+	return c.callWith(c.logClient(RequestTimeout), http.MethodGet, logsPath, nil, out)
 }
 
 // ReadLog reads part of a log (query: the app's LogQuery; out: its LogView).
 func (c *Client) ReadLog(query, out interface{}) error {
-	return c.call(http.MethodPost, "/logs/read", query, out)
+	return c.callWith(c.logClient(RequestTimeout), http.MethodPost, logsReadPath, query, out)
 }
 
 // FindRunLog finds the log of backupID's run at at (Unix ms).
 func (c *Client) FindRunLog(backupID string, at int64, out interface{}) error {
 	q := url.Values{"backup_id": {backupID}, "at": {strconv.FormatInt(at, 10)}}
-	return c.call(http.MethodGet, "/logs/run?"+q.Encode(), nil, out)
+	return c.callWith(c.logClient(RequestTimeout), http.MethodGet, logsRunPath+"?"+q.Encode(), nil, out)
 }
 
-// LogBundle returns the service's logs of the last days (0: its default) as a zip.
+// LogBundle returns the service's logs of the last days (0: its default) as
+// a zip. It gets as long as the service gives itself to answer, and a little
+// more for a request that waits behind another log request.
 func (c *Client) LogBundle(days int) ([]byte, error) {
 	var resp LogBundleResponse
-	err := c.call(http.MethodPost, "/logs/bundle", LogBundleRequest{Days: days}, &resp)
+	err := c.callWith(c.logClient(logAnswerTimeout+RequestTimeout), http.MethodPost, logsBundlePath, LogBundleRequest{Days: days}, &resp)
 	return resp.Data, err
 }
 

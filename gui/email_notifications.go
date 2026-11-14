@@ -135,11 +135,15 @@ func runPreBackupApp(job ScheduledJob) {
 	runPostBackupApp(job.RunAppBefore, job.Name, "before")
 }
 
+// runPostBackupApp runs a Backup Set's "before" or "after" command. The log
+// says that it ran and how it ended, and neither the command nor what it
+// printed: every user of the computer may read the service's logs, and a
+// command can hold a password or a token (a webhook address, curl -u).
 func runPostBackupApp(command, jobName, when string) {
 	if command == "" {
 		return
 	}
-	writeDebugLog(fmt.Sprintf("[PostBackup] running %s-backup application for job %q: %s", when, jobName, command))
+	writeDebugLog(fmt.Sprintf("[PostBackup] running %s-backup application for job %q", when, jobName))
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.Command("cmd", "/C", command)
@@ -147,7 +151,7 @@ func runPostBackupApp(command, jobName, when string) {
 		cmd = exec.Command("sh", "-c", command)
 	}
 	if out, err := cmd.CombinedOutput(); err != nil {
-		writeDebugLog(fmt.Sprintf("[PostBackup] %s-backup application for job %q failed: %v: %s", when, jobName, err, string(out)))
+		writeDebugLog(fmt.Sprintf("[PostBackup] %s-backup application for job %q failed: %v (it printed %d bytes, which are not logged)", when, jobName, err, len(out)))
 	}
 }
 

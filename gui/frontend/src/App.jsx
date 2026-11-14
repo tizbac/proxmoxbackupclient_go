@@ -2159,8 +2159,10 @@ function App() {
     if (activeTab !== 'logs' || !GetServiceLogsStatus) return
     GetServiceLogsStatus().then(setServiceLogs).catch(() => setServiceLogs(null))
   }, [activeTab])
-  // Opens the service's folder; if only an administrator may read it, restarts
-  // the app as one (the system's own prompt asks), and the button works then.
+  // Opens the service's logs: its folder, or a copy of the logs where the file
+  // manager may not read the folder (the service gives the logs to any user).
+  // Only when the folder is locked and the service gives none does it restart
+  // the app as an administrator (the system's own prompt asks).
   const handleOpenServiceLogs = async () => {
     if (!OpenServiceLogsFolder) return
     try {
@@ -7505,15 +7507,16 @@ function App() {
             onOpenFolder={OpenLogsFolder ? () => OpenLogsFolder().catch(err => showStatus(`❌ ${err}`, 'error')) : null}
             serviceLogs={serviceLogs}
             onOpenServiceFolder={OpenServiceLogsFolder ? handleOpenServiceLogs : null}
-            serviceFolderLabel={serviceLogs && serviceLogs.state === 'locked'
-              ? tl('logsOpenServiceFolderAdmin', 'Open service log folder (as administrator)')
-              : serviceLogs && serviceLogs.copy
-                ? tl('logsOpenServiceFolderCopy', 'Open a copy of the service logs')
+            serviceFolderLabel={serviceLogs && serviceLogs.copy
+              ? tl('logsOpenServiceFolderCopy', 'Open a copy of the service logs')
+              : serviceLogs && serviceLogs.state === 'locked'
+                ? tl('logsOpenServiceFolderAdmin', 'Open service log folder (as administrator)')
                 : tl('logsOpenServiceFolder', 'Open service log folder')}
-            serviceFolderTip={serviceLogs && serviceLogs.copy
-              ? tl('logsOpenServiceFolderCopyTip', 'File Explorer does not run as administrator, so it could only show the service\'s folder by changing who may read it. This copies the service\'s logs to your own log folder and opens the copy.')
-              : ''}
-            serviceLockedNote={tl('logsServiceLocked', 'The background service\'s logs can only be read by an administrator. Restart the app as an administrator to see them here.')}
+            serviceFolderTip={!(serviceLogs && serviceLogs.copy) ? ''
+              : serviceLogs.state === 'locked'
+                ? tl('logsOpenServiceFolderCopyUserTip', 'The service\'s folder holds its settings too, so only an administrator may open it. This copies the service\'s logs to your own log folder and opens the copy.')
+                : tl('logsOpenServiceFolderCopyTip', 'File Explorer does not run as administrator, so it could only show the service\'s folder by changing who may read it. This copies the service\'s logs to your own log folder and opens the copy.')}
+            serviceLockedNote={tl('logsServiceStopped', 'The background service is not answering, so its logs are not listed here. Start the service to see them, or restart the app as an administrator to read its log folder.')}
             onSaveLogs={SaveLogs ? handleSaveLogs : null}
             saveLogsLabel={tl('saveLogsBtn', 'Save logs for a bug report…')}
             saveLogsTip={tl('saveLogsTip', 'One zip with this app\'s logs and the service\'s, for a bug report')}

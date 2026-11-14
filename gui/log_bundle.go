@@ -11,13 +11,16 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
-// The service's logs are in its own folder, which only the service may read (it
-// holds the settings too), and the app's are in the user's. A person who has to
-// attach them to a bug report needs one file with both, and no change to who may
-// read what. So the app asks the service for its logs through its API, and
-// packs them with its own into one zip.
+// The service's logs are in its own folder, which only the service and an
+// administrator may read (it holds the settings too), and the app's are in
+// the user's. A person who has to attach them to a bug report needs one file
+// with both, and no change to who may read that folder. So the app asks the
+// service for its logs through its API, which gives them to any user of the
+// computer (api/public_logs.go), and packs them with its own into one zip.
 
 const (
 	// logBundleDays is how far back a bundle goes.
@@ -101,13 +104,13 @@ func addLogFiles(zw *zip.Writer, prefix string, files []bundleFile) (skipped []s
 // bundleInfo is the readme at the top of a bundle: what it is and what is in it.
 // It says nothing about the computer beyond the operating system and the
 // version of the program.
-func bundleInfo(part string, files []bundleFile, leftOut int, skipped []string, note string) string {
+func bundleInfo(part string, days int, files []bundleFile, leftOut int, skipped []string, note string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s logs (%s)\n", product().Title, part)
 	fmt.Fprintf(&b, "Version:  %s\n", appVersion)
 	fmt.Fprintf(&b, "System:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintf(&b, "Saved:    %s\n", time.Now().Format("2006-01-02 15:04:05 MST"))
-	fmt.Fprintf(&b, "Covers:   the last %d days\n", logBundleDays)
+	fmt.Fprintf(&b, "Covers:   the last %d days\n", days)
 	if note != "" {
 		fmt.Fprintf(&b, "Note:     %s\n", note)
 	}
@@ -142,7 +145,7 @@ func (a *App) localLogBundle(days int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := io.WriteString(w, bundleInfo("service", files, leftOut, skipped, "")); err != nil {
+	if _, err := io.WriteString(w, bundleInfo("service", days, files, leftOut, skipped, "")); err != nil {
 		return nil, err
 	}
 	if err := zw.Close(); err != nil {
@@ -151,21 +154,58 @@ func (a *App) localLogBundle(days int) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// LogBundleForAPI is the service's logs as a zip, for an app that cannot read
-// the service's folder.
+// LogBundleForAPI is the service's logs as a zip, for an app: it need not be
+// able to read the service's folder.
 func (a *App) LogBundleForAPI(days int) ([]byte, error) {
 	return a.localLogBundle(days)
 }
 
+// noServiceLogsNote is the line of a bundle's info.txt that says why none of
+// the service's logs are in it. err is what asking the service for them gave
+// (nil: it was not asked), and the service's folder was read instead if this
+// process may.
+func noServiceLogsNote(err error) string {
+	_, state := serviceLogsAccess()
+	switch {
+	case state == "readable":
+		return noServiceLogsInDays
+	case err != nil && !api.IsNoAnswer(err):
+		return fmt.Sprintf("the service's logs could not be fetched: %v", err)
+	case state == "locked":
+		return "the service's logs are not part of this file: the service is not running, and only an administrator may read its folder (restart the app as one)"
+	}
+	return "the service's logs are not part of this file (there is no background service on this computer)"
+}
+
+// noServiceLogsInDays is the info.txt line of a bundle whose days the service
+// wrote no log in.
+const noServiceLogsInDays = "the service wrote no logs in these days"
+
 // buildLogBundle is the zip the app saves: its own logs under app/, the
-// service's under service/ (asked of the service), and an info.txt on top.
+// service's under service/, and an info.txt on top. The service's come from
+// the service (it gives them to any user of the computer); when it gives
+// none, from its folder, if this process may read it.
 func (a *App) buildLogBundle(days int) ([]byte, error) {
 	if days <= 0 {
 		days = logBundleDays
 	}
-	files, leftOut := collectLogs(a.logDirs(), days, logBundleMaxBytes)
-	// A process that may read the service's folder itself (an administrator,
-	// root) has its files in the same list: they go under service/.
+	var (
+		svcZip      []byte
+		svcErr      error
+		fromService bool
+	)
+	if a.asksServiceForLogs() {
+		svcZip, svcErr = a.apiClient.LogBundle(days)
+		fromService = svcErr == nil
+	}
+	dirs := logFolders()
+	if fromService {
+		dirs = dirs[:1]
+	}
+	files, leftOut := collectLogs(dirs, days, logBundleMaxBytes)
+	// A process that reads the service's folder itself (an administrator or
+	// root, with the service stopped) has its files in the same list: they go
+	// under service/.
 	svcDir := filepath.Clean(serviceLogsFolder())
 	var own, direct []bundleFile
 	for _, f := range files {
@@ -186,30 +226,29 @@ func (a *App) buildLogBundle(days int) ([]byte, error) {
 		return nil, err
 	}
 	skipped = append(skipped, skippedSvc...)
-	note := "the service's logs are not part of this file (the app does not use the service)"
-	if _, state := serviceLogsAccess(); state == "locked" {
-		note = "the service's logs are not part of this file: only an administrator may read them (restart the app as one)"
-	}
+	note := ""
 	svcCount := len(direct)
-	if a.delegated() {
-		note = ""
-		data, derr := a.apiClient.LogBundle(days)
-		if derr != nil {
-			note = fmt.Sprintf("the service's logs could not be fetched: %v", derr)
-		} else if n, merr := mergeLogZip(zw, "service/", data); merr != nil {
+	if fromService {
+		n, merr := mergeLogZip(zw, "service/", svcZip)
+		if merr != nil {
 			note = fmt.Sprintf("the service's logs could not be read: %v", merr)
-		} else {
-			svcCount = n
 		}
+		svcCount = n
 	}
-	if svcCount > 0 {
+	switch {
+	case note != "":
+	case svcCount > 0:
 		note = fmt.Sprintf("includes %d file(s) from the service", svcCount)
+	case fromService:
+		note = noServiceLogsInDays
+	default:
+		note = noServiceLogsNote(svcErr)
 	}
 	w, err := zw.Create("info.txt")
 	if err != nil {
 		return nil, err
 	}
-	if _, err := io.WriteString(w, bundleInfo("app and service", files, leftOut, skipped, note)); err != nil {
+	if _, err := io.WriteString(w, bundleInfo("app and service", days, files, leftOut, skipped, note)); err != nil {
 		return nil, err
 	}
 	if err := zw.Close(); err != nil {

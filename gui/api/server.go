@@ -42,6 +42,9 @@ type Server struct {
 	publicAt     time.Time
 	publicFailed bool
 	publicEnded  string
+
+	// logMu: one log request is answered at a time (public_logs.go).
+	logMu sync.Mutex
 }
 
 // RunOptionsRegistrar is optionally implemented by the BackupHandler: it

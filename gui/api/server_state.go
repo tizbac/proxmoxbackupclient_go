@@ -95,10 +95,10 @@ func (s *Server) setupStateRoutes() {
 	s.mux.HandleFunc("/jobs/full", s.handleJobsFull)
 	s.mux.HandleFunc("/jobs/enabled", s.handleJobEnabled)
 	s.mux.HandleFunc("/jobs/run/", s.handleJobRun)
-	s.mux.HandleFunc("/logs", s.handleLogs)
-	s.mux.HandleFunc("/logs/read", s.handleLogRead)
-	s.mux.HandleFunc("/logs/run", s.handleRunLog)
-	s.mux.HandleFunc("/logs/bundle", s.handleLogBundle)
+	s.mux.HandleFunc(logsPath, s.handleLogs)
+	s.mux.HandleFunc(logsReadPath, s.handleLogRead)
+	s.mux.HandleFunc(logsRunPath, s.handleRunLog)
+	s.mux.HandleFunc(logsBundlePath, s.handleLogBundle)
 	s.mux.HandleFunc("/settings/export", s.handleSettingsExport)
 	s.mux.HandleFunc("/settings/import", s.handleSettingsImport)
 	s.mux.HandleFunc("/keys/save", s.handleKeySave)
@@ -342,12 +342,14 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	if !s.method(w, r, http.MethodGet) {
 		return
 	}
-	list, err := l.ListLogsForAPI()
-	if err != nil {
-		s.writeError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	s.writeRaw(w, list)
+	s.oneLogRequest(w, func() {
+		list, err := l.ListLogsForAPI()
+		if err != nil {
+			s.writeError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.writeRaw(w, list)
+	})
 }
 
 func (s *Server) handleLogRead(w http.ResponseWriter, r *http.Request) {
@@ -363,12 +365,14 @@ func (s *Server) handleLogRead(w http.ResponseWriter, r *http.Request) {
 	if !s.decodeBody(w, r, &q) {
 		return
 	}
-	view, err := l.ReadLogForAPI(q)
-	if err != nil {
-		s.writeError(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	s.writeRaw(w, view)
+	s.oneLogRequest(w, func() {
+		view, err := l.ReadLogForAPI(q)
+		if err != nil {
+			s.writeError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.writeRaw(w, view)
+	})
 }
 
 // handleRunLog finds the log of the run of backupID at time at (Unix ms):
@@ -383,12 +387,14 @@ func (s *Server) handleRunLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	at, _ := strconv.ParseInt(r.URL.Query().Get("at"), 10, 64)
-	info, err := l.FindRunLogForAPI(r.URL.Query().Get("backup_id"), at)
-	if err != nil {
-		s.writeError(w, err.Error(), http.StatusNotFound)
-		return
-	}
-	s.writeRaw(w, info)
+	s.oneLogRequest(w, func() {
+		info, err := l.FindRunLogForAPI(r.URL.Query().Get("backup_id"), at)
+		if err != nil {
+			s.writeError(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		s.writeRaw(w, info)
+	})
 }
 
 // handleLogBundle answers POST /logs/bundle {"days": n} with {"data": <zip>}.
@@ -409,12 +415,14 @@ func (s *Server) handleLogBundle(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, "days must be between 0 and 365", http.StatusBadRequest)
 		return
 	}
-	data, err := b.LogBundleForAPI(req.Days)
-	if err != nil {
-		s.writeError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	s.writeJSON(w, LogBundleResponse{Data: data}, http.StatusOK)
+	s.oneLogRequest(w, func() {
+		data, err := b.LogBundleForAPI(req.Days)
+		if err != nil {
+			s.writeError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.writeJSON(w, LogBundleResponse{Data: data}, http.StatusOK)
+	})
 }
 
 func (s *Server) handleSettingsExport(w http.ResponseWriter, r *http.Request) {

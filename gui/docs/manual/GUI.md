@@ -1050,7 +1050,9 @@ Each line has a **📄** button that opens the log at that message: a backup's o
 * Errors show in red and warnings and skipped files in amber. Compressed (`.gz`) logs are read as they are.
 * **Refresh** reads the list and the log again; **Open log folder** opens the folder.
 
-On Windows the app's log files are in `%LOCALAPPDATA%\Salvanza\Logs\`, and the background service's in `C:\ProgramData\Salvanza\`, which only administrators can open (Linux: [section 2](#where-settings-are-kept)). **View Full Logs** lists both: the service's come through the service, once the app is connected to it. **Preferences > Message Log > View Logs** opens the app's log folder.
+On Windows the app's log files are in `%LOCALAPPDATA%\Salvanza\Logs\`, and the background service's in `C:\ProgramData\Salvanza\`, which only administrators can open (Linux: [section 2](#where-settings-are-kept)). **View Full Logs** lists both, for every user of the computer: the service hands out its own logs (and nothing else from that folder) to any program on the computer, with no administrator rights and without connecting, so anyone can see why a scheduled backup failed. **Open service log folder** opens the service's folder where the file manager may read it, and otherwise a copy of the service's logs in your own log folder (`service-logs-copy`); the service's folder keeps its permissions. Only when the service is not running does it offer to restart the app as an administrator. **Preferences > Message Log > View Logs** opens the app's log folder.
+
+Because every user can read them, the service's logs never hold a secret: passwords, API token secrets and keys are masked, a server's address is written without any `user:password@` in it, and a Backup Set's **Run before backup** and **Run after backup** commands are not written down, nor what they print (the log says only that the command ran, or that it failed). They do name the folders and files backed up, the servers, datastores and login names.
 
 | File | Contents |
 |---|---|

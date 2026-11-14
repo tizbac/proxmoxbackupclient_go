@@ -40,8 +40,9 @@ export async function logRequestFor({ backupId, at, kind, notice }) {
 }
 
 // serviceLogs: {folder, state: 'readable'|'locked'|'none', listed, copy} from GetServiceLogsStatus.
-// onOpenServiceFolder opens the service's folder (or, when it is locked, restarts the app as an
-// administrator; or, with copy, a copy of its logs, and serviceFolderTip says why).
+// onOpenServiceFolder opens the service's folder (or, with copy, a copy of its logs, and
+// serviceFolderTip says why; or, when it is locked and the service lists no logs, restarts the app
+// as an administrator).
 export default function LogsPage({ t, language, active, request, onOpenFolder, onSaveLogs, saveLogsLabel, saveLogsTip, serviceLogs, onOpenServiceFolder, serviceFolderLabel, serviceFolderTip, serviceLockedNote, formatBytes }) {
   const [files, setFiles] = useState([])
   const [sel, setSel] = useState(null) // {folder, name}

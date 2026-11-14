@@ -3,11 +3,15 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/salvanza/salvanza_client/gui/api"
 )
 
 // A live test: what this process, run as some user, sees of the INSTALLED
@@ -23,9 +27,15 @@ func TestLiveServiceLogsAccess(t *testing.T) {
 		real = "/var/log/salvanza"
 	}
 	withServiceFolder(t, real)
-	a := &App{}
+	// As the app: it asks the installed service, here with no token at all,
+	// and must never need an elevation prompt for a log.
+	hooked := false
+	api.SetUnauthorizedHook(func(string) (string, error) { hooked = true; return "", errors.New("no") })
+	defer api.SetUnauthorizedHook(nil)
+	a := &App{apiClient: api.NewClient(filepath.Join(t.TempDir(), "no-token"))}
+	defer func() { t.Logf("LIVE elevation asked for: %v", hooked) }()
 	st := a.GetServiceLogsStatus()
-	t.Logf("LIVE status: folder=%s state=%s listed=%v", st.Folder, st.State, st.Listed)
+	t.Logf("LIVE status: folder=%s state=%s listed=%v copy=%v", st.Folder, st.State, st.Listed, st.Copy)
 
 	files, err := a.ListLogFiles()
 	if err != nil {
@@ -35,19 +45,23 @@ func TestLiveServiceLogsAccess(t *testing.T) {
 	svc := 0
 	for _, f := range files {
 		where := "own"
-		if f.Folder > 0 {
+		switch {
+		case f.Folder >= serviceLogFolder:
+			where = "from-service"
+			svc++
+		case f.Folder > 0:
 			where = "service-folder"
 			svc++
 		}
 		names = append(names, where+":"+f.Name)
 	}
 	sort.Strings(names)
-	t.Logf("LIVE listed %d files (%d from the service folder): %s", len(files), svc, strings.Join(names, ", "))
+	t.Logf("LIVE listed %d files (%d of the service's): %s", len(files), svc, strings.Join(names, ", "))
 
 	for _, f := range files {
 		if f.Folder > 0 {
 			v, err := a.ReadLog(LogQuery{Folder: f.Folder, Name: f.Name, Lines: 5})
-			t.Logf("LIVE read %s from the service folder: lines=%d err=%v", f.Name, len(v.Lines), err)
+			t.Logf("LIVE read %s (folder %d): lines=%d err=%v", f.Name, f.Folder, len(v.Lines), err)
 			break
 		}
 	}
@@ -58,6 +72,16 @@ func TestLiveServiceLogsAccess(t *testing.T) {
 	defer func() { openFolderInFileManager = old }()
 	oerr := a.OpenServiceLogsFolder()
 	t.Logf("LIVE open service folder: err=%v opened=%q", oerr, opened)
+	if opened != "" && opened != real {
+		if es, err := os.ReadDir(opened); err == nil {
+			var copied []string
+			for _, e := range es {
+				copied = append(copied, e.Name())
+			}
+			sort.Strings(copied)
+			t.Logf("LIVE the copy holds %d files: %s", len(copied), strings.Join(copied, ", "))
+		}
+	}
 	opened = ""
 	oerr = a.OpenLogsFolder()
 	t.Logf("LIVE open own folder: err=%v opened=%q", oerr, opened)

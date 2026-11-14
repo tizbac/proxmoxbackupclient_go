@@ -152,7 +152,7 @@ func TestAppBundleWithoutTheServiceSaysSo(t *testing.T) {
 	if names["app/service-gui.log"] == nil {
 		t.Errorf("the app's own log is not under app/: %v", zipKeys(names))
 	}
-	if info := zipText(t, names["info.txt"]); !strings.Contains(info, "does not use the service") {
+	if info := zipText(t, names["info.txt"]); !strings.Contains(info, "there is no background service") {
 		t.Errorf("info.txt does not say the service's logs are missing:\n%s", info)
 	}
 }

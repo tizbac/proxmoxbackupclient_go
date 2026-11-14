@@ -69,8 +69,9 @@ func serviceLogsAccess() (folder, state string) {
 }
 
 // logFolders lists the folders logs are in: this process's, and the service's
-// when this process can read it (an administrator or root; an app works
-// through the service otherwise).
+// when this process can read it (an administrator or root). An app asks the
+// service for the service's logs first (asksServiceForLogs) and reads the
+// folder itself only when the service does not give them.
 func logFolders() []string {
 	dirs := []string{logDir}
 	if folder, state := serviceLogsAccess(); state == "readable" && filepath.Clean(folder) != filepath.Clean(logDir) {
@@ -79,22 +80,35 @@ func logFolders() []string {
 	return dirs
 }
 
-// logsThroughService: does this app get the service's logs from the service?
-// It does when it works through the service and has its token; a window that
-// is set to use the service but is not connected (the Connect banner) does not.
-func (a *App) logsThroughService() bool {
-	return a.delegated() && (a.mode != api.ModeService || a.svcConnected.Load())
+// asksServiceForLogs: does this process ask the background service for the
+// service's logs? Every app does, whichever settings it works on and whether
+// or not it is connected: the service hands its logs out without the token
+// (api/public_logs.go), so a person who is not an administrator reads them
+// too. The service itself reads its own folder.
+func (a *App) asksServiceForLogs() bool {
+	return !a.isServiceProcess && a.apiClient != nil
 }
 
-// logDirs is logFolders for this app: an app that works through the service
-// gets the service's logs from it (folder numbers from serviceLogFolder), so
-// its own reading of the service's folder, if it could, is left out.
-func (a *App) logDirs() []string {
-	dirs := logFolders()
-	if a.logsThroughService() && len(dirs) > 1 {
-		return dirs[:1]
+// serviceLogList is the service's list of its logs, their folder numbers
+// moved up by serviceLogFolder. ok is false when the service was not asked or
+// gave no list: it is stopped, there is none, or it is older than the logs
+// without the token and this app is not connected.
+func (a *App) serviceLogList() (files []LogFileInfo, ok bool) {
+	if !a.asksServiceForLogs() {
+		return nil, false
 	}
-	return dirs
+	var svc []LogFileInfo
+	if err := a.apiClient.ListLogs(&svc); err != nil {
+		if !api.IsNoAnswer(err) {
+			writeDebugLog(fmt.Sprintf("log viewer: the service's logs: %v", err))
+		}
+		return nil, false
+	}
+	for i := range svc {
+		svc[i].Folder += serviceLogFolder
+		svc[i].Service = true
+	}
+	return svc, true
 }
 
 func classifyLog(name string) (kind, backupID string, started int64, ok bool) {
@@ -116,36 +130,35 @@ func classifyLog(name string) (kind, backupID string, started int64, ok bool) {
 	return "", "", 0, false
 }
 
-// serviceLogFolder is added to the folder number of a log the service lists,
-// for an app that works through the service: its logs are in the service's
-// folder, which only the service may read, so the app asks for them.
+// serviceLogFolder is added to the folder number of a log the service lists:
+// its logs are in the service's folder, which only the service and an
+// administrator may read, so the app asks the service for them.
 const serviceLogFolder = 100
 
-// ListLogFiles lists the log files, newest first: this app's, and with the
-// service those it lists (the backups it ran).
+// ListLogFiles lists the log files, newest first: this app's, and the
+// service's (the backups it ran). The service's come from the service; when
+// it gives none, from its folder, if this process may read it.
 func (a *App) ListLogFiles() ([]LogFileInfo, error) {
-	out, err := a.listLocalLogFiles()
-	if err != nil || !a.delegated() {
+	svc, fromService := a.serviceLogList()
+	dirs := logFolders()
+	if fromService {
+		// The service's folder, readable here or not, is in the service's list.
+		dirs = dirs[:1]
+	}
+	out, err := listLogFilesIn(dirs)
+	if err != nil || !fromService {
 		return out, err
 	}
-	var svc []LogFileInfo
-	if err := a.apiClient.ListLogs(&svc); err != nil {
-		writeDebugLog(fmt.Sprintf("log viewer: the service's logs: %v", err))
-		return out, nil
-	}
-	for _, f := range svc {
-		f.Folder += serviceLogFolder
-		f.Service = true
-		out = append(out, f)
-	}
+	out = append(out, svc...)
 	sort.Slice(out, func(i, j int) bool { return out[i].Modified > out[j].Modified })
 	return out, nil
 }
 
-// listLocalLogFiles lists the log files in this process's folders.
-func (a *App) listLocalLogFiles() ([]LogFileInfo, error) {
+// listLogFilesIn lists the log files in dirs (logFolders, or its first); a
+// file's folder number is its folder's place in dirs.
+func listLogFilesIn(dirs []string) ([]LogFileInfo, error) {
 	out := []LogFileInfo{}
-	for i, dir := range a.logDirs() {
+	for i, dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			if i == 0 {
@@ -249,7 +262,7 @@ func logLineTime(line string) string {
 // ReadLog returns the last q.Lines lines of a log that pass its filter, or
 // the ones around q.Around.
 func (a *App) ReadLog(q LogQuery) (LogView, error) {
-	if q.Folder >= serviceLogFolder && a.delegated() {
+	if q.Folder >= serviceLogFolder && a.asksServiceForLogs() {
 		q.Folder -= serviceLogFolder
 		var v LogView
 		err := a.apiClient.ReadLog(q, &v)

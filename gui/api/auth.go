@@ -228,8 +228,10 @@ func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // route: it bounds the body, rejects browser-originated requests (Origin set),
 // and requires the shared token (tokenAccepted), except for GET
 // /status/public, which says only whether backups run or failed
-// (public_status.go), and GET /servers/public, the computer's servers
-// without their logins (public_servers.go).
+// (public_status.go), GET /servers/public, the computer's servers without
+// their logins (public_servers.go), and the service's logs (public_logs.go).
+// A request let through without the token must name this computer as its
+// Host (loopbackHost).
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
@@ -241,6 +243,13 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		if isPublicRequest(r) {
+			// A browser sends no Origin with a GET to the page's own host, and
+			// a page can make its host name resolve to 127.0.0.1 (DNS
+			// rebinding): it would read the answer. Its Host is that name.
+			if !s.tokenAccepted(requestToken(r)) && !loopbackHost(r.Host) {
+				s.writeError(w, "forbidden", http.StatusForbidden)
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}

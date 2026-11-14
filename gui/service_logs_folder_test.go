@@ -3,12 +3,19 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
+	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/salvanza/salvanza_client/gui/api"
 )
@@ -54,32 +61,193 @@ func TestServiceLogsFolderIsListedWhenReadable(t *testing.T) {
 	}
 }
 
-func TestServiceLogsFolderNotListedTwiceWhenThroughTheService(t *testing.T) {
-	withLogFolder(t)
-	withServiceFolder(t, t.TempDir())
-	a := &App{}
-	if got := len(a.logDirs()); got != 2 {
-		t.Fatalf("not delegated: %d folders, want 2", got)
+// fakeLogService stands in for the background service's log requests. It
+// keeps what was asked, and whether any request carried the token.
+type fakeLogService struct {
+	url string
+
+	mu        sync.Mutex
+	asked     []string
+	withToken bool
+}
+
+// newFakeLogService answers GET /logs with list, POST /logs/read with one
+// line naming the log, POST /logs/bundle with bundle, and 401 to the rest, as
+// the service does to an app that holds no token.
+func newFakeLogService(t *testing.T, list []LogFileInfo, bundle []byte) *fakeLogService {
+	t.Helper()
+	s := &fakeLogService{}
+	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		s.asked = append(s.asked, r.Method+" "+r.URL.Path)
+		if r.Header.Get("X-Salvanza-Token") != "" {
+			s.withToken = true
+		}
+		s.mu.Unlock()
+		var out interface{}
+		switch r.Method + " " + r.URL.Path {
+		case "GET /logs":
+			out = list
+		case "POST /logs/read":
+			var q LogQuery
+			_ = json.NewDecoder(r.Body).Decode(&q)
+			out = LogView{Lines: []string{"from the service: " + q.Name}, Matching: 1, Focus: -1}
+		case "POST /logs/bundle":
+			out = api.LogBundleResponse{Data: bundle}
+		default:
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	}))
+	t.Cleanup(hs.Close)
+	s.url = hs.URL
+	return s
+}
+
+// app is an app that holds no token (a person who is not an administrator)
+// and reaches this service.
+func (s *fakeLogService) app(t *testing.T) *App {
+	t.Helper()
+	// An elevation prompt for reading a log would be a fault.
+	api.SetUnauthorizedHook(func(string) (string, error) {
+		t.Error("reading the service's logs ran the elevation hook")
+		return "", errors.New("no")
+	})
+	t.Cleanup(func() { api.SetUnauthorizedHook(nil) })
+	return &App{apiClient: api.NewClientAt(s.url, filepath.Join(t.TempDir(), "no-token"))}
+}
+
+func (s *fakeLogService) saw(want string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range s.asked {
+		if a == want {
+			return true
+		}
 	}
-	a.serviceSettings.Store(true)
-	a.apiClient = api.NewClient(filepath.Join(t.TempDir(), "token"))
-	if !a.delegated() {
-		t.Fatal("test setup: the app should work through the service")
+	return false
+}
+
+// logZip is a zip as the service's /logs/bundle gives: files by name.
+func logZip(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
 	}
-	a.mode = api.ModeService
-	a.svcConnected.Store(true)
-	if got := len(a.logDirs()); got != 1 {
-		t.Fatalf("connected: %d folders, want 1 (the service's come through it)", got)
+	sort.Strings(names)
+	for _, name := range names {
+		w, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Deflate, Modified: time.Date(2026, 11, 13, 10, 0, 0, 0, time.UTC)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.WriteString(w, files[name]); err != nil {
+			t.Fatal(err)
+		}
 	}
-	// Set to use the service but not connected (the Connect banner): the
-	// service's logs do not come through it, so a process that may read the
-	// folder lists it itself, and one that may not is told it is locked.
-	a.svcConnected.Store(false)
-	if got := len(a.logDirs()); got != 2 {
-		t.Fatalf("not connected: %d folders, want 2", got)
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// An app that holds no token gets the service's logs from the service: listed
+// once (not again from a folder this process happens to read), read through
+// the service, and with no elevation prompt.
+func TestServiceLogsComeFromTheServiceWithoutTheToken(t *testing.T) {
+	own := withLogFolder(t)
+	svcDir := t.TempDir()
+	withServiceFolder(t, svcDir)
+	writeLogLines(t, filepath.Join(own, "service-gui.log"), []string{"[GUI] [2026-11-12 10:00:00] hello"}, false)
+	writeLogLines(t, filepath.Join(svcDir, "backup-service.log"), []string{"[BACKUP] [2026-11-12 10:01:00] in the folder"}, false)
+	svc := newFakeLogService(t, []LogFileInfo{{Folder: 0, Name: "backup-service.log", Kind: "backup", Size: 44, Modified: time.Now().UnixMilli()}}, nil)
+	a := svc.app(t)
+
+	files, err := a.ListLogFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fromService, fromFolder, fromApp int
+	for _, f := range files {
+		switch {
+		case f.Name == "backup-service.log" && f.Folder == serviceLogFolder && f.Service:
+			fromService++
+		case f.Name == "backup-service.log":
+			fromFolder++
+		case f.Name == "service-gui.log" && f.Folder == 0:
+			fromApp++
+		}
+	}
+	if fromService != 1 || fromFolder != 0 || fromApp != 1 {
+		t.Fatalf("from the service %d, from its folder %d, the app's %d; want 1, 0, 1: %+v", fromService, fromFolder, fromApp, files)
+	}
+	v, err := a.ReadLog(LogQuery{Folder: serviceLogFolder, Name: "backup-service.log"})
+	if err != nil || len(v.Lines) != 1 || v.Lines[0] != "from the service: backup-service.log" {
+		t.Fatalf("reading the service's log: %v, %+v", err, v)
 	}
 	if st := a.GetServiceLogsStatus(); !st.Listed || st.State != "readable" {
-		t.Fatalf("not connected, readable: %+v", st)
+		t.Fatalf("status %+v, want listed", st)
+	}
+	if !svc.saw("GET /logs") || !svc.saw("POST /logs/read") {
+		t.Fatalf("the service was asked %v", svc.asked)
+	}
+	if svc.withToken {
+		t.Fatal("test setup: the app sent a token")
+	}
+}
+
+// With the service stopped, a process that may read its folder (an
+// administrator, root) lists the logs from there.
+func TestServiceLogsFolderIsReadWhenTheServiceDoesNotAnswer(t *testing.T) {
+	withLogFolder(t)
+	svcDir := t.TempDir()
+	withServiceFolder(t, svcDir)
+	writeLogLines(t, filepath.Join(svcDir, "backup-service.log"), []string{"[BACKUP] [2026-11-12 10:01:00] in the folder"}, false)
+	a := &App{apiClient: api.NewClientAt("http://127.0.0.1:1", filepath.Join(t.TempDir(), "no-token"))}
+	files, err := a.ListLogFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0].Folder != 1 || files[0].Name != "backup-service.log" || !files[0].Service {
+		t.Fatalf("listed %+v, want the log in the service's folder", files)
+	}
+	if st := a.GetServiceLogsStatus(); !st.Listed || st.State != "readable" {
+		t.Fatalf("status %+v", st)
+	}
+}
+
+// The saved zip has the service's logs from the service, once.
+func TestSaveLogsTakesTheServicesLogsFromTheService(t *testing.T) {
+	own := withLogFolder(t)
+	svcDir := t.TempDir()
+	withServiceFolder(t, svcDir)
+	writeLogLines(t, filepath.Join(own, "service-gui.log"), []string{"[GUI] [2026-11-12 10:00:00] mine"}, false)
+	writeLogLines(t, filepath.Join(svcDir, "backup-service.log"), []string{"[BACKUP] [2026-11-12 10:01:00] in the folder"}, false)
+	svc := newFakeLogService(t, nil, logZip(t, map[string]string{
+		"backup-service.log": "[BACKUP] [2026-11-12 10:01:00] from the service\n",
+		"info.txt":           "the service's readme\n",
+	}))
+	data, err := svc.app(t).buildLogBundle(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := zipNames(t, data)
+	if len(names) != 4 || names["app/service-gui.log"] == nil || names["service/backup-service.log"] == nil ||
+		names["service/info-service.txt"] == nil || names["info.txt"] == nil {
+		t.Fatalf("zip entries: %v", zipKeys(names))
+	}
+	if got := zipText(t, names["service/backup-service.log"]); !strings.Contains(got, "from the service") {
+		t.Fatalf("the service's log is not the one the service gave: %q", got)
+	}
+	if info := zipText(t, names["info.txt"]); !strings.Contains(info, "1 file(s) from the service") {
+		t.Fatalf("info.txt does not say the service's files are in: %q", info)
+	}
+	if !svc.saw("POST /logs/bundle") {
+		t.Fatalf("the service was asked %v", svc.asked)
 	}
 }
 
@@ -123,7 +291,7 @@ func TestServiceLogsFolderAbsent(t *testing.T) {
 		t.Fatalf("state = %q, want none", state)
 	}
 	a := &App{}
-	if got := len(a.logDirs()); got != 1 {
+	if got := len(logFolders()); got != 1 {
 		t.Fatalf("%d folders, want 1", got)
 	}
 	if err := a.OpenServiceLogsFolder(); err == nil {
@@ -257,11 +425,12 @@ func TestServiceLogsFolderSameAsOwnIsNotDoubled(t *testing.T) {
 	}
 }
 
-func TestServiceLogsFolderLockedAsksForAdmin(t *testing.T) {
+// lockedServiceFolder makes the service's folder one this user may not read.
+func lockedServiceFolder(t *testing.T) {
+	t.Helper()
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("needs a folder this user may not read (not root, not Windows)")
 	}
-	withLogFolder(t)
 	dir := filepath.Join(t.TempDir(), "locked")
 	if err := os.Mkdir(dir, 0o000); err != nil {
 		t.Fatal(err)
@@ -271,14 +440,137 @@ func TestServiceLogsFolderLockedAsksForAdmin(t *testing.T) {
 	if _, state := serviceLogsAccess(); state != "locked" {
 		t.Fatalf("state = %q, want locked", state)
 	}
-	a := &App{}
-	if len(a.logDirs()) != 1 {
+}
+
+// The folder is locked and the service gives no logs (it is stopped): only
+// then is an administrator needed.
+func TestServiceLogsFolderLockedAndNoServiceAsksForAdmin(t *testing.T) {
+	withLogFolder(t)
+	lockedServiceFolder(t)
+	if len(logFolders()) != 1 {
 		t.Fatal("a locked folder must not be listed")
 	}
-	if err := a.OpenServiceLogsFolder(); err == nil || err.Error() != "SERVICE_LOGS_NEED_ADMIN" {
-		t.Fatalf("got %v, want SERVICE_LOGS_NEED_ADMIN", err)
+	stopped := &App{apiClient: api.NewClientAt("http://127.0.0.1:1", filepath.Join(t.TempDir(), "no-token"))}
+	for name, a := range map[string]*App{"no service client": {}, "service stopped": stopped} {
+		if err := a.OpenServiceLogsFolder(); err == nil || err.Error() != "SERVICE_LOGS_NEED_ADMIN" {
+			t.Fatalf("%s: got %v, want SERVICE_LOGS_NEED_ADMIN", name, err)
+		}
+		if st := a.GetServiceLogsStatus(); st.State != "locked" || st.Listed || st.Copy {
+			t.Fatalf("%s: status %+v", name, st)
+		}
 	}
-	if st := a.GetServiceLogsStatus(); st.State != "locked" || st.Listed {
-		t.Fatalf("status %+v", st)
+	data, err := stopped.buildLogBundle(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info := zipText(t, zipNames(t, data)["info.txt"]); !strings.Contains(info, "the service is not running") {
+		t.Fatalf("info.txt does not say why the service's logs are missing:\n%s", info)
+	}
+}
+
+// The folder is locked and the service answers: a person who is not an
+// administrator gets a copy of the logs from the service, in their own log
+// folder, and the folder stays as it was.
+func TestOpenServiceLogsFolderOpensACopyFromTheServiceWhenLocked(t *testing.T) {
+	own := withLogFolder(t)
+	lockedServiceFolder(t)
+	opened := withFileManagerRights(t, false)
+	list := []LogFileInfo{{Folder: 0, Name: "service-service.log", Kind: "app", Size: 10, Modified: time.Now().UnixMilli()}}
+	svc := newFakeLogService(t, list, logZip(t, map[string]string{
+		"service-service.log": "[SERVICE] [2026-11-13 10:00:00] started\n",
+		"info.txt":            "the service's readme\n",
+	}))
+	a := svc.app(t)
+	if st := a.GetServiceLogsStatus(); st.State != "locked" || !st.Listed || !st.Copy {
+		t.Fatalf("status %+v, want locked, listed, copy", st)
+	}
+	if err := a.OpenServiceLogsFolder(); err != nil {
+		t.Fatal(err)
+	}
+	copyDir := filepath.Join(own, serviceLogsCopyName)
+	if *opened != copyDir {
+		t.Fatalf("opened %q, want the copy %q", *opened, copyDir)
+	}
+	got, err := os.ReadFile(filepath.Join(copyDir, "service-service.log"))
+	if err != nil || !strings.Contains(string(got), "started") {
+		t.Fatalf("the copied log: %q, %v", got, err)
+	}
+	if _, state := serviceLogsAccess(); state != "locked" {
+		t.Fatalf("the service's folder is now %q", state)
+	}
+}
+
+// What a zip says decides neither where a file is written nor how much: only
+// log files, under their own plain names, up to the limit.
+func TestUnpackServiceLogsWritesOnlyLogFilesInItsFolder(t *testing.T) {
+	root := t.TempDir()
+	dst := filepath.Join(root, "user", serviceLogsCopyName)
+	if err := os.MkdirAll(dst, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dst, "backup-old.log"), []byte("left by an earlier copy"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data := logZip(t, map[string]string{
+		"service-service.log":                "one\n",
+		"backup-20261113-100100-docs.log.gz": "two\n",
+		"info.txt":                           "a readme, not a log",
+		"config.json":                        "settings",
+		"../backup-escaped.log":              "outside",
+		"sub/backup-nested.log":              "nested",
+		`..\backup-backslash.log`:            "outside",
+		"backup-bad name.log":                "a name the viewer would refuse",
+	})
+	out, err := unpackServiceLogs(data, dst, 1<<20)
+	if err != nil || out != dst {
+		t.Fatalf("unpackServiceLogs = %q, %v", out, err)
+	}
+	var found []string
+	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			rel, _ := filepath.Rel(root, p)
+			found = append(found, filepath.ToSlash(rel))
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "user/service-logs-copy/backup-20261113-100100-docs.log.gz,user/service-logs-copy/service-service.log"
+	if got := strings.Join(found, ","); got != want {
+		t.Fatalf("written: %q\nwant:    %q", got, want)
+	}
+	info, err := os.Stat(filepath.Join(dst, "service-service.log"))
+	if err != nil || !info.ModTime().Equal(time.Date(2026, 11, 13, 10, 0, 0, 0, time.UTC)) {
+		t.Fatalf("the copy's time: %v, %v", info, err)
+	}
+
+	// No more than the limit is written, however much the zip unpacks to.
+	big := logZip(t, map[string]string{
+		"backup-a.log": strings.Repeat("a", 5000),
+		"backup-b.log": strings.Repeat("b", 5000),
+		"backup-c.log": strings.Repeat("c", 5000),
+	})
+	if _, err := unpackServiceLogs(big, dst, 7000); err != nil {
+		t.Fatal(err)
+	}
+	var total int64
+	entries, err := os.ReadDir(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		fi, err := e.Info()
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += fi.Size()
+	}
+	if total != 7000 {
+		t.Fatalf("%d bytes written, want the limit of 7000", total)
+	}
+
+	if _, err := unpackServiceLogs([]byte("not a zip"), dst, 1<<20); err == nil {
+		t.Fatal("garbage was unpacked")
 	}
 }
