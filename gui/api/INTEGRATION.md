@@ -190,7 +190,8 @@ always present:
 - `backups_running` and `backups_waiting` count the service's backups in progress and those
   queued behind another (their message starts with `Queued: `).
 - `last_run_failed` is true when the most recent run of at least one Backup Set failed
-  (from the run history, matched to the current Backup Sets by name; restores and one-off
+  (from the run history, matched to the current Backup Sets by each run's set ID, so a
+  deleted set's runs do not count for a new set given its name; restores and one-off
   backups do not count).
 - `last_run_ended` is when the most recent backup ended (RFC 3339), `""` when none is
   recorded.
