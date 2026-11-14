@@ -214,8 +214,11 @@ Every file's and folder's modification time is part of the archive, so a time th
 | `node_modules` | every file or folder with exactly that name, at any depth |
 | `logs/*.log` | `.log` entries directly in `logs` under the folder backed up |
 | `C:\Users\alice\Temp` | that folder and everything in it |
+| `**/cache` | every `cache` from the folder backed up down, at any depth |
+| `build/` | the folder `build` (a pattern ending in `/` matches folders only) |
+| `!keep.log` | nothing: it brings back `keep.log` where an earlier pattern left it out |
 
-A pattern without `\` or `/` matches a name at any depth. A pattern with one is taken from the folder backed up (each folder, with several `-backupdir`), and `*` does not cross a `\` or `/`. Put a pattern with `*` in quotes on Linux, so the shell does not expand it. The run prints each entry it left out (`Excluded: <path>`) and the count, and the snapshot's status file lists them. A pattern that can never match, such as an unclosed `[`, stops the run before it starts.
+A pattern without `\` or `/` matches a name at any depth. A pattern with one is taken from the folder backed up (each folder, with several `-backupdir`), and `*` does not cross a `\` or `/`; a `**` between separators crosses any number of folders. The patterns are read in order and the last one that matches decides, so a pattern starting with `!` brings back what the ones before it left out. A folder that is left out is not looked into, so to keep only some files, bring the folders back as well: `-exclude '*' -exclude '!**/' -exclude '!*.pst'` backs up every folder and only the `.pst` files in them. Put a pattern with `*` or `!` in quotes on Linux, so the shell does not expand it. The run prints each entry it left out (`Excluded: <path>`) and the count, and the snapshot's status file lists them. A pattern that can never match, such as an unclosed `[`, stops the run before it starts.
 
 ### What gets skipped
 

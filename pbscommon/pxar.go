@@ -128,9 +128,10 @@ func IsAutoExcludedFile(name string) bool   { return shouldSkipSystemFile(name) 
 
 // IsExcludedByPatterns applies a Backup Set's exclusion patterns exactly as a
 // backup does (see isExcluded): rel is the entry's path relative to the
-// backed-up folder, name its base name, root the backed-up folder.
-func IsExcludedByPatterns(rel, name, root string, patterns []string) bool {
-	return isExcluded(rel, name, root, patterns)
+// backed-up folder, name its base name, root the backed-up folder, isDir
+// whether it is a folder (a pattern ending in / matches folders only).
+func IsExcludedByPatterns(rel, name, root string, patterns []string, isDir bool) bool {
+	return isExcluded(rel, name, root, patterns, isDir)
 }
 
 // Windows system files to exclude automatically from backups
@@ -205,58 +206,105 @@ func relExcludePath(root, full string) string {
 	return f
 }
 
-// isExcluded reports whether an entry matches any user exclusion pattern.
+// isExcluded reports whether an entry is left out by the user's exclusion
+// patterns, taken in order: the LAST pattern that matches decides, and one
+// starting with ! brings the entry back. With no ! pattern that is the same as
+// "any pattern matches" (as before ! existed). A folder that is left out is not
+// looked into, so ! can only bring back what is inside folders still in the
+// backup ("*", "!**/", "!*.pst" keeps every folder and only the .pst files).
 //   - A glob without a separator matches the entry basename anywhere in the tree
-//     ("*.tmp", "node_modules") — basename match ANYWHERE in the tree.
+//     ("*.tmp", "node_modules"): basename match ANYWHERE in the tree.
 //   - A pattern containing a separator is ANCHORED to the backup root (absolute
 //     patterns via excludeRoot, e.g. "C:\\Users\\Alice\\Temp" -> "temp" when the
 //     root is "C:\\Users\\Alice") and matched against the entry's relative path as
-//     a path glob via path.Match ("logs/*.tmp"), or as an exact match / subtree
-//     prefix. It is never a basename-anywhere match, so an anchored pattern that
-//     reduces to a single component (e.g. "temp") does not match a nested "x/temp".
+//     a path glob ("logs/*.tmp"), or as an exact match / subtree prefix. It is
+//     never a basename-anywhere match, so an anchored pattern that reduces to a
+//     single component (e.g. "temp") does not match a nested "x/temp".
+//   - In a path glob, a ** segment matches any number of folders, none
+//     included ("**/cache", "logs/**/*.tmp"). Within a name, ** is the same as *.
+//   - A pattern ending in / (or \) matches folders only; the ending still counts
+//     as a separator, so "logs/" is anchored as "logs" always was.
 //
-// path.Match (always '/') is used rather than filepath.Match because paths are
-// pre-normalized to forward slashes, so matching must not depend on the host OS.
-func isExcluded(rel, name, excludeRoot string, patterns []string) bool {
+// Paths are pre-normalized to forward slashes and lower case, so matching does
+// not depend on the host OS.
+func isExcluded(rel, name, excludeRoot string, patterns []string, isDir bool) bool {
 	relN := normExcludePath(rel)
 	nameN := strings.ToLower(name)
-	for _, pat := range patterns {
-		if strings.TrimSpace(pat) == "" {
+	excluded := false
+	for _, raw := range patterns {
+		pat := strings.TrimSpace(raw)
+		include := strings.HasPrefix(pat, "!")
+		if include {
+			pat = pat[1:]
+		}
+		if pat == "" {
 			continue
 		}
-		hasGlob := strings.ContainsAny(pat, "*?[")
-		hasSep := strings.ContainsAny(pat, "/\\")
-
-		if !hasSep {
-			// Separatorless pattern: match the basename anywhere in the tree.
-			bn := normExcludePath(pat)
-			if hasGlob {
-				if ok, _ := path.Match(bn, nameN); ok {
-					return true
-				}
-			} else if nameN == bn {
-				return true
+		if strings.HasSuffix(pat, "/") || strings.HasSuffix(pat, `\`) {
+			if !isDir {
+				continue
 			}
-			continue
 		}
-
-		// Pattern has a separator: anchor it to the backup root and match the
-		// entry's relative path. Never a basename-anywhere match.
-		p := relExcludePath(excludeRoot, pat)
-		if p == "" {
-			continue
-		}
-		if hasGlob {
-			if ok, _ := path.Match(p, relN); ok {
-				return true
-			}
-			continue
-		}
-		if relN == p || strings.HasPrefix(relN, p+"/") {
-			return true
+		if excludePatternMatches(pat, relN, nameN, excludeRoot) {
+			excluded = !include
 		}
 	}
-	return false
+	return excluded
+}
+
+// excludePatternMatches is one pattern (without its !) against one entry.
+func excludePatternMatches(pat, relN, nameN, excludeRoot string) bool {
+	hasGlob := strings.ContainsAny(pat, "*?[")
+	hasSep := strings.ContainsAny(pat, "/\\")
+	if !hasSep {
+		// Separatorless pattern: match the basename anywhere in the tree.
+		bn := normExcludePath(pat)
+		if hasGlob {
+			ok, _ := path.Match(bn, nameN)
+			return ok
+		}
+		return nameN == bn
+	}
+	// Pattern has a separator: anchor it to the backup root and match the
+	// entry's relative path. Never a basename-anywhere match.
+	p := relExcludePath(excludeRoot, pat)
+	if p == "" {
+		return false
+	}
+	if hasGlob {
+		return matchPathGlob(strings.Split(p, "/"), strings.Split(relN, "/"))
+	}
+	return relN == p || strings.HasPrefix(relN, p+"/")
+}
+
+// matchPathGlob matches a path glob, segment by segment, against a path: each
+// segment with path.Match, and a segment that is exactly ** with any number of
+// path segments (none included).
+func matchPathGlob(pat, p []string) bool {
+	for len(pat) > 0 {
+		if pat[0] == "**" {
+			for len(pat) > 0 && pat[0] == "**" {
+				pat = pat[1:]
+			}
+			if len(pat) == 0 {
+				return true
+			}
+			for i := 0; i <= len(p); i++ {
+				if matchPathGlob(pat, p[i:]) {
+					return true
+				}
+			}
+			return false
+		}
+		if len(p) == 0 {
+			return false
+		}
+		if ok, _ := path.Match(pat[0], p[0]); !ok {
+			return false
+		}
+		pat, p = pat[1:], p[1:]
+	}
+	return len(p) == 0
 }
 
 const (
@@ -934,7 +982,7 @@ func (a *PXARArchive) startPrefetch(dirPath string, files []os.DirEntry) *prefet
 			continue
 		}
 		fullPath := filepath.Join(dirPath, file.Name())
-		if len(a.ExcludeList) > 0 && isExcluded(relExcludePath(a.root, fullPath), file.Name(), a.ExcludeRoot, a.ExcludeList) {
+		if len(a.ExcludeList) > 0 && isExcluded(relExcludePath(a.root, fullPath), file.Name(), a.ExcludeRoot, a.ExcludeList, false) {
 			continue
 		}
 		info, err := file.Info()
@@ -1225,7 +1273,7 @@ func (a *PXARArchive) WriteDir(path string, dirname string, toplevel bool) (Cata
 		// directories) before it enters the archive, recorded as policy not error.
 		if len(a.ExcludeList) > 0 {
 			childPath := filepath.Join(path, file.Name())
-			if isExcluded(relExcludePath(a.root, childPath), file.Name(), a.ExcludeRoot, a.ExcludeList) {
+			if isExcluded(relExcludePath(a.root, childPath), file.Name(), a.ExcludeRoot, a.ExcludeList, file.IsDir()) {
 				a.ExcludedFiles = append(a.ExcludedFiles, childPath)
 				continue
 			}

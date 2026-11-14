@@ -80,7 +80,7 @@ func countBackupEntries(root, excludeRoot string) (files int, bytes int64) {
 			if pbscommon.IsAutoExcludedFolderAt(name, filepath.Dir(path) == root && rootIsVolume) {
 				return filepath.SkipDir
 			}
-			if len(excludeList) > 0 && pbscommon.IsExcludedByPatterns(rel, name, excludeRoot, excludeList) {
+			if len(excludeList) > 0 && pbscommon.IsExcludedByPatterns(rel, name, excludeRoot, excludeList, true) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -88,7 +88,7 @@ func countBackupEntries(root, excludeRoot string) (files int, bytes int64) {
 		if pbscommon.IsAutoExcludedFile(name) {
 			return nil
 		}
-		if len(excludeList) > 0 && pbscommon.IsExcludedByPatterns(rel, name, excludeRoot, excludeList) {
+		if len(excludeList) > 0 && pbscommon.IsExcludedByPatterns(rel, name, excludeRoot, excludeList, false) {
 			return nil
 		}
 		// Every non-directory entry gets a WriteFile call (a link too), so it

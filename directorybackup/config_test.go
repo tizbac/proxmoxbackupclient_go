@@ -80,14 +80,15 @@ func TestExcludeConfig(t *testing.T) {
 	if p := cfg.problems(); len(p) != 0 {
 		t.Errorf("good patterns: %q", p)
 	}
-	for _, bad := range []string{"[abc", `C:\Data\[x`, "*.[z-a"} {
+	for _, bad := range []string{"[abc", `C:\Data\[x`, "*.[z-a", "![abc", "[abc/"} {
 		c := cfg
 		c.ExcludeList = []string{bad}
 		if p := c.problems(); len(p) != 1 || !strings.Contains(p[0], "not a valid pattern") {
 			t.Errorf("%q: problems %q", bad, p)
 		}
 	}
-	for _, good := range []string{`C:\Users\alice\Temp`, `*\cache`, "[a-z]*.bak", "file?.txt"} {
+	for _, good := range []string{`C:\Users\alice\Temp`, `*\cache`, "[a-z]*.bak", "file?.txt",
+		"!*.pst", "!**.pst", "!**/", "*/", "**/cache", "logs/**/*.tmp", `!C:\Users\alice\Temp\keep`} {
 		if p := excludePatternProblem(good); p != "" {
 			t.Errorf("%q: %s", good, p)
 		}

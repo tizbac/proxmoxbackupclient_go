@@ -205,6 +205,9 @@ func excludePatternProblemOn(pat, goos string) string {
 	if goos == "windows" && strings.Contains(pat, `"`) {
 		return fmt.Sprintf(`-exclude came through as [%s], with a quote in it: on Windows a path ending in \ inside quotes passes a quote and everything after it. Leave out the last \ ("C:\Temp") or the quotes`, pat)
 	}
+	// "!pattern" brings back what earlier patterns left out; a trailing / means
+	// folders only. Neither is part of the glob that is checked.
+	pat = strings.TrimSuffix(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(pat), "!"), "/"), `\`)
 	if !strings.ContainsAny(pat, "*?[") {
 		return ""
 	}

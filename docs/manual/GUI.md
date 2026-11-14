@@ -476,8 +476,21 @@ One pattern per line, not case sensitive:
 | `node_modules` | any file or folder with exactly that name, anywhere |
 | `logs/*.tmp` | `.tmp` entries directly in `logs` under the backup folder |
 | `C:\Users\Alice\Temp` | that folder and everything below it |
+| `**\cache` | any `cache` from the backup folder down, at any depth |
+| `build\` | the folder `build` (a pattern ending in `\` or `/` matches folders only) |
+| `!keep.log` | brings back `keep.log` where a pattern above it left it out |
 
-A pattern without a `\` or `/` matches a name anywhere in the tree. A pattern with one is anchored to the backup folder. Unticking a folder or file in the folder tree excludes just that item.
+A pattern without a `\` or `/` matches a name anywhere in the tree. A pattern with one is anchored to the backup folder; there `*` stays within one folder, and `**` between separators crosses any number of folders.
+
+The lines are read from top to bottom and the last one that matches decides, so a line starting with `!` brings back what the lines above it left out. A folder that is left out is not looked into, so to keep only some files, bring the folders back too. To back up only the Outlook data files of a folder:
+
+```
+*
+!**\
+!*.pst
+```
+
+The first line leaves out everything, the second brings back every folder (at any depth), the third the `.pst` files in them. Unticking a folder or file in the folder tree excludes just that item, after all the lines.
 
 Some names are always skipped: the folders `System Volume Information`, `$RECYCLE.BIN` and `.pbs-rollback` (the Roll back safety folder) at any depth, a folder called `Recovery` only at the root of a drive (Windows' own `C:\Recovery`), and the files `pagefile.sys`, `hiberfil.sys`, `swapfile.sys` and `DumpStack.log.tmp`. The backup log lists every skipped and excluded entry.
 

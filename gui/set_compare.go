@@ -147,7 +147,7 @@ func walkLiveFolder(root string, excludes []string, keepLinks bool, cancel func(
 				childRel = rel + "/" + name
 			}
 			childPath := filepath.Join(dir, name)
-			if len(excludes) > 0 && pbscommon.IsExcludedByPatterns(childRel, name, root, excludes) {
+			if len(excludes) > 0 && pbscommon.IsExcludedByPatterns(childRel, name, root, excludes, it.IsDir()) {
 				continue
 			}
 			info, ierr := it.Info()
