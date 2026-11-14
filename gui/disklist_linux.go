@@ -50,9 +50,9 @@ func listPhysicalDisks() ([]PhysicalDiskInfo, error) {
 		deviceID := entry.Name()
 
 		diskInfo := PhysicalDiskInfo{
-			DiskNumber:   0, // Linux doesn't use disk numbers like Windows
-			Size:         size,
-			Model:        model,
+			DiskNumber: 0, // Linux doesn't use disk numbers like Windows
+			Size:       size,
+			Model:      model,
 			// IsBootDisk is set from the disk's partitions, which say where / and
 			// the boot partition are (markBootDisks, disklist_types.go).
 			IsBootDisk:   false,

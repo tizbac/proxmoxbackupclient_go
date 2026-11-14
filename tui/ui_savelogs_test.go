@@ -55,7 +55,7 @@ func TestSettingsFilePageSavesLogsFromTheWindow(t *testing.T) {
 	}
 	h.key(tcell.KeyEnter, 0)
 	h.waitFor("overwritten") // the dialog, whose file name is already filled in
-	h.key(tcell.KeyTab, 0)  // the Save button
+	h.key(tcell.KeyTab, 0)   // the Save button
 	h.key(tcell.KeyEnter, 0)
 	h.waitFor("Logs written to")
 	found, _ := filepath.Glob(filepath.Join(home, "salvanza-logs-*.zip"))

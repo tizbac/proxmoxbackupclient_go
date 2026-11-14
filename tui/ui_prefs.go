@@ -150,7 +150,7 @@ func (a *App) buildPrefs() tview.Primitive {
 }
 
 func (p *prefsView) renderTitle() {
-	p.title.SetText(withHint(p.a.width(),stepBar([]string{"Backup options", "E-mail", "Network shares", "Settings file"}, p.step, false),
+	p.title.SetText(withHint(p.a.width(), stepBar([]string{"Backup options", "E-mail", "Network shares", "Settings file"}, p.step, false),
 		"Tab next field, PgDn and PgUp switch page, Ctrl+S save, F1 to F9 other screens",
 		"Tab next field, PgDn/PgUp page, Ctrl+S save",
 		"PgDn/PgUp page, Ctrl+S save",
