@@ -145,6 +145,11 @@ type BackupOptions struct {
 	// ShareLogins are the settings' network share logins (share_logins.go),
 	// used for folders on \\server\share when the service runs the backup.
 	ShareLogins map[string]*ShareLogin
+
+	// RenewTicket gets a fresh ticket for a username/password login
+	// (App.ticketRenewer): a ticket lasts 2 hours, and the snapshot's comment
+	// is set after the backup, which may have taken longer. Nil for a token.
+	RenewTicket func() (ticket, csrf string, err error)
 }
 
 // The rules for a lost connection to PBS (retry.SessionLost, retry.Reconnectable
@@ -1087,6 +1092,7 @@ func runBackupInlineInternal(opts BackupOptions) (returnErr error) {
 		Secret:           opts.Secret,
 		Ticket:           opts.Ticket,
 		CSRFToken:        opts.CSRFToken,
+		RenewTicket:      opts.RenewTicket,
 		Datastore:        opts.Datastore,
 		Namespace:        opts.Namespace,
 		Insecure:         opts.CertFingerprint != "",
@@ -1752,6 +1758,7 @@ func runMachineBackupInline(opts BackupOptions) error {
 		Secret:           opts.Secret,
 		Ticket:           opts.Ticket,
 		CSRFToken:        opts.CSRFToken,
+		RenewTicket:      opts.RenewTicket,
 		Datastore:        opts.Datastore,
 		Namespace:        opts.Namespace,
 		BackupID:         opts.BackupID,

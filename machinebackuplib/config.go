@@ -60,6 +60,12 @@ type Config struct {
 	// serialized: a -config file carries KeyFile, not the unlocked key.
 	Crypt *pbscommon.CryptConfig `json:"-"`
 
+	// RenewTicket gets a fresh ticket for a username/password login whose
+	// ticket PBS refuses after a long backup (pbscommon.PBSClient.RenewTicket).
+	// The CLI leaves it nil: its client logs in again with PBSUsername and
+	// PBSPassword.
+	RenewTicket func() (ticket, csrf string, err error) `json:"-"`
+
 	// Progress, when set, receives the job's running figures (chunks new,
 	// reused and blank, bytes uploaded, current disk and partition) for a
 	// caller to sample on its own timer. Nil for the CLI.

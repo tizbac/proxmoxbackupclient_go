@@ -44,3 +44,23 @@ func (a *App) withAuth(cfg *Config) (*Config, error) {
 	}
 	return cfg, nil
 }
+
+// ticketRenewer returns how a backup gets a fresh ticket for cfg's
+// username/password login when PBS refuses the one it started with (a ticket
+// lasts 2 hours; the snapshot's comment is set after the backup), or nil for
+// an API token or a config without a login. It mints the ticket as withAuth
+// does, only when asked.
+func (a *App) ticketRenewer(cfg *Config) func() (ticket, csrf string, err error) {
+	if cfg == nil || cfg.AuthID != "" || cfg.Username == "" || cfg.Password == "" {
+		return nil
+	}
+	login := *cfg
+	login.Ticket, login.CSRFToken = "", ""
+	return func() (string, string, error) {
+		fresh, err := a.withAuth(&login)
+		if err != nil {
+			return "", "", err
+		}
+		return fresh.Ticket, fresh.CSRFToken, nil
+	}
+}

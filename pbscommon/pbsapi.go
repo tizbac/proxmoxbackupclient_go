@@ -276,6 +276,11 @@ type PBSClient struct {
 	Password  string
 	Ticket    string
 	CSRFToken string
+	// RenewTicket, when set, gets a fresh ticket (and CSRF token) for a
+	// username/password login. A PBS ticket lasts 2 hours, and a request
+	// made after a long backup (its comment) is refused with the one the
+	// backup started with. Without it, Username and Password are used.
+	RenewTicket func() (ticket, csrf string, err error)
 
 	Datastore string
 	Namespace string
@@ -571,6 +576,52 @@ func (pbs *PBSClient) ObtainTicket() error {
 	pbs.Ticket = tr.Data.Ticket
 	pbs.CSRFToken = tr.Data.CSRFPreventionToken
 	return nil
+}
+
+// renewTicket replaces a ticket PBS no longer takes: through RenewTicket when
+// set, or else with Username and Password.
+func (pbs *PBSClient) renewTicket() error {
+	switch {
+	case pbs.RenewTicket != nil:
+		ticket, csrf, err := pbs.RenewTicket()
+		if err != nil {
+			return err
+		}
+		if ticket == "" {
+			return fmt.Errorf("the login gave no ticket")
+		}
+		pbs.Ticket, pbs.CSRFToken = ticket, csrf
+		return nil
+	case pbs.Username != "" && pbs.Password != "":
+		return pbs.ObtainTicket()
+	}
+	return fmt.Errorf("there is no login to get a new ticket with")
+}
+
+// doREST sends the request newReq makes, with the client's credentials. When
+// PBS refuses a ticket (HTTP 401: it lasts 2 hours, and this may run after a
+// long backup), it gets a fresh one and sends the request once more. An API
+// token does not expire, so its 401 is returned as it is.
+func (pbs *PBSClient) doREST(client *http.Client, newReq func() (*http.Request, error)) (*http.Response, error) {
+	for retried := false; ; retried = true {
+		req, err := newReq()
+		if err != nil {
+			return nil, err
+		}
+		pbs.setAuth(req)
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusUnauthorized || pbs.Ticket == "" || retried {
+			return resp, nil
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if err := pbs.renewTicket(); err != nil {
+			return nil, fmt.Errorf("PBS refused the login ticket (HTTP 401, a ticket lasts 2 hours) and a new one could not be had: %w", err)
+		}
+	}
 }
 
 // serverSupportsNamespace is gone on purpose.
@@ -1315,14 +1366,15 @@ func (pbs *PBSClient) SetComment(comment string) error {
 	}
 
 	fullURL := fmt.Sprintf("%s/api2/json/admin/datastore/%s/notes", pbs.BaseURL, pbs.Datastore)
-	req, err := http.NewRequest(http.MethodPut, fullURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	pbs.setAuth(req)
-
-	resp, err := client.Do(req)
+	// It runs after the backup, which may have outlived the ticket: doREST
+	// gets a fresh one if PBS refuses it.
+	resp, err := pbs.doREST(client, func() (*http.Request, error) {
+		req, err := http.NewRequest(http.MethodPut, fullURL, strings.NewReader(form.Encode()))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		return req, err
+	})
 	if err != nil {
 		return err
 	}
@@ -1351,14 +1403,13 @@ func (pbs *PBSClient) GetComment() (string, error) {
 	}
 
 	fullURL := fmt.Sprintf("%s/api2/json/admin/datastore/%s/notes?%s", pbs.BaseURL, pbs.Datastore, params.Encode())
-	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Accept", "application/json")
-	pbs.setAuth(req)
-
-	resp, err := client.Do(req)
+	resp, err := pbs.doREST(client, func() (*http.Request, error) {
+		req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+		if err == nil {
+			req.Header.Set("Accept", "application/json")
+		}
+		return req, err
+	})
 	if err != nil {
 		return "", err
 	}

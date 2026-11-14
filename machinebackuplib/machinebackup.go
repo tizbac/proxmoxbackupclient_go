@@ -579,6 +579,7 @@ func Backup(cfg *Config, progressCallback ProgressCallback) (*BackupResult, erro
 		Password:        cfg.PBSPassword,
 		Ticket:          cfg.Ticket,
 		CSRFToken:       cfg.CSRFToken,
+		RenewTicket:     cfg.RenewTicket,
 		Datastore:       cfg.Datastore,
 		Namespace:       cfg.Namespace,
 		Insecure:        cfg.CertFingerprint != "",
